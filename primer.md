@@ -138,7 +138,7 @@ are strings, but it is useful to not confound the two. Let us say that `\x\` is 
 identifier, such as when it is not inferrable that it refers to an identifier in context. For instance:
 
 ```
-kvargs :: X as Type -> Type
+kvargs :: any X as Type -> Type
 kvargs := x as N -> \arg(x)\ : X
 
 myfunc :: args as kvargs(N)
