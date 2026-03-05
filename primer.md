@@ -142,9 +142,9 @@ kvargs :: X as Type -> Type
 kvargs := x as N -> \arg(x)\ : X
 
 myfunc :: args as kvargs(N)
-myfunc := args @ 0
+myfunc := 7
 
-myval := myfunc(arg0 := 1, arg1 := 4) # = 1
+myval := myfunc(arg0 := 1, arg1 := 4) # = 7
 ```
 
 This type checks as `(arg0 := 1, arg1 := 4)` is, by itself, a function `x as 2 -> \arg(x) : N`, and it can be inferred
