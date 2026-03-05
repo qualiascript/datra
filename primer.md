@@ -89,7 +89,10 @@ succ :: Σ(placeholder : N) "x" -> N
 succ := $ @ 0 + 1
 ```
 
-As the value `"x"` is constant, let us say that this sugars back to exactly the original version:
+As the value `"x"` is constant, let us say that this sugars back to exactly the original version. However, we would
+also like to generally impose a restriction on the `b : a` syntax, that is, each value `b` should correspond to a single
+`a`. This is stricter than dependent sum types in general, but is usually the correct semantics for function calling.
+One can write `b : Σ a` in order to relax to dependent sums in general. Then we have:
 
 ```
 succ :: x : N -> N
@@ -138,7 +141,7 @@ are strings, but it is useful to not confound the two. Let us say that `\x\` is 
 identifier, such as when it is not inferrable that it refers to an identifier in context. For instance:
 
 ```
-kvargs :: any X as Type -> Type
+kvargs :: Π X as Type -> Type
 kvargs := x as PosInt -> \arg(x)\ : X
 
 myfunc :: args as {kvargs(N)}
