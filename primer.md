@@ -128,7 +128,7 @@ a section of it depends on an integer, without using formal Regex syntax. We cou
 twice :: x as N -> N
 twice := x * 2
 
-func :: arg as \arg(twice)\ : N 
+func :: arg as \arg(twice($))\ : N 
 func := arg + 1
 
 myval := func(arg4 := 2) # = 5
