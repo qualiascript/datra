@@ -139,16 +139,16 @@ identifier, such as when it is not inferrable that it refers to an identifier in
 
 ```
 kvargs :: any X as Type -> Type
-kvargs := x as N -> \arg(x)\ : X
+kvargs := x as PosInt -> \arg(x)\ : X
 
-myfunc :: args as kvargs(N)
-myfunc := 7
+myfunc :: args as {kvargs(N)}
+myfunc := args @ 0
 
-myval := myfunc(arg0 := 1, arg1 := 4) # = 7
+myval := myfunc(arg1 := 4, arg0 := 9) # = 9
 ```
 
-This type checks as `(arg0 := 1, arg1 := 4)` is, by itself, a function `x as 2 -> \arg(x) : N`, and it can be inferred
-at compile time to be the case. Furthermore, `kvargs` can be inferred to be of type `Type2`, that is, in a type
-universe larger than `Type` itself. This illustrates the promise of Datra: function calling and argument names ought
-to be first class, and have the full expressivity of dependent types. If successful, this could turn to be the natural
-way to design API constrains at any level of complexity, so that wrong API calls are unrepresentable.
+Where `PosInt` is the type of positive integers. This type checks as `(arg0 := 1, arg1 := 4)` is, by itself, a
+function `x as 2 -> \arg(x) : N`, and it can be inferred at compile time to be the case. Furthermore, `kvargs` can be
+inferred to be of type `Type2`, that is, in a type universe larger than `Type` itself. This illustrates the promise of
+Datra: function calling and argument names ought to be first class, and have the full expressivity of dependent types.
+If successful, this could be a natural way to design API constrains so that wrong API calls are unrepresentable.
