@@ -58,7 +58,7 @@ permutation of arguments, and we would like to make this explicit. Let us say th
 type of permutations of `X`. Then, we can write the following:
 
 ```
-sum :: {a : N, b : N) -> N
+sum :: {a : N, b : N} -> N
 sum := a + b
 
 mysum := sum(b := 3, a := 2)
