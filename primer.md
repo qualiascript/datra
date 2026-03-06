@@ -155,3 +155,62 @@ function `x as 2 -> \arg(x)\ : N`, and it can be inferred at compile time to be 
 inferred to be of type `Type2`, that is, in a type universe larger than `Type` itself. This illustrates the promise of
 Datra: function calling and argument names ought to be first class, and have the full expressivity of dependent types.
 If successful, this could be a natural way to design API constrains so that wrong API calls are unrepresentable.
+
+## Typing ambiguities
+
+There are some ambiguities inherent to the design that ought to be handled. Firstly, we ought to disallow this:
+
+```
+func :: x as N, x as N
+```
+
+With `x` as an internal identifier, it is unclear which of the values it is referring to. We also ought to not allow
+internal identifiers to be non-constant, as that defeats the purpose of using them by name internally. As such, despite
+being introduced in that manner, internal identifiers are more than sugar, and must respect its own laws. This can be
+also seen when dealing with more complex function domain bodies, such as this:
+
+```
+func :: x : N, N, {a as N, b as N}
+```
+
+Firstly, `x : N` also treats `x` as an internal identifier, so it can be seen as `x as x : N`. The second argument is
+here only given the type `N`, so in order to call it, one would need to call `$ @ 1` internally. Then, it could be seen
+as `1 as N`, taking into account that numeric identifiers have a different call convention. In fact, all arguments in
+`func` have a numeric calling convention, given by `$ @ 0`, `$ @ 1`, `$ @ 2 @ 0`, `$ @ 2 @ 1`, and this is unambiguous.
+Some also have internal identifiers, this is an injective function from `String` to the parameter space.
+
+We also wish to disallow this:
+
+```
+func :: {\a(func1)\ : N, \a(func2)\ : N}
+```
+
+We seek for there to be a unique mapping from the argument list to the quotient space of `{f}`, and in general,
+non-constant identifiers induce ambiguity. Let us define, then, that `{}` only operates on constant identifiers, that
+is, identifiers that, as dependent types, have all values they depend on in the same fiber. Quotient maps, while they
+accept any permutation, still have a canonical order given by the order of typing, so that internal identifiers can be
+injected into it. Then, the domain function, as the product of hereditarily finite body maps, has a canonical injection.
+
+We would like to allow a calling style convention of mixing positional and identifier-based argument naming. By this
+perspective, this can be made unambiguous as follows. Consider function calls:
+
+```
+val1 := func(2, x := 3)
+val2 := func(x := 3, 2)
+```
+
+In both cases, the function bodies are identical, and given by the map `(0 := 2, x := 3)`. This can be constructed by
+first removing the identifier-based positions from the map, and for the remaining ones, assigning position values in
+order. The function body can be seen as an abstract syntax tree, dependent on internal identifiers, either as integers
+or strings. This is a bijective function, `f : (n : N) + Set(String) -> Tree(Args)`. If the argument body matches the
+external identifiers, it can be made to match the internal identifiers as well, in order for it to inhabit `f`.
+
+In fact, we can drop the hereditarily finite requirement as long as only one node in `Tree(Args)` is given by a
+function `f : N -> Args`, and it is, by canonical order, the last one to use positional arguments. This also requires
+all its child nodes to be hereditarily finite. In general, it is likely too ambiguous to allow infinite maps containing
+external identifier based arguments; this would require a proof of non-ambiguity, which an interpreter cannot generally
+construct. Infinite positional arguments, by comparison, are practically useful for lazy evaluation.
+
+## Default Values
+
+[TO BE CONTINUED]
