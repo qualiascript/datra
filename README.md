@@ -5,11 +5,11 @@ A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer
 ## Code Example
 
 ```
-kvargs :: any X as Type -> Type
-kvargs := x as PosInt -> \arg(x)\ : X
+kwargs : any X of Type -> Type
+    := x as PosInt -> \arg(x)\ : X
 
-myfunc :: args as {kvargs(N)}
-myfunc := args @ 0
+myfunc : args of {kwargs(N)}
+    := args @ 0
 
-myval := myfunc(arg1 := 4, arg0 := 9) # = 9
+myval := myfunc(arg1 := 4, arg0 := 9) # := 9
 ```

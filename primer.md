@@ -1,212 +1,227 @@
 # Datra: A Primer
 
-Consider a topos `Datra`, with one of its objects as `N`, the set of natural numbers which can be seen as `FinSet`
-taken skeletally. Then, in pseudolanguage, we can define a `sum` function as call it as such, with `#` starting an
-inline comment:
+Firstly, an important clarification: a lot of Datra operations seem ambiguous, or like they could break in non-obvious
+ways. This is not the case. Formally, Datra is modeled by nominal sets, so all operations done below are either correct,
+or only incorrect due to human syntactical errors.
+
+Consider the following function:
 
 ```
-sum :: a : N, b : N -> N
-sum := a + b
-
-mynum := sum(2, 3) # = 5
+sum : (a : Int, b : Int) -> Int
+    := a + b
 ```
 
-Notice, however, that when calling `sum`, we do not use the identifier names `a`, `b`. They are automatically matched
-by the order they are given in. Then, the identifiers `a`, `b` exist for the convenience of the inner body of the
-function `sum`, which takes an element `$ : N * N`, which has two projections `$ @ 0` and `$ @ 1`, and the names are
-merely for clarity. Then, we could rewrite the function as follows:
+Note that the indentation is not semantically relevant, this is simply `name : type := value`. In Datra, `sum` must
+be called with explicit identifiers, as such, with `#` denoting an inline comment:
 
 ```
-sum :: N * N -> N
-sum := $ @ 0 + $ @ 1
+y := sum(a := 2, b := 3) # y := 5
 ```
 
-It could be useful in practical programming to make the identifier names be explicitly given, and in fact, we could
-have some identifiers being given by order while others by name in the same function. In fact, we would like to make
-some identifier names to be mandatory. While this seems like an unnecessary restriction, when building APIs, the JSON
-format often takes key-value pairs, and we would like to do the same thing. Then, we would like to also keep the syntax
-sugar for unordered, internal identifiers, but differentiates between the two. Let us write our function as:
+This might seem like an unnecessary restriction, but it maps to how APIs are utilized in practice. Additionally, Datra
+supports positional arguments as well, using the `as` keyword, and positional arguments are also callable explicitly
+by identifier:
 
 ```
-sum :: a as N, b as N -> N
-sum := a + b
+func : a as Int, b as Int -> Int
+    := 2 * a + b
+    
+y := func(2, 3) # y := 7
+z := func(b := 4, 3) # z := 10
 ```
 
-An identifier is a subtype of `Str`, the type of strings. Giving an identifier name and a value is then equivalent to
-giving a string and a value, which is a product type of the two. Let us say that we can obtain the `n`th object of a
-term of a product, such as `x`, by `x @ (n - 1)`. Then, we can write:
+We may seek to restrict this further, by making arguments positional only. We refer to identifiers that only serve
+an internal purpose, and cannot be used externally, as **intra-identifiers**. Identifiers using `:` are denoted
+**extra-identifiers**, and identifiers using `as` which can be used in both ways as **ambi-identifiers**. We declare
+intra-identifiers using the `of` keyword:
 
 ```
-sum :: "a" * N, "b" * N -> N
-sum := $ @ 0 @ 1 + $ @ 1 @ 1
-
-mysum := sum ("a" 2) ("b" 3)
+func : a of Int, b of Int -> Int
+    := 2 * a + b
+    
+y := func(2, 3) # y := 7
+# z := func(b := 4, 3) # does not compile
 ```
 
-We would like to sugar this significantly. Let us rewrite it as follows, while having the same underlying meaning:
+In fact, both `as` and `of` are syntactic sugar. We use the `val` keyword to denote the values provided to the function,
+and the `@` operator to denote the value in a tuple at a specific index. We also use the `do` and `yield` keywords,
+with `do` replacing `:=` to mean that there is a full function body that yields a value.
 
 ```
-sum :: a : N, b : N -> N
-sum := a + b
-
-mysum = sum(a := 2, b := 3)
+func : Int, Int -> Int do
+    a := val @ 0
+    b := val @ 1
+    yield 2 * a + b
 ```
 
-However, as it is, this does not accept the opposite argument order, meaning giving `b` first and then `a`, despite
-the fact that they are unambiguously disambiguated by the identifier names. We would like `sum` to accept any
-permutation of arguments, and we would like to make this explicit. Let us say that, given `X` a product, `{X}` is the
-type of permutations of `X`. Then, we can write the following:
+In fact, the `do` / `yield` syntax is itself syntactic sugar [^1]. It can be rewritten as follows. We can obtain the
+values in the map using the `@` operator, followed by the string corresponding to the identifier name. For reasons that
+will become clear shortly, we are using `\` instead of `"` for string delimiters. As such, we get:
 
 ```
-sum :: {a : N, b : N} -> N
-sum := a + b
-
-mysum := sum(b := 3, a := 2)
+func' : Int, Int -> (a : Int, b : Int)
+    := (a := val @ 0, b := val @ 1)
+    
+func : Int, Int -> Int
+    := 2 * (func' val) @ \a\ + (func' val) @ \b\
 ```
 
-## Dependent pairs of identifiers
-
-Consider the successor function, taking an explicit argument:
-
-```
-succ :: x : N -> N
-succ := x + 1
-```
-
-This would get desugared to:
+You may have noticed a self-similarity at play here: the entire code snippet looks like an argument map. This is not
+coincidental: all Datra programs are so-called **total maps**, maps that have all values filled. In that sense, a
+newline character is another way of writing `,` as a separator. As such, we can rewrite our snippet in one line, as
+follows. Note the parentheses use for clarity. To clarify: this is **not** how Datra is normally used! This is closer
+to an internal representation.
 
 ```
-succ :: "x" * N -> N
-succ := $ @ 1 + 1
+(func' : Int, Int -> (a : Int, b : Int) := (a := val @ 0, b := val @ 1), func : Int, Int -> Int := 2 * (func' val) @ \a\ + (func' val) @ \b\)
 ```
 
-From another perspective, consider `x` to be an identifier that depends on a value. In this case, the value of the 
-identifier is constant for any value, so it is reduced to a product, but it is useful to consider the general case
-in order to construct further generalizations. This is a dependent sum, which could be written as follows:
+But if Datra programs are maps, then keys in a map do not have to be identifiers. In fact, we have been using the
+following convention implicitly: for a map argument `a : b := c`, if `a` is given under identifier form, it is
+implicitly coerced to be a string. As such, the sum function could have been written as follows:
 
 ```
-succ :: some(placeholder : N) "x" -> N
-succ := $ @ 0 + 1
+\sum\ : (a : Int, b : Int -> Int) := a + b
 ```
 
-As the value `"x"` is constant, let us say that this sugars back to exactly the original version. However, we would
-also like to generally impose a restriction on the `b : a` syntax, that is, each value `b` should correspond to a single
-`a`. This is stricter than dependent sum types in general, but is usually the correct semantics for function calling.
-One can write `b : some a` in order to relax to dependent sums in general. Then we have:
+We refer to an identifier on the left side of `:`, or of `:=` directly if the type is inferred, as a **free
+identifier**. By similar logic, there is no reason for the left side to not be some other value:
 
 ```
-succ :: x : N -> N
-succ := x + 1
-
-mynum := succ (x := 1) # 2
+0 : (a : Int, b : Int -> Int) := a + b
 ```
 
-In this case, it becomes apparent that `x := 1` is, in fact, sugar for a function, and it inhabits the function type
-`x : N`, which as we've seen, is sugar for a dependent sum. For consistency, we may also conceptualize unnamed
-arguments passed to a function as a function. For instance, in this example:
+In fact, just like with a positional argument, no key must be provided at all. This leads to another implicit Datra
+convention: in any map, values that are provided without keys have their keys inferred by the natural numbers, starting
+from `0` and assigning in order. As such, the code snippet is equivalent to the following:
 
 ```
-sum :: a as N, b as N -> N
-sum := a + b
-
-mysum := sum(2, 3)
+(a : Int, b : Int -> Int) := a + b
 ```
 
-We may see `(2, 3)` as a function from `2` to `N`, assigning `0` to `2` and `1` to `3`. By extension, we will consider
-functions to be the fundamental object in Datra. A value `x :: X` is given by a function `x : 1 -> X`, even if that
-is sugared out. This also ought not to be surprising considering the semantics of lambda calculus.
-
-## Regex types
-
-If we have identifiers that depend on values, it is natural to consider non-constant identifiers, whose value actually
-get modified, in some manner, by the value they depend on. Regex provides the correct semantics for this: we can say
-that a regex is a string that depends on its captured values. However, Regex is also heavy, so it is unclear whether
-only a well-behaved subset of it ought to be implemented. As a demo example, let us consider merely an identifier where
-a section of it depends on an integer, without using formal Regex syntax. We could, for instance, write it as follows:
+In order to call such a function, we need the map to refer to itself. This is done using the `this` keyword, as follows:
 
 ```
-twice :: x as N -> N
-twice := x * 2
-
-func :: arg as \arg(twice($))\ : N 
-func := arg + 1
-
-myval := func(arg4 := 2) # = 5
+(a : Int, b : Int -> Int) := a + b
+y := (this @ 0)(a := 2, b := 3) 
 ```
 
-In this instance, `func` only accepts values where the identifier name consists of `arg` followed by a value that is
-twice the value of the argument. This example is not practically useful, but it serves to illustrate the principle at
-play. More generally, this can validate that an argument name is provided with a coherent value of sorts. Identifiers
-are strings, but it is useful to not confound the two. Let us say that `\x\` is the canonical representation of an
-identifier, such as when it is not inferrable that it refers to an identifier in context. For instance:
+A Datra program takes some structured input and yields structured output. In this context, given a map representing a
+source code, the function executed is the one with the highest integer key, which, if using positional arguments, is
+the last one defined in the program. For instance, this is the Hello World program:
 
 ```
-kvargs :: any X as Type -> Type
-kvargs := x as PosInt -> \arg(x)\ : X
-
-myfunc :: args as {kvargs(N)}
-myfunc := args @ 0
-
-myval := myfunc(arg1 := 4, arg0 := 9) # = 9
+\Hello, world!\
 ```
 
-Where `PosInt` is the type of positive integers. This type checks as `(arg0 := 9, arg1 := 4)` is, by itself, a
-function `x as 2 -> \arg(x)\ : N`, and it can be inferred at compile time to be the case. Furthermore, `kvargs` can be
-inferred to be of type `Type2`, that is, in a type universe larger than `Type` itself. This illustrates the promise of
-Datra: function calling and argument names ought to be first class, and have the full expressivity of dependent types.
-If successful, this could be a natural way to design API constrains so that wrong API calls are unrepresentable.
-
-## Typing ambiguities
-
-There are some ambiguities inherent to the design that ought to be handled. Firstly, we ought to disallow this:
+Going back, this makes it clear in what sense `as` is syntactic sugar. The following code snippet:
 
 ```
-func :: x as N, x as N
+func : (a as Int, b : Int) -> Int
+    := 2 * a + b
 ```
 
-With `x` as an internal identifier, it is unclear which of the values it is referring to. We also ought to not allow
-internal identifiers to be non-constant, as that defeats the purpose of using them by name internally. As such, despite
-being introduced in that manner, internal identifiers are more than sugar, and must respect its own laws. This can be
-also seen when dealing with more complex function domain bodies, such as this:
+Could be written using sum types, given by the operator `|`, and using implicit positional arguments, as follows:
 
 ```
-func :: x : N, N, {a as N, b as N}
+func : (a : Int, b : Int) | (a of Int, b : Int) -> Int
+    := 2 * a + b
 ```
 
-Firstly, `x : N` also treats `x` as an internal identifier, so it can be seen as `x as x : N`. The second argument is
-here only given the type `N`, so in order to call it, one would need to call `$ @ 1` internally. Then, it could be seen
-as `1 as N`, taking into account that numeric identifiers have a different call convention. In fact, all arguments in
-`func` have a numeric calling convention, given by `$ @ 0`, `$ @ 1`, `$ @ 2 @ 0`, `$ @ 2 @ 1`, and this is unambiguous.
-Some also have internal identifiers, this is an injective function from `String` to the parameter space.
-
-We also wish to disallow this:
+Of course, within one map, some keys might have arguments provided and some might not. This corresponds to a function
+that has default arguments. Without going into detail, this does not, in fact, induce ambiguities with positional
+arguments. For instance:
 
 ```
-func :: {\a(func1)\ : N, \a(func2)\ : N}
+func : (a : Int := 4, b as Int)
+    := 2 * a + b
+    
+y := func(5) # := 13
 ```
 
-We seek for there to be a unique mapping from the argument list to the quotient space of `{f}`, and in general,
-non-constant identifiers induce ambiguity. Let us define, then, that `{}` only operates on constant identifiers, that
-is, identifiers that, as dependent types, have all values they depend on in the same fiber. Quotient maps, while they
-accept any permutation, still have a canonical order given by the order of typing, so that internal identifiers can be
-injected into it. Then, the domain function, as the product of hereditarily finite body maps, has a canonical injection.
-
-We would like to allow a calling style convention of mixing positional and identifier-based argument naming. By this
-perspective, this can be made unambiguous as follows. Consider function calls:
+Of course, one can explicitly override the provided default value:
 
 ```
-val1 := func(2, x := 3)
-val2 := func(x := 3, 2)
+func : (a : Int := 4, b as Int)
+    := 2 * a + b
+    
+y := func(a := 1, 5) # := 7
 ```
 
-In both cases, the function bodies are identical, and given by the map `(0 := 2, x := 3)`. This can be constructed by
-first removing the identifier-based positions from the map, and for the remaining ones, assigning position values in
-order. The function body can be seen as an abstract syntax tree, dependent on internal identifiers, either as integers
-or strings. This is a bijective function, mapping each identifier to codomain `Tree(Args)`. If the argument body matches
-the external identifiers, it can be made to match the internal identifiers as well, in order for it to inhabit `f`.
+Datra also supports string interpolation, in a modified sense. Within the `\` delimiters, one can write values within
+square brackets, and they will be interpolated. This is also how Datra handles string concatenation. Non-string values
+are automatically converted to string values in this context. For instance:
 
-In fact, we can drop the hereditarily finite requirement as long as only one node in `Tree(Args)` is given by a
-function `f : N -> Args`, and it is, by canonical order, the last one to use positional arguments. This also requires
-all its child nodes to be hereditarily finite. In general, it is likely too ambiguous to allow infinite maps containing
-external identifier based arguments; this would require a proof of non-ambiguity, which an interpreter cannot generally
-construct. Infinite positional arguments, by comparison, are practically useful for lazy evaluation.
+```
+hello := "Hello, "
+world := "world"
+mynum := 7
+\[hello][world]! My number is [mynum]\
+```
+
+In fact, Datra extends this concept by allowing the interpolated values to be functions, so that given an input, one
+obtains a string with the desired output. For instance:
+
+```
+# This function is in the standard library
+Id : x of Any -> Any := x
+
+mynum := 2
+double : x of N -> N := 2 * x
+dependent_string := \The double of [id] is [double]\ : N
+dependent_string @ my_num 
+```
+
+The usage of `:` in `dependent_string`'s definition might seem ambiguous at first, but it is not. An argument such as
+`a : Int` is equivalent to `\a\ : Int`, so that the identifier is a trivial string interpolation. When called with an
+argument such as `a := 5`, the argument subtypes `\a\ : Int` by providing the value of `\a\` at `5`. As it is trivial,
+this seems pointless, but `a : b`, which is the syntax of **dependent types**, can encode identifiers that depend on
+values, or simply **dependent identifiers**. For instance, with operator `$` obtaining the extra-identifier:
+
+```
+double : x of N -> N := 2 * x
+myfunc : arg of \arg[double]\ : N
+    := \Received value [arg] with identifier [$arg]\
+```
+
+Calling this with `arg4 := 2` yields `\Received value 2 with identifier arg4\`, while one cannot call it with
+`arg3 := 2`. One feature not yet mentioned is variable order arguments, however, Datra makes this trivial: given any
+map `a`, `{a}` is the map with variable order arguments. This can yield to ambiguous situations when calling, however,
+Datra is able to unambiguously map arguments in many cases, and if it is not able to resolve it, it provides a compiler
+error. As such, all Datra function calls are unambiguous and valid. For instance:
+
+```
+double : x of N -> N := 2 * x
+myfunc : {x of \x[double]\ : N, y of \y[double]\ : N} -> N
+    := x + y
+    
+mynum := myfunc(y4 := 2, x6 := 3) # := 5
+```
+
+In this case, there is no ambiguity. Obviously, positional arguments in any order are ambiguous, and so are repeated
+identifiers in any order. However, if order is not variable, nothing in Datra forbids repeated identifiers:
+
+```
+func : arg1 of x : N, arg2 of x : N -> N
+    := arg1 + arg2
+ 
+mynum := func(x := 2, x := 3) # := 5
+```
+
+Datra is, in fact, a **dependently typed programming language**, but while advanced features are available, they are
+not necessary in order to write a Datra program. `a : b` is the syntax for dependent sums, and one can write, for
+instance, `myfunc(x, y, z) : (x as N, y as N, z as N)`. Dependent products are written by appending the `any` keyword
+to arguments in the function type signature. This is the context in which one obtains the code snippet on the front
+page, where `kwargs` is a first-class `Datra` function:
+
+```
+kwargs : any X of Type -> Type
+    := x as PosInt -> \arg(x)\ : X
+
+myfunc : args of {kwargs(N)}
+    := args @ 0
+
+myval := myfunc(arg1 := 4, arg0 := 9) # := 9
+```
+
+[^1]: Except for the fact that they ensure the name of the induced helper function does not collide with anything.
