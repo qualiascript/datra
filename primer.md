@@ -185,15 +185,14 @@ double :: x of Int -> Int := 2 * x
 myfunc :: arg of \arg[double]\ : Int -> Str
     := \Received value [arg] with identifier [$arg]\
     
-myval := myfunc(arg4 := 2) # := \Received value 2 with identifier 4\
+myval := myfunc(arg4 := 2) # := \Received value 2 with identifier arg4\
 # myval := myfunc(arg5 := 2) # does not compile!
 ```
 
-Calling this with `arg4 := 2` yields `\Received value 2 with identifier arg4\`, while one cannot call it with
-`arg3 := 2`. One feature not yet mentioned is variable order arguments, however, Datra makes this trivial: given any
-map `a`, `{a}` is the map with variable order arguments. This can yield to ambiguous situations when calling, however,
-Datra is able to unambiguously map arguments in many cases, and if it is not able to resolve it, it provides a compiler
-error. As such, all Datra function calls are unambiguous and valid. For instance:
+One feature not yet mentioned is variable order arguments, however, Datra makes this trivial: given any map `a`, `{a}`
+is the map with variable order arguments. This can yield to ambiguous situations when calling, however, Datra is able
+to unambiguously map arguments in many cases, and if it is not able to resolve it, it provides a compiler error. As
+such, all Datra function calls are unambiguous and valid. For instance:
 
 ```
 double :: x of Int -> Int := 2 * x
