@@ -82,14 +82,14 @@ following convention implicitly: for a map argument `a : b := c`, if `a` is give
 implicitly coerced to be a string. As such, the sum function could have been written as follows:
 
 ```
-\sum\ :: a : Int, b : Int) -> Int := a + b
+\sum\ :: a : Int, b : Int -> Int := a + b
 ```
 
 We refer to an identifier on the left side of `:`, or of `:=` directly if the type is inferred, as a **free
 identifier**. By similar logic, there is no reason for the left side to not be some other value:
 
 ```
-0 :: a : Int, b : Int) -> Int := a + b
+0 :: a : Int, b : Int -> Int := a + b
 ```
 
 In fact, just like with a positional argument, no key must be provided at all. This leads to another implicit Datra
@@ -131,11 +131,11 @@ func :: (a : Int, b : Int) | (a of Int, b : Int) -> Int
 
 Of course, within one map, some keys might have arguments provided and some might not. This corresponds to a function
 that has default arguments. Without going into detail, this does not, in fact, induce ambiguities with positional
-arguments. We introduce `<-` as syntactic sugar for `:=`, with the same meaning except it clarifies that this is an
+arguments. We introduce `::=` as syntactic sugar for `:=`, with the same meaning except it clarifies that this is an
 inner argument assignment. For instance:
 
 ```
-func :: a : Int <- 4, b as Int
+func :: a : Int ::= 4, b as Int -> Int
     := 2 * a + b
     
 y := func(5) # := 13
@@ -144,7 +144,7 @@ y := func(5) # := 13
 Of course, one can explicitly override the provided default value:
 
 ```
-func :: a : Int <- 4, b as Int
+func :: a : Int ::= 4, b as Int -> Int
     := 2 * a + b
     
 y := func(a := 1, 5) # := 7
