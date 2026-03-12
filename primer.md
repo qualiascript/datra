@@ -56,15 +56,14 @@ func :: Int, Int -> Int do
 ```
 
 In fact, the `do` / `yield` syntax is itself syntactic sugar [^1]. It can be rewritten as follows. We can obtain the
-values in the map using the `@` operator, followed by the string corresponding to the identifier name. For reasons that
-will become clear shortly, we are using `\` instead of `"` for string delimiters. As such, we get:
+values in the map using the `@` operator, followed by the string corresponding to the identifier name. As such, we get:
 
 ```
 func' :: Int, Int -> (a : Int, b : Int)
     := (a := val @ 0, b := val @ 1)
     
 func :: Int, Int -> Int
-    := 2 * (func' val) @ \a\ + (func' val) @ \b\
+    := 2 * (func' val) @ "a" + (func' val) @ "b"
 ```
 
 You may have noticed a self-similarity at play here: the entire code snippet looks like an argument map. This is not
@@ -74,7 +73,7 @@ follows. Note the parentheses use for clarity. To clarify: this is **not** how D
 to an internal representation.
 
 ```
-(func' :: Int, Int -> (a : Int, b : Int) := (a := val @ 0, b := val @ 1), func :: Int, Int -> Int := 2 * (func' val) @ \a\ + (func' val) @ \b\)
+(func' :: Int, Int -> (a : Int, b : Int) := (a := val @ 0, b := val @ 1), func :: Int, Int -> Int := 2 * (func' val) @ "a" + (func' val) @ "b")
 ```
 
 But if Datra programs are maps, then keys in a map do not have to be identifiers. In fact, we have been using the
@@ -82,7 +81,7 @@ following convention implicitly: for a map argument `a : b := c`, if `a` is give
 implicitly coerced to be a string. As such, the sum function could have been written as follows:
 
 ```
-\sum\ :: a : Int, b : Int -> Int := a + b
+"sum" :: a : Int, b : Int -> Int := a + b
 ```
 
 We refer to an identifier on the left side of `:`, or of `:=` directly if the type is inferred, as a **free
@@ -112,7 +111,7 @@ source code, the function executed is the one with the highest integer key, whic
 the last one defined in the program. For instance, this is the Hello World program:
 
 ```
-\Hello, world!\
+"Hello, world!"
 ```
 
 Going back, this makes it clear in what sense `as` is syntactic sugar. The following code snippet:
@@ -150,7 +149,7 @@ func :: a : Int ::= 4, b as Int -> Int
 y := func(a := 1, 5) # := 7
 ```
 
-Datra also supports string interpolation, in a modified sense. Within the `\` delimiters, one can write values within
+Datra also supports string interpolation, in a modified sense. Within the `"` delimiters, one can write values within
 square brackets, and they will be interpolated. This is also how Datra handles string concatenation. Non-string values
 are automatically converted to string values in this context. For instance:
 
@@ -158,7 +157,7 @@ are automatically converted to string values in this context. For instance:
 hello := "Hello, "
 world := "world"
 mynum := 7
-\[hello][world]! My number is [mynum]\
+"[hello][world]! My number is [mynum]"
 ```
 
 In fact, Datra extends this concept by allowing the interpolated values to be functions, so that given an input, one
@@ -170,22 +169,22 @@ Id :: x of Any -> Any := x
 
 mynum := 2
 double :: x of Int -> Int := 2 * x
-dependent_string := \The double of [id] is [double]\ : Int
+dependent_string := "The double of [id] is [double]" : Int
 dependent_string @ my_num 
 ```
 
 The usage of `:` in `dependent_string`'s definition might seem ambiguous at first, but it is not. An argument such as
-`a : Int` is equivalent to `\a\ : Int`, so that the identifier is a trivial string interpolation. When called with an
-argument such as `a := 5`, the argument subtypes `\a\ : Int` by providing the value of `\a\` at `5`. As it is trivial,
+`a : Int` is equivalent to `"a" : Int`, so that the identifier is a trivial string interpolation. When called with an
+argument such as `a := 5`, the argument subtypes `"a" : Int` by providing the value of `"a"` at `5`. As it is trivial,
 this seems pointless, but `a : b`, which is the syntax of **dependent types**, can encode identifiers that depend on
 values, or simply **dependent identifiers**. For instance, with operator `$` obtaining the extra-identifier:
 
 ```
 double :: x of Int -> Int := 2 * x
-myfunc :: arg of \arg[double]\ : Int -> Str
-    := \Received value [arg] with identifier [$arg]\
+myfunc :: arg of "arg[double]" : Int -> Str
+    := "Received value [arg] with identifier [$arg]"
     
-myval := myfunc(arg4 := 2) # := \Received value 2 with identifier arg4\
+myval := myfunc(arg4 := 2) # := "Received value 2 with identifier arg4"
 # myval := myfunc(arg5 := 2) # does not compile!
 ```
 
@@ -196,7 +195,7 @@ such, all Datra function calls are unambiguous and valid. For instance:
 
 ```
 double :: x of Int -> Int := 2 * x
-myfunc :: {x of \x[double]\ : Int, y of \y[double]\ : Int} -> Int
+myfunc :: {x of "x[double]" : Int, y of "y[double]" : Int} -> Int
     := x + y
     
 mynum := myfunc(y4 := 2, x6 := 3) # := 5
@@ -221,7 +220,7 @@ front page, where `kwargs` is a first-class `Datra` function:
 
 ```
 kwargs :: any X of Type -> Type
-    := x of PosInt -> \arg(x)\ : X
+    := x of PosInt -> "arg[x]" : X
 
 myfunc :: **args of {kwargs Int}
     := args @ 0
