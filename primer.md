@@ -7,12 +7,13 @@ or only incorrect due to human syntactical errors.
 Consider the following function:
 
 ```
-sum : (a : Int, b : Int) -> Int
+sum :: a : Int, b : Int -> Int
     := a + b
 ```
 
-Note that the indentation is not semantically relevant, this is simply `name : type := value`. In Datra, `sum` must
-be called with explicit identifiers, as such, with `#` denoting an inline comment:
+Note that the indentation is not semantically relevant, this is simply `name : type := value`. `::` has the same
+meaning as `:`, except it binds to the latest `->` in the type definition, as to be the function type's left side
+argument. In Datra, `sum` must be called with explicit identifiers, as such, with `#` denoting an inline comment:
 
 ```
 y := sum(a := 2, b := 3) # y := 5
@@ -23,7 +24,7 @@ supports positional arguments as well, using the `as` keyword, and positional ar
 by identifier:
 
 ```
-func : a as Int, b as Int -> Int
+func :: a as Int, b as Int -> Int
     := 2 * a + b
     
 y := func(2, 3) # y := 7
@@ -36,7 +37,7 @@ an internal purpose, and cannot be used externally, as **intra-identifiers**. Id
 intra-identifiers using the `of` keyword:
 
 ```
-func : a of Int, b of Int -> Int
+func :: a of Int, b of Int -> Int
     := 2 * a + b
     
 y := func(2, 3) # y := 7
@@ -48,7 +49,7 @@ and the `@` operator to denote the value in a tuple at a specific index. We also
 with `do` replacing `:=` to mean that there is a full function body that yields a value.
 
 ```
-func : Int, Int -> Int do
+func :: Int, Int -> Int do
     a := val @ 0
     b := val @ 1
     yield 2 * a + b
@@ -59,10 +60,10 @@ values in the map using the `@` operator, followed by the string corresponding t
 will become clear shortly, we are using `\` instead of `"` for string delimiters. As such, we get:
 
 ```
-func' : Int, Int -> (a : Int, b : Int)
+func' :: Int, Int -> (a : Int, b : Int)
     := (a := val @ 0, b := val @ 1)
     
-func : Int, Int -> Int
+func :: Int, Int -> Int
     := 2 * (func' val) @ \a\ + (func' val) @ \b\
 ```
 
@@ -73,7 +74,7 @@ follows. Note the parentheses use for clarity. To clarify: this is **not** how D
 to an internal representation.
 
 ```
-(func' : Int, Int -> (a : Int, b : Int) := (a := val @ 0, b := val @ 1), func : Int, Int -> Int := 2 * (func' val) @ \a\ + (func' val) @ \b\)
+(func' :: Int, Int -> (a : Int, b : Int) := (a := val @ 0, b := val @ 1), func :: Int, Int -> Int := 2 * (func' val) @ \a\ + (func' val) @ \b\)
 ```
 
 But if Datra programs are maps, then keys in a map do not have to be identifiers. In fact, we have been using the
@@ -81,14 +82,14 @@ following convention implicitly: for a map argument `a : b := c`, if `a` is give
 implicitly coerced to be a string. As such, the sum function could have been written as follows:
 
 ```
-\sum\ : (a : Int, b : Int -> Int) := a + b
+\sum\ :: a : Int, b : Int -> Int := a + b
 ```
 
 We refer to an identifier on the left side of `:`, or of `:=` directly if the type is inferred, as a **free
 identifier**. By similar logic, there is no reason for the left side to not be some other value:
 
 ```
-0 : (a : Int, b : Int -> Int) := a + b
+0 :: a : Int, b : Int -> Int := a + b
 ```
 
 In fact, just like with a positional argument, no key must be provided at all. This leads to another implicit Datra
@@ -96,13 +97,13 @@ convention: in any map, values that are provided without keys have their keys in
 from `0` and assigning in order. As such, the code snippet is equivalent to the following:
 
 ```
-(a : Int, b : Int -> Int) := a + b
+(a : Int, b : Int) -> Int := a + b
 ```
 
 In order to call such a function, we need the map to refer to itself. This is done using the `this` keyword, as follows:
 
 ```
-(a : Int, b : Int -> Int) := a + b
+(a : Int, b : Int) -> Int := a + b
 y := (this @ 0)(a := 2, b := 3) 
 ```
 
@@ -117,23 +118,24 @@ the last one defined in the program. For instance, this is the Hello World progr
 Going back, this makes it clear in what sense `as` is syntactic sugar. The following code snippet:
 
 ```
-func : (a as Int, b : Int) -> Int
+func :: a as Int, b : Int -> Int
     := 2 * a + b
 ```
 
 Could be written using sum types, given by the operator `|`, and using implicit positional arguments, as follows:
 
 ```
-func : (a : Int, b : Int) | (a of Int, b : Int) -> Int
+func :: (a : Int, b : Int) | (a of Int, b : Int) -> Int
     := 2 * a + b
 ```
 
 Of course, within one map, some keys might have arguments provided and some might not. This corresponds to a function
 that has default arguments. Without going into detail, this does not, in fact, induce ambiguities with positional
-arguments. For instance:
+arguments. We introduce `<-` as syntactic sugar for `:=`, with the same meaning except it clarifies that this is an
+inner argument assignment. For instance:
 
 ```
-func : (a : Int := 4, b as Int)
+func :: a : Int <- 4, b as Int
     := 2 * a + b
     
 y := func(5) # := 13
@@ -142,7 +144,7 @@ y := func(5) # := 13
 Of course, one can explicitly override the provided default value:
 
 ```
-func : (a : Int := 4, b as Int)
+func :: a : Int <- 4, b as Int
     := 2 * a + b
     
 y := func(a := 1, 5) # := 7
@@ -164,10 +166,10 @@ obtains a string with the desired output. For instance:
 
 ```
 # This function is in the standard library
-Id : x of Any -> Any := x
+Id :: x of Any -> Any := x
 
 mynum := 2
-double : x of N -> N := 2 * x
+double :: x of N -> N := 2 * x
 dependent_string := \The double of [id] is [double]\ : N
 dependent_string @ my_num 
 ```
@@ -179,8 +181,8 @@ this seems pointless, but `a : b`, which is the syntax of **dependent types**, c
 values, or simply **dependent identifiers**. For instance, with operator `$` obtaining the extra-identifier:
 
 ```
-double : x of N -> N := 2 * x
-myfunc : arg of \arg[double]\ : N
+double :: x of N -> N := 2 * x
+myfunc :: arg of \arg[double]\ : N -> Str
     := \Received value [arg] with identifier [$arg]\
 ```
 
@@ -191,8 +193,8 @@ Datra is able to unambiguously map arguments in many cases, and if it is not abl
 error. As such, all Datra function calls are unambiguous and valid. For instance:
 
 ```
-double : x of N -> N := 2 * x
-myfunc : {x of \x[double]\ : N, y of \y[double]\ : N} -> N
+double :: x of N -> N := 2 * x
+myfunc :: {x of \x[double]\ : N, y of \y[double]\ : N} -> N
     := x + y
     
 mynum := myfunc(y4 := 2, x6 := 3) # := 5
@@ -202,7 +204,7 @@ In this case, there is no ambiguity. Obviously, positional arguments in any orde
 identifiers in any order. However, if order is not variable, nothing in Datra forbids repeated identifiers:
 
 ```
-func : arg1 of x : N, arg2 of x : N -> N
+func :: arg1 of x : N, arg2 of x : N -> N
     := arg1 + arg2
  
 mynum := func(x := 2, x := 3) # := 5
@@ -215,10 +217,10 @@ to arguments in the function type signature. This is the context in which one ob
 page, where `kwargs` is a first-class `Datra` function:
 
 ```
-kwargs : any X of Type -> Type
+kwargs :: any X of Type -> Type
     := x as PosInt -> \arg(x)\ : X
 
-myfunc : args of {kwargs(N)}
+myfunc :: args of {kwargs(N)}
     := args @ 0
 
 myval := myfunc(arg1 := 4, arg0 := 9) # := 9
