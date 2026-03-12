@@ -13,10 +13,10 @@ A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer
 ### First class Kwargs
 
 ```
-kwargs :: any X of Type -> Type
-    := x of PosInt -> "arg[x]" : X
+kwargs :: X of Type -> Type
+    := any x of PosInt -> "arg[x]" : X
 
-myfunc :: **args of {kwargs Int}
+myfunc :: args of {kwargs Int}
     := args @ 0
 
 myval := myfunc(arg1 := 4, arg0 := 9) # := 9

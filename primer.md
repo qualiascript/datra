@@ -216,19 +216,17 @@ Datra is, in fact, a **dependently typed programming language**, but while advan
 not necessary in order to write a Datra program. `a : b` is the syntax for dependent sums, and one can write, for
 instance, `myfunc(x, y, z) : (x as Int, y as Int, z as Int)`. Dependent products are written by appending the `any`
 keyword to arguments in the function type signature. This is the context in which one obtains the code snippet on the
-front page, where `kwargs` is a first-class `Datra` function:
+front page, where `kwargs` is a first-class `Datra`. Note that `PosInt` is the type of positive integers.
 
 ```
 kwargs :: any X of Type -> Type
     := x of PosInt -> "arg[x]" : X
 
-myfunc :: **args of {kwargs Int}
+myfunc :: args of {kwargs Int}
     := args @ 0
 
 myval := myfunc(arg1 := 4, arg0 := 9) # := 9
 ```
 
-In this example, `PosInt` is a positive integer, and `**` tells Datra that the map provided during function call ought
-to be made to fit into `args`, not `val`.
 
 [^1]: Except for the fact that they ensure the name of the induced helper function does not collide with anything.
