@@ -13,7 +13,7 @@ A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer
 ### First class Kwargs
 
 ```
-kwargs :: X of Type -> Type
+kwargs :: X of Map -> Map
     := any x of PosInt -> "arg[x]" : X
 
 myfunc :: args of {kwargs Int}

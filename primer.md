@@ -165,11 +165,11 @@ obtains a string with the desired output. For instance:
 
 ```
 # This function is in the standard library
-Id :: x of Any -> Any := x
+Id :: x of Map -> Map := x
 
 mynum := 2
 double :: x of Int -> Int := 2 * x
-dependent_string := "The double of [id] is [double]" : Int
+dependent_string := "The double of [Id] is [double]" : Int
 dependent_string @ my_num 
 ```
 
@@ -219,8 +219,8 @@ keyword to arguments in the function type signature. This is the context in whic
 front page, where `kwargs` is a first-class `Datra`. Note that `PosInt` is the type of positive integers.
 
 ```
-kwargs :: any X of Type -> Type
-    := x of PosInt -> "arg[x]" : X
+kwargs :: X of Map -> Map
+    := any x of PosInt -> "arg[x]" : X
 
 myfunc :: args of {kwargs Int}
     := args @ 0
