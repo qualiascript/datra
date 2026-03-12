@@ -169,8 +169,8 @@ obtains a string with the desired output. For instance:
 Id :: x of Any -> Any := x
 
 mynum := 2
-double :: x of N -> N := 2 * x
-dependent_string := \The double of [id] is [double]\ : N
+double :: x of Int -> Int := 2 * x
+dependent_string := \The double of [id] is [double]\ : Int
 dependent_string @ my_num 
 ```
 
@@ -181,9 +181,12 @@ this seems pointless, but `a : b`, which is the syntax of **dependent types**, c
 values, or simply **dependent identifiers**. For instance, with operator `$` obtaining the extra-identifier:
 
 ```
-double :: x of N -> N := 2 * x
-myfunc :: arg of \arg[double]\ : N -> Str
+double :: x of Int -> Int := 2 * x
+myfunc :: arg of \arg[double]\ : Int -> Str
     := \Received value [arg] with identifier [$arg]\
+    
+myval := myfunc(arg4 := 2) # := \Received value 2 with identifier 4\
+# myval := myfunc(arg5 := 2) # does not compile!
 ```
 
 Calling this with `arg4 := 2` yields `\Received value 2 with identifier arg4\`, while one cannot call it with
@@ -193,18 +196,19 @@ Datra is able to unambiguously map arguments in many cases, and if it is not abl
 error. As such, all Datra function calls are unambiguous and valid. For instance:
 
 ```
-double :: x of N -> N := 2 * x
-myfunc :: {x of \x[double]\ : N, y of \y[double]\ : N} -> N
+double :: x of Int -> Int := 2 * x
+myfunc :: {x of \x[double]\ : Int, y of \y[double]\ : Int} -> Int
     := x + y
     
 mynum := myfunc(y4 := 2, x6 := 3) # := 5
+# mynum := myfunc(x7 := 3, y6 := 4) # does not compile!
 ```
 
 In this case, there is no ambiguity. Obviously, positional arguments in any order are ambiguous, and so are repeated
 identifiers in any order. However, if order is not variable, nothing in Datra forbids repeated identifiers:
 
 ```
-func :: arg1 of x : N, arg2 of x : N -> N
+func :: arg1 of x : Int, arg2 of x : Int -> Int
     := arg1 + arg2
  
 mynum := func(x := 2, x := 3) # := 5
@@ -212,18 +216,21 @@ mynum := func(x := 2, x := 3) # := 5
 
 Datra is, in fact, a **dependently typed programming language**, but while advanced features are available, they are
 not necessary in order to write a Datra program. `a : b` is the syntax for dependent sums, and one can write, for
-instance, `myfunc(x, y, z) : (x as N, y as N, z as N)`. Dependent products are written by appending the `any` keyword
-to arguments in the function type signature. This is the context in which one obtains the code snippet on the front
-page, where `kwargs` is a first-class `Datra` function:
+instance, `myfunc(x, y, z) : (x as Int, y as Int, z as Int)`. Dependent products are written by appending the `any`
+keyword to arguments in the function type signature. This is the context in which one obtains the code snippet on the
+front page, where `kwargs` is a first-class `Datra` function:
 
 ```
 kwargs :: any X of Type -> Type
-    := x as PosInt -> \arg(x)\ : X
+    := x of PosInt -> \arg(x)\ : X
 
-myfunc :: args of {kwargs(N)}
+myfunc :: **args of {kwargs Int}
     := args @ 0
 
 myval := myfunc(arg1 := 4, arg0 := 9) # := 9
 ```
+
+In this example, `PosInt` is a positive integer, and `**` tells Datra that the map provided during function call ought
+to be made to fit into `args`, not `val`.
 
 [^1]: Except for the fact that they ensure the name of the induced helper function does not collide with anything.
