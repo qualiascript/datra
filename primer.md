@@ -81,14 +81,14 @@ following convention implicitly: for a map argument `a : b := c`, if `a` is give
 implicitly coerced to be a string. As such, the sum function could have been written as follows:
 
 ```
-\sum\ : (a : Int, b : Int -> Int) := a + b
+\sum\ : (a : Int, b : Int) -> Int := a + b
 ```
 
 We refer to an identifier on the left side of `:`, or of `:=` directly if the type is inferred, as a **free
 identifier**. By similar logic, there is no reason for the left side to not be some other value:
 
 ```
-0 : (a : Int, b : Int -> Int) := a + b
+0 : (a : Int, b : Int) -> Int := a + b
 ```
 
 In fact, just like with a positional argument, no key must be provided at all. This leads to another implicit Datra
