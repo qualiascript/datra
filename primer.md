@@ -196,9 +196,9 @@ such, all Datra function calls are unambiguous and valid. For instance:
 ```
 double :: x of Int -> Int := 2 * x
 myfunc :: {x of "x[double]" : Int, y of "y[double]" : Int} -> Int
-    := x + y
+    := 2 * x + y
     
-mynum := myfunc(y4 := 2, x6 := 3) # := 5
+mynum := myfunc(y4 := 2, x6 := 3) # := 8
 # mynum := myfunc(x7 := 3, y6 := 4) # does not compile!
 ```
 
@@ -216,13 +216,13 @@ Datra is, in fact, a **dependently typed programming language**, but while advan
 not necessary in order to write a Datra program. `a : b` is the syntax for dependent sums, and one can write, for
 instance, `myfunc(x, y, z) : (x as Int, y as Int, z as Int)`. Dependent products are written by appending the `any`
 keyword to arguments in the function type signature. This is the context in which one obtains the code snippet on the
-front page, where `kwargs` is a first-class `Datra`. Note that `PosInt` is the type of positive integers.
+front page, where `Args` is a first-class `Datra` map. Note that `PosInt` is the type of positive integers.
 
 ```
-kwargs :: X of Map -> Map
+Args :: X of Map -> Map
     := any x of PosInt -> "arg[x]" : X
 
-myfunc :: args of {kwargs Int}
+myfunc :: args of {Args Int}
     := args @ 0
 
 myval := myfunc(arg1 := 4, arg0 := 9) # := 9
