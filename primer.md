@@ -216,9 +216,9 @@ mynum := func(x := 2, x := 3) # := 5
 
 Datra is, in fact, a **dependently typed programming language**, but while advanced features are available, they are
 not necessary in order to write a Datra program. `a : b` is the syntax for dependent sums, and one can write, for
-instance, `myfunc(x, y, z) : (x as Int, y as Int, z as Int)`. Dependent products are written by appending the `any`
-keyword to arguments in the function type signature. As such, one can construct complex, procedurally generated maps,
-for instance for accepting any number of arguments. I expect this is possible as dependent types are powerful enough.
+instance, `myfunc(x, y) : (x as Int, y as Int)`. Dependent products are written by appending the `any` keyword to
+arguments in the function type signature. As such, one can construct complex, procedurally generated maps, for instance
+for accepting any number of arguments. I expect this is possible as dependent types form a model of mathematics.
 
 
 [^1]: Except for the fact that they ensure the name of the induced helper function does not collide with anything.
