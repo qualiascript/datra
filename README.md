@@ -10,18 +10,6 @@ A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer
 "Hello, world!"
 ```
 
-### First class arbitrary arguments
-
-```
-Args :: X of Map -> Map
-    := any x of PosInt -> "arg[x]" : X
-
-myfunc :: args of {Args Int}
-    := args @ 0
-
-myval := myfunc(arg1 := 4, arg0 := 9) # := 9
-```
-
 ### Dependent Identifiers
 
 ```

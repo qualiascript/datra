@@ -2,7 +2,9 @@
 
 Firstly, an important clarification: a lot of Datra operations seem ambiguous, or like they could break in non-obvious
 ways. This is not the case. Formally, Datra is modeled by nominal sets, so all operations done below are either correct,
-or only incorrect due to human syntactical errors.
+or only incorrect due to human syntactical errors. However, Datra does not exist yet, and this acts as a sort of half
+introduction, half design document. The best examples, that I would want to lead with, are the ones hardest to come up
+with without having an actual interpreter yet. Nevertheless, this document illustrates its design principles.
 
 Consider the following function:
 
@@ -215,18 +217,8 @@ mynum := func(x := 2, x := 3) # := 5
 Datra is, in fact, a **dependently typed programming language**, but while advanced features are available, they are
 not necessary in order to write a Datra program. `a : b` is the syntax for dependent sums, and one can write, for
 instance, `myfunc(x, y, z) : (x as Int, y as Int, z as Int)`. Dependent products are written by appending the `any`
-keyword to arguments in the function type signature. This is the context in which one obtains the code snippet on the
-front page, where `Args` is a first-class `Datra` map. Note that `PosInt` is the type of positive integers.
-
-```
-Args :: X of Map -> Map
-    := any x of PosInt -> "arg[x]" : X
-
-myfunc :: args of {Args Int}
-    := args @ 0
-
-myval := myfunc(arg1 := 4, arg0 := 9) # := 9
-```
+keyword to arguments in the function type signature. As such, one can construct complex, procedurally generated maps,
+for instance for accepting any number of arguments. I expect this is possible as dependent types are powerful enough.
 
 
 [^1]: Except for the fact that they ensure the name of the induced helper function does not collide with anything.
