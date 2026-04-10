@@ -1,7 +1,7 @@
 # Datra: A Primer
 
 Firstly, an important clarification: a lot of Datra operations seem ambiguous, or like they could break in non-obvious
-ways. This is not the case. Formally, Datra is modeled by domanial sets, so all operations done below are either
+ways. This is not the case. Formally, Datra is modeled by DaTra maps, so all operations done below are either
 correct, or only incorrect due to human syntactical errors. However, Datra does not exist yet, and this acts as a sort
 of half introduction, half design document. The best examples, that I would want to lead with, are the ones hardest to
 come up with without having an actual interpreter yet. Nevertheless, this document illustrates its design principles.
