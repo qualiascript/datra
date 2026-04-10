@@ -221,7 +221,7 @@ exists `x' : |B'|` so that `B x = B' x'`, and for any other `x''` so that `B x =
 `ReInx X Y = ReOrd`. Lemma: if `X : A -> B` is a DaTra confederation, given any order embedding `OrdEm : |B| -> C`,
 there exists `Y : DaTra` so that `OrdEm = ReInx X Y`. Proof: given any order embedding, one can obtain
 `Y = Reord X OrdEm`. Given another `OrdEm'` so that `Y = Reord X OrdEm'`, if there existed `(x, d) : X` so that
-`OrdEm x =/= OrdEm' x`, let `E = (OrdEm x, y) : Rgo Y`, ` E' = (OrdEm' x, y') : Rgo Y`. Then, given any
+`OrdEm x =/= OrdEm' x`, let `E = (OrdEm x, y) : Rgo Y`, `E' = (OrdEm' x, y') : Rgo Y`. Then, given any
 `d' : 1 -> d`, `d' : E` and `d' : E'`. However, as `E =/= E'`, there exists `n, n' : |B|` so that `n =/= n'`,
 `E = X n`, `E' = X n'`. Since `X` is a confederation, `OrdEm = OrdEm'`.
 
