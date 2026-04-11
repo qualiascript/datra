@@ -29,7 +29,7 @@ I.1.4. A **Trivial Order** of cardinality `X : N+` is the order `id X`. A **Triv
 `X, Y : N+`, is an order embedding on trivial orders `Emb : id X -> id Y`.
 
 I.1.5. **Ordering Lemma**: given two orders `A, B : Ord` and a subset of `B` denoted `B'`, there exists a unique order
-embedding with image `B'`. Proof: let `X, Y : A -> B` be order embeddings with image `B'`. Let `X', Y' : A -> B'` be
+embedding with origin `A` and image `B'`. Proof: let `X, Y : A -> B` be order embeddings with image `B'`. Let `X', Y' : A -> B'` be
 isomorphisms so that `X' a = X a` and `Y' a = Y a` for all `a : A`. Then, for the monic `M : B' -> B`, we have that
 `X = M . X'` and `Y = M . Y'`. Let `Z : B' -> |B'|` be an isomorphism so that for all `x, y : B'` so that `x < y`,
 `Z x < Z y`. We seek to show `Z` is unique by the following argument: assume `Z' : B' -> |B'|` is another isomorphism
@@ -41,8 +41,9 @@ so that `Z' z' = Z z`. Naturally, `z =/= z'`, so that either `z < z'` or `z' < z
 `X'' a < X'' b`, and analogous for `Y` and `Y''`.  We may then consider `X'', Y'' : |B'| -> |id |B'||` by isomorphism,
 and by analogy to `Z`, `X'' = Y''`, so that `X = Y`.
 
-I.1.6. An **Order Embedding's Complement**, given an order embedding `Emb : A -> B` with image `B'`, is the order
-embedding on image `X`, where `x : X` iff it is not the case that `x : B'`. It is denoted `Comp Emb`.
+I.1.6. An **Order Embedding's Complement**, given an order embedding `Emb : A -> B` with image `B'`, is the trivial
+order embedding on image `X`, where `x : X` iff it is not the case that `x : B'`. It is denoted
+`Comp Emb`.
 
 I.2.1. A **Regime** is a morphism `R : X -> A` where `X : N+`, denoted its **Cardinality** as `X = |R|`.
 
