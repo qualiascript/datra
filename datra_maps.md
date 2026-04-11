@@ -42,7 +42,7 @@ so that `Z' z' = Z z`. Naturally, `z =/= z'`, so that either `z < z'` or `z' < z
 and by analogy to `Z`, `X'' = Y''`, so that `X = Y`.
 
 I.1.6. An **Order Embedding's Complement**, given an order embedding `Emb : A -> B` with image `B'`, is the trivial
-order embedding on image `X`, where `x : X` iff it is not the case that `x : B'`. It is denoted
+order embedding with image `X`, where `x : X` iff it is not the case that `x : B'`. It is denoted
 `Comp Emb`.
 
 I.2.1. A **Regime** is a morphism `R : X -> A` where `X : N+`, denoted its **Cardinality** as `X = |R|`.
