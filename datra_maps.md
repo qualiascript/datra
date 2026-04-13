@@ -191,7 +191,7 @@ comonad induced by a geometric morphism.
 I.6.7. The **Category of Self-Enriched DaTra Maps** is the category of `DaTra` enriched on `DaTra`. By slight abuse of
 notation, we will refer to this category as simply `DaTra`, and to self-enriched DaTra maps as simply DaTra maps. The
 base case, of DaTra maps whose arrows are domanial sets, is provided by the DaTra maps that are coalitions, that is,
-of cardinality `1`, whose arrow has origin of cardinality `1` and target of cardinality `1`.
+of cardinality `1`, whose arrow has both origin and target as a coalition.
 
 I.7.1. A **DaTra Enumeration**, or **DaTra Total Map** is a DaTra map whose arrows are domanial sets with origin `1`.
 A **DaTra Partial Map** is a DaTra map that is not a DaTra enumeration.
