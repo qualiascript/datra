@@ -457,7 +457,7 @@ collection, such as `A /\ B /\ C`. For instance, `[[A: B; C] /\ [D; E] /\ [F; G]
 > exist by virtue of it being a topos. We believe DaTra provides the right semantics for **Dependent Identifiers**,
 > wherein the value of the identifier varies based on value provided. DaTra maps with dependent identifiers can be
 > shown to be confederations by constructing the identifiers to be constant in slices starting from 0, and making
-> the slices differ. Alternatievely, it can be shwon in other slices provided the variability of the identifiers is
+> the slices differ. Alternatively, it can be shown in other slices provided the variability of the identifiers is
 > itself structured in slices. We believe the algorithm for map filling confederations, provided that their elements
 > are not coalitions whose maximal confederation is a sequence, has `O(n)` complexity, where `n` is the cardinality
 > of the maximal federation. It can be constructed by keeping track of the so-called **Symmetry Zones**, where
