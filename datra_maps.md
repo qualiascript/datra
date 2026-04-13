@@ -333,11 +333,12 @@ as targets. It is defined as follows: let `Y'` be the DaTra map with cardinality
 Hence, map application is an extension of the override operator to allow the restructuring of `X` when unique.
 
 II.3.2. The **Function Type Operator** is defined on two DaTra maps, `A, B : DaTra`. It is denoted using the `->`
-symbol, and defined as follows: let `A : V -> A'`, let `F = (Coa A') ^ (Coa B)`, where `^` is the internal homset,
-applied contravariantly as to account for the arrow reversal in the adjunction, then `[A -> B] = [(A ; B) <~ F]`, A
-**DaTra Function** is the result of applying the assignment operator to a function type, so that for `[A -> B := C]`,
-the resulting function is a map of form `[[A, B] -> [F := C]]`. The **Origin Map** of a DaTra function `[A -> B := C]`
-is `A`, and the **Target Map** is `B`.
+symbol, and defined as follows: let `A : V -> A'`, let `F = hom_DomSet[DaTraForget B, DaTraForget A]`, applied
+contravariantly as to account for the arrow reversal in the adjunction, then `[A -> B] = [(A ; B) <~ F]`.
+Alternatively, `F` can be constructed as a `DaTra`-internal collection of sections of `[B <~ A]`. A **DaTra Function**
+is the result of applying the assignment operator to a function type, so that for `[A -> B := C]`, the resulting
+function is a map of form `[[A, B] -> [F := C]]`. The **Origin Map** of a DaTra function `[A -> B := C]` is `A`, and
+the **Target Map** is `B`.
 
 II.3.3. The **Function Application Operator**, or **Access Operator**, is defined on a DaTra function, along with a
 DaTra map with the property that the map application of the given map on the origin map yields a total map. Then, for
