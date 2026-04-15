@@ -276,7 +276,7 @@ is preferable.
 
 II.1.7. The **Assignment Operator** is defined on a DaTra type, along with a DaTra coalition with origin `1` and target
 as the same target as the DaTra type. In that case, it is the pullback of the two DaTra coalitions. It is denoted using
-the `:=` symbol. For instance, `[x : N := 3]` yields a coalition with origin `[\x\]` and target as the third arrow of
+the `:=` symbol. For instance, `[x : N := 3]` yields a coalition with origin `[\x\]` and target as the fourth arrow of
 `N`. As such, this provides the semantics for assigning labels to values. In this context, `x` is denoted a **Simple
 Identifier**, as it maps one canonical string to its value.
 
