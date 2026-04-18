@@ -263,10 +263,10 @@ collection of DaTra maps, `X_k` for `k :: N`, and yields a map whose `k`th arrow
 two DaTra maps `A, B :: DaTra`, it yields the map `[0 : A, 1 : B]`. It is denoted by delineating each map using the
 `;` symbol, so that `[A ; B] = [0 : A, 1 : B]`.
 
-II.2.1. A **Labeled DaTra map** is the result of the application of the sequential operator. A **labeled DaTra 
+II.2.1. A **Labeled DaTra map** is the result of the application of the sequential operator. A **Labeled DaTra 
 Map's Arrow Set** is defined so that the `k`th arrow is the map `X_k` at the arrow `[k : X_k]`. As such, if `X` is a
-labeled DaTra map, we define `X k = X_k`, and we denote it the **labeled DaTra Map's `k`th arrow**. A **Canonical
-DaTra Map's Territory** is the DaTra Map represented by the labeled DaTra map's arrow set. A **labeled DaTra Map's
+labeled DaTra map, we define `X k = X_k`, and we denote it the **Labeled DaTra Map's `k`th arrow**. A **Labeled
+DaTra Map's Territory** is the DaTra Map represented by the labeled DaTra map's arrow set. A **Labeled DaTra Map's
 Cardinality** is the cardinality of its arrow set, and it is denoted as `|X|`.
 
 II.2.1. A **DaTra Collection** is a labeled DaTra map whose arrows are identity morphisms in `DomSet`. The **Element
