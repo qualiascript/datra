@@ -1,6 +1,6 @@
 # DaTra: A Representable Topos Theory for Data Transformation on Partial Maps With Partially Variable Argument Order
 
-**WIP NOTE: This document is currently erroneous in details, despite the broad picture holding up. It is in the process of refactoring**
+**WIP NOTE: This document is currently erroneous in details, despite the broad picture holding up. It is in the process of refactoring.**
 
 > In this document, we provide the categorical construction of the `DaTra` topos, whose objects, denoted **DaTra
 > Maps**, are partially named partial maps with partially variable argument order. DaTra maps can have a finite number
