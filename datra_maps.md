@@ -313,9 +313,9 @@ have that `[{a : N; b : N}]` is a valid application of the federation operator, 
 non-trivial federalization. One can still coalize `[N; N]`, however, by using the **Coalition Operator** `><`, which
 coalizes any labeled DaTra map's arrow set.
 
-II.3.2. The **Union Operator** is equivalent to a pullback in the `DaTra` category, and as such is defined on DaTra
-maps with isomorphic targets. In case it is defined, its action is to compute the pushout of the origins of each pair
-of arrows [under what mapping?] and use it as the new arrow origin. It is denoted using the `&` symbol. For instance,
+II.3.2. The **Union Operator** is equivalent to a pullback in the `DaTra` category, and as such is defined on labeled
+DaTra maps whose territory have isomorphic targets. In case it is defined, its action is to compute the pushout of the
+origins of each pair of arrows and use it as the new arrow origin. It is denoted using the `&` symbol. For instance,
 `[[x : N := 1; y : N; z : N := 2] & [x : N; y : N := 2; z : N := 3]]` is equal to
 `[x : N := 1; y : N := 2, >< [z : N := 2; z : N := 3]]`. Note the usage of the coalition operator. The **Safe Union
 Operator**, denoted using the `<>` symbol, has the same action as the union operator but is only defined if there is
