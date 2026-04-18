@@ -263,7 +263,7 @@ collection of DaTra maps, `X_k` for `k :: N`, and yields a map whose `k`th arrow
 two DaTra maps `A, B :: DaTra`, it yields the map `[0 : A, 1 : B]`. It is denoted by delineating each map using the
 `;` symbol, so that `[A ; B] = [0 : A, 1 : B]`.
 
-II.2.1. A **labeled DaTra map** is the result of the application of the sequential operator. A **labeled DaTra 
+II.2.1. A **Labeled DaTra map** is the result of the application of the sequential operator. A **labeled DaTra 
 Map's Arrow Set** is defined so that the `k`th arrow is the map `X_k` at the arrow `[k : X_k]`. As such, if `X` is a
 labeled DaTra map, we define `X k = X_k`, and we denote it the **labeled DaTra Map's `k`th arrow**. A **Canonical
 DaTra Map's Territory** is the DaTra Map represented by the labeled DaTra map's arrow set. A **labeled DaTra Map's
@@ -314,7 +314,7 @@ non-trivial federalization. One can still coalize `[N; N]`, however, by using th
 coalizes any labeled DaTra map's arrow set.
 
 II.3.2. The **Union Operator** is equivalent to a pullback in the `DaTra` category, and as such is defined on labeled
-DaTra maps whose territory have isomorphic targets. In case it is defined, its action is to compute the pushout of the
+DaTra maps of equal cardinality with isomorphic targets arrow-wise. If it is defined, its action is to compute the pushout of the
 origins of each pair of arrows and use it as the new arrow origin. It is denoted using the `&` symbol. For instance,
 `[[x : N := 1; y : N; z : N := 2] & [x : N; y : N := 2; z : N := 3]]` is equal to
 `[x : N := 1; y : N := 2, >< [z : N := 2; z : N := 3]]`. Note the usage of the coalition operator. The **Safe Union
