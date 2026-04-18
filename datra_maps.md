@@ -192,7 +192,7 @@ I.6.7. The **Category of Self-Enriched DaTra Sets** is the category of `DaTra` e
 notation, we will refer to this category as simply `DaTra`, and to self-enriched DaTra sets as simply DaTra sets. The
 base case, of DaTra sets whose arrows are domanial sets, is provided by the DaTra sets that are coalitions.
 
-[TODO: clarify further]
+[TODO: clarify flattening property further]
 
 1.6.8. **DaTra Flattening** is a property of DaTra sets representable by atlases whose arrow set has infinite
 cardinality and whose arrows have finite cardinality, or whose arrow set has finite cardinality and all but the last
