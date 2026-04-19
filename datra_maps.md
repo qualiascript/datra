@@ -192,14 +192,12 @@ I.6.7. The **Category of Self-Enriched DaTra Sets** is the category of `DaTra` e
 notation, we will refer to this category as simply `DaTra`, and to self-enriched DaTra sets as simply DaTra sets. The
 base case, of DaTra sets whose arrows are domanial sets, is provided by the DaTra sets that are coalitions.
 
-[TODO: clarify flattening property further]
-
 1.6.8. **DaTra Flattening** is a property of DaTra sets representable by atlases whose arrow set has infinite
 cardinality and whose arrows have finite cardinality, or whose arrow set has finite cardinality and all but the last
-arrow has finite cardinality. By the product-exponent adjunction, such a DaTra set is isomorphic to the DaTra set whose
-arrow set is obtained from the concatenation of the arrows of each arrow, whose left side is a DaTra product. As such,
-DaTra sets do not, in general, have a canonical arrow set. One can define a DaTra sets by providing the value at each
-arrow, however, the result is representable im multple ways. We will explore this property in more detail shortly.
+arrow has finite cardinality. By the product-exponent adjunction and repagination, such a DaTra set is representable
+by an atlas so that each arrow is written under the form of a collection of arrows. As such, DaTra sets do not, in
+general, have a canonical arrow set. One can define a DaTra sets by providing the value at each arrow, however, the
+result is representable im multple ways. As we will soon see, one can talk of the arrow sets of DaTra maps instead.
 
 I.6.9. A **DaTra Remapping** is a DaTra set that is a repagination with the property that all region are sent to a
 DaTra set repeatable by an atlas so that the coproduct of its arrows equals the given region's arrow.

@@ -1,7 +1,7 @@
 # Datra
 
 A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer](primer.md) or the
-[DaTra topos construction](datra_maps.md) [WIP].
+[DaTra topos construction](datra_maps.md).
 
 ## Code Example
 
