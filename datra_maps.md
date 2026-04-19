@@ -453,7 +453,7 @@ computational complexity, and as such it does not have an operator. Given any tw
 sum may be used in order to obtain a DaTra sequence in the coalition of `A * B`, containing all its inhabitants.
 
 II.5.9. The **Diagonal Sum Operator** is defined on any DaTra collection. It is a prime folio sum
-defined on the **Identity Strategy**, which is defined as `id N`. Its indexing strategy, denoted the **Anti-Diagonal
+defined on the **Identity Folio Strategy**, which is defined as `id N`. Its indexing strategy, denoted the **Anti-Diagonal
 Indexing Strategy**, sends `[n : N, k : N]` to the set in the folio pattern's image at `n - k`, so that each such set is
 ordered by `n`. The specific formula for this indexing strategy can be implemented using the anti-diagonal traversal
 algorithm. It is denoted by the `/\` symbol, either in infix notation as `/\ ||C||`, or by delineating the elements of
