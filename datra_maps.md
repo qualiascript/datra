@@ -278,35 +278,35 @@ II.2.5. A **DaTra Collection** is a DaTra map whose arrows are DaTra maps of car
 is isomorphic to its target. A **DaTra Collection's Element** is one of its arrows. In this sense, the sequential
 operator can be seen as operating on a DaTra collection.
 
-II.2.6. A **Datra Federation** is a DaTra map whose arrow set, viewed as a constant presheaf in `[op Dom, Set]`, that
-is, viewed as a set-theoretic set, has trivial federalization.
+II.2.6. A **Datra Confederation** is a DaTra map whose arrow set, viewed as a constant presheaf in `[op Dom, Set]`,
+that is, viewed as a set-theoretic set, has trivial federalization.
 
-II.2.7. A **Reordering** of a DaTra map `X`, whose territory has as target a federation, `Ter X : A -> B`, and an
+II.2.7. A **Reordering** of a DaTra map `X`, whose territory has as target a confederation, `Ter X : A -> B`, and an
 order embedding `OrdEm : |B| -> C` is the DaTra map `Y` with territory `Ter Y : A' -> B'` with the following property:
 for any `x : |B|`, `x' = Img OrdEm x`, `Y x = X x'`. Trivially, `Coa B = Coa C`. It is denoted as `Reord X OrdEm = Y`.
 The **Reindexing** of two DaTra Maps `X`, `Y` with territories denoted `Ter X : A -> B`, `Ter B : C -> D`, if it
 exists, is the unique order embedding `OrdEm : |B| -> |D|` so that `Y = Reord X OrdEm`. Such a reindexing exists iff
 for any `x : |B|` there exists `x' : |D|` so that `B x = D x'`, and for any `x''` so that `B x = D x''`, `x' = x''`.
 
-II.2.8. A **Maximal Federation** of a federation `X` is a federation `Y` so that there exists a remapping
-`F : Ter X -> Ter Y`, and for any other federation `Z` and remapping `G : Ter X -> Ter Z`, `|Z| <= |Y|`.
+II.2.8. A **Maximal Confederation** of a confederation `X` is a confederation `Y` so that there exists a remapping
+`F : Ter X -> Ter Y`, and for any other confederation `Z` and remapping `G : Ter X -> Ter Z`, `|Z| <= |Y|`.
 
 II.2.9. A **Restructuring** of a DaTra map `X` is a DaTra map `Y`, so that there exists a DaTra set `Z` so that there
-exist two remappings, `X' : Ter X -> Z`, `Y' : Ter Y -> Z`. Lemma: if `X, Y : DaTra` are federations, `Y` is a
-restructuring of `X` iff there exists `Z : DaTra` so that `Z` is a maximal federation for both `X` and `Y`. Proof: `Z`
-has the property that the arrows in its arrow set are pairwise disjoint, but there is no DaTra coproduct of arity
+exist two remappings, `X' : Ter X -> Z`, `Y' : Ter Y -> Z`. Lemma: if `X, Y : DaTra` are confederations, `Y` is a
+restructuring of `X` iff there exists `Z : DaTra` so that `Z` is a maximal confederation for both `X` and `Y`. Proof:
+`Z` has the property that the arrows in its arrow set are pairwise disjoint, but there is no DaTra coproduct of arity
 higher than `1` equal to any arrow, which can be used in a repagination. Specifically, for the arrow with the highest
 cardinality, if it exists, it has no coproduct decomposition whose cardinality lies in `N+`. For the other arrows, they
 have no decomposition whose cardinality lie in `N`. Thus, `Z`'s only remapping is `id Z`. Thus, given any other `Z'`
-that is a federation whose federation is the target of a remapping of `X` and `Y`, there exists a maximal federation
-`Z_i` for federation `Z'`.
+that is a confederation whose confederation is the target of a remapping of `X` and `Y`, there exists a maximal
+confederation `Z_i` for confederation `Z'`.
 
-II.3.1. The **Federation Operator** coalizes a DaTra federation's arrow set, but is not defined on DaTra maps that
-are not DaTra federations. It is denoted by enclosing a DaTra map in `{` at the beginning and `}` and the end, and
-if the DaTra map is written in literal notation, it accepts literals stripped of their `[]` enclosing. For instance, we
-have that `{a : N; b : N}` is a valid application of the federation operator, but `{N; N}` is not, as it has
-non-trivial federalization. One can still coalize `[N; N]`, however, by using the **Coalition Operator** `><`, which
-coalizes any DaTra map's arrow set.
+II.3.1. The **Federation Operator** coalizes a DaTra confederation's arrow set, but is not defined on DaTra maps that
+are not DaTra confederations. Its result is denoted a **DaTra Federation**. It is denoted by enclosing a DaTra map in
+`{` at the beginning and `}` and the end, and if the DaTra map is written in literal notation, it accepts literals
+stripped of their `[]` enclosing. For instance, we have that `{a : N; b : N}` is a valid application of the federation
+operator, but `{N; N}` is not, as it has non-trivial federalization. One can still coalize `[N; N]`, however, by using
+the **Coalition Operator** `><`, which coalizes any DaTra map's arrow set.
 
 II.3.2. The **Union Operator** is equivalent to a pullback in the `DaTra` category, and as such is defined on
 DaTra maps of equal cardinality with isomorphic targets arrow-wise. If it is defined, its action is to compute the
@@ -335,7 +335,7 @@ II.4.1. The **Map Application Operator**, or **Map Filling Operator**, of two Da
 denoting `X'` as `X`'s territory and `Y'` as `Y`'s territory. It is defined if there exists a unique `Z` whose
 territory `Z'` is a restructuring of `Y'`, so that there exists a trivial order embedding `OrdEm : id |Z| -> id |X|` 
 sending each arrow to an arrow with the same target. Furthermore, there is the additional constraint that `OrdEm` is
-unique, which is trivially the case if `X`, `Y` are federations and `Z` exists. It is defined as follows: it is
+unique, which is trivially the case if `X`, `Y` are confederations and `Z` exists. It is defined as follows: it is
 the territory of the canonical DaTra map `C` with cardinality `|X|`, so that for all `(n', d') : Rgo C`, if
 `n' : Img OrdEm`, for `(n, d) : Rgo Z` so that `n' = OrdEm n`,`d' = d`, and otherwise, `d' = X n`. Then, the map
 application, denoted using the `<&` symbol as `[X <& Y]`, is defined as `[X <& Y] = C`. By definition, `C = [C << Y]`,
@@ -401,7 +401,7 @@ indices, or in the simplest case, at one specific index. In combination with the
 unlabelled values in a function body, such as `[sum : [N, N] -> N ::= (% @ 0) + (% @ 1)]`. In practice, the origin map
 with unvalues could be transformed first into a version, before being utilized in the function body.
 
-II.5.1. An **Ordered Index Map** is a DaTra index map that is a federation, so that there exists a trivial
+II.5.1. An **Ordered Index Map** is a DaTra index map that is a confederation, so that there exists a trivial
 order embedding with origin as the cardinality of the map, and target as the map's arrow set.
 
 II.5.2. A **Folio Strategy** is a DaTra function `[F : N -> N]` with the property that there exists an ordered index
@@ -452,9 +452,9 @@ Folio Strategy** sending `n : N` to `1`. The canonical prime folio sum is of lar
 computational complexity, and as such it does not have an operator. Given any two DaTra maps `A`, `B`, a prime folio
 sum may be used in order to obtain a DaTra sequence in the coalition of `A * B`, containing all its inhabitants.
 
-II.5.9. The **Diagonal Sum Operator** is defined on any DaTra collection. It is a prime folio sum
-defined on the **Identity Folio Strategy**, which is defined as `id N`. Its indexing strategy, denoted the **Anti-Diagonal
-Indexing Strategy**, sends `[n : N, k : N]` to the set in the folio pattern's image at `n - k`, so that each such set is
+II.5.9. The **Diagonal Sum Operator** is defined on any DaTra collection. It is a prime folio sum defined on the
+**Identity Folio Strategy**, which is defined as `id N`. Its indexing strategy, denoted the **Anti-Diagonal Indexing
+Strategy**, sends `[n : N, k : N]` to the set in the folio pattern's image at `n - k`, so that each such set is
 ordered by `n`. The specific formula for this indexing strategy can be implemented using the anti-diagonal traversal
 algorithm. It is denoted by the `/\` symbol, either in infix notation as `/\ ||C||`, or by delineating the elements of
 the collection, such as `A /\ B /\ C`. For instance, `[[A: B; C] /\ [D; E] /\ [F; G]] = [[A]; [B; D]; [C; E; F]; [G]]`.
@@ -466,11 +466,11 @@ the collection, such as `A /\ B /\ C`. For instance, `[[A: B; C] /\ [D; E] /\ [F
 > no means complete or formal. In particular, the dependent products in DaTra have not been explored, although they
 > exist by virtue of it being a topos. We believe DaTra provides the right semantics for **Dependent Identifiers**,
 > wherein the value of the identifier varies based on value provided. DaTra maps with dependent identifiers can be
-> shown to be federations by constructing the identifiers to be constant in slices starting from 0, and making
+> shown to be confederations by constructing the identifiers to be constant in slices starting from 0, and making
 > the slices differ. Alternatively, it can be shown in other slices provided the variability of the identifiers is
-> itself structured in slices. We believe the algorithm for map filling federations, provided that their elements
-> are not coalitions whose maximal federation is a sequence, has `O(n)` complexity, where `n` is the cardinality
-> of the maximal federation. It can be constructed by keeping track of the so-called **Symmetry Zones**, where
+> itself structured in slices. We believe the algorithm for map filling confederations, provided that their elements
+> are not coalitions whose maximal confederation is a sequence, has `O(n)` complexity, where `n` is the cardinality
+> of the maximal confederation. It can be constructed by keeping track of the so-called **Symmetry Zones**, where
 > argument order is variable. We believe DaTra is also the correct construction for the first-class handling of what
 > in Python is denoted `*Args` and `**Kwargs`, by utilizing dependent products to define the types. We also believe
 > it can act as a foundation for so-called **Intraidentifiers**, which are identifiers visible within a function's body
