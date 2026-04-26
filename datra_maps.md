@@ -19,7 +19,7 @@ Cardinality**, given `F : X -> X`, is `X`. It is denoted as `|F|`.
 
 I.1.2. The **Category of Orders** is denoted `Ord` and has orders as its objects. An **Order Embedding** is a morphism
 in `Ord`, `Emb : A -> B`. It is a monomorphism `F : |A| -> |B|` with the property that for any `x , y : |A|`,
-`A x < A y` iff `F A x < F A y`.
+`A x < A y` iff `F (A x) < F (A y)`.
 
 I.1.3. An **Order Embedding's Image** given `Emb : A -> B` is the domain of the monomorphism `M : B' -> B` so that for
 each `b : B` there exists a `m : B'` so that `M m = b` iff there exists a `a : A` so that `Emb a = b`. It is denoted
