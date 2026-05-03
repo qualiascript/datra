@@ -373,7 +373,7 @@ functionality. It is denoted using the `::=` symbol, as `F ::= f`. On the right 
 identifiers of the function type's origin map are introduced as immutable values, so that they can be utilized as part
 of the function body. Additionally, the **Context Operator**, which is defined only on the right side of `::=`, is
 denoted as `%`, and provides the fully specified origin map as an immutable value. For instance, a binary addition
-function can be written as `[sum : [a : N, b : N] -> N := a + b]`.
+function can be written as `[sum : [a : N, b : N] -> N ::= a + b]`.
 
 II.3.7. A **DaTra Injective Function** has the property that, for all total maps with target as the origin map, the
 function sends it to a different value. A **DaTra Surjective Function** has the property that, for all total maps with
@@ -435,7 +435,7 @@ the arrow does not exist. Finally, slice the remapping with an ordered index map
 ones not sent to the terminal object. The origin of the remapping is then the folio sum. As such, the horizontal sum
 and concatenation operations are instances of folio sums.
 
-II.5.7. The **Vertical Sum Operator**, or **Option Operator**, is defined for a non-terminal DaTra literal collection
+II.5.7. The **Vertical Sum Operator** is defined for a non-terminal DaTra literal collection
 of DaTra maps, let us denote its cardinality as `C`. Then, the **Vertical Folio Strategy** of cardinality `C`
 sends each `x : N` to `C`. The **Vertical Indexing Tactic** of cardinality `C` sends `[n : C, k : N]` to `k * C + n`.
 Thus, the vertical sum is the folio sum on the vertical folio strategy and the vertical indexing tactic. It is denoted
