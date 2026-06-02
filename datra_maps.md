@@ -91,8 +91,9 @@ matching family has a unique amalgamation, this is isomorphic to the coproduct o
 are associative, the coproduct of representable domanial sets, which are coproducts of atoms, is itself a coproduct of
 atoms. Given a pushout of coproducts of domanial atoms, between `F : A -> B` and `G: A -> C` the result can be
 calculated atom-wise, by creating equivalence classes on isomorphic atoms in `F` and `G` and calculating the coproduct
-of the resulting atom set. By the Density Theorem, all domanial sets are the result of colimits, which can be composed
-of coproducts and pushouts, thus this is sufficient.
+of the resulting atom set. As domanial sets are cocomplete and atomic, they form a category of presheaves, and as
+such, by the Density Theorem, all domanial sets are the result of colimits, which can be composed of coproducts and
+pushouts, thus this is sufficient.
 
 I.3.4. A **Federation** is a collection of domanial sets whose coproduct in the presheaf category `[op Dom, Set]` is
 isomorphic to its sheafification to `DomSet`. A **federalization** is a sheafification from `[op Dom, Set]` to
@@ -170,8 +171,8 @@ indexing. As such, each coproduct of representable DaTra sets has a canonical re
 wide pushout of representable DaTra sets, by the universal property and cartography axiom, it is the result of the
 incorporation of the coproduct of the pushout targets defined as follows: it is the incorporation with the minimal
 pagination on the chart containing the collection of orders that navigate by the minimal pagination of each component
-in the pushout's targets. By the Density Theorem, as coproducts and pushouts preserve representability, all DaTra sets
-are representable.
+in the pushout's targets. As DaTra sets are atomic and cocomplete, they form a presheaf category, and as such, by
+the Density Theorem, as coproducts and pushouts preserve representability, all DaTra sets are representable.
 
 I.6.4. The **DaTra Free Functor** `DaTraFree : DomSet -> DaTra` sets domanial sets to the DaTra sets whose region set
 has cardinality `1`, and whose unique arrow is the given domanial set. The **DaTra Forgetful Functor**
