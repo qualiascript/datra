@@ -27,10 +27,9 @@ Antidomanial Traversals `AntDomTra` to the category of Domanial Sets `DomSet`, t
 1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
 `DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `X ; X -> X` for `X : DaTrav`, defined
 on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'`, let `h` be an object in `DaTrav` obtained as the presheaf on
-`1 -> 2` in `AntDomTra`, so that, by pulling back on `op (1 -> 2)` at `0`, one obtains `X`, and by pulling back at `1`,
-one obtains `X'`. We may refer to these pullbacks as the **first** respectively **second leg**. This object is universal
-insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on `1 -> 2 -> K`, where `|K| = |Y| + |Y'|`, so that the morphism
-on `1 -> 2` is `h`, whose pullback on the first leg of `h` is `f`, and on the second leg is `g`. The unit object of
-`DaTra` is the empty presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**. There is also a
-**DaTra Associator** `asc : (X ; X) ; X -> X ; (X ; X)` that can be obtained by inverting the legs on the outermost
-sequential operator application, as well as the natural left and right unitors on `X ; []` and `[] ; X` respectively.
+`1 -> 2` in `AntDomTra`, so that, for `p : 2 -> 1` the unique surjective function, `h p 0 = X` and `h p 1 = X'`. This
+object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on `p' . p`, where `p' : |Y| + |Y'| -> 2`
+so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1` equals `g`.  The unit object ofn`DaTra` is
+the empty presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**. There is also a
+**DaTra Associator** `asc : (X ; X) ; X -> X ; (X ; X)` that can be obtained by precomposing `p` with `k : 2 -> 2`,
+`k 0 = 1`, `k 1 = 0`, as well as the natural left and right unitors on `X ; []` and `[] ; X` respectively.
