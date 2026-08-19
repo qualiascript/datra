@@ -23,6 +23,8 @@ Antidomanial Traversals `StAntDom` to the category of Domanial Sets `DomSet`, th
 `DaTrav = [op StAntDom, DomSet]`. Alternatively, it is the opposite of functor category from `StAntDom` to `CoDomSet`,
 that is,`DaTrav = op [StAntDom, CoDomSet]`. 
 
+[NOTE: Incorrect as currently defined, (1 -> 2) is one object for the presheaf]
+
 1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
 `DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `A ; B -> C` with `A, B, C : DaTrav`,
 defined on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'` morphisms of `DomSet`, let `h` be an object in
