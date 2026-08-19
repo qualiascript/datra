@@ -24,13 +24,13 @@ Antidomanial Traversals `StAntDom` to the category of Domanial Sets `DomSet`, th
 that is,`DaTrav = op [StAntDom, CoDomSet]`. Trivially, these definitions coincide.
 
 1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
-`DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `X ; X -> X` for `X : DaTrav`, defined
-on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'`, let `h` be an object in `DaTrav` obtained as the presheaf on
-`1 -> 2` in `StAntDom`, so that, for `p : 2 -> 1` the unique surjective function, `h p 0 = X` and `h p 1 = X'`. This
-object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on `p' . p`, where `p' : |Y| + |Y'| -> 2`
-so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1` equals `g`. The unit object of `DaTra` is
-the empty constant presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**, as such, there are
-left and right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
+`DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `A ; B -> C` with `A, B, C : DaTrav`,
+defined on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'` morphisms of `DomSet`, let `h` be an object in
+`DaTrav` obtained as the presheaf on `1 -> 2` in `StAntDom`, so that, for `p : 2 -> 1` the unique surjective function,
+`h p 0 = X` and `h p 1 = X'`. This object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on
+`p' . p`, where `p' : |Y| + |Y'| -> 2` so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1`
+equals `g`. The unit object of `DaTra` is the empty constant presheaf on `1`, which we will denote `[]` and refer to as
+the **Empty Map**, as such, there are left and right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
 
 1.7. There is a **DaTra Associator** `asc : (A ; B) ; C -> A ; (B ; C)`, that can be obtained as follows: for
 `A : X -> Y`, `B : X' -> Y'`, `C : X'' -> Y''`, create the universal presheaf `h` on `p : |X + X' + X''| -> 3` so that,
