@@ -29,8 +29,8 @@ on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'`, let `h` be an object 
 `1 -> 2` in `StAntDom`, so that, for `p : 2 -> 1` the unique surjective function, `h p 0 = X` and `h p 1 = X'`. This
 object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on `p' . p`, where `p' : |Y| + |Y'| -> 2`
 so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1` equals `g`. The unit object of `DaTra` is
-the empty presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**, as such, there are left and
-right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
+the empty constant presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**, as such, there are
+left and right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
 
 1.7. There is a **DaTra Associator** `asc : (A ; B) ; C -> A ; (B ; C)`, that can be obtained as follows: for
 `A : X -> Y`, `B : X' -> Y'`, `C : X'' -> Y''`, create the universal presheaf `h` on `p : |X + X' + X''| -> 3` so that,
