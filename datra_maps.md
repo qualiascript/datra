@@ -7,9 +7,8 @@ the first uncountable ordinal), that is, its objects are sets that have an injec
 set-theoretic injections (i.e. monomorphisms in `Set`).
 
 1.2. The **Category of Domanial Sets**, denoted `DomSet`, is the category of presheaves on `Dom`, that is
-`DomSet = [op Dom, Set]`. Note that this category is similar to the category of nominal sets, but distinct as nominal
-sets are presheaves on `FinSet_mono`, which does not include sets whose cardinality is `omega_1`. The **Category of
-Codomanial Sets**, denoted `CoDomSet` is the opposite category of domanial sets, that is, `CoDomSet = op DomSet`.
+`DomSet = [op Dom, Set]`. The **Category of Codomanial Sets**, denoted `CoDomSet` is the opposite of the category of
+domanial sets, that is, `CoDomSet = op DomSet`. [CONNECTION TO NOMINAL SETS?]
 
 1.3. The **Category of Antidominions**, denoted `AntDom`, has the same objects as `Dom`, and a morphism `f : X -> Y`
 for `X, Y : AntDom` is a set-theoretic surjection (i.e. epimorphism) `f : Y -> X`. Note that this category has no
