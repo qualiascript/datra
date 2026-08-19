@@ -20,8 +20,8 @@ singleton set `1` to `AntDom`. That is, `AntDomTra = 1 / AntDom`.
 
 1.5. The **Category of Data Traversal Maps**, denoted `DaTrav`, is the category of presheaves of the category of
 Antidomanial Traversals `AntDomTra` to the category of Domanial Sets `DomSet`, that is,
-`DaTrav = [op AntDomTra, DomSet]`. Alternatively, it is the functor category from `AntDomTra` to `CoDomSet`, that is,
-`DaTrav = [AntDomTra, CoDomSet]`. Trivially, these definitions coincide.
+`DaTrav = [op AntDomTra, DomSet]`. Alternatively, it is the opposite of functor category from `AntDomTra` to `CoDomSet`,
+that is,`DaTrav = op [AntDomTra, CoDomSet]`. Trivially, these definitions coincide.
 
 1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
 `DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `X ; X -> X` for `X : DaTrav`, defined
