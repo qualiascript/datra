@@ -29,7 +29,15 @@ Antidomanial Traversals `AntDomTra` to the category of Domanial Sets `DomSet`, t
 on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'`, let `h` be an object in `DaTrav` obtained as the presheaf on
 `1 -> 2` in `AntDomTra`, so that, for `p : 2 -> 1` the unique surjective function, `h p 0 = X` and `h p 1 = X'`. This
 object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on `p' . p`, where `p' : |Y| + |Y'| -> 2`
-so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1` equals `g`.  The unit object ofn`DaTra` is
-the empty presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**. There is also a
-**DaTra Associator** `asc : (X ; X) ; X -> X ; (X ; X)` that can be obtained by precomposing `p` with `k : 2 -> 2`,
-`k 0 = 1`, `k 1 = 0`, as well as the natural left and right unitors on `X ; []` and `[] ; X` respectively.
+so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1` equals `g`. The unit object of `DaTra` is
+the empty presheaf on `1`, which we will denote `[]` and refer to as the **Empty Map**, as such, there are left and
+right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
+
+1.7. There is a **DaTra Associator** `asc : (A ; B) ; C -> A ; (B ; C)`, that can be obtained as follows: for
+`A : X -> Y`, `B : X' -> Y'`, `C : X'' -> Y''`, create the universal presheaf `h` on `p : |X + X' + X''| -> 3` so that,
+by pulling back at `0`, `1`, and `2` respectively, one obtains `A`, `B` and `C`. Then, one obtains `A ; (B ; C)` by
+precompositions with surjection `k, k' : 3 -> 2`, so that `k 0 = 0`, `k 1 = 1`, `k 2 = 1`.
+
+1.8. There is a **DaTra Braiding**, `br : (A ; B) -> (B ; A)` obtained similarly as above by precomposition with
+`k : 2 -> 2`, `k 0 = 1`, `k 1 = 0`. Naturally, `br br = id`. One can also check that the pentagon, triangle and hexagon
+identities are fulfilled by similar logic [TO BE COMPLETED LATER]. As such, `DaTra` is a symmetric monoidal category.
