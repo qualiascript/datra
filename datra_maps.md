@@ -21,7 +21,7 @@ canonical inclusion `inc : StAntDom -> AntDom` reaches all objects of `AntDom` b
 1.5. The **Category of Data Traversal Maps**, denoted `DaTrav`, is the category of presheaves of the category of
 Antidomanial Traversals `StAntDom` to the category of Domanial Sets `DomSet`, that is,
 `DaTrav = [op StAntDom, DomSet]`. Alternatively, it is the opposite of functor category from `StAntDom` to `CoDomSet`,
-that is,`DaTrav = op [StAntDom, CoDomSet]`. Trivially, these definitions coincide.
+that is,`DaTrav = op [StAntDom, CoDomSet]`. 
 
 1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
 `DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `A ; B -> C` with `A, B, C : DaTrav`,
@@ -35,7 +35,7 @@ the **Empty Map**, as such, there are left and right unitors `L : [] ; X -> X`, 
 1.7. There is a **DaTra Associator** `asc : (A ; B) ; C -> A ; (B ; C)`, that can be obtained as follows: for
 `A : X -> Y`, `B : X' -> Y'`, `C : X'' -> Y''`, create the universal presheaf `h` on `p : |X + X' + X''| -> 3` so that,
 by pulling back at `0`, `1`, and `2` respectively, one obtains `A`, `B` and `C`. Then, one obtains `A ; (B ; C)` by
-precompositions with surjection `k, k' : 3 -> 2`, so that `k 0 = 0`, `k 1 = 1`, `k 2 = 1`. [ADD MORE DETAIL LATER]
+precompositions with surjection `k : 3 -> 2`, so that `k 0 = 0`, `k 1 = 1`, `k 2 = 1`. [ADD MORE DETAIL LATER]
 
 1.8. There is a **DaTra Braiding**, `br : (A ; B) -> (B ; A)` obtained similarly as above by precomposition with
 `k : 2 -> 2`, `k 0 = 1`, `k 1 = 0`. Naturally, `br br = id`. One can also check that the pentagon, triangle and hexagon
