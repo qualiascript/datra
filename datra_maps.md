@@ -36,7 +36,7 @@ right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
 1.7. There is a **DaTra Associator** `asc : (A ; B) ; C -> A ; (B ; C)`, that can be obtained as follows: for
 `A : X -> Y`, `B : X' -> Y'`, `C : X'' -> Y''`, create the universal presheaf `h` on `p : |X + X' + X''| -> 3` so that,
 by pulling back at `0`, `1`, and `2` respectively, one obtains `A`, `B` and `C`. Then, one obtains `A ; (B ; C)` by
-precompositions with surjection `k, k' : 3 -> 2`, so that `k 0 = 0`, `k 1 = 1`, `k 2 = 1`.
+precompositions with surjection `k, k' : 3 -> 2`, so that `k 0 = 0`, `k 1 = 1`, `k 2 = 1`. [ADD MORE DETAIL LATER]
 
 1.8. There is a **DaTra Braiding**, `br : (A ; B) -> (B ; A)` obtained similarly as above by precomposition with
 `k : 2 -> 2`, `k 0 = 1`, `k 1 = 0`. Naturally, `br br = id`. One can also check that the pentagon, triangle and hexagon
