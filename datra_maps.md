@@ -27,8 +27,8 @@ indices `0 <= i < k` where `k` is the cardinality of the chain. For instance, `0
 `3`, unique up to isomorphism.
 
 1.7. A **Pagination** is a functor from a chain `C` to `AntDom`, `P : C -> AntDom`, with the property that `P C_0 = 1`,
-where `0` is the initial object in `C` and `1` is the initial object in the coslice category `1 / AntDom`,
-corresponding to the singleton set.
+where `1` is the singleton set in `AntDom`. Alternatively, it is a functor `P : C -> (1 / AntDom)`, where `1 / AntDom`
+is the coslice category, that preserves colimits. In fact, it is sufficient to preserve the initial object.
 
 [TODO: check naturality condition]
 1.8. The **Category of Paginations**, `Pag`, is the category whose objects are pairs `(D, El)`, where `D = Tra (op P)`,
