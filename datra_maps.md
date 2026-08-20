@@ -32,11 +32,11 @@ given the indexing starts at `0`, `hom(C_i, C_j) = 1`.
 1.8. An **Antidomanial Traversal** is a functor from a chain `C` to `StAntDom`, `F : C -> StAntDom`, with the property
 that `F 0 = 1`, that is, it preserves initial objects.
 
+[TODO: check naturality condition]
 1.9. The **Category of Antidomanial Traversals**, `AntDomTrav`, is the category whose objects are pairs `(D, El)`,
 where `D = Tra (op F)`, `F : C -> StAntDom` is an antidomanial traversal, and `El` is the category of elements of `D`.
 Morphisms in `AntDomTrav` for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the
 corresponding functor on `H : X_El -> Y_El` is faithful.
-
 
 [TODO: Complete/fix]
 1.10. The **Category of Data Transformation Maps**, denoted `DaTra`, is the category `[Trav, CoDomInc]`, where `Trav`
