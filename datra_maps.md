@@ -18,28 +18,25 @@ is the opposite category of `DomInc`, `CoDomInc = op DomInc`.
 for `X, Y : AntDom` is a set-theoretic surjection (i.e. epimorphism) `f : Y -> X`. Note that this category has no
 initial object, as the only morphism with origin `0` is `id_0`, and there is no other morphism with target `0`.
 
-1.5. The **Category of Stable Antidominions**, denoted `StAntDom`, is the category whose objects are objects of
-`AntDom` distinct from `0`, and whose morphisms are morphisms in `AntDom` distinct from `id_0`. As such, `1` is initial
-in `StAntDom`.
+1.5. The **Traversal Functor**, denoted `Tra`, is of type `Tra : op AntDom -> Set`, and sends the opposite of each
+morphism `f : X -> Y` in `AntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is the underlying surjection of `f` in
+`AntDom`.
 
-1.6. The **Traversal Functor**, denoted `Tra`, is of type `Tra : op StAntDom -> Set`, and sends the opposite of each
-morphism `f : X -> Y` in `StAntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is the underlying surjection of `f` in
-`StAntDom`.
-
-1.7. A **Chain** is a finite indexed category, so that, if `C` is a chain with `k` elements, for all `i <= j < k`,
+1.6. A **Chain** is a finite indexed category, so that, if `C` is a chain with `k` elements, for all `i <= j < k`,
 given the indexing starts at `0`, `hom(C_i, C_j) = 1`.
 
-1.8. An **Antidomanial Traversal** is a functor from a chain `C` to `StAntDom`, `F : C -> StAntDom`, with the property
-that `F 0 = 1`, that is, it preserves initial objects.
+1.7. An **Antidomanial Traversal** is a functor from a chain `C` to `AntDom`, `F : C -> AntDom`, with the property
+that `F 0 = 1`, where `0` is the initial object in `C` and `1` is the initial object in the coslice category
+`1 / AntDom`, corresponding to the singleton set.
 
 [TODO: check naturality condition]
-1.9. The **Category of Antidomanial Traversals**, `AntDomTrav`, is the category whose objects are pairs `(D, El)`,
-where `D = Tra (op F)`, `F : C -> StAntDom` is an antidomanial traversal, and `El` is the category of elements of `D`.
+1.8. The **Category of Antidomanial Traversals**, `AntDomTrav`, is the category whose objects are pairs `(D, El)`,
+where `D = Tra (op F)`, `F : C -> AntDom` is an antidomanial traversal, and `El` is the category of elements of `D`.
 Morphisms in `AntDomTrav` for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the
 corresponding functor on `H : X_El -> Y_El` is faithful.
 
 [TODO: Complete/fix]
-1.10. The **Category of Data Transformation Maps**, denoted `DaTra`, is the category `[Trav, CoDomInc]`, where `Trav`
+1.9. The **Category of Data Transformation Maps**, denoted `DaTra`, is the category `[Trav, CoDomInc]`, where `Trav`
 are the objects of `AntDomTrav`.
 
 
@@ -76,16 +73,16 @@ are the objects of `AntDomTrav`.
 [FROM HERE WRONG]
 
 1.5. The **Category of Data Traversal Maps**, denoted `DaTrav`, is the category of presheaves of the category of
-Antidomanial Traversals `StAntDom` to the category of Domanial Sets `DomSet`, that is,
-`DaTrav = [op StAntDom, DomSet]`. Alternatively, it is the opposite of functor category from `StAntDom` to `CoDomSet`,
-that is,`DaTrav = op [StAntDom, CoDomSet]`. 
+Antidomanial Traversals `AntDom` to the category of Domanial Sets `DomSet`, that is,
+`DaTrav = [op AntDom, DomSet]`. Alternatively, it is the opposite of functor category from `AntDom` to `CoDomSet`,
+that is,`DaTrav = op [AntDom, CoDomSet]`. 
 
 [NOTE: Incorrect as currently defined, (1 -> 2) is one object for the presheaf]
 
 1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
 `DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `A ; B -> C` with `A, B, C : DaTrav`,
 defined on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'` morphisms of `DomSet`, let `h` be an object in
-`DaTrav` obtained as the presheaf on `1 -> 2` in `StAntDom`, so that, for `p : 2 -> 1` the unique surjective function,
+`DaTrav` obtained as the presheaf on `1 -> 2` in `AntDom`, so that, for `p : 2 -> 1` the unique surjective function,
 `h p 0 = X` and `h p 1 = X'`. This object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on
 `p' . p`, where `p' : |Y| + |Y'| -> 2` so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1`
 equals `g`. The unit object of `DaTra` is the empty constant presheaf on `1`, which we will denote `[]` and refer to as
