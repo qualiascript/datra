@@ -22,12 +22,13 @@ initial object, as the only morphism with origin `0` is `id_0`, and there is no 
 morphism `f : X -> Y` in `AntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is the underlying surjection of `f` in
 `AntDom`.
 
-1.6. A **Chain** is a finite strongly connected thin category, taken skeletally. For instance, `0 -> 1 -> 2` is the
-chain of cardinality `3`.
+1.6. A **Chain** is a strongly connected thin category, taken skeletally. A **Short Chain** is a chain that is finite.
+For instance, `0 -> 1 -> 2` is the chain of cardinality `3`.
 
-1.7. A **Pagination** is a functor from a chain `C` to `AntDom`, `P : C -> AntDom`, with the property that `P 0 = 1`,
-where `1` is the singleton set in `AntDom`. Alternatively, it is a functor `P : C -> (1 / AntDom)`, where `1 / AntDom`
-is the coslice category, that preserves colimits. In fact, it is sufficient to show it preserves the initial object.
+1.7. A **Pagination** is a functor from a short chain `C` to `AntDom`, `P : C -> AntDom`, with the property that 
+`P 0 = 1`, where `1` is the singleton set in `AntDom`. Alternatively, it is a functor `P : C -> (1 / AntDom)`, where
+`1 / AntDom` is the coslice category, that preserves colimits. In fact, it is sufficient to show it preserves the
+initial object.
 
 [TODO: check naturality condition]
 1.8. The **Category of Paginations**, `Pag`, is the category whose objects are pairs `(D, El)`, where `D = Tra (op P)`,
