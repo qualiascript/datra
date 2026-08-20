@@ -25,6 +25,7 @@ morphism `f : X -> Y` in `AntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is
 1.6. A **Chain** is a finite indexed category, so that, if `C` is a chain with `k` elements, for all `i <= j < k`,
 given the indexing starts at `0`, `hom(C_i, C_j) = 1`.
 
+[TODO: Rename to Pagination]
 1.7. An **Antidomanial Traversal** is a functor from a chain `C` to `AntDom`, `F : C -> AntDom`, with the property
 that `F 0 = 1`, where `0` is the initial object in `C` and `1` is the initial object in the coslice category
 `1 / AntDom`, corresponding to the singleton set.
@@ -35,10 +36,7 @@ where `D = Tra (op F)`, `F : C -> AntDom` is an antidomanial traversal, and `El`
 Morphisms in `AntDomTrav` for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the
 corresponding functor on `H : X_El -> Y_El` is faithful.
 
-[TODO: Complete/fix]
-1.9. The **Category of Data Transformation Maps**, denoted `DaTra`, is the category `[Trav, CoDomInc]`, where `Trav`
-are the objects of `AntDomTrav`.
-
+[TODO: Data Traversals and DaTra maps]
 
 
 
