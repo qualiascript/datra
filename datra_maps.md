@@ -8,15 +8,55 @@ set-theoretic injections (i.e. monomorphisms in `Set`).
 
 1.2. The **Category of Domanial Sets**, denoted `DomSet`, is the category of presheaves on `Dom`, that is
 `DomSet = [op Dom, Set]`. The **Category of Codomanial Sets**, denoted `CoDomSet` is the opposite of the category of
-domanial sets, that is, `CoDomSet = op DomSet`. [CONNECTION TO NOMINAL SETS?]
+domanial sets, that is, `CoDomSet = op DomSet`.
 
-1.3. The **Category of Antidominions**, denoted `AntDom`, has the same objects as `Dom`, and a morphism `f : X -> Y`
+1.3. The **Category of Domanial Inclusions**, denoted `DomInc`, is the reflective subcategory of `DomSet` whose
+morphisms are precisely the monomorphisms in `DomSet`. The **Category of Codomanial Inclusions**, denoted `CoDomInc`,
+is the opposite category of `DomInc`, `CoDomInc = op DomInc`.
+
+1.4. The **Category of Antidominions**, denoted `AntDom`, has the same objects as `Dom`, and a morphism `f : X -> Y`
 for `X, Y : AntDom` is a set-theoretic surjection (i.e. epimorphism) `f : Y -> X`. Note that this category has no
 initial object, as the only morphism with origin `0` is `id_0`, and there is no other morphism with target `0`.
 
-1.4. The **Category of Stable Antidominions**, denoted `StAntDom`, is the coslice, or undercategory, from the
+1.5. The **Category of Stable Antidominions**, denoted `StAntDom`, is the coslice, or undercategory, from the
 singleton set `1` to `AntDom`. That is, `StAntDom = 1 / AntDom`. As such, `1` is initial in `StAntDom`, and the
-canonical inclusion `inc : StAntDom -> AntDom` reaches all objects of `AntDom` besides `0`.
+canonical inclusion `inc : StAntDom -> AntDom` reaches all objects of `AntDom` that are not `0`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[FROM HERE WRONG]
 
 1.5. The **Category of Data Traversal Maps**, denoted `DaTrav`, is the category of presheaves of the category of
 Antidomanial Traversals `StAntDom` to the category of Domanial Sets `DomSet`, that is,
