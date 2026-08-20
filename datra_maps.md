@@ -25,72 +25,13 @@ morphism `f : X -> Y` in `AntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is
 1.6. A **Chain** is a finite indexed category, so that, if `C` is a chain with `k` elements, for all `i <= j < k`,
 given the indexing starts at `0`, `hom(C_i, C_j) = 1`.
 
-[TODO: Rename to Pagination]
-1.7. An **Antidomanial Traversal** is a functor from a chain `C` to `AntDom`, `F : C -> AntDom`, with the property
-that `F 0 = 1`, where `0` is the initial object in `C` and `1` is the initial object in the coslice category
-`1 / AntDom`, corresponding to the singleton set.
+1.7. A **Pagination** is a functor from a chain `C` to `AntDom`, `P : C -> AntDom`, with the property that `P 0 = 1`,
+where `0` is the initial object in `C` and `1` is the initial object in the coslice category `1 / AntDom`,
+corresponding to the singleton set.
 
 [TODO: check naturality condition]
-1.8. The **Category of Antidomanial Traversals**, `AntDomTrav`, is the category whose objects are pairs `(D, El)`,
-where `D = Tra (op F)`, `F : C -> AntDom` is an antidomanial traversal, and `El` is the category of elements of `D`.
-Morphisms in `AntDomTrav` for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the
-corresponding functor on `H : X_El -> Y_El` is faithful.
+1.8. The **Category of Paginations**, `Pag`, is the category whose objects are pairs `(D, El)`, where `D = Tra (op P)`,
+`P : C -> AntDom` is a pagination, and `El` is the category of elements of `D`. Morphisms in `Pag` for `F : X -> Y` are
+given by natural transformations `alpha : X_D -> Y_D`, so that the corresponding functor `H : X_El -> Y_El` is faithful.
 
-[TODO: Data Traversals and DaTra maps]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-[FROM HERE WRONG]
-
-1.5. The **Category of Data Traversal Maps**, denoted `DaTrav`, is the category of presheaves of the category of
-Antidomanial Traversals `AntDom` to the category of Domanial Sets `DomSet`, that is,
-`DaTrav = [op AntDom, DomSet]`. Alternatively, it is the opposite of functor category from `AntDom` to `CoDomSet`,
-that is,`DaTrav = op [AntDom, CoDomSet]`. 
-
-[NOTE: Incorrect as currently defined, (1 -> 2) is one object for the presheaf]
-
-1.6. The **Category of Data Transformation Maps**, denoted `DaTra`, is the monoidal category defined on the base of
-`DaTrav`, along with the **Sequential Operator** denoted `;`, which is a functor `A ; B -> C` with `A, B, C : DaTrav`,
-defined on morphisms as follows: for `f : X -> Y`, `g : X' -> Y'` morphisms of `DomSet`, let `h` be an object in
-`DaTrav` obtained as the presheaf on `1 -> 2` in `AntDom`, so that, for `p : 2 -> 1` the unique surjective function,
-`h p 0 = X` and `h p 1 = X'`. This object is universal insofar as `h 1 = X + X'`. Then, `f ; g` is the presheaf on
-`p' . p`, where `p' : |Y| + |Y'| -> 2` so that `(f ; g) p'` pulled back at `0` equals `f`, and pulled back at `1`
-equals `g`. The unit object of `DaTra` is the empty constant presheaf on `1`, which we will denote `[]` and refer to as
-the **Empty Map**, as such, there are left and right unitors `L : [] ; X -> X`, `R : X ; [] -> X`.
-
-1.7. There is a **DaTra Associator** `asc : (A ; B) ; C -> A ; (B ; C)`, that can be obtained as follows: for
-`A : X -> Y`, `B : X' -> Y'`, `C : X'' -> Y''`, create the universal presheaf `h` on `p : |X + X' + X''| -> 3` so that,
-by pulling back at `0`, `1`, and `2` respectively, one obtains `A`, `B` and `C`. Then, one obtains `A ; (B ; C)` by
-precompositions with surjection `k : 3 -> 2`, so that `k 0 = 0`, `k 1 = 1`, `k 2 = 1`. [ADD MORE DETAIL LATER]
-
-1.8. There is a **DaTra Braiding**, `br : (A ; B) -> (B ; A)` obtained similarly as above by precomposition with
-`k : 2 -> 2`, `k 0 = 1`, `k 1 = 0`. Naturally, `br br = id`. One can also check that the pentagon, triangle and hexagon
-identities are fulfilled by similar logic [TO BE COMPLETED LATER]. As such, `DaTra` is a symmetric monoidal category.
+[TODO: Data Traversals Category (?) and DaTra maps]
