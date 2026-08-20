@@ -26,7 +26,7 @@ morphism `f : X -> Y` in `AntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is
 indices `0 <= i < k` where `k` is the cardinality of the chain. For instance, `0 -> 1 -> 2` is the chain of cardinality
 `3`, unique up to isomorphism.
 
-1.7. A **Pagination** is a functor from a chain `C` to `AntDom`, `P : C -> AntDom`, with the property that `P 0 = 1`,
+1.7. A **Pagination** is a functor from a chain `C` to `AntDom`, `P : C -> AntDom`, with the property that `P C_0 = 1`,
 where `0` is the initial object in `C` and `1` is the initial object in the coslice category `1 / AntDom`,
 corresponding to the singleton set.
 
