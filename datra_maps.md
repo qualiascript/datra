@@ -26,16 +26,21 @@ in `StAntDom`.
 morphism `f : X -> Y` in `StAntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is the underlying surjection of `f` in
 `StAntDom`.
 
-1.7. The **Category of Chains**, denoted `Cha`, is the category whose objects are indexed categories with `k` objects,
-where `k` is a positive integer, so that, if `C : Cha` and `k = |C|`, for all `i <= j < k`, `hom(C_i, C_j) = 1`, and
-whose morphisms are inclusion functors that preserve the initial object.
+1.7. A **Chain** is a finite indexed category, so that, if `C` is a chain with `k` elements, for all `i <= j < k`,
+given the indexing starts at `0`, `hom(C_i, C_j) = 1`.
 
-1.8. The **Category of Antidomanial Traversals**, denoted `AntTrav`, is the category whose objects are the categories
-of elements of presheaves `G : op H -> Set` for `H : C -> StAntDom`, `C : Cha` and `H` preserves the initial object,
-and whose morphisms are inclusion functors on the underlying categories of elements so that everything is sent to `id`.
+1.8. An **Antidomanial Traversal** is a functor from a chain `C` to `StAntDom`, `F : C -> StAntDom`, with the property
+that `F 0 = 1`, that is, it preserves initial objects.
 
-1.9. The **Category of Data Transformation Maps**, denoted `DaTra`, is a monoidal category whose underlying category is
-the category of functors `[AntTrav, CoDomInc]`, or, alternatively, the category of presheaves `[op AntTrav, DomInc]`.
+1.9. The **Category of Antidomanial Traversals**, `AntDomTrav`, is the category whose objects are pairs `(D, El)`,
+where `D = Tra (op F)`, `F : C -> StAntDom` is an antidomanial traversal, and `El` is the category of elements of `D`.
+Morphisms in `AntDomTrav` for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the
+corresponding functor on `H : X_El -> Y_El` is faithful.
+
+
+[TODO: Complete/fix]
+1.10. The **Category of Data Transformation Maps**, denoted `DaTra`, is the category `[Trav, CoDomInc]`, where `Trav`
+are the objects of `AntDomTrav`.
 
 
 
