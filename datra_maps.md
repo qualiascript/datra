@@ -18,12 +18,24 @@ is the opposite category of `DomInc`, `CoDomInc = op DomInc`.
 for `X, Y : AntDom` is a set-theoretic surjection (i.e. epimorphism) `f : Y -> X`. Note that this category has no
 initial object, as the only morphism with origin `0` is `id_0`, and there is no other morphism with target `0`.
 
-1.5. The **Category of Stable Antidominions**, denoted `StAntDom`, is the coslice, or undercategory, from the
-singleton set `1` to `AntDom`. That is, `StAntDom = 1 / AntDom`. As such, `1` is initial in `StAntDom`, and the
-canonical inclusion `inc : StAntDom -> AntDom` reaches all objects of `AntDom` that are not `0`.
+1.5. The **Category of Stable Antidominions**, denoted `StAntDom`, is the category whose objects are objects of
+`AntDom` distinct from `0`, and whose morphisms are morphisms in `AntDom` distinct from `id_0`. As such, `1` is initial
+in `StAntDom`.
 
+1.6. The **Traversal Functor**, denoted `Tra`, is of type `Tra : op StAntDom -> Set`, and sends the opposite of each
+morphism `f : X -> Y` in `StAntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is the underlying surjection of `f` in
+`StAntDom`.
 
+1.7. The **Category of Chains**, denoted `Cha`, is the category whose objects are indexed categories with `k` objects,
+where `k` is a positive integer, so that, if `C : Cha` and `k = |C|`, for all `i <= j < k`, `hom(C_i, C_j) = 1`, and
+whose morphisms are inclusion functors that preserve the initial object.
 
+1.8. The **Category of Antidomanial Traversals**, denoted `AntTrav`, is the category whose objects are the categories
+of elements of presheaves `G : op H -> Set` for `H : C -> StAntDom`, `C : Cha` and `H` preserves the initial object,
+and whose morphisms are inclusion functors on the underlying categories of elements so that everything is sent to `id`.
+
+1.9. The **Category of Data Transformation Maps**, denoted `DaTra`, is a monoidal category whose underlying category is
+the category of functors `[AntTrav, CoDomInc]`, or, alternatively, the category of presheaves `[op AntTrav, DomInc]`.
 
 
 
