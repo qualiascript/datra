@@ -29,7 +29,7 @@ the initial object.
 
 1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
 functors `P`, where `P = Tra ∘ (op F)` and `F : C -> CoDomCon` is a folio. Morphisms in `Pag` for `H : X -> Y` are
-given by functors `alpha_H : X_El -> Y_El`. [TODO: check connections with natural transformations]. The **Cardinality
+given by functors `alpha_H : X -> Y`. [TODO: check connections with natural transformations]. The **Cardinality
 of a Pagination** is defined on Pagination objects `P` as the highest positive integer so that `P k` is inhabited, and
 is denoted `|P|`.
 
@@ -54,10 +54,10 @@ objects to `Dom` objects, and as such, a forgetful functor `Forg : DaTra -> Dom`
 be the free functor sending each dominion to its coalition. Clearly, `Free Forg Free x = Free x` and
 `Forg Free Forg y = Forg y`, so that `Free` is left adjoint of `Forg`.
 
-[TODO: as universal property in DaTrav?]
 1.12. The **Sequential Bifunctor**, `(;) : DaTra * DaTra -> DaTra`, also denoted infix as `DaTra ; DaTra -> DaTra`,
-is defined for `F : X -> Y`, `F' : X' -> Y'`as follows: let `G = Coa F`, `G' = Coa F'`, then `F ; F'` is the `DaTrav`
-object `H` on pagination `1 -> 2 -> |F| + |F'|` so that `H (1 -> 2) 0 = F` and `H (1 -> 2) 1 = F'`.
+is defined for `F : X -> Y`, `F' : X' -> Y'` as follows: let `U` be the universal arrow `U : F + F' -> H` in `DaTrav`,
+so that for inclusions `U_F : F -> H`, `U_F' : F' -> H`, if there exists integers `k`, `m`, `n`, so that `U_F` sends
+`F 0 0` to `H k m` and `U_F'` sends `F' 0 0` to `H k n`, then `m < n`.
 
 ## 2. `DaTra`, along with `(;)`, form a symmetric monoidal category
 
