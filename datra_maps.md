@@ -42,8 +42,9 @@ morphisms `F : X -> Y` of `DaTra` so that `alpha_F : El_X -> El_Y` is a faithful
 there exists a monomorphism `g : alpha_F x -> x`.
 
 1.10. The **Stabilizing Functor** `Sta : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
-`F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there exists `k` a positive
-integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
+`F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there is a monomorphism
+`m : K -> FinSet * FinSet` where `k : K` iff `X (|X| - 1) k` is inhabited so that for all `k`, `U` sends
+`X' (m k)_0 (m k)_1` to `X (|X| - 1) k`.
 
 1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Sta F`, where
 `F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
