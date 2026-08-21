@@ -46,9 +46,10 @@ there exists a monomorphism `g : alpha_F x -> x`.
 integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
 
 1.12. The *Coalizing Functor* `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Sta F`, where
-`F'` is an universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, in particular, if
+`F'` is an universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
 `F = id X`, `X'` is the coalition of `X`. Clearly [TODO: Proof outline], `X' m k` is inhabited iff `m = k = 0`, so
 that `X'` is isomorphic to an object of `Doma`, and in fact, as the only morphism is identity in `X'`'s pagination,
-to an object of `Dom`. As such, `Coa` alternatively is of type `Coa : DaTra -> [Dom, DaTra]`, so that the coalition
-of `D : DaTra` is `orig (Coa D) : Dom`. This induces a forgetful functor `Coa' : DaTra -> Dom`, whose left adjoint
-is the **DaTra Inclusion Functor**, `DaTraInc : Dom -> DaTra` [todo: prove adjointness].
+to an object of `Dom`. As such, to each arrow of `Coa`, one obtains an arrow `f : DaTra -> Dom`, mapping `DaTra`
+objects to `Dom` objects, and as such, a forgetful functor `Forg : DaTra -> Dom`. Then let `Free : Dom -> DaTra`
+be the free functor sending each dominion to its coalition. Clearly, `hom_DaTra(Free X, Y) ~= hom_Doma(X, Forg Y)`.
+[TODO: Proof outline], so that `Free` is left adjoint to `Forg`.
