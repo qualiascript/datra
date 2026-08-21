@@ -44,3 +44,9 @@ there exists a monomorphism `g : alpha_F x -> x`.
 1.11. The **Stabilizing Functor** `Sta : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
 `F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there exists `k` a positive
 integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
+
+[
+NOTE: potential kan extensions?
+`hom(F A, (f : X -> Y)) ~= hom(A, Sta f)`? `hom(Sta (f : X -> Y), B) ~= hom(f, G B)`?
+`hom(F A, B) ~= hom(A, Sta B)`? `hom(Sta A, B) ~= hom(A, G B)`?
+]
