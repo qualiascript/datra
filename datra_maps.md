@@ -28,11 +28,19 @@ initial object.
 
 1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
 functors `P`, where `P = Tra ∘ (op F)` and `F : C -> CoADoma` is a folio. Morphisms in `Pag` for `H : X -> Y` are given
-by natural transformations `alpha : X_El -> Y_El`.
+by functors `alpha_H : X_El -> Y_El`. [check connections with natural transformations]
 
-1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `Doma`, so
-that `DaTra = [Pag, Doma]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDoma]`.
+1.8. The **Cardinality of a Pagination** is defined on Pagination objects `P` as the highest positive integer so that
+`P k` is inhabited, and is denoted `|P|`.
 
-1.9. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
-`F' = F ∘ H` and `H : X' -> X` is a natural transformation sending everything in `X'` to `X 0` that is initial among
-such natural transformations.
+1.9. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `Doma`, so
+that `DaTra = [Pag, Doma]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDoma]`. Given an
+identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality of its underlying pagination.
+
+1.10. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms are the
+morphisms `F : X -> Y` of `DaTra` so that `alpha_F : El_X -> El_Y` is a faithful functor and for all `x : El_X m k`,
+there exists a monomorphism `g : alpha_F x -> x`.
+
+1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
+`F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there exists `k` a positive
+integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
