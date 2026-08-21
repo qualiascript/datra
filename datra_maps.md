@@ -51,5 +51,5 @@ integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
 that `X'` is isomorphic to an object of `Doma`, and in fact, as the only morphism is identity in `X'`'s pagination,
 to an object of `Dom`. As such, to each arrow of `Coa`, one obtains an arrow `f : DaTra -> Dom`, mapping `DaTra`
 objects to `Dom` objects, and as such, a forgetful functor `Forg : DaTra -> Dom`. Then let `Free : Dom -> DaTra`
-be the free functor sending each dominion to its coalition. Clearly, `hom_DaTra(Free X, Y) ~= hom_Doma(X, Forg Y)`.
-[TODO: Proof outline], so that `Free` is left adjoint to `Forg`.
+be the free functor sending each dominion to its coalition. Clearly, `Free Forg Free x = Free x` and
+`Forg Free Forg y = Forg y`, so that `Free` is left adjoint of `Forg`.
