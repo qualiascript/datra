@@ -28,4 +28,4 @@ initial object.
 
 1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, El)`, where
 `P = Tra . (op F)`, `F : C -> CoADoma` is a folio, and `El` is the category of elements of `P`. Morphisms in `Pag` for
-`H : X -> Y` are given by natural transformations `alpha : X_P -> Y_P`.
+`H : X -> Y` are given by natural transformations `alpha : X_El -> Y_El`.
