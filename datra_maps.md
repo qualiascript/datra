@@ -41,6 +41,6 @@ identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality
 morphisms `F : X -> Y` of `DaTra` so that `alpha_F : El_X -> El_Y` is a faithful functor and for all `x : El_X m k`,
 there exists a monomorphism `g : alpha_F x -> x`.
 
-1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
+1.11. The **Stabilizing Functor** `Sta : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
 `F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there exists `k` a positive
 integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
