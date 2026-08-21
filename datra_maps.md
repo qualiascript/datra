@@ -31,9 +31,9 @@ For instance, `0 -> 1 -> 2` is the chain of cardinality `3`.
 initial object.
 
 [TODO: check naturality condition]
-1.8. The **Category of Paginations**, `Pag`, is the category whose objects are pairs `(D, El)`, where
-`D = Tra . (op F)`, `F : C -> AntDom` is a folio, and `El` is the category of elements of `D`. Morphisms in `Pag`
-for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the corresponding functor
+1.8. The **Category of Paginations**, `Pag`, is the category whose objects are pairs `(P, El)`, where
+`P = Tra . (op F)`, `P : C -> AntDom` is a folio, and `El` is the category of elements of `P`. Morphisms in `Pag`
+for `F : X -> Y` are given by natural transformations `alpha : X_P -> Y_P`, so that the corresponding functor
 `H : X_El -> Y_El` is faithful.
 
 [TODO: Data Traversals Category (?) and DaTra maps]
