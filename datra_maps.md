@@ -26,6 +26,9 @@ For instance, `0 -> 1 -> 2` is the chain of cardinality `3`.
 `1 / CoADoma` is the coslice category, that preserves colimits. In fact, it is sufficient to show it preserves the
 initial object.
 
-1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, El)`, where
-`P = Tra . (op F)`, `F : C -> CoADoma` is a folio, and `El` is the category of elements of `P`. Morphisms in `Pag` for
-`H : X -> Y` are given by natural transformations `alpha : X_El -> Y_El`.
+1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
+functors `P`, where `P = Tra . (op F)` and `F : C -> CoADoma` is a folio. Morphisms in `Pag` for `H : X -> Y` are given
+by natural transformations `alpha : X_El -> Y_El`.
+
+1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `CoDoma`,
+so that `DaTra = [Pag, CoDoma]`. 
