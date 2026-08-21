@@ -30,5 +30,5 @@ initial object.
 functors `P`, where `P = Tra . (op F)` and `F : C -> CoADoma` is a folio. Morphisms in `Pag` for `H : X -> Y` are given
 by natural transformations `alpha : X_El -> Y_El`.
 
-1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `CoDoma`,
-so that `DaTra = [Pag, CoDoma]`. 
+1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `Doma`, so
+that `DaTra = [Pag, Doma]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDoma]`.
