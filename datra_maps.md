@@ -25,14 +25,14 @@ morphism `f : X -> Y` in `AntDom` to `f' : |Y| -> |X|` in `Set`, so that `f'` is
 1.6. A **Chain** is a strongly connected thin category, taken skeletally. A **Short Chain** is a chain that is finite.
 For instance, `0 -> 1 -> 2` is the chain of cardinality `3`.
 
-1.7. A **Pagination** is a functor from a short chain `C` to `AntDom`, `P : C -> AntDom`, with the property that 
-`P 0 = 1`, where `1` is the singleton set in `AntDom`. Alternatively, it is a functor `P : C -> (1 / AntDom)`, where
+1.7. A **Folio** is a functor from a short chain `C` to `AntDom`, `F : C -> AntDom`, with the property that 
+`F 0 = 1`, where `1` is the singleton set in `AntDom`. Alternatively, it is a functor `F : C -> (1 / AntDom)`, where
 `1 / AntDom` is the coslice category, that preserves colimits. In fact, it is sufficient to show it preserves the
 initial object.
 
 [TODO: check naturality condition]
 1.8. The **Category of Paginations**, `Pag`, is the category whose objects are pairs `(D, El)`, where
-`D = Tra . (op P)`, `P : C -> AntDom` is a pagination, and `El` is the category of elements of `D`. Morphisms in `Pag`
+`D = Tra . (op F)`, `F : C -> AntDom` is a folio, and `El` is the category of elements of `D`. Morphisms in `Pag`
 for `F : X -> Y` are given by natural transformations `alpha : X_D -> Y_D`, so that the corresponding functor
 `H : X_El -> Y_El` is faithful.
 
