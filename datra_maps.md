@@ -2,16 +2,16 @@
 
 ## 1. Base Definitions
 
-[TODO: surjections should be order preserving]
-
 1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_1` (i.e.
 the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its morphisms
 set-theoretic injections (i.e. monomorphisms in `Set`).
 
+[TODO: Rename to Domanial Inclusion]
 1.2. The **Category of Domanials**, denoted `Doma`, is the category whose objects are dominions, that is, objects of
 `Dom`, and whose morphisms are monomorphisms in `Dom`. The **Category of Codomanials**, denoted `CoDoma`, is the
 opposite category of `Doma`, that is, `CoDoma = op Doma`.
 
+[TODO: rename, also, surjections should be order preserving]
 1.3. The **Category of Antidomanials**, denoted `ADoma`, is the category whose objects are dominions and morphisms are
 epimorphisms in `Dom`. The **Category of Coantidomanials**, denoted `CoADoma`, is the opposite category of `ADoma`,
 that is, `CoADoma = op ADoma`. Note that `CoADoma` has no initial object, as the only morphism with origin `0` is
