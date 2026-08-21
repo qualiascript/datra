@@ -6,15 +6,15 @@
 the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its morphisms
 set-theoretic injections (i.e. monomorphisms in `Set`).
 
-[TODO: sheaf condition?]
 1.2. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. The **Category of Codomanial Inclusions**, denoted
 `CoDomInc`, is the opposite category of `DomInc`, that is, `CoDomInc = op DomInc`.
 
 1.3. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
-morphisms are order-preserving epimorphisms in `Dom`. The **Category of Codomanial Consolidations**, denoted
-`CoDomCon`, is the opposite category of `DomCon`, that is, `CoDomCon = op DomCon`. Note that `CoDomCon` has no initial
-object, as the only morphism with origin `0` is `id_0`, and there is no other morphism with target `0`.
+morphisms are order-preserving epimorphisms in `Dom`. More specifically, a morphism `F : A -> B` in `DomCon` has the
+property that for any `x, y : A`, if `|x| < |y|`, then `|F x| <= |F y|`. The **Category of Codomanial Consolidations**,
+denoted `CoDomCon`, is the opposite category of `DomCon`, that is, `CoDomCon = op DomCon`. Note that `CoDomCon` has no
+initial object, as the only morphism with origin `0` is `id_0`, and there is no other morphism with target `0`.
 
 1.4. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon` to
 its underlying set-theoretic surjection.
