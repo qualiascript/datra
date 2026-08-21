@@ -57,8 +57,8 @@ be the free functor sending each dominion to its coalition. Clearly, `Free Forg 
 1.12. The **Sequential Bifunctor**, `(;) : DaTra * DaTra -> DaTra`, also denoted infix as `DaTra ; DaTra -> DaTra`,
 is defined for `F : X -> Y`, `F' : X' -> Y'` as follows: let `U` be the universal arrow `U : F + F' -> H` in `DaTrav`,
 so that for inclusions `U_F : F -> H`, `U_F' : F' -> H`, if there exists integers `k`, `m`, `n`, so that `U_F` sends
-`F 0 0` to `H k m` and `U_F'` sends `F' 0 0` to `H k n`, then `m < n`. Clearly, the solution is given by `k = 1`,
-`m = 0`, `n = 1`.
+`F 0 0` to `H k m` and `U_F'` sends `F' 0 0` to `H k n`, then `m < n`. Clearly, the solution has the properties that
+`k = 1`, `m = 0`, `n = 1`, and `U 0 0 = Forg (F + F')`.
 
 ## 2. `DaTra`, along with `(;)`, form a symmetric monoidal category
 
