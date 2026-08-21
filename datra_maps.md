@@ -38,13 +38,13 @@ that `DaTra = [Pag, DomInc]`. Alternatively, it is the category of presheaves `D
 identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality of its underlying pagination.
 
 1.9. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms are the
-morphisms `F : X -> Y` of `DaTra` so that `alpha_F : El_X -> El_Y` is a faithful functor and for all `x : El_X m k`,
+morphisms `F : X -> Y` of `DaTra` so that `alpha_F : X -> Y` is a faithful functor and for all `x : X m k`,
 there exists a monomorphism `g : alpha_F x -> x`.
 
 1.10. The **Stabilizing Functor** `Sta : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
-`F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there is a monomorphism
-`m : K -> FinSet * FinSet` where `k : K` iff `X (|X| - 1) k` is inhabited so that for all `k`, `U` sends
-`X' (m k)_0 (m k)_1` to `X (|X| - 1) k`.
+`F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` with the property that `H`'s underlying
+functor is full, and for set `K` with the property that `k : K` iff `X (|X| - 1) k` is inhabited, for any `m : K`, for
+integers `n`, `p` so that `X' n p` is sent to `X (|X| - 1) m`, we have `X' n p ~= X (|X| - 1) m`.
 
 1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Sta F`, where
 `F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
