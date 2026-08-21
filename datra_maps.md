@@ -2,6 +2,8 @@
 
 ## 1. Base Definitions
 
+[TODO: surjections should be order preserving]
+
 1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_1` (i.e.
 the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its morphisms
 set-theoretic injections (i.e. monomorphisms in `Set`).
@@ -52,3 +54,7 @@ to an object of `Dom`. As such, to each arrow of `Coa`, one obtains an arrow `f 
 objects to `Dom` objects, and as such, a forgetful functor `Forg : DaTra -> Dom`. Then let `Free : Dom -> DaTra`
 be the free functor sending each dominion to its coalition. Clearly, `Free Forg Free x = Free x` and
 `Forg Free Forg y = Forg y`, so that `Free` is left adjoint of `Forg`.
+
+1.12. The **Sequential Bifunctor**, `(;) : DaTra * DaTra -> DaTra`, also denoted infix as `DaTra ; DaTra -> DaTra`,
+is defined for `F : X -> Y`, `F' : X' -> Y'`as follows: let `G = Coa F`, `G' = Coa F'`, then `F ; F'` is the `DaTrav`
+object `H` on pagination `1 -> 2 -> |F| + |F'|` so that `H (1 -> 2) 0 = F` and `H (1 -> 2) 1 = X'`.
