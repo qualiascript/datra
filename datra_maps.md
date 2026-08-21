@@ -6,6 +6,7 @@
 the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its morphisms
 set-theoretic injections (i.e. monomorphisms in `Set`).
 
+[TODO: sheaf condition?]
 1.2. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. The **Category of Codomanial Inclusions**, denoted
 `CoDomInc`, is the opposite category of `DomInc`, that is, `CoDomInc = op DomInc`.
