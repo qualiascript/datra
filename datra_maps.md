@@ -27,8 +27,12 @@ For instance, `0 -> 1 -> 2` is the chain of cardinality `3`.
 initial object.
 
 1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
-functors `P`, where `P = Tra . (op F)` and `F : C -> CoADoma` is a folio. Morphisms in `Pag` for `H : X -> Y` are given
+functors `P`, where `P = Tra ∘ (op F)` and `F : C -> CoADoma` is a folio. Morphisms in `Pag` for `H : X -> Y` are given
 by natural transformations `alpha : X_El -> Y_El`.
 
 1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `Doma`, so
 that `DaTra = [Pag, Doma]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDoma]`.
+
+1.9. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
+`F' = F ∘ H` and `H : X' -> X` is a natural transformation sending everything in `X'` to `X 0` that is initial among
+such natural transformations.
