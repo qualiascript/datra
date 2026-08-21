@@ -56,4 +56,4 @@ be the free functor sending each dominion to its coalition. Clearly, `Free Forg 
 
 1.12. The **Sequential Bifunctor**, `(;) : DaTra * DaTra -> DaTra`, also denoted infix as `DaTra ; DaTra -> DaTra`,
 is defined for `F : X -> Y`, `F' : X' -> Y'`as follows: let `G = Coa F`, `G' = Coa F'`, then `F ; F'` is the `DaTrav`
-object `H` on pagination `1 -> 2 -> |F| + |F'|` so that `H (1 -> 2) 0 = F` and `H (1 -> 2) 1 = X'`.
+object `H` on pagination `1 -> 2 -> |F| + |F'|` so that `H (1 -> 2) 0 = F` and `H (1 -> 2) 1 = F'`.
