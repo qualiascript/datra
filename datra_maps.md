@@ -28,7 +28,7 @@ initial object.
 
 1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
 functors `P`, where `P = Tra ∘ (op F)` and `F : C -> CoADoma` is a folio. Morphisms in `Pag` for `H : X -> Y` are given
-by functors `alpha_H : X_El -> Y_El`. [check connections with natural transformations]
+by functors `alpha_H : X_El -> Y_El`. [TODO: check connections with natural transformations]
 
 1.8. The **Cardinality of a Pagination** is defined on Pagination objects `P` as the highest positive integer so that
 `P k` is inhabited, and is denoted `|P|`.
@@ -45,8 +45,10 @@ there exists a monomorphism `g : alpha_F x -> x`.
 `F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` so that there exists `k` a positive
 integer so that `k = |X| = |X'|` and `H X' k ~= X k`.
 
-[
-NOTE: potential kan extensions?
-`hom(F A, (f : X -> Y)) ~= hom(A, Sta f)`? `hom(Sta (f : X -> Y), B) ~= hom(f, G B)`?
-`hom(F A, B) ~= hom(A, Sta B)`? `hom(Sta A, B) ~= hom(A, G B)`?
-]
+1.12. The *Coalizing Functor* `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Sta F`, where
+`F'` is an universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, in particular, if
+`F = id X`, `X'` is the coalition of `X`. Clearly [TODO: Proof outline], `X' m k` is inhabited iff `m = k = 0`, so
+that `X'` is isomorphic to an object of `Doma`, and in fact, as the only morphism is identity in `X'`'s pagination,
+to an object of `Dom`. As such, `Coa` alternatively is of type `Coa : DaTra -> [Dom, DaTra]`, so that the coalition
+of `D : DaTra` is `orig (Coa D) : Dom`. This induces a forgetful functor `Coa' : DaTra -> Dom`, whose left adjoint
+is the **DaTra Inclusion Functor**, `DaTraInc : Dom -> DaTra` [todo: prove adjointness].
