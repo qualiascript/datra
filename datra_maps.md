@@ -33,18 +33,28 @@ given by functors `alpha_H : X -> Y`. [TODO: check connections with natural tran
 of a Pagination** is defined on Pagination objects `P` as the highest positive integer so that `P k` is inhabited, and
 is denoted `|P|`.
 
+[TODO: Alternative name: DaTra sets]
+
 1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `DomInc`, so
 that `DaTra = [Pag, DomInc]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDomInc]`. Given an
 identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality of its underlying pagination.
+
+[TODO: terminology notes: `D : DaTra`'s extent = `D 0 0`, `D`'s territory = `D (|D| - 1)`, `D`'s regions = objects
+`D (|D| - 1) k`]
 
 1.9. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms are the
 morphisms `F : X -> Y` of `DaTra` so that `alpha_F : X -> Y` is a faithful functor and for all `x : X m k`,
 there exists a monomorphism `g : alpha_F x -> x`.
 
+[TODO: category in image of `Set` referred to as DaTra Maps, or Serene Data Transformations. double terminology
+reflects practical usage vs. mathematical definition]
+
 1.10. The **Serenification Functor** `Ser : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
 `F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` with the property that `H`'s underlying
 functor is full, and for set `K` with the property that `k : K` iff `X (|X| - 1) k` is inhabited, for any `m : K`, for
 integers `n`, `p` so that `X' n p` is sent to `X (|X| - 1) m`, we have `X' n p ~= X (|X| - 1) m`.
+
+[TODO: A DaTra set is a map (i.e. is serene) iff its extent is isomorphic to the coproduct of its regions]
 
 1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Ser F`, where
 `F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
@@ -61,7 +71,5 @@ so that for inclusions `U_F : F -> H`, `U_F' : F' -> H`, if there exists integer
 `F 0 0` to `H k m` and `U_F'` sends `F' 0 0` to `H k n`, then `m < n`. Clearly, the solution has the properties that
 `k = 1`, `m = 0`, `n = 1`, and `U 0 0 = Forg (F + F')`.
 
-## 2. `DaTra`, along with `(;)`, form a symmetric monoidal category
-
-[TODO: complete]
+[TODO: `DaTra`, along with `(;)`, form a symmetric monoidal category]
 
