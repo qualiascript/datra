@@ -42,6 +42,8 @@ identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality
 [TODO: terminology notes: `D : DaTra`'s extent = `D 0 0`, `D`'s territory = `D (|D| - 1)`, `D`'s regions = objects
 `D (|D| - 1) k`]
 
+[TODO: DaTrav should preserve order]
+
 1.9. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms are the
 morphisms `F : X -> Y` of `DaTra` so that `alpha_F : X -> Y` is a faithful functor and for all `x : X m k`,
 there exists a monomorphism `g : alpha_F x -> x`.
