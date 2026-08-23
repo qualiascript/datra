@@ -51,6 +51,8 @@ there exists a monomorphism `g : alpha_F x -> x`.
 [TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
 reflects practical usage vs. mathematical definition]
 
+[TODO NOTE: Should be "Cbarts?" vocabulary?]
+
 1.10. The **Serenification Functor** `Ser : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
 `F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` with the property that `H`'s underlying
 functor is full, and for set `K` with the property that `k : K` iff `X (|X| - 1) k` is inhabited, for any `m : K`, for
