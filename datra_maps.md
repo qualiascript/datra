@@ -46,7 +46,7 @@ identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality
 morphisms `F : X -> Y` of `DaTra` so that `alpha_F : X -> Y` is a faithful functor and for all `x : X m k`,
 there exists a monomorphism `g : alpha_F x -> x`.
 
-[TODO: category in image of `Set` referred to as DaTra Maps, or Serene Data Transformations. double terminology
+[TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
 reflects practical usage vs. mathematical definition]
 
 1.10. The **Serenification Functor** `Ser : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
