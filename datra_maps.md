@@ -76,8 +76,8 @@ inhabited.
 1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms
 for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for all
 `x = (a, b)` so that `X_E x` is inhabited, there exists a monomorphism `f_x : X x -> (Y ∘ F_E) x`. Furthermore,
-for `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i)`, `y' = F_E y = (n, j)` and let `k' = min(m, n)`,
-then for morphisms `v : m -> k'`, `w : n -> k'`, for `p = Y_E v i`, `q = Y_E w j`, then `p < q`.
+for `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let
+`k' = min(m, n)`, then for morphisms `v : m -> k'`, `w : n -> k'`, for `p = Y_E v i'`, `q = Y_E w j'`, then `p < q`.
 
 [TODO: DaTrav should preserve order when pulled back to the same k-level]
 
