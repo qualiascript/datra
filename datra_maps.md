@@ -41,17 +41,18 @@ that preserves colimits.
 `g : y -> z`, where `x, y, z : X_E`, we have that `T f : T x -> T y`, `T g : T y -> T z`, and `T (g ∘ f) = T g ∘ T f`.
 By the definition of the category of elements, let `x = (m, i)`, `y = (n, j)`, `z = (p, k)`, then we find that
 `X_P f i = j` and `X_P g j = k`, and for let `x' = T x = (m', i')`, `y' = T y = (n', j')`, `z' = T z = (p', k')`, we
-find that `Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`. As such, the following diagram commutes:
+find that `Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`. As such, the following diagram commutes for any `f : x -> y`,
+`g : y -> z` morphisms in `X_E`:
 
 
 ```
-(m, i) ----f---- (n, j) ----g---- (p, k)
-|                 |                |
-|                 |                |
-T (m, i)          T (n, j)         T(p, k)
-|                 |                |
-|                 |                |
-(m', i') --T f--- (n', j') --T g-- (p', k')  
+x = (m, i) -----f----- y = (n, (X_P f i)) ------g------  z = (p, (X_P g (X_P f i)))
+|                      |                                 |
+|                      |                                 |
+T (m, i)               T (n, (X_P f i))                  T(p, (X_P g (X_P f i)))
+|                      |                                 |
+|                      |                                 |
+x' = (m', i') --T f--- y' = (n', (Y_P (T f) i')) --T g-- z' = (p', (Y_P (T g) (Y_P (T f) i'))) 
 
 ```
 
