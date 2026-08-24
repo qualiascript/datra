@@ -44,15 +44,15 @@ By the definition of the category of elements, let `x = (m, i)`, `y = (n, j)`, `
 find that `Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`. As such, the following diagram commutes for any `f : x -> y`,
 `g : y -> z` morphisms in `X_E`:
 
-
 ```
-x = (m, i) -----f----- y = (n, (X_P f) i) ------g------  z = (p, (X_P g) ∘ (X_P f) i)
-|                      |                                 |
-|                      |                                 |
-T (m, i)               T (n, (X_P f) i)                  T(p, (X_P g) ∘ (X_P f) i)
-|                      |                                 |
-|                      |                                 |
-x' = (m', i') --T f--- y' = (n', (Y_P (T f)) i') --T g-- z' = (p', (Y_P (T g)) ∘ (Y_P (T f)) i') 
+(m, i) -----f----> (n, (X_P f) i) ------g------> (p, (X_P g) ∘ (X_P f) i)
+|                  |                             |
+|                  |                             |
+T (m, i)           T (n, (X_P f) i)              T (p, (X_P g) ∘ (X_P f) i)
+|                  |                             |
+|                  |                             |
+v                  v                             v
+(m', i') --T f---> (n', (Y_P (T f)) i') --T g--> (p', (Y_P (T g)) ∘ (Y_P (T f)) i') 
 
 ```
 
@@ -70,9 +70,9 @@ is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 It is denoted as `Ex D`. Since the objects of `DomInc` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
 1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
-where `M = (D_F) (|D| - 1)`, so that `Ter D k = D_F (|D| - 1, k)`.
+where `M = D_F (|D| - 1)`, so that `Ter D k = D_F (|D| - 1, k)`.
 
-1.8.5. The **m-th Region of a DaTra Set** `D : DaTra` is the dominion `Ter D m` for `m : M`, noting that the indexing
+1.8.5. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
 starts at `0`.
 
 1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
