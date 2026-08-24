@@ -56,73 +56,22 @@ x' = (m', i') --T f--- y' = (n', (Y_P (T f)) i') --T g-- z' = (p', (Y_P (T g)) â
 
 ```
 
+1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
+Transformation Sets**, or simply **DaTra Sets**, is the category of functors from `Pag` to `DomInc`, so that
+`DaTra = [Pag, DomInc]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDomInc]`. 
 
+1.8.2. The **Cardinality of a DaTra Set** `D : X -> DomInc` where `X : Pag` is the maximal positive integer `k` so that
+`X_P (k - 1)` is inhabited. It is denoted as `|D|`.
 
+1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D 0 0`, that exists by the definition of folios. It
+is denoted as `Ex D`. As functors preserve identity, `Ex D : Dom` for any `D : DaTra`.
 
+1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the value at `D (|D| - 1)`, and is denoted as `Ter D`. As such,
+it is an indexed collection of dominions, `Ter D : M -> Dom`, where `M` is the set so that `m : M` iff `Ter D m` is
+inhabited.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-[TODO: Alternative name: DaTra sets]
-
-1.8. The **Category of Data Transformations**, denoted `DaTra`, is the category of functors from `Pag` to `DomInc`, so
-that `DaTra = [Pag, DomInc]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDomInc]`. Given an
-identity morphism `X_id` in `DaTra`, its cardinality `|X_id|` is the cardinality of its underlying pagination.
-
-[TODO: terminology notes: `D : DaTra`'s extent = `D 0 0`, `D`'s territory = `D (|D| - 1)`, `D`'s regions = objects
-`D (|D| - 1) k`]
+1.8.5. The **Regions of a DaTra Set** `D : DaTra` are the inhabited values `Ter D m`, where `Ter D m` is denoted the
+**m-th Region**, noting that the indexing starts at `0`.
 
 [TODO: DaTrav should preserve order when pulled back to the same k-level]
 
