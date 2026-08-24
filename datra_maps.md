@@ -36,15 +36,13 @@ that preserves colimits.
 
 1.6.3. In fact, to show `F : C -> (1 / CoDomCon)` is a Folio, it is sufficient to show it preserves the initial object.
 
+[TODO: simplify diagram]
+
 1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
 `P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. For any
 `W : Pag`, we denote `W_P` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
-`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`. As such, given two morphisms `f : x -> y`,
-`g : y -> z`, where `x, y, z : X_E`, we have that `T f : T x -> T y`, `T g : T y -> T z`, and `T (g ∘ f) = T g ∘ T f`.
-By the definition of the category of elements, let `x = (m, i)`, `y = (n, j)`, `z = (p, k)`, then we find that
-`X_P f i = j` and `X_P g j = k`, and for let `x' = T x = (m', i')`, `y' = T y = (n', j')`, `z' = T z = (p', k')`, we
-find that `Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`. As such, the following diagram commutes for any `f : x -> y`,
-`g : y -> z` morphisms in `X_E`:
+`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`.As such, the following diagram commutes for
+any `f : x -> y`, `g : y -> z` morphisms in `X_E` with `x = (m, i)`:
 
 ```
 (m, i) -----f----> (n, (X_P f) i) ------g------> (p, (X_P g) ∘ (X_P f) i)
@@ -87,19 +85,14 @@ includes all DaTra sets with the property that their extent is isomorphic to the
 `D : DaTra`, let `F = Emb ∘ Ter F : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then if
 `Sum D ~= Ex D`, then `D : DaTraMap`.
 
-[TODO: Charting functor effect on target needs to be established]
+[TODO: Charting functor effect on target needs to be established. Left Kan extension?]
 
 1.10.2. The **Charting Functor** `Chr : DaTra -> DaTraMap` sends each DaTra set to a DaTra map. Its action of morphisms
 is as follows: let `F: X -> Y` be a morphism of `DaTra`, then let `H : X' -> X` be the universal arrow in `DaTrav` to
 target `X` so that `H_E` is a full functor, and for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an
 isomorphism. Then, `Chr F = F ∘ H`. 
 
-
-
-
-[needs rework from below]
-
-
+[TODO; needs rework from below]
 
 1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Ser F`, where
 `F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
