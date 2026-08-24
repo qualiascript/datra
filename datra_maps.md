@@ -6,26 +6,33 @@
 the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its morphisms
 set-theoretic functions (i.e. morphisms in `Set`).
 
-1.2. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
-objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. The **Category of Codomanial Inclusions**, denoted
-`CoDomInc`, is the opposite category of `DomInc`, that is, `CoDomInc = op DomInc`.
+1.2.1. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
+objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. 
 
-1.3. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
+1.2.2. The **Category of Codomanial Inclusions**, denoted `CoDomInc`, is the opposite category of `DomInc`, that is,
+`CoDomInc = op DomInc`.
+
+1.3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
 morphisms are order-preserving epimorphisms in `Dom`. More specifically, a morphism `F : A -> B` in `DomCon` has the
-property that for any `x, y : A`, if `|x| < |y|`, then `|F x| <= |F y|`. The **Category of Codomanial Consolidations**,
-denoted `CoDomCon`, is the opposite category of `DomCon`, that is, `CoDomCon = op DomCon`. Note that `CoDomCon` has no
-initial object, as the only morphism with origin `0` is `id_0`, and there is no other morphism with target `0`.
+property that for any `x, y : A`, if `|x| < |y|`, then `|F x| <= |F y|`.
 
-1.4. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon` to
-its underlying set-theoretic surjection.
+1.3.2. The **Category of Codomanial Consolidations**, denoted `CoDomCon`, is the opposite category of `DomCon`, that
+is, `CoDomCon = op DomCon`.
 
-1.5. A **Chain** is a strongly connected thin category, taken skeletally. A **Short Chain** is a chain that is finite.
-For instance, `0 -> 1 -> 2` is the chain of cardinality `3`.
+1.4.1. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon`
+to its underlying set-theoretic surjection.
 
-1.6. A **Folio** is a functor from a short chain `C` to `CoDomCon`, `F : C -> CoDomCon`, with the property that 
-`F 0 = 1`, where `1` is the singleton set in `CoDomCon`. Alternatively, it is a functor `F : C -> (1 / CoDomCon)`,
-where `1 / CoDomCon` is the coslice category, that preserves colimits. In fact, it is sufficient to show it preserves
-the initial object.
+1.5.1. A **Chain** is a strongly connected thin category, taken skeletally.
+
+1.5.2. A **Short Chain** is a chain that is finite.
+
+1.6.1. A **Folio** is a functor from a short chain `C` to `CoDomCon`, `F : C -> CoDomCon`, with the property that 
+`F 0 = 1`, where `1` is the singleton set in `CoDomCon`.
+
+1.6.2. Alternatively, a Folio is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category,
+that preserves colimits.
+
+1.6.3. In fact, to show `F : C -> (1 / CoDomCon)` is a Folio, it is sufficient to show it preserves the initial object.
 
 1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
 functors `P`, where `P = Tra ∘ (op F)` and `F : C -> CoDomCon` is a folio. Morphisms in `Pag` for `H : X -> Y` are
