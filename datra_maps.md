@@ -36,13 +36,13 @@ that preserves colimits.
 
 1.6.3. In fact, to show `F : C -> (1 / CoDomCon)` is a Folio, it is sufficient to show it preserves the initial object.
 
-[TODO: check if simplifies to naturality square]
-
 1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
 `P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. For any
 `W : Pag`, we denote `W_P` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
 `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`.As such, the following diagram commutes for
 any `f : x -> y`, `g : y -> z` morphisms in `X_E` with `x = (m, i)`:
+
+[TODO: check if below diagram simplifies to naturality square]
 
 ```
 (m, i) -----f----> (n, (X_P f) i) ------g------> (p, (X_P g) ∘ (X_P f) i)
