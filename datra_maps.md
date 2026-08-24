@@ -35,13 +35,25 @@ that preserves colimits.
 1.6.3. In fact, to show `F : C -> (1 / CoDomCon)` is a Folio, it is sufficient to show it preserves the initial object.
 
 1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
-`P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. Morphisms in
-`Pag`, for `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, where for `W : Pag`, `W_E` is the second
-inclusion, that is, the category of elements of `W`. As such, given two morphisms `f : x -> y`, `g : y -> z`, where
-`x, y, z : X_E`, we have that `T f : T x -> T y`, `T g : T y -> T z`, and `T (g ∘ f) = T g ∘ T f`. By the definition
-of the category of elements, let `x = (m, i)`, `y = (n, j)`, `z = (p, k)`, then we find that `X_P f i = j` and
-`X_P g j = k`, and for let `x' = T x = (m', i')`, `y' = T y = (n', j')`, `z' = T z = (p', k')`, we find that
-`Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`.
+`P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. For any
+`W : Pag`, we denote `W_P` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
+`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`. As such, given two morphisms `f : x -> y`,
+`g : y -> z`, where `x, y, z : X_E`, we have that `T f : T x -> T y`, `T g : T y -> T z`, and `T (g ∘ f) = T g ∘ T f`.
+By the definition of the category of elements, let `x = (m, i)`, `y = (n, j)`, `z = (p, k)`, then we find that
+`X_P f i = j` and `X_P g j = k`, and for let `x' = T x = (m', i')`, `y' = T y = (n', j')`, `z' = T z = (p', k')`, we
+find that `Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`. As such, the following diagram commutes:
+
+
+```
+(m, i) ----f---- (n, j) ----g---- (p, k)
+|                 |                |
+|                 |                |
+T (m, i)          T (n, j)         T(p, k)
+|                 |                |
+|                 |                |
+(m', i') --T f--- (n', j') --T g-- (p', k')  
+
+```
 
 
 
