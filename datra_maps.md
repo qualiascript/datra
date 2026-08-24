@@ -78,7 +78,7 @@ starts at `0`.
 1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
 for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for any
 `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`,
-then `Y_P (m -> k') i < Y_P (n -> k') j'`.
+then `Y_P (m -> k') i' < Y_P (n -> k') j'`.
 
 1.10.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
