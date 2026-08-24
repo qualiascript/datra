@@ -87,15 +87,17 @@ includes all DaTra sets with the property that their extent is isomorphic to the
 `D : DaTra`, let `F = Emb ∘ Ter F : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then if
 `Sum D ~= Ex D`, then `D : DaTraMap`.
 
+[TODO: Charting functor effect on target needs to be established]
+
 1.10.2. The **Charting Functor** `Chr : DaTra -> DaTraMap` sends each DaTra set to a DaTra map. Its action of morphisms
 is as follows: let `F: X -> Y` be a morphism of `DaTra`, then let `H : X' -> X` be the universal arrow in `DaTrav` to
 target `X` so that `H_E` is a full functor, and for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an
-isomorphism. Then, `Chr F = F ∘ H`. [TODO: proof sketch that this gives a map]
+isomorphism. Then, `Chr F = F ∘ H`. 
 
 
 
 
-[wrong from below]
+[needs rework from below]
 
 
 
