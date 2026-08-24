@@ -6,6 +6,8 @@
 (i.e. the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its
 morphisms set-theoretic functions (i.e. morphisms in `Set`).
 
+1.1.2. The **Domanial Embedding Functor**, denoted `Emb : Dom -> Set`, sends each dominion to its corresponding set.
+
 1.2.1. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. 
 
@@ -60,8 +62,8 @@ v                  v                             v
 Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, F)`, where `Pa : Pag`
 and `F` is a functor `F : Pa_E -> DomInc`, or alternatively a presheaf `F : op Pa_E -> CoDomInc`. For `X : DaTra`,
 we denote `X_Pa` the first inclusion, `X_F` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`. A
-morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_Pa, T_a)`, where `T_Pa : X_Pa -> Y_Pa` is a morphism in `Pag`
-and `T_a : X_F => Y_F ∘ T_E` is a natural transformation.
+morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_Pa, T_A)`, where `T_Pa : X_Pa -> Y_Pa` is a morphism in `Pag`
+and `T_A : X_F => Y_F ∘ T_E` is a natural transformation.
 
 1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_P : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
@@ -80,17 +82,22 @@ for `F : X -> Y` have the following properties: the underlying functor `F_E : X_
 `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`,
 then `Y_P (m -> k') i < Y_P (n -> k') j'`.
 
-[TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
-reflects practical usage vs. mathematical definition]
+1.10.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
+includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
+`D : DaTra`, let `F = Emb ∘ Ter F : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then if
+`Sum D ~= Ex D`, then `D : DaTraMap`.
 
-[TODO NOTE: Should be "Charts?" vocabulary? Or just "Mapping Functor?"]
+1.10.2. The **Charting Functor** `Chr : DaTra -> DaTraMap` sends each DaTra set to a DaTra map. Its action of morphisms
+is as follows: let `F: X -> Y` be a morphism of `DaTra`, then let `H : X' -> X` be the universal arrow in `DaTrav` to
+target `X` so that `H_E` is a full functor, and for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an
+isomorphism. Then, `Chr F = F ∘ H`. [TODO: proof sketch that this gives a map]
 
-1.10. The **Serenification Functor** `Ser : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
-`F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` with the property that `H`'s underlying
-functor is full, and for set `K` with the property that `k : K` iff `X (|X| - 1) k` is inhabited, for any `m : K`, for
-integers `n`, `p` so that `X' n p` is sent to `X (|X| - 1) m`, we have `X' n p ~= X (|X| - 1) m`.
 
-[TODO: A DaTra set is a map (i.e. is serene) iff its extent is isomorphic to the coproduct of its regions]
+
+
+[wrong from below]
+
+
 
 1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Ser F`, where
 `F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
