@@ -56,6 +56,8 @@ x' = (m', i') --T f--- y' = (n', (Y_P (T f)) i') --T g-- z' = (p', (Y_P (T g)) â
 
 ```
 
+[TODO NOTE: what is a morphism here?]
+
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
 Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, F)`, where `Pa : Pag`
 and `F` is a functor `F : Pa_E -> DomInc`, or alternatively a presheaf `F : op Pa_E -> CoDomInc`. For `X : DaTra`,
