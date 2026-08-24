@@ -46,13 +46,13 @@ find that `Y_P (T f) i' = j'`, `Y_P (T g) j' = k'`. As such, the following diagr
 
 
 ```
-x = (m, i) -----f----- y = (n, (X_P f i)) ------g------  z = (p, (X_P g (X_P f i)))
+x = (m, i) -----f----- y = (n, (X_P f) i) ------g------  z = (p, (X_P g) ∘ (X_P f) i)
 |                      |                                 |
 |                      |                                 |
-T (m, i)               T (n, (X_P f i))                  T(p, (X_P g (X_P f i)))
+T (m, i)               T (n, (X_P f) i)                  T(p, (X_P g) ∘ (X_P f) i)
 |                      |                                 |
 |                      |                                 |
-x' = (m', i') --T f--- y' = (n', (Y_P (T f) i')) --T g-- z' = (p', (Y_P (T g) (Y_P (T f) i'))) 
+x' = (m', i') --T f--- y' = (n', (Y_P (T f)) i') --T g-- z' = (p', (Y_P (T g)) ∘ (Y_P (T f)) i') 
 
 ```
 
