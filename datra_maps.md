@@ -4,7 +4,7 @@
 
 1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_1` (i.e.
 the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its morphisms
-set-theoretic injections (i.e. monomorphisms in `Set`).
+set-theoretic functions (i.e. morphisms in `Set`).
 
 1.2. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. The **Category of Codomanial Inclusions**, denoted
@@ -50,6 +50,8 @@ there exists a monomorphism `g : alpha_F x -> x`.
 
 [TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
 reflects practical usage vs. mathematical definition]
+
+[TODO NOTE: Should be "Charts?" vocabulary? Or just "Mapping Functor?"]
 
 1.10. The **Serenification Functor** `Ser : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Y`, where 
 `F' = F ∘ H` and `H : X' -> X` is the universal arrow in `DaTrav` to target `X` with the property that `H`'s underlying
