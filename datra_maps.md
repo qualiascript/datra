@@ -79,12 +79,6 @@ for `F : X -> Y` have the following properties: the underlying functor `F_E : X_
 for `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let
 `k' = min(m, n)`, then for morphisms `v : m -> k'`, `w : n -> k'`, for `p = Y_E v i'`, `q = Y_E w j'`, then `p < q`.
 
-[TODO: DaTrav should preserve order when pulled back to the same k-level]
-
-1.9. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms are the
-morphisms `F : X -> Y` of `DaTra` so that `alpha_F : X -> Y` is a faithful functor and for all `x : X m k`,
-there exists a monomorphism `g : alpha_F x -> x`.
-
 [TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
 reflects practical usage vs. mathematical definition]
 
