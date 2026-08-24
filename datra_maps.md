@@ -24,7 +24,7 @@ to its underlying set-theoretic surjection.
 
 1.5.1. A **Chain** is a strongly connected thin category, taken skeletally.
 
-1.5.2. A **Short Chain** is a chain that is finite.
+1.5.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
 1.6.1. A **Folio** is a functor from a short chain `C` to `CoDomCon`, `F : C -> CoDomCon`, with the property that 
 `F 0 = 1`, where `1` is the singleton set in `CoDomCon`.
@@ -57,27 +57,27 @@ x' = (m', i') --T f--- y' = (n', (Y_P (T f)) i') --T g-- z' = (p', (Y_P (T g)) �
 ```
 
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
-Transformation Sets**, or simply **DaTra Sets**, is the category of functors from `Pag` to `DomInc`, so that
-`DaTra = [Pag, DomInc]`. Alternatively, it is the category of presheaves `DaTra = [op Pag, CoDomInc]`. 
+Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, F)`, where `Pa : Pag`
+and `F` is a functor `F : Pa_E -> DomInc`, or alternatively a presheaf `F : op Pa_E -> CoDomInc`. For `X : DaTra`,
+we denote `X_Pa` the first inclusion, `X_F` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`.
 
-1.8.2. The **Cardinality of a DaTra Set** `D : X -> DomInc` where `X : Pag` is the maximal positive integer `k` so that
-`X_P (k - 1)` is inhabited. It is denoted as `|D|`.
+1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_P : C -> Set`, that
+is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
-1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D 0 0`, that exists by the definition of folios. It
-is denoted as `Ex D`. As functors preserve identity, `Ex D : Dom` for any `D : DaTra`.
+1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_F (0, 0)`, that exists by the definition of folios.
+It is denoted as `Ex D`. Since the objects of `DomInc` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
-1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the value at `D (|D| - 1)`, and is denoted as `Ter D`. As such,
-it is an indexed collection of dominions, `Ter D : M -> Dom`, where `M` is the set so that `m : M` iff `Ter D m` is
-inhabited.
+1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
+where `M = (D_F) (|D| - 1)`, so that `Ter D k = D_F (|D| - 1, k)`.
 
-1.8.5. The **Regions of a DaTra Set** `D : DaTra` are the inhabited values `Ter D m`, where `Ter D m` is denoted the
-**m-th Region**, noting that the indexing starts at `0`.
+1.8.5. The **m-th Region of a DaTra Set** `D : DaTra` is the dominion `Ter D m` for `m : M`, noting that the indexing
+starts at `0`.
 
-1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the full subcategory of `DaTra` whose morphisms
+1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
 for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for all
-`x = (a, b)` so that `X_E x` is inhabited, there exists a monomorphism `f_x : X x -> (Y ∘ F_E) x`. Furthermore,
-for `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let
-`k' = min(m, n)`, then for morphisms `v : m -> k'`, `w : n -> k'`, for `p = Y_E v i'`, `q = Y_E w j'`, then `p < q`.
+`x = (a, b)` so that `x : X_E`, there exists a monomorphism `f_x : X_F x -> (Y_F ∘ F_E) x`. Furthermore, for
+`x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`,
+then for morphisms `v : m -> k'`, `w : n -> k'`, for `p = Y_P v i'`, `q = Y_P w j'`, then `p < q`.
 
 [TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
 reflects practical usage vs. mathematical definition]
