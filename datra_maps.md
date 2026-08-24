@@ -56,12 +56,12 @@ v                  v                             v
 
 ```
 
-[TODO NOTE: what is a morphism here?]
-
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
 Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, F)`, where `Pa : Pag`
 and `F` is a functor `F : Pa_E -> DomInc`, or alternatively a presheaf `F : op Pa_E -> CoDomInc`. For `X : DaTra`,
-we denote `X_Pa` the first inclusion, `X_F` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`.
+we denote `X_Pa` the first inclusion, `X_F` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`. A
+morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_Pa, T_a)`, where `T_Pa : X_Pa -> Y_Pa` is a morphism in `Pag`
+and `T_a : X_F => Y_F ∘ T_E` is a natural transformation.
 
 1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_P : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
@@ -76,10 +76,9 @@ where `M = D_F (|D| - 1)`, so that `Ter D k = D_F (|D| - 1, k)`.
 starts at `0`.
 
 1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
-for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for all
-`x = (a, b)` so that `x : X_E`, there exists a monomorphism `f_x : X_F x -> (Y_F ∘ F_E) x`. Furthermore, for
+for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for any
 `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`,
-then for morphisms `v : m -> k'`, `w : n -> k'`, for `p = Y_P v i'`, `q = Y_P w j'`, then `p < q`.
+then `Y_P (m -> k') i < Y_P (n -> k') j'`.
 
 [TODO: category in image of `Ser` referred to as DaTra Maps, or Serene Data Transformations. double terminology
 reflects practical usage vs. mathematical definition]
