@@ -34,11 +34,14 @@ that preserves colimits.
 
 1.6.3. In fact, to show `F : C -> (1 / CoDomCon)` is a Folio, it is sufficient to show it preserves the initial object.
 
-1.7. The **Category of Paginations**, denoted `Pag`, is the category whose objects are the categories of elements of
-functors `P`, where `P = Tra ∘ (op F)` and `F : C -> CoDomCon` is a folio. Morphisms in `Pag` for `H : X -> Y` are
-given by functors `alpha_H : X -> Y`. [TODO: check connections with natural transformations]. The **Cardinality
-of a Pagination** is defined on Pagination objects `P` as the highest positive integer so that `P k` is inhabited, and
-is denoted `|P|`.
+1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
+`P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. Morphisms in
+`Pag`, given `F : X -> Y`, are given by natural transformations `alpha : X_E -> Y_E` on the second inclusions. That is,
+let `f : (m, j) -> (n, k)` be a morphism in `X_E`, so that, by definition of the category of elements, we have that
+there is a morphism `g : m -> n` in `X_P` so that `X_P g j = k`. Then a natural transformation `alpha_f : f -> f'`
+sends `f` to `f' : (m', j') -> (n', k')`, so that there is a morphism `g' : m' -> n'` in `Y_P` so that
+`Y_P g' j' = k'`. Furthermore, the natural transformation has the property that for any `x = (m, j)`, `y = (n, k)`
+so that `f : x -> y` is a morphism in `X_E`, we have `alpha_f f x = f' alpha_(id_x) x`.
 
 [TODO: Alternative name: DaTra sets]
 
