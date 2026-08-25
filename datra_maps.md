@@ -48,20 +48,31 @@ T                      T
 ```
 
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
-Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, F)`, where `Pa : Pag`
-and `F` is a functor `F : Pa_E -> DomInc`, or alternatively a presheaf `F : op Pa_E -> CoDomInc`. For `X : DaTra`,
-we denote `X_Pa` the first inclusion, `X_F` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`. A
+Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, G)`, where `Pa : Pag`
+and `G` is a functor `G : Pa_E -> DomInc`, or alternatively a presheaf `G : op Pa_E -> CoDomInc`. For `X : DaTra`,
+we denote `X_Pa` the first inclusion, `X_G` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`. A
 morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_Pa, T_A)`, where `T_Pa : X_Pa -> Y_Pa` is a morphism in `Pag`
-and `T_A : X_F => Y_F ∘ T_E` is a natural transformation.
+and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
+`f : x -> y` in `X_Pa`:
+
+```
+X_G x ------------X_G f------------> X_G y
+|                                    |
+|                                    |
+(T_A)_x                              (T_A)_y
+|                                    |
+v                                    v
+Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
+```
 
 1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_P : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
-1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_F (0, 0)`, that exists by the definition of folios.
+1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists by the definition of folios.
 It is denoted as `Ex D`. Since the objects of `DomInc` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
 1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
-where `M = D_F (|D| - 1)`, so that `Ter D k = D_F (|D| - 1, k)`.
+where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
 
 1.8.5. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
 starts at `0`.
@@ -69,7 +80,7 @@ starts at `0`.
 1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
 for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for any
 `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`,
-then `Y_P (m -> k') i' < Y_P (n -> k') j'`.
+then `Y_G (m -> k') i' < Y_G (n -> k') j'`.
 
 1.10.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
