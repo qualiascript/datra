@@ -82,8 +82,8 @@ then `Y_P (m -> k') i' < Y_P (n -> k') j'`.
 
 1.10.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
-`D : DaTra`, let `F = Emb ∘ Ter F : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then if
-`Sum D ~= Ex D`, then `D : DaTraMap`.
+`D : DaTra`, let `F = Emb ∘ Ter D : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then `D : DaTraMap`
+iff `Sum D ~= Ex D`.
 
 [TODO: Serenification functor effect on target needs to be established. Left Kan extension?]
 
