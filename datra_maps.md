@@ -114,44 +114,12 @@ sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote 
 1.11.3. The **Coalition of a DaTra Object**, given an object `X` of `DaTra`, is `Coa X'`, where `X' : DaTrav` is the
 same object viewed as an object of `DaTrav`.
 
+1.11.4. The **Empty Map** is the DaTra set that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to. It is
+denoted as `I = DomInc 0`, and it is initial in `DaTra`.
+
 [TODO: look into a DaTra -> DaTrav normalization functor]
 
+1.12.1. The **Horizontal Sum Bifunctor**, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<`
+operator, as `DaTra +_< DaTra -> DaTra`, is defined for DaTra morphisms `F : X -> Y`, `F' : X' -> Y'` as follows:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-[TODO; needs rework from below due to definition changes above]
-
-1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Ser F`, where
-`F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
-`F = id X`, `X'` is the coalition of `X`. Clearly [TODO: Proof outline], `X' m k` is inhabited iff `m = k = 0`, so
-that `X'` is isomorphic to an object of `DomIns`, and in fact, as the only morphism is identity in `X'`'s pagination,
-to an object of `Dom`. As such, to each arrow of `Coa`, one obtains an arrow `f : DaTra -> Dom`, mapping `DaTra`
-objects to `Dom` objects, and as such, a forgetful functor `Forg : DaTra -> Dom`. Then let `Free : Dom -> DaTra`
-be the free functor sending each dominion to its coalition. Clearly, `Free Forg Free x = Free x` and
-`Forg Free Forg y = Forg y`, so that `Free` is left adjoint of `Forg`.
-
-1.12. The **Sequential Bifunctor**, `(;) : DaTra * DaTra -> DaTra`, also denoted infix as `DaTra ; DaTra -> DaTra`,
-is defined for `F : X -> Y`, `F' : X' -> Y'` as follows: let `U` be the universal arrow `U : F + F' -> H` in `DaTrav`,
-so that for inclusions `U_F : F -> H`, `U_F' : F' -> H`, if there exists integers `k`, `m`, `n`, so that `U_F` sends
-`F 0 0` to `H k m` and `U_F'` sends `F' 0 0` to `H k n`, then `m < n`. Clearly, the solution has the properties that
-`k = 1`, `m = 0`, `n = 1`, and `U 0 0 = Forg (F + F')`.
-
-[TODO: `DaTra`, along with `(;)`, form a symmetric monoidal category]
-
+[TODO: `(DaTra, +_<, I)` forms a symmetric monoidal category]
