@@ -28,13 +28,8 @@ to its underlying set-theoretic surjection.
 
 1.5.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
-1.6.1. A **Folio** is a functor from a short chain `C` to `CoDomCon`, `F : C -> CoDomCon`, with the property that 
-`F 0 = 1`, where `1` is the singleton set in `CoDomCon`.
-
-1.6.2. Alternatively, a Folio is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category,
-that preserves colimits.
-
-1.6.3. In fact, to show `F : C -> (1 / CoDomCon)` is a Folio, it is sufficient to show it preserves the initial object.
+1.6.1. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
+the initial object.
 
 1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
 `P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. For any
