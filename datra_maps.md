@@ -97,11 +97,13 @@ subcategory of `DaTraMap` so that a morphism `f : x -> y` of `DaTraMap` is a mor
 1.10.4. The **DaTrav Map Inclusion Functor**, `DaTravMapInc : DaTravMap -> DaTrav` is the canonical restriction of
 `DaTraMapInc` on the morphisms of `DaTravMap`.
 
-1.10.5. The **Serenity Lemma** states that `DaTravMapInc` has a right adjoint, denoted the **Charting Functor**
-`Chr : DaTrav -> DaTravMap`. Proof: define `Chr`'s action on objects `X : DaTrav` as the universal arrow from
-`DaTravMapInc` to `X`, and denote `X' = DaTravMapInc Chr X`, along with `H : X' -> X`. As `X'` is terminal among
-objects with this property, for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an isomorphism, and as
-`H_E` is faithful, this uniquely determines `X'`.
+1.10.5. The **Charting Functor**, if it exists, is defined as the right adjoint to `DaTravMapInc`, and it is denoted
+`Chr : DaTrav -> DaTravMap`.
+
+1.10.6. The **Serenity Lemma** states that `Chr` exists. Proof sketch: define `Chr`'s action on objects `X : DaTrav` as
+the universal arrow from `DaTravMapInc` to `X`, and denote `X' = DaTravMapInc Chr X`, along with `H : X' -> X`. As `X'`
+is terminal among objects with this property, for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an
+isomorphism, and as `H_E` is faithful, this uniquely determines `X'`.
 
 
 
