@@ -119,12 +119,9 @@ denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 
 [TODO: look into a DaTra -> DaTrav normalization functor, say named `Reo`]
 
-[TODO: ordering operation is explained both here and (1.9.1) - should be streamlined to one definition]
-
 1.12.1. The **Horizontal Sum Bifunctor**, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<`
 operator, as `DaTra +_< DaTra -> DaTra`, is defined for DaTra morphisms `F : X -> Y`, `F' : X' -> Y'` as follows:
 it is the universal arrow from `DaTravMapInc` to `G = (Chr Reo F) + (Chr Reo F')`, `T : X' -> G`, with the property
-that there exists integers `m`,`i`, `n`, `j` so that for `(m', i') = T_P_E (m, i)`, `(n', j') = T_P_E (n, j)`,
-for `k = min(m', n')`, then `Y_G (m' -> k) i' < Y_G (n' -> k) j'`. 
+that [TODO: complete; property is informally that there exists indices that preserve ordering]
 
 [TODO: `(DaTra, +_<, I)` forms a symmetric monoidal category]
