@@ -117,11 +117,8 @@ same object viewed as an object of `DaTrav`.
 1.11.4. The **Empty Map** is the DaTra set that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to. It is
 denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 
-[TODO: look into a DaTra -> DaTrav normalization functor, say named `Reo`]
+[TODO: we need a DaTra -> DaTrav normalization functor for horizontal sums to be definable]
 
-1.12.1. The **Horizontal Sum Bifunctor**, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<`
-operator, as `DaTra +_< DaTra -> DaTra`, is defined for DaTra morphisms `F : X -> Y`, `F' : X' -> Y'` as follows:
-it is the universal arrow from `DaTravMapInc` to `G = (Chr Reo F) + (Chr Reo F')`, `T : X' -> G`, with the property
-that [TODO: complete; property is informally that there exists indices that preserve ordering]
+[TODO: Horizontal Sum Bifunctor, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<` operator]
 
 [TODO: `(DaTra, +_<, I)` forms a symmetric monoidal category]
