@@ -100,7 +100,7 @@ subcategory of `DaTraMap` so that a morphism `f : x -> y` of `DaTraMap` is a mor
 1.10.5. The **Charting Functor**, if it exists, is defined as the right adjoint to `DaTravMapInc`, and it is denoted
 `Chr : DaTrav -> DaTravMap`.
 
-1.10.6. The **Serenity Lemma** states that `Chr` exists. Proof sketch: `Chr`'s action on objects `X : DaTrav` is
+1.10.6. The **Cartography Lemma** states that `Chr` exists. Proof sketch: `Chr`'s action on objects `X : DaTrav` is
 sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote `X' = DaTravMapInc Chr X`, along with
 `H : X' -> X`, with `X'` terminal among objects with this property. The solution is given by the DaTra map so that
 `Ter X' ~= Ter X`, which is unique as `DaTrav` preserves orders, and terminal as `H_E` is faithful.
