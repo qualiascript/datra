@@ -31,29 +31,29 @@ to its underlying set-theoretic surjection.
 1.6.1. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
 the initial object.
 
-1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
-`P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. For any
-`W : Pag`, we denote `W_P` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
+1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
+`H = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `H`. For any
+`W : Pag`, we denote `W_H` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
 `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, so that the following diagram commutes:
 
 ```
-x = (m, i) -----f----> (n, (X_P f) i)
+x = (m, i) -----f----> (n, (X_H f) i)
 |                      |
 |                      |
 T                      T
 |                      |
 |                      |
 ⌄                      ⌄                             
-(m', i') ----T f-----> (n', (Y_P (T f)) i')
+(m', i') ----T f-----> (n', (Y_H (T f)) i')
 ```
 
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
-Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(H, G)`, where `H : Pag`
-and `G` is a functor `G : H_E -> DomInc`, or alternatively a presheaf `G : op H_E -> CoDomInc`. For `X : DaTra`,
-we denote `X_H` the first inclusion, `X_G` the second inclusion, along with `X_P = X_H_P`, `X_E = X_H_E`. A
-morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_H, T_A)`, where `T_H : X_H -> Y_H` is a morphism in `Pag`
+Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(P, G)`, where `P : Pag`
+and `G` is a functor `G : P_E -> DomInc`, or alternatively a presheaf `G : op P_E -> CoDomInc`. For `X : DaTra`,
+we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
+morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
 and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
-`f : x -> y` in `X_H`:
+`f : x -> y` in `X_P`:
 
 ```
 X_G x ------------X_G f------------> X_G y
@@ -65,7 +65,7 @@ v                                    v
 Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 ```
 
-1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_P : C -> Set`, that
+1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
 1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists by the definition of folios.
