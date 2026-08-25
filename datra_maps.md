@@ -24,7 +24,7 @@ is, `CoDomCon = op DomCon`.
 1.4.1. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon`
 to its underlying set-theoretic surjection.
 
-1.5.1. A **Chain** is a strongly connected thin category, taken skeletally.
+1.5.1. A **Chain** is a totally ordered thin category, taken skeletally.
 
 1.5.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
