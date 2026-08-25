@@ -87,22 +87,21 @@ includes all DaTra sets with the property that their extent is isomorphic to the
 `D : DaTra`, let `F = Emb ∘ Ter D : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then `D : DaTraMap`
 iff `Sum D ~= Ex D`.
 
-1.11.1. The *Serenification Functor*, denoted `Ser : DaTra -> DaTra`, sends each DaTra set `F : X -> Y` to a set
-`F: X' -> Y` with the property that `X' : DaTraMap`. Its action on `F` is as follows: let `H : X' -> X` be the
-universal arrow in `DaTrav` with target `X` so that `H_E` is a full functor, and for `Ter X' : M -> Dom`, for any
-`m : M`, `H_A_(Ter X' m)` is an isomorphism. Then, `Ser F = F ∘ H`. `X'` is a map by virtue of being initial in
-`DaTrav` among objects with this property.
+1.10.2. The **DaTra Map Inclusion Functor**, `DaTraMapInc : DaTraMap -> DaTra` sends each DaTra map to its equivalent
+DaTra set.
 
-[TODO: left Kan extension?]
+1.10.3. The **Category of Data Traversal Maps**, or simply **DaTrav Maps**, denoted `DaTravMap`, is the wide
+subcategory of `DaTraMap` so that a morphism `f : x -> y` of `DaTraMap` is a morphism of `DaTravMap` iff
+`DaTraMapInc f` is a morphism of `DaTrav`.
 
+1.10.4. The **DaTrav Map Inclusion Functor**, `DaTravMapInc : DaTravMap -> DaTrav` is the canonical restriction of
+`DaTraMapInc` on the morphisms of `DaTravMap`.
 
-
-
-
-
-
-
-
+1.10.5. The **Serenity Lemma** states that `DaTravMapInc` has a right adjoint, denoted the **Charting Functor**
+`Chr : DaTrav -> DaTravMap`. Proof: define `Chr`'s action on objects `X : DaTrav` as the universal arrow from
+`DaTravMapInc` to `X`, and denote `X' = DaTravMapInc Chr X`, along with `H : X' -> X`. As `X'` is terminal among
+objects with this property, for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an isomorphism, and as
+`H_E` is faithful, this uniquely determines `X'`.
 
 
 
