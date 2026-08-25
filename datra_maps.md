@@ -34,21 +34,17 @@ the initial object.
 1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(P, E)`, where 
 `P = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `P`. For any
 `W : Pag`, we denote `W_P` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
-`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`.As such, the following diagram commutes for
-any `f : x -> y`, `g : y -> z` morphisms in `X_E`:
-
-[TODO: check if below diagram simplifies to naturality square]
+`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, so that the following diagram commutes:
 
 ```
-x = (m, i) -----f----> (n, (X_P f) i) ------g------> (p, (X_P g) ∘ (X_P f) i)
-|                      |                             |
-|                      |                             |
-T (m, i)               T (n, (X_P f) i)              T (p, (X_P g) ∘ (X_P f) i)
-|                      |                             |
-|                      |                             |
-v                      v                             v
-(m', i') ----T f-----> (n', (Y_P (T f)) i') --T g--> (p', (Y_P (T g)) ∘ (Y_P (T f)) i') 
-
+x = (m, i) -----f----> (n, (X_P f) i)
+|                      |
+|                      |
+T                      T
+|                      |
+|                      |
+⌄                      ⌄                             
+(m', i') ----T f-----> (n', (Y_P (T f)) i')
 ```
 
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
