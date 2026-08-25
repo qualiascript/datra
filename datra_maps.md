@@ -87,13 +87,43 @@ includes all DaTra sets with the property that their extent is isomorphic to the
 `D : DaTra`, let `F = Emb ∘ Ter D : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then `D : DaTraMap`
 iff `Sum D ~= Ex D`.
 
-[TODO: Serenification functor effect on target needs to be established. Left Kan extension?]
+1.11.1. The *Serenification Functor*, denoted `Ser : DaTra -> DaTra`, sends each DaTra set `F : X -> Y` to a set
+`F: X' -> Y` with the property that `X' : DaTraMap`. Its action on `F` is as follows: let `H : X' -> X` be the
+universal arrow in `DaTrav` with target `X` so that `H_E` is a full functor, and for `Ter X' : M -> Dom`, for any
+`m : M`, `H_A_(Ter X' m)` is an isomorphism. Then, `Ser F = F ∘ H`. `X'` is a map by virtue of being initial in
+`DaTrav` among objects with this property.
 
-1.10.2. The **Serenification Functor** `Ser : DaTra -> DaTra` sends each DaTra set `F : X -> Y` to a set
-`F' : X' -> Y` so that `X'` is a map. Its action of morphisms
-is as follows: let `F: X -> Y` be a morphism of `DaTra`, then let `H : X' -> X` be the universal arrow in `DaTrav` to
-target `X` so that `H_E` is a full functor, and for `Ter X' : M -> Dom`, for any `m : M`, `H_A_(Ter X' m)` is an
-isomorphism. Then, `Ser F = F ∘ H`. [TODO: Proof outline]
+[TODO: left Kan extension?]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 [TODO; needs rework from below due to definition changes above]
 
