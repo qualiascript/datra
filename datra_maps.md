@@ -111,6 +111,8 @@ sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote 
 `Coa`. That is, for every `X : Dom`, `Y : DaTrav`, `hom_DaTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
 `X` and `Y`, so that `Coa (DomInc X) = X`.
 
+1.11.3. The **Coalition of a DaTra Object**, given an object `X` of `DaTra`, is `Coa X'`, where `X' : DaTrav` is the
+same object viewed as an object of `DaTrav`.
 
 
 
