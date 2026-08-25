@@ -48,12 +48,12 @@ T                      T
 ```
 
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
-Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(Pa, G)`, where `Pa : Pag`
-and `G` is a functor `G : Pa_E -> DomInc`, or alternatively a presheaf `G : op Pa_E -> CoDomInc`. For `X : DaTra`,
-we denote `X_Pa` the first inclusion, `X_G` the second inclusion, along with `X_P = X_Pa_P`, `X_E = X_Pa_E`. A
-morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_Pa, T_A)`, where `T_Pa : X_Pa -> Y_Pa` is a morphism in `Pag`
+Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(H, G)`, where `H : Pag`
+and `G` is a functor `G : H_E -> DomInc`, or alternatively a presheaf `G : op H_E -> CoDomInc`. For `X : DaTra`,
+we denote `X_H` the first inclusion, `X_G` the second inclusion, along with `X_P = X_H_P`, `X_E = X_H_E`. A
+morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_H, T_A)`, where `T_H : X_H -> Y_H` is a morphism in `Pag`
 and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
-`f : x -> y` in `X_Pa`:
+`f : x -> y` in `X_H`:
 
 ```
 X_G x ------------X_G f------------> X_G y
