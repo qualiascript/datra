@@ -8,11 +8,11 @@ morphisms set-theoretic functions (i.e. morphisms in `Set`).
 
 1.1.2. The **Domanial Embedding Functor**, denoted `Emb : Dom -> Set`, sends each dominion to its corresponding set.
 
-1.2.1. The **Category of Domanial Inclusions**, denoted `DomInc`, is the category whose objects are dominions, that is, 
+1.2.1. The **Category of Domanial Insertions**, denoted `DomIns`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. 
 
-1.2.2. The **Category of Codomanial Inclusions**, denoted `CoDomInc`, is the opposite category of `DomInc`, that is,
-`CoDomInc = op DomInc`.
+1.2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
+`CoDomIns = op DomIns`.
 
 1.3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
 morphisms are order-preserving epimorphisms in `Dom`. More specifically, a morphism `F : A -> B` in `DomCon` has the
@@ -49,7 +49,7 @@ T                      T
 
 1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
 Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(P, G)`, where `P : Pag`
-and `G` is a functor `G : P_E -> DomInc`, or alternatively a presheaf `G : op P_E -> CoDomInc`. For `X : DaTra`,
+and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : op P_E -> CoDomIns`. For `X : DaTra`,
 we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
 morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
 and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
@@ -69,7 +69,7 @@ Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
 1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
-objects. It is denoted as `Ex D`. Since the objects of `DomInc` are dominions, `Ex D : Dom` for any `D : DaTra`.
+objects. It is denoted as `Ex D`. Since the objects of `DomIns` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
 1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
 where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
@@ -105,6 +105,12 @@ sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote 
 `H : X' -> X`, with `X'` terminal among objects with this property. The solution is given by the DaTra map so that
 `Ter X' ~= Ter X`, which is unique as `DaTrav` preserves orders, and terminal as `H_E` is faithful.
 
+1.11.1. The **Coalizing Functor**, denoted `Coa : DaTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
+
+1.11.2. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> DaTrav`, is the functor that is left adjoint to
+`Coa`. That is, for every `X : Dom`, `Y : DaTrav`, `hom_DaTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
+`X` and `Y`, so that `Coa (DomInc X) = X`.
+
 
 
 
@@ -133,7 +139,7 @@ sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote 
 1.11. The **Coalizing Functor** `Coa : DaTra -> DaTra` sends morphisms `F : X -> Y` to `F' : X' -> Ser F`, where
 `F'` is a universal arrow in `DaTrav`. Then, `X'` is referred to as the **Coalition** of `F`, and, in particular, if
 `F = id X`, `X'` is the coalition of `X`. Clearly [TODO: Proof outline], `X' m k` is inhabited iff `m = k = 0`, so
-that `X'` is isomorphic to an object of `DomInc`, and in fact, as the only morphism is identity in `X'`'s pagination,
+that `X'` is isomorphic to an object of `DomIns`, and in fact, as the only morphism is identity in `X'`'s pagination,
 to an object of `Dom`. As such, to each arrow of `Coa`, one obtains an arrow `f : DaTra -> Dom`, mapping `DaTra`
 objects to `Dom` objects, and as such, a forgetful functor `Forg : DaTra -> Dom`. Then let `Free : Dom -> DaTra`
 be the free functor sending each dominion to its coalition. Clearly, `Free Forg Free x = Free x` and
