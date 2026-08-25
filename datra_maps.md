@@ -68,8 +68,8 @@ Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
-1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists by the definition of folios.
-It is denoted as `Ex D`. Since the objects of `DomInc` are dominions, `Ex D : Dom` for any `D : DaTra`.
+1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
+objects. It is denoted as `Ex D`. Since the objects of `DomInc` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
 1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
 where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
