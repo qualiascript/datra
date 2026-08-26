@@ -150,6 +150,6 @@ as follows: if `X = I`, `Y = I` or `Z = I`, then `Asoc_X_Y_Z = Id`. Otherwise, d
 `G' : (Y +_< Z) -> H` in `DaTrav` with `G'_E (0, 0) = (1, 1)`. As `G_E` is faithful and `G_A = Id`, `G` is invertible
 in `DaTrap`, and by extension in `DaTra`.
 
-1.12.4. The **Serenity Lemma** states that `DaTraMon` exists. Proof sketch: As both `Asoc` and `Brd` send objects to
+1.12.4. The **Serenity Lemma** states that `DaTravMon` exists. Proof sketch: As both `Asoc` and `Brd` send objects to
 isomorphic objects in `DaTra`, it is clear that the pentagon, triangle and hexagon identities commute, thus `DaTravMon`
 is a symmetric monoidal category.
