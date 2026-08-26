@@ -117,6 +117,19 @@ same object viewed as an object of `DaTrav`.
 1.10.4. The **Empty Map** is the DaTra set that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to. It is
 denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 
-[TODO: Horizontal Sum Bifunctor, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<` operator]
+1.11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
+infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
+in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : F * F' -> F + F'` be the unique morphism in `DaTrav` with
+projections `H_1 : F -> F + F'`, `H_2 : F' -> F + F'`, so that for `(m, i) = H_1_E (0, 0)`, `(m', i') = H_2_E (0, 0)`,
+we have `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. It remains to be shown `H` exists and is unique for all
+`F, F'`.
+
+1.11.2. The **Horizontal Lemma** states that `HorSum` exists. Proof sketch: for `F +_< F'`, if `F' = I`, then
+`H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, e) = H_E (0, 0) = (0, 0)`, so
+so that `i = 0` and as `m = 1`, the other condition need not be checked. The case for `F = I` is dual. If both `F` and
+`F'` are distinct from `I`, 
+
+
+
 
 [TODO: `(DaTrav, +_<, I)` forms a symmetric monoidal category]
