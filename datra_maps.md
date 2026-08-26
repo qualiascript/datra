@@ -77,10 +77,10 @@ where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
 1.7.5. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
 starts at `0`.
 
-1.8.1. The **Category of Structured Data Transformations**, denoted `DaTraS`, is the wide subcategory of `DaTra`
+1.8.1. The **Category of Structured Data Transformations**, denoted `StDaTra`, is the wide subcategory of `DaTra`
 whose morphisms for `F : X -> Y` have the property that `F_E` is a faithful functor.
 
-1.8.2. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTraS` whose morphisms
+1.8.2. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `StDaTra` whose morphisms
 for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k, j)` with `i < j`, let
 `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`, then `Y_G (m -> k') i' < Y_G (n -> k') j'`.
 
@@ -141,9 +141,13 @@ and an associator functor so that the pentagon, triangle and hexagon identities 
 
 1.12.2. The **Data Traversal Braiding Functor**, denoted `Brd_X_Y : X +_< Y -> Y +_< X` for `X, Y : DaTrav`, is defined
 as follows: if `X = I` or `Y = I`, `Brd_X_Y = Id`. Otherwise, let `G : H -> X +_< Y` be the universal arrow from
-`DaTraS` to `X +_< Y` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Trivially, `H = Y +_< X`, so that
+`StDaTra` to `X +_< Y` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Trivially, `H = Y +_< X`, so that
 we let `Brd_X_Y X +_< Y = H`, and trivially, `Brd_Y_X Brd_X_Y = Id`.
 
-
-
-[TODO: `(DaTrav, +_<, I)` forms a symmetric monoidal category]
+1.12.3. The **Data Traversal Associator**, denoted `Asoc_X_Y_Z : (X +_< Y) +_< Z -> X +_< (Y +_< Z)`, is defined
+as follows: if `X = I`, `Y = I` or `Z = I`, then `Asoc_X_Y_Z = Id`. Otherwise, denote `R = (X +_< Y) +_< Z` and let
+`G : H -> R` be the universal arrow from `StDaTra` to `R` so that `G_E (2, 0) = (1, 0)` and there exists a morphism
+`G' : (Y +_< Z) -> H` in `DaTrav` with `G'_E (0, 0) = (1, 1)`. As `G_E` is faithful and `G_A = Id`, `G` is invertible
+in `StDaTra`, and by extension in `DaTra`. As both `Asoc` and `Brd` send objects to isomorphic objects in `DaTra`,
+it is clear that the pentagon, triangle and hexagon identities commute, thus `DaTravMon` is a symmetric monoidal
+category.
