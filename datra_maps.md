@@ -31,7 +31,7 @@ to its underlying set-theoretic surjection.
 1.6.1. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
 the initial object.
 
-1.7.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
+1.6.2. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
 `H = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `H`. For any
 `W : Pag`, we denote `W_H` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
 `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, so that the following diagram commutes:
@@ -47,7 +47,7 @@ T                      T
 (m', i') ----T f-----> (n', (Y_H (T f)) i')
 ```
 
-1.8.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
+1.7.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
 Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(P, G)`, where `P : Pag`
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : op P_E -> CoDomIns`. For `X : DaTra`,
 we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
@@ -65,59 +65,57 @@ v                                    v
 Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 ```
 
-1.8.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
+1.7.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
-1.8.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
+1.7.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
 objects. It is denoted as `Ex D`. Since the objects of `DomIns` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
-1.8.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
+1.7.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
 where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
 
-1.8.5. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
+1.7.5. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
 starts at `0`.
 
-1.9.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
+1.8.1. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTra` whose morphisms
 for `F : X -> Y` have the following properties: the underlying functor `F_E : X_E -> Y_E` is faithful, and for any
 `x = (k, i)`, `y = (k, j)` with `i < j`, let `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`,
 then `Y_G (m -> k') i' < Y_G (n -> k') j'`.
 
-1.10.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
+1.9.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
 `D : DaTra`, let `F = Emb ∘ Ter D : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then `D : DaTraMap`
 iff `Sum D ~= Ex D`.
 
-1.10.2. The **DaTra Map Inclusion Functor**, `DaTraMapInc : DaTraMap -> DaTra` sends each DaTra map to its equivalent
+1.9.2. The **DaTra Map Inclusion Functor**, `DaTraMapInc : DaTraMap -> DaTra` sends each DaTra map to its equivalent
 DaTra set.
 
-1.10.3. The **Category of Data Traversal Maps**, or simply **DaTrav Maps**, denoted `DaTravMap`, is the wide
+1.9.3. The **Category of Data Traversal Maps**, or simply **DaTrav Maps**, denoted `DaTravMap`, is the wide
 subcategory of `DaTraMap` so that a morphism `f : x -> y` of `DaTraMap` is a morphism of `DaTravMap` iff
 `DaTraMapInc f` is a morphism of `DaTrav`.
 
-1.10.4. The **DaTrav Map Inclusion Functor**, `DaTravMapInc : DaTravMap -> DaTrav` is the canonical restriction of
+1.9.4. The **DaTrav Map Inclusion Functor**, `DaTravMapInc : DaTravMap -> DaTrav` is the canonical restriction of
 `DaTraMapInc` on the morphisms of `DaTravMap`.
 
-1.10.5. The **Charting Functor**, if it exists, is defined as the right adjoint to `DaTravMapInc`, and it is denoted
+1.9.5. The **Charting Functor**, if it exists, is defined as the right adjoint to `DaTravMapInc`, and it is denoted
 `Chr : DaTrav -> DaTravMap`.
 
-1.10.6. The **Cartography Lemma** states that `Chr` exists. Proof sketch: `Chr`'s action on objects `X : DaTrav` is
+1.9.6. The **Cartography Lemma** states that `Chr` exists. Proof sketch: `Chr`'s action on objects `X : DaTrav` is
 sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote `X' = DaTravMapInc Chr X`, along with
 `H : X' -> X`, with `X'` terminal among objects with this property. The solution is given by the DaTra map so that
 `Ter X' ~= Ter X`, which is unique as `DaTrav` preserves orders, and terminal as `H_E` is faithful.
 
-1.11.1. The **Coalizing Functor**, denoted `Coa : DaTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
+1.10.1. The **Coalizing Functor**, denoted `Coa : DaTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
 
-1.11.2. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> DaTrav`, is the functor that is left adjoint to
+1.10.2. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> DaTrav`, is the functor that is left adjoint to
 `Coa`. That is, for every `X : Dom`, `Y : DaTrav`, `hom_DaTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
 `X` and `Y`, so that `Coa (DomInc X) = X`.
 
-1.11.3. The **Coalition of a DaTra Object**, given an object `X` of `DaTra`, is `Coa X'`, where `X' : DaTrav` is the
+1.10.3. The **Coalition of a DaTra Object**, given an object `X` of `DaTra`, is `Coa X'`, where `X' : DaTrav` is the
 same object viewed as an object of `DaTrav`.
 
-1.11.4. The **Empty Map** is the DaTra set that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to. It is
+1.10.4. The **Empty Map** is the DaTra set that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to. It is
 denoted as `I = DomInc 0`, and it is initial in `DaTra`.
-
-[TODO: we need a DaTra -> DaTrav normalization functor for horizontal sums to be definable]
 
 [TODO: Horizontal Sum Bifunctor, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<` operator]
 
