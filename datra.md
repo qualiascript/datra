@@ -65,6 +65,8 @@ v                                    v
 Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 ```
 
+[TODO: show explicitly `DaTra` is a topos]
+
 1.7.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
