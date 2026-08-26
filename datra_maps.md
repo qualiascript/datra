@@ -125,9 +125,11 @@ in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the univ
 remains to be shown `H` exists and is unique for all morphisms `F, F'` of `DaTrav`.
 
 1.11.2. The **Horizontal Lemma** states that `HorSum` exists. Proof sketch: for `F +_< F'`, if `F' = I`, then
-`H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, e) = H_E (0, 0) = (0, 0)`, so
+`H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, i) = H_E (0, 0) = (0, 0)`, so
 so that `i = 0` and as `m = 1`, the other condition need not be checked. The case for `F = I` is dual. If both `F` and
-`F'` are distinct from `I`, 
+`F'` are distinct from `I`, for `(m, i) = H_1_E (0, 0)` we have `m > 0`, as if `m = 0`, then `i = 0` and
+`Ex F = Ex F + Ex F'`, but as `F'` is not `I`, this cannot hold. Dually, for `(m', i') = H_2_E (0, 0)`, `m' > 0`. 
+As `H` is an universal arrow, however, `m = m' = 1`, and by the conditions of (1.11.1), `i = 0` and `i' = 1`.
 
 
 
