@@ -2,8 +2,8 @@
 
 ## 1. Base Definitions
 
-1.1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_1`
-(i.e. the first uncountable ordinal), that is, its objects are sets that have an injection to `omega_1`, and as its
+1.1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_0`
+(i.e. the smallest infinite ordinal), that is, its objects are sets that have an injection to `omega_0`, and as its
 morphisms set-theoretic functions (i.e. morphisms in `Set`).
 
 1.1.2. The **Domanial Embedding Functor**, denoted `Emb : Dom -> Set`, sends each dominion to its corresponding set.
