@@ -136,10 +136,10 @@ that `i = 0` and as `m = 0`, the condition on `i'` need not be checked. The case
 1.12.1. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, if it exists, is the symmetric monoidal category
 with `DaTrav` as the underlying category, `+_<` as the tensor product and `I` as the identity, so that we denote
 `DaTravMon = (DaTrav, +_<, I)`. As for `X : DaTrav`, `X = X + I = I + X` is strict, the left and right unitors are
-given by identity. It remains to be shown that there is a braiding functor whose double application yields identity,
+given by identity. It remains to be shown that there is a braider functor whose double application yields identity,
 and an associator functor so that the pentagon, triangle and hexagon identities commute.
 
-1.12.2. The **Data Traversal Braiding Functor**, denoted `Brd_X_Y : X +_< Y -> Y +_< X` for `X, Y : DaTrav`, is defined
+1.12.2. The **Data Traversal Braider**, denoted `Brd_X_Y : X +_< Y -> Y +_< X` for `X, Y : DaTrav`, is defined
 as follows: if `X = I` or `Y = I`, `Brd_X_Y = Id`. Otherwise, let `G : H -> X +_< Y` be the universal arrow from
 `DaTrap` to `X +_< Y` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Trivially, `H = Y +_< X`, so that
 we let `Brd_X_Y X +_< Y = H`, and trivially, `Brd_Y_X Brd_X_Y = Id`.
