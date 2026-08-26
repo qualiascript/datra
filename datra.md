@@ -21,17 +21,17 @@ property that for any `x, y : A`, if `|x| < |y|`, then `|F x| <= |F y|`.
 1.3.2. The **Category of Codomanial Consolidations**, denoted `CoDomCon`, is the opposite category of `DomCon`, that
 is, `CoDomCon = op DomCon`.
 
-1.4.1. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon`
+1.4.1. A **Chain** is a totally ordered thin category, taken skeletally.
+
+1.4.2. A **Short Chain** is a chain that is finite, taken skeletally.
+
+1.5.1. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon`
 to its underlying set-theoretic surjection.
 
-1.5.1. A **Chain** is a totally ordered thin category, taken skeletally.
-
-1.5.2. A **Short Chain** is a chain that is finite, taken skeletally.
-
-1.6.1. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
+1.5.2. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
 the initial object.
 
-1.6.2. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
+1.6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
 `H = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `H`. For any
 `W : Pag`, we denote `W_H` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
 `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, so that the following diagram commutes:
@@ -148,6 +148,8 @@ we let `Brd_X_Y X +_< Y = H`, and trivially, `Brd_Y_X Brd_X_Y = Id`.
 as follows: if `X = I`, `Y = I` or `Z = I`, then `Asoc_X_Y_Z = Id`. Otherwise, denote `R = (X +_< Y) +_< Z` and let
 `G : H -> R` be the universal arrow from `DaTrap` to `R` so that `G_E (2, 0) = (1, 0)` and there exists a morphism
 `G' : (Y +_< Z) -> H` in `DaTrav` with `G'_E (0, 0) = (1, 1)`. As `G_E` is faithful and `G_A = Id`, `G` is invertible
-in `DaTrap`, and by extension in `DaTra`. As both `Asoc` and `Brd` send objects to isomorphic objects in `DaTra`,
-it is clear that the pentagon, triangle and hexagon identities commute, thus `DaTravMon` is a symmetric monoidal
-category.
+in `DaTrap`, and by extension in `DaTra`.
+
+1.12.4. The **Serenity Lemma** states that `DaTraMon` exists: Proof sketch: As both `Asoc` and `Brd` send objects to
+isomorphic objects in `DaTra`, it is clear that the pentagon, triangle and hexagon identities commute, thus `DaTravMon`
+is a symmetric monoidal category.
