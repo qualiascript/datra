@@ -121,4 +121,4 @@ denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 
 [TODO: Horizontal Sum Bifunctor, `HorSum : DaTra * DaTra -> DaTra`, also denoted infix using the `+_<` operator]
 
-[TODO: `(DaTra, +_<, I)` forms a symmetric monoidal category]
+[TODO: `(DaTrav, +_<, I)` forms a symmetric monoidal category]
