@@ -128,7 +128,7 @@ in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the univ
 
 1.11.2. The **Horizontal Lemma** states that `HorSum` exists. Proof sketch: for `F +_< F'`, if `F' = I`, then
 `H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, i) = H_E (0, 0) = (0, 0)`, so
-that `i = 0` and as `m = 1`, the other condition need not be checked. The case for `F = I` is dual. If both `F` and
+that `i = 0` and as `m = 0`, the condition on `i'` need not be checked. The case for `F = I` is dual. If both `F` and
 `F'` are distinct from `I`, for `(m, i) = H_1_E (0, 0)`, if `m = 0`, then `i = 0` and `Ex F = Ex F + Ex F'`, but as
 `F'` is not `I`, this cannot hold, so that `m = 1`, which implies `i' = 1`, so that the solution is given by
 `(m, i) = (1, 0)`, `(m', i') = (1, 1)`.
@@ -150,6 +150,6 @@ as follows: if `X = I`, `Y = I` or `Z = I`, then `Asoc_X_Y_Z = Id`. Otherwise, d
 `G' : (Y +_< Z) -> H` in `DaTrav` with `G'_E (0, 0) = (1, 1)`. As `G_E` is faithful and `G_A = Id`, `G` is invertible
 in `DaTrap`, and by extension in `DaTra`.
 
-1.12.4. The **Serenity Lemma** states that `DaTraMon` exists: Proof sketch: As both `Asoc` and `Brd` send objects to
+1.12.4. The **Serenity Lemma** states that `DaTraMon` exists. Proof sketch: As both `Asoc` and `Brd` send objects to
 isomorphic objects in `DaTra`, it is clear that the pentagon, triangle and hexagon identities commute, thus `DaTravMon`
 is a symmetric monoidal category.
