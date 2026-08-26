@@ -121,16 +121,23 @@ denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
 in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the universal arrow from `DaTrav * DaTrav` to
 `F + F'` so that for projections `H_1 : G -> F + F'`, `H2 : G' -> F + F'`, for `(m, i) = H_1_E (0, 0)`,
-`(m', i') = H_2_E (0, 0)`, we have `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then, `F +_< F' = H`. It
-remains to be shown `H` exists and is unique for all morphisms `F, F'` of `DaTrav`.
+`(m', i') = H_2_E (0, 0)`, we have `m < 2`, `m' < 2`, `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then,
+`F +_< F' = H`. It remains to be shown `H` exists and is unique for all morphisms `F, F'` of `DaTrav`.
 
 1.11.2. The **Horizontal Lemma** states that `HorSum` exists. Proof sketch: for `F +_< F'`, if `F' = I`, then
 `H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, i) = H_E (0, 0) = (0, 0)`, so
 so that `i = 0` and as `m = 1`, the other condition need not be checked. The case for `F = I` is dual. If both `F` and
-`F'` are distinct from `I`, for `(m, i) = H_1_E (0, 0)` we have `m > 0`, as if `m = 0`, then `i = 0` and
-`Ex F = Ex F + Ex F'`, but as `F'` is not `I`, this cannot hold. Dually, for `(m', i') = H_2_E (0, 0)`, `m' > 0`. 
-As `H` is an universal arrow, however, `m = m' = 1`, and by the conditions of (1.11.1), `i = 0` and `i' = 1`.
+`F'` are distinct from `I`, for `(m, i) = H_1_E (0, 0)`, if `m = 0`, then `i = 0` and `Ex F = Ex F + Ex F'`, but as
+`F'` is not `I`, this cannot hold, so that `m = 1`, which implies `i' = 1`, so that the solution is given by
+`(m, i) = (1, 0)`, `(m', i') = (1, 1)`.
 
+1.12.1. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, if it exists, is the symmetric monoidal category
+with `DaTrav` as the underlying category, `+_<` as the tensor product and `I` as the identity, so that we denote
+`DaTravMon = (DaTrav, +_<, I)`. As for `X : DaTrav`, `X = X + I = I + X` is strict, the left and right unitors are
+given by identity. It remains to be shown that there is an invertible braiding functor and an associator functor so
+that the pentagon, triangle and hexagon identities commute.
+
+1.12.2. The **Data Traversal Braiding Functor**, denoted `Brd_X_Y : X +_< Y -> Y +_< X` for `X, Y : DaTrav`,
 
 
 
