@@ -1,4 +1,4 @@
-# Datra Proof [Lean verification WIP]
+# Datra Proof Sketch [Lean verification WIP]
 
 ## 1. Base Definitions
 
