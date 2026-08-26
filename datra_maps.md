@@ -1,4 +1,4 @@
-# Datra Proof Sketchbook
+# Datra Proof [Lean verification WIP]
 
 ## 1. Base Definitions
 
