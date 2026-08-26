@@ -25,8 +25,8 @@ is, `CoDomCon = op DomCon`.
 
 1.4.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
-1.5.1. The **Traversal Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism in `DomCon`
-to its underlying set-theoretic surjection.
+1.5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism
+in `DomCon` to its underlying set-theoretic surjection.
 
 1.5.2. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
 the initial object.
