@@ -1,2 +1,16 @@
 .idea
 datra.iml
+.elan/
+.lake/
+.tools/
+__pycache__/
+tmp/
+preprint.log
+preprint.synctex.gz
+preprint.pdf
+preprint.tex
+datra_code.lean
+preprint_full.log
+preprint_full.synctex.gz
+preprint_full.pdf
+preprint_full.tex
