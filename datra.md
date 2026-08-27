@@ -32,7 +32,7 @@ the initial object.
 6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
 `H = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `H`. For any
 `W : Pag`, we denote `W_H` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
-`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, so that the following diagram commutes:
+`F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, which implies the following diagram commutes:
 
 ```
 x = (m, i) -----f----> (n, (X_H f) i)
