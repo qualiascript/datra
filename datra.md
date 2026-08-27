@@ -63,18 +63,19 @@ v                                    v
 Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 ```
 
-[TODO: show explicitly `DaTra` is a topos]
+1.7.2. The **Transformation Lemma** states that `DaTra` is a topos. Proof sketch: for all `X : DaTra` forget to
+`X_G`, one obtains a category of presheaves.
 
-1.7.2. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
+1.7.3. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
 
-1.7.3. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
+1.7.4. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
 objects. It is denoted as `Ex D`. Since the objects of `DomIns` are dominions, `Ex D : Dom` for any `D : DaTra`.
 
-1.7.4. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
+1.7.5. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
 where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
 
-1.7.5. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
+1.7.6. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
 starts at `0`.
 
 1.8.1. The **Category of Data Transposals**, denoted `DaTrap`, is the wide subcategory of `DaTra` whose morphisms for
