@@ -1,6 +1,6 @@
 # Datra
 
-A [lean formalization](datra.lean) for the semantics of Datra, a language for Data Transformations.
+A language for data transformations. Read the [preprint](datra.pdf) or the [Lean formalization](datra.lean).
 
 ## Preprint
 
