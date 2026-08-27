@@ -26,16 +26,6 @@ Category on a Paginated Topos}
 \begin{document}
 \maketitle
 
-\begin{abstract}
-This file formalizes \texttt{datra.md}. The declarations are kept in the same
-numbered order as the source document. The original prose is repeated
-verbatim before the corresponding Lean declarations.
-
-The implementation uses a chosen injection into $\mathbb{N}$ as the rank of an
-element. This choice is isolated in \texttt{Dominion.rank}, so a later
-replacement by accessible ordinals does not affect the categorical interfaces.
-\end{abstract}
-
 \section{Dominions}
 
 \begin{definition}[The Category of Dominions]
