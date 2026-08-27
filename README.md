@@ -3,6 +3,26 @@
 A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer](primer.md). Lean formalization
 is in active progress.
 
+## Preprint
+
+The LaTeX preprint is embedded directly in `datra.lean` between `/-%%` and
+`%%-/` markers. Generate it with:
+
+```sh
+make blueprint
+```
+
+This writes `preprint.tex`. Build the PDF with:
+
+```sh
+make preprint
+```
+
+No system-wide TeX installation is required. The first build downloads the
+pinned Tectonic engine and the required TeX packages into `.tools/tectonic`;
+later builds reuse that local installation and cache. To install the engine
+without compiling the document, run `make setup-tex`.
+
 ## Code Example
 
 ### Hello World

@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""Extract LaTeX blocks delimited by /-%% and %%-/ from Lean sources."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+from pathlib import Path
+
+
+BLUEPRINT_BLOCK = re.compile(r"/-%%\s*\n?(.*?)\n?%%-/", re.DOTALL)
+
+
+def extract(path: Path) -> list[str]:
+    source = path.read_text(encoding="utf-8")
+    return [block.strip() for block in BLUEPRINT_BLOCK.findall(source)]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="extract embedded LaTeX blueprint blocks from Lean files"
+    )
+    parser.add_argument("files", nargs="+", type=Path, metavar="FILE.lean")
+    args = parser.parse_args()
+
+    blocks: list[str] = []
+    for path in args.files:
+        try:
+            blocks.extend(extract(path))
+        except OSError as error:
+            parser.error(str(error))
+
+    sys.stdout.write("\n\n".join(blocks))
+    if blocks:
+        sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

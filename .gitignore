@@ -2,3 +2,8 @@
 datra.iml
 .elan/
 .lake/
+.tools/
+__pycache__/
+tmp/
+preprint.log
+preprint.synctex.gz
