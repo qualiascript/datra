@@ -7,3 +7,5 @@ __pycache__/
 tmp/
 preprint.log
 preprint.synctex.gz
+preprint.pdf
+preprint.tex
