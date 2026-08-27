@@ -1,7 +1,6 @@
 # Datra
 
-A WIP language spec for a **da**ta **tra**nsformation language. Read the [primer](primer.md). Lean formalization
-is in active progress.
+A [lean formalization](datra.lean) for the semantics of Datra, a language for Data Transformations.
 
 ## Preprint
 
@@ -30,21 +29,4 @@ syntax-highlighted and line-numbered appendix, run:
 make preprint_full
 ```
 
-## Code Example
 
-### Hello World
-
-```
-"Hello, world!"
-```
-
-### Dependent Identifiers
-
-```
-double :: x of Int -> Int := 2 * x
-myfunc :: {x of "x[double]" : Int, y of "y[double]" : Int} -> Int
-    := 2 * x + y
-    
-mynum := myfunc(y4 := 2, x6 := 3) # := 8
-# mynum := myfunc(x7 := 3, y6 := 4) # does not compile!
-```
