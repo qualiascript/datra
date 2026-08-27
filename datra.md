@@ -63,8 +63,10 @@ v                                    v
 Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 ```
 
-1.7.2. The **Transformation Lemma** states that `DaTra` is a topos. Proof sketch: for all `X : DaTra` forget to
-`X_G`, one obtains a category of presheaves.
+1.7.2. The **Transformation Lemma** states that `DaTra` is a topos. Proof sketch: Let `PSh(B) = op B -> Set` be the
+fixed category of underlying presheaves. The forgetful functor `U : DaTra -> PSh(B)` has a **Minimal Pagination 
+Functor** `MinPag : PSh(B) -> DaTra`. The adjunction `MinPag -| U` has invertible unit and counit, so
+`DaTra ~= PSh(B)`, and `DaTra` is a topos.
 
 1.7.3. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
 is, the number of objects of the small chain `C`. It is denoted as `|D|`.
@@ -83,7 +85,7 @@ starts at `0`.
 
 1.8.2. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTrap` whose morphisms
 for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k, j)` with `i < j`, let
-`x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`, then `Y_G (m -> k') i' < Y_G (n -> k') j'`.
+`x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`, then `Y_H (m -> k') i' < Y_H (n -> k') j'`.
 
 1.9.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
