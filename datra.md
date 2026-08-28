@@ -122,19 +122,19 @@ where `Yo` represents the Yoneda embedding `Yo : Atl -> DaTra`.
 morphisms for `F : X -> Y` have the property that, for any subatlas `S : Yo A -> D`, let `P` be the pullback of `F`
 and `S`, then projection `P' : P -> X` is either empty or representable as `P' = Yo f`, where `f` is a morphism of `A`.
 
-10.3. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
+10.4. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
 
-10.4. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
+10.5. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
 
-10.5. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
+10.6. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
 objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMap`.
 
-10.6. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
+10.7. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
 
 11.1. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = I`, then `AtlHorSum F F' = F'` and if `F' = I`, then
-`AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `AltTrav` to `R = Y * Y'`, `G : K -> R`,
-with the property that there exists morphisms `M : X' -> K`, `M' : X' -> K` with `M_E (0, 0) = (1, 0)`,
+`AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y * Y'`, `G : K -> R`,
+with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AltTrav` with `M_E (0, 0) = (1, 0)`,
 `M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
 
 
