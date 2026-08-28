@@ -128,7 +128,7 @@ map. It is denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
 in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the universal arrow from `DaTrav * DaTrav` to
-`F + F'` so that for projections `H_1 : G -> F + F'`, `H_2 : G' -> F + F'`, for any non-empty `R, R' : AtlTrav` so that
+`F + F'` so that for projections `H_1 : G -> F + F'`, `H_2 : G' -> F + F'`, for any `R, R' : AtlTrav` so that
 `R` is a subobject of `H_1` and `R'` is a subobject of `H_2`, for `(m, i) = R_E (0, 0)`, `(m', i') = R'_E (0, 0)`, we
 have `m < 2`, `m' < 2`, `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then, `F +_< F' = H`. It remains to be
 shown `H` exists and is unique for all morphisms `F, F'` of `DaTrav`.
@@ -148,14 +148,14 @@ and an associator functor so that the pentagon, triangle and hexagon identities 
 
 12.2. The **Data Traversal Braider**, denoted `Brd_X_Y : X +_< Y -> Y +_< X` for `X, Y : DaTrav`, is defined
 as follows: if `X = I` or `Y = I`, `Brd_X_Y = Id`. Otherwise, let `G : H -> X +_< Y` be the universal arrow from
-`DaTrap` to `X +_< Y` so that for any non-empty `R : AtlTrap` subobject of `G`, `R_E (1, 0) = (1, 1)` and
+`DaTrap` to `X +_< Y` so that for any `R : AtlTrap` subobject of `G`, `R_E (1, 0) = (1, 1)` and
 `R_E (1, 1) = (1, 0)`. Trivially, `H = Y +_< X`, so that we let `Brd_X_Y X +_< Y = H`, and trivially,
 `Brd_Y_X Brd_X_Y = Id`.
 
 12.3. The **Data Traversal Associator**, denoted `Asoc_X_Y_Z : (X +_< Y) +_< Z -> X +_< (Y +_< Z)`, is defined
 as follows: if `X = I`, `Y = I` or `Z = I`, then `Asoc_X_Y_Z = Id`. Otherwise, denote `K = (X +_< Y) +_< Z` and let
-`G : H -> K` be the universal arrow from `DaTrap` to `K` so that for any non-empty `R : AtlTrap` subobject of `G`,
-`R_E (2, 0) = (1, 0)` and there exists a morphism `G' : (Y +_< Z) -> H` in `DaTrav` with so that for any non-empty
+`G : H -> K` be the universal arrow from `DaTrap` to `K` so that for any `R : AtlTrap` subobject of `G`,
+`R_E (2, 0) = (1, 0)` and there exists a morphism `G' : (Y +_< Z) -> H` in `DaTrav` with so that for any
 `R' : AtlTrav` subobject of `G'`, `R'_E (0, 0) = (1, 1)`. As `R_E` is faithful and `R_A = Id`, `G` is invertible
 in `DaTrap`, and by extension in `DaTra`.
 
