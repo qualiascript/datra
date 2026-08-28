@@ -132,10 +132,10 @@ objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMa
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
 in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the universal arrow from `DaTrav * DaTrav` to
-`F + F'` so that for projections `H_1 : G -> F + F'`, `H_2 : G' -> F + F'`, for any `R, R' : AtlTrav` so that
-`R` is a subobject of `H_1` and `R'` is a subobject of `H_2`, for `(m, i) = R_E (0, 0)`, `(m', i') = R'_E (0, 0)`, we
-have `m < 2`, `m' < 2`, `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then, `F +_< F' = H`. It remains to be
-shown `H` exists and is unique for all morphisms `F, F'` of `DaTrav`.
+`F + F'` so that for projections `H_1 : G -> F + F'`, `H_2 : G' -> F + F'`, for any subatlases `T : Yo R -> H_1`,
+`T' : Yo R' -> H_2` so that `T, T' : AltTrav`, for `(m, i) = T_E (0, 0)`, `(m', i') = T'_E (0, 0)`, we have `m < 2`,
+`m' < 2`, `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then, `F +_< F' = H`. It remains to be shown `H` exists
+and is unique for all morphisms `F, F'` of `DaTrav`.
 
 11.2. The **Horizontal Lemma** states that `HorSum` exists. Proof sketch: for `F +_< F'`, if `F' = I`, then
 `H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, i) = H_E (0, 0) = (0, 0)`, so
