@@ -123,7 +123,7 @@ is the dominion in question.
 10.4. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that given any of its subobjects, if it is an Atlas, it is an Atlas Map.
 
-10.5. The **Empty Map** is the initial object of `DaTra`, denoted `I`.
+10.5. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
 
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
