@@ -101,12 +101,13 @@ unique as `AtlTrav` preserves orders, and terminal as `H_E` is faithful.
 
 9.1. The **Coalizing Functor**, denoted `Coa : AtlTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
 
-9.2. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> AtlTrav`, is the functor that is left adjoint to
-`Coa`. That is, for every `X : Dom`, `Y : AtlTrav`, `hom_AtlTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
-`X` and `Y`, so that `Coa (DomInc X) = X`.
-
-9.3. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AtlTrav` is the
+9.2. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AtlTrav` is the
 same object viewed as an object of `AtlTrav`.
+
+9.3. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> AtlTrav`, is the functor that is left adjoint to
+`Coa`. That is, for every `X : Dom`, `Y : AtlTrav`, `hom_AtlTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
+`X` and `Y`, so that `Coa (DomInc X) = X`. It sends each dominion to the atlas of cardinality `1` whose coalition
+is the dominion in question.
 
 10.1. The **Category of Data Transformations**, denoted `DaTra`, is the category of presheaves on `Atl`, that is,
 `DaTra = [op Atl, Set]`. Trivially, `DaTra` is a topos.
