@@ -130,7 +130,7 @@ map. It is denoted as `I = DomInc 0`, and it is initial in `DaTra`.
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
 in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the universal arrow from `DaTrav * DaTrav` to
-`F + F'` so that for projections `H_1 : G -> F + F'`, `H2 : G' -> F + F'`, for `(m, i) = H_1_E (0, 0)`,
+`F + F'` so that for projections `H_1 : G -> F + F'`, `H_2 : G' -> F + F'`, for `(m, i) = H_1_E (0, 0)`,
 `(m', i') = H_2_E (0, 0)`, we have `m < 2`, `m' < 2`, `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then,
 `F +_< F' = H`. It remains to be shown `H` exists and is unique for all morphisms `F, F'` of `DaTrav`.
 
