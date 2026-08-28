@@ -80,6 +80,8 @@ starts at `0`.
 for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k', j)` with `i < j`, let
 `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `p = min(m, n)`, then `Y_H (m -> p) i' < Y_H (n -> p) j'`.
 
+[TODO: missing lemma: `AltTrap` and `AltTrav` stable under pullback along atlas monos]
+
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
 `A : AtlMap`, `A`'s extent is isomorphic to the coproduct of its regions. That is, let `F = Emb ∘ Ter A : M -> Set`,
 and let `Sum A` be the coproduct on diagram `F`, then `A : DaTraMap` iff `Sum A ~= Ex A`.
