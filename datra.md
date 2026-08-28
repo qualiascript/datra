@@ -65,10 +65,10 @@ Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 number of objects of the small chain `C`. It is denoted as `|A|`.
 
 6.4. The **Extent of an Atlas** `A : Atl` is the value at `A_G (0, 0)`, that exists as folios preserve initial
-objects. It is denoted as `Ex D`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `D : Atl`.
+objects. It is denoted as `Ex A`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `D : Atl`.
 
 6.5. The **Territory of an Atlas** `A : Atl` is the indexed collection of dominions `Ter A : M -> Dom`,
-where `M = A_G (|A| - 1)`, so that `Ter A k = A_G (|D| - 1, k)`.
+where `M = A_G (|A| - 1)`, so that `Ter A k = A_G (|A| - 1, k)`.
 
 6.6. The **nth Region of an Atlas** `A : Atl` is the dominion `Ter A n` for `n : M`, noting that the indexing
 starts at `0`.
@@ -77,12 +77,12 @@ starts at `0`.
 `F : X -> Y` have the property that `F_E` is a faithful functor.
 
 7.2. The **Category of Atlas Traversals**, denoted `AtlTrav`, is the wide subcategory of `AtlTrap` whose morphisms
-for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k, j)` with `i < j`, let
-`x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`, then `Y_H (m -> k') i' < Y_H (n -> k') j'`.
+for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k', j)` with `i < j`, let
+`x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `p = min(m, n)`, then `Y_H (m -> p) i' < Y_H (n -> p) j'`.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
 `A : AtlMap`, `A`'s extent is isomorphic to the coproduct of its regions. That is, let `F = Emb ∘ Ter A : M -> Set`,
-and let `Sum A` be the coproduct on diagram `F`, then `A : DaTraMap` iff `Sum D ~= Ex D`.
+and let `Sum A` be the coproduct on diagram `F`, then `A : DaTraMap` iff `Sum A ~= Ex A`.
 
 8.2. The **Atlas Map Inclusion Functor**, denoted `AtlMapInc : AtlMap -> Atl`, sends each Atlas Map to its equivalent
 object in `Atl`.
@@ -122,8 +122,7 @@ same object viewed as an object of `AtlTrav`.
 10.4. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
 includes all DaTra sets with the property that given any of its subobjects, if it is an Atlas, it is an Atlas Map.
 
-10.5. The **Empty Map** is the Atlas that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to, viewed as a DaTra
-map. It is denoted as `I = DomInc 0`, and it is initial in `DaTra`.
+10.5. The **Empty Map** is the initial object of `DaTra`, denoted `I`.
 
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
