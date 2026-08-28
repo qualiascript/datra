@@ -109,21 +109,25 @@ same object viewed as an object of `AtlTrav`.
 `X` and `Y`, so that `Coa (DomInc X) = X`. It sends each dominion to the atlas of cardinality `1` whose coalition
 is the dominion in question.
 
-10.1. The **Category of Data Transformations**, denoted `DaTra`, is the category of presheaves on `Atl`, that is,
-`DaTra = [op Atl, Set]`. Trivially, `DaTra` is a topos.
+10.1. The **Category of Data Transformations**, also referred to as the **Category of Data Transformation Sets**, or
+simply **DaTra Sets**, denoted `DaTra`, is the category of presheaves on `Atl`, that is,`DaTra = [op Atl, Set]`.
+Trivially, `DaTra` is a topos.
 
-10.2. The **Category of Data Transposals**, denoted `DaTrap`, is the wide subcategory of `DaTra` whose morphisms for
-`F : X -> Y` have the property that for any `y : Atl` so that `y` is a subobject of `Y`, for `F' : X -> y` we have
-`F : AtlTrap`
+10.2. A **Subatlas of a Data Transformation**, given `D : DaTra`, is a monomorphism `S : Yo A -> D` so that `A : Atl`,
+where `Yo` represents the Yoneda embedding `Yo : Atl -> DaTra`.
 
-10.3. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTrap` whose morphisms for
-`F : X -> Y` have the property that for any `y : Atl` so that `y` is a subobject of `Y`, for `F' : X -> y` we have
-`F : AtlTrav`
+10.3. A **DaTra Restriction**, given `A` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
+morphisms for `F : X -> Y` have the property that, for any subatlas `S : Yo A -> D`, let `P` be the pullback of `F`
+and `S`, then projection `P' : P -> X` is either empty or representable as `P' = Yo f`, where `f` is a morphism of `A`.
 
-10.4. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
-includes all DaTra sets with the property that given any of its subobjects, if it is an Atlas, it is an Atlas Map.
+10.3. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
 
-10.5. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
+10.4. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
+
+10.5. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
+objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMap`.
+
+10.6. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
 
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
