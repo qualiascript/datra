@@ -131,6 +131,28 @@ objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMa
 
 10.6. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
 
+11.1. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
+two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = I`, then `AtlHorSum F F' = F'` and if `F' = I`, then
+`AtlHorSum F F' = F` is the universal arrow from `AltTrav` to `R = Y * Y'`, `G : K -> Y * Y'`, with the property that
+there exists morphisms `M : X' -> K`, `M' : X' -> K` with `M_E (0, 0) = (1, 0)`, `M'_E (0, 0) = (1, 1)` so that
+`G ∘ M ~= F` and `G ∘ M' = F'`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+[TODO: redo from below]
+
+
+
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
 in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the universal arrow from `DaTrav * DaTrav` to
