@@ -129,16 +129,16 @@ and `S`, then projection `P' : P -> X` is either empty or representable as `P' =
 10.6. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
 objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMap`.
 
-10.7. The **Empty Map**, denoted `I`, is the Yoneda Embedding of `DomInc 0` in `DaTrav`.
+10.7. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
 11.1. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
-two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = I`, then `AtlHorSum F F' = F'` and if `F' = I`, then
-`AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
+two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = AtlI`, then `AtlHorSum F F' = F'` and if `F' = AtlI`,
+then `AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
 with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AltTrav` with `M_E (0, 0) = (1, 0)`,
 `M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
 
-11.2. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = I`, `F = I'` are trivial.
-Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> B` so that `|A| = max(|X|, |X'|) + 1`,
+11.2. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
+trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> B` so that `|A| = max(|X|, |X'|) + 1`,
 `|A_P n| = |X_P (n - 1)| + |Y_P (n - 1)|`, and for `m : |A|`, `m > 0`, `A_E (m -> 1) n = 0` iff `n < |X_P (m - 1)|`.
 For each `L : |G|`, `L > 0`, let `L_max` be the maximal value so that `A_E (L -> 1) L_max = 0`, or `L_max = -1` if such
 a value does not exist. Then, define the monomorphisms `T_X : X_E -> A_E`, `T_X' : X'_E -> A_E` as follows: for all
@@ -150,61 +150,33 @@ there exists `(m', n')` so that either `T_X (m', n') = (m, n)` or `T_X' (m', n')
 `B_P (0, 0) = Coa Y + Coa Y'`, and for all `(m, k) : A_E`, `m > 0`, let `G_P = P ∘ V`, `G_A_(m, k) = A_(V (m, k))`.
 This fully defines `G`, which can be checked to be initial among solutions.
 
-11.3. The **Atlas Braider** [TODO]
+11.3. The **Atlas Braider** `AtlBrd_F_F' : (AtlHorSum F F') -> (AtlHorSum F' F)` is defined as follows: if `F = AtlI`
+or `F' = AtlI`, `AtlBrd_F_F' = Id`. Otherwise, let `R = (AtlHorSum F F')` and let `G : H -> R` be the universal arrow
+from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = H`, and trivially,
+`AtlBrd_F_F' AtlBrd_F'_F = Id`.
 
-11.4. The **Atlas Associator** [TODO]
+11.4. The **Atlas Associator**, denoted
+`AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
+if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherwise, denote
+`R = (AtlHorSum (AtlHorSum F F') F'')` and let `G : H -> R` be the universal arrow from `AtlTrap` to `R` so that
+`G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AltTrav` so that
+`G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = H`.
+
+12.1. The **Empty Map**, denoted `I` is the Yoneda Embedding of the Empty Atlas, `I = Yo AtlI`.
 
 12.1. The **Horizontal Sum Bifunctor**, denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or in infix notation using
 the `+_<` symbol, as `DaTrav +_< DaTrav -> DaTrav`, is the Day convolution extension of `AtlHorSum`.
 
-12.2. The **Data Traversal Braider** [TODO]
+12.2. The **Data Traversal Braider**, denoted `Brd_F_F' : (F +_< F') -> (F' +_< F)`, is the Day convolution extension
+of `AtlBrd`.
 
-12.3. The **Data Traversal Associator** [TODO]
+12.3. The **Data Traversal Associator**, denoted `Asoc_F_F'_F'' : ((F +_< F') +_< F'') -> (F +_< ( F' +_< F''))`, is
+the Day convolution extension of `AtlAsoc`
 
-12.4. The **Data Traversal Monoidal Category** [TODO]
+12.4. The **Data Traversal Left Unitor** `Lu : F +_< I -> F`, along with the **Data Traversal Right Unitor**
+`Ru : I +_< F -> F`, are given trivially by `Lu = Ru = Id`.
 
-12.5. The **Serenity Lemma** [TODO]
+12.4. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
+coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` send to isomorphisms in
+`DaTra`.
 
-
-
-[TODO: redo from below]
-
-
-
-11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
-infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
-in `DaTrav`, `F : X -> Y`, `F' : X -> Y`, let `H : G * G' -> F + F'` be the universal arrow from `DaTrav * DaTrav` to
-`F + F'` so that for projections `H_1 : G -> F + F'`, `H_2 : G' -> F + F'`, for any subatlases `T : Yo R -> H_1`,
-`T' : Yo R' -> H_2` so that `T, T' : AltTrav`, for `(m, i) = T_E (0, 0)`, `(m', i') = T'_E (0, 0)`, we have `m < 2`,
-`m' < 2`, `i = 0`, and furthermore, if `m = 1`, then `i' = 1`. Then, `F +_< F' = H`. It remains to be shown `H` exists
-and is unique for all morphisms `F, F'` of `DaTrav`.
-
-11.2. The **Horizontal Lemma** states that `HorSum` exists. Proof sketch: for `F +_< F'`, if `F' = I`, then
-`H : I -> F`, and `I` is initial so `H` is unique, so that `H ~= H_1 ~= H_2` and `(m, i) = H_E (0, 0) = (0, 0)`, so
-that `i = 0` and as `m = 0`, the condition on `i'` need not be checked. The case for `F = I` is dual. If both `F` and
-`F'` are distinct from `I`, for `(m, i) = R_E (0, 0)`, if `m = 0`, then `i = 0` and `Ex R = Ex R + Ex R'`, but as
-`F'` is not `I`, this cannot hold, so that `m = 1`, which implies `i' = 1`, so that the solution is given by
-`(m, i) = (1, 0)`, `(m', i') = (1, 1)`.
-
-12.1. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, if it exists, is the symmetric monoidal category
-with `DaTrav` as the underlying category, `+_<` as the tensor product and `I` as the identity, so that we denote
-`DaTravMon = (DaTrav, +_<, I)`. As for `X : DaTrav`, `X = X + I = I + X` is strict, the left and right unitors are
-given by identity. It remains to be shown that there is a braider functor whose double application yields identity,
-and an associator functor so that the pentagon, triangle and hexagon identities commute.
-
-12.2. The **Data Traversal Braider**, denoted `Brd_X_Y : X +_< Y -> Y +_< X` for `X, Y : DaTrav`, is defined
-as follows: if `X = I` or `Y = I`, `Brd_X_Y = Id`. Otherwise, let `G : H -> X +_< Y` be the universal arrow from
-`DaTrap` to `X +_< Y` so that for any `R : AtlTrap` subobject of `G`, `R_E (1, 0) = (1, 1)` and
-`R_E (1, 1) = (1, 0)`. Trivially, `H = Y +_< X`, so that we let `Brd_X_Y X +_< Y = H`, and trivially,
-`Brd_Y_X Brd_X_Y = Id`.
-
-12.3. The **Data Traversal Associator**, denoted `Asoc_X_Y_Z : (X +_< Y) +_< Z -> X +_< (Y +_< Z)`, is defined
-as follows: if `X = I`, `Y = I` or `Z = I`, then `Asoc_X_Y_Z = Id`. Otherwise, denote `K = (X +_< Y) +_< Z` and let
-`G : H -> K` be the universal arrow from `DaTrap` to `K` so that for any `R : AtlTrap` subobject of `G`,
-`R_E (2, 0) = (1, 0)` and there exists a morphism `G' : (Y +_< Z) -> H` in `DaTrav` with so that for any
-`R' : AtlTrav` subobject of `G'`, `R'_E (0, 0) = (1, 1)`. As `R_E` is faithful and `R_A = Id`, `G` is invertible
-in `DaTrap`, and by extension in `DaTra`.
-
-12.4. The **Serenity Lemma** states that `DaTravMon` exists. Proof sketch: As both `Asoc` and `Brd` send objects to
-isomorphic objects in `DaTra`, it is clear that the pentagon, triangle and hexagon identities commute, thus `DaTravMon`
-is a symmetric monoidal category.
