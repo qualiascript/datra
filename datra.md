@@ -133,15 +133,20 @@ objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMa
 
 11.1. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = I`, then `AtlHorSum F F' = F'` and if `F' = I`, then
-`AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y * Y'`, `G : K -> R`,
+`AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
 with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AltTrav` with `M_E (0, 0) = (1, 0)`,
 `M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
 
-
-
-
-
-
+11.2. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = I`, `F = I'` are trivial.
+Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> B` so that `|G| > 1`, `|A_P 1| = 2`, and for
+each `L : |G|`, let `L_max` be the maximal value so that `A_E (L -> 1) L_max = 0`, or `L_max = -1` if such a value does
+not exist. Then, define the monomorphisms `T_X : X_E -> A_E`, `T_X' : X'_E -> A_E` as follows: for all `(m, n) : A_E`,
+`m > 0`, if `n < m_max`, then `T_X (m, n) = ((m - 1), n)`, otherwise, `T_X' (m, n) = ((m-1), n - m_max + 1)`. It can be
+checked `T_X`, `T_X'` are indeed monic, and for any `(m, n) : A_E` there exists `(m', n')` so that either
+`T_X (m', n') = (m, n)` or `T_X' (m', n') = (m, n)`. Then define iso `V : A_E -> X_E + X'_E`, along with
+`P = (F_P + F'_P) : (X_E + X'_E) -> (Y_E + Y'_E)`, `A = (F_A + F'_A) : (X_G + X'_G) -> ((Y_G ∘ F_E)) + ((Y'_G ∘ F'_E))`.
+Finally, let `A_P (0, 0) = B_P (0, 0) = Coa X + Coa X'` `G_A_(0, 0) = Id`, and for all `(m, k) : A_E`, `m > 0`, let
+`G_P = P ∘ V`, `G_A_(m, k) = A_(V (m, k))`. This fully defines `G`, which can be checked to be universal.
 
 
 
