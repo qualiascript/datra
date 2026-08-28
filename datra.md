@@ -146,9 +146,9 @@ a value does not exist. Then, define the monomorphisms `T_X : X_E -> A_E`, `T_X'
 `T_X' (m, n) = ((m-1), n - m_max + 1)`. It can be checked `T_X`, `T_X'` are indeed monic, and for any `(m, n) : A_E`
 there exists `(m', n')` so that either `T_X (m', n') = (m, n)` or `T_X' (m', n') = (m, n)`. Then define iso
 `V : A_E -> X_E + X'_E`, along with `P = (F_P + F'_P) : (X_E + X'_E) -> (Y_E + Y'_E)`,
-`A = (F_A + F'_A) : (X_G + X'_G) -> ((Y_G ∘ F_E)) + ((Y'_G ∘ F'_E))`. Finally, let
-`A_P (0, 0) = B_P (0, 0) = Coa X + Coa X'` `G_A_(0, 0) = Id`, and for all `(m, k) : A_E`, `m > 0`, let `G_P = P ∘ V`,
-`G_A_(m, k) = A_(V (m, k))`. This fully defines `G`, which can be checked to be initial among solutions.
+`A = (F_A + F'_A) : (X_G + X'_G) -> ((Y_G ∘ F_E)) + ((Y'_G ∘ F'_E))`. Finally, let `A_P (0, 0) = Coa X + Coa X'`,
+`B_P (0, 0) = Coa Y + Coa Y'`, and for all `(m, k) : A_E`, `m > 0`, let `G_P = P ∘ V`, `G_A_(m, k) = A_(V (m, k))`.
+This fully defines `G`, which can be checked to be initial among solutions.
 
 
 
