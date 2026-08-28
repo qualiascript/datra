@@ -44,12 +44,10 @@ T                      T
 ⌄                      ⌄                             
 (m', i') ----T f-----> (n', (Y_H (T f)) i')
 ```
-
-7.1. The **Category of Data Transformations**, denoted `DaTra`, which we will also refer to as the **Category of Data
-Transformation Sets**, or simply **DaTra Sets**, is the category whose objects are pairs `(P, G)`, where `P : Pag`
-and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : op P_E -> CoDomIns`. For `X : DaTra`,
+6.2. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
+and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : op P_E -> CoDomIns`. For `X : Atl`,
 we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
-morphisms in `DaTra`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
+morphisms in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
 and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
 `f : x -> y` in `X_P`:
 
@@ -63,64 +61,71 @@ v                                    v
 Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 ```
 
-7.2. The **Transformation Lemma** states that `DaTra` is a topos. Proof sketch: Let `PSh(B) = op B -> Set` be the
-fixed category of underlying presheaves. The forgetful functor `U : DaTra -> PSh(B)` has a **Minimal Pagination 
-Functor** `MinPag : PSh(B) -> DaTra`. The adjunction `MinPag -| U` has invertible unit and counit, so
-`DaTra ~= PSh(B)`, and `DaTra` is a topos.
+6.3 The **Cardinality of an Atlas** `A : Atl` is the cardinality of the origin of `A_H : C -> Set`, that is, the
+number of objects of the small chain `C`. It is denoted as `|A|`.
 
-7.3. The **Cardinality of a DaTra Set** `D : DaTra` is the cardinality of the origin of `D_H : C -> Set`, that
-is, the number of objects of the small chain `C`. It is denoted as `|D|`.
+6.4. The **Extent of an Atlas** `A : Atl` is the value at `A_G (0, 0)`, that exists as folios preserve initial
+objects. It is denoted as `Ex D`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `D : Atl`.
 
-7.4. The **Extent of a DaTra Set** `D : DaTra` is the value at `D_G (0, 0)`, that exists as folios preserve initial
-objects. It is denoted as `Ex D`. Since the objects of `DomIns` are dominions, `Ex D : Dom` for any `D : DaTra`.
+6.5. The **Territory of an Atlas** `A : Atl` is the indexed collection of dominions `Ter A : M -> Dom`,
+where `M = A_G (|A| - 1)`, so that `Ter A k = A_G (|D| - 1, k)`.
 
-7.5. The **Territory of a DaTra Set** `D : DaTra` is the indexed collection of dominions `Ter D : M -> Dom`, 
-where `M = D_G (|D| - 1)`, so that `Ter D k = D_G (|D| - 1, k)`.
-
-7.6. The **nth Region of a DaTra Set** `D : DaTra` is the dominion `Ter D n` for `n : M`, noting that the indexing
+6.6. The **nth Region of an Atlas** `A : Atl` is the dominion `Ter A n` for `n : M`, noting that the indexing
 starts at `0`.
 
-8.1. The **Category of Data Transposals**, denoted `DaTrap`, is the wide subcategory of `DaTra` whose morphisms for
+7.1. The **Category of Atlas Transposals**, denoted `AtlTrap`, is the wide subcategory of `Atl` whose morphisms
 `F : X -> Y` have the property that `F_E` is a faithful functor.
 
-8.2. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTrap` whose morphisms
+7.2. The **Category of Atlas Traversals**, denoted `AtlTrav`, is the wide subcategory of `AtlTrap` whose morphisms
 for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k, j)` with `i < j`, let
 `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `k' = min(m, n)`, then `Y_H (m -> k') i' < Y_H (n -> k') j'`.
 
-9.1. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
-includes all DaTra sets with the property that their extent is isomorphic to the coproduct of its regions. That is, for
-`D : DaTra`, let `F = Emb ∘ Ter D : M -> Set`, and let `Sum D` be the coproduct on diagram `F`, then `D : DaTraMap`
-iff `Sum D ~= Ex D`.
+8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
+`A : AtlMap`, `A`'s extent is isomorphic to the coproduct of its regions. That is, let `F = Emb ∘ Ter A : M -> Set`,
+and let `Sum A` be the coproduct on diagram `F`, then `A : DaTraMap` iff `Sum D ~= Ex D`.
 
-9.2. The **DaTra Map Inclusion Functor**, `DaTraMapInc : DaTraMap -> DaTra` sends each DaTra map to its equivalent
-DaTra set.
+8.2. The **Atlas Map Inclusion Functor**, denoted `AtlMapInc : AtlMap -> Atl`, sends each Atlas Map to its equivalent
+object in `Atl`.
 
-9.3. The **Category of Data Traversal Maps**, or simply **DaTrav Maps**, denoted `DaTravMap`, is the wide
-subcategory of `DaTraMap` so that a morphism `f : x -> y` of `DaTraMap` is a morphism of `DaTravMap` iff
-`DaTraMapInc f` is a morphism of `DaTrav`.
+8.3. The **Category of Atlas Traversal Maps**, denoted `AtlTravMap`, is the full subcategory of `AtlTrav` whose objects
+are Atlas Maps.
 
-9.4. The **DaTrav Map Inclusion Functor**, `DaTravMapInc : DaTravMap -> DaTrav` is the canonical restriction of
-`DaTraMapInc` on the morphisms of `DaTravMap`.
+8.4. The **Atlas Traversal Map Inclusion Functor**, denoted `AtlTravMapInc : AtlTravMap -> AtlTrav`, is the canonical
+restriction of `AtlMapInc` on the morphisms of `AtlTravMap`.
 
-9.5. The **Charting Functor**, if it exists, is defined as the right adjoint to `DaTravMapInc`, and it is denoted
-`Chr : DaTrav -> DaTravMap`.
+8.5. The **Cartography Lemma** states that `AtlTravMapInc` has a right adjoint, denoted the **Charting Functor**
+`Chr : AtlTrav -> AtlTravMap`. Proof sketch: `Chr`'s action on objects `X : AtlTrav` is sending it to the universal
+arrow from `AtlTravMapInc` to `X`, so that we denote `X' = AtlTravMapInc Chr X`, along with `H : X' -> X`, with `X'`
+terminal among objects with this property. The solution is given by the DaTra map so that `Ter X' ~= Ter X`, which is
+unique as `AtlTrav` preserves orders, and terminal as `H_E` is faithful.
 
-9.6. The **Cartography Lemma** states that `Chr` exists. Proof sketch: `Chr`'s action on objects `X : DaTrav` is
-sending it to the universal arrow from `DaTravMapInc` to `X`, so that we denote `X' = DaTravMapInc Chr X`, along with
-`H : X' -> X`, with `X'` terminal among objects with this property. The solution is given by the DaTra map so that
-`Ter X' ~= Ter X`, which is unique as `DaTrav` preserves orders, and terminal as `H_E` is faithful.
+9.1. The **Coalizing Functor**, denoted `Coa : AtlTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
 
-10.1. The **Coalizing Functor**, denoted `Coa : DaTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
-
-10.2. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> DaTrav`, is the functor that is left adjoint to
-`Coa`. That is, for every `X : Dom`, `Y : DaTrav`, `hom_DaTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
+9.2. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> AtlTrav`, is the functor that is left adjoint to
+`Coa`. That is, for every `X : Dom`, `Y : AtlTrav`, `hom_AtlTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
 `X` and `Y`, so that `Coa (DomInc X) = X`.
 
-10.3. The **Coalition of a DaTra Object**, given an object `X` of `DaTra`, is `Coa X'`, where `X' : DaTrav` is the
-same object viewed as an object of `DaTrav`.
+9.3. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AtlTrav` is the
+same object viewed as an object of `AtlTrav`.
 
-10.4. The **Empty Map** is the DaTra set that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to. It is
-denoted as `I = DomInc 0`, and it is initial in `DaTra`.
+10.1. The **Category of Data Transformations**, denoted `DaTra`, is the category of presheaves on `Atl`, that is,
+`DaTra = [op Atl, Set]`. Trivially, `DaTra` is a topos.
+
+10.2. The **Category of Data Transposals**, denoted `DaTrap`, is the wide subcategory of `DaTra` whose morphisms for
+`F : X -> Y` have the property that for any `y : Atl` so that `y` is a subobject of `Y`, for `F' : X -> y` we have
+`F : AtlTrap`
+
+10.3. The **Category of Data Traversals**, denoted `DaTrav`, is the wide subcategory of `DaTrap` whose morphisms for
+`F : X -> Y` have the property that for any `y : Atl` so that `y` is a subobject of `Y`, for `F' : X -> y` we have
+`F : AtlTrav`
+
+10.4. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` that
+includes all DaTra sets with the property that given any of its subobjects, if it is an Atlas, it is an Atlas Map.
+
+10.5. The **Empty Map** is the Atlas that `DomInc` sends the initial object of `Dom`, `0 : Dom`, to, viewed as a DaTra
+map. It is denoted as `I = DomInc 0`, and it is initial in `DaTra`.
+
+[check from below]
 
 11.1. The **Horizontal Sum Bifunctor**, if it exists, is denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or using
 infix notation using the `+_<` symbol as `DaTrav +_< DaTrav -> DaTrav`, and is defined as follows: given two morphisms
