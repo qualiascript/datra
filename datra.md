@@ -150,9 +150,20 @@ there exists `(m', n')` so that either `T_X (m', n') = (m, n)` or `T_X' (m', n')
 `B_P (0, 0) = Coa Y + Coa Y'`, and for all `(m, k) : A_E`, `m > 0`, let `G_P = P ∘ V`, `G_A_(m, k) = A_(V (m, k))`.
 This fully defines `G`, which can be checked to be initial among solutions.
 
+11.3. The **Atlas Braider** [TODO]
 
+11.4. The **Atlas Associator** [TODO]
 
+12.1. The **Horizontal Sum Bifunctor**, denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or in infix notation using
+the `+_<` symbol, as `DaTrav +_< DaTrav -> DaTrav`, is the Day convolution extension of `AtlHorSum`.
 
+12.2. The **Data Traversal Braider** [TODO]
+
+12.3. The **Data Traversal Associator** [TODO]
+
+12.4. The **Data Traversal Monoidal Category** [TODO]
+
+12.5. The **Serenity Lemma** [TODO]
 
 
 
