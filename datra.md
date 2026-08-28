@@ -133,9 +133,9 @@ objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMa
 
 11.1. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = I`, then `AtlHorSum F F' = F'` and if `F' = I`, then
-`AtlHorSum F F' = F` is the universal arrow from `AltTrav` to `R = Y * Y'`, `G : K -> Y * Y'`, with the property that
-there exists morphisms `M : X' -> K`, `M' : X' -> K` with `M_E (0, 0) = (1, 0)`, `M'_E (0, 0) = (1, 1)` so that
-`G ∘ M ~= F` and `G ∘ M' = F'`.
+`AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `AltTrav` to `R = Y * Y'`, `G : K -> R`,
+with the property that there exists morphisms `M : X' -> K`, `M' : X' -> K` with `M_E (0, 0) = (1, 0)`,
+`M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
 
 
 
