@@ -175,6 +175,6 @@ the Day convolution extension of `AtlAsoc`
 `Ru : I +_< F -> F`, are given trivially by `Lu = Ru = Id`.
 
 12.4. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
-coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` send to isomorphisms in
+coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` sent to isomorphisms in
 `DaTra`.
 
