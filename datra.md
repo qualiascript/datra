@@ -129,15 +129,15 @@ and `S`, then projection `P' : P -> X` is either empty or representable as `P' =
 10.6. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
 objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMap`.
 
-10.7. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
+11.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
-11.1. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
+11.2. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = AtlI`, then `AtlHorSum F F' = F'` and if `F' = AtlI`,
 then `AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
 with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AltTrav` with `M_E (0, 0) = (1, 0)`,
 `M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
 
-11.2. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
+11.3. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
 trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> B` so that `|A| = max(|X|, |X'|) + 1`,
 `|A_P n| = |X_P (n - 1)| + |Y_P (n - 1)|`, and for `m : |A|`, `m > 0`, `A_E (m -> 1) n = 0` iff `n < |X_P (m - 1)|`.
 For each `L : |G|`, `L > 0`, let `L_max` be the maximal value so that `A_E (L -> 1) L_max = 0`, or `L_max = -1` if such
@@ -150,12 +150,12 @@ there exists `(m', n')` so that either `T_X (m', n') = (m, n)` or `T_X' (m', n')
 `B_P (0, 0) = Coa Y + Coa Y'`, and for all `(m, k) : A_E`, `m > 0`, let `G_P = P ∘ V`, `G_A_(m, k) = A_(V (m, k))`.
 This fully defines `G`, which can be checked to be initial among solutions.
 
-11.3. The **Atlas Braider** `AtlBrd_F_F' : (AtlHorSum F F') -> (AtlHorSum F' F)` is defined as follows: if `F = AtlI`
+11.4. The **Atlas Braider** `AtlBrd_F_F' : (AtlHorSum F F') -> (AtlHorSum F' F)` is defined as follows: if `F = AtlI`
 or `F' = AtlI`, `AtlBrd_F_F' = Id`. Otherwise, let `R = (AtlHorSum F F')` and let `G : H -> R` be the universal arrow
 from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = H`, and trivially,
 `AtlBrd_F_F' AtlBrd_F'_F = Id`.
 
-11.4. The **Atlas Associator**, denoted
+11.5. The **Atlas Associator**, denoted
 `AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
 if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherwise, denote
 `R = (AtlHorSum (AtlHorSum F F') F'')` and let `G : H -> R` be the universal arrow from `AtlTrap` to `R` so that
