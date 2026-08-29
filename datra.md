@@ -49,7 +49,7 @@ T                      T
 6.2. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`, with the property that
 for `P_H : C -> Set`, for `m : |C|`, for any `a = (m, k) : P_E`, `b = (m, k') : P_E`, if `k =/= k'`, the pullback in
-`G` of `(m -> 0) k` and `(m' -> 0) k'` is empty. For `X : Atl`, we denote `X_P` the first inclusion, `X_G` the second
+`G` of `(m -> 0) k` and `(m -> 0) k'` is empty. For `X : Atl`, we denote `X_P` the first inclusion, `X_G` the second
 inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A morphism in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`,
 where `T_P : X_P -> Y_P` is a morphism in `Pag` and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the
 following diagram commutes for all morphisms `f : x -> y` in `X_E`:
@@ -86,8 +86,8 @@ then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. It can be checked that `AtlTrav` is
 monomorphisms.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
-`A : AtlMap`, `A`'s extent is isomorphic to the coproduct of its regions. That is, let `F = Emb ∘ Ter A : M -> Set`,
-and let `Sum A` be the coproduct on diagram `F`, then `A : AtlMap` iff `Sum A ~= Ex A`.
+`A : AtlMap`, for `m = |A| - 1`, for any `v : Ex A`, there exists `k : |Ter A|` so that let `f = A_G (m -> 0) k`,
+there exists `p : A_G m k` so that `v ~= f p`.
 
 8.2. The **Atlas Map Inclusion Functor**, denoted `AtlMapInc : AtlMap -> Atl`, sends each Atlas Map to its equivalent
 object in `Atl`.
