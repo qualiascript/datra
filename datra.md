@@ -83,8 +83,10 @@ starts at `0`.
 for `F : X -> Y` have the following properties: for any `x = (m, i)`, `y = (m', j)`, let `p = min(m, m')`,
 `x' = F_E x = (n, i')`, `y' = F_E y = (n', j')` and let `p' = min(n, n')`, then if `X_H (m -> p) i < X_H (m' -> p) j`,
 then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. Furthermore, for any `q : |X|`, `t : X_G q`, if there exists `k : |Ter X|`
-and `l : Ter X k` so that `t : X_G ((|X| - 1) -> q) k l`, this property gets preserved by `F`. It can be checked that
-`AtlTrav` is stable under pullback along atlas monomorphisms.
+and `l : Ter X k` so that `t : X_G ((|X| - 1) -> q) k l`, this property gets preserved by `F`. 
+
+7.3. The **Category of Stable Atlas Traversals**, denoted `AltTras`, is the wide subcategory of `AltTrav` so that
+for `F : X -> Y`, `F_E (0, 0) = (0, 0)`.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
 `A : AtlMap`, for `m = |A| - 1`, for any `v : Ex A`, there exists `k : |Ter A|` so that let `f = A_G (m -> 0) k`,
@@ -105,13 +107,13 @@ arrow from `AtlTravMapInc` to `X`, so that we denote `X' = AtlTravMapInc Chr X`,
 terminal among objects with this property. The solution is given by the DaTra map so that `Ter X' ~= Ter X`, which is
 unique as `AtlTrav` preserves orders, and terminal as `H_E` is faithful.
 
-9.1. The **Coalizing Functor**, denoted `Coa : AtlTrav -> DomIns`, is defined as `Coa = Ex ∘ Chr`.
+9.1. The **Coalizing Functor**, denoted `Coa : AtlTras -> DomIns`, is defined as `Coa = Ex ∘ Chr`.
 
-9.2. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AtlTrav` is the
-same object viewed as an object of `AtlTrav`.
+9.2. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AltTras` is the
+same object viewed as an object of `Alt`.
 
-9.3. The **Domanial Inclusion Functor**, denoted `DomInc : DomIns -> AtlTrav`, is the functor that is left adjoint to
-`Coa`. That is, for every `X : Dom`, `Y : AtlTrav`, `hom_AtlTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
+9.3. The **Domanial Inclusion Functor**, denoted `DomInc : DomIns -> AtlTras`, is the functor that is left adjoint to
+`Coa`. That is, for every `X : Dom`, `Y : AtlTras`, `hom_AtlTras (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
 `X` and `Y`, so that `Coa (DomInc X) = X`. It sends each dominion to the atlas of cardinality `1` whose coalition
 is the dominion in question.
 
@@ -143,7 +145,9 @@ Yo A --------Nav---------> Y
 
 10.6. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
 
-10.7. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
+10.7. The **Category of Stable Data Traversals**, denoted `DaTras`, is the DaTra restriction on `AtlTras`.
+
+10.8. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
 the DaTra sets with the property that all of their navigations are expeditions.
 
 11.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
