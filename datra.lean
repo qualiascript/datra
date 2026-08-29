@@ -111,6 +111,13 @@ theorem DomIns.hom_ext {X Y : DomIns} (f g : X ⟶ Y)
     (h : ∀ x, f x = g x) : f = g := by
   exact Function.Embedding.ext h
 
+instance {X Y : DomIns} (f : X ⟶ Y) : Mono f where
+  right_cancellation g h w := by
+    apply DomIns.hom_ext
+    intro x
+    apply f.injective
+    exact congrFun (congrArg Function.Embedding.toFun w) x
+
 def DomIns.forget : DomIns ⥤ Dom where
   obj X := X.toDom
   map f := f.toFun
@@ -133,15 +140,31 @@ ordinal strictly smaller than $\omega_0^{\omega_0}$.
 \end{definition}
 %%-/
 
-/-- The objects of a chain are the canonical type representing its ordinal. -/
+/-- A chain carries its skeletal well-ordered object type and a proof that
+its order type lies below `ω₀ ^ ω₀`.  Retaining the carrier explicitly makes
+ordinal sums of chains definitionally usable. -/
 structure Chain where
-  length : Ordinal.{0}
-  length_lt : length < Ordinal.omega0 ^ Ordinal.omega0
+  Obj : Type
+  linearOrder : LinearOrder Obj
+  wellFoundedLT : WellFoundedLT Obj
+  orderType_lt : Ordinal.type (fun x y : Obj => x < y) <
+    Ordinal.omega0 ^ Ordinal.omega0
 
-def Chain.Obj (C : Chain) : Type := C.length.toType
+attribute [instance] Chain.linearOrder Chain.wellFoundedLT
 
-noncomputable instance (C : Chain) : LinearOrder C.Obj := linearOrder_toType C.length
-instance (C : Chain) : WellFoundedLT C.Obj := wellFoundedLT_toType_lt C.length
+def Chain.sum (X Y : Chain) : Chain where
+  Obj := Lex (Sum X.Obj Y.Obj)
+  linearOrder := inferInstance
+  wellFoundedLT := ⟨by
+    change WellFounded (Sum.Lex (fun x y : X.Obj => x < y)
+      (fun x y : Y.Obj => x < y))
+    exact Sum.lex_wf wellFounded_lt wellFounded_lt⟩
+  orderType_lt := by
+    change Ordinal.type (Sum.Lex (fun x y : X.Obj => x < y)
+      (fun x y : Y.Obj => x < y)) < Ordinal.omega0 ^ Ordinal.omega0
+    rw [Ordinal.type_sum_lex]
+    exact Ordinal.principal_add_omega0_opow Ordinal.omega0
+      X.orderType_lt Y.orderType_lt
 
 /-%%
 \begin{definition}[Short Chain]
@@ -179,6 +202,40 @@ structure ConHom (X Y : Con) where
   toFun : X.Obj → Y.Obj
   monotone : Monotone toFun
   point_surjective : Function.Surjective toFun
+
+def ConHom.sum {X X' Y Y' : Con} (f : ConHom X Y) (g : ConHom X' Y') :
+    ConHom (Chain.sum X X') (Chain.sum Y Y') where
+  toFun z := toLex (Sum.map f.toFun g.toFun (ofLex z))
+  monotone := by
+    intro a b h
+    change Sum.Lex (fun x y : X.Obj => x ≤ y) (fun x y : X'.Obj => x ≤ y)
+      (ofLex a) (ofLex b) at h
+    change Sum.Lex (fun x y : Y.Obj => x ≤ y) (fun x y : Y'.Obj => x ≤ y)
+      (Sum.map f.toFun g.toFun (ofLex a))
+      (Sum.map f.toFun g.toFun (ofLex b))
+    generalize ha : ofLex a = sa at h ⊢
+    generalize hb : ofLex b = sb at h ⊢
+    rcases sa with x | x <;> rcases sb with y | y
+    ·
+      simp only [Sum.map]
+      exact Sum.Lex.inl (f.monotone (Sum.lex_inl_inl.mp h))
+    · simp only [Sum.map]
+      exact Sum.Lex.sep _ _
+    · exact (Sum.lex_inr_inl h).elim
+    ·
+      simp only [Sum.map]
+      exact Sum.Lex.inr (g.monotone (Sum.lex_inr_inr.mp h))
+  point_surjective := by
+    intro z
+    rcases hz : ofLex z with y | y
+    · obtain ⟨x, rfl⟩ := f.point_surjective y
+      refine ⟨toLex (Sum.inl x), ?_⟩
+      apply toLex.injective
+      simpa using hz.symm
+    · obtain ⟨x, rfl⟩ := g.point_surjective y
+      refine ⟨toLex (Sum.inr x), ?_⟩
+      apply toLex.injective
+      simpa using hz.symm
 
 instance {X Y : Con} : CoeFun (ConHom X Y) (fun _ => X.Obj → Y.Obj) where
   coe f := f.toFun
@@ -249,12 +306,11 @@ def Folio.E (W : Folio) : Type 0 := W.H.Elements
 
 instance (W : Folio) : Category.{0} W.E := categoryOfElements W.H
 
+instance (W : Folio) (m : (Fin W.length)ᵒᵖ) : LinearOrder (W.H.obj m) :=
+  (W.F.obj m.unop).unop.linearOrder
+
 instance (W : Folio) (x y : W.E) : Subsingleton (x ⟶ y) where
   allEq f g := CategoryOfElements.ext W.H f g (Subsingleton.elim _ _)
-
-noncomputable instance (W : Folio) (m : (Fin W.length)ᵒᵖ) :
-    LinearOrder (W.H.obj m) :=
-  linearOrder_toType ((W.F.obj m.unop).unop.length)
 
 def Folio.originIndex (W : Folio) : Fin W.length := ⟨0, W.positive⟩
 def Folio.originBase (W : Folio) : (Fin W.length)ᵒᵖ := op W.originIndex
@@ -457,7 +513,7 @@ def Folio.toCommonRight (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
 def elementLT (X : Atl) (x y : X.E) : Prop :=
   let m := X.P.folio.commonBase x.1 y.1
   letI : LinearOrder (X.H.obj m) :=
-    linearOrder_toType ((X.P.folio.F.obj m.unop).unop.length)
+    (X.P.folio.F.obj m.unop).unop.linearOrder
   X.H.map (X.P.folio.toCommonLeft x.1 y.1) x.2 <
     X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
 
@@ -910,20 +966,19 @@ def emptyDominion : DomIns where
           inj' := fun x => nomatch x } }
 
 def singletonChain : Chain where
-  length := 1
-  length_lt := by
+  Obj := Unit
+  linearOrder := inferInstance
+  wellFoundedLT := inferInstance
+  orderType_lt := by
     have hpow : Ordinal.omega0 ^ (1 : Ordinal) <
         Ordinal.omega0 ^ Ordinal.omega0 :=
       (Ordinal.opow_lt_opow_iff_right Ordinal.one_lt_omega0).2
         Ordinal.one_lt_omega0
     have hω : Ordinal.omega0 < Ordinal.omega0 ^ Ordinal.omega0 := by
       simpa only [Ordinal.opow_one] using hpow
-    exact lt_trans Ordinal.one_lt_omega0 hω
+    simpa using lt_trans Ordinal.one_lt_omega0 hω
 
-def singletonObjEquiv : singletonChain.Obj ≃ Unit := by
-  let h : typeLT singletonChain.Obj = typeLT Unit := by
-    simp [Chain.Obj, singletonChain]
-  exact (Classical.choice (Ordinal.type_eq.mp h)).toEquiv
+def singletonObjEquiv : singletonChain.Obj ≃ Unit := Equiv.refl _
 
 def onePageFolio : Folio where
   length := 1
@@ -1026,7 +1081,7 @@ theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).E) :
   subst y
   let m := (dominionAtlas X).P.folio.commonBase x.1 x.1
   letI : LinearOrder ((dominionAtlas X).H.obj m) :=
-    linearOrder_toType (((dominionAtlas X).P.folio.F.obj m.unop).unop.length)
+    ((dominionAtlas X).P.folio.F.obj m.unop).unop.linearOrder
   exact lt_irrefl _ h
 
 /-- A stable traversal from a one-page atlas determines an embedding into
@@ -1241,6 +1296,834 @@ def IsDaTraMap : ObjectProperty DaTra := fun D =>
   ∀ nav : Navigation D, IsAtlasMap nav.A
 
 abbrev DaTraMap := IsDaTraMap.FullSubcategory
+
+/-%%
+\section{Horizontal Atlases}
+
+\begin{definition}[The Empty Atlas]
+The \textbf{Empty Atlas} is
+$\mathsf{AtlI}=\mathsf{DomInc}(0)$.
+\end{definition}
+%%-/
+
+def AtlI : Atl := dominionAtlas emptyDominion
+
+def Folio.paddedIndex (W : Folio) (n : Nat) : Fin W.length :=
+  ⟨min n (W.length - 1), lt_of_le_of_lt (min_le_right _ _)
+    (Nat.sub_lt W.positive (by omega))⟩
+
+theorem Folio.paddedIndex_mono (W : Folio) :
+    Monotone W.paddedIndex := by
+  intro a b h
+  exact min_le_min h le_rfl
+
+def Folio.pageValue (W : Folio) (m : Fin W.length) :
+    (W.F.obj m).unop.Obj := by
+  letI : NeZero W.length := ⟨Nat.ne_of_gt W.positive⟩
+  let q : (W.F.obj m).unop ⟶ (W.F.obj W.originIndex).unop :=
+    (W.F.map (homOfLE (Fin.zero_le m))).unop
+  exact Classical.choose (q.point_surjective W.originValue)
+
+theorem Folio.map_unop_comp_apply (W : Folio) {i j k : Fin W.length}
+    (hik : i ⟶ k) (hij : i ⟶ j) (hjk : j ⟶ k)
+    (z : (W.F.obj k).unop.Obj) :
+    (W.F.map hik).unop z = (W.F.map hij).unop ((W.F.map hjk).unop z) := by
+  have e : hik = hij ≫ hjk := Subsingleton.elim _ _
+  subst hik
+  have h := congrArg Quiver.Hom.unop (W.F.map_comp hij hjk)
+  exact congrFun (congrArg ConHom.toFun h) z
+
+def bouquetLength (X Y : Folio) : Nat := max X.length Y.length + 1
+
+def bouquetDepth (X Y : Folio) : Nat := max X.length Y.length
+
+theorem bouquetLength_pos (X Y : Folio) : 0 < bouquetLength X Y := by
+  simp [bouquetLength]
+
+instance (X Y : Folio) : NeZero (bouquetLength X Y) :=
+  ⟨Nat.ne_of_gt (bouquetLength_pos X Y)⟩
+
+def bouquetChain (X Y : Folio) : Fin (bouquetLength X Y) → Chain :=
+  Fin.cases singletonChain (fun m : Fin (bouquetDepth X Y) =>
+    Chain.sum (X.F.obj (X.paddedIndex m.1)).unop
+      (Y.F.obj (Y.paddedIndex m.1)).unop)
+
+def bouquetValue (X Y : Folio) (m : Fin (bouquetLength X Y)) :
+    (bouquetChain X Y m).Obj :=
+  Fin.cases () (fun n => toLex (Sum.inl (X.pageValue (X.paddedIndex n.1)))) m
+
+def bouquetConMap (X Y : Folio) {i j : Fin (bouquetLength X Y)} (h : i ≤ j) :
+    bouquetChain X Y j ⟶ bouquetChain X Y i := by
+  revert j
+  refine Fin.cases ?_ (fun i => ?_) i
+  · rename_i j
+    intro h
+    refine
+      { toFun := fun _ => ()
+        monotone := fun _ _ _ => le_rfl
+        point_surjective := fun z => by
+          refine ⟨bouquetValue X Y j, ?_⟩
+          change (() : Unit) = z
+          exact Subsingleton.elim _ _ }
+  · rename_i j
+    intro h
+    revert h
+    refine Fin.cases (by
+      intro h
+      change i.1 + 1 ≤ 0 at h
+      omega) (fun j => ?_) j
+    intro h
+    have hij : i ≤ j := Fin.succ_le_succ_iff.mp h
+    let hx : X.paddedIndex i.1 ≤ X.paddedIndex j.1 := X.paddedIndex_mono hij
+    let hy : Y.paddedIndex i.1 ≤ Y.paddedIndex j.1 := Y.paddedIndex_mono hij
+    exact ConHom.sum (X.F.map (homOfLE hx)).unop (Y.F.map (homOfLE hy)).unop
+
+def bouquetFolio (X Y : Folio) : Folio where
+  length := bouquetLength X Y
+  positive := bouquetLength_pos X Y
+  F :=
+    { obj := fun m => op (bouquetChain X Y m)
+      map := fun f => (bouquetConMap X Y (leOfHom f)).op
+      map_id := by
+        intro m
+        refine Fin.cases ?_ (fun m => ?_) m
+        · apply Quiver.Hom.unop_inj
+          apply ConHom.ext
+          intro z
+          change (() : Unit) = ()
+          rfl
+        apply Quiver.Hom.unop_inj
+        apply ConHom.ext
+        intro w
+        generalize hz : ofLex w = z
+        rcases z with z | z
+        · have hz' : w = toLex (Sum.inl z) := ofLex.injective (by simpa using hz)
+          subst w
+          simp [bouquetConMap, ConHom.sum]
+          change toLex (Sum.inl z) = toLex (Sum.inl z)
+          rfl
+        · have hz' : w = toLex (Sum.inr z) := ofLex.injective (by simpa using hz)
+          subst w
+          simp [bouquetConMap, ConHom.sum]
+          change toLex (Sum.inr z) = toLex (Sum.inr z)
+          rfl
+      map_comp := by
+        intro i j k f g
+        letI : NeZero (bouquetLength X Y) := ⟨Nat.ne_of_gt (bouquetLength_pos X Y)⟩
+        revert j k
+        refine Fin.cases ?_ (fun i => ?_) i
+        · rename_i jTarget kTarget
+          intro f g
+          apply Quiver.Hom.unop_inj
+          apply ConHom.ext
+          intro z
+          change (() : Unit) = ()
+          rfl
+        · rename_i iOrig jTarget kTarget
+          intro f g
+          have hj : jTarget ≠ 0 := by
+            intro e
+            have hf := leOfHom f
+            rw [e] at hf
+            change i.1 + 1 ≤ 0 at hf
+            omega
+          obtain ⟨j, rfl⟩ := Fin.eq_succ_of_ne_zero hj
+          have hk : kTarget ≠ 0 := by
+            intro e
+            have hg := leOfHom g
+            rw [e] at hg
+            change j.1 + 1 ≤ 0 at hg
+            omega
+          obtain ⟨k, rfl⟩ := Fin.eq_succ_of_ne_zero hk
+          apply Quiver.Hom.unop_inj
+          apply ConHom.ext
+          intro w
+          generalize hz : ofLex w = z
+          rcases z with z | z
+          · have hz' : w = toLex (Sum.inl z) := ofLex.injective (by simpa using hz)
+            subst w
+            simpa only [bouquetConMap, ConHom.sum] using congrArg
+              (fun q => toLex (Sum.inl q)) (X.map_unop_comp_apply _ _ _ z)
+          · have hz' : w = toLex (Sum.inr z) := ofLex.injective (by simpa using hz)
+            subst w
+            simpa only [bouquetConMap, ConHom.sum] using congrArg
+              (fun q => toLex (Sum.inr q)) (Y.map_unop_comp_apply _ _ _ z) }
+  originEquiv := by
+    exact singletonObjEquiv
+
+def domSum (X Y : DomIns) : DomIns where
+  toDom :=
+    { Carrier := Sum X Y
+      rank :=
+        { toFun := fun z => match z with
+            | .inl x => 2 * X.toDom.rank x
+            | .inr y => 2 * Y.toDom.rank y + 1
+          inj' := by
+            intro a b h
+            rcases a with a | a <;> rcases b with b | b
+            · simp only at h
+              exact congrArg Sum.inl (X.toDom.rank.injective (by omega))
+            · simp only at h
+              omega
+            · simp only at h
+              omega
+            · simp only at h
+              exact congrArg Sum.inr (Y.toDom.rank.injective (by omega)) } }
+
+def domSum.inl (X Y : DomIns) : X ⟶ domSum X Y where
+  toFun := Sum.inl
+  inj' := Sum.inl_injective
+
+def domSum.inr (X Y : DomIns) : Y ⟶ domSum X Y where
+  toFun := Sum.inr
+  inj' := Sum.inr_injective
+
+def bouquetPag (X Y : Atl) : Pag := ⟨bouquetFolio X.P.folio Y.P.folio⟩
+
+/- The first carrier-level implementation is retained here as a derivation of
+the image-subobject construction below.  The latter has definitionally
+functorial transition inclusions and therefore avoids dependent cast noise.
+
+def bouquetDomIndex (X Y : Atl) :
+    (m : Fin (bouquetLength X.P.folio Y.P.folio)) →
+      (bouquetFolio X.P.folio Y.P.folio).H.obj (op m) → DomIns :=
+  Fin.cases (fun _ => domSum (extent X) (extent Y)) (fun n v =>
+    match ofLex v with
+    | .inl k => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
+    | .inr k => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k))
+
+def bouquetDom (X Y : Atl) (x : (bouquetPag X Y).E) : DomIns :=
+  bouquetDomIndex X Y x.1.unop x.2
+
+def bouquetDomMap (X Y : Atl) {x y : (bouquetPag X Y).E} (f : x ⟶ y) :
+    bouquetDom X Y x ⟶ bouquetDom X Y y := by
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  induction mx using Fin.cases with
+  | zero =>
+    induction my using Fin.cases with
+    | zero => exact 𝟙 _
+    | succ p =>
+      have hf : p.succ ⟶
+          (⟨0, bouquetLength_pos X.P.folio Y.P.folio⟩ :
+            Fin (bouquetLength X.P.folio Y.P.folio)) :=
+        Quiver.Hom.unop f.val
+      have h := leOfHom hf
+      change p.1 + 1 ≤ 0 at h
+      omega
+  | succ n =>
+    induction my using Fin.cases with
+    | zero =>
+      generalize hvx : ofLex vx = s
+      rcases s with k | k
+      · have evx : vx = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hvx)
+        subst vx
+        have hs : bouquetDomIndex X Y n.succ (toLex (Sum.inl k)) =
+            X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k) := by
+          change (match ofLex (toLex (Sum.inl k)) with
+            | .inl q => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) q)
+            | .inr q => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) q)) = _
+          simp
+        exact eqToHom hs ≫
+          X.G.map (X.P.cellToOrigin (op (X.P.folio.paddedIndex n.1)) k) ≫
+          domSum.inl (extent X) (extent Y)
+      · have evx : vx = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hvx)
+        subst vx
+        have hs : bouquetDomIndex X Y n.succ (toLex (Sum.inr k)) =
+            Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k) := by
+          change (match ofLex (toLex (Sum.inr k)) with
+            | .inl q => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) q)
+            | .inr q => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) q)) = _
+          simp
+        exact eqToHom hs ≫
+          Y.G.map (Y.P.cellToOrigin (op (Y.P.folio.paddedIndex n.1)) k) ≫
+          domSum.inr (extent X) (extent Y)
+    | succ p =>
+      have hf : p.succ ⟶ n.succ := Quiver.Hom.unop f.val
+      have hpn : p ≤ n := Fin.succ_le_succ_iff.mp (leOfHom hf)
+      let hxp : X.P.folio.paddedIndex p.1 ≤ X.P.folio.paddedIndex n.1 :=
+        X.P.folio.paddedIndex_mono hpn
+      let hyp : Y.P.folio.paddedIndex p.1 ≤ Y.P.folio.paddedIndex n.1 :=
+        Y.P.folio.paddedIndex_mono hpn
+      have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
+          Fin.succ_le_succ_iff.mpr hpn)).op :=
+        Subsingleton.elim _ _
+      generalize hvx : ofLex vx = s
+      rcases s with k | k
+      · have evx : vx = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hvx)
+        subst vx
+        let k' := X.P.H.map (homOfLE hxp).op k
+        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inl k)) = vy :=
+          f.property
+        have hv : ofLex vy = Sum.inl k' := by
+          rw [← hfv]
+          rw [ef]
+          change ofLex (toLex (Sum.map _ _ (ofLex (toLex (Sum.inl k))))) = _
+          simp [k']
+          congr 2
+        have hs : bouquetDomIndex X Y n.succ (toLex (Sum.inl k)) =
+            X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k) := by
+          change (match ofLex (toLex (Sum.inl k)) with
+            | .inl q => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) q)
+            | .inr q => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) q)) = _
+          simp
+        have ht : bouquetDomIndex X Y p.succ vy =
+            X.G.obj (X.P.cell (op (X.P.folio.paddedIndex p.1)) k') := by
+          change (match ofLex vy with
+            | .inl q => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex p.1)) q)
+            | .inr q => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex p.1)) q)) = _
+          rw [hv]
+        exact eqToHom hs ≫
+          X.G.map (CategoryOfElements.homMk _ _ (homOfLE hxp).op rfl) ≫
+          eqToHom ht.symm
+      · have evx : vx = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hvx)
+        subst vx
+        let k' := Y.P.H.map (homOfLE hyp).op k
+        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inr k)) = vy :=
+          f.property
+        have hv : ofLex vy = Sum.inr k' := by
+          rw [← hfv]
+          rw [ef]
+          change ofLex (toLex (Sum.map _ _ (ofLex (toLex (Sum.inr k))))) = _
+          simp [k']
+          congr 2
+        have hs : bouquetDomIndex X Y n.succ (toLex (Sum.inr k)) =
+            Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k) := by
+          change (match ofLex (toLex (Sum.inr k)) with
+            | .inl q => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) q)
+            | .inr q => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) q)) = _
+          simp
+        have ht : bouquetDomIndex X Y p.succ vy =
+            Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex p.1)) k') := by
+          change (match ofLex vy with
+            | .inl q => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex p.1)) q)
+            | .inr q => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex p.1)) q)) = _
+          rw [hv]
+        exact eqToHom hs ≫
+          Y.G.map (CategoryOfElements.homMk _ _ (homOfLE hyp).op rfl) ≫
+          eqToHom ht.symm
+
+def bouquetToOrigin (X Y : Atl) (x : (bouquetPag X Y).E) :
+    bouquetDom X Y x ⟶ domSum (extent X) (extent Y) := by
+  rcases x with ⟨⟨m⟩, v⟩
+  induction m using Fin.cases with
+  | zero => exact 𝟙 _
+  | succ n =>
+    generalize hv : ofLex v = s
+    rcases s with k | k
+    · have ev : v = toLex (Sum.inl k) :=
+        ofLex.injective (by simpa using hv)
+      subst v
+      exact X.G.map (X.P.cellToOrigin
+        (op (X.P.folio.paddedIndex n.1)) k) ≫
+        domSum.inl (extent X) (extent Y)
+    · have ev : v = toLex (Sum.inr k) :=
+        ofLex.injective (by simpa using hv)
+      subst v
+      exact Y.G.map (Y.P.cellToOrigin
+        (op (Y.P.folio.paddedIndex n.1)) k) ≫
+        domSum.inr (extent X) (extent Y)
+
+theorem bouquetDomMap_toOrigin (X Y : Atl)
+    {x y : (bouquetPag X Y).E} (f : x ⟶ y) :
+    bouquetDomMap X Y f ≫ bouquetToOrigin X Y y =
+      bouquetToOrigin X Y x := by
+  apply DomIns.hom_ext
+  intro a
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  induction mx using Fin.cases with
+  | zero =>
+    induction my using Fin.cases with
+    | zero => rfl
+    | succ p =>
+      have hf : p.succ ⟶
+          (⟨0, bouquetLength_pos X.P.folio Y.P.folio⟩ :
+            Fin (bouquetLength X.P.folio Y.P.folio)) :=
+        Quiver.Hom.unop f.val
+      have h := leOfHom hf
+      change p.1 + 1 ≤ 0 at h
+      omega
+  | succ n =>
+    induction my using Fin.cases with
+    | zero =>
+      generalize hv : ofLex vx = s
+      rcases s with k | k
+      · have ev : vx = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hv)
+        subst vx
+        rfl
+      · have ev : vx = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hv)
+        subst vx
+        rfl
+    | succ p =>
+      have hf : p.succ ⟶ n.succ := Quiver.Hom.unop f.val
+      have hpn : p ≤ n := Fin.succ_le_succ_iff.mp (leOfHom hf)
+      let hxp : X.P.folio.paddedIndex p.1 ≤ X.P.folio.paddedIndex n.1 :=
+        X.P.folio.paddedIndex_mono hpn
+      let hyp : Y.P.folio.paddedIndex p.1 ≤ Y.P.folio.paddedIndex n.1 :=
+        Y.P.folio.paddedIndex_mono hpn
+      generalize hv : ofLex vx = s
+      rcases s with k | k
+      · have ev : vx = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hv)
+        subst vx
+        let k' := X.P.H.map (homOfLE hxp).op k
+        have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
+            Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
+        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inl k)) = vy :=
+          f.property
+        have hvy : ofLex vy = Sum.inl k' := by
+          rw [← hfv, ef]
+          change ofLex (toLex (Sum.map _ _ (ofLex (toLex (Sum.inl k))))) = _
+          simp [k']
+          congr 2
+        have evy : vy = toLex (Sum.inl k') :=
+          ofLex.injective (by simpa using hvy)
+        subst vy
+        have hmap := X.G.map_comp
+          (CategoryOfElements.homMk
+            (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
+            (X.P.cell (op (X.P.folio.paddedIndex p.1))
+              (X.P.H.map (homOfLE hxp).op k))
+            (homOfLE hxp).op rfl)
+          (X.P.cellToOrigin (op (X.P.folio.paddedIndex p.1))
+            (X.P.H.map (homOfLE hxp).op k))
+        unfold bouquetDomMap bouquetToOrigin
+        simp_rw [ofLex_toLex]
+        simp_all [bouquetDom, 
+          bouquetDomIndex, Category.assoc]
+      · have ev : vx = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hv)
+        subst vx
+        let k' := Y.P.H.map (homOfLE hyp).op k
+        have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
+            Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
+        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inr k)) = vy :=
+          f.property
+        have hvy : ofLex vy = Sum.inr k' := by
+          rw [← hfv, ef]
+          change ofLex (toLex (Sum.map _ _ (ofLex (toLex (Sum.inr k))))) = _
+          simp [k']
+          congr 2
+        have evy : vy = toLex (Sum.inr k') :=
+          ofLex.injective (by simpa using hvy)
+        subst vy
+        have hmap := Y.G.map_comp
+          (CategoryOfElements.homMk
+            (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k)
+            (Y.P.cell (op (Y.P.folio.paddedIndex p.1))
+              (Y.P.H.map (homOfLE hyp).op k))
+            (homOfLE hyp).op rfl)
+          (Y.P.cellToOrigin (op (Y.P.folio.paddedIndex p.1))
+            (Y.P.H.map (homOfLE hyp).op k))
+        unfold bouquetDomMap bouquetToOrigin
+        simp_rw [ofLex_toLex]
+        simp_all [bouquetDom,
+          bouquetDomIndex, Category.assoc]
+
+def bouquetFunctor (X Y : Atl) : (bouquetPag X Y).E ⥤ DomIns where
+  obj := bouquetDom X Y
+  map := bouquetDomMap X Y
+  map_id := by
+    intro x
+    apply (cancel_mono (bouquetToOrigin X Y x)).1
+    simpa using bouquetDomMap_toOrigin X Y (𝟙 x)
+  map_comp := by
+    intro x y z f g
+    apply (cancel_mono (bouquetToOrigin X Y z)).1
+    rw [Category.assoc, bouquetDomMap_toOrigin X Y g,
+      bouquetDomMap_toOrigin X Y f]
+    exact bouquetDomMap_toOrigin X Y (f ≫ g)
+-/
+
+def imageDom {A R : DomIns} (f : A ⟶ R) : DomIns where
+  toDom :=
+    { Carrier := Set.range f
+      rank :=
+        ({ toFun := Subtype.val
+           inj' := Subtype.val_injective } : Set.range f ↪ R).trans R.toDom.rank }
+
+def imageDom.inclusion {A R : DomIns} (f : A ⟶ R) : imageDom f ⟶ R where
+  toFun := Subtype.val
+  inj' := Subtype.val_injective
+
+def bouquetRawDomIndex (X Y : Atl) :
+    (m : Fin (bouquetLength X.P.folio Y.P.folio)) →
+      (bouquetFolio X.P.folio Y.P.folio).H.obj (op m) → DomIns :=
+  Fin.cases (fun _ => domSum (extent X) (extent Y)) (fun n v =>
+    match ofLex v with
+    | .inl k => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
+    | .inr k => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k))
+
+def bouquetRootIndex (X Y : Atl) :
+    ∀ (m : Fin (bouquetLength X.P.folio Y.P.folio))
+      (v : (bouquetFolio X.P.folio Y.P.folio).H.obj (op m)),
+      bouquetRawDomIndex X Y m v ⟶ domSum (extent X) (extent Y) := by
+  intro m
+  induction m using Fin.cases with
+  | zero => intro v; exact 𝟙 _
+  | succ n =>
+    intro v
+    generalize hv : ofLex v = s
+    rcases s with k | k
+    · have ev : v = toLex (Sum.inl k) :=
+        ofLex.injective (by simpa using hv)
+      subst v
+      exact X.G.map (X.P.cellToOrigin
+        (op (X.P.folio.paddedIndex n.1)) k) ≫
+        domSum.inl (extent X) (extent Y)
+    · have ev : v = toLex (Sum.inr k) :=
+        ofLex.injective (by simpa using hv)
+      subst v
+      exact Y.G.map (Y.P.cellToOrigin
+        (op (Y.P.folio.paddedIndex n.1)) k) ≫
+        domSum.inr (extent X) (extent Y)
+
+def bouquetDom (X Y : Atl) (x : (bouquetPag X Y).E) : DomIns :=
+  imageDom (bouquetRootIndex X Y x.1.unop x.2)
+
+theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
+    (f : x ⟶ y) :
+    Set.range (bouquetRootIndex X Y x.1.unop x.2) ⊆
+      Set.range (bouquetRootIndex X Y y.1.unop y.2) := by
+  intro z hz
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  rcases hz with ⟨a, ha⟩
+  rw [← ha]
+  induction mx using Fin.cases with
+  | zero =>
+    induction my using Fin.cases with
+    | zero => exact ⟨a, rfl⟩
+    | succ p =>
+      have hf : p.succ ⟶
+          (⟨0, bouquetLength_pos X.P.folio Y.P.folio⟩ :
+            Fin (bouquetLength X.P.folio Y.P.folio)) :=
+        Quiver.Hom.unop f.val
+      have h := leOfHom hf
+      change p.1 + 1 ≤ 0 at h
+      omega
+  | succ n =>
+    induction my using Fin.cases with
+    | zero => exact ⟨bouquetRootIndex X Y n.succ vx a, rfl⟩
+    | succ p =>
+      have hf : p.succ ⟶ n.succ := Quiver.Hom.unop f.val
+      have hpn : p ≤ n := Fin.succ_le_succ_iff.mp (leOfHom hf)
+      let hxp : X.P.folio.paddedIndex p.1 ≤ X.P.folio.paddedIndex n.1 :=
+        X.P.folio.paddedIndex_mono hpn
+      let hyp : Y.P.folio.paddedIndex p.1 ≤ Y.P.folio.paddedIndex n.1 :=
+        Y.P.folio.paddedIndex_mono hpn
+      generalize hvx : ofLex vx = s
+      rcases s with k | k
+      · have evx : vx = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hvx)
+        subst vx
+        let k' := X.P.H.map (homOfLE hxp).op k
+        have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
+            Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
+        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inl k)) = vy :=
+          f.property
+        have hvy : ofLex vy = Sum.inl k' := by
+          rw [← hfv, ef]
+          change ofLex (toLex (Sum.map _ _ (ofLex (toLex (Sum.inl k))))) = _
+          simp [k']
+          congr 2
+        have evy : vy = toLex (Sum.inl k') :=
+          ofLex.injective (by simpa using hvy)
+        subst vy
+        let q := CategoryOfElements.homMk
+          (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
+          (X.P.cell (op (X.P.folio.paddedIndex p.1)) k')
+          (homOfLE hxp).op rfl
+        refine ⟨X.G.map q a, ?_⟩
+        change Sum.inl (X.G.map (X.P.cellToOrigin _ k') (X.G.map q a)) =
+          Sum.inl (X.G.map (X.P.cellToOrigin _ k) a)
+        apply congrArg Sum.inl
+        have hc : q ≫ X.P.cellToOrigin _ k' = X.P.cellToOrigin _ k :=
+          CategoryOfElements.ext X.P.H _ _ (Subsingleton.elim _ _)
+        have hm := X.G.map_comp q (X.P.cellToOrigin _ k')
+        rw [hc] at hm
+        exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
+      · have evx : vx = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hvx)
+        subst vx
+        let k' := Y.P.H.map (homOfLE hyp).op k
+        have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
+            Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
+        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inr k)) = vy :=
+          f.property
+        have hvy : ofLex vy = Sum.inr k' := by
+          rw [← hfv, ef]
+          change ofLex (toLex (Sum.map _ _ (ofLex (toLex (Sum.inr k))))) = _
+          simp [k']
+          congr 2
+        have evy : vy = toLex (Sum.inr k') :=
+          ofLex.injective (by simpa using hvy)
+        subst vy
+        let q := CategoryOfElements.homMk
+          (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k)
+          (Y.P.cell (op (Y.P.folio.paddedIndex p.1)) k')
+          (homOfLE hyp).op rfl
+        refine ⟨Y.G.map q a, ?_⟩
+        change Sum.inr (Y.G.map (Y.P.cellToOrigin _ k') (Y.G.map q a)) =
+          Sum.inr (Y.G.map (Y.P.cellToOrigin _ k) a)
+        apply congrArg Sum.inr
+        have hc : q ≫ Y.P.cellToOrigin _ k' = Y.P.cellToOrigin _ k :=
+          CategoryOfElements.ext Y.P.H _ _ (Subsingleton.elim _ _)
+        have hm := Y.G.map_comp q (Y.P.cellToOrigin _ k')
+        rw [hc] at hm
+        exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
+
+def imageDom.map {A B R : DomIns} (f : A ⟶ R) (g : B ⟶ R)
+    (h : Set.range f ⊆ Set.range g) : imageDom f ⟶ imageDom g where
+  toFun z := ⟨z.1, h z.2⟩
+  inj' := by
+    intro a b e
+    apply Subtype.ext
+    exact congrArg (fun q => q.1) e
+
+@[simp]
+theorem imageDom.map_val {A B R : DomIns} (f : A ⟶ R) (g : B ⟶ R)
+    (h : Set.range f ⊆ Set.range g) (z : imageDom f) :
+    (imageDom.map f g h z).1 = z.1 := rfl
+
+def bouquetImageMap (X Y : Atl) {x y : (bouquetPag X Y).E} (f : x ⟶ y) :
+    bouquetDom X Y x ⟶ bouquetDom X Y y :=
+  imageDom.map _ _ (bouquetRange_mono X Y f)
+
+def bouquetFunctor (X Y : Atl) : (bouquetPag X Y).E ⥤ DomIns where
+  obj := bouquetDom X Y
+  map := bouquetImageMap X Y
+  map_id := by
+    intro x
+    apply DomIns.hom_ext
+    intro z
+    apply Subtype.ext
+    change z.1 = z.1
+    rfl
+  map_comp := by
+    intro x y z f g
+    apply DomIns.hom_ext
+    intro w
+    apply Subtype.ext
+    change w.1 = w.1
+    rfl
+
+def bouquetAtlas (X Y : Atl) : Atl where
+  P := bouquetPag X Y
+  G := bouquetFunctor X Y
+  disjoint := by
+    intro m i j hij x y hxy
+    rcases m with ⟨m⟩
+    induction m using Fin.cases with
+    | zero =>
+      exact hij ((bouquetFolio X.P.folio Y.P.folio).originEquiv.injective
+        (Subsingleton.elim _ _))
+    | succ n =>
+      rcases x.2 with ⟨a, ha⟩
+      rcases y.2 with ⟨b, hb⟩
+      have huv : x.1 = y.1 := by
+        have e := congrArg (fun q => q.1) hxy
+        change x.1 = y.1 at e
+        exact e
+      have hroot : bouquetRootIndex X Y n.succ i a =
+          bouquetRootIndex X Y n.succ j b := ha.trans (huv.trans hb.symm)
+      generalize hi : ofLex i = si
+      generalize hj : ofLex j = sj
+      rcases si with k | k <;> rcases sj with l | l
+      · have ei : i = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hi)
+        have ej : j = toLex (Sum.inl l) :=
+          ofLex.injective (by simpa using hj)
+        subst i
+        subst j
+        have hkl : k ≠ l := by
+          intro e
+          subst l
+          exact hij rfl
+        change Sum.inl (X.G.map (X.P.cellToOrigin _ k) a) =
+          Sum.inl (X.G.map (X.P.cellToOrigin _ l) b) at hroot
+        exact X.disjoint _ k l hkl a b (Sum.inl.inj hroot)
+      · have ei : i = toLex (Sum.inl k) :=
+          ofLex.injective (by simpa using hi)
+        have ej : j = toLex (Sum.inr l) :=
+          ofLex.injective (by simpa using hj)
+        subst i
+        subst j
+        change Sum.inl (X.G.map (X.P.cellToOrigin _ k) a) =
+          Sum.inr (Y.G.map (Y.P.cellToOrigin _ l) b) at hroot
+        exact Sum.noConfusion hroot
+      · have ei : i = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hi)
+        have ej : j = toLex (Sum.inl l) :=
+          ofLex.injective (by simpa using hj)
+        subst i
+        subst j
+        change Sum.inr (Y.G.map (Y.P.cellToOrigin _ k) a) =
+          Sum.inl (X.G.map (X.P.cellToOrigin _ l) b) at hroot
+        exact Sum.noConfusion hroot
+      · have ei : i = toLex (Sum.inr k) :=
+          ofLex.injective (by simpa using hi)
+        have ej : j = toLex (Sum.inr l) :=
+          ofLex.injective (by simpa using hj)
+        subst i
+        subst j
+        have hkl : k ≠ l := by
+          intro e
+          subst l
+          exact hij rfl
+        change Sum.inr (Y.G.map (Y.P.cellToOrigin _ k) a) =
+          Sum.inr (Y.G.map (Y.P.cellToOrigin _ l) b) at hroot
+        exact Y.disjoint _ k l hkl a b (Sum.inr.inj hroot)
+
+/-!
+### The ω₀-completion used by horizontal constructions
+
+The finite folio written in the manuscript is the finite presentation of an
+eventually constant folio.  It cannot itself support the claimed associator:
+the rule `max (|X|) (|Y|) + 1` gives different finite lengths under the two
+parenthesizations.  We therefore perform horizontal constructions after the
+following canonical completion.  Page `n` is the genuine page when
+`n < |X|`; otherwise it is the final page.  Thus no datum is invented: only
+the final territories are repeated.  All coherence maps below are formed in
+this completed category, where every folio has the common index chain `ω₀`.
+-/
+
+def Folio.omegaIndex (W : Folio) (n : Nat) : Fin W.length :=
+  W.paddedIndex n
+
+theorem Folio.omegaIndex_of_lt (W : Folio) {n : Nat} (h : n < W.length) :
+    W.omegaIndex n = ⟨n, h⟩ := by
+  apply Fin.ext
+  have hp := W.positive
+  simp [Folio.omegaIndex, Folio.paddedIndex, Nat.min_eq_left (by omega)]
+
+theorem Folio.omegaIndex_of_ge (W : Folio) {n : Nat} (h : W.length ≤ n) :
+    W.omegaIndex n = W.lastIndex := by
+  apply Fin.ext
+  have hp := W.positive
+  simp [Folio.omegaIndex, Folio.paddedIndex, Folio.lastIndex,
+    Nat.min_eq_right (by omega)]
+
+def Folio.omegaBase (W : Folio) : Nat ⥤ Fin W.length where
+  obj n := W.omegaIndex n
+  map f := homOfLE (W.paddedIndex_mono (leOfHom f))
+  map_id _ := Subsingleton.elim _ _
+  map_comp _ _ := Subsingleton.elim _ _
+
+structure OmegaFolio where
+  finite : Folio
+
+def OmegaFolio.F (W : OmegaFolio) : Nat ⥤ CoCon :=
+  W.finite.omegaBase ⋙ W.finite.F
+
+def OmegaFolio.H (W : OmegaFolio) : Natᵒᵖ ⥤ Type :=
+  W.F.leftOp ⋙ Tra
+
+def OmegaFolio.originBase (_W : OmegaFolio) : Natᵒᵖ := op 0
+
+def OmegaFolio.lastRepeatedIndex (W : OmegaFolio) (n : Nat)
+    (h : W.finite.length ≤ n) :
+    W.finite.omegaIndex n = W.finite.lastIndex :=
+  W.finite.omegaIndex_of_ge h
+
+/-- A wrapper is used instead of the raw dependent sum so that Mathlib's
+unrelated category instance for sigma-types cannot compete with the category
+of elements instance. -/
+structure OmegaElement (W : OmegaFolio) where
+  base : Natᵒᵖ
+  value : W.H.obj base
+
+instance (W : OmegaFolio) : Category (OmegaElement W) where
+  Hom x y := { f : x.base ⟶ y.base // W.H.map f x.value = y.value }
+  id x := ⟨𝟙 _, by simp⟩
+  comp f g := ⟨f.1 ≫ g.1, by simp [f.2, g.2]⟩
+  id_comp _ := rfl
+  comp_id _ := rfl
+  assoc _ _ _ := rfl
+
+instance (W : OmegaFolio) (x y : OmegaElement W) : Subsingleton (x ⟶ y) where
+  allEq f g := Subtype.ext (Subsingleton.elim _ _)
+
+def OmegaFolio.toFiniteElement (W : OmegaFolio) :
+    OmegaElement W ⥤ W.finite.E where
+  obj x := ⟨op (W.finite.omegaIndex x.base.unop), x.value⟩
+  map {x y} f := CategoryOfElements.homMk _ _
+    (W.finite.F.map (W.finite.omegaBase.map (Quiver.Hom.unop f.1))).op f.2
+  map_id _ := Subsingleton.elim _ _
+  map_comp _ _ := Subsingleton.elim _ _
+
+structure OmegaAtl where
+  finite : Atl
+
+def OmegaAtl.folio (X : OmegaAtl) : OmegaFolio := ⟨X.finite.P.folio⟩
+def OmegaAtl.E (X : OmegaAtl) := OmegaElement X.folio
+instance (X : OmegaAtl) : Category X.E := inferInstance
+def OmegaAtl.G (X : OmegaAtl) : X.E ⥤ DomIns :=
+  X.folio.toFiniteElement ⋙ X.finite.G
+
+def OmegaAtl.originElement (X : OmegaAtl) : X.E :=
+  ⟨op 0, X.finite.P.folio.originValue⟩
+
+def OmegaAtl.extent (X : OmegaAtl) : DomIns := X.G.obj X.originElement
+
+structure OmegaAtlHom (X Y : OmegaAtl) where
+  P : X.E ⥤ Y.E
+  A : X.G ⟶ P ⋙ Y.G
+
+def OmegaAtlHom.identity (X : OmegaAtl) : OmegaAtlHom X X where
+  P := 𝟙 X.E
+  A := 𝟙 X.G
+
+def OmegaAtlHom.comp {X Y Z : OmegaAtl}
+    (f : OmegaAtlHom X Y) (g : OmegaAtlHom Y Z) : OmegaAtlHom X Z where
+  P := f.P ⋙ g.P
+  A := f.A ≫ whiskerLeft f.P g.A
+
+@[ext]
+theorem OmegaAtlHom.ext {X Y : OmegaAtl} (f g : OmegaAtlHom X Y)
+    (hP : f.P = g.P) (hA : HEq f.A g.A) : f = g := by
+  cases f
+  cases g
+  cases hP
+  cases hA
+  rfl
+
+instance : Category OmegaAtl where
+  Hom := OmegaAtlHom
+  id := OmegaAtlHom.identity
+  comp := OmegaAtlHom.comp
+  id_comp f := by
+    apply OmegaAtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x
+      simp [OmegaAtlHom.comp, OmegaAtlHom.identity]
+  comp_id f := by
+    apply OmegaAtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x
+      simp [OmegaAtlHom.comp, OmegaAtlHom.identity]
+  assoc f g h := by
+    apply OmegaAtlHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x
+      simp [OmegaAtlHom.comp]
+
+def omegaCompleteObj (X : Atl) : OmegaAtl := ⟨X⟩
+
+theorem omegaComplete_eventually_territory (X : Atl) (n : Nat)
+    (h : X.P.folio.length ≤ n) :
+    X.P.folio.omegaIndex n = X.P.folio.lastIndex :=
+  X.P.folio.omegaIndex_of_ge h
 
 
 end

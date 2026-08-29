@@ -175,6 +175,8 @@ or `F' = AtlI`, `AtlBrd_F_F' = Id`. Otherwise, let `R = (AtlHorSum F F')` and le
 from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = inv G`, and
 trivially, `AtlBrd_F_F' AtlBrd_F'_F = Id`.
 
+[TODO: handle associator different chain cardinality by extending to chain of `omega_1` size]
+
 11.5. The **Atlas Associator**, denoted
 `AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
 if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherwise, denote
