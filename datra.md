@@ -2,8 +2,6 @@
 
 ## Authors: `@qualiascript`, ChatGPT
 
-[TODO: Change `op C` notation to `C^op`]
-
 1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_0`
 (i.e. the smallest infinite ordinal), that is, its objects are sets that have an injection to `omega_0`, and as its
 morphisms set-theoretic functions (i.e. morphisms in `Set`).
@@ -14,7 +12,7 @@ morphisms set-theoretic functions (i.e. morphisms in `Set`).
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. 
 
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
-`CoDomIns = op DomIns`.
+`CoDomIns = DomIns^op`.
 
 3.1. A **Chain** is a totally ordered thin category with strictly less than `omega_0 ^ omega_0` distinct objects,
 taken skeletally.
@@ -25,7 +23,7 @@ taken skeletally.
 and whose morphisms `K : X -> Y` are point-surjective functors on chains `F : X -> Y`.
 
 4.2. The **Category of Coconsolidations**, denoted `CoCon`, is the opposite category of `Con`, that
-is, `CoCon = op Con`.
+is, `CoCon = Con^op`.
 
 5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : Con -> Set`, and sends each morphism
 in `Con` to its underlying set-theoretic surjection.
@@ -33,7 +31,7 @@ in `Con` to its underlying set-theoretic surjection.
 5.2. A **Folio** is a functor `F : C -> CoCon`, where `C` is a chain, so that `F 0 = 1`.
 
 6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
-`H = Tra ∘ (op F)`, `F : C -> CoCon` is a folio, and `E` is the category of elements of functor `H`. For any
+`H = Tra ∘ (F^op)`, `F : C -> CoCon` is a folio, and `E` is the category of elements of functor `H`. For any
 `W : Pag`, we denote `W_H` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
 `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, which implies the following diagram commutes:
 
@@ -48,7 +46,7 @@ T                      T
 (m', i') ----T f-----> (n', (Y_H (T f)) i')
 ```
 6.2. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
-and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : op P_E -> CoDomIns`. For `X : Atl`,
+and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`. For `X : Atl`,
 we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
 morphisms in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
 and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
@@ -114,7 +112,7 @@ same object viewed as an object of `AtlTrav`.
 is the dominion in question.
 
 10.1. The **Category of Data Transformations**, also referred to as the **Category of Data Transformation Sets**, or
-simply **DaTra Sets**, denoted `DaTra`, is the category of presheaves on `Atl`, that is,`DaTra = [op Atl, Set]`.
+simply **DaTra Sets**, denoted `DaTra`, is the category of presheaves on `Atl`, that is,`DaTra = [Atl^op, Set]`.
 Trivially, `DaTra` is a topos.
 
 10.2. A **Navigation of a Data Transformation**, given `D : DaTra`, is a monomorphism `Nav : Yo A -> D` so that
