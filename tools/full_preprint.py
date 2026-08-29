@@ -61,8 +61,7 @@ LEAN_APPENDIX = r"""
 \section{Lean Formalization}
 
 The following is the complete Lean source corresponding to the mathematical
-development above. Embedded preprint blocks have been removed from this
-listing so that only the compilable formalization is shown.
+development above.
 
 \lstinputlisting[
   style=leanSource,
