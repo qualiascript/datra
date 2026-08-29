@@ -63,8 +63,8 @@ Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 6.3 The **Cardinality of an Atlas** `A : Atl` is the cardinality of the origin of `A_H : C -> Set`, that is, the
 number of objects of the small chain `C`. It is denoted as `|A|`.
 
-6.4. The **Extent of an Atlas** `A : Atl` is the value at `A_G (0, 0)`, that exists as folios preserve initial
-objects. It is denoted as `Ex A`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `D : Atl`.
+6.4. The **Extent of an Atlas** `A : Atl` is the value at `A_G (0, 0)`.
+It is denoted as `Ex A`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `D : Atl`.
 
 6.5. The **Territory of an Atlas** `A : Atl` is the indexed collection of dominions `Ter A : M -> Dom`,
 where `M = A_G (|A| - 1)`, so that `Ter A k = A_G (|A| - 1, k)`.
