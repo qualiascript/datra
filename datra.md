@@ -26,7 +26,7 @@ so that `d'` is not an isomorphism, and whose morphisms are epimorphisms `F : D 
 3.2. The **Category of Coconsolidations**, denoted `CoCon`, is the opposite category of `Con`, that
 is, `CoCon = op Con`.
 
-4.1. A **Chain** is a totally ordered thin category, taken skeletally.
+4.1. A **Chain** is a totally ordered thin category with at most `omega_0 ^ omega_0` distinct objects, taken skeletally.
 
 4.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
