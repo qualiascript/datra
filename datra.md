@@ -1,5 +1,7 @@
 # DaTra: Data Transformation Semantics as a Symmetric Monoidal Category on Atlas Presheaves
 
+## Authors: `@qualiascript`, ChatGPT
+
 1.1. The **Category of Dominions**, denoted `Dom`, has as its objects sets whose cardinality is at most `omega_0`
 (i.e. the smallest infinite ordinal), that is, its objects are sets that have an injection to `omega_0`, and as its
 morphisms set-theoretic functions (i.e. morphisms in `Set`).
