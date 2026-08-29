@@ -6,6 +6,8 @@ morphisms set-theoretic functions (i.e. morphisms in `Set`).
 
 1.2. The **Domanial Embedding Functor**, denoted `Emb : Dom -> Set`, sends each dominion to its corresponding set.
 
+[TODO: cardinality of a dominion]
+
 2.1. The **Category of Domanial Insertions**, denoted `DomIns`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. 
 
