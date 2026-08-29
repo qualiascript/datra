@@ -82,8 +82,9 @@ starts at `0`.
 7.2. The **Category of Atlas Traversals**, denoted `AtlTrav`, is the wide subcategory of `AtlTrap` whose morphisms
 for `F : X -> Y` have the following properties: for any `x = (m, i)`, `y = (m', j)`, let `p = min(m, m')`,
 `x' = F_E x = (n, i')`, `y' = F_E y = (n', j')` and let `p' = min(n, n')`, then if `X_H (m -> p) i < X_H (m' -> p) j`,
-then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. It can be checked that `AtlTrav` is stable under pullback along atlas
-monomorphisms.
+then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. Furthermore, for any `q : |X|`, `t : X_G q`, if there exists `k : |Ter X|`
+and `l : Ter X k` so that `t : X_G ((|X| - 1) -> q) k l`, this property gets preserved by `F`. It can be checked that
+`AtlTrav` is stable under pullback along atlas monomorphisms.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
 `A : AtlMap`, for `m = |A| - 1`, for any `v : Ex A`, there exists `k : |Ter A|` so that let `f = A_G (m -> 0) k`,
