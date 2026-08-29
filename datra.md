@@ -149,7 +149,7 @@ trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> 
 `|A_P n| = |X_P (n - 1)| + |Y_P (n - 1)|`, and for `m : |A|`, `m > 0`, `A_E (m -> 1) n = 0` iff `n < |X_P (m - 1)|`.
 For each `L : |G|`, `m > 0`, let `m_max` be the maximal value so that `A_E (L -> 1) m_max = 0`, or `m_max = -1` if such
 a value does not exist. Then, define the monomorphisms `T_X : X_E -> A_E`, `T_X' : X'_E -> A_E` as follows: for all
-`(m, n) : A_E`, `m > 0`, if `n < m_max`, then `T_X (m, n) = ((m - 1), n)`, otherwise,
+`(m, n) : A_E`, `m > 0`, if `n < m_max` and `m < |X|`, then `T_X (m, n) = ((m - 1), n)`, otherwise, if `m < |X'|`,
 `T_X' (m, n) = ((m - 1), (n - m_max + 1))`. It can be checked `T_X`, `T_X'` are indeed monic, and for any `(m, n) : A_E`
 there exists `(m', n')` so that either `T_X (m', n') = (m, n)` or `T_X' (m', n') = (m, n)`. Then define iso
 `V : A_E -> X_E + X'_E`, along with `P = (F_P + F'_P) : (X_E + X'_E) -> (Y_E + Y'_E)`,
