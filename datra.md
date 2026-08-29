@@ -120,7 +120,7 @@ Trivially, `DaTra` is a topos.
 10.2. A **Navigation of a Data Transformation**, given `D : DaTra`, is a monomorphism `Nav : Yo A -> D` so that
 `A : Atl`, where `Yo` represents the Yoneda embedding `Yo : Atl -> DaTra`.
 
-10.3. An **Exploration of a Data Transformation**, given `D : DaTra`, is a navigation `Exd : Yo A -> D` so that
+10.3. An **Expedition of a Data Transformation**, given `D : DaTra`, is a navigation `Exd : Yo A -> D` so that
 `A : AtlMap`.
 
 10.4. A **DaTra Restriction**, given `W` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
@@ -132,7 +132,7 @@ and `S`, then projection `P' : P -> X` is either empty or representable as `P' =
 10.6. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
 
 10.7. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
-the DaTra sets with the property that all of their navigations are explorations.
+the DaTra sets with the property that all of their navigations are expeditions.
 
 11.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
