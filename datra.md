@@ -12,7 +12,7 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
 `CoDomIns = op DomIns`.
 
-[TODO: clarify meaning of cardinality operator]
+[TODO: clarify meaning of cardinality operator. ordinals up to `omega^omega`]
 
 3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
 morphisms are order-preserving epimorphisms in `Dom`. More specifically, a morphism `F : A -> B` in `DomCon` has the
