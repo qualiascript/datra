@@ -1991,8 +1991,12 @@ the rule `max (|X|) (|Y|) + 1` gives different finite lengths under the two
 parenthesizations.  We therefore perform horizontal constructions after the
 following canonical completion.  Page `n` is the genuine page when
 `n < |X|`; otherwise it is the final page.  Thus no datum is invented: only
-the final territories are repeated.  All coherence maps below are formed in
-this completed category, where every folio has the common index chain `ω₀`.
+the final territories are repeated.  This common index chain removes the
+finite-cardinality mismatch.  A coherent horizontal product must additionally
+*flatten* an already-horizontal input instead of inserting its combined root
+as a new positive-page cell; otherwise the two parenthesizations still have
+different first-page partitions.  The horizontal normal form must therefore
+use a flat finite family of completed atlas components.
 -/
 
 def Folio.omegaIndex (W : Folio) (n : Nat) : Fin W.length :=
@@ -2001,15 +2005,14 @@ def Folio.omegaIndex (W : Folio) (n : Nat) : Fin W.length :=
 theorem Folio.omegaIndex_of_lt (W : Folio) {n : Nat} (h : n < W.length) :
     W.omegaIndex n = ⟨n, h⟩ := by
   apply Fin.ext
-  have hp := W.positive
-  simp [Folio.omegaIndex, Folio.paddedIndex, Nat.min_eq_left (by omega)]
+  change min n (W.length - 1) = n
+  exact Nat.min_eq_left (by omega)
 
 theorem Folio.omegaIndex_of_ge (W : Folio) {n : Nat} (h : W.length ≤ n) :
     W.omegaIndex n = W.lastIndex := by
   apply Fin.ext
-  have hp := W.positive
-  simp [Folio.omegaIndex, Folio.paddedIndex, Folio.lastIndex,
-    Nat.min_eq_right (by omega)]
+  change min n (W.length - 1) = W.length - 1
+  exact Nat.min_eq_right (by omega)
 
 def Folio.omegaBase (W : Folio) : Nat ⥤ Fin W.length where
   obj n := W.omegaIndex n
@@ -2055,7 +2058,7 @@ def OmegaFolio.toFiniteElement (W : OmegaFolio) :
     OmegaElement W ⥤ W.finite.E where
   obj x := ⟨op (W.finite.omegaIndex x.base.unop), x.value⟩
   map {x y} f := CategoryOfElements.homMk _ _
-    (W.finite.F.map (W.finite.omegaBase.map (Quiver.Hom.unop f.1))).op f.2
+    (W.finite.omegaBase.map (Quiver.Hom.unop f.1)).op f.2
   map_id _ := Subsingleton.elim _ _
   map_comp _ _ := Subsingleton.elim _ _
 
@@ -2063,22 +2066,59 @@ structure OmegaAtl where
   finite : Atl
 
 def OmegaAtl.folio (X : OmegaAtl) : OmegaFolio := ⟨X.finite.P.folio⟩
-def OmegaAtl.E (X : OmegaAtl) := OmegaElement X.folio
+abbrev OmegaAtl.E (X : OmegaAtl) := OmegaElement X.folio
 instance (X : OmegaAtl) : Category X.E := inferInstance
 def OmegaAtl.G (X : OmegaAtl) : X.E ⥤ DomIns :=
   X.folio.toFiniteElement ⋙ X.finite.G
 
-def OmegaAtl.originElement (X : OmegaAtl) : X.E :=
-  ⟨op 0, X.finite.P.folio.originValue⟩
+def OmegaAtl.originElement (X : OmegaAtl) : X.E := by
+  refine ⟨op 0, ?_⟩
+  change (X.finite.P.folio.F.obj
+    (X.finite.P.folio.omegaIndex 0)).unop.Obj
+  rw [X.finite.P.folio.omegaIndex_of_lt X.finite.P.folio.positive]
+  exact X.finite.P.folio.originValue
 
 def OmegaAtl.extent (X : OmegaAtl) : DomIns := X.G.obj X.originElement
+
+def OmegaAtl.cardinality (_X : OmegaAtl) : Ordinal := Ordinal.omega0
+
+def OmegaAtl.pageIndex (X : OmegaAtl) (n : Nat) : Fin X.finite.P.folio.length :=
+  X.finite.P.folio.omegaIndex n
+
+theorem OmegaAtl.pageIndex_inside (X : OmegaAtl) {n : Nat}
+    (h : n < X.finite.P.folio.length) :
+    X.pageIndex n = ⟨n, h⟩ :=
+  X.finite.P.folio.omegaIndex_of_lt h
+
+theorem OmegaAtl.pageIndex_outside (X : OmegaAtl) {n : Nat}
+    (h : X.finite.P.folio.length ≤ n) :
+    X.pageIndex n = X.finite.P.folio.lastIndex :=
+  X.finite.P.folio.omegaIndex_of_ge h
+
+/-- The partition condition for the completed atlas, stated at an arbitrary
+natural-number page.  Beyond the finite presentation this is literally the
+partition condition of the final territory. -/
+def IsOmegaPagewiseDisjoint (X : OmegaAtl) : Prop :=
+  ∀ (n : Nat) (i j : X.folio.H.obj (op n)), i ≠ j →
+    ∀ (x : X.finite.G.obj
+        (X.finite.P.cell (op (X.pageIndex n)) i))
+      (y : X.finite.G.obj
+        (X.finite.P.cell (op (X.pageIndex n)) j)),
+      X.finite.G.map
+          (X.finite.P.cellToOrigin (op (X.pageIndex n)) i) x ≠
+        X.finite.G.map
+          (X.finite.P.cellToOrigin (op (X.pageIndex n)) j) y
+
+theorem OmegaAtl.disjoint (X : OmegaAtl) : IsOmegaPagewiseDisjoint X := by
+  intro n i j hij x y
+  exact X.finite.disjoint (op (X.pageIndex n)) i j hij x y
 
 structure OmegaAtlHom (X Y : OmegaAtl) where
   P : X.E ⥤ Y.E
   A : X.G ⟶ P ⋙ Y.G
 
 def OmegaAtlHom.identity (X : OmegaAtl) : OmegaAtlHom X X where
-  P := 𝟙 X.E
+  P := 𝟭 X.E
   A := 𝟙 X.G
 
 def OmegaAtlHom.comp {X Y Z : OmegaAtl}
@@ -2124,6 +2164,620 @@ theorem omegaComplete_eventually_territory (X : Atl) (n : Nat)
     (h : X.P.folio.length ≤ n) :
     X.P.folio.omegaIndex n = X.P.folio.lastIndex :=
   X.P.folio.omegaIndex_of_ge h
+
+theorem omegaComplete_cardinality (X : Atl) :
+    (omegaCompleteObj X).cardinality = Ordinal.omega0 := rfl
+
+/-!
+`OmegaAtlFamily` is the flat normal form used for coherence.  A singleton
+family is an ordinary atlas after ω₀-completion; the empty family is the
+horizontal unit; and tensoring concatenates families.  In particular, neither
+parenthesization creates an intermediate combined root as a new component.
+-/
+
+structure OmegaAtlFamily where
+  Index : Type
+  finiteIndex : Fintype Index
+  component : Index → OmegaAtl
+
+attribute [instance] OmegaAtlFamily.finiteIndex
+
+structure OmegaAtlFamilyHom (X Y : OmegaAtlFamily) where
+  index : X.Index → Y.Index
+  component : ∀ i, X.component i ⟶ Y.component (index i)
+
+@[ext]
+theorem OmegaAtlFamilyHom.ext {X Y : OmegaAtlFamily}
+    (f g : OmegaAtlFamilyHom X Y) (hi : f.index = g.index)
+    (hc : ∀ i, HEq (f.component i) (g.component i)) : f = g := by
+  cases f
+  cases g
+  cases hi
+  congr
+  funext i
+  exact eq_of_heq (hc i)
+
+def OmegaAtlFamilyHom.identity (X : OmegaAtlFamily) :
+    OmegaAtlFamilyHom X X where
+  index := id
+  component := fun _ => 𝟙 _
+
+def OmegaAtlFamilyHom.comp {X Y Z : OmegaAtlFamily}
+    (f : OmegaAtlFamilyHom X Y) (g : OmegaAtlFamilyHom Y Z) :
+    OmegaAtlFamilyHom X Z where
+  index := g.index ∘ f.index
+  component := fun i => f.component i ≫ g.component (f.index i)
+
+instance : Category OmegaAtlFamily where
+  Hom := OmegaAtlFamilyHom
+  id := OmegaAtlFamilyHom.identity
+  comp := OmegaAtlFamilyHom.comp
+  id_comp f := by
+    apply OmegaAtlFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq (Category.id_comp _)
+  comp_id f := by
+    apply OmegaAtlFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq (Category.comp_id _)
+  assoc f g h := by
+    apply OmegaAtlFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq (Category.assoc _ _ _)
+
+@[simp]
+theorem OmegaAtlFamilyHom.component_id (X : OmegaAtlFamily) (i : X.Index) :
+    (𝟙 X : X ⟶ X).component i = 𝟙 (X.component i) := rfl
+
+@[simp]
+theorem OmegaAtlFamilyHom.component_comp {X Y Z : OmegaAtlFamily}
+    (f : X ⟶ Y) (g : Y ⟶ Z) (i : X.Index) :
+    (f ≫ g).component i = f.component i ≫ g.component (f.index i) := rfl
+
+def omegaAtom (X : Atl) : OmegaAtlFamily where
+  Index := Unit
+  finiteIndex := inferInstance
+  component := fun _ => omegaCompleteObj X
+
+def omegaFamilyUnit : OmegaAtlFamily where
+  Index := Empty
+  finiteIndex := inferInstance
+  component := fun i => nomatch i
+
+def omegaFamilyTensorObj (X Y : OmegaAtlFamily) : OmegaAtlFamily where
+  Index := Sum X.Index Y.Index
+  finiteIndex := inferInstance
+  component := Sum.elim X.component Y.component
+
+def omegaFamilyTensorHom {X₁ X₂ Y₁ Y₂ : OmegaAtlFamily}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    omegaFamilyTensorObj X₁ X₂ ⟶ omegaFamilyTensorObj Y₁ Y₂ where
+  index := Sum.map f.index g.index
+  component
+    | .inl i => f.component i
+    | .inr j => g.component j
+
+def omegaFamilyTensor : OmegaAtlFamily × OmegaAtlFamily ⥤ OmegaAtlFamily where
+  obj X := omegaFamilyTensorObj X.1 X.2
+  map f := omegaFamilyTensorHom f.1 f.2
+  map_id X := by
+    have hi : (omegaFamilyTensorHom (𝟙 X.1) (𝟙 X.2)).index =
+        (OmegaAtlFamilyHom.identity _).index := by
+      funext i
+      cases i <;> rfl
+    apply OmegaAtlFamilyHom.ext _ _ hi
+    intro i
+    cases i <;> exact HEq.rfl
+  map_comp f g := by
+    have hi : (omegaFamilyTensorHom (f.1 ≫ g.1) (f.2 ≫ g.2)).index =
+        (omegaFamilyTensorHom f.1 f.2 ≫
+          omegaFamilyTensorHom g.1 g.2).index := by
+      funext i
+      cases i <;> rfl
+    apply OmegaAtlFamilyHom.ext _ _ hi
+    intro i
+    cases i <;> exact HEq.rfl
+
+def omegaFamilyAssociatorHom (X Y Z : OmegaAtlFamily) :
+    omegaFamilyTensorObj (omegaFamilyTensorObj X Y) Z ⟶
+      omegaFamilyTensorObj X (omegaFamilyTensorObj Y Z) where
+  index
+    | .inl (.inl i) => .inl i
+    | .inl (.inr j) => .inr (.inl j)
+    | .inr k => .inr (.inr k)
+  component
+    | .inl (.inl i) => 𝟙 (X.component i)
+    | .inl (.inr j) => 𝟙 (Y.component j)
+    | .inr k => 𝟙 (Z.component k)
+
+def omegaFamilyAssociatorInv (X Y Z : OmegaAtlFamily) :
+    omegaFamilyTensorObj X (omegaFamilyTensorObj Y Z) ⟶
+      omegaFamilyTensorObj (omegaFamilyTensorObj X Y) Z where
+  index
+    | .inl i => .inl (.inl i)
+    | .inr (.inl j) => .inl (.inr j)
+    | .inr (.inr k) => .inr k
+  component
+    | .inl i => 𝟙 (X.component i)
+    | .inr (.inl j) => 𝟙 (Y.component j)
+    | .inr (.inr k) => 𝟙 (Z.component k)
+
+def omegaFamilyAssociator (X Y Z : OmegaAtlFamily) :
+    omegaFamilyTensorObj (omegaFamilyTensorObj X Y) Z ≅
+      omegaFamilyTensorObj X (omegaFamilyTensorObj Y Z) where
+  hom := omegaFamilyAssociatorHom X Y Z
+  inv := omegaFamilyAssociatorInv X Y Z
+  hom_inv_id := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      rcases i with (i | j) | k <;> rfl
+    · intro i
+      rcases i with (i | j) | k
+      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
+          omegaFamilyTensorObj]
+      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
+          omegaFamilyTensorObj]
+      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
+          omegaFamilyTensorObj]
+  inv_hom_id := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      rcases i with i | (j | k) <;> rfl
+    · intro i
+      rcases i with i | (j | k)
+      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
+          omegaFamilyTensorObj]
+      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
+          omegaFamilyTensorObj]
+      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
+          omegaFamilyTensorObj]
+
+def omegaFamilyLeftUnitorHom (X : OmegaAtlFamily) :
+    omegaFamilyTensorObj omegaFamilyUnit X ⟶ X where
+  index
+    | .inr i => i
+  component
+    | .inr i => 𝟙 (X.component i)
+
+def omegaFamilyLeftUnitorInv (X : OmegaAtlFamily) :
+    X ⟶ omegaFamilyTensorObj omegaFamilyUnit X where
+  index i := .inr i
+  component i := 𝟙 (X.component i)
+
+def omegaFamilyLeftUnitor (X : OmegaAtlFamily) :
+    omegaFamilyTensorObj omegaFamilyUnit X ≅ X where
+  hom := omegaFamilyLeftUnitorHom X
+  inv := omegaFamilyLeftUnitorInv X
+  hom_inv_id := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      rcases i with i | i
+      · exact i.elim
+      · rfl
+    · intro i
+      rcases i with i | i
+      · exact i.elim
+      · simp [omegaFamilyLeftUnitorHom, omegaFamilyLeftUnitorInv,
+          omegaFamilyTensorObj]
+  inv_hom_id := by
+    apply OmegaAtlFamilyHom.ext
+    · rfl
+    · intro i
+      simp [omegaFamilyLeftUnitorHom, omegaFamilyLeftUnitorInv,
+        omegaFamilyTensorObj]
+
+def omegaFamilyRightUnitorHom (X : OmegaAtlFamily) :
+    omegaFamilyTensorObj X omegaFamilyUnit ⟶ X where
+  index
+    | .inl i => i
+  component
+    | .inl i => 𝟙 (X.component i)
+
+def omegaFamilyRightUnitorInv (X : OmegaAtlFamily) :
+    X ⟶ omegaFamilyTensorObj X omegaFamilyUnit where
+  index i := .inl i
+  component i := 𝟙 (X.component i)
+
+def omegaFamilyRightUnitor (X : OmegaAtlFamily) :
+    omegaFamilyTensorObj X omegaFamilyUnit ≅ X where
+  hom := omegaFamilyRightUnitorHom X
+  inv := omegaFamilyRightUnitorInv X
+  hom_inv_id := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      rcases i with i | i
+      · rfl
+      · exact i.elim
+    · intro i
+      rcases i with i | i
+      · simp [omegaFamilyRightUnitorHom, omegaFamilyRightUnitorInv,
+          omegaFamilyTensorObj]
+      · exact i.elim
+  inv_hom_id := by
+    apply OmegaAtlFamilyHom.ext
+    · rfl
+    · intro i
+      simp [omegaFamilyRightUnitorHom, omegaFamilyRightUnitorInv,
+        omegaFamilyTensorObj]
+
+def omegaFamilyBraidingHom (X Y : OmegaAtlFamily) :
+    omegaFamilyTensorObj X Y ⟶ omegaFamilyTensorObj Y X where
+  index
+    | .inl i => .inr i
+    | .inr j => .inl j
+  component
+    | .inl i => 𝟙 (X.component i)
+    | .inr j => 𝟙 (Y.component j)
+
+def omegaFamilyBraiding (X Y : OmegaAtlFamily) :
+    omegaFamilyTensorObj X Y ≅ omegaFamilyTensorObj Y X where
+  hom := omegaFamilyBraidingHom X Y
+  inv := omegaFamilyBraidingHom Y X
+  hom_inv_id := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i with
+      | inl i => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
+      | inr j => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
+  inv_hom_id := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i with
+      | inl j => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
+      | inr i => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
+
+instance omegaFamilyMonoidalStruct : MonoidalCategoryStruct OmegaAtlFamily where
+  tensorObj := omegaFamilyTensorObj
+  tensorHom := omegaFamilyTensorHom
+  whiskerLeft X _ _ f := omegaFamilyTensorHom (𝟙 X) f
+  whiskerRight f Y := omegaFamilyTensorHom f (𝟙 Y)
+  tensorUnit := omegaFamilyUnit
+  associator := omegaFamilyAssociator
+  leftUnitor := omegaFamilyLeftUnitor
+  rightUnitor := omegaFamilyRightUnitor
+
+instance omegaFamilyMonoidal : MonoidalCategory OmegaAtlFamily :=
+  MonoidalCategory.ofTensorHom
+    (id_tensorHom_id := fun X Y => by
+      exact omegaFamilyTensor.map_id (X, Y))
+    (id_tensorHom := fun X {_ _} f => rfl)
+    (tensorHom_id := fun {_ _} f Y => rfl)
+    (tensorHom_comp_tensorHom := fun {X₁ Y₁ Z₁ X₂ Y₂ Z₂} f₁ f₂ g₁ g₂ => by
+      apply OmegaAtlFamilyHom.ext
+      · funext i
+        cases i <;> rfl
+      · intro i
+        cases i <;> simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom])
+    (associator_naturality := fun {_ _ _ _ _ _} f₁ f₂ f₃ => by
+      apply OmegaAtlFamilyHom.ext
+      · funext i
+        rcases i with (i | j) | k <;> rfl
+      · intro i
+        rcases i with (i | j) | k <;>
+          simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
+            omegaFamilyAssociatorHom, omegaFamilyTensorObj])
+    (leftUnitor_naturality := fun {_ _} f => by
+      apply OmegaAtlFamilyHom.ext
+      · funext i
+        rcases i with i | i
+        · exact i.elim
+        · rfl
+      · intro i
+        rcases i with i | i
+        · exact i.elim
+        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyLeftUnitor,
+            omegaFamilyLeftUnitorHom, omegaFamilyTensorObj])
+    (rightUnitor_naturality := fun {_ _} f => by
+      apply OmegaAtlFamilyHom.ext
+      · funext i
+        rcases i with i | i
+        · rfl
+        · exact i.elim
+      · intro i
+        rcases i with i | i
+        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyRightUnitor,
+            omegaFamilyRightUnitorHom, omegaFamilyTensorObj]
+        · exact i.elim)
+    (pentagon := fun W X Y Z => by
+      apply OmegaAtlFamilyHom.ext
+      · funext i
+        rcases i with ((i | j) | k) | l <;> rfl
+      · intro i
+        rcases i with ((i | j) | k) | l <;>
+          simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
+            omegaFamilyAssociatorHom, omegaFamilyTensorObj])
+    (triangle := fun X Y => by
+      apply OmegaAtlFamilyHom.ext
+      · funext i
+        rcases i with (i | e) | j
+        · rfl
+        · exact e.elim
+        · rfl
+      · intro i
+        rcases i with (i | e) | j
+        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
+            omegaFamilyAssociatorHom, omegaFamilyRightUnitor,
+            omegaFamilyRightUnitorHom, omegaFamilyTensorObj]
+        · exact e.elim
+        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
+            omegaFamilyAssociatorHom, omegaFamilyLeftUnitor,
+            omegaFamilyLeftUnitorHom, omegaFamilyTensorObj])
+
+@[simp]
+theorem omegaFamily_tensorObj (X Y : OmegaAtlFamily) :
+    MonoidalCategoryStruct.tensorObj X Y = omegaFamilyTensorObj X Y := rfl
+
+@[simp]
+theorem omegaFamily_tensorHom {X₁ Y₁ X₂ Y₂ : OmegaAtlFamily}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    MonoidalCategoryStruct.tensorHom f g = omegaFamilyTensorHom f g := rfl
+
+@[simp]
+theorem omegaFamily_whiskerLeft (X : OmegaAtlFamily)
+    {Y₁ Y₂ : OmegaAtlFamily} (f : Y₁ ⟶ Y₂) :
+    MonoidalCategoryStruct.whiskerLeft X f =
+      omegaFamilyTensorHom (𝟙 X) f := rfl
+
+@[simp]
+theorem omegaFamily_whiskerRight {X₁ X₂ : OmegaAtlFamily}
+    (f : X₁ ⟶ X₂) (Y : OmegaAtlFamily) :
+    MonoidalCategoryStruct.whiskerRight f Y =
+      omegaFamilyTensorHom f (𝟙 Y) := rfl
+
+@[simp]
+theorem omegaFamily_associator (X Y Z : OmegaAtlFamily) :
+    MonoidalCategoryStruct.associator X Y Z = omegaFamilyAssociator X Y Z := rfl
+
+instance omegaFamilyBraided : BraidedCategory OmegaAtlFamily where
+  braiding := omegaFamilyBraiding
+  braiding_naturality_right := fun X {_ _} f => by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;>
+        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+          omegaFamilyBraiding, omegaFamilyBraidingHom,
+          omegaFamilyTensorObj]
+  braiding_naturality_left := fun {_ _} f Z => by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;>
+        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+          omegaFamilyBraiding, omegaFamilyBraidingHom,
+          omegaFamilyTensorObj]
+  hexagon_forward := fun X Y Z => by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      rcases i with (i | j) | k <;> rfl
+    · intro i
+      rcases i with (i | j) | k <;>
+        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+          omegaFamilyAssociator, omegaFamilyAssociatorHom,
+          omegaFamilyBraiding, omegaFamilyBraidingHom,
+          omegaFamilyTensorObj]
+  hexagon_reverse := fun X Y Z => by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      rcases i with i | (j | k) <;> rfl
+    · intro i
+      rcases i with i | (j | k) <;>
+        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+          omegaFamilyAssociator, omegaFamilyAssociatorInv,
+          omegaFamilyBraiding, omegaFamilyBraidingHom,
+          omegaFamilyTensorObj]
+
+instance : SymmetricCategory OmegaAtlFamily where
+  symmetry X Y := by
+    apply OmegaAtlFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;>
+        simp [omegaFamilyBraided, omegaFamilyBraiding,
+          omegaFamilyBraidingHom, omegaFamilyTensorObj]
+
+instance : SymmetricCategory OmegaAtlFamilyᵒᵖ where
+  symmetry X Y := by
+    apply Quiver.Hom.unop_inj
+    simpa using SymmetricCategory.symmetry (unop Y) (unop X)
+
+/-! The completed presheaf category on which Day convolution is formed.  The
+all-objects full subcategory is deliberate: it gives the Day convolution a
+fresh monoidal instance, distinct from the pointwise cartesian monoidal
+structure that the raw functor category already carries. -/
+abbrev OmegaPresheaf :=
+  CategoryTheory.Functor OmegaAtlFamilyᵒᵖ (Type 3)
+
+def IsOmegaDaTra : ObjectProperty OmegaPresheaf := fun _ => True
+
+abbrev OmegaDaTra := IsOmegaDaTra.FullSubcategory
+
+abbrev omegaDaTraInc : CategoryTheory.Functor OmegaDaTra OmegaPresheaf :=
+  IsOmegaDaTra.ι
+
+theorem omegaDaTraInc_essImage (F : OmegaPresheaf) :
+    omegaDaTraInc.essImage F :=
+  ⟨⟨F, trivial⟩, ⟨Iso.refl _⟩⟩
+
+instance omegaPreservesTensorRightForTensor (v : Type 3)
+    (d : OmegaAtlFamilyᵒᵖ) :
+    PreservesColimitsOfShape
+      (CostructuredArrow (MonoidalCategory.tensor OmegaAtlFamilyᵒᵖ) d)
+      (MonoidalCategory.tensorRight v) :=
+  preservesColimitsOfShape_of_natIso
+    (BraidedCategory.tensorLeftIsoTensorRight v)
+
+instance omegaPreservesTensorRightForUnit (v : Type 3)
+    (d : OmegaAtlFamilyᵒᵖ) :
+    PreservesColimitsOfShape
+      (CostructuredArrow
+        (CategoryTheory.Functor.fromPUnit
+          (MonoidalCategory.tensorUnit OmegaAtlFamilyᵒᵖ)) d)
+      (MonoidalCategory.tensorRight v) :=
+  preservesColimitsOfShape_of_natIso
+    (BraidedCategory.tensorLeftIsoTensorRight v)
+
+instance omegaPreservesTensorRightForUnitProduct (v : Type 3)
+    (d : OmegaAtlFamilyᵒᵖ × OmegaAtlFamilyᵒᵖ) :
+    PreservesColimitsOfShape
+      (CostructuredArrow
+        ((CategoryTheory.Functor.id OmegaAtlFamilyᵒᵖ).prod
+          (CategoryTheory.Functor.fromPUnit
+            (MonoidalCategory.tensorUnit OmegaAtlFamilyᵒᵖ))) d)
+      (MonoidalCategory.tensorRight v) :=
+  preservesColimitsOfShape_of_natIso
+    (BraidedCategory.tensorLeftIsoTensorRight v)
+
+instance omegaPreservesTensorRightForTensorProduct (v : Type 3)
+    (d : OmegaAtlFamilyᵒᵖ × OmegaAtlFamilyᵒᵖ) :
+    PreservesColimitsOfShape
+      (CostructuredArrow
+        ((MonoidalCategory.tensor OmegaAtlFamilyᵒᵖ).prod
+          (CategoryTheory.Functor.id OmegaAtlFamilyᵒᵖ)) d)
+      (MonoidalCategory.tensorRight v) :=
+  preservesColimitsOfShape_of_natIso
+    (BraidedCategory.tensorLeftIsoTensorRight v)
+
+noncomputable def omegaDaTraMonoidal : MonoidalCategory OmegaDaTra :=
+  MonoidalCategory.monoidalOfHasDayConvolutions omegaDaTraInc
+    (ObjectProperty.fullyFaithfulι IsOmegaDaTra)
+    (fun F G => omegaDaTraInc_essImage _)
+    (omegaDaTraInc_essImage _)
+
+noncomputable instance : MonoidalCategory OmegaDaTra := omegaDaTraMonoidal
+
+noncomputable instance omegaDaTraLawful :
+    MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct
+      OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra :=
+  MonoidalCategory.lawfulDayConvolutionMonoidalCategoryStructOfHasDayConvolutions
+    omegaDaTraInc (ObjectProperty.fullyFaithfulι IsOmegaDaTra)
+    (fun F G => omegaDaTraInc_essImage _)
+    (omegaDaTraInc_essImage _)
+
+noncomputable instance omegaDayConvolution (F G : OmegaDaTra) :
+    MonoidalCategory.DayConvolution
+      (omegaDaTraInc.obj F) (omegaDaTraInc.obj G) :=
+  MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution
+    OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G
+
+noncomputable instance omegaDayConvolutionRightNested
+    (F G H : OmegaDaTra) :
+    MonoidalCategory.DayConvolution (omegaDaTraInc.obj F)
+      (MonoidalCategory.DayConvolution.convolution
+        (omegaDaTraInc.obj G) (omegaDaTraInc.obj H)) :=
+  MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution₂
+    OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G H
+
+noncomputable instance omegaDayConvolutionLeftNested
+    (F G H : OmegaDaTra) :
+    MonoidalCategory.DayConvolution
+      (MonoidalCategory.DayConvolution.convolution
+        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G))
+      (omegaDaTraInc.obj H) :=
+  MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution₂'
+    OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G H
+
+noncomputable def omegaDaTraBraiding (F G : OmegaDaTra) :
+    MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F := by
+  exact (ObjectProperty.fullyFaithfulι IsOmegaDaTra).preimageIso
+    (MonoidalCategory.DayConvolution.braiding
+      (omegaDaTraInc.obj F) (omegaDaTraInc.obj G))
+
+theorem omegaDaTraInc_map_braiding_hom (F G : OmegaDaTra) :
+    omegaDaTraInc.map (omegaDaTraBraiding F G).hom =
+      (MonoidalCategory.DayConvolution.braiding
+        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)).hom := by
+  exact (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_preimage _
+
+theorem omegaDaTraInc_map_braiding_inv (F G : OmegaDaTra) :
+    omegaDaTraInc.map (omegaDaTraBraiding F G).inv =
+      (MonoidalCategory.DayConvolution.braiding
+        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)).inv := by
+  exact (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_preimage _
+
+theorem omegaDaTraInc_map_tensorHom
+    {F₁ F₂ G₁ G₂ : OmegaDaTra}
+    (f : F₁ ⟶ F₂) (g : G₁ ⟶ G₂) :
+    omegaDaTraInc.map (MonoidalCategory.tensorHom f g) =
+      MonoidalCategory.DayConvolution.map
+        (omegaDaTraInc.map f) (omegaDaTraInc.map g) := by
+  simpa [omegaDaTraInc, omegaDaTraLawful] using
+    (MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.ι_map_tensorHom_hom_eq_tensorHom
+        OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra f g)
+
+theorem omegaDaTraInc_map_associator_hom (F G H : OmegaDaTra) :
+    omegaDaTraInc.map (MonoidalCategory.associator F G H).hom =
+      (MonoidalCategory.DayConvolution.associator
+        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)
+        (omegaDaTraInc.obj H)).hom := by
+  simpa [omegaDaTraInc, omegaDaTraLawful] using
+    (MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.ι_map_associator_hom_eq_associator_hom
+        OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G H)
+
+noncomputable instance omegaDaTraBraided : BraidedCategory OmegaDaTra where
+  braiding := omegaDaTraBraiding
+  braiding_naturality_right := fun X {_ _} f => by
+    rw [← MonoidalCategory.id_tensorHom,
+      ← MonoidalCategory.tensorHom_id]
+    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
+    simp only [Functor.map_comp,
+      omegaDaTraInc_map_tensorHom,
+      Functor.map_id, omegaDaTraInc_map_braiding_hom]
+    exact MonoidalCategory.DayConvolution.braiding_naturality_right
+      (omegaDaTraInc.obj X) (omegaDaTraInc.map f)
+  braiding_naturality_left := fun {_ _} f Z => by
+    rw [← MonoidalCategory.tensorHom_id,
+      ← MonoidalCategory.id_tensorHom]
+    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
+    simp only [Functor.map_comp,
+      omegaDaTraInc_map_tensorHom,
+      Functor.map_id, omegaDaTraInc_map_braiding_hom]
+    exact MonoidalCategory.DayConvolution.braiding_naturality_left
+      (omegaDaTraInc.map f) (omegaDaTraInc.obj Z)
+  hexagon_forward := by
+    intro X Y Z
+    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
+    simp only [Functor.map_comp,
+      omegaDaTraInc_map_associator_hom,
+      omegaDaTraInc_map_braiding_hom]
+    rw [← MonoidalCategory.tensorHom_id,
+      ← MonoidalCategory.id_tensorHom]
+    simp only [
+      omegaDaTraInc_map_tensorHom,
+      Functor.map_id]
+    exact MonoidalCategory.DayConvolution.hexagon_forward
+      (omegaDaTraInc.obj X) (omegaDaTraInc.obj Y) (omegaDaTraInc.obj Z)
+  hexagon_reverse := by
+    intro X Y Z
+    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
+    simp only [Functor.map_comp,
+      omegaDaTraInc_map_braiding_hom]
+    rw [← MonoidalCategory.id_tensorHom,
+      ← MonoidalCategory.tensorHom_id]
+    simp only [
+      omegaDaTraInc_map_tensorHom,
+      Functor.map_id]
+    exact MonoidalCategory.DayConvolution.hexagon_reverse
+      (omegaDaTraInc.obj X) (omegaDaTraInc.obj Y) (omegaDaTraInc.obj Z)
+
+set_option maxHeartbeats 2400000 in
+noncomputable instance : SymmetricCategory OmegaDaTra where
+  symmetry F G := by
+    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
+    simp only [Functor.map_comp, omegaDaTraInc_map_braiding_hom,
+      Functor.map_id]
+    exact MonoidalCategory.DayConvolution.symmetry
+      (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)
 
 
 end
