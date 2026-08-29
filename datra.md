@@ -16,7 +16,7 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
 `CoDomIns = op DomIns`.
 
-3.1. A **Chain** is a totally ordered thin category with at most `omega_0 ^ omega_0` distinct objects,
+3.1. A **Chain** is a totally ordered thin category with strictly less than `omega_0 ^ omega_0` distinct objects,
 taken skeletally.
 
 3.2. A **Short Chain** is a chain that is finite, taken skeletally.
