@@ -48,9 +48,9 @@ T                      T
 6.2. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`. For `X : Atl`,
 we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
-morphisms in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
+morphism in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
 and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
-`f : x -> y` in `X_P`:
+`f : x -> y` in `X_E`:
 
 ```
 X_G x ------------X_G f------------> X_G y
@@ -66,10 +66,10 @@ Y_G (T_E x) -----Y_G (T_E f)-------> Y_G (T_E y)
 number of objects of the small chain `C`. It is denoted as `|A|`.
 
 6.4. The **Extent of an Atlas** `A : Atl` is the value at `A_G (0, 0)`.
-It is denoted as `Ex A`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `D : Atl`.
+It is denoted as `Ex A`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `A : Atl`.
 
 6.5. The **Territory of an Atlas** `A : Atl` is the indexed collection of dominions `Ter A : M -> Dom`,
-where `M = A_G (|A| - 1)`, so that `Ter A k = A_G (|A| - 1, k)`.
+where `M = A_H (|A| - 1)`, so that `Ter A k = A_H (|A| - 1, k)`.
 
 6.6. The **nth Region of an Atlas** `A : Atl` is the dominion `Ter A n` for `n : M`, noting that the indexing
 starts at `0`.
@@ -143,7 +143,7 @@ with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `A
 11.3. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
 trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> B` so that `|A| = max(|X|, |X'|) + 1`,
 `|A_P n| = |X_P (n - 1)| + |Y_P (n - 1)|`, and for `m : |A|`, `m > 0`, `A_E (m -> 1) n = 0` iff `n < |X_P (m - 1)|`.
-For each `L : |G|`, `L > 0`, let `L_max` be the maximal value so that `A_E (L -> 1) L_max = 0`, or `L_max = -1` if such
+For each `L : |G|`, `m > 0`, let `m_max` be the maximal value so that `A_E (L -> 1) m_max = 0`, or `m_max = -1` if such
 a value does not exist. Then, define the monomorphisms `T_X : X_E -> A_E`, `T_X' : X'_E -> A_E` as follows: for all
 `(m, n) : A_E`, `m > 0`, if `n < m_max`, then `T_X (m, n) = ((m - 1), n)`, otherwise,
 `T_X' (m, n) = ((m - 1), (n - m_max + 1))`. It can be checked `T_X`, `T_X'` are indeed monic, and for any `(m, n) : A_E`
