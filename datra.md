@@ -140,7 +140,7 @@ trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `G : A -> 
 For each `L : |G|`, `L > 0`, let `L_max` be the maximal value so that `A_E (L -> 1) L_max = 0`, or `L_max = -1` if such
 a value does not exist. Then, define the monomorphisms `T_X : X_E -> A_E`, `T_X' : X'_E -> A_E` as follows: for all
 `(m, n) : A_E`, `m > 0`, if `n < m_max`, then `T_X (m, n) = ((m - 1), n)`, otherwise,
-`T_X' (m, n) = ((m-1), n - m_max + 1)`. It can be checked `T_X`, `T_X'` are indeed monic, and for any `(m, n) : A_E`
+`T_X' (m, n) = ((m - 1), n - m_max + 1)`. It can be checked `T_X`, `T_X'` are indeed monic, and for any `(m, n) : A_E`
 there exists `(m', n')` so that either `T_X (m', n') = (m, n)` or `T_X' (m', n') = (m, n)`. Then define iso
 `V : A_E -> X_E + X'_E`, along with `P = (F_P + F'_P) : (X_E + X'_E) -> (Y_E + Y'_E)`,
 `A = (F_A + F'_A) : (X_G + X'_G) -> ((Y_G ∘ F_E)) + ((Y'_G ∘ F'_E))`. Finally, let `A_P (0, 0) = Coa X + Coa X'`,
