@@ -46,11 +46,12 @@ T                      T
 (m', i') ----T f-----> (n', (Y_H (T f)) i')
 ```
 6.2. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
-and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`. For `X : Atl`,
-we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`, `X_E = X_P_E`. A
-morphism in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in `Pag`
-and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all morphisms
-`f : x -> y` in `X_E`:
+and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`, with the property that
+for any `a = (m, k) : P_E`, `b = (m', k') : P_E`, if `m =/= m'` or `k =/= k'`, the pullback in `G` of `(m -> 0) k`
+and `(m' -> 0) k'` is empty. For `X : Atl`, we denote `X_P` the first inclusion, `X_G` the second inclusion, along with
+`X_H = X_P_H`, `X_E = X_P_E`. A morphism in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P`
+is a morphism in `Pag` and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram
+commutes for all morphisms `f : x -> y` in `X_E`:
 
 ```
 X_G x ------------X_G f------------> X_G y
