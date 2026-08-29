@@ -157,15 +157,15 @@ This fully defines `G`, which can be checked to be initial among solutions.
 
 11.4. The **Atlas Braider** `AtlBrd_F_F' : (AtlHorSum F F') -> (AtlHorSum F' F)` is defined as follows: if `F = AtlI`
 or `F' = AtlI`, `AtlBrd_F_F' = Id`. Otherwise, let `R = (AtlHorSum F F')` and let `G : H -> R` be the universal arrow
-from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = H`, and trivially,
-`AtlBrd_F_F' AtlBrd_F'_F = Id`.
+from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = inv G`, and
+trivially, `AtlBrd_F_F' AtlBrd_F'_F = Id`.
 
 11.5. The **Atlas Associator**, denoted
 `AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
 if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherwise, denote
 `R = (AtlHorSum (AtlHorSum F F') F'')` and let `G : H -> R` be the universal arrow from `AtlTrap` to `R` so that
 `G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AtlTrav` so that
-`G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = H`.
+`G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = inv G`.
 
 12.1. The **Empty Map**, denoted `I` is the Yoneda Embedding of the Empty Atlas, `I = Yo AtlI`.
 
