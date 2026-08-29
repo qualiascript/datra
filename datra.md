@@ -16,6 +16,8 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
 `CoDomIns = op DomIns`.
 
+[TODO: define in terms of chains]
+
 3.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con`
 are objects of `Set` with the property that for any `d : D`, there exists a monomorphism `d' : d -> omega_0 ^ omega_0`
 so that `d'` is not an isomorphism, and whose morphisms are epimorphisms `F : D -> E` with the property that for any
