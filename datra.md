@@ -128,7 +128,7 @@ and `S`, then projection `P' : P -> X` is either empty or representable as `P' =
 10.6. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
 
 10.7. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
-the data transformations so that all of their navigations are explorations.
+the DaTra sets with the property that all of their navigations are explorations.
 
 11.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
