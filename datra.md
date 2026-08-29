@@ -119,9 +119,9 @@ Trivially, `DaTra` is a topos.
 10.3. An **Exploration of a Data Transformation**, given `D : DaTra`, is a navigation `Exp : Yo A -> D` so that
 `A : AtlMap`.
 
-10.4. A **DaTra Restriction**, given `A` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
+10.4. A **DaTra Restriction**, given `W` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
 morphisms for `F : X -> Y` have the property that, for any navigation `Nav : Yo A -> D`, let `P` be the pullback of `F`
-and `S`, then projection `P' : P -> X` is either empty or representable as `P' = Yo f`, where `f` is a morphism of `A`.
+and `S`, then projection `P' : P -> X` is either empty or representable as `P' = Yo f`, where `f` is a morphism of `W`.
 
 10.5. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
 
