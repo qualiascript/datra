@@ -181,6 +181,9 @@ if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherw
 `G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AtlTrav` so that
 `G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = inv G`.
 
+11.6. The **Atlas Left Unitor** `Lu : (AtlHorSum F AtlI) -> F` and the **Atlas Right Unitor**
+`Ru : (AtlHorSum AtlI F) -> F` are given by `Lu = Id`, `Ru = Id`.
+
 12.1. The **Empty Map**, denoted `I` is the Yoneda Embedding of the Empty Atlas, `I = Yo AtlI`.
 
 12.2. The **Horizontal Sum Bifunctor**, denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or in infix notation using
@@ -193,7 +196,7 @@ of `AtlBrd`.
 the Day convolution extension of `AtlAsoc`
 
 12.5. The **Data Traversal Left Unitor** `Lu : F +_< I -> F`, along with the **Data Traversal Right Unitor**
-`Ru : I +_< F -> F`, are given trivially by `Lu = Ru = Id`.
+`Ru : I +_< F -> F`, are given by the Day convolution extensions of `AtlLu` and `AltRu`.
 
 12.6. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
 coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` sent to isomorphisms in
