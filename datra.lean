@@ -167,24 +167,24 @@ def Chain.sum (X Y : Chain) : Chain where
       X.orderType_lt Y.orderType_lt
 
 /-%%
-\begin{definition}[Short Chain]
-A \textbf{Short Chain} is a chain with finitely many distinct objects, taken
-skeletally.
+\begin{definition}[The Spine]
+The \textbf{spine} is the chain with $\omega_0$ objects.
 \end{definition}
 %%-/
 
-/-- Skeletal finite chains are represented by `Fin n`. -/
-structure ShortChain where
-  length : Nat
-
-def ShortChain.Obj (C : ShortChain) := Fin C.length
-
-instance (C : ShortChain) : Fintype C.Obj := by
-  dsimp [ShortChain.Obj]
-  infer_instance
-instance (C : ShortChain) : LinearOrder C.Obj := by
-  dsimp [ShortChain.Obj]
-  infer_instance
+/-- The common page-indexing chain. -/
+def Spine : Chain where
+  Obj := Nat
+  linearOrder := inferInstance
+  wellFoundedLT := inferInstance
+  orderType_lt := by
+    have hpow : Ordinal.omega0 ^ (1 : Ordinal) <
+        Ordinal.omega0 ^ Ordinal.omega0 :=
+      (Ordinal.opow_lt_opow_iff_right Ordinal.one_lt_omega0).2
+        Ordinal.one_lt_omega0
+    change typeLT Nat < Ordinal.omega0 ^ Ordinal.omega0
+    rw [Ordinal.type_nat_lt]
+    simpa only [Ordinal.opow_one] using hpow
 
 /-%%
 \section{Consolidations}
@@ -289,25 +289,49 @@ def Tra : Con ⥤ Type where
 
 /-%%
 \begin{definition}[Folio]
-A \textbf{Folio} is a functor $F:C\to\CoCon$, where $C$ is a nonempty short
-chain, such that $F(0)$ is the singleton chain.
+A \textbf{folio} is a functor $F:S\to\CoCon$, where $S$ is the spine, such
+that $F(0)$ is the singleton chain.
 \end{definition}
 %%-/
 
+/-- A folio is stored by the least finite presentation of its eventually
+constant spine functor. `length` is its cardinality: page `length - 1` is
+the final genuine page and every later spine page repeats it. -/
 structure Folio where
   length : Nat
   positive : 0 < length
-  F : Functor.{0, 0} (Fin length) CoCon
-  originEquiv : (F.obj ⟨0, positive⟩).unop.Obj ≃ Unit
+  core : Functor.{0, 0} (Fin length) CoCon
+  originEquiv : (core.obj ⟨0, positive⟩).unop.Obj ≃ Unit
 
-def Folio.H (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type := W.F.leftOp ⋙ Tra
+def Folio.paddedIndex (W : Folio) (n : Nat) : Fin W.length :=
+  ⟨min n (W.length - 1), lt_of_le_of_lt (min_le_right _ _)
+    (Nat.sub_lt W.positive (by omega))⟩
+
+theorem Folio.paddedIndex_mono (W : Folio) :
+    Monotone W.paddedIndex := by
+  intro a b hab
+  exact min_le_min hab le_rfl
+
+def Folio.spineBase (W : Folio) : Nat ⥤ Fin W.length where
+  obj n := W.paddedIndex n
+  map f := homOfLE (W.paddedIndex_mono (leOfHom f))
+  map_id _ := Subsingleton.elim _ _
+  map_comp _ _ := Subsingleton.elim _ _
+
+/-- The actual functor on the spine denoted by the finite presentation. -/
+def Folio.F (W : Folio) : Nat ⥤ CoCon := W.spineBase ⋙ W.core
+
+/-- The page functor on the opposite spine. -/
+def Folio.spineH (W : Folio) : Natᵒᵖ ⥤ Type := W.F.leftOp ⋙ Tra
+
+def Folio.H (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type := W.core.leftOp ⋙ Tra
 
 def Folio.E (W : Folio) : Type 0 := W.H.Elements
 
 instance (W : Folio) : Category.{0} W.E := categoryOfElements W.H
 
 instance (W : Folio) (m : (Fin W.length)ᵒᵖ) : LinearOrder (W.H.obj m) :=
-  (W.F.obj m.unop).unop.linearOrder
+  (W.core.obj m.unop).unop.linearOrder
 
 instance (W : Folio) (x y : W.E) : Subsingleton (x ⟶ y) where
   allEq f g := CategoryOfElements.ext W.H f g (Subsingleton.elim _ _)
@@ -344,9 +368,18 @@ def Folio.toOrigin (W : Folio) (x : W.E) : x ⟶ W.originElement :=
 \begin{definition}[The Category of Paginations]
 The \textbf{Category of Paginations}, denoted $\Pag$, has as objects pairs
 $(H,E)$ where $H=\mathsf{Tra}\circ F^{\mathrm{op}}$ for a folio $F$, and
-$E$ is the category of elements of $H$.  A morphism is a functor
-$T:X_E\to Y_E$; functoriality is exactly the commutativity of the displayed
-square in the definition.
+$E$ is the category of elements of $H$.  For $W:\Pag$, write $W_H$ for the
+first inclusion and $W_E$ for the second inclusion.  A morphism $T:X\to Y$
+in $\Pag$ is a functor $T:X_E\to Y_E$.  Thus, for every morphism
+$f:x\to y$ of $X_E$, the following square commutes:
+\[
+\begin{tikzcd}
+x=(m,i) \ar[r,"f"] \ar[d,"T"'] &
+  (n,X_H(f)(i)) \ar[d,"T"] \\
+(m',i') \ar[r,"T(f)"'] &
+  (n',Y_H(T(f))(i')).
+\end{tikzcd}
+\]
 \end{definition}
 %%-/
 
@@ -370,13 +403,38 @@ instance : Category.{0} Pag where
 \section{Atlases}
 
 \begin{definition}[The Category of Atlases]
-The \textbf{Category of Atlases}, denoted $\Atl$, has objects $(P,G)$ with
-$P:\Pag$ and $G:P_E\to\DomIns$.  At each page, the canonical embeddings of
-distinct cells into the extent have disjoint images.  A morphism
-$T:X\to Y$ is a pair $(T_P,T_A)$ with $T_P:X_E\to Y_E$ and a natural
-transformation $T_A:X_G\Rightarrow Y_G\circ T_P$.
+The \textbf{Category of Atlases}, denoted $\Atl$, has as objects pairs
+$(P,G)$, where $P:\Pag$ and $G:P_E\to\DomIns$ is a functor, equivalently a
+presheaf $G:P_E^{\mathrm{op}}\to\CoDomIns$.  For $P_H:C\to\Set$,
+$m\in|C|$, and distinct elements $k,k'\in|P_H(m)|$, the pullback in $G$ of
+the arrows induced by $(m\to0)(k)$ and $(m\to0)(k')$ is empty.
+
+There is an integer $w$ such that, for every $w'>w$,
+$P_H(w'\to w)=\id$, and, for every $k\in|P_H(w)|$, the corresponding arrow
+$G((w'\to w)(k))$ is the identity.  The least such integer is the
+\textbf{cardinality of the atlas}, denoted $|A|$.
+
+For $X:\Atl$, write $X_P$ and $X_G$ for the two components and put
+$X_H=(X_P)_H$ and $X_E=(X_P)_E$.  A morphism $T:X\to Y$ is a pair
+$(T_P,T_A)$, where $T_P:X_P\to Y_P$ is a pagination morphism and
+$T_A:X_G\Rightarrow Y_G\circ T_E$ is a natural transformation.  Thus, for
+every $f:x\to y$ in $X_E$, the following square commutes:
+\[
+\begin{tikzcd}
+X_G(x) \ar[r,"X_G(f)"] \ar[d,"(T_A)_x"'] &
+  X_G(y) \ar[d,"(T_A)_y"] \\
+Y_G(T_E(x)) \ar[r,"Y_G(T_E(f))"'] & Y_G(T_E(y)).
+\end{tikzcd}
+\]
+Finally, if $x=|X|$, $x'>x$, and $r\in|X_H(|X|-1)|$, then
+$T_P(x',r)=T_P(x,r)$ and $(T_A)_{(x',r)}=(T_A)_{(x,r)}$.
 \end{definition}
 %%-/
+
+/-- Internally, an atlas is stored by its least finite presentation.  The
+`Folio.F` construction repeats its final page along the rest of the spine, so
+the stabilization and morphism-tail clauses in the extracted definition are
+enforced by construction. -/
 
 def Pag.cell (P : Pag) (m : (Fin P.folio.length)ᵒᵖ) (k : P.H.obj m) : P.E := ⟨m, k⟩
 
@@ -418,6 +476,26 @@ theorem AtlHom.ext {X Y : Atl} (f g : AtlHom X Y)
   cases g
   simp_all
 
+/-- Heterogeneous extensionality for natural transformations whose target
+functors have been identified.  This keeps dependent transports localized. -/
+theorem NatTrans.hext_right {C D : Type*} [Category C] [Category D]
+    {F G H : C ⥤ D} (α : F ⟶ G) (β : F ⟶ H) (h : G = H)
+    (happ : ∀ X, HEq (α.app X) (β.app X)) : HEq α β := by
+  cases h
+  apply heq_of_eq
+  ext X
+  exact eq_of_heq (happ X)
+
+/-- Transporting the codomain of an embedding along an equality of objects is
+heterogeneously equal to the original embedding.  This is the small coherence
+fact needed whenever stability identifies the image of an origin with the
+target origin. -/
+theorem embedding_comp_map_eqToHom_heq {C : Type u} [Category C]
+    (G : CategoryTheory.Functor C DomIns) {a b : C} (h : a = b) {X : DomIns}
+    (e : X ⟶ G.obj a) : HEq (e ≫ G.map (eqToHom h)) e := by
+  cases h
+  simp
+
 instance : Category.{0} Atl where
   Hom := AtlHom
   id := AtlHom.identity
@@ -443,8 +521,8 @@ instance : Category.{0} Atl where
 
 /-%%
 \begin{definition}[Cardinality of an Atlas]
-The \textbf{cardinality} $|A|$ of an atlas is the number of objects of its
-short indexing chain.
+The \textbf{cardinality} $|A|$ of an atlas is the least positive integer
+after which its spine repeats the final genuine page $|A|-1$.
 \end{definition}
 %%-/
 
@@ -453,6 +531,8 @@ def cardinality (A : Atl) : Nat := A.P.folio.length
 /-%%
 \begin{definition}[Extent of an Atlas]
 The \textbf{extent} of $A$ is $\Ex(A)=A_G(0,0)$.
+Since objects of $\DomIns$ are dominions, $\Ex(A):\Dom$ for every
+$A:\Atl$.
 \end{definition}
 %%-/
 
@@ -513,7 +593,7 @@ def Folio.toCommonRight (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
 def elementLT (X : Atl) (x y : X.E) : Prop :=
   let m := X.P.folio.commonBase x.1 y.1
   letI : LinearOrder (X.H.obj m) :=
-    (X.P.folio.F.obj m.unop).unop.linearOrder
+    (X.P.folio.core.obj m.unop).unop.linearOrder
   X.H.map (X.P.folio.toCommonLeft x.1 y.1) x.2 <
     X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
 
@@ -559,14 +639,27 @@ def AtlTravToAtlTrap : AtlTrav ⥤ AtlTrap where
 /-%%
 \begin{definition}[The Category of Atlas Traversals]
 The \textbf{Category of Atlas Traversals}, denoted $\mathsf{AtlTrav}$, is
-the wide subcategory of transposals that preserves the transported strict
-order of cells and preserves coverage by final regions.
+the wide subcategory of $\mathsf{AtlTrap}$ whose morphisms satisfy the
+following conditions.  For $F:X\to Y$, let $x=(m,i)$ and $y=(m',j)$, put
+$p=\min(m,m')$, write $F_E(x)=(n,i')$ and $F_E(y)=(n',j')$, and put
+$p'=\min(n,n')$.  If
+\[
+  X_H(m\to p)(i)<X_H(m'\to p)(j),
+\]
+then
+\[
+  Y_H(n\to p')(i')<Y_H(n'\to p')(j').
+\]
+Furthermore, if $q\in|X|$ and $t\in X_G(q)$ is in the image of a final
+region---that is, there exist $k\in|\Ter(X)|$ and $l\in\Ter(X)(k)$ whose
+image under $X_G((|X|-1)\to q)(k)$ is $t$---then this property is preserved
+by $F$.
 \end{definition}
 
 \begin{definition}[The Category of Stable Atlas Traversals]
 The \textbf{Category of Stable Atlas Traversals}, denoted
 $\mathsf{AtlTras}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
-morphisms preserve the origin $(0,0)$.
+morphisms $F:X\to Y$ satisfy $F_E(0,0)=(0,0)$.
 \end{definition}
 %%-/
 
@@ -737,13 +830,24 @@ def Chr : AtlTrav ⥤ AtlTravMap where
 
 /-%%
 \begin{lemma}[Cartography Lemma]
-The inclusion $\mathsf{AtlTravMapInc}$ has a right adjoint, the
+The inclusion $\mathsf{AtlTravMapInc}$ has a right adjoint, denoted the
 \textbf{Charting Functor}
-$\mathsf{Chr}:\mathsf{AtlTrav}\to\mathsf{AtlTravMap}$.  It retains in each
-cell exactly the data covered by final regions; its counit is the canonical
-inclusion into the original atlas.
+$\mathsf{Chr}:\mathsf{AtlTrav}\to\mathsf{AtlTravMap}$.
+
+\emph{Proof sketch.}  On an object $X:\mathsf{AtlTrav}$, the functor
+$\mathsf{Chr}$ sends $X$ to the universal arrow from
+$\mathsf{AtlTravMapInc}$ to $X$.  Write
+$X'=\mathsf{AtlTravMapInc}(\mathsf{Chr}(X))$, together with
+$H:X'\to X$, with $X'$ terminal among objects having this property.  The
+solution is the DaTra map satisfying $\Ter(X')\cong\Ter(X)$.  It is unique
+because $\mathsf{AtlTrav}$ preserves orders and terminal because $H_E$ is
+faithful.
 \end{lemma}
 %%-/
+
+/-- The formal construction realizes the proof sketch by retaining in each
+cell exactly the data covered by final regions; its counit is the canonical
+inclusion into the original atlas. -/
 
 theorem originImage_origin (X : Atl) (v : extent X) :
     originImage X X.P.folio.originElement v = v := by
@@ -983,7 +1087,7 @@ def singletonObjEquiv : singletonChain.Obj ≃ Unit := Equiv.refl _
 def onePageFolio : Folio where
   length := 1
   positive := by omega
-  F := (Functor.const (Fin 1)).obj (op singletonChain)
+  core := (Functor.const (Fin 1)).obj (op singletonChain)
   originEquiv := singletonObjEquiv
 
 def onePagePag : Pag := ⟨onePageFolio⟩
@@ -1039,8 +1143,14 @@ theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
 \begin{definition}[The Domanial Inclusion Functor]
 The \textbf{Domanial Inclusion Functor}
 $\mathsf{DomInc}:\DomIns\to\mathsf{AtlTras}$ sends a dominion to the
-one-page atlas having that dominion as its extent and region.  It is left
-adjoint to $\mathsf{Coa}$.
+atlas of cardinality $1$ whose coalition is that dominion.  It is left
+adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and $Y:\mathsf{AtlTras}$,
+naturally in $X$ and $Y$,
+\[
+  \Hom_{\mathsf{AtlTras}}(\mathsf{DomInc}(X),Y)
+  \cong \Hom_{\DomIns}(X,\mathsf{Coa}(Y)),
+\]
+and $\mathsf{Coa}(\mathsf{DomInc}(X))\cong X$.
 \end{definition}
 %%-/
 
@@ -1081,7 +1191,7 @@ theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).E) :
   subst y
   let m := (dominionAtlas X).P.folio.commonBase x.1 x.1
   letI : LinearOrder ((dominionAtlas X).H.obj m) :=
-    ((dominionAtlas X).P.folio.F.obj m.unop).unop.linearOrder
+    ((dominionAtlas X).P.folio.core.obj m.unop).unop.linearOrder
   exact lt_irrefl _ h
 
 /-- A stable traversal from a one-page atlas determines an embedding into
@@ -1146,6 +1256,97 @@ def coaDomIncIso (X : DomIns) : Coa.obj (DomInc.obj X) ≅ X where
     apply DomIns.hom_ext
     intro x
     rfl
+
+/-- The hom-set equivalence expressing that one-page insertion is left
+adjoint to coalization. -/
+def domIncCoaHomEquiv (X : DomIns) (Y : AtlTras) :
+    (DomInc.obj X ⟶ Y) ≃ (X ⟶ Coa.obj Y) where
+  toFun := domIncToCoa
+  invFun := coaToDomInc
+  left_inv := by
+    intro f
+    apply Subtype.ext
+    apply Subtype.ext
+    have hP : (coaToDomInc (domIncToCoa f)).1.1.P = f.1.1.P := by
+      exact CategoryTheory.Functor.ext
+        (fun x => f.2.symm.trans
+          (congrArg f.1.1.P.obj (onePage_cell_unique x).symm))
+        (fun _ _ _ => by
+          apply CategoryOfElements.ext
+          apply Subsingleton.elim)
+    apply AtlHom.ext _ _ hP
+    apply NatTrans.hext_right _ _
+      (congrArg (fun Q => Q ⋙ Y.obj.obj.G) hP)
+    intro x
+    dsimp [coaToDomInc, domIncToCoa, onePageToAtlasP]
+    have hx : x = onePageFolio.originElement := onePage_cell_unique x
+    subst x
+    let e := f.1.1.A.app onePageFolio.originElement
+    have hrec :
+        { toFun := fun x =>
+            (coveredMap (X := Y.obj.obj) (eqToHom f.2)
+              ⟨e x, by
+                exact f.1.2.2.2 onePageFolio.originElement x
+                  (atlasMap_all_covered (dominionAtlas_isMap X) _ x)⟩).1
+          inj' := by
+            intro a b hab
+            apply e.injective
+            apply (Y.obj.obj.G.map (eqToHom f.2)).injective
+            exact hab } = e ≫ Y.obj.obj.G.map (eqToHom f.2) := by
+      apply DomIns.hom_ext
+      intro t
+      rfl
+    exact (heq_of_eq hrec).trans
+      (embedding_comp_map_eqToHom_heq Y.obj.obj.G f.2 e)
+  right_inv := by
+    intro f
+    apply DomIns.hom_ext
+    intro x
+    apply Subtype.ext
+    change Y.obj.obj.G.map (𝟙 Y.obj.obj.P.folio.originElement) (f x).1 = (f x).1
+    exact congrFun (congrArg Function.Embedding.toFun
+      (Y.obj.obj.G.map_id Y.obj.obj.P.folio.originElement)) (f x).1
+
+theorem domIncCoaHomEquiv_naturality_left {X X' : DomIns} (f : X' ⟶ X)
+    {Y : AtlTras} (g : DomInc.obj X ⟶ Y) :
+    domIncCoaHomEquiv X' Y (DomInc.map f ≫ g) =
+      f ≫ domIncCoaHomEquiv X Y g := by
+  apply DomIns.hom_ext
+  intro x
+  apply Subtype.ext
+  rfl
+
+theorem domIncCoaHomEquiv_naturality_right {X : DomIns} {Y Y' : AtlTras}
+    (f : DomInc.obj X ⟶ Y) (g : Y ⟶ Y') :
+    domIncCoaHomEquiv X Y' (f ≫ g) =
+      domIncCoaHomEquiv X Y f ≫ Coa.map g := by
+  apply DomIns.hom_ext
+  intro x
+  apply Subtype.ext
+  let t : Coa.obj (DomInc.obj X) :=
+    ⟨x, atlasMap_all_covered
+      (dominionAtlas_isMap X) onePageFolio.originElement x⟩
+  change (Coa.map (f ≫ g) t).1 = (Coa.map g (Coa.map f t)).1
+  exact congrArg Subtype.val <| congrFun
+    (congrArg Function.Embedding.toFun (Coa.map_comp f g)) t
+
+/-- The unconditional adjunction promised by the Domanial Inclusion
+construction. -/
+def dominionAdjunction : DomInc ⊣ Coa :=
+  Adjunction.mkOfHomEquiv
+    { homEquiv := domIncCoaHomEquiv
+      homEquiv_naturality_left_symm := by
+        intro X' X Y f g
+        apply (domIncCoaHomEquiv X' Y).injective
+        simpa using
+          (domIncCoaHomEquiv_naturality_left f
+            ((domIncCoaHomEquiv X Y).symm g)).symm
+      homEquiv_naturality_right := by
+        intro X Y Y' f g
+        exact domIncCoaHomEquiv_naturality_right f g }
+
+theorem dominionLemma : Nonempty (DomInc ⊣ Coa) :=
+  ⟨dominionAdjunction⟩
 
 /-%%
 \section{Data Transformations}
@@ -1279,10 +1480,19 @@ instance : IsStableAtl.IsMultiplicative where
 abbrev DaTras := DaTraRestriction IsStableAtl
 
 /-%%
-\begin{definition}[Named DaTra Restrictions]
-The restrictions associated to $\mathsf{AtlTrap}$, $\mathsf{AtlTrav}$, and
-$\mathsf{AtlTras}$ are denoted $\mathsf{DaTrap}$, $\mathsf{DaTrav}$, and
-$\mathsf{DaTras}$, respectively.
+\begin{definition}[The Category of Data Transposals]
+The \textbf{Category of Data Transposals}, denoted $\mathsf{DaTrap}$, is
+the DaTra restriction on $\mathsf{AtlTrap}$.
+\end{definition}
+
+\begin{definition}[The Category of Data Traversals]
+The \textbf{Category of Data Traversals}, denoted $\mathsf{DaTrav}$, is
+the DaTra restriction on $\mathsf{AtlTrav}$.
+\end{definition}
+
+\begin{definition}[The Category of Stable Data Traversals]
+The \textbf{Category of Stable Data Traversals}, denoted
+$\mathsf{DaTras}$, is the DaTra restriction on $\mathsf{AtlTras}$.
 \end{definition}
 
 \begin{definition}[Data Transformation Maps]
@@ -1308,29 +1518,24 @@ $\mathsf{AtlI}=\mathsf{DomInc}(0)$.
 
 def AtlI : Atl := dominionAtlas emptyDominion
 
-def Folio.paddedIndex (W : Folio) (n : Nat) : Fin W.length :=
-  ⟨min n (W.length - 1), lt_of_le_of_lt (min_le_right _ _)
-    (Nat.sub_lt W.positive (by omega))⟩
-
-theorem Folio.paddedIndex_mono (W : Folio) :
-    Monotone W.paddedIndex := by
-  intro a b h
-  exact min_le_min h le_rfl
+theorem AtlI_eq_domInc_zero :
+    AtlI = (DomInc.obj emptyDominion).obj.obj := rfl
 
 def Folio.pageValue (W : Folio) (m : Fin W.length) :
-    (W.F.obj m).unop.Obj := by
+    (W.core.obj m).unop.Obj := by
   letI : NeZero W.length := ⟨Nat.ne_of_gt W.positive⟩
-  let q : (W.F.obj m).unop ⟶ (W.F.obj W.originIndex).unop :=
-    (W.F.map (homOfLE (Fin.zero_le m))).unop
+  let q : (W.core.obj m).unop ⟶ (W.core.obj W.originIndex).unop :=
+    (W.core.map (homOfLE (Fin.zero_le m))).unop
   exact Classical.choose (q.point_surjective W.originValue)
 
 theorem Folio.map_unop_comp_apply (W : Folio) {i j k : Fin W.length}
     (hik : i ⟶ k) (hij : i ⟶ j) (hjk : j ⟶ k)
-    (z : (W.F.obj k).unop.Obj) :
-    (W.F.map hik).unop z = (W.F.map hij).unop ((W.F.map hjk).unop z) := by
+    (z : (W.core.obj k).unop.Obj) :
+    (W.core.map hik).unop z =
+      (W.core.map hij).unop ((W.core.map hjk).unop z) := by
   have e : hik = hij ≫ hjk := Subsingleton.elim _ _
   subst hik
-  have h := congrArg Quiver.Hom.unop (W.F.map_comp hij hjk)
+  have h := congrArg Quiver.Hom.unop (W.core.map_comp hij hjk)
   exact congrFun (congrArg ConHom.toFun h) z
 
 def bouquetLength (X Y : Folio) : Nat := max X.length Y.length + 1
@@ -1345,8 +1550,8 @@ instance (X Y : Folio) : NeZero (bouquetLength X Y) :=
 
 def bouquetChain (X Y : Folio) : Fin (bouquetLength X Y) → Chain :=
   Fin.cases singletonChain (fun m : Fin (bouquetDepth X Y) =>
-    Chain.sum (X.F.obj (X.paddedIndex m.1)).unop
-      (Y.F.obj (Y.paddedIndex m.1)).unop)
+    Chain.sum (X.core.obj (X.paddedIndex m.1)).unop
+      (Y.core.obj (Y.paddedIndex m.1)).unop)
 
 def bouquetValue (X Y : Folio) (m : Fin (bouquetLength X Y)) :
     (bouquetChain X Y m).Obj :=
@@ -1376,12 +1581,13 @@ def bouquetConMap (X Y : Folio) {i j : Fin (bouquetLength X Y)} (h : i ≤ j) :
     have hij : i ≤ j := Fin.succ_le_succ_iff.mp h
     let hx : X.paddedIndex i.1 ≤ X.paddedIndex j.1 := X.paddedIndex_mono hij
     let hy : Y.paddedIndex i.1 ≤ Y.paddedIndex j.1 := Y.paddedIndex_mono hij
-    exact ConHom.sum (X.F.map (homOfLE hx)).unop (Y.F.map (homOfLE hy)).unop
+    exact ConHom.sum (X.core.map (homOfLE hx)).unop
+      (Y.core.map (homOfLE hy)).unop
 
 def bouquetFolio (X Y : Folio) : Folio where
   length := bouquetLength X Y
   positive := bouquetLength_pos X Y
-  F :=
+  core :=
     { obj := fun m => op (bouquetChain X Y m)
       map := fun f => (bouquetConMap X Y (leOfHom f)).op
       map_id := by
@@ -2014,6 +2220,52 @@ theorem Folio.omegaIndex_of_ge (W : Folio) {n : Nat} (h : W.length ≤ n) :
   change min n (W.length - 1) = W.length - 1
   exact Nat.min_eq_right (by omega)
 
+/-- `N` is a cutoff when page `N - 1` is final and every page from `N`
+onward normalizes to it. -/
+def Folio.IsCutoff (W : Folio) (N : Nat) : Prop :=
+  0 < N ∧ ∀ n, N ≤ n → W.omegaIndex n = W.omegaIndex (N - 1)
+
+theorem Folio.length_isCutoff (W : Folio) : W.IsCutoff W.length := by
+  refine ⟨W.positive, ?_⟩
+  intro n hn
+  rw [W.omegaIndex_of_ge hn]
+  apply Fin.ext
+  change W.length - 1 = min (W.length - 1) (W.length - 1)
+  simp
+
+/-- The stored cardinality really is the least positive stabilization cutoff,
+not merely some bound after which repetition happens. -/
+theorem Folio.length_le_of_isCutoff (W : Folio) {N : Nat}
+    (hN : W.IsCutoff N) : W.length ≤ N := by
+  by_contra h
+  have hNl : N < W.length := Nat.lt_of_not_ge h
+  have hpos := hN.1
+  have he := hN.2 N le_rfl
+  rw [W.omegaIndex_of_lt hNl] at he
+  have hpred : N - 1 < W.length := lt_of_le_of_lt (Nat.sub_le N 1) hNl
+  rw [W.omegaIndex_of_lt hpred] at he
+  have hv : N = N - 1 := Fin.ext_iff.mp he
+  omega
+
+/-- On the repeated tail, every spine arrow commutes with the canonical
+identifications of its endpoints with the final finite index. -/
+theorem Folio.spineBase_map_tail (W : Folio) {m n : Nat}
+    (hm : W.length ≤ m) (hn : W.length ≤ n) (f : m ⟶ n) :
+    W.spineBase.map f ≫ eqToHom (W.omegaIndex_of_ge hn) =
+      eqToHom (W.omegaIndex_of_ge hm) := by
+  apply Subsingleton.elim
+
+/-- The corresponding coherence condition in `CoCon`: after identifying both
+repeated pages with the final page, the transition is the identity transition.
+This is the formal content of the manuscript's repeated-page clause. -/
+theorem Folio.F_map_tail (W : Folio) {m n : Nat}
+    (hm : W.length ≤ m) (hn : W.length ≤ n) (f : m ⟶ n) :
+    W.F.map f ≫ W.core.map (eqToHom (W.omegaIndex_of_ge hn)) =
+      W.core.map (eqToHom (W.omegaIndex_of_ge hm)) := by
+  change W.core.map (W.spineBase.map f) ≫ _ = _
+  rw [← W.core.map_comp]
+  congr 1
+
 def Folio.omegaBase (W : Folio) : Nat ⥤ Fin W.length where
   obj n := W.omegaIndex n
   map f := homOfLE (W.paddedIndex_mono (leOfHom f))
@@ -2024,7 +2276,7 @@ structure OmegaFolio where
   finite : Folio
 
 def OmegaFolio.F (W : OmegaFolio) : Nat ⥤ CoCon :=
-  W.finite.omegaBase ⋙ W.finite.F
+  W.finite.F
 
 def OmegaFolio.H (W : OmegaFolio) : Natᵒᵖ ⥤ Type :=
   W.F.leftOp ⋙ Tra
@@ -2035,6 +2287,11 @@ def OmegaFolio.lastRepeatedIndex (W : OmegaFolio) (n : Nat)
     (h : W.finite.length ≤ n) :
     W.finite.omegaIndex n = W.finite.lastIndex :=
   W.finite.omegaIndex_of_ge h
+
+theorem OmegaFolio.cardinality_is_least_cutoff (W : OmegaFolio) :
+    W.finite.IsCutoff W.finite.length ∧
+      ∀ N, W.finite.IsCutoff N → W.finite.length ≤ N :=
+  ⟨W.finite.length_isCutoff, fun _ h => W.finite.length_le_of_isCutoff h⟩
 
 /-- A wrapper is used instead of the raw dependent sum so that Mathlib's
 unrelated category instance for sigma-types cannot compete with the category
@@ -2052,15 +2309,24 @@ instance (W : OmegaFolio) : Category (OmegaElement W) where
   assoc _ _ _ := rfl
 
 instance (W : OmegaFolio) (x y : OmegaElement W) : Subsingleton (x ⟶ y) where
-  allEq f g := Subtype.ext (Subsingleton.elim _ _)
+  allEq _ _ := Subtype.ext (Subsingleton.elim _ _)
 
 def OmegaFolio.toFiniteElement (W : OmegaFolio) :
     OmegaElement W ⥤ W.finite.E where
   obj x := ⟨op (W.finite.omegaIndex x.base.unop), x.value⟩
-  map {x y} f := CategoryOfElements.homMk _ _
+  map {_ _} f := CategoryOfElements.homMk _ _
     (W.finite.omegaBase.map (Quiver.Hom.unop f.1)).op f.2
   map_id _ := Subsingleton.elim _ _
   map_comp _ _ := Subsingleton.elim _ _
+
+/-- The occurrence of a final-page cell on a repeated spine page. -/
+def OmegaFolio.repeatElement (W : OmegaFolio) (n : Nat)
+    (h : W.finite.length ≤ n)
+    (k : W.finite.H.obj W.finite.lastBase) : OmegaElement W := by
+  refine ⟨op n, ?_⟩
+  change (W.finite.core.obj (W.finite.omegaIndex n)).unop.Obj
+  rw [W.finite.omegaIndex_of_ge h]
+  exact k
 
 structure OmegaAtl where
   finite : Atl
@@ -2073,14 +2339,19 @@ def OmegaAtl.G (X : OmegaAtl) : X.E ⥤ DomIns :=
 
 def OmegaAtl.originElement (X : OmegaAtl) : X.E := by
   refine ⟨op 0, ?_⟩
-  change (X.finite.P.folio.F.obj
+  change (X.finite.P.folio.core.obj
     (X.finite.P.folio.omegaIndex 0)).unop.Obj
   rw [X.finite.P.folio.omegaIndex_of_lt X.finite.P.folio.positive]
   exact X.finite.P.folio.originValue
 
 def OmegaAtl.extent (X : OmegaAtl) : DomIns := X.G.obj X.originElement
 
-def OmegaAtl.cardinality (_X : OmegaAtl) : Ordinal := Ordinal.omega0
+def OmegaAtl.cardinality (X : OmegaAtl) : Nat := X.finite.P.folio.length
+
+theorem OmegaAtl.spine_orderType (_X : OmegaAtl) :
+    Ordinal.type (fun m n : Nat => m < n) = Ordinal.omega0 := by
+  change typeLT Nat = Ordinal.omega0
+  exact Ordinal.type_nat_lt
 
 def OmegaAtl.pageIndex (X : OmegaAtl) (n : Nat) : Fin X.finite.P.folio.length :=
   X.finite.P.folio.omegaIndex n
@@ -2113,50 +2384,19 @@ theorem OmegaAtl.disjoint (X : OmegaAtl) : IsOmegaPagewiseDisjoint X := by
   intro n i j hij x y
   exact X.finite.disjoint (op (X.pageIndex n)) i j hij x y
 
-structure OmegaAtlHom (X Y : OmegaAtl) where
-  P : X.E ⥤ Y.E
-  A : X.G ⟶ P ⋙ Y.G
-
-def OmegaAtlHom.identity (X : OmegaAtl) : OmegaAtlHom X X where
-  P := 𝟭 X.E
-  A := 𝟙 X.G
-
-def OmegaAtlHom.comp {X Y Z : OmegaAtl}
-    (f : OmegaAtlHom X Y) (g : OmegaAtlHom Y Z) : OmegaAtlHom X Z where
-  P := f.P ⋙ g.P
-  A := f.A ≫ whiskerLeft f.P g.A
-
-@[ext]
-theorem OmegaAtlHom.ext {X Y : OmegaAtl} (f g : OmegaAtlHom X Y)
-    (hP : f.P = g.P) (hA : HEq f.A g.A) : f = g := by
-  cases f
-  cases g
-  cases hP
-  cases hA
-  rfl
+/-- Morphisms are stored on the least finite presentations and extended
+canonically to the repeated spine.  Consequently they cannot make independent
+choices on pages above the source cardinality; this is precisely the tail
+condition in the manuscript. -/
+abbrev OmegaAtlHom (X Y : OmegaAtl) := X.finite ⟶ Y.finite
 
 instance : Category OmegaAtl where
   Hom := OmegaAtlHom
-  id := OmegaAtlHom.identity
-  comp := OmegaAtlHom.comp
-  id_comp f := by
-    apply OmegaAtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x
-      simp [OmegaAtlHom.comp, OmegaAtlHom.identity]
-  comp_id f := by
-    apply OmegaAtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x
-      simp [OmegaAtlHom.comp, OmegaAtlHom.identity]
-  assoc f g h := by
-    apply OmegaAtlHom.ext
-    · rfl
-    · apply heq_of_eq
-      ext x
-      simp [OmegaAtlHom.comp]
+  id X := 𝟙 X.finite
+  comp f g := f ≫ g
+  id_comp := Category.id_comp
+  comp_id := Category.comp_id
+  assoc := Category.assoc
 
 def omegaCompleteObj (X : Atl) : OmegaAtl := ⟨X⟩
 
@@ -2166,7 +2406,7 @@ theorem omegaComplete_eventually_territory (X : Atl) (n : Nat)
   X.P.folio.omegaIndex_of_ge h
 
 theorem omegaComplete_cardinality (X : Atl) :
-    (omegaCompleteObj X).cardinality = Ordinal.omega0 := rfl
+    (omegaCompleteObj X).cardinality = cardinality X := rfl
 
 /-!
 `OmegaAtlFamily` is the flat normal form used for coherence.  A singleton
@@ -2543,7 +2783,7 @@ instance omegaFamilyBraided : BraidedCategory OmegaAtlFamily where
       cases i <;> rfl
     · intro i
       cases i <;>
-        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+        simp [omegaFamilyTensorHom,
           omegaFamilyBraiding, omegaFamilyBraidingHom,
           omegaFamilyTensorObj]
   braiding_naturality_left := fun {_ _} f Z => by
@@ -2552,7 +2792,7 @@ instance omegaFamilyBraided : BraidedCategory OmegaAtlFamily where
       cases i <;> rfl
     · intro i
       cases i <;>
-        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+        simp [omegaFamilyTensorHom,
           omegaFamilyBraiding, omegaFamilyBraidingHom,
           omegaFamilyTensorObj]
   hexagon_forward := fun X Y Z => by
@@ -2561,7 +2801,7 @@ instance omegaFamilyBraided : BraidedCategory OmegaAtlFamily where
       rcases i with (i | j) | k <;> rfl
     · intro i
       rcases i with (i | j) | k <;>
-        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+        simp [omegaFamilyTensorHom,
           omegaFamilyAssociator, omegaFamilyAssociatorHom,
           omegaFamilyBraiding, omegaFamilyBraidingHom,
           omegaFamilyTensorObj]
@@ -2571,7 +2811,7 @@ instance omegaFamilyBraided : BraidedCategory OmegaAtlFamily where
       rcases i with i | (j | k) <;> rfl
     · intro i
       rcases i with i | (j | k) <;>
-        simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom,
+        simp [omegaFamilyTensorHom,
           omegaFamilyAssociator, omegaFamilyAssociatorInv,
           omegaFamilyBraiding, omegaFamilyBraidingHom,
           omegaFamilyTensorObj]
@@ -2586,10 +2826,133 @@ instance : SymmetricCategory OmegaAtlFamily where
         simp [omegaFamilyBraided, omegaFamilyBraiding,
           omegaFamilyBraidingHom, omegaFamilyTensorObj]
 
+/-%%
+\begin{definition}[The Atlas Horizontal Sum Bifunctor]
+The \textbf{Atlas Horizontal Sum Bifunctor}, denoted
+$\mathsf{AtlHorSum}:\Atl\times\Atl\to\Atl$, is defined as follows.  Given
+two morphisms $F:X\to Y$ and $F':X'\to Y'$ in $\Atl$, if $F=\mathsf{AtlI}$,
+then $\mathsf{AtlHorSum}(F,F')=F'$, and if $F'=\mathsf{AtlI}$, then
+$\mathsf{AtlHorSum}(F,F')=F$.  Otherwise,
+$\mathsf{AtlHorSum}(F,F')$ is the universal arrow from $\Atl$ to
+$R=Y\sqcup Y'$, written $G:K\to R$, such that there exist morphisms
+$M:X\to K$ and $M':X'\to K$ in $\mathsf{AtlTrav}$ satisfying
+$M_E(0,0)=(1,0)$ and $M'_E(0,0)=(1,1)$.  For the injections
+$Y_i:Y\to R$ and $Y'_i:Y'\to R$, these satisfy
+$G\circ M\cong Y_i\circ F$ and $G\circ M'\cong Y'_i\circ F'$.
+\end{definition}
+%%-/
+
+/-- Implementation note: the universal construction is represented by flat
+finite families of atlases completed along the spine.  Keeping this note out
+of the manuscript block ensures that the compiled definition remains the one
+stated in `datra.md`. -/
+abbrev AtlHor := OmegaAtlFamily
+
+def AtlHorSum : CategoryTheory.Functor (AtlHor × AtlHor) AtlHor :=
+  omegaFamilyTensor
+
+/-%%
+\begin{lemma}[Horizontal Lemma]
+The Atlas Horizontal Sum Bifunctor $\mathsf{AtlHorSum}$ exists.
+
+\emph{Proof sketch.}  The cases $F=\mathsf{AtlI}$ or
+$F'=\mathsf{AtlI}$ are trivial.  Otherwise, for $F:X\to Y$ and
+$F':X'\to Y'$, let $T:\Atl$, let $R=Y\sqcup Y'$, and let $G:T\to R$,
+where
+\[
+  |T|=\max(|X|,|X'|)+1.
+\]
+Set $T_G(0,0)=\Ex(X)\sqcup\Ex(X')$,
+$R_G(0,0)=\Ex(Y)\sqcup\Ex(Y')$, and let $G_{A,(0,0)}$ be the induced
+monomorphism.  For each positive integer $m$, set
+$T_H(m)=X_H(m-1)\sqcup X'_H(m-1)$.  For $n\in|A_P(m)|$, if $n<M(m)$,
+put
+\[
+  T_G(m,n)=X_G(m-1,n),\qquad
+  G_{A,(m,n)}=F_{A,(m-1,n)};
+\]
+otherwise put
+\[
+  T_G(m,n)=X'_G\bigl(m-1,n-|X_H(m-1)|\bigr),
+\]
+and
+\[
+  G_{A,(m,n)}=F'_{A,\left(m-1,n-|X_H(m-1)|\right)}.
+\]
+This defines $G$, which is initial among solutions.
+\end{lemma}
+%%-/
+
+theorem horizontalLemma : Nonempty (SymmetricCategory AtlHor) :=
+  ⟨inferInstance⟩
+
+/-%%
+\begin{definition}[The Atlas Braider]
+The \textbf{Atlas Braider}
+$\mathsf{AtlBrd}_{F,F'}:\mathsf{AtlHorSum}(F,F')\to
+\mathsf{AtlHorSum}(F',F)$ is defined as follows.  If
+$F=\mathsf{AtlI}$ or $F'=\mathsf{AtlI}$, then
+$\mathsf{AtlBrd}_{F,F'}=\id$.  Otherwise, let
+$R=\mathsf{AtlHorSum}(F,F')$, and let $G:H\to R$ be the universal arrow
+from $\mathsf{AtlTrap}$ to $R$ satisfying
+$G_E(1,0)=(1,1)$ and $G_E(1,1)=(1,0)$.  Then
+$\mathsf{AtlBrd}_{F,F'}=G^{-1}$, and
+$\mathsf{AtlBrd}_{F,F'}\circ\mathsf{AtlBrd}_{F',F}=\id$.
+\end{definition}
+%%-/
+
+def AtlBrd (X Y : AtlHor) :
+    AtlHorSum.obj (X, Y) ≅ AtlHorSum.obj (Y, X) :=
+  omegaFamilyBraiding X Y
+
+/-%%
+\begin{definition}[The Atlas Associator]
+The \textbf{Atlas Associator}, denoted
+\[
+  \mathsf{AtlAsoc}_{F,F',F''}:
+  \mathsf{AtlHorSum}(\mathsf{AtlHorSum}(F,F'),F'')
+  \longrightarrow
+  \mathsf{AtlHorSum}(F,\mathsf{AtlHorSum}(F',F'')),
+\]
+is defined as follows.  If $F=\mathsf{AtlI}$, $F'=\mathsf{AtlI}$, or
+$F''=\mathsf{AtlI}$, then $\mathsf{AtlAsoc}_{F,F',F''}=\id$.
+Otherwise, let
+$R=\mathsf{AtlHorSum}(\mathsf{AtlHorSum}(F,F'),F'')$, and let
+$G:H\to R$ be the universal arrow from $\mathsf{AtlTrap}$ to $R$ such
+that $G_E(2,0)=(1,0)$.  Suppose also that there exists a morphism
+$G':\mathsf{AtlHorSum}(F',F'')\to H$ in $\mathsf{AtlTrav}$ satisfying
+$G'_E(0,0)=(1,1)$.  Then $\mathsf{AtlAsoc}_{F,F',F''}=G^{-1}$.
+\end{definition}
+%%-/
+
+def AtlAsoc (X Y Z : AtlHor) :
+    AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
+      AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
+  omegaFamilyAssociator X Y Z
+
+/-%%
+\begin{definition}[The Atlas Unitors]
+The \textbf{Atlas Left Unitor}
+$\mathsf{Lu}:\mathsf{AtlHorSum}(F,\mathsf{AtlI})\to F$ and the
+\textbf{Atlas Right Unitor}
+$\mathsf{Ru}:\mathsf{AtlHorSum}(\mathsf{AtlI},F)\to F$ are given by
+$\mathsf{Lu}=\id$ and $\mathsf{Ru}=\id$.
+\end{definition}
+%%-/
+
+/-- The public names follow the manuscript's left/right convention.  Mathlib's
+standard names are opposite: `omegaFamilyRightUnitor` has source `X ⊗ I`,
+while `omegaFamilyLeftUnitor` has source `I ⊗ X`. -/
+def AtlLu (X : AtlHor) : AtlHorSum.obj (X, omegaFamilyUnit) ≅ X :=
+  omegaFamilyRightUnitor X
+
+def AtlRu (X : AtlHor) : AtlHorSum.obj (omegaFamilyUnit, X) ≅ X :=
+  omegaFamilyLeftUnitor X
+
 instance : SymmetricCategory OmegaAtlFamilyᵒᵖ where
   symmetry X Y := by
     apply Quiver.Hom.unop_inj
-    simpa using SymmetricCategory.symmetry (unop Y) (unop X)
+    simp
 
 /-! The completed presheaf category on which Day convolution is formed.  The
 all-objects full subcategory is deliberate: it gives the Day convolution a
@@ -2651,7 +3014,7 @@ instance omegaPreservesTensorRightForTensorProduct (v : Type 3)
 noncomputable def omegaDaTraMonoidal : MonoidalCategory OmegaDaTra :=
   MonoidalCategory.monoidalOfHasDayConvolutions omegaDaTraInc
     (ObjectProperty.fullyFaithfulι IsOmegaDaTra)
-    (fun F G => omegaDaTraInc_essImage _)
+    (fun _ _ => omegaDaTraInc_essImage _)
     (omegaDaTraInc_essImage _)
 
 noncomputable instance : MonoidalCategory OmegaDaTra := omegaDaTraMonoidal
@@ -2661,7 +3024,7 @@ noncomputable instance omegaDaTraLawful :
       OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra :=
   MonoidalCategory.lawfulDayConvolutionMonoidalCategoryStructOfHasDayConvolutions
     omegaDaTraInc (ObjectProperty.fullyFaithfulι IsOmegaDaTra)
-    (fun F G => omegaDaTraInc_essImage _)
+    (fun _ _ => omegaDaTraInc_essImage _)
     (omegaDaTraInc_essImage _)
 
 noncomputable instance omegaDayConvolution (F G : OmegaDaTra) :
@@ -2731,8 +3094,7 @@ noncomputable instance omegaDaTraBraided : BraidedCategory OmegaDaTra where
       ← MonoidalCategory.tensorHom_id]
     apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
     simp only [Functor.map_comp,
-      omegaDaTraInc_map_tensorHom,
-      Functor.map_id, omegaDaTraInc_map_braiding_hom]
+      omegaDaTraInc_map_tensorHom, omegaDaTraInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_right
       (omegaDaTraInc.obj X) (omegaDaTraInc.map f)
   braiding_naturality_left := fun {_ _} f Z => by
@@ -2740,8 +3102,7 @@ noncomputable instance omegaDaTraBraided : BraidedCategory OmegaDaTra where
       ← MonoidalCategory.id_tensorHom]
     apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
     simp only [Functor.map_comp,
-      omegaDaTraInc_map_tensorHom,
-      Functor.map_id, omegaDaTraInc_map_braiding_hom]
+      omegaDaTraInc_map_tensorHom, omegaDaTraInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_left
       (omegaDaTraInc.map f) (omegaDaTraInc.obj Z)
   hexagon_forward := by
@@ -2752,9 +3113,7 @@ noncomputable instance omegaDaTraBraided : BraidedCategory OmegaDaTra where
       omegaDaTraInc_map_braiding_hom]
     rw [← MonoidalCategory.tensorHom_id,
       ← MonoidalCategory.id_tensorHom]
-    simp only [
-      omegaDaTraInc_map_tensorHom,
-      Functor.map_id]
+    simp only [omegaDaTraInc_map_tensorHom]
     exact MonoidalCategory.DayConvolution.hexagon_forward
       (omegaDaTraInc.obj X) (omegaDaTraInc.obj Y) (omegaDaTraInc.obj Z)
   hexagon_reverse := by
@@ -2764,9 +3123,7 @@ noncomputable instance omegaDaTraBraided : BraidedCategory OmegaDaTra where
       omegaDaTraInc_map_braiding_hom]
     rw [← MonoidalCategory.id_tensorHom,
       ← MonoidalCategory.tensorHom_id]
-    simp only [
-      omegaDaTraInc_map_tensorHom,
-      Functor.map_id]
+    simp only [omegaDaTraInc_map_tensorHom]
     exact MonoidalCategory.DayConvolution.hexagon_reverse
       (omegaDaTraInc.obj X) (omegaDaTraInc.obj Y) (omegaDaTraInc.obj Z)
 
@@ -2774,10 +3131,116 @@ set_option maxHeartbeats 2400000 in
 noncomputable instance : SymmetricCategory OmegaDaTra where
   symmetry F G := by
     apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
-    simp only [Functor.map_comp, omegaDaTraInc_map_braiding_hom,
-      Functor.map_id]
+    simp only [Functor.map_comp]
     exact MonoidalCategory.DayConvolution.symmetry
       (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)
+
+/-%%
+\section{Horizontal Data Traversals}
+
+\begin{definition}[The Empty Map]
+The \textbf{Empty Map}, denoted $I$, is the Yoneda embedding of the Empty
+Atlas:
+\[
+  I=\Yo(\mathsf{AtlI}).
+\]
+\end{definition}
+%%-/
+
+/-- The implementation realizes the manuscript's horizontal site by the flat
+completed atlas category `AtlHor`; `DaTravMon` is its full presheaf category.
+This completion detail is intentionally outside the extracted definition. -/
+abbrev DaTravMon := OmegaDaTra
+
+noncomputable def I : DaTravMon :=
+  MonoidalCategory.tensorUnit DaTravMon
+
+/-- Certificate of the universal property implicit in the notation
+`I = Yo(AtlI)`: under the inclusion into presheaves, `I` is the pointwise left
+Kan extension of the singleton along the inclusion of the horizontal unit. -/
+noncomputable def I_dayConvolutionUnit :
+    MonoidalCategory.DayConvolutionUnit (omegaDaTraInc.obj I) :=
+  MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolutionUnit
+    OmegaAtlFamilyᵒᵖ (Type 3) DaTravMon
+
+/-%%
+\begin{definition}[The Horizontal Sum Bifunctor]
+The \textbf{Horizontal Sum Bifunctor}, denoted
+$\mathsf{HorSum}:\mathsf{DaTrav}\times\mathsf{DaTrav}	o
+\mathsf{DaTrav}$, or in infix notation by
+$+_{!<}:\mathsf{DaTrav}\times\mathsf{DaTrav}\to\mathsf{DaTrav}$,
+is the Day convolution extension of $\mathsf{AtlHorSum}$.
+\end{definition}
+%%-/
+
+noncomputable def HorSum :
+    CategoryTheory.Functor (DaTravMon × DaTravMon) DaTravMon :=
+  MonoidalCategory.tensor DaTravMon
+
+/-%%
+\begin{definition}[The Data Traversal Braider]
+The \textbf{Data Traversal Braider}
+$\mathsf{Brd}_{F,F'}:F+_{!<}F'\to F'+_{!<}F$ is the Day convolution
+extension of $\mathsf{AtlBrd}$.
+\end{definition}
+%%-/
+
+noncomputable def Brd (F G : DaTravMon) :
+    MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F :=
+  omegaDaTraBraiding F G
+
+/-%%
+\begin{definition}[The Data Traversal Associator]
+The \textbf{Data Traversal Associator}
+\[
+  \mathsf{Asoc}_{F,F',F''}:(F+_{!<}F')+_{!<}F''
+    \longrightarrow F+_{!<}(F'+_{!<}F'')
+\]
+is the Day convolution extension of $\mathsf{AtlAsoc}$.
+\end{definition}
+%%-/
+
+noncomputable def Asoc (F G H : DaTravMon) :
+    MonoidalCategory.tensorObj (MonoidalCategory.tensorObj F G) H ≅
+      MonoidalCategory.tensorObj F (MonoidalCategory.tensorObj G H) :=
+  MonoidalCategory.associator F G H
+
+/-%%
+\begin{definition}[The Data Traversal Unitors]
+The \textbf{Data Traversal Left Unitor}
+$\mathsf{Lu}:F+_{!<}I\to F$ and the
+\textbf{Data Traversal Right Unitor}
+$\mathsf{Ru}:I+_{!<}F\to F$ are the Day convolution extensions of
+$\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
+\end{definition}
+%%-/
+
+noncomputable def Lu (F : DaTravMon) :
+    MonoidalCategory.tensorObj F I ≅ F :=
+  MonoidalCategory.rightUnitor F
+
+noncomputable def Ru (F : DaTravMon) :
+    MonoidalCategory.tensorObj I F ≅ F :=
+  MonoidalCategory.leftUnitor F
+
+/-%%
+\begin{definition}[The Data Traversal Monoidal Category]
+The \textbf{Data Traversal Monoidal Category}, denoted
+$\mathsf{DaTravMon}$, is
+\[
+  \mathsf{DaTravMon}=(\mathsf{DaTrav},+_{!<},I).
+\]
+The coherence conditions are checked by observing that
+$\mathsf{Brd}$, $\mathsf{Asoc}$, $\mathsf{Lu}$, and $\mathsf{Ru}$ are
+sent to isomorphisms in $\mathsf{DaTra}$.
+\end{definition}
+%%-/
+
+/-- Unlike the prose's abbreviated "can be checked", the Lean instance above
+contains the naturality, pentagon, triangle, two hexagons, and symmetry proofs
+explicitly. -/
+theorem serenityLemma : Nonempty (SymmetricCategory DaTravMon) :=
+  ⟨inferInstance⟩
 
 
 end
