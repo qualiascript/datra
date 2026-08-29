@@ -17,6 +17,8 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 3.1. A **Chain** is a totally ordered thin category with strictly less than `omega_0 ^ omega_0` distinct objects,
 taken skeletally.
 
+3.2. The **Spine** is the chain with `omega_0` objects.
+
 4.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con` are chains
 and whose morphisms `K : X -> Y` are point-surjective functors on chains `F : X -> Y`.
 
@@ -26,7 +28,7 @@ is, `CoCon = Con^op`.
 5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : Con -> Set`, and sends each morphism
 in `Con` to its underlying set-theoretic surjection.
 
-5.2. A **Folio** is a functor `F : C -> CoCon`, where `C` is a chain, so that `F 0 = 1`.
+5.2. A **Folio** is a functor `F : S -> CoCon`, where `S` is a spine, so that `F 0 = 1`.
 
 6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
 `H = Tra ∘ (F^op)`, `F : C -> CoCon` is a folio, and `E` is the category of elements of functor `H`. For any
@@ -48,12 +50,12 @@ T                      T
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`, with the property that
 for `P_H : C -> Set`, for `m : |C|`, for any `a = (m, k) : P_E`, `b = (m, k') : P_E`, if `k =/= k'`, the pullback in
 `G` of `(m -> 0) k` and `(m -> 0) k'` is empty. Furthermore, there exists an integer `w` with the property that
-for any other integer `w'` so that `w < w'`, `P_H (w' -> w) = id` and for any `k : |P_H w|` `P_G (w' -> w) k = id`.
-The largest integer `w` with this property is then named the **Cardinality of the Atlas**, and denoted `|A|` for
+for any other integer `w'` so that `w < w'`, `P_H (w' -> w) = id` and for any `k : |P_H w|` `G (w' -> w) k = id`.
+The least integer `w` with this property is then named the **Cardinality of the Atlas**, and denoted `|A|` for
 `A : Atl`. For `X : Atl`, we denote `X_P` the first inclusion, `X_G` the second inclusion, along with `X_H = X_P_H`,
 `X_E = X_P_E`. A morphism in `Atl`, for `T : X -> Y`, are pairs `(T_P, T_A)`, where `T_P : X_P -> Y_P` is a morphism in
 `Pag` and `T_A : X_G => Y_G ∘ T_E` is a natural transformation, that is, the following diagram commutes for all
-morphisms `f : x -> y` in `X_E`. Furthermore, for `x = |X|`, `y = |Y|`, for any `x' > x`, for any `r : X_H x`
+morphisms `f : x -> y` in `X_E`. Furthermore, for `x = |X|`, for any `x' > x`, for any `r : X_H (|X| - 1)`,
 `T_P (x', r) = T_P (x, r)` and `T_A_(x', r) = T_A_(x, r)`.
 
 ```
@@ -159,19 +161,19 @@ with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `A
 and `G ∘ M' ~= Y'_i ∘ F'`.
 
 11.3. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
-trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `R = Y + Y'`, `G : T -> R` so that
-`|T| = max(|X|, |X'|) + 1`, let `S` be the set of all `k : |T|` with `k > 0`, Then, let `T_G (0, 0) = Ex X + Ex X'`,
-`R_G (0, 0) = Ex Y + Ex Y'`, and `G_A_(0, 0)` be the induced mono. Then, for `m` positive integer, let
-`|A_P m| = X_P m + X'_P m`, and for any `n : |A_P m|`,  iff `n < M m`, `T_G (m, n) = X_G (m - 1, n)` and
-`G_A_(m, n) = F_A_(m - 1, n)`, otherwise, `T_G (m, n) = X'_G (m - 1, (n - |X_H m|)`,
-`G_A(m, n) = F'_A_(m - 1, (n - |X_H m|)`. This fully defines `G`, which can be checked to be initial among solutions.
+trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `T : Atl`, `R = Y + Y'`, `G : T -> R` so that
+`|T| = max(|X|, |X'|) + 1`. Then, let `T_G (0, 0) = Ex X + Ex X'`, `R_G (0, 0) = Ex Y + Ex Y'`, and `G_A_(0, 0)` be the
+induced mono. Then, for `m` positive integer, let `T_H m = X_H (m − 1) + X'_H (m − 1)`, and for any `n : |A_P m|`, iff
+`n < M m`,`T_G (m, n) = X_G (m - 1, n)` and `G_A_(m, n) = F_A_(m - 1, n)`, otherwise,
+`T_G (m, n) = X'_G (m - 1, (n - |X_H (m - 1)|))`, `G_A(m, n) = F'_A_(m - 1, (n - |X_H (m - 1)|))`. This fully defines
+`G`, which can be checked to be initial among solutions.
 
 11.4. The **Atlas Braider** `AtlBrd_F_F' : (AtlHorSum F F') -> (AtlHorSum F' F)` is defined as follows: if `F = AtlI`
 or `F' = AtlI`, `AtlBrd_F_F' = Id`. Otherwise, let `R = (AtlHorSum F F')` and let `G : H -> R` be the universal arrow
 from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = inv G`, and
 trivially, `AtlBrd_F_F' AtlBrd_F'_F = Id`.
 
-[TODO: handle associator different chain cardinality by extending to chain of `omega_1` size]
+[TODO: figure out associativity flattening]
 
 11.5. The **Atlas Associator**, denoted
 `AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
