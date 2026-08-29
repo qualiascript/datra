@@ -78,7 +78,7 @@ starts at `0`.
 7.2. The **Category of Atlas Traversals**, denoted `AtlTrav`, is the wide subcategory of `AtlTrap` whose morphisms
 for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k', j)` with `i < j`, let
 `x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `p = min(m, n)`, then `Y_H (m -> p) i' < Y_H (n -> p) j'`. It
-can be checked that `AtlTrav` is stable under pullback along atlas monos.
+can be checked that `AtlTrav` is stable under pullback along atlas monomorphisms.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
 `A : AtlMap`, `A`'s extent is isomorphic to the coproduct of its regions. That is, let `F = Emb ∘ Ter A : M -> Set`,
@@ -116,16 +116,19 @@ Trivially, `DaTra` is a topos.
 10.2. A **Navigation of a Data Transformation**, given `D : DaTra`, is a monomorphism `Nav : Yo A -> D` so that
 `A : Atl`, where `Yo` represents the Yoneda embedding `Yo : Atl -> DaTra`.
 
-10.3. A **DaTra Restriction**, given `A` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
+10.3. An **Exploration of a Data Transformation**, given `D : DaTra`, is a navigation `Exp : Yo A -> D` so that
+`A : AtlMap`.
+
+10.4. A **DaTra Restriction**, given `A` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
 morphisms for `F : X -> Y` have the property that, for any navigation `Nav : Yo A -> D`, let `P` be the pullback of `F`
 and `S`, then projection `P' : P -> X` is either empty or representable as `P' = Yo f`, where `f` is a morphism of `A`.
 
-10.4. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
+10.5. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
 
-10.5. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
+10.6. The **Category of Data Traversals**, denoted `DaTrav`, is the DaTra restriction on `AtlTrav`.
 
-10.6. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
-objects `D : DaTra` so that for any navigation `Nav : Yo A -> D`, we have `A : AtlMap`.
+10.7. The **Category of Data Transformation Maps**, denoted `DaTraMap`, is the full subcategory of `DaTra` composed of
+the data transformations so that all of their navigations are explorations.
 
 11.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
