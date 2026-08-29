@@ -28,7 +28,7 @@ is, `CoCon = Con^op`.
 5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : Con -> Set`, and sends each morphism
 in `Con` to its underlying set-theoretic surjection.
 
-5.2. A **Folio** is a functor `F : C -> CoCon`, where `C` is a chain, so that `F 0 = 1`.
+5.2. A **Folio** is a functor `F : C -> CoCon`, where `C` is a short chain, so that `F 0 = 1`.
 
 6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
 `H = Tra ∘ (F^op)`, `F : C -> CoCon` is a folio, and `E` is the category of elements of functor `H`. For any
@@ -71,7 +71,7 @@ number of objects of the small chain `C`. It is denoted as `|A|`.
 It is denoted as `Ex A`. Since the objects of `DomIns` are dominions, `Ex A : Dom` for any `A : Atl`.
 
 6.5. The **Territory of an Atlas** `A : Atl` is the indexed collection of dominions `Ter A : M -> Dom`,
-where `M = A_H (|A| - 1)`, so that `Ter A k = A_H (|A| - 1, k)`.
+where `M = A_H (|A| - 1)`, so that `Ter A k = A_G (|A| - 1, k)`.
 
 6.6. The **nth Region of an Atlas** `A : Atl` is the dominion `Ter A n` for `n : M`, noting that the indexing
 starts at `0`.
@@ -80,7 +80,7 @@ starts at `0`.
 `F : X -> Y` have the property that `F_E` is point-injective.
 
 7.2. The **Category of Atlas Traversals**, denoted `AtlTrav`, is the wide subcategory of `AtlTrap` whose morphisms
-for `F : X -> Y` have the following properties: for any `x = (m, i)`, `y = (m', j)`, let `p = min(k, k')`,
+for `F : X -> Y` have the following properties: for any `x = (m, i)`, `y = (m', j)`, let `p = min(m, m')`,
 `x' = F_E x = (n, i')`, `y' = F_E y = (n', j')` and let `p' = min(n, n')`, then if `X_H (m -> p) i < X_H (m' -> p) j`,
 then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. It can be checked that `AtlTrav` is stable under pullback along atlas
 monomorphisms.
@@ -125,7 +125,7 @@ Trivially, `DaTra` is a topos.
 `A : AtlMap`.
 
 10.4. A **DaTra Restriction**, given `W` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
-morphisms for `F : X -> Y` have the property that, for any navigation `Nav : Yo A -> D`, let `P` be the pullback of `F`
+morphisms for `F : X -> Y` have the property that, for any navigation `Nav : Yo A -> Y`, let `P` be the pullback of `F`
 and `Nav`, then projection `P' : P -> X` is either empty or there exists a navigation `Nav : Yo B -> X`, along with
 a morphism `f : B -> A` in `W`, such that the resulting square with `Yo f` is a pullback.
 
