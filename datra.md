@@ -13,6 +13,7 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 `CoDomIns = op DomIns`.
 
 [TODO: clarify meaning of cardinality operator]
+
 3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
 morphisms are order-preserving epimorphisms in `Dom`. More specifically, a morphism `F : A -> B` in `DomCon` has the
 property that for any `x, y : A`, if `|x| < |y|`, then `|F x| <= |F y|`.
