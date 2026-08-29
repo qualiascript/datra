@@ -85,7 +85,7 @@ for `F : X -> Y` have the following properties: for any `x = (m, i)`, `y = (m', 
 then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. Furthermore, for any `q : |X|`, `t : X_G q`, if there exists `k : |Ter X|`
 and `l : Ter X k` so that `t : X_G ((|X| - 1) -> q) k l`, this property gets preserved by `F`. 
 
-7.3. The **Category of Stable Atlas Traversals**, denoted `AltTras`, is the wide subcategory of `AltTrav` so that
+7.3. The **Category of Stable Atlas Traversals**, denoted `AtlTras`, is the wide subcategory of `AltTrav` so that
 for `F : X -> Y`, `F_E (0, 0) = (0, 0)`.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
@@ -109,12 +109,12 @@ unique as `AtlTrav` preserves orders, and terminal as `H_E` is faithful.
 
 9.1. The **Coalizing Functor**, denoted `Coa : AtlTras -> DomIns`, is defined as `Coa = Ex ∘ Chr`.
 
-9.2. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AltTras` is the
-same object viewed as an object of `Alt`.
+9.2. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AtlTras` is the
+same object viewed as an object of `Atl`.
 
 9.3. The **Domanial Inclusion Functor**, denoted `DomInc : DomIns -> AtlTras`, is the functor that is left adjoint to
-`Coa`. That is, for every `X : Dom`, `Y : AtlTras`, `hom_AtlTras (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
-`X` and `Y`, so that `Coa (DomInc X) = X`. It sends each dominion to the atlas of cardinality `1` whose coalition
+`Coa`. That is, for every `X : DomIns`, `Y : AtlTras`, `hom_AtlTras (DomInc X, Y) ~= hom_DomIns(X, Coa Y)`, naturally
+in `X` and `Y`, so that `Coa (DomInc X) = X`. It sends each dominion to the atlas of cardinality `1` whose coalition
 is the dominion in question.
 
 10.1. The **Category of Data Transformations**, also referred to as the **Category of Data Transformation Sets**, or
