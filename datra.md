@@ -6,14 +6,13 @@ morphisms set-theoretic functions (i.e. morphisms in `Set`).
 
 1.2. The **Domanial Embedding Functor**, denoted `Emb : Dom -> Set`, sends each dominion to its corresponding set.
 
-[TODO: cardinality of a dominion]
-
 2.1. The **Category of Domanial Insertions**, denoted `DomIns`, is the category whose objects are dominions, that is, 
 objects of `Dom`, and whose morphisms are monomorphisms in `Dom`. 
 
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
 `CoDomIns = op DomIns`.
 
+[TODO: clarify meaning of cardinality operator]
 3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects are dominions and
 morphisms are order-preserving epimorphisms in `Dom`. More specifically, a morphism `F : A -> B` in `DomCon` has the
 property that for any `x, y : A`, if `|x| < |y|`, then `|F x| <= |F y|`.
