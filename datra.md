@@ -45,6 +45,7 @@ T                      T
 ⌄                      ⌄                             
 (m', i') ----T f-----> (n', (Y_H (T f)) i')
 ```
+
 6.2. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`, with the property that
 for any `a = (m, k) : P_E`, `b = (m', k') : P_E`, if `m =/= m'` or `k =/= k'`, the pullback in `G` of `(m -> 0) k`
@@ -103,12 +104,12 @@ arrow from `AtlTravMapInc` to `X`, so that we denote `X' = AtlTravMapInc Chr X`,
 terminal among objects with this property. The solution is given by the DaTra map so that `Ter X' ~= Ter X`, which is
 unique as `AtlTrav` preserves orders, and terminal as `H_E` is faithful.
 
-9.1. The **Coalizing Functor**, denoted `Coa : AtlTrav -> Dom`, is defined as `Coa = Ex ∘ Chr`.
+9.1. The **Coalizing Functor**, denoted `Coa : AtlTrav -> DomIns`, is defined as `Coa = Ex ∘ Chr`.
 
 9.2. The **Coalition of an Atlas**, given an object `X` of `Atl`, is `Coa X'`, where `X' : AtlTrav` is the
 same object viewed as an object of `AtlTrav`.
 
-9.3. The **Domanial Inclusion Functor**, denoted `DomInc : Dom -> AtlTrav`, is the functor that is left adjoint to
+9.3. The **Domanial Inclusion Functor**, denoted `DomInc : DomIns -> AtlTrav`, is the functor that is left adjoint to
 `Coa`. That is, for every `X : Dom`, `Y : AtlTrav`, `hom_AtlTrav (DomInc X, Y) ~= hom_Dom(X, Coa Y)`, naturally in
 `X` and `Y`, so that `Coa (DomInc X) = X`. It sends each dominion to the atlas of cardinality `1` whose coalition
 is the dominion in question.
