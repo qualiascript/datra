@@ -120,7 +120,7 @@ Trivially, `DaTra` is a topos.
 10.2. A **Navigation of a Data Transformation**, given `D : DaTra`, is a monomorphism `Nav : Yo A -> D` so that
 `A : Atl`, where `Yo` represents the Yoneda embedding `Yo : Atl -> DaTra`.
 
-10.3. An **Exploration of a Data Transformation**, given `D : DaTra`, is a navigation `Exp : Yo A -> D` so that
+10.3. An **Exploration of a Data Transformation**, given `D : DaTra`, is a navigation `Exd : Yo A -> D` so that
 `A : AtlMap`.
 
 10.4. A **DaTra Restriction**, given `W` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
