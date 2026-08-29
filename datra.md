@@ -16,19 +16,17 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
 `CoDomIns = op DomIns`.
 
-[TODO: define in terms of chains]
+3.1. A **Chain** is a totally ordered thin category with at most `omega_0 ^ omega_0` distinct objects,
+taken skeletally.
 
-3.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con`
-are objects of `Set` with the property that for any `d : D`, there exists a monomorphism `d' : d -> omega_0 ^ omega_0`
-so that `d'` is not an isomorphism, and whose morphisms are epimorphisms `F : D -> E` with the property that for any
-`a, b : D`, if there exists a monomorphism `m : a -> b`, then there exists a monomorphism `m' : F a -> F b`.
+3.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
-3.2. The **Category of Coconsolidations**, denoted `CoCon`, is the opposite category of `Con`, that
+4.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con` are chains
+and whose morphisms `K : X -> Y` are point-surjective functors on chains `F : X -> Y`, so that if `a, b : X`
+and `f : a -> b` is a morphism in `X`, then `f' : F a -> F b` is a morphism in `Y`.
+
+4.2. The **Category of Coconsolidations**, denoted `CoCon`, is the opposite category of `Con`, that
 is, `CoCon = op Con`.
-
-4.1. A **Chain** is a totally ordered thin category with at most `omega_0 ^ omega_0` distinct objects, taken skeletally.
-
-4.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
 5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : Con -> Set`, and sends each morphism
 in `Con` to its underlying set-theoretic surjection.
