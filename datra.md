@@ -127,7 +127,16 @@ Trivially, `DaTra` is a topos.
 10.4. A **DaTra Restriction**, given `W` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
 morphisms for `F : X -> Y` have the property that, for any navigation `Nav : Yo A -> Y`, let `P` be the pullback of `F`
 and `Nav`, then projection `P' : P -> X` is either empty or there exists a navigation `Nav : Yo B -> X`, along with
-a morphism `f : B -> A` in `W`, such that the resulting square with `Yo f` is a pullback.
+a morphism `f : B -> A` in `W`, so that the following square is a pullback:
+
+```
+Yo B --------Nav'-------> X
+|                        |
+| Yo f                   | F
+|                        |
+⌄                        ⌄
+Yo A --------Nav---------> Y
+```
 
 10.5. The **Category of Data Transposals**, denoted `DaTrap`, is the DaTra restriction on `AtlTrap`.
 
