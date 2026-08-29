@@ -19,7 +19,7 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 3.1. A **Chain** is a totally ordered thin category with strictly less than `omega_0 ^ omega_0` distinct objects,
 taken skeletally.
 
-3.2. A **Short Chain** is a chain that is finite, taken skeletally.
+3.2. A **Short Chain** is a chain with a finite number of objects, taken skeletally.
 
 4.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con` are chains
 and whose morphisms `K : X -> Y` are point-surjective functors on chains `F : X -> Y`.
