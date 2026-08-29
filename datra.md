@@ -26,8 +26,7 @@ is, `CoDomCon = op DomCon`.
 5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism
 in `DomCon` to its underlying set-theoretic surjection.
 
-5.2. A **Folio** is a functor `F : C -> (1 / CoDomCon)`, where `1 / CoDomCon` is the coslice category, that preserves
-the initial object.
+5.2. A **Folio** is a functor `F : C -> CoDomCon` so that `F 0 = 1`.
 
 6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
 `H = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `H`. For any
