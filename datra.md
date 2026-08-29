@@ -85,7 +85,7 @@ for `F : X -> Y` have the following properties: for any `x = (m, i)`, `y = (m', 
 then `Y_H (n -> p') i' < Y_H (n' -> p') j'`. Furthermore, for any `q : |X|`, `t : X_G q`, if there exists `k : |Ter X|`
 and `l : Ter X k` so that `t : X_G ((|X| - 1) -> q) k l`, this property gets preserved by `F`. 
 
-7.3. The **Category of Stable Atlas Traversals**, denoted `AtlTras`, is the wide subcategory of `AltTrav` so that
+7.3. The **Category of Stable Atlas Traversals**, denoted `AtlTras`, is the wide subcategory of `AtlTrav` so that
 for `F : X -> Y`, `F_E (0, 0) = (0, 0)`.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
@@ -196,7 +196,7 @@ of `AtlBrd`.
 the Day convolution extension of `AtlAsoc`
 
 12.5. The **Data Traversal Left Unitor** `Lu : F +_< I -> F`, along with the **Data Traversal Right Unitor**
-`Ru : I +_< F -> F`, are given by the Day convolution extensions of `AtlLu` and `AltRu`.
+`Ru : I +_< F -> F`, are given by the Day convolution extensions of `AtlLu` and `AtlRu`.
 
 12.6. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
 coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` sent to isomorphisms in
