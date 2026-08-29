@@ -77,11 +77,11 @@ starts at `0`.
 
 7.2. The **Category of Atlas Traversals**, denoted `AtlTrav`, is the wide subcategory of `AtlTrap` whose morphisms
 for `F : X -> Y` have the following properties: for any `x = (k, i)`, `y = (k', j)` with `i < j`, let
-`x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `p = min(m, n)`, then `Y_H (m -> p) i' < Y_H (n -> p) j'`. It can be checked that `AltTrav` is stable under pullback along atlas monos.
+`x' = F_E x = (m, i')`, `y' = F_E y = (n, j')` and let `p = min(m, n)`, then `Y_H (m -> p) i' < Y_H (n -> p) j'`. It can be checked that `AtlTrav` is stable under pullback along atlas monos.
 
 8.1. The **Category of Atlas Maps**, denoted `AtlMap`, is the full subcategory of `Atl` with the property that, for any
 `A : AtlMap`, `A`'s extent is isomorphic to the coproduct of its regions. That is, let `F = Emb ∘ Ter A : M -> Set`,
-and let `Sum A` be the coproduct on diagram `F`, then `A : DaTraMap` iff `Sum A ~= Ex A`.
+and let `Sum A` be the coproduct on diagram `F`, then `A : AtlMap` iff `Sum A ~= Ex A`.
 
 8.2. The **Atlas Map Inclusion Functor**, denoted `AtlMapInc : AtlMap -> Atl`, sends each Atlas Map to its equivalent
 object in `Atl`.
@@ -131,7 +131,7 @@ objects `D : DaTra` so that for any subatlas `S : Yo A -> D`, we have `A : AtlMa
 11.2. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = AtlI`, then `AtlHorSum F F' = F'` and if `F' = AtlI`,
 then `AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
-with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AltTrav` with `M_E (0, 0) = (1, 0)`,
+with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AtlTrav` with `M_E (0, 0) = (1, 0)`,
 `M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
 
 11.3. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
@@ -156,24 +156,24 @@ from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. T
 `AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
 if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherwise, denote
 `R = (AtlHorSum (AtlHorSum F F') F'')` and let `G : H -> R` be the universal arrow from `AtlTrap` to `R` so that
-`G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AltTrav` so that
+`G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AtlTrav` so that
 `G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = H`.
 
 12.1. The **Empty Map**, denoted `I` is the Yoneda Embedding of the Empty Atlas, `I = Yo AtlI`.
 
-12.1. The **Horizontal Sum Bifunctor**, denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or in infix notation using
+12.2. The **Horizontal Sum Bifunctor**, denoted as `HorSum : DaTrav * DaTrav -> DaTrav`, or in infix notation using
 the `+_<` symbol, as `DaTrav +_< DaTrav -> DaTrav`, is the Day convolution extension of `AtlHorSum`.
 
-12.2. The **Data Traversal Braider**, denoted `Brd_F_F' : (F +_< F') -> (F' +_< F)`, is the Day convolution extension
+12.3. The **Data Traversal Braider**, denoted `Brd_F_F' : (F +_< F') -> (F' +_< F)`, is the Day convolution extension
 of `AtlBrd`.
 
-12.3. The **Data Traversal Associator**, denoted `Asoc_F_F'_F'' : ((F +_< F') +_< F'') -> (F +_< ( F' +_< F''))`, is
+12.4. The **Data Traversal Associator**, denoted `Asoc_F_F'_F'' : ((F +_< F') +_< F'') -> (F +_< ( F' +_< F''))`, is
 the Day convolution extension of `AtlAsoc`
 
-12.4. The **Data Traversal Left Unitor** `Lu : F +_< I -> F`, along with the **Data Traversal Right Unitor**
+12.5. The **Data Traversal Left Unitor** `Lu : F +_< I -> F`, along with the **Data Traversal Right Unitor**
 `Ru : I +_< F -> F`, are given trivially by `Lu = Ru = Id`.
 
-12.4. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
+12.6. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
 coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` sent to isomorphisms in
 `DaTra`.
 
