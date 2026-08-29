@@ -13,9 +13,9 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 `CoDomIns = op DomIns`.
 
 3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects `D : DomCon`
-are dominions with the property that for any `d : D`, there exists a monomorphism `d' : d -> omega_0 ^ omega_0`,
-and whose morphisms are epimorphisms `F : D -> E` have the property that for any `a, b : D`, if there exists a
-monomorphism `m : a -> b`, then there exists a monomorphism `m' : F a -> F b`.
+are dominions with the property that for any `d : D`, there exists a monomorphism `d' : d -> omega_0 ^ omega_0`
+so that `d'` is not an isomorphism, and whose morphisms are epimorphisms `F : D -> E` have the property that for any
+`a, b : D`, if there exists a monomorphism `m : a -> b`, then there exists a monomorphism `m' : F a -> F b`.
 
 3.2. The **Category of Codomanial Consolidations**, denoted `CoDomCon`, is the opposite category of `DomCon`, that
 is, `CoDomCon = op DomCon`.
