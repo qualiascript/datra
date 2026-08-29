@@ -14,25 +14,25 @@ objects of `Dom`, and whose morphisms are monomorphisms in `Dom`.
 2.2. The **Category of Codomanial Insertions**, denoted `CoDomIns`, is the opposite category of `DomIns`, that is,
 `CoDomIns = op DomIns`.
 
-3.1. The **Category of Domanial Consolidations**, denoted `DomCon`, is the category whose objects `D : DomCon`
-are dominions with the property that for any `d : D`, there exists a monomorphism `d' : d -> omega_0 ^ omega_0`
+3.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con`
+are objects of `Set` with the property that for any `d : D`, there exists a monomorphism `d' : d -> omega_0 ^ omega_0`
 so that `d'` is not an isomorphism, and whose morphisms are epimorphisms `F : D -> E` with the property that for any
 `a, b : D`, if there exists a monomorphism `m : a -> b`, then there exists a monomorphism `m' : F a -> F b`.
 
-3.2. The **Category of Codomanial Consolidations**, denoted `CoDomCon`, is the opposite category of `DomCon`, that
-is, `CoDomCon = op DomCon`.
+3.2. The **Category of Coconsolidations**, denoted `CoCon`, is the opposite category of `Con`, that
+is, `CoCon = op Con`.
 
 4.1. A **Chain** is a totally ordered thin category, taken skeletally.
 
 4.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
-5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : DomCon -> Set`, and sends each morphism
-in `DomCon` to its underlying set-theoretic surjection.
+5.1. The **Transportation Functor**, denoted `Tra`, is of type `Tra : Con -> Set`, and sends each morphism
+in `Con` to its underlying set-theoretic surjection.
 
-5.2. A **Folio** is a functor `F : C -> CoDomCon`, where `C` is a chain, so that `F 0 = 1`.
+5.2. A **Folio** is a functor `F : C -> CoCon`, where `C` is a chain, so that `F 0 = 1`.
 
 6.1. The **Category of Paginations**, denoted `Pag`, is the category whose objects are pairs `(H, E)`, where 
-`H = Tra ∘ (op F)`, `F : C -> CoDomCon` is a folio, and `E` is the category of elements of functor `H`. For any
+`H = Tra ∘ (op F)`, `F : C -> CoCon` is a folio, and `E` is the category of elements of functor `H`. For any
 `W : Pag`, we denote `W_H` as the first inclusion and `W_E` as the second inclusion. Morphisms in `Pag`, for
 `F : X -> Y`, `X, Y : Pag`, are given by functors `T : X_E -> Y_E`, which implies the following diagram commutes:
 
