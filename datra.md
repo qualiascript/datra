@@ -22,8 +22,7 @@ taken skeletally.
 3.2. A **Short Chain** is a chain that is finite, taken skeletally.
 
 4.1. The **Category of Consolidations**, denoted `Con`, is the category whose objects `D : Con` are chains
-and whose morphisms `K : X -> Y` are point-surjective functors on chains `F : X -> Y`, so that if `a, b : X`
-and `f : a -> b` is a morphism in `X`, then `f' : F a -> F b` is a morphism in `Y`.
+and whose morphisms `K : X -> Y` are point-surjective functors on chains `F : X -> Y`.
 
 4.2. The **Category of Coconsolidations**, denoted `CoCon`, is the opposite category of `Con`, that
 is, `CoCon = op Con`.
