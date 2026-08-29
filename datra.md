@@ -162,9 +162,9 @@ with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `A
 trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `R = Y + Y'`, `G : T -> R` so that
 `|T| = max(|X|, |X'|) + 1`, let `S` be the set of all `k : |T|` with `k > 0`, and let `L_X, L_X' : |T| -> Set` so that
 if `n <= |X|`, `L_X n = n - 1`, otherwise `L_X n = |X| - 1`, and if `n <= |X'|`, `L_X' n = n - 1`, otherwise
-`L_X' n = |X'| - 1`. Then, let `T_P (0, 0) = Coa X + Coa X'`, `V_P (0, 0) = Coa Y + Coa Y'`, and `G_A_(0, 0)` be the
+`L_X' n = |X'| - 1`. Then, let `T_G (0, 0) = Coa X + Coa X'`, `R_G (0, 0) = Coa Y + Coa Y'`, and `G_A_(0, 0)` be the
 induced mono. Then, let `S` be the set of positive integers smaller than `|T|`, and `M : S -> Set`,
-`M n = X_H (L_X m)`. Then, for `m : S`, let `|A_P m| = |L_X m| + |L_X' m|`, and for any `n : |A_P m|`,  iff `n < M m`,
+`M n = X_H (L_X n)`. Then, for `m : S`, let `|A_P m| = |L_X m| + |L_X' m|`, and for any `n : |A_P m|`,  iff `n < M m`,
 `T_G (m, n) = X_G ((L_X m), n)` and `G_A_(m, n) = F_A_((L_X m), n)`, otherwise,
 `T_G (m, n) = X'_G ((L_X' m), (n - M m)`, `G_A(m, n) = F'_A_((L_X' m), (n - M m)`. This fully defines `G`, which can be
 checked to be initial among solutions.
