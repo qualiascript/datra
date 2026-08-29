@@ -156,7 +156,8 @@ the DaTra sets with the property that all of their navigations are expeditions.
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = AtlI`, then `AtlHorSum F F' = F'` and if `F' = AtlI`,
 then `AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
 with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AtlTrav` with `M_E (0, 0) = (1, 0)`,
-`M'_E (0, 0) = (1, 1)` so that `G ∘ M ~= F` and `G ∘ M' ~= F'`.
+`M'_E (0, 0) = (1, 1)` so that, for injections `Y_i : Y -> R`, `Y'_i : Y' -> R`, we have `G ∘ M ~= Y_i ∘ F` 
+and `G ∘ M' ~= Y'_i ∘ F'`.
 
 11.3. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
 trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `G : Atl`, `R = Y + Y'`, `G : T -> R` so that
