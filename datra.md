@@ -60,6 +60,8 @@ T                      T
 
 ## 7. Atlases
 
+[TODO: Reword covering]
+
 7.1. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`, with the property that
 for `P_H : C -> Set`, for `m : |C|`, for any `a = (m, k) : P_E`, `b = (m, k') : P_E`, if `k =/= k'`, the pullback in
