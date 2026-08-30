@@ -157,7 +157,7 @@ Trivially, `DaTra` is a topos.
 
 11.4. A **DaTra Restriction**, given `W` a wide subcategory of `Atl`, is the wide subcategory of `DaTra` whose
 morphisms for `F : X -> Y` have the property that, for any navigation `Nav : Yo A -> Y`, let `P` be the pullback of `F`
-and `Nav`, then projection `P' : P -> X` is either empty or there exists a navigation `Nav : Yo B -> X`, along with
+and `Nav`, then projection `P' : P -> X` is either empty or there exists a navigation `Nav' : Yo B -> X`, along with
 a morphism `f : B -> A` in `W`, so that the following square is a pullback:
 
 ```
