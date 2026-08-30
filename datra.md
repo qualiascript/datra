@@ -213,8 +213,6 @@ if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherw
 `G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AtlTrav` so that
 `G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = inv G`.
 
-[TODO: switch left/right]
-
 12.6. The **Atlas Left Unitor** `Lu : (AtlHorSum AltI F) -> F` and the **Atlas Right Unitor**
 `Ru : (AtlHorSum F AtlI) -> F` are given by `Lu = Id`, `Ru = Id`.
 
@@ -230,8 +228,6 @@ of `AtlBrd`.
 
 13.4. The **Data Traversal Associator**, denoted `Asoc_F_F'_F'' : ((F +_< F') +_< F'') -> (F +_< ( F' +_< F''))`, is
 the Day convolution extension of `AtlAsoc`
-
-[TODO: switch left/right]
 
 13.5. The **Data Traversal Left Unitor** `Lu : I +_< F -> F`, along with the **Data Traversal Right Unitor**
 `Ru : F +_< I -> F`, are given by the Day convolution extensions of `AtlLu` and `AtlRu`.
