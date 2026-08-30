@@ -2671,21 +2671,20 @@ def AtlAsoc (X Y Z : AtlHor) :
 /-%%
 \begin{definition}[The Atlas Unitors]
 The \textbf{Atlas Left Unitor}
-$\mathsf{Lu}:\mathsf{AtlHorSum}(F,\mathsf{AtlI})\to F$ and the
+$\mathsf{Lu}:\mathsf{AtlHorSum}(\mathsf{AtlI},F)\to F$ and the
 \textbf{Atlas Right Unitor}
-$\mathsf{Ru}:\mathsf{AtlHorSum}(\mathsf{AtlI},F)\to F$ are given by
+$\mathsf{Ru}:\mathsf{AtlHorSum}(F,\mathsf{AtlI})\to F$ are given by
 $\mathsf{Lu}=\id$ and $\mathsf{Ru}=\id$.
 \end{definition}
 %%-/
 
-/-- The public names follow the manuscript's left/right convention.  Mathlib's
-standard names are opposite: `omegaFamilyRightUnitor` has source `X ⊗ I`,
-while `omegaFamilyLeftUnitor` has source `I ⊗ X`. -/
-def AtlLu (X : AtlHor) : AtlHorSum.obj (X, omegaFamilyUnit) ≅ X :=
-  omegaFamilyRightUnitor X
-
-def AtlRu (X : AtlHor) : AtlHorSum.obj (omegaFamilyUnit, X) ≅ X :=
+/-- The atlas left unitor, with the standard source `I ⊗ X`. -/
+def AtlLu (X : AtlHor) : AtlHorSum.obj (omegaFamilyUnit, X) ≅ X :=
   omegaFamilyLeftUnitor X
+
+/-- The atlas right unitor, with the standard source `X ⊗ I`. -/
+def AtlRu (X : AtlHor) : AtlHorSum.obj (X, omegaFamilyUnit) ≅ X :=
+  omegaFamilyRightUnitor X
 
 instance : SymmetricCategory OmegaAtlFamilyᵒᵖ where
   symmetry X Y := by
@@ -2946,20 +2945,20 @@ noncomputable def Asoc (F G H : DaTravMon) :
 /-%%
 \begin{definition}[The Data Traversal Unitors]
 The \textbf{Data Traversal Left Unitor}
-$\mathsf{Lu}:F+_{!<}I\to F$ and the
+$\mathsf{Lu}:I+_{!<}F\to F$ and the
 \textbf{Data Traversal Right Unitor}
-$\mathsf{Ru}:I+_{!<}F\to F$ are the Day convolution extensions of
+$\mathsf{Ru}:F+_{!<}I\to F$ are the Day convolution extensions of
 $\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
 \end{definition}
 %%-/
 
 noncomputable def Lu (F : DaTravMon) :
-    MonoidalCategory.tensorObj F I ≅ F :=
-  MonoidalCategory.rightUnitor F
-
-noncomputable def Ru (F : DaTravMon) :
     MonoidalCategory.tensorObj I F ≅ F :=
   MonoidalCategory.leftUnitor F
+
+noncomputable def Ru (F : DaTravMon) :
+    MonoidalCategory.tensorObj F I ≅ F :=
+  MonoidalCategory.rightUnitor F
 
 /-%%
 \begin{definition}[The Data Traversal Monoidal Category]

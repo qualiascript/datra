@@ -215,8 +215,8 @@ if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherw
 
 [TODO: switch left/right]
 
-12.6. The **Atlas Left Unitor** `Lu : (AtlHorSum F AtlI) -> F` and the **Atlas Right Unitor**
-`Ru : (AtlHorSum AtlI F) -> F` are given by `Lu = Id`, `Ru = Id`.
+12.6. The **Atlas Left Unitor** `Lu : (AtlHorSum AltI F) -> F` and the **Atlas Right Unitor**
+`Ru : (AtlHorSum F AtlI) -> F` are given by `Lu = Id`, `Ru = Id`.
 
 ## 13. Horizontal Data Traversals
 
@@ -233,8 +233,8 @@ the Day convolution extension of `AtlAsoc`
 
 [TODO: switch left/right]
 
-13.5. The **Data Traversal Left Unitor** `Lu : F +_< I -> F`, along with the **Data Traversal Right Unitor**
-`Ru : I +_< F -> F`, are given by the Day convolution extensions of `AtlLu` and `AtlRu`.
+13.5. The **Data Traversal Left Unitor** `Lu : I +_< F -> F`, along with the **Data Traversal Right Unitor**
+`Ru : F +_< I -> F`, are given by the Day convolution extensions of `AtlLu` and `AtlRu`.
 
 13.6. The **Data Traversal Monoidal Category**, denoted `DaTravMon`, is given by `DaTravMon = (DaTrav, +_<, I)`. The
 coherence conditions can be trivially checked by noting that `Brd`, `Asoc`, `Lu` and `Ru` sent to isomorphisms in
