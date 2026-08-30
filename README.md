@@ -1,6 +1,6 @@
 # Datra
 
-A language for data transformations. Formalization effort is underway.
+A language for data transformations. Read the [preprint](datra_preprint.pdf).
 
 ## Preprint
 
