@@ -1927,20 +1927,23 @@ def bouquetAtlas (X Y : Atl) : Atl where
         exact Y.disjoint _ k l hkl a b (Sum.inr.inj hroot)
 
 /-!
-### The ω₀-completion used by horizontal constructions
+### The omega_0-completion used by horizontal constructions
 
-The finite folio written in the manuscript is the finite presentation of an
-eventually constant folio.  It cannot itself support the claimed associator:
-the rule `max (|X|) (|Y|) + 1` gives different finite lengths under the two
-parenthesizations.  We therefore perform horizontal constructions after the
-following canonical completion.  Page `n` is the genuine page when
-`n < |X|`; otherwise it is the final page.  Thus no datum is invented: only
-the final territories are repeated.  This common index chain removes the
-finite-cardinality mismatch.  A coherent horizontal product must additionally
-*flatten* an already-horizontal input instead of inserting its combined root
-as a new positive-page cell; otherwise the two parenthesizations still have
-different first-page partitions.  The horizontal normal form must therefore
-use a flat finite family of completed atlas components.
+The current manuscript first constructs the universal arrow over the sum of
+the two targets, then precomposes it with the summed origin.  Its associator is
+obtained by flattening the corresponding universal arrow.  The definitions
+below are the concrete Lean model of those two steps.
+
+An ordinary finite folio is extended to an eventually constant omega_0-chain:
+page `n` is its listed page when `n < |X|`, and otherwise is its final page.
+Thus the extension creates no page data; it only repeats the final territories
+needed to make every later access well typed.  A horizontal object is then
+stored as a flat finite family of these completed atlas components.  Horizontal
+sum concatenates the families, while the associator merely rebrackets their
+sum indices and is the identity on every component.  This is precisely the
+flattening stipulated in the preprint.  Flat storage is also what prevents the
+finite presentation lengths and first-page partitions from depending on the
+parenthesization of an iterated horizontal sum.
 -/
 
 def Folio.omegaIndex (W : Folio) (n : Nat) : Fin W.length :=
@@ -2570,13 +2573,14 @@ The \textbf{Atlas Horizontal Sum Bifunctor}, denoted
 $\mathsf{AtlHorSum}:\Atl\times\Atl\to\Atl$, is defined as follows.  Given
 two morphisms $F:X\to Y$ and $F':X'\to Y'$ in $\Atl$, if $F=\mathsf{AtlI}$,
 then $\mathsf{AtlHorSum}(F,F')=F'$, and if $F'=\mathsf{AtlI}$, then
-$\mathsf{AtlHorSum}(F,F')=F$.  Otherwise,
-$\mathsf{AtlHorSum}(F,F')$ is the universal arrow from $\Atl$ to
-$R=Y\sqcup Y'$, written $G:K\to R$, such that there exist morphisms
+$\mathsf{AtlHorSum}(F,F')=F$.  Otherwise, let $G:K\to R$ be the
+universal arrow from $\Atl$ to $R=Y\sqcup Y'$ such that there exist morphisms
 $M:X\to K$ and $M':X'\to K$ in $\mathsf{AtlTrav}$ satisfying
 $M_E(0,0)=(1,0)$ and $M'_E(0,0)=(1,1)$.  For the injections
 $Y_i:Y\to R$ and $Y'_i:Y'\to R$, these satisfy
 $G\circ M\cong Y_i\circ F$ and $G\circ M'\cong Y'_i\circ F'$.
+Finally, $\mathsf{AtlHorSum}(F,F')$ is obtained by precomposing $G$ with
+origin $X\sqcup X'$ in $\mathsf{AtlTrap}$.
 \end{definition}
 %%-/
 
@@ -2588,6 +2592,14 @@ abbrev AtlHor := OmegaAtlFamily
 
 def AtlHorSum : CategoryTheory.Functor (AtlHor × AtlHor) AtlHor :=
   omegaFamilyTensor
+
+/-- Implementation note: on arrows, horizontal sum performs the simultaneous
+precomposition from the two summands of the source.  The two cases below are
+the formal counterparts of the canonical inclusions of `X` and `X'` into the
+origin `X ⊔ X'` in the manuscript's universal-arrow presentation. -/
+theorem AtlHorSum_map {X X' Y Y' : AtlHor} (F : X ⟶ Y) (F' : X' ⟶ Y') :
+    AtlHorSum.map ((F, F') : (X, X') ⟶ (Y, Y')) =
+      omegaFamilyTensorHom F F' := rfl
 
 /-%%
 \begin{lemma}[Horizontal Lemma]
@@ -2659,7 +2671,8 @@ $R=\mathsf{AtlHorSum}(\mathsf{AtlHorSum}(F,F'),F'')$, and let
 $G:H\to R$ be the universal arrow from $\mathsf{AtlTrap}$ to $R$ such
 that $G_E(2,0)=(1,0)$.  Suppose also that there exists a morphism
 $G':\mathsf{AtlHorSum}(F',F'')\to H$ in $\mathsf{AtlTrav}$ satisfying
-$G'_E(0,0)=(1,1)$.  Then $\mathsf{AtlAsoc}_{F,F',F''}=G^{-1}$.
+$G'_E(0,0)=(1,1)$.  The inverse of $G$ is analogous.  Finally,
+$\mathsf{AtlAsoc}$ is obtained by flattening $G$.
 \end{definition}
 %%-/
 
@@ -2667,6 +2680,16 @@ def AtlAsoc (X Y Z : AtlHor) :
     AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
       AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
   omegaFamilyAssociator X Y Z
+
+/-- Flattening the universal arrow introduces no morphism inside an atlas: it
+only reassociates the three summand indices, and every component map is an
+identity.  This is the implementation-level content of the final sentence in
+the manuscript's definition of `AtlAsoc`. -/
+theorem AtlAsoc_component (X Y Z : AtlHor)
+    (i : (AtlHorSum.obj (AtlHorSum.obj (X, Y), Z)).Index) :
+    HEq ((AtlAsoc X Y Z).hom.component i)
+      (𝟙 ((AtlHorSum.obj (AtlHorSum.obj (X, Y), Z)).component i)) := by
+  rcases i with (i | j) | k <;> exact HEq.rfl
 
 /-%%
 \begin{definition}[The Atlas Unitors]
@@ -2903,9 +2926,9 @@ noncomputable def I_dayConvolutionUnit :
 /-%%
 \begin{definition}[The Horizontal Sum Bifunctor]
 The \textbf{Horizontal Sum Bifunctor}, denoted
-$\mathsf{HorSum}:\mathsf{DaTrav}\times\mathsf{DaTrav}	o
+$\mathsf{HorSum}:\mathsf{DaTrav}\times\mathsf{DaTrav}\to
 \mathsf{DaTrav}$, or in infix notation by
-$+_{!<}:\mathsf{DaTrav}\times\mathsf{DaTrav}\to\mathsf{DaTrav}$,
+$+_{\!<}:\mathsf{DaTrav}\times\mathsf{DaTrav}\to\mathsf{DaTrav}$,
 is the Day convolution extension of $\mathsf{AtlHorSum}$.
 \end{definition}
 %%-/

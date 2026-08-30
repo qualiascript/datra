@@ -7,6 +7,52 @@ import argparse
 from pathlib import Path
 
 
+ASCII_CODE_NAME = "datra_code_ascii.lean"
+
+LEAN_ASCII = str.maketrans({
+    "¬": "not ",
+    "·": ".",
+    "×": "*",
+    "α": "alpha",
+    "β": "beta",
+    "ι": "iota",
+    "ω": "omega",
+    "ᵒ": "o",
+    "ᵖ": "p",
+    "₀": "_0",
+    "₁": "_1",
+    "₂": "_2",
+    "₃": "_3",
+    "←": "<-",
+    "→": "->",
+    "↪": ">->",
+    "∀": "forall ",
+    "∃": "exists ",
+    "∘": " o ",
+    "∧": " /\\ ",
+    "≃": "Equiv",
+    "≅": "Iso",
+    "≌": "EquivCat",
+    "≠": "!=",
+    "≤": "<=",
+    "≫": ">>",
+    "⊆": "subset",
+    "⊔": "+",
+    "⊗": "tensor",
+    "⊢": "|-",
+    "⊣": "-|",
+    "⋙": "then",
+    "⟨": "<|",
+    "⟩": "|>",
+    "⟶": "-->",
+    "⥤": "==>",
+    "⦃": "{{",
+    "⦄": "}}",
+    "𝟙": "Id",
+    "𝟭": "Unit",
+})
+
+
 LISTINGS_PREAMBLE = r"""
 \usepackage{xcolor}
 \usepackage{listings}
@@ -60,14 +106,16 @@ LEAN_APPENDIX = r"""
 \appendix
 \section{Lean Formalization}
 
-The following is the complete Lean source corresponding to the mathematical
-development above.
+The following is an ASCII rendering of the complete Lean source corresponding
+to the mathematical development above.  It replaces Lean's conventional
+Unicode surface notation solely for portable typesetting; the checked source
+file remains \texttt{datra.lean}.
 
 \lstinputlisting[
   style=leanSource,
   caption={Complete Lean formalization of DaTra},
   label={lst:datra-lean}
-]{datra_code.lean}
+]{datra_code_ascii.lean}
 """
 
 
@@ -80,6 +128,20 @@ def main() -> int:
     source = args.input.read_text(encoding="utf-8")
     if "\\begin{document}" not in source or "\\end{document}" not in source:
         parser.error(f"{args.input} is not a complete LaTeX document")
+
+    lean_source_path = args.input.parent / "datra_code.lean"
+    try:
+        lean_source = lean_source_path.read_text(encoding="utf-8")
+    except OSError as error:
+        parser.error(str(error))
+    ascii_lean_source = lean_source.translate(LEAN_ASCII)
+    if not ascii_lean_source.isascii():
+        remaining = sorted({c for c in ascii_lean_source if not c.isascii()})
+        parser.error(f"unmapped Lean characters: {remaining!r}")
+    (args.output.parent / ASCII_CODE_NAME).write_text(
+        ascii_lean_source,
+        encoding="ascii",
+    )
 
     source = source.replace(
         "\\begin{document}",

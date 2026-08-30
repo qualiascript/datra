@@ -60,8 +60,6 @@ T                      T
 
 ## 7. Atlases
 
-[TODO: Reword covering]
-
 7.1. The **Category of Atlases**, denoted `Atl`, is the category whose objects are pairs `(P, G)`, where `P : Pag`
 and `G` is a functor `G : P_E -> DomIns`, or alternatively a presheaf `G : P_E^op -> CoDomIns`, with the property that
 for `P_H : C -> Set`, for `m : |C|`, for any `a = (m, k) : P_E`, `b = (m, k') : P_E`, if `k =/= k'`, the pullback in
@@ -182,14 +180,12 @@ the DaTra sets with the property that all of their navigations are expeditions.
 
 12.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
-[TODO: figure out flattening]
-
 12.2. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = AtlI`, then `AtlHorSum F F' = F'` and if `F' = AtlI`,
-then `AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
-with the property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AtlTrav` with `M_E (0, 0) = (1, 0)`,
+then `AtlHorSum F F' = F`. Otherwise, let `G : K -> R` be the universal arrow from `Atl` to `R = Y + Y'`, with the
+property that there exists morphisms `M : X -> K`, `M' : X' -> K` in `AtlTrav` with `M_E (0, 0) = (1, 0)`,
 `M'_E (0, 0) = (1, 1)` so that, for injections `Y_i : Y -> R`, `Y'_i : Y' -> R`, we have `G ∘ M ~= Y_i ∘ F` 
-and `G ∘ M' ~= Y'_i ∘ F'`.
+and `G ∘ M' ~= Y'_i ∘ F'`. Finally, `AtlHorSum F F'` is obtained by precomposing `G` with origin `X + X'` in `AtlTrap`.
 
 12.3. The **Horizontal Lemma** states that `AtlHorSum` exists. Proof sketch: cases where `F = AtlI`, `F' = AtlI` are
 trivial. Otherwise, for `F : X -> Y`, `F' : X' -> Y'`, let `T : Atl`, `R = Y + Y'`, `G : T -> R` so that
@@ -204,16 +200,14 @@ or `F' = AtlI`, `AtlBrd_F_F' = Id`. Otherwise, let `R = (AtlHorSum F F')` and le
 from `AtlTrap` to `R` so that `G_E (1, 0) = (1, 1)` and `G_E (1, 1) = (1, 0)`. Then, `AtlBrd_F_F' = inv G`, and
 trivially, `AtlBrd_F_F' AtlBrd_F'_F = Id`.
 
-[TODO: figure out associativity flattening]
-
 12.5. The **Atlas Associator**, denoted
 `AtlAsoc_F_F'_F'' : (AtlHorSum (AtlHorSum F F') F'') -> (AtlHorSum F (AtlHorSum F' F''))`, is defined as follows:
 if `F = AtlI`, `F' = AtlI` or `F'' = AtlI`, then `AtlAsoc_F_F'_F'' = Id`. Otherwise, denote
 `R = (AtlHorSum (AtlHorSum F F') F'')` and let `G : H -> R` be the universal arrow from `AtlTrap` to `R` so that
 `G_E (2, 0) = (1, 0)` and there exists a morphism `G' : (AtlHorSum F' F'') -> H` in `AtlTrav` so that
-`G'_E (0, 0) = (1, 1)`. Then, `AtlAsoc_F_F'_F'' = inv G`.
+`G'_E (0, 0) = (1, 1)`. Inverse of `G` is analogous. Finally, `AtlAsoc` is obtained by flattening `G`.
 
-12.6. The **Atlas Left Unitor** `Lu : (AtlHorSum AltI F) -> F` and the **Atlas Right Unitor**
+12.6. The **Atlas Left Unitor** `Lu : (AtlHorSum AtlI F) -> F` and the **Atlas Right Unitor**
 `Ru : (AtlHorSum F AtlI) -> F` are given by `Lu = Id`, `Ru = Id`.
 
 ## 13. Horizontal Data Traversals
