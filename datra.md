@@ -182,6 +182,8 @@ the DaTra sets with the property that all of their navigations are expeditions.
 
 12.1. The **Empty Atlas**, denoted `AtlI`, is defined as `AtlI = DomInc 0`.
 
+[TODO: figure out flattening]
+
 12.2. The **Atlas Horizontal Sum Bifunctor**, denoted as `AtlHorSum : Atl * Atl -> Atl`, is defined as follows: given
 two morphisms in `Atl`, `F : X -> Y`, `F' : X' -> Y'`, if `F = AtlI`, then `AtlHorSum F F' = F'` and if `F' = AtlI`,
 then `AtlHorSum F F' = F`. Otherwise, `AtlHorSum F F'` is the universal arrow from `Atl` to `R = Y + Y'`, `G : K -> R`,
