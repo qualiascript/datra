@@ -2940,7 +2940,7 @@ noncomputable def HorSum :
 /-%%
 \begin{definition}[The Data Traversal Braider]
 The \textbf{Data Traversal Braider}
-$\mathsf{Brd}_{F,F'}:F+_{!<}F'\to F'+_{!<}F$ is the Day convolution
+$\mathsf{Brd}_{F,F'}:F+_{\!<}F'\to F'+_{\!<}F$ is the Day convolution
 extension of $\mathsf{AtlBrd}$.
 \end{definition}
 %%-/
@@ -2953,8 +2953,8 @@ noncomputable def Brd (F G : DaTravMon) :
 \begin{definition}[The Data Traversal Associator]
 The \textbf{Data Traversal Associator}
 \[
-  \mathsf{Asoc}_{F,F',F''}:(F+_{!<}F')+_{!<}F''
-    \longrightarrow F+_{!<}(F'+_{!<}F'')
+  \mathsf{Asoc}_{F,F',F''}:(F+_{\!<}F')+_{\!<}F''
+    \longrightarrow F+_{\!<}(F'+_{\!<}F'')
 \]
 is the Day convolution extension of $\mathsf{AtlAsoc}$.
 \end{definition}
@@ -2968,9 +2968,9 @@ noncomputable def Asoc (F G H : DaTravMon) :
 /-%%
 \begin{definition}[The Data Traversal Unitors]
 The \textbf{Data Traversal Left Unitor}
-$\mathsf{Lu}:I+_{!<}F\to F$ and the
+$\mathsf{Lu}:I+_{\!<}F\to F$ and the
 \textbf{Data Traversal Right Unitor}
-$\mathsf{Ru}:F+_{!<}I\to F$ are the Day convolution extensions of
+$\mathsf{Ru}:F+_{\!<}I\to F$ are the Day convolution extensions of
 $\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
 \end{definition}
 %%-/
@@ -2988,7 +2988,7 @@ noncomputable def Ru (F : DaTravMon) :
 The \textbf{Data Traversal Monoidal Category}, denoted
 $\mathsf{DaTravMon}$, is
 \[
-  \mathsf{DaTravMon}=(\mathsf{DaTrav},+_{!<},I).
+  \mathsf{DaTravMon}=(\mathsf{DaTrav},+_{\!<},I).
 \]
 The coherence conditions are checked by observing that
 $\mathsf{Brd}$, $\mathsf{Asoc}$, $\mathsf{Lu}$, and $\mathsf{Ru}$ are
