@@ -312,6 +312,13 @@ theorem Folio.paddedIndex_mono (W : Folio) :
   intro a b hab
   exact min_le_min hab le_rfl
 
+@[simp]
+theorem Folio.paddedIndex_fin (W : Folio) (m : Fin W.length) :
+    W.paddedIndex m.1 = m := by
+  apply Fin.ext
+  simp only [Folio.paddedIndex]
+  exact Nat.min_eq_left (by omega)
+
 def Folio.spineBase (W : Folio) : Nat ⥤ Fin W.length where
   obj n := W.paddedIndex n
   map f := homOfLE (W.paddedIndex_mono (leOfHom f))
@@ -362,6 +369,93 @@ def Folio.toOrigin (W : Folio) (x : W.E) : x ⟶ W.originElement :=
   CategoryOfElements.homMk x W.originElement (W.baseToOrigin x.1)
     (W.origin_unique _)
 
+/-! The tall presentation is kept internal.  A folio's listed cardinality is
+only a finite presentation of its genuinely `Nat`-indexed spine. -/
+
+def Folio.TallE (W : Folio) : Type := W.spineH.Elements
+
+instance (W : Folio) : Category W.TallE := categoryOfElements W.spineH
+
+instance (W : Folio) (x y : W.TallE) : Subsingleton (x ⟶ y) where
+  allEq f g := CategoryOfElements.ext W.spineH f g (Subsingleton.elim _ _)
+
+/-- Collapse a tall occurrence to the coherent finite representative used for
+storage.  This is an implementation map, not the page space of the atlas. -/
+def Folio.collapseElements (W : Folio) : W.TallE ⥤ W.E where
+  obj x := ⟨op (W.paddedIndex x.1.unop), x.2⟩
+  map {x y} f := CategoryOfElements.homMk _ _
+    (W.spineBase.map f.val.unop).op f.property
+  map_id _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  map_comp _ _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+
+/-- Include a stored cell at its actual page into the full spine. -/
+def Folio.includeElements (W : Folio) : W.E ⥤ W.TallE where
+  obj x := ⟨op x.1.unop.1,
+    W.H.map (eqToHom
+      (congrArg op (W.paddedIndex_fin x.1.unop).symm)) x.2⟩
+  map {x y} f := by
+    rcases x with ⟨⟨m⟩, k⟩
+    rcases y with ⟨⟨n⟩, l⟩
+    have hnm : n.1 ≤ m.1 := leOfHom f.val.unop
+    refine CategoryOfElements.homMk _ _ (homOfLE hnm).op ?_
+    simp only [Folio.spineH, Folio.F, Folio.spineBase]
+    change W.H.map _ (W.H.map _ k) = W.H.map _ l
+    rw [← FunctorToTypes.map_comp_apply,
+      show _ ≫ _ = f.val ≫ _ from Subsingleton.elim _ _]
+    rw [FunctorToTypes.map_comp_apply, f.property]
+  map_id _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  map_comp _ _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+
+@[simp]
+theorem Folio.collapse_include (W : Folio) :
+    W.includeElements ⋙ W.collapseElements = 𝟭 W.E := by
+  exact CategoryTheory.Functor.ext
+    (F := W.includeElements ⋙ W.collapseElements) (G := Functor.id W.E)
+    (fun x => by
+      rcases x with ⟨⟨m⟩, k⟩
+      refine Functor.Elements.ext _ _ (congrArg op (W.paddedIndex_fin m)) ?_
+      simp [Folio.includeElements, Folio.collapseElements])
+
+@[simp]
+theorem Folio.collapse_include_obj (W : Folio) (x : W.E) :
+    W.collapseElements.obj (W.includeElements.obj x) = x := by
+  exact Functor.congr_obj W.collapse_include x
+
+/-- The finite presentation is a retract of the full spine, but not conversely:
+collapsing the first repeated page and including it again changes its page
+index.  This records the precise obstruction to treating the two atlas bases
+as interchangeable through the evident inclusion/collapse comparison. -/
+theorem Folio.include_collapse_ne_id (W : Folio) :
+    W.collapseElements ⋙ W.includeElements ≠ Functor.id W.TallE := by
+  intro h
+  letI : NeZero W.length := ⟨Nat.ne_of_gt W.positive⟩
+  let q : (W.core.obj W.lastIndex).unop ⟶
+      (W.core.obj W.originIndex).unop :=
+    (W.core.map (homOfLE (Fin.zero_le W.lastIndex))).unop
+  let k : (W.core.obj W.lastIndex).unop.Obj :=
+    Classical.choose (q.point_surjective W.originValue)
+  let x : W.TallE := by
+    refine ⟨op W.length, ?_⟩
+    change (W.core.obj (W.paddedIndex W.length)).unop.Obj
+    have hp : W.paddedIndex W.length = W.lastIndex := by
+      apply Fin.ext
+      simp [Folio.paddedIndex, Folio.lastIndex]
+    exact hp.symm ▸ k
+  have hx := congrArg
+    (fun F : CategoryTheory.Functor W.TallE W.TallE => (F.obj x).1.unop) h
+  have hbad : W.length - 1 = W.length := by
+    simpa [x, Folio.collapseElements, Folio.includeElements,
+      Folio.paddedIndex] using hx
+  exact (ne_of_lt (Nat.sub_lt W.positive (by omega))) hbad
+
 /-%%
 \section{Paginations}
 
@@ -409,6 +503,12 @@ presheaf $G:P_E^{\mathrm{op}}\to\CoDomIns$.  For $P_H:C\to\Set$,
 $m\in|C|$, and distinct elements $k,k'\in|P_H(m)|$, the pullback in $G$ of
 the arrows induced by $(m\to0)(k)$ and $(m\to0)(k')$ is empty.
 
+For every $n\in\mathbb N$, the \textbf{$n$th atlas page} of $X$ is the set
+$X_H(n)$ on its full spine.  An element $k\in X_H(n)$ is a \textbf{page
+cell}, written $(n,k)$, and the dominion carried by that cell is
+$X_G(n,k)$.  Thus a page is the indexed collection of cells at one spine
+position.
+
 There is an integer $w$ such that, for every $w'>w$,
 $P_H(w'\to w)=\id$, and, for every $k\in|P_H(w)|$, the corresponding arrow
 $G((w'\to w)(k))$ is the identity.  The least such integer is the
@@ -454,6 +554,13 @@ structure Atl where
 
 def Atl.H (X : Atl) : (Fin X.P.folio.length)ᵒᵖ ⥤ Type 0 := X.P.H
 def Atl.E (X : Atl) : Type 0 := X.P.E
+
+/-- The `n`th page of an atlas on its genuine infinite spine. -/
+def Atl.page (X : Atl) (n : Nat) : Type := X.P.folio.spineH.obj (op n)
+
+/-- A cell of the `n`th page, retaining its position on the infinite spine. -/
+def Atl.pageCell (X : Atl) (n : Nat) (k : X.page n) : X.P.folio.TallE :=
+  ⟨op n, k⟩
 
 instance (X : Atl) : Category.{0} X.E := categoryOfElements X.H
 
@@ -519,6 +626,256 @@ instance : Category.{0} Atl where
       ext x
       simp [AtlHom.comp]
 
+def Folio.commonBase (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
+    (Fin W.length)ᵒᵖ := op (min m.unop n.unop)
+
+def Folio.toCommonLeft (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
+    m ⟶ W.commonBase m n := (homOfLE (min_le_left _ _)).op
+
+def Folio.toCommonRight (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
+    n ⟶ W.commonBase m n := (homOfLE (min_le_right _ _)).op
+
+def storedElementLT (X : Atl) (x y : X.E) : Prop :=
+  let m := X.P.folio.commonBase x.1 y.1
+  letI : LinearOrder (X.H.obj m) :=
+    (X.P.folio.core.obj m.unop).unop.linearOrder
+  X.H.map (X.P.folio.toCommonLeft x.1 y.1) x.2 <
+  X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
+
+def storedExtent (A : Atl) : DomIns := A.G.obj A.P.folio.originElement
+
+def StoredTerritoryIndex (A : Atl) : Type := A.H.obj A.P.folio.lastBase
+
+def storedTerritory (A : Atl) (k : StoredTerritoryIndex A) : DomIns :=
+  A.G.obj (A.P.cell A.P.folio.lastBase k)
+
+def storedOriginImage (X : Atl) (x : X.E) (t : X.G.obj x) : storedExtent X :=
+  X.G.map (X.P.folio.toOrigin x) t
+
+def storedCovered (X : Atl) (x : X.E) (t : X.G.obj x) : Prop :=
+  ∃ (k : X.H.obj X.P.folio.lastBase)
+      (l : X.G.obj (X.P.cell X.P.folio.lastBase k)),
+    storedOriginImage X x t =
+      storedOriginImage X (X.P.cell X.P.folio.lastBase k) l
+
+/-! `TallAtlas` is the internal, genuinely infinite-spine presentation.  An
+`Atl` supplies the coherent page data by pulling its finite storage back along
+`collapseElements`.  This distinction deliberately stays out of the extracted
+mathematical definitions. -/
+
+structure TallAtlas where
+  H : Natᵒᵖ ⥤ Type
+  originValue : H.obj (op 0)
+  originUnique : ∀ x : H.obj (op 0), x = originValue
+  G : H.Elements ⥤ DomIns
+  cellLT : H.Elements → H.Elements → Prop
+  coveredExtent : Set (G.obj ⟨op 0, originValue⟩)
+
+def TallAtlas.E (X : TallAtlas) : Type := X.H.Elements
+
+instance (X : TallAtlas) : Category X.E := categoryOfElements X.H
+
+instance (X : TallAtlas) (x y : X.E) : Subsingleton (x ⟶ y) where
+  allEq f g := CategoryOfElements.ext X.H f g (Subsingleton.elim _ _)
+
+def Atl.tallOriginValue (X : Atl) : X.P.folio.spineH.obj (op 0) := by
+  simpa [Folio.spineH, Folio.F, Folio.spineBase, Folio.paddedIndex,
+    Folio.originIndex] using X.P.folio.originValue
+
+def Atl.tall (X : Atl) : TallAtlas where
+  H := X.P.folio.spineH
+  originValue := X.tallOriginValue
+  originUnique x := by
+    let e : X.P.folio.spineH.obj (op 0) ≃ Unit := by
+      simpa [Folio.spineH, Folio.F, Folio.spineBase, Folio.paddedIndex,
+        Folio.originIndex] using X.P.folio.originEquiv
+    apply e.injective
+    exact Subsingleton.elim _ _
+  G := X.P.folio.collapseElements ⋙ X.G
+  cellLT x y := storedElementLT X
+    (X.P.folio.collapseElements.obj x)
+    (X.P.folio.collapseElements.obj y)
+  coveredExtent t := storedCovered X
+    (X.P.folio.collapseElements.obj
+      ⟨op 0, X.tallOriginValue⟩) t
+
+def TallAtlas.originElement (X : TallAtlas) : X.E :=
+  ⟨op 0, X.originValue⟩
+
+def TallAtlas.toOrigin (X : TallAtlas) (x : X.E) : x ⟶ X.originElement :=
+  CategoryOfElements.homMk x X.originElement
+    (homOfLE (Nat.zero_le x.1.unop)).op (X.originUnique _)
+
+def TallAtlas.covered (X : TallAtlas) (x : X.E) (t : X.G.obj x) : Prop :=
+  X.coveredExtent (X.G.map (X.toOrigin x) t)
+
+def TallAtlas.extent (X : TallAtlas) : DomIns := X.G.obj X.originElement
+
+structure TallAtlasHom (X Y : TallAtlas) where
+  P : X.E ⥤ Y.E
+  A : X.G ⟶ P ⋙ Y.G
+
+def TallAtlasHom.identity (X : TallAtlas) : TallAtlasHom X X where
+  P := 𝟭 X.E
+  A := 𝟙 X.G
+
+def TallAtlasHom.comp {X Y Z : TallAtlas}
+    (f : TallAtlasHom X Y) (g : TallAtlasHom Y Z) : TallAtlasHom X Z where
+  P := f.P ⋙ g.P
+  A := f.A ≫ whiskerLeft f.P g.A
+
+@[ext]
+theorem TallAtlasHom.ext {X Y : TallAtlas} (f g : TallAtlasHom X Y)
+    (hP : f.P = g.P) (hA : HEq f.A g.A) : f = g := by
+  cases f
+  cases g
+  simp_all
+
+instance : Category TallAtlas where
+  Hom := TallAtlasHom
+  id := TallAtlasHom.identity
+  comp := TallAtlasHom.comp
+  id_comp f := by
+    apply TallAtlasHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x
+      simp [TallAtlasHom.comp, TallAtlasHom.identity]
+  comp_id f := by
+    apply TallAtlasHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x
+      simp [TallAtlasHom.comp, TallAtlasHom.identity]
+  assoc f g h := by
+    apply TallAtlasHom.ext
+    · rfl
+    · apply heq_of_eq
+      ext x
+      simp [TallAtlasHom.comp]
+
+/-! An atlas arrow's action on the infinite presentation is derived from its
+finite pagination and data transformation.  The full spine is first collapsed
+to the coherent stored representative, transformed by `P` and `A`, and then
+included at the resulting stored page.  Thus no independent spine action is
+part of an atlas morphism. -/
+
+def AtlHom.tallP {X Y : Atl} (f : X ⟶ Y) :
+    X.tall.E ⥤ Y.tall.E :=
+  X.P.folio.collapseElements ⋙ f.P ⋙ Y.P.folio.includeElements
+
+def AtlHom.tallA {X Y : Atl} (f : X ⟶ Y) :
+    X.tall.G ⟶ f.tallP ⋙ Y.tall.G where
+  app x := f.A.app (X.P.folio.collapseElements.obj x) ≫
+    Y.G.map (eqToHom (Y.P.folio.collapse_include_obj
+      (f.P.obj (X.P.folio.collapseElements.obj x))).symm)
+  naturality := by
+    intro x y q
+    simp only [AtlHom.tallP, Atl.tall, Functor.comp_obj, Functor.comp_map]
+    rw [← Category.assoc, f.A.naturality, Category.assoc]
+    simp only [Functor.comp_map]
+    have he :
+        Y.G.map (f.P.map (X.P.folio.collapseElements.map q)) ≫
+          Y.G.map (eqToHom (Y.P.folio.collapse_include_obj _).symm) =
+        Y.G.map (eqToHom (Y.P.folio.collapse_include_obj _).symm) ≫
+          Y.G.map (Y.P.folio.collapseElements.map
+            (Y.P.folio.includeElements.map
+              (f.P.map (X.P.folio.collapseElements.map q)))) := by
+      rw [← Y.G.map_comp, ← Y.G.map_comp]
+      congr 1
+    rw [he]
+    simp only [Category.assoc]
+
+def AtlHom.tall {X Y : Atl} (f : X ⟶ Y) : X.tall ⟶ Y.tall where
+  P := f.tallP
+  A := f.tallA
+
+/-- The coherent identity of an infinite presentation.  It identifies every
+repeated occurrence with the stored representative. -/
+def Atl.coherence (X : Atl) : X.tall ⟶ X.tall :=
+  (AtlHom.identity X).tall
+
+/-- Deriving the spine action commutes strictly with composition. -/
+theorem AtlHom.tall_comp {X Y Z : Atl} (f : X ⟶ Y) (g : Y ⟶ Z) :
+    (f ≫ g).tall = f.tall ≫ g.tall := by
+  have hP : (f ≫ g).tall.P = (f.tall ≫ g.tall).P := by
+    exact CategoryTheory.Functor.ext
+      (F := (f ≫ g).tall.P) (G := (f.tall ≫ g.tall).P)
+      (fun x => by
+        change Z.P.folio.includeElements.obj
+            (g.P.obj (f.P.obj (X.P.folio.collapseElements.obj x))) =
+          Z.P.folio.includeElements.obj
+            (g.P.obj (Y.P.folio.collapseElements.obj
+              (Y.P.folio.includeElements.obj
+                (f.P.obj (X.P.folio.collapseElements.obj x)))))
+        rw [Y.P.folio.collapse_include_obj])
+  apply TallAtlasHom.ext _ _ hP
+  apply NatTrans.hext_right _ _
+    (congrArg (fun P => P ⋙ Z.tall.G) hP)
+  intro x
+  let x₀ := X.P.folio.collapseElements.obj x
+  let y₀ := f.P.obj x₀
+  let eY : y₀ = Y.P.folio.collapseElements.obj
+      (Y.P.folio.includeElements.obj y₀) :=
+    (Y.P.folio.collapse_include_obj y₀).symm
+  let z₀ := g.P.obj y₀
+  let eZ : z₀ = Z.P.folio.collapseElements.obj
+      (Z.P.folio.includeElements.obj z₀) :=
+    (Z.P.folio.collapse_include_obj z₀).symm
+  let y₁ := Y.P.folio.collapseElements.obj
+    (Y.P.folio.includeElements.obj y₀)
+  let z₁ := g.P.obj y₁
+  let eZ₁ : z₁ = Z.P.folio.collapseElements.obj
+      (Z.P.folio.includeElements.obj z₁) :=
+    (Z.P.folio.collapse_include_obj z₁).symm
+  let eR : z₀ = Z.P.folio.collapseElements.obj
+      (Z.P.folio.includeElements.obj z₁) :=
+    (congrArg g.P.obj eY).trans eZ₁
+  change HEq
+    ((AtlHom.comp f g).tallA.app x)
+    ((TallAtlasHom.comp f.tall g.tall).A.app x)
+  dsimp [AtlHom.tall, AtlHom.tallA, AtlHom.tallP, AtlHom.comp,
+    TallAtlasHom.comp]
+  rw [Category.assoc (f.A.app x₀) (Y.G.map (eqToHom eY))
+    (g.A.app y₁ ≫ Z.G.map (eqToHom eZ₁))]
+  rw [g.A.naturality_assoc (eqToHom eY)]
+  change HEq
+    ((f.A.app x₀ ≫ g.A.app y₀) ≫ Z.G.map (eqToHom eZ))
+    (((f.A.app x₀ ≫ g.A.app y₀) ≫ Z.G.map (g.P.map (eqToHom eY))) ≫
+      Z.G.map (eqToHom eZ₁))
+  have hrArrow : g.P.map (eqToHom eY) ≫ eqToHom eZ₁ = eqToHom eR :=
+    CategoryOfElements.ext Z.H _ _ (Subsingleton.elim _ _)
+  have hright : HEq
+      (((f.A.app x₀ ≫ g.A.app y₀) ≫ Z.G.map (g.P.map (eqToHom eY))) ≫
+        Z.G.map (eqToHom eZ₁))
+      (f.A.app x₀ ≫ g.A.app y₀) := by
+    rw [Category.assoc, ← Z.G.map_comp, hrArrow]
+    exact embedding_comp_map_eqToHom_heq Z.G eR _
+  exact (embedding_comp_map_eqToHom_heq Z.G eZ
+    (f.A.app x₀ ≫ g.A.app y₀)).trans hright.symm
+
+theorem Atl.coherence_idempotent (X : Atl) :
+    X.coherence ≫ X.coherence = X.coherence := by
+  have h := AtlHom.tall_comp (𝟙 X) (𝟙 X)
+  simpa [Atl.coherence] using h.symm
+
+theorem Atl.coherence_ne_identity (X : Atl) :
+    X.coherence ≠ 𝟙 X.tall := by
+  intro h
+  apply X.P.folio.include_collapse_ne_id
+  simpa [Atl.coherence, AtlHom.tall, AtlHom.tallP, AtlHom.identity,
+    TallAtlasHom.identity] using congrArg TallAtlasHom.P h
+
+theorem AtlHom.coherence_left {X Y : Atl} (f : X ⟶ Y) :
+    X.coherence ≫ f.tall = f.tall := by
+  have h := AtlHom.tall_comp (𝟙 X) f
+  simpa [Atl.coherence] using h.symm
+
+theorem AtlHom.coherence_right {X Y : Atl} (f : X ⟶ Y) :
+    f.tall ≫ Y.coherence = f.tall := by
+  have h := AtlHom.tall_comp f (𝟙 Y)
+  simpa [Atl.coherence] using h.symm
+
 /-%%
 \begin{definition}[Cardinality of an Atlas]
 The \textbf{cardinality} $|A|$ of an atlas is the least positive integer
@@ -536,7 +893,7 @@ $A:\Atl$.
 \end{definition}
 %%-/
 
-def extent (A : Atl) : DomIns := A.G.obj A.P.folio.originElement
+def extent (A : Atl) : DomIns := storedExtent A
 
 /-%%
 \begin{definition}[Territory of an Atlas]
@@ -546,10 +903,10 @@ $\Ter(A)(k)=A_G(|A|-1,k)$.
 \end{definition}
 %%-/
 
-def TerritoryIndex (A : Atl) : Type := A.H.obj A.P.folio.lastBase
+def TerritoryIndex (A : Atl) : Type := StoredTerritoryIndex A
 
 def territory (A : Atl) (k : TerritoryIndex A) : DomIns :=
-  A.G.obj (A.P.cell A.P.folio.lastBase k)
+  storedTerritory A k
 
 /-%%
 \begin{definition}[$n$th Region of an Atlas]
@@ -581,31 +938,20 @@ abbrev AtlTrap := WideSubcategory IsTransposal
 
 def AtlTrapInc : AtlTrap ⥤ Atl := wideSubcategoryInclusion IsTransposal
 
-def Folio.commonBase (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
-    (Fin W.length)ᵒᵖ := op (min m.unop n.unop)
-
-def Folio.toCommonLeft (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
-    m ⟶ W.commonBase m n := (homOfLE (min_le_left _ _)).op
-
-def Folio.toCommonRight (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
-    n ⟶ W.commonBase m n := (homOfLE (min_le_right _ _)).op
-
 def elementLT (X : Atl) (x y : X.E) : Prop :=
   let m := X.P.folio.commonBase x.1 y.1
   letI : LinearOrder (X.H.obj m) :=
     (X.P.folio.core.obj m.unop).unop.linearOrder
   X.H.map (X.P.folio.toCommonLeft x.1 y.1) x.2 <
-    X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
+  X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
 
 /-- The image of a datum in the extent. -/
 def originImage (X : Atl) (x : X.E) (t : X.G.obj x) : extent X :=
-  X.G.map (X.P.folio.toOrigin x) t
+  storedOriginImage X x t
 
 /-- A datum is covered when its image in the extent comes from a final region. -/
 def Covered (X : Atl) (x : X.E) (t : X.G.obj x) : Prop :=
-  ∃ (k : TerritoryIndex X) (l : territory X k),
-    originImage X x t =
-      originImage X (X.P.cell X.P.folio.lastBase k) l
+  storedCovered X x t
 
 theorem covered_region (X : Atl) (k : TerritoryIndex X) (l : territory X k) :
     Covered X (X.P.cell X.P.folio.lastBase k) l :=
@@ -678,6 +1024,415 @@ def AtlTrasToAtlTrav : AtlTras ⥤ AtlTrav :=
   wideSubcategoryInclusion IsStableTraversal
 
 def AtlTrasInc : AtlTras ⥤ Atl := AtlTrasToAtlTrav ⋙ AtlTravInc
+
+/-! `StableAtlasFamily` is the merge-normal presentation of stable atlases.
+The empty family is the empty atlas operation, and concatenation retains all
+components without choosing representatives or identifying their data.  Most
+importantly, every component arrow is an arrow of `AtlTras`, so stability is
+checked by Lean at the boundary of the horizontal construction. -/
+
+structure StableAtlasFamily where
+  Index : Type
+  finiteIndex : Fintype Index
+  component : Index → AtlTras
+
+attribute [instance] StableAtlasFamily.finiteIndex
+
+structure StableAtlasFamilyHom (X Y : StableAtlasFamily) where
+  index : X.Index → Y.Index
+  component : ∀ i, X.component i ⟶ Y.component (index i)
+
+/-- Each component of a merge-normal morphism is stable by construction. -/
+theorem StableAtlasFamilyHom.component_stable {X Y : StableAtlasFamily}
+    (f : StableAtlasFamilyHom X Y) (i : X.Index) :
+    IsStableTraversal (f.component i).1 :=
+  (f.component i).2
+
+@[ext]
+theorem StableAtlasFamilyHom.ext {X Y : StableAtlasFamily}
+    (f g : StableAtlasFamilyHom X Y) (hi : f.index = g.index)
+    (hc : ∀ i, HEq (f.component i) (g.component i)) : f = g := by
+  cases f
+  cases g
+  cases hi
+  congr
+  funext i
+  exact eq_of_heq (hc i)
+
+def StableAtlasFamilyHom.identity (X : StableAtlasFamily) :
+    StableAtlasFamilyHom X X where
+  index := id
+  component := fun _ => 𝟙 _
+
+def StableAtlasFamilyHom.comp {X Y Z : StableAtlasFamily}
+    (f : StableAtlasFamilyHom X Y) (g : StableAtlasFamilyHom Y Z) :
+    StableAtlasFamilyHom X Z where
+  index := g.index ∘ f.index
+  component := fun i => f.component i ≫ g.component (f.index i)
+
+instance : Category StableAtlasFamily where
+  Hom := StableAtlasFamilyHom
+  id := StableAtlasFamilyHom.identity
+  comp := StableAtlasFamilyHom.comp
+  id_comp f := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq (Category.id_comp _)
+  comp_id f := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq (Category.comp_id _)
+  assoc f g h := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq (Category.assoc _ _ _)
+
+@[simp]
+theorem StableAtlasFamilyHom.component_id (X : StableAtlasFamily)
+    (i : X.Index) :
+    (𝟙 X : X ⟶ X).component i = 𝟙 (X.component i) := rfl
+
+@[simp]
+theorem StableAtlasFamilyHom.component_comp {X Y Z : StableAtlasFamily}
+    (f : X ⟶ Y) (g : Y ⟶ Z) (i : X.Index) :
+    (f ≫ g).component i = f.component i ≫ g.component (f.index i) := rfl
+
+/-- An atlas as a single component of the stable merge normal form. -/
+def stableAtlasAtom (X : AtlTras) : StableAtlasFamily where
+  Index := Unit
+  finiteIndex := inferInstance
+  component := fun _ => X
+
+/-- The normalized empty atlas has no nonempty merge components. -/
+def stableAtlasUnit : StableAtlasFamily where
+  Index := Empty
+  finiteIndex := inferInstance
+  component := fun i => nomatch i
+
+/-- Normalized atlas merge.  It is disjoint tagged retention of components,
+not a categorical coproduct of atlases. -/
+def stableAtlasMerge (X Y : StableAtlasFamily) : StableAtlasFamily where
+  Index := Sum X.Index Y.Index
+  finiteIndex := inferInstance
+  component := Sum.elim X.component Y.component
+
+def stableAtlasMergeHom {X₁ X₂ Y₁ Y₂ : StableAtlasFamily}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    stableAtlasMerge X₁ X₂ ⟶ stableAtlasMerge Y₁ Y₂ where
+  index := Sum.map f.index g.index
+  component
+    | .inl i => f.component i
+    | .inr j => g.component j
+
+/-- Horizontal sum on stable atlas merge normal forms. -/
+def StableAtlHorSum : StableAtlasFamily × StableAtlasFamily ⥤
+    StableAtlasFamily where
+  obj X := stableAtlasMerge X.1 X.2
+  map f := stableAtlasMergeHom f.1 f.2
+  map_id X := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;> exact HEq.rfl
+  map_comp f g := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;> exact HEq.rfl
+
+def stableAtlasAssociatorHom (X Y Z : StableAtlasFamily) :
+    stableAtlasMerge (stableAtlasMerge X Y) Z ⟶
+      stableAtlasMerge X (stableAtlasMerge Y Z) where
+  index
+    | .inl (.inl i) => .inl i
+    | .inl (.inr j) => .inr (.inl j)
+    | .inr k => .inr (.inr k)
+  component
+    | .inl (.inl i) => 𝟙 (X.component i)
+    | .inl (.inr j) => 𝟙 (Y.component j)
+    | .inr k => 𝟙 (Z.component k)
+
+def stableAtlasAssociatorInv (X Y Z : StableAtlasFamily) :
+    stableAtlasMerge X (stableAtlasMerge Y Z) ⟶
+      stableAtlasMerge (stableAtlasMerge X Y) Z where
+  index
+    | .inl i => .inl (.inl i)
+    | .inr (.inl j) => .inl (.inr j)
+    | .inr (.inr k) => .inr k
+  component
+    | .inl i => 𝟙 (X.component i)
+    | .inr (.inl j) => 𝟙 (Y.component j)
+    | .inr (.inr k) => 𝟙 (Z.component k)
+
+def stableAtlasAssociator (X Y Z : StableAtlasFamily) :
+    stableAtlasMerge (stableAtlasMerge X Y) Z ≅
+      stableAtlasMerge X (stableAtlasMerge Y Z) where
+  hom := stableAtlasAssociatorHom X Y Z
+  inv := stableAtlasAssociatorInv X Y Z
+  hom_inv_id := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      rcases i with (i | j) | k <;> rfl
+    · intro i
+      rcases i with (i | j) | k <;>
+        simp [stableAtlasAssociatorHom, stableAtlasAssociatorInv,
+          stableAtlasMerge]
+  inv_hom_id := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      rcases i with i | (j | k) <;> rfl
+    · intro i
+      rcases i with i | (j | k) <;>
+        simp [stableAtlasAssociatorHom, stableAtlasAssociatorInv,
+          stableAtlasMerge]
+
+def stableAtlasLeftUnitorHom (X : StableAtlasFamily) :
+    stableAtlasMerge stableAtlasUnit X ⟶ X where
+  index
+    | .inr i => i
+  component
+    | .inr i => 𝟙 (X.component i)
+
+def stableAtlasLeftUnitorInv (X : StableAtlasFamily) :
+    X ⟶ stableAtlasMerge stableAtlasUnit X where
+  index i := .inr i
+  component i := 𝟙 (X.component i)
+
+def stableAtlasLeftUnitor (X : StableAtlasFamily) :
+    stableAtlasMerge stableAtlasUnit X ≅ X where
+  hom := stableAtlasLeftUnitorHom X
+  inv := stableAtlasLeftUnitorInv X
+  hom_inv_id := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      rcases i with i | i
+      · exact i.elim
+      · rfl
+    · intro i
+      rcases i with i | i
+      · exact i.elim
+      · simp [stableAtlasLeftUnitorHom, stableAtlasLeftUnitorInv,
+          stableAtlasMerge]
+  inv_hom_id := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      simp [stableAtlasLeftUnitorHom, stableAtlasLeftUnitorInv,
+        stableAtlasMerge]
+
+def stableAtlasRightUnitorHom (X : StableAtlasFamily) :
+    stableAtlasMerge X stableAtlasUnit ⟶ X where
+  index
+    | .inl i => i
+  component
+    | .inl i => 𝟙 (X.component i)
+
+def stableAtlasRightUnitorInv (X : StableAtlasFamily) :
+    X ⟶ stableAtlasMerge X stableAtlasUnit where
+  index i := .inl i
+  component i := 𝟙 (X.component i)
+
+def stableAtlasRightUnitor (X : StableAtlasFamily) :
+    stableAtlasMerge X stableAtlasUnit ≅ X where
+  hom := stableAtlasRightUnitorHom X
+  inv := stableAtlasRightUnitorInv X
+  hom_inv_id := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      rcases i with i | i
+      · rfl
+      · exact i.elim
+    · intro i
+      rcases i with i | i
+      · simp [stableAtlasRightUnitorHom, stableAtlasRightUnitorInv,
+          stableAtlasMerge]
+      · exact i.elim
+  inv_hom_id := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      simp [stableAtlasRightUnitorHom, stableAtlasRightUnitorInv,
+        stableAtlasMerge]
+
+def stableAtlasBraidingHom (X Y : StableAtlasFamily) :
+    stableAtlasMerge X Y ⟶ stableAtlasMerge Y X where
+  index
+    | .inl i => .inr i
+    | .inr j => .inl j
+  component
+    | .inl i => 𝟙 (X.component i)
+    | .inr j => 𝟙 (Y.component j)
+
+def stableAtlasBraiding (X Y : StableAtlasFamily) :
+    stableAtlasMerge X Y ≅ stableAtlasMerge Y X where
+  hom := stableAtlasBraidingHom X Y
+  inv := stableAtlasBraidingHom Y X
+  hom_inv_id := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;> simp [stableAtlasBraidingHom, stableAtlasMerge]
+  inv_hom_id := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;> simp [stableAtlasBraidingHom, stableAtlasMerge]
+
+instance stableAtlasMonoidalStruct : MonoidalCategoryStruct StableAtlasFamily where
+  tensorObj := stableAtlasMerge
+  tensorHom := stableAtlasMergeHom
+  whiskerLeft X _ _ f := stableAtlasMergeHom (𝟙 X) f
+  whiskerRight f Y := stableAtlasMergeHom f (𝟙 Y)
+  tensorUnit := stableAtlasUnit
+  associator := stableAtlasAssociator
+  leftUnitor := stableAtlasLeftUnitor
+  rightUnitor := stableAtlasRightUnitor
+
+instance stableAtlasMonoidal : MonoidalCategory StableAtlasFamily :=
+  MonoidalCategory.ofTensorHom
+    (id_tensorHom_id := fun X Y => StableAtlHorSum.map_id (X, Y))
+    (id_tensorHom := fun X {_ _} f => rfl)
+    (tensorHom_id := fun {_ _} f Y => rfl)
+    (tensorHom_comp_tensorHom := fun {X₁ Y₁ Z₁ X₂ Y₂ Z₂} f₁ f₂ g₁ g₂ => by
+      apply StableAtlasFamilyHom.ext
+      · funext i
+        cases i <;> rfl
+      · intro i
+        cases i <;> simp [stableAtlasMonoidalStruct, stableAtlasMergeHom])
+    (associator_naturality := fun {_ _ _ _ _ _} f₁ f₂ f₃ => by
+      apply StableAtlasFamilyHom.ext
+      · funext i
+        rcases i with (i | j) | k <;> rfl
+      · intro i
+        rcases i with (i | j) | k <;>
+          simp [stableAtlasMonoidalStruct, stableAtlasMergeHom,
+            stableAtlasAssociator, stableAtlasAssociatorHom, stableAtlasMerge])
+    (leftUnitor_naturality := fun {_ _} f => by
+      apply StableAtlasFamilyHom.ext
+      · funext i
+        rcases i with i | i
+        · exact i.elim
+        · rfl
+      · intro i
+        rcases i with i | i
+        · exact i.elim
+        · simp [stableAtlasMonoidalStruct, stableAtlasMergeHom,
+            stableAtlasLeftUnitor, stableAtlasLeftUnitorHom, stableAtlasMerge])
+    (rightUnitor_naturality := fun {_ _} f => by
+      apply StableAtlasFamilyHom.ext
+      · funext i
+        rcases i with i | i
+        · rfl
+        · exact i.elim
+      · intro i
+        rcases i with i | i
+        · simp [stableAtlasMonoidalStruct, stableAtlasMergeHom,
+            stableAtlasRightUnitor, stableAtlasRightUnitorHom, stableAtlasMerge]
+        · exact i.elim)
+    (pentagon := fun W X Y Z => by
+      apply StableAtlasFamilyHom.ext
+      · funext i
+        rcases i with ((i | j) | k) | l <;> rfl
+      · intro i
+        rcases i with ((i | j) | k) | l <;>
+          simp [stableAtlasMonoidalStruct, stableAtlasMergeHom,
+            stableAtlasAssociator, stableAtlasAssociatorHom, stableAtlasMerge])
+    (triangle := fun X Y => by
+      apply StableAtlasFamilyHom.ext
+      · funext i
+        rcases i with (i | e) | j
+        · rfl
+        · exact e.elim
+        · rfl
+      · intro i
+        rcases i with (i | e) | j
+        · simp [stableAtlasMonoidalStruct, stableAtlasMergeHom,
+            stableAtlasAssociator, stableAtlasAssociatorHom,
+            stableAtlasRightUnitor, stableAtlasRightUnitorHom, stableAtlasMerge]
+        · exact e.elim
+        · simp [stableAtlasMonoidalStruct, stableAtlasMergeHom,
+            stableAtlasAssociator, stableAtlasAssociatorHom,
+            stableAtlasLeftUnitor, stableAtlasLeftUnitorHom, stableAtlasMerge])
+
+@[simp]
+theorem stableAtlas_tensorObj (X Y : StableAtlasFamily) :
+    MonoidalCategoryStruct.tensorObj X Y = stableAtlasMerge X Y := rfl
+
+@[simp]
+theorem stableAtlas_tensorHom {X₁ Y₁ X₂ Y₂ : StableAtlasFamily}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    MonoidalCategoryStruct.tensorHom f g = stableAtlasMergeHom f g := rfl
+
+@[simp]
+theorem stableAtlas_whiskerLeft (X : StableAtlasFamily)
+    {Y₁ Y₂ : StableAtlasFamily} (f : Y₁ ⟶ Y₂) :
+    MonoidalCategoryStruct.whiskerLeft X f =
+      stableAtlasMergeHom (𝟙 X) f := rfl
+
+@[simp]
+theorem stableAtlas_whiskerRight {X₁ X₂ : StableAtlasFamily}
+    (f : X₁ ⟶ X₂) (Y : StableAtlasFamily) :
+    MonoidalCategoryStruct.whiskerRight f Y =
+      stableAtlasMergeHom f (𝟙 Y) := rfl
+
+@[simp]
+theorem stableAtlas_associator (X Y Z : StableAtlasFamily) :
+    MonoidalCategoryStruct.associator X Y Z =
+      stableAtlasAssociator X Y Z := rfl
+
+instance stableAtlasBraided : BraidedCategory StableAtlasFamily where
+  braiding := stableAtlasBraiding
+  braiding_naturality_right := fun X {_ _} f => by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;>
+        simp [stableAtlasMergeHom, stableAtlasBraiding,
+          stableAtlasBraidingHom, stableAtlasMerge]
+  braiding_naturality_left := fun {_ _} f Z => by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;>
+        simp [stableAtlasMergeHom, stableAtlasBraiding,
+          stableAtlasBraidingHom, stableAtlasMerge]
+  hexagon_forward := fun X Y Z => by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      rcases i with (i | j) | k <;> rfl
+    · intro i
+      rcases i with (i | j) | k <;>
+        simp [stableAtlasMergeHom, stableAtlasAssociator,
+          stableAtlasAssociatorHom, stableAtlasBraiding,
+          stableAtlasBraidingHom, stableAtlasMerge]
+  hexagon_reverse := fun X Y Z => by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      rcases i with i | (j | k) <;> rfl
+    · intro i
+      rcases i with i | (j | k) <;>
+        simp [stableAtlasMergeHom, stableAtlasAssociator,
+          stableAtlasAssociatorInv, stableAtlasBraiding,
+          stableAtlasBraidingHom, stableAtlasMerge]
+
+instance : SymmetricCategory StableAtlasFamily where
+  symmetry X Y := by
+    apply StableAtlasFamilyHom.ext
+    · funext i
+      cases i <;> rfl
+    · intro i
+      cases i <;>
+        simp [stableAtlasBraided, stableAtlasBraiding,
+          stableAtlasBraidingHom, stableAtlasMerge]
 
 /-%%
 \section{Maps and Cartography}
@@ -854,14 +1609,17 @@ theorem originImage_origin (X : Atl) (v : extent X) :
   have e : X.P.folio.toOrigin X.P.folio.originElement =
       𝟙 X.P.folio.originElement :=
     CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-  rw [originImage, e, X.G.map_id]
+  rw [originImage, storedOriginImage, e, X.G.map_id]
   change Function.Embedding.refl _ v = v
   rfl
 
 theorem atlasMap_all_covered {X : Atl} (hX : IsAtlasMap X)
     (x : X.E) (t : X.G.obj x) : Covered X x t := by
   rcases hX (originImage X x t) with ⟨k, l, h⟩
-  exact ⟨k, l, by simpa [originImage_origin] using h⟩
+  exact ⟨k, l, by
+    change originImage X X.P.folio.originElement (originImage X x t) =
+      originImage X (X.P.cell X.P.folio.lastBase k) l at h
+    simpa only [originImage_origin] using h⟩
 
 theorem chartCounit_isTraversal (X : Atl) : IsTraversal (chartCounit X) := by
   refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
@@ -966,6 +1724,22 @@ atlas: $\mathsf{Coa}=\Ex\circ\mathsf{Chr}$.
 def extentMap {X Y : Atl} (f : X ⟶ Y) : extent X ⟶ extent Y :=
   f.A.app X.P.folio.originElement ≫
     Y.G.map (Y.P.folio.toOrigin (f.P.obj X.P.folio.originElement))
+
+theorem extentMap_originImage {X Y : Atl} (f : X ⟶ Y) (x : X.E)
+    (a : X.G.obj x) :
+    extentMap f (originImage X x a) =
+      originImage Y (f.P.obj x) (f.A.app x a) := by
+  simp only [extentMap, originImage, storedOriginImage]
+  have hn := f.A.naturality (X.P.folio.toOrigin x)
+  have hc : f.P.map (X.P.folio.toOrigin x) ≫
+      Y.P.folio.toOrigin (f.P.obj X.P.folio.originElement) =
+      Y.P.folio.toOrigin (f.P.obj x) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  rw [← hc, Y.G.map_comp]
+  exact congrFun (congrArg Function.Embedding.toFun
+    (congrArg (fun k => k ≫
+      Y.G.map (Y.P.folio.toOrigin (f.P.obj X.P.folio.originElement))) hn)) a
 
 theorem extentMap_id (X : Atl) : extentMap (𝟙 X) = 𝟙 (extent X) := by
   apply DomIns.hom_ext
@@ -1115,6 +1889,10 @@ theorem dominionAtlas_isMap (X : DomIns) : IsAtlasMap (dominionAtlas X) := by
   let k : TerritoryIndex (dominionAtlas X) :=
     onePageFolio.originValue
   refine ⟨k, v, ?_⟩
+  change originImage (dominionAtlas X)
+    (dominionAtlas X).P.folio.originElement v =
+      originImage (dominionAtlas X)
+        ((dominionAtlas X).P.cell (dominionAtlas X).P.folio.lastBase k) v
   rw [originImage_origin]
   have hc : (dominionAtlas X).P.cell (dominionAtlas X).P.folio.lastBase k =
       (dominionAtlas X).P.folio.originElement := onePage_cell_unique _
@@ -1394,105 +2172,64 @@ An \textbf{expedition} is a navigation represented by an Atlas Map.
 structure Expedition (D : DaTra) extends Navigation D where
   atlasMap : IsAtlasMap A
 
-/-- Adjoin the empty presheaf to the image of Yoneda.  Its new source object
-represents exactly the empty alternative in a DaTra restriction. -/
-def PartialYo : WithInitial Atl ⥤ DaTra :=
-  WithInitial.liftToInitial Yo (initialIsInitial)
-
-def liftWide (W : MorphismProperty Atl) :
-    MorphismProperty (WithInitial Atl) := fun X Y f =>
-  match X, Y with
-  | .star, _ => True
-  | .of _, .of _ => W (WithInitial.down f)
-
-instance (W : MorphismProperty Atl) [W.IsMultiplicative] :
-    (liftWide W).IsMultiplicative where
-  id_mem X := by
-    cases X with
-    | star => trivial
-    | of X => exact W.id_mem X
-  comp_mem {X Y Z} f g hf hg := by
-    cases X with
-    | star => trivial
-    | of X =>
-      cases Y with
-      | star => exact nomatch f
-      | of Y =>
-        cases Z with
-        | star => exact nomatch g
-        | of Z => exact W.comp_mem _ _ hf hg
-
-/-- Existential relative representability.  Unlike the representation-
-independent variant in Mathlib, this is the exact condition in the text:
-there is one representing pullback whose atlas arrow lies in `W`. -/
-def HasRestrictedPullbacks (W : MorphismProperty (WithInitial Atl)) :
-    MorphismProperty DaTra := fun X Y F =>
-  ∀ ⦃A : WithInitial Atl⦄ (nav : PartialYo.obj A ⟶ Y),
-    ∃ (B : WithInitial Atl) (f : B ⟶ A) (nav' : PartialYo.obj B ⟶ X),
-      IsPullback nav' (PartialYo.map f) F nav ∧ W f
-
-instance (W : MorphismProperty (WithInitial Atl)) [W.IsMultiplicative] :
-    (HasRestrictedPullbacks W).IsMultiplicative where
-  id_mem X := by
-    intro A nav
-    exact ⟨A, 𝟙 A, nav, by simpa using IsPullback.of_id_snd, W.id_mem A⟩
-  comp_mem f g hf hg := by
-    intro A nav
-    obtain ⟨B, q, navB, hBg, hq⟩ := hg nav
-    obtain ⟨C, p, navC, hCf, hp⟩ := hf navB
-    exact ⟨C, p ≫ q, navC,
-      by simpa using IsPullback.paste_vert hCf hBg,
-      W.comp_mem p q hp hq⟩
-
 /-%%
 \begin{definition}[DaTra Restriction]
-For a wide subcategory $W$ of $\Atl$, its \textbf{DaTra restriction} is the
-wide subcategory whose arrows $F:X\to Y$ have this property: pulling $F$
-back along any navigation $\Yo(A)\to Y$ is either empty, or is represented
-by a navigation $\Yo(B)\to X$ and an arrow $f:B\to A$ in $W$.  In the
-represented case the square
-\[
-\begin{tikzcd}
-\Yo(B) \ar[r,"\mathsf{Nav}'"] \ar[d,"\Yo(f)"'] & X \ar[d,"F"] \\
-\Yo(A) \ar[r,"\mathsf{Nav}"'] & Y
-\end{tikzcd}
-\]
-is a pullback.
+For a wide atlas category $W$, its \textbf{DaTra restriction} is the
+presheaf category $[W^{\mathrm{op}},\Set]$.  Equivalently, a DaTra set is
+restricted by retaining exactly its actions along arrows of $W$.  When a
+horizontal operation is used, its indexing category is first put in the
+finite merge normal form of Section~12; this only makes the structural
+retagging explicit.
 \end{definition}
 %%-/
 
-abbrev DaTraRestriction (W : MorphismProperty Atl) [W.IsMultiplicative] :=
-  WideSubcategory (HasRestrictedPullbacks (liftWide W))
+abbrev DaTraRestriction (W : Type*) [Category W] := Wᵒᵖ ⥤ Type
 
-abbrev DaTrap := DaTraRestriction IsTransposal
-abbrev DaTrav := DaTraRestriction IsTraversal
+abbrev DaTrap := DaTraRestriction AtlTrap
+abbrev DaTrav := DaTraRestriction AtlTrav
 
-def IsStableAtl : MorphismProperty Atl := fun X Y f =>
-  ∃ (hf : IsTraversal f), IsStableTraversal
-    (X := WideSubcategory.mk X) (Y := WideSubcategory.mk Y) ⟨f, hf⟩
+/-- Presheaves on the wide category of atlas traversals. -/
+abbrev AtlTravPSh := AtlTravᵒᵖ ⥤ Type
 
-instance : IsStableAtl.IsMultiplicative where
-  id_mem X := ⟨IsTraversal.id_mem X, IsStableTraversal.id_mem _⟩
-  comp_mem f g hf hg :=
-    ⟨IsTraversal.comp_mem f g hf.1 hg.1,
-      IsStableTraversal.comp_mem ⟨f, hf.1⟩ ⟨g, hg.1⟩ hf.2 hg.2⟩
+/-- Forget the action of an atlas presheaf on non-traversal arrows. -/
+def DaTra.restrictToAtlTrav : DaTra ⥤ AtlTravPSh :=
+  (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
 
-abbrev DaTras := DaTraRestriction IsStableAtl
+/-- The promised identification is definitional after restricting the
+indexing category. -/
+def DaTrav.atlTravPShEquiv : DaTrav ≌ AtlTravPSh :=
+  CategoryTheory.Equivalence.refl
+
+/-- Presheaves on normalized finite merges of stable atlas traversals. -/
+abbrev DaTratPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
+
+/-- The all-objects wrapper gives Day convolution its own monoidal structure,
+separate from the pointwise cartesian structure on a raw functor category. -/
+def IsDataTransition : ObjectProperty DaTratPresheaf := fun _ => True
+
+/-- Data transitions: presheaves whose indexing arrows are stable atlas
+traversals.  Stability is therefore enforced by the source category. -/
+abbrev DaTrat := IsDataTransition.FullSubcategory
+
+abbrev DaTratInc : DaTrat ⥤ DaTratPresheaf := IsDataTransition.ι
 
 /-%%
 \begin{definition}[The Category of Data Transposals]
 The \textbf{Category of Data Transposals}, denoted $\mathsf{DaTrap}$, is
-the DaTra restriction on $\mathsf{AtlTrap}$.
+the presheaf category $[\mathsf{AtlTrap}^{\mathrm{op}},\Set]$.
 \end{definition}
 
 \begin{definition}[The Category of Data Traversals]
 The \textbf{Category of Data Traversals}, denoted $\mathsf{DaTrav}$, is
-the DaTra restriction on $\mathsf{AtlTrav}$.
+the presheaf category $[\mathsf{AtlTrav}^{\mathrm{op}},\Set]$.
 \end{definition}
 
-\begin{definition}[The Category of Stable Data Traversals]
-The \textbf{Category of Stable Data Traversals}, denoted
-$\mathsf{DaTras}$, is the DaTra restriction on $\mathsf{AtlTras}$.
+\begin{definition}[The Category of Data Transitions]
+The \textbf{Category of Data Transitions}, denoted $\mathsf{DaTrat}$, is
+the presheaf category on normalized finite atlas merges whose component
+arrows lie in $\mathsf{AtlTras}$.  Thus stability is part of the indexing
+category, rather than an additional condition imposed after horizontal
+composition.
 \end{definition}
 
 \begin{definition}[Data Transformation Maps]
@@ -1508,11 +2245,41 @@ def IsDaTraMap : ObjectProperty DaTra := fun D =>
 abbrev DaTraMap := IsDaTraMap.FullSubcategory
 
 /-%%
-\section{Horizontal Atlases}
+\section{Atlas Operations}
+
+\begin{definition}[Atlas Merge]
+The \textbf{Atlas Merge} is the object operation
+\[
+  \mathsf{AtlMerge}:\operatorname{Ob}(\Atl)\times
+    \operatorname{Ob}(\Atl)\longrightarrow\operatorname{Ob}(\Atl).
+\]
+For atlases $X$ and $Y$, the extent of $\mathsf{AtlMerge}(X,Y)$ is the
+disjoint union of their extents.  Both atlases are evaluated on their full
+spines: page $n+1$ of the merge is the tagged, componentwise combination of
+page $n$ of $X$ and page $n$ of $Y$.  The stored cardinalities merely record
+cutoffs after which the corresponding page data are constant; Atlas Merge
+does not collapse the spine to either finite presentation.  Its page $0$ is
+a new singleton page carrying the merged extent, and the two positive-page
+summands remain distinguished.
+\end{definition}
+
+\begin{definition}[Atlas Merge Normal Form]
+An \textbf{atlas merge normal form} is a finite tagged family of atlas
+objects.  The category of these normal forms is denoted
+\[
+  \mathsf{AtlMergeNF}.
+\]
+A morphism consists of a map of tags and, at each source tag, a stable atlas
+traversal to its selected target tag.
+Binary merge is disjoint tagged union of these families.  This presentation
+retains the data of every input while making the empty merge, reassociation,
+and tag swapping literal.
+\end{definition}
 
 \begin{definition}[The Empty Atlas]
 The \textbf{Empty Atlas} is
-$\mathsf{AtlI}=\mathsf{DomInc}(0)$.
+$\mathsf{AtlI}=\mathsf{DomInc}(0)$.  It is also the distinguished empty
+atlas used by horizontal sum on full atlas spines.
 \end{definition}
 %%-/
 
@@ -1684,7 +2451,206 @@ def domSum.inr (X Y : DomIns) : Y ⟶ domSum X Y where
   toFun := Sum.inr
   inj' := Sum.inr_injective
 
+def domSum.map {X₁ X₂ Y₁ Y₂ : DomIns} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    domSum X₁ X₂ ⟶ domSum Y₁ Y₂ where
+  toFun := Sum.map f g
+  inj' := by
+    intro a b h
+    rcases a with a | a <;> rcases b with b | b
+    · exact congrArg Sum.inl (f.injective (Sum.inl.inj h))
+    · exact Sum.noConfusion h
+    · exact Sum.noConfusion h
+    · exact congrArg Sum.inr (g.injective (Sum.inr.inj h))
+
+def tallMergePage (X Y : TallAtlas) : Nat → Type
+  | 0 => Unit
+  | n + 1 => Sum (X.H.obj (op n)) (Y.H.obj (op n))
+
+def tallMergePageMap (X Y : TallAtlas) {i j : Nat} (h : j ≤ i) :
+    tallMergePage X Y i → tallMergePage X Y j := by
+  induction j with
+  | zero => exact fun _ => ()
+  | succ j =>
+      induction i with
+      | zero => omega
+      | succ i =>
+          exact Sum.map
+            (X.H.map (homOfLE (Nat.succ_le_succ_iff.mp h)).op)
+            (Y.H.map (homOfLE (Nat.succ_le_succ_iff.mp h)).op)
+
+def tallMergeH (X Y : TallAtlas) : Natᵒᵖ ⥤ Type where
+  obj n := tallMergePage X Y n.unop
+  map f := tallMergePageMap X Y (leOfHom f.unop)
+  map_id n := by
+    funext z
+    rcases n with ⟨n⟩
+    cases n with
+    | zero => rfl
+    | succ n =>
+        rcases z with z | z
+        · apply congrArg Sum.inl
+          simp
+        · apply congrArg Sum.inr
+          simp
+  map_comp := by
+    intro ni nj nk f g
+    funext z
+    rcases ni with ⟨i⟩
+    rcases nj with ⟨j⟩
+    rcases nk with ⟨k⟩
+    cases k with
+    | zero => rfl
+    | succ k =>
+        have hj : j ≠ 0 := by
+          intro e
+          subst j
+          have hg := leOfHom g.unop
+          change k + 1 ≤ 0 at hg
+          omega
+        obtain ⟨j, rfl⟩ := Nat.exists_eq_succ_of_ne_zero hj
+        have hi : i ≠ 0 := by
+          intro e
+          subst i
+          have hf := leOfHom f.unop
+          change j + 1 ≤ 0 at hf
+          omega
+        obtain ⟨i, rfl⟩ := Nat.exists_eq_succ_of_ne_zero hi
+        let fij : (op i : Natᵒᵖ) ⟶ op j :=
+          (homOfLE (Nat.succ_le_succ_iff.mp (leOfHom f.unop))).op
+        let fjk : (op j : Natᵒᵖ) ⟶ op k :=
+          (homOfLE (Nat.succ_le_succ_iff.mp (leOfHom g.unop))).op
+        let fik : (op i : Natᵒᵖ) ⟶ op k :=
+          (homOfLE (Nat.succ_le_succ_iff.mp (leOfHom (f ≫ g).unop))).op
+        have hcomp : fik = fij ≫ fjk := Subsingleton.elim _ _
+        rcases z with z | z
+        · apply congrArg Sum.inl
+          change X.H.map fik z = X.H.map fjk (X.H.map fij z)
+          rw [hcomp, X.H.map_comp]
+          rfl
+        · apply congrArg Sum.inr
+          change Y.H.map fik z = Y.H.map fjk (Y.H.map fij z)
+          rw [hcomp, Y.H.map_comp]
+          rfl
+
 def bouquetPag (X Y : Atl) : Pag := ⟨bouquetFolio X.P.folio Y.P.folio⟩
+
+def bouquetLeftIndex (X Y : Atl) (m : Fin X.P.folio.length) :
+    Fin (bouquetLength X.P.folio Y.P.folio) :=
+  ⟨m.1 + 1, by simp [bouquetLength]⟩
+
+def bouquetRightIndex (X Y : Atl) (m : Fin Y.P.folio.length) :
+    Fin (bouquetLength X.P.folio Y.P.folio) :=
+  ⟨m.1 + 1, by simp [bouquetLength]⟩
+
+def bouquetLeftPred (X Y : Atl) (m : Fin X.P.folio.length) :
+    Fin (bouquetDepth X.P.folio Y.P.folio) :=
+  ⟨m.1, lt_of_lt_of_le m.2 (le_max_left _ _)⟩
+
+def bouquetRightPred (X Y : Atl) (m : Fin Y.P.folio.length) :
+    Fin (bouquetDepth X.P.folio Y.P.folio) :=
+  ⟨m.1, lt_of_lt_of_le m.2 (le_max_right _ _)⟩
+
+@[simp]
+theorem bouquetLeftIndex_eq_succ (X Y : Atl) (m : Fin X.P.folio.length) :
+    bouquetLeftIndex X Y m = (bouquetLeftPred X Y m).succ := rfl
+
+@[simp]
+theorem bouquetRightIndex_eq_succ (X Y : Atl) (m : Fin Y.P.folio.length) :
+    bouquetRightIndex X Y m = (bouquetRightPred X Y m).succ := rfl
+
+def bouquetLeftElement (X Y : Atl) (x : X.E) : (bouquetPag X Y).E := by
+  refine ⟨op (bouquetLeftPred X Y x.1.unop).succ, ?_⟩
+  change (bouquetChain X.P.folio Y.P.folio
+    (bouquetLeftPred X Y x.1.unop).succ).Obj
+  change Lex (Sum
+    ((X.P.folio.core.obj (X.P.folio.paddedIndex x.1.unop.1)).unop.Obj)
+    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex x.1.unop.1)).unop.Obj))
+  exact toLex (Sum.inl (X.P.H.map
+    (eqToHom (congrArg op (X.P.folio.paddedIndex_fin x.1.unop).symm)) x.2))
+
+def bouquetRightElement (X Y : Atl) (y : Y.E) : (bouquetPag X Y).E := by
+  refine ⟨op (bouquetRightPred X Y y.1.unop).succ, ?_⟩
+  change (bouquetChain X.P.folio Y.P.folio
+    (bouquetRightPred X Y y.1.unop).succ).Obj
+  change Lex (Sum
+    ((X.P.folio.core.obj (X.P.folio.paddedIndex y.1.unop.1)).unop.Obj)
+    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex y.1.unop.1)).unop.Obj))
+  exact toLex (Sum.inr (Y.P.H.map
+    (eqToHom (congrArg op (Y.P.folio.paddedIndex_fin y.1.unop).symm)) y.2))
+
+def bouquetLeftMapHom (X Y : Atl) {x y : X.E} (q : x ⟶ y) :
+    bouquetLeftElement X Y x ⟶ bouquetLeftElement X Y y := by
+  rcases x with ⟨⟨mx⟩, kx⟩
+  rcases y with ⟨⟨my⟩, ky⟩
+  let hxy : my ≤ mx := leOfHom (Quiver.Hom.unop q.val)
+  let h : bouquetLeftPred X Y my ≤ bouquetLeftPred X Y mx := by
+    change my.1 ≤ mx.1
+    exact hxy
+  refine CategoryOfElements.homMk _ _
+    (homOfLE (Fin.succ_le_succ_iff.mpr h)).op ?_
+  dsimp only [bouquetLeftElement]
+  simp only [bouquetLeftPred, bouquetPag, bouquetFolio, Folio.H,
+    bouquetChain, bouquetConMap, Fin.cases_succ, ConHom.sum, Functor.leftOp_map,
+    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, Tra]
+  change toLex (Sum.inl _) = toLex (Sum.inl _)
+  congr 2
+  have hqv : X.P.H.map q.val kx = ky := q.property
+  rw [← hqv]
+  let hp : X.P.folio.paddedIndex my.1 ≤ X.P.folio.paddedIndex mx.1 :=
+    X.P.folio.paddedIndex_mono hxy
+  change X.P.H.map (homOfLE hp).op
+    (X.P.H.map (eqToHom _) kx) = X.P.H.map (eqToHom _)
+      (X.P.H.map q.val kx)
+  rw [← FunctorToTypes.map_comp_apply]
+  rw [← FunctorToTypes.map_comp_apply]
+  congr 1
+
+def bouquetRightMapHom (X Y : Atl) {x y : Y.E} (q : x ⟶ y) :
+    bouquetRightElement X Y x ⟶ bouquetRightElement X Y y := by
+  rcases x with ⟨⟨mx⟩, kx⟩
+  rcases y with ⟨⟨my⟩, ky⟩
+  let hxy : my ≤ mx := leOfHom (Quiver.Hom.unop q.val)
+  let h : bouquetRightPred X Y my ≤ bouquetRightPred X Y mx := by
+    change my.1 ≤ mx.1
+    exact hxy
+  refine CategoryOfElements.homMk _ _
+    (homOfLE (Fin.succ_le_succ_iff.mpr h)).op ?_
+  dsimp only [bouquetRightElement]
+  simp only [bouquetRightPred, bouquetPag, bouquetFolio, Folio.H,
+    bouquetChain, bouquetConMap, Fin.cases_succ, ConHom.sum, Functor.leftOp_map,
+    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, Tra]
+  change toLex (Sum.inr _) = toLex (Sum.inr _)
+  congr 2
+  have hqv : Y.P.H.map q.val kx = ky := q.property
+  rw [← hqv]
+  let hp : Y.P.folio.paddedIndex my.1 ≤ Y.P.folio.paddedIndex mx.1 :=
+    Y.P.folio.paddedIndex_mono hxy
+  change Y.P.H.map (homOfLE hp).op
+    (Y.P.H.map (eqToHom _) kx) = Y.P.H.map (eqToHom _)
+      (Y.P.H.map q.val kx)
+  rw [← FunctorToTypes.map_comp_apply]
+  rw [← FunctorToTypes.map_comp_apply]
+  congr 1
+
+def bouquetLeftElements (X Y : Atl) : X.E ⥤ (bouquetPag X Y).E where
+  obj := bouquetLeftElement X Y
+  map := bouquetLeftMapHom X Y
+  map_id _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  map_comp _ _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+
+def bouquetRightElements (X Y : Atl) : Y.E ⥤ (bouquetPag X Y).E where
+  obj := bouquetRightElement X Y
+  map := bouquetRightMapHom X Y
+  map_id _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  map_comp _ _ := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
 
 def imageDom {A R : DomIns} (f : A ⟶ R) : DomIns where
   toDom :=
@@ -1697,6 +2663,599 @@ def imageDom.inclusion {A R : DomIns} (f : A ⟶ R) : imageDom f ⟶ R where
   toFun := Subtype.val
   inj' := Subtype.val_injective
 
+def imageDom.map {A B R : DomIns} (f : A ⟶ R) (g : B ⟶ R)
+    (h : Set.range f ⊆ Set.range g) : imageDom f ⟶ imageDom g where
+  toFun z := ⟨z.1, h z.2⟩
+  inj' := by
+    intro a b e
+    apply Subtype.ext
+    exact congrArg (fun q => q.1) e
+
+def imageDom.mapAcross {A B R S : DomIns} (f : A ⟶ R) (g : B ⟶ S)
+    (h : R ⟶ S) (factor : ∀ a, ∃ b, h (f a) = g b) :
+    imageDom f ⟶ imageDom g where
+  toFun z := ⟨h z.1, by
+    rcases z.2 with ⟨a, ha⟩
+    rcases factor a with ⟨b, hb⟩
+    exact ⟨b, (congrArg h ha.symm |>.trans hb).symm⟩⟩
+  inj' := by
+    intro a b e
+    apply Subtype.ext
+    apply h.injective
+    exact congrArg Subtype.val e
+
+def tallMergeRawDom (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) : DomIns := by
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero => exact domSum X.extent Y.extent
+  | succ n =>
+      exact match v with
+        | .inl k => X.G.obj ⟨op n, k⟩
+        | .inr k => Y.G.obj ⟨op n, k⟩
+
+def tallMergeRootMap (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) :
+    tallMergeRawDom X Y x ⟶ domSum X.extent Y.extent := by
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero => exact 𝟙 _
+  | succ n =>
+      exact match v with
+        | .inl k => X.G.map (X.toOrigin ⟨op n, k⟩) ≫
+            domSum.inl X.extent Y.extent
+        | .inr k => Y.G.map (Y.toOrigin ⟨op n, k⟩) ≫
+            domSum.inr X.extent Y.extent
+
+def tallMergeDom (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) : DomIns :=
+  imageDom (tallMergeRootMap X Y x)
+
+theorem tallMergeRange_mono (X Y : TallAtlas)
+    {x y : (tallMergeH X Y).Elements} (f : x ⟶ y) :
+    Set.range (tallMergeRootMap X Y x) ⊆
+      Set.range (tallMergeRootMap X Y y) := by
+  intro z hz
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  rcases hz with ⟨a, rfl⟩
+  cases mx with
+  | zero =>
+      have hmy : my = 0 := by
+        have hf := leOfHom f.val.unop
+        change my ≤ 0 at hf
+        omega
+      subst my
+      exact ⟨a, rfl⟩
+  | succ n =>
+      cases my with
+      | zero => exact ⟨tallMergeRootMap X Y ⟨op n.succ, vx⟩ a, rfl⟩
+      | succ p =>
+          have hpn : p ≤ n := Nat.succ_le_succ_iff.mp (leOfHom f.val.unop)
+          rcases vx with k | k
+          · have hfv : Sum.inl (X.H.map (homOfLE hpn).op k) = vy := by
+              simpa [tallMergeH, tallMergePageMap] using f.property
+            subst vy
+            let q := CategoryOfElements.homMk
+              (⟨op n, k⟩ : X.E)
+              (⟨op p, X.H.map (homOfLE hpn).op k⟩ : X.E)
+              (homOfLE hpn).op rfl
+            refine ⟨X.G.map q a, ?_⟩
+            change Sum.inl (X.G.map (X.toOrigin _) (X.G.map q a)) =
+              Sum.inl (X.G.map (X.toOrigin _) a)
+            apply congrArg Sum.inl
+            have hc : q ≫ X.toOrigin _ = X.toOrigin _ :=
+              CategoryOfElements.ext X.H _ _ (Subsingleton.elim _ _)
+            have hm := X.G.map_comp q (X.toOrigin _)
+            rw [hc] at hm
+            exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
+          · have hfv : Sum.inr (Y.H.map (homOfLE hpn).op k) = vy := by
+              simpa [tallMergeH, tallMergePageMap] using f.property
+            subst vy
+            let q := CategoryOfElements.homMk
+              (⟨op n, k⟩ : Y.E)
+              (⟨op p, Y.H.map (homOfLE hpn).op k⟩ : Y.E)
+              (homOfLE hpn).op rfl
+            refine ⟨Y.G.map q a, ?_⟩
+            change Sum.inr (Y.G.map (Y.toOrigin _) (Y.G.map q a)) =
+              Sum.inr (Y.G.map (Y.toOrigin _) a)
+            apply congrArg Sum.inr
+            have hc : q ≫ Y.toOrigin _ = Y.toOrigin _ :=
+              CategoryOfElements.ext Y.H _ _ (Subsingleton.elim _ _)
+            have hm := Y.G.map_comp q (Y.toOrigin _)
+            rw [hc] at hm
+            exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
+
+def tallMergeImageMap (X Y : TallAtlas)
+    {x y : (tallMergeH X Y).Elements} (f : x ⟶ y) :
+    tallMergeDom X Y x ⟶ tallMergeDom X Y y :=
+  imageDom.map _ _ (tallMergeRange_mono X Y f)
+
+def tallMergeG (X Y : TallAtlas) : (tallMergeH X Y).Elements ⥤ DomIns where
+  obj := tallMergeDom X Y
+  map := tallMergeImageMap X Y
+  map_id _ := by
+    apply DomIns.hom_ext
+    intro z
+    apply Subtype.ext
+    rfl
+  map_comp _ _ := by
+    apply DomIns.hom_ext
+    intro z
+    apply Subtype.ext
+    rfl
+
+def tallMergeCellLT (X Y : TallAtlas)
+    (x y : (tallMergeH X Y).Elements) : Prop := by
+  rcases x with ⟨⟨nx⟩, vx⟩
+  rcases y with ⟨⟨ny⟩, vy⟩
+  cases nx with
+  | zero => exact False
+  | succ nx =>
+      cases ny with
+      | zero => exact False
+      | succ ny =>
+          exact match vx, vy with
+            | .inl k, .inl l => X.cellLT ⟨op nx, k⟩ ⟨op ny, l⟩
+            | .inl _, .inr _ => True
+            | .inr _, .inl _ => False
+            | .inr k, .inr l => Y.cellLT ⟨op nx, k⟩ ⟨op ny, l⟩
+
+def tallMerge (X Y : TallAtlas) : TallAtlas where
+  H := tallMergeH X Y
+  originValue := ()
+  originUnique x := by
+    change Unit at x
+    cases x
+    rfl
+  G := tallMergeG X Y
+  cellLT := tallMergeCellLT X Y
+  coveredExtent t := match t.1 with
+    | .inl a => X.coveredExtent a
+    | .inr b => Y.coveredExtent b
+
+def tallMergeLeftObj (X Y : TallAtlas) (x : X.E) : (tallMerge X Y).E :=
+  ⟨op (x.1.unop + 1), Sum.inl x.2⟩
+
+def tallMergeRightObj (X Y : TallAtlas) (y : Y.E) : (tallMerge X Y).E :=
+  ⟨op (y.1.unop + 1), Sum.inr y.2⟩
+
+def tallMergeLeftMap (X Y : TallAtlas) {x y : X.E} (f : x ⟶ y) :
+    tallMergeLeftObj X Y x ⟶ tallMergeLeftObj X Y y := by
+  rcases x with ⟨⟨n⟩, kx⟩
+  rcases y with ⟨⟨m⟩, ky⟩
+  have hmn : m ≤ n := leOfHom f.val.unop
+  refine CategoryOfElements.homMk _ _
+    (homOfLE (Nat.succ_le_succ hmn)).op ?_
+  change Sum.inl (X.H.map (homOfLE hmn).op kx) = Sum.inl ky
+  congr 1
+  have ef : f.val = (homOfLE hmn).op := Subsingleton.elim _ _
+  rw [← ef]
+  exact f.property
+
+def tallMergeRightMap (X Y : TallAtlas) {x y : Y.E} (f : x ⟶ y) :
+    tallMergeRightObj X Y x ⟶ tallMergeRightObj X Y y := by
+  rcases x with ⟨⟨n⟩, kx⟩
+  rcases y with ⟨⟨m⟩, ky⟩
+  have hmn : m ≤ n := leOfHom f.val.unop
+  refine CategoryOfElements.homMk _ _
+    (homOfLE (Nat.succ_le_succ hmn)).op ?_
+  change Sum.inr (Y.H.map (homOfLE hmn).op kx) = Sum.inr ky
+  congr 1
+  have ef : f.val = (homOfLE hmn).op := Subsingleton.elim _ _
+  rw [← ef]
+  exact f.property
+
+def tallMergeLeft (X Y : TallAtlas) : X.E ⥤ (tallMerge X Y).E where
+  obj := tallMergeLeftObj X Y
+  map := tallMergeLeftMap X Y
+  map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+  map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+
+def tallMergeRight (X Y : TallAtlas) : Y.E ⥤ (tallMerge X Y).E where
+  obj := tallMergeRightObj X Y
+  map := tallMergeRightMap X Y
+  map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+  map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+
+def tallHorPObj {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
+    (x : (tallMerge X₁ X₂).E) : (tallMerge Y₁ Y₂).E := by
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero => exact (tallMerge Y₁ Y₂).originElement
+  | succ n =>
+      exact match v with
+        | .inl k => tallMergeLeftObj Y₁ Y₂ (f.P.obj ⟨op n, k⟩)
+        | .inr k => tallMergeRightObj Y₁ Y₂ (g.P.obj ⟨op n, k⟩)
+
+def tallHorPHom {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
+    {x y : (tallMerge X₁ X₂).E} (q : x ⟶ y) :
+    tallHorPObj f g x ⟶ tallHorPObj f g y := by
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  cases mx with
+  | zero =>
+      have hmy : my = 0 := by
+        have hq := leOfHom q.val.unop
+        change my ≤ 0 at hq
+        omega
+      subst my
+      exact 𝟙 _
+  | succ n =>
+      cases my with
+      | zero => exact (tallMerge Y₁ Y₂).toOrigin _
+      | succ p =>
+          have hpn : p ≤ n := Nat.succ_le_succ_iff.mp (leOfHom q.val.unop)
+          rcases vx with k | k
+          · have hqv : Sum.inl (X₁.H.map (homOfLE hpn).op k) = vy := by
+              simpa [tallMerge, tallMergeH, tallMergePageMap] using q.property
+            subst vy
+            let r := CategoryOfElements.homMk
+              (⟨op n, k⟩ : X₁.E)
+              (⟨op p, X₁.H.map (homOfLE hpn).op k⟩ : X₁.E)
+              (homOfLE hpn).op rfl
+            exact tallMergeLeftMap Y₁ Y₂ (f.P.map r)
+          · have hqv : Sum.inr (X₂.H.map (homOfLE hpn).op k) = vy := by
+              simpa [tallMerge, tallMergeH, tallMergePageMap] using q.property
+            subst vy
+            let r := CategoryOfElements.homMk
+              (⟨op n, k⟩ : X₂.E)
+              (⟨op p, X₂.H.map (homOfLE hpn).op k⟩ : X₂.E)
+              (homOfLE hpn).op rfl
+            exact tallMergeRightMap Y₁ Y₂ (g.P.map r)
+
+def tallHorP {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    (tallMerge X₁ X₂).E ⥤ (tallMerge Y₁ Y₂).E where
+  obj := tallHorPObj f g
+  map := tallHorPHom f g
+  map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+  map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+
+def TallAtlas.originImage (X : TallAtlas) (x : X.E) (a : X.G.obj x) : X.extent :=
+  X.G.map (X.toOrigin x) a
+
+@[simp]
+theorem TallAtlas.originImage_origin (X : TallAtlas) (a : X.extent) :
+    X.originImage X.originElement a = a := by
+  change X.G.map (X.toOrigin X.originElement) a = a
+  have h : X.toOrigin X.originElement = 𝟙 X.originElement :=
+    Subsingleton.elim _ _
+  rw [h, X.G.map_id]
+  rfl
+
+def TallAtlas.extentMap {X Y : TallAtlas} (f : X ⟶ Y) : X.extent ⟶ Y.extent :=
+  f.A.app X.originElement ≫ Y.G.map (Y.toOrigin (f.P.obj X.originElement))
+
+@[simp]
+theorem TallAtlas.extentMap_id (X : TallAtlas) :
+    TallAtlas.extentMap (𝟙 X) = 𝟙 X.extent := by
+  apply DomIns.hom_ext
+  intro a
+  change X.G.map (X.toOrigin X.originElement) a = a
+  have h : X.toOrigin X.originElement = 𝟙 X.originElement := Subsingleton.elim _ _
+  rw [h]
+  rw [X.G.map_id]
+  rfl
+
+theorem TallAtlas.extentMap_originImage {X Y : TallAtlas} (f : X ⟶ Y)
+    (x : X.E) (a : X.G.obj x) :
+    TallAtlas.extentMap f (X.originImage x a) =
+      Y.originImage (f.P.obj x) (f.A.app x a) := by
+  simp only [TallAtlas.extentMap, TallAtlas.originImage]
+  have hn := f.A.naturality (X.toOrigin x)
+  have hc : f.P.map (X.toOrigin x) ≫ Y.toOrigin (f.P.obj X.originElement) =
+      Y.toOrigin (f.P.obj x) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  rw [← hc, Y.G.map_comp]
+  exact congrFun (congrArg Function.Embedding.toFun
+    (congrArg (fun k => k ≫ Y.G.map (Y.toOrigin (f.P.obj X.originElement))) hn)) a
+
+@[simp]
+theorem TallAtlas.extentMap_comp {X Y Z : TallAtlas} (f : X ⟶ Y) (g : Y ⟶ Z) :
+    TallAtlas.extentMap (f ≫ g) =
+      TallAtlas.extentMap f ≫ TallAtlas.extentMap g := by
+  simp only [TallAtlas.extentMap]
+  have hn := g.A.naturality (Y.toOrigin (f.P.obj X.originElement))
+  simp only [Functor.comp_map] at hn
+  have hc : g.P.map (Y.toOrigin (f.P.obj X.originElement)) ≫
+      Z.toOrigin (g.P.obj Y.originElement) =
+      Z.toOrigin (g.P.obj (f.P.obj X.originElement)) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  change f.A.app X.originElement ≫ g.A.app (f.P.obj X.originElement) ≫
+      Z.G.map (Z.toOrigin (g.P.obj (f.P.obj X.originElement))) =
+    (f.A.app X.originElement ≫ Y.G.map (Y.toOrigin (f.P.obj X.originElement))) ≫
+      g.A.app Y.originElement ≫ Z.G.map (Z.toOrigin (g.P.obj Y.originElement))
+  simp only [Category.assoc]
+  rw [← Category.assoc (Y.G.map (Y.toOrigin (f.P.obj X.originElement)))
+    (g.A.app Y.originElement) (Z.G.map (Z.toOrigin (g.P.obj Y.originElement)))]
+  rw [hn]
+  rw [Category.assoc (g.A.app (f.P.obj X.originElement))]
+  rw [← Z.G.map_comp]
+  rw [hc]
+
+def tallHorExtentMap {X₁ X₂ Y₁ Y₂ : TallAtlas}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    domSum X₁.extent X₂.extent ⟶ domSum Y₁.extent Y₂.extent :=
+  domSum.map (TallAtlas.extentMap f) (TallAtlas.extentMap g)
+
+theorem tallHorRootFactor {X₁ X₂ Y₁ Y₂ : TallAtlas}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
+    (x : (tallMerge X₁ X₂).E) (a : tallMergeRawDom X₁ X₂ x) :
+    ∃ b : tallMergeRawDom Y₁ Y₂ (tallHorPObj f g x),
+      tallHorExtentMap f g (tallMergeRootMap X₁ X₂ x a) =
+        tallMergeRootMap Y₁ Y₂ (tallHorPObj f g x) b := by
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero => exact ⟨tallHorExtentMap f g a, rfl⟩
+  | succ n =>
+      rcases v with k | k
+      · let x₀ : X₁.E := ⟨op n, k⟩
+        let y₀ := f.P.obj x₀
+        refine ⟨f.A.app x₀ a, ?_⟩
+        change Sum.inl (TallAtlas.extentMap f (X₁.originImage x₀ a)) =
+          Sum.inl (Y₁.originImage y₀ (f.A.app x₀ a))
+        exact congrArg Sum.inl (TallAtlas.extentMap_originImage f x₀ a)
+      · let x₀ : X₂.E := ⟨op n, k⟩
+        let y₀ := g.P.obj x₀
+        refine ⟨g.A.app x₀ a, ?_⟩
+        change Sum.inr (TallAtlas.extentMap g (X₂.originImage x₀ a)) =
+          Sum.inr (Y₂.originImage y₀ (g.A.app x₀ a))
+        exact congrArg Sum.inr (TallAtlas.extentMap_originImage g x₀ a)
+
+def tallHorA {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    (tallMerge X₁ X₂).G ⟶ tallHorP f g ⋙ (tallMerge Y₁ Y₂).G where
+  app x := imageDom.mapAcross
+    (tallMergeRootMap X₁ X₂ x)
+    (tallMergeRootMap Y₁ Y₂ (tallHorPObj f g x))
+    (tallHorExtentMap f g) (tallHorRootFactor f g x)
+  naturality := by
+    intro x y q
+    apply DomIns.hom_ext
+    intro z
+    apply Subtype.ext
+    rfl
+
+def tallHorMap {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    tallMerge X₁ X₂ ⟶ tallMerge Y₁ Y₂ where
+  P := tallHorP f g
+  A := tallHorA f g
+
+@[simp]
+theorem tallHorMap_extentMap_val {X₁ X₂ Y₁ Y₂ : TallAtlas}
+    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
+    (z : (tallMerge X₁ X₂).extent) :
+    (TallAtlas.extentMap (tallHorMap f g) z).1 =
+      tallHorExtentMap f g z.1 := by
+  rfl
+
+theorem tallHorMap_id (X Y : TallAtlas) :
+    tallHorMap (𝟙 X) (𝟙 Y) = 𝟙 (tallMerge X Y) := by
+  have hP : tallHorP (𝟙 X) (𝟙 Y) = 𝟭 (tallMerge X Y).E := by
+    exact CategoryTheory.Functor.ext (F := tallHorP (𝟙 X) (𝟙 Y))
+      (G := 𝟭 (tallMerge X Y).E) (fun x => by
+      rcases x with ⟨⟨n⟩, v⟩
+      cases n with
+      | zero => rfl
+      | succ n => cases v <;> rfl)
+  have hA : HEq (tallHorMap (𝟙 X) (𝟙 Y)).A
+      (𝟙 (tallMerge X Y) : TallAtlasHom _ _).A := by
+    apply NatTrans.hext_right _ _
+      (congrArg (fun P => P ⋙ (tallMerge X Y).G) hP)
+    intro x
+    rcases x with ⟨⟨n⟩, v⟩
+    cases n with
+    | zero =>
+        apply heq_of_eq
+        apply DomIns.hom_ext
+        intro z
+        apply Subtype.ext
+        simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap]
+        rw [TallAtlas.extentMap_id, TallAtlas.extentMap_id]
+        change Sum.map (𝟙 X.extent) (𝟙 Y.extent) z.1 = z.1
+        rcases z.1 with a | b <;> rfl
+    | succ n =>
+        rcases v with v | v <;>
+          apply heq_of_eq <;>
+          apply DomIns.hom_ext <;>
+          intro z <;>
+          apply Subtype.ext <;>
+          simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap] <;>
+          rw [TallAtlas.extentMap_id, TallAtlas.extentMap_id] <;>
+          change Sum.map (𝟙 X.extent) (𝟙 Y.extent) z.1 = z.1 <;>
+          rcases z.1 with a | b <;> rfl
+  exact TallAtlasHom.ext _ _ hP hA
+
+theorem tallHorMap_comp {X₁ X₂ Y₁ Y₂ Z₁ Z₂ : TallAtlas}
+    (f₁ : X₁ ⟶ Y₁) (f₂ : Y₁ ⟶ Z₁) (g₁ : X₂ ⟶ Y₂) (g₂ : Y₂ ⟶ Z₂) :
+    tallHorMap (f₁ ≫ f₂) (g₁ ≫ g₂) =
+      tallHorMap f₁ g₁ ≫ tallHorMap f₂ g₂ := by
+  have hP : tallHorP (f₁ ≫ f₂) (g₁ ≫ g₂) =
+      tallHorP f₁ g₁ ⋙ tallHorP f₂ g₂ := by
+    exact CategoryTheory.Functor.ext
+      (F := tallHorP (f₁ ≫ f₂) (g₁ ≫ g₂))
+      (G := tallHorP f₁ g₁ ⋙ tallHorP f₂ g₂) (fun x => by
+        rcases x with ⟨⟨n⟩, v⟩
+        cases n with
+        | zero => rfl
+        | succ n => cases v <;> rfl)
+  have hA : HEq (tallHorMap (f₁ ≫ f₂) (g₁ ≫ g₂)).A
+      (tallHorMap f₁ g₁ ≫ tallHorMap f₂ g₂).A := by
+    apply NatTrans.hext_right _ _
+      (congrArg (fun P => P ⋙ (tallMerge Z₁ Z₂).G) hP)
+    intro x
+    rcases x with ⟨⟨n⟩, v⟩
+    cases n with
+    | zero =>
+        apply heq_of_eq
+        apply DomIns.hom_ext
+        intro z
+        apply Subtype.ext
+        simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap,
+          TallAtlas.extentMap_comp]
+        change (domSum.map
+            (TallAtlas.extentMap f₁ ≫ TallAtlas.extentMap f₂)
+            (TallAtlas.extentMap g₁ ≫ TallAtlas.extentMap g₂)) z.1 =
+          domSum.map (TallAtlas.extentMap f₂) (TallAtlas.extentMap g₂)
+            (domSum.map (TallAtlas.extentMap f₁) (TallAtlas.extentMap g₁) z.1)
+        rcases z.1 with a | b <;> rfl
+    | succ n =>
+        rcases v with v | v <;>
+          apply heq_of_eq <;>
+          apply DomIns.hom_ext <;>
+          intro z <;>
+          apply Subtype.ext <;>
+          simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap,
+            TallAtlas.extentMap_comp] <;>
+          change (domSum.map
+              (TallAtlas.extentMap f₁ ≫ TallAtlas.extentMap f₂)
+              (TallAtlas.extentMap g₁ ≫ TallAtlas.extentMap g₂)) z.1 =
+            domSum.map (TallAtlas.extentMap f₂) (TallAtlas.extentMap g₂)
+              (domSum.map (TallAtlas.extentMap f₁) (TallAtlas.extentMap g₁) z.1) <;>
+          rcases z.1 with a | b <;> rfl
+  exact TallAtlasHom.ext _ _ hP hA
+
+/-- The horizontal sum on raw infinite-spine presentations.  This is the
+implementation bifunctor from which the coherent atlas operation is derived. -/
+def TallAtlHorSum : TallAtlas × TallAtlas ⥤ TallAtlas where
+  obj X := tallMerge X.1 X.2
+  map f := tallHorMap f.1 f.2
+  map_id X := tallHorMap_id X.1 X.2
+  map_comp f g := tallHorMap_comp f.1 g.1 f.2 g.2
+
+def domSum.swap (X Y : DomIns) : domSum X Y ⟶ domSum Y X where
+  toFun z := z.swap
+  inj' := by
+    intro a b h
+    rcases a with a | a <;> rcases b with b | b
+    · exact congrArg Sum.inl (Sum.inr.inj h)
+    · cases h
+    · cases h
+    · exact congrArg Sum.inr (Sum.inl.inj h)
+
+def tallSwapPObj (X Y : TallAtlas) (x : (tallMerge X Y).E) :
+    (tallMerge Y X).E := by
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero => exact (tallMerge Y X).originElement
+  | succ n =>
+      exact match v with
+        | .inl k => tallMergeRightObj Y X ⟨op n, k⟩
+        | .inr k => tallMergeLeftObj Y X ⟨op n, k⟩
+
+def tallSwapPHom (X Y : TallAtlas) {x y : (tallMerge X Y).E} (q : x ⟶ y) :
+    tallSwapPObj X Y x ⟶ tallSwapPObj X Y y := by
+  rcases x with ⟨⟨mx⟩, vx⟩
+  rcases y with ⟨⟨my⟩, vy⟩
+  cases mx with
+  | zero =>
+      have hmy : my = 0 := by
+        have hq := leOfHom q.val.unop
+        change my ≤ 0 at hq
+        omega
+      subst my
+      exact 𝟙 _
+  | succ n =>
+      cases my with
+      | zero => exact (tallMerge Y X).toOrigin _
+      | succ p =>
+          have hpn : p ≤ n := Nat.succ_le_succ_iff.mp (leOfHom q.val.unop)
+          rcases vx with k | k
+          · have hqv : Sum.inl (X.H.map (homOfLE hpn).op k) = vy := by
+              simpa [tallMerge, tallMergeH, tallMergePageMap] using q.property
+            subst vy
+            exact tallMergeRightMap Y X (CategoryOfElements.homMk _ _
+              (homOfLE hpn).op rfl)
+          · have hqv : Sum.inr (Y.H.map (homOfLE hpn).op k) = vy := by
+              simpa [tallMerge, tallMergeH, tallMergePageMap] using q.property
+            subst vy
+            exact tallMergeLeftMap Y X (CategoryOfElements.homMk _ _
+              (homOfLE hpn).op rfl)
+
+def tallSwapP (X Y : TallAtlas) : (tallMerge X Y).E ⥤ (tallMerge Y X).E where
+  obj := tallSwapPObj X Y
+  map := tallSwapPHom X Y
+  map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+  map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
+
+theorem tallSwapRootFactor (X Y : TallAtlas) (x : (tallMerge X Y).E)
+    (a : tallMergeRawDom X Y x) :
+    ∃ b : tallMergeRawDom Y X (tallSwapPObj X Y x),
+      domSum.swap X.extent Y.extent (tallMergeRootMap X Y x a) =
+        tallMergeRootMap Y X (tallSwapPObj X Y x) b := by
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero => exact ⟨a.swap, rfl⟩
+  | succ n =>
+      rcases v with k | k
+      · exact ⟨a, rfl⟩
+      · exact ⟨a, rfl⟩
+
+def TallAtlBrd (X Y : TallAtlas) : tallMerge X Y ⟶ tallMerge Y X where
+  P := tallSwapP X Y
+  A :=
+    { app := fun x => imageDom.mapAcross
+        (tallMergeRootMap X Y x)
+        (tallMergeRootMap Y X (tallSwapPObj X Y x))
+        (domSum.swap X.extent Y.extent) (tallSwapRootFactor X Y x)
+      naturality := by
+        intro x y q
+        apply DomIns.hom_ext
+        intro z
+        apply Subtype.ext
+        rfl }
+
+theorem TallAtlBrd_involutive (X Y : TallAtlas) :
+    TallAtlBrd X Y ≫ TallAtlBrd Y X = 𝟙 (tallMerge X Y) := by
+  have hP : tallSwapP X Y ⋙ tallSwapP Y X = 𝟭 (tallMerge X Y).E := by
+    exact CategoryTheory.Functor.ext (fun x => by
+      rcases x with ⟨⟨n⟩, v⟩
+      cases n with
+      | zero => rfl
+      | succ n => cases v <;> rfl)
+  apply TallAtlasHom.ext _ _ hP
+  apply NatTrans.hext_right _ _
+    (congrArg (fun P => P ⋙ (tallMerge X Y).G) hP)
+  intro x
+  rcases x with ⟨⟨n⟩, v⟩
+  cases n with
+  | zero =>
+      apply heq_of_eq
+      apply DomIns.hom_ext
+      intro z
+      apply Subtype.ext
+      simp only [TallAtlBrd, imageDom.mapAcross]
+      change domSum.swap Y.extent X.extent
+          (domSum.swap X.extent Y.extent z.1) = z.1
+      rcases z.1 with a | b <;> rfl
+  | succ n =>
+      rcases v with v | v <;>
+        apply heq_of_eq <;>
+        apply DomIns.hom_ext <;>
+        intro z <;>
+        apply Subtype.ext <;>
+        simp only [TallAtlBrd, imageDom.mapAcross] <;>
+        change domSum.swap Y.extent X.extent
+            (domSum.swap X.extent Y.extent z.1) = z.1 <;>
+        rcases z.1 with a | b <;> rfl
+
+def TallAtlBrdIso (X Y : TallAtlas) : tallMerge X Y ≅ tallMerge Y X where
+  hom := TallAtlBrd X Y
+  inv := TallAtlBrd Y X
+  hom_inv_id := TallAtlBrd_involutive X Y
+  inv_hom_id := TallAtlBrd_involutive Y X
+
+/-- The empty atlas regarded on its full spine. -/
+def TallAtlasI : TallAtlas := AtlI.tall
+
+theorem domIns_eqToHom_apply {A B : DomIns} (h : A = B) (a : A) :
+    (eqToHom h : A ⟶ B) a = h ▸ a := by
+  cases h
+  rfl
+
+theorem castDep_symm_cast {A : Sort u} (P : A → Sort*) {x y : A}
+    (h : x = y) (a : P y) : h ▸ (h.symm ▸ a) = a := by
+  cases h
+  rfl
+
 def bouquetRawDomIndex (X Y : Atl) :
     (m : Fin (bouquetLength X.P.folio Y.P.folio)) →
       (bouquetFolio X.P.folio Y.P.folio).H.obj (op m) → DomIns :=
@@ -1704,6 +3263,63 @@ def bouquetRawDomIndex (X Y : Atl) :
     match ofLex v with
     | .inl k => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
     | .inr k => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k))
+
+theorem bouquetLeftRawDom_eq (X Y : Atl) (x : X.E) :
+    bouquetRawDomIndex X Y (bouquetLeftElement X Y x).1.unop
+      (bouquetLeftElement X Y x).2 = X.G.obj x := by
+  rcases x with ⟨⟨m⟩, k⟩
+  simp only [bouquetLeftElement, bouquetLeftPred, bouquetRawDomIndex,
+    bouquetChain, Fin.cases_succ]
+  split
+  · rename_i k' hk
+    change Sum.inl _ = Sum.inl k' at hk
+    have hk' := Sum.inl.inj hk
+    subst k'
+    congr 1
+    apply Functor.Elements.ext (F := X.P.H) _ _
+      (congrArg op (X.P.folio.paddedIndex_fin m))
+    dsimp only [Pag.cell]
+    change X.P.H.map (eqToHom _) (X.P.H.map (eqToHom _) k) = k
+    rw [← FunctorToTypes.map_comp_apply]
+    simp
+  · rename_i k' hk
+    change Sum.inl _ = Sum.inr k' at hk
+    cases hk
+
+theorem bouquetRightRawDom_eq (X Y : Atl) (y : Y.E) :
+    bouquetRawDomIndex X Y (bouquetRightElement X Y y).1.unop
+      (bouquetRightElement X Y y).2 = Y.G.obj y := by
+  rcases y with ⟨⟨m⟩, k⟩
+  simp only [bouquetRightElement, bouquetRightPred, bouquetRawDomIndex,
+    bouquetChain, Fin.cases_succ]
+  split
+  · rename_i k' hk
+    change Sum.inr _ = Sum.inl k' at hk
+    cases hk
+  · rename_i k' hk
+    change Sum.inr _ = Sum.inr k' at hk
+    have hk' := Sum.inr.inj hk
+    subst k'
+    congr 1
+    apply Functor.Elements.ext (F := Y.P.H) _ _
+      (congrArg op (Y.P.folio.paddedIndex_fin m))
+    dsimp only [Pag.cell]
+    change Y.P.H.map (eqToHom _) (Y.P.H.map (eqToHom _) k) = k
+    rw [← FunctorToTypes.map_comp_apply]
+    simp
+
+def paddedElement (X : Atl) (x : X.E) : X.E :=
+  X.P.cell (op (X.P.folio.paddedIndex x.1.unop.1))
+    (X.P.H.map
+      (eqToHom (congrArg op (X.P.folio.paddedIndex_fin x.1.unop).symm)) x.2)
+
+theorem paddedElement_eq (X : Atl) (x : X.E) : paddedElement X x = x := by
+  apply Functor.Elements.ext (F := X.P.H) _ _
+    (congrArg op (X.P.folio.paddedIndex_fin x.1.unop))
+  dsimp only [paddedElement, Pag.cell]
+  change X.P.H.map (eqToHom _) (X.P.H.map (eqToHom _) x.2) = x.2
+  rw [← FunctorToTypes.map_comp_apply]
+  simp
 
 def bouquetRootIndex (X Y : Atl) :
     ∀ (m : Fin (bouquetLength X.P.folio Y.P.folio))
@@ -1714,20 +3330,103 @@ def bouquetRootIndex (X Y : Atl) :
   | zero => intro v; exact 𝟙 _
   | succ n =>
     intro v
-    generalize hv : ofLex v = s
-    rcases s with k | k
-    · have ev : v = toLex (Sum.inl k) :=
-        ofLex.injective (by simpa using hv)
-      subst v
-      exact X.G.map (X.P.cellToOrigin
-        (op (X.P.folio.paddedIndex n.1)) k) ≫
-        domSum.inl (extent X) (extent Y)
-    · have ev : v = toLex (Sum.inr k) :=
-        ofLex.injective (by simpa using hv)
-      subst v
-      exact Y.G.map (Y.P.cellToOrigin
-        (op (Y.P.folio.paddedIndex n.1)) k) ≫
-        domSum.inr (extent X) (extent Y)
+    change (match ofLex v with
+      | .inl k => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
+      | .inr k => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k))
+      ⟶ domSum (extent X) (extent Y)
+    exact match ofLex v with
+      | .inl k => X.G.map (X.P.cellToOrigin
+          (op (X.P.folio.paddedIndex n.1)) k) ≫
+          domSum.inl (extent X) (extent Y)
+      | .inr k => Y.G.map (Y.P.cellToOrigin
+          (op (Y.P.folio.paddedIndex n.1)) k) ≫
+          domSum.inr (extent X) (extent Y)
+
+@[simp]
+theorem bouquetRootIndex_succ_left (X Y : Atl)
+    (n : Fin (bouquetDepth X.P.folio Y.P.folio))
+    (k : X.P.H.obj (op (X.P.folio.paddedIndex n.1)))
+    (a : X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)) :
+    bouquetRootIndex X Y n.succ (toLex (Sum.inl k)) a =
+      Sum.inl (X.G.map
+        (X.P.cellToOrigin (op (X.P.folio.paddedIndex n.1)) k) a) := by
+  rfl
+
+@[simp]
+theorem bouquetRootIndex_succ_right (X Y : Atl)
+    (n : Fin (bouquetDepth X.P.folio Y.P.folio))
+    (k : Y.P.H.obj (op (Y.P.folio.paddedIndex n.1)))
+    (a : Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k)) :
+    bouquetRootIndex X Y n.succ (toLex (Sum.inr k)) a =
+      Sum.inr (Y.G.map
+        (Y.P.cellToOrigin (op (Y.P.folio.paddedIndex n.1)) k) a) := by
+  rfl
+
+theorem bouquetRootIndex_left (X Y : Atl) (x : X.E)
+    (a : bouquetRawDomIndex X Y (bouquetLeftElement X Y x).1.unop
+      (bouquetLeftElement X Y x).2) :
+    bouquetRootIndex X Y (bouquetLeftElement X Y x).1.unop
+        (bouquetLeftElement X Y x).2 a =
+      Sum.inl (originImage X x (bouquetLeftRawDom_eq X Y x ▸ a)) := by
+  rcases x with ⟨⟨m⟩, k⟩
+  change bouquetRootIndex X Y (bouquetLeftPred X Y m).succ
+      (toLex (Sum.inl (X.P.H.map
+        (eqToHom (congrArg op (X.P.folio.paddedIndex_fin m).symm)) k))) a = _
+  rw [bouquetRootIndex_succ_left]
+  congr 1
+  change X.G.map (X.P.folio.toOrigin (paddedElement X ⟨op m, k⟩)) a =
+    X.G.map (X.P.folio.toOrigin ⟨op m, k⟩)
+      (bouquetLeftRawDom_eq X Y ⟨op m, k⟩ ▸ a)
+  let q := paddedElement_eq X (⟨op m, k⟩ : X.E)
+  have hto : eqToHom q ≫ X.P.folio.toOrigin ⟨op m, k⟩ =
+      X.P.folio.toOrigin (paddedElement X ⟨op m, k⟩) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  rw [← hto, X.G.map_comp]
+  change X.G.map (X.P.folio.toOrigin ⟨op m, k⟩)
+      (X.G.map (eqToHom q) a) =
+    X.G.map (X.P.folio.toOrigin ⟨op m, k⟩)
+      (bouquetLeftRawDom_eq X Y ⟨op m, k⟩ ▸ a)
+  apply congrArg (fun z => X.G.map (X.P.folio.toOrigin ⟨op m, k⟩) z)
+  have hmap := eqToHom_map X.G q
+  rw [hmap]
+  have heq : congrArg X.G.obj q = bouquetLeftRawDom_eq X Y ⟨op m, k⟩ :=
+    Subsingleton.elim _ _
+  cases heq
+  exact domIns_eqToHom_apply _ _
+
+theorem bouquetRootIndex_right (X Y : Atl) (y : Y.E)
+    (a : bouquetRawDomIndex X Y (bouquetRightElement X Y y).1.unop
+      (bouquetRightElement X Y y).2) :
+    bouquetRootIndex X Y (bouquetRightElement X Y y).1.unop
+        (bouquetRightElement X Y y).2 a =
+      Sum.inr (originImage Y y (bouquetRightRawDom_eq X Y y ▸ a)) := by
+  rcases y with ⟨⟨m⟩, k⟩
+  change bouquetRootIndex X Y (bouquetRightPred X Y m).succ
+      (toLex (Sum.inr (Y.P.H.map
+        (eqToHom (congrArg op (Y.P.folio.paddedIndex_fin m).symm)) k))) a = _
+  rw [bouquetRootIndex_succ_right]
+  congr 1
+  change Y.G.map (Y.P.folio.toOrigin (paddedElement Y ⟨op m, k⟩)) a =
+    Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩)
+      (bouquetRightRawDom_eq X Y ⟨op m, k⟩ ▸ a)
+  let q := paddedElement_eq Y (⟨op m, k⟩ : Y.E)
+  have hto : eqToHom q ≫ Y.P.folio.toOrigin ⟨op m, k⟩ =
+      Y.P.folio.toOrigin (paddedElement Y ⟨op m, k⟩) := by
+    apply CategoryOfElements.ext
+    apply Subsingleton.elim
+  rw [← hto, Y.G.map_comp]
+  change Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩)
+      (Y.G.map (eqToHom q) a) =
+    Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩)
+      (bouquetRightRawDom_eq X Y ⟨op m, k⟩ ▸ a)
+  apply congrArg (fun z => Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩) z)
+  have hmap := eqToHom_map Y.G q
+  rw [hmap]
+  have heq : congrArg Y.G.obj q = bouquetRightRawDom_eq X Y ⟨op m, k⟩ :=
+    Subsingleton.elim _ _
+  cases heq
+  exact domIns_eqToHom_apply _ _
 
 def bouquetDom (X Y : Atl) (x : (bouquetPag X Y).E) : DomIns :=
   imageDom (bouquetRootIndex X Y x.1.unop x.2)
@@ -1824,14 +3523,6 @@ theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
         rw [hc] at hm
         exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
 
-def imageDom.map {A B R : DomIns} (f : A ⟶ R) (g : B ⟶ R)
-    (h : Set.range f ⊆ Set.range g) : imageDom f ⟶ imageDom g where
-  toFun z := ⟨z.1, h z.2⟩
-  inj' := by
-    intro a b e
-    apply Subtype.ext
-    exact congrArg (fun q => q.1) e
-
 @[simp]
 theorem imageDom.map_val {A B R : DomIns} (f : A ⟶ R) (g : B ⟶ R)
     (h : Set.range f ⊆ Set.range g) (z : imageDom f) :
@@ -1926,734 +3617,153 @@ def bouquetAtlas (X Y : Atl) : Atl where
           Sum.inr (Y.G.map (Y.P.cellToOrigin _ l) b) at hroot
         exact Y.disjoint _ k l hkl a b (Sum.inr.inj hroot)
 
-/-!
-### The omega_0-completion used by horizontal constructions
+/-- The object-level atlas merge used by the horizontal construction. -/
+def AtlMerge (X Y : Atl) : Atl := bouquetAtlas X Y
 
-The current manuscript first constructs the universal arrow over the sum of
-the two targets, then precomposes it with the summed origin.  Its associator is
-obtained by flattening the corresponding universal arrow.  The definitions
-below are the concrete Lean model of those two steps.
+def bouquetTallPred (X Y : Atl) (n : Nat) :
+    Fin (bouquetDepth X.P.folio Y.P.folio) :=
+  ⟨min n (bouquetDepth X.P.folio Y.P.folio - 1), by
+    have hp : 0 < bouquetDepth X.P.folio Y.P.folio :=
+      lt_of_lt_of_le X.P.folio.positive (le_max_left _ _)
+    omega⟩
 
-An ordinary finite folio is extended to an eventually constant omega_0-chain:
-page `n` is its listed page when `n < |X|`, and otherwise is its final page.
-Thus the extension creates no page data; it only repeats the final territories
-needed to make every later access well typed.  A horizontal object is then
-stored as a flat finite family of these completed atlas components.  Horizontal
-sum concatenates the families, while the associator merely rebrackets their
-sum indices and is the identity on every component.  This is precisely the
-flattening stipulated in the preprint.  Flat storage is also what prevents the
-finite presentation lengths and first-page partitions from depending on the
-parenthesization of an iterated horizontal sum.
--/
-
-def Folio.omegaIndex (W : Folio) (n : Nat) : Fin W.length :=
-  W.paddedIndex n
-
-theorem Folio.omegaIndex_of_lt (W : Folio) {n : Nat} (h : n < W.length) :
-    W.omegaIndex n = ⟨n, h⟩ := by
+theorem bouquet_padded_succ (X Y : Atl) (n : Nat) :
+    (bouquetFolio X.P.folio Y.P.folio).paddedIndex (n + 1) =
+      (bouquetTallPred X Y n).succ := by
   apply Fin.ext
-  change min n (W.length - 1) = n
-  exact Nat.min_eq_left (by omega)
-
-theorem Folio.omegaIndex_of_ge (W : Folio) {n : Nat} (h : W.length ≤ n) :
-    W.omegaIndex n = W.lastIndex := by
-  apply Fin.ext
-  change min n (W.length - 1) = W.length - 1
-  exact Nat.min_eq_right (by omega)
-
-/-- `N` is a cutoff when page `N - 1` is final and every page from `N`
-onward normalizes to it. -/
-def Folio.IsCutoff (W : Folio) (N : Nat) : Prop :=
-  0 < N ∧ ∀ n, N ≤ n → W.omegaIndex n = W.omegaIndex (N - 1)
-
-theorem Folio.length_isCutoff (W : Folio) : W.IsCutoff W.length := by
-  refine ⟨W.positive, ?_⟩
-  intro n hn
-  rw [W.omegaIndex_of_ge hn]
-  apply Fin.ext
-  change W.length - 1 = min (W.length - 1) (W.length - 1)
-  simp
-
-/-- The stored cardinality really is the least positive stabilization cutoff,
-not merely some bound after which repetition happens. -/
-theorem Folio.length_le_of_isCutoff (W : Folio) {N : Nat}
-    (hN : W.IsCutoff N) : W.length ≤ N := by
-  by_contra h
-  have hNl : N < W.length := Nat.lt_of_not_ge h
-  have hpos := hN.1
-  have he := hN.2 N le_rfl
-  rw [W.omegaIndex_of_lt hNl] at he
-  have hpred : N - 1 < W.length := lt_of_le_of_lt (Nat.sub_le N 1) hNl
-  rw [W.omegaIndex_of_lt hpred] at he
-  have hv : N = N - 1 := Fin.ext_iff.mp he
+  simp only [Folio.paddedIndex, bouquetFolio, bouquetLength, bouquetTallPred,
+    bouquetDepth, Fin.val_succ]
+  have hp : 0 < max X.P.folio.length Y.P.folio.length :=
+    lt_of_lt_of_le X.P.folio.positive (le_max_left _ _)
   omega
 
-/-- On the repeated tail, every spine arrow commutes with the canonical
-identifications of its endpoints with the final finite index. -/
-theorem Folio.spineBase_map_tail (W : Folio) {m n : Nat}
-    (hm : W.length ≤ m) (hn : W.length ≤ n) (f : m ⟶ n) :
-    W.spineBase.map f ≫ eqToHom (W.omegaIndex_of_ge hn) =
-      eqToHom (W.omegaIndex_of_ge hm) := by
-  apply Subsingleton.elim
-
-/-- The corresponding coherence condition in `CoCon`: after identifying both
-repeated pages with the final page, the transition is the identity transition.
-This is the formal content of the manuscript's repeated-page clause. -/
-theorem Folio.F_map_tail (W : Folio) {m n : Nat}
-    (hm : W.length ≤ m) (hn : W.length ≤ n) (f : m ⟶ n) :
-    W.F.map f ≫ W.core.map (eqToHom (W.omegaIndex_of_ge hn)) =
-      W.core.map (eqToHom (W.omegaIndex_of_ge hm)) := by
-  change W.core.map (W.spineBase.map f) ≫ _ = _
-  rw [← W.core.map_comp]
-  congr 1
-
-def Folio.omegaBase (W : Folio) : Nat ⥤ Fin W.length where
-  obj n := W.omegaIndex n
-  map f := homOfLE (W.paddedIndex_mono (leOfHom f))
-  map_id _ := Subsingleton.elim _ _
-  map_comp _ _ := Subsingleton.elim _ _
-
-structure OmegaFolio where
-  finite : Folio
-
-def OmegaFolio.F (W : OmegaFolio) : Nat ⥤ CoCon :=
-  W.finite.F
-
-def OmegaFolio.H (W : OmegaFolio) : Natᵒᵖ ⥤ Type :=
-  W.F.leftOp ⋙ Tra
-
-def OmegaFolio.originBase (_W : OmegaFolio) : Natᵒᵖ := op 0
-
-def OmegaFolio.lastRepeatedIndex (W : OmegaFolio) (n : Nat)
-    (h : W.finite.length ≤ n) :
-    W.finite.omegaIndex n = W.finite.lastIndex :=
-  W.finite.omegaIndex_of_ge h
-
-theorem OmegaFolio.cardinality_is_least_cutoff (W : OmegaFolio) :
-    W.finite.IsCutoff W.finite.length ∧
-      ∀ N, W.finite.IsCutoff N → W.finite.length ≤ N :=
-  ⟨W.finite.length_isCutoff, fun _ h => W.finite.length_le_of_isCutoff h⟩
-
-/-- A wrapper is used instead of the raw dependent sum so that Mathlib's
-unrelated category instance for sigma-types cannot compete with the category
-of elements instance. -/
-structure OmegaElement (W : OmegaFolio) where
-  base : Natᵒᵖ
-  value : W.H.obj base
-
-instance (W : OmegaFolio) : Category (OmegaElement W) where
-  Hom x y := { f : x.base ⟶ y.base // W.H.map f x.value = y.value }
-  id x := ⟨𝟙 _, by simp⟩
-  comp f g := ⟨f.1 ≫ g.1, by simp [f.2, g.2]⟩
-  id_comp _ := rfl
-  comp_id _ := rfl
-  assoc _ _ _ := rfl
-
-instance (W : OmegaFolio) (x y : OmegaElement W) : Subsingleton (x ⟶ y) where
-  allEq _ _ := Subtype.ext (Subsingleton.elim _ _)
-
-def OmegaFolio.toFiniteElement (W : OmegaFolio) :
-    OmegaElement W ⥤ W.finite.E where
-  obj x := ⟨op (W.finite.omegaIndex x.base.unop), x.value⟩
-  map {_ _} f := CategoryOfElements.homMk _ _
-    (W.finite.omegaBase.map (Quiver.Hom.unop f.1)).op f.2
-  map_id _ := Subsingleton.elim _ _
-  map_comp _ _ := Subsingleton.elim _ _
-
-/-- The occurrence of a final-page cell on a repeated spine page. -/
-def OmegaFolio.repeatElement (W : OmegaFolio) (n : Nat)
-    (h : W.finite.length ≤ n)
-    (k : W.finite.H.obj W.finite.lastBase) : OmegaElement W := by
-  refine ⟨op n, ?_⟩
-  change (W.finite.core.obj (W.finite.omegaIndex n)).unop.Obj
-  rw [W.finite.omegaIndex_of_ge h]
-  exact k
-
-structure OmegaAtl where
-  finite : Atl
-
-def OmegaAtl.folio (X : OmegaAtl) : OmegaFolio := ⟨X.finite.P.folio⟩
-abbrev OmegaAtl.E (X : OmegaAtl) := OmegaElement X.folio
-instance (X : OmegaAtl) : Category X.E := inferInstance
-def OmegaAtl.G (X : OmegaAtl) : X.E ⥤ DomIns :=
-  X.folio.toFiniteElement ⋙ X.finite.G
-
-def OmegaAtl.originElement (X : OmegaAtl) : X.E := by
-  refine ⟨op 0, ?_⟩
-  change (X.finite.P.folio.core.obj
-    (X.finite.P.folio.omegaIndex 0)).unop.Obj
-  rw [X.finite.P.folio.omegaIndex_of_lt X.finite.P.folio.positive]
-  exact X.finite.P.folio.originValue
-
-def OmegaAtl.extent (X : OmegaAtl) : DomIns := X.G.obj X.originElement
-
-def OmegaAtl.cardinality (X : OmegaAtl) : Nat := X.finite.P.folio.length
-
-theorem OmegaAtl.spine_orderType (_X : OmegaAtl) :
-    Ordinal.type (fun m n : Nat => m < n) = Ordinal.omega0 := by
-  change typeLT Nat = Ordinal.omega0
-  exact Ordinal.type_nat_lt
-
-def OmegaAtl.pageIndex (X : OmegaAtl) (n : Nat) : Fin X.finite.P.folio.length :=
-  X.finite.P.folio.omegaIndex n
-
-theorem OmegaAtl.pageIndex_inside (X : OmegaAtl) {n : Nat}
-    (h : n < X.finite.P.folio.length) :
-    X.pageIndex n = ⟨n, h⟩ :=
-  X.finite.P.folio.omegaIndex_of_lt h
-
-theorem OmegaAtl.pageIndex_outside (X : OmegaAtl) {n : Nat}
-    (h : X.finite.P.folio.length ≤ n) :
-    X.pageIndex n = X.finite.P.folio.lastIndex :=
-  X.finite.P.folio.omegaIndex_of_ge h
-
-/-- The partition condition for the completed atlas, stated at an arbitrary
-natural-number page.  Beyond the finite presentation this is literally the
-partition condition of the final territory. -/
-def IsOmegaPagewiseDisjoint (X : OmegaAtl) : Prop :=
-  ∀ (n : Nat) (i j : X.folio.H.obj (op n)), i ≠ j →
-    ∀ (x : X.finite.G.obj
-        (X.finite.P.cell (op (X.pageIndex n)) i))
-      (y : X.finite.G.obj
-        (X.finite.P.cell (op (X.pageIndex n)) j)),
-      X.finite.G.map
-          (X.finite.P.cellToOrigin (op (X.pageIndex n)) i) x ≠
-        X.finite.G.map
-          (X.finite.P.cellToOrigin (op (X.pageIndex n)) j) y
-
-theorem OmegaAtl.disjoint (X : OmegaAtl) : IsOmegaPagewiseDisjoint X := by
-  intro n i j hij x y
-  exact X.finite.disjoint (op (X.pageIndex n)) i j hij x y
-
-/-- Morphisms are stored on the least finite presentations and extended
-canonically to the repeated spine.  Consequently they cannot make independent
-choices on pages above the source cardinality; this is precisely the tail
-condition in the manuscript. -/
-abbrev OmegaAtlHom (X Y : OmegaAtl) := X.finite ⟶ Y.finite
-
-instance : Category OmegaAtl where
-  Hom := OmegaAtlHom
-  id X := 𝟙 X.finite
-  comp f g := f ≫ g
-  id_comp := Category.id_comp
-  comp_id := Category.comp_id
-  assoc := Category.assoc
-
-def omegaCompleteObj (X : Atl) : OmegaAtl := ⟨X⟩
-
-theorem omegaComplete_eventually_territory (X : Atl) (n : Nat)
-    (h : X.P.folio.length ≤ n) :
-    X.P.folio.omegaIndex n = X.P.folio.lastIndex :=
-  X.P.folio.omegaIndex_of_ge h
-
-theorem omegaComplete_cardinality (X : Atl) :
-    (omegaCompleteObj X).cardinality = cardinality X := rfl
-
-/-!
-`OmegaAtlFamily` is the flat normal form used for coherence.  A singleton
-family is an ordinary atlas after ω₀-completion; the empty family is the
-horizontal unit; and tensoring concatenates families.  In particular, neither
-parenthesization creates an intermediate combined root as a new component.
--/
-
-structure OmegaAtlFamily where
-  Index : Type
-  finiteIndex : Fintype Index
-  component : Index → OmegaAtl
-
-attribute [instance] OmegaAtlFamily.finiteIndex
-
-structure OmegaAtlFamilyHom (X Y : OmegaAtlFamily) where
-  index : X.Index → Y.Index
-  component : ∀ i, X.component i ⟶ Y.component (index i)
-
-@[ext]
-theorem OmegaAtlFamilyHom.ext {X Y : OmegaAtlFamily}
-    (f g : OmegaAtlFamilyHom X Y) (hi : f.index = g.index)
-    (hc : ∀ i, HEq (f.component i) (g.component i)) : f = g := by
-  cases f
-  cases g
-  cases hi
-  congr
-  funext i
-  exact eq_of_heq (hc i)
-
-def OmegaAtlFamilyHom.identity (X : OmegaAtlFamily) :
-    OmegaAtlFamilyHom X X where
-  index := id
-  component := fun _ => 𝟙 _
-
-def OmegaAtlFamilyHom.comp {X Y Z : OmegaAtlFamily}
-    (f : OmegaAtlFamilyHom X Y) (g : OmegaAtlFamilyHom Y Z) :
-    OmegaAtlFamilyHom X Z where
-  index := g.index ∘ f.index
-  component := fun i => f.component i ≫ g.component (f.index i)
-
-instance : Category OmegaAtlFamily where
-  Hom := OmegaAtlFamilyHom
-  id := OmegaAtlFamilyHom.identity
-  comp := OmegaAtlFamilyHom.comp
-  id_comp f := by
-    apply OmegaAtlFamilyHom.ext
-    · rfl
-    · intro i
-      exact heq_of_eq (Category.id_comp _)
-  comp_id f := by
-    apply OmegaAtlFamilyHom.ext
-    · rfl
-    · intro i
-      exact heq_of_eq (Category.comp_id _)
-  assoc f g h := by
-    apply OmegaAtlFamilyHom.ext
-    · rfl
-    · intro i
-      exact heq_of_eq (Category.assoc _ _ _)
-
-@[simp]
-theorem OmegaAtlFamilyHom.component_id (X : OmegaAtlFamily) (i : X.Index) :
-    (𝟙 X : X ⟶ X).component i = 𝟙 (X.component i) := rfl
-
-@[simp]
-theorem OmegaAtlFamilyHom.component_comp {X Y Z : OmegaAtlFamily}
-    (f : X ⟶ Y) (g : Y ⟶ Z) (i : X.Index) :
-    (f ≫ g).component i = f.component i ≫ g.component (f.index i) := rfl
-
-def omegaAtom (X : Atl) : OmegaAtlFamily where
-  Index := Unit
-  finiteIndex := inferInstance
-  component := fun _ => omegaCompleteObj X
-
-def omegaFamilyUnit : OmegaAtlFamily where
-  Index := Empty
-  finiteIndex := inferInstance
-  component := fun i => nomatch i
-
-def omegaFamilyTensorObj (X Y : OmegaAtlFamily) : OmegaAtlFamily where
-  Index := Sum X.Index Y.Index
-  finiteIndex := inferInstance
-  component := Sum.elim X.component Y.component
-
-def omegaFamilyTensorHom {X₁ X₂ Y₁ Y₂ : OmegaAtlFamily}
-    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
-    omegaFamilyTensorObj X₁ X₂ ⟶ omegaFamilyTensorObj Y₁ Y₂ where
-  index := Sum.map f.index g.index
-  component
-    | .inl i => f.component i
-    | .inr j => g.component j
-
-def omegaFamilyTensor : OmegaAtlFamily × OmegaAtlFamily ⥤ OmegaAtlFamily where
-  obj X := omegaFamilyTensorObj X.1 X.2
-  map f := omegaFamilyTensorHom f.1 f.2
-  map_id X := by
-    have hi : (omegaFamilyTensorHom (𝟙 X.1) (𝟙 X.2)).index =
-        (OmegaAtlFamilyHom.identity _).index := by
-      funext i
-      cases i <;> rfl
-    apply OmegaAtlFamilyHom.ext _ _ hi
-    intro i
-    cases i <;> exact HEq.rfl
-  map_comp f g := by
-    have hi : (omegaFamilyTensorHom (f.1 ≫ g.1) (f.2 ≫ g.2)).index =
-        (omegaFamilyTensorHom f.1 f.2 ≫
-          omegaFamilyTensorHom g.1 g.2).index := by
-      funext i
-      cases i <;> rfl
-    apply OmegaAtlFamilyHom.ext _ _ hi
-    intro i
-    cases i <;> exact HEq.rfl
-
-def omegaFamilyAssociatorHom (X Y Z : OmegaAtlFamily) :
-    omegaFamilyTensorObj (omegaFamilyTensorObj X Y) Z ⟶
-      omegaFamilyTensorObj X (omegaFamilyTensorObj Y Z) where
-  index
-    | .inl (.inl i) => .inl i
-    | .inl (.inr j) => .inr (.inl j)
-    | .inr k => .inr (.inr k)
-  component
-    | .inl (.inl i) => 𝟙 (X.component i)
-    | .inl (.inr j) => 𝟙 (Y.component j)
-    | .inr k => 𝟙 (Z.component k)
-
-def omegaFamilyAssociatorInv (X Y Z : OmegaAtlFamily) :
-    omegaFamilyTensorObj X (omegaFamilyTensorObj Y Z) ⟶
-      omegaFamilyTensorObj (omegaFamilyTensorObj X Y) Z where
-  index
-    | .inl i => .inl (.inl i)
-    | .inr (.inl j) => .inl (.inr j)
-    | .inr (.inr k) => .inr k
-  component
-    | .inl i => 𝟙 (X.component i)
-    | .inr (.inl j) => 𝟙 (Y.component j)
-    | .inr (.inr k) => 𝟙 (Z.component k)
-
-def omegaFamilyAssociator (X Y Z : OmegaAtlFamily) :
-    omegaFamilyTensorObj (omegaFamilyTensorObj X Y) Z ≅
-      omegaFamilyTensorObj X (omegaFamilyTensorObj Y Z) where
-  hom := omegaFamilyAssociatorHom X Y Z
-  inv := omegaFamilyAssociatorInv X Y Z
-  hom_inv_id := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      rcases i with (i | j) | k <;> rfl
-    · intro i
-      rcases i with (i | j) | k
-      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
-          omegaFamilyTensorObj]
-      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
-          omegaFamilyTensorObj]
-      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
-          omegaFamilyTensorObj]
-  inv_hom_id := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      rcases i with i | (j | k) <;> rfl
-    · intro i
-      rcases i with i | (j | k)
-      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
-          omegaFamilyTensorObj]
-      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
-          omegaFamilyTensorObj]
-      · simp [omegaFamilyAssociatorHom, omegaFamilyAssociatorInv,
-          omegaFamilyTensorObj]
-
-def omegaFamilyLeftUnitorHom (X : OmegaAtlFamily) :
-    omegaFamilyTensorObj omegaFamilyUnit X ⟶ X where
-  index
-    | .inr i => i
-  component
-    | .inr i => 𝟙 (X.component i)
-
-def omegaFamilyLeftUnitorInv (X : OmegaAtlFamily) :
-    X ⟶ omegaFamilyTensorObj omegaFamilyUnit X where
-  index i := .inr i
-  component i := 𝟙 (X.component i)
-
-def omegaFamilyLeftUnitor (X : OmegaAtlFamily) :
-    omegaFamilyTensorObj omegaFamilyUnit X ≅ X where
-  hom := omegaFamilyLeftUnitorHom X
-  inv := omegaFamilyLeftUnitorInv X
-  hom_inv_id := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      rcases i with i | i
-      · exact i.elim
-      · rfl
-    · intro i
-      rcases i with i | i
-      · exact i.elim
-      · simp [omegaFamilyLeftUnitorHom, omegaFamilyLeftUnitorInv,
-          omegaFamilyTensorObj]
-  inv_hom_id := by
-    apply OmegaAtlFamilyHom.ext
-    · rfl
-    · intro i
-      simp [omegaFamilyLeftUnitorHom, omegaFamilyLeftUnitorInv,
-        omegaFamilyTensorObj]
-
-def omegaFamilyRightUnitorHom (X : OmegaAtlFamily) :
-    omegaFamilyTensorObj X omegaFamilyUnit ⟶ X where
-  index
-    | .inl i => i
-  component
-    | .inl i => 𝟙 (X.component i)
-
-def omegaFamilyRightUnitorInv (X : OmegaAtlFamily) :
-    X ⟶ omegaFamilyTensorObj X omegaFamilyUnit where
-  index i := .inl i
-  component i := 𝟙 (X.component i)
-
-def omegaFamilyRightUnitor (X : OmegaAtlFamily) :
-    omegaFamilyTensorObj X omegaFamilyUnit ≅ X where
-  hom := omegaFamilyRightUnitorHom X
-  inv := omegaFamilyRightUnitorInv X
-  hom_inv_id := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      rcases i with i | i
-      · rfl
-      · exact i.elim
-    · intro i
-      rcases i with i | i
-      · simp [omegaFamilyRightUnitorHom, omegaFamilyRightUnitorInv,
-          omegaFamilyTensorObj]
-      · exact i.elim
-  inv_hom_id := by
-    apply OmegaAtlFamilyHom.ext
-    · rfl
-    · intro i
-      simp [omegaFamilyRightUnitorHom, omegaFamilyRightUnitorInv,
-        omegaFamilyTensorObj]
-
-def omegaFamilyBraidingHom (X Y : OmegaAtlFamily) :
-    omegaFamilyTensorObj X Y ⟶ omegaFamilyTensorObj Y X where
-  index
-    | .inl i => .inr i
-    | .inr j => .inl j
-  component
-    | .inl i => 𝟙 (X.component i)
-    | .inr j => 𝟙 (Y.component j)
-
-def omegaFamilyBraiding (X Y : OmegaAtlFamily) :
-    omegaFamilyTensorObj X Y ≅ omegaFamilyTensorObj Y X where
-  hom := omegaFamilyBraidingHom X Y
-  inv := omegaFamilyBraidingHom Y X
-  hom_inv_id := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      cases i <;> rfl
-    · intro i
-      cases i with
-      | inl i => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
-      | inr j => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
-  inv_hom_id := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      cases i <;> rfl
-    · intro i
-      cases i with
-      | inl j => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
-      | inr i => simp [omegaFamilyBraidingHom, omegaFamilyTensorObj]
-
-instance omegaFamilyMonoidalStruct : MonoidalCategoryStruct OmegaAtlFamily where
-  tensorObj := omegaFamilyTensorObj
-  tensorHom := omegaFamilyTensorHom
-  whiskerLeft X _ _ f := omegaFamilyTensorHom (𝟙 X) f
-  whiskerRight f Y := omegaFamilyTensorHom f (𝟙 Y)
-  tensorUnit := omegaFamilyUnit
-  associator := omegaFamilyAssociator
-  leftUnitor := omegaFamilyLeftUnitor
-  rightUnitor := omegaFamilyRightUnitor
-
-instance omegaFamilyMonoidal : MonoidalCategory OmegaAtlFamily :=
-  MonoidalCategory.ofTensorHom
-    (id_tensorHom_id := fun X Y => by
-      exact omegaFamilyTensor.map_id (X, Y))
-    (id_tensorHom := fun X {_ _} f => rfl)
-    (tensorHom_id := fun {_ _} f Y => rfl)
-    (tensorHom_comp_tensorHom := fun {X₁ Y₁ Z₁ X₂ Y₂ Z₂} f₁ f₂ g₁ g₂ => by
-      apply OmegaAtlFamilyHom.ext
-      · funext i
-        cases i <;> rfl
-      · intro i
-        cases i <;> simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom])
-    (associator_naturality := fun {_ _ _ _ _ _} f₁ f₂ f₃ => by
-      apply OmegaAtlFamilyHom.ext
-      · funext i
-        rcases i with (i | j) | k <;> rfl
-      · intro i
-        rcases i with (i | j) | k <;>
-          simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
-            omegaFamilyAssociatorHom, omegaFamilyTensorObj])
-    (leftUnitor_naturality := fun {_ _} f => by
-      apply OmegaAtlFamilyHom.ext
-      · funext i
-        rcases i with i | i
-        · exact i.elim
-        · rfl
-      · intro i
-        rcases i with i | i
-        · exact i.elim
-        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyLeftUnitor,
-            omegaFamilyLeftUnitorHom, omegaFamilyTensorObj])
-    (rightUnitor_naturality := fun {_ _} f => by
-      apply OmegaAtlFamilyHom.ext
-      · funext i
-        rcases i with i | i
-        · rfl
-        · exact i.elim
-      · intro i
-        rcases i with i | i
-        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyRightUnitor,
-            omegaFamilyRightUnitorHom, omegaFamilyTensorObj]
-        · exact i.elim)
-    (pentagon := fun W X Y Z => by
-      apply OmegaAtlFamilyHom.ext
-      · funext i
-        rcases i with ((i | j) | k) | l <;> rfl
-      · intro i
-        rcases i with ((i | j) | k) | l <;>
-          simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
-            omegaFamilyAssociatorHom, omegaFamilyTensorObj])
-    (triangle := fun X Y => by
-      apply OmegaAtlFamilyHom.ext
-      · funext i
-        rcases i with (i | e) | j
-        · rfl
-        · exact e.elim
-        · rfl
-      · intro i
-        rcases i with (i | e) | j
-        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
-            omegaFamilyAssociatorHom, omegaFamilyRightUnitor,
-            omegaFamilyRightUnitorHom, omegaFamilyTensorObj]
-        · exact e.elim
-        · simp [omegaFamilyMonoidalStruct, omegaFamilyTensorHom, omegaFamilyAssociator,
-            omegaFamilyAssociatorHom, omegaFamilyLeftUnitor,
-            omegaFamilyLeftUnitorHom, omegaFamilyTensorObj])
-
-@[simp]
-theorem omegaFamily_tensorObj (X Y : OmegaAtlFamily) :
-    MonoidalCategoryStruct.tensorObj X Y = omegaFamilyTensorObj X Y := rfl
-
-@[simp]
-theorem omegaFamily_tensorHom {X₁ Y₁ X₂ Y₂ : OmegaAtlFamily}
-    (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
-    MonoidalCategoryStruct.tensorHom f g = omegaFamilyTensorHom f g := rfl
-
-@[simp]
-theorem omegaFamily_whiskerLeft (X : OmegaAtlFamily)
-    {Y₁ Y₂ : OmegaAtlFamily} (f : Y₁ ⟶ Y₂) :
-    MonoidalCategoryStruct.whiskerLeft X f =
-      omegaFamilyTensorHom (𝟙 X) f := rfl
-
-@[simp]
-theorem omegaFamily_whiskerRight {X₁ X₂ : OmegaAtlFamily}
-    (f : X₁ ⟶ X₂) (Y : OmegaAtlFamily) :
-    MonoidalCategoryStruct.whiskerRight f Y =
-      omegaFamilyTensorHom f (𝟙 Y) := rfl
-
-@[simp]
-theorem omegaFamily_associator (X Y Z : OmegaAtlFamily) :
-    MonoidalCategoryStruct.associator X Y Z = omegaFamilyAssociator X Y Z := rfl
-
-instance omegaFamilyBraided : BraidedCategory OmegaAtlFamily where
-  braiding := omegaFamilyBraiding
-  braiding_naturality_right := fun X {_ _} f => by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      cases i <;> rfl
-    · intro i
-      cases i <;>
-        simp [omegaFamilyTensorHom,
-          omegaFamilyBraiding, omegaFamilyBraidingHom,
-          omegaFamilyTensorObj]
-  braiding_naturality_left := fun {_ _} f Z => by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      cases i <;> rfl
-    · intro i
-      cases i <;>
-        simp [omegaFamilyTensorHom,
-          omegaFamilyBraiding, omegaFamilyBraidingHom,
-          omegaFamilyTensorObj]
-  hexagon_forward := fun X Y Z => by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      rcases i with (i | j) | k <;> rfl
-    · intro i
-      rcases i with (i | j) | k <;>
-        simp [omegaFamilyTensorHom,
-          omegaFamilyAssociator, omegaFamilyAssociatorHom,
-          omegaFamilyBraiding, omegaFamilyBraidingHom,
-          omegaFamilyTensorObj]
-  hexagon_reverse := fun X Y Z => by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      rcases i with i | (j | k) <;> rfl
-    · intro i
-      rcases i with i | (j | k) <;>
-        simp [omegaFamilyTensorHom,
-          omegaFamilyAssociator, omegaFamilyAssociatorInv,
-          omegaFamilyBraiding, omegaFamilyBraidingHom,
-          omegaFamilyTensorObj]
-
-instance : SymmetricCategory OmegaAtlFamily where
-  symmetry X Y := by
-    apply OmegaAtlFamilyHom.ext
-    · funext i
-      cases i <;> rfl
-    · intro i
-      cases i <;>
-        simp [omegaFamilyBraided, omegaFamilyBraiding,
-          omegaFamilyBraidingHom, omegaFamilyTensorObj]
+theorem left_padded_tallPred (X Y : Atl) (n : Nat) :
+    X.P.folio.paddedIndex (bouquetTallPred X Y n).1 =
+      X.P.folio.paddedIndex n := by
+  apply Fin.ext
+  simp only [Folio.paddedIndex, bouquetTallPred, bouquetDepth]
+  have hx : X.P.folio.length ≤ max X.P.folio.length Y.P.folio.length :=
+    le_max_left _ _
+  omega
+
+theorem right_padded_tallPred (X Y : Atl) (n : Nat) :
+    Y.P.folio.paddedIndex (bouquetTallPred X Y n).1 =
+      Y.P.folio.paddedIndex n := by
+  apply Fin.ext
+  simp only [Folio.paddedIndex, bouquetTallPred, bouquetDepth]
+  have hy : Y.P.folio.length ≤ max X.P.folio.length Y.P.folio.length :=
+    le_max_right _ _
+  omega
+
+/-- The finite coherent implementation of `AtlMerge` presents exactly the
+componentwise positive pages used by `tallMerge`. -/
+def AtlMerge.pageEquiv (X Y : Atl) (n : Nat) :
+    (AtlMerge X Y).page (n + 1) ≃ Sum (X.page n) (Y.page n) := by
+  change (bouquetChain X.P.folio Y.P.folio
+      ((bouquetFolio X.P.folio Y.P.folio).paddedIndex (n + 1))).Obj ≃ _
+  rw [bouquet_padded_succ]
+  change Lex (Sum
+    ((X.P.folio.core.obj (X.P.folio.paddedIndex
+      (bouquetTallPred X Y n).1)).unop.Obj)
+    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex
+      (bouquetTallPred X Y n).1)).unop.Obj)) ≃ _
+  rw [left_padded_tallPred, right_padded_tallPred]
+  exact ofLex
+
+/-- The left input as a page-preserving subobject of the tall presentation of
+an atlas merge.  In particular, occurrence `n` is sent to occurrence `n+1`;
+no finite representative is selected here. -/
+def tallBouquetLeftElement (X Y : Atl) (x : X.tall.E) : (AtlMerge X Y).tall.E := by
+  refine ⟨op (x.1.unop + 1), ?_⟩
+  change (bouquetChain X.P.folio Y.P.folio
+    ((bouquetFolio X.P.folio Y.P.folio).paddedIndex (x.1.unop + 1))).Obj
+  rw [bouquet_padded_succ]
+  change Lex (Sum
+    ((X.P.folio.core.obj (X.P.folio.paddedIndex
+      (bouquetTallPred X Y x.1.unop).1)).unop.Obj)
+    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex
+      (bouquetTallPred X Y x.1.unop).1)).unop.Obj))
+  rw [left_padded_tallPred]
+  exact toLex (Sum.inl x.2)
+
+/-- The right input in the tall presentation of an atlas merge. -/
+def tallBouquetRightElement (X Y : Atl) (y : Y.tall.E) : (AtlMerge X Y).tall.E := by
+  refine ⟨op (y.1.unop + 1), ?_⟩
+  change (bouquetChain X.P.folio Y.P.folio
+    ((bouquetFolio X.P.folio Y.P.folio).paddedIndex (y.1.unop + 1))).Obj
+  rw [bouquet_padded_succ]
+  change Lex (Sum
+    ((X.P.folio.core.obj (X.P.folio.paddedIndex
+      (bouquetTallPred X Y y.1.unop).1)).unop.Obj)
+    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex
+      (bouquetTallPred X Y y.1.unop).1)).unop.Obj))
+  rw [right_padded_tallPred]
+  exact toLex (Sum.inr y.2)
+
+/-- The normal form used for iterated stable atlas merging. -/
+abbrev AtlMergeNF := StableAtlasFamily
+
+/-- The horizontal bifunctor is normalized merge on objects and applies a
+stable traversal independently to every tagged component on arrows. -/
+def AtlHorSum : AtlMergeNF × AtlMergeNF ⥤ AtlMergeNF := StableAtlHorSum
+
+def AtlBrd (X Y : AtlMergeNF) :
+    AtlHorSum.obj (X, Y) ≅ AtlHorSum.obj (Y, X) :=
+  stableAtlasBraiding X Y
+
+def AtlAsoc (X Y Z : AtlMergeNF) :
+    AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
+      AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
+  stableAtlasAssociator X Y Z
+
+def AtlLu (X : AtlMergeNF) : AtlHorSum.obj (stableAtlasUnit, X) ≅ X :=
+  stableAtlasLeftUnitor X
+
+def AtlRu (X : AtlMergeNF) : AtlHorSum.obj (X, stableAtlasUnit) ≅ X :=
+  stableAtlasRightUnitor X
+
+theorem horizontalLemma : Nonempty (SymmetricCategory AtlMergeNF) :=
+  ⟨inferInstance⟩
 
 /-%%
 \begin{definition}[The Atlas Horizontal Sum Bifunctor]
 The \textbf{Atlas Horizontal Sum Bifunctor}, denoted
-$\mathsf{AtlHorSum}:\Atl\times\Atl\to\Atl$, is defined as follows.  Given
-two morphisms $F:X\to Y$ and $F':X'\to Y'$ in $\Atl$, if $F=\mathsf{AtlI}$,
-then $\mathsf{AtlHorSum}(F,F')=F'$, and if $F'=\mathsf{AtlI}$, then
-$\mathsf{AtlHorSum}(F,F')=F$.  Otherwise, let $G:K\to R$ be the
-universal arrow from $\Atl$ to $R=Y\sqcup Y'$ such that there exist morphisms
-$M:X\to K$ and $M':X'\to K$ in $\mathsf{AtlTrav}$ satisfying
-$M_E(0,0)=(1,0)$ and $M'_E(0,0)=(1,1)$.  For the injections
-$Y_i:Y\to R$ and $Y'_i:Y'\to R$, these satisfy
-$G\circ M\cong Y_i\circ F$ and $G\circ M'\cong Y'_i\circ F'$.
-Finally, $\mathsf{AtlHorSum}(F,F')$ is obtained by precomposing $G$ with
-origin $X\sqcup X'$ in $\mathsf{AtlTrap}$.
+$\mathsf{AtlHorSum}:\mathsf{AtlMergeNF}\times\mathsf{AtlMergeNF}
+\to\mathsf{AtlMergeNF}$, has object action
+\[
+  \mathsf{AtlHorSum}(X,X')=\mathsf{AtlMerge}(X,X').
+\]
+Here $\mathsf{AtlMergeNF}$ is the finite tagged normal form for iterated
+merges of atlas objects; its empty form represents $\mathsf{AtlI}$.  This
+normalization changes no atlas data and asserts no coproduct universal
+property.  Given stable traversals $F:X\to Y$ and $F':X'\to Y'$, horizontal
+sum preserves the left and right tags and applies $F$ and $F'$ componentwise.
+Stability fixes the common origin, so this arrow action is again a stable
+atlas traversal.  Thus atlas merge retains the data, while horizontal sum
+specifies how each tagged side may be used.
 \end{definition}
 %%-/
-
-/-- Implementation note: the universal construction is represented by flat
-finite families of atlases completed along the spine.  Keeping this note out
-of the manuscript block ensures that the compiled definition remains the one
-stated in `datra.md`. -/
-abbrev AtlHor := OmegaAtlFamily
-
-def AtlHorSum : CategoryTheory.Functor (AtlHor × AtlHor) AtlHor :=
-  omegaFamilyTensor
-
-/-- Implementation note: on arrows, horizontal sum performs the simultaneous
-precomposition from the two summands of the source.  The two cases below are
-the formal counterparts of the canonical inclusions of `X` and `X'` into the
-origin `X ⊔ X'` in the manuscript's universal-arrow presentation. -/
-theorem AtlHorSum_map {X X' Y Y' : AtlHor} (F : X ⟶ Y) (F' : X' ⟶ Y') :
-    AtlHorSum.map ((F, F') : (X, X') ⟶ (Y, Y')) =
-      omegaFamilyTensorHom F F' := rfl
 
 /-%%
 \begin{lemma}[Horizontal Lemma]
 The Atlas Horizontal Sum Bifunctor $\mathsf{AtlHorSum}$ exists.
 
-\emph{Proof sketch.}  The cases $F=\mathsf{AtlI}$ or
-$F'=\mathsf{AtlI}$ are trivial.  Otherwise, for $F:X\to Y$ and
-$F':X'\to Y'$, let $T:\Atl$, let $R=Y\sqcup Y'$, and let $G:T\to R$,
-where
-\[
-  |T|=\max(|X|,|X'|)+1.
-\]
-Set $T_G(0,0)=\Ex(X)\sqcup\Ex(X')$,
-$R_G(0,0)=\Ex(Y)\sqcup\Ex(Y')$, and let $G_{A,(0,0)}$ be the induced
-monomorphism.  For each positive integer $m$, set
-$T_H(m)=X_H(m-1)\sqcup X'_H(m-1)$.  For $n\in|A_P(m)|$, if $n<M(m)$,
-put
-\[
-  T_G(m,n)=X_G(m-1,n),\qquad
-  G_{A,(m,n)}=F_{A,(m-1,n)};
-\]
-otherwise put
-\[
-  T_G(m,n)=X'_G\bigl(m-1,n-|X_H(m-1)|\bigr),
-\]
-and
-\[
-  G_{A,(m,n)}=F'_{A,\left(m-1,n-|X_H(m-1)|\right)}.
-\]
-This defines $G$, which is initial among solutions.
+\emph{Proof.}  Identity arrows act identically on every tag, composition
+holds componentwise, and every component arrow is required to lie in
+$\mathsf{AtlTras}$.  The tagged normal form supplies the associator,
+unitors, and braider by reassociation, deletion of the empty tag family, and
+tag swapping, respectively.
 \end{lemma}
 %%-/
-
-theorem horizontalLemma : Nonempty (SymmetricCategory AtlHor) :=
-  ⟨inferInstance⟩
 
 /-%%
 \begin{definition}[The Atlas Braider]
 The \textbf{Atlas Braider}
 $\mathsf{AtlBrd}_{F,F'}:\mathsf{AtlHorSum}(F,F')\to
-\mathsf{AtlHorSum}(F',F)$ is defined as follows.  If
-$F=\mathsf{AtlI}$ or $F'=\mathsf{AtlI}$, then
-$\mathsf{AtlBrd}_{F,F'}=\id$.  Otherwise, let
-$R=\mathsf{AtlHorSum}(F,F')$, and let $G:H\to R$ be the universal arrow
-from $\mathsf{AtlTrap}$ to $R$ satisfying
-$G_E(1,0)=(1,1)$ and $G_E(1,1)=(1,0)$.  Then
-$\mathsf{AtlBrd}_{F,F'}=G^{-1}$, and
+\mathsf{AtlHorSum}(F',F)$ swaps the left and right component tags.  Hence
 $\mathsf{AtlBrd}_{F,F'}\circ\mathsf{AtlBrd}_{F',F}=\id$.
 \end{definition}
 %%-/
-
-def AtlBrd (X Y : AtlHor) :
-    AtlHorSum.obj (X, Y) ≅ AtlHorSum.obj (Y, X) :=
-  omegaFamilyBraiding X Y
 
 /-%%
 \begin{definition}[The Atlas Associator]
@@ -2664,294 +3774,228 @@ The \textbf{Atlas Associator}, denoted
   \longrightarrow
   \mathsf{AtlHorSum}(F,\mathsf{AtlHorSum}(F',F'')),
 \]
-is defined as follows.  If $F=\mathsf{AtlI}$, $F'=\mathsf{AtlI}$, or
-$F''=\mathsf{AtlI}$, then $\mathsf{AtlAsoc}_{F,F',F''}=\id$.
-Otherwise, let
-$R=\mathsf{AtlHorSum}(\mathsf{AtlHorSum}(F,F'),F'')$, and let
-$G:H\to R$ be the universal arrow from $\mathsf{AtlTrap}$ to $R$ such
-that $G_E(2,0)=(1,0)$.  Suppose also that there exists a morphism
-$G':\mathsf{AtlHorSum}(F',F'')\to H$ in $\mathsf{AtlTrav}$ satisfying
-$G'_E(0,0)=(1,1)$.  The inverse of $G$ is analogous.  Finally,
-$\mathsf{AtlAsoc}$ is obtained by flattening $G$.
+flattens the nested tagged normal form and retags its three sides using the
+canonical reassociation $((x+y)+z)\leftrightarrow(x+(y+z))$.  Its data
+component is the matching reassociation of the three extent summands.
 \end{definition}
 %%-/
-
-def AtlAsoc (X Y Z : AtlHor) :
-    AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
-      AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
-  omegaFamilyAssociator X Y Z
-
-/-- Flattening the universal arrow introduces no morphism inside an atlas: it
-only reassociates the three summand indices, and every component map is an
-identity.  This is the implementation-level content of the final sentence in
-the manuscript's definition of `AtlAsoc`. -/
-theorem AtlAsoc_component (X Y Z : AtlHor)
-    (i : (AtlHorSum.obj (AtlHorSum.obj (X, Y), Z)).Index) :
-    HEq ((AtlAsoc X Y Z).hom.component i)
-      (𝟙 ((AtlHorSum.obj (AtlHorSum.obj (X, Y), Z)).component i)) := by
-  rcases i with (i | j) | k <;> exact HEq.rfl
 
 /-%%
 \begin{definition}[The Atlas Unitors]
 The \textbf{Atlas Left Unitor}
 $\mathsf{Lu}:\mathsf{AtlHorSum}(\mathsf{AtlI},F)\to F$ and the
 \textbf{Atlas Right Unitor}
-$\mathsf{Ru}:\mathsf{AtlHorSum}(F,\mathsf{AtlI})\to F$ are given by
-$\mathsf{Lu}=\id$ and $\mathsf{Ru}=\id$.
+$\mathsf{Ru}:\mathsf{AtlHorSum}(F,\mathsf{AtlI})\to F$ remove the empty
+tag family.  No nonempty atlas page or datum is removed.
 \end{definition}
 %%-/
 
-/-- The atlas left unitor, with the standard source `I ⊗ X`. -/
-def AtlLu (X : AtlHor) : AtlHorSum.obj (omegaFamilyUnit, X) ≅ X :=
-  omegaFamilyLeftUnitor X
-
-/-- The atlas right unitor, with the standard source `X ⊗ I`. -/
-def AtlRu (X : AtlHor) : AtlHorSum.obj (X, omegaFamilyUnit) ≅ X :=
-  omegaFamilyRightUnitor X
-
-instance : SymmetricCategory OmegaAtlFamilyᵒᵖ where
+instance : SymmetricCategory StableAtlasFamilyᵒᵖ where
   symmetry X Y := by
     apply Quiver.Hom.unop_inj
     simp
 
-/-! The completed presheaf category on which Day convolution is formed.  The
-all-objects full subcategory is deliberate: it gives the Day convolution a
-fresh monoidal instance, distinct from the pointwise cartesian monoidal
-structure that the raw functor category already carries. -/
-abbrev OmegaPresheaf :=
-  CategoryTheory.Functor OmegaAtlFamilyᵒᵖ (Type 3)
-
-def IsOmegaDaTra : ObjectProperty OmegaPresheaf := fun _ => True
-
-abbrev OmegaDaTra := IsOmegaDaTra.FullSubcategory
-
-abbrev omegaDaTraInc : CategoryTheory.Functor OmegaDaTra OmegaPresheaf :=
-  IsOmegaDaTra.ι
-
-theorem omegaDaTraInc_essImage (F : OmegaPresheaf) :
-    omegaDaTraInc.essImage F :=
+theorem daTratInc_essImage (F : DaTratPresheaf) :
+    DaTratInc.essImage F :=
   ⟨⟨F, trivial⟩, ⟨Iso.refl _⟩⟩
 
-instance omegaPreservesTensorRightForTensor (v : Type 3)
-    (d : OmegaAtlFamilyᵒᵖ) :
+instance daTratPreservesTensorRightForTensor (v : Type 3)
+    (d : StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
-      (CostructuredArrow (MonoidalCategory.tensor OmegaAtlFamilyᵒᵖ) d)
+      (CostructuredArrow (MonoidalCategory.tensor StableAtlasFamilyᵒᵖ) d)
       (MonoidalCategory.tensorRight v) :=
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-instance omegaPreservesTensorRightForUnit (v : Type 3)
-    (d : OmegaAtlFamilyᵒᵖ) :
-    PreservesColimitsOfShape
-      (CostructuredArrow
-        (CategoryTheory.Functor.fromPUnit
-          (MonoidalCategory.tensorUnit OmegaAtlFamilyᵒᵖ)) d)
-      (MonoidalCategory.tensorRight v) :=
-  preservesColimitsOfShape_of_natIso
-    (BraidedCategory.tensorLeftIsoTensorRight v)
-
-instance omegaPreservesTensorRightForUnitProduct (v : Type 3)
-    (d : OmegaAtlFamilyᵒᵖ × OmegaAtlFamilyᵒᵖ) :
+instance daTratPreservesTensorRightForUnit (v : Type 3)
+    (d : StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
       (CostructuredArrow
-        ((CategoryTheory.Functor.id OmegaAtlFamilyᵒᵖ).prod
-          (CategoryTheory.Functor.fromPUnit
-            (MonoidalCategory.tensorUnit OmegaAtlFamilyᵒᵖ))) d)
+        (Functor.fromPUnit
+          (MonoidalCategory.tensorUnit StableAtlasFamilyᵒᵖ)) d)
       (MonoidalCategory.tensorRight v) :=
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-instance omegaPreservesTensorRightForTensorProduct (v : Type 3)
-    (d : OmegaAtlFamilyᵒᵖ × OmegaAtlFamilyᵒᵖ) :
+instance daTratPreservesTensorRightForUnitProduct (v : Type 3)
+    (d : StableAtlasFamilyᵒᵖ × StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
       (CostructuredArrow
-        ((MonoidalCategory.tensor OmegaAtlFamilyᵒᵖ).prod
-          (CategoryTheory.Functor.id OmegaAtlFamilyᵒᵖ)) d)
+        ((Functor.id StableAtlasFamilyᵒᵖ).prod
+          (Functor.fromPUnit
+            (MonoidalCategory.tensorUnit StableAtlasFamilyᵒᵖ))) d)
       (MonoidalCategory.tensorRight v) :=
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-noncomputable def omegaDaTraMonoidal : MonoidalCategory OmegaDaTra :=
-  MonoidalCategory.monoidalOfHasDayConvolutions omegaDaTraInc
-    (ObjectProperty.fullyFaithfulι IsOmegaDaTra)
-    (fun _ _ => omegaDaTraInc_essImage _)
-    (omegaDaTraInc_essImage _)
+instance daTratPreservesTensorRightForTensorProduct (v : Type 3)
+    (d : StableAtlasFamilyᵒᵖ × StableAtlasFamilyᵒᵖ) :
+    PreservesColimitsOfShape
+      (CostructuredArrow
+        ((MonoidalCategory.tensor StableAtlasFamilyᵒᵖ).prod
+          (Functor.id StableAtlasFamilyᵒᵖ)) d)
+      (MonoidalCategory.tensorRight v) :=
+  preservesColimitsOfShape_of_natIso
+    (BraidedCategory.tensorLeftIsoTensorRight v)
 
-noncomputable instance : MonoidalCategory OmegaDaTra := omegaDaTraMonoidal
+noncomputable def daTratMonoidal : MonoidalCategory DaTrat :=
+  MonoidalCategory.monoidalOfHasDayConvolutions DaTratInc
+    (ObjectProperty.fullyFaithfulι IsDataTransition)
+    (fun _ _ => daTratInc_essImage _)
+    (daTratInc_essImage _)
 
-noncomputable instance omegaDaTraLawful :
+noncomputable instance : MonoidalCategory DaTrat := daTratMonoidal
+
+noncomputable instance daTratLawful :
     MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct
-      OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra :=
+      StableAtlasFamilyᵒᵖ (Type 3) DaTrat :=
   MonoidalCategory.lawfulDayConvolutionMonoidalCategoryStructOfHasDayConvolutions
-    omegaDaTraInc (ObjectProperty.fullyFaithfulι IsOmegaDaTra)
-    (fun _ _ => omegaDaTraInc_essImage _)
-    (omegaDaTraInc_essImage _)
+    DaTratInc (ObjectProperty.fullyFaithfulι IsDataTransition)
+    (fun _ _ => daTratInc_essImage _)
+    (daTratInc_essImage _)
 
-noncomputable instance omegaDayConvolution (F G : OmegaDaTra) :
-    MonoidalCategory.DayConvolution
-      (omegaDaTraInc.obj F) (omegaDaTraInc.obj G) :=
+noncomputable instance daTratDayConvolution (F G : DaTrat) :
+    MonoidalCategory.DayConvolution (DaTratInc.obj F) (DaTratInc.obj G) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution
-    OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G
+    StableAtlasFamilyᵒᵖ (Type 3) DaTrat F G
 
-noncomputable instance omegaDayConvolutionRightNested
-    (F G H : OmegaDaTra) :
-    MonoidalCategory.DayConvolution (omegaDaTraInc.obj F)
+noncomputable instance daTratDayConvolutionRightNested (F G H : DaTrat) :
+    MonoidalCategory.DayConvolution (DaTratInc.obj F)
       (MonoidalCategory.DayConvolution.convolution
-        (omegaDaTraInc.obj G) (omegaDaTraInc.obj H)) :=
+        (DaTratInc.obj G) (DaTratInc.obj H)) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution₂
-    OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G H
+    StableAtlasFamilyᵒᵖ (Type 3) DaTrat F G H
 
-noncomputable instance omegaDayConvolutionLeftNested
-    (F G H : OmegaDaTra) :
+noncomputable instance daTratDayConvolutionLeftNested (F G H : DaTrat) :
     MonoidalCategory.DayConvolution
       (MonoidalCategory.DayConvolution.convolution
-        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G))
-      (omegaDaTraInc.obj H) :=
+        (DaTratInc.obj F) (DaTratInc.obj G))
+      (DaTratInc.obj H) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution₂'
-    OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G H
+    StableAtlasFamilyᵒᵖ (Type 3) DaTrat F G H
 
-noncomputable def omegaDaTraBraiding (F G : OmegaDaTra) :
+noncomputable def daTratBraiding (F G : DaTrat) :
     MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F := by
-  exact (ObjectProperty.fullyFaithfulι IsOmegaDaTra).preimageIso
+  exact (ObjectProperty.fullyFaithfulι IsDataTransition).preimageIso
     (MonoidalCategory.DayConvolution.braiding
-      (omegaDaTraInc.obj F) (omegaDaTraInc.obj G))
+      (DaTratInc.obj F) (DaTratInc.obj G))
 
-theorem omegaDaTraInc_map_braiding_hom (F G : OmegaDaTra) :
-    omegaDaTraInc.map (omegaDaTraBraiding F G).hom =
+theorem daTratInc_map_braiding_hom (F G : DaTrat) :
+    DaTratInc.map (daTratBraiding F G).hom =
       (MonoidalCategory.DayConvolution.braiding
-        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)).hom := by
-  exact (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_preimage _
+        (DaTratInc.obj F) (DaTratInc.obj G)).hom := by
+  exact (ObjectProperty.fullyFaithfulι IsDataTransition).map_preimage _
 
-theorem omegaDaTraInc_map_braiding_inv (F G : OmegaDaTra) :
-    omegaDaTraInc.map (omegaDaTraBraiding F G).inv =
-      (MonoidalCategory.DayConvolution.braiding
-        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)).inv := by
-  exact (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_preimage _
-
-theorem omegaDaTraInc_map_tensorHom
-    {F₁ F₂ G₁ G₂ : OmegaDaTra}
+theorem daTratInc_map_tensorHom {F₁ F₂ G₁ G₂ : DaTrat}
     (f : F₁ ⟶ F₂) (g : G₁ ⟶ G₂) :
-    omegaDaTraInc.map (MonoidalCategory.tensorHom f g) =
+    DaTratInc.map (MonoidalCategory.tensorHom f g) =
       MonoidalCategory.DayConvolution.map
-        (omegaDaTraInc.map f) (omegaDaTraInc.map g) := by
-  simpa [omegaDaTraInc, omegaDaTraLawful] using
+        (DaTratInc.map f) (DaTratInc.map g) := by
+  simpa [DaTratInc, daTratLawful] using
     (MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.ι_map_tensorHom_hom_eq_tensorHom
-        OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra f g)
+      StableAtlasFamilyᵒᵖ (Type 3) DaTrat f g)
 
-theorem omegaDaTraInc_map_associator_hom (F G H : OmegaDaTra) :
-    omegaDaTraInc.map (MonoidalCategory.associator F G H).hom =
+theorem daTratInc_map_associator_hom (F G H : DaTrat) :
+    DaTratInc.map (MonoidalCategory.associator F G H).hom =
       (MonoidalCategory.DayConvolution.associator
-        (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)
-        (omegaDaTraInc.obj H)).hom := by
-  simpa [omegaDaTraInc, omegaDaTraLawful] using
+        (DaTratInc.obj F) (DaTratInc.obj G) (DaTratInc.obj H)).hom := by
+  simpa [DaTratInc, daTratLawful] using
     (MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.ι_map_associator_hom_eq_associator_hom
-        OmegaAtlFamilyᵒᵖ (Type 3) OmegaDaTra F G H)
+      StableAtlasFamilyᵒᵖ (Type 3) DaTrat F G H)
 
-noncomputable instance omegaDaTraBraided : BraidedCategory OmegaDaTra where
-  braiding := omegaDaTraBraiding
+noncomputable instance daTratBraided : BraidedCategory DaTrat where
+  braiding := daTratBraiding
   braiding_naturality_right := fun X {_ _} f => by
-    rw [← MonoidalCategory.id_tensorHom,
-      ← MonoidalCategory.tensorHom_id]
-    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
-    simp only [Functor.map_comp,
-      omegaDaTraInc_map_tensorHom, omegaDaTraInc_map_braiding_hom]
+    rw [← MonoidalCategory.id_tensorHom, ← MonoidalCategory.tensorHom_id]
+    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    simp only [Functor.map_comp, daTratInc_map_tensorHom,
+      daTratInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_right
-      (omegaDaTraInc.obj X) (omegaDaTraInc.map f)
+      (DaTratInc.obj X) (DaTratInc.map f)
   braiding_naturality_left := fun {_ _} f Z => by
-    rw [← MonoidalCategory.tensorHom_id,
-      ← MonoidalCategory.id_tensorHom]
-    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
-    simp only [Functor.map_comp,
-      omegaDaTraInc_map_tensorHom, omegaDaTraInc_map_braiding_hom]
+    rw [← MonoidalCategory.tensorHom_id, ← MonoidalCategory.id_tensorHom]
+    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    simp only [Functor.map_comp, daTratInc_map_tensorHom,
+      daTratInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_left
-      (omegaDaTraInc.map f) (omegaDaTraInc.obj Z)
-  hexagon_forward := by
-    intro X Y Z
-    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
-    simp only [Functor.map_comp,
-      omegaDaTraInc_map_associator_hom,
-      omegaDaTraInc_map_braiding_hom]
-    rw [← MonoidalCategory.tensorHom_id,
-      ← MonoidalCategory.id_tensorHom]
-    simp only [omegaDaTraInc_map_tensorHom]
+      (DaTratInc.map f) (DaTratInc.obj Z)
+  hexagon_forward := fun X Y Z => by
+    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    simp only [Functor.map_comp, daTratInc_map_associator_hom,
+      daTratInc_map_braiding_hom]
+    rw [← MonoidalCategory.tensorHom_id, ← MonoidalCategory.id_tensorHom]
+    simp only [daTratInc_map_tensorHom]
     exact MonoidalCategory.DayConvolution.hexagon_forward
-      (omegaDaTraInc.obj X) (omegaDaTraInc.obj Y) (omegaDaTraInc.obj Z)
-  hexagon_reverse := by
-    intro X Y Z
-    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
-    simp only [Functor.map_comp,
-      omegaDaTraInc_map_braiding_hom]
-    rw [← MonoidalCategory.id_tensorHom,
-      ← MonoidalCategory.tensorHom_id]
-    simp only [omegaDaTraInc_map_tensorHom]
+      (DaTratInc.obj X) (DaTratInc.obj Y) (DaTratInc.obj Z)
+  hexagon_reverse := fun X Y Z => by
+    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    simp only [Functor.map_comp, daTratInc_map_braiding_hom]
+    rw [← MonoidalCategory.id_tensorHom, ← MonoidalCategory.tensorHom_id]
+    simp only [daTratInc_map_tensorHom]
     exact MonoidalCategory.DayConvolution.hexagon_reverse
-      (omegaDaTraInc.obj X) (omegaDaTraInc.obj Y) (omegaDaTraInc.obj Z)
+      (DaTratInc.obj X) (DaTratInc.obj Y) (DaTratInc.obj Z)
 
 set_option maxHeartbeats 2400000 in
-noncomputable instance : SymmetricCategory OmegaDaTra where
+noncomputable instance : SymmetricCategory DaTrat where
   symmetry F G := by
-    apply (ObjectProperty.fullyFaithfulι IsOmegaDaTra).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
     simp only [Functor.map_comp]
     exact MonoidalCategory.DayConvolution.symmetry
-      (omegaDaTraInc.obj F) (omegaDaTraInc.obj G)
+      (DaTratInc.obj F) (DaTratInc.obj G)
 
 /-%%
-\section{Horizontal Data Traversals}
+\section{Horizontal Data Transitions}
 
 \begin{definition}[The Empty Map]
-The \textbf{Empty Map}, denoted $I$, is the Yoneda embedding of the Empty
-Atlas:
+The \textbf{Empty Map}, denoted $I$, is the Day unit represented by the
+empty normalized atlas merge:
 \[
   I=\Yo(\mathsf{AtlI}).
 \]
 \end{definition}
 %%-/
 
-/-- The implementation realizes the manuscript's horizontal site by the flat
-completed atlas category `AtlHor`; `DaTravMon` is its full presheaf category.
-This completion detail is intentionally outside the extracted definition. -/
-abbrev DaTravMon := OmegaDaTra
+/-- `DaTratMon` is definitionally the category of data transitions equipped
+with the Day convolution instance above. -/
+abbrev DaTratMon := DaTrat
 
-noncomputable def I : DaTravMon :=
-  MonoidalCategory.tensorUnit DaTravMon
+noncomputable def I : DaTratMon := MonoidalCategory.tensorUnit DaTratMon
 
-/-- Certificate of the universal property implicit in the notation
-`I = Yo(AtlI)`: under the inclusion into presheaves, `I` is the pointwise left
-Kan extension of the singleton along the inclusion of the horizontal unit. -/
 noncomputable def I_dayConvolutionUnit :
-    MonoidalCategory.DayConvolutionUnit (omegaDaTraInc.obj I) :=
+    MonoidalCategory.DayConvolutionUnit (DaTratInc.obj I) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolutionUnit
-    OmegaAtlFamilyᵒᵖ (Type 3) DaTravMon
+    StableAtlasFamilyᵒᵖ (Type 3) DaTratMon
 
 /-%%
 \begin{definition}[The Horizontal Sum Bifunctor]
 The \textbf{Horizontal Sum Bifunctor}, denoted
-$\mathsf{HorSum}:\mathsf{DaTrav}\times\mathsf{DaTrav}\to
-\mathsf{DaTrav}$, or in infix notation by
-$+_{\!<}:\mathsf{DaTrav}\times\mathsf{DaTrav}\to\mathsf{DaTrav}$,
-is the Day convolution extension of $\mathsf{AtlHorSum}$.
+$\mathsf{HorSum}:\mathsf{DaTrat}\times\mathsf{DaTrat}\to
+\mathsf{DaTrat}$, or in infix notation by
+$+_{\!<}:\mathsf{DaTrat}\times\mathsf{DaTrat}\to\mathsf{DaTrat}$,
+is the Day convolution extension of stable atlas horizontal sum.  Because
+the indexing morphisms are arrows of $\mathsf{AtlTras}$, its result and its
+arrow action land in $\mathsf{DaTrat}$ by construction.
 \end{definition}
 %%-/
 
-noncomputable def HorSum :
-    CategoryTheory.Functor (DaTravMon × DaTravMon) DaTravMon :=
-  MonoidalCategory.tensor DaTravMon
+noncomputable def HorSum : DaTratMon × DaTratMon ⥤ DaTratMon :=
+  MonoidalCategory.tensor DaTratMon
 
 /-%%
-\begin{definition}[The Data Traversal Braider]
-The \textbf{Data Traversal Braider}
+\begin{definition}[The Data Transition Braider]
+The \textbf{Data Transition Braider}
 $\mathsf{Brd}_{F,F'}:F+_{\!<}F'\to F'+_{\!<}F$ is the Day convolution
 extension of $\mathsf{AtlBrd}$.
 \end{definition}
 %%-/
 
-noncomputable def Brd (F G : DaTravMon) :
+noncomputable def Brd (F G : DaTratMon) :
     MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F :=
-  omegaDaTraBraiding F G
+  daTratBraiding F G
 
 /-%%
-\begin{definition}[The Data Traversal Associator]
-The \textbf{Data Traversal Associator}
+\begin{definition}[The Data Transition Associator]
+The \textbf{Data Transition Associator}
 \[
   \mathsf{Asoc}_{F,F',F''}:(F+_{\!<}F')+_{\!<}F''
     \longrightarrow F+_{\!<}(F'+_{\!<}F'')
@@ -2960,49 +4004,42 @@ is the Day convolution extension of $\mathsf{AtlAsoc}$.
 \end{definition}
 %%-/
 
-noncomputable def Asoc (F G H : DaTravMon) :
+noncomputable def Asoc (F G H : DaTratMon) :
     MonoidalCategory.tensorObj (MonoidalCategory.tensorObj F G) H ≅
       MonoidalCategory.tensorObj F (MonoidalCategory.tensorObj G H) :=
   MonoidalCategory.associator F G H
 
 /-%%
-\begin{definition}[The Data Traversal Unitors]
-The \textbf{Data Traversal Left Unitor}
+\begin{definition}[The Data Transition Unitors]
+The \textbf{Data Transition Left Unitor}
 $\mathsf{Lu}:I+_{\!<}F\to F$ and the
-\textbf{Data Traversal Right Unitor}
+\textbf{Data Transition Right Unitor}
 $\mathsf{Ru}:F+_{\!<}I\to F$ are the Day convolution extensions of
 $\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
 \end{definition}
 %%-/
 
-noncomputable def Lu (F : DaTravMon) :
-    MonoidalCategory.tensorObj I F ≅ F :=
-  MonoidalCategory.leftUnitor F
+noncomputable def Lu (F : DaTratMon) :
+    MonoidalCategory.tensorObj I F ≅ F := MonoidalCategory.leftUnitor F
 
-noncomputable def Ru (F : DaTravMon) :
-    MonoidalCategory.tensorObj F I ≅ F :=
-  MonoidalCategory.rightUnitor F
+noncomputable def Ru (F : DaTratMon) :
+    MonoidalCategory.tensorObj F I ≅ F := MonoidalCategory.rightUnitor F
 
 /-%%
-\begin{definition}[The Data Traversal Monoidal Category]
-The \textbf{Data Traversal Monoidal Category}, denoted
-$\mathsf{DaTravMon}$, is
+\begin{definition}[The Data Transition Monoidal Category]
+The \textbf{Data Transition Monoidal Category}, denoted
+$\mathsf{DaTratMon}$, is
 \[
-  \mathsf{DaTravMon}=(\mathsf{DaTrav},+_{\!<},I).
+  \mathsf{DaTratMon}=(\mathsf{DaTrat},+_{\!<},I).
 \]
-The coherence conditions are checked by observing that
-$\mathsf{Brd}$, $\mathsf{Asoc}$, $\mathsf{Lu}$, and $\mathsf{Ru}$ are
-sent to isomorphisms in $\mathsf{DaTra}$.
+Its tensor is Day convolution on the stable atlas merge normal form.  The
+braider, associator, and unitors are induced by retagging that form, so all
+coherence maps remain within data transitions.
 \end{definition}
 %%-/
 
-/-- Unlike the prose's abbreviated "can be checked", the Lean instance above
-contains the naturality, pentagon, triangle, two hexagons, and symmetry proofs
-explicitly. -/
-theorem serenityLemma : Nonempty (SymmetricCategory DaTravMon) :=
+theorem serenityLemma : Nonempty (SymmetricCategory DaTratMon) :=
   ⟨inferInstance⟩
-
-
 end
 
 end Datra
