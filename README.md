@@ -1,6 +1,7 @@
 # Datra
 
-A language for data transformations. Read the [preprint](datra_preprint.pdf). Github repo [here](https://github.com/qualiascript/datra).
+A language for data transformations. Read the [preprint](datra_preprint.pdf).
+GitHub repo [here](https://github.com/qualiascript/datra).
 
 ## Preprint
 
