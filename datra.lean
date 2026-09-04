@@ -1025,7 +1025,7 @@ def AtlTrasToAtlTrav : AtlTras ⥤ AtlTrav :=
 
 def AtlTrasInc : AtlTras ⥤ Atl := AtlTrasToAtlTrav ⋙ AtlTravInc
 
-/-! `StableAtlasFamily` is the merge-normal presentation of stable atlases.
+/-! `StableAtlasFamily` implements atlas federations of stable atlases.
 The empty family is the empty atlas operation, and concatenation retains all
 components without choosing representatives or identifying their data.  Most
 importantly, every component arrow is an arrow of `AtlTras`, so stability is
@@ -1033,16 +1033,16 @@ checked by Lean at the boundary of the horizontal construction. -/
 
 structure StableAtlasFamily where
   Index : Type
-  finiteIndex : Fintype Index
+  countableIndex : Countable Index
   component : Index → AtlTras
 
-attribute [instance] StableAtlasFamily.finiteIndex
+attribute [instance] StableAtlasFamily.countableIndex
 
 structure StableAtlasFamilyHom (X Y : StableAtlasFamily) where
   index : X.Index → Y.Index
   component : ∀ i, X.component i ⟶ Y.component (index i)
 
-/-- Each component of a merge-normal morphism is stable by construction. -/
+/-- Each component of an atlas-federation morphism is stable by construction. -/
 theorem StableAtlasFamilyHom.component_stable {X Y : StableAtlasFamily}
     (f : StableAtlasFamilyHom X Y) (i : X.Index) :
     IsStableTraversal (f.component i).1 :=
@@ -1100,23 +1100,23 @@ theorem StableAtlasFamilyHom.component_comp {X Y Z : StableAtlasFamily}
     (f : X ⟶ Y) (g : Y ⟶ Z) (i : X.Index) :
     (f ≫ g).component i = f.component i ≫ g.component (f.index i) := rfl
 
-/-- An atlas as a single component of the stable merge normal form. -/
+/-- An atlas as a single-component atlas federation. -/
 def stableAtlasAtom (X : AtlTras) : StableAtlasFamily where
   Index := Unit
-  finiteIndex := inferInstance
+  countableIndex := inferInstance
   component := fun _ => X
 
-/-- The normalized empty atlas has no nonempty merge components. -/
+/-- The empty atlas federation has no components. -/
 def stableAtlasUnit : StableAtlasFamily where
   Index := Empty
-  finiteIndex := inferInstance
+  countableIndex := inferInstance
   component := fun i => nomatch i
 
-/-- Normalized atlas merge.  It is disjoint tagged retention of components,
+/-- Federation merge is disjoint tagged retention of components,
 not a categorical coproduct of atlases. -/
 def stableAtlasMerge (X Y : StableAtlasFamily) : StableAtlasFamily where
   Index := Sum X.Index Y.Index
-  finiteIndex := inferInstance
+  countableIndex := inferInstance
   component := Sum.elim X.component Y.component
 
 def stableAtlasMergeHom {X₁ X₂ Y₁ Y₂ : StableAtlasFamily}
@@ -1127,7 +1127,7 @@ def stableAtlasMergeHom {X₁ X₂ Y₁ Y₂ : StableAtlasFamily}
     | .inl i => f.component i
     | .inr j => g.component j
 
-/-- Horizontal sum on stable atlas merge normal forms. -/
+/-- Horizontal sum on atlas federations. -/
 def StableAtlHorSum : StableAtlasFamily × StableAtlasFamily ⥤
     StableAtlasFamily where
   obj X := stableAtlasMerge X.1 X.2
@@ -2177,9 +2177,9 @@ structure Expedition (D : DaTra) extends Navigation D where
 For a wide atlas category $W$, its \textbf{DaTra restriction} is the
 presheaf category $[W^{\mathrm{op}},\Set]$.  Equivalently, a DaTra set is
 restricted by retaining exactly its actions along arrows of $W$.  When a
-horizontal operation is used, its indexing category is first put in the
-finite merge normal form of Section~12; this only makes the structural
-retagging explicit.
+horizontal operation is used, its indexing category is first represented by
+the Atlas Federation of Section~12; this only makes the structural retagging
+explicit.
 \end{definition}
 %%-/
 
@@ -2200,7 +2200,7 @@ indexing category. -/
 def DaTrav.atlTravPShEquiv : DaTrav ≌ AtlTravPSh :=
   CategoryTheory.Equivalence.refl
 
-/-- Presheaves on normalized finite merges of stable atlas traversals. -/
+/-- Presheaves on atlas federations of stable atlas traversals. -/
 abbrev DaTratPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
 
 /-- The all-objects wrapper gives Day convolution its own monoidal structure,
@@ -2255,15 +2255,15 @@ a new singleton page carrying the merged extent, and the two positive-page
 summands remain distinguished.
 \end{definition}
 
-\begin{definition}[Atlas Merge Normal Form]
-An \textbf{atlas merge normal form} is a finite tagged family of atlas
-objects.  The category of these normal forms is denoted
+\begin{definition}[Atlas Federation]
+An \textbf{Atlas Federation} is a countable tagged family of atlas objects.
+The category of Atlas Federations is denoted
 \[
-  \mathsf{AtlMergeNF}.
+  \mathsf{AtlFed}.
 \]
 A morphism consists of a map of tags and, at each source tag, a stable atlas
 traversal to its selected target tag.
-Binary merge is disjoint tagged union of these families.  This presentation
+Federation merge is disjoint tagged union of these families.  This presentation
 retains the data of every input while making the empty merge, reassociation,
 and tag swapping literal.
 \end{definition}
@@ -3692,43 +3692,43 @@ def tallBouquetRightElement (X Y : Atl) (y : Y.tall.E) : (AtlMerge X Y).tall.E :
   rw [right_padded_tallPred]
   exact toLex (Sum.inr y.2)
 
-/-- The normal form used for iterated stable atlas merging. -/
-abbrev AtlMergeNF := StableAtlasFamily
+/-- The category of Atlas Federations used for iterated stable atlas merging. -/
+abbrev AtlFed := StableAtlasFamily
 
-/-- The horizontal bifunctor is normalized merge on objects and applies a
+/-- The horizontal bifunctor is federation merge on objects and applies a
 stable traversal independently to every tagged component on arrows. -/
-def AtlHorSum : AtlMergeNF × AtlMergeNF ⥤ AtlMergeNF := StableAtlHorSum
+def AtlHorSum : AtlFed × AtlFed ⥤ AtlFed := StableAtlHorSum
 
-def AtlBrd (X Y : AtlMergeNF) :
+def AtlBrd (X Y : AtlFed) :
     AtlHorSum.obj (X, Y) ≅ AtlHorSum.obj (Y, X) :=
   stableAtlasBraiding X Y
 
-def AtlAsoc (X Y Z : AtlMergeNF) :
+def AtlAsoc (X Y Z : AtlFed) :
     AtlHorSum.obj (AtlHorSum.obj (X, Y), Z) ≅
       AtlHorSum.obj (X, AtlHorSum.obj (Y, Z)) :=
   stableAtlasAssociator X Y Z
 
-def AtlLu (X : AtlMergeNF) : AtlHorSum.obj (stableAtlasUnit, X) ≅ X :=
+def AtlLu (X : AtlFed) : AtlHorSum.obj (stableAtlasUnit, X) ≅ X :=
   stableAtlasLeftUnitor X
 
-def AtlRu (X : AtlMergeNF) : AtlHorSum.obj (X, stableAtlasUnit) ≅ X :=
+def AtlRu (X : AtlFed) : AtlHorSum.obj (X, stableAtlasUnit) ≅ X :=
   stableAtlasRightUnitor X
 
-theorem horizontalLemma : Nonempty (SymmetricCategory AtlMergeNF) :=
+theorem horizontalLemma : Nonempty (SymmetricCategory AtlFed) :=
   ⟨inferInstance⟩
 
 /-%%
 \begin{definition}[The Atlas Horizontal Sum Bifunctor]
 The \textbf{Atlas Horizontal Sum Bifunctor}, denoted
-$\mathsf{AtlHorSum}:\mathsf{AtlMergeNF}\times\mathsf{AtlMergeNF}
-\to\mathsf{AtlMergeNF}$, has object action
+$\mathsf{AtlHorSum}:\mathsf{AtlFed}\times\mathsf{AtlFed}
+\to\mathsf{AtlFed}$, has object action
 \[
   \mathsf{AtlHorSum}(X,X')=\mathsf{AtlMerge}(X,X').
 \]
-Here $\mathsf{AtlMergeNF}$ is the finite tagged normal form for iterated
-merges of atlas objects; its empty form represents $\mathsf{AtlI}$.  This
-normalization changes no atlas data and asserts no coproduct universal
-property.  Given stable traversals $F:X\to Y$ and $F':X'\to Y'$, horizontal
+Here $\mathsf{AtlFed}$ is the category of Atlas Federations; its empty
+federation represents $\mathsf{AtlI}$.  Passing to a federation changes no
+atlas data and asserts no coproduct universal property.  Given stable
+traversals $F:X\to Y$ and $F':X'\to Y'$, horizontal
 sum preserves the left and right tags and applies $F$ and $F'$ componentwise.
 Stability fixes the common origin, so this arrow action is again a stable
 atlas traversal.  Thus atlas merge retains the data, while horizontal sum
@@ -3742,7 +3742,7 @@ The Atlas Horizontal Sum Bifunctor $\mathsf{AtlHorSum}$ exists.
 
 \emph{Proof.}  Identity arrows act identically on every tag, composition
 holds componentwise, and every component arrow is required to lie in
-$\mathsf{AtlTras}$.  The tagged normal form supplies the associator,
+$\mathsf{AtlTras}$.  The federation structure supplies the associator,
 unitors, and braider by reassociation, deletion of the empty tag family, and
 tag swapping, respectively.
 \end{lemma}
@@ -3766,7 +3766,7 @@ The \textbf{Atlas Associator}, denoted
   \longrightarrow
   \mathsf{AtlHorSum}(F,\mathsf{AtlHorSum}(F',F'')),
 \]
-flattens the nested tagged normal form and retags its three sides using the
+flattens the nested federation and retags its three sides using the
 canonical reassociation $((x+y)+z)\leftrightarrow(x+(y+z))$.  Its data
 component is the matching reassociation of the three extent summands.
 \end{definition}
@@ -3940,15 +3940,15 @@ noncomputable instance : SymmetricCategory DaTrat where
 
 \begin{definition}[Stable Data Transformations]
 The \textbf{Category of Stable Data Transformations}, denoted
-$\mathsf{StaDaTra}$, is the presheaf category on normalized finite atlas
-merges whose component arrows lie in $\mathsf{AtlTras}$.  Thus stability is
+$\mathsf{StaDaTra}$, is the presheaf category on Atlas Federations whose
+component arrows lie in $\mathsf{AtlTras}$.  Thus stability is
 part of the indexing category, rather than an additional condition imposed
 after horizontal composition.
 \end{definition}
 
 \begin{definition}[The Empty Map]
 The \textbf{Empty Map}, denoted $I$, is the Day unit represented by the
-empty normalized atlas merge:
+empty Atlas Federation:
 \[
   I=\Yo(\mathsf{AtlI}).
 \]
@@ -4032,7 +4032,7 @@ $\mathsf{StaDaTraMon}$, is
 \[
   \mathsf{StaDaTraMon}=(\mathsf{StaDaTra},+_{\!<},I).
 \]
-Its tensor is Day convolution on the stable atlas merge normal form.  The
+Its tensor is Day convolution on the Atlas Federation.  The
 braider, associator, and unitors are induced by retagging that form, so all
 coherence maps remain within stable data transformations.
 \end{definition}
