@@ -2256,7 +2256,7 @@ traversal to its selected target tag.
 
 \begin{definition}[The Empty Atlas]
 The \textbf{Empty Atlas} is
-$\mathsf{AtlI}=\mathsf{DomInc}(0)$, also viewed as an Atlas Federation.
+$\mathsf{AtlI}=\mathsf{DomInc}(\varnothing)$, also viewed as an Atlas Federation.
 \end{definition}
 %%-/
 
