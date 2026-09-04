@@ -2224,14 +2224,6 @@ The \textbf{Category of Data Traversals}, denoted $\mathsf{DaTrav}$, is
 the presheaf category $[\mathsf{AtlTrav}^{\mathrm{op}},\Set]$.
 \end{definition}
 
-\begin{definition}[The Category of Data Transitions]
-The \textbf{Category of Data Transitions}, denoted $\mathsf{DaTrat}$, is
-the presheaf category on normalized finite atlas merges whose component
-arrows lie in $\mathsf{AtlTras}$.  Thus stability is part of the indexing
-category, rather than an additional condition imposed after horizontal
-composition.
-\end{definition}
-
 \begin{definition}[Data Transformation Maps]
 The \textbf{Category of Data Transformation Maps}, denoted
 $\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
@@ -3944,7 +3936,15 @@ noncomputable instance : SymmetricCategory DaTrat where
       (DaTratInc.obj F) (DaTratInc.obj G)
 
 /-%%
-\section{Horizontal Data Transitions}
+\section{Stable Data Transformations}
+
+\begin{definition}[Stable Data Transformations]
+The \textbf{Category of Stable Data Transformations}, denoted
+$\mathsf{StaDaTra}$, is the presheaf category on normalized finite atlas
+merges whose component arrows lie in $\mathsf{AtlTras}$.  Thus stability is
+part of the indexing category, rather than an additional condition imposed
+after horizontal composition.
+\end{definition}
 
 \begin{definition}[The Empty Map]
 The \textbf{Empty Map}, denoted $I$, is the Day unit represented by the
@@ -3969,12 +3969,12 @@ noncomputable def I_dayConvolutionUnit :
 /-%%
 \begin{definition}[The Horizontal Sum Bifunctor]
 The \textbf{Horizontal Sum Bifunctor}, denoted
-$\mathsf{HorSum}:\mathsf{DaTrat}\times\mathsf{DaTrat}\to
-\mathsf{DaTrat}$, or in infix notation by
-$+_{\!<}:\mathsf{DaTrat}\times\mathsf{DaTrat}\to\mathsf{DaTrat}$,
+$\mathsf{HorSum}:\mathsf{StaDaTra}\times\mathsf{StaDaTra}\to
+\mathsf{StaDaTra}$, or in infix notation by
+$+_{\!<}:\mathsf{StaDaTra}\times\mathsf{StaDaTra}\to\mathsf{StaDaTra}$,
 is the Day convolution extension of stable atlas horizontal sum.  Because
 the indexing morphisms are arrows of $\mathsf{AtlTras}$, its result and its
-arrow action land in $\mathsf{DaTrat}$ by construction.
+arrow action land in $\mathsf{StaDaTra}$ by construction.
 \end{definition}
 %%-/
 
@@ -4030,7 +4030,7 @@ noncomputable def Ru (F : DaTratMon) :
 The \textbf{Data Transition Monoidal Category}, denoted
 $\mathsf{DaTratMon}$, is
 \[
-  \mathsf{DaTratMon}=(\mathsf{DaTrat},+_{\!<},I).
+  \mathsf{DaTratMon}=(\mathsf{StaDaTra},+_{\!<},I).
 \]
 Its tensor is Day convolution on the stable atlas merge normal form.  The
 braider, associator, and unitors are induced by retagging that form, so all
