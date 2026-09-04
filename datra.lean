@@ -2205,13 +2205,13 @@ abbrev DaTratPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
 
 /-- The all-objects wrapper gives Day convolution its own monoidal structure,
 separate from the pointwise cartesian structure on a raw functor category. -/
-def IsDataTransition : ObjectProperty DaTratPresheaf := fun _ => True
+def IsStableDataTransformation : ObjectProperty DaTratPresheaf := fun _ => True
 
-/-- Data transitions: presheaves whose indexing arrows are stable atlas
+/-- Stable data transformations: presheaves whose indexing arrows are stable atlas
 traversals.  Stability is therefore enforced by the source category. -/
-abbrev DaTrat := IsDataTransition.FullSubcategory
+abbrev DaTrat := IsStableDataTransformation.FullSubcategory
 
-abbrev DaTratInc : DaTrat ⥤ DaTratPresheaf := IsDataTransition.ι
+abbrev DaTratInc : DaTrat ⥤ DaTratPresheaf := IsStableDataTransformation.ι
 
 /-%%
 \begin{definition}[The Category of Data Transposals]
@@ -3832,7 +3832,7 @@ instance daTratPreservesTensorRightForTensorProduct (v : Type 3)
 
 noncomputable def daTratMonoidal : MonoidalCategory DaTrat :=
   MonoidalCategory.monoidalOfHasDayConvolutions DaTratInc
-    (ObjectProperty.fullyFaithfulι IsDataTransition)
+    (ObjectProperty.fullyFaithfulι IsStableDataTransformation)
     (fun _ _ => daTratInc_essImage _)
     (daTratInc_essImage _)
 
@@ -3842,7 +3842,7 @@ noncomputable instance daTratLawful :
     MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct
       StableAtlasFamilyᵒᵖ (Type 3) DaTrat :=
   MonoidalCategory.lawfulDayConvolutionMonoidalCategoryStructOfHasDayConvolutions
-    DaTratInc (ObjectProperty.fullyFaithfulι IsDataTransition)
+    DaTratInc (ObjectProperty.fullyFaithfulι IsStableDataTransformation)
     (fun _ _ => daTratInc_essImage _)
     (daTratInc_essImage _)
 
@@ -3868,7 +3868,7 @@ noncomputable instance daTratDayConvolutionLeftNested (F G H : DaTrat) :
 
 noncomputable def daTratBraiding (F G : DaTrat) :
     MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F := by
-  exact (ObjectProperty.fullyFaithfulι IsDataTransition).preimageIso
+  exact (ObjectProperty.fullyFaithfulι IsStableDataTransformation).preimageIso
     (MonoidalCategory.DayConvolution.braiding
       (DaTratInc.obj F) (DaTratInc.obj G))
 
@@ -3876,7 +3876,7 @@ theorem daTratInc_map_braiding_hom (F G : DaTrat) :
     DaTratInc.map (daTratBraiding F G).hom =
       (MonoidalCategory.DayConvolution.braiding
         (DaTratInc.obj F) (DaTratInc.obj G)).hom := by
-  exact (ObjectProperty.fullyFaithfulι IsDataTransition).map_preimage _
+  exact (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_preimage _
 
 theorem daTratInc_map_tensorHom {F₁ F₂ G₁ G₂ : DaTrat}
     (f : F₁ ⟶ F₂) (g : G₁ ⟶ G₂) :
@@ -3899,20 +3899,20 @@ noncomputable instance daTratBraided : BraidedCategory DaTrat where
   braiding := daTratBraiding
   braiding_naturality_right := fun X {_ _} f => by
     rw [← MonoidalCategory.id_tensorHom, ← MonoidalCategory.tensorHom_id]
-    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
     simp only [Functor.map_comp, daTratInc_map_tensorHom,
       daTratInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_right
       (DaTratInc.obj X) (DaTratInc.map f)
   braiding_naturality_left := fun {_ _} f Z => by
     rw [← MonoidalCategory.tensorHom_id, ← MonoidalCategory.id_tensorHom]
-    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
     simp only [Functor.map_comp, daTratInc_map_tensorHom,
       daTratInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_left
       (DaTratInc.map f) (DaTratInc.obj Z)
   hexagon_forward := fun X Y Z => by
-    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
     simp only [Functor.map_comp, daTratInc_map_associator_hom,
       daTratInc_map_braiding_hom]
     rw [← MonoidalCategory.tensorHom_id, ← MonoidalCategory.id_tensorHom]
@@ -3920,7 +3920,7 @@ noncomputable instance daTratBraided : BraidedCategory DaTrat where
     exact MonoidalCategory.DayConvolution.hexagon_forward
       (DaTratInc.obj X) (DaTratInc.obj Y) (DaTratInc.obj Z)
   hexagon_reverse := fun X Y Z => by
-    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
     simp only [Functor.map_comp, daTratInc_map_braiding_hom]
     rw [← MonoidalCategory.id_tensorHom, ← MonoidalCategory.tensorHom_id]
     simp only [daTratInc_map_tensorHom]
@@ -3930,7 +3930,7 @@ noncomputable instance daTratBraided : BraidedCategory DaTrat where
 set_option maxHeartbeats 2400000 in
 noncomputable instance : SymmetricCategory DaTrat where
   symmetry F G := by
-    apply (ObjectProperty.fullyFaithfulι IsDataTransition).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
     simp only [Functor.map_comp]
     exact MonoidalCategory.DayConvolution.symmetry
       (DaTratInc.obj F) (DaTratInc.obj G)
@@ -3955,7 +3955,7 @@ empty normalized atlas merge:
 \end{definition}
 %%-/
 
-/-- `DaTratMon` is definitionally the category of data transitions equipped
+/-- `DaTratMon` is definitionally the category of stable data transformations equipped
 with the Day convolution instance above. -/
 abbrev DaTratMon := DaTrat
 
@@ -3982,8 +3982,8 @@ noncomputable def HorSum : DaTratMon × DaTratMon ⥤ DaTratMon :=
   MonoidalCategory.tensor DaTratMon
 
 /-%%
-\begin{definition}[The Data Transition Braider]
-The \textbf{Data Transition Braider}
+\begin{definition}[The Stable Data Transformation Braider]
+The \textbf{Stable Data Transformation Braider}
 $\mathsf{Brd}_{F,F'}:F+_{\!<}F'\to F'+_{\!<}F$ is the Day convolution
 extension of $\mathsf{AtlBrd}$.
 \end{definition}
@@ -3994,8 +3994,8 @@ noncomputable def Brd (F G : DaTratMon) :
   daTratBraiding F G
 
 /-%%
-\begin{definition}[The Data Transition Associator]
-The \textbf{Data Transition Associator}
+\begin{definition}[The Stable Data Transformation Associator]
+The \textbf{Stable Data Transformation Associator}
 \[
   \mathsf{Asoc}_{F,F',F''}:(F+_{\!<}F')+_{\!<}F''
     \longrightarrow F+_{\!<}(F'+_{\!<}F'')
@@ -4010,10 +4010,10 @@ noncomputable def Asoc (F G H : DaTratMon) :
   MonoidalCategory.associator F G H
 
 /-%%
-\begin{definition}[The Data Transition Unitors]
-The \textbf{Data Transition Left Unitor}
+\begin{definition}[The Stable Data Transformation Unitors]
+The \textbf{Stable Data Transformation Left Unitor}
 $\mathsf{Lu}:I+_{\!<}F\to F$ and the
-\textbf{Data Transition Right Unitor}
+\textbf{Stable Data Transformation Right Unitor}
 $\mathsf{Ru}:F+_{\!<}I\to F$ are the Day convolution extensions of
 $\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
 \end{definition}
@@ -4026,15 +4026,15 @@ noncomputable def Ru (F : DaTratMon) :
     MonoidalCategory.tensorObj F I ≅ F := MonoidalCategory.rightUnitor F
 
 /-%%
-\begin{definition}[The Data Transition Monoidal Category]
-The \textbf{Data Transition Monoidal Category}, denoted
-$\mathsf{DaTratMon}$, is
+\begin{definition}[The Stable Data Transformations Monoidal Category]
+The \textbf{Stable Data Transformations Monoidal Category}, denoted
+$\mathsf{StaDaTraMon}$, is
 \[
-  \mathsf{DaTratMon}=(\mathsf{StaDaTra},+_{\!<},I).
+  \mathsf{StaDaTraMon}=(\mathsf{StaDaTra},+_{\!<},I).
 \]
 Its tensor is Day convolution on the stable atlas merge normal form.  The
 braider, associator, and unitors are induced by retagging that form, so all
-coherence maps remain within data transitions.
+coherence maps remain within stable data transformations.
 \end{definition}
 %%-/
 
