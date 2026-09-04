@@ -1004,7 +1004,7 @@ by $F$.
 
 \begin{definition}[The Category of Stable Atlas Traversals]
 The \textbf{Category of Stable Atlas Traversals}, denoted
-$\mathsf{AtlTras}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
+$\mathsf{StaAtlTrav}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
 morphisms $F:X\to Y$ satisfy $F_E(0,0)=(0,0)$.
 \end{definition}
 %%-/
@@ -1018,23 +1018,23 @@ instance : IsStableTraversal.IsMultiplicative where
     change g.1.P.obj (f.1.P.obj _) = _
     rw [hf, hg]
 
-abbrev AtlTras := WideSubcategory IsStableTraversal
+abbrev StaAtlTrav := WideSubcategory IsStableTraversal
 
-def AtlTrasToAtlTrav : AtlTras ⥤ AtlTrav :=
+def StaAtlTravToAtlTrav : StaAtlTrav ⥤ AtlTrav :=
   wideSubcategoryInclusion IsStableTraversal
 
-def AtlTrasInc : AtlTras ⥤ Atl := AtlTrasToAtlTrav ⋙ AtlTravInc
+def StaAtlTravInc : StaAtlTrav ⥤ Atl := StaAtlTravToAtlTrav ⋙ AtlTravInc
 
 /-! `StableAtlasFamily` implements atlas federations of stable atlases.
 The empty family is the empty atlas operation, and concatenation retains all
 components without choosing representatives or identifying their data.  Most
-importantly, every component arrow is an arrow of `AtlTras`, so stability is
+importantly, every component arrow is an arrow of `StaAtlTrav`, so stability is
 checked by Lean at the boundary of the horizontal construction. -/
 
 structure StableAtlasFamily where
   Index : Type
   countableIndex : Countable Index
-  component : Index → AtlTras
+  component : Index → StaAtlTrav
 
 attribute [instance] StableAtlasFamily.countableIndex
 
@@ -1101,7 +1101,7 @@ theorem StableAtlasFamilyHom.component_comp {X Y Z : StableAtlasFamily}
     (f ≫ g).component i = f.component i ≫ g.component (f.index i) := rfl
 
 /-- An atlas as a single-component atlas federation. -/
-def stableAtlasAtom (X : AtlTras) : StableAtlasFamily where
+def stableAtlasAtom (X : StaAtlTrav) : StableAtlasFamily where
   Index := Unit
   countableIndex := inferInstance
   component := fun _ => X
@@ -1716,8 +1716,11 @@ theorem cartographyLemma : Nonempty (AtlTravMapInc ⊣ Chr) :=
 
 \begin{definition}[The Coalizing Functor]
 The \textbf{Coalizing Functor}, denoted
-$\mathsf{Coa}:\mathsf{AtlTras}\to\DomIns$, is the extent of the charted
-atlas: $\mathsf{Coa}=\Ex\circ\mathsf{Chr}$.
+\[
+  \mathsf{Coa}:\mathsf{StaAtlTrav}\longrightarrow\DomIns,
+\]
+is the extent of the charted atlas:
+$\mathsf{Coa}=\Ex\circ\mathsf{Chr}$.
 \end{definition}
 %%-/
 
@@ -1775,7 +1778,7 @@ def Ex : Atl ⥤ DomIns where
   map_id := extentMap_id
   map_comp := extentMap_comp
 
-def stableCoalitionMap {X Y : AtlTras} (f : X ⟶ Y) :
+def stableCoalitionMap {X Y : StaAtlTrav} (f : X ⟶ Y) :
     coveredDom X.obj.obj X.obj.obj.P.folio.originElement ⟶
       coveredDom Y.obj.obj Y.obj.obj.P.folio.originElement where
   toFun t := by
@@ -1788,7 +1791,7 @@ def stableCoalitionMap {X Y : AtlTras} (f : X ⟶ Y) :
     apply (Y.obj.obj.G.map (eqToHom f.2)).injective
     exact congrArg Subtype.val h
 
-theorem stableCoalitionMap_val {X Y : AtlTras} (f : X ⟶ Y)
+theorem stableCoalitionMap_val {X Y : StaAtlTrav} (f : X ⟶ Y)
     (t : coveredDom X.obj.obj X.obj.obj.P.folio.originElement) :
     (stableCoalitionMap f t).1 = extentMap f.1.1 t.1 := by
   change Y.obj.obj.G.map (eqToHom f.2)
@@ -1805,7 +1808,7 @@ theorem stableCoalitionMap_val {X Y : AtlTras} (f : X ⟶ Y)
 /-- `Coa` is written directly on the covered origins.  This is definitionally
 the object part of `Ex ∘ Chr`; stability makes its action on arrows reduce to
 the component at the origin. -/
-def Coa : AtlTras ⥤ DomIns where
+def Coa : StaAtlTrav ⥤ DomIns where
   obj X := coveredDom X.obj.obj X.obj.obj.P.folio.originElement
   map := stableCoalitionMap
   map_id X := by
@@ -1833,7 +1836,7 @@ $X$ as an object of the wide category of stable traversals.
 %%-/
 
 def coalition (X : Atl) : DomIns := (Coa.obj
-  (WideSubcategory.mk (WideSubcategory.mk X) : AtlTras))
+  (WideSubcategory.mk (WideSubcategory.mk X) : StaAtlTrav))
 
 /-- The initial dominion. -/
 def emptyDominion : DomIns where
@@ -1920,19 +1923,19 @@ theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
 /-%%
 \begin{definition}[The Domanial Inclusion Functor]
 The \textbf{Domanial Inclusion Functor}
-$\mathsf{DomInc}:\DomIns\to\mathsf{AtlTras}$ sends a dominion to the
+$\mathsf{DomInc}:\DomIns\to\mathsf{StaAtlTrav}$ sends a dominion to the
 atlas of cardinality $1$ whose coalition is that dominion.  It is left
-adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and $Y:\mathsf{AtlTras}$,
+adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and $Y:\mathsf{StaAtlTrav}$,
 naturally in $X$ and $Y$,
 \[
-  \Hom_{\mathsf{AtlTras}}(\mathsf{DomInc}(X),Y)
+  \Hom_{\mathsf{StaAtlTrav}}(\mathsf{DomInc}(X),Y)
   \cong \Hom_{\DomIns}(X,\mathsf{Coa}(Y)),
 \]
 and $\mathsf{Coa}(\mathsf{DomInc}(X))\cong X$.
 \end{definition}
 %%-/
 
-def DomInc : DomIns ⥤ AtlTras where
+def DomInc : DomIns ⥤ StaAtlTrav where
   obj X := WideSubcategory.mk (WideSubcategory.mk (dominionAtlas X))
   map f := ⟨⟨dominionMap f, dominionMap_isTraversal f⟩,
     dominionMap_isStable f⟩
@@ -1974,7 +1977,7 @@ theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).E) :
 
 /-- A stable traversal from a one-page atlas determines an embedding into
 the covered part of the target extent. -/
-def domIncToCoa {X : DomIns} {Y : AtlTras} (f : DomInc.obj X ⟶ Y) :
+def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
     X ⟶ Coa.obj Y where
   toFun x := by
     have hc := f.1.2.2.2 onePageFolio.originElement x
@@ -1988,7 +1991,7 @@ def domIncToCoa {X : DomIns} {Y : AtlTras} (f : DomInc.obj X ⟶ Y) :
 
 /-- Conversely, an embedding into the coalition supplies the unique stable
 traversal from the corresponding one-page atlas. -/
-def coaToDomInc {X : DomIns} {Y : AtlTras} (f : X ⟶ Coa.obj Y) :
+def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
     DomInc.obj X ⟶ Y := by
   let p : (dominionAtlas X).E ⥤ Y.obj.obj.P.E := onePageToAtlasP Y.obj.obj
   let a : (dominionAtlas X).G ⟶ p ⋙ Y.obj.obj.G :=
@@ -2037,7 +2040,7 @@ def coaDomIncIso (X : DomIns) : Coa.obj (DomInc.obj X) ≅ X where
 
 /-- The hom-set equivalence expressing that one-page insertion is left
 adjoint to coalization. -/
-def domIncCoaHomEquiv (X : DomIns) (Y : AtlTras) :
+def domIncCoaHomEquiv (X : DomIns) (Y : StaAtlTrav) :
     (DomInc.obj X ⟶ Y) ≃ (X ⟶ Coa.obj Y) where
   toFun := domIncToCoa
   invFun := coaToDomInc
@@ -2086,7 +2089,7 @@ def domIncCoaHomEquiv (X : DomIns) (Y : AtlTras) :
       (Y.obj.obj.G.map_id Y.obj.obj.P.folio.originElement)) (f x).1
 
 theorem domIncCoaHomEquiv_naturality_left {X X' : DomIns} (f : X' ⟶ X)
-    {Y : AtlTras} (g : DomInc.obj X ⟶ Y) :
+    {Y : StaAtlTrav} (g : DomInc.obj X ⟶ Y) :
     domIncCoaHomEquiv X' Y (DomInc.map f ≫ g) =
       f ≫ domIncCoaHomEquiv X Y g := by
   apply DomIns.hom_ext
@@ -2094,7 +2097,7 @@ theorem domIncCoaHomEquiv_naturality_left {X X' : DomIns} (f : X' ⟶ X)
   apply Subtype.ext
   rfl
 
-theorem domIncCoaHomEquiv_naturality_right {X : DomIns} {Y Y' : AtlTras}
+theorem domIncCoaHomEquiv_naturality_right {X : DomIns} {Y Y' : StaAtlTrav}
     (f : DomInc.obj X ⟶ Y) (g : Y ⟶ Y') :
     domIncCoaHomEquiv X Y' (f ≫ g) =
       domIncCoaHomEquiv X Y f ≫ Coa.map g := by
@@ -3742,7 +3745,7 @@ The Atlas Horizontal Sum Bifunctor $\mathsf{AtlHorSum}$ exists.
 
 \emph{Proof.}  Identity arrows act identically on every tag, composition
 holds componentwise, and every component arrow is required to lie in
-$\mathsf{AtlTras}$.  The federation structure supplies the associator,
+$\mathsf{StaAtlTrav}$.  The federation structure supplies the associator,
 unitors, and braider by reassociation, deletion of the empty tag family, and
 tag swapping, respectively.
 \end{lemma}
@@ -3941,7 +3944,7 @@ noncomputable instance : SymmetricCategory DaTrat where
 \begin{definition}[Stable Data Transformations]
 The \textbf{Category of Stable Data Transformations}, denoted
 $\mathsf{StaDaTra}$, is the presheaf category on Atlas Federations whose
-component arrows lie in $\mathsf{AtlTras}$.  Thus stability is
+component arrows lie in $\mathsf{StaAtlTrav}$.  Thus stability is
 part of the indexing category, rather than an additional condition imposed
 after horizontal composition.
 \end{definition}
@@ -3973,7 +3976,7 @@ $\mathsf{HorSum}:\mathsf{StaDaTra}\times\mathsf{StaDaTra}\to
 \mathsf{StaDaTra}$, or in infix notation by
 $+_{\!<}:\mathsf{StaDaTra}\times\mathsf{StaDaTra}\to\mathsf{StaDaTra}$,
 is the Day convolution extension of stable atlas horizontal sum.  Because
-the indexing morphisms are arrows of $\mathsf{AtlTras}$, its result and its
+the indexing morphisms are arrows of $\mathsf{StaAtlTrav}$, its result and its
 arrow action land in $\mathsf{StaDaTra}$ by construction.
 \end{definition}
 %%-/
