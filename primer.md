@@ -43,6 +43,7 @@ would have inaccessible "hidden" data, not represented by its literal notation, 
 however, completely fine, as long as we do not take for granted that the structure must represent a map. An alternative
 view would be to see the tree structure as representing the different presentations of some data at different pages,
 allowing for data loss in the process. This is a useful generalization of the concept, and one that we will take.
+Furthermore, given any atlas, one can recover a map from it by using the Charting functor, as detailed in the preprint.
 
 Another issue to consider is size. In this example, everything is finite, but this is not necessarily the case.
 However, we also seek to avoid data that is too large to handle in concrete, computational terms. The solution taken
@@ -86,12 +87,11 @@ computation at different stages, so that this unifies maps and functions within 
 
 The so-called "horizontal sum" operator, `+_<`, takes two `StaDaTraMon` morphisms and puts them side by side. For
 instance, `[B := 2; C := 6]` can be constructed as `(B := 2) +_< (C := 6)`. It can be clearly seen that one can put two
-trees side by side, having the extent as the coproduct of the original two extents, so that the atlas morphisms do not
-get "tangled up". However, note that `+_<` differs from the map semantics as it is not associative, so that, for
-instance, `A +_< B +_< C = [[A; B]; C]]`. This might sound odd, considering `StaDaTraMon` is a symmetric monoidal
-category, however, these objects are only isomorphic through a functor external to `StaDaTra`. As such, while they
-share the same data and can easily be converted into one another, `+_<` by itself is not associative before such an
-operation is applied.
+trees side by side, having the extent as the disjoint union of the original two extents, so that the atlas morphisms do
+not get "tangled up". This operator is similar to the map notation used in this document, so that for instance,
+`A +_< B +_< C = [A; B; C]`. A variation on this operation, which goes through an intermediary phase where the two
+extents are kept separate on page 1, can be used to create maps with complex pagination structures, such as
+`[A; [B; C]]`.
 
 [illustrate `(B := 2) +_< (C := 6)`]
 
