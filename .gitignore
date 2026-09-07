@@ -7,6 +7,8 @@ __pycache__/
 tmp/
 preprint.log
 preprint.synctex.gz
+primer.log
+primer.synctex.gz
 preprint.pdf
 preprint.tex
 datra_code.lean

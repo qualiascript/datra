@@ -3,6 +3,17 @@
 A language for data transformations. Read the [preprint](datra_preprint.pdf) and the [primer](primer.pdf).
 GitHub repo [here](https://github.com/qualiascript/datra).
 
+## Primer
+
+Build the primer PDF with:
+
+```sh
+make primer
+```
+
+This writes `primer.pdf` using the same pinned local Tectonic engine described
+below; no system-wide TeX installation is required.
+
 ## Preprint
 
 The LaTeX preprint is embedded directly in `datra.lean` between `/-%%` and
@@ -29,5 +40,4 @@ syntax-highlighted and line-numbered appendix, run:
 ```sh
 make preprint_full
 ```
-
 

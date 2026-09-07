@@ -1,7 +1,7 @@
 PYTHON ?= python3
 TECTONIC := $(PYTHON) tools/tectonic.py
 
-.PHONY: blueprint setup-tex preprint preprint_full
+.PHONY: blueprint setup-tex preprint preprint_full primer
 
 blueprint: preprint.tex
 
@@ -15,6 +15,11 @@ preprint: preprint.pdf
 
 preprint.pdf: preprint.tex tools/tectonic.py
 	$(TECTONIC) --keep-logs --synctex preprint.tex
+
+primer: primer.pdf
+
+primer.pdf: primer.tex tools/tectonic.py
+	$(TECTONIC) --keep-logs --synctex primer.tex
 
 datra_code.lean: datra.lean extract_blueprint
 	./extract_blueprint --lean datra.lean > datra_code.lean
