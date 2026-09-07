@@ -91,7 +91,9 @@ trees side by side, having the extent as the disjoint union of the original two 
 not get "tangled up". This operator is similar to the map notation used in this document, so that for instance,
 `A +_< B +_< C = [A; B; C]`. A variation on this operation, which goes through an intermediary phase where the two
 extents are kept separate on page 1, can be used to create maps with complex pagination structures, such as
-`[A; [B; C]]`.
+`[A; [B; C]]`. An alternative symbol for `+_<`, which will likely be used for the Datra programming language but was
+avoided in the preprint for clarity's sake, is simply `,`, as a concatenation operator. As such, `1, 2, 3` is a simple
+Datra list.
 
 [illustrate `(B := 2) +_< (C := 6)`]
 
