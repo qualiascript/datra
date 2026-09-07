@@ -3,6 +3,7 @@ datra.iml
 .elan/
 .lake/
 .tools/
+dist-newstyle/
 __pycache__/
 tmp/
 preprint.log

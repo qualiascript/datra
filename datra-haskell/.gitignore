@@ -1,0 +1,11 @@
+dist-newstyle/
+dist/
+.direnv/
+*.o
+*.hi
+*.dyn_o
+*.dyn_hi
+*.iml
+.idea/
+.hls/
+.bsp/
