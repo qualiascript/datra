@@ -68,7 +68,7 @@ instance Ord Ordinal where
 ordinalLT :: Ordinal -> Ordinal -> Bool
 ordinalLT (Ordinal left) (Ordinal right) =
   listLength left < listLength right
-    || (listLength left == listLength right && lexicographicLT left right)
+    || listLength left == listLength right && lexicographicLT left right
 
 {-@ reflect listLength @-}
 listLength :: [a] -> Int
@@ -203,9 +203,9 @@ sumChains left right =
         addOrdinals (chainOrderType left) (chainOrderType right)
     , chainPosition = positionInSum
     , chainObjectAt = objectInSum
-    , chainPositionBelow = \_ -> ()
+    , chainPositionBelow = const ()
     , chainPositionInjective = \_ _ -> ()
-    , chainPositionSurjective = \_ -> ()
+    , chainPositionSurjective = const ()
     }
   where
     positionInSum (Left object) = chainPosition left object
@@ -250,9 +250,9 @@ spine =
     omega
     finiteOrdinal
     naturalAtOrdinal
-    (\_ -> ())
+    (const ())
     (\_ _ -> ())
-    (\_ -> ())
+    (const ())
 
 naturalAtOrdinal :: Ordinal -> Maybe Natural
 naturalAtOrdinal (Ordinal []) = Just 0

@@ -23,9 +23,7 @@ composePreimage
   -> c
   -> Maybe a
 composePreimage firstPreimage secondPreimage value =
-  case secondPreimage value of
-    Nothing -> Nothing
-    Just middle -> firstPreimage middle
+  firstPreimage =<< secondPreimage value
 
 -- | Compose the executable maps and their left-inverse certificates.
 composeInsertions
@@ -36,14 +34,14 @@ composeInsertions
   (DomanialInsertion second secondPreimage secondLeft)
   (DomanialInsertion first firstPreimage firstLeft) =
     DomanialInsertion
-      (\value -> second (first value))
+      (second . first)
       (composePreimage firstPreimage secondPreimage)
       (\value -> secondLeft (first value) `seq` firstLeft value)
 
 -- | The proof-carrying identity insertion.
 identityInsertion :: DomanialInsertion a a
 identityInsertion =
-  DomanialInsertion (\value -> value) Just (\_ -> ())
+  DomanialInsertion id Just (const ())
 
 -- LiquidHaskell 0.9.4 cannot parse declarations for the symbolic Category
 -- method `(.)`. The law-carrying type and general smart constructor are checked
