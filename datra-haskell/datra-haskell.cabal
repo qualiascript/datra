@@ -20,9 +20,12 @@ library
         Dominion
         DomanialInsertion
         Chains
+    other-modules:
+        DomanialInsertion.Internal
     build-depends:
         base >= 4.14 && < 5,
-        containers >= 0.6 && < 0.9
+        containers >= 0.6 && < 0.9,
+        liquidhaskell == 0.9.4.7.0
     hs-source-dirs:   src
     default-language: GHC2021
 
@@ -43,4 +46,5 @@ test-suite datra-haskell-test
     main-is:          Main.hs
     build-depends:
         base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9,
         datra-haskell

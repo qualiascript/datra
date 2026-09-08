@@ -1,87 +1,57 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
   , preimage
-  , unsafeDomanialInsertion
-  , finiteSetInsertion
+  , insertionLeftInverse
+  , domanialInsertion
+  , identityInsertion
+  , composeInsertions
   , CodomanialInsertion
   , op
   , unop
   ) where
 
 import Control.Category (Category (..))
-import Control.Monad ((>=>))
-import Data.Set (Set)
+import DomanialInsertion.Internal
 import Prelude hiding ((.), id)
 
-import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
+composePreimage
+  :: (b -> Maybe a)
+  -> (c -> Maybe b)
+  -> c
+  -> Maybe a
+composePreimage firstPreimage secondPreimage value =
+  case secondPreimage value of
+    Nothing -> Nothing
+    Just middle -> firstPreimage middle
 
--- | An injective function between dominions.
---
--- Vanilla Haskell cannot enforce the defining partial-inverse laws:
---
---   preimage insertion (applyInsertion insertion x) == Just x
---
---   preimage insertion y == Just x
---     implies applyInsertion insertion x == y
---
--- These laws imply that 'applyInsertion' is injective.
---
--- The constructor is kept private so that every unchecked construction is
--- visible at a call to 'unsafeDomanialInsertion'.
-data DomanialInsertion a b = DomanialInsertion
-  { applyInsertion :: a -> b
-  , preimage :: b -> Maybe a
-  }
-
--- | Assert that two functions satisfy the partial-inverse laws and regard
--- them as a domanial insertion.
---
--- The caller must ensure that the functions satisfy the laws
--- documented on 'DomanialInsertion'.
-unsafeDomanialInsertion
-  :: (a -> b)
-  -> (b -> Maybe a)
+-- | Compose the executable maps and their left-inverse certificates.
+composeInsertions
+  :: DomanialInsertion b c
   -> DomanialInsertion a b
-unsafeDomanialInsertion = DomanialInsertion
+  -> DomanialInsertion a c
+composeInsertions
+  (DomanialInsertion second secondPreimage secondLeft)
+  (DomanialInsertion first firstPreimage firstLeft) =
+    DomanialInsertion
+      (\value -> second (first value))
+      (composePreimage firstPreimage secondPreimage)
+      (\value -> secondLeft (first value) `seq` firstLeft value)
 
--- | Construct an insertion between two finite sets.
---
--- Returns 'Nothing' when the function maps a source element outside the
--- target set or maps two different source elements to the same target.
--- The partial-inverse laws hold for elements of the supplied source and
--- target sets.
-finiteSetInsertion
-  :: Ord b
-  => Set a
-  -> Set b
-  -> (a -> b)
-  -> Maybe (DomanialInsertion a b)
-finiteSetInsertion source target forward
-  | landsInTarget && isInjective =
-      Just (DomanialInsertion forward (`Map.lookup` inverse))
-  | otherwise = Nothing
-  where
-    imageWithSources =
-      [ (forward sourceValue, sourceValue)
-      | sourceValue <- Set.toAscList source
-      ]
+-- | The proof-carrying identity insertion.
+identityInsertion :: DomanialInsertion a a
+identityInsertion =
+  DomanialInsertion (\value -> value) Just (\_ -> ())
 
-    inverse = Map.fromList imageWithSources
-
-    landsInTarget = all (`Set.member` target) (Map.keys inverse)
-
-    isInjective = Map.size inverse == Set.size source
-
+-- LiquidHaskell 0.9.4 cannot parse declarations for the symbolic Category
+-- method `(.)`. The law-carrying type and general smart constructor are checked
+-- in DomanialInsertion.Internal; this wrapper supplies the mechanically derived
+-- identity and composition operations.
 instance Category DomanialInsertion where
-  id = DomanialInsertion id Just
-
-  DomanialInsertion second secondPreimage
-    . DomanialInsertion first firstPreimage =
-      DomanialInsertion
-        (second . first)
-        (secondPreimage >=> firstPreimage)
+  id = identityInsertion
+  (.) = composeInsertions
 
 -- | The opposite category of domanial insertions.
 --

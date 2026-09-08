@@ -2,6 +2,7 @@
 datra.iml
 .elan/
 .lake/
+.liquid/
 .tools/
 dist-newstyle/
 __pycache__/
