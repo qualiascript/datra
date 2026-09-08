@@ -16,8 +16,13 @@ common warnings
 
 library
     import:           warnings
-    exposed-modules:  DatraHaskell
-    build-depends:    base >= 4.14 && < 5
+    exposed-modules:
+        DatraHaskell
+        Dominion
+    build-depends:
+        containers ^>=0.6.7,
+        base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9
     hs-source-dirs:   src
     default-language: GHC2021
 
