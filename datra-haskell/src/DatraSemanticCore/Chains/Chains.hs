@@ -3,15 +3,9 @@
 {-@ LIQUID "--ple" @-}
 
 module Chains
-  ( Ordinal
-  , coefficients
-  , ordinal
-  , finiteOrdinal
-  , omega
-  , ordinalLT
+  ( Chain
+  , chainOrdinalLT
   , positionMatches
-  , addOrdinals
-  , Chain
   , chainOrderType
   , chainPosition
   , chainObjectAt
@@ -27,84 +21,34 @@ module Chains
 
 import Numeric.Natural (Natural)
 
+import DatraOrdinal
+
 {-@ embed Natural as int @-}
 
--- | An ordinal strictly below omega^omega in Cantor normal form.
---
--- The list @[a_n, ..., a_1, a_0]@ represents
---
---   omega^n * a_n + ... + omega * a_1 + a_0.
---
--- Leading zero coefficients are removed, so zero has the unique
--- representation @[]@.
-newtype Ordinal = Ordinal
-  { coefficients :: [Natural]
-  }
-  deriving (Eq, Show)
+-- LiquidHaskell 0.9.4 does not deserialize reflected function symbols across
+-- module boundaries when hie-bios checks this module independently. Reflect a
+-- local logical bridge over the exported representation instead. Keep this in
+-- lockstep with DatraOrdinal.ordinalLT.
+{-@ reflect chainOrdinalLT @-}
+chainOrdinalLT :: Ordinal -> Ordinal -> Bool
+chainOrdinalLT (Ordinal left) (Ordinal right) =
+  chainListLength left < chainListLength right
+    || chainListLength left == chainListLength right
+      && chainLexicographicLT left right
 
--- | Construct a canonical ordinal from descending coefficients.
---
--- For example, @ordinal [4, 3, 9]@ represents
--- @omega^2 * 4 + omega * 3 + 9@.
-ordinal :: [Natural] -> Ordinal
-ordinal = Ordinal . dropWhile (== 0)
+{-@ reflect chainListLength @-}
+chainListLength :: [a] -> Int
+chainListLength [] = 0
+chainListLength (_ : values) = 1 + chainListLength values
 
--- | Embed a natural number as a finite ordinal.
-finiteOrdinal :: Natural -> Ordinal
-finiteOrdinal value = ordinal [value]
-
--- | The first infinite ordinal.
-omega :: Ordinal
-omega = ordinal [1, 0]
-
-instance Ord Ordinal where
-  compare (Ordinal left) (Ordinal right) =
-    compare (length left) (length right)
-      <> compare left right
-
--- | A reflected strict comparison used by chain refinements. It agrees with
--- the 'Ord' instance while remaining visible to LiquidHaskell's logic.
-{-@ reflect ordinalLT @-}
-ordinalLT :: Ordinal -> Ordinal -> Bool
-ordinalLT (Ordinal left) (Ordinal right) =
-  listLength left < listLength right
-    || listLength left == listLength right && lexicographicLT left right
-
-{-@ reflect listLength @-}
-listLength :: [a] -> Int
-listLength [] = 0
-listLength (_ : values) = 1 + listLength values
-
-{-@ reflect lexicographicLT @-}
-lexicographicLT :: [Natural] -> [Natural] -> Bool
-lexicographicLT [] _ = False
-lexicographicLT _ [] = False
-lexicographicLT (left : lefts) (right : rights)
+{-@ reflect chainLexicographicLT @-}
+chainLexicographicLT :: [Natural] -> [Natural] -> Bool
+chainLexicographicLT [] _ = False
+chainLexicographicLT _ [] = False
+chainLexicographicLT (left : lefts) (right : rights)
   | left < right = True
   | left > right = False
-  | otherwise = lexicographicLT lefts rights
-
--- | Ordinal addition. This is generally not commutative.
-addOrdinals :: Ordinal -> Ordinal -> Ordinal
-addOrdinals left (Ordinal []) = left
-addOrdinals (Ordinal leftCoefficients)
-  right@(Ordinal (rightLeadingCoefficient : rightLowerCoefficients))
-  | length leftCoefficients < length rightCoefficients = right
-  | otherwise = case matchingAndLowerLeftCoefficients of
-      matchingLeftCoefficient : _ ->
-        Ordinal
-          (higherLeftCoefficients
-            ++ (matchingLeftCoefficient + rightLeadingCoefficient)
-              : rightLowerCoefficients)
-      [] -> right
-  where
-    rightCoefficients = rightLeadingCoefficient : rightLowerCoefficients
-
-    numberOfHigherLeftCoefficients =
-      length leftCoefficients - length rightCoefficients
-
-    (higherLeftCoefficients, matchingAndLowerLeftCoefficients) =
-      splitAt numberOfHigherLeftCoefficients leftCoefficients
+  | otherwise = chainLexicographicLT lefts rights
 
 -- | A skeletal well-ordered thin category whose order type is below
 -- omega^omega.
@@ -133,13 +77,13 @@ data Chain object = Chain
   , chainObjectAt :: Ordinal -> Maybe object
   , chainPositionBelow :: objectValue:object ->
       { proof:() |
-          ordinalLT (chainPosition objectValue) chainOrderType }
+          chainOrdinalLT (chainPosition objectValue) chainOrderType }
   , chainPositionInjective :: left:object -> right:object ->
       { proof:() |
           chainPosition left == chainPosition right => left == right }
   , chainPositionSurjective :: position:Ordinal ->
       { proof:() |
-          ordinalLT position chainOrderType
+          chainOrdinalLT position chainOrderType
             => positionMatches chainPosition position
                  (chainObjectAt position) }
   }
@@ -161,12 +105,12 @@ chain
   -> position:(object -> Ordinal)
   -> objectAt:(Ordinal -> Maybe object)
   -> (objectValue:object ->
-       { proof:() | ordinalLT (position objectValue) orderType })
+       { proof:() | chainOrdinalLT (position objectValue) orderType })
   -> (left:object -> right:object ->
        { proof:() | position left == position right => left == right })
   -> (ordinalValue:Ordinal ->
        { proof:() |
-           ordinalLT ordinalValue orderType
+           chainOrdinalLT ordinalValue orderType
              => positionMatches position ordinalValue
                   (objectAt ordinalValue) })
   -> Chain object
@@ -213,7 +157,7 @@ sumChains left right =
       addOrdinals (chainOrderType left) (chainPosition right object)
 
     objectInSum position
-      | ordinalLT position (chainOrderType left) =
+      | chainOrdinalLT position (chainOrderType left) =
           Left <$> chainObjectAt left position
       | otherwise =
           subtractOrdinal (chainOrderType left) position
@@ -222,23 +166,6 @@ sumChains left right =
 -- The ordinal arithmetic lemmas for sum are the trusted translation of
 -- Lean's `Ordinal.type_sum_lex` proof. The executable inverse above witnesses
 -- the same left-then-right order.
-
-subtractOrdinal :: Ordinal -> Ordinal -> Maybe Ordinal
-subtractOrdinal (Ordinal left) (Ordinal value)
-  | listLength value < listLength left = Nothing
-  | listLength value > listLength left = Just (Ordinal value)
-  | otherwise = Ordinal <$> subtractCoefficients left value
-
-subtractCoefficients
-  :: [Natural]
-  -> [Natural]
-  -> Maybe [Natural]
-subtractCoefficients [] [] = Just []
-subtractCoefficients (left : lefts) (value : values)
-  | value < left = Nothing
-  | value == left = subtractCoefficients lefts values
-  | otherwise = Just ((value - left) : values)
-subtractCoefficients _ _ = Nothing
 
 -- | The common page-indexing chain, with one object for every natural number.
 -- This is the Haskell counterpart of Lean's `Ordinal.type_nat_lt` proof.
@@ -253,8 +180,3 @@ spine =
     (const ())
     (\_ _ -> ())
     (const ())
-
-naturalAtOrdinal :: Ordinal -> Maybe Natural
-naturalAtOrdinal (Ordinal []) = Just 0
-naturalAtOrdinal (Ordinal [value]) = Just value
-naturalAtOrdinal _ = Nothing

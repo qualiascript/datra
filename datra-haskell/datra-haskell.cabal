@@ -19,6 +19,7 @@ library
     exposed-modules:
         Dominion
         DomanialInsertion
+        DatraOrdinal
         Chains
     other-modules:
         DomanialInsertion.Internal
@@ -29,6 +30,7 @@ library
     hs-source-dirs:
         src/DatraSemanticCore
         src/DatraSemanticCore/Chains
+        src/DatraSemanticCore/DatraOrdinal
         src/DatraSemanticCore/Dominion
         src/DatraSemanticCore/DomanialInsertion
     default-language: GHC2021
