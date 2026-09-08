@@ -2,7 +2,9 @@
 datra.iml
 .elan/
 .lake/
+.liquid/
 .tools/
+dist-newstyle/
 __pycache__/
 tmp/
 preprint.log

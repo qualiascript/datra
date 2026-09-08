@@ -1,0 +1,56 @@
+cabal-version:      3.0
+name:               datra-haskell
+version:            0.1.0.0
+synopsis:           A new Haskell project
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Haskell Developer
+category:           Development
+build-type:         Simple
+extra-doc-files:
+    CHANGELOG.md
+    README.md
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:
+        Dominion
+        DomanialInsertion
+        DatraOrdinal
+        Chains
+    other-modules:
+        DomanialInsertion.Internal
+    build-depends:
+        base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9,
+        liquidhaskell == 0.9.4.7.0
+    hs-source-dirs:
+        src/DatraSemanticCore
+        src/DatraSemanticCore/Chains
+        src/DatraSemanticCore/DatraOrdinal
+        src/DatraSemanticCore/Dominion
+        src/DatraSemanticCore/DomanialInsertion
+    default-language: GHC2021
+
+executable datra-haskell
+    import:           warnings
+    main-is:          Main.hs
+    build-depends:
+        base >= 4.14 && < 5,
+        datra-haskell
+    hs-source-dirs:   app
+    default-language: GHC2021
+
+test-suite datra-haskell-test
+    import:           warnings
+    default-language: GHC2021
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9,
+        datra-haskell

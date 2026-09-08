@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract LaTeX blocks or strip them from Lean sources."""
+"""Extract LaTeX blocks or strip them from Lean source files."""
 
 from __future__ import annotations
 

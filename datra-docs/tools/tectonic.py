@@ -42,8 +42,9 @@ ARTIFACTS = {
     ),
 }
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-INSTALL_ROOT = PROJECT_ROOT / ".tools" / "tectonic"
+DOCS_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = DOCS_ROOT.parent
+INSTALL_ROOT = REPO_ROOT / ".tools" / "tectonic"
 CACHE_ROOT = INSTALL_ROOT / "cache"
 EXECUTABLE = INSTALL_ROOT / ("tectonic.exe" if os.name == "nt" else "tectonic")
 
@@ -112,7 +113,7 @@ def install() -> None:
         shutil.copy2(candidates[0], EXECUTABLE)
         EXECUTABLE.chmod(0o755)
 
-    print(f"Installed {EXECUTABLE.relative_to(PROJECT_ROOT)}", flush=True)
+    print(f"Installed {EXECUTABLE.relative_to(REPO_ROOT)}", flush=True)
 
 
 def main() -> int:
@@ -125,7 +126,7 @@ def main() -> int:
     environment["TECTONIC_CACHE_DIR"] = str(CACHE_ROOT)
     completed = subprocess.run(
         [str(EXECUTABLE), *sys.argv[1:]],
-        cwd=PROJECT_ROOT,
+        cwd=DOCS_ROOT,
         env=environment,
         check=False,
     )
