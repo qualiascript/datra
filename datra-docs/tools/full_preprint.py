@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the full preprint TeX source with a formatted Lean appendix."""
+"""Create the full preprint TeX source with its formatted Lean appendix."""
 
 from __future__ import annotations
 
