@@ -27,10 +27,10 @@ library
         containers >= 0.6 && < 0.9,
         liquidhaskell == 0.9.4.7.0
     hs-source-dirs:
-        src
-        src/Chains
-        src/Dominion
-        src/DomanialInsertion
+        src/DatraSemanticCore
+        src/DatraSemanticCore/Chains
+        src/DatraSemanticCore/Dominion
+        src/DatraSemanticCore/DomanialInsertion
     default-language: GHC2021
 
 executable datra-haskell
