@@ -8,7 +8,21 @@ module Consolidation.LiquidInternal
   , consolidationMonotone
   , consolidation
   , identityConsolidation
+  , identityConsolidationApply
+  , identityMap
+  , identityMonotone
+  , identityPointSurjective
   , composeConsolidations
+  , composeConsolidationsApply
+  , composeFunctions
+  , composeMonotone
+  , composePointSurjective
+  , Coconsolidation (..)
+  , op
+  , unop
+  , composeCoconsolidations
+  , coconsolidationIdentity
+  , coconsolidationComposition
   ) where
 
 -- | A monotone, point-surjective map between chain carriers.
@@ -79,25 +93,30 @@ consolidation = Consolidation
 -- | The identity consolidation preserves every relation and is its own
 -- chosen-preimage map.
 --
--- The contract is kept in this module because LiquidHaskell 0.9.4 serializes
--- an imported abstract-refined 'Consolidation' incorrectly on a cold build.
--- The pinned verifier also crashes when it solves this polymorphic identity
--- contract together with the (fully checked) composition contract below, so
--- this elementary contract is currently trusted.  The implementation makes
--- both laws definitionally true.
+-- The constructor is used directly so reflection can expose the carrier map
+-- while LiquidHaskell checks the abstract order refinements.
 {-@
-assume identityConsolidation
+identityConsolidation
   :: forall <objectLe :: object -> object -> Bool>.
      Consolidation <objectLe, objectLe> object object
 @-}
-{-@ ignore identityConsolidation @-}
+{-@ reflect identityConsolidation @-}
 identityConsolidation :: Consolidation object object
 identityConsolidation =
-  consolidation
+  Consolidation
     identityMap
     identityMap
     identityMonotone
     identityPointSurjective
+
+-- | The identity consolidation's carrier map is the identity function.
+{-@
+identityConsolidationApply
+  :: value:object ->
+     { proof:() | applyConsolidation identityConsolidation value == value }
+@-}
+identityConsolidationApply :: object -> ()
+identityConsolidationApply _ = ()
 
 {-@ reflect identityMap @-}
 identityMap :: value -> value
@@ -112,6 +131,7 @@ identityMonotone
   -> { mappedRight:object<objectLe mappedLeft> |
        mappedRight == identityMap right }
 @-}
+{-@ reflect identityMonotone @-}
 identityMonotone :: object -> object -> object -> object
 identityMonotone _ _ right = right
 
@@ -120,10 +140,12 @@ identityPointSurjective
   :: value:object ->
      { proof:() | identityMap (identityMap value) == value }
 @-}
+{-@ reflect identityPointSurjective @-}
 identityPointSurjective :: object -> ()
 identityPointSurjective _ = ()
 
 -- | Compose consolidations in categorical order.
+{-@ reflect composeConsolidations @-}
 {-@ composeConsolidations :: forall
        < sourceLe :: source -> source -> Bool
        , middleLe :: middle -> middle -> Bool
@@ -139,7 +161,7 @@ composeConsolidations
 composeConsolidations
   (Consolidation secondMap secondPreimage secondMonotone secondSurjective)
   (Consolidation firstMap firstPreimage firstMonotone firstSurjective) =
-  consolidation
+  Consolidation
     (composeFunctions secondMap firstMap)
     (composeFunctions firstPreimage secondPreimage)
     (composeMonotone secondMap firstMap secondMonotone firstMonotone)
@@ -150,6 +172,86 @@ composeConsolidations
       firstPreimage
       secondSurjective
       firstSurjective)
+
+-- | Consolidation composition composes the underlying carrier maps.
+{-@
+composeConsolidationsApply
+  :: second:Consolidation middle target
+  -> first:Consolidation source middle
+  -> value:source
+  -> { proof:() |
+       applyConsolidation (composeConsolidations second first) value
+         == applyConsolidation second (applyConsolidation first value) }
+@-}
+composeConsolidationsApply
+  :: Consolidation middle target
+  -> Consolidation source middle
+  -> source
+  -> ()
+composeConsolidationsApply
+  (Consolidation {})
+  (Consolidation {})
+  _ = ()
+
+-- | The opposite category of consolidations (@CoCon@ in @datra.lean@).
+{-@
+data Coconsolidation source target = Coconsolidation
+  { getOppositeConsolidation :: Consolidation target source }
+@-}
+data Coconsolidation source target = Coconsolidation
+  { getOppositeConsolidation :: Consolidation target source
+  }
+
+-- | Reverse the categorical direction of a consolidation.
+{-@ reflect op @-}
+op :: Consolidation source target -> Coconsolidation target source
+op = Coconsolidation
+
+-- | Recover the underlying consolidation.
+{-@ reflect unop @-}
+unop :: Coconsolidation target source -> Consolidation source target
+unop (Coconsolidation value) = value
+
+-- | Compose coconsolidations in categorical order.
+{-@ reflect composeCoconsolidations @-}
+composeCoconsolidations
+  :: Coconsolidation middle target
+  -> Coconsolidation source middle
+  -> Coconsolidation source target
+composeCoconsolidations second first =
+  op (composeConsolidations (unop first) (unop second))
+
+-- | The underlying map of the identity coconsolidation is identity.
+{-@
+coconsolidationIdentity
+  :: value:object ->
+     { proof:() |
+       applyConsolidation (unop (op identityConsolidation)) value
+         == value }
+@-}
+coconsolidationIdentity :: object -> ()
+coconsolidationIdentity = identityConsolidationApply
+
+-- | Coconsolidation composition coheres with reversed carrier-map
+-- composition.
+{-@
+coconsolidationComposition
+  :: second:Coconsolidation middle target
+  -> first:Coconsolidation source middle
+  -> value:target
+  -> { proof:() |
+       applyConsolidation
+         (unop (composeCoconsolidations second first)) value
+         == applyConsolidation (unop first)
+              (applyConsolidation (unop second) value) }
+@-}
+coconsolidationComposition
+  :: Coconsolidation middle target
+  -> Coconsolidation source middle
+  -> target
+  -> ()
+coconsolidationComposition second first =
+  composeConsolidationsApply (unop first) (unop second)
 
 -- | Monotone maps remain monotone under composition.
 {-@
@@ -177,6 +279,7 @@ composeMonotone
   -> { mappedRight:target<targetLe mappedLeft> |
        mappedRight == composeFunctions secondMap firstMap right }
 @-}
+{-@ reflect composeMonotone @-}
 composeMonotone
   :: (middle -> target)
   -> (source -> middle)
@@ -209,6 +312,7 @@ composePointSurjective
        composeFunctions secondMap firstMap
          (composeFunctions firstPreimage secondPreimage value) == value }
 @-}
+{-@ reflect composePointSurjective @-}
 composePointSurjective
   :: (middle -> target)
   -> (source -> middle)

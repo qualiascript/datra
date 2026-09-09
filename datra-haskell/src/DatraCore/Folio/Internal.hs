@@ -3,7 +3,7 @@
 
 -- | Hidden representation of folios.
 module Folio.Internal
-  ( Folio (..)
+  ( Folio
   , folio
   , singletonFolio
   , appendPage
@@ -11,6 +11,8 @@ module Folio.Internal
   , originChain
   , originValue
   , originUnique
+  , folioMapIdentity
+  , folioMapComposition
   , lastChain
   , paddedIndex
   , withPageAt
@@ -20,97 +22,58 @@ module Folio.Internal
   ) where
 
 import Chains (Chain)
-import Consolidation
-  ( Coconsolidation
-  , composeCoconsolidations
-  , identityConsolidation
+import Consolidation (Coconsolidation)
+import Folio.LiquidInternal
+  ( FolioData (..)
+  , appendPageData
+  , composeFolioMaps
+  , folioData
+  , folioLengthData
+  , folioMapComposition
+  , folioMapIdentity
+  , identityFolioMap
+  , lastPageData
+  , originPageData
+  , originUniqueData
+  , originValueData
   )
 import Numeric.Natural (Natural)
 
-import qualified Consolidation
+-- | Datra folios specialize the verified type-aligned representation to
+-- chains as their page container.
+type Folio origin final = FolioData Chain origin final
 
--- | A nonempty, finite presentation of an eventually constant spine functor.
---
--- @Folio origin final@ exposes the carrier types of its first and final pages.
--- Intermediate page carriers are existential.  Every appended arrow is a
--- coconsolidation from the preceding page to the new page.
-data Folio origin final where
-  OriginFolio
-    :: Natural
-    -> Chain origin
-    -> origin
-    -> (origin -> ())
-    -> Folio origin origin
-  SnocPage
-    :: Natural
-    -> Folio origin previous
-    -> Chain next
-    -> Coconsolidation previous next
-    -> Folio origin next
-
--- | Construct the one-page core of a folio.
---
--- The callback is proof-shaped runtime data.  Its intended law is:
---
--- @forall value. value == selectedOrigin@
---
--- Equivalently, the origin carrier is isomorphic to @()@.  The law is only
--- documented for now and is not checked by LiquidHaskell.
 folio
   :: Chain origin
   -> origin
   -> (origin -> ())
   -> Folio origin origin
-folio = OriginFolio 1
+folio = folioData
 
--- | Construct a folio whose first (and currently only) carrier is @()@.
 singletonFolio :: Chain () -> Folio () ()
 singletonFolio origin = folio origin () (const ())
 
--- | Append one genuine page and its generating coconsolidation.
---
--- Required coherence conditions (documented, not LiquidHaskell-checked):
---
--- * the underlying consolidation is monotone from @next@ to @previous@;
--- * it is point-surjective onto @previous@;
--- * the map for an identity interval is the identity coconsolidation;
--- * for @i <= j <= k@, the map @i -> k@ equals the composite of the maps
---   @i -> j@ and @j -> k@.
---
--- The first two conditions belong to 'Consolidation'.  The latter two hold by
--- construction because 'withFolioMap' uses identity and categorical
--- composition rather than storing redundant long-range arrows.
 appendPage
   :: Folio origin previous
   -> Chain next
   -> Coconsolidation previous next
   -> Folio origin next
-appendPage pages = SnocPage (folioLength pages + 1) pages
+appendPage = appendPageData
 
--- | The number of genuine pages in the least finite presentation.
 folioLength :: Folio origin final -> Natural
-folioLength (OriginFolio count _ _ _) = count
-folioLength (SnocPage count _ _ _) = count
+folioLength = folioLengthData
 
--- | The first page's chain.
 originChain :: Folio origin final -> Chain origin
-originChain (OriginFolio _ value _ _) = value
-originChain (SnocPage _ pages _ _) = originChain pages
+originChain = originPageData
 
--- | The distinguished value of the singleton origin page.
 originValue :: Folio origin final -> origin
-originValue (OriginFolio _ _ value _) = value
-originValue (SnocPage _ pages _ _) = originValue pages
+originValue = originValueData
 
--- | Invoke the proof-shaped singleton-origin witness.
 originUnique :: Folio origin final -> origin -> ()
-originUnique (OriginFolio _ _ _ unique) = unique
-originUnique (SnocPage _ pages _ _) = originUnique pages
+originUnique = originUniqueData
 
--- | The final genuine page's chain.
 lastChain :: Folio origin final -> Chain final
-lastChain (OriginFolio _ value _ _) = value
-lastChain (SnocPage _ _ value _) = value
+lastChain = lastPageData
 
 -- | Clamp a spine index to the final genuine page.
 paddedIndex :: Folio origin final -> Natural -> Natural
@@ -209,14 +172,14 @@ mapFromIndex
   -> Maybe (SomeMapTo target)
 mapFromIndex pages sourceIndex
   | sourceIndex >= folioLength pages = Nothing
-mapFromIndex (OriginFolio _ page _ _) _ =
-  Just (SomeMapTo page (Consolidation.op identityConsolidation))
+mapFromIndex (OriginFolio _ page _) _ =
+  Just (SomeMapTo page identityFolioMap)
 mapFromIndex (SnocPage _ previous page transition) sourceIndex
   | sourceIndex == folioLength previous =
-      Just (SomeMapTo page (Consolidation.op identityConsolidation))
+      Just (SomeMapTo page identityFolioMap)
   | otherwise = do
       SomeMapTo sourcePage sourceToPrevious <-
         mapFromIndex previous sourceIndex
       pure
         (SomeMapTo sourcePage
-          (composeCoconsolidations transition sourceToPrevious))
+          (composeFolioMaps transition sourceToPrevious))

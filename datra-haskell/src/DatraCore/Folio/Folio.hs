@@ -8,6 +8,8 @@ module Folio
   , originChain
   , originValue
   , originUnique
+  , folioMapIdentity
+  , folioMapComposition
   , lastChain
   , paddedIndex
   , withPageAt
@@ -21,6 +23,8 @@ import Folio.Internal
   , appendPage
   , folio
   , folioLength
+  , folioMapComposition
+  , folioMapIdentity
   , lastChain
   , originChain
   , originUnique

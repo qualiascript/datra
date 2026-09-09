@@ -10,6 +10,7 @@ import Folio
 import Numeric.Natural (Natural)
 import Transportation
 
+import Data.Maybe (isNothing)
 import qualified Data.Set as Set
 
 main :: IO ()
@@ -24,7 +25,7 @@ main = do
   testFolio
 
 checkedIdentity :: DomanialInsertion Bool Bool
-checkedIdentity = domanialInsertion (\value -> value) Just (\_ -> ())
+checkedIdentity = domanialInsertion id Just (const ())
 
 assert :: String -> Bool -> IO ()
 assert label condition
@@ -44,7 +45,7 @@ testFiniteDominion =
         assert "finite dominion ranks its carrier"
           (valueRanks == [0, 1, 2])
         assert "finite dominion rejects values outside its carrier"
-          (finiteMember finite 'z' == Nothing)
+          (isNothing (finiteMember finite 'z'))
         assert "finite bounded rank unrank is total"
           (all
             (\value -> finiteUnrank (finiteRank value) == value)
@@ -222,6 +223,8 @@ testTransportation = do
         runTransportation
           (transportation
             (identityConsolidation :: Consolidation Natural Natural))
+  transportationIdentity (0 :: Natural) `seq`
+    transportationComposition halve halve 7 `seq` pure ()
   assert "transportation exposes a consolidation's carrier map"
     (map transported values == map (applyConsolidation halve) values)
   assert "transportation preserves identity"
@@ -232,6 +235,12 @@ testTransportation = do
 
 testFolio :: IO ()
 testFolio = do
+  originUnique threePageFolio () `seq`
+    folioMapIdentity False `seq`
+      folioMapComposition
+        (Consolidation.op nonzero)
+        (Consolidation.op collapseBool)
+        7 `seq` pure ()
   assert "folio counts its genuine pages"
     (folioLength threePageFolio == 3)
   assert "folio padded indices repeat the final page"
@@ -241,7 +250,7 @@ testFolio = do
     (withPageAt threePageFolio 1 chainOrderType
       == Just (finiteOrdinal 2))
   assert "folio rejects an index outside its finite core"
-    (withPageAt threePageFolio 3 (const True) == Nothing)
+    (isNothing (withPageAt threePageFolio 3 (const True)))
   assert "folio's padded presentation repeats its final chain"
     (withPaddedPage threePageFolio 100 chainOrderType == omega)
   assert "folio composes adjacent maps coherently"
@@ -269,4 +278,4 @@ testFolio = do
         pure (chainPosition sourcePage transported == finiteOrdinal 1))
       == Just (Just True))
   assert "folio has no map against the spine order"
-    (withFolioMap threePageFolio 2 1 (\_ _ _ -> True) == Nothing)
+    (isNothing (withFolioMap threePageFolio 2 1 (\_ _ _ -> True)))

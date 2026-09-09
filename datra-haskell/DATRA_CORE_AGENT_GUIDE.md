@@ -64,10 +64,12 @@ src/DatraCore/
 │   └── LiquidInternal.hs     refined representation and core operations
 ├── Transportation/
 │   ├── Transportation.hs     public opaque functor API
-│   └── Internal.hs           carrier-function representation
+│   ├── Internal.hs           category and opposite-map packaging
+│   └── LiquidInternal.hs     carrier representation and functor laws
 ├── Folio/
 │   ├── Folio.hs              public opaque API
-│   └── Internal.hs           type-aligned finite presentation
+│   ├── Internal.hs           chain specialization and finite lookup
+│   └── LiquidInternal.hs     type-aligned data and coherence laws
 └── Chains/
     ├── Chains.hs             public opaque API
     └── Internal.hs           positions, lookup, sums, and spine
@@ -92,13 +94,10 @@ LiquidHaskell version cannot parse refinements for the symbolic `Category` metho
 composition, and the category instances are derived in `Internal.hs`.
 
 `Consolidation` uses the same split. Its abstract refinements stand for the source
-and target chain orders without adding them to the runtime representation.
-The representation, smart constructor, composition, and identity's law witnesses
-are checked. The identity packaging contract is kept beside the datatype and
-explicitly assumed: LiquidHaskell 0.9.4 both mis-serializes that abstract-refined
-contract across modules on a cold build and crashes when it solves the packaged
-identity and composition contracts together. Its checked witnesses use identity
-for both maps, making monotonicity and the right-inverse law immediate.
+and target chain orders without adding them to the runtime representation. The
+representation, smart constructor, identity, composition, and their carrier-map
+laws are checked. The reflected identity uses the identity function for both maps,
+making monotonicity and the right-inverse law immediate.
 
 ## Data representations and invariants
 
@@ -265,9 +264,10 @@ source-right object.
 As with domanial insertions, the carrier types stand for the separately supplied
 chain values; the chains are not stored inside each morphism.
 
-LiquidHaskell checks the representation, smart constructor, identity, and
-composition. These checks cover both the abstract monotonicity law and the
-right-inverse law. `sumConsolidations` and the category instances remain
+LiquidHaskell checks the representation, smart constructor, identity, composition,
+their carrier-map laws, and the corresponding opposite-category map laws. These
+checks cover the abstract monotonicity law, right-inverse law, and the reversed
+composition used by folios. `sumConsolidations` and the category instances remain
 executable and runtime-tested, but their full refinement proofs have not yet been
 discharged.
 
@@ -286,8 +286,9 @@ the Haskell carrier types `source` and `target` already represent it. The
 composition. `transportCoconsolidation` unwraps a coconsolidation, so its resulting
 function runs from the later page carrier back to the earlier page carrier.
 
-The functor identity and composition laws are documented beside the implementation
-but are not yet specified in LiquidHaskell. Both laws are covered by runtime tests.
+`transportationIdentity` and `transportationComposition` are pointwise
+LiquidHaskell proofs of the functor identity and composition laws. Runtime tests
+also cover both operations.
 
 ### Folios: type-aligned finite spine presentations
 
@@ -295,18 +296,18 @@ but are not yet specified in LiquidHaskell. Both laws are covered by runtime tes
 Folio origin final
 ```
 
-A folio is a nonempty, type-aligned sequence. Its first page stores a
-`Chain origin`, a distinguished origin value, and a proof-shaped callback whose
-intended law says every origin value equals that distinguished value. Each
-appended page stores a `Chain next` and a `Coconsolidation previous next`.
+A folio specializes the verified `FolioData page origin final` GADT to `Chain` as
+its page container. Its first page stores refined `SingletonOrigin` data: a
+distinguished value and a checked callback proving that every origin value equals
+it. Each appended page stores a `Chain next` and a `Coconsolidation previous next`.
 Intermediate carrier types are existential, while the first and final carriers
 remain visible in the type parameters.
 
 This adjacent-arrow representation is the least finite presentation of the Lean
 spine functor. `withFolioMap` derives the unique map for any forward interval from
 identities and categorical composition rather than storing redundant arrows.
-Consequently, the identity and composition coherence conditions hold by
-construction. `paddedIndex`, `withPaddedPage`, and `withPaddedFolioMap` repeat the
+`folioMapIdentity` and `folioMapComposition` verify the pointwise identity and
+composition semantics used by that construction. `paddedIndex`, `withPaddedPage`, and `withPaddedFolioMap` repeat the
 last genuine page and its identity map for all subsequent natural-number indices,
 giving the eventually constant full spine presentation.
 
@@ -315,9 +316,10 @@ carrier types without exposing the GADT constructors. `singletonFolio` is the
 canonical origin constructor over `()`, while `folio` permits another carrier with
 the same intended singleton law.
 
-This module deliberately has no LiquidHaskell annotations yet. The singleton
-origin law and functor coherence conditions are recorded as comments in the
-implementation, and the executable behavior is runtime-tested.
+LiquidHaskell checks only the semantic core taken from Lean: singleton origin and
+pointwise functor identity/composition. GHC's GADT typing enforces adjacency of
+heterogeneous pages. Padded-index arithmetic and existential lookup remain
+ordinary executable code with runtime tests rather than transcribed Lean proofs.
 
 ## Correspondence with `datra.lean`
 

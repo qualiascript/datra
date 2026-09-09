@@ -3,6 +3,8 @@ module Transportation
   ( Transportation
   , runTransportation
   , transportation
+  , transportationIdentity
+  , transportationComposition
   , transportCoconsolidation
   ) where
 
@@ -11,4 +13,6 @@ import Transportation.Internal
   , runTransportation
   , transportCoconsolidation
   , transportation
+  , transportationComposition
+  , transportationIdentity
   )
