@@ -14,6 +14,8 @@ extra-doc-files:
     CHANGELOG.md
     README.md
     NOTICE
+extra-source-files:
+    src/DatraCore/LiquidPlugin.h
 
 common warnings
     ghc-options: -Wall
@@ -27,6 +29,8 @@ library
         DatraOrdinal
         Chains
         Consolidation
+        Folio
+        Transportation
     other-modules:
         Chains.Internal
         Consolidation.Internal
@@ -36,6 +40,10 @@ library
         DomanialInsertion.LiquidInternal
         Dominion.Internal
         FiniteDominion.Internal
+        Folio.Internal
+        Folio.LiquidInternal
+        Transportation.Internal
+        Transportation.LiquidInternal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
@@ -48,6 +56,8 @@ library
         src/DatraCore/Dominion
         src/DatraCore/FiniteDominion
         src/DatraCore/DomanialInsertion
+        src/DatraCore/Folio
+        src/DatraCore/Transportation
     default-language: GHC2021
 
 executable datra-haskell

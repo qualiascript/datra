@@ -1,4 +1,5 @@
-{-# OPTIONS_GHC -fplugin=LiquidHaskell #-}
+{-# LANGUAGE CPP #-}
+#include "../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 
 -- | LiquidHaskell-verified representation used by the hidden implementation.

@@ -9,17 +9,22 @@ module Consolidation.Internal
   , composeConsolidations
   , sumConsolidations
   , Coconsolidation (..)
+  , composeCoconsolidations
   , op
   , unop
   ) where
 
 import Control.Category (Category (..))
 import Consolidation.LiquidInternal
-  ( Consolidation (..)
+  ( Coconsolidation (..)
+  , Consolidation (..)
+  , composeCoconsolidations
   , composeConsolidations
   , consolidation
   , consolidationMonotone
   , identityConsolidation
+  , op
+  , unop
   )
 import Prelude hiding ((.), id)
 
@@ -71,23 +76,6 @@ instance Category Consolidation where
   id = identityConsolidation
   (.) = composeConsolidations
 
--- | The opposite category of consolidations (@CoCon@ in @datra.lean@).
---
--- A morphism from @a@ to @b@ here is a consolidation from @b@ to @a@.
-newtype Coconsolidation a b = Coconsolidation
-  { getOppositeConsolidation :: Consolidation b a
-  }
-
--- | Reverse the categorical direction of a consolidation.
-op :: Consolidation a b -> Coconsolidation b a
-op = Coconsolidation
-
--- | Recover the underlying consolidation.
-unop :: Coconsolidation b a -> Consolidation a b
-unop = getOppositeConsolidation
-
 instance Category Coconsolidation where
-  id = Coconsolidation id
-
-  Coconsolidation second . Coconsolidation first =
-    Coconsolidation (first . second)
+  id = op identityConsolidation
+  (.) = composeCoconsolidations

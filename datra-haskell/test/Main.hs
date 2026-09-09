@@ -6,8 +6,11 @@ import DatraOrdinal
 import DomanialInsertion
 import Dominion
 import FiniteDominion
+import Folio
 import Numeric.Natural (Natural)
+import Transportation
 
+import Data.Maybe (isNothing)
 import qualified Data.Set as Set
 
 main :: IO ()
@@ -18,9 +21,11 @@ main = do
   testChainSum
   testConsolidation
   testConsolidationSum
+  testTransportation
+  testFolio
 
 checkedIdentity :: DomanialInsertion Bool Bool
-checkedIdentity = domanialInsertion (\value -> value) Just (\_ -> ())
+checkedIdentity = domanialInsertion id Just (const ())
 
 assert :: String -> Bool -> IO ()
 assert label condition
@@ -40,7 +45,7 @@ testFiniteDominion =
         assert "finite dominion ranks its carrier"
           (valueRanks == [0, 1, 2])
         assert "finite dominion rejects values outside its carrier"
-          (finiteMember finite 'z' == Nothing)
+          (isNothing (finiteMember finite 'z'))
         assert "finite bounded rank unrank is total"
           (all
             (\value -> finiteUnrank (finiteRank value) == value)
@@ -132,6 +137,15 @@ testConsolidation = do
       (applyConsolidation (Consolidation.unop (Consolidation.op halve)))
       values
       == map (applyConsolidation halve) values)
+  assert "coconsolidation composition follows opposite categorical order"
+    (map
+      (applyConsolidation
+        (Consolidation.unop
+          (Consolidation.composeCoconsolidations
+            (Consolidation.op halve)
+            (Consolidation.op halve))))
+      values
+      == map (applyConsolidation doubledHalve) values)
 
 testConsolidationSum :: IO ()
 testConsolidationSum = do
@@ -147,3 +161,121 @@ testConsolidationSum = do
         applyConsolidation summed (consolidationPreimage summed value)
           == value)
       targets)
+
+unitChain :: Chain ()
+unitChain =
+  chain
+    (finiteOrdinal 1)
+    (const (finiteOrdinal 0))
+    (\position ->
+      if position == finiteOrdinal 0 then Just () else Nothing)
+    (const ())
+    (\_ _ -> ())
+    (const ())
+
+boolChain :: Chain Bool
+boolChain =
+  chain
+    (finiteOrdinal 2)
+    (\value -> finiteOrdinal (if value then 1 else 0))
+    (\position ->
+      if position == finiteOrdinal 0
+        then Just False
+        else if position == finiteOrdinal 1 then Just True else Nothing)
+    (const ())
+    (\_ _ -> ())
+    (const ())
+
+collapseBool :: Consolidation Bool ()
+collapseBool =
+  consolidation
+    (const ())
+    (const False)
+    (\_ _ _ -> ())
+    (const ())
+
+nonzero :: Consolidation Natural Bool
+nonzero =
+  consolidation
+    (> 0)
+    (\value -> if value then 1 else 0)
+    (\_ _ right -> right > 0)
+    (const ())
+
+threePageFolio :: Folio () Natural
+threePageFolio =
+  appendPage
+    (appendPage
+      (singletonFolio unitChain)
+      boolChain
+      (Consolidation.op collapseBool))
+    spine
+    (Consolidation.op nonzero)
+
+testTransportation :: IO ()
+testTransportation = do
+  let values = [0 .. 8]
+      transported = runTransportation (transportation halve)
+      transportedTwice =
+        runTransportation
+          (transportation (composeConsolidations halve halve))
+      identity =
+        runTransportation
+          (transportation
+            (identityConsolidation :: Consolidation Natural Natural))
+  transportationIdentity (0 :: Natural) `seq`
+    transportationComposition halve halve 7 `seq` pure ()
+  assert "transportation exposes a consolidation's carrier map"
+    (map transported values == map (applyConsolidation halve) values)
+  assert "transportation preserves identity"
+    (map identity values == values)
+  assert "transportation preserves composition"
+    (map transportedTwice values
+      == map (transported . transported) values)
+
+testFolio :: IO ()
+testFolio = do
+  originUnique threePageFolio () `seq`
+    folioMapIdentity False `seq`
+      folioMapComposition
+        (Consolidation.op nonzero)
+        (Consolidation.op collapseBool)
+        7 `seq` pure ()
+  assert "folio counts its genuine pages"
+    (folioLength threePageFolio == 3)
+  assert "folio padded indices repeat the final page"
+    (map (paddedIndex threePageFolio) [0, 1, 2, 3, 100]
+      == [0, 1, 2, 2, 2])
+  assert "folio retrieves each heterogeneous page"
+    (withPageAt threePageFolio 1 chainOrderType
+      == Just (finiteOrdinal 2))
+  assert "folio rejects an index outside its finite core"
+    (isNothing (withPageAt threePageFolio 3 (const True)))
+  assert "folio's padded presentation repeats its final chain"
+    (withPaddedPage threePageFolio 100 chainOrderType == omega)
+  assert "folio composes adjacent maps coherently"
+    (withFolioMap threePageFolio 1 2
+      (\sourcePage targetPage pageMap -> do
+        value <- chainObjectAt targetPage (finiteOrdinal 2)
+        let transported =
+              runTransportation (transportCoconsolidation pageMap) value
+        pure (chainPosition sourcePage transported == finiteOrdinal 1))
+      == Just (Just True))
+  assert "folio transports from a later page to its origin"
+    (withFolioMap threePageFolio 0 2
+      (\sourcePage targetPage pageMap -> do
+        value <- chainObjectAt targetPage (finiteOrdinal 5)
+        let transported =
+              runTransportation (transportCoconsolidation pageMap) value
+        pure (chainPosition sourcePage transported == finiteOrdinal 0))
+      == Just (Just True))
+  assert "folio pads maps along the full spine"
+    (withPaddedFolioMap threePageFolio 1 100
+      (\sourcePage targetPage pageMap -> do
+        value <- chainObjectAt targetPage (finiteOrdinal 8)
+        let transported =
+              runTransportation (transportCoconsolidation pageMap) value
+        pure (chainPosition sourcePage transported == finiteOrdinal 1))
+      == Just (Just True))
+  assert "folio has no map against the spine order"
+    (isNothing (withFolioMap threePageFolio 2 1 (\_ _ _ -> True)))
