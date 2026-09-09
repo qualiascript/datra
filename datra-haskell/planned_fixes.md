@@ -125,7 +125,7 @@ ordinal
 If internal modules such as `Chains` need access to the representation for LiquidHaskell proofs or pattern matching, move the constructor to an internal module, for example:
 
 ```text
-DatraSemanticCore.DatraOrdinal.Internal
+DatraCore.DatraOrdinal.Internal
 ```
 
 and expose only the abstract type and safe operations from the public module.
