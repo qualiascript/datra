@@ -4,6 +4,7 @@ import Chains
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
+import FiniteDominion
 import Numeric.Natural (Natural)
 
 import qualified Data.Set as Set
@@ -24,15 +25,34 @@ assert label condition
   | otherwise = fail ("test failed: " <> label)
 
 testFiniteDominion :: IO ()
-testFiniteDominion = do
-  let values = Set.fromList ['a', 'b', 'c']
-      valueDominion = finiteSetDominion values
-  assert "finite dominion ranks its carrier"
-    (map (rank valueDominion) ['a', 'b', 'c']
-      == map Just [0, 1, 2])
-  assert "finite dominion unrank is inverse"
-    (map (unrank valueDominion) [0, 1, 2, 3]
-      == [Just 'a', Just 'b', Just 'c', Nothing])
+testFiniteDominion =
+  finiteSetDominion (Set.fromList ['a', 'b', 'c']) $ \finite -> do
+    let members = traverse (finiteMember finite) ['a', 'b', 'c']
+    case members of
+      Nothing -> fail "test setup failed: carrier member was rejected"
+      Just carrier -> do
+        let valueDominion = finiteAsDominion finite
+            valueRanks :: [Natural]
+            valueRanks = map (rank valueDominion) carrier
+        assert "finite dominion ranks its carrier"
+          (valueRanks == [0, 1, 2])
+        assert "finite dominion rejects values outside its carrier"
+          (finiteMember finite 'z' == Nothing)
+        assert "finite bounded rank unrank is total"
+          (all
+            (\value -> finiteUnrank (finiteRank value) == value)
+            carrier)
+        assert "finite dominion rank round-trips every carrier value"
+          (all
+            (\value ->
+              unrank valueDominion (rank valueDominion value) == Just value)
+            carrier)
+        assert "finite dominion only constructs bounded indices"
+          (map (fmap finiteIndexValue . finiteIndex finite) [0, 1, 2, 3]
+            == [Just 0, Just 1, Just 2, Nothing])
+        assert "finite dominion unrank is inverse"
+          (map (fmap finiteValue . unrank valueDominion) [0, 1, 2, 3]
+            == [Just 'a', Just 'b', Just 'c', Nothing])
 
 testIdentityInsertion :: IO ()
 testIdentityInsertion = do
@@ -55,6 +75,8 @@ testSpine = do
       (\value ->
         chainObjectAt spine (chainPosition spine value) == Just value)
       values)
+  assert "ordinal construction removes leading zero coefficients"
+    (ordinal [0, 0, 1, 2] == ordinal [1, 2])
 
 testChainSum :: IO ()
 testChainSum = do

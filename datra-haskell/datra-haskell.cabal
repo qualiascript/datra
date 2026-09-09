@@ -18,11 +18,13 @@ library
     import:           warnings
     exposed-modules:
         Dominion
+        FiniteDominion
         DomanialInsertion
         DatraOrdinal
         Chains
     other-modules:
         DomanialInsertion.Internal
+        OrdinalChain.Internal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
@@ -32,6 +34,7 @@ library
         src/DatraCore/Chains
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion
+        src/DatraCore/FiniteDominion
         src/DatraCore/DomanialInsertion
     default-language: GHC2021
 

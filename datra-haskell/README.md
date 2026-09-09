@@ -6,8 +6,8 @@ Haskell implementation of Datra.
 
 The library mirrors the proof-bearing structures in [`datra.lean`](../datra.lean):
 
-- `Dominion` carries the coherence proof for its `rank`/`unrank` partial
-  bijection (the executable form of Lean's injective `rank` embedding).
+- `Dominion` carries a total `rank` and a proof that `unrank (rank x)` returns
+  `x` (the executable form of Lean's injective `rank` embedding).
 - `DomanialInsertion` carries an executable left-inverse law, which proves the
   injectivity required by Lean's `Function.Embedding` morphisms.
 - `Chain` carries position bounds, injectivity, and an executable inverse for
@@ -16,10 +16,17 @@ The library mirrors the proof-bearing structures in [`datra.lean`](../datra.lean
 
 The general smart constructors (`dominion`, `domanialInsertion`, and `chain`)
 require proof functions whose refinements are checked during compilation.
-Finite `Data.Set`/`Data.Map` construction and the two ordinal facts already
-proved in Lean (`Ordinal.type_sum_lex` and `Ordinal.type_nat_lt`) are the small,
-explicit `assume` boundary because those library implementations are opaque to
-LiquidHaskell.
+The two ordinal facts already proved in Lean (`Ordinal.type_sum_lex` and
+`Ordinal.type_nat_lt`) are an explicit `assume` boundary. Finite
+`Data.Set`/`Data.Map` construction is a separate trusted boundary enforced by
+GHC's scoped carrier types, because those containers are opaque to
+LiquidHaskell 0.9.4.
+
+The separate `FiniteDominion` module turns a runtime `Set` into a scoped finite
+carrier. Values must first pass through `finiteMember`; its rank has a bounded
+`FiniteIndex`, and `finiteUnrank` is total on that type. The scope is
+generative, so elements and indices from distinct finite carriers cannot be
+mixed or escape the constructor's continuation.
 
 ## Build
 
