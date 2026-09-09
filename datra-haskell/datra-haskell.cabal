@@ -2,14 +2,18 @@ cabal-version:      3.0
 name:               datra-haskell
 version:            0.1.0.0
 synopsis:           A new Haskell project
-license:            BSD-3-Clause
+license:            Apache-2.0
 license-file:       LICENSE
-author:             Haskell Developer
+author:             qualiascript
+copyright:          2026 qualiascript
+homepage:           https://github.com/qualiascript/datra
+bug-reports:        https://github.com/qualiascript/datra/issues
 category:           Development
 build-type:         Simple
 extra-doc-files:
     CHANGELOG.md
     README.md
+    NOTICE
 
 common warnings
     ghc-options: -Wall
