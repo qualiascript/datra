@@ -2,7 +2,6 @@ module Main (main) where
 
 import Chain
 import Consolidation
-import ConsolidationTransport
 import DatraOrdinal
 import DomanialInsertion
 import Dominion

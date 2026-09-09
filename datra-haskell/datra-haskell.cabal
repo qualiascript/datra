@@ -30,7 +30,6 @@ library
         Chain
         Consolidation
         Folio
-        ConsolidationTransport
     other-modules:
         Chain.Internal
         Consolidation.Internal
@@ -42,8 +41,6 @@ library
         FiniteDominion.Internal
         Folio.Internal
         Folio.LiquidInternal
-        ConsolidationTransport.Internal
-        ConsolidationTransport.LiquidInternal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
@@ -57,7 +54,6 @@ library
         src/DatraCore/FiniteDominion
         src/DatraCore/DomanialInsertion
         src/DatraCore/Folio
-        src/DatraCore/ConsolidationTransport
     default-language: GHC2021
 
 executable datra-haskell

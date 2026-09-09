@@ -28,10 +28,9 @@ DatraCore models data by separating **values**, **ways of locating values**, and
    those ordinals. Chain order is therefore derived from position rather than
    stored separately.
 6. A **consolidation** is a monotone, point-surjective map between chain
-   carriers. A chosen preimage makes point-surjectivity executable.
-7. **Consolidation transport** forgets a consolidation's proof structure and exposes
-   its underlying function between carrier types.
-8. A **folio** is a nonempty, finite presentation of an eventually constant
+   carriers. A chosen preimage makes point-surjectivity executable, and its
+   transport API forgets that proof structure to expose the underlying function.
+7. A **folio** is a nonempty, finite presentation of an eventually constant
    spine diagram in coconsolidations, beginning at a singleton page.
 
 These pieces are the executable foundation of the larger organization in
@@ -59,13 +58,9 @@ src/DatraCore/
 │   ├── Internal.hs           composition and opposite category
 │   └── LiquidInternal.hs     LiquidHaskell-checked representation
 ├── Consolidation/
-│   ├── Consolidation.hs      public opaque API
-│   ├── Internal.hs           sums, categories, and opposite category
-│   └── LiquidInternal.hs     refined representation and core operations
-├── ConsolidationTransport/
-│   ├── ConsolidationTransport.hs public opaque functor API
-│   ├── Internal.hs           category and opposite-map packaging
-│   └── LiquidInternal.hs     carrier representation and functor laws
+│   ├── Consolidation.hs      public opaque consolidation and transport API
+│   ├── Internal.hs           sums, categories, opposite category, and transport
+│   └── LiquidInternal.hs     refined representation, operations, and functor laws
 ├── Folio/
 │   ├── Folio.hs              public opaque API
 │   ├── Internal.hs           chain specialization and finite lookup
@@ -271,10 +266,10 @@ composition used by folios. `sumConsolidations` and the category instances remai
 executable and runtime-tested, but their full refinement proofs have not yet been
 discharged.
 
-### Consolidation transport: the carrier-level functor
+#### Consolidation transport: the carrier-level functor
 
 ```haskell
-newtype ConsolidationTransport source target = ConsolidationTransport
+data ConsolidationTransport source target = ConsolidationTransport
   { runConsolidationTransport :: source -> target
   }
 ```
@@ -288,7 +283,9 @@ function runs from the later page carrier back to the earlier page carrier.
 
 `consolidationTransportIdentity` and `consolidationTransportComposition` are pointwise
 LiquidHaskell proofs of the functor identity and composition laws. Runtime tests
-also cover both operations.
+also cover both operations. These definitions live in the `Consolidation` module
+because transport is the carrier-level view of a consolidation rather than an
+independent core concept.
 
 ### Folios: type-aligned finite spine presentations
 
@@ -340,7 +337,7 @@ meaning.
 | `ConHom` / `Con` | `Consolidation source target` | A monotone object map plus an executable chosen preimage and law witnesses represents Lean's point-surjective functor. |
 | `ConHom.sum` | `sumConsolidations` | Both map independently over the left and right summands. |
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
-| `Tra` | `ConsolidationTransport` / `consolidationTransport` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
+| `Tra` | `ConsolidationTransport` / `consolidationTransport` in `Consolidation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
 | `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
 
 The next unimplemented Lean layer defines `Pag`. DatraCore does not yet implement
