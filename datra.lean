@@ -29,6 +29,7 @@ Category on Atlas Presheaves}
 \newcommand{\Yo}{\mathsf{Yo}}
 \newcommand{\Ex}{\mathsf{Ex}}
 \newcommand{\Ter}{\mathsf{Ter}}
+\newcommand{\HorSum}{\boxplus}
 \newcommand{\id}{\operatorname{Id}}
 \newcommand{\Hom}{\operatorname{Hom}}
 
@@ -3952,7 +3953,7 @@ noncomputable def I_dayConvolutionUnit :
 The \textbf{Horizontal Sum Bifunctor}, denoted
 $\mathsf{HorSum}:\mathsf{StaDaTrav}\times\mathsf{StaDaTrav}\to
 \mathsf{StaDaTrav}$, or in infix notation by
-$+_{\!<}:\mathsf{StaDaTrav}\times\mathsf{StaDaTrav}\to\mathsf{StaDaTrav}$,
+$\HorSum:\mathsf{StaDaTrav}\times\mathsf{StaDaTrav}\to\mathsf{StaDaTrav}$,
 is the Day convolution extension of stable atlas horizontal sum.  Because
 the indexing morphisms are arrows of $\mathsf{StaAtlTrav}$, its result and its
 arrow action land in $\mathsf{StaDaTrav}$ by construction.
@@ -3965,7 +3966,7 @@ noncomputable def HorSum : StaDaTravMon × StaDaTravMon ⥤ StaDaTravMon :=
 /-%%
 \begin{definition}[The Stable Data Transversal Braider]
 The \textbf{Stable Data Transversal Braider}
-$\mathsf{Brd}_{F,F'}:F+_{\!<}F'\to F'+_{\!<}F$ is the Day convolution
+$\mathsf{Brd}_{F,F'}:F\HorSum F'\to F'\HorSum F$ is the Day convolution
 extension of $\mathsf{AtlBrd}$.
 \end{definition}
 %%-/
@@ -3978,8 +3979,8 @@ noncomputable def Brd (F G : StaDaTravMon) :
 \begin{definition}[The Stable Data Transversal Associator]
 The \textbf{Stable Data Transversal Associator}
 \[
-  \mathsf{Asoc}_{F,F',F''}:(F+_{\!<}F')+_{\!<}F''
-    \longrightarrow F+_{\!<}(F'+_{\!<}F'')
+  \mathsf{Asoc}_{F,F',F''}:(F\HorSum F')\HorSum F''
+    \longrightarrow F\HorSum(F'\HorSum F'')
 \]
 is the Day convolution extension of $\mathsf{AtlAsoc}$.
 \end{definition}
@@ -3993,9 +3994,9 @@ noncomputable def Asoc (F G H : StaDaTravMon) :
 /-%%
 \begin{definition}[The Stable Data Transversal Unitors]
 The \textbf{Stable Data Transversal Left Unitor}
-$\mathsf{Lu}:I+_{\!<}F\to F$ and the
+$\mathsf{Lu}:I\HorSum F\to F$ and the
 \textbf{Stable Data Transversal Right Unitor}
-$\mathsf{Ru}:F+_{\!<}I\to F$ are the Day convolution extensions of
+$\mathsf{Ru}:F\HorSum I\to F$ are the Day convolution extensions of
 $\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
 \end{definition}
 %%-/
@@ -4011,7 +4012,7 @@ noncomputable def Ru (F : StaDaTravMon) :
 The \textbf{Stable Data Transversals Monoidal Category}, denoted
 $\mathsf{StaDaTravMon}$, is
 \[
-  \mathsf{StaDaTravMon}=(\mathsf{StaDaTrav},+_{\!<},I).
+  \mathsf{StaDaTravMon}=(\mathsf{StaDaTrav},\HorSum,I).
 \]
 Its tensor is Day convolution on the Atlas Federation.  The
 braider, associator, and unitors are induced by retagging that form, so all
