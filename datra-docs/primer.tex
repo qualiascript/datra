@@ -13,6 +13,7 @@
 
 \newcommand{\code}[1]{\texttt{#1}}
 \newcommand{\StaDaTraMon}{\mathsf{StaDaTraMon}}
+\newcommand{\HorSum}{\boxplus}
 
 \tikzset{
   atlas node/.style={draw,rounded corners=2pt,minimum height=7mm,
@@ -198,15 +199,15 @@ particular, by dropping the map requirements, an atlas can also model the
 results of computation at different stages, so that this unifies maps and
 functions within the same semantics.
 
-The so-called ``horizontal sum'' operator, \(\mathbin{+_{<}}\), takes two
+The so-called ``horizontal sum'' operator, \(\HorSum\), takes two
 \(\StaDaTraMon\) morphisms and puts them side by side. For instance,
 \(\code{[B := 2; C := 6]}\) can be constructed as
-\((B := 2) \mathbin{+_{<}} (C := 6)\). It can be clearly seen that one can
+\((B := 2) \HorSum (C := 6)\). It can be clearly seen that one can
 put two trees side by side, having the extent as the disjoint union of the
 original two extents, so that the atlas morphisms do not get ``tangled up''.
 This operator is similar to the map notation used in this document, so that
 for instance,
-\(A \mathbin{+_{<}} B \mathbin{+_{<}} C = \code{[A; B; C]}\). A variation
+\(A \HorSum B \HorSum C = \code{[A; B; C]}\). A variation
 on this operation, which goes through an intermediary phase where the two
 extents are kept separate on page \(1\), can be used to create maps with
 complex pagination structures, such as \(\code{[A; [B; C]]}\).
@@ -223,7 +224,7 @@ complex pagination structures, such as \(\code{[A; [B; C]]}\).
     {\(2\mapsto2\)} (btarget);
   \node[atlas label,above=3mm of bsource] {\(B := 2\)};
 
-  \node[font=\Large,right=12mm of bsource] (plus) {\(\mathbin{+_{<}}\)};
+  \node[font=\Large,right=12mm of bsource] (plus) {\(\HorSum\)};
 
   \node[selected node,right=12mm of plus] (csource) {\(\{6\}\)};
   \node[atlas node,below=of csource,minimum width=31mm] (ctarget)
