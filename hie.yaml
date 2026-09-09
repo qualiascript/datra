@@ -1,10 +1,3 @@
 cradle:
-  cabal:
-    cabalProject: "datra-haskell/cabal.project"
-    components:
-      - path: "./datra-haskell/src"
-        component: "lib:datra-haskell"
-      - path: "./datra-haskell/app"
-        component: "exe:datra-haskell"
-      - path: "./datra-haskell/test"
-        component: "test:datra-haskell-test"
+  bios:
+    program: ".hie-bios"

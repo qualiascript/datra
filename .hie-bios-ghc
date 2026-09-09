@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+for argument do
+    if [ "$argument" = "--interactive" ]; then
+        : > "${HIE_BIOS_OUTPUT:?HIE_BIOS_OUTPUT is not set}"
+        printf '%s\n' -working-dir "$(pwd)" >> "$HIE_BIOS_OUTPUT"
+        for compiler_argument do
+            if [ "$compiler_argument" != "--interactive" ]; then
+                printf '%s\n' "$compiler_argument" >> "$HIE_BIOS_OUTPUT"
+            fi
+        done
+        exit 0
+    fi
+done
+
+real_ghc=${HIE_BIOS_GHC:-$(command -v ghc)}
+
+# HIE_BIOS_GHC_ARGS is deliberately word-split when present: hie-bios supplies
+# it as a whitespace-separated list of arguments for the real compiler.
+# shellcheck disable=SC2086
+exec "$real_ghc" ${HIE_BIOS_GHC_ARGS:-} "$@"

@@ -1,0 +1,8 @@
+packages: .
+
+-- LiquidHaskell writes status banners while GHC loads modules.  hie-bios
+-- expects machine-readable compiler output, so IDE sessions omit the plugin.
+-- The ordinary cabal.project does not define this macro and still checks every
+-- LiquidHaskell-annotated module during builds and tests.
+package datra-haskell
+    ghc-options: -D__GHCIDE__

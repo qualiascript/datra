@@ -1,4 +1,5 @@
-{-# OPTIONS_GHC -fplugin=LiquidHaskell #-}
+{-# LANGUAGE CPP #-}
+#include "../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 

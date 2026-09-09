@@ -14,6 +14,8 @@ extra-doc-files:
     CHANGELOG.md
     README.md
     NOTICE
+extra-source-files:
+    src/DatraCore/LiquidPlugin.h
 
 common warnings
     ghc-options: -Wall

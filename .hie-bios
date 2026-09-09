@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+source_file=${1:?hie-bios requires a source file}
+case "$source_file" in
+    */test/*) component=test:datra-haskell-test ;;
+    */app/*) component=exe:datra-haskell ;;
+    *) component=lib:datra-haskell ;;
+esac
+
+workspace_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+package_dir="$workspace_dir/datra-haskell"
+cabal_executable=/usr/bin/cabal
+if [ ! -x "$cabal_executable" ]; then
+    cabal_executable=$(command -v cabal)
+fi
+ghc_pkg_executable=/usr/bin/ghc-pkg
+if [ ! -x "$ghc_pkg_executable" ]; then
+    ghc_pkg_executable=$(command -v ghc-pkg)
+fi
+
+cd "$package_dir"
+"$cabal_executable" \
+    --builddir="$workspace_dir/.hie-bios-dist" \
+    v2-repl \
+    --with-compiler="$workspace_dir/.hie-bios-ghc" \
+    --with-hc-pkg="$ghc_pkg_executable" \
+    --project-file=cabal.hie.project \
+    "$component" \
+    >/dev/null
