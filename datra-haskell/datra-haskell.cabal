@@ -22,8 +22,10 @@ library
         DomanialInsertion
         DatraOrdinal
         Chains
+        Consolidation
     other-modules:
         Chains.Internal
+        Consolidation.Internal
         DatraOrdinal.Internal
         DomanialInsertion.Internal
         DomanialInsertion.LiquidInternal
@@ -36,6 +38,7 @@ library
     hs-source-dirs:
         src/DatraCore
         src/DatraCore/Chains
+        src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion
         src/DatraCore/FiniteDominion

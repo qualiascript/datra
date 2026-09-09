@@ -27,12 +27,13 @@ DatraCore models data by separating **values**, **ways of locating values**, and
 5. A **chain** is a carrier put in bijection with the initial segment below one of
    those ordinals. Chain order is therefore derived from position rather than
    stored separately.
+6. A **consolidation** is a monotone, point-surjective map between chain
+   carriers. A chosen preimage makes point-surjectivity executable.
 
 These pieces are the executable foundation of the larger organization in
 `datra.lean`: chains index pages, page cells carry dominions, and compatible
 insertions relate those cells inside atlases. The Haskell package does **not** yet
-implement that entire tower. It currently stops at chains and the maps between
-dominion carriers.
+implement that entire tower. It currently stops at consolidations between chains.
 
 ## Module and trust boundaries
 
@@ -53,6 +54,9 @@ src/DatraCore/
 │   ├── DomanialInsertion.hs  public opaque API
 │   ├── Internal.hs           composition and opposite category
 │   └── LiquidInternal.hs     LiquidHaskell-checked representation
+├── Consolidation/
+│   ├── Consolidation.hs      public opaque API
+│   └── Internal.hs           maps, sums, and opposite category
 └── Chains/
     ├── Chains.hs             public opaque API
     └── Internal.hs           positions, lookup, sums, and spine
@@ -212,6 +216,33 @@ At present, LiquidHaskell is instructed to assume the contracts for `sumChains` 
 refinement proofs have not yet been discharged. Agents should preserve this
 distinction when describing verification coverage.
 
+### Consolidations: monotone point-surjections
+
+```haskell
+Consolidation source target
+  { applyConsolidation              :: source -> target
+  , consolidationPreimage          :: target -> source
+  , consolidationMonotone          :: source -> source -> ()
+  , consolidationPointSurjective   :: target -> ()
+  }
+```
+
+A consolidation is used with a source and target `Chain`. Its laws require the
+object map to preserve their order and the chosen preimage to be a right inverse
+of the object map. The latter is executable evidence of Lean's
+`Function.Surjective` field. `composeConsolidations` composes object maps and
+preimages, while `sumConsolidations` is the componentwise map on `Either` matching
+Lean's `ConHom.sum`.
+
+`Coconsolidation` is the categorical opposite (`CoCon` in Lean). As with domanial
+insertions, the carrier types stand for the separately supplied chain values; the
+chains are not stored inside each morphism.
+
+There are deliberately no LiquidHaskell refinements in this module yet. The
+monotonicity and right-inverse coherence laws are recorded in the implementation
+comments and represented by witness callbacks, but are currently caller
+obligations rather than statically checked guarantees.
+
 ## Correspondence with `datra.lean`
 
 The Lean file is the semantic source of truth. Haskell changes may choose a more
@@ -228,10 +259,13 @@ meaning.
 | `Chain.sum` | `sumChains` | Lean uses the lexicographic order on `Sum`; Haskell uses `Either` and offsets right-hand ordinal positions. |
 | `Spine` | `spine` | Both have natural-number objects and order type `omega`. |
 | ordinals below `omega^omega` | `Ordinal` | Lean uses Mathlib ordinals and propositions; Haskell uses finite canonical Cantor-normal-form coefficients. |
+| `ConHom` / `Con` | `Consolidation source target` | A monotone object map plus an executable chosen preimage and law witnesses represents Lean's point-surjective functor. |
+| `ConHom.sum` | `sumConsolidations` | Both map independently over the left and right summands. |
+| `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
+| `Tra.map` | `applyConsolidation` | Both expose the underlying set-theoretic surjection. |
 
-The next Lean layer defines `ConHom`: monotone, point-surjective maps between
-chains, forming the category of consolidations. DatraCore does not implement these
-morphisms yet. It also does not yet implement `Folio`, `Pag`, `Atl`, atlas
+The next unimplemented Lean layer defines `Folio`. DatraCore also does not yet
+implement `Pag`, `Atl`, atlas
 transposals/traversals, stable atlas families, coalitions, or data transformations.
 Those later definitions should not be collapsed into the current `Chain` or
 `Dominion` types.
@@ -255,7 +289,7 @@ page cells as a category of elements (Pag)
 each cell carries a Dominion, related by insertions (Atl)
 ```
 
-The current Haskell code implements the first three inputs to that progression.
+The current Haskell code implements the inputs through `Con` in that progression.
 
 ## Guidance for changes
 
