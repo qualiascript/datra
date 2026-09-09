@@ -18,21 +18,25 @@ library
     import:           warnings
     exposed-modules:
         Dominion
+        FiniteDominion
         DomanialInsertion
         DatraOrdinal
         Chains
     other-modules:
+        Chains.Internal
+        DatraOrdinal.Internal
         DomanialInsertion.Internal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
         liquidhaskell == 0.9.4.7.0
     hs-source-dirs:
-        src/DatraSemanticCore
-        src/DatraSemanticCore/Chains
-        src/DatraSemanticCore/DatraOrdinal
-        src/DatraSemanticCore/Dominion
-        src/DatraSemanticCore/DomanialInsertion
+        src/DatraCore
+        src/DatraCore/Chains
+        src/DatraCore/DatraOrdinal
+        src/DatraCore/Dominion
+        src/DatraCore/FiniteDominion
+        src/DatraCore/DomanialInsertion
     default-language: GHC2021
 
 executable datra-haskell

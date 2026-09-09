@@ -200,61 +200,72 @@ results of computation at different stages, so that this unifies maps and
 functions within the same semantics.
 
 The so-called ``horizontal sum'' operator, \(\HorSum\), takes two
-\(\StaDaTraMon\) morphisms and puts them side by side. For instance,
-\(\code{[B := 2; C := 6]}\) can be constructed as
-\((B := 2) \HorSum (C := 6)\). It can be clearly seen that one can
-put two trees side by side, having the extent as the disjoint union of the
-original two extents, so that the atlas morphisms do not get ``tangled up''.
-This operator is similar to the map notation used in this document, so that
-for instance,
-\(A \HorSum B \HorSum C = \code{[A; B; C]}\). A variation
-on this operation, which goes through an intermediary phase where the two
-extents are kept separate on page \(1\), can be used to create maps with
-complex pagination structures, such as \(\code{[A; [B; C]]}\).
+\(\StaDaTraMon\) morphisms and puts them side by side. It can be seen as
+the operation of merging two trees by letting the extent be the coproduct
+of their respective extents, and each page above 0 being composed of the
+pages of the trees at the respective level. This operation is closely
+related to the map-creating operation, for instance, one can construct
+\(\code{[B := 2; C := 6]}\) out of \((B := 2) \HorSum (C := 6)\).
+However, the map semantics instead keep the extents of the trees on
+page 1 of the new tree. Below is a representation of the horizontal sum
+operation on \((B := 2) \HorSum (C := 6)\).
 
 \begin{figure}[htbp]
 \centering
-\resizebox{\linewidth}{!}{%
-\begin{tikzpicture}[node distance=12mm]
-  % The two operand morphisms select an element from the full set.
+\begin{tikzpicture}[node distance=10mm and 10mm]
+  % Each operand is a morphism between one-node atlases.
   \node[selected node] (bsource) {\(\{2\}\)};
-  \node[atlas node,below=of bsource,minimum width=31mm] (btarget)
+  \node[atlas node,right=of bsource,minimum width=31mm] (btarget)
     {\(B=\{2,3,5\}\)};
-  \draw[morphism arrow] (bsource)--node[right,font=\scriptsize]
+  \draw[morphism arrow] (bsource)--node[above,font=\scriptsize]
     {\(2\mapsto2\)} (btarget);
-  \node[atlas label,above=3mm of bsource] {\(B := 2\)};
+  \node[atlas label,above=5mm of $(bsource)!0.5!(btarget)$]
+    {\(B := 2\)};
 
-  \node[font=\Large,right=12mm of bsource] (plus) {\(\HorSum\)};
+  \node[font=\Large,right=11mm of btarget] (plus) {\(\HorSum\)};
 
-  \node[selected node,right=12mm of plus] (csource) {\(\{6\}\)};
-  \node[atlas node,below=of csource,minimum width=31mm] (ctarget)
+  \node[selected node,right=11mm of plus] (csource) {\(\{6\}\)};
+  \node[atlas node,right=of csource,minimum width=31mm] (ctarget)
     {\(C=\{6,8,9\}\)};
-  \draw[morphism arrow] (csource)--node[right,font=\scriptsize]
+  \draw[morphism arrow] (csource)--node[above,font=\scriptsize]
     {\(6\mapsto6\)} (ctarget);
-  \node[atlas label,above=3mm of csource] {\(C := 6\)};
+  \node[atlas label,above=5mm of $(csource)!0.5!(ctarget)$]
+    {\(C := 6\)};
 
-  \node[font=\Large,right=12mm of csource] (equals) {\(=\)};
+  \node[font=\Large,below=11mm of $(plus)!0.5!(csource)$] (equals) {\(=\)};
 
-  % Their horizontal sum retains both selections and both codomains.
-  \node[selected node,right=13mm of equals] (rsourceb) {\(\{2\}\)};
-  \node[selected node,right=16mm of rsourceb] (rsourcec) {\(\{6\}\)};
-  \node[atlas node,below=of rsourceb,minimum width=31mm] (rtargetb)
-    {\(B=\{2,3,5\}\)};
-  \node[atlas node,below=of rsourcec,minimum width=31mm] (rtargetc)
-    {\(C=\{6,8,9\}\)};
-  \draw[morphism arrow] (rsourceb)--node[right,font=\scriptsize]
-    {\(2\mapsto2\)} (rtargetb);
-  \draw[morphism arrow] (rsourcec)--node[right,font=\scriptsize]
-    {\(6\mapsto6\)} (rtargetc);
-  \node[atlas label,above=3mm of $(rsourceb)!0.5!(rsourcec)$]
-    {\(\code{[B := 2; C := 6]}\)};
-  \node[draw,dashed,rounded corners=3pt,fit=(rsourceb)(rsourcec)(rtargetb)(rtargetc),
-    inner sep=4mm] {};
-\end{tikzpicture}%
-}
-\caption{Each operand morphism selects an element of its full set. Their
-horizontal sum places the selections \(\{2\}\hookrightarrow B\) and
-\(\{6\}\hookrightarrow C\) side by side.}
+  % The sum has one coproduct extent and tagged copies of both positive pages.
+  \node[selected node,below=24mm of equals,xshift=-38mm] (rsourceall)
+    {\(\{2\}\sqcup\{6\}\)};
+  \node[selected node,above left=10mm and 4mm of rsourceall] (rsourceb)
+    {\(\{2\}\)};
+  \node[selected node,above right=10mm and 4mm of rsourceall] (rsourcec)
+    {\(\{6\}\)};
+  \draw[atlas arrow] (rsourceb)--(rsourceall);
+  \draw[atlas arrow] (rsourcec)--(rsourceall);
+
+  \node[atlas node,below=24mm of equals,xshift=38mm,minimum width=28mm]
+    (rtargetall) {\(B\sqcup C\)};
+  \node[atlas node,above left=10mm and 4mm of rtargetall] (rtargetb) {\(B\)};
+  \node[atlas node,above right=10mm and 4mm of rtargetall] (rtargetc) {\(C\)};
+  \draw[atlas arrow] (rtargetb)--(rtargetall);
+  \draw[atlas arrow] (rtargetc)--(rtargetall);
+
+  % As in Figure 2, one arrow summarizes the nodewise morphism.
+  \node[fit=(rsourceb)(rsourcec)(rsourceall),inner sep=1mm] (rsource) {};
+  \node[fit=(rtargetb)(rtargetc)(rtargetall),inner sep=1mm] (rtarget) {};
+  \draw[morphism arrow] (rsource.east)--node[above,font=\scriptsize]
+    {\(2\mapsto2,\;6\mapsto6\)} (rtarget.west);
+
+  \node[page label,left=6mm of rsourceb] {page 1};
+  \node[page label,left=6mm of rsourceall] {page 0};
+  \node[atlas label,below=5mm of $(rsourceall)!0.5!(rtargetall)$]
+    {\((B := 2) \HorSum (C := 6)\)};
+\end{tikzpicture}
+\caption{Each operand is a morphism between one-node atlases. Their
+horizontal sum forms a single coproduct extent on page \(0\), while page
+\(1\) contains the two operand pages side by side. The orange arrow
+summarizes the nodewise injections of the summed morphism.}
 \label{fig:horizontal-sum}
 \end{figure}
 

@@ -2,7 +2,8 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
-module DatraOrdinal
+-- | Hidden ordinal representation, smart constructors, and arithmetic.
+module DatraOrdinal.Internal
   ( Ordinal(..)
   , ordinal
   , finiteOrdinal
@@ -17,23 +18,13 @@ import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
 
--- | An ordinal strictly below omega^omega in Cantor normal form.
---
--- The list @[a_n, ..., a_1, a_0]@ represents
---
---   omega^n * a_n + ... + omega * a_1 + a_0.
---
--- Leading zero coefficients are removed, so zero has the unique
--- representation @[]@.
+-- | An ordinal strictly below omega^omega in canonical Cantor normal form.
 newtype Ordinal = Ordinal
   { coefficients :: [Natural]
   }
   deriving (Eq, Show)
 
 -- | Construct a canonical ordinal from descending coefficients.
---
--- For example, @ordinal [4, 3, 9]@ represents
--- @omega^2 * 4 + omega * 3 + 9@.
 ordinal :: [Natural] -> Ordinal
 ordinal = Ordinal . dropWhile (== 0)
 
