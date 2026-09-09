@@ -1,5 +1,4 @@
--- | Public ordinal API. The representation and proof machinery live together
--- in the hidden ordinal/chain proof kernel.
+-- | Public ordinal API backed by the hidden ordinal implementation.
 module DatraOrdinal
   ( Ordinal
   , ordinal
@@ -11,7 +10,7 @@ module DatraOrdinal
   , naturalAtOrdinal
   ) where
 
-import OrdinalChain.Internal
+import DatraOrdinal.Internal
   ( Ordinal
   , addOrdinals
   , finiteOrdinal

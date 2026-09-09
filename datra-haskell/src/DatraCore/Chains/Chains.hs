@@ -1,5 +1,4 @@
--- | Public chain API. Chain proofs share a hidden kernel with the ordinal
--- representation so LiquidHaskell never has to reflect across that boundary.
+-- | Public chain API backed by the hidden chain implementation.
 module Chains
   ( Chain
   , chainOrdinalLT
@@ -17,7 +16,7 @@ module Chains
   , spine
   ) where
 
-import OrdinalChain.Internal
+import Chains.Internal
   ( Chain
   , chain
   , chainObjectAt
