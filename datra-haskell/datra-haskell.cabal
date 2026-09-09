@@ -22,10 +22,16 @@ library
         DomanialInsertion
         DatraOrdinal
         Chains
+        Consolidation
     other-modules:
         Chains.Internal
+        Consolidation.Internal
+        Consolidation.LiquidInternal
         DatraOrdinal.Internal
         DomanialInsertion.Internal
+        DomanialInsertion.LiquidInternal
+        Dominion.Internal
+        FiniteDominion.Internal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
@@ -33,6 +39,7 @@ library
     hs-source-dirs:
         src/DatraCore
         src/DatraCore/Chains
+        src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion
         src/DatraCore/FiniteDominion

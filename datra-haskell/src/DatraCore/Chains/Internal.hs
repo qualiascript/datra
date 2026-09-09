@@ -33,9 +33,6 @@ import DatraOrdinal.Internal
 
 {-@ embed Natural as int @-}
 
--- LiquidHaskell 0.9.4 cannot deserialize the reflected ordinal comparator
--- across modules. This local logical bridge is kept in lockstep with
--- DatraOrdinal.Internal.ordinalLT; both modules remain hidden from users.
 {-@ reflect chainOrdinalLT @-}
 chainOrdinalLT :: Ordinal -> Ordinal -> Bool
 chainOrdinalLT (Ordinal left) (Ordinal right) =
