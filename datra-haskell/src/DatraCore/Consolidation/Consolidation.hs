@@ -10,6 +10,7 @@ module Consolidation
   , composeConsolidations
   , sumConsolidations
   , Coconsolidation
+  , composeCoconsolidations
   , op
   , unop
   ) where
@@ -19,6 +20,7 @@ import Consolidation.Internal
   , Consolidation
   , applyConsolidation
   , composeConsolidations
+  , composeCoconsolidations
   , consolidation
   , consolidationMonotone
   , consolidationPointSurjective

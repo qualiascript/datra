@@ -9,6 +9,7 @@ module Consolidation.Internal
   , composeConsolidations
   , sumConsolidations
   , Coconsolidation (..)
+  , composeCoconsolidations
   , op
   , unop
   ) where
@@ -86,8 +87,17 @@ op = Coconsolidation
 unop :: Coconsolidation b a -> Consolidation a b
 unop = getOppositeConsolidation
 
+-- | Compose coconsolidations in categorical order. The reversal in the
+-- underlying consolidations is the defining composition of @CoCon@.
+composeCoconsolidations
+  :: Coconsolidation middle target
+  -> Coconsolidation source middle
+  -> Coconsolidation source target
+composeCoconsolidations
+  (Coconsolidation second)
+  (Coconsolidation first) =
+    Coconsolidation (first . second)
+
 instance Category Coconsolidation where
   id = Coconsolidation id
-
-  Coconsolidation second . Coconsolidation first =
-    Coconsolidation (first . second)
+  (.) = composeCoconsolidations

@@ -29,11 +29,15 @@ DatraCore models data by separating **values**, **ways of locating values**, and
    stored separately.
 6. A **consolidation** is a monotone, point-surjective map between chain
    carriers. A chosen preimage makes point-surjectivity executable.
+7. **Transportation** forgets a consolidation's proof structure and exposes
+   its underlying function between carrier types.
+8. A **folio** is a nonempty, finite presentation of an eventually constant
+   spine diagram in coconsolidations, beginning at a singleton page.
 
 These pieces are the executable foundation of the larger organization in
 `datra.lean`: chains index pages, page cells carry dominions, and compatible
 insertions relate those cells inside atlases. The Haskell package does **not** yet
-implement that entire tower. It currently stops at consolidations between chains.
+implement that entire tower. It currently stops at folios.
 
 ## Module and trust boundaries
 
@@ -58,6 +62,12 @@ src/DatraCore/
 │   ├── Consolidation.hs      public opaque API
 │   ├── Internal.hs           sums, categories, and opposite category
 │   └── LiquidInternal.hs     refined representation and core operations
+├── Transportation/
+│   ├── Transportation.hs     public opaque functor API
+│   └── Internal.hs           carrier-function representation
+├── Folio/
+│   ├── Folio.hs              public opaque API
+│   └── Internal.hs           type-aligned finite presentation
 └── Chains/
     ├── Chains.hs             public opaque API
     └── Internal.hs           positions, lookup, sums, and spine
@@ -250,15 +260,64 @@ The smart constructor's monotonicity callback receives the source-left object,
 its mapped target value (a ghost argument needed by LiquidHaskell 0.9.4), and the
 source-right object.
 
-`Coconsolidation` is the categorical opposite (`CoCon` in Lean). As with domanial
-insertions, the carrier types stand for the separately supplied chain values; the
-chains are not stored inside each morphism.
+`Coconsolidation` is the categorical opposite (`CoCon` in Lean).
+`composeCoconsolidations` exposes its reversed categorical composition directly.
+As with domanial insertions, the carrier types stand for the separately supplied
+chain values; the chains are not stored inside each morphism.
 
 LiquidHaskell checks the representation, smart constructor, identity, and
 composition. These checks cover both the abstract monotonicity law and the
 right-inverse law. `sumConsolidations` and the category instances remain
 executable and runtime-tested, but their full refinement proofs have not yet been
 discharged.
+
+### Transportation: the carrier-level functor
+
+```haskell
+newtype Transportation source target = Transportation
+  { runTransportation :: source -> target
+  }
+```
+
+`transportation` maps a `Consolidation source target` to its underlying function,
+matching Lean's `Tra : Con ⥤ Type`. The object action needs no runtime wrapper:
+the Haskell carrier types `source` and `target` already represent it. The
+`Category Transportation` instance supplies identity and ordinary function
+composition. `transportCoconsolidation` unwraps a coconsolidation, so its resulting
+function runs from the later page carrier back to the earlier page carrier.
+
+The functor identity and composition laws are documented beside the implementation
+but are not yet specified in LiquidHaskell. Both laws are covered by runtime tests.
+
+### Folios: type-aligned finite spine presentations
+
+```haskell
+Folio origin final
+```
+
+A folio is a nonempty, type-aligned sequence. Its first page stores a
+`Chain origin`, a distinguished origin value, and a proof-shaped callback whose
+intended law says every origin value equals that distinguished value. Each
+appended page stores a `Chain next` and a `Coconsolidation previous next`.
+Intermediate carrier types are existential, while the first and final carriers
+remain visible in the type parameters.
+
+This adjacent-arrow representation is the least finite presentation of the Lean
+spine functor. `withFolioMap` derives the unique map for any forward interval from
+identities and categorical composition rather than storing redundant arrows.
+Consequently, the identity and composition coherence conditions hold by
+construction. `paddedIndex`, `withPaddedPage`, and `withPaddedFolioMap` repeat the
+last genuine page and its identity map for all subsequent natural-number indices,
+giving the eventually constant full spine presentation.
+
+`withPageAt` and `withFolioMap` use rank-2 callbacks to eliminate existential page
+carrier types without exposing the GADT constructors. `singletonFolio` is the
+canonical origin constructor over `()`, while `folio` permits another carrier with
+the same intended singleton law.
+
+This module deliberately has no LiquidHaskell annotations yet. The singleton
+origin law and functor coherence conditions are recorded as comments in the
+implementation, and the executable behavior is runtime-tested.
 
 ## Correspondence with `datra.lean`
 
@@ -279,10 +338,11 @@ meaning.
 | `ConHom` / `Con` | `Consolidation source target` | A monotone object map plus an executable chosen preimage and law witnesses represents Lean's point-surjective functor. |
 | `ConHom.sum` | `sumConsolidations` | Both map independently over the left and right summands. |
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
-| `Tra.map` | `applyConsolidation` | Both expose the underlying set-theoretic surjection. |
+| `Tra` | `Transportation` / `transportation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
+| `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
 
-The next unimplemented Lean layer defines `Folio`. DatraCore also does not yet
-implement `Pag`, `Atl`, atlas
+The next unimplemented Lean layer defines `Pag`. DatraCore does not yet implement
+`Pag`, `Atl`, atlas
 transposals/traversals, stable atlas families, coalitions, or data transformations.
 Those later definitions should not be collapsed into the current `Chain` or
 `Dominion` types.
@@ -306,7 +366,7 @@ page cells as a category of elements (Pag)
 each cell carries a Dominion, related by insertions (Atl)
 ```
 
-The current Haskell code implements the inputs through `Con` in that progression.
+The current Haskell code implements this progression through `Folio`.
 
 ## Guidance for changes
 
