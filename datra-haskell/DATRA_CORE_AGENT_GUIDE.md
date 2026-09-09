@@ -56,7 +56,8 @@ src/DatraCore/
 │   └── LiquidInternal.hs     LiquidHaskell-checked representation
 ├── Consolidation/
 │   ├── Consolidation.hs      public opaque API
-│   └── Internal.hs           maps, sums, and opposite category
+│   ├── Internal.hs           sums, categories, and opposite category
+│   └── LiquidInternal.hs     refined representation and core operations
 └── Chains/
     ├── Chains.hs             public opaque API
     └── Internal.hs           positions, lookup, sums, and spine
@@ -79,6 +80,15 @@ implementation.
 LiquidHaskell version cannot parse refinements for the symbolic `Category` method
 `(.)`. The representation and smart constructor are checked there; identity,
 composition, and the category instances are derived in `Internal.hs`.
+
+`Consolidation` uses the same split. Its abstract refinements stand for the source
+and target chain orders without adding them to the runtime representation.
+The representation, smart constructor, composition, and identity's law witnesses
+are checked. The identity packaging contract is kept beside the datatype and
+explicitly assumed: LiquidHaskell 0.9.4 both mis-serializes that abstract-refined
+contract across modules on a cold build and crashes when it solves the packaged
+identity and composition contracts together. Its checked witnesses use identity
+for both maps, making monotonicity and the right-inverse law immediate.
 
 ## Data representations and invariants
 
@@ -222,7 +232,7 @@ distinction when describing verification coverage.
 Consolidation source target
   { applyConsolidation              :: source -> target
   , consolidationPreimage          :: target -> source
-  , consolidationMonotone          :: source -> source -> ()
+  , consolidationMonotone          :: source -> source -> target
   , consolidationPointSurjective   :: target -> ()
   }
 ```
@@ -234,14 +244,21 @@ of the object map. The latter is executable evidence of Lean's
 preimages, while `sumConsolidations` is the componentwise map on `Either` matching
 Lean's `ConHom.sum`.
 
+The monotonicity witness returns the mapped right object, refined both to follow
+the mapped left object and to equal the result of the consolidation's object map.
+The smart constructor's monotonicity callback receives the source-left object,
+its mapped target value (a ghost argument needed by LiquidHaskell 0.9.4), and the
+source-right object.
+
 `Coconsolidation` is the categorical opposite (`CoCon` in Lean). As with domanial
 insertions, the carrier types stand for the separately supplied chain values; the
 chains are not stored inside each morphism.
 
-There are deliberately no LiquidHaskell refinements in this module yet. The
-monotonicity and right-inverse coherence laws are recorded in the implementation
-comments and represented by witness callbacks, but are currently caller
-obligations rather than statically checked guarantees.
+LiquidHaskell checks the representation, smart constructor, identity, and
+composition. These checks cover both the abstract monotonicity law and the
+right-inverse law. `sumConsolidations` and the category instances remain
+executable and runtime-tested, but their full refinement proofs have not yet been
+discharged.
 
 ## Correspondence with `datra.lean`
 

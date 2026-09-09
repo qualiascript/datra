@@ -26,6 +26,7 @@ library
     other-modules:
         Chains.Internal
         Consolidation.Internal
+        Consolidation.LiquidInternal
         DatraOrdinal.Internal
         DomanialInsertion.Internal
         DomanialInsertion.LiquidInternal

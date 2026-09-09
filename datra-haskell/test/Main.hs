@@ -97,7 +97,7 @@ halve =
   consolidation
     (`div` 2)
     (* 2)
-    (\_ _ -> ())
+    (\_ _ right -> right `div` 2)
     (const ())
 
 testConsolidation :: IO ()
