@@ -1,39 +1,74 @@
-{-# OPTIONS_GHC -fplugin=LiquidHaskell #-}
-{-@ LIQUID "--reflection" @-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
+-- | Hidden domanial insertion implementation.
 module DomanialInsertion.Internal
   ( DomanialInsertion (..)
   , domanialInsertion
+  , identityInsertion
+  , composeInsertions
+  , CodomanialInsertion (..)
+  , op
+  , unop
   ) where
 
--- | An injective function between dominions. The executable left-inverse proof
--- establishes injectivity, exactly as Lean's `Function.Embedding` requires.
-{-@
-data DomanialInsertion a b = DomanialInsertion
-  { applyInsertion :: a -> b
-  , preimage :: b -> Maybe a
-  , insertionLeftInverse :: x:a ->
-      { proof:() |
-          preimage (applyInsertion x) == Just x }
-  }
-@-}
-data DomanialInsertion a b = DomanialInsertion
-  { applyInsertion :: a -> b
-  , preimage :: b -> Maybe a
-  , insertionLeftInverse :: a -> ()
+import Control.Category (Category (..))
+import DomanialInsertion.LiquidInternal
+  ( DomanialInsertion (..)
+  , domanialInsertion
+  )
+import Prelude hiding ((.), id)
+
+composePreimage
+  :: (b -> Maybe a)
+  -> (c -> Maybe b)
+  -> c
+  -> Maybe a
+composePreimage firstPreimage secondPreimage value =
+  firstPreimage =<< secondPreimage value
+
+-- | Compose the executable maps and their left-inverse certificates.
+composeInsertions
+  :: DomanialInsertion b c
+  -> DomanialInsertion a b
+  -> DomanialInsertion a c
+composeInsertions
+  (DomanialInsertion second secondPreimage secondLeft)
+  (DomanialInsertion first firstPreimage firstLeft) =
+    DomanialInsertion
+      (second . first)
+      (composePreimage firstPreimage secondPreimage)
+      (\value -> secondLeft (first value) `seq` firstLeft value)
+
+-- | The proof-carrying identity insertion.
+identityInsertion :: DomanialInsertion a a
+identityInsertion =
+  DomanialInsertion id Just (const ())
+
+-- LiquidHaskell 0.9.4 cannot parse declarations for the symbolic Category
+-- method `(.)`. The law-carrying representation and smart constructor are
+-- checked in DomanialInsertion.LiquidInternal; these operations are
+-- mechanically derived from them in this non-plugin implementation layer.
+instance Category DomanialInsertion where
+  id = identityInsertion
+  (.) = composeInsertions
+
+-- | The opposite category of domanial insertions.
+--
+-- A morphism from @a@ to @b@ here is a domanial insertion from @b@ to @a@.
+newtype CodomanialInsertion a b = CodomanialInsertion
+  { getOppositeInsertion :: DomanialInsertion b a
   }
 
--- | Construct an insertion. LiquidHaskell verifies the left-inverse proof.
-{-@
-domanialInsertion
-  :: forward:(a -> b)
-  -> backward:(b -> Maybe a)
-  -> (x:a -> { proof:() | backward (forward x) == Just x })
-  -> DomanialInsertion a b
-@-}
-domanialInsertion
-  :: (a -> b)
-  -> (b -> Maybe a)
-  -> (a -> ())
-  -> DomanialInsertion a b
-domanialInsertion = DomanialInsertion
+-- | Reverse the categorical direction of a domanial insertion.
+op :: DomanialInsertion a b -> CodomanialInsertion b a
+op = CodomanialInsertion
+
+-- | Recover the underlying domanial insertion.
+unop :: CodomanialInsertion b a -> DomanialInsertion a b
+unop = getOppositeInsertion
+
+instance Category CodomanialInsertion where
+  id = CodomanialInsertion id
+
+  CodomanialInsertion second . CodomanialInsertion first =
+    CodomanialInsertion (first . second)
