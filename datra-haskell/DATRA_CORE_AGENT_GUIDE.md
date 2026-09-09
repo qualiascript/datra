@@ -29,7 +29,7 @@ DatraCore models data by separating **values**, **ways of locating values**, and
    stored separately.
 6. A **consolidation** is a monotone, point-surjective map between chain
    carriers. A chosen preimage makes point-surjectivity executable.
-7. **Transportation** forgets a consolidation's proof structure and exposes
+7. **Consolidation transport** forgets a consolidation's proof structure and exposes
    its underlying function between carrier types.
 8. A **folio** is a nonempty, finite presentation of an eventually constant
    spine diagram in coconsolidations, beginning at a singleton page.
@@ -62,20 +62,20 @@ src/DatraCore/
 │   ├── Consolidation.hs      public opaque API
 │   ├── Internal.hs           sums, categories, and opposite category
 │   └── LiquidInternal.hs     refined representation and core operations
-├── Transportation/
-│   ├── Transportation.hs     public opaque functor API
+├── ConsolidationTransport/
+│   ├── ConsolidationTransport.hs public opaque functor API
 │   ├── Internal.hs           category and opposite-map packaging
 │   └── LiquidInternal.hs     carrier representation and functor laws
 ├── Folio/
 │   ├── Folio.hs              public opaque API
 │   ├── Internal.hs           chain specialization and finite lookup
 │   └── LiquidInternal.hs     type-aligned data and coherence laws
-└── Chains/
-    ├── Chains.hs             public opaque API
+└── Chain/
+    ├── Chain.hs              public opaque API
     └── Internal.hs           positions, lookup, sums, and spine
 ```
 
-The package exposes the short module names (`Dominion`, `Chains`, and so on), not
+The package exposes the short module names (`Dominion`, `Chain`, and so on), not
 names prefixed with `DatraCore`. Constructors remain absent from the public export
 lists. Treat the public modules as the abstraction boundary: construct values with
 their smart constructors instead of importing an `Internal` module or assembling
@@ -201,7 +201,7 @@ Unlike Lean's `DomIns`, the Haskell type represents a morphism directly over car
 types. The `Dominion` dictionaries for `a` and `b` are not fields of the insertion.
 Code that needs both countability and insertion must carry both values explicitly.
 
-### Chains: ordered data through ordinal addressing
+### Chain: ordered data through ordinal addressing
 
 ```haskell
 Chain object
@@ -271,22 +271,22 @@ composition used by folios. `sumConsolidations` and the category instances remai
 executable and runtime-tested, but their full refinement proofs have not yet been
 discharged.
 
-### Transportation: the carrier-level functor
+### Consolidation transport: the carrier-level functor
 
 ```haskell
-newtype Transportation source target = Transportation
-  { runTransportation :: source -> target
+newtype ConsolidationTransport source target = ConsolidationTransport
+  { runConsolidationTransport :: source -> target
   }
 ```
 
-`transportation` maps a `Consolidation source target` to its underlying function,
+`consolidationTransport` maps a `Consolidation source target` to its underlying function,
 matching Lean's `Tra : Con ⥤ Type`. The object action needs no runtime wrapper:
 the Haskell carrier types `source` and `target` already represent it. The
-`Category Transportation` instance supplies identity and ordinary function
+`Category ConsolidationTransport` instance supplies identity and ordinary function
 composition. `transportCoconsolidation` unwraps a coconsolidation, so its resulting
 function runs from the later page carrier back to the earlier page carrier.
 
-`transportationIdentity` and `transportationComposition` are pointwise
+`consolidationTransportIdentity` and `consolidationTransportComposition` are pointwise
 LiquidHaskell proofs of the functor identity and composition laws. Runtime tests
 also cover both operations.
 
@@ -340,7 +340,7 @@ meaning.
 | `ConHom` / `Con` | `Consolidation source target` | A monotone object map plus an executable chosen preimage and law witnesses represents Lean's point-surjective functor. |
 | `ConHom.sum` | `sumConsolidations` | Both map independently over the left and right summands. |
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
-| `Tra` | `Transportation` / `transportation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
+| `Tra` | `ConsolidationTransport` / `consolidationTransport` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
 | `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
 
 The next unimplemented Lean layer defines `Pag`. DatraCore does not yet implement
