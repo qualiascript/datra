@@ -23,7 +23,9 @@ module Pagination.LiquidInternal
   ) where
 
 import Data.Kind (Type)
-import Chain.Internal (Chain (..))
+import Chain.Internal
+  ( Chain (..)
+  )
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
 import PageElements.LiquidInternal

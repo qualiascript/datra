@@ -145,7 +145,6 @@ pageElement (PageElementIndex page prefix padding index) =
   SomePageElement
     (pageElementAt
       page
-      (chainIndexPosition index)
       (drop 1 (pageElementTraceAt prefix padding value))
       (PageElementCell (lastChain prefix) value))
   where
