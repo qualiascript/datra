@@ -14,6 +14,9 @@ module PageElements.Internal
   , pageElementPosition
   , withPageElement
   , withPageElementValue
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
   , pageElementArrow
   , pageElementTransported
   , arrowSource
@@ -43,6 +46,7 @@ import Numeric.Natural (Natural)
 import PageElements.LiquidInternal
   ( PageElement (..)
   , PageElementArrow
+  , SomePageElement (..)
   , arrowSource
   , arrowTarget
   , composePageElementArrows
@@ -55,6 +59,9 @@ import PageElements.LiquidInternal
   , pageElementArrowRightIdentity
   , pageElementArrowThin
   , pageElementTransported
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
   )
 
 import Control.Monad (join)
@@ -65,11 +72,6 @@ import Control.Monad (join)
 type role PageElements nominal nominal nominal
 newtype PageElements (scope :: Type) origin final =
   PageElements (Folio origin final)
-
--- | A page element whose fresh object identity is existentially hidden.
-type role SomePageElement nominal
-data SomePageElement (scope :: Type) where
-  SomePageElement :: PageElement scope object -> SomePageElement scope
 
 -- | Introduce the occurrence category of a folio with a fresh abstract scope.
 pageElements

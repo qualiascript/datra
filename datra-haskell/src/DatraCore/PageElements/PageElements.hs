@@ -10,6 +10,9 @@ module PageElements
   , pageElementPosition
   , withPageElement
   , withPageElementValue
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
   , pageElementArrow
   , pageElementTransported
   , arrowSource
@@ -45,4 +48,7 @@ import PageElements.Internal
   , pageElementPosition
   , withPageElement
   , withPageElementValue
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
   )

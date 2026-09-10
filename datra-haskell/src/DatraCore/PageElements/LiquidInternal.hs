@@ -8,14 +8,23 @@
 -- | LiquidHaskell-verified page-element objects and category operations.
 module PageElements.LiquidInternal
   ( PageElement (..)
+  , SomePageElement (..)
   , PageElementArrow (..)
+  , SomePageElementArrow (..)
   , pageElementAt
+  , somePageElement
   , pageElementPrecedes
+  , somePageElementPrecedes
+  , somePageElementPrecedesReflexive
   , pageElementPrecedesTransitive
   , pageElementTransported
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
   , pageElementTransportedReflexive
   , pageElementTransportedTransitive
   , pageElementArrow
+  , somePageElementArrow
+  , withPageElementArrow
   , identityPageElementArrow
   , composePageElementArrows
   , pageElementArrowEndpoints
@@ -23,6 +32,7 @@ module PageElements.LiquidInternal
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowAssociativity
+  , traceSuffix
   , traceTail
   ) where
 
@@ -48,6 +58,16 @@ data PageElement (scope :: Type) (object :: Type) = PageElement
   , pageElementTrace :: [Ordinal]
   }
   deriving (Eq, Show)
+
+-- | A page element whose dependent object identity is existentially hidden.
+type role SomePageElement nominal
+data SomePageElement (scope :: Type) where
+  SomePageElement :: PageElement scope object -> SomePageElement scope
+
+-- | Hide a page element's dependent object identity.
+{-@ reflect somePageElement @-}
+somePageElement :: PageElement scope object -> SomePageElement scope
+somePageElement = SomePageElement
 
 -- | Construct a page element from its current position followed by its
 -- transported positions on every preceding page.
@@ -82,6 +102,26 @@ pageElementPrecedes
 pageElementPrecedes source target =
   pageElementPage source >= pageElementPage target
 
+-- | Lift the opposite-spine order relation to existential page elements.
+{-@ reflect somePageElementPrecedes @-}
+somePageElementPrecedes
+  :: SomePageElement scope
+  -> SomePageElement scope
+  -> Bool
+somePageElementPrecedes
+  (SomePageElement source)
+  (SomePageElement target) =
+    pageElementPrecedes source target
+
+-- | The lifted opposite-spine order is reflexive.
+{-@
+somePageElementPrecedesReflexive
+  :: value:SomePageElement scope
+  -> { proof:() | somePageElementPrecedes value value }
+@-}
+somePageElementPrecedesReflexive :: SomePageElement scope -> ()
+somePageElementPrecedesReflexive (SomePageElement _) = ()
+
 -- | Whether the target is exactly one of the source cell's transported
 -- occurrences.  Traces are stored from the current page back to the origin,
 -- so this is precisely the suffix relation.
@@ -92,6 +132,27 @@ pageElementTransported
   -> Bool
 pageElementTransported source target =
   traceSuffix (pageElementTrace source) (pageElementTrace target)
+
+-- | Lift exact folio transport to existential page elements.
+{-@ reflect somePageElementTransported @-}
+somePageElementTransported
+  :: SomePageElement scope
+  -> SomePageElement scope
+  -> Bool
+somePageElementTransported
+  (SomePageElement source)
+  (SomePageElement target) =
+    pageElementTransported source target
+
+-- | The lifted exact-transport relation is reflexive.
+{-@
+somePageElementTransportedReflexive
+  :: value:SomePageElement scope
+  -> { proof:() | somePageElementTransported value value }
+@-}
+somePageElementTransportedReflexive :: SomePageElement scope -> ()
+somePageElementTransportedReflexive (SomePageElement value) =
+  pageElementTransportedReflexive value
 
 {-@ reflect traceSuffix @-}
 traceSuffix :: [Ordinal] -> [Ordinal] -> Bool
@@ -208,6 +269,13 @@ data PageElementArrow
   }
   deriving (Eq, Show)
 
+-- | A page-element arrow whose endpoint identities are existentially hidden.
+type role SomePageElementArrow nominal
+data SomePageElementArrow (scope :: Type) where
+  SomePageElementArrow
+    :: PageElementArrow scope source target
+    -> SomePageElementArrow scope
+
 -- | Total arrow constructor. Its refined input requires both the underlying
 -- opposite-spine arrow and the category-of-elements condition that the source
 -- cell's transport trace lands exactly on the target occurrence.
@@ -227,6 +295,34 @@ pageElementArrow
   -> PageElement scope target
   -> PageElementArrow scope source target
 pageElementArrow = PageElementArrow
+
+-- | Package the unique arrow between existential page elements once its two
+-- defining conditions have been established.
+{-@
+somePageElementArrow
+  :: sourceValue:SomePageElement scope
+  -> targetValue:{SomePageElement scope |
+       somePageElementPrecedes sourceValue targetValue
+       && somePageElementTransported sourceValue targetValue}
+  -> SomePageElementArrow scope
+@-}
+somePageElementArrow
+  :: SomePageElement scope
+  -> SomePageElement scope
+  -> SomePageElementArrow scope
+somePageElementArrow
+  (SomePageElement source)
+  (SomePageElement target) =
+    SomePageElementArrow (pageElementArrow source target)
+
+-- | Eliminate the hidden endpoint identities of an existential arrow.
+withPageElementArrow
+  :: SomePageElementArrow scope
+  -> (forall source target.
+        PageElementArrow scope source target -> result)
+  -> result
+withPageElementArrow (SomePageElementArrow pageArrow) useArrow =
+  useArrow pageArrow
 
 -- | The identity arrow, including its endpoint and base-order guarantees.
 {-@ reflect identityPageElementArrow @-}

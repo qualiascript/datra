@@ -353,9 +353,9 @@ testPagination =
                   (folioLength (paginationFolio sourcePagination) == 3)
                 let constantMorphism =
                       paginationMorphism
-                        sourcePagination
-                        targetPagination
                         (const targetOrigin)
+                        (\_ _ ->
+                          somePageElementTransportedReflexive targetOrigin)
                     sourceArrow = pageElementArrow five trueCell
                 withPageElement
                   (mapPaginationElement constantMorphism five) $ \mapped ->

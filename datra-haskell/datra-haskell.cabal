@@ -36,6 +36,7 @@ library
         PageElements.Internal
         PageElements.LiquidInternal
         Pagination.Internal
+        Pagination.LiquidInternal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
