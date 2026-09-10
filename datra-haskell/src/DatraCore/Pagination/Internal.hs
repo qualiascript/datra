@@ -1,5 +1,10 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+#include "../LiquidPlugin.h"
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
 
 -- | Hidden representation of paginations and pagination morphisms.
 module Pagination.Internal
@@ -9,23 +14,33 @@ module Pagination.Internal
   , pagination
   , paginationFolio
   , paginationPageElements
+  , paginationMorphism
   , mapPaginationElement
   , mapPaginationArrow
   , withPageElementArrow
   , identityPaginationMorphism
   , composePaginationMorphisms
-  , wrapPaginationMorphism
   ) where
 
 import Control.Category (Category (..))
+import Consolidation.LiquidInternal
+  ( Coconsolidation (..)
+  , Consolidation (..)
+  )
 import Data.Kind (Type)
 import Folio (Folio)
+import Folio.LiquidInternal (SingletonOrigin (..))
 import PageElements
   ( PageElement
   , PageElementArrow
   , PageElements
-  , SomePageElement
   , pageElements
+  )
+import PageElements.LiquidInternal
+  ( PageElementCell (..)
+  , SomePageElement
+  , somePageElementPrecedes
+  , somePageElementTransported
   )
 import Pagination.LiquidInternal
   ( SomePageElementArrow
@@ -36,6 +51,7 @@ import Pagination.LiquidInternal
   , withPageElementArrowData
   )
 import qualified Pagination.LiquidInternal as Liquid
+import qualified Prelude as PreludeFunction ((.))
 import Prelude hiding ((.), id)
 
 -- | A folio paired with the category of page elements generated from it.
@@ -53,12 +69,6 @@ data Pagination (scope :: Type) origin final = Pagination
 type role PaginationMorphism nominal nominal
 newtype PaginationMorphism sourceScope targetScope = PaginationMorphism
   (Liquid.PaginationMorphism sourceScope targetScope)
-
--- | Lift a verified pagination morphism into the public representation.
-wrapPaginationMorphism
-  :: Liquid.PaginationMorphism sourceScope targetScope
-  -> PaginationMorphism sourceScope targetScope
-wrapPaginationMorphism = PaginationMorphism
 
 -- | Introduce a pagination with a fresh page-element scope.
 pagination
@@ -78,6 +88,33 @@ paginationPageElements
   :: Pagination scope origin final
   -> PageElements scope origin final
 paginationPageElements (Pagination _ elements) = elements
+
+-- | Construct a pagination morphism from its action on objects and a proof
+-- that the action preserves every page-element arrow.
+{-@
+paginationMorphism
+  :: mapObject:(SomePageElement sourceScope
+       -> SomePageElement targetScope)
+  -> (sourceValue:SomePageElement sourceScope
+       -> targetValue:{SomePageElement sourceScope |
+            somePageElementPrecedes sourceValue targetValue
+            && somePageElementTransported sourceValue targetValue}
+       -> { proof:() |
+            somePageElementPrecedes
+              (mapObject sourceValue)
+              (mapObject targetValue)
+            && somePageElementTransported
+              (mapObject sourceValue)
+              (mapObject targetValue) })
+  -> PaginationMorphism sourceScope targetScope
+@-}
+paginationMorphism
+  :: (SomePageElement sourceScope -> SomePageElement targetScope)
+  -> (SomePageElement sourceScope -> SomePageElement sourceScope -> ())
+  -> PaginationMorphism sourceScope targetScope
+paginationMorphism mapObject preservesArrow =
+  PaginationMorphism
+    (Liquid.paginationMorphism mapObject preservesArrow)
 
 -- | Apply a pagination morphism to a page element.
 mapPaginationElement

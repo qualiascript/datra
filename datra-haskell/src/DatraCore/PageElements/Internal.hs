@@ -5,10 +5,14 @@
 -- | Hidden representation of the category of cell occurrences.
 module PageElements.Internal
   ( PageElements
+  , PageElementIndex
   , PageElement
   , SomePageElement (..)
   , PageElementArrow
   , pageElements
+  , pageElementIndex
+  , pageElementIndexPage
+  , pageElementIndexPosition
   , pageElement
   , pageElementPage
   , pageElementPosition
@@ -30,21 +34,30 @@ module PageElements.Internal
   , pageElementArrowAssociativity
   ) where
 
-import Chain (Chain, chainObjectAt, chainPosition)
+import Chain
+  ( Chain
+  , ChainIndex
+  , chainIndex
+  , chainIndexPosition
+  , chainObjectAt
+  , chainPosition
+  )
 import Consolidation
   ( runConsolidationTransport
   , transportCoconsolidation
   )
 import DatraOrdinal (Ordinal)
 import Data.Kind (Type)
-import Folio
+import Folio.Internal
   ( Folio
-  , withFolioMap
-  , withPageAt
+  , lastChain
+  , withPageDataAt
   )
+import Folio.LiquidInternal (FolioData (..))
 import Numeric.Natural (Natural)
 import PageElements.LiquidInternal
   ( PageElement (..)
+  , PageElementCell (..)
   , PageElementArrow
   , SomePageElement (..)
   , arrowSource
@@ -64,14 +77,24 @@ import PageElements.LiquidInternal
   , somePageElementTransportedReflexive
   )
 
-import Control.Monad (join)
-
 -- | A folio viewed as its category of cell occurrences.  The generative
 -- @scope@ prevents occurrences belonging to different folios from being
 -- compared or composed.
 type role PageElements nominal nominal nominal
 newtype PageElements (scope :: Type) origin final =
   PageElements (Folio origin final)
+
+-- | Evidence that an ordinal indexes an object of one page on this folio's
+-- infinite spine.  The nominal scope prevents evidence from one folio from
+-- being used to construct an element of another.
+type role PageElementIndex nominal
+data PageElementIndex (scope :: Type) where
+  PageElementIndex
+    :: Natural
+    -> Folio origin page
+    -> Natural
+    -> ChainIndex page
+    -> PageElementIndex scope
 
 -- | Introduce the occurrence category of a folio with a fresh abstract scope.
 pageElements
@@ -82,12 +105,30 @@ pageElements
 pageElements pages useCategory =
   useCategory (PageElements pages)
 
--- | Look up an occurrence by genuine page index and position in that page's
--- chain.
+-- | Refine a page number and ordinal to an index of this folio's page-element
+-- category.  Pages after the finite presentation repeat its final chain, so
+-- this fails exactly when 'chainIndex' rejects the ordinal.
+pageElementIndex
+  :: PageElements scope origin final
+  -> Natural
+  -> Ordinal
+  -> Maybe (PageElementIndex scope)
+pageElementIndex (PageElements pages) page position =
+  withPageDataAt pages page $ \prefix padding ->
+    PageElementIndex page prefix padding
+      <$> chainIndex (lastChain prefix) position
+
+pageElementIndexPage :: PageElementIndex scope -> Natural
+pageElementIndexPage (PageElementIndex page _ _ _) = page
+
+pageElementIndexPosition :: PageElementIndex scope -> Ordinal
+pageElementIndexPosition (PageElementIndex _ _ _ index) =
+  chainIndexPosition index
+
+-- | Construct an occurrence from a certified index.  This is total: the only
+-- partial step is refining an unchecked ordinal with 'pageElementIndex'.
 --
--- Success requires both @page < folioLength pages@ and
--- @chainObjectAt pageChain position /= Nothing@.  On success the result @x@
--- satisfies:
+-- The result @x@ satisfies:
 --
 -- @
 -- pageElementPage x == page
@@ -98,56 +139,55 @@ pageElements pages useCategory =
 -- cell obtained by transporting the requested cell to page @page - i@. This is
 -- the runtime fact used by the LiquidHaskell arrow refinement.
 pageElement
-  :: PageElements scope origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe (SomePageElement scope)
-pageElement (PageElements pages) page position = do
-  trace <- pageElementTraceAt pages page position
-  case trace of
-    [] -> Nothing
-    currentPosition : earlierPositions ->
-      Just
-        (SomePageElement
-          (pageElementAt page currentPosition earlierPositions))
+  :: PageElementIndex scope
+  -> SomePageElement scope
+pageElement (PageElementIndex page prefix padding index) =
+  SomePageElement
+    (pageElementAt
+      page
+      (drop 1 (pageElementTraceAt prefix padding value))
+      (PageElementCell (lastChain prefix) value))
+  where
+    value = chainObjectAt index
 
 -- | Build the complete sequence of exact adjacent transports from one cell
 -- back through every earlier page to the origin.  The head is the requested
 -- occurrence; every following position is computed using the corresponding
 -- coconsolidation in the folio.
 pageElementTraceAt
-  :: Folio origin final
+  :: Folio origin page
   -> Natural
-  -> Ordinal
-  -> Maybe [Ordinal]
-pageElementTraceAt pages 0 position = do
-  cellExists <- withPageAt pages 0 $ \pageChain ->
-    case chainObjectAt pageChain position of
-      Just _ -> True
-      Nothing -> False
-  if cellExists then Just [position] else Nothing
-pageElementTraceAt pages page position = do
-  earlierPosition <- previousPagePosition pages page position
-  earlierTrace <- pageElementTraceAt pages (page - 1) earlierPosition
-  pure (position : earlierTrace)
+  -> page
+  -> [Ordinal]
+pageElementTraceAt pages padding value =
+  prependCopies
+    padding
+    (chainPosition (lastChain pages) value)
+    (genuinePageElementTrace pages value)
 
--- | Transport one cell position across one adjacent reverse-spine arrow.
-previousPagePosition
-  :: Folio origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe Ordinal
-previousPagePosition pages laterPage position
-  | laterPage == 0 = Nothing
-  | otherwise =
-      join $ withFolioMap pages (laterPage - 1) laterPage $
-        \earlierChain laterChain pageMap -> do
-          laterCell <- chainObjectAt laterChain position
-          let earlierCell =
-                runConsolidationTransport
-                  (transportCoconsolidation pageMap)
-                  laterCell
-          pure (chainPosition earlierChain earlierCell)
+-- | Build the trace through the stored finite presentation.  Its input is an
+-- actual cell, rather than an unchecked ordinal, so every transport is total.
+genuinePageElementTrace
+  :: Folio origin page
+  -> page
+  -> [Ordinal]
+genuinePageElementTrace (OriginFolio _ pageChain _) value =
+  [chainPosition pageChain value]
+genuinePageElementTrace
+  (SnocPage _ previous pageChain transition)
+  value =
+    chainPosition pageChain value
+      : genuinePageElementTrace previous earlierValue
+  where
+    earlierValue =
+      runConsolidationTransport
+        (transportCoconsolidation transition)
+        value
+
+prependCopies :: Natural -> a -> [a] -> [a]
+prependCopies 0 _ values = values
+prependCopies count value values =
+  value : prependCopies (count - 1) value values
 
 -- | Eliminate the existential object identity of a dynamically looked-up page
 -- element.  The callback receives a fresh @object@ type that can index total
@@ -161,13 +201,10 @@ withPageElement (SomePageElement element) useElement = useElement element
 -- | Recover the existential page carrier and cell value represented by a page
 -- element for the duration of a rank-2 callback.
 withPageElementValue
-  :: PageElements scope origin final
-  -> PageElement scope object
+  :: PageElement scope object
   -> (forall cell. Chain cell -> cell -> result)
-  -> Maybe result
+  -> result
 withPageElementValue
-  (PageElements pages)
-  (PageElement page position _)
+  (PageElement _ _ _ (PageElementCell pageChain value))
   useCell =
-    join $ withPageAt pages page $ \pageChain ->
-      useCell pageChain <$> chainObjectAt pageChain position
+    useCell pageChain value

@@ -7,7 +7,9 @@
 
 -- | LiquidHaskell-verified page-element objects and category operations.
 module PageElements.LiquidInternal
-  ( PageElement (..)
+  ( PageElementCell (..)
+  , pageElementCellPosition
+  , PageElement (..)
   , SomePageElement (..)
   , PageElementArrow (..)
   , SomePageElementArrow (..)
@@ -36,11 +38,31 @@ module PageElements.LiquidInternal
   , traceTail
   ) where
 
+import Chain
+  ( Chain
+  , chainPosition
+  )
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
+
+-- | The heterogeneous chain and value represented by a page element.
+data PageElementCell where
+  PageElementCell :: Chain cell -> cell -> PageElementCell
+
+instance Eq PageElementCell where
+  _ == _ = True
+
+instance Show PageElementCell where
+  show _ = "<page-element-cell>"
+
+-- | Compute the stored value's position in its chain.
+{-@ reflect pageElementCellPosition @-}
+pageElementCellPosition :: PageElementCell -> Ordinal
+pageElementCellPosition (PageElementCell pageChain value) =
+  chainPosition pageChain value
 
 -- | One object of the category of elements.  The phantom @object@ identifies
 -- this particular dependent pair at the type level.
@@ -49,6 +71,7 @@ data PageElement scope object = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
   , pageElementTrace :: [Ordinal]
+  , pageElementCell :: PageElementCell
   }
 @-}
 type role PageElement nominal nominal
@@ -56,6 +79,7 @@ data PageElement (scope :: Type) (object :: Type) = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
   , pageElementTrace :: [Ordinal]
+  , pageElementCell :: PageElementCell
   }
   deriving (Eq, Show)
 
@@ -75,22 +99,23 @@ somePageElement = SomePageElement
 {-@
 pageElementAt
   :: page:Natural
-  -> position:Ordinal
   -> earlierPositions:[Ordinal]
+  -> cell:PageElementCell
   -> { elementValue:PageElement scope object |
        pageElementPage elementValue == page
-       && pageElementPosition elementValue == position }
+       && pageElementPosition elementValue == pageElementCellPosition cell }
 @-}
 pageElementAt
   :: Natural
-  -> Ordinal
   -> [Ordinal]
+  -> PageElementCell
   -> PageElement scope object
-pageElementAt page position earlierPositions =
+pageElementAt page earlierPositions cell =
   PageElement
     page
-    position
-    (position : earlierPositions)
+    (pageElementCellPosition cell)
+    (pageElementCellPosition cell : earlierPositions)
+    cell
 
 -- | The base-arrow condition in the opposite finite spine: a source page is
 -- the same as or later than its target page.

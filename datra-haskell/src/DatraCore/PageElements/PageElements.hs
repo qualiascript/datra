@@ -1,10 +1,14 @@
 -- | The category of cell occurrences of a folio.
 module PageElements
   ( PageElements
+  , PageElementIndex
   , PageElement
   , SomePageElement
   , PageElementArrow
   , pageElements
+  , pageElementIndex
+  , pageElementIndexPage
+  , pageElementIndexPosition
   , pageElement
   , pageElementPage
   , pageElementPosition
@@ -28,12 +32,16 @@ module PageElements
 
 import PageElements.Internal
   ( PageElement
+  , PageElementIndex
   , PageElementArrow
   , PageElements
   , SomePageElement
   , arrowSource
   , arrowTarget
   , pageElement
+  , pageElementIndex
+  , pageElementIndexPage
+  , pageElementIndexPosition
   , pageElementArrow
   , pageElements
   , composePageElementArrows
