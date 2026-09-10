@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Chains
+import Chain
 import Consolidation
 import DatraOrdinal
 import DomanialInsertion
@@ -8,7 +8,6 @@ import Dominion
 import FiniteDominion
 import Folio
 import Numeric.Natural (Natural)
-import Transportation
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -21,7 +20,7 @@ main = do
   testChainSum
   testConsolidation
   testConsolidationSum
-  testTransportation
+  testConsolidationTransport
   testFolio
 
 checkedIdentity :: DomanialInsertion Bool Bool
@@ -212,24 +211,24 @@ threePageFolio =
     spine
     (Consolidation.op nonzero)
 
-testTransportation :: IO ()
-testTransportation = do
+testConsolidationTransport :: IO ()
+testConsolidationTransport = do
   let values = [0 .. 8]
-      transported = runTransportation (transportation halve)
+      transported = runConsolidationTransport (consolidationTransport halve)
       transportedTwice =
-        runTransportation
-          (transportation (composeConsolidations halve halve))
+        runConsolidationTransport
+          (consolidationTransport (composeConsolidations halve halve))
       identity =
-        runTransportation
-          (transportation
+        runConsolidationTransport
+          (consolidationTransport
             (identityConsolidation :: Consolidation Natural Natural))
-  transportationIdentity (0 :: Natural) `seq`
-    transportationComposition halve halve 7 `seq` pure ()
-  assert "transportation exposes a consolidation's carrier map"
+  consolidationTransportIdentity (0 :: Natural) `seq`
+    consolidationTransportComposition halve halve 7 `seq` pure ()
+  assert "consolidation transport exposes a consolidation's carrier map"
     (map transported values == map (applyConsolidation halve) values)
-  assert "transportation preserves identity"
+  assert "consolidation transport preserves identity"
     (map identity values == values)
-  assert "transportation preserves composition"
+  assert "consolidation transport preserves composition"
     (map transportedTwice values
       == map (transported . transported) values)
 
@@ -258,7 +257,7 @@ testFolio = do
       (\sourcePage targetPage pageMap -> do
         value <- chainObjectAt targetPage (finiteOrdinal 2)
         let transported =
-              runTransportation (transportCoconsolidation pageMap) value
+              runConsolidationTransport (transportCoconsolidation pageMap) value
         pure (chainPosition sourcePage transported == finiteOrdinal 1))
       == Just (Just True))
   assert "folio transports from a later page to its origin"
@@ -266,7 +265,7 @@ testFolio = do
       (\sourcePage targetPage pageMap -> do
         value <- chainObjectAt targetPage (finiteOrdinal 5)
         let transported =
-              runTransportation (transportCoconsolidation pageMap) value
+              runConsolidationTransport (transportCoconsolidation pageMap) value
         pure (chainPosition sourcePage transported == finiteOrdinal 0))
       == Just (Just True))
   assert "folio pads maps along the full spine"
@@ -274,7 +273,7 @@ testFolio = do
       (\sourcePage targetPage pageMap -> do
         value <- chainObjectAt targetPage (finiteOrdinal 8)
         let transported =
-              runTransportation (transportCoconsolidation pageMap) value
+              runConsolidationTransport (transportCoconsolidation pageMap) value
         pure (chainPosition sourcePage transported == finiteOrdinal 1))
       == Just (Just True))
   assert "folio has no map against the spine order"

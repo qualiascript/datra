@@ -27,12 +27,11 @@ library
         FiniteDominion
         DomanialInsertion
         DatraOrdinal
-        Chains
+        Chain
         Consolidation
         Folio
-        Transportation
     other-modules:
-        Chains.Internal
+        Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
         DatraOrdinal.Internal
@@ -42,22 +41,19 @@ library
         FiniteDominion.Internal
         Folio.Internal
         Folio.LiquidInternal
-        Transportation.Internal
-        Transportation.LiquidInternal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
         liquidhaskell == 0.9.4.7.0
     hs-source-dirs:
         src/DatraCore
-        src/DatraCore/Chains
+        src/DatraCore/Chain
         src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion
         src/DatraCore/FiniteDominion
         src/DatraCore/DomanialInsertion
         src/DatraCore/Folio
-        src/DatraCore/Transportation
     default-language: GHC2021
 
 executable datra-haskell

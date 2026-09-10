@@ -1,4 +1,5 @@
--- | Public consolidation API backed by the hidden implementation.
+-- | Public consolidation and carrier-transport API backed by the hidden
+-- implementation.
 module Consolidation
   ( Consolidation
   , applyConsolidation
@@ -13,11 +14,18 @@ module Consolidation
   , composeCoconsolidations
   , op
   , unop
+  , ConsolidationTransport
+  , runConsolidationTransport
+  , consolidationTransport
+  , consolidationTransportIdentity
+  , consolidationTransportComposition
+  , transportCoconsolidation
   ) where
 
 import Consolidation.Internal
   ( Coconsolidation
   , Consolidation
+  , ConsolidationTransport
   , applyConsolidation
   , composeConsolidations
   , composeCoconsolidations
@@ -27,6 +35,11 @@ import Consolidation.Internal
   , consolidationPreimage
   , identityConsolidation
   , op
+  , runConsolidationTransport
+  , consolidationTransport
+  , consolidationTransportComposition
+  , consolidationTransportIdentity
   , sumConsolidations
+  , transportCoconsolidation
   , unop
   )

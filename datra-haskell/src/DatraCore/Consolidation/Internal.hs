@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
--- | Hidden consolidation implementation.
+-- | Hidden consolidation and carrier-transport implementation.
 module Consolidation.Internal
   ( Consolidation (..)
   , consolidationMonotone
@@ -12,16 +12,25 @@ module Consolidation.Internal
   , composeCoconsolidations
   , op
   , unop
+  , ConsolidationTransport (..)
+  , consolidationTransport
+  , consolidationTransportIdentity
+  , consolidationTransportComposition
+  , transportCoconsolidation
   ) where
 
 import Control.Category (Category (..))
 import Consolidation.LiquidInternal
   ( Coconsolidation (..)
   , Consolidation (..)
+  , ConsolidationTransport (..)
   , composeCoconsolidations
   , composeConsolidations
   , consolidation
   , consolidationMonotone
+  , consolidationTransport
+  , consolidationTransportComposition
+  , consolidationTransportIdentity
   , identityConsolidation
   , op
   , unop
@@ -79,3 +88,15 @@ instance Category Consolidation where
 instance Category Coconsolidation where
   id = op identityConsolidation
   (.) = composeCoconsolidations
+
+instance Category ConsolidationTransport where
+  id = ConsolidationTransport id
+  ConsolidationTransport second . ConsolidationTransport first =
+    ConsolidationTransport (second . first)
+
+-- | Apply consolidation transport to a morphism in @CoCon@. Its underlying
+-- consolidation, and hence its function, runs in the opposite direction.
+transportCoconsolidation
+  :: Coconsolidation source target
+  -> ConsolidationTransport target source
+transportCoconsolidation = consolidationTransport . unop

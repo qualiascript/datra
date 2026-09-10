@@ -3,7 +3,8 @@
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
--- | LiquidHaskell-verified consolidation representation and operations.
+-- | LiquidHaskell-verified consolidation representation, operations, and
+-- carrier transport.
 module Consolidation.LiquidInternal
   ( Consolidation (..)
   , consolidationMonotone
@@ -24,6 +25,10 @@ module Consolidation.LiquidInternal
   , composeCoconsolidations
   , coconsolidationIdentity
   , coconsolidationComposition
+  , ConsolidationTransport (..)
+  , consolidationTransport
+  , consolidationTransportIdentity
+  , consolidationTransportComposition
   ) where
 
 -- | A monotone, point-surjective map between chain carriers.
@@ -332,3 +337,53 @@ composePointSurjective _secondMap _firstMap secondPreimage _firstPreimage
 {-@ reflect composeFunctions @-}
 composeFunctions :: (middle -> target) -> (source -> middle) -> source -> target
 composeFunctions second first value = second (first value)
+
+-- | A morphism in the target of the consolidation-transport functor.
+--
+-- Haskell already represents the object part of @Tra : Con -> Type@ with the
+-- carrier type parameters @source@ and @target@. This wrapper makes its
+-- morphism part explicit without discarding those types.
+{-@
+data ConsolidationTransport source target = ConsolidationTransport
+  { runConsolidationTransport :: source -> target }
+@-}
+data ConsolidationTransport source target = ConsolidationTransport
+  { runConsolidationTransport :: source -> target
+  }
+
+-- | The morphism action of the consolidation-transport functor.
+{-@ reflect consolidationTransport @-}
+consolidationTransport
+  :: Consolidation source target
+  -> ConsolidationTransport source target
+consolidationTransport value = ConsolidationTransport (applyConsolidation value)
+
+-- | Consolidation transport preserves identity pointwise.
+{-@
+consolidationTransportIdentity
+  :: value:object ->
+     { proof:() |
+       runConsolidationTransport (consolidationTransport identityConsolidation) value
+         == value }
+@-}
+consolidationTransportIdentity :: object -> ()
+consolidationTransportIdentity = identityConsolidationApply
+
+-- | Consolidation transport preserves composition pointwise.
+{-@
+consolidationTransportComposition
+  :: second:Consolidation middle target
+  -> first:Consolidation source middle
+  -> value:source
+  -> { proof:() |
+       runConsolidationTransport
+         (consolidationTransport (composeConsolidations second first)) value
+         == runConsolidationTransport (consolidationTransport second)
+              (runConsolidationTransport (consolidationTransport first) value) }
+@-}
+consolidationTransportComposition
+  :: Consolidation middle target
+  -> Consolidation source middle
+  -> source
+  -> ()
+consolidationTransportComposition = composeConsolidationsApply

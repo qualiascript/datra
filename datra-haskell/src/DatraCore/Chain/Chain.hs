@@ -1,5 +1,5 @@
 -- | Public chain API backed by the hidden chain implementation.
-module Chains
+module Chain
   ( Chain
   , chainOrdinalLT
   , positionMatches
@@ -16,7 +16,7 @@ module Chains
   , spine
   ) where
 
-import Chains.Internal
+import Chain.Internal
   ( Chain
   , chain
   , chainObjectAt

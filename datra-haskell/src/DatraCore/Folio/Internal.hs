@@ -21,7 +21,7 @@ module Folio.Internal
   , withPaddedFolioMap
   ) where
 
-import Chains (Chain)
+import Chain (Chain)
 import Consolidation (Coconsolidation)
 import Folio.LiquidInternal
   ( FolioData (..)

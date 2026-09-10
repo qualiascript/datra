@@ -4,7 +4,7 @@
 {-@ LIQUID "--ple" @-}
 
 -- | Hidden chain representation and proof-bearing operations.
-module Chains.Internal
+module Chain.Internal
   ( Chain
   , chainOrdinalLT
   , positionMatches
