@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 
@@ -5,29 +6,26 @@
 module PageElements.Internal
   ( PageElements
   , PageElement
+  , SomePageElement
   , PageElementArrow
   , pageElements
   , pageElement
   , pageElementPage
   , pageElementPosition
   , withPageElement
+  , withPageElementValue
   , pageElementArrow
   , arrowSource
   , arrowTarget
   , identityPageElementArrow
   , composePageElementArrows
-  , hasPageElementArrow
   ) where
 
-import Chain (Chain, chainObjectAt, chainPosition)
-import Consolidation
-  ( runConsolidationTransport
-  , transportCoconsolidation
-  )
+import Chain (Chain, chainObjectAt)
 import DatraOrdinal (Ordinal)
+import Data.Kind (Type)
 import Folio
   ( Folio
-  , withFolioMap
   , withPageAt
   )
 import Numeric.Natural (Natural)
@@ -39,22 +37,28 @@ import Data.Maybe (isJust)
 -- @scope@ prevents occurrences belonging to different folios from being
 -- compared or composed.
 type role PageElements nominal nominal nominal
-newtype PageElements scope origin final =
+newtype PageElements (scope :: Type) origin final =
   PageElements (Folio origin final)
 
 -- | A cell together with the genuine page on which it occurs.  The cell is
 -- represented by its position in that page's chain so heterogeneous page
--- carrier types do not escape.
-type role PageElement nominal
-data PageElement scope = PageElement
+-- carrier types do not escape.  The @object@ parameter gives this particular
+-- category object a type-level identity used to align arrow composition.
+type role PageElement nominal nominal
+data PageElement (scope :: Type) (object :: Type) = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
   }
   deriving (Eq, Show)
 
+-- | A page element whose fresh object identity is existentially hidden.
+type role SomePageElement nominal
+data SomePageElement (scope :: Type) where
+  SomePageElement :: PageElement scope object -> SomePageElement scope
+
 -- | The unique arrow between two occurrences, when one exists.
 --
--- Representation requirement: every value @f@ must have been accepted by
+-- Representation requirement: every value @f@ must have been constructed by
 -- 'pageElementArrow' for the category identified by @scope@.  Thus, if
 -- @x = arrowSource f@ and @y = arrowTarget f@, then:
 --
@@ -71,10 +75,13 @@ data PageElement scope = PageElement
 --
 -- This follows from the source-and-target-only representation, but is not yet
 -- stated as a LiquidHaskell refinement.
-type role PageElementArrow nominal
-data PageElementArrow scope = PageElementArrow
-  { arrowSource :: PageElement scope
-  , arrowTarget :: PageElement scope
+type role PageElementArrow nominal nominal nominal
+data PageElementArrow
+  (scope :: Type)
+  (source :: Type)
+  (target :: Type) = PageElementArrow
+  { arrowSource :: PageElement scope source
+  , arrowTarget :: PageElement scope target
   }
   deriving (Eq, Show)
 
@@ -102,31 +109,40 @@ pageElement
   :: PageElements scope origin final
   -> Natural
   -> Ordinal
-  -> Maybe (PageElement scope)
+  -> Maybe (SomePageElement scope)
 pageElement (PageElements pages) page position = do
   present <- withPageAt pages page $ \pageChain ->
     isJust (chainObjectAt pageChain position)
   if present
-    then Just (PageElement page position)
+    then Just (SomePageElement (PageElement page position))
     else Nothing
 
--- | Recover the existential page carrier and cell represented by an
--- occurrence for the duration of a rank-2 callback.
+-- | Eliminate the existential object identity of a dynamically looked-up page
+-- element.  The callback receives a fresh @object@ type that can index total
+-- arrow operations without escaping its scope.
 withPageElement
+  :: SomePageElement scope
+  -> (forall object. PageElement scope object -> result)
+  -> result
+withPageElement (SomePageElement element) useElement = useElement element
+
+-- | Recover the existential page carrier and cell value represented by a page
+-- element for the duration of a rank-2 callback.
+withPageElementValue
   :: PageElements scope origin final
-  -> PageElement scope
+  -> PageElement scope object
   -> (forall cell. Chain cell -> cell -> result)
   -> Maybe result
-withPageElement
+withPageElementValue
   (PageElements pages)
   (PageElement page position)
   useCell =
     join $ withPageAt pages page $ \pageChain ->
       useCell pageChain <$> chainObjectAt pageChain position
 
--- | Construct an arrow when folio transport sends the source cell exactly to
--- the target cell.  Occurrence arrows follow the opposite spine, so they run
--- from later pages to earlier pages.
+-- | Construct an arrow from a source page element to a target page element.
+-- Occurrence arrows follow the opposite spine, so they run from later pages
+-- to earlier pages.
 --
 -- More precisely, let @s@ be the cell represented by @source@, @targetChain@
 -- the chain at @pageElementPage target@, and @q@ the coconsolidation returned
@@ -136,7 +152,8 @@ withPageElement
 -- withFolioMap pages (pageElementPage target) (pageElementPage source)
 -- @
 --
--- This function returns @Just f@ exactly when the page map exists and:
+-- Construction requirement: the caller must only use this function when the
+-- page map exists and:
 --
 -- @
 -- chainPosition targetChain
@@ -144,46 +161,17 @@ withPageElement
 --   == pageElementPosition target
 -- @
 --
--- A successful result must additionally satisfy
+-- The result satisfies
 -- @arrowSource f == source@ and @arrowTarget f == target@.  These are the
 -- arrow-construction obligations to encode when LiquidHaskell support is
--- added.
+-- added.  Until then they are documented preconditions, matching the proof
+-- supplied to @CategoryOfElements.homMk@ in Lean.
 pageElementArrow
   :: PageElements scope origin final
-  -> PageElement scope
-  -> PageElement scope
-  -> Maybe (PageElementArrow scope)
-pageElementArrow
-  (PageElements pages)
-  source
-  target
-  | pageElementPage source < pageElementPage target = Nothing
-  | otherwise = do
-      transportedExactly <-
-        withFolioMap
-          pages
-          (pageElementPage target)
-          (pageElementPage source)
-          (transportMatches source target)
-      if transportedExactly
-        then Just (PageElementArrow source target)
-        else Nothing
-  where
-    transportMatches
-      laterOccurrence
-      earlierOccurrence
-      earlierPage
-      laterPage
-      pageMap =
-        case chainObjectAt laterPage (pageElementPosition laterOccurrence) of
-          Nothing -> False
-          Just laterCell ->
-            let earlierCell =
-                  runConsolidationTransport
-                    (transportCoconsolidation pageMap)
-                    laterCell
-            in chainPosition earlierPage earlierCell
-                 == pageElementPosition earlierOccurrence
+  -> PageElement scope source
+  -> PageElement scope target
+  -> PageElementArrow scope source target
+pageElementArrow _ source target = PageElementArrow source target
 
 -- | The identity arrow on an occurrence.
 --
@@ -193,8 +181,7 @@ pageElementArrow
 -- @
 -- arrowSource (identityPageElementArrow x) == x
 -- arrowTarget (identityPageElementArrow x) == x
--- pageElementArrow category x x
---   == Just (identityPageElementArrow x)
+-- pageElementArrow category x x == identityPageElementArrow x
 -- @
 --
 -- The final equation depends on the folio identity map transporting @x@'s
@@ -210,17 +197,16 @@ pageElementArrow
 --
 -- It is intentionally documented rather than refined for now.
 identityPageElementArrow
-  :: PageElement scope
-  -> PageElementArrow scope
+  :: PageElement scope object
+  -> PageElementArrow scope object object
 identityPageElementArrow occurrence =
   PageElementArrow occurrence occurrence
 
--- | Compose in categorical order: @composePageElementArrows category g f@
--- means @g . f@.
+-- | Compose in categorical order: @composePageElementArrows g f@ means
+-- @g . f@.  The arrow indices require @f@'s target to be exactly @g@'s
+-- source, so composition is total and needs no runtime boundary check.
 --
--- The boundary requirement is @arrowTarget f == arrowSource g@.  A mismatch
--- must return 'Nothing'.  When the boundary matches, categorical closure
--- requires a result @Just composite@ satisfying:
+-- The result @composite@ satisfies:
 --
 -- @
 -- arrowSource composite == arrowSource f
@@ -241,42 +227,28 @@ identityPageElementArrow occurrence =
 -- @
 --
 -- Both sides must have position @pageElementPosition z@ in @z@'s chain.  The
--- implementation rechecks the left side; LiquidHaskell must eventually prove
--- from this equation and the two input-arrow invariants that the check cannot
--- fail.
+-- eventual LiquidHaskell refinement must prove this equation from the two
+-- input-arrow invariants.
 --
 -- For every composable @f@, @g@, and @h@, verification must also establish:
 --
 -- @
--- composePageElementArrows category
---   (identityPageElementArrow (arrowTarget f)) f == Just f
+-- composePageElementArrows
+--   (identityPageElementArrow (arrowTarget f)) f == f
 --
--- composePageElementArrows category f
---   (identityPageElementArrow (arrowSource f)) == Just f
+-- composePageElementArrows f
+--   (identityPageElementArrow (arrowSource f)) == f
 --
 -- If
---   gf == the arrow in composePageElementArrows category g f
+--   gf == composePageElementArrows g f
 -- and
---   hg == the arrow in composePageElementArrows category h g,
+--   hg == composePageElementArrows h g,
 -- then
---   composePageElementArrows category h gf
---     == composePageElementArrows category hg f
+--   composePageElementArrows h gf == composePageElementArrows hg f
 -- @
 composePageElementArrows
-  :: PageElements scope origin final
-  -> PageElementArrow scope
-  -> PageElementArrow scope
-  -> Maybe (PageElementArrow scope)
-composePageElementArrows category second first
-  | arrowTarget first /= arrowSource second = Nothing
-  | otherwise =
-      pageElementArrow category (arrowSource first) (arrowTarget second)
-
--- | Decide whether the category contains an arrow between two occurrences.
-hasPageElementArrow
-  :: PageElements scope origin final
-  -> PageElement scope
-  -> PageElement scope
-  -> Bool
-hasPageElementArrow category source target =
-  isJust (pageElementArrow category source target)
+  :: PageElementArrow scope middle target
+  -> PageElementArrow scope source middle
+  -> PageElementArrow scope source target
+composePageElementArrows second first =
+  PageElementArrow (arrowSource first) (arrowTarget second)

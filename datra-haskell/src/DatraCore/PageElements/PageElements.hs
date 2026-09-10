@@ -2,33 +2,35 @@
 module PageElements
   ( PageElements
   , PageElement
+  , SomePageElement
   , PageElementArrow
   , pageElements
   , pageElement
   , pageElementPage
   , pageElementPosition
   , withPageElement
+  , withPageElementValue
   , pageElementArrow
   , arrowSource
   , arrowTarget
   , identityPageElementArrow
   , composePageElementArrows
-  , hasPageElementArrow
   ) where
 
 import PageElements.Internal
   ( PageElement
   , PageElementArrow
   , PageElements
+  , SomePageElement
   , arrowSource
   , arrowTarget
   , pageElement
   , pageElementArrow
   , pageElements
   , composePageElementArrows
-  , hasPageElementArrow
   , identityPageElementArrow
   , pageElementPage
   , pageElementPosition
   , withPageElement
+  , withPageElementValue
   )

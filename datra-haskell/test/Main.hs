@@ -283,47 +283,37 @@ testFolio = do
 
 testPageElements :: IO ()
 testPageElements =
-  pageElements threePageFolio $ \elements -> do
+  pageElements threePageFolio $ \elements ->
     let at page position =
           pageElement elements page (finiteOrdinal position)
-    case (at 0 0, at 1 1, at 2 5, at 2 0) of
-      (Just origin, Just trueCell, Just five, Just zero) -> do
-        assert "cell occurrence rejects a position outside its page"
-          (isNothing (at 1 2))
-        assert "cell occurrence exposes its page and position"
-          ( pageElementPage five == 2
-            && pageElementPosition five == finiteOrdinal 5
-          )
-        assert "cell occurrence eliminates its hidden carrier safely"
-          (withPageElement elements trueCell
-            (\page value -> chainPosition page value)
-            == Just (finiteOrdinal 1))
-        assert "cell occurrence arrows follow exact reverse transport"
-          (hasPageElementArrow elements five trueCell)
-        assert "cell occurrence arrows reject the forward page direction"
-          (not (hasPageElementArrow elements trueCell five))
-        assert "cell occurrence arrows reject a different transported cell"
-          (not (hasPageElementArrow elements five zero))
-        case ( pageElementArrow elements five trueCell
-             , pageElementArrow elements trueCell origin
-             ) of
-          (Just fiveToTrue, Just trueToOrigin) -> do
-            assert "cell occurrence identities retain their object"
-              ( arrowSource (identityPageElementArrow five) == five
-                && arrowTarget (identityPageElementArrow five) == five
-              )
-            assert "cell occurrence arrows compose through a shared object"
-              ( composePageElementArrows
-                  elements
-                  trueToOrigin
-                  fiveToTrue
-                == pageElementArrow elements five origin
-              )
-            assert "cell occurrence composition rejects mismatched boundaries"
-              (isNothing
-                (composePageElementArrows
-                  elements
-                  fiveToTrue
-                  trueToOrigin))
-          _ -> fail "test setup failed: expected occurrence arrows"
+    in case (at 0 0, at 1 1, at 2 5) of
+      (Just someOrigin, Just someTrueCell, Just someFive) ->
+        withPageElement someOrigin $ \origin ->
+          withPageElement someTrueCell $ \trueCell ->
+            withPageElement someFive $ \five -> do
+              assert "cell occurrence rejects a position outside its page"
+                (isNothing (at 1 2))
+              assert "cell occurrence exposes its page and position"
+                ( pageElementPage five == 2
+                  && pageElementPosition five == finiteOrdinal 5
+                )
+              assert "cell occurrence eliminates its hidden carrier safely"
+                (withPageElementValue elements trueCell
+                  (\page value -> chainPosition page value)
+                  == Just (finiteOrdinal 1))
+              let fiveToTrue = pageElementArrow elements five trueCell
+                  trueToOrigin = pageElementArrow elements trueCell origin
+              assert "page element arrows retain their typed endpoints"
+                ( arrowSource fiveToTrue == five
+                  && arrowTarget fiveToTrue == trueCell
+                )
+              assert "page element identities retain their object"
+                ( arrowSource (identityPageElementArrow five) == five
+                  && arrowTarget (identityPageElementArrow five) == five
+                )
+              assert
+                "page element arrows compose totally through a typed boundary"
+                ( composePageElementArrows trueToOrigin fiveToTrue
+                  == pageElementArrow elements five origin
+                )
       _ -> fail "test setup failed: expected cell occurrences"

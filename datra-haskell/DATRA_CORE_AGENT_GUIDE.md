@@ -325,17 +325,20 @@ ordinary executable code with runtime tests rather than transcribed Lean proofs.
 
 ### Page elements: the folio's category of cell occurrences
 
-`PageElements scope origin final` gives one folio a fresh generative
-scope. A `PageElement scope` stores a genuine page index and the ordinal
-position of a cell in that page's chain; construction validates both values.
-`withPageElement` recovers the heterogeneous carrier only inside a rank-2
-callback.
+`PageElements scope origin final` gives one folio a fresh generative scope. A
+`PageElement scope object` stores a genuine page index and the ordinal position
+of a cell in that page's chain; construction validates both values and hides the
+fresh `object` identity in `SomePageElement`. `withPageElement` introduces that
+identity to a rank-2 callback, while `withPageElementValue` recovers the
+heterogeneous carrier and cell value.
 
 An arrow exists from a later occurrence to an earlier occurrence exactly when
 the folio's coconsolidation transport sends the later cell to the earlier cell.
-`PageElementArrow scope` is therefore thin: its source and target determine
-it. Identity and composition are executable, and composition rechecks the direct
-transport between its outer endpoints. The category identity, associativity,
+`PageElementArrow scope source target` is therefore thin: its typed endpoints
+determine it. The shared endpoint in composition is enforced by its type, making
+identity and composition total. Construction currently relies on the documented
+page-order and exact-transport preconditions corresponding to Lean's proof on
+`CategoryOfElements.homMk`. The category identity, associativity,
 transport-composition, and thinness laws are documented beside the implementation
 but are not yet encoded in LiquidHaskell.
 
@@ -360,7 +363,7 @@ meaning.
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
 | `Tra` | `ConsolidationTransport` / `consolidationTransport` in `Consolidation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
 | `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
-| `Folio.El` / category of elements | `PageElements`, `PageElement`, `PageElementArrow` | Occurrences use genuine finite page indices and ordinal cell positions; scoped smart constructors validate objects and exact reverse-transport arrows without exposing heterogeneous page carriers. |
+| `Folio.El` / category of elements | `PageElements`, `PageElement`, `PageElementArrow` | Occurrences use genuine finite page indices and ordinal cell positions. Fresh object indices make identity and composition total; the exact reverse-transport property remains a documented proof obligation. |
 
 The next unimplemented Lean layer packages a folio and its occurrence category as
 `Pag`. DatraCore does not yet implement `Pag`, `Atl`, atlas
