@@ -33,6 +33,7 @@ library
         PageElements
     other-modules:
         PageElements.Internal
+        PageElements.LiquidInternal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal

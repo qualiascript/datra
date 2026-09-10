@@ -15,6 +15,11 @@ module PageElements
   , arrowTarget
   , identityPageElementArrow
   , composePageElementArrows
+  , pageElementArrowEndpoints
+  , pageElementArrowThin
+  , pageElementArrowLeftIdentity
+  , pageElementArrowRightIdentity
+  , pageElementArrowAssociativity
   ) where
 
 import PageElements.Internal
@@ -29,6 +34,11 @@ import PageElements.Internal
   , pageElements
   , composePageElementArrows
   , identityPageElementArrow
+  , pageElementArrowAssociativity
+  , pageElementArrowEndpoints
+  , pageElementArrowLeftIdentity
+  , pageElementArrowRightIdentity
+  , pageElementArrowThin
   , pageElementPage
   , pageElementPosition
   , withPageElement

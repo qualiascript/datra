@@ -301,8 +301,19 @@ testPageElements =
                 (withPageElementValue elements trueCell
                   (\page value -> chainPosition page value)
                   == Just (finiteOrdinal 1))
-              let fiveToTrue = pageElementArrow elements five trueCell
-                  trueToOrigin = pageElementArrow elements trueCell origin
+              let fiveToTrue = pageElementArrow five trueCell
+                  trueToOrigin = pageElementArrow trueCell origin
+                  fiveToOrigin =
+                    composePageElementArrows trueToOrigin fiveToTrue
+                  directFiveToOrigin = pageElementArrow five origin
+              pageElementArrowEndpoints five trueCell `seq`
+                pageElementArrowThin fiveToOrigin directFiveToOrigin `seq`
+                  pageElementArrowLeftIdentity fiveToTrue `seq`
+                    pageElementArrowRightIdentity fiveToTrue `seq`
+                      pageElementArrowAssociativity
+                        (identityPageElementArrow origin)
+                        trueToOrigin
+                        fiveToTrue `seq` pure ()
               assert "page element arrows retain their typed endpoints"
                 ( arrowSource fiveToTrue == five
                   && arrowTarget fiveToTrue == trueCell
@@ -313,7 +324,5 @@ testPageElements =
                 )
               assert
                 "page element arrows compose totally through a typed boundary"
-                ( composePageElementArrows trueToOrigin fiveToTrue
-                  == pageElementArrow elements five origin
-                )
+                (fiveToOrigin == directFiveToOrigin)
       _ -> fail "test setup failed: expected cell occurrences"

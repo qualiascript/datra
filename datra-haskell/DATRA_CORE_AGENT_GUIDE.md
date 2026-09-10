@@ -72,7 +72,8 @@ src/DatraCore/
 │   └── Internal.hs           positions, lookup, sums, and spine
 └── PageElements/
     ├── PageElements.hs       public opaque occurrence-category API
-    └── Internal.hs           scoped objects, arrows, and composition
+    ├── Internal.hs           scoped lookup and existential elimination
+    └── LiquidInternal.hs     refined arrows and category laws
 ```
 
 The package exposes the short module names (`Dominion`, `Chain`, and so on), not
@@ -98,6 +99,12 @@ and target chain orders without adding them to the runtime representation. The
 representation, smart constructor, identity, composition, and their carrier-map
 laws are checked. The reflected identity uses the identity function for both maps,
 making monotonicity and the right-inverse law immediate.
+
+`PageElements` also separates its GADT lookup layer from its LiquidHaskell
+algebra. `Internal` validates runtime page coordinates and introduces fresh
+object identities. `LiquidInternal` owns page-element and arrow representations,
+the opposite-spine order refinement, total identity and composition, and their
+category-law proofs.
 
 ## Data representations and invariants
 
@@ -335,12 +342,14 @@ heterogeneous carrier and cell value.
 An arrow exists from a later occurrence to an earlier occurrence exactly when
 the folio's coconsolidation transport sends the later cell to the earlier cell.
 `PageElementArrow scope source target` is therefore thin: its typed endpoints
-determine it. The shared endpoint in composition is enforced by its type, making
-identity and composition total. Construction currently relies on the documented
-page-order and exact-transport preconditions corresponding to Lean's proof on
-`CategoryOfElements.homMk`. The category identity, associativity,
-transport-composition, and thinness laws are documented beside the implementation
-but are not yet encoded in LiquidHaskell.
+determine it. The shared endpoint in composition is enforced by its Haskell type,
+and LiquidHaskell additionally checks equality of the stored middle object.
+Identity and composition are total. LiquidHaskell verifies the opposite-spine
+page-order invariant, constructor endpoints, conditional thinness, composition
+closure, left and right identity, and associativity. Exact heterogeneous cell
+transport—the property field supplied to Lean's `CategoryOfElements.homMk`—is
+still documented on `pageElementArrow`; encoding it requires exposing folio's
+rank-2 transport operation to the refinement layer.
 
 ## Correspondence with `datra.lean`
 
@@ -363,7 +372,7 @@ meaning.
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
 | `Tra` | `ConsolidationTransport` / `consolidationTransport` in `Consolidation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
 | `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
-| `Folio.El` / category of elements | `PageElements`, `PageElement`, `PageElementArrow` | Occurrences use genuine finite page indices and ordinal cell positions. Fresh object indices make identity and composition total; the exact reverse-transport property remains a documented proof obligation. |
+| `Folio.El` / category of elements | `PageElements`, `PageElement`, `PageElementArrow` | Occurrences use genuine finite page indices and ordinal cell positions. Fresh object indices make identity and composition total; LiquidHaskell verifies their page-order and category laws, while exact heterogeneous reverse transport remains the bridge still to encode. |
 
 The next unimplemented Lean layer packages a folio and its occurrence category as
 `Pag`. DatraCore does not yet implement `Pag`, `Atl`, atlas
