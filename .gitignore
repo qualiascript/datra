@@ -12,7 +12,7 @@ preprint.log
 preprint.synctex.gz
 primer.log
 primer.synctex.gz
-preprint.pdf
+/datra-docs/preprint.pdf
 preprint.tex
 datra_code.lean
 datra_code_ascii.lean

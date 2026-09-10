@@ -284,10 +284,10 @@ category $\Con^{\mathrm{op}}$.
 abbrev CoCon := Opposite Con
 
 /-%%
-\begin{definition}[The Consolidation Transport Functor]
-The \textbf{Consolidation Transport Functor}, denoted
-$\mathsf{ConTra}:\Con\to\Set$, sends a chain to its object set and a
-consolidation to its underlying set-theoretic surjection.
+\begin{definition}[Consolidation Transport]
+The \textbf{Consolidation Transport Functor} is denoted $\mathsf{ConTra}$.
+It is a functor from $\Con$ to $\Set$ that sends a chain to its object set
+and a consolidation to its underlying set-theoretic surjection.
 \end{definition}
 %%-/
 
@@ -301,6 +301,18 @@ def ConTra : Con ⥤ Type where
 \begin{definition}[Folio]
 A \textbf{folio} is a functor $F:S\to\CoCon$, where $S$ is the spine, such
 that $F(0)$ is the singleton chain.
+\end{definition}
+
+\begin{definition}[Cell Occurrences]
+For a folio $F$, its \textbf{category of cell occurrences}, denoted
+$\operatorname{El}(F)$, has as objects pairs $(m,k)$, where $m$ is a page
+and $k$ is an object of the chain $F(m)$.  An arrow
+$(m,k)\to(n,l)$ is an arrow $f:m\to n$ in the opposite spine for which the
+consolidation induced by $F$ transports $k$ exactly to $l$.  Equivalently,
+\[
+  \operatorname{El}(F)
+  =\int\!\bigl(\mathsf{ConTra}\circ F^{\mathrm{op}}\bigr).
+\]
 \end{definition}
 %%-/
 
@@ -338,32 +350,47 @@ def Folio.spineBase (W : Folio) : Nat ⥤ Fin W.length where
 /-- The actual functor on the spine denoted by the finite presentation. -/
 def Folio.F (W : Folio) : Nat ⥤ CoCon := W.spineBase ⋙ W.core
 
-/-- The page functor on the opposite spine. -/
-def Folio.spineH (W : Folio) : Natᵒᵖ ⥤ Type := W.F.leftOp ⋙ ConTra
+/-- The cells of a stored page, expressed directly as objects of its chain. -/
+abbrev Folio.Cell (W : Folio) (m : (Fin W.length)ᵒᵖ) : Type :=
+  (W.core.obj m.unop).unop.Obj
 
-def Folio.H (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type := W.core.leftOp ⋙ ConTra
+/-- The chain at a page of the genuine infinite spine. -/
+def Folio.pageChain (W : Folio) (n : Nat) : Con := (W.F.obj n).unop
 
-def Folio.E (W : Folio) : Type 0 := W.H.Elements
+/-- The cells at a page of the genuine infinite spine. -/
+abbrev Folio.SpineCell (W : Folio) (n : Nat) : Type := (W.pageChain n).Obj
 
-instance (W : Folio) : Category.{0} W.E := categoryOfElements W.H
+/-- Implementation bridge from the folio's chains to their object types.  The
+public indexing category is `El`; downstream definitions should speak about
+cell occurrences rather than expose this set-valued diagram. -/
+def Folio.cellDiagram (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type :=
+  W.core.leftOp ⋙ ConTra
 
-instance (W : Folio) (m : (Fin W.length)ᵒᵖ) : LinearOrder (W.H.obj m) :=
+/-- The category of cell occurrences of a folio.  An object is a page together
+with a cell of that page, and an arrow witnesses exact transport of that cell
+along the folio. -/
+def Folio.El (W : Folio) : Type 0 := W.cellDiagram.Elements
+
+instance (W : Folio) : Category.{0} W.El := categoryOfElements W.cellDiagram
+
+instance (W : Folio) (m : (Fin W.length)ᵒᵖ) :
+    LinearOrder (W.cellDiagram.obj m) :=
   (W.core.obj m.unop).unop.linearOrder
 
-instance (W : Folio) (x y : W.E) : Subsingleton (x ⟶ y) where
-  allEq f g := CategoryOfElements.ext W.H f g (Subsingleton.elim _ _)
+instance (W : Folio) (x y : W.El) : Subsingleton (x ⟶ y) where
+  allEq f g := CategoryOfElements.ext W.cellDiagram f g (Subsingleton.elim _ _)
 
 def Folio.originIndex (W : Folio) : Fin W.length := ⟨0, W.positive⟩
 def Folio.originBase (W : Folio) : (Fin W.length)ᵒᵖ := op W.originIndex
-def Folio.originValue (W : Folio) : W.H.obj W.originBase :=
+def Folio.originValue (W : Folio) : W.Cell W.originBase :=
   W.originEquiv.symm ()
-def Folio.originElement (W : Folio) : W.E := ⟨W.originBase, W.originValue⟩
+def Folio.originElement (W : Folio) : W.El := ⟨W.originBase, W.originValue⟩
 
 def Folio.lastIndex (W : Folio) : Fin W.length :=
   ⟨W.length - 1, Nat.sub_lt W.positive (by omega)⟩
 def Folio.lastBase (W : Folio) : (Fin W.length)ᵒᵖ := op W.lastIndex
 
-theorem Folio.origin_unique (W : Folio) (x : W.H.obj W.originBase) :
+theorem Folio.origin_unique (W : Folio) (x : W.Cell W.originBase) :
     x = W.originValue := by
   apply W.originEquiv.injective
   exact Subsingleton.elim _ _
@@ -375,23 +402,28 @@ def Folio.baseToOrigin (W : Folio) (m : (Fin W.length)ᵒᵖ) :
     change (0 : Fin W.length) ≤ m.unop
     exact bot_le)).op
 
-def Folio.toOrigin (W : Folio) (x : W.E) : x ⟶ W.originElement :=
+def Folio.toOrigin (W : Folio) (x : W.El) : x ⟶ W.originElement :=
   CategoryOfElements.homMk x W.originElement (W.baseToOrigin x.1)
     (W.origin_unique _)
 
 /-! The tall presentation is kept internal.  A folio's listed cardinality is
 only a finite presentation of its genuinely `Nat`-indexed spine. -/
 
-def Folio.TallE (W : Folio) : Type := W.spineH.Elements
+/-- The cell diagram on the genuine infinite spine, obtained by repeating the
+final page of the finite presentation. -/
+def Folio.spineCellDiagram (W : Folio) : Natᵒᵖ ⥤ Type :=
+  W.F.leftOp ⋙ ConTra
 
-instance (W : Folio) : Category W.TallE := categoryOfElements W.spineH
+def Folio.TallEl (W : Folio) : Type := W.spineCellDiagram.Elements
 
-instance (W : Folio) (x y : W.TallE) : Subsingleton (x ⟶ y) where
-  allEq f g := CategoryOfElements.ext W.spineH f g (Subsingleton.elim _ _)
+instance (W : Folio) : Category W.TallEl := categoryOfElements W.spineCellDiagram
+
+instance (W : Folio) (x y : W.TallEl) : Subsingleton (x ⟶ y) where
+  allEq f g := CategoryOfElements.ext W.spineCellDiagram f g (Subsingleton.elim _ _)
 
 /-- Collapse a tall occurrence to the coherent finite representative used for
 storage.  This is an implementation map, not the page space of the atlas. -/
-def Folio.collapseElements (W : Folio) : W.TallE ⥤ W.E where
+def Folio.collapseElements (W : Folio) : W.TallEl ⥤ W.El where
   obj x := ⟨op (W.paddedIndex x.1.unop), x.2⟩
   map {x y} f := CategoryOfElements.homMk _ _
     (W.spineBase.map f.val.unop).op f.property
@@ -403,17 +435,17 @@ def Folio.collapseElements (W : Folio) : W.TallE ⥤ W.E where
     apply Subsingleton.elim
 
 /-- Include a stored cell at its actual page into the full spine. -/
-def Folio.includeElements (W : Folio) : W.E ⥤ W.TallE where
+def Folio.includeElements (W : Folio) : W.El ⥤ W.TallEl where
   obj x := ⟨op x.1.unop.1,
-    W.H.map (eqToHom
+    W.cellDiagram.map (eqToHom
       (congrArg op (W.paddedIndex_fin x.1.unop).symm)) x.2⟩
   map {x y} f := by
     rcases x with ⟨⟨m⟩, k⟩
     rcases y with ⟨⟨n⟩, l⟩
     have hnm : n.1 ≤ m.1 := leOfHom f.val.unop
     refine CategoryOfElements.homMk _ _ (homOfLE hnm).op ?_
-    simp only [Folio.spineH, Folio.F, Folio.spineBase]
-    change W.H.map _ (W.H.map _ k) = W.H.map _ l
+    simp only [Folio.spineCellDiagram, Folio.F, Folio.spineBase]
+    change W.cellDiagram.map _ (W.cellDiagram.map _ k) = W.cellDiagram.map _ l
     rw [← FunctorToTypes.map_comp_apply,
       show _ ≫ _ = f.val ≫ _ from Subsingleton.elim _ _]
     rw [FunctorToTypes.map_comp_apply, f.property]
@@ -426,16 +458,16 @@ def Folio.includeElements (W : Folio) : W.E ⥤ W.TallE where
 
 @[simp]
 theorem Folio.collapse_include (W : Folio) :
-    W.includeElements ⋙ W.collapseElements = 𝟭 W.E := by
+    W.includeElements ⋙ W.collapseElements = 𝟭 W.El := by
   exact CategoryTheory.Functor.ext
-    (F := W.includeElements ⋙ W.collapseElements) (G := Functor.id W.E)
+    (F := W.includeElements ⋙ W.collapseElements) (G := Functor.id W.El)
     (fun x => by
       rcases x with ⟨⟨m⟩, k⟩
       refine Functor.Elements.ext _ _ (congrArg op (W.paddedIndex_fin m)) ?_
       simp [Folio.includeElements, Folio.collapseElements])
 
 @[simp]
-theorem Folio.collapse_include_obj (W : Folio) (x : W.E) :
+theorem Folio.collapse_include_obj (W : Folio) (x : W.El) :
     W.collapseElements.obj (W.includeElements.obj x) = x := by
   exact Functor.congr_obj W.collapse_include x
 
@@ -444,7 +476,7 @@ collapsing the first repeated page and including it again changes its page
 index.  This records the precise obstruction to treating the two atlas bases
 as interchangeable through the evident inclusion/collapse comparison. -/
 theorem Folio.include_collapse_ne_id (W : Folio) :
-    W.collapseElements ⋙ W.includeElements ≠ Functor.id W.TallE := by
+    W.collapseElements ⋙ W.includeElements ≠ Functor.id W.TallEl := by
   intro h
   letI : NeZero W.length := ⟨Nat.ne_of_gt W.positive⟩
   let q : (W.core.obj W.lastIndex).unop ⟶
@@ -452,7 +484,7 @@ theorem Folio.include_collapse_ne_id (W : Folio) :
     (W.core.map (homOfLE (Fin.zero_le W.lastIndex))).unop
   let k : (W.core.obj W.lastIndex).unop.Obj :=
     Classical.choose (q.point_surjective W.originValue)
-  let x : W.TallE := by
+  let x : W.TallEl := by
     refine ⟨op W.length, ?_⟩
     change (W.core.obj (W.paddedIndex W.length)).unop.Obj
     have hp : W.paddedIndex W.length = W.lastIndex := by
@@ -460,7 +492,7 @@ theorem Folio.include_collapse_ne_id (W : Folio) :
       simp [Folio.paddedIndex, Folio.lastIndex]
     exact hp.symm ▸ k
   have hx := congrArg
-    (fun F : CategoryTheory.Functor W.TallE W.TallE => (F.obj x).1.unop) h
+    (fun F : CategoryTheory.Functor W.TallEl W.TallEl => (F.obj x).1.unop) h
   have hbad : W.length - 1 = W.length := by
     simpa [x, Folio.collapseElements, Folio.includeElements,
       Folio.paddedIndex] using hx
@@ -468,34 +500,24 @@ theorem Folio.include_collapse_ne_id (W : Folio) :
 
 /-%%
 \begin{definition}[The Category of Paginations]
-The \textbf{Category of Paginations}, denoted $\Pag$, has as objects pairs
-$(H,E)$ where $H=\mathsf{ConTra}\circ F^{\mathrm{op}}$ for a folio $F$, and
-$E$ is the category of elements of $H$.  For $W:\Pag$, write $W_H$ for the
-first inclusion and $W_E$ for the second inclusion.  A morphism $T:X\to Y$
-in $\Pag$ is a functor $T:X_E\to Y_E$.  Thus, for every morphism
-$f:x\to y$ of $X_E$, the following square commutes:
-\[
-\begin{tikzcd}
-x=(m,i) \ar[r,"f"] \ar[d,"T"'] &
-  (n,X_H(f)(i)) \ar[d,"T"] \\
-(m',i') \ar[r,"T(f)"'] &
-  (n',Y_H(T(f))(i')).
-\end{tikzcd}
-\]
+The \textbf{Category of Paginations}, denoted $\Pag$, has as objects a
+folio $Fo$ together with its associated category of cell occurrences
+$El=\operatorname{El}(Fo)$.  For $W:\Pag$, write $W_{Fo}$ for its folio
+and $W_{El}$ for its occurrence category.  A morphism $T:X\to Y$ in
+$\Pag$ is a functor $T:X_{El}\to Y_{El}$.
 \end{definition}
 %%-/
 
 structure Pag where
-  folio : Folio
+  Fo : Folio
 
-def Pag.H (W : Pag) : (Fin W.folio.length)ᵒᵖ ⥤ Type 0 := W.folio.H
-def Pag.E (W : Pag) : Type 0 := W.folio.E
+abbrev Pag.El (W : Pag) : Type 0 := W.Fo.El
 
-instance (W : Pag) : Category.{0} W.E := categoryOfElements W.H
+instance (W : Pag) : Category.{0} W.El := inferInstance
 
 instance : Category.{0} Pag where
-  Hom X Y := X.E ⥤ Y.E
-  id X := 𝟭 X.E
+  Hom X Y := X.El ⥤ Y.El
+  id X := 𝟭 X.El
   comp F G := F ⋙ G
   id_comp _ := rfl
   comp_id _ := rfl
@@ -506,36 +528,42 @@ instance : Category.{0} Pag where
 
 \begin{definition}[The Category of Atlases]
 The \textbf{Category of Atlases}, denoted $\Atl$, has as objects pairs
-$(P,G)$, where $P:\Pag$ and $G:P_E\to\DomIns$ is a functor, equivalently a
-presheaf $G:P_E^{\mathrm{op}}\to\CoDomIns$.  For $P_H:C\to\Set$,
-$m\in|C|$, and distinct elements $k,k'\in|P_H(m)|$, the pullback in $G$ of
+$(Pa,Da)$, where $Pa:\Pag$ and $Da:Pa_{El}\to\DomIns$ is a functor,
+equivalently a presheaf $Da:Pa_{El}^{\mathrm{op}}\to\CoDomIns$.  For the
+folio $Pa_{Fo}$, a page $m$, and distinct objects $k,k'$ of the chain
+$Pa_{Fo}(m)$, the pullback in $Da$ of
 the arrows induced by $(m\to0)(k)$ and $(m\to0)(k')$ is empty.
 
-For every $n\in\mathbb N$, the \textbf{$n$th atlas page} of $X$ is the set
-$X_H(n)$ on its full spine.  An element $k\in X_H(n)$ is a \textbf{page
-cell}, written $(n,k)$, and the dominion carried by that cell is
-$X_G(n,k)$.  Thus a page is the indexed collection of cells at one spine
-position.
+For $X:\Atl$, write $X_{Pa}$ and $X_{Da}$ for its two components, and
+abbreviate $X_{Fo}:=(X_{Pa})_{Fo}$ and $X_{El}:=(X_{Pa})_{El}$.
+
+For every $n\in\mathbb N$, the \textbf{$n$th atlas page} of $X$ is the chain
+$X_{Fo}(n)$ on its full spine.  An object $k$ of this chain is a
+\textbf{page cell}, written $(n,k)$, and the dominion carried by that cell is
+$X_{Da}(n,k)$.
 
 There is an integer $w$ such that, for every $w'>w$,
-$P_H(w'\to w)=\id$, and, for every $k\in|P_H(w)|$, the corresponding arrow
-$G((w'\to w)(k))$ is the identity.  The least such integer is the
+the consolidation from page $w'$ to page $w$ induced by $Pa_{Fo}$ is the
+identity and, for every object $k$ of $Pa_{Fo}(w)$, the corresponding arrow
+$Da((w'\to w)(k))$ is the identity.  The least such integer is the
 \textbf{cardinality of the atlas}, denoted $|A|$.
 
-For $X:\Atl$, write $X_P$ and $X_G$ for the two components and put
-$X_H=(X_P)_H$ and $X_E=(X_P)_E$.  A morphism $T:X\to Y$ is a pair
-$(T_P,T_A)$, where $T_P:X_P\to Y_P$ is a pagination morphism and
-$T_A:X_G\Rightarrow Y_G\circ T_E$ is a natural transformation.  Thus, for
-every $f:x\to y$ in $X_E$, the following square commutes:
+A morphism $T:X\to Y$ is a pair $(T_{Pa},T_{Da})$, where
+$T_{Pa}:X_{El}\to Y_{El}$ is a functor and
+$T_{Da}:X_{Da}\Rightarrow Y_{Da}\circ T_{Pa}$ is a natural transformation.
+Thus, for every $f:x\to y$ in $X_{El}$, the following square commutes:
 \[
 \begin{tikzcd}[column sep=huge]
-X_G(x) \ar[r,"X_G(f)"] \ar[d,"(T_A)_x"'] &
-  X_G(y) \ar[d,"(T_A)_y"] \\
-Y_G(T_E(x)) \ar[r,"Y_G(T_E(f))"'] & Y_G(T_E(y)).
+X_{Da}(x) \ar[r,"X_{Da}(f)"] \ar[d,"(T_{Da})_x"'] &
+  X_{Da}(y) \ar[d,"(T_{Da})_y"] \\
+Y_{Da}(T_{Pa}(x)) \ar[r,"Y_{Da}(T_{Pa}(f))"'] &
+  Y_{Da}(T_{Pa}(y)).
 \end{tikzcd}
 \]
-Finally, if $x=|X|$, $x'>x$, and $r\in|X_H(|X|-1)|$, then
-$T_P(x',r)=T_P(x,r)$ and $(T_A)_{(x',r)}=(T_A)_{(x,r)}$.
+Finally, if $x=|X|$, $x'>x$, and
+$r$ is an object of the final chain $X_{Fo}(|X|-1)$, then
+$T_{Pa}(x',r)=T_{Pa}(x,r)$ and
+$(T_{Da})_{(x',r)}=(T_{Da})_{(x,r)}$.
 \end{definition}
 %%-/
 
@@ -544,49 +572,54 @@ $T_P(x',r)=T_P(x,r)$ and $(T_A)_{(x',r)}=(T_A)_{(x,r)}$.
 the stabilization and morphism-tail clauses in the extracted definition are
 enforced by construction. -/
 
-def Pag.cell (P : Pag) (m : (Fin P.folio.length)ᵒᵖ) (k : P.H.obj m) : P.E := ⟨m, k⟩
+def Pag.cell (P : Pag) (m : (Fin P.Fo.length)ᵒᵖ)
+    (k : P.Fo.Cell m) : P.El := ⟨m, k⟩
 
-def Pag.cellToOrigin (P : Pag) (m : (Fin P.folio.length)ᵒᵖ)
-    (k : P.H.obj m) : P.cell m k ⟶ P.folio.originElement :=
-  P.folio.toOrigin (P.cell m k)
+def Pag.cellToOrigin (P : Pag) (m : (Fin P.Fo.length)ᵒᵖ)
+    (k : P.Fo.Cell m) : P.cell m k ⟶ P.Fo.originElement :=
+  P.Fo.toOrigin (P.cell m k)
 
-def IsPagewiseDisjoint (P : Pag) (G : P.E ⥤ DomIns) : Prop :=
-  ∀ (m : (Fin P.folio.length)ᵒᵖ) (i j : P.H.obj m), i ≠ j →
-    ∀ (x : G.obj (P.cell m i)) (y : G.obj (P.cell m j)),
-      G.map (P.cellToOrigin m i) x ≠ G.map (P.cellToOrigin m j) y
+def IsPagewiseDisjoint (P : Pag) (D : P.El ⥤ DomIns) : Prop :=
+  ∀ (m : (Fin P.Fo.length)ᵒᵖ) (i j : P.Fo.Cell m), i ≠ j →
+    ∀ (x : D.obj (P.cell m i)) (y : D.obj (P.cell m j)),
+      D.map (P.cellToOrigin m i) x ≠ D.map (P.cellToOrigin m j) y
 
 structure Atl where
-  P : Pag
-  G : P.E ⥤ DomIns
-  disjoint : IsPagewiseDisjoint P G
+  Pa : Pag
+  Da : Pa.El ⥤ DomIns
+  disjoint : IsPagewiseDisjoint Pa Da
 
-def Atl.H (X : Atl) : (Fin X.P.folio.length)ᵒᵖ ⥤ Type 0 := X.P.H
-def Atl.E (X : Atl) : Type 0 := X.P.E
+abbrev Atl.Fo (X : Atl) : Folio := X.Pa.Fo
 
-/-- The `n`th page of an atlas on its genuine infinite spine. -/
-def Atl.page (X : Atl) (n : Nat) : Type := X.P.folio.spineH.obj (op n)
+abbrev Atl.El (X : Atl) : Type 0 := X.Pa.El
+
+/-- The `n`th page of an atlas as a chain on its genuine infinite spine. -/
+def Atl.pageChain (X : Atl) (n : Nat) : Con := X.Fo.pageChain n
+
+/-- The cells of the `n`th atlas page. -/
+def Atl.page (X : Atl) (n : Nat) : Type := (X.pageChain n).Obj
 
 /-- A cell of the `n`th page, retaining its position on the infinite spine. -/
-def Atl.pageCell (X : Atl) (n : Nat) (k : X.page n) : X.P.folio.TallE :=
+def Atl.pageCell (X : Atl) (n : Nat) (k : X.page n) : X.Fo.TallEl :=
   ⟨op n, k⟩
 
-instance (X : Atl) : Category.{0} X.E := categoryOfElements X.H
+instance (X : Atl) : Category.{0} X.El := inferInstance
 
 structure AtlHom (X Y : Atl) where
-  P : X.E ⥤ Y.E
-  A : X.G ⟶ P ⋙ Y.G
+  Pa : X.El ⥤ Y.El
+  Da : X.Da ⟶ Pa ⋙ Y.Da
 
 def AtlHom.identity (X : Atl) : AtlHom X X where
-  P := 𝟭 X.E
-  A := 𝟙 X.G
+  Pa := 𝟭 X.El
+  Da := 𝟙 X.Da
 
 def AtlHom.comp {X Y Z : Atl} (f : AtlHom X Y) (g : AtlHom Y Z) : AtlHom X Z where
-  P := f.P ⋙ g.P
-  A := f.A ≫ whiskerLeft f.P g.A
+  Pa := f.Pa ⋙ g.Pa
+  Da := f.Da ≫ whiskerLeft f.Pa g.Da
 
 @[ext]
 theorem AtlHom.ext {X Y : Atl} (f g : AtlHom X Y)
-    (hP : f.P = g.P) (hA : HEq f.A g.A) : f = g := by
+    (hPa : f.Pa = g.Pa) (hDa : HEq f.Da g.Da) : f = g := by
   cases f
   cases g
   simp_all
@@ -643,28 +676,29 @@ def Folio.toCommonLeft (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
 def Folio.toCommonRight (W : Folio) (m n : (Fin W.length)ᵒᵖ) :
     n ⟶ W.commonBase m n := (homOfLE (min_le_right _ _)).op
 
-def storedElementLT (X : Atl) (x y : X.E) : Prop :=
-  let m := X.P.folio.commonBase x.1 y.1
-  letI : LinearOrder (X.H.obj m) :=
-    (X.P.folio.core.obj m.unop).unop.linearOrder
-  X.H.map (X.P.folio.toCommonLeft x.1 y.1) x.2 <
-  X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
+def storedElementLT (X : Atl) (x y : X.El) : Prop :=
+  let m := X.Fo.commonBase x.1 y.1
+  letI : LinearOrder (X.Fo.Cell m) :=
+    (X.Fo.core.obj m.unop).unop.linearOrder
+  X.Fo.cellDiagram.map (X.Fo.toCommonLeft x.1 y.1) x.2 <
+  X.Fo.cellDiagram.map (X.Fo.toCommonRight x.1 y.1) y.2
 
-def storedExtent (A : Atl) : DomIns := A.G.obj A.P.folio.originElement
+def storedExtent (A : Atl) : DomIns := A.Da.obj A.Fo.originElement
 
-def StoredTerritoryIndex (A : Atl) : Type := A.H.obj A.P.folio.lastBase
+def StoredTerritoryIndex (A : Atl) : Type :=
+  A.Fo.Cell A.Fo.lastBase
 
 def storedTerritory (A : Atl) (k : StoredTerritoryIndex A) : DomIns :=
-  A.G.obj (A.P.cell A.P.folio.lastBase k)
+  A.Da.obj (A.Pa.cell A.Fo.lastBase k)
 
-def storedOriginImage (X : Atl) (x : X.E) (t : X.G.obj x) : storedExtent X :=
-  X.G.map (X.P.folio.toOrigin x) t
+def storedOriginImage (X : Atl) (x : X.El) (t : X.Da.obj x) : storedExtent X :=
+  X.Da.map (X.Fo.toOrigin x) t
 
-def storedCovered (X : Atl) (x : X.E) (t : X.G.obj x) : Prop :=
-  ∃ (k : X.H.obj X.P.folio.lastBase)
-      (l : X.G.obj (X.P.cell X.P.folio.lastBase k)),
+def storedCovered (X : Atl) (x : X.El) (t : X.Da.obj x) : Prop :=
+  ∃ (k : X.Fo.Cell X.Fo.lastBase)
+      (l : X.Da.obj (X.Pa.cell X.Fo.lastBase k)),
     storedOriginImage X x t =
-      storedOriginImage X (X.P.cell X.P.folio.lastBase k) l
+      storedOriginImage X (X.Pa.cell X.Fo.lastBase k) l
 
 /-! `TallAtlas` is the internal, genuinely infinite-spine presentation.  An
 `Atl` supplies the coherent page data by pulling its finite storage back along
@@ -675,66 +709,67 @@ structure TallAtlas where
   H : Natᵒᵖ ⥤ Type
   originValue : H.obj (op 0)
   originUnique : ∀ x : H.obj (op 0), x = originValue
-  G : H.Elements ⥤ DomIns
+  Da : H.Elements ⥤ DomIns
   cellLT : H.Elements → H.Elements → Prop
-  coveredExtent : Set (G.obj ⟨op 0, originValue⟩)
+  coveredExtent : Set (Da.obj ⟨op 0, originValue⟩)
 
-def TallAtlas.E (X : TallAtlas) : Type := X.H.Elements
+def TallAtlas.El (X : TallAtlas) : Type := X.H.Elements
 
-instance (X : TallAtlas) : Category X.E := categoryOfElements X.H
+instance (X : TallAtlas) : Category X.El := categoryOfElements X.H
 
-instance (X : TallAtlas) (x y : X.E) : Subsingleton (x ⟶ y) where
+instance (X : TallAtlas) (x y : X.El) : Subsingleton (x ⟶ y) where
   allEq f g := CategoryOfElements.ext X.H f g (Subsingleton.elim _ _)
 
-def Atl.tallOriginValue (X : Atl) : X.P.folio.spineH.obj (op 0) := by
-  simpa [Folio.spineH, Folio.F, Folio.spineBase, Folio.paddedIndex,
-    Folio.originIndex] using X.P.folio.originValue
+def Atl.tallOriginValue (X : Atl) :
+    X.Fo.spineCellDiagram.obj (op 0) := by
+  simpa [Folio.spineCellDiagram, Folio.F, Folio.spineBase, Folio.paddedIndex,
+    Folio.originIndex] using X.Fo.originValue
 
 def Atl.tall (X : Atl) : TallAtlas where
-  H := X.P.folio.spineH
+  H := X.Fo.spineCellDiagram
   originValue := X.tallOriginValue
   originUnique x := by
-    let e : X.P.folio.spineH.obj (op 0) ≃ Unit := by
-      simpa [Folio.spineH, Folio.F, Folio.spineBase, Folio.paddedIndex,
-        Folio.originIndex] using X.P.folio.originEquiv
+    let e : X.Fo.spineCellDiagram.obj (op 0) ≃ Unit := by
+      simpa [Folio.spineCellDiagram, Folio.F, Folio.spineBase, Folio.paddedIndex,
+        Folio.originIndex] using X.Fo.originEquiv
     apply e.injective
     exact Subsingleton.elim _ _
-  G := X.P.folio.collapseElements ⋙ X.G
+  Da := X.Fo.collapseElements ⋙ X.Da
   cellLT x y := storedElementLT X
-    (X.P.folio.collapseElements.obj x)
-    (X.P.folio.collapseElements.obj y)
+    (X.Fo.collapseElements.obj x)
+    (X.Fo.collapseElements.obj y)
   coveredExtent t := storedCovered X
-    (X.P.folio.collapseElements.obj
+    (X.Fo.collapseElements.obj
       ⟨op 0, X.tallOriginValue⟩) t
 
-def TallAtlas.originElement (X : TallAtlas) : X.E :=
+def TallAtlas.originElement (X : TallAtlas) : X.El :=
   ⟨op 0, X.originValue⟩
 
-def TallAtlas.toOrigin (X : TallAtlas) (x : X.E) : x ⟶ X.originElement :=
+def TallAtlas.toOrigin (X : TallAtlas) (x : X.El) : x ⟶ X.originElement :=
   CategoryOfElements.homMk x X.originElement
     (homOfLE (Nat.zero_le x.1.unop)).op (X.originUnique _)
 
-def TallAtlas.covered (X : TallAtlas) (x : X.E) (t : X.G.obj x) : Prop :=
-  X.coveredExtent (X.G.map (X.toOrigin x) t)
+def TallAtlas.covered (X : TallAtlas) (x : X.El) (t : X.Da.obj x) : Prop :=
+  X.coveredExtent (X.Da.map (X.toOrigin x) t)
 
-def TallAtlas.extent (X : TallAtlas) : DomIns := X.G.obj X.originElement
+def TallAtlas.extent (X : TallAtlas) : DomIns := X.Da.obj X.originElement
 
 structure TallAtlasHom (X Y : TallAtlas) where
-  P : X.E ⥤ Y.E
-  A : X.G ⟶ P ⋙ Y.G
+  Pa : X.El ⥤ Y.El
+  Da : X.Da ⟶ Pa ⋙ Y.Da
 
 def TallAtlasHom.identity (X : TallAtlas) : TallAtlasHom X X where
-  P := 𝟭 X.E
-  A := 𝟙 X.G
+  Pa := 𝟭 X.El
+  Da := 𝟙 X.Da
 
 def TallAtlasHom.comp {X Y Z : TallAtlas}
     (f : TallAtlasHom X Y) (g : TallAtlasHom Y Z) : TallAtlasHom X Z where
-  P := f.P ⋙ g.P
-  A := f.A ≫ whiskerLeft f.P g.A
+  Pa := f.Pa ⋙ g.Pa
+  Da := f.Da ≫ whiskerLeft f.Pa g.Da
 
 @[ext]
 theorem TallAtlasHom.ext {X Y : TallAtlas} (f g : TallAtlasHom X Y)
-    (hP : f.P = g.P) (hA : HEq f.A g.A) : f = g := by
+    (hPa : f.Pa = g.Pa) (hDa : HEq f.Da g.Da) : f = g := by
   cases f
   cases g
   simp_all
@@ -764,39 +799,39 @@ instance : Category TallAtlas where
 
 /-! An atlas arrow's action on the infinite presentation is derived from its
 finite pagination and data transformation.  The full spine is first collapsed
-to the coherent stored representative, transformed by `P` and `A`, and then
+to the coherent stored representative, transformed by `Pa` and `Da`, and then
 included at the resulting stored page.  Thus no independent spine action is
 part of an atlas morphism. -/
 
-def AtlHom.tallP {X Y : Atl} (f : X ⟶ Y) :
-    X.tall.E ⥤ Y.tall.E :=
-  X.P.folio.collapseElements ⋙ f.P ⋙ Y.P.folio.includeElements
+def AtlHom.tallPa {X Y : Atl} (f : X ⟶ Y) :
+    X.tall.El ⥤ Y.tall.El :=
+  X.Fo.collapseElements ⋙ f.Pa ⋙ Y.Fo.includeElements
 
-def AtlHom.tallA {X Y : Atl} (f : X ⟶ Y) :
-    X.tall.G ⟶ f.tallP ⋙ Y.tall.G where
-  app x := f.A.app (X.P.folio.collapseElements.obj x) ≫
-    Y.G.map (eqToHom (Y.P.folio.collapse_include_obj
-      (f.P.obj (X.P.folio.collapseElements.obj x))).symm)
+def AtlHom.tallDa {X Y : Atl} (f : X ⟶ Y) :
+    X.tall.Da ⟶ f.tallPa ⋙ Y.tall.Da where
+  app x := f.Da.app (X.Fo.collapseElements.obj x) ≫
+    Y.Da.map (eqToHom (Y.Fo.collapse_include_obj
+      (f.Pa.obj (X.Fo.collapseElements.obj x))).symm)
   naturality := by
     intro x y q
-    simp only [AtlHom.tallP, Atl.tall, Functor.comp_obj, Functor.comp_map]
-    rw [← Category.assoc, f.A.naturality, Category.assoc]
+    simp only [AtlHom.tallPa, Atl.tall, Functor.comp_obj, Functor.comp_map]
+    rw [← Category.assoc, f.Da.naturality, Category.assoc]
     simp only [Functor.comp_map]
     have he :
-        Y.G.map (f.P.map (X.P.folio.collapseElements.map q)) ≫
-          Y.G.map (eqToHom (Y.P.folio.collapse_include_obj _).symm) =
-        Y.G.map (eqToHom (Y.P.folio.collapse_include_obj _).symm) ≫
-          Y.G.map (Y.P.folio.collapseElements.map
-            (Y.P.folio.includeElements.map
-              (f.P.map (X.P.folio.collapseElements.map q)))) := by
-      rw [← Y.G.map_comp, ← Y.G.map_comp]
+        Y.Da.map (f.Pa.map (X.Fo.collapseElements.map q)) ≫
+          Y.Da.map (eqToHom (Y.Fo.collapse_include_obj _).symm) =
+        Y.Da.map (eqToHom (Y.Fo.collapse_include_obj _).symm) ≫
+          Y.Da.map (Y.Fo.collapseElements.map
+            (Y.Fo.includeElements.map
+              (f.Pa.map (X.Fo.collapseElements.map q)))) := by
+      rw [← Y.Da.map_comp, ← Y.Da.map_comp]
       congr 1
     rw [he]
     simp only [Category.assoc]
 
 def AtlHom.tall {X Y : Atl} (f : X ⟶ Y) : X.tall ⟶ Y.tall where
-  P := f.tallP
-  A := f.tallA
+  Pa := f.tallPa
+  Da := f.tallDa
 
 /-- The coherent identity of an infinite presentation.  It identifies every
 repeated occurrence with the stored representative. -/
@@ -806,61 +841,61 @@ def Atl.coherence (X : Atl) : X.tall ⟶ X.tall :=
 /-- Deriving the spine action commutes strictly with composition. -/
 theorem AtlHom.tall_comp {X Y Z : Atl} (f : X ⟶ Y) (g : Y ⟶ Z) :
     (f ≫ g).tall = f.tall ≫ g.tall := by
-  have hP : (f ≫ g).tall.P = (f.tall ≫ g.tall).P := by
+  have hPa : (f ≫ g).tall.Pa = (f.tall ≫ g.tall).Pa := by
     exact CategoryTheory.Functor.ext
-      (F := (f ≫ g).tall.P) (G := (f.tall ≫ g.tall).P)
+      (F := (f ≫ g).tall.Pa) (G := (f.tall ≫ g.tall).Pa)
       (fun x => by
-        change Z.P.folio.includeElements.obj
-            (g.P.obj (f.P.obj (X.P.folio.collapseElements.obj x))) =
-          Z.P.folio.includeElements.obj
-            (g.P.obj (Y.P.folio.collapseElements.obj
-              (Y.P.folio.includeElements.obj
-                (f.P.obj (X.P.folio.collapseElements.obj x)))))
-        rw [Y.P.folio.collapse_include_obj])
-  apply TallAtlasHom.ext _ _ hP
+        change Z.Fo.includeElements.obj
+            (g.Pa.obj (f.Pa.obj (X.Fo.collapseElements.obj x))) =
+          Z.Fo.includeElements.obj
+            (g.Pa.obj (Y.Fo.collapseElements.obj
+              (Y.Fo.includeElements.obj
+                (f.Pa.obj (X.Fo.collapseElements.obj x)))))
+        rw [Y.Fo.collapse_include_obj])
+  apply TallAtlasHom.ext _ _ hPa
   apply NatTrans.hext_right _ _
-    (congrArg (fun P => P ⋙ Z.tall.G) hP)
+    (congrArg (fun P => P ⋙ Z.tall.Da) hPa)
   intro x
-  let x₀ := X.P.folio.collapseElements.obj x
-  let y₀ := f.P.obj x₀
-  let eY : y₀ = Y.P.folio.collapseElements.obj
-      (Y.P.folio.includeElements.obj y₀) :=
-    (Y.P.folio.collapse_include_obj y₀).symm
-  let z₀ := g.P.obj y₀
-  let eZ : z₀ = Z.P.folio.collapseElements.obj
-      (Z.P.folio.includeElements.obj z₀) :=
-    (Z.P.folio.collapse_include_obj z₀).symm
-  let y₁ := Y.P.folio.collapseElements.obj
-    (Y.P.folio.includeElements.obj y₀)
-  let z₁ := g.P.obj y₁
-  let eZ₁ : z₁ = Z.P.folio.collapseElements.obj
-      (Z.P.folio.includeElements.obj z₁) :=
-    (Z.P.folio.collapse_include_obj z₁).symm
-  let eR : z₀ = Z.P.folio.collapseElements.obj
-      (Z.P.folio.includeElements.obj z₁) :=
-    (congrArg g.P.obj eY).trans eZ₁
+  let x₀ := X.Fo.collapseElements.obj x
+  let y₀ := f.Pa.obj x₀
+  let eY : y₀ = Y.Fo.collapseElements.obj
+      (Y.Fo.includeElements.obj y₀) :=
+    (Y.Fo.collapse_include_obj y₀).symm
+  let z₀ := g.Pa.obj y₀
+  let eZ : z₀ = Z.Fo.collapseElements.obj
+      (Z.Fo.includeElements.obj z₀) :=
+    (Z.Fo.collapse_include_obj z₀).symm
+  let y₁ := Y.Fo.collapseElements.obj
+    (Y.Fo.includeElements.obj y₀)
+  let z₁ := g.Pa.obj y₁
+  let eZ₁ : z₁ = Z.Fo.collapseElements.obj
+      (Z.Fo.includeElements.obj z₁) :=
+    (Z.Fo.collapse_include_obj z₁).symm
+  let eR : z₀ = Z.Fo.collapseElements.obj
+      (Z.Fo.includeElements.obj z₁) :=
+    (congrArg g.Pa.obj eY).trans eZ₁
   change HEq
-    ((AtlHom.comp f g).tallA.app x)
-    ((TallAtlasHom.comp f.tall g.tall).A.app x)
-  dsimp [AtlHom.tall, AtlHom.tallA, AtlHom.tallP, AtlHom.comp,
+    ((AtlHom.comp f g).tallDa.app x)
+    ((TallAtlasHom.comp f.tall g.tall).Da.app x)
+  dsimp [AtlHom.tall, AtlHom.tallDa, AtlHom.tallPa, AtlHom.comp,
     TallAtlasHom.comp]
-  rw [Category.assoc (f.A.app x₀) (Y.G.map (eqToHom eY))
-    (g.A.app y₁ ≫ Z.G.map (eqToHom eZ₁))]
-  rw [g.A.naturality_assoc (eqToHom eY)]
+  rw [Category.assoc (f.Da.app x₀) (Y.Da.map (eqToHom eY))
+    (g.Da.app y₁ ≫ Z.Da.map (eqToHom eZ₁))]
+  rw [g.Da.naturality_assoc (eqToHom eY)]
   change HEq
-    ((f.A.app x₀ ≫ g.A.app y₀) ≫ Z.G.map (eqToHom eZ))
-    (((f.A.app x₀ ≫ g.A.app y₀) ≫ Z.G.map (g.P.map (eqToHom eY))) ≫
-      Z.G.map (eqToHom eZ₁))
-  have hrArrow : g.P.map (eqToHom eY) ≫ eqToHom eZ₁ = eqToHom eR :=
-    CategoryOfElements.ext Z.H _ _ (Subsingleton.elim _ _)
+    ((f.Da.app x₀ ≫ g.Da.app y₀) ≫ Z.Da.map (eqToHom eZ))
+    (((f.Da.app x₀ ≫ g.Da.app y₀) ≫ Z.Da.map (g.Pa.map (eqToHom eY))) ≫
+      Z.Da.map (eqToHom eZ₁))
+  have hrArrow : g.Pa.map (eqToHom eY) ≫ eqToHom eZ₁ = eqToHom eR :=
+    CategoryOfElements.ext Z.Fo.cellDiagram _ _ (Subsingleton.elim _ _)
   have hright : HEq
-      (((f.A.app x₀ ≫ g.A.app y₀) ≫ Z.G.map (g.P.map (eqToHom eY))) ≫
-        Z.G.map (eqToHom eZ₁))
-      (f.A.app x₀ ≫ g.A.app y₀) := by
-    rw [Category.assoc, ← Z.G.map_comp, hrArrow]
-    exact embedding_comp_map_eqToHom_heq Z.G eR _
-  exact (embedding_comp_map_eqToHom_heq Z.G eZ
-    (f.A.app x₀ ≫ g.A.app y₀)).trans hright.symm
+      (((f.Da.app x₀ ≫ g.Da.app y₀) ≫ Z.Da.map (g.Pa.map (eqToHom eY))) ≫
+        Z.Da.map (eqToHom eZ₁))
+      (f.Da.app x₀ ≫ g.Da.app y₀) := by
+    rw [Category.assoc, ← Z.Da.map_comp, hrArrow]
+    exact embedding_comp_map_eqToHom_heq Z.Da eR _
+  exact (embedding_comp_map_eqToHom_heq Z.Da eZ
+    (f.Da.app x₀ ≫ g.Da.app y₀)).trans hright.symm
 
 theorem Atl.coherence_idempotent (X : Atl) :
     X.coherence ≫ X.coherence = X.coherence := by
@@ -870,9 +905,9 @@ theorem Atl.coherence_idempotent (X : Atl) :
 theorem Atl.coherence_ne_identity (X : Atl) :
     X.coherence ≠ 𝟙 X.tall := by
   intro h
-  apply X.P.folio.include_collapse_ne_id
-  simpa [Atl.coherence, AtlHom.tall, AtlHom.tallP, AtlHom.identity,
-    TallAtlasHom.identity] using congrArg TallAtlasHom.P h
+  apply X.Fo.include_collapse_ne_id
+  simpa [Atl.coherence, AtlHom.tall, AtlHom.tallPa, AtlHom.identity,
+    TallAtlasHom.identity] using congrArg TallAtlasHom.Pa h
 
 theorem AtlHom.coherence_left {X Y : Atl} (f : X ⟶ Y) :
     X.coherence ≫ f.tall = f.tall := by
@@ -884,11 +919,11 @@ theorem AtlHom.coherence_right {X Y : Atl} (f : X ⟶ Y) :
   have h := AtlHom.tall_comp f (𝟙 Y)
   simpa [Atl.coherence] using h.symm
 
-def cardinality (A : Atl) : Nat := A.P.folio.length
+def cardinality (A : Atl) : Nat := A.Fo.length
 
 /-%%
 \begin{definition}[Extent of an Atlas]
-The \textbf{extent} of $A$ is $\Ex(A)=A_G(0,0)$.
+The \textbf{extent} of $A$ is $\Ex(A)=A_{Da}(0,0)$.
 Since objects of $\DomIns$ are dominions, $\Ex(A):\Dom$ for every
 $A:\Atl$.
 \end{definition}
@@ -898,9 +933,9 @@ def extent (A : Atl) : DomIns := storedExtent A
 
 /-%%
 \begin{definition}[Territory of an Atlas]
-Let $M=A_H(|A|-1)$.  The \textbf{territory} is the indexed family
-$\Ter(A):M\to\Dom$ given by
-$\Ter(A)(k)=A_G(|A|-1,k)$.
+Let $M$ be the objects of the final chain $A_{Fo}(|A|-1)$.  The
+\textbf{territory} is the indexed family $\Ter(A):M\to\Dom$ given by
+$\Ter(A)(k)=A_{Da}(|A|-1,k)$.
 \end{definition}
 %%-/
 
@@ -924,12 +959,12 @@ def region (A : Atl) (n : TerritoryIndex A) : DomIns := territory A n
 \begin{definition}[The Category of Atlas Transposals]
 The \textbf{Category of Atlas Transposals}, denoted $\mathsf{AtlTrap}$, is
 the wide subcategory of $\Atl$ whose morphisms $F:X\to Y$ have
-point-injective object maps $F_E$.
+point-injective object maps $F_{Pa}$.
 \end{definition}
 %%-/
 
 def IsTransposal : MorphismProperty Atl :=
-  fun _ _ F => Function.Injective F.P.obj
+  fun _ _ F => Function.Injective F.Pa.obj
 
 instance : IsTransposal.IsMultiplicative where
   id_mem _ := Function.injective_id
@@ -939,31 +974,31 @@ abbrev AtlTrap := WideSubcategory IsTransposal
 
 def AtlTrapInc : AtlTrap ⥤ Atl := wideSubcategoryInclusion IsTransposal
 
-def elementLT (X : Atl) (x y : X.E) : Prop :=
-  let m := X.P.folio.commonBase x.1 y.1
-  letI : LinearOrder (X.H.obj m) :=
-    (X.P.folio.core.obj m.unop).unop.linearOrder
-  X.H.map (X.P.folio.toCommonLeft x.1 y.1) x.2 <
-  X.H.map (X.P.folio.toCommonRight x.1 y.1) y.2
+def elementLT (X : Atl) (x y : X.El) : Prop :=
+  let m := X.Fo.commonBase x.1 y.1
+  letI : LinearOrder (X.Fo.Cell m) :=
+    (X.Fo.core.obj m.unop).unop.linearOrder
+  X.Fo.cellDiagram.map (X.Fo.toCommonLeft x.1 y.1) x.2 <
+  X.Fo.cellDiagram.map (X.Fo.toCommonRight x.1 y.1) y.2
 
 /-- The image of a datum in the extent. -/
-def originImage (X : Atl) (x : X.E) (t : X.G.obj x) : extent X :=
+def originImage (X : Atl) (x : X.El) (t : X.Da.obj x) : extent X :=
   storedOriginImage X x t
 
 /-- A datum is covered when its image in the extent comes from a final region. -/
-def Covered (X : Atl) (x : X.E) (t : X.G.obj x) : Prop :=
+def Covered (X : Atl) (x : X.El) (t : X.Da.obj x) : Prop :=
   storedCovered X x t
 
 theorem covered_region (X : Atl) (k : TerritoryIndex X) (l : territory X k) :
-    Covered X (X.P.cell X.P.folio.lastBase k) l :=
+    Covered X (X.Pa.cell X.Fo.lastBase k) l :=
   ⟨k, l, rfl⟩
 
 /-- The order and coverage conditions for atlas traversals. -/
 def IsTraversal : MorphismProperty Atl := fun X Y F =>
-  Function.Injective F.P.obj ∧
-  (∀ x y, elementLT _ x y → elementLT _ (F.P.obj x) (F.P.obj y)) ∧
-  (∀ x (t : X.G.obj x), Covered X x t →
-    Covered Y (F.P.obj x) (F.A.app x t))
+  Function.Injective F.Pa.obj ∧
+  (∀ x y, elementLT _ x y → elementLT _ (F.Pa.obj x) (F.Pa.obj y)) ∧
+  (∀ x (t : X.Da.obj x), Covered X x t →
+    Covered Y (F.Pa.obj x) (F.Da.app x t))
 
 instance : IsTraversal.IsMultiplicative where
   id_mem X := by
@@ -973,7 +1008,7 @@ instance : IsTraversal.IsMultiplicative where
   comp_mem f g hf hg := by
     refine ⟨hg.1.comp hf.1, fun x y h => hg.2.1 _ _ (hf.2.1 _ _ h), ?_⟩
     intro x t h
-    simpa [AtlHom.comp] using hg.2.2 (f.P.obj x) (f.A.app x t) (hf.2.2 x t h)
+    simpa [AtlHom.comp] using hg.2.2 (f.Pa.obj x) (f.Da.app x t) (hf.2.2 x t h)
 
 abbrev AtlTrav := WideSubcategory IsTraversal
 
@@ -988,35 +1023,37 @@ def AtlTravToAtlTrap : AtlTrav ⥤ AtlTrap where
 The \textbf{Category of Atlas Traversals}, denoted $\mathsf{AtlTrav}$, is
 the wide subcategory of $\mathsf{AtlTrap}$ whose morphisms satisfy the
 following conditions.  For $F:X\to Y$, let $x=(m,i)$ and $y=(m',j)$, put
-$p=\min(m,m')$, write $F_E(x)=(n,i')$ and $F_E(y)=(n',j')$, and put
-$p'=\min(n,n')$.  If
+$p=\min(m,m')$, write $F_{Pa}(x)=(n,i')$ and $F_{Pa}(y)=(n',j')$, and put
+$p'=\min(n,n')$.  Let $c^X_{m,p}$ and $c^X_{m',p}$ denote the
+consolidations induced by the folio $X_{Fo}$, and define the analogous
+maps for $Y$.  If
 \[
-  X_H(m\to p)(i)<X_H(m'\to p)(j),
+  c^X_{m,p}(i)<c^X_{m',p}(j),
 \]
 then
 \[
-  Y_H(n\to p')(i')<Y_H(n'\to p')(j').
+  c^Y_{n,p'}(i')<c^Y_{n',p'}(j').
 \]
-Furthermore, if $q\in|X|$ and $t\in X_G(q)$ is in the image of a final
+Furthermore, if $q\in|X|$ and $t\in X_{Da}(q)$ is in the image of a final
 region---that is, there exist $k\in|\Ter(X)|$ and $l\in\Ter(X)(k)$ whose
-image under $X_G((|X|-1)\to q)(k)$ is $t$---then this property is preserved
+image under $X_{Da}((|X|-1)\to q)(k)$ is $t$---then this property is preserved
 by $F$.
 \end{definition}
 
 \begin{definition}[The Category of Stable Atlas Traversals]
 The \textbf{Category of Stable Atlas Traversals}, denoted
 $\mathsf{StaAtlTrav}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
-morphisms $F:X\to Y$ satisfy $F_E(0,0)=(0,0)$.
+morphisms $F:X\to Y$ satisfy $F_{Pa}(0,0)=(0,0)$.
 \end{definition}
 %%-/
 
 def IsStableTraversal : MorphismProperty AtlTrav := fun X Y F =>
-  F.1.P.obj X.obj.P.folio.originElement = Y.obj.P.folio.originElement
+  F.1.Pa.obj X.obj.Fo.originElement = Y.obj.Fo.originElement
 
 instance : IsStableTraversal.IsMultiplicative where
   id_mem _ := rfl
   comp_mem f g hf hg := by
-    change g.1.P.obj (f.1.P.obj _) = _
+    change g.1.Pa.obj (f.1.Pa.obj _) = _
     rw [hf, hg]
 
 abbrev StaAtlTrav := WideSubcategory IsStableTraversal
@@ -1446,7 +1483,7 @@ of a final region.
 %%-/
 
 def IsAtlasMap : ObjectProperty Atl := fun A =>
-  ∀ v : extent A, Covered A A.P.folio.originElement v
+  ∀ v : extent A, Covered A A.Fo.originElement v
 
 abbrev AtlMap := IsAtlasMap.FullSubcategory
 
@@ -1478,56 +1515,56 @@ $\mathsf{AtlTravMapInc}:\mathsf{AtlTravMap}\to\mathsf{AtlTrav}$.
 def AtlTravMapInc : AtlTravMap ⥤ AtlTrav := ObjectProperty.ι IsAtlasMapTrav
 
 /-- The dominion of covered data in a cell. -/
-def coveredDom (X : Atl) (x : X.E) : DomIns where
+def coveredDom (X : Atl) (x : X.El) : DomIns where
   toDom :=
-    { Carrier := {t : X.G.obj x // Covered X x t}
+    { Carrier := {t : X.Da.obj x // Covered X x t}
       rank :=
         ({ toFun := Subtype.val
            inj' := Subtype.val_injective } :
-          Function.Embedding {t : X.G.obj x // Covered X x t} (X.G.obj x)).trans
-            (X.G.obj x).toDom.rank }
+          Function.Embedding {t : X.Da.obj x // Covered X x t} (X.Da.obj x)).trans
+            (X.Da.obj x).toDom.rank }
 
-def coveredMap {X : Atl} {x y : X.E} (f : x ⟶ y) :
+def coveredMap {X : Atl} {x y : X.El} (f : x ⟶ y) :
     coveredDom X x ⟶ coveredDom X y where
-  toFun t := ⟨X.G.map f t.1, by
+  toFun t := ⟨X.Da.map f t.1, by
     rcases t.2 with ⟨k, l, h⟩
     refine ⟨k, l, ?_⟩
-    have e : f ≫ X.P.folio.toOrigin y = X.P.folio.toOrigin x :=
+    have e : f ≫ X.Fo.toOrigin y = X.Fo.toOrigin x :=
       CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-    change (X.G.map f ≫ X.G.map (X.P.folio.toOrigin y)) t.1 = _
-    rw [← X.G.map_comp, e]
+    change (X.Da.map f ≫ X.Da.map (X.Fo.toOrigin y)) t.1 = _
+    rw [← X.Da.map_comp, e]
     exact h⟩
-  inj' := fun a b h => Subtype.ext <| (X.G.map f).injective <| congrArg Subtype.val h
+  inj' := fun a b h => Subtype.ext <| (X.Da.map f).injective <| congrArg Subtype.val h
 
-def coveredFunctor (X : Atl) : X.E ⥤ DomIns where
+def coveredFunctor (X : Atl) : X.El ⥤ DomIns where
   obj := coveredDom X
   map := coveredMap
   map_id x := by
     apply DomIns.hom_ext
     intro t
     apply Subtype.ext
-    change (X.G.map (𝟙 x)) t.1 = t.1
-    rw [X.G.map_id]
+    change (X.Da.map (𝟙 x)) t.1 = t.1
+    rw [X.Da.map_id]
     change Function.Embedding.refl _ t.1 = t.1
     rfl
   map_comp f g := by
     apply DomIns.hom_ext
     intro t
     apply Subtype.ext
-    change (X.G.map (f ≫ g)) t.1 =
-      (X.G.map f ≫ X.G.map g) t.1
-    rw [X.G.map_comp]
+    change (X.Da.map (f ≫ g)) t.1 =
+      (X.Da.map f ≫ X.Da.map g) t.1
+    rw [X.Da.map_comp]
 
 def chartAtlas (X : Atl) : Atl where
-  P := X.P
-  G := coveredFunctor X
+  Pa := X.Pa
+  Da := coveredFunctor X
   disjoint := by
     intro m i j hij x y h
     apply X.disjoint m i j hij x.1 y.1
     exact congrArg Subtype.val h
 
-theorem chart_all_covered (X : Atl) (x : (chartAtlas X).E)
-    (t : (chartAtlas X).G.obj x) : Covered (chartAtlas X) x t := by
+theorem chart_all_covered (X : Atl) (x : (chartAtlas X).El)
+    (t : (chartAtlas X).Da.obj x) : Covered (chartAtlas X) x t := by
   rcases t.2 with ⟨k, l, h⟩
   let l' : territory (chartAtlas X) k := ⟨l, covered_region X k l⟩
   exact ⟨k, l', Subtype.ext h⟩
@@ -1536,8 +1573,8 @@ theorem chart_isAtlasMap (X : Atl) : IsAtlasMap (chartAtlas X) :=
   fun v => chart_all_covered X _ v
 
 def chartCounit (X : Atl) : chartAtlas X ⟶ X where
-  P := 𝟭 X.E
-  A :=
+  Pa := 𝟭 X.El
+  Da :=
     { app := fun _ =>
         { toFun := Subtype.val
           inj' := Subtype.val_injective }
@@ -1545,18 +1582,18 @@ def chartCounit (X : Atl) : chartAtlas X ⟶ X where
 
 def chartMap {X Y : AtlTrav} (f : X ⟶ Y) :
     chartAtlas X.obj ⟶ chartAtlas Y.obj where
-  P := f.1.P
-  A :=
+  Pa := f.1.Pa
+  Da :=
     { app := fun x =>
-        { toFun := fun t => ⟨f.1.A.app x t.1, f.2.2.2 x t.1 t.2⟩
-          inj' := fun a b h => Subtype.ext <| (f.1.A.app x).injective <|
+        { toFun := fun t => ⟨f.1.Da.app x t.1, f.2.2.2 x t.1 t.2⟩
+          inj' := fun a b h => Subtype.ext <| (f.1.Da.app x).injective <|
             congrArg Subtype.val h }
       naturality := by
         intro x y g
         apply DomIns.hom_ext
         intro t
         apply Subtype.ext
-        exact congrFun (congrArg Function.Embedding.toFun (f.1.A.naturality g)) t.1 }
+        exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t.1 }
 
 theorem chartMap_isTraversal {X Y : AtlTrav} (f : X ⟶ Y) :
     IsTraversal (chartMap f) := by
@@ -1596,7 +1633,7 @@ $\mathsf{AtlTravMapInc}$ to $X$.  Write
 $X'=\mathsf{AtlTravMapInc}(\mathsf{Chr}(X))$, together with
 $H:X'\to X$, with $X'$ terminal among objects having this property.  The
 solution is the DaTra map satisfying $\Ter(X')\cong\Ter(X)$.  It is unique
-because $\mathsf{AtlTrav}$ preserves orders and terminal because $H_E$ is
+because $\mathsf{AtlTrav}$ preserves orders and terminal because $H_{Pa}$ is
 faithful.
 \end{lemma}
 %%-/
@@ -1606,20 +1643,20 @@ cell exactly the data covered by final regions; its counit is the canonical
 inclusion into the original atlas. -/
 
 theorem originImage_origin (X : Atl) (v : extent X) :
-    originImage X X.P.folio.originElement v = v := by
-  have e : X.P.folio.toOrigin X.P.folio.originElement =
-      𝟙 X.P.folio.originElement :=
+    originImage X X.Fo.originElement v = v := by
+  have e : X.Fo.toOrigin X.Fo.originElement =
+      𝟙 X.Fo.originElement :=
     CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-  rw [originImage, storedOriginImage, e, X.G.map_id]
+  rw [originImage, storedOriginImage, e, X.Da.map_id]
   change Function.Embedding.refl _ v = v
   rfl
 
 theorem atlasMap_all_covered {X : Atl} (hX : IsAtlasMap X)
-    (x : X.E) (t : X.G.obj x) : Covered X x t := by
+    (x : X.El) (t : X.Da.obj x) : Covered X x t := by
   rcases hX (originImage X x t) with ⟨k, l, h⟩
   exact ⟨k, l, by
-    change originImage X X.P.folio.originElement (originImage X x t) =
-      originImage X (X.P.cell X.P.folio.lastBase k) l at h
+    change originImage X X.Fo.originElement (originImage X x t) =
+      originImage X (X.Pa.cell X.Fo.lastBase k) l at h
     simpa only [originImage_origin] using h⟩
 
 theorem chartCounit_isTraversal (X : Atl) : IsTraversal (chartCounit X) := by
@@ -1636,21 +1673,21 @@ def chartLift {A : AtlTravMap} {X : AtlTrav}
     A ⟶ Chr.obj X := by
   refine ⟨?_, ?_⟩
   · exact
-      { P := f.1.P
-        A :=
+      { Pa := f.1.Pa
+        Da :=
           { app := fun x =>
-              { toFun := fun t => ⟨f.1.A.app x t,
+              { toFun := fun t => ⟨f.1.Da.app x t,
                   f.2.2.2 x t (atlasMap_all_covered A.property x t)⟩
                 inj' := by
                   intro a b h
-                  apply (f.1.A.app x).injective
+                  apply (f.1.Da.app x).injective
                   exact congrArg (fun z => z.1) h }
             naturality := by
               intro x y g
               apply DomIns.hom_ext
               intro t
               apply Subtype.ext
-              exact congrFun (congrArg Function.Embedding.toFun (f.1.A.naturality g)) t } }
+              exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t } }
   · refine ⟨f.2.1, f.2.2.1, ?_⟩
     intro x t _
     exact chart_all_covered X.obj _ _
@@ -1726,52 +1763,52 @@ $\mathsf{Coa}=\Ex\circ\mathsf{Chr}$.
 %%-/
 
 def extentMap {X Y : Atl} (f : X ⟶ Y) : extent X ⟶ extent Y :=
-  f.A.app X.P.folio.originElement ≫
-    Y.G.map (Y.P.folio.toOrigin (f.P.obj X.P.folio.originElement))
+  f.Da.app X.Fo.originElement ≫
+    Y.Da.map (Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement))
 
-theorem extentMap_originImage {X Y : Atl} (f : X ⟶ Y) (x : X.E)
-    (a : X.G.obj x) :
+theorem extentMap_originImage {X Y : Atl} (f : X ⟶ Y) (x : X.El)
+    (a : X.Da.obj x) :
     extentMap f (originImage X x a) =
-      originImage Y (f.P.obj x) (f.A.app x a) := by
+      originImage Y (f.Pa.obj x) (f.Da.app x a) := by
   simp only [extentMap, originImage, storedOriginImage]
-  have hn := f.A.naturality (X.P.folio.toOrigin x)
-  have hc : f.P.map (X.P.folio.toOrigin x) ≫
-      Y.P.folio.toOrigin (f.P.obj X.P.folio.originElement) =
-      Y.P.folio.toOrigin (f.P.obj x) := by
+  have hn := f.Da.naturality (X.Fo.toOrigin x)
+  have hc : f.Pa.map (X.Fo.toOrigin x) ≫
+      Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement) =
+      Y.Fo.toOrigin (f.Pa.obj x) := by
     apply CategoryOfElements.ext
     apply Subsingleton.elim
-  rw [← hc, Y.G.map_comp]
+  rw [← hc, Y.Da.map_comp]
   exact congrFun (congrArg Function.Embedding.toFun
     (congrArg (fun k => k ≫
-      Y.G.map (Y.P.folio.toOrigin (f.P.obj X.P.folio.originElement))) hn)) a
+      Y.Da.map (Y.Fo.toOrigin (f.Pa.obj X.Fo.originElement))) hn)) a
 
 theorem extentMap_id (X : Atl) : extentMap (𝟙 X) = 𝟙 (extent X) := by
   apply DomIns.hom_ext
   intro t
-  change (X.G.map (X.P.folio.toOrigin X.P.folio.originElement)) t = t
+  change (X.Da.map (X.Fo.toOrigin X.Fo.originElement)) t = t
   simpa [originImage] using originImage_origin X t
 
 theorem extentMap_comp {X Y Z : Atl} (f : X ⟶ Y) (g : Y ⟶ Z) :
     extentMap (f ≫ g) = extentMap f ≫ extentMap g := by
   apply DomIns.hom_ext
   intro t
-  let oX := X.P.folio.originElement
-  let y := f.P.obj oX
-  let oY := Y.P.folio.originElement
-  let z := g.P.obj y
-  let z₀ := g.P.obj oY
-  have hn := g.A.naturality (Y.P.folio.toOrigin y)
-  have hz : g.P.map (Y.P.folio.toOrigin y) ≫ Z.P.folio.toOrigin z₀ =
-      Z.P.folio.toOrigin z :=
+  let oX := X.Fo.originElement
+  let y := f.Pa.obj oX
+  let oY := Y.Fo.originElement
+  let z := g.Pa.obj y
+  let z₀ := g.Pa.obj oY
+  have hn := g.Da.naturality (Y.Fo.toOrigin y)
+  have hz : g.Pa.map (Y.Fo.toOrigin y) ≫ Z.Fo.toOrigin z₀ =
+      Z.Fo.toOrigin z :=
     CategoryOfElements.ext _ _ _ (Subsingleton.elim _ _)
-  have hn' : Y.G.map (Y.P.folio.toOrigin y) ≫ g.A.app oY =
-      g.A.app y ≫ Z.G.map (g.P.map (Y.P.folio.toOrigin y)) := hn
-  have hm : g.A.app y ≫ Z.G.map (Z.P.folio.toOrigin z) =
-      Y.G.map (Y.P.folio.toOrigin y) ≫ g.A.app oY ≫
-        Z.G.map (Z.P.folio.toOrigin z₀) := by
-    rw [← Category.assoc, hn', Category.assoc, ← Z.G.map_comp, hz]
+  have hn' : Y.Da.map (Y.Fo.toOrigin y) ≫ g.Da.app oY =
+      g.Da.app y ≫ Z.Da.map (g.Pa.map (Y.Fo.toOrigin y)) := hn
+  have hm : g.Da.app y ≫ Z.Da.map (Z.Fo.toOrigin z) =
+      Y.Da.map (Y.Fo.toOrigin y) ≫ g.Da.app oY ≫
+        Z.Da.map (Z.Fo.toOrigin z₀) := by
+    rw [← Category.assoc, hn', Category.assoc, ← Z.Da.map_comp, hz]
   exact congrFun (congrArg Function.Embedding.toFun
-    (by simpa only [Category.assoc] using congrArg (fun q => f.A.app oX ≫ q) hm)) t
+    (by simpa only [Category.assoc] using congrArg (fun q => f.Da.app oX ≫ q) hm)) t
 
 def Ex : Atl ⥤ DomIns where
   obj := extent
@@ -1780,28 +1817,28 @@ def Ex : Atl ⥤ DomIns where
   map_comp := extentMap_comp
 
 def stableCoalitionMap {X Y : StaAtlTrav} (f : X ⟶ Y) :
-    coveredDom X.obj.obj X.obj.obj.P.folio.originElement ⟶
-      coveredDom Y.obj.obj Y.obj.obj.P.folio.originElement where
+    coveredDom X.obj.obj X.obj.obj.Fo.originElement ⟶
+      coveredDom Y.obj.obj Y.obj.obj.Fo.originElement where
   toFun t := by
-    have hc := f.1.2.2.2 X.obj.obj.P.folio.originElement t.1 t.2
+    have hc := f.1.2.2.2 X.obj.obj.Fo.originElement t.1 t.2
     exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
-      ⟨f.1.1.A.app X.obj.obj.P.folio.originElement t.1, hc⟩
+      ⟨f.1.1.Da.app X.obj.obj.Fo.originElement t.1, hc⟩
   inj' := fun a b h => by
     apply Subtype.ext
-    apply (f.1.1.A.app X.obj.obj.P.folio.originElement).injective
-    apply (Y.obj.obj.G.map (eqToHom f.2)).injective
+    apply (f.1.1.Da.app X.obj.obj.Fo.originElement).injective
+    apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
     exact congrArg Subtype.val h
 
 theorem stableCoalitionMap_val {X Y : StaAtlTrav} (f : X ⟶ Y)
-    (t : coveredDom X.obj.obj X.obj.obj.P.folio.originElement) :
+    (t : coveredDom X.obj.obj X.obj.obj.Fo.originElement) :
     (stableCoalitionMap f t).1 = extentMap f.1.1 t.1 := by
-  change Y.obj.obj.G.map (eqToHom f.2)
-      (f.1.1.A.app X.obj.obj.P.folio.originElement t.1) =
-    Y.obj.obj.G.map (Y.obj.obj.P.folio.toOrigin
-      (f.1.1.P.obj X.obj.obj.P.folio.originElement))
-      (f.1.1.A.app X.obj.obj.P.folio.originElement t.1)
-  have hmor : eqToHom f.2 = Y.obj.obj.P.folio.toOrigin
-      (f.1.1.P.obj X.obj.obj.P.folio.originElement) := by
+  change Y.obj.obj.Da.map (eqToHom f.2)
+      (f.1.1.Da.app X.obj.obj.Fo.originElement t.1) =
+    Y.obj.obj.Da.map (Y.obj.obj.Fo.toOrigin
+      (f.1.1.Pa.obj X.obj.obj.Fo.originElement))
+      (f.1.1.Da.app X.obj.obj.Fo.originElement t.1)
+  have hmor : eqToHom f.2 = Y.obj.obj.Fo.toOrigin
+      (f.1.1.Pa.obj X.obj.obj.Fo.originElement) := by
     apply CategoryOfElements.ext
     apply Subsingleton.elim
   rw [hmor]
@@ -1810,7 +1847,7 @@ theorem stableCoalitionMap_val {X Y : StaAtlTrav} (f : X ⟶ Y)
 the object part of `Ex ∘ Chr`; stability makes its action on arrows reduce to
 the component at the origin. -/
 def Coa : StaAtlTrav ⥤ DomIns where
-  obj X := coveredDom X.obj.obj X.obj.obj.P.folio.originElement
+  obj X := coveredDom X.obj.obj X.obj.obj.Fo.originElement
   map := stableCoalitionMap
   map_id X := by
     apply DomIns.hom_ext
@@ -1870,7 +1907,7 @@ def onePageFolio : Folio where
 
 def onePagePag : Pag := ⟨onePageFolio⟩
 
-theorem onePage_cell_unique (x : onePagePag.E) :
+theorem onePage_cell_unique (x : onePagePag.El) :
     x = onePageFolio.originElement := by
   let hbase : x.1 = onePageFolio.originBase := by
     apply unop_injective
@@ -1879,8 +1916,8 @@ theorem onePage_cell_unique (x : onePagePag.E) :
   exact onePageFolio.origin_unique _
 
 def dominionAtlas (X : DomIns) : Atl where
-  P := onePagePag
-  G := (Functor.const onePagePag.E).obj X
+  Pa := onePagePag
+  Da := (Functor.const onePagePag.El).obj X
   disjoint := by
     intro m i j hij
     exfalso
@@ -1894,18 +1931,18 @@ theorem dominionAtlas_isMap (X : DomIns) : IsAtlasMap (dominionAtlas X) := by
     onePageFolio.originValue
   refine ⟨k, v, ?_⟩
   change originImage (dominionAtlas X)
-    (dominionAtlas X).P.folio.originElement v =
+    (dominionAtlas X).Fo.originElement v =
       originImage (dominionAtlas X)
-        ((dominionAtlas X).P.cell (dominionAtlas X).P.folio.lastBase k) v
+        ((dominionAtlas X).Pa.cell (dominionAtlas X).Fo.lastBase k) v
   rw [originImage_origin]
-  have hc : (dominionAtlas X).P.cell (dominionAtlas X).P.folio.lastBase k =
-      (dominionAtlas X).P.folio.originElement := onePage_cell_unique _
+  have hc : (dominionAtlas X).Pa.cell (dominionAtlas X).Fo.lastBase k =
+      (dominionAtlas X).Fo.originElement := onePage_cell_unique _
   rw [hc, originImage_origin]
 
 def dominionMap {X Y : DomIns} (f : X ⟶ Y) :
     dominionAtlas X ⟶ dominionAtlas Y where
-  P := 𝟭 onePagePag.E
-  A :=
+  Pa := 𝟭 onePagePag.El
+  Da :=
     { app := fun _ => f
       naturality := by intros; apply DomIns.hom_ext; intro; rfl }
 
@@ -1923,11 +1960,11 @@ theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
 
 /-%%
 \begin{definition}[The Domanial Inclusion Functor]
-The \textbf{Domanial Inclusion Functor}
-$\mathsf{DomInc}:\DomIns\to\mathsf{StaAtlTrav}$ sends a dominion to the
-atlas of cardinality $1$ whose coalition is that dominion.  It is left
-adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and $Y:\mathsf{StaAtlTrav}$,
-naturally in $X$ and $Y$,
+The \textbf{Domanial Inclusion Functor} sends a dominion to the atlas of
+cardinality $1$ whose coalition is that dominion.  Write
+$\mathsf{DomInc}:\DomIns\to\mathsf{StaAtlTrav}$ for this functor.  It is
+left adjoint to $\mathsf{Coa}$: for $X:\DomIns$ and
+$Y:\mathsf{StaAtlTrav}$, naturally in $X$ and $Y$,
 \[
   \Hom_{\mathsf{StaAtlTrav}}(\mathsf{DomInc}(X),Y)
   \cong \Hom_{\DomIns}(X,\mathsf{Coa}(Y)),
@@ -1958,22 +1995,22 @@ def DomInc : DomIns ⥤ StaAtlTrav where
       change (f ≫ g) t = (f ≫ g) t
       rfl
 
-def onePageToAtlasP (Y : Atl) : onePagePag.E ⥤ Y.E :=
-  (Functor.const onePagePag.E).obj Y.P.folio.originElement
+def onePageToAtlasPa (Y : Atl) : onePagePag.El ⥤ Y.El :=
+  (Functor.const onePagePag.El).obj Y.Fo.originElement
 
-theorem onePageToAtlasP_injective (Y : Atl) :
-    Function.Injective (onePageToAtlasP Y).obj := by
+theorem onePageToAtlasPa_injective (Y : Atl) :
+    Function.Injective (onePageToAtlasPa Y).obj := by
   intro x y _
   exact onePage_cell_unique x |>.trans (onePage_cell_unique y).symm
 
-theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).E) :
+theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).El) :
     ¬ elementLT (dominionAtlas X) x y := by
   intro h
   have hxy : x = y := onePage_cell_unique x |>.trans (onePage_cell_unique y).symm
   subst y
-  let m := (dominionAtlas X).P.folio.commonBase x.1 x.1
-  letI : LinearOrder ((dominionAtlas X).H.obj m) :=
-    ((dominionAtlas X).P.folio.core.obj m.unop).unop.linearOrder
+  let m := (dominionAtlas X).Fo.commonBase x.1 x.1
+  letI : LinearOrder ((dominionAtlas X).Fo.Cell m) :=
+    ((dominionAtlas X).Fo.core.obj m.unop).unop.linearOrder
   exact lt_irrefl _ h
 
 /-- A stable traversal from a one-page atlas determines an embedding into
@@ -1984,18 +2021,18 @@ def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
     have hc := f.1.2.2.2 onePageFolio.originElement x
       (atlasMap_all_covered (dominionAtlas_isMap X) _ x)
     exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
-      ⟨f.1.1.A.app onePageFolio.originElement x, hc⟩
+      ⟨f.1.1.Da.app onePageFolio.originElement x, hc⟩
   inj' := fun a b h => by
-    apply (f.1.1.A.app onePageFolio.originElement).injective
-    apply (Y.obj.obj.G.map (eqToHom f.2)).injective
+    apply (f.1.1.Da.app onePageFolio.originElement).injective
+    apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
     exact congrArg Subtype.val h
 
 /-- Conversely, an embedding into the coalition supplies the unique stable
 traversal from the corresponding one-page atlas. -/
 def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
     DomInc.obj X ⟶ Y := by
-  let p : (dominionAtlas X).E ⥤ Y.obj.obj.P.E := onePageToAtlasP Y.obj.obj
-  let a : (dominionAtlas X).G ⟶ p ⋙ Y.obj.obj.G :=
+  let p : (dominionAtlas X).El ⥤ Y.obj.obj.El := onePageToAtlasPa Y.obj.obj
+  let a : (dominionAtlas X).Da ⟶ p ⋙ Y.obj.obj.Da :=
     { app := fun _ =>
         { toFun := fun x => (f x).1
           inj' := fun x y h => f.injective (Subtype.ext h) }
@@ -2013,11 +2050,11 @@ def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
         simp [p] }
   let h : dominionAtlas X ⟶ Y.obj.obj := ⟨p, a⟩
   have htrav : IsTraversal h := by
-    refine ⟨onePageToAtlasP_injective Y.obj.obj, ?_, ?_⟩
+    refine ⟨onePageToAtlasPa_injective Y.obj.obj, ?_, ?_⟩
     · intro x y hxy
       exact (onePage_elementLT_false X x y hxy).elim
     · intro x t _
-      change Covered Y.obj.obj Y.obj.obj.P.folio.originElement (f t).1
+      change Covered Y.obj.obj Y.obj.obj.Fo.originElement (f t).1
       exact (f t).2
   exact ⟨⟨h, htrav⟩, rfl⟩
 
@@ -2049,21 +2086,21 @@ def domIncCoaHomEquiv (X : DomIns) (Y : StaAtlTrav) :
     intro f
     apply Subtype.ext
     apply Subtype.ext
-    have hP : (coaToDomInc (domIncToCoa f)).1.1.P = f.1.1.P := by
+    have hPa : (coaToDomInc (domIncToCoa f)).1.1.Pa = f.1.1.Pa := by
       exact CategoryTheory.Functor.ext
         (fun x => f.2.symm.trans
-          (congrArg f.1.1.P.obj (onePage_cell_unique x).symm))
+          (congrArg f.1.1.Pa.obj (onePage_cell_unique x).symm))
         (fun _ _ _ => by
           apply CategoryOfElements.ext
           apply Subsingleton.elim)
-    apply AtlHom.ext _ _ hP
+    apply AtlHom.ext _ _ hPa
     apply NatTrans.hext_right _ _
-      (congrArg (fun Q => Q ⋙ Y.obj.obj.G) hP)
+      (congrArg (fun Q => Q ⋙ Y.obj.obj.Da) hPa)
     intro x
-    dsimp [coaToDomInc, domIncToCoa, onePageToAtlasP]
+    dsimp [coaToDomInc, domIncToCoa, onePageToAtlasPa]
     have hx : x = onePageFolio.originElement := onePage_cell_unique x
     subst x
-    let e := f.1.1.A.app onePageFolio.originElement
+    let e := f.1.1.Da.app onePageFolio.originElement
     have hrec :
         { toFun := fun x =>
             (coveredMap (X := Y.obj.obj) (eqToHom f.2)
@@ -2073,21 +2110,21 @@ def domIncCoaHomEquiv (X : DomIns) (Y : StaAtlTrav) :
           inj' := by
             intro a b hab
             apply e.injective
-            apply (Y.obj.obj.G.map (eqToHom f.2)).injective
-            exact hab } = e ≫ Y.obj.obj.G.map (eqToHom f.2) := by
+            apply (Y.obj.obj.Da.map (eqToHom f.2)).injective
+            exact hab } = e ≫ Y.obj.obj.Da.map (eqToHom f.2) := by
       apply DomIns.hom_ext
       intro t
       rfl
     exact (heq_of_eq hrec).trans
-      (embedding_comp_map_eqToHom_heq Y.obj.obj.G f.2 e)
+      (embedding_comp_map_eqToHom_heq Y.obj.obj.Da f.2 e)
   right_inv := by
     intro f
     apply DomIns.hom_ext
     intro x
     apply Subtype.ext
-    change Y.obj.obj.G.map (𝟙 Y.obj.obj.P.folio.originElement) (f x).1 = (f x).1
+    change Y.obj.obj.Da.map (𝟙 Y.obj.obj.Fo.originElement) (f x).1 = (f x).1
     exact congrFun (congrArg Function.Embedding.toFun
-      (Y.obj.obj.G.map_id Y.obj.obj.P.folio.originElement)) (f x).1
+      (Y.obj.obj.Da.map_id Y.obj.obj.Fo.originElement)) (f x).1
 
 theorem domIncCoaHomEquiv_naturality_left {X X' : DomIns} (f : X' ⟶ X)
     {Y : StaAtlTrav} (g : DomInc.obj X ⟶ Y) :
@@ -2245,10 +2282,7 @@ page $n$ of $X$ and page $n$ of $Y$.
 
 \begin{definition}[Atlas Federation]
 An \textbf{Atlas Federation} is a countable tagged family of atlas objects.
-The category of Atlas Federations is denoted
-\[
-  \mathsf{AtlFed}.
-\]
+The category of Atlas Federations is denoted $\mathsf{AtlFed}$.
 A morphism consists of a map of tags and, at each source tag, a stable atlas
 traversal to its selected target tag.
 \end{definition}
@@ -2508,53 +2542,53 @@ def tallMergeH (X Y : TallAtlas) : Natᵒᵖ ⥤ Type where
           rw [hcomp, Y.H.map_comp]
           rfl
 
-def bouquetPag (X Y : Atl) : Pag := ⟨bouquetFolio X.P.folio Y.P.folio⟩
+def bouquetPag (X Y : Atl) : Pag := ⟨bouquetFolio X.Fo Y.Fo⟩
 
-def bouquetLeftIndex (X Y : Atl) (m : Fin X.P.folio.length) :
-    Fin (bouquetLength X.P.folio Y.P.folio) :=
+def bouquetLeftIndex (X Y : Atl) (m : Fin X.Fo.length) :
+    Fin (bouquetLength X.Fo Y.Fo) :=
   ⟨m.1 + 1, by simp [bouquetLength]⟩
 
-def bouquetRightIndex (X Y : Atl) (m : Fin Y.P.folio.length) :
-    Fin (bouquetLength X.P.folio Y.P.folio) :=
+def bouquetRightIndex (X Y : Atl) (m : Fin Y.Fo.length) :
+    Fin (bouquetLength X.Fo Y.Fo) :=
   ⟨m.1 + 1, by simp [bouquetLength]⟩
 
-def bouquetLeftPred (X Y : Atl) (m : Fin X.P.folio.length) :
-    Fin (bouquetDepth X.P.folio Y.P.folio) :=
+def bouquetLeftPred (X Y : Atl) (m : Fin X.Fo.length) :
+    Fin (bouquetDepth X.Fo Y.Fo) :=
   ⟨m.1, lt_of_lt_of_le m.2 (le_max_left _ _)⟩
 
-def bouquetRightPred (X Y : Atl) (m : Fin Y.P.folio.length) :
-    Fin (bouquetDepth X.P.folio Y.P.folio) :=
+def bouquetRightPred (X Y : Atl) (m : Fin Y.Fo.length) :
+    Fin (bouquetDepth X.Fo Y.Fo) :=
   ⟨m.1, lt_of_lt_of_le m.2 (le_max_right _ _)⟩
 
 @[simp]
-theorem bouquetLeftIndex_eq_succ (X Y : Atl) (m : Fin X.P.folio.length) :
+theorem bouquetLeftIndex_eq_succ (X Y : Atl) (m : Fin X.Fo.length) :
     bouquetLeftIndex X Y m = (bouquetLeftPred X Y m).succ := rfl
 
 @[simp]
-theorem bouquetRightIndex_eq_succ (X Y : Atl) (m : Fin Y.P.folio.length) :
+theorem bouquetRightIndex_eq_succ (X Y : Atl) (m : Fin Y.Fo.length) :
     bouquetRightIndex X Y m = (bouquetRightPred X Y m).succ := rfl
 
-def bouquetLeftElement (X Y : Atl) (x : X.E) : (bouquetPag X Y).E := by
+def bouquetLeftElement (X Y : Atl) (x : X.El) : (bouquetPag X Y).El := by
   refine ⟨op (bouquetLeftPred X Y x.1.unop).succ, ?_⟩
-  change (bouquetChain X.P.folio Y.P.folio
+  change (bouquetChain X.Fo Y.Fo
     (bouquetLeftPred X Y x.1.unop).succ).Obj
   change Lex (Sum
-    ((X.P.folio.core.obj (X.P.folio.paddedIndex x.1.unop.1)).unop.Obj)
-    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex x.1.unop.1)).unop.Obj))
-  exact toLex (Sum.inl (X.P.H.map
-    (eqToHom (congrArg op (X.P.folio.paddedIndex_fin x.1.unop).symm)) x.2))
+    ((X.Fo.core.obj (X.Fo.paddedIndex x.1.unop.1)).unop.Obj)
+    ((Y.Fo.core.obj (Y.Fo.paddedIndex x.1.unop.1)).unop.Obj))
+  exact toLex (Sum.inl (X.Fo.cellDiagram.map
+    (eqToHom (congrArg op (X.Fo.paddedIndex_fin x.1.unop).symm)) x.2))
 
-def bouquetRightElement (X Y : Atl) (y : Y.E) : (bouquetPag X Y).E := by
+def bouquetRightElement (X Y : Atl) (y : Y.El) : (bouquetPag X Y).El := by
   refine ⟨op (bouquetRightPred X Y y.1.unop).succ, ?_⟩
-  change (bouquetChain X.P.folio Y.P.folio
+  change (bouquetChain X.Fo Y.Fo
     (bouquetRightPred X Y y.1.unop).succ).Obj
   change Lex (Sum
-    ((X.P.folio.core.obj (X.P.folio.paddedIndex y.1.unop.1)).unop.Obj)
-    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex y.1.unop.1)).unop.Obj))
-  exact toLex (Sum.inr (Y.P.H.map
-    (eqToHom (congrArg op (Y.P.folio.paddedIndex_fin y.1.unop).symm)) y.2))
+    ((X.Fo.core.obj (X.Fo.paddedIndex y.1.unop.1)).unop.Obj)
+    ((Y.Fo.core.obj (Y.Fo.paddedIndex y.1.unop.1)).unop.Obj))
+  exact toLex (Sum.inr (Y.Fo.cellDiagram.map
+    (eqToHom (congrArg op (Y.Fo.paddedIndex_fin y.1.unop).symm)) y.2))
 
-def bouquetLeftMapHom (X Y : Atl) {x y : X.E} (q : x ⟶ y) :
+def bouquetLeftMapHom (X Y : Atl) {x y : X.El} (q : x ⟶ y) :
     bouquetLeftElement X Y x ⟶ bouquetLeftElement X Y y := by
   rcases x with ⟨⟨mx⟩, kx⟩
   rcases y with ⟨⟨my⟩, ky⟩
@@ -2565,23 +2599,23 @@ def bouquetLeftMapHom (X Y : Atl) {x y : X.E} (q : x ⟶ y) :
   refine CategoryOfElements.homMk _ _
     (homOfLE (Fin.succ_le_succ_iff.mpr h)).op ?_
   dsimp only [bouquetLeftElement]
-  simp only [bouquetLeftPred, bouquetPag, bouquetFolio, Folio.H,
+  simp only [bouquetLeftPred, bouquetPag, bouquetFolio, Folio.cellDiagram,
     bouquetChain, bouquetConMap, Fin.cases_succ, ConHom.sum, Functor.leftOp_map,
     Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, ConTra]
   change toLex (Sum.inl _) = toLex (Sum.inl _)
   congr 2
-  have hqv : X.P.H.map q.val kx = ky := q.property
+  have hqv : X.Fo.cellDiagram.map q.val kx = ky := q.property
   rw [← hqv]
-  let hp : X.P.folio.paddedIndex my.1 ≤ X.P.folio.paddedIndex mx.1 :=
-    X.P.folio.paddedIndex_mono hxy
-  change X.P.H.map (homOfLE hp).op
-    (X.P.H.map (eqToHom _) kx) = X.P.H.map (eqToHom _)
-      (X.P.H.map q.val kx)
+  let hp : X.Fo.paddedIndex my.1 ≤ X.Fo.paddedIndex mx.1 :=
+    X.Fo.paddedIndex_mono hxy
+  change X.Fo.cellDiagram.map (homOfLE hp).op
+    (X.Fo.cellDiagram.map (eqToHom _) kx) = X.Fo.cellDiagram.map (eqToHom _)
+      (X.Fo.cellDiagram.map q.val kx)
   rw [← FunctorToTypes.map_comp_apply]
   rw [← FunctorToTypes.map_comp_apply]
   congr 1
 
-def bouquetRightMapHom (X Y : Atl) {x y : Y.E} (q : x ⟶ y) :
+def bouquetRightMapHom (X Y : Atl) {x y : Y.El} (q : x ⟶ y) :
     bouquetRightElement X Y x ⟶ bouquetRightElement X Y y := by
   rcases x with ⟨⟨mx⟩, kx⟩
   rcases y with ⟨⟨my⟩, ky⟩
@@ -2592,23 +2626,23 @@ def bouquetRightMapHom (X Y : Atl) {x y : Y.E} (q : x ⟶ y) :
   refine CategoryOfElements.homMk _ _
     (homOfLE (Fin.succ_le_succ_iff.mpr h)).op ?_
   dsimp only [bouquetRightElement]
-  simp only [bouquetRightPred, bouquetPag, bouquetFolio, Folio.H,
+  simp only [bouquetRightPred, bouquetPag, bouquetFolio, Folio.cellDiagram,
     bouquetChain, bouquetConMap, Fin.cases_succ, ConHom.sum, Functor.leftOp_map,
     Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, ConTra]
   change toLex (Sum.inr _) = toLex (Sum.inr _)
   congr 2
-  have hqv : Y.P.H.map q.val kx = ky := q.property
+  have hqv : Y.Fo.cellDiagram.map q.val kx = ky := q.property
   rw [← hqv]
-  let hp : Y.P.folio.paddedIndex my.1 ≤ Y.P.folio.paddedIndex mx.1 :=
-    Y.P.folio.paddedIndex_mono hxy
-  change Y.P.H.map (homOfLE hp).op
-    (Y.P.H.map (eqToHom _) kx) = Y.P.H.map (eqToHom _)
-      (Y.P.H.map q.val kx)
+  let hp : Y.Fo.paddedIndex my.1 ≤ Y.Fo.paddedIndex mx.1 :=
+    Y.Fo.paddedIndex_mono hxy
+  change Y.Fo.cellDiagram.map (homOfLE hp).op
+    (Y.Fo.cellDiagram.map (eqToHom _) kx) = Y.Fo.cellDiagram.map (eqToHom _)
+      (Y.Fo.cellDiagram.map q.val kx)
   rw [← FunctorToTypes.map_comp_apply]
   rw [← FunctorToTypes.map_comp_apply]
   congr 1
 
-def bouquetLeftElements (X Y : Atl) : X.E ⥤ (bouquetPag X Y).E where
+def bouquetLeftElements (X Y : Atl) : X.El ⥤ (bouquetPag X Y).El where
   obj := bouquetLeftElement X Y
   map := bouquetLeftMapHom X Y
   map_id _ := by
@@ -2618,7 +2652,7 @@ def bouquetLeftElements (X Y : Atl) : X.E ⥤ (bouquetPag X Y).E where
     apply CategoryOfElements.ext
     apply Subsingleton.elim
 
-def bouquetRightElements (X Y : Atl) : Y.E ⥤ (bouquetPag X Y).E where
+def bouquetRightElements (X Y : Atl) : Y.El ⥤ (bouquetPag X Y).El where
   obj := bouquetRightElement X Y
   map := bouquetRightMapHom X Y
   map_id _ := by
@@ -2666,8 +2700,8 @@ def tallMergeRawDom (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) : DomIns :
   | zero => exact domSum X.extent Y.extent
   | succ n =>
       exact match v with
-        | .inl k => X.G.obj ⟨op n, k⟩
-        | .inr k => Y.G.obj ⟨op n, k⟩
+        | .inl k => X.Da.obj ⟨op n, k⟩
+        | .inr k => Y.Da.obj ⟨op n, k⟩
 
 def tallMergeRootMap (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) :
     tallMergeRawDom X Y x ⟶ domSum X.extent Y.extent := by
@@ -2676,9 +2710,9 @@ def tallMergeRootMap (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) :
   | zero => exact 𝟙 _
   | succ n =>
       exact match v with
-        | .inl k => X.G.map (X.toOrigin ⟨op n, k⟩) ≫
+        | .inl k => X.Da.map (X.toOrigin ⟨op n, k⟩) ≫
             domSum.inl X.extent Y.extent
-        | .inr k => Y.G.map (Y.toOrigin ⟨op n, k⟩) ≫
+        | .inr k => Y.Da.map (Y.toOrigin ⟨op n, k⟩) ≫
             domSum.inr X.extent Y.extent
 
 def tallMergeDom (X Y : TallAtlas) (x : (tallMergeH X Y).Elements) : DomIns :=
@@ -2710,32 +2744,32 @@ theorem tallMergeRange_mono (X Y : TallAtlas)
               simpa [tallMergeH, tallMergePageMap] using f.property
             subst vy
             let q := CategoryOfElements.homMk
-              (⟨op n, k⟩ : X.E)
-              (⟨op p, X.H.map (homOfLE hpn).op k⟩ : X.E)
+              (⟨op n, k⟩ : X.El)
+              (⟨op p, X.H.map (homOfLE hpn).op k⟩ : X.El)
               (homOfLE hpn).op rfl
-            refine ⟨X.G.map q a, ?_⟩
-            change Sum.inl (X.G.map (X.toOrigin _) (X.G.map q a)) =
-              Sum.inl (X.G.map (X.toOrigin _) a)
+            refine ⟨X.Da.map q a, ?_⟩
+            change Sum.inl (X.Da.map (X.toOrigin _) (X.Da.map q a)) =
+              Sum.inl (X.Da.map (X.toOrigin _) a)
             apply congrArg Sum.inl
             have hc : q ≫ X.toOrigin _ = X.toOrigin _ :=
               CategoryOfElements.ext X.H _ _ (Subsingleton.elim _ _)
-            have hm := X.G.map_comp q (X.toOrigin _)
+            have hm := X.Da.map_comp q (X.toOrigin _)
             rw [hc] at hm
             exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
           · have hfv : Sum.inr (Y.H.map (homOfLE hpn).op k) = vy := by
               simpa [tallMergeH, tallMergePageMap] using f.property
             subst vy
             let q := CategoryOfElements.homMk
-              (⟨op n, k⟩ : Y.E)
-              (⟨op p, Y.H.map (homOfLE hpn).op k⟩ : Y.E)
+              (⟨op n, k⟩ : Y.El)
+              (⟨op p, Y.H.map (homOfLE hpn).op k⟩ : Y.El)
               (homOfLE hpn).op rfl
-            refine ⟨Y.G.map q a, ?_⟩
-            change Sum.inr (Y.G.map (Y.toOrigin _) (Y.G.map q a)) =
-              Sum.inr (Y.G.map (Y.toOrigin _) a)
+            refine ⟨Y.Da.map q a, ?_⟩
+            change Sum.inr (Y.Da.map (Y.toOrigin _) (Y.Da.map q a)) =
+              Sum.inr (Y.Da.map (Y.toOrigin _) a)
             apply congrArg Sum.inr
             have hc : q ≫ Y.toOrigin _ = Y.toOrigin _ :=
               CategoryOfElements.ext Y.H _ _ (Subsingleton.elim _ _)
-            have hm := Y.G.map_comp q (Y.toOrigin _)
+            have hm := Y.Da.map_comp q (Y.toOrigin _)
             rw [hc] at hm
             exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
 
@@ -2781,19 +2815,19 @@ def tallMerge (X Y : TallAtlas) : TallAtlas where
     change Unit at x
     cases x
     rfl
-  G := tallMergeG X Y
+  Da := tallMergeG X Y
   cellLT := tallMergeCellLT X Y
   coveredExtent t := match t.1 with
     | .inl a => X.coveredExtent a
     | .inr b => Y.coveredExtent b
 
-def tallMergeLeftObj (X Y : TallAtlas) (x : X.E) : (tallMerge X Y).E :=
+def tallMergeLeftObj (X Y : TallAtlas) (x : X.El) : (tallMerge X Y).El :=
   ⟨op (x.1.unop + 1), Sum.inl x.2⟩
 
-def tallMergeRightObj (X Y : TallAtlas) (y : Y.E) : (tallMerge X Y).E :=
+def tallMergeRightObj (X Y : TallAtlas) (y : Y.El) : (tallMerge X Y).El :=
   ⟨op (y.1.unop + 1), Sum.inr y.2⟩
 
-def tallMergeLeftMap (X Y : TallAtlas) {x y : X.E} (f : x ⟶ y) :
+def tallMergeLeftMap (X Y : TallAtlas) {x y : X.El} (f : x ⟶ y) :
     tallMergeLeftObj X Y x ⟶ tallMergeLeftObj X Y y := by
   rcases x with ⟨⟨n⟩, kx⟩
   rcases y with ⟨⟨m⟩, ky⟩
@@ -2806,7 +2840,7 @@ def tallMergeLeftMap (X Y : TallAtlas) {x y : X.E} (f : x ⟶ y) :
   rw [← ef]
   exact f.property
 
-def tallMergeRightMap (X Y : TallAtlas) {x y : Y.E} (f : x ⟶ y) :
+def tallMergeRightMap (X Y : TallAtlas) {x y : Y.El} (f : x ⟶ y) :
     tallMergeRightObj X Y x ⟶ tallMergeRightObj X Y y := by
   rcases x with ⟨⟨n⟩, kx⟩
   rcases y with ⟨⟨m⟩, ky⟩
@@ -2819,31 +2853,31 @@ def tallMergeRightMap (X Y : TallAtlas) {x y : Y.E} (f : x ⟶ y) :
   rw [← ef]
   exact f.property
 
-def tallMergeLeft (X Y : TallAtlas) : X.E ⥤ (tallMerge X Y).E where
+def tallMergeLeft (X Y : TallAtlas) : X.El ⥤ (tallMerge X Y).El where
   obj := tallMergeLeftObj X Y
   map := tallMergeLeftMap X Y
   map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
   map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
 
-def tallMergeRight (X Y : TallAtlas) : Y.E ⥤ (tallMerge X Y).E where
+def tallMergeRight (X Y : TallAtlas) : Y.El ⥤ (tallMerge X Y).El where
   obj := tallMergeRightObj X Y
   map := tallMergeRightMap X Y
   map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
   map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
 
-def tallHorPObj {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
-    (x : (tallMerge X₁ X₂).E) : (tallMerge Y₁ Y₂).E := by
+def tallHorPaObj {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
+    (x : (tallMerge X₁ X₂).El) : (tallMerge Y₁ Y₂).El := by
   rcases x with ⟨⟨n⟩, v⟩
   cases n with
   | zero => exact (tallMerge Y₁ Y₂).originElement
   | succ n =>
       exact match v with
-        | .inl k => tallMergeLeftObj Y₁ Y₂ (f.P.obj ⟨op n, k⟩)
-        | .inr k => tallMergeRightObj Y₁ Y₂ (g.P.obj ⟨op n, k⟩)
+        | .inl k => tallMergeLeftObj Y₁ Y₂ (f.Pa.obj ⟨op n, k⟩)
+        | .inr k => tallMergeRightObj Y₁ Y₂ (g.Pa.obj ⟨op n, k⟩)
 
-def tallHorPHom {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
-    {x y : (tallMerge X₁ X₂).E} (q : x ⟶ y) :
-    tallHorPObj f g x ⟶ tallHorPObj f g y := by
+def tallHorPaHom {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
+    {x y : (tallMerge X₁ X₂).El} (q : x ⟶ y) :
+    tallHorPaObj f g x ⟶ tallHorPaObj f g y := by
   rcases x with ⟨⟨mx⟩, vx⟩
   rcases y with ⟨⟨my⟩, vy⟩
   cases mx with
@@ -2864,88 +2898,88 @@ def tallHorPHom {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ 
               simpa [tallMerge, tallMergeH, tallMergePageMap] using q.property
             subst vy
             let r := CategoryOfElements.homMk
-              (⟨op n, k⟩ : X₁.E)
-              (⟨op p, X₁.H.map (homOfLE hpn).op k⟩ : X₁.E)
+              (⟨op n, k⟩ : X₁.El)
+              (⟨op p, X₁.H.map (homOfLE hpn).op k⟩ : X₁.El)
               (homOfLE hpn).op rfl
-            exact tallMergeLeftMap Y₁ Y₂ (f.P.map r)
+            exact tallMergeLeftMap Y₁ Y₂ (f.Pa.map r)
           · have hqv : Sum.inr (X₂.H.map (homOfLE hpn).op k) = vy := by
               simpa [tallMerge, tallMergeH, tallMergePageMap] using q.property
             subst vy
             let r := CategoryOfElements.homMk
-              (⟨op n, k⟩ : X₂.E)
-              (⟨op p, X₂.H.map (homOfLE hpn).op k⟩ : X₂.E)
+              (⟨op n, k⟩ : X₂.El)
+              (⟨op p, X₂.H.map (homOfLE hpn).op k⟩ : X₂.El)
               (homOfLE hpn).op rfl
-            exact tallMergeRightMap Y₁ Y₂ (g.P.map r)
+            exact tallMergeRightMap Y₁ Y₂ (g.Pa.map r)
 
-def tallHorP {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
-    (tallMerge X₁ X₂).E ⥤ (tallMerge Y₁ Y₂).E where
-  obj := tallHorPObj f g
-  map := tallHorPHom f g
+def tallHorPa {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    (tallMerge X₁ X₂).El ⥤ (tallMerge Y₁ Y₂).El where
+  obj := tallHorPaObj f g
+  map := tallHorPaHom f g
   map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
   map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
 
-def TallAtlas.originImage (X : TallAtlas) (x : X.E) (a : X.G.obj x) : X.extent :=
-  X.G.map (X.toOrigin x) a
+def TallAtlas.originImage (X : TallAtlas) (x : X.El) (a : X.Da.obj x) : X.extent :=
+  X.Da.map (X.toOrigin x) a
 
 @[simp]
 theorem TallAtlas.originImage_origin (X : TallAtlas) (a : X.extent) :
     X.originImage X.originElement a = a := by
-  change X.G.map (X.toOrigin X.originElement) a = a
+  change X.Da.map (X.toOrigin X.originElement) a = a
   have h : X.toOrigin X.originElement = 𝟙 X.originElement :=
     Subsingleton.elim _ _
-  rw [h, X.G.map_id]
+  rw [h, X.Da.map_id]
   rfl
 
 def TallAtlas.extentMap {X Y : TallAtlas} (f : X ⟶ Y) : X.extent ⟶ Y.extent :=
-  f.A.app X.originElement ≫ Y.G.map (Y.toOrigin (f.P.obj X.originElement))
+  f.Da.app X.originElement ≫ Y.Da.map (Y.toOrigin (f.Pa.obj X.originElement))
 
 @[simp]
 theorem TallAtlas.extentMap_id (X : TallAtlas) :
     TallAtlas.extentMap (𝟙 X) = 𝟙 X.extent := by
   apply DomIns.hom_ext
   intro a
-  change X.G.map (X.toOrigin X.originElement) a = a
+  change X.Da.map (X.toOrigin X.originElement) a = a
   have h : X.toOrigin X.originElement = 𝟙 X.originElement := Subsingleton.elim _ _
   rw [h]
-  rw [X.G.map_id]
+  rw [X.Da.map_id]
   rfl
 
 theorem TallAtlas.extentMap_originImage {X Y : TallAtlas} (f : X ⟶ Y)
-    (x : X.E) (a : X.G.obj x) :
+    (x : X.El) (a : X.Da.obj x) :
     TallAtlas.extentMap f (X.originImage x a) =
-      Y.originImage (f.P.obj x) (f.A.app x a) := by
+      Y.originImage (f.Pa.obj x) (f.Da.app x a) := by
   simp only [TallAtlas.extentMap, TallAtlas.originImage]
-  have hn := f.A.naturality (X.toOrigin x)
-  have hc : f.P.map (X.toOrigin x) ≫ Y.toOrigin (f.P.obj X.originElement) =
-      Y.toOrigin (f.P.obj x) := by
+  have hn := f.Da.naturality (X.toOrigin x)
+  have hc : f.Pa.map (X.toOrigin x) ≫ Y.toOrigin (f.Pa.obj X.originElement) =
+      Y.toOrigin (f.Pa.obj x) := by
     apply CategoryOfElements.ext
     apply Subsingleton.elim
-  rw [← hc, Y.G.map_comp]
+  rw [← hc, Y.Da.map_comp]
   exact congrFun (congrArg Function.Embedding.toFun
-    (congrArg (fun k => k ≫ Y.G.map (Y.toOrigin (f.P.obj X.originElement))) hn)) a
+    (congrArg (fun k => k ≫ Y.Da.map (Y.toOrigin (f.Pa.obj X.originElement))) hn)) a
 
 @[simp]
 theorem TallAtlas.extentMap_comp {X Y Z : TallAtlas} (f : X ⟶ Y) (g : Y ⟶ Z) :
     TallAtlas.extentMap (f ≫ g) =
       TallAtlas.extentMap f ≫ TallAtlas.extentMap g := by
   simp only [TallAtlas.extentMap]
-  have hn := g.A.naturality (Y.toOrigin (f.P.obj X.originElement))
+  have hn := g.Da.naturality (Y.toOrigin (f.Pa.obj X.originElement))
   simp only [Functor.comp_map] at hn
-  have hc : g.P.map (Y.toOrigin (f.P.obj X.originElement)) ≫
-      Z.toOrigin (g.P.obj Y.originElement) =
-      Z.toOrigin (g.P.obj (f.P.obj X.originElement)) := by
+  have hc : g.Pa.map (Y.toOrigin (f.Pa.obj X.originElement)) ≫
+      Z.toOrigin (g.Pa.obj Y.originElement) =
+      Z.toOrigin (g.Pa.obj (f.Pa.obj X.originElement)) := by
     apply CategoryOfElements.ext
     apply Subsingleton.elim
-  change f.A.app X.originElement ≫ g.A.app (f.P.obj X.originElement) ≫
-      Z.G.map (Z.toOrigin (g.P.obj (f.P.obj X.originElement))) =
-    (f.A.app X.originElement ≫ Y.G.map (Y.toOrigin (f.P.obj X.originElement))) ≫
-      g.A.app Y.originElement ≫ Z.G.map (Z.toOrigin (g.P.obj Y.originElement))
+  change f.Da.app X.originElement ≫ g.Da.app (f.Pa.obj X.originElement) ≫
+      Z.Da.map (Z.toOrigin (g.Pa.obj (f.Pa.obj X.originElement))) =
+    (f.Da.app X.originElement ≫ Y.Da.map (Y.toOrigin (f.Pa.obj X.originElement))) ≫
+      g.Da.app Y.originElement ≫ Z.Da.map (Z.toOrigin (g.Pa.obj Y.originElement))
   simp only [Category.assoc]
-  rw [← Category.assoc (Y.G.map (Y.toOrigin (f.P.obj X.originElement)))
-    (g.A.app Y.originElement) (Z.G.map (Z.toOrigin (g.P.obj Y.originElement)))]
+  rw [← Category.assoc (Y.Da.map (Y.toOrigin (f.Pa.obj X.originElement)))
+    (g.Da.app Y.originElement) (Z.Da.map (Z.toOrigin (g.Pa.obj Y.originElement)))]
   rw [hn]
-  rw [Category.assoc (g.A.app (f.P.obj X.originElement))]
-  rw [← Z.G.map_comp]
+  rw [Category.assoc (g.Da.app (f.Pa.obj X.originElement))]
+  rw [← Z.Da.map_comp]
   rw [hc]
 
 def tallHorExtentMap {X₁ X₂ Y₁ Y₂ : TallAtlas}
@@ -2955,33 +2989,33 @@ def tallHorExtentMap {X₁ X₂ Y₁ Y₂ : TallAtlas}
 
 theorem tallHorRootFactor {X₁ X₂ Y₁ Y₂ : TallAtlas}
     (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂)
-    (x : (tallMerge X₁ X₂).E) (a : tallMergeRawDom X₁ X₂ x) :
-    ∃ b : tallMergeRawDom Y₁ Y₂ (tallHorPObj f g x),
+    (x : (tallMerge X₁ X₂).El) (a : tallMergeRawDom X₁ X₂ x) :
+    ∃ b : tallMergeRawDom Y₁ Y₂ (tallHorPaObj f g x),
       tallHorExtentMap f g (tallMergeRootMap X₁ X₂ x a) =
-        tallMergeRootMap Y₁ Y₂ (tallHorPObj f g x) b := by
+        tallMergeRootMap Y₁ Y₂ (tallHorPaObj f g x) b := by
   rcases x with ⟨⟨n⟩, v⟩
   cases n with
   | zero => exact ⟨tallHorExtentMap f g a, rfl⟩
   | succ n =>
       rcases v with k | k
-      · let x₀ : X₁.E := ⟨op n, k⟩
-        let y₀ := f.P.obj x₀
-        refine ⟨f.A.app x₀ a, ?_⟩
+      · let x₀ : X₁.El := ⟨op n, k⟩
+        let y₀ := f.Pa.obj x₀
+        refine ⟨f.Da.app x₀ a, ?_⟩
         change Sum.inl (TallAtlas.extentMap f (X₁.originImage x₀ a)) =
-          Sum.inl (Y₁.originImage y₀ (f.A.app x₀ a))
+          Sum.inl (Y₁.originImage y₀ (f.Da.app x₀ a))
         exact congrArg Sum.inl (TallAtlas.extentMap_originImage f x₀ a)
-      · let x₀ : X₂.E := ⟨op n, k⟩
-        let y₀ := g.P.obj x₀
-        refine ⟨g.A.app x₀ a, ?_⟩
+      · let x₀ : X₂.El := ⟨op n, k⟩
+        let y₀ := g.Pa.obj x₀
+        refine ⟨g.Da.app x₀ a, ?_⟩
         change Sum.inr (TallAtlas.extentMap g (X₂.originImage x₀ a)) =
-          Sum.inr (Y₂.originImage y₀ (g.A.app x₀ a))
+          Sum.inr (Y₂.originImage y₀ (g.Da.app x₀ a))
         exact congrArg Sum.inr (TallAtlas.extentMap_originImage g x₀ a)
 
-def tallHorA {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
-    (tallMerge X₁ X₂).G ⟶ tallHorP f g ⋙ (tallMerge Y₁ Y₂).G where
+def tallHorDa {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
+    (tallMerge X₁ X₂).Da ⟶ tallHorPa f g ⋙ (tallMerge Y₁ Y₂).Da where
   app x := imageDom.mapAcross
     (tallMergeRootMap X₁ X₂ x)
-    (tallMergeRootMap Y₁ Y₂ (tallHorPObj f g x))
+    (tallMergeRootMap Y₁ Y₂ (tallHorPaObj f g x))
     (tallHorExtentMap f g) (tallHorRootFactor f g x)
   naturality := by
     intro x y q
@@ -2992,8 +3026,8 @@ def tallHorA {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶
 
 def tallHorMap {X₁ X₂ Y₁ Y₂ : TallAtlas} (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
     tallMerge X₁ X₂ ⟶ tallMerge Y₁ Y₂ where
-  P := tallHorP f g
-  A := tallHorA f g
+  Pa := tallHorPa f g
+  Da := tallHorDa f g
 
 @[simp]
 theorem tallHorMap_extentMap_val {X₁ X₂ Y₁ Y₂ : TallAtlas}
@@ -3005,17 +3039,17 @@ theorem tallHorMap_extentMap_val {X₁ X₂ Y₁ Y₂ : TallAtlas}
 
 theorem tallHorMap_id (X Y : TallAtlas) :
     tallHorMap (𝟙 X) (𝟙 Y) = 𝟙 (tallMerge X Y) := by
-  have hP : tallHorP (𝟙 X) (𝟙 Y) = 𝟭 (tallMerge X Y).E := by
-    exact CategoryTheory.Functor.ext (F := tallHorP (𝟙 X) (𝟙 Y))
-      (G := 𝟭 (tallMerge X Y).E) (fun x => by
+  have hPa : tallHorPa (𝟙 X) (𝟙 Y) = 𝟭 (tallMerge X Y).El := by
+    exact CategoryTheory.Functor.ext (F := tallHorPa (𝟙 X) (𝟙 Y))
+      (G := 𝟭 (tallMerge X Y).El) (fun x => by
       rcases x with ⟨⟨n⟩, v⟩
       cases n with
       | zero => rfl
       | succ n => cases v <;> rfl)
-  have hA : HEq (tallHorMap (𝟙 X) (𝟙 Y)).A
-      (𝟙 (tallMerge X Y) : TallAtlasHom _ _).A := by
+  have hDa : HEq (tallHorMap (𝟙 X) (𝟙 Y)).Da
+      (𝟙 (tallMerge X Y) : TallAtlasHom _ _).Da := by
     apply NatTrans.hext_right _ _
-      (congrArg (fun P => P ⋙ (tallMerge X Y).G) hP)
+      (congrArg (fun P => P ⋙ (tallMerge X Y).Da) hPa)
     intro x
     rcases x with ⟨⟨n⟩, v⟩
     cases n with
@@ -3024,7 +3058,7 @@ theorem tallHorMap_id (X Y : TallAtlas) :
         apply DomIns.hom_ext
         intro z
         apply Subtype.ext
-        simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap]
+        simp only [tallHorMap, tallHorDa, imageDom.mapAcross, tallHorExtentMap]
         rw [TallAtlas.extentMap_id, TallAtlas.extentMap_id]
         change Sum.map (𝟙 X.extent) (𝟙 Y.extent) z.1 = z.1
         rcases z.1 with a | b <;> rfl
@@ -3034,29 +3068,29 @@ theorem tallHorMap_id (X Y : TallAtlas) :
           apply DomIns.hom_ext <;>
           intro z <;>
           apply Subtype.ext <;>
-          simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap] <;>
+          simp only [tallHorMap, tallHorDa, imageDom.mapAcross, tallHorExtentMap] <;>
           rw [TallAtlas.extentMap_id, TallAtlas.extentMap_id] <;>
           change Sum.map (𝟙 X.extent) (𝟙 Y.extent) z.1 = z.1 <;>
           rcases z.1 with a | b <;> rfl
-  exact TallAtlasHom.ext _ _ hP hA
+  exact TallAtlasHom.ext _ _ hPa hDa
 
 theorem tallHorMap_comp {X₁ X₂ Y₁ Y₂ Z₁ Z₂ : TallAtlas}
     (f₁ : X₁ ⟶ Y₁) (f₂ : Y₁ ⟶ Z₁) (g₁ : X₂ ⟶ Y₂) (g₂ : Y₂ ⟶ Z₂) :
     tallHorMap (f₁ ≫ f₂) (g₁ ≫ g₂) =
       tallHorMap f₁ g₁ ≫ tallHorMap f₂ g₂ := by
-  have hP : tallHorP (f₁ ≫ f₂) (g₁ ≫ g₂) =
-      tallHorP f₁ g₁ ⋙ tallHorP f₂ g₂ := by
+  have hPa : tallHorPa (f₁ ≫ f₂) (g₁ ≫ g₂) =
+      tallHorPa f₁ g₁ ⋙ tallHorPa f₂ g₂ := by
     exact CategoryTheory.Functor.ext
-      (F := tallHorP (f₁ ≫ f₂) (g₁ ≫ g₂))
-      (G := tallHorP f₁ g₁ ⋙ tallHorP f₂ g₂) (fun x => by
+      (F := tallHorPa (f₁ ≫ f₂) (g₁ ≫ g₂))
+      (G := tallHorPa f₁ g₁ ⋙ tallHorPa f₂ g₂) (fun x => by
         rcases x with ⟨⟨n⟩, v⟩
         cases n with
         | zero => rfl
         | succ n => cases v <;> rfl)
-  have hA : HEq (tallHorMap (f₁ ≫ f₂) (g₁ ≫ g₂)).A
-      (tallHorMap f₁ g₁ ≫ tallHorMap f₂ g₂).A := by
+  have hDa : HEq (tallHorMap (f₁ ≫ f₂) (g₁ ≫ g₂)).Da
+      (tallHorMap f₁ g₁ ≫ tallHorMap f₂ g₂).Da := by
     apply NatTrans.hext_right _ _
-      (congrArg (fun P => P ⋙ (tallMerge Z₁ Z₂).G) hP)
+      (congrArg (fun P => P ⋙ (tallMerge Z₁ Z₂).Da) hPa)
     intro x
     rcases x with ⟨⟨n⟩, v⟩
     cases n with
@@ -3065,7 +3099,7 @@ theorem tallHorMap_comp {X₁ X₂ Y₁ Y₂ Z₁ Z₂ : TallAtlas}
         apply DomIns.hom_ext
         intro z
         apply Subtype.ext
-        simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap,
+        simp only [tallHorMap, tallHorDa, imageDom.mapAcross, tallHorExtentMap,
           TallAtlas.extentMap_comp]
         change (domSum.map
             (TallAtlas.extentMap f₁ ≫ TallAtlas.extentMap f₂)
@@ -3079,7 +3113,7 @@ theorem tallHorMap_comp {X₁ X₂ Y₁ Y₂ Z₁ Z₂ : TallAtlas}
           apply DomIns.hom_ext <;>
           intro z <;>
           apply Subtype.ext <;>
-          simp only [tallHorMap, tallHorA, imageDom.mapAcross, tallHorExtentMap,
+          simp only [tallHorMap, tallHorDa, imageDom.mapAcross, tallHorExtentMap,
             TallAtlas.extentMap_comp] <;>
           change (domSum.map
               (TallAtlas.extentMap f₁ ≫ TallAtlas.extentMap f₂)
@@ -3087,7 +3121,7 @@ theorem tallHorMap_comp {X₁ X₂ Y₁ Y₂ Z₁ Z₂ : TallAtlas}
             domSum.map (TallAtlas.extentMap f₂) (TallAtlas.extentMap g₂)
               (domSum.map (TallAtlas.extentMap f₁) (TallAtlas.extentMap g₁) z.1) <;>
           rcases z.1 with a | b <;> rfl
-  exact TallAtlasHom.ext _ _ hP hA
+  exact TallAtlasHom.ext _ _ hPa hDa
 
 /-- The horizontal sum on raw infinite-spine presentations.  This is the
 implementation bifunctor from which the coherent atlas operation is derived. -/
@@ -3107,8 +3141,8 @@ def domSum.swap (X Y : DomIns) : domSum X Y ⟶ domSum Y X where
     · cases h
     · exact congrArg Sum.inr (Sum.inl.inj h)
 
-def tallSwapPObj (X Y : TallAtlas) (x : (tallMerge X Y).E) :
-    (tallMerge Y X).E := by
+def tallSwapPaObj (X Y : TallAtlas) (x : (tallMerge X Y).El) :
+    (tallMerge Y X).El := by
   rcases x with ⟨⟨n⟩, v⟩
   cases n with
   | zero => exact (tallMerge Y X).originElement
@@ -3117,8 +3151,8 @@ def tallSwapPObj (X Y : TallAtlas) (x : (tallMerge X Y).E) :
         | .inl k => tallMergeRightObj Y X ⟨op n, k⟩
         | .inr k => tallMergeLeftObj Y X ⟨op n, k⟩
 
-def tallSwapPHom (X Y : TallAtlas) {x y : (tallMerge X Y).E} (q : x ⟶ y) :
-    tallSwapPObj X Y x ⟶ tallSwapPObj X Y y := by
+def tallSwapPaHom (X Y : TallAtlas) {x y : (tallMerge X Y).El} (q : x ⟶ y) :
+    tallSwapPaObj X Y x ⟶ tallSwapPaObj X Y y := by
   rcases x with ⟨⟨mx⟩, vx⟩
   rcases y with ⟨⟨my⟩, vy⟩
   cases mx with
@@ -3146,17 +3180,17 @@ def tallSwapPHom (X Y : TallAtlas) {x y : (tallMerge X Y).E} (q : x ⟶ y) :
             exact tallMergeLeftMap Y X (CategoryOfElements.homMk _ _
               (homOfLE hpn).op rfl)
 
-def tallSwapP (X Y : TallAtlas) : (tallMerge X Y).E ⥤ (tallMerge Y X).E where
-  obj := tallSwapPObj X Y
-  map := tallSwapPHom X Y
+def tallSwapPa (X Y : TallAtlas) : (tallMerge X Y).El ⥤ (tallMerge Y X).El where
+  obj := tallSwapPaObj X Y
+  map := tallSwapPaHom X Y
   map_id _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
   map_comp _ _ := by apply CategoryOfElements.ext; apply Subsingleton.elim
 
-theorem tallSwapRootFactor (X Y : TallAtlas) (x : (tallMerge X Y).E)
+theorem tallSwapRootFactor (X Y : TallAtlas) (x : (tallMerge X Y).El)
     (a : tallMergeRawDom X Y x) :
-    ∃ b : tallMergeRawDom Y X (tallSwapPObj X Y x),
+    ∃ b : tallMergeRawDom Y X (tallSwapPaObj X Y x),
       domSum.swap X.extent Y.extent (tallMergeRootMap X Y x a) =
-        tallMergeRootMap Y X (tallSwapPObj X Y x) b := by
+        tallMergeRootMap Y X (tallSwapPaObj X Y x) b := by
   rcases x with ⟨⟨n⟩, v⟩
   cases n with
   | zero => exact ⟨a.swap, rfl⟩
@@ -3166,11 +3200,11 @@ theorem tallSwapRootFactor (X Y : TallAtlas) (x : (tallMerge X Y).E)
       · exact ⟨a, rfl⟩
 
 def TallAtlBrd (X Y : TallAtlas) : tallMerge X Y ⟶ tallMerge Y X where
-  P := tallSwapP X Y
-  A :=
+  Pa := tallSwapPa X Y
+  Da :=
     { app := fun x => imageDom.mapAcross
         (tallMergeRootMap X Y x)
-        (tallMergeRootMap Y X (tallSwapPObj X Y x))
+        (tallMergeRootMap Y X (tallSwapPaObj X Y x))
         (domSum.swap X.extent Y.extent) (tallSwapRootFactor X Y x)
       naturality := by
         intro x y q
@@ -3181,15 +3215,15 @@ def TallAtlBrd (X Y : TallAtlas) : tallMerge X Y ⟶ tallMerge Y X where
 
 theorem TallAtlBrd_involutive (X Y : TallAtlas) :
     TallAtlBrd X Y ≫ TallAtlBrd Y X = 𝟙 (tallMerge X Y) := by
-  have hP : tallSwapP X Y ⋙ tallSwapP Y X = 𝟭 (tallMerge X Y).E := by
+  have hPa : tallSwapPa X Y ⋙ tallSwapPa Y X = 𝟭 (tallMerge X Y).El := by
     exact CategoryTheory.Functor.ext (fun x => by
       rcases x with ⟨⟨n⟩, v⟩
       cases n with
       | zero => rfl
       | succ n => cases v <;> rfl)
-  apply TallAtlasHom.ext _ _ hP
+  apply TallAtlasHom.ext _ _ hPa
   apply NatTrans.hext_right _ _
-    (congrArg (fun P => P ⋙ (tallMerge X Y).G) hP)
+    (congrArg (fun P => P ⋙ (tallMerge X Y).Da) hPa)
   intro x
   rcases x with ⟨⟨n⟩, v⟩
   cases n with
@@ -3233,16 +3267,16 @@ theorem castDep_symm_cast {A : Sort u} (P : A → Sort*) {x y : A}
   rfl
 
 def bouquetRawDomIndex (X Y : Atl) :
-    (m : Fin (bouquetLength X.P.folio Y.P.folio)) →
-      (bouquetFolio X.P.folio Y.P.folio).H.obj (op m) → DomIns :=
+    (m : Fin (bouquetLength X.Fo Y.Fo)) →
+      (bouquetFolio X.Fo Y.Fo).Cell (op m) → DomIns :=
   Fin.cases (fun _ => domSum (extent X) (extent Y)) (fun n v =>
     match ofLex v with
-    | .inl k => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
-    | .inr k => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k))
+    | .inl k => X.Da.obj (X.Pa.cell (op (X.Fo.paddedIndex n.1)) k)
+    | .inr k => Y.Da.obj (Y.Pa.cell (op (Y.Fo.paddedIndex n.1)) k))
 
-theorem bouquetLeftRawDom_eq (X Y : Atl) (x : X.E) :
+theorem bouquetLeftRawDom_eq (X Y : Atl) (x : X.El) :
     bouquetRawDomIndex X Y (bouquetLeftElement X Y x).1.unop
-      (bouquetLeftElement X Y x).2 = X.G.obj x := by
+      (bouquetLeftElement X Y x).2 = X.Da.obj x := by
   rcases x with ⟨⟨m⟩, k⟩
   simp only [bouquetLeftElement, bouquetLeftPred, bouquetRawDomIndex,
     bouquetChain, Fin.cases_succ]
@@ -3252,19 +3286,19 @@ theorem bouquetLeftRawDom_eq (X Y : Atl) (x : X.E) :
     have hk' := Sum.inl.inj hk
     subst k'
     congr 1
-    apply Functor.Elements.ext (F := X.P.H) _ _
-      (congrArg op (X.P.folio.paddedIndex_fin m))
+    apply Functor.Elements.ext (F := X.Fo.cellDiagram) _ _
+      (congrArg op (X.Fo.paddedIndex_fin m))
     dsimp only [Pag.cell]
-    change X.P.H.map (eqToHom _) (X.P.H.map (eqToHom _) k) = k
+    change X.Fo.cellDiagram.map (eqToHom _) (X.Fo.cellDiagram.map (eqToHom _) k) = k
     rw [← FunctorToTypes.map_comp_apply]
     simp
   · rename_i k' hk
     change Sum.inl _ = Sum.inr k' at hk
     cases hk
 
-theorem bouquetRightRawDom_eq (X Y : Atl) (y : Y.E) :
+theorem bouquetRightRawDom_eq (X Y : Atl) (y : Y.El) :
     bouquetRawDomIndex X Y (bouquetRightElement X Y y).1.unop
-      (bouquetRightElement X Y y).2 = Y.G.obj y := by
+      (bouquetRightElement X Y y).2 = Y.Da.obj y := by
   rcases y with ⟨⟨m⟩, k⟩
   simp only [bouquetRightElement, bouquetRightPred, bouquetRawDomIndex,
     bouquetChain, Fin.cases_succ]
@@ -3277,29 +3311,29 @@ theorem bouquetRightRawDom_eq (X Y : Atl) (y : Y.E) :
     have hk' := Sum.inr.inj hk
     subst k'
     congr 1
-    apply Functor.Elements.ext (F := Y.P.H) _ _
-      (congrArg op (Y.P.folio.paddedIndex_fin m))
+    apply Functor.Elements.ext (F := Y.Fo.cellDiagram) _ _
+      (congrArg op (Y.Fo.paddedIndex_fin m))
     dsimp only [Pag.cell]
-    change Y.P.H.map (eqToHom _) (Y.P.H.map (eqToHom _) k) = k
+    change Y.Fo.cellDiagram.map (eqToHom _) (Y.Fo.cellDiagram.map (eqToHom _) k) = k
     rw [← FunctorToTypes.map_comp_apply]
     simp
 
-def paddedElement (X : Atl) (x : X.E) : X.E :=
-  X.P.cell (op (X.P.folio.paddedIndex x.1.unop.1))
-    (X.P.H.map
-      (eqToHom (congrArg op (X.P.folio.paddedIndex_fin x.1.unop).symm)) x.2)
+def paddedElement (X : Atl) (x : X.El) : X.El :=
+  X.Pa.cell (op (X.Fo.paddedIndex x.1.unop.1))
+    (X.Fo.cellDiagram.map
+      (eqToHom (congrArg op (X.Fo.paddedIndex_fin x.1.unop).symm)) x.2)
 
-theorem paddedElement_eq (X : Atl) (x : X.E) : paddedElement X x = x := by
-  apply Functor.Elements.ext (F := X.P.H) _ _
-    (congrArg op (X.P.folio.paddedIndex_fin x.1.unop))
+theorem paddedElement_eq (X : Atl) (x : X.El) : paddedElement X x = x := by
+  apply Functor.Elements.ext (F := X.Fo.cellDiagram) _ _
+    (congrArg op (X.Fo.paddedIndex_fin x.1.unop))
   dsimp only [paddedElement, Pag.cell]
-  change X.P.H.map (eqToHom _) (X.P.H.map (eqToHom _) x.2) = x.2
+  change X.Fo.cellDiagram.map (eqToHom _) (X.Fo.cellDiagram.map (eqToHom _) x.2) = x.2
   rw [← FunctorToTypes.map_comp_apply]
   simp
 
 def bouquetRootIndex (X Y : Atl) :
-    ∀ (m : Fin (bouquetLength X.P.folio Y.P.folio))
-      (v : (bouquetFolio X.P.folio Y.P.folio).H.obj (op m)),
+    ∀ (m : Fin (bouquetLength X.Fo Y.Fo))
+      (v : (bouquetFolio X.Fo Y.Fo).Cell (op m)),
       bouquetRawDomIndex X Y m v ⟶ domSum (extent X) (extent Y) := by
   intro m
   induction m using Fin.cases with
@@ -3307,38 +3341,38 @@ def bouquetRootIndex (X Y : Atl) :
   | succ n =>
     intro v
     change (match ofLex v with
-      | .inl k => X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
-      | .inr k => Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k))
+      | .inl k => X.Da.obj (X.Pa.cell (op (X.Fo.paddedIndex n.1)) k)
+      | .inr k => Y.Da.obj (Y.Pa.cell (op (Y.Fo.paddedIndex n.1)) k))
       ⟶ domSum (extent X) (extent Y)
     exact match ofLex v with
-      | .inl k => X.G.map (X.P.cellToOrigin
-          (op (X.P.folio.paddedIndex n.1)) k) ≫
+      | .inl k => X.Da.map (X.Pa.cellToOrigin
+          (op (X.Fo.paddedIndex n.1)) k) ≫
           domSum.inl (extent X) (extent Y)
-      | .inr k => Y.G.map (Y.P.cellToOrigin
-          (op (Y.P.folio.paddedIndex n.1)) k) ≫
+      | .inr k => Y.Da.map (Y.Pa.cellToOrigin
+          (op (Y.Fo.paddedIndex n.1)) k) ≫
           domSum.inr (extent X) (extent Y)
 
 @[simp]
 theorem bouquetRootIndex_succ_left (X Y : Atl)
-    (n : Fin (bouquetDepth X.P.folio Y.P.folio))
-    (k : X.P.H.obj (op (X.P.folio.paddedIndex n.1)))
-    (a : X.G.obj (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)) :
+    (n : Fin (bouquetDepth X.Fo Y.Fo))
+    (k : X.Fo.Cell (op (X.Fo.paddedIndex n.1)))
+    (a : X.Da.obj (X.Pa.cell (op (X.Fo.paddedIndex n.1)) k)) :
     bouquetRootIndex X Y n.succ (toLex (Sum.inl k)) a =
-      Sum.inl (X.G.map
-        (X.P.cellToOrigin (op (X.P.folio.paddedIndex n.1)) k) a) := by
+      Sum.inl (X.Da.map
+        (X.Pa.cellToOrigin (op (X.Fo.paddedIndex n.1)) k) a) := by
   rfl
 
 @[simp]
 theorem bouquetRootIndex_succ_right (X Y : Atl)
-    (n : Fin (bouquetDepth X.P.folio Y.P.folio))
-    (k : Y.P.H.obj (op (Y.P.folio.paddedIndex n.1)))
-    (a : Y.G.obj (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k)) :
+    (n : Fin (bouquetDepth X.Fo Y.Fo))
+    (k : Y.Fo.Cell (op (Y.Fo.paddedIndex n.1)))
+    (a : Y.Da.obj (Y.Pa.cell (op (Y.Fo.paddedIndex n.1)) k)) :
     bouquetRootIndex X Y n.succ (toLex (Sum.inr k)) a =
-      Sum.inr (Y.G.map
-        (Y.P.cellToOrigin (op (Y.P.folio.paddedIndex n.1)) k) a) := by
+      Sum.inr (Y.Da.map
+        (Y.Pa.cellToOrigin (op (Y.Fo.paddedIndex n.1)) k) a) := by
   rfl
 
-theorem bouquetRootIndex_left (X Y : Atl) (x : X.E)
+theorem bouquetRootIndex_left (X Y : Atl) (x : X.El)
     (a : bouquetRawDomIndex X Y (bouquetLeftElement X Y x).1.unop
       (bouquetLeftElement X Y x).2) :
     bouquetRootIndex X Y (bouquetLeftElement X Y x).1.unop
@@ -3346,32 +3380,32 @@ theorem bouquetRootIndex_left (X Y : Atl) (x : X.E)
       Sum.inl (originImage X x (bouquetLeftRawDom_eq X Y x ▸ a)) := by
   rcases x with ⟨⟨m⟩, k⟩
   change bouquetRootIndex X Y (bouquetLeftPred X Y m).succ
-      (toLex (Sum.inl (X.P.H.map
-        (eqToHom (congrArg op (X.P.folio.paddedIndex_fin m).symm)) k))) a = _
+      (toLex (Sum.inl (X.Fo.cellDiagram.map
+        (eqToHom (congrArg op (X.Fo.paddedIndex_fin m).symm)) k))) a = _
   rw [bouquetRootIndex_succ_left]
   congr 1
-  change X.G.map (X.P.folio.toOrigin (paddedElement X ⟨op m, k⟩)) a =
-    X.G.map (X.P.folio.toOrigin ⟨op m, k⟩)
+  change X.Da.map (X.Fo.toOrigin (paddedElement X ⟨op m, k⟩)) a =
+    X.Da.map (X.Fo.toOrigin ⟨op m, k⟩)
       (bouquetLeftRawDom_eq X Y ⟨op m, k⟩ ▸ a)
-  let q := paddedElement_eq X (⟨op m, k⟩ : X.E)
-  have hto : eqToHom q ≫ X.P.folio.toOrigin ⟨op m, k⟩ =
-      X.P.folio.toOrigin (paddedElement X ⟨op m, k⟩) := by
+  let q := paddedElement_eq X (⟨op m, k⟩ : X.El)
+  have hto : eqToHom q ≫ X.Fo.toOrigin ⟨op m, k⟩ =
+      X.Fo.toOrigin (paddedElement X ⟨op m, k⟩) := by
     apply CategoryOfElements.ext
     apply Subsingleton.elim
-  rw [← hto, X.G.map_comp]
-  change X.G.map (X.P.folio.toOrigin ⟨op m, k⟩)
-      (X.G.map (eqToHom q) a) =
-    X.G.map (X.P.folio.toOrigin ⟨op m, k⟩)
+  rw [← hto, X.Da.map_comp]
+  change X.Da.map (X.Fo.toOrigin ⟨op m, k⟩)
+      (X.Da.map (eqToHom q) a) =
+    X.Da.map (X.Fo.toOrigin ⟨op m, k⟩)
       (bouquetLeftRawDom_eq X Y ⟨op m, k⟩ ▸ a)
-  apply congrArg (fun z => X.G.map (X.P.folio.toOrigin ⟨op m, k⟩) z)
-  have hmap := eqToHom_map X.G q
+  apply congrArg (fun z => X.Da.map (X.Fo.toOrigin ⟨op m, k⟩) z)
+  have hmap := eqToHom_map X.Da q
   rw [hmap]
-  have heq : congrArg X.G.obj q = bouquetLeftRawDom_eq X Y ⟨op m, k⟩ :=
+  have heq : congrArg X.Da.obj q = bouquetLeftRawDom_eq X Y ⟨op m, k⟩ :=
     Subsingleton.elim _ _
   cases heq
   exact domIns_eqToHom_apply _ _
 
-theorem bouquetRootIndex_right (X Y : Atl) (y : Y.E)
+theorem bouquetRootIndex_right (X Y : Atl) (y : Y.El)
     (a : bouquetRawDomIndex X Y (bouquetRightElement X Y y).1.unop
       (bouquetRightElement X Y y).2) :
     bouquetRootIndex X Y (bouquetRightElement X Y y).1.unop
@@ -3379,35 +3413,35 @@ theorem bouquetRootIndex_right (X Y : Atl) (y : Y.E)
       Sum.inr (originImage Y y (bouquetRightRawDom_eq X Y y ▸ a)) := by
   rcases y with ⟨⟨m⟩, k⟩
   change bouquetRootIndex X Y (bouquetRightPred X Y m).succ
-      (toLex (Sum.inr (Y.P.H.map
-        (eqToHom (congrArg op (Y.P.folio.paddedIndex_fin m).symm)) k))) a = _
+      (toLex (Sum.inr (Y.Fo.cellDiagram.map
+        (eqToHom (congrArg op (Y.Fo.paddedIndex_fin m).symm)) k))) a = _
   rw [bouquetRootIndex_succ_right]
   congr 1
-  change Y.G.map (Y.P.folio.toOrigin (paddedElement Y ⟨op m, k⟩)) a =
-    Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩)
+  change Y.Da.map (Y.Fo.toOrigin (paddedElement Y ⟨op m, k⟩)) a =
+    Y.Da.map (Y.Fo.toOrigin ⟨op m, k⟩)
       (bouquetRightRawDom_eq X Y ⟨op m, k⟩ ▸ a)
-  let q := paddedElement_eq Y (⟨op m, k⟩ : Y.E)
-  have hto : eqToHom q ≫ Y.P.folio.toOrigin ⟨op m, k⟩ =
-      Y.P.folio.toOrigin (paddedElement Y ⟨op m, k⟩) := by
+  let q := paddedElement_eq Y (⟨op m, k⟩ : Y.El)
+  have hto : eqToHom q ≫ Y.Fo.toOrigin ⟨op m, k⟩ =
+      Y.Fo.toOrigin (paddedElement Y ⟨op m, k⟩) := by
     apply CategoryOfElements.ext
     apply Subsingleton.elim
-  rw [← hto, Y.G.map_comp]
-  change Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩)
-      (Y.G.map (eqToHom q) a) =
-    Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩)
+  rw [← hto, Y.Da.map_comp]
+  change Y.Da.map (Y.Fo.toOrigin ⟨op m, k⟩)
+      (Y.Da.map (eqToHom q) a) =
+    Y.Da.map (Y.Fo.toOrigin ⟨op m, k⟩)
       (bouquetRightRawDom_eq X Y ⟨op m, k⟩ ▸ a)
-  apply congrArg (fun z => Y.G.map (Y.P.folio.toOrigin ⟨op m, k⟩) z)
-  have hmap := eqToHom_map Y.G q
+  apply congrArg (fun z => Y.Da.map (Y.Fo.toOrigin ⟨op m, k⟩) z)
+  have hmap := eqToHom_map Y.Da q
   rw [hmap]
-  have heq : congrArg Y.G.obj q = bouquetRightRawDom_eq X Y ⟨op m, k⟩ :=
+  have heq : congrArg Y.Da.obj q = bouquetRightRawDom_eq X Y ⟨op m, k⟩ :=
     Subsingleton.elim _ _
   cases heq
   exact domIns_eqToHom_apply _ _
 
-def bouquetDom (X Y : Atl) (x : (bouquetPag X Y).E) : DomIns :=
+def bouquetDom (X Y : Atl) (x : (bouquetPag X Y).El) : DomIns :=
   imageDom (bouquetRootIndex X Y x.1.unop x.2)
 
-theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
+theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).El}
     (f : x ⟶ y) :
     Set.range (bouquetRootIndex X Y x.1.unop x.2) ⊆
       Set.range (bouquetRootIndex X Y y.1.unop y.2) := by
@@ -3422,8 +3456,8 @@ theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
     | zero => exact ⟨a, rfl⟩
     | succ p =>
       have hf : p.succ ⟶
-          (⟨0, bouquetLength_pos X.P.folio Y.P.folio⟩ :
-            Fin (bouquetLength X.P.folio Y.P.folio)) :=
+          (⟨0, bouquetLength_pos X.Fo Y.Fo⟩ :
+            Fin (bouquetLength X.Fo Y.Fo)) :=
         Quiver.Hom.unop f.val
       have h := leOfHom hf
       change p.1 + 1 ≤ 0 at h
@@ -3434,19 +3468,19 @@ theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
     | succ p =>
       have hf : p.succ ⟶ n.succ := Quiver.Hom.unop f.val
       have hpn : p ≤ n := Fin.succ_le_succ_iff.mp (leOfHom hf)
-      let hxp : X.P.folio.paddedIndex p.1 ≤ X.P.folio.paddedIndex n.1 :=
-        X.P.folio.paddedIndex_mono hpn
-      let hyp : Y.P.folio.paddedIndex p.1 ≤ Y.P.folio.paddedIndex n.1 :=
-        Y.P.folio.paddedIndex_mono hpn
+      let hxp : X.Fo.paddedIndex p.1 ≤ X.Fo.paddedIndex n.1 :=
+        X.Fo.paddedIndex_mono hpn
+      let hyp : Y.Fo.paddedIndex p.1 ≤ Y.Fo.paddedIndex n.1 :=
+        Y.Fo.paddedIndex_mono hpn
       generalize hvx : ofLex vx = s
       rcases s with k | k
       · have evx : vx = toLex (Sum.inl k) :=
           ofLex.injective (by simpa using hvx)
         subst vx
-        let k' := X.P.H.map (homOfLE hxp).op k
+        let k' := X.Fo.cellDiagram.map (homOfLE hxp).op k
         have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
             Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
-        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inl k)) = vy :=
+        have hfv : (bouquetPag X Y).Fo.cellDiagram.map f.val (toLex (Sum.inl k)) = vy :=
           f.property
         have hvy : ofLex vy = Sum.inl k' := by
           rw [← hfv, ef]
@@ -3457,25 +3491,25 @@ theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
           ofLex.injective (by simpa using hvy)
         subst vy
         let q := CategoryOfElements.homMk
-          (X.P.cell (op (X.P.folio.paddedIndex n.1)) k)
-          (X.P.cell (op (X.P.folio.paddedIndex p.1)) k')
+          (X.Pa.cell (op (X.Fo.paddedIndex n.1)) k)
+          (X.Pa.cell (op (X.Fo.paddedIndex p.1)) k')
           (homOfLE hxp).op rfl
-        refine ⟨X.G.map q a, ?_⟩
-        change Sum.inl (X.G.map (X.P.cellToOrigin _ k') (X.G.map q a)) =
-          Sum.inl (X.G.map (X.P.cellToOrigin _ k) a)
+        refine ⟨X.Da.map q a, ?_⟩
+        change Sum.inl (X.Da.map (X.Pa.cellToOrigin _ k') (X.Da.map q a)) =
+          Sum.inl (X.Da.map (X.Pa.cellToOrigin _ k) a)
         apply congrArg Sum.inl
-        have hc : q ≫ X.P.cellToOrigin _ k' = X.P.cellToOrigin _ k :=
-          CategoryOfElements.ext X.P.H _ _ (Subsingleton.elim _ _)
-        have hm := X.G.map_comp q (X.P.cellToOrigin _ k')
+        have hc : q ≫ X.Pa.cellToOrigin _ k' = X.Pa.cellToOrigin _ k :=
+          CategoryOfElements.ext X.Fo.cellDiagram _ _ (Subsingleton.elim _ _)
+        have hm := X.Da.map_comp q (X.Pa.cellToOrigin _ k')
         rw [hc] at hm
         exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
       · have evx : vx = toLex (Sum.inr k) :=
           ofLex.injective (by simpa using hvx)
         subst vx
-        let k' := Y.P.H.map (homOfLE hyp).op k
+        let k' := Y.Fo.cellDiagram.map (homOfLE hyp).op k
         have ef : f.val = (homOfLE (show p.succ ≤ n.succ from
             Fin.succ_le_succ_iff.mpr hpn)).op := Subsingleton.elim _ _
-        have hfv : (bouquetPag X Y).H.map f.val (toLex (Sum.inr k)) = vy :=
+        have hfv : (bouquetPag X Y).Fo.cellDiagram.map f.val (toLex (Sum.inr k)) = vy :=
           f.property
         have hvy : ofLex vy = Sum.inr k' := by
           rw [← hfv, ef]
@@ -3486,16 +3520,16 @@ theorem bouquetRange_mono (X Y : Atl) {x y : (bouquetPag X Y).E}
           ofLex.injective (by simpa using hvy)
         subst vy
         let q := CategoryOfElements.homMk
-          (Y.P.cell (op (Y.P.folio.paddedIndex n.1)) k)
-          (Y.P.cell (op (Y.P.folio.paddedIndex p.1)) k')
+          (Y.Pa.cell (op (Y.Fo.paddedIndex n.1)) k)
+          (Y.Pa.cell (op (Y.Fo.paddedIndex p.1)) k')
           (homOfLE hyp).op rfl
-        refine ⟨Y.G.map q a, ?_⟩
-        change Sum.inr (Y.G.map (Y.P.cellToOrigin _ k') (Y.G.map q a)) =
-          Sum.inr (Y.G.map (Y.P.cellToOrigin _ k) a)
+        refine ⟨Y.Da.map q a, ?_⟩
+        change Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ k') (Y.Da.map q a)) =
+          Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ k) a)
         apply congrArg Sum.inr
-        have hc : q ≫ Y.P.cellToOrigin _ k' = Y.P.cellToOrigin _ k :=
-          CategoryOfElements.ext Y.P.H _ _ (Subsingleton.elim _ _)
-        have hm := Y.G.map_comp q (Y.P.cellToOrigin _ k')
+        have hc : q ≫ Y.Pa.cellToOrigin _ k' = Y.Pa.cellToOrigin _ k :=
+          CategoryOfElements.ext Y.Fo.cellDiagram _ _ (Subsingleton.elim _ _)
+        have hm := Y.Da.map_comp q (Y.Pa.cellToOrigin _ k')
         rw [hc] at hm
         exact congrFun (congrArg Function.Embedding.toFun hm.symm) a
 
@@ -3504,11 +3538,11 @@ theorem imageDom.map_val {A B R : DomIns} (f : A ⟶ R) (g : B ⟶ R)
     (h : Set.range f ⊆ Set.range g) (z : imageDom f) :
     (imageDom.map f g h z).1 = z.1 := rfl
 
-def bouquetImageMap (X Y : Atl) {x y : (bouquetPag X Y).E} (f : x ⟶ y) :
+def bouquetImageMap (X Y : Atl) {x y : (bouquetPag X Y).El} (f : x ⟶ y) :
     bouquetDom X Y x ⟶ bouquetDom X Y y :=
   imageDom.map _ _ (bouquetRange_mono X Y f)
 
-def bouquetFunctor (X Y : Atl) : (bouquetPag X Y).E ⥤ DomIns where
+def bouquetFunctor (X Y : Atl) : (bouquetPag X Y).El ⥤ DomIns where
   obj := bouquetDom X Y
   map := bouquetImageMap X Y
   map_id := by
@@ -3527,14 +3561,14 @@ def bouquetFunctor (X Y : Atl) : (bouquetPag X Y).E ⥤ DomIns where
     rfl
 
 def bouquetAtlas (X Y : Atl) : Atl where
-  P := bouquetPag X Y
-  G := bouquetFunctor X Y
+  Pa := bouquetPag X Y
+  Da := bouquetFunctor X Y
   disjoint := by
     intro m i j hij x y hxy
     rcases m with ⟨m⟩
     induction m using Fin.cases with
     | zero =>
-      exact hij ((bouquetFolio X.P.folio Y.P.folio).originEquiv.injective
+      exact hij ((bouquetFolio X.Fo Y.Fo).originEquiv.injective
         (Subsingleton.elim _ _))
     | succ n =>
       rcases x.2 with ⟨a, ha⟩
@@ -3558,8 +3592,8 @@ def bouquetAtlas (X Y : Atl) : Atl where
           intro e
           subst l
           exact hij rfl
-        change Sum.inl (X.G.map (X.P.cellToOrigin _ k) a) =
-          Sum.inl (X.G.map (X.P.cellToOrigin _ l) b) at hroot
+        change Sum.inl (X.Da.map (X.Pa.cellToOrigin _ k) a) =
+          Sum.inl (X.Da.map (X.Pa.cellToOrigin _ l) b) at hroot
         exact X.disjoint _ k l hkl a b (Sum.inl.inj hroot)
       · have ei : i = toLex (Sum.inl k) :=
           ofLex.injective (by simpa using hi)
@@ -3567,8 +3601,8 @@ def bouquetAtlas (X Y : Atl) : Atl where
           ofLex.injective (by simpa using hj)
         subst i
         subst j
-        change Sum.inl (X.G.map (X.P.cellToOrigin _ k) a) =
-          Sum.inr (Y.G.map (Y.P.cellToOrigin _ l) b) at hroot
+        change Sum.inl (X.Da.map (X.Pa.cellToOrigin _ k) a) =
+          Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ l) b) at hroot
         exact Sum.noConfusion hroot
       · have ei : i = toLex (Sum.inr k) :=
           ofLex.injective (by simpa using hi)
@@ -3576,8 +3610,8 @@ def bouquetAtlas (X Y : Atl) : Atl where
           ofLex.injective (by simpa using hj)
         subst i
         subst j
-        change Sum.inr (Y.G.map (Y.P.cellToOrigin _ k) a) =
-          Sum.inl (X.G.map (X.P.cellToOrigin _ l) b) at hroot
+        change Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ k) a) =
+          Sum.inl (X.Da.map (X.Pa.cellToOrigin _ l) b) at hroot
         exact Sum.noConfusion hroot
       · have ei : i = toLex (Sum.inr k) :=
           ofLex.injective (by simpa using hi)
@@ -3589,45 +3623,45 @@ def bouquetAtlas (X Y : Atl) : Atl where
           intro e
           subst l
           exact hij rfl
-        change Sum.inr (Y.G.map (Y.P.cellToOrigin _ k) a) =
-          Sum.inr (Y.G.map (Y.P.cellToOrigin _ l) b) at hroot
+        change Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ k) a) =
+          Sum.inr (Y.Da.map (Y.Pa.cellToOrigin _ l) b) at hroot
         exact Y.disjoint _ k l hkl a b (Sum.inr.inj hroot)
 
 /-- The object-level atlas merge used by the horizontal construction. -/
 def AtlMerge (X Y : Atl) : Atl := bouquetAtlas X Y
 
 def bouquetTallPred (X Y : Atl) (n : Nat) :
-    Fin (bouquetDepth X.P.folio Y.P.folio) :=
-  ⟨min n (bouquetDepth X.P.folio Y.P.folio - 1), by
-    have hp : 0 < bouquetDepth X.P.folio Y.P.folio :=
-      lt_of_lt_of_le X.P.folio.positive (le_max_left _ _)
+    Fin (bouquetDepth X.Fo Y.Fo) :=
+  ⟨min n (bouquetDepth X.Fo Y.Fo - 1), by
+    have hp : 0 < bouquetDepth X.Fo Y.Fo :=
+      lt_of_lt_of_le X.Fo.positive (le_max_left _ _)
     omega⟩
 
 theorem bouquet_padded_succ (X Y : Atl) (n : Nat) :
-    (bouquetFolio X.P.folio Y.P.folio).paddedIndex (n + 1) =
+    (bouquetFolio X.Fo Y.Fo).paddedIndex (n + 1) =
       (bouquetTallPred X Y n).succ := by
   apply Fin.ext
   simp only [Folio.paddedIndex, bouquetFolio, bouquetLength, bouquetTallPred,
     bouquetDepth, Fin.val_succ]
-  have hp : 0 < max X.P.folio.length Y.P.folio.length :=
-    lt_of_lt_of_le X.P.folio.positive (le_max_left _ _)
+  have hp : 0 < max X.Fo.length Y.Fo.length :=
+    lt_of_lt_of_le X.Fo.positive (le_max_left _ _)
   omega
 
 theorem left_padded_tallPred (X Y : Atl) (n : Nat) :
-    X.P.folio.paddedIndex (bouquetTallPred X Y n).1 =
-      X.P.folio.paddedIndex n := by
+    X.Fo.paddedIndex (bouquetTallPred X Y n).1 =
+      X.Fo.paddedIndex n := by
   apply Fin.ext
   simp only [Folio.paddedIndex, bouquetTallPred, bouquetDepth]
-  have hx : X.P.folio.length ≤ max X.P.folio.length Y.P.folio.length :=
+  have hx : X.Fo.length ≤ max X.Fo.length Y.Fo.length :=
     le_max_left _ _
   omega
 
 theorem right_padded_tallPred (X Y : Atl) (n : Nat) :
-    Y.P.folio.paddedIndex (bouquetTallPred X Y n).1 =
-      Y.P.folio.paddedIndex n := by
+    Y.Fo.paddedIndex (bouquetTallPred X Y n).1 =
+      Y.Fo.paddedIndex n := by
   apply Fin.ext
   simp only [Folio.paddedIndex, bouquetTallPred, bouquetDepth]
-  have hy : Y.P.folio.length ≤ max X.P.folio.length Y.P.folio.length :=
+  have hy : Y.Fo.length ≤ max X.Fo.length Y.Fo.length :=
     le_max_right _ _
   omega
 
@@ -3635,13 +3669,13 @@ theorem right_padded_tallPred (X Y : Atl) (n : Nat) :
 componentwise positive pages used by `tallMerge`. -/
 def AtlMerge.pageEquiv (X Y : Atl) (n : Nat) :
     (AtlMerge X Y).page (n + 1) ≃ Sum (X.page n) (Y.page n) := by
-  change (bouquetChain X.P.folio Y.P.folio
-      ((bouquetFolio X.P.folio Y.P.folio).paddedIndex (n + 1))).Obj ≃ _
+  change (bouquetChain X.Fo Y.Fo
+      ((bouquetFolio X.Fo Y.Fo).paddedIndex (n + 1))).Obj ≃ _
   rw [bouquet_padded_succ]
   change Lex (Sum
-    ((X.P.folio.core.obj (X.P.folio.paddedIndex
+    ((X.Fo.core.obj (X.Fo.paddedIndex
       (bouquetTallPred X Y n).1)).unop.Obj)
-    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex
+    ((Y.Fo.core.obj (Y.Fo.paddedIndex
       (bouquetTallPred X Y n).1)).unop.Obj)) ≃ _
   rw [left_padded_tallPred, right_padded_tallPred]
   exact ofLex
@@ -3649,29 +3683,29 @@ def AtlMerge.pageEquiv (X Y : Atl) (n : Nat) :
 /-- The left input as a page-preserving subobject of the tall presentation of
 an atlas merge.  In particular, occurrence `n` is sent to occurrence `n+1`;
 no finite representative is selected here. -/
-def tallBouquetLeftElement (X Y : Atl) (x : X.tall.E) : (AtlMerge X Y).tall.E := by
+def tallBouquetLeftElement (X Y : Atl) (x : X.tall.El) : (AtlMerge X Y).tall.El := by
   refine ⟨op (x.1.unop + 1), ?_⟩
-  change (bouquetChain X.P.folio Y.P.folio
-    ((bouquetFolio X.P.folio Y.P.folio).paddedIndex (x.1.unop + 1))).Obj
+  change (bouquetChain X.Fo Y.Fo
+    ((bouquetFolio X.Fo Y.Fo).paddedIndex (x.1.unop + 1))).Obj
   rw [bouquet_padded_succ]
   change Lex (Sum
-    ((X.P.folio.core.obj (X.P.folio.paddedIndex
+    ((X.Fo.core.obj (X.Fo.paddedIndex
       (bouquetTallPred X Y x.1.unop).1)).unop.Obj)
-    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex
+    ((Y.Fo.core.obj (Y.Fo.paddedIndex
       (bouquetTallPred X Y x.1.unop).1)).unop.Obj))
   rw [left_padded_tallPred]
   exact toLex (Sum.inl x.2)
 
 /-- The right input in the tall presentation of an atlas merge. -/
-def tallBouquetRightElement (X Y : Atl) (y : Y.tall.E) : (AtlMerge X Y).tall.E := by
+def tallBouquetRightElement (X Y : Atl) (y : Y.tall.El) : (AtlMerge X Y).tall.El := by
   refine ⟨op (y.1.unop + 1), ?_⟩
-  change (bouquetChain X.P.folio Y.P.folio
-    ((bouquetFolio X.P.folio Y.P.folio).paddedIndex (y.1.unop + 1))).Obj
+  change (bouquetChain X.Fo Y.Fo
+    ((bouquetFolio X.Fo Y.Fo).paddedIndex (y.1.unop + 1))).Obj
   rw [bouquet_padded_succ]
   change Lex (Sum
-    ((X.P.folio.core.obj (X.P.folio.paddedIndex
+    ((X.Fo.core.obj (X.Fo.paddedIndex
       (bouquetTallPred X Y y.1.unop).1)).unop.Obj)
-    ((Y.P.folio.core.obj (Y.P.folio.paddedIndex
+    ((Y.Fo.core.obj (Y.Fo.paddedIndex
       (bouquetTallPred X Y y.1.unop).1)).unop.Obj))
   rw [right_padded_tallPred]
   exact toLex (Sum.inr y.2)
