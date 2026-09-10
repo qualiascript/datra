@@ -4,6 +4,7 @@
 -- | Hidden representation of folios.
 module Folio.Internal
   ( Folio
+  , PageOrder (..)
   , folio
   , singletonFolio
   , appendPage
@@ -15,16 +16,17 @@ module Folio.Internal
   , folioMapComposition
   , lastChain
   , paddedIndex
+  , pageOrder
   , withPageAt
-  , withPaddedPage
   , withFolioMap
-  , withPaddedFolioMap
+  , withPageDataAt
   ) where
 
 import Chain (Chain)
 import Consolidation (Coconsolidation)
 import Folio.LiquidInternal
   ( FolioData (..)
+  , PageOrder (..)
   , appendPageData
   , composeFolioMaps
   , folioData
@@ -36,6 +38,7 @@ import Folio.LiquidInternal
   , originPageData
   , originUniqueData
   , originValueData
+  , pageOrder
   )
 import Numeric.Natural (Natural)
 
@@ -79,86 +82,50 @@ lastChain = lastPageData
 paddedIndex :: Folio origin final -> Natural -> Natural
 paddedIndex pages index = min index (folioLength pages - 1)
 
--- | Eliminate the existential carrier of a genuine page at a zero-based index.
+-- | Eliminate the existential carrier of a page on the infinite spine.  Every
+-- index after the finite presentation denotes its final page.
 withPageAt
   :: Folio origin final
   -> Natural
   -> (forall page. Chain page -> result)
-  -> Maybe result
-withPageAt pages index usePage = do
-  SomePrefix prefix <- prefixAt pages index
-  pure (usePage (lastChain prefix))
-
--- | Like 'withPageAt', but repeat the final genuine page for every later spine
--- index.
-withPaddedPage
-  :: Folio origin final
-  -> Natural
-  -> (forall page. Chain page -> result)
   -> result
-withPaddedPage pages index usePage =
-  case withPageAt pages (paddedIndex pages index) usePage of
-    Just result -> result
-    Nothing -> error "Folio.withPaddedPage: impossible empty folio"
+withPageAt pages index usePage =
+  withPageDataAt pages index $ \prefix _ ->
+    usePage (lastChain prefix)
 
--- | Eliminate the page carriers and coherent coconsolidation for an interval.
--- Returns 'Nothing' unless both indices name genuine pages and @source <=
--- target@.  The callback receives the source chain, target chain, and the
--- functorial map from source to target in @CoCon@.
+-- | Eliminate the page carriers and coherent coconsolidation for an ordered
+-- interval on the infinite spine.  The 'PageOrder' argument certifies that the
+-- source index is no later than the target; both indices are automatically
+-- padded past the finite presentation.
 withFolioMap
   :: Folio origin final
-  -> Natural
-  -> Natural
+  -> PageOrder
   -> (forall source target.
         Chain source
         -> Chain target
         -> Coconsolidation source target
         -> result)
-  -> Maybe result
-withFolioMap pages sourceIndex targetIndex useMap
-  | sourceIndex > targetIndex = Nothing
-  | otherwise = do
-      SomePrefix targetPrefix <- prefixAt pages targetIndex
-      SomeMapTo sourcePage mapToTarget <-
-        mapFromIndex targetPrefix sourceIndex
-      pure
-        (useMap sourcePage (lastChain targetPrefix) mapToTarget)
+  -> result
+withFolioMap pages (PageOrder sourceIndex targetIndex) useMap =
+  withPageDataAt pages targetIndex $ \targetPrefix _ ->
+    case mapFromIndex targetPrefix (paddedIndex pages sourceIndex) of
+      SomeMapTo sourcePage mapToTarget ->
+        useMap sourcePage (lastChain targetPrefix) mapToTarget
 
--- | Eliminate a map in the full eventually constant spine presentation.
--- Indices after the finite core are clamped to its final page. Returns
--- 'Nothing' only when @source > target@, where the spine has no arrow.
-withPaddedFolioMap
+-- | Internal eliminator retaining the typed prefix behind a padded page.  The
+-- natural supplied to the callback counts how many repeated final pages occur
+-- after that prefix.
+withPageDataAt
   :: Folio origin final
   -> Natural
-  -> Natural
-  -> (forall source target.
-        Chain source
-        -> Chain target
-        -> Coconsolidation source target
-        -> result)
-  -> Maybe result
-withPaddedFolioMap pages sourceIndex targetIndex useMap
-  | sourceIndex > targetIndex = Nothing
-  | otherwise =
-      withFolioMap
-        pages
-        (paddedIndex pages sourceIndex)
-        (paddedIndex pages targetIndex)
-        useMap
-
-data SomePrefix origin where
-  SomePrefix :: Folio origin page -> SomePrefix origin
-
-prefixAt
-  :: Folio origin final
-  -> Natural
-  -> Maybe (SomePrefix origin)
-prefixAt pages index
-  | index >= folioLength pages = Nothing
-prefixAt pages@(OriginFolio {}) _ = Just (SomePrefix pages)
-prefixAt pages@(SnocPage _ previous _ _) index
-  | index == folioLength previous = Just (SomePrefix pages)
-  | otherwise = prefixAt previous index
+  -> (forall page. Folio origin page -> Natural -> result)
+  -> result
+withPageDataAt pages@(OriginFolio {}) index usePage =
+  usePage pages index
+withPageDataAt pages@(SnocPage _ previous _ _) index usePage
+  | index >= folioLength previous =
+      usePage pages (index - folioLength previous)
+  | otherwise = withPageDataAt previous index usePage
 
 data SomeMapTo target where
   SomeMapTo
@@ -169,17 +136,14 @@ data SomeMapTo target where
 mapFromIndex
   :: Folio origin target
   -> Natural
-  -> Maybe (SomeMapTo target)
-mapFromIndex pages sourceIndex
-  | sourceIndex >= folioLength pages = Nothing
+  -> SomeMapTo target
 mapFromIndex (OriginFolio _ page _) _ =
-  Just (SomeMapTo page identityFolioMap)
+  SomeMapTo page identityFolioMap
 mapFromIndex (SnocPage _ previous page transition) sourceIndex
-  | sourceIndex == folioLength previous =
-      Just (SomeMapTo page identityFolioMap)
-  | otherwise = do
-      SomeMapTo sourcePage sourceToPrevious <-
-        mapFromIndex previous sourceIndex
-      pure
-        (SomeMapTo sourcePage
-          (composeFolioMaps transition sourceToPrevious))
+  | sourceIndex >= folioLength previous =
+      SomeMapTo page identityFolioMap
+  | otherwise =
+      case mapFromIndex previous sourceIndex of
+        SomeMapTo sourcePage sourceToPrevious ->
+          SomeMapTo sourcePage
+            (composeFolioMaps transition sourceToPrevious)

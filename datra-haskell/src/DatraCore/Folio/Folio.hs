@@ -1,6 +1,7 @@
 -- | Public folio API backed by the hidden implementation.
 module Folio
   ( Folio
+  , PageOrder
   , folio
   , singletonFolio
   , appendPage
@@ -12,14 +13,16 @@ module Folio
   , folioMapComposition
   , lastChain
   , paddedIndex
+  , pageOrder
+  , pageOrderSource
+  , pageOrderTarget
   , withPageAt
-  , withPaddedPage
   , withFolioMap
-  , withPaddedFolioMap
   ) where
 
 import Folio.Internal
   ( Folio
+  , PageOrder
   , appendPage
   , folio
   , folioLength
@@ -29,10 +32,11 @@ import Folio.Internal
   , originChain
   , originUnique
   , originValue
+  , pageOrder
+  , pageOrderSource
+  , pageOrderTarget
   , paddedIndex
   , singletonFolio
   , withFolioMap
-  , withPaddedFolioMap
-  , withPaddedPage
   , withPageAt
   )

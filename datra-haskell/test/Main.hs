@@ -237,102 +237,124 @@ testConsolidationTransport = do
       == map (transported . transported) values)
 
 testFolio :: IO ()
-testFolio = do
-  originUnique threePageFolio () `seq`
-    folioMapIdentity False `seq`
-      folioMapComposition
-        (Consolidation.op nonzero)
-        (Consolidation.op collapseBool)
-        7 `seq` pure ()
-  assert "folio counts its genuine pages"
-    (folioLength threePageFolio == 3)
-  assert "folio padded indices repeat the final page"
-    (map (paddedIndex threePageFolio) [0, 1, 2, 3, 100]
-      == [0, 1, 2, 2, 2])
-  assert "folio retrieves each heterogeneous page"
-    (withPageAt threePageFolio 1 chainOrderType
-      == Just (finiteOrdinal 2))
-  assert "folio rejects an index outside its finite core"
-    (isNothing (withPageAt threePageFolio 3 (const True)))
-  assert "folio's padded presentation repeats its final chain"
-    (withPaddedPage threePageFolio 100 chainOrderType == omega)
-  assert "folio composes adjacent maps coherently"
-    (withFolioMap threePageFolio 1 2
-      (\sourcePage targetPage pageMap -> do
-        value <- chainObjectAt targetPage (finiteOrdinal 2)
-        let transported =
-              runConsolidationTransport (transportCoconsolidation pageMap) value
-        pure (chainPosition sourcePage transported == finiteOrdinal 1))
-      == Just (Just True))
-  assert "folio transports from a later page to its origin"
-    (withFolioMap threePageFolio 0 2
-      (\sourcePage targetPage pageMap -> do
-        value <- chainObjectAt targetPage (finiteOrdinal 5)
-        let transported =
-              runConsolidationTransport (transportCoconsolidation pageMap) value
-        pure (chainPosition sourcePage transported == finiteOrdinal 0))
-      == Just (Just True))
-  assert "folio pads maps along the full spine"
-    (withPaddedFolioMap threePageFolio 1 100
-      (\sourcePage targetPage pageMap -> do
-        value <- chainObjectAt targetPage (finiteOrdinal 8)
-        let transported =
-              runConsolidationTransport (transportCoconsolidation pageMap) value
-        pure (chainPosition sourcePage transported == finiteOrdinal 1))
-      == Just (Just True))
-  assert "folio has no map against the spine order"
-    (isNothing (withFolioMap threePageFolio 2 1 (\_ _ _ -> True)))
+testFolio =
+  case (pageOrder 1 2, pageOrder 0 2, pageOrder 1 100) of
+    (Just oneToTwo, Just zeroToTwo, Just oneToHundred) -> do
+      originUnique threePageFolio () `seq`
+        folioMapIdentity False `seq`
+          folioMapComposition
+            (Consolidation.op nonzero)
+            (Consolidation.op collapseBool)
+            7 `seq` pure ()
+      assert "folio counts its genuine pages"
+        (folioLength threePageFolio == 3)
+      assert "folio padded indices repeat the final page"
+        (map (paddedIndex threePageFolio) [0, 1, 2, 3, 100]
+          == [0, 1, 2, 2, 2])
+      assert "folio retrieves each heterogeneous page"
+        (withPageAt threePageFolio 1 chainOrderType
+          == finiteOrdinal 2)
+      assert "folio page lookup pads beyond its finite presentation"
+        (withPageAt threePageFolio 100 chainOrderType == omega)
+      assert "folio map order retains its certified endpoints"
+        ( pageOrderSource oneToTwo == 1
+          && pageOrderTarget oneToTwo == 2
+        )
+      assert "folio composes adjacent maps coherently"
+        (withFolioMap threePageFolio oneToTwo
+          (\sourcePage targetPage pageMap -> do
+            value <- chainObjectAt targetPage (finiteOrdinal 2)
+            let transported =
+                  runConsolidationTransport
+                    (transportCoconsolidation pageMap)
+                    value
+            pure (chainPosition sourcePage transported == finiteOrdinal 1))
+          == Just True)
+      assert "folio transports from a later page to its origin"
+        (withFolioMap threePageFolio zeroToTwo
+          (\sourcePage targetPage pageMap -> do
+            value <- chainObjectAt targetPage (finiteOrdinal 5)
+            let transported =
+                  runConsolidationTransport
+                    (transportCoconsolidation pageMap)
+                    value
+            pure (chainPosition sourcePage transported == finiteOrdinal 0))
+          == Just True)
+      assert "folio pads maps along the full spine"
+        (withFolioMap threePageFolio oneToHundred
+          (\sourcePage targetPage pageMap -> do
+            value <- chainObjectAt targetPage (finiteOrdinal 8)
+            let transported =
+                  runConsolidationTransport
+                    (transportCoconsolidation pageMap)
+                    value
+            pure (chainPosition sourcePage transported == finiteOrdinal 1))
+          == Just True)
+      assert "folio rejects an interval against the spine order"
+        (isNothing (pageOrder 2 1))
+    _ -> fail "test setup failed: valid page order was rejected"
 
 testPageElements :: IO ()
 testPageElements =
   pageElements threePageFolio $ \elements ->
     let at page position =
           pageElement elements page (finiteOrdinal position)
-    in case (at 0 0, at 1 0, at 1 1, at 2 5) of
-      (Just someOrigin, Just someFalseCell, Just someTrueCell, Just someFive) ->
+    in case (at 0 0, at 1 0, at 1 1, at 2 5, at 100 5) of
+      ( Just someOrigin
+        , Just someFalseCell
+        , Just someTrueCell
+        , Just someFive
+        , Just somePaddedFive
+        ) ->
         withPageElement someOrigin $ \origin ->
           withPageElement someFalseCell $ \falseCell ->
             withPageElement someTrueCell $ \trueCell ->
-              withPageElement someFive $ \five -> do
-                assert "cell occurrence rejects a position outside its page"
-                  (isNothing (at 1 2))
-                assert "cell occurrence exposes its page and position"
-                  ( pageElementPage five == 2
-                    && pageElementPosition five == finiteOrdinal 5
-                  )
-                assert "cell occurrence eliminates its hidden carrier safely"
-                  (withPageElementValue elements trueCell
-                    (\page value -> chainPosition page value)
-                    == Just (finiteOrdinal 1))
-                assert "page element traces encode exact folio transport"
-                  ( pageElementTransported five trueCell
-                    && not (pageElementTransported five falseCell)
-                    && pageElementTransported trueCell origin
-                  )
-                let fiveToTrue = pageElementArrow five trueCell
-                    trueToOrigin = pageElementArrow trueCell origin
-                    fiveToOrigin =
-                      composePageElementArrows trueToOrigin fiveToTrue
-                    directFiveToOrigin = pageElementArrow five origin
-                pageElementArrowEndpoints five trueCell `seq`
-                  pageElementArrowThin fiveToOrigin directFiveToOrigin `seq`
-                    pageElementArrowLeftIdentity fiveToTrue `seq`
-                      pageElementArrowRightIdentity fiveToTrue `seq`
-                        pageElementArrowAssociativity
-                          (identityPageElementArrow origin)
-                          trueToOrigin
-                          fiveToTrue `seq` pure ()
-                assert "page element arrows retain their typed endpoints"
-                  ( arrowSource fiveToTrue == five
-                    && arrowTarget fiveToTrue == trueCell
-                  )
-                assert "page element identities retain their object"
-                  ( arrowSource (identityPageElementArrow five) == five
-                    && arrowTarget (identityPageElementArrow five) == five
-                  )
-                assert
-                  "page element arrows compose totally through a typed boundary"
-                  (fiveToOrigin == directFiveToOrigin)
+              withPageElement someFive $ \five ->
+                withPageElement somePaddedFive $ \paddedFive -> do
+                  assert "cell occurrence rejects a position outside its page"
+                    (isNothing (at 1 2))
+                  assert "cell occurrence exposes its page and position"
+                    ( pageElementPage five == 2
+                      && pageElementPosition five == finiteOrdinal 5
+                    )
+                  assert "cell occurrence eliminates its hidden carrier safely"
+                    (withPageElementValue elements trueCell
+                      (\page value -> chainPosition page value)
+                      == Just (finiteOrdinal 1))
+                  assert "page element traces encode exact folio transport"
+                    ( pageElementTransported five trueCell
+                      && not (pageElementTransported five falseCell)
+                      && pageElementTransported trueCell origin
+                    )
+                  assert "page elements retain their infinite-spine page"
+                    ( pageElementPage paddedFive == 100
+                      && pageElementPosition paddedFive == finiteOrdinal 5
+                      && pageElementTransported paddedFive five
+                    )
+                  let fiveToTrue = pageElementArrow five trueCell
+                      trueToOrigin = pageElementArrow trueCell origin
+                      fiveToOrigin =
+                        composePageElementArrows trueToOrigin fiveToTrue
+                      directFiveToOrigin = pageElementArrow five origin
+                  pageElementArrowEndpoints five trueCell `seq`
+                    pageElementArrowThin fiveToOrigin directFiveToOrigin `seq`
+                      pageElementArrowLeftIdentity fiveToTrue `seq`
+                        pageElementArrowRightIdentity fiveToTrue `seq`
+                          pageElementArrowAssociativity
+                            (identityPageElementArrow origin)
+                            trueToOrigin
+                            fiveToTrue `seq` pure ()
+                  assert "page element arrows retain their typed endpoints"
+                    ( arrowSource fiveToTrue == five
+                      && arrowTarget fiveToTrue == trueCell
+                    )
+                  assert "page element identities retain their object"
+                    ( arrowSource (identityPageElementArrow five) == five
+                      && arrowTarget (identityPageElementArrow five) == five
+                    )
+                  assert
+                    "page element arrows compose totally through a typed boundary"
+                    (fiveToOrigin == directFiveToOrigin)
       _ -> fail "test setup failed: expected cell occurrences"
 
 testPagination :: IO ()

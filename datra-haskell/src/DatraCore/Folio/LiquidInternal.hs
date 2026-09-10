@@ -8,6 +8,8 @@
 -- | LiquidHaskell-verified folio representation and coherence primitives.
 module Folio.LiquidInternal
   ( SingletonOrigin
+  , PageOrder (..)
+  , pageOrder
   , FolioData (..)
   , folioData
   , appendPageData
@@ -55,6 +57,25 @@ data SingletonOrigin origin = SingletonOrigin
   { selectedOrigin :: origin
   , singletonOriginUnique :: origin -> ()
   }
+
+-- | A proof-carrying ordered pair of indices on the spine.
+{-@
+data PageOrder = PageOrder
+  { pageOrderSource :: Natural
+  , pageOrderTarget :: { target:Natural | pageOrderSource <= target }
+  }
+@-}
+data PageOrder = PageOrder
+  { pageOrderSource :: Natural
+  , pageOrderTarget :: Natural
+  }
+  deriving (Eq, Show)
+
+-- | Refine two dynamic indices to a spine-order certificate.
+pageOrder :: Natural -> Natural -> Maybe PageOrder
+pageOrder source target
+  | source <= target = Just (PageOrder source target)
+  | otherwise = Nothing
 
 -- | A type-aligned, nonempty sequence parameterized by its page container.
 -- GHC checks that every coconsolidation joins the carrier of the preceding
