@@ -303,8 +303,8 @@ A \textbf{folio} is a functor $F:S\to\CoCon$, where $S$ is the spine, such
 that $F(0)$ is the singleton chain.
 \end{definition}
 
-\begin{definition}[Cell Occurrences]
-For a folio $F$, its \textbf{category of cell occurrences}, denoted
+\begin{definition}[Page Elements]
+For a folio $F$, its \textbf{category of page elements}, denoted
 $\operatorname{El}(F)$, has as objects pairs $(m,k)$, where $m$ is a page
 and $k$ is an object of the chain $F(m)$.  An arrow
 $(m,k)\to(n,l)$ is an arrow $f:m\to n$ in the opposite spine for which the
@@ -362,11 +362,11 @@ abbrev Folio.SpineCell (W : Folio) (n : Nat) : Type := (W.pageChain n).Obj
 
 /-- Implementation bridge from the folio's chains to their object types.  The
 public indexing category is `El`; downstream definitions should speak about
-cell occurrences rather than expose this set-valued diagram. -/
+page elements rather than expose this set-valued diagram. -/
 def Folio.cellDiagram (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type :=
   W.core.leftOp ⋙ ConTra
 
-/-- The category of cell occurrences of a folio.  An object is a page together
+/-- The category of page elements of a folio.  An object is a page together
 with a cell of that page, and an arrow witnesses exact transport of that cell
 along the folio. -/
 def Folio.El (W : Folio) : Type 0 := W.cellDiagram.Elements
@@ -421,7 +421,7 @@ instance (W : Folio) : Category W.TallEl := categoryOfElements W.spineCellDiagra
 instance (W : Folio) (x y : W.TallEl) : Subsingleton (x ⟶ y) where
   allEq f g := CategoryOfElements.ext W.spineCellDiagram f g (Subsingleton.elim _ _)
 
-/-- Collapse a tall occurrence to the coherent finite representative used for
+/-- Collapse a tall page element to the coherent finite representative used for
 storage.  This is an implementation map, not the page space of the atlas. -/
 def Folio.collapseElements (W : Folio) : W.TallEl ⥤ W.El where
   obj x := ⟨op (W.paddedIndex x.1.unop), x.2⟩
@@ -501,9 +501,9 @@ theorem Folio.include_collapse_ne_id (W : Folio) :
 /-%%
 \begin{definition}[The Category of Paginations]
 The \textbf{Category of Paginations}, denoted $\Pag$, has as objects a
-folio $Fo$ together with its associated category of cell occurrences
+folio $Fo$ together with its associated category of page elements
 $El=\operatorname{El}(Fo)$.  For $W:\Pag$, write $W_{Fo}$ for its folio
-and $W_{El}$ for its occurrence category.  A morphism $T:X\to Y$ in
+and $W_{El}$ for its page-element category.  A morphism $T:X\to Y$ in
 $\Pag$ is a functor $T:X_{El}\to Y_{El}$.
 \end{definition}
 %%-/
@@ -834,7 +834,7 @@ def AtlHom.tall {X Y : Atl} (f : X ⟶ Y) : X.tall ⟶ Y.tall where
   Da := f.tallDa
 
 /-- The coherent identity of an infinite presentation.  It identifies every
-repeated occurrence with the stored representative. -/
+repeated page element with the stored representative. -/
 def Atl.coherence (X : Atl) : X.tall ⟶ X.tall :=
   (AtlHom.identity X).tall
 
@@ -3681,7 +3681,7 @@ def AtlMerge.pageEquiv (X Y : Atl) (n : Nat) :
   exact ofLex
 
 /-- The left input as a page-preserving subobject of the tall presentation of
-an atlas merge.  In particular, occurrence `n` is sent to occurrence `n+1`;
+an atlas merge.  In particular, page element `n` is sent to page element `n+1`;
 no finite representative is selected here. -/
 def tallBouquetLeftElement (X Y : Atl) (x : X.tall.El) : (AtlMerge X Y).tall.El := by
   refine ⟨op (x.1.unop + 1), ?_⟩

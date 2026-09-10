@@ -7,6 +7,8 @@ import DomanialInsertion
 import Dominion
 import FiniteDominion
 import Folio
+import PageElements
+import Pagination
 import Numeric.Natural (Natural)
 
 import Data.Maybe (isNothing)
@@ -22,6 +24,8 @@ main = do
   testConsolidationSum
   testConsolidationTransport
   testFolio
+  testPageElements
+  testPagination
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -278,3 +282,110 @@ testFolio = do
       == Just (Just True))
   assert "folio has no map against the spine order"
     (isNothing (withFolioMap threePageFolio 2 1 (\_ _ _ -> True)))
+
+testPageElements :: IO ()
+testPageElements =
+  pageElements threePageFolio $ \elements ->
+    let at page position =
+          pageElement elements page (finiteOrdinal position)
+    in case (at 0 0, at 1 0, at 1 1, at 2 5) of
+      (Just someOrigin, Just someFalseCell, Just someTrueCell, Just someFive) ->
+        withPageElement someOrigin $ \origin ->
+          withPageElement someFalseCell $ \falseCell ->
+            withPageElement someTrueCell $ \trueCell ->
+              withPageElement someFive $ \five -> do
+                assert "cell occurrence rejects a position outside its page"
+                  (isNothing (at 1 2))
+                assert "cell occurrence exposes its page and position"
+                  ( pageElementPage five == 2
+                    && pageElementPosition five == finiteOrdinal 5
+                  )
+                assert "cell occurrence eliminates its hidden carrier safely"
+                  (withPageElementValue elements trueCell
+                    (\page value -> chainPosition page value)
+                    == Just (finiteOrdinal 1))
+                assert "page element traces encode exact folio transport"
+                  ( pageElementTransported five trueCell
+                    && not (pageElementTransported five falseCell)
+                    && pageElementTransported trueCell origin
+                  )
+                let fiveToTrue = pageElementArrow five trueCell
+                    trueToOrigin = pageElementArrow trueCell origin
+                    fiveToOrigin =
+                      composePageElementArrows trueToOrigin fiveToTrue
+                    directFiveToOrigin = pageElementArrow five origin
+                pageElementArrowEndpoints five trueCell `seq`
+                  pageElementArrowThin fiveToOrigin directFiveToOrigin `seq`
+                    pageElementArrowLeftIdentity fiveToTrue `seq`
+                      pageElementArrowRightIdentity fiveToTrue `seq`
+                        pageElementArrowAssociativity
+                          (identityPageElementArrow origin)
+                          trueToOrigin
+                          fiveToTrue `seq` pure ()
+                assert "page element arrows retain their typed endpoints"
+                  ( arrowSource fiveToTrue == five
+                    && arrowTarget fiveToTrue == trueCell
+                  )
+                assert "page element identities retain their object"
+                  ( arrowSource (identityPageElementArrow five) == five
+                    && arrowTarget (identityPageElementArrow five) == five
+                  )
+                assert
+                  "page element arrows compose totally through a typed boundary"
+                  (fiveToOrigin == directFiveToOrigin)
+      _ -> fail "test setup failed: expected cell occurrences"
+
+testPagination :: IO ()
+testPagination =
+  pagination threePageFolio $ \sourcePagination ->
+    pagination threePageFolio $ \targetPagination ->
+      let sourceElements = paginationPageElements sourcePagination
+          targetElements = paginationPageElements targetPagination
+      in case
+        ( pageElement sourceElements 2 (finiteOrdinal 5)
+        , pageElement sourceElements 1 (finiteOrdinal 1)
+        , pageElement targetElements 0 (finiteOrdinal 0)
+        ) of
+          (Just someFive, Just someTrueCell, Just targetOrigin) ->
+            withPageElement someFive $ \five ->
+              withPageElement someTrueCell $ \trueCell -> do
+                assert "pagination retains its source folio"
+                  (folioLength (paginationFolio sourcePagination) == 3)
+                let constantMorphism =
+                      paginationMorphism
+                        (const targetOrigin)
+                        (\_ _ ->
+                          somePageElementTransportedReflexive targetOrigin)
+                    sourceArrow = pageElementArrow five trueCell
+                withPageElement
+                  (mapPaginationElement constantMorphism five) $ \mapped ->
+                    assert "pagination morphisms map page elements"
+                      ( pageElementPage mapped == 0
+                        && pageElementPosition mapped == finiteOrdinal 0
+                      )
+                withPageElementArrow
+                  (mapPaginationArrow constantMorphism sourceArrow) $
+                    \mappedArrow ->
+                      assert
+                        "pagination morphisms map arrows between mapped endpoints"
+                        ( pageElementPage (arrowSource mappedArrow) == 0
+                          && pageElementPage (arrowTarget mappedArrow) == 0
+                        )
+                withPageElement
+                  (mapPaginationElement identityPaginationMorphism five) $
+                    \mapped ->
+                      assert "the identity pagination morphism fixes objects"
+                        ( pageElementPage mapped == pageElementPage five
+                          && pageElementPosition mapped == pageElementPosition five
+                        )
+                let composed =
+                      composePaginationMorphisms
+                        identityPaginationMorphism
+                        constantMorphism
+                withPageElement
+                  (mapPaginationElement composed five) $ \mapped ->
+                    assert "pagination morphisms compose in categorical order"
+                      ( pageElementPage mapped == 0
+                        && pageElementPosition mapped == finiteOrdinal 0
+                      )
+          _ -> fail "test setup failed: expected pagination elements"

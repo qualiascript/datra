@@ -1,0 +1,54 @@
+-- | The category of cell occurrences of a folio.
+module PageElements
+  ( PageElements
+  , PageElement
+  , SomePageElement
+  , PageElementArrow
+  , pageElements
+  , pageElement
+  , pageElementPage
+  , pageElementPosition
+  , withPageElement
+  , withPageElementValue
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
+  , pageElementArrow
+  , pageElementTransported
+  , arrowSource
+  , arrowTarget
+  , identityPageElementArrow
+  , composePageElementArrows
+  , pageElementArrowEndpoints
+  , pageElementArrowThin
+  , pageElementArrowLeftIdentity
+  , pageElementArrowRightIdentity
+  , pageElementArrowAssociativity
+  ) where
+
+import PageElements.Internal
+  ( PageElement
+  , PageElementArrow
+  , PageElements
+  , SomePageElement
+  , arrowSource
+  , arrowTarget
+  , pageElement
+  , pageElementArrow
+  , pageElements
+  , composePageElementArrows
+  , identityPageElementArrow
+  , pageElementArrowAssociativity
+  , pageElementArrowEndpoints
+  , pageElementArrowLeftIdentity
+  , pageElementArrowRightIdentity
+  , pageElementArrowThin
+  , pageElementTransported
+  , pageElementPage
+  , pageElementPosition
+  , withPageElement
+  , withPageElementValue
+  , somePageElementPrecedes
+  , somePageElementTransported
+  , somePageElementTransportedReflexive
+  )
