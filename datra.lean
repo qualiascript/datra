@@ -506,6 +506,18 @@ $El=\operatorname{El}(Fo)$.  For $W:\Pag$, write $W_{Fo}$ for its folio
 and $W_{El}$ for its page-element category.  A morphism $T:X\to Y$ in
 $\Pag$ is a functor $T:X_{El}\to Y_{El}$.
 \end{definition}
+
+For illustration, let $X_H:=\mathsf{ConTra}\circ X_{Fo}^{\mathrm{op}}$ and
+define $Y_H$ likewise.  If an arrow $f$ of $X_{El}$ has source $x=(m,i)$,
+then $T$ acts schematically as follows:
+\[
+\begin{tikzcd}
+x=(m,i) \ar[r,"f"] \ar[d,"T"'] &
+  (n,X_H(f)(i)) \ar[d,"T"] \\
+(m',i') \ar[r,"T(f)"'] &
+  (n',Y_H(T(f))(i')).
+\end{tikzcd}
+\]
 %%-/
 
 structure Pag where
