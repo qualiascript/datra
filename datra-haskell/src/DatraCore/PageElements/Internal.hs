@@ -57,6 +57,7 @@ import Folio.LiquidInternal (FolioData (..))
 import Numeric.Natural (Natural)
 import PageElements.LiquidInternal
   ( PageElement (..)
+  , PageElementCell (..)
   , PageElementArrow
   , SomePageElement (..)
   , arrowSource
@@ -145,7 +146,8 @@ pageElement (PageElementIndex page prefix padding index) =
     (pageElementAt
       page
       (chainIndexPosition index)
-      (drop 1 (pageElementTraceAt prefix padding value)))
+      (drop 1 (pageElementTraceAt prefix padding value))
+      (PageElementCell (lastChain prefix) value))
   where
     value = chainObjectAt index
 
@@ -200,16 +202,10 @@ withPageElement (SomePageElement element) useElement = useElement element
 -- | Recover the existential page carrier and cell value represented by a page
 -- element for the duration of a rank-2 callback.
 withPageElementValue
-  :: PageElements scope origin final
-  -> PageElement scope object
+  :: PageElement scope object
   -> (forall cell. Chain cell -> cell -> result)
-  -> Maybe result
+  -> result
 withPageElementValue
-  (PageElements pages)
-  (PageElement page position _)
+  (PageElement _ _ _ (PageElementCell pageChain value))
   useCell =
-    withPageDataAt pages page $ \prefix _ ->
-      let pageChain = lastChain prefix
-      in case chainIndex pageChain position of
-        Nothing -> Nothing
-        Just index -> Just (useCell pageChain (chainObjectAt index))
+    useCell pageChain value

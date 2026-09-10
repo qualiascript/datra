@@ -7,7 +7,8 @@
 
 -- | LiquidHaskell-verified page-element objects and category operations.
 module PageElements.LiquidInternal
-  ( PageElement (..)
+  ( PageElementCell (..)
+  , PageElement (..)
   , SomePageElement (..)
   , PageElementArrow (..)
   , SomePageElementArrow (..)
@@ -36,11 +37,24 @@ module PageElements.LiquidInternal
   , traceTail
   ) where
 
+import Chain (Chain)
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
+
+-- | The heterogeneous chain and cell represented by a page element.  This is
+-- runtime evidence only; page-element identity is determined by page and
+-- transport trace.
+data PageElementCell where
+  PageElementCell :: Chain cell -> cell -> PageElementCell
+
+instance Eq PageElementCell where
+  _ == _ = True
+
+instance Show PageElementCell where
+  show _ = "<page-element-cell>"
 
 -- | One object of the category of elements.  The phantom @object@ identifies
 -- this particular dependent pair at the type level.
@@ -49,6 +63,7 @@ data PageElement scope object = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
   , pageElementTrace :: [Ordinal]
+  , pageElementCell :: PageElementCell
   }
 @-}
 type role PageElement nominal nominal
@@ -56,6 +71,7 @@ data PageElement (scope :: Type) (object :: Type) = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
   , pageElementTrace :: [Ordinal]
+  , pageElementCell :: PageElementCell
   }
   deriving (Eq, Show)
 
@@ -77,6 +93,7 @@ pageElementAt
   :: page:Natural
   -> position:Ordinal
   -> earlierPositions:[Ordinal]
+  -> PageElementCell
   -> { elementValue:PageElement scope object |
        pageElementPage elementValue == page
        && pageElementPosition elementValue == position }
@@ -85,12 +102,14 @@ pageElementAt
   :: Natural
   -> Ordinal
   -> [Ordinal]
+  -> PageElementCell
   -> PageElement scope object
-pageElementAt page position earlierPositions =
+pageElementAt page position earlierPositions cell =
   PageElement
     page
     position
     (position : earlierPositions)
+    cell
 
 -- | The base-arrow condition in the opposite finite spine: a source page is
 -- the same as or later than its target page.

@@ -7,7 +7,7 @@
 
 -- | LiquidHaskell-verified folio representation and coherence primitives.
 module Folio.LiquidInternal
-  ( SingletonOrigin
+  ( SingletonOrigin (..)
   , PageOrder (..)
   , pageOrder
   , FolioData (..)

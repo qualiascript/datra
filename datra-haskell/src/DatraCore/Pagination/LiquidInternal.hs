@@ -2,6 +2,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../LiquidPlugin.h"
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
@@ -22,10 +23,12 @@ module Pagination.LiquidInternal
   ) where
 
 import Data.Kind (Type)
+import Chain.Internal (Chain (..))
 import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
 import PageElements.LiquidInternal
   ( PageElement
+  , PageElementCell (..)
   , PageElementArrow
   , SomePageElement
   , SomePageElementArrow

@@ -324,9 +324,9 @@ testPageElements =
                       && pageElementPosition five == finiteOrdinal 5
                     )
                   assert "cell occurrence eliminates its hidden carrier safely"
-                    (withPageElementValue elements trueCell
-                      (\page value -> chainPosition page value)
-                      == Just (finiteOrdinal 1))
+                    (withPageElementValue trueCell
+                      chainPosition
+                      == finiteOrdinal 1)
                   assert "page element traces encode exact folio transport"
                     ( pageElementTransported five trueCell
                       && not (pageElementTransported five falseCell)
