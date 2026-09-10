@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Chain
+import CellOccurrence
 import Consolidation
 import DatraOrdinal
 import DomanialInsertion
@@ -22,6 +23,7 @@ main = do
   testConsolidationSum
   testConsolidationTransport
   testFolio
+  testCellOccurrence
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -278,3 +280,50 @@ testFolio = do
       == Just (Just True))
   assert "folio has no map against the spine order"
     (isNothing (withFolioMap threePageFolio 2 1 (\_ _ _ -> True)))
+
+testCellOccurrence :: IO ()
+testCellOccurrence =
+  cellOccurrenceCategory threePageFolio $ \occurrences -> do
+    let at page position =
+          cellOccurrence occurrences page (finiteOrdinal position)
+    case (at 0 0, at 1 1, at 2 5, at 2 0) of
+      (Just origin, Just trueCell, Just five, Just zero) -> do
+        assert "cell occurrence rejects a position outside its page"
+          (isNothing (at 1 2))
+        assert "cell occurrence exposes its page and position"
+          ( occurrencePage five == 2
+            && occurrencePosition five == finiteOrdinal 5
+          )
+        assert "cell occurrence eliminates its hidden carrier safely"
+          (withCellOccurrence occurrences trueCell
+            (\page value -> chainPosition page value)
+            == Just (finiteOrdinal 1))
+        assert "cell occurrence arrows follow exact reverse transport"
+          (hasCellOccurrenceArrow occurrences five trueCell)
+        assert "cell occurrence arrows reject the forward page direction"
+          (not (hasCellOccurrenceArrow occurrences trueCell five))
+        assert "cell occurrence arrows reject a different transported cell"
+          (not (hasCellOccurrenceArrow occurrences five zero))
+        case ( cellOccurrenceArrow occurrences five trueCell
+             , cellOccurrenceArrow occurrences trueCell origin
+             ) of
+          (Just fiveToTrue, Just trueToOrigin) -> do
+            assert "cell occurrence identities retain their object"
+              ( arrowSource (identityCellOccurrenceArrow five) == five
+                && arrowTarget (identityCellOccurrenceArrow five) == five
+              )
+            assert "cell occurrence arrows compose through a shared object"
+              ( composeCellOccurrenceArrows
+                  occurrences
+                  trueToOrigin
+                  fiveToTrue
+                == cellOccurrenceArrow occurrences five origin
+              )
+            assert "cell occurrence composition rejects mismatched boundaries"
+              (isNothing
+                (composeCellOccurrenceArrows
+                  occurrences
+                  fiveToTrue
+                  trueToOrigin))
+          _ -> fail "test setup failed: expected occurrence arrows"
+      _ -> fail "test setup failed: expected cell occurrences"

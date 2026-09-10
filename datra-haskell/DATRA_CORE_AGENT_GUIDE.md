@@ -32,11 +32,13 @@ DatraCore models data by separating **values**, **ways of locating values**, and
    transport API forgets that proof structure to expose the underlying function.
 7. A **folio** is a nonempty, finite presentation of an eventually constant
    spine diagram in coconsolidations, beginning at a singleton page.
+8. A **cell occurrence category** pairs genuine folio page indices with cells
+   on those pages; its arrows are the exact reverse transports along the folio.
 
 These pieces are the executable foundation of the larger organization in
 `datra.lean`: chains index pages, page cells carry dominions, and compatible
 insertions relate those cells inside atlases. The Haskell package does **not** yet
-implement that entire tower. It currently stops at folios.
+implement that entire tower. It currently stops at cell occurrences.
 
 ## Module and trust boundaries
 
@@ -65,9 +67,12 @@ src/DatraCore/
 │   ├── Folio.hs              public opaque API
 │   ├── Internal.hs           chain specialization and finite lookup
 │   └── LiquidInternal.hs     type-aligned data and coherence laws
-└── Chain/
-    ├── Chain.hs              public opaque API
-    └── Internal.hs           positions, lookup, sums, and spine
+├── Chain/
+│   ├── Chain.hs              public opaque API
+│   └── Internal.hs           positions, lookup, sums, and spine
+└── CellOccurrence/
+    ├── CellOccurrence.hs     public opaque occurrence-category API
+    └── Internal.hs           scoped objects, arrows, and composition
 ```
 
 The package exposes the short module names (`Dominion`, `Chain`, and so on), not
@@ -318,6 +323,22 @@ pointwise functor identity/composition. GHC's GADT typing enforces adjacency of
 heterogeneous pages. Padded-index arithmetic and existential lookup remain
 ordinary executable code with runtime tests rather than transcribed Lean proofs.
 
+### Cell occurrences: the folio's category of elements
+
+`CellOccurrenceCategory scope origin final` gives one folio a fresh generative
+scope. A `CellOccurrence scope` stores a genuine page index and the ordinal
+position of a cell in that page's chain; construction validates both values.
+`withCellOccurrence` recovers the heterogeneous carrier only inside a rank-2
+callback.
+
+An arrow exists from a later occurrence to an earlier occurrence exactly when
+the folio's coconsolidation transport sends the later cell to the earlier cell.
+`CellOccurrenceArrow scope` is therefore thin: its source and target determine
+it. Identity and composition are executable, and composition rechecks the direct
+transport between its outer endpoints. The category identity, associativity,
+transport-composition, and thinness laws are documented beside the implementation
+but are not yet encoded in LiquidHaskell.
+
 ## Correspondence with `datra.lean`
 
 The Lean file is the semantic source of truth. Haskell changes may choose a more
@@ -339,9 +360,10 @@ meaning.
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
 | `Tra` | `ConsolidationTransport` / `consolidationTransport` in `Consolidation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
 | `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
+| `Folio.El` / category of elements | `CellOccurrenceCategory`, `CellOccurrence`, `CellOccurrenceArrow` | Occurrences use genuine finite page indices and ordinal cell positions; scoped smart constructors validate objects and exact reverse-transport arrows without exposing heterogeneous page carriers. |
 
-The next unimplemented Lean layer defines `Pag`. DatraCore does not yet implement
-`Pag`, `Atl`, atlas
+The next unimplemented Lean layer packages a folio and its occurrence category as
+`Pag`. DatraCore does not yet implement `Pag`, `Atl`, atlas
 transposals/traversals, stable atlas families, coalitions, or data transformations.
 Those later definitions should not be collapsed into the current `Chain` or
 `Dominion` types.
@@ -365,7 +387,8 @@ page cells as a category of elements (Pag)
 each cell carries a Dominion, related by insertions (Atl)
 ```
 
-The current Haskell code implements this progression through `Folio`.
+The current Haskell code implements this progression through the category of cell
+occurrences, but does not yet package it as `Pag`.
 
 ## Guidance for changes
 
