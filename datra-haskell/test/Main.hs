@@ -1,13 +1,13 @@
 module Main (main) where
 
 import Chain
-import CellOccurrence
 import Consolidation
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
 import FiniteDominion
 import Folio
+import PageElements
 import Numeric.Natural (Natural)
 
 import Data.Maybe (isNothing)
@@ -23,7 +23,7 @@ main = do
   testConsolidationSum
   testConsolidationTransport
   testFolio
-  testCellOccurrence
+  testPageElements
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -281,48 +281,48 @@ testFolio = do
   assert "folio has no map against the spine order"
     (isNothing (withFolioMap threePageFolio 2 1 (\_ _ _ -> True)))
 
-testCellOccurrence :: IO ()
-testCellOccurrence =
-  cellOccurrenceCategory threePageFolio $ \occurrences -> do
+testPageElements :: IO ()
+testPageElements =
+  pageElements threePageFolio $ \elements -> do
     let at page position =
-          cellOccurrence occurrences page (finiteOrdinal position)
+          pageElement elements page (finiteOrdinal position)
     case (at 0 0, at 1 1, at 2 5, at 2 0) of
       (Just origin, Just trueCell, Just five, Just zero) -> do
         assert "cell occurrence rejects a position outside its page"
           (isNothing (at 1 2))
         assert "cell occurrence exposes its page and position"
-          ( occurrencePage five == 2
-            && occurrencePosition five == finiteOrdinal 5
+          ( pageElementPage five == 2
+            && pageElementPosition five == finiteOrdinal 5
           )
         assert "cell occurrence eliminates its hidden carrier safely"
-          (withCellOccurrence occurrences trueCell
+          (withPageElement elements trueCell
             (\page value -> chainPosition page value)
             == Just (finiteOrdinal 1))
         assert "cell occurrence arrows follow exact reverse transport"
-          (hasCellOccurrenceArrow occurrences five trueCell)
+          (hasPageElementArrow elements five trueCell)
         assert "cell occurrence arrows reject the forward page direction"
-          (not (hasCellOccurrenceArrow occurrences trueCell five))
+          (not (hasPageElementArrow elements trueCell five))
         assert "cell occurrence arrows reject a different transported cell"
-          (not (hasCellOccurrenceArrow occurrences five zero))
-        case ( cellOccurrenceArrow occurrences five trueCell
-             , cellOccurrenceArrow occurrences trueCell origin
+          (not (hasPageElementArrow elements five zero))
+        case ( pageElementArrow elements five trueCell
+             , pageElementArrow elements trueCell origin
              ) of
           (Just fiveToTrue, Just trueToOrigin) -> do
             assert "cell occurrence identities retain their object"
-              ( arrowSource (identityCellOccurrenceArrow five) == five
-                && arrowTarget (identityCellOccurrenceArrow five) == five
+              ( arrowSource (identityPageElementArrow five) == five
+                && arrowTarget (identityPageElementArrow five) == five
               )
             assert "cell occurrence arrows compose through a shared object"
-              ( composeCellOccurrenceArrows
-                  occurrences
+              ( composePageElementArrows
+                  elements
                   trueToOrigin
                   fiveToTrue
-                == cellOccurrenceArrow occurrences five origin
+                == pageElementArrow elements five origin
               )
             assert "cell occurrence composition rejects mismatched boundaries"
               (isNothing
-                (composeCellOccurrenceArrows
-                  occurrences
+                (composePageElementArrows
+                  elements
                   fiveToTrue
                   trueToOrigin))
           _ -> fail "test setup failed: expected occurrence arrows"

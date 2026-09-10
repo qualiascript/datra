@@ -30,9 +30,9 @@ library
         Chain
         Consolidation
         Folio
-        CellOccurrence
+        PageElements
     other-modules:
-        CellOccurrence.Internal
+        PageElements.Internal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
@@ -50,7 +50,7 @@ library
     hs-source-dirs:
         src/DatraCore
         src/DatraCore/Chain
-        src/DatraCore/CellOccurrence
+        src/DatraCore/PageElements
         src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion
