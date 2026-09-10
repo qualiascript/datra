@@ -171,7 +171,7 @@ pageElementArrow
   -> PageElement scope source
   -> PageElement scope target
   -> PageElementArrow scope source target
-pageElementArrow _ source target = PageElementArrow source target
+pageElementArrow _ = PageElementArrow
 
 -- | The identity arrow on an occurrence.
 --
