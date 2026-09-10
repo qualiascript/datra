@@ -84,8 +84,10 @@ testSpine = do
   assert "spine lookup inverts positions"
     (all
       (\value ->
-        chainObjectAt spine (chainPosition spine value) == Just value)
+        chainObjectAt (chainIndexOf spine value) == value)
       values)
+  assert "spine rejects an index at its order type"
+    (isNothing (chainIndex spine omega))
   assert "ordinal construction removes leading zero coefficients"
     (ordinal [0, 0, 1, 2] == ordinal [1, 2])
 
@@ -95,8 +97,8 @@ testChainSum = do
       leftValues = map Left [0 .. 4]
       rightValues = map Right [0 .. 4]
       roundTrips value =
-        chainObjectAt doubledSpine (chainPosition doubledSpine value)
-          == Just value
+        chainObjectAt (chainIndexOf doubledSpine value)
+          == value
   assert "ordinal sum lookup inverts both summands"
     (all roundTrips (leftValues <> rightValues))
 
@@ -263,7 +265,8 @@ testFolio =
       assert "folio composes adjacent maps coherently"
         (withFolioMap threePageFolio oneToTwo
           (\sourcePage targetPage pageMap -> do
-            value <- chainObjectAt targetPage (finiteOrdinal 2)
+            index <- chainIndex targetPage (finiteOrdinal 2)
+            let value = chainObjectAt index
             let transported =
                   runConsolidationTransport
                     (transportCoconsolidation pageMap)
@@ -273,7 +276,8 @@ testFolio =
       assert "folio transports from a later page to its origin"
         (withFolioMap threePageFolio zeroToTwo
           (\sourcePage targetPage pageMap -> do
-            value <- chainObjectAt targetPage (finiteOrdinal 5)
+            index <- chainIndex targetPage (finiteOrdinal 5)
+            let value = chainObjectAt index
             let transported =
                   runConsolidationTransport
                     (transportCoconsolidation pageMap)
@@ -283,7 +287,8 @@ testFolio =
       assert "folio pads maps along the full spine"
         (withFolioMap threePageFolio oneToHundred
           (\sourcePage targetPage pageMap -> do
-            value <- chainObjectAt targetPage (finiteOrdinal 8)
+            index <- chainIndex targetPage (finiteOrdinal 8)
+            let value = chainObjectAt index
             let transported =
                   runConsolidationTransport
                     (transportCoconsolidation pageMap)
@@ -298,7 +303,8 @@ testPageElements :: IO ()
 testPageElements =
   pageElements threePageFolio $ \elements ->
     let at page position =
-          pageElement elements page (finiteOrdinal position)
+          pageElement
+            <$> pageElementIndex elements page (finiteOrdinal position)
     in case (at 0 0, at 1 0, at 1 1, at 2 5, at 100 5) of
       ( Just someOrigin
         , Just someFalseCell
@@ -364,9 +370,9 @@ testPagination =
       let sourceElements = paginationPageElements sourcePagination
           targetElements = paginationPageElements targetPagination
       in case
-        ( pageElement sourceElements 2 (finiteOrdinal 5)
-        , pageElement sourceElements 1 (finiteOrdinal 1)
-        , pageElement targetElements 0 (finiteOrdinal 0)
+        ( pageElement <$> pageElementIndex sourceElements 2 (finiteOrdinal 5)
+        , pageElement <$> pageElementIndex sourceElements 1 (finiteOrdinal 1)
+        , pageElement <$> pageElementIndex targetElements 0 (finiteOrdinal 0)
         ) of
           (Just someFive, Just someTrueCell, Just targetOrigin) ->
             withPageElement someFive $ \five ->

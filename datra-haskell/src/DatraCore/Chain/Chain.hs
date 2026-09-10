@@ -1,10 +1,15 @@
 -- | Public chain API backed by the hidden chain implementation.
 module Chain
   ( Chain
+  , ChainIndex
   , chainOrdinalLT
   , positionMatches
   , chainOrderType
   , chainPosition
+  , chainIndex
+  , chainIndexOf
+  , chainIndexOrderType
+  , chainIndexPosition
   , chainObjectAt
   , chainPositionBelow
   , chainPositionInjective
@@ -18,7 +23,12 @@ module Chain
 
 import Chain.Internal
   ( Chain
+  , ChainIndex
   , chain
+  , chainIndex
+  , chainIndexOf
+  , chainIndexOrderType
+  , chainIndexPosition
   , chainObjectAt
   , chainOrderType
   , chainOrdinalLT

@@ -5,10 +5,14 @@
 -- | Hidden representation of the category of cell occurrences.
 module PageElements.Internal
   ( PageElements
+  , PageElementIndex
   , PageElement
   , SomePageElement (..)
   , PageElementArrow
   , pageElements
+  , pageElementIndex
+  , pageElementIndexPage
+  , pageElementIndexPosition
   , pageElement
   , pageElementPage
   , pageElementPosition
@@ -30,7 +34,14 @@ module PageElements.Internal
   , pageElementArrowAssociativity
   ) where
 
-import Chain (Chain, chainObjectAt, chainPosition)
+import Chain
+  ( Chain
+  , ChainIndex
+  , chainIndex
+  , chainIndexPosition
+  , chainObjectAt
+  , chainPosition
+  )
 import Consolidation
   ( runConsolidationTransport
   , transportCoconsolidation
@@ -72,6 +83,18 @@ type role PageElements nominal nominal nominal
 newtype PageElements (scope :: Type) origin final =
   PageElements (Folio origin final)
 
+-- | Evidence that an ordinal indexes an object of one page on this folio's
+-- infinite spine.  The nominal scope prevents evidence from one folio from
+-- being used to construct an element of another.
+type role PageElementIndex nominal
+data PageElementIndex (scope :: Type) where
+  PageElementIndex
+    :: Natural
+    -> Folio origin page
+    -> Natural
+    -> ChainIndex page
+    -> PageElementIndex scope
+
 -- | Introduce the occurrence category of a folio with a fresh abstract scope.
 pageElements
   :: Folio origin final
@@ -81,11 +104,30 @@ pageElements
 pageElements pages useCategory =
   useCategory (PageElements pages)
 
--- | Look up an occurrence by page index and position on the infinite spine.
+-- | Refine a page number and ordinal to an index of this folio's page-element
+-- category.  Pages after the finite presentation repeat its final chain, so
+-- this fails exactly when 'chainIndex' rejects the ordinal.
+pageElementIndex
+  :: PageElements scope origin final
+  -> Natural
+  -> Ordinal
+  -> Maybe (PageElementIndex scope)
+pageElementIndex (PageElements pages) page position =
+  withPageDataAt pages page $ \prefix padding ->
+    PageElementIndex page prefix padding
+      <$> chainIndex (lastChain prefix) position
+
+pageElementIndexPage :: PageElementIndex scope -> Natural
+pageElementIndexPage (PageElementIndex page _ _ _) = page
+
+pageElementIndexPosition :: PageElementIndex scope -> Ordinal
+pageElementIndexPosition (PageElementIndex _ _ _ index) =
+  chainIndexPosition index
+
+-- | Construct an occurrence from a certified index.  This is total: the only
+-- partial step is refining an unchecked ordinal with 'pageElementIndex'.
 --
--- Pages after the finite presentation repeat its final chain, so lookup can
--- fail only when @chainObjectAt pageChain position == Nothing@.  On success
--- the result @x@ satisfies:
+-- The result @x@ satisfies:
 --
 -- @
 -- pageElementPage x == page
@@ -96,21 +138,16 @@ pageElements pages useCategory =
 -- cell obtained by transporting the requested cell to page @page - i@. This is
 -- the runtime fact used by the LiquidHaskell arrow refinement.
 pageElement
-  :: PageElements scope origin final
-  -> Natural
-  -> Ordinal
-  -> Maybe (SomePageElement scope)
-pageElement (PageElements pages) page position =
-  withPageDataAt pages page $ \prefix padding ->
-    case chainObjectAt (lastChain prefix) position of
-      Nothing -> Nothing
-      Just value ->
-        Just
-          (SomePageElement
-            (pageElementAt
-              page
-              position
-              (drop 1 (pageElementTraceAt prefix padding value))))
+  :: PageElementIndex scope
+  -> SomePageElement scope
+pageElement (PageElementIndex page prefix padding index) =
+  SomePageElement
+    (pageElementAt
+      page
+      (chainIndexPosition index)
+      (drop 1 (pageElementTraceAt prefix padding value)))
+  where
+    value = chainObjectAt index
 
 -- | Build the complete sequence of exact adjacent transports from one cell
 -- back through every earlier page to the origin.  The head is the requested
@@ -173,4 +210,6 @@ withPageElementValue
   useCell =
     withPageDataAt pages page $ \prefix _ ->
       let pageChain = lastChain prefix
-      in useCell pageChain <$> chainObjectAt pageChain position
+      in case chainIndex pageChain position of
+        Nothing -> Nothing
+        Just index -> Just (useCell pageChain (chainObjectAt index))
