@@ -284,20 +284,20 @@ category $\Con^{\mathrm{op}}$.
 abbrev CoCon := Opposite Con
 
 /-%%
-\section{Transportation and Folios}
-
-\begin{definition}[The Transportation Functor]
-The \textbf{Transportation Functor}, denoted
-$\mathsf{Tra}:\Con\to\Set$, sends a chain to its object set and a
+\begin{definition}[The Consolidation Transport Functor]
+The \textbf{Consolidation Transport Functor}, denoted
+$\mathsf{ConTra}:\Con\to\Set$, sends a chain to its object set and a
 consolidation to its underlying set-theoretic surjection.
 \end{definition}
 %%-/
 
-def Tra : Con ⥤ Type where
+def ConTra : Con ⥤ Type where
   obj X := X.Obj
   map f := f.toFun
 
 /-%%
+\section{Folios and Paginations}
+
 \begin{definition}[Folio]
 A \textbf{folio} is a functor $F:S\to\CoCon$, where $S$ is the spine, such
 that $F(0)$ is the singleton chain.
@@ -339,9 +339,9 @@ def Folio.spineBase (W : Folio) : Nat ⥤ Fin W.length where
 def Folio.F (W : Folio) : Nat ⥤ CoCon := W.spineBase ⋙ W.core
 
 /-- The page functor on the opposite spine. -/
-def Folio.spineH (W : Folio) : Natᵒᵖ ⥤ Type := W.F.leftOp ⋙ Tra
+def Folio.spineH (W : Folio) : Natᵒᵖ ⥤ Type := W.F.leftOp ⋙ ConTra
 
-def Folio.H (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type := W.core.leftOp ⋙ Tra
+def Folio.H (W : Folio) : (Fin W.length)ᵒᵖ ⥤ Type := W.core.leftOp ⋙ ConTra
 
 def Folio.E (W : Folio) : Type 0 := W.H.Elements
 
@@ -467,11 +467,9 @@ theorem Folio.include_collapse_ne_id (W : Folio) :
   exact (ne_of_lt (Nat.sub_lt W.positive (by omega))) hbad
 
 /-%%
-\section{Paginations}
-
 \begin{definition}[The Category of Paginations]
 The \textbf{Category of Paginations}, denoted $\Pag$, has as objects pairs
-$(H,E)$ where $H=\mathsf{Tra}\circ F^{\mathrm{op}}$ for a folio $F$, and
+$(H,E)$ where $H=\mathsf{ConTra}\circ F^{\mathrm{op}}$ for a folio $F$, and
 $E$ is the category of elements of $H$.  For $W:\Pag$, write $W_H$ for the
 first inclusion and $W_E$ for the second inclusion.  A morphism $T:X\to Y$
 in $\Pag$ is a functor $T:X_E\to Y_E$.  Thus, for every morphism
@@ -2569,7 +2567,7 @@ def bouquetLeftMapHom (X Y : Atl) {x y : X.E} (q : x ⟶ y) :
   dsimp only [bouquetLeftElement]
   simp only [bouquetLeftPred, bouquetPag, bouquetFolio, Folio.H,
     bouquetChain, bouquetConMap, Fin.cases_succ, ConHom.sum, Functor.leftOp_map,
-    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, Tra]
+    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, ConTra]
   change toLex (Sum.inl _) = toLex (Sum.inl _)
   congr 2
   have hqv : X.P.H.map q.val kx = ky := q.property
@@ -2596,7 +2594,7 @@ def bouquetRightMapHom (X Y : Atl) {x y : Y.E} (q : x ⟶ y) :
   dsimp only [bouquetRightElement]
   simp only [bouquetRightPred, bouquetPag, bouquetFolio, Folio.H,
     bouquetChain, bouquetConMap, Fin.cases_succ, ConHom.sum, Functor.leftOp_map,
-    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, Tra]
+    Functor.comp_obj, Functor.comp_map, Quiver.Hom.unop_op, ConTra]
   change toLex (Sum.inr _) = toLex (Sum.inr _)
   congr 2
   have hqv : Y.P.H.map q.val kx = ky := q.property
