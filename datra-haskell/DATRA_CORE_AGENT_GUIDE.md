@@ -344,12 +344,12 @@ the folio's coconsolidation transport sends the later cell to the earlier cell.
 `PageElementArrow scope source target` is therefore thin: its typed endpoints
 determine it. The shared endpoint in composition is enforced by its Haskell type,
 and LiquidHaskell additionally checks equality of the stored middle object.
-Identity and composition are total. LiquidHaskell verifies the opposite-spine
-page-order invariant, constructor endpoints, conditional thinness, composition
-closure, left and right identity, and associativity. Exact heterogeneous cell
-transport—the property field supplied to Lean's `CategoryOfElements.homMk`—is
-still documented on `pageElementArrow`; encoding it requires exposing folio's
-rank-2 transport operation to the refinement layer.
+Each page element stores a transport trace computed by applying the folio's
+adjacent coconsolidations back to the origin. A target is the exact transport of
+a source precisely when its trace is a suffix of the source trace. Identity and
+composition are total. LiquidHaskell verifies the opposite-spine page order,
+exact-transport suffix relation, constructor endpoints, conditional thinness,
+composition closure, left and right identity, and associativity.
 
 ## Correspondence with `datra.lean`
 
@@ -372,7 +372,7 @@ meaning.
 | `CoCon` | `Coconsolidation` | Both reverse morphism direction while retaining the underlying consolidation. |
 | `Tra` | `ConsolidationTransport` / `consolidationTransport` in `Consolidation` | The Haskell carrier type parameters implement the object action; the explicit wrapper holds the underlying set-theoretic function on morphisms. |
 | `Folio` | `Folio origin final` | A type-aligned nonempty sequence stores the singleton first page and adjacent coconsolidations; arbitrary core maps are derived by identity and composition, and later spine indices are padded with the final page. |
-| `Folio.El` / category of elements | `PageElements`, `PageElement`, `PageElementArrow` | Occurrences use genuine finite page indices and ordinal cell positions. Fresh object indices make identity and composition total; LiquidHaskell verifies their page-order and category laws, while exact heterogeneous reverse transport remains the bridge still to encode. |
+| `Folio.El` / category of elements | `PageElements`, `PageElement`, `PageElementArrow` | Occurrences use genuine finite page indices, ordinal cell positions, and exact reverse-transport traces. Fresh object indices make identity and composition total; LiquidHaskell verifies the transport relation and category laws. |
 
 The next unimplemented Lean layer packages a folio and its occurrence category as
 `Pag`. DatraCore does not yet implement `Pag`, `Atl`, atlas

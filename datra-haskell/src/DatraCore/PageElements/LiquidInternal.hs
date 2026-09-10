@@ -12,6 +12,9 @@ module PageElements.LiquidInternal
   , pageElementAt
   , pageElementPrecedes
   , pageElementPrecedesTransitive
+  , pageElementTransported
+  , pageElementTransportedReflexive
+  , pageElementTransportedTransitive
   , pageElementArrow
   , identityPageElementArrow
   , composePageElementArrows
@@ -20,6 +23,7 @@ module PageElements.LiquidInternal
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowAssociativity
+  , traceTail
   ) where
 
 import Data.Kind (Type)
@@ -34,21 +38,25 @@ import Numeric.Natural (Natural)
 data PageElement scope object = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
+  , pageElementTrace :: [Ordinal]
   }
 @-}
 type role PageElement nominal nominal
 data PageElement (scope :: Type) (object :: Type) = PageElement
   { pageElementPage :: Natural
   , pageElementPosition :: Ordinal
+  , pageElementTrace :: [Ordinal]
   }
   deriving (Eq, Show)
 
--- | Construct a page element with exactly the supplied runtime coordinates.
+-- | Construct a page element from its current position followed by its
+-- transported positions on every preceding page.
 {-@ reflect pageElementAt @-}
 {-@
 pageElementAt
   :: page:Natural
   -> position:Ordinal
+  -> earlierPositions:[Ordinal]
   -> { elementValue:PageElement scope object |
        pageElementPage elementValue == page
        && pageElementPosition elementValue == position }
@@ -56,8 +64,13 @@ pageElementAt
 pageElementAt
   :: Natural
   -> Ordinal
+  -> [Ordinal]
   -> PageElement scope object
-pageElementAt = PageElement
+pageElementAt page position earlierPositions =
+  PageElement
+    page
+    position
+    (position : earlierPositions)
 
 -- | The base-arrow condition in the opposite finite spine: a source page is
 -- the same as or later than its target page.
@@ -68,6 +81,90 @@ pageElementPrecedes
   -> Bool
 pageElementPrecedes source target =
   pageElementPage source >= pageElementPage target
+
+-- | Whether the target is exactly one of the source cell's transported
+-- occurrences.  Traces are stored from the current page back to the origin,
+-- so this is precisely the suffix relation.
+{-@ reflect pageElementTransported @-}
+pageElementTransported
+  :: PageElement scope source
+  -> PageElement scope target
+  -> Bool
+pageElementTransported source target =
+  traceSuffix (pageElementTrace source) (pageElementTrace target)
+
+{-@ reflect traceSuffix @-}
+traceSuffix :: [Ordinal] -> [Ordinal] -> Bool
+traceSuffix source target
+  | source == target = True
+traceSuffix [] _ = False
+traceSuffix (_ : rest) target = traceSuffix rest target
+
+-- | Every transport trace is a suffix of itself.
+{-@
+pageElementTransportedReflexive
+  :: value:PageElement scope object
+  -> { proof:() | pageElementTransported value value }
+@-}
+pageElementTransportedReflexive
+  :: PageElement scope object
+  -> ()
+pageElementTransportedReflexive _ = ()
+
+-- | Exact transport is transitive because suffixes of suffixes are suffixes.
+{-@
+pageElementTransportedTransitive
+  :: sourceValue:PageElement scope source
+  -> middleValue:{PageElement scope middle |
+       pageElementTransported sourceValue middleValue}
+  -> targetValue:{PageElement scope target |
+       pageElementTransported middleValue targetValue}
+  -> { proof:() |
+       pageElementTransported sourceValue targetValue }
+@-}
+pageElementTransportedTransitive
+  :: PageElement scope source
+  -> PageElement scope middle
+  -> PageElement scope target
+  -> ()
+pageElementTransportedTransitive source middle target =
+  traceSuffixTransitive
+    (pageElementTrace source)
+    (pageElementTrace middle)
+    (pageElementTrace target)
+
+{-@
+traceSuffixTransitive
+  :: source:[Ordinal]
+  -> middle:{[Ordinal] | traceSuffix source middle}
+  -> target:{[Ordinal] | traceSuffix middle target}
+  -> { proof:() | traceSuffix source target }
+@-}
+traceSuffixTransitive :: [Ordinal] -> [Ordinal] -> [Ordinal] -> ()
+traceSuffixTransitive source middle _target
+  | source == middle = ()
+traceSuffixTransitive [] _ _ = ()
+traceSuffixTransitive source@(_ : rest) middle target =
+  case traceSuffixTransitive rest middle target of
+    () -> traceSuffixLift source target
+
+{-@ reflect traceTail @-}
+traceTail :: [Ordinal] -> [Ordinal]
+traceTail [] = []
+traceTail (_ : rest) = rest
+
+-- | Lift a suffix fact across one additional leading trace entry.
+{-@
+traceSuffixLift
+  :: source:{[Ordinal] | 0 < len source}
+  -> target:{[Ordinal] | traceSuffix (traceTail source) target}
+  -> { proof:() | traceSuffix source target }
+@-}
+traceSuffixLift :: [Ordinal] -> [Ordinal] -> ()
+traceSuffixLift source target
+  | source == target = ()
+traceSuffixLift [] _ = ()
+traceSuffixLift (_ : _) _ = ()
 
 -- | Transitivity of the opposite-spine page order.
 {-@
@@ -86,18 +183,19 @@ pageElementPrecedesTransitive
   -> PageElement scope target
   -> ()
 pageElementPrecedesTransitive
-  (PageElement _ _)
-  (PageElement _ _)
-  (PageElement _ _) = ()
+  (PageElement _ _ _)
+  (PageElement _ _ _)
+  (PageElement _ _ _) = ()
 
--- | A type-indexed arrow between page elements.  LiquidHaskell checks the
--- existence of its underlying opposite-spine arrow; exact cell transport is
--- the additional proof obligation documented on 'pageElementArrow'.
+-- | A type-indexed arrow between page elements. LiquidHaskell checks both the
+-- underlying opposite-spine arrow and exact cell transport through the stored
+-- transport traces.
 {-@
 data PageElementArrow scope source target = PageElementArrow
   { arrowSource :: PageElement scope source
   , arrowTarget :: targetValue:{PageElement scope target |
-      pageElementPrecedes arrowSource targetValue}
+      pageElementPrecedes arrowSource targetValue
+      && pageElementTransported arrowSource targetValue}
   }
 @-}
 type role PageElementArrow nominal nominal nominal
@@ -110,16 +208,16 @@ data PageElementArrow
   }
   deriving (Eq, Show)
 
--- | Total arrow constructor.  Its refined input requires the underlying base
--- arrow.  The remaining category-of-elements premise is that folio transport
--- sends @source@'s cell exactly to @target@'s cell; that premise will become a
--- refinement once heterogeneous folio transport is exposed to LiquidHaskell.
+-- | Total arrow constructor. Its refined input requires both the underlying
+-- opposite-spine arrow and the category-of-elements condition that the source
+-- cell's transport trace lands exactly on the target occurrence.
 {-@ reflect pageElementArrow @-}
 {-@
 pageElementArrow
   :: sourceValue:PageElement scope source
   -> targetValue:{PageElement scope target |
-       pageElementPrecedes sourceValue targetValue}
+       pageElementPrecedes sourceValue targetValue
+       && pageElementTransported sourceValue targetValue}
   -> { arrowValue:PageElementArrow scope source target |
        arrowSource arrowValue == sourceValue
        && arrowTarget arrowValue == targetValue }
@@ -136,10 +234,14 @@ identityPageElementArrow
   :: PageElement scope object
   -> PageElementArrow scope object object
 identityPageElementArrow occurrence =
-  PageElementArrow occurrence occurrence
+  case pageElementTransportedReflexive occurrence of
+    () -> PageElementArrow occurrence occurrence
 
--- | Total categorical composition.  The Haskell indices align the middle
--- object; LiquidHaskell proves closure of the underlying page order.
+-- | Total categorical composition. The Haskell indices align the middle
+-- object; the refinement additionally requires its two runtime representations
+-- to agree. LiquidHaskell proves that both reversed page order and exact trace
+-- transport are preserved from the first arrow's source to the second arrow's
+-- target.
 {-@ reflect composePageElementArrows @-}
 {-@
 composePageElementArrows
@@ -159,14 +261,19 @@ composePageElementArrows second first =
     (arrowSource first)
     (arrowTarget first)
     (arrowTarget second) of
-      () -> PageElementArrow (arrowSource first) (arrowTarget second)
+      () -> case pageElementTransportedTransitive
+        (arrowSource first)
+        (arrowTarget first)
+        (arrowTarget second) of
+          () -> PageElementArrow (arrowSource first) (arrowTarget second)
 
 -- | The smart constructor stores exactly its two arguments.
 {-@
 pageElementArrowEndpoints
   :: sourceValue:PageElement scope source
   -> targetValue:{PageElement scope target |
-       pageElementPrecedes sourceValue targetValue}
+       pageElementPrecedes sourceValue targetValue
+       && pageElementTransported sourceValue targetValue}
   -> { proof:() |
        arrowSource (pageElementArrow sourceValue targetValue) == sourceValue
        && arrowTarget (pageElementArrow sourceValue targetValue) == targetValue }

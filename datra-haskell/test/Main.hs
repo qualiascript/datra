@@ -286,43 +286,49 @@ testPageElements =
   pageElements threePageFolio $ \elements ->
     let at page position =
           pageElement elements page (finiteOrdinal position)
-    in case (at 0 0, at 1 1, at 2 5) of
-      (Just someOrigin, Just someTrueCell, Just someFive) ->
+    in case (at 0 0, at 1 0, at 1 1, at 2 5) of
+      (Just someOrigin, Just someFalseCell, Just someTrueCell, Just someFive) ->
         withPageElement someOrigin $ \origin ->
-          withPageElement someTrueCell $ \trueCell ->
-            withPageElement someFive $ \five -> do
-              assert "cell occurrence rejects a position outside its page"
-                (isNothing (at 1 2))
-              assert "cell occurrence exposes its page and position"
-                ( pageElementPage five == 2
-                  && pageElementPosition five == finiteOrdinal 5
-                )
-              assert "cell occurrence eliminates its hidden carrier safely"
-                (withPageElementValue elements trueCell
-                  (\page value -> chainPosition page value)
-                  == Just (finiteOrdinal 1))
-              let fiveToTrue = pageElementArrow five trueCell
-                  trueToOrigin = pageElementArrow trueCell origin
-                  fiveToOrigin =
-                    composePageElementArrows trueToOrigin fiveToTrue
-                  directFiveToOrigin = pageElementArrow five origin
-              pageElementArrowEndpoints five trueCell `seq`
-                pageElementArrowThin fiveToOrigin directFiveToOrigin `seq`
-                  pageElementArrowLeftIdentity fiveToTrue `seq`
-                    pageElementArrowRightIdentity fiveToTrue `seq`
-                      pageElementArrowAssociativity
-                        (identityPageElementArrow origin)
-                        trueToOrigin
-                        fiveToTrue `seq` pure ()
-              assert "page element arrows retain their typed endpoints"
-                ( arrowSource fiveToTrue == five
-                  && arrowTarget fiveToTrue == trueCell
-                )
-              assert "page element identities retain their object"
-                ( arrowSource (identityPageElementArrow five) == five
-                  && arrowTarget (identityPageElementArrow five) == five
-                )
-              assert
-                "page element arrows compose totally through a typed boundary"
-                (fiveToOrigin == directFiveToOrigin)
+          withPageElement someFalseCell $ \falseCell ->
+            withPageElement someTrueCell $ \trueCell ->
+              withPageElement someFive $ \five -> do
+                assert "cell occurrence rejects a position outside its page"
+                  (isNothing (at 1 2))
+                assert "cell occurrence exposes its page and position"
+                  ( pageElementPage five == 2
+                    && pageElementPosition five == finiteOrdinal 5
+                  )
+                assert "cell occurrence eliminates its hidden carrier safely"
+                  (withPageElementValue elements trueCell
+                    (\page value -> chainPosition page value)
+                    == Just (finiteOrdinal 1))
+                assert "page element traces encode exact folio transport"
+                  ( pageElementTransported five trueCell
+                    && not (pageElementTransported five falseCell)
+                    && pageElementTransported trueCell origin
+                  )
+                let fiveToTrue = pageElementArrow five trueCell
+                    trueToOrigin = pageElementArrow trueCell origin
+                    fiveToOrigin =
+                      composePageElementArrows trueToOrigin fiveToTrue
+                    directFiveToOrigin = pageElementArrow five origin
+                pageElementArrowEndpoints five trueCell `seq`
+                  pageElementArrowThin fiveToOrigin directFiveToOrigin `seq`
+                    pageElementArrowLeftIdentity fiveToTrue `seq`
+                      pageElementArrowRightIdentity fiveToTrue `seq`
+                        pageElementArrowAssociativity
+                          (identityPageElementArrow origin)
+                          trueToOrigin
+                          fiveToTrue `seq` pure ()
+                assert "page element arrows retain their typed endpoints"
+                  ( arrowSource fiveToTrue == five
+                    && arrowTarget fiveToTrue == trueCell
+                  )
+                assert "page element identities retain their object"
+                  ( arrowSource (identityPageElementArrow five) == five
+                    && arrowTarget (identityPageElementArrow five) == five
+                  )
+                assert
+                  "page element arrows compose totally through a typed boundary"
+                  (fiveToOrigin == directFiveToOrigin)
       _ -> fail "test setup failed: expected cell occurrences"

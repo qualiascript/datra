@@ -11,6 +11,7 @@ module PageElements
   , withPageElement
   , withPageElementValue
   , pageElementArrow
+  , pageElementTransported
   , arrowSource
   , arrowTarget
   , identityPageElementArrow
@@ -39,6 +40,7 @@ import PageElements.Internal
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowThin
+  , pageElementTransported
   , pageElementPage
   , pageElementPosition
   , withPageElement

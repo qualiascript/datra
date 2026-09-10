@@ -15,6 +15,7 @@ module PageElements.Internal
   , withPageElement
   , withPageElementValue
   , pageElementArrow
+  , pageElementTransported
   , arrowSource
   , arrowTarget
   , identityPageElementArrow
@@ -26,11 +27,16 @@ module PageElements.Internal
   , pageElementArrowAssociativity
   ) where
 
-import Chain (Chain, chainObjectAt)
+import Chain (Chain, chainObjectAt, chainPosition)
+import Consolidation
+  ( runConsolidationTransport
+  , transportCoconsolidation
+  )
 import DatraOrdinal (Ordinal)
 import Data.Kind (Type)
 import Folio
   ( Folio
+  , withFolioMap
   , withPageAt
   )
 import Numeric.Natural (Natural)
@@ -48,10 +54,10 @@ import PageElements.LiquidInternal
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowThin
+  , pageElementTransported
   )
 
 import Control.Monad (join)
-import Data.Maybe (isJust)
 
 -- | A folio viewed as its category of cell occurrences.  The generative
 -- @scope@ prevents occurrences belonging to different folios from being
@@ -85,17 +91,61 @@ pageElements pages useCategory =
 -- pageElementPage x == page
 -- pageElementPosition x == position
 -- @
+--
+-- Its hidden trace is computed from the folio itself: entry @i@ is the exact
+-- cell obtained by transporting the requested cell to page @page - i@. This is
+-- the runtime fact used by the LiquidHaskell arrow refinement.
 pageElement
   :: PageElements scope origin final
   -> Natural
   -> Ordinal
   -> Maybe (SomePageElement scope)
 pageElement (PageElements pages) page position = do
-  present <- withPageAt pages page $ \pageChain ->
-    isJust (chainObjectAt pageChain position)
-  if present
-    then Just (SomePageElement (pageElementAt page position))
-    else Nothing
+  trace <- pageElementTraceAt pages page position
+  case trace of
+    [] -> Nothing
+    currentPosition : earlierPositions ->
+      Just
+        (SomePageElement
+          (pageElementAt page currentPosition earlierPositions))
+
+-- | Build the complete sequence of exact adjacent transports from one cell
+-- back through every earlier page to the origin.  The head is the requested
+-- occurrence; every following position is computed using the corresponding
+-- coconsolidation in the folio.
+pageElementTraceAt
+  :: Folio origin final
+  -> Natural
+  -> Ordinal
+  -> Maybe [Ordinal]
+pageElementTraceAt pages 0 position = do
+  cellExists <- withPageAt pages 0 $ \pageChain ->
+    case chainObjectAt pageChain position of
+      Just _ -> True
+      Nothing -> False
+  if cellExists then Just [position] else Nothing
+pageElementTraceAt pages page position = do
+  earlierPosition <- previousPagePosition pages page position
+  earlierTrace <- pageElementTraceAt pages (page - 1) earlierPosition
+  pure (position : earlierTrace)
+
+-- | Transport one cell position across one adjacent reverse-spine arrow.
+previousPagePosition
+  :: Folio origin final
+  -> Natural
+  -> Ordinal
+  -> Maybe Ordinal
+previousPagePosition pages laterPage position
+  | laterPage == 0 = Nothing
+  | otherwise =
+      join $ withFolioMap pages (laterPage - 1) laterPage $
+        \earlierChain laterChain pageMap -> do
+          laterCell <- chainObjectAt laterChain position
+          let earlierCell =
+                runConsolidationTransport
+                  (transportCoconsolidation pageMap)
+                  laterCell
+          pure (chainPosition earlierChain earlierCell)
 
 -- | Eliminate the existential object identity of a dynamically looked-up page
 -- element.  The callback receives a fresh @object@ type that can index total
@@ -115,7 +165,7 @@ withPageElementValue
   -> Maybe result
 withPageElementValue
   (PageElements pages)
-  (PageElement page position)
+  (PageElement page position _)
   useCell =
     join $ withPageAt pages page $ \pageChain ->
       useCell pageChain <$> chainObjectAt pageChain position
