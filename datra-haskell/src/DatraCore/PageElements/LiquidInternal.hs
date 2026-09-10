@@ -244,9 +244,9 @@ pageElementPrecedesTransitive
   -> PageElement scope target
   -> ()
 pageElementPrecedesTransitive
-  (PageElement _ _ _)
-  (PageElement _ _ _)
-  (PageElement _ _ _) = ()
+  PageElement {}
+  PageElement {}
+  PageElement {} = ()
 
 -- | A type-indexed arrow between page elements. LiquidHaskell checks both the
 -- underlying opposite-spine arrow and exact cell transport through the stored
