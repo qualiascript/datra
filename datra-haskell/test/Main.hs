@@ -8,6 +8,7 @@ import Dominion
 import FiniteDominion
 import Folio
 import PageElements
+import Pagination
 import Numeric.Natural (Natural)
 
 import Data.Maybe (isNothing)
@@ -24,6 +25,7 @@ main = do
   testConsolidationTransport
   testFolio
   testPageElements
+  testPagination
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -332,3 +334,58 @@ testPageElements =
                   "page element arrows compose totally through a typed boundary"
                   (fiveToOrigin == directFiveToOrigin)
       _ -> fail "test setup failed: expected cell occurrences"
+
+testPagination :: IO ()
+testPagination =
+  pagination threePageFolio $ \sourcePagination ->
+    pagination threePageFolio $ \targetPagination ->
+      let sourceElements = paginationPageElements sourcePagination
+          targetElements = paginationPageElements targetPagination
+      in case
+        ( pageElement sourceElements 2 (finiteOrdinal 5)
+        , pageElement sourceElements 1 (finiteOrdinal 1)
+        , pageElement targetElements 0 (finiteOrdinal 0)
+        ) of
+          (Just someFive, Just someTrueCell, Just targetOrigin) ->
+            withPageElement someFive $ \five ->
+              withPageElement someTrueCell $ \trueCell -> do
+                assert "pagination retains its source folio"
+                  (folioLength (paginationFolio sourcePagination) == 3)
+                let constantMorphism =
+                      paginationMorphism
+                        sourcePagination
+                        targetPagination
+                        (const targetOrigin)
+                    sourceArrow = pageElementArrow five trueCell
+                withPageElement
+                  (mapPaginationElement constantMorphism five) $ \mapped ->
+                    assert "pagination morphisms map page elements"
+                      ( pageElementPage mapped == 0
+                        && pageElementPosition mapped == finiteOrdinal 0
+                      )
+                withPageElementArrow
+                  (mapPaginationArrow constantMorphism sourceArrow) $
+                    \mappedArrow ->
+                      assert
+                        "pagination morphisms map arrows between mapped endpoints"
+                        ( pageElementPage (arrowSource mappedArrow) == 0
+                          && pageElementPage (arrowTarget mappedArrow) == 0
+                        )
+                withPageElement
+                  (mapPaginationElement identityPaginationMorphism five) $
+                    \mapped ->
+                      assert "the identity pagination morphism fixes objects"
+                        ( pageElementPage mapped == pageElementPage five
+                          && pageElementPosition mapped == pageElementPosition five
+                        )
+                let composed =
+                      composePaginationMorphisms
+                        identityPaginationMorphism
+                        constantMorphism
+                withPageElement
+                  (mapPaginationElement composed five) $ \mapped ->
+                    assert "pagination morphisms compose in categorical order"
+                      ( pageElementPage mapped == 0
+                        && pageElementPosition mapped == finiteOrdinal 0
+                      )
+          _ -> fail "test setup failed: expected pagination elements"

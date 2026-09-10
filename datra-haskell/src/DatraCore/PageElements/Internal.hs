@@ -6,7 +6,7 @@
 module PageElements.Internal
   ( PageElements
   , PageElement
-  , SomePageElement
+  , SomePageElement (..)
   , PageElementArrow
   , pageElements
   , pageElement

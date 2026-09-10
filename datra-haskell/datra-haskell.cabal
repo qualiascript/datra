@@ -31,9 +31,11 @@ library
         Consolidation
         Folio
         PageElements
+        Pagination
     other-modules:
         PageElements.Internal
         PageElements.LiquidInternal
+        Pagination.Internal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
@@ -52,6 +54,7 @@ library
         src/DatraCore
         src/DatraCore/Chain
         src/DatraCore/PageElements
+        src/DatraCore/Pagination
         src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion
