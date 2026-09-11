@@ -32,6 +32,10 @@ module PageElements.Internal
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowAssociativity
+  , normalizePageElement
+  , normalizeSomePageElement
+  , normalizePageElementArrow
+  , normalizePageElementIdempotent
   ) where
 
 import Chain
@@ -50,6 +54,7 @@ import DatraOrdinal (Ordinal)
 import Data.Kind (Type)
 import Folio.Internal
   ( Folio
+  , folioLength
   , lastChain
   , withPageDataAt
   )
@@ -72,6 +77,10 @@ import PageElements.LiquidInternal
   , pageElementArrowRightIdentity
   , pageElementArrowThin
   , pageElementTransported
+  , normalizePageElementArrowAt
+  , normalizePageElementAt
+  , normalizePageElementIdempotentAt
+  , normalizeSomePageElementAt
   , somePageElementPrecedes
   , somePageElementTransported
   , somePageElementTransportedReflexive
@@ -208,3 +217,44 @@ withPageElementValue
   (PageElement _ _ _ (PageElementCell pageChain value))
   useCell =
     useCell pageChain value
+
+-- | Collapse an occurrence on the infinite padded spine to its coherent
+-- representative at the final genuine page.
+normalizePageElement
+  :: PageElements scope origin final
+  -> PageElement scope object
+  -> PageElement scope object
+normalizePageElement (PageElements pages) =
+  normalizePageElementAt
+    (folioLength pages - 1)
+    (fromIntegral (folioLength pages))
+
+-- | Normalize an existential page element.
+normalizeSomePageElement
+  :: PageElements scope origin final
+  -> SomePageElement scope
+  -> SomePageElement scope
+normalizeSomePageElement (PageElements pages) =
+  normalizeSomePageElementAt
+    (folioLength pages - 1)
+    (fromIntegral (folioLength pages))
+
+-- | Normalize both endpoints of a page-element arrow.
+normalizePageElementArrow
+  :: PageElements scope origin final
+  -> PageElementArrow scope source target
+  -> PageElementArrow scope source target
+normalizePageElementArrow (PageElements pages) =
+  normalizePageElementArrowAt
+    (folioLength pages - 1)
+    (fromIntegral (folioLength pages))
+
+-- | Pointwise witness that page-element normalization is idempotent.
+normalizePageElementIdempotent
+  :: PageElements scope origin final
+  -> PageElement scope object
+  -> ()
+normalizePageElementIdempotent (PageElements pages) =
+  normalizePageElementIdempotentAt
+    (folioLength pages - 1)
+    (fromIntegral (folioLength pages))

@@ -28,6 +28,10 @@ module PageElements
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowAssociativity
+  , normalizePageElement
+  , normalizeSomePageElement
+  , normalizePageElementArrow
+  , normalizePageElementIdempotent
   ) where
 
 import PageElements.Internal
@@ -52,6 +56,10 @@ import PageElements.Internal
   , pageElementArrowRightIdentity
   , pageElementArrowThin
   , pageElementTransported
+  , normalizePageElement
+  , normalizeSomePageElement
+  , normalizePageElementArrow
+  , normalizePageElementIdempotent
   , pageElementPage
   , pageElementPosition
   , withPageElement

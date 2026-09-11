@@ -16,6 +16,8 @@ module Pagination.LiquidInternal
   , withPageElementArrowData
   , identityPaginationMorphismData
   , composePaginationMorphismsData
+  , normalizationPaginationMorphismData
+  , normalizationPaginationMorphismIdempotent
   , pageElementTypeWitness
   , pageElementRelationWitness
   , somePageElementRelationWitness
@@ -32,12 +34,15 @@ import PageElements.LiquidInternal
   ( PageElement
   , PageElementCell (..)
   , PageElementArrow
-  , SomePageElement
+  , SomePageElement (..)
   , SomePageElementArrow
   , arrowSource
   , arrowTarget
   , pageElementPrecedes
   , pageElementTransported
+  , normalizePageElementIdempotentAt
+  , normalizeSomePageElementAt
+  , normalizeSomePageElementPreservesArrowAt
   , somePageElement
   , somePageElementArrow
   , somePageElementPrecedes
@@ -129,6 +134,54 @@ paginationMorphism
   -> (SomePageElement sourceScope -> SomePageElement sourceScope -> ())
   -> PaginationMorphism sourceScope targetScope
 paginationMorphism = PaginationMorphism
+
+-- | Normalization is a functor on the tall page-element category.  It clamps
+-- page coordinates to the final genuine page and trims repeated final-page
+-- entries from transport traces.
+normalizationPaginationMorphismData
+  :: Natural
+  -> Int
+  -> PaginationMorphism scope scope
+normalizationPaginationMorphismData finalPage traceLimit =
+  PaginationMorphism
+    (normalizeSomePageElementAt finalPage traceLimit)
+    (normalizationPaginationPreservesArrow finalPage traceLimit)
+
+{-@
+normalizationPaginationPreservesArrow
+  :: finalPage:Natural
+  -> traceLimit:Int
+  -> sourceValue:SomePageElement scope
+  -> targetValue:{SomePageElement scope |
+       somePageElementPrecedes sourceValue targetValue
+       && somePageElementTransported sourceValue targetValue}
+  -> { proof:() |
+       somePageElementPrecedes
+         (normalizeSomePageElementAt finalPage traceLimit sourceValue)
+         (normalizeSomePageElementAt finalPage traceLimit targetValue)
+       && somePageElementTransported
+         (normalizeSomePageElementAt finalPage traceLimit sourceValue)
+         (normalizeSomePageElementAt finalPage traceLimit targetValue) }
+@-}
+normalizationPaginationPreservesArrow
+  :: Natural
+  -> Int
+  -> SomePageElement scope
+  -> SomePageElement scope
+  -> ()
+normalizationPaginationPreservesArrow
+  finalPage traceLimit source target =
+    normalizeSomePageElementPreservesArrowAt
+      finalPage traceLimit source target
+
+-- | Pointwise idempotence of the normalization pagination morphism.
+normalizationPaginationMorphismIdempotent
+  :: Natural
+  -> Int
+  -> PageElement scope object
+  -> ()
+normalizationPaginationMorphismIdempotent =
+  normalizePageElementIdempotentAt
 
 -- | Apply the total object map to a typed source page element.
 {-@ reflect mapPaginationElementData @-}

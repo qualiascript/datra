@@ -372,13 +372,74 @@ testPagination =
       in case
         ( pageElement <$> pageElementIndex sourceElements 2 (finiteOrdinal 5)
         , pageElement <$> pageElementIndex sourceElements 1 (finiteOrdinal 1)
+        , pageElement <$> pageElementIndex sourceElements 100 (finiteOrdinal 5)
         , pageElement <$> pageElementIndex targetElements 0 (finiteOrdinal 0)
         ) of
-          (Just someFive, Just someTrueCell, Just targetOrigin) ->
+          ( Just someFive
+            , Just someTrueCell
+            , Just somePaddedFive
+            , Just targetOrigin
+            ) ->
             withPageElement someFive $ \five ->
-              withPageElement someTrueCell $ \trueCell -> do
+              withPageElement someTrueCell $ \trueCell ->
+                withPageElement somePaddedFive $ \paddedFive -> do
                 assert "pagination retains its source folio"
                   (folioLength (paginationFolio sourcePagination) == 3)
+                assert "pagination exposes its genuine cardinality"
+                  (paginationCardinality sourcePagination == 3)
+                let normalizedFive =
+                      normalizePaginationElement sourcePagination paddedFive
+                paginationCoherenceIdempotent
+                  sourcePagination paddedFive `seq` pure ()
+                assert "pagination normalization collapses padded pages"
+                  ( pageElementPage normalizedFive == 2
+                    && pageElementPosition normalizedFive == finiteOrdinal 5
+                  )
+                assert "pagination normalization fixes genuine pages"
+                  ( normalizePaginationElement sourcePagination five == five
+                  )
+                assert "pagination normalization is idempotent"
+                  ( normalizePaginationElement
+                      sourcePagination normalizedFive == normalizedFive
+                  )
+                let paddedToFinal = pageElementArrow paddedFive five
+                    normalizedArrow =
+                      normalizePaginationArrow
+                        sourcePagination paddedToFinal
+                assert "pagination normalization preserves arrows"
+                  ( pageElementPage (arrowSource normalizedArrow) == 2
+                    && pageElementPage (arrowTarget normalizedArrow) == 2
+                    && pageElementPosition (arrowSource normalizedArrow)
+                      == finiteOrdinal 5
+                    && pageElementPosition (arrowTarget normalizedArrow)
+                      == finiteOrdinal 5
+                  )
+                withPageElement
+                  (mapPaginationElement
+                    (paginationCoherence sourcePagination)
+                    paddedFive) $ \coherentFive -> do
+                    assert "pagination coherence acts by normalization"
+                      ( pageElementPage coherentFive == 2
+                        && pageElementPosition coherentFive == finiteOrdinal 5
+                      )
+                    withPageElement
+                      (mapPaginationElement
+                        (paginationCoherence sourcePagination)
+                        coherentFive) $ \coherentTwice ->
+                          assert "pagination coherence is operationally idempotent"
+                            ( pageElementPage coherentTwice
+                                == pageElementPage coherentFive
+                              && pageElementPosition coherentTwice
+                                == pageElementPosition coherentFive
+                            )
+                withPageElementArrow
+                  (mapPaginationArrow
+                    (paginationCoherence sourcePagination)
+                    paddedToFinal) $ \coherentArrow ->
+                      assert "pagination coherence normalizes arrow endpoints"
+                        ( pageElementPage (arrowSource coherentArrow) == 2
+                          && pageElementPage (arrowTarget coherentArrow) == 2
+                        )
                 let constantMorphism =
                       paginationMorphism
                         (const targetOrigin)

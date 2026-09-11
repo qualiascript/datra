@@ -14,6 +14,11 @@ module Pagination.Internal
   , pagination
   , paginationFolio
   , paginationPageElements
+  , paginationCardinality
+  , normalizePaginationElement
+  , normalizePaginationArrow
+  , paginationCoherence
+  , paginationCoherenceIdempotent
   , paginationMorphism
   , mapPaginationElement
   , mapPaginationArrow
@@ -29,11 +34,15 @@ import Consolidation.LiquidInternal
   )
 import Data.Kind (Type)
 import Folio (Folio)
+import qualified Folio
 import Folio.LiquidInternal (SingletonOrigin (..))
+import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
   , PageElementArrow
   , PageElements
+  , normalizePageElement
+  , normalizePageElementArrow
   , pageElements
   )
 import PageElements.LiquidInternal
@@ -48,6 +57,8 @@ import Pagination.LiquidInternal
   , identityPaginationMorphismData
   , mapPaginationArrowData
   , mapPaginationElementData
+  , normalizationPaginationMorphismData
+  , normalizationPaginationMorphismIdempotent
   , withPageElementArrowData
   )
 import qualified Pagination.LiquidInternal as Liquid
@@ -88,6 +99,51 @@ paginationPageElements
   :: Pagination scope origin final
   -> PageElements scope origin final
 paginationPageElements (Pagination _ elements) = elements
+
+-- | The number of genuine pages in the pagination's finite presentation.
+-- Every greater page number denotes a repeated occurrence of its final page.
+paginationCardinality
+  :: Pagination scope origin final
+  -> Natural
+paginationCardinality (Pagination pages _) = Folio.folioLength pages
+
+-- | Collapse a tall occurrence to its representative at or before the final
+-- genuine page.
+normalizePaginationElement
+  :: Pagination scope origin final
+  -> PageElement scope object
+  -> PageElement scope object
+normalizePaginationElement paginationValue =
+  normalizePageElement (paginationPageElements paginationValue)
+
+-- | Normalize both endpoints of a tall page-element arrow.
+normalizePaginationArrow
+  :: Pagination scope origin final
+  -> PageElementArrow scope source target
+  -> PageElementArrow scope source target
+normalizePaginationArrow paginationValue =
+  normalizePageElementArrow (paginationPageElements paginationValue)
+
+-- | The idempotent endomorphism selecting the coherent finite representative
+-- of every occurrence on the tall padded spine.
+paginationCoherence
+  :: Pagination scope origin final
+  -> PaginationMorphism scope scope
+paginationCoherence paginationValue =
+  PaginationMorphism
+    (normalizationPaginationMorphismData
+      (paginationCardinality paginationValue - 1)
+      (fromIntegral (paginationCardinality paginationValue)))
+
+-- | Pointwise witness that pagination coherence is idempotent.
+paginationCoherenceIdempotent
+  :: Pagination scope origin final
+  -> PageElement scope object
+  -> ()
+paginationCoherenceIdempotent paginationValue =
+  normalizationPaginationMorphismIdempotent
+    (paginationCardinality paginationValue - 1)
+    (fromIntegral (paginationCardinality paginationValue))
 
 -- | Construct a pagination morphism from its action on objects and a proof
 -- that the action preserves every page-element arrow.
