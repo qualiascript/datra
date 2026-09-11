@@ -3,6 +3,7 @@ module Main (main) where
 import Atlas
 import Chain
 import Consolidation
+import qualified Control.Category as Category
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
@@ -614,6 +615,14 @@ testAtlas =
                       \coherent ->
                         assert "atlas identity is its coherence map"
                           (pageElementPage coherent == 0)
+                  withPageElement
+                    (mapAtlasHomElement
+                      (atlasWitness valueAtlas)
+                      Category.id
+                      padded) $ \coherent ->
+                        assert
+                          "Control.Category identity materializes as Atlas coherence"
+                          (pageElementPage coherent == 0)
                   atlas
                     valuePagination
                     dataAction
@@ -647,6 +656,13 @@ testAtlas =
                             atlasCategoryCompose atlasCategory
                               composedMorphism
                               (atlasCategoryIdentity atlasCategory valueAtlas)
+                          valueHom = atlasHom valueMorphism
+                          leftHom = Category.id Category.. valueHom
+                          rightHom = valueHom Category.. Category.id
+                          associatedLeftHom =
+                            Category.id Category.. rightHom
+                          associatedRightHom =
+                            leftHom Category.. Category.id
                       withPageElement
                         (mapAtlasMorphismElement valueMorphism padded) $
                           \mapped ->
@@ -700,4 +716,40 @@ testAtlas =
                                             == pageElementPage rightPage
                                           && left == right
                                         )
+                      withPageElement
+                        (mapAtlasHomElement
+                          (atlasWitness valueAtlas)
+                          leftHom
+                          padded) $ \mapped ->
+                            assert
+                              "Control.Category AtlasHom left identity"
+                              (pageElementPage mapped == 0)
+                      withPageElement
+                        (mapAtlasHomElement
+                          (atlasWitness valueAtlas)
+                          rightHom
+                          padded) $ \mapped ->
+                            assert
+                              "Control.Category AtlasHom right identity"
+                              (pageElementPage mapped == 0)
+                      withAtlasMorphismImage
+                        (mapAtlasHomData
+                          (atlasWitness valueAtlas)
+                          associatedLeftHom
+                          padded) $ \_ leftInsertion ->
+                            withAtlasMorphismImage
+                              (mapAtlasHomData
+                                (atlasWitness valueAtlas)
+                                associatedRightHom
+                                padded) $ \_ rightInsertion ->
+                                  case
+                                    ( applyInsertion leftInsertion
+                                        (TestCellData 23)
+                                    , applyInsertion rightInsertion
+                                        (TestCellData 23)
+                                    ) of
+                                    (TestCellData left, TestCellData right) ->
+                                      assert
+                                        "Control.Category AtlasHom associativity"
+                                        (left == right)
             _ -> fail "test setup failed: expected atlas elements"

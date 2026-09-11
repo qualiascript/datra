@@ -12,6 +12,12 @@ module Atlas
   , IdentityAtlasObjectMap
   , AtlasMorphismImage
   , AtlasCategory
+  , AtlasObject
+  , AtlasObjectAtlasScope
+  , AtlasObjectPaginationScope
+  , AtlasObjectCellData
+  , AtlasWitness
+  , AtlasHom
   , atlasDataAction
   , atlas
   , atlasPagination
@@ -39,6 +45,13 @@ module Atlas
   , atlasCategory
   , atlasCategoryIdentity
   , atlasCategoryCompose
+  , atlasWitness
+  , atlasHom
+  , materializeAtlasHom
+  , atlasHomPagination
+  , mapAtlasHomElement
+  , mapAtlasHomArrow
+  , mapAtlasHomData
   ) where
 
 import Atlas.Internal
@@ -66,6 +79,12 @@ import Atlas.Morphism.Internal
   , IdentityAtlasObjectMap
   , AtlasMorphismImage
   , AtlasCategory
+  , AtlasObject
+  , AtlasObjectAtlasScope
+  , AtlasObjectPaginationScope
+  , AtlasObjectCellData
+  , AtlasWitness
+  , AtlasHom
   , atlasMorphism
   , atlasMorphismAction
   , identityAtlasObjectMap
@@ -74,6 +93,13 @@ import Atlas.Morphism.Internal
   , atlasCategory
   , atlasCategoryCompose
   , atlasCategoryIdentity
+  , atlasWitness
+  , atlasHom
+  , materializeAtlasHom
+  , atlasHomPagination
+  , mapAtlasHomElement
+  , mapAtlasHomArrow
+  , mapAtlasHomData
   , composeAtlasMorphisms
   , identityAtlasMorphism
   , mapAtlasMorphismArrow

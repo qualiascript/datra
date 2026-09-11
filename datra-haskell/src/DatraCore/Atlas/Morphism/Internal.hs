@@ -1,7 +1,7 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Hidden runtime representation of the LiquidHaskell-checked Atlas category.
 module Atlas.Morphism.Internal
@@ -26,6 +26,19 @@ module Atlas.Morphism.Internal
   , atlasCategoryCompose
   , identityAtlasMorphism
   , composeAtlasMorphisms
+  , AtlasObject
+  , AtlasObjectAtlasScope
+  , AtlasObjectPaginationScope
+  , AtlasObjectCellData
+  , AtlasWitness
+  , atlasWitness
+  , AtlasHom
+  , atlasHom
+  , materializeAtlasHom
+  , atlasHomPagination
+  , mapAtlasHomElement
+  , mapAtlasHomArrow
+  , mapAtlasHomData
   ) where
 
 import Atlas.Internal
@@ -48,6 +61,7 @@ import Atlas.Morphism.LiquidInternal
   , mapAtlasMorphismActionElement
   , mapAtlasMorphismActionObject
   )
+import Control.Category (Category (..))
 import Data.Kind (Type)
 import DomanialInsertion
   ( DomanialInsertion
@@ -66,6 +80,7 @@ import Pagination
   , mapPaginationArrow
   , paginationMorphism
   )
+import Prelude hiding ((.), id)
 
 -- | The observable image of one source cell. Its target identity remains
 -- existential, keeping the target cell and its correctly indexed data
@@ -231,6 +246,179 @@ composeAtlasMorphisms
        sourceAtlasScope targetAtlasScope
        sourceScope targetScope sourceCellData targetCellData
 composeAtlasMorphisms = CompositeAtlasMorphism
+
+-- | A type-level name for one Atlas object. The generative Atlas token is the
+-- decisive identity; the pagination scope and data family are retained so an
+-- arrow's executable source and target types can be recovered.
+type role AtlasObject nominal nominal nominal
+data AtlasObject
+  (atlasScope :: Type)
+  (paginationScope :: Type)
+  (cellData :: Type -> Type)
+
+type family AtlasObjectAtlasScope object :: Type where
+  AtlasObjectAtlasScope (AtlasObject atlasScope paginationScope cellData) =
+    atlasScope
+
+type family AtlasObjectPaginationScope object :: Type where
+  AtlasObjectPaginationScope
+    (AtlasObject atlasScope paginationScope cellData) = paginationScope
+
+type family AtlasObjectCellData object :: Type -> Type where
+  AtlasObjectCellData
+    (AtlasObject atlasScope paginationScope cellData) = cellData
+
+-- | Runtime evidence for a type-level 'AtlasObject'. Origin and final-page
+-- carrier types remain existential because morphism operations do not expose
+-- them.
+type role AtlasWitness nominal
+data AtlasWitness object where
+  AtlasWitness
+    :: Atlas atlasScope paginationScope cellData origin final
+    -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
+
+-- | Name an Atlas value as a category object witness.
+atlasWitness
+  :: Atlas atlasScope paginationScope cellData origin final
+  -> AtlasWitness (AtlasObject atlasScope paginationScope cellData)
+atlasWitness = AtlasWitness
+
+-- | A genuine 'Control.Category' arrow over type-level Atlas objects.
+--
+-- Identity is symbolic because 'Category.id' has no value argument. It is
+-- interpreted as the witnessed object's coherence morphism by
+-- 'materializeAtlasHom'. Primitive arrows retain their checked
+-- 'AtlasMorphism'; composition is an indexed syntax node.
+type role AtlasHom nominal nominal
+data AtlasHom source target where
+  PrimitiveAtlasHom
+    :: AtlasMorphism
+         sourceAtlasScope targetAtlasScope
+         sourceScope targetScope sourceCellData targetCellData
+    -> AtlasHom
+         (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+         (AtlasObject targetAtlasScope targetScope targetCellData)
+  IdentityAtlasHom
+    :: AtlasHom object object
+  CompositeAtlasHom
+    :: AtlasHom middle target
+    -> AtlasHom source middle
+    -> AtlasHom source target
+
+-- | Lift a checked semantic morphism into the ordinary category wrapper.
+atlasHom
+  :: AtlasMorphism
+       sourceAtlasScope targetAtlasScope
+       sourceScope targetScope sourceCellData targetCellData
+  -> AtlasHom
+       (AtlasObject sourceAtlasScope sourceScope sourceCellData)
+       (AtlasObject targetAtlasScope targetScope targetCellData)
+atlasHom = PrimitiveAtlasHom
+
+-- | The target object carried by an already materialized morphism.
+atlasMorphismTargetWitness
+  :: AtlasMorphism
+       sourceAtlasScope targetAtlasScope
+       sourceScope targetScope sourceCellData targetCellData
+  -> AtlasWitness
+       (AtlasObject targetAtlasScope targetScope targetCellData)
+atlasMorphismTargetWitness (PrimitiveAtlasMorphism action) =
+  AtlasWitness (atlasMorphismTarget action)
+atlasMorphismTargetWitness (IdentityAtlasMorphism valueAtlas) =
+  AtlasWitness valueAtlas
+atlasMorphismTargetWitness (CompositeAtlasMorphism second _) =
+  atlasMorphismTargetWitness second
+
+-- | Recover the target witness of a symbolic arrow from its source witness.
+-- Identity returns its input witness; primitive arrows recover the target
+-- Atlas stored by their checked action; composition follows the two stages.
+targetAtlasWitness
+  :: AtlasWitness source
+  -> AtlasHom source target
+  -> AtlasWitness target
+targetAtlasWitness sourceWitness IdentityAtlasHom = sourceWitness
+targetAtlasWitness _ (PrimitiveAtlasHom morphism) =
+  atlasMorphismTargetWitness morphism
+targetAtlasWitness sourceWitness (CompositeAtlasHom second first) =
+  targetAtlasWitness
+    (targetAtlasWitness sourceWitness first)
+    second
+
+-- | Interpret a symbolic category arrow as the checked semantic morphism for
+-- a particular source object. This is where symbolic 'Category.id' becomes
+-- 'identityAtlasMorphism', hence the source Atlas's coherence idempotent.
+materializeAtlasHom
+  :: AtlasWitness source
+  -> AtlasHom source target
+  -> AtlasMorphism
+       (AtlasObjectAtlasScope source)
+       (AtlasObjectAtlasScope target)
+       (AtlasObjectPaginationScope source)
+       (AtlasObjectPaginationScope target)
+       (AtlasObjectCellData source)
+       (AtlasObjectCellData target)
+materializeAtlasHom (AtlasWitness valueAtlas) IdentityAtlasHom =
+  identityAtlasMorphism valueAtlas
+materializeAtlasHom _ (PrimitiveAtlasHom morphism) = morphism
+materializeAtlasHom sourceWitness (CompositeAtlasHom second first) =
+  composeAtlasMorphisms
+    (materializeAtlasHom
+      (targetAtlasWitness sourceWitness first)
+      second)
+    (materializeAtlasHom sourceWitness first)
+
+-- | Symbolic Atlas arrows form an ordinary Haskell category. Simplifying the
+-- two identity cases is sound because primitive actions are already
+-- coherence-sandwiched; a standalone identity is still materialized as the
+-- object's actual coherence morphism.
+instance Category AtlasHom where
+  id = IdentityAtlasHom
+
+  IdentityAtlasHom . first = first
+  second . IdentityAtlasHom = second
+  second . first = CompositeAtlasHom second first
+
+-- | Recover the full-spine pagination functor of a symbolic Atlas arrow.
+atlasHomPagination
+  :: AtlasWitness source
+  -> AtlasHom source target
+  -> PaginationMorphism
+       (AtlasObjectPaginationScope source)
+       (AtlasObjectPaginationScope target)
+atlasHomPagination sourceWitness =
+  atlasMorphismPagination . materializeAtlasHom sourceWitness
+
+-- | Apply a symbolic Atlas arrow to one page element.
+mapAtlasHomElement
+  :: AtlasWitness source
+  -> AtlasHom source target
+  -> PageElement (AtlasObjectPaginationScope source) object
+  -> SomePageElement (AtlasObjectPaginationScope target)
+mapAtlasHomElement sourceWitness hom =
+  mapAtlasMorphismElement (materializeAtlasHom sourceWitness hom)
+
+-- | Apply a symbolic Atlas arrow to a page-element arrow.
+mapAtlasHomArrow
+  :: AtlasWitness source
+  -> AtlasHom source target
+  -> PageElementArrow
+       (AtlasObjectPaginationScope source) sourceObject targetObject
+  -> SomePageElementArrow (AtlasObjectPaginationScope target)
+mapAtlasHomArrow sourceWitness hom =
+  mapAtlasMorphismArrow (materializeAtlasHom sourceWitness hom)
+
+-- | Apply a symbolic Atlas arrow to a cell and its dependent data component.
+mapAtlasHomData
+  :: AtlasWitness source
+  -> AtlasHom source target
+  -> PageElement (AtlasObjectPaginationScope source) sourceObject
+  -> AtlasMorphismImage
+       (AtlasObjectPaginationScope target)
+       (AtlasObjectCellData source)
+       (AtlasObjectCellData target)
+       sourceObject
+mapAtlasHomData sourceWitness hom =
+  mapAtlasMorphismData (materializeAtlasHom sourceWitness hom)
 
 -- | A first-class witness for the Atlas category operations. This is
 -- deliberately not a 'Control.Category' instance: categorical identity needs
