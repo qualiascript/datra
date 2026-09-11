@@ -2,7 +2,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../LiquidPlugin.h"
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
@@ -28,35 +27,21 @@ module Pagination.Internal
   ) where
 
 import Control.Category (Category (..))
-import Consolidation.LiquidInternal
-  ( Coconsolidation (..)
-  , Consolidation (..)
-  )
 import Data.Kind (Type)
 import Folio (Folio)
-import qualified Folio
 import Folio.LiquidInternal
-  ( SingletonOrigin (..)
-  , folioLengthData
+  ( folioLengthData
   )
 import Numeric.Natural (Natural)
 import PageElements
-  ( PageElement
-  , PageElementArrow
-  , PageElements
+  ( PageElements
   , normalizePageElement
   , normalizePageElementArrow
   , pageElements
   )
-import PageElements.LiquidInternal
-  ( PageElementCell (..)
-  , SomePageElement
-  , somePageElementPrecedes
-  , somePageElementTransported
-  )
+import PageElements.LiquidInternal hiding (withPageElementArrow)
 import Pagination.LiquidInternal
-  ( SomePageElementArrow
-  , composePaginationMorphismsData
+  ( composePaginationMorphismsData
   , identityPaginationMorphismData
   , mapPaginationArrowData
   , mapPaginationElementData
@@ -65,7 +50,6 @@ import Pagination.LiquidInternal
   , withPageElementArrowData
   )
 import qualified Pagination.LiquidInternal as Liquid
-import qualified Prelude as PreludeFunction ((.))
 import Prelude hiding ((.), id)
 
 -- | A folio paired with the category of page elements generated from it.
@@ -174,7 +158,8 @@ paginationMorphism
   -> PaginationMorphism sourceScope targetScope
 paginationMorphism mapObject preservesArrow =
   PaginationMorphism
-    (Liquid.paginationMorphism mapObject preservesArrow)
+    (Liquid.paginationMorphism mapObject
+      (\source target -> preservesArrow source target))
 
 -- | Apply a pagination morphism to a page element.
 mapPaginationElement

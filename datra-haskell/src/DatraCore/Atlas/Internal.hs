@@ -3,7 +3,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../LiquidPlugin.h"
-{-# OPTIONS_GHC -Wno-unused-imports -Wno-unused-top-binds #-}
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
@@ -38,44 +37,13 @@ import Atlas.LiquidInternal
   , atlasActionMap
   , atlasData
   )
-import Chain.Internal (Chain (..))
-import Consolidation.LiquidInternal
-  ( Coconsolidation (..)
-  , Consolidation (..)
-  )
 import Data.Kind (Type)
-import DatraOrdinal (Ordinal)
-import DomanialInsertion
-  ( DomanialInsertion
-  , applyInsertion
-  )
+import DomanialInsertion.LiquidInternal
 import Dominion (Dominion)
 import Folio (Folio)
-import Folio.LiquidInternal (SingletonOrigin (..))
 import Numeric.Natural (Natural)
-import PageElements
-  ( PageElement
-  , PageElementArrow
-  , PageElements
-  , pageElementArrow
-  )
+import PageElements (PageElements)
 import PageElements.LiquidInternal
-  ( PageElementCell (..)
-  , arrowSource
-  , arrowTarget
-  , clampPage
-  , composePageElementArrows
-  , identityPageElementArrow
-  , normalizePageElementArrowAt
-  , normalizePageElementAt
-  , normalizePageElementReachableAt
-  , pageElementPage
-  , pageElementPosition
-  , pageElementPrecedes
-  , pageElementTransported
-  , traceSuffix
-  , trimTrace
-  )
 import Pagination
   ( Pagination
   , PaginationMorphism
@@ -85,31 +53,6 @@ import Pagination
   , paginationCoherence
   , paginationFolio
   , paginationPageElements
-  )
-import qualified Pagination.LiquidInternal as LiquidPagination
-
--- Keep the two refined arrow relations in LiquidHaskell's logical
--- environment while checking construction of the normalization arrow.
-pageElementRelationWitness
-  :: PageElement scope source
-  -> PageElement scope target
-  -> (Bool, Bool)
-pageElementRelationWitness source target =
-  ( pageElementPrecedes source target
-  , pageElementTransported source target
-  )
-
-pageElementTraceSuffixWitness :: [Ordinal] -> [Ordinal] -> Bool
-pageElementTraceSuffixWitness = traceSuffix
-
-pageElementNormalizationWitness
-  :: Natural
-  -> Int
-  -> PageElement scope object
-  -> (Natural, [Ordinal])
-pageElementNormalizationWitness finalPage traceLimit occurrence =
-  ( clampPage (pageElementPage occurrence) finalPage
-  , trimTrace traceLimit []
   )
 
 -- | An atlas over one generatively scoped pagination.

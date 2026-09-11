@@ -3,7 +3,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../LiquidPlugin.h"
-{-# OPTIONS_GHC -Wno-unused-imports -Wno-unused-top-binds #-}
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
@@ -20,66 +19,14 @@ module Atlas.LiquidInternal
   ) where
 
 import Data.Kind (Type)
-import Chain.Internal (Chain (..))
-import DatraOrdinal (Ordinal)
 import DomanialInsertion.LiquidInternal
-  ( DomanialInsertion
-  , applyInsertion
-  )
 import Dominion.Internal (Dominion)
 import Numeric.Natural (Natural)
 import PageElements.LiquidInternal
-  ( PageElement
-  , PageElementCell (..)
-  , PageElementArrow
-  , arrowSource
-  , arrowTarget
-  , clampPage
-  , composePageElementArrows
-  , identityPageElementArrow
-  , normalizePageElementArrowAt
-  , normalizePageElementAt
-  , pageElementArrow
-  , pageElementPage
-  , pageElementPosition
-  , pageElementPrecedes
-  , pageElementTransported
-  , traceSuffix
-  , trimTrace
-  )
-
--- Keep the reflected page-element relations and their component types in
--- LiquidHaskell's imported logical environment.  Version 0.9.4 otherwise
--- prunes these transitive symbols while checking higher-rank law callbacks.
-pageElementTypeWitness :: Maybe (Ordinal, Natural)
-pageElementTypeWitness = Nothing
-
-pageElementRelationWitness
-  :: PageElement scope source
-  -> PageElement scope target
-  -> (Bool, Bool)
-pageElementRelationWitness source target =
-  ( pageElementPrecedes source target
-  , pageElementTransported source target
-  )
-
-pageElementNormalizationWitness
-  :: Natural
-  -> Int
-  -> PageElement scope object
-  -> (Natural, [Ordinal])
-pageElementNormalizationWitness finalPage traceLimit occurrence =
-  ( clampPage (pageElementPage occurrence) finalPage
-  , trimTrace traceLimit []
-  )
-
-pageElementTraceSuffixWitness :: [Ordinal] -> [Ordinal] -> Bool
-pageElementTraceSuffixWitness = traceSuffix
 
 -- | The two rank-2 operations of the dependent data assignment.  Packaging
 -- them lets refinements mention the specialized accessors as first-order
--- functions; LiquidHaskell 0.9.4 cannot put refinements directly on a
--- higher-rank field whose result uses an indexed type family.
+-- functions while retaining the indexed result type.
 type role AtlasAction nominal nominal
 data AtlasAction
   (scope :: Type)
@@ -120,36 +67,34 @@ type role AtlasData nominal nominal
 data AtlasData
   (scope :: Type)
   (cellData :: Type -> Type) = AtlasData
-  { atlasFinalPageData :: Natural
-  , atlasTraceLimitData :: Int
-  , atlasActionData :: AtlasAction scope cellData
-  , atlasDataIdentityLawData
-      :: forall object.
-         PageElement scope object
-      -> cellData object
-      -> ()
-  , atlasDataCompositionLawData
-      :: forall source middle target.
-         PageElementArrow scope middle target
-      -> PageElementArrow scope source middle
-      -> cellData source
-      -> ()
-  , atlasDataCoherenceLawData
-      :: forall object.
-         PageElement scope object
-      -> PageElementArrow scope object object
-      -> cellData object
-      -> ()
-  , atlasPagewiseDisjointLawData
-      :: forall leftObject rightObject originObject.
-         PageElement scope leftObject
-      -> PageElement scope rightObject
-      -> PageElementArrow scope leftObject originObject
-      -> PageElementArrow scope rightObject originObject
-      -> cellData leftObject
-      -> cellData rightObject
-      -> ()
-  }
+  Natural
+  Int
+  (AtlasAction scope cellData)
+  (forall object.
+    PageElement scope object
+    -> cellData object
+    -> ())
+  (forall source middle target.
+    PageElementArrow scope middle target
+    -> PageElementArrow scope source middle
+    -> cellData source
+    -> ())
+  (forall object.
+    PageElement scope object
+    -> PageElementArrow scope object object
+    -> cellData object
+    -> ())
+  (forall leftObject rightObject originObject.
+    PageElement scope leftObject
+    -> PageElement scope rightObject
+    -> PageElementArrow scope leftObject originObject
+    -> PageElementArrow scope rightObject originObject
+    -> cellData leftObject
+    -> cellData rightObject
+    -> ())
+
+atlasActionData :: AtlasData scope cellData -> AtlasAction scope cellData
+atlasActionData (AtlasData _ _ action _ _ _ _) = action
 
 -- | Smart constructor for a checked Atlas data assignment.  LiquidHaskell
 -- validates each supplied witness against the corresponding record field.
