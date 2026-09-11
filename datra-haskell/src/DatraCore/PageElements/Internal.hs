@@ -14,6 +14,8 @@ module PageElements.Internal
   , pageElementIndexPage
   , pageElementIndexPosition
   , pageElement
+  , originPageElement
+  , lastPageElement
   , pageElementPage
   , pageElementPosition
   , withPageElement
@@ -56,6 +58,8 @@ import Folio.Internal
   ( Folio
   , folioLength
   , lastChain
+  , originChain
+  , originValue
   , withPageDataAt
   )
 import Folio.LiquidInternal (FolioData (..))
@@ -158,6 +162,30 @@ pageElement (PageElementIndex page prefix padding index) =
       (PageElementCell (lastChain prefix) value))
   where
     value = chainObjectAt index
+
+-- | The unique origin cell as an object of the page-element category.
+originPageElement
+  :: PageElements scope origin final
+  -> SomePageElement scope
+originPageElement (PageElements pages) =
+  SomePageElement
+    (pageElementAt
+      0
+      []
+      (PageElementCell (originChain pages) (originValue pages)))
+
+-- | A certified cell of the final genuine page as a page element.
+lastPageElement
+  :: PageElements scope origin final
+  -> ChainIndex final
+  -> SomePageElement scope
+lastPageElement (PageElements pages) index =
+  pageElement
+    (PageElementIndex
+      (folioLength pages - 1)
+      pages
+      0
+      index)
 
 -- | Build the complete sequence of exact adjacent transports from one cell
 -- back through every earlier page to the origin.  The head is the requested

@@ -604,6 +604,56 @@ testAtlas =
                         valueAtlas padded (TestCellData 13)
                         == TestCellData 13
                     )
+                  withAtlasPageChain valueAtlas 100 $ \pageChain ->
+                    assert "atlas pages expose the padded final chain"
+                      (chainOrderType pageChain == chainOrderType unitChain)
+                  case pageElementIndex elements 100 (finiteOrdinal 0) of
+                    Nothing ->
+                      fail "test setup failed: expected an atlas cell index"
+                    Just paddedCellIndex ->
+                      withPageElement
+                        (atlasPageCell valueAtlas paddedCellIndex) $ \cell ->
+                        assert "atlas page cells retain their spine page"
+                          (pageElementPage cell == 100)
+                  withPageElement (atlasOriginCell valueAtlas) $ \originCell ->
+                    assert "atlas origin cell is on page zero"
+                      ( pageElementPage originCell == 0
+                        && pageElementPosition originCell == finiteOrdinal 0
+                      )
+                  withAtlasCellDominion (atlasExtent valueAtlas) $
+                    \extentCell extentDominion ->
+                      assert "atlas extent is the origin dominion"
+                        ( pageElementPage extentCell == 0
+                          && rank extentDominion (TestCellData 5) == 5
+                        )
+                  case chainIndex
+                    (atlasTerritoryChain valueAtlas)
+                    (finiteOrdinal 0) of
+                    Nothing ->
+                      fail "test setup failed: expected a territory index"
+                    Just territoryIndex -> do
+                      withAtlasCellDominion
+                        (atlasTerritory valueAtlas territoryIndex) $
+                          \territoryCell territoryDominion ->
+                            assert "atlas territory uses the final genuine page"
+                              ( pageElementPage territoryCell == 0
+                                && rank territoryDominion (TestCellData 5) == 5
+                              )
+                      withAtlasCellDominion
+                        (atlasRegion valueAtlas territoryIndex) $
+                          \regionCell regionDominion ->
+                            assert "atlas regions are territory members"
+                              ( pageElementPage regionCell == 0
+                                && rank regionDominion (TestCellData 5) == 5
+                              )
+                  assert "atlas element ordering compares canonical cells"
+                    (not (atlasElementLT valueAtlas padded origin))
+                  atlasCoherenceIdempotent valueAtlas padded `seq`
+                    assert "atlas coherence is pointwise idempotent"
+                      ( normalizeAtlasElement valueAtlas
+                          (normalizeAtlasElement valueAtlas padded)
+                        == normalizeAtlasElement valueAtlas padded
+                      )
                   withPageElement
                     (mapPaginationElement (atlasCoherence valueAtlas) padded) $
                       \coherent ->
@@ -640,22 +690,6 @@ testAtlas =
                                 (const identityInsertion)
                                 (\_ _ -> ())
                                 (\_ _ -> ()))
-                          composedMorphism =
-                            atlasCategoryCompose atlasCategory
-                              (atlasCategoryIdentity atlasCategory targetAtlas)
-                              valueMorphism
-                          rightIdentityMorphism =
-                            atlasCategoryCompose atlasCategory
-                              valueMorphism
-                              (atlasCategoryIdentity atlasCategory valueAtlas)
-                          associatedLeft =
-                            atlasCategoryCompose atlasCategory
-                              (atlasCategoryIdentity atlasCategory targetAtlas)
-                              rightIdentityMorphism
-                          associatedRight =
-                            atlasCategoryCompose atlasCategory
-                              composedMorphism
-                              (atlasCategoryIdentity atlasCategory valueAtlas)
                           valueHom = atlasHom valueMorphism
                           leftHom = Category.id Category.. valueHom
                           rightHom = valueHom Category.. Category.id
@@ -685,37 +719,6 @@ testAtlas =
                               ( pageElementPage (arrowSource mappedArrow) == 0
                                 && pageElementPage (arrowTarget mappedArrow) == 0
                               )
-                      withPageElement
-                        (mapAtlasMorphismElement composedMorphism padded) $
-                          \mapped ->
-                            assert
-                              "atlas category left identity retains coherence"
-                              (pageElementPage mapped == 0)
-                      withPageElement
-                        (mapAtlasMorphismElement rightIdentityMorphism padded) $
-                          \mapped ->
-                            assert
-                              "atlas category right identity retains coherence"
-                              (pageElementPage mapped == 0)
-                      withAtlasMorphismImage
-                        (mapAtlasMorphismData associatedLeft padded) $
-                          \leftPage leftInsertion ->
-                            withAtlasMorphismImage
-                              (mapAtlasMorphismData associatedRight padded) $
-                                \rightPage rightInsertion ->
-                                  case
-                                    ( applyInsertion leftInsertion
-                                        (TestCellData 19)
-                                    , applyInsertion rightInsertion
-                                        (TestCellData 19)
-                                    ) of
-                                    (TestCellData left, TestCellData right) ->
-                                      assert
-                                        "atlas category composition is associative pointwise"
-                                        ( pageElementPage leftPage
-                                            == pageElementPage rightPage
-                                          && left == right
-                                        )
                       withPageElement
                         (mapAtlasHomElement
                           (atlasWitness valueAtlas)

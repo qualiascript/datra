@@ -46,6 +46,7 @@ library
         Pagination.LiquidInternal
         Atlas.Internal
         Atlas.LiquidInternal
+        Atlas.Derived.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
         Chain.Internal

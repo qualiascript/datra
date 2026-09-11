@@ -11,13 +11,15 @@ module Atlas
   , AtlasMappedObject
   , IdentityAtlasObjectMap
   , AtlasMorphismImage
-  , AtlasCategory
   , AtlasObject
   , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
   , AtlasObjectCellData
   , AtlasWitness
   , AtlasHom
+  , AtlasCellDominion
+  , AtlasCellDominionHandler
+  , AtlasTerritoryIndex
   , atlasDataAction
   , atlas
   , atlasPagination
@@ -42,9 +44,6 @@ module Atlas
   , mapAtlasMorphismData
   , identityAtlasMorphism
   , composeAtlasMorphisms
-  , atlasCategory
-  , atlasCategoryIdentity
-  , atlasCategoryCompose
   , atlasWitness
   , atlasHom
   , materializeAtlasHom
@@ -52,8 +51,33 @@ module Atlas
   , mapAtlasHomElement
   , mapAtlasHomArrow
   , mapAtlasHomData
+  , withAtlasCellDominion
+  , withAtlasPageChain
+  , atlasPageCell
+  , atlasOriginCell
+  , atlasExtent
+  , atlasTerritoryChain
+  , atlasTerritory
+  , atlasRegion
+  , atlasElementLT
+  , atlasCoherenceIdempotent
   ) where
 
+import Atlas.Derived.Internal
+  ( AtlasCellDominion
+  , AtlasCellDominionHandler
+  , AtlasTerritoryIndex
+  , atlasCoherenceIdempotent
+  , atlasElementLT
+  , atlasExtent
+  , atlasOriginCell
+  , atlasPageCell
+  , atlasRegion
+  , atlasTerritory
+  , atlasTerritoryChain
+  , withAtlasCellDominion
+  , withAtlasPageChain
+  )
 import Atlas.Internal
   ( Atlas
   , AtlasDataAction
@@ -78,7 +102,6 @@ import Atlas.Morphism.Internal
   , AtlasMappedObject
   , IdentityAtlasObjectMap
   , AtlasMorphismImage
-  , AtlasCategory
   , AtlasObject
   , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
@@ -90,9 +113,6 @@ import Atlas.Morphism.Internal
   , identityAtlasObjectMap
   , atlasObjectMap
   , atlasMorphismPagination
-  , atlasCategory
-  , atlasCategoryCompose
-  , atlasCategoryIdentity
   , atlasWitness
   , atlasHom
   , materializeAtlasHom

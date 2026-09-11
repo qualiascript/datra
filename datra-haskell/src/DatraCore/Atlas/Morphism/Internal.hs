@@ -20,10 +20,6 @@ module Atlas.Morphism.Internal
   , mapAtlasMorphismElement
   , mapAtlasMorphismArrow
   , mapAtlasMorphismData
-  , AtlasCategory
-  , atlasCategory
-  , atlasCategoryIdentity
-  , atlasCategoryCompose
   , identityAtlasMorphism
   , composeAtlasMorphisms
   , AtlasObject
@@ -419,40 +415,3 @@ mapAtlasHomData
        sourceObject
 mapAtlasHomData sourceWitness hom =
   mapAtlasMorphismData (materializeAtlasHom sourceWitness hom)
-
--- | A first-class witness for the Atlas category operations. This is
--- deliberately not a 'Control.Category' instance: categorical identity needs
--- the actual Atlas value in order to recover its coherence map.
---
--- The category laws are extensional on 'mapAtlasMorphismData'. Left and right
--- identity reduce to idempotence of the endpoint normalizations plus identity
--- of 'identityInsertion'; associativity reduces to ordinary function and
--- insertion composition. In particular, the full-spine identity at @X@ is
--- @X@'s coherence idempotent @eX@, so a composite has the Karoubi shape
--- @g . eY . f@ rather than silently treating padded occurrences as genuine.
-data AtlasCategory = AtlasCategory
-
--- | The category of checked Atlases and checked Atlas morphisms.
-atlasCategory :: AtlasCategory
-atlasCategory = AtlasCategory
-
--- | Select the object-dependent identity operation.
-atlasCategoryIdentity
-  :: AtlasCategory
-  -> Atlas atlasScope scope cellData origin final
-  -> AtlasMorphism atlasScope atlasScope scope scope cellData cellData
-atlasCategoryIdentity AtlasCategory = identityAtlasMorphism
-
--- | Select categorical composition.
-atlasCategoryCompose
-  :: AtlasCategory
-  -> AtlasMorphism
-       middleAtlasScope targetAtlasScope
-       middleScope targetScope middleCellData targetCellData
-  -> AtlasMorphism
-       sourceAtlasScope middleAtlasScope
-       sourceScope middleScope sourceCellData middleCellData
-  -> AtlasMorphism
-       sourceAtlasScope targetAtlasScope
-       sourceScope targetScope sourceCellData targetCellData
-atlasCategoryCompose AtlasCategory = composeAtlasMorphisms
