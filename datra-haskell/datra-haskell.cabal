@@ -39,6 +39,7 @@ library
         PageElements
         Pagination
         Atlas
+        DataTransformation
     other-modules:
         PageElements.Internal
         PageElements.LiquidInternal
@@ -49,6 +50,8 @@ library
         Atlas.Derived.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
+        DataTransformation.Internal
+        DataTransformation.LiquidInternal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
@@ -71,6 +74,7 @@ library
         src/DatraCore/PageElements
         src/DatraCore/Pagination
         src/DatraCore/Atlas
+        src/DatraCore/DataTransformation
         src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion

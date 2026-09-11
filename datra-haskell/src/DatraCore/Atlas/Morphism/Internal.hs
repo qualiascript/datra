@@ -28,7 +28,9 @@ module Atlas.Morphism.Internal
   , AtlasObjectCellData
   , AtlasWitness
   , atlasWitness
-  , AtlasHom
+  , AtlasHom (..)
+  , identityAtlasHom
+  , composeAtlasHoms
   , atlasHom
   , materializeAtlasHom
   , atlasHomPagination
@@ -301,6 +303,21 @@ data AtlasHom source target where
     -> AtlasHom source middle
     -> AtlasHom source target
 
+-- | The symbolic identity used by the ordinary Atlas category.
+identityAtlasHom :: AtlasHom object object
+identityAtlasHom = IdentityAtlasHom
+
+-- | Compose symbolic Atlas arrows, simplifying identity nodes eagerly.
+composeAtlasHoms
+  :: AtlasHom middle target
+  -> AtlasHom source middle
+  -> AtlasHom source target
+composeAtlasHoms IdentityAtlasHom first = first
+composeAtlasHoms second IdentityAtlasHom = second
+composeAtlasHoms second (CompositeAtlasHom middle first) =
+  CompositeAtlasHom (composeAtlasHoms second middle) first
+composeAtlasHoms second first = CompositeAtlasHom second first
+
 -- | Lift a checked semantic morphism into the ordinary category wrapper.
 atlasHom
   :: AtlasMorphism
@@ -368,11 +385,8 @@ materializeAtlasHom sourceWitness (CompositeAtlasHom second first) =
 -- coherence-sandwiched; a standalone identity is still materialized as the
 -- object's actual coherence morphism.
 instance Category AtlasHom where
-  id = IdentityAtlasHom
-
-  IdentityAtlasHom . first = first
-  second . IdentityAtlasHom = second
-  second . first = CompositeAtlasHom second first
+  id = identityAtlasHom
+  (.) = composeAtlasHoms
 
 -- | Recover the full-spine pagination functor of a symbolic Atlas arrow.
 atlasHomPagination

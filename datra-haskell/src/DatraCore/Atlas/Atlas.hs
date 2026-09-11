@@ -17,6 +17,8 @@ module Atlas
   , AtlasObjectCellData
   , AtlasWitness
   , AtlasHom
+  , identityAtlasHom
+  , composeAtlasHoms
   , AtlasCellDominion
   , AtlasCellDominionHandler
   , AtlasTerritoryIndex
@@ -108,6 +110,8 @@ import Atlas.Morphism.Internal
   , AtlasObjectCellData
   , AtlasWitness
   , AtlasHom
+  , identityAtlasHom
+  , composeAtlasHoms
   , atlasMorphism
   , atlasMorphismAction
   , identityAtlasObjectMap

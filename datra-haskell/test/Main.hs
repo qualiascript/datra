@@ -1,9 +1,12 @@
+{-# LANGUAGE TypeFamilies #-}
+
 module Main (main) where
 
 import Atlas
 import Chain
 import Consolidation
 import qualified Control.Category as Category
+import DataTransformation
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
@@ -485,6 +488,37 @@ testPagination =
 newtype TestCellData object = TestCellData Natural
   deriving (Eq, Show)
 
+newtype TestDataTransformationValue atlas =
+  TestDataTransformationValue Natural
+  deriving (Eq, Show)
+
+data TestDataTransformationValues
+
+type instance
+  DataTransformationValue TestDataTransformationValues atlas =
+    TestDataTransformationValue atlas
+
+testDataTransformation
+  :: DataTransformation TestDataTransformationValues
+testDataTransformation =
+  dataTransformation
+    (\_ (TestDataTransformationValue value) ->
+      TestDataTransformationValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementDataTransformation
+  :: DataTransformationHom
+       TestDataTransformationValues
+       TestDataTransformationValues
+incrementDataTransformation =
+  dataTransformationHom
+    testDataTransformation
+    testDataTransformation
+    (\(TestDataTransformationValue value) ->
+      TestDataTransformationValue (value + 1))
+    (\_ _ -> ())
+
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
 testAtlasDataAt
@@ -697,6 +731,9 @@ testAtlas =
                             Category.id Category.. rightHom
                           associatedRightHom =
                             leftHom Category.. Category.id
+                          incrementedTwice =
+                            incrementDataTransformation
+                              Category.. incrementDataTransformation
                       withPageElement
                         (mapAtlasMorphismElement valueMorphism padded) $
                           \mapped ->
@@ -755,4 +792,56 @@ testAtlas =
                                       assert
                                         "Control.Category AtlasHom associativity"
                                         (left == right)
+                      assert "DaTra presheaves act contravariantly on AtlasHom"
+                        ( mapDataTransformation
+                            testDataTransformation
+                            valueHom
+                            (TestDataTransformationValue 29)
+                          == TestDataTransformationValue 29
+                        )
+                      dataTransformationIdentity
+                        testDataTransformation
+                        (TestDataTransformationValue 29) `seq`
+                          dataTransformationComposition
+                            testDataTransformation
+                            Category.id
+                            valueHom
+                            (TestDataTransformationValue 29) `seq`
+                              dataTransformationHomNaturality
+                                incrementDataTransformation
+                                valueHom
+                                (TestDataTransformationValue 29) `seq`
+                                  pure ()
+                      assert
+                        "DaTra natural transformations compose pointwise"
+                        ( mapDataTransformationHom
+                            incrementedTwice
+                            (TestDataTransformationValue 29)
+                          == TestDataTransformationValue 31
+                        )
+                      case mapDataTransformation
+                        yoneda
+                        valueHom
+                        (Yoneda Category.id) of
+                          Yoneda representedArrow ->
+                            withPageElement
+                              (mapAtlasHomElement
+                                (atlasWitness valueAtlas)
+                                representedArrow
+                                padded) $ \mapped ->
+                                  assert
+                                    "Yoneda acts by presheaf precomposition"
+                                    (pageElementPage mapped == 0)
+                      case mapDataTransformationHom
+                        (yonedaMap valueHom)
+                        (Yoneda Category.id) of
+                          Yoneda representedArrow ->
+                            withPageElement
+                              (mapAtlasHomElement
+                                (atlasWitness valueAtlas)
+                                representedArrow
+                                padded) $ \mapped ->
+                                  assert
+                                    "Yoneda embeds AtlasHom by postcomposition"
+                                    (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
