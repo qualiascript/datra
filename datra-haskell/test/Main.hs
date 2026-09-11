@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Atlas
 import Chain
 import Consolidation
 import DatraOrdinal
@@ -26,6 +27,7 @@ main = do
   testFolio
   testPageElements
   testPagination
+  testAtlas
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -478,3 +480,92 @@ testPagination =
                         && pageElementPosition mapped == finiteOrdinal 0
                       )
           _ -> fail "test setup failed: expected pagination elements"
+
+newtype TestCellData object = TestCellData Natural
+  deriving (Eq, Show)
+
+-- The page offset makes it observable whether 'atlasDataAt' normalized its
+-- input before consulting the canonical data assignment.
+testAtlasDataAt
+  :: PageElement scope object
+  -> Dominion (TestCellData object)
+testAtlasDataAt occurrence =
+  dominion
+    (\(TestCellData value) -> pageElementPage occurrence + value)
+    (\value ->
+      if value < pageElementPage occurrence
+        then Nothing
+        else Just
+          (TestCellData (value - pageElementPage occurrence)))
+    (const ())
+
+-- Likewise, this action would visibly shift a value if it were ever called on
+-- an unnormalized padded arrow.  On the one-page test atlas every canonical
+-- arrow is an identity, so the documented functor and disjointness laws hold.
+testAtlasMapData
+  :: PageElementArrow scope source target
+  -> DomanialInsertion
+       (TestCellData source)
+       (TestCellData target)
+testAtlasMapData pageArrow =
+  domanialInsertion
+    (\(TestCellData value) ->
+      TestCellData (pageElementPage (arrowSource pageArrow) + value))
+    (\(TestCellData value) ->
+      if value < pageElementPage (arrowSource pageArrow)
+        then Nothing
+        else Just
+          (TestCellData
+            (value - pageElementPage (arrowSource pageArrow))))
+    (const ())
+
+testAtlas :: IO ()
+testAtlas =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let valueAtlas = atlas valuePagination testAtlasDataAt testAtlasMapData
+        elements = atlasPageElements valueAtlas
+    in case
+      ( pageElement <$> pageElementIndex elements 0 (finiteOrdinal 0)
+      , pageElement <$> pageElementIndex elements 100 (finiteOrdinal 0)
+      ) of
+        (Just someOrigin, Just somePadded) ->
+          withPageElement someOrigin $ \origin ->
+            withPageElement somePadded $ \padded -> do
+              assert "atlas retains its pagination and cardinality"
+                ( atlasCardinality valueAtlas == 1
+                  && folioLength (atlasFolio valueAtlas) == 1
+                  && paginationCardinality
+                    (atlasPagination valueAtlas) == 1
+                )
+              let normalized = normalizeAtlasElement valueAtlas padded
+              assert "atlas element observation uses the padded spine"
+                ( pageElementPage padded == 100
+                  && pageElementPage normalized == 0
+                )
+              assert "atlas data lookup uses the canonical representative"
+                (rank
+                  (atlasDataAt valueAtlas padded)
+                  (TestCellData 7) == 7)
+              let paddedToOrigin = pageElementArrow padded origin
+                  normalizedArrow =
+                    normalizeAtlasArrow valueAtlas paddedToOrigin
+                  mappedDatum =
+                    applyInsertion
+                      (mapAtlasData valueAtlas paddedToOrigin)
+                      (TestCellData 11)
+              assert "atlas arrow action uses canonical endpoints"
+                ( pageElementPage (arrowSource normalizedArrow) == 0
+                  && pageElementPage (arrowTarget normalizedArrow) == 0
+                  && mappedDatum == TestCellData 11
+                )
+              assert "atlas data coherence is operationally identity"
+                ( normalizeAtlasDatum
+                    valueAtlas padded (TestCellData 13)
+                    == TestCellData 13
+                )
+              withPageElement
+                (mapPaginationElement (atlasCoherence valueAtlas) padded) $
+                  \coherent ->
+                    assert "atlas exposes pagination coherence"
+                      (pageElementPage coherent == 0)
+        _ -> fail "test setup failed: expected atlas elements"
