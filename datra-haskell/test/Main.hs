@@ -622,12 +622,31 @@ testAtlas =
                     testAtlasCoherenceLaw
                     testAtlasDisjointLaw $ \targetAtlas -> do
                       let valueMorphism =
-                            atlasMorphism valueAtlas targetAtlas $ \source ->
-                              atlasMorphismImage source identityInsertion
+                            atlasMorphism
+                              (atlasMorphismAction
+                                identityAtlasObjectMap
+                                valueAtlas
+                                targetAtlas
+                                id
+                                (const identityInsertion)
+                                (\_ _ -> ())
+                                (\_ _ -> ()))
                           composedMorphism =
-                            composeAtlasMorphisms
-                              (identityAtlasMorphism targetAtlas)
+                            atlasCategoryCompose atlasCategory
+                              (atlasCategoryIdentity atlasCategory targetAtlas)
                               valueMorphism
+                          rightIdentityMorphism =
+                            atlasCategoryCompose atlasCategory
+                              valueMorphism
+                              (atlasCategoryIdentity atlasCategory valueAtlas)
+                          associatedLeft =
+                            atlasCategoryCompose atlasCategory
+                              (atlasCategoryIdentity atlasCategory targetAtlas)
+                              rightIdentityMorphism
+                          associatedRight =
+                            atlasCategoryCompose atlasCategory
+                              composedMorphism
+                              (atlasCategoryIdentity atlasCategory valueAtlas)
                       withPageElement
                         (mapAtlasMorphismElement valueMorphism padded) $
                           \mapped ->
@@ -654,6 +673,31 @@ testAtlas =
                         (mapAtlasMorphismElement composedMorphism padded) $
                           \mapped ->
                             assert
-                              "atlas morphism composition retains coherence"
+                              "atlas category left identity retains coherence"
                               (pageElementPage mapped == 0)
+                      withPageElement
+                        (mapAtlasMorphismElement rightIdentityMorphism padded) $
+                          \mapped ->
+                            assert
+                              "atlas category right identity retains coherence"
+                              (pageElementPage mapped == 0)
+                      withAtlasMorphismImage
+                        (mapAtlasMorphismData associatedLeft padded) $
+                          \leftPage leftInsertion ->
+                            withAtlasMorphismImage
+                              (mapAtlasMorphismData associatedRight padded) $
+                                \rightPage rightInsertion ->
+                                  case
+                                    ( applyInsertion leftInsertion
+                                        (TestCellData 19)
+                                    , applyInsertion rightInsertion
+                                        (TestCellData 19)
+                                    ) of
+                                    (TestCellData left, TestCellData right) ->
+                                      assert
+                                        "atlas category composition is associative pointwise"
+                                        ( pageElementPage leftPage
+                                            == pageElementPage rightPage
+                                          && left == right
+                                        )
             _ -> fail "test setup failed: expected atlas elements"

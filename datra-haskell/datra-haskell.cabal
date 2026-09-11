@@ -47,6 +47,7 @@ library
         Atlas.Internal
         Atlas.LiquidInternal
         Atlas.Morphism.Internal
+        Atlas.Morphism.LiquidInternal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal

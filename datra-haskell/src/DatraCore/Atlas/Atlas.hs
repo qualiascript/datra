@@ -1,14 +1,17 @@
 -- | Atlases and their morphisms, built over finite paginations with an
 -- explicitly stable infinite padded spine.
 --
--- Atlas object laws are checked by LiquidHaskell.  Atlas morphism laws are
--- documented by the unchecked constructor for now and will be imposed in a
--- subsequent verification pass.
+-- Atlas object and primitive-morphism laws are checked by LiquidHaskell.
 module Atlas
   ( Atlas
   , AtlasDataAction
   , AtlasMorphism
+  , AtlasMorphismAction
+  , AtlasObjectMap
+  , AtlasMappedObject
+  , IdentityAtlasObjectMap
   , AtlasMorphismImage
+  , AtlasCategory
   , atlasDataAction
   , atlas
   , atlasPagination
@@ -22,7 +25,9 @@ module Atlas
   , mapAtlasData
   , atlasDataCoherence
   , normalizeAtlasDatum
-  , atlasMorphismImage
+  , atlasMorphismAction
+  , identityAtlasObjectMap
+  , atlasObjectMap
   , withAtlasMorphismImage
   , atlasMorphism
   , atlasMorphismPagination
@@ -31,6 +36,9 @@ module Atlas
   , mapAtlasMorphismData
   , identityAtlasMorphism
   , composeAtlasMorphisms
+  , atlasCategory
+  , atlasCategoryIdentity
+  , atlasCategoryCompose
   ) where
 
 import Atlas.Internal
@@ -52,10 +60,20 @@ import Atlas.Internal
   )
 import Atlas.Morphism.Internal
   ( AtlasMorphism
+  , AtlasMorphismAction
+  , AtlasObjectMap
+  , AtlasMappedObject
+  , IdentityAtlasObjectMap
   , AtlasMorphismImage
+  , AtlasCategory
   , atlasMorphism
-  , atlasMorphismImage
+  , atlasMorphismAction
+  , identityAtlasObjectMap
+  , atlasObjectMap
   , atlasMorphismPagination
+  , atlasCategory
+  , atlasCategoryCompose
+  , atlasCategoryIdentity
   , composeAtlasMorphisms
   , identityAtlasMorphism
   , mapAtlasMorphismArrow

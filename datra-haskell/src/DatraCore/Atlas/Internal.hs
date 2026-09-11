@@ -301,6 +301,7 @@ normalizeAtlasElement
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> PageElement scope object
+{-@ reflect normalizeAtlasElement @-}
 normalizeAtlasElement value =
   normalizePaginationElement (atlasPagination value)
 
@@ -352,6 +353,7 @@ mapAtlasData
   :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target
   -> DomanialInsertion (cellData source) (cellData target)
+{-@ reflect mapAtlasData @-}
 mapAtlasData value pageArrow =
   atlasActionMap
     (atlasActionData (storedAtlasData value))
