@@ -2,7 +2,6 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RoleAnnotations #-}
 #include "../LiquidPlugin.h"
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
@@ -16,61 +15,13 @@ module Pagination.LiquidInternal
   , withPageElementArrowData
   , identityPaginationMorphismData
   , composePaginationMorphismsData
-  , pageElementTypeWitness
-  , pageElementRelationWitness
-  , somePageElementRelationWitness
-  , pageElementTraceSuffixWitness
+  , normalizationPaginationMorphismData
+  , normalizationPaginationMorphismIdempotent
   ) where
 
 import Data.Kind (Type)
-import Chain.Internal
-  ( Chain (..)
-  )
-import DatraOrdinal (Ordinal)
 import Numeric.Natural (Natural)
 import PageElements.LiquidInternal
-  ( PageElement
-  , PageElementCell (..)
-  , PageElementArrow
-  , SomePageElement
-  , SomePageElementArrow
-  , arrowSource
-  , arrowTarget
-  , pageElementPrecedes
-  , pageElementTransported
-  , somePageElement
-  , somePageElementArrow
-  , somePageElementPrecedes
-  , somePageElementTransported
-  , traceSuffix
-  , withPageElementArrow
-  )
-
--- Keep the page-element position type in LiquidHaskell's imported type
--- environment when checking refinements over existential page elements.
-pageElementTypeWitness :: Maybe (Ordinal, Natural)
-pageElementTypeWitness = Nothing
-
-pageElementRelationWitness
-  :: PageElement scope source
-  -> PageElement scope target
-  -> (Bool, Bool)
-pageElementRelationWitness source target =
-  ( pageElementPrecedes source target
-  , pageElementTransported source target
-  )
-
-somePageElementRelationWitness
-  :: SomePageElement scope
-  -> SomePageElement scope
-  -> (Bool, Bool)
-somePageElementRelationWitness source target =
-  ( somePageElementPrecedes source target
-  , somePageElementTransported source target
-  )
-
-pageElementTraceSuffixWitness :: [Ordinal] -> [Ordinal] -> Bool
-pageElementTraceSuffixWitness = traceSuffix
 
 -- | A functor between two thin page-element categories. The second field is
 -- the remaining functoriality obligation: the object map must carry every
@@ -129,6 +80,54 @@ paginationMorphism
   -> (SomePageElement sourceScope -> SomePageElement sourceScope -> ())
   -> PaginationMorphism sourceScope targetScope
 paginationMorphism = PaginationMorphism
+
+-- | Normalization is a functor on the tall page-element category.  It clamps
+-- page coordinates to the final genuine page and trims repeated final-page
+-- entries from transport traces.
+normalizationPaginationMorphismData
+  :: Natural
+  -> Int
+  -> PaginationMorphism scope scope
+normalizationPaginationMorphismData finalPage traceLimit =
+  PaginationMorphism
+    (normalizeSomePageElementAt finalPage traceLimit)
+    (normalizationPaginationPreservesArrow finalPage traceLimit)
+
+{-@
+normalizationPaginationPreservesArrow
+  :: finalPage:Natural
+  -> traceLimit:Int
+  -> sourceValue:SomePageElement scope
+  -> targetValue:{SomePageElement scope |
+       somePageElementPrecedes sourceValue targetValue
+       && somePageElementTransported sourceValue targetValue}
+  -> { proof:() |
+       somePageElementPrecedes
+         (normalizeSomePageElementAt finalPage traceLimit sourceValue)
+         (normalizeSomePageElementAt finalPage traceLimit targetValue)
+       && somePageElementTransported
+         (normalizeSomePageElementAt finalPage traceLimit sourceValue)
+         (normalizeSomePageElementAt finalPage traceLimit targetValue) }
+@-}
+normalizationPaginationPreservesArrow
+  :: Natural
+  -> Int
+  -> SomePageElement scope
+  -> SomePageElement scope
+  -> ()
+normalizationPaginationPreservesArrow
+  finalPage traceLimit source target =
+    normalizeSomePageElementPreservesArrowAt
+      finalPage traceLimit source target
+
+-- | Pointwise idempotence of the normalization pagination morphism.
+normalizationPaginationMorphismIdempotent
+  :: Natural
+  -> Int
+  -> PageElement scope object
+  -> ()
+normalizationPaginationMorphismIdempotent =
+  normalizePageElementIdempotentAt
 
 -- | Apply the total object map to a typed source page element.
 {-@ reflect mapPaginationElementData @-}

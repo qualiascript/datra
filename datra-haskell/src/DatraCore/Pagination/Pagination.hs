@@ -10,6 +10,11 @@ module Pagination
   , pagination
   , paginationFolio
   , paginationPageElements
+  , paginationCardinality
+  , normalizePaginationElement
+  , normalizePaginationArrow
+  , paginationCoherence
+  , paginationCoherenceIdempotent
   , paginationMorphism
   , mapPaginationElement
   , mapPaginationArrow
@@ -30,5 +35,10 @@ import Pagination.Internal
   , pagination
   , paginationFolio
   , paginationPageElements
+  , paginationCardinality
+  , normalizePaginationElement
+  , normalizePaginationArrow
+  , paginationCoherence
+  , paginationCoherenceIdempotent
   , withPageElementArrow
   )

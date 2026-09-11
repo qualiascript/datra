@@ -10,6 +10,7 @@ homepage:           https://github.com/qualiascript/datra
 bug-reports:        https://github.com/qualiascript/datra/issues
 category:           Development
 build-type:         Simple
+tested-with:        GHC == 9.14.1
 extra-doc-files:
     CHANGELOG.md
     README.md
@@ -19,6 +20,11 @@ extra-source-files:
 
 common warnings
     ghc-options: -Wall
+
+flag liquid
+    description: Enable LiquidHaskell verification during ordinary builds
+    default:     True
+    manual:      True
 
 library
     import:           warnings
@@ -32,11 +38,20 @@ library
         Folio
         PageElements
         Pagination
+        Atlas
+        DataTransformation
     other-modules:
         PageElements.Internal
         PageElements.LiquidInternal
         Pagination.Internal
         Pagination.LiquidInternal
+        Atlas.Internal
+        Atlas.LiquidInternal
+        Atlas.Derived.Internal
+        Atlas.Morphism.Internal
+        Atlas.Morphism.LiquidInternal
+        DataTransformation.Internal
+        DataTransformation.LiquidInternal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
@@ -49,13 +64,17 @@ library
         Folio.LiquidInternal
     build-depends:
         base >= 4.14 && < 5,
-        containers >= 0.6 && < 0.9,
-        liquidhaskell == 0.9.4.7.0
+        containers >= 0.6 && < 0.9
+    if flag(liquid)
+        build-depends:
+            liquidhaskell == 0.9.14.1.1
     hs-source-dirs:
         src/DatraCore
         src/DatraCore/Chain
         src/DatraCore/PageElements
         src/DatraCore/Pagination
+        src/DatraCore/Atlas
+        src/DatraCore/DataTransformation
         src/DatraCore/Consolidation
         src/DatraCore/DatraOrdinal
         src/DatraCore/Dominion

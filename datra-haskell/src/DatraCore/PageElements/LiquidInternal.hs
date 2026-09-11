@@ -34,6 +34,19 @@ module PageElements.LiquidInternal
   , pageElementArrowLeftIdentity
   , pageElementArrowRightIdentity
   , pageElementArrowAssociativity
+  , normalizePageElementAt
+  , normalizeSomePageElementAt
+  , normalizePageElementArrowAt
+  , normalizePageElementIdempotentAt
+  , normalizePageElementReachableAt
+  , normalizePageElementPreservesArrowAt
+  , normalizeSomePageElementPreservesArrowAt
+  , clampPage
+  , clampPageBelowSource
+  , trimTrace
+  , trimTraceIdempotent
+  , trimTraceIsSuffix
+  , trimTracePreservesSuffix
   , traceSuffix
   , traceTail
   ) where
@@ -185,6 +198,286 @@ traceSuffix source target
   | source == target = True
 traceSuffix [] _ = False
 traceSuffix (_ : rest) target = traceSuffix rest target
+
+-- | A reflected trace-length counter used by the verified suffix-trimming
+-- operation below.
+{-@ reflect traceLength @-}
+traceLength :: [a] -> Int
+traceLength [] = 0
+traceLength (_ : rest) = 1 + traceLength rest
+
+-- | Retain at most the requested number of entries at the end of a transport
+-- trace.  A page-element trace runs from its current page back to the origin,
+-- so this removes repeated final-page occurrences from the front.
+{-@ reflect trimTrace @-}
+trimTrace :: Int -> [Ordinal] -> [Ordinal]
+trimTrace limit values
+  | traceLength values <= limit = values
+trimTrace _ [] = []
+trimTrace limit (_ : rest) = trimTrace limit rest
+
+-- | Trimming an already trimmed trace has no further effect.
+{-@
+trimTraceIdempotent
+  :: limit:Int
+  -> values:[Ordinal]
+  -> { proof:() |
+       trimTrace limit (trimTrace limit values) == trimTrace limit values }
+@-}
+trimTraceIdempotent :: Int -> [Ordinal] -> ()
+trimTraceIdempotent limit values
+  | traceLength values <= limit = ()
+trimTraceIdempotent _ [] = ()
+trimTraceIdempotent limit (_ : rest) =
+  trimTraceIdempotent limit rest
+
+-- | Trimming a transport trace always selects one of its suffixes.
+{-@
+trimTraceIsSuffix
+  :: limit:Int
+  -> values:[Ordinal]
+  -> { proof:() | traceSuffix values (trimTrace limit values) }
+@-}
+trimTraceIsSuffix :: Int -> [Ordinal] -> ()
+trimTraceIsSuffix limit values
+  | traceLength values <= limit = ()
+trimTraceIsSuffix _ [] = ()
+trimTraceIsSuffix limit values@(_ : rest) =
+  case trimTraceIsSuffix limit rest of
+    () -> traceSuffixLift values (trimTrace limit rest)
+
+-- | A suffix cannot be longer than the trace containing it.
+{-@
+traceSuffixLength
+  :: source:[Ordinal]
+  -> target:{[Ordinal] | traceSuffix source target}
+  -> { proof:() | traceLength target <= traceLength source }
+@-}
+traceSuffixLength :: [Ordinal] -> [Ordinal] -> ()
+traceSuffixLength source target
+  | source == target = ()
+traceSuffixLength [] _ = ()
+traceSuffixLength (_ : rest) target = traceSuffixLength rest target
+
+-- | Taking equally bounded suffixes preserves the suffix relation.
+{-@
+trimTracePreservesSuffix
+  :: limit:Int
+  -> source:[Ordinal]
+  -> target:{[Ordinal] | traceSuffix source target}
+  -> { proof:() |
+       traceSuffix (trimTrace limit source) (trimTrace limit target) }
+@-}
+trimTracePreservesSuffix :: Int -> [Ordinal] -> [Ordinal] -> ()
+trimTracePreservesSuffix _ source target
+  | source == target = ()
+trimTracePreservesSuffix _ [] _ = ()
+trimTracePreservesSuffix limit source@(_ : rest) target
+  | traceLength source <= limit =
+      case traceSuffixLength source target of
+        () -> ()
+  | otherwise = trimTracePreservesSuffix limit rest target
+
+-- | Clamp a page coordinate to the final genuine page.  This named helper is
+-- reflected because LiquidHaskell 0.9.4 does not reflect the overloaded
+-- Prelude 'min' method.
+{-@ reflect clampPage @-}
+clampPage :: Natural -> Natural -> Natural
+clampPage page finalPage
+  | page <= finalPage = page
+  | otherwise = finalPage
+
+-- | Clamping a page always moves weakly toward the origin.
+{-@
+clampPageBelowSource
+  :: finalPage:Natural
+  -> page:Natural
+  -> { proof:() | clampPage page finalPage <= page }
+@-}
+clampPageBelowSource :: Natural -> Natural -> ()
+clampPageBelowSource finalPage page
+  | page <= finalPage = ()
+  | otherwise = ()
+
+-- | Clamping a page twice has no further effect.
+{-@
+clampPageIdempotent
+  :: page:Natural
+  -> finalPage:Natural
+  -> { proof:() |
+       clampPage (clampPage page finalPage) finalPage
+         == clampPage page finalPage }
+@-}
+clampPageIdempotent :: Natural -> Natural -> ()
+clampPageIdempotent page finalPage
+  | page <= finalPage = ()
+  | otherwise = ()
+
+-- | Clamping both sides preserves the reversed page order used by arrows.
+{-@
+clampPagePreservesPrecedes
+  :: finalPage:Natural
+  -> sourcePage:Natural
+  -> targetPage:{Natural | sourcePage >= targetPage}
+  -> { proof:() |
+       clampPage sourcePage finalPage >= clampPage targetPage finalPage }
+@-}
+clampPagePreservesPrecedes :: Natural -> Natural -> Natural -> ()
+clampPagePreservesPrecedes finalPage sourcePage targetPage
+  | sourcePage <= finalPage = ()
+  | targetPage <= finalPage = ()
+  | otherwise = ()
+
+-- | Collapse a page-element occurrence to the coherent representative whose
+-- page is at most the final genuine page.  Traces keep only the suffix from
+-- that page back to the origin.
+{-@ reflect normalizePageElementAt @-}
+normalizePageElementAt
+  :: Natural
+  -> Int
+  -> PageElement scope object
+  -> PageElement scope object
+normalizePageElementAt finalPage traceLimit value =
+  PageElement
+    { pageElementPage = clampPage (pageElementPage value) finalPage
+    , pageElementPosition = pageElementPosition value
+    , pageElementTrace = trimTrace traceLimit (pageElementTrace value)
+    , pageElementCell = pageElementCell value
+    }
+
+-- | Normalize an existential page element without exposing its object token.
+{-@ reflect normalizeSomePageElementAt @-}
+normalizeSomePageElementAt
+  :: Natural
+  -> Int
+  -> SomePageElement scope
+  -> SomePageElement scope
+normalizeSomePageElementAt finalPage traceLimit (SomePageElement value) =
+  SomePageElement (normalizePageElementAt finalPage traceLimit value)
+
+-- | Page-element normalization is idempotent.
+{-@
+normalizePageElementIdempotentAt
+  :: finalPage:Natural
+  -> traceLimit:Int
+  -> value:PageElement scope object
+  -> { proof:() |
+       normalizePageElementAt finalPage traceLimit
+         (normalizePageElementAt finalPage traceLimit value)
+       == normalizePageElementAt finalPage traceLimit value }
+@-}
+normalizePageElementIdempotentAt
+  :: Natural
+  -> Int
+  -> PageElement scope object
+  -> ()
+normalizePageElementIdempotentAt finalPage traceLimit value =
+  case clampPageIdempotent (pageElementPage value) finalPage of
+    () -> trimTraceIdempotent traceLimit (pageElementTrace value)
+
+-- | Every occurrence has the canonical arrow to its normalized
+-- representative: normalization moves weakly toward the origin and keeps a
+-- suffix of the occurrence's exact transport trace.
+{-@
+normalizePageElementReachableAt
+  :: finalPage:Natural
+  -> traceLimit:Int
+  -> value:PageElement scope object
+  -> { proof:() |
+       pageElementPrecedes value
+         (normalizePageElementAt finalPage traceLimit value)
+       && pageElementTransported value
+         (normalizePageElementAt finalPage traceLimit value) }
+@-}
+normalizePageElementReachableAt
+  :: Natural
+  -> Int
+  -> PageElement scope object
+  -> ()
+normalizePageElementReachableAt finalPage traceLimit value =
+  case clampPageBelowSource finalPage (pageElementPage value) of
+    () -> trimTraceIsSuffix traceLimit (pageElementTrace value)
+
+-- | Normalization preserves both parts of the page-element arrow relation.
+{-@
+normalizePageElementPreservesArrowAt
+  :: finalPage:Natural
+  -> traceLimit:Int
+  -> sourceValue:PageElement scope source
+  -> targetValue:{PageElement scope target |
+       pageElementPrecedes sourceValue targetValue
+       && pageElementTransported sourceValue targetValue}
+  -> { proof:() |
+       pageElementPrecedes
+         (normalizePageElementAt finalPage traceLimit sourceValue)
+         (normalizePageElementAt finalPage traceLimit targetValue)
+       && pageElementTransported
+         (normalizePageElementAt finalPage traceLimit sourceValue)
+         (normalizePageElementAt finalPage traceLimit targetValue) }
+@-}
+normalizePageElementPreservesArrowAt
+  :: Natural
+  -> Int
+  -> PageElement scope source
+  -> PageElement scope target
+  -> ()
+normalizePageElementPreservesArrowAt finalPage traceLimit source target =
+  case clampPagePreservesPrecedes
+    finalPage
+    (pageElementPage source)
+    (pageElementPage target) of
+      () -> trimTracePreservesSuffix
+        traceLimit
+        (pageElementTrace source)
+        (pageElementTrace target)
+
+-- | Existential form of arrow preservation, suitable for constructing a
+-- pagination morphism without exposing endpoint object tokens.
+{-@
+normalizeSomePageElementPreservesArrowAt
+  :: finalPage:Natural
+  -> traceLimit:Int
+  -> sourceValue:SomePageElement scope
+  -> targetValue:{SomePageElement scope |
+       somePageElementPrecedes sourceValue targetValue
+       && somePageElementTransported sourceValue targetValue}
+  -> { proof:() |
+       somePageElementPrecedes
+         (normalizeSomePageElementAt finalPage traceLimit sourceValue)
+         (normalizeSomePageElementAt finalPage traceLimit targetValue)
+       && somePageElementTransported
+         (normalizeSomePageElementAt finalPage traceLimit sourceValue)
+         (normalizeSomePageElementAt finalPage traceLimit targetValue) }
+@-}
+normalizeSomePageElementPreservesArrowAt
+  :: Natural
+  -> Int
+  -> SomePageElement scope
+  -> SomePageElement scope
+  -> ()
+normalizeSomePageElementPreservesArrowAt
+  finalPage
+  traceLimit
+  (SomePageElement source)
+  (SomePageElement target) =
+    normalizePageElementPreservesArrowAt finalPage traceLimit source target
+
+-- | Apply normalization to both endpoints of a typed page-element arrow.
+{-@ reflect normalizePageElementArrowAt @-}
+normalizePageElementArrowAt
+  :: Natural
+  -> Int
+  -> PageElementArrow scope source target
+  -> PageElementArrow scope source target
+normalizePageElementArrowAt finalPage traceLimit sourceArrow =
+  case normalizePageElementPreservesArrowAt
+    finalPage
+    traceLimit
+    (arrowSource sourceArrow)
+    (arrowTarget sourceArrow) of
+      () -> PageElementArrow
+        (normalizePageElementAt finalPage traceLimit (arrowSource sourceArrow))
+        (normalizePageElementAt finalPage traceLimit (arrowTarget sourceArrow))
 
 -- | Every transport trace is a suffix of itself.
 {-@

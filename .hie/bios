@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+source_file=${1:?hie-bios requires a source file}
+case "$source_file" in
+    */test/*) component=test:datra-haskell-test ;;
+    */app/*) component=exe:datra-haskell ;;
+    *) component=lib:datra-haskell ;;
+esac
+
+hie_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+workspace_dir=$(CDPATH= cd -- "$hie_dir/.." && pwd)
+package_dir="$workspace_dir/datra-haskell"
+
+# HLS is compiled against the system GHC.  The IDE project disables the Liquid
+# plugin and dependency, leaving ordinary builds on the repository-local GHC.
+if [ -x /usr/bin/ghc-pkg ]; then
+    ghc_pkg_executable=/usr/bin/ghc-pkg
+else
+    ghc_pkg_executable=$(command -v ghc-pkg)
+fi
+
+if [ -x "$HOME/.local/bin/cabal" ]; then
+    cabal_executable="$HOME/.local/bin/cabal"
+else
+    cabal_executable=$(command -v cabal)
+fi
+
+cd "$package_dir"
+"$cabal_executable" \
+    --builddir="$hie_dir/dist" \
+    v2-repl \
+    --with-compiler="$hie_dir/ghc" \
+    --with-hc-pkg="$ghc_pkg_executable" \
+    --project-file=cabal.hie.project \
+    "$component" \
+    >/dev/null

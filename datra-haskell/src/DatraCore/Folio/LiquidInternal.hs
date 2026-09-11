@@ -1,7 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 #include "../LiquidPlugin.h"
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 
@@ -25,22 +24,6 @@ module Folio.LiquidInternal
   ) where
 
 import Consolidation.LiquidInternal
-  ( Coconsolidation
-  , applyConsolidation
-  , coconsolidationComposition
-  , coconsolidationIdentity
-  , composeCoconsolidations
-  , composeConsolidations
-  , composeFunctions
-  , composeMonotone
-  , composePointSurjective
-  , identityConsolidation
-  , identityMap
-  , identityMonotone
-  , identityPointSurjective
-  , op
-  , unop
-  )
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
@@ -119,6 +102,7 @@ appendPageData
 appendPageData pages = SnocPage (folioLengthData pages + 1) pages
 
 -- | The number of genuine pages.
+{-@ reflect folioLengthData @-}
 folioLengthData :: FolioData page origin final -> Natural
 folioLengthData (OriginFolio count _ _) = count
 folioLengthData (SnocPage count _ _ _) = count

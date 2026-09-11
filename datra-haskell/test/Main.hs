@@ -1,7 +1,12 @@
+{-# LANGUAGE TypeFamilies #-}
+
 module Main (main) where
 
+import Atlas
 import Chain
 import Consolidation
+import qualified Control.Category as Category
+import DataTransformation
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
@@ -26,6 +31,7 @@ main = do
   testFolio
   testPageElements
   testPagination
+  testAtlas
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -372,13 +378,74 @@ testPagination =
       in case
         ( pageElement <$> pageElementIndex sourceElements 2 (finiteOrdinal 5)
         , pageElement <$> pageElementIndex sourceElements 1 (finiteOrdinal 1)
+        , pageElement <$> pageElementIndex sourceElements 100 (finiteOrdinal 5)
         , pageElement <$> pageElementIndex targetElements 0 (finiteOrdinal 0)
         ) of
-          (Just someFive, Just someTrueCell, Just targetOrigin) ->
+          ( Just someFive
+            , Just someTrueCell
+            , Just somePaddedFive
+            , Just targetOrigin
+            ) ->
             withPageElement someFive $ \five ->
-              withPageElement someTrueCell $ \trueCell -> do
+              withPageElement someTrueCell $ \trueCell ->
+                withPageElement somePaddedFive $ \paddedFive -> do
                 assert "pagination retains its source folio"
                   (folioLength (paginationFolio sourcePagination) == 3)
+                assert "pagination exposes its genuine cardinality"
+                  (paginationCardinality sourcePagination == 3)
+                let normalizedFive =
+                      normalizePaginationElement sourcePagination paddedFive
+                paginationCoherenceIdempotent
+                  sourcePagination paddedFive `seq` pure ()
+                assert "pagination normalization collapses padded pages"
+                  ( pageElementPage normalizedFive == 2
+                    && pageElementPosition normalizedFive == finiteOrdinal 5
+                  )
+                assert "pagination normalization fixes genuine pages"
+                  ( normalizePaginationElement sourcePagination five == five
+                  )
+                assert "pagination normalization is idempotent"
+                  ( normalizePaginationElement
+                      sourcePagination normalizedFive == normalizedFive
+                  )
+                let paddedToFinal = pageElementArrow paddedFive five
+                    normalizedArrow =
+                      normalizePaginationArrow
+                        sourcePagination paddedToFinal
+                assert "pagination normalization preserves arrows"
+                  ( pageElementPage (arrowSource normalizedArrow) == 2
+                    && pageElementPage (arrowTarget normalizedArrow) == 2
+                    && pageElementPosition (arrowSource normalizedArrow)
+                      == finiteOrdinal 5
+                    && pageElementPosition (arrowTarget normalizedArrow)
+                      == finiteOrdinal 5
+                  )
+                withPageElement
+                  (mapPaginationElement
+                    (paginationCoherence sourcePagination)
+                    paddedFive) $ \coherentFive -> do
+                    assert "pagination coherence acts by normalization"
+                      ( pageElementPage coherentFive == 2
+                        && pageElementPosition coherentFive == finiteOrdinal 5
+                      )
+                    withPageElement
+                      (mapPaginationElement
+                        (paginationCoherence sourcePagination)
+                        coherentFive) $ \coherentTwice ->
+                          assert "pagination coherence is operationally idempotent"
+                            ( pageElementPage coherentTwice
+                                == pageElementPage coherentFive
+                              && pageElementPosition coherentTwice
+                                == pageElementPosition coherentFive
+                            )
+                withPageElementArrow
+                  (mapPaginationArrow
+                    (paginationCoherence sourcePagination)
+                    paddedToFinal) $ \coherentArrow ->
+                      assert "pagination coherence normalizes arrow endpoints"
+                        ( pageElementPage (arrowSource coherentArrow) == 2
+                          && pageElementPage (arrowTarget coherentArrow) == 2
+                        )
                 let constantMorphism =
                       paginationMorphism
                         (const targetOrigin)
@@ -417,3 +484,364 @@ testPagination =
                         && pageElementPosition mapped == finiteOrdinal 0
                       )
           _ -> fail "test setup failed: expected pagination elements"
+
+newtype TestCellData object = TestCellData Natural
+  deriving (Eq, Show)
+
+newtype TestDataTransformationValue atlas =
+  TestDataTransformationValue Natural
+  deriving (Eq, Show)
+
+data TestDataTransformationValues
+
+type instance
+  DataTransformationValue TestDataTransformationValues atlas =
+    TestDataTransformationValue atlas
+
+testDataTransformation
+  :: DataTransformation TestDataTransformationValues
+testDataTransformation =
+  dataTransformation
+    (\_ (TestDataTransformationValue value) ->
+      TestDataTransformationValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementDataTransformation
+  :: DataTransformationHom
+       TestDataTransformationValues
+       TestDataTransformationValues
+incrementDataTransformation =
+  dataTransformationHom
+    testDataTransformation
+    testDataTransformation
+    (\(TestDataTransformationValue value) ->
+      TestDataTransformationValue (value + 1))
+    (\_ _ -> ())
+
+-- The page offset makes it observable whether 'atlasDataAt' normalized its
+-- input before consulting the canonical data assignment.
+testAtlasDataAt
+  :: PageElement scope object
+  -> Dominion (TestCellData object)
+testAtlasDataAt occurrence =
+  dominion
+    (\(TestCellData value) -> pageElementPage occurrence + value)
+    (\value ->
+      if value < pageElementPage occurrence
+        then Nothing
+        else Just
+          (TestCellData (value - pageElementPage occurrence)))
+    (const ())
+
+-- Likewise, this action would visibly shift a value if it were ever called on
+-- an unnormalized padded arrow.  On the one-page test atlas every canonical
+-- arrow is an identity, so the documented functor and disjointness laws hold.
+testAtlasMapData
+  :: PageElementArrow scope source target
+  -> DomanialInsertion
+       (TestCellData source)
+       (TestCellData target)
+testAtlasMapData pageArrow =
+  domanialInsertion
+    (\(TestCellData value) ->
+      TestCellData (pageElementPage (arrowSource pageArrow) + value))
+    (\(TestCellData value) ->
+      if value < pageElementPage (arrowSource pageArrow)
+        then Nothing
+        else Just
+          (TestCellData
+            (value - pageElementPage (arrowSource pageArrow))))
+    (const ())
+
+testAtlasIdentityLaw
+  :: PageElement scope object
+  -> TestCellData object
+  -> ()
+testAtlasIdentityLaw _ _ = ()
+
+testAtlasCompositionLaw
+  :: PageElementArrow scope middle target
+  -> PageElementArrow scope source middle
+  -> ()
+  -> TestCellData source
+  -> ()
+testAtlasCompositionLaw _ _ _ _ = ()
+
+testAtlasCoherenceLaw
+  :: PageElement scope object
+  -> PageElementArrow scope object object
+  -> ()
+  -> TestCellData object
+  -> ()
+testAtlasCoherenceLaw _ _ _ _ = ()
+
+testAtlasDisjointLaw
+  :: PageElement scope leftObject
+  -> PageElement scope rightObject
+  -> PageElementArrow scope leftObject originObject
+  -> PageElementArrow scope rightObject originObject
+  -> ()
+  -> TestCellData leftObject
+  -> TestCellData rightObject
+  -> ()
+testAtlasDisjointLaw _ _ _ _ _ _ _ = ()
+
+testAtlas :: IO ()
+testAtlas =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    let dataAction = atlasDataAction testAtlasDataAt testAtlasMapData
+    in atlas
+      valuePagination
+      dataAction
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let elements = atlasPageElements valueAtlas
+        in case
+          ( pageElement <$> pageElementIndex elements 0 (finiteOrdinal 0)
+          , pageElement <$> pageElementIndex elements 100 (finiteOrdinal 0)
+          ) of
+            (Just someOrigin, Just somePadded) ->
+              withPageElement someOrigin $ \origin ->
+                withPageElement somePadded $ \padded -> do
+                  assert "atlas retains its pagination and cardinality"
+                    ( atlasCardinality valueAtlas == 1
+                      && folioLength (atlasFolio valueAtlas) == 1
+                      && paginationCardinality
+                        (atlasPagination valueAtlas) == 1
+                    )
+                  let normalized = normalizeAtlasElement valueAtlas padded
+                  assert "atlas element observation uses the padded spine"
+                    ( pageElementPage padded == 100
+                      && pageElementPage normalized == 0
+                    )
+                  assert "atlas data lookup uses the canonical representative"
+                    (rank
+                      (atlasDataAt valueAtlas padded)
+                      (TestCellData 7) == 7)
+                  let paddedToOrigin = pageElementArrow padded origin
+                      normalizedArrow =
+                        normalizeAtlasArrow valueAtlas paddedToOrigin
+                      mappedDatum =
+                        applyInsertion
+                          (mapAtlasData valueAtlas paddedToOrigin)
+                          (TestCellData 11)
+                  assert "atlas arrow action uses canonical endpoints"
+                    ( pageElementPage (arrowSource normalizedArrow) == 0
+                      && pageElementPage (arrowTarget normalizedArrow) == 0
+                      && mappedDatum == TestCellData 11
+                    )
+                  assert "atlas data coherence is operationally identity"
+                    ( normalizeAtlasDatum
+                        valueAtlas padded (TestCellData 13)
+                        == TestCellData 13
+                    )
+                  withAtlasPageChain valueAtlas 100 $ \pageChain ->
+                    assert "atlas pages expose the padded final chain"
+                      (chainOrderType pageChain == chainOrderType unitChain)
+                  case pageElementIndex elements 100 (finiteOrdinal 0) of
+                    Nothing ->
+                      fail "test setup failed: expected an atlas cell index"
+                    Just paddedCellIndex ->
+                      withPageElement
+                        (atlasPageCell valueAtlas paddedCellIndex) $ \cell ->
+                        assert "atlas page cells retain their spine page"
+                          (pageElementPage cell == 100)
+                  withPageElement (atlasOriginCell valueAtlas) $ \originCell ->
+                    assert "atlas origin cell is on page zero"
+                      ( pageElementPage originCell == 0
+                        && pageElementPosition originCell == finiteOrdinal 0
+                      )
+                  withAtlasCellDominion (atlasExtent valueAtlas) $
+                    \extentCell extentDominion ->
+                      assert "atlas extent is the origin dominion"
+                        ( pageElementPage extentCell == 0
+                          && rank extentDominion (TestCellData 5) == 5
+                        )
+                  case chainIndex
+                    (atlasTerritoryChain valueAtlas)
+                    (finiteOrdinal 0) of
+                    Nothing ->
+                      fail "test setup failed: expected a territory index"
+                    Just territoryIndex -> do
+                      withAtlasCellDominion
+                        (atlasTerritory valueAtlas territoryIndex) $
+                          \territoryCell territoryDominion ->
+                            assert "atlas territory uses the final genuine page"
+                              ( pageElementPage territoryCell == 0
+                                && rank territoryDominion (TestCellData 5) == 5
+                              )
+                      withAtlasCellDominion
+                        (atlasRegion valueAtlas territoryIndex) $
+                          \regionCell regionDominion ->
+                            assert "atlas regions are territory members"
+                              ( pageElementPage regionCell == 0
+                                && rank regionDominion (TestCellData 5) == 5
+                              )
+                  assert "atlas element ordering compares canonical cells"
+                    (not (atlasElementLT valueAtlas padded origin))
+                  atlasCoherenceIdempotent valueAtlas padded `seq`
+                    assert "atlas coherence is pointwise idempotent"
+                      ( normalizeAtlasElement valueAtlas
+                          (normalizeAtlasElement valueAtlas padded)
+                        == normalizeAtlasElement valueAtlas padded
+                      )
+                  withPageElement
+                    (mapPaginationElement (atlasCoherence valueAtlas) padded) $
+                      \coherent ->
+                        assert "atlas exposes pagination coherence"
+                          (pageElementPage coherent == 0)
+                  let coherentIdentity = identityAtlasMorphism valueAtlas
+                  withPageElement
+                    (mapAtlasMorphismElement coherentIdentity padded) $
+                      \coherent ->
+                        assert "atlas identity is its coherence map"
+                          (pageElementPage coherent == 0)
+                  withPageElement
+                    (mapAtlasHomElement
+                      (atlasWitness valueAtlas)
+                      Category.id
+                      padded) $ \coherent ->
+                        assert
+                          "Control.Category identity materializes as Atlas coherence"
+                          (pageElementPage coherent == 0)
+                  atlas
+                    valuePagination
+                    dataAction
+                    testAtlasIdentityLaw
+                    testAtlasCompositionLaw
+                    testAtlasCoherenceLaw
+                    testAtlasDisjointLaw $ \targetAtlas -> do
+                      let valueMorphism =
+                            atlasMorphism
+                              (atlasMorphismAction
+                                identityAtlasObjectMap
+                                valueAtlas
+                                targetAtlas
+                                id
+                                (const identityInsertion)
+                                (\_ _ -> ())
+                                (\_ _ -> ()))
+                          valueHom = atlasHom valueMorphism
+                          leftHom = Category.id Category.. valueHom
+                          rightHom = valueHom Category.. Category.id
+                          associatedLeftHom =
+                            Category.id Category.. rightHom
+                          associatedRightHom =
+                            leftHom Category.. Category.id
+                          incrementedTwice =
+                            incrementDataTransformation
+                              Category.. incrementDataTransformation
+                      withPageElement
+                        (mapAtlasMorphismElement valueMorphism padded) $
+                          \mapped ->
+                            assert
+                              "atlas morphisms normalize their page action"
+                              (pageElementPage mapped == 0)
+                      withAtlasMorphismImage
+                        (mapAtlasMorphismData valueMorphism padded) $
+                          \mapped insertion ->
+                            assert
+                              "atlas morphisms retain dependent data targets"
+                              ( pageElementPage mapped == 0
+                                && applyInsertion insertion (TestCellData 17)
+                                  == TestCellData 17
+                              )
+                      withPageElementArrow
+                        (mapAtlasMorphismArrow
+                          valueMorphism paddedToOrigin) $ \mappedArrow ->
+                            assert "atlas morphisms map page arrows"
+                              ( pageElementPage (arrowSource mappedArrow) == 0
+                                && pageElementPage (arrowTarget mappedArrow) == 0
+                              )
+                      withPageElement
+                        (mapAtlasHomElement
+                          (atlasWitness valueAtlas)
+                          leftHom
+                          padded) $ \mapped ->
+                            assert
+                              "Control.Category AtlasHom left identity"
+                              (pageElementPage mapped == 0)
+                      withPageElement
+                        (mapAtlasHomElement
+                          (atlasWitness valueAtlas)
+                          rightHom
+                          padded) $ \mapped ->
+                            assert
+                              "Control.Category AtlasHom right identity"
+                              (pageElementPage mapped == 0)
+                      withAtlasMorphismImage
+                        (mapAtlasHomData
+                          (atlasWitness valueAtlas)
+                          associatedLeftHom
+                          padded) $ \_ leftInsertion ->
+                            withAtlasMorphismImage
+                              (mapAtlasHomData
+                                (atlasWitness valueAtlas)
+                                associatedRightHom
+                                padded) $ \_ rightInsertion ->
+                                  case
+                                    ( applyInsertion leftInsertion
+                                        (TestCellData 23)
+                                    , applyInsertion rightInsertion
+                                        (TestCellData 23)
+                                    ) of
+                                    (TestCellData left, TestCellData right) ->
+                                      assert
+                                        "Control.Category AtlasHom associativity"
+                                        (left == right)
+                      assert "DaTra presheaves act contravariantly on AtlasHom"
+                        ( mapDataTransformation
+                            testDataTransformation
+                            valueHom
+                            (TestDataTransformationValue 29)
+                          == TestDataTransformationValue 29
+                        )
+                      dataTransformationIdentity
+                        testDataTransformation
+                        (TestDataTransformationValue 29) `seq`
+                          dataTransformationComposition
+                            testDataTransformation
+                            Category.id
+                            valueHom
+                            (TestDataTransformationValue 29) `seq`
+                              dataTransformationHomNaturality
+                                incrementDataTransformation
+                                valueHom
+                                (TestDataTransformationValue 29) `seq`
+                                  pure ()
+                      assert
+                        "DaTra natural transformations compose pointwise"
+                        ( mapDataTransformationHom
+                            incrementedTwice
+                            (TestDataTransformationValue 29)
+                          == TestDataTransformationValue 31
+                        )
+                      case mapDataTransformation
+                        yoneda
+                        valueHom
+                        (Yoneda Category.id) of
+                          Yoneda representedArrow ->
+                            withPageElement
+                              (mapAtlasHomElement
+                                (atlasWitness valueAtlas)
+                                representedArrow
+                                padded) $ \mapped ->
+                                  assert
+                                    "Yoneda acts by presheaf precomposition"
+                                    (pageElementPage mapped == 0)
+                      case mapDataTransformationHom
+                        (yonedaMap valueHom)
+                        (Yoneda Category.id) of
+                          Yoneda representedArrow ->
+                            withPageElement
+                              (mapAtlasHomElement
+                                (atlasWitness valueAtlas)
+                                representedArrow
+                                padded) $ \mapped ->
+                                  assert
+                                    "Yoneda embeds AtlasHom by postcomposition"
+                                    (pageElementPage mapped == 0)
+            _ -> fail "test setup failed: expected atlas elements"
