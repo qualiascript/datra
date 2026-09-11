@@ -1,0 +1,65 @@
+#!/bin/sh
+set -eu
+
+write_argument() {
+    compiler_argument=$1
+    if [ "$compiler_argument" = "--interactive" ]; then
+        return
+    fi
+
+    # Cabal quotes response-file arguments containing characters such as '+'.
+    # hie-bios expects one decoded argument per line.
+    case "$compiler_argument" in
+        \'*\')
+            compiler_argument=${compiler_argument#\'}
+            compiler_argument=${compiler_argument%\'}
+            ;;
+        \"*\")
+            compiler_argument=${compiler_argument#\"}
+            compiler_argument=${compiler_argument%\"}
+            ;;
+    esac
+    printf '%s\n' "$compiler_argument" >> "$HIE_BIOS_OUTPUT"
+}
+
+write_cradle_arguments() {
+    : > "${HIE_BIOS_OUTPUT:?HIE_BIOS_OUTPUT is not set}"
+    printf '%s\n' -working-dir "$(pwd)" >> "$HIE_BIOS_OUTPUT"
+    while IFS= read -r compiler_argument; do
+        write_argument "$compiler_argument"
+    done
+}
+
+for argument do
+    if [ "$argument" = "--interactive" ]; then
+        : > "${HIE_BIOS_OUTPUT:?HIE_BIOS_OUTPUT is not set}"
+        printf '%s\n' -working-dir "$(pwd)" >> "$HIE_BIOS_OUTPUT"
+        for compiler_argument do
+            write_argument "$compiler_argument"
+        done
+        exit 0
+    fi
+
+    case "$argument" in
+        @*)
+            response_file=${argument#@}
+            if grep -Fqx -- '--interactive' "$response_file"; then
+                write_cradle_arguments < "$response_file"
+                exit 0
+            fi
+            ;;
+    esac
+done
+
+if [ -n "${HIE_BIOS_GHC:-}" ]; then
+    real_ghc=$HIE_BIOS_GHC
+elif [ -x /usr/bin/ghc ]; then
+    real_ghc=/usr/bin/ghc
+else
+    real_ghc=$(command -v ghc)
+fi
+
+# HIE_BIOS_GHC_ARGS is deliberately word-split when present: hie-bios supplies
+# it as a whitespace-separated list of arguments for the real compiler.
+# shellcheck disable=SC2086
+exec "$real_ghc" ${HIE_BIOS_GHC_ARGS:-} "$@"

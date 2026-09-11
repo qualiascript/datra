@@ -21,6 +21,11 @@ extra-source-files:
 common warnings
     ghc-options: -Wall
 
+flag liquid
+    description: Enable LiquidHaskell verification during ordinary builds
+    default:     True
+    manual:      True
+
 library
     import:           warnings
     exposed-modules:
@@ -41,6 +46,7 @@ library
         Pagination.LiquidInternal
         Atlas.Internal
         Atlas.LiquidInternal
+        Atlas.Morphism.Internal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
@@ -53,8 +59,10 @@ library
         Folio.LiquidInternal
     build-depends:
         base >= 4.14 && < 5,
-        containers >= 0.6 && < 0.9,
-        liquidhaskell == 0.9.14.1.1
+        containers >= 0.6 && < 0.9
+    if flag(liquid)
+        build-depends:
+            liquidhaskell == 0.9.14.1.1
     hs-source-dirs:
         src/DatraCore
         src/DatraCore/Chain

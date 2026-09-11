@@ -608,4 +608,52 @@ testAtlas =
                       \coherent ->
                         assert "atlas exposes pagination coherence"
                           (pageElementPage coherent == 0)
+                  let coherentIdentity = identityAtlasMorphism valueAtlas
+                  withPageElement
+                    (mapAtlasMorphismElement coherentIdentity padded) $
+                      \coherent ->
+                        assert "atlas identity is its coherence map"
+                          (pageElementPage coherent == 0)
+                  atlas
+                    valuePagination
+                    dataAction
+                    testAtlasIdentityLaw
+                    testAtlasCompositionLaw
+                    testAtlasCoherenceLaw
+                    testAtlasDisjointLaw $ \targetAtlas -> do
+                      let valueMorphism =
+                            atlasMorphism valueAtlas targetAtlas $ \source ->
+                              atlasMorphismImage source identityInsertion
+                          composedMorphism =
+                            composeAtlasMorphisms
+                              (identityAtlasMorphism targetAtlas)
+                              valueMorphism
+                      withPageElement
+                        (mapAtlasMorphismElement valueMorphism padded) $
+                          \mapped ->
+                            assert
+                              "atlas morphisms normalize their page action"
+                              (pageElementPage mapped == 0)
+                      withAtlasMorphismImage
+                        (mapAtlasMorphismData valueMorphism padded) $
+                          \mapped insertion ->
+                            assert
+                              "atlas morphisms retain dependent data targets"
+                              ( pageElementPage mapped == 0
+                                && applyInsertion insertion (TestCellData 17)
+                                  == TestCellData 17
+                              )
+                      withPageElementArrow
+                        (mapAtlasMorphismArrow
+                          valueMorphism paddedToOrigin) $ \mappedArrow ->
+                            assert "atlas morphisms map page arrows"
+                              ( pageElementPage (arrowSource mappedArrow) == 0
+                                && pageElementPage (arrowTarget mappedArrow) == 0
+                              )
+                      withPageElement
+                        (mapAtlasMorphismElement composedMorphism padded) $
+                          \mapped ->
+                            assert
+                              "atlas morphism composition retains coherence"
+                              (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"

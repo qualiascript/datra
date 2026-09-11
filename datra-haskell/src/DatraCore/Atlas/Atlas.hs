@@ -1,12 +1,14 @@
--- | Atlas objects built over finite paginations with an explicitly stable
--- infinite padded spine.
+-- | Atlases and their morphisms, built over finite paginations with an
+-- explicitly stable infinite padded spine.
 --
--- This first version exposes objects and their data assignments only.  Atlas
--- morphisms will be added separately after the object representation has
--- settled.  Atlas object laws are checked by LiquidHaskell.
+-- Atlas object laws are checked by LiquidHaskell.  Atlas morphism laws are
+-- documented by the unchecked constructor for now and will be imposed in a
+-- subsequent verification pass.
 module Atlas
   ( Atlas
   , AtlasDataAction
+  , AtlasMorphism
+  , AtlasMorphismImage
   , atlasDataAction
   , atlas
   , atlasPagination
@@ -20,6 +22,15 @@ module Atlas
   , mapAtlasData
   , atlasDataCoherence
   , normalizeAtlasDatum
+  , atlasMorphismImage
+  , withAtlasMorphismImage
+  , atlasMorphism
+  , atlasMorphismPagination
+  , mapAtlasMorphismElement
+  , mapAtlasMorphismArrow
+  , mapAtlasMorphismData
+  , identityAtlasMorphism
+  , composeAtlasMorphisms
   ) where
 
 import Atlas.Internal
@@ -38,4 +49,17 @@ import Atlas.Internal
   , normalizeAtlasArrow
   , normalizeAtlasDatum
   , normalizeAtlasElement
+  )
+import Atlas.Morphism.Internal
+  ( AtlasMorphism
+  , AtlasMorphismImage
+  , atlasMorphism
+  , atlasMorphismImage
+  , atlasMorphismPagination
+  , composeAtlasMorphisms
+  , identityAtlasMorphism
+  , mapAtlasMorphismArrow
+  , mapAtlasMorphismData
+  , mapAtlasMorphismElement
+  , withAtlasMorphismImage
   )

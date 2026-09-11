@@ -1,1 +1,3 @@
 packages: .
+with-compiler: ../.tools/.ghcup/ghc/9.14.1/bin/ghc
+with-hc-pkg: ../.tools/.ghcup/ghc/9.14.1/bin/ghc-pkg

@@ -5,4 +5,5 @@ packages: .
 -- The ordinary cabal.project does not define this macro and still checks every
 -- LiquidHaskell-annotated module during builds and tests.
 package datra-haskell
+    flags: -liquid
     ghc-options: -D__GHCIDE__

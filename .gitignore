@@ -4,7 +4,9 @@ datra.iml
 .lake/
 .liquid/
 .tools/
-.hie-bios-dist/
+.hie/*
+!.hie/bios
+!.hie/ghc
 dist-newstyle/
 __pycache__/
 tmp/
