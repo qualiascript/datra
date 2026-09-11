@@ -55,7 +55,12 @@ import Pagination
   , paginationPageElements
   )
 
--- | An atlas over one generatively scoped pagination.
+-- | A law-bearing atlas with its own generative identity, built over one
+-- generatively scoped pagination.
+--
+-- @atlasScope@ identifies this particular Atlas object, independently of the
+-- pagination's @scope@.  That distinction lets future Atlas morphisms name
+-- their exact source and target even when two atlases share one pagination.
 --
 -- @cellData object@ is the carrier of the dominion attached to the page
 -- element identified by @object@.  Keeping this family as an explicit
@@ -66,8 +71,9 @@ import Pagination
 -- The supplied actions are stored privately and are only called with
 -- normalized page elements and arrows.  Consequently, all public observations
 -- of a padded occurrence are defined by its last genuine representative.
-type role Atlas nominal nominal nominal nominal
+type role Atlas nominal nominal nominal nominal nominal
 data Atlas
+  (atlasScope :: Type)
   (scope :: Type)
   (cellData :: Type -> Type)
   origin
@@ -109,8 +115,10 @@ atlasDataAction = atlasAction
 --
 -- The first two make the data assignment a functor to domanial insertions.
 -- The third is the explicit tall-stability law.  The fourth is the Atlas
--- separation condition from the Lean definition.  Unit arguments on three of
--- the witnesses carry refinement preconditions and have no runtime content.
+-- separation condition from the Lean definition.  The continuation introduces
+-- a fresh @atlasScope@, so that identity cannot escape or be confused with the
+-- identity of another Atlas.  Unit arguments on three of the witnesses carry
+-- refinement preconditions and have no runtime content.
 {-@
 atlas
   :: paginationValue:Pagination scope origin final
@@ -196,7 +204,9 @@ atlas
                      (atlasFinalPageLogic paginationValue)
                      (atlasTraceLimitLogic paginationValue) rightToOrigin))
                  rightDatum })
-  -> Atlas scope cellData origin final
+  -> useAtlas:(forall atlasScope.
+       Atlas atlasScope scope cellData origin final -> result)
+  -> result
 @-}
 atlas
   :: Pagination scope origin final
@@ -224,18 +234,22 @@ atlas
         -> cellData leftObject
         -> cellData rightObject
         -> ())
-  -> Atlas scope cellData origin final
-atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw =
-  Atlas
-    paginationValue
-    (atlasData
-      (atlasFinalPage paginationValue)
-      (atlasTraceLimit paginationValue)
-      action
-      identityLaw
-      compositionLaw
-      coherenceLaw
-      disjointLaw)
+  -> (forall atlasScope.
+        Atlas atlasScope scope cellData origin final -> result)
+  -> result
+atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw
+    useAtlas =
+  useAtlas
+    (Atlas
+      paginationValue
+      (atlasData
+        (atlasFinalPage paginationValue)
+        (atlasTraceLimit paginationValue)
+        action
+        identityLaw
+        compositionLaw
+        coherenceLaw
+        disjointLaw))
 
 -- | Final genuine page used by Atlas normalization.
 {-@ measure atlasFinalPageLogic :: Pagination scope origin final -> Natural @-}
@@ -260,27 +274,31 @@ atlasTraceLimit paginationValue =
 
 -- | Recover the pagination underlying an atlas.
 atlasPagination
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> Pagination scope origin final
 atlasPagination = storedPagination
 
 -- | Recover the finite folio underlying an atlas.
-atlasFolio :: Atlas scope cellData origin final -> Folio origin final
+atlasFolio
+  :: Atlas atlasScope scope cellData origin final
+  -> Folio origin final
 atlasFolio = paginationFolio . atlasPagination
 
 -- | Recover the category of page elements underlying an atlas.
 atlasPageElements
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElements scope origin final
 atlasPageElements = paginationPageElements . atlasPagination
 
 -- | The number of genuine pages in the atlas's finite presentation.
-atlasCardinality :: Atlas scope cellData origin final -> Natural
+atlasCardinality
+  :: Atlas atlasScope scope cellData origin final
+  -> Natural
 atlasCardinality = paginationCardinality . atlasPagination
 
 -- | Collapse a tall occurrence to its last genuine representative.
 normalizeAtlasElement
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> PageElement scope object
 normalizeAtlasElement value =
@@ -288,7 +306,7 @@ normalizeAtlasElement value =
 
 -- | Normalize both endpoints of a tall page-element arrow.
 normalizeAtlasArrow
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target
   -> PageElementArrow scope source target
 normalizeAtlasArrow value =
@@ -300,7 +318,7 @@ normalizeAtlasArrow value =
 -- This will become the object idempotent in the Karoubi-style presentation of
 -- atlas morphisms.
 atlasCoherence
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PaginationMorphism scope scope
 atlasCoherence = paginationCoherence . atlasPagination
 
@@ -316,7 +334,7 @@ atlasCoherence = paginationCoherence . atlasPagination
 --
 -- holds by construction, up to extensional equality of 'Dominion' values.
 atlasDataAt
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> Dominion (cellData object)
 atlasDataAt value occurrence =
@@ -331,7 +349,7 @@ atlasDataAt value occurrence =
 -- with normalization preserving those operations, that makes this full
 -- tall-spine action functorial and constant on the padded tail.
 mapAtlasData
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElementArrow scope source target
   -> DomanialInsertion (cellData source) (cellData target)
 mapAtlasData value pageArrow =
@@ -346,7 +364,7 @@ mapAtlasData value pageArrow =
 -- insertion.  It is the data component of the Atlas's normalization
 -- idempotent.
 atlasDataCoherence
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> DomanialInsertion (cellData object) (cellData object)
 atlasDataCoherence value occurrence =
@@ -367,7 +385,7 @@ atlasDataCoherence value occurrence =
 -- The checked tall-coherence law makes this operation pointwise equal to the
 -- identity.
 normalizeAtlasDatum
-  :: Atlas scope cellData origin final
+  :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
   -> cellData object
