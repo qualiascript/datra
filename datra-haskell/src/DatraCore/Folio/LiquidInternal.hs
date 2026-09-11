@@ -119,6 +119,7 @@ appendPageData
 appendPageData pages = SnocPage (folioLengthData pages + 1) pages
 
 -- | The number of genuine pages.
+{-@ reflect folioLengthData @-}
 folioLengthData :: FolioData page origin final -> Natural
 folioLengthData (OriginFolio count _ _) = count
 folioLengthData (SnocPage count _ _ _) = count

@@ -39,6 +39,7 @@ library
         Pagination.Internal
         Pagination.LiquidInternal
         Atlas.Internal
+        Atlas.LiquidInternal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal

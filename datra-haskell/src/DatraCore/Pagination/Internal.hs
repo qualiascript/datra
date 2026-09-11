@@ -35,7 +35,10 @@ import Consolidation.LiquidInternal
 import Data.Kind (Type)
 import Folio (Folio)
 import qualified Folio
-import Folio.LiquidInternal (SingletonOrigin (..))
+import Folio.LiquidInternal
+  ( SingletonOrigin (..)
+  , folioLengthData
+  )
 import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
@@ -105,7 +108,8 @@ paginationPageElements (Pagination _ elements) = elements
 paginationCardinality
   :: Pagination scope origin final
   -> Natural
-paginationCardinality (Pagination pages _) = Folio.folioLength pages
+{-@ reflect paginationCardinality @-}
+paginationCardinality (Pagination pages _) = folioLengthData pages
 
 -- | Collapse a tall occurrence to its representative at or before the final
 -- genuine page.

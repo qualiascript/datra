@@ -1,14 +1,20 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+#include "../LiquidPlugin.h"
+{-# OPTIONS_GHC -Wno-unused-imports -Wno-unused-top-binds #-}
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Hidden representation of atlas objects.
 --
--- This module intentionally contains no LiquidHaskell specifications yet.
--- The laws documented on 'atlas', 'atlasDataAt', and 'mapAtlasData' describe
--- the proof obligations that a later verified representation should enforce.
+-- The law-bearing data assignment lives in "Atlas.LiquidInternal".
 module Atlas.Internal
   ( Atlas
+  , AtlasDataAction
+  , atlasDataAction
   , atlas
   , atlasPagination
   , atlasFolio
@@ -23,19 +29,52 @@ module Atlas.Internal
   , normalizeAtlasDatum
   ) where
 
+import Atlas.LiquidInternal
+  ( AtlasAction
+  , AtlasData
+  , atlasAction
+  , atlasActionData
+  , atlasActionDataAt
+  , atlasActionMap
+  , atlasData
+  )
+import Chain.Internal (Chain (..))
+import Consolidation.LiquidInternal
+  ( Coconsolidation (..)
+  , Consolidation (..)
+  )
 import Data.Kind (Type)
+import DatraOrdinal (Ordinal)
 import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
   )
 import Dominion (Dominion)
 import Folio (Folio)
+import Folio.LiquidInternal (SingletonOrigin (..))
 import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
   , PageElementArrow
   , PageElements
   , pageElementArrow
+  )
+import PageElements.LiquidInternal
+  ( PageElementCell (..)
+  , arrowSource
+  , arrowTarget
+  , clampPage
+  , composePageElementArrows
+  , identityPageElementArrow
+  , normalizePageElementArrowAt
+  , normalizePageElementAt
+  , normalizePageElementReachableAt
+  , pageElementPage
+  , pageElementPosition
+  , pageElementPrecedes
+  , pageElementTransported
+  , traceSuffix
+  , trimTrace
   )
 import Pagination
   ( Pagination
@@ -46,6 +85,31 @@ import Pagination
   , paginationCoherence
   , paginationFolio
   , paginationPageElements
+  )
+import qualified Pagination.LiquidInternal as LiquidPagination
+
+-- Keep the two refined arrow relations in LiquidHaskell's logical
+-- environment while checking construction of the normalization arrow.
+pageElementRelationWitness
+  :: PageElement scope source
+  -> PageElement scope target
+  -> (Bool, Bool)
+pageElementRelationWitness source target =
+  ( pageElementPrecedes source target
+  , pageElementTransported source target
+  )
+
+pageElementTraceSuffixWitness :: [Ordinal] -> [Ordinal] -> Bool
+pageElementTraceSuffixWitness = traceSuffix
+
+pageElementNormalizationWitness
+  :: Natural
+  -> Int
+  -> PageElement scope object
+  -> (Natural, [Ordinal])
+pageElementNormalizationWitness finalPage traceLimit occurrence =
+  ( clampPage (pageElementPage occurrence) finalPage
+  , trimTrace traceLimit []
   )
 
 -- | An atlas over one generatively scoped pagination.
@@ -66,26 +130,33 @@ data Atlas
   origin
   final = Atlas
   { storedPagination :: Pagination scope origin final
-  , canonicalDataAt
-      :: forall object.
-         PageElement scope object
-      -> Dominion (cellData object)
-  , canonicalMapData
-      :: forall source target.
-         PageElementArrow scope source target
-      -> DomanialInsertion (cellData source) (cellData target)
+  , storedAtlasData :: AtlasData scope cellData
   }
+
+-- | The object and arrow actions of an Atlas data assignment.
+type AtlasDataAction = AtlasAction
+
+-- | Package the dependent cell-data assignment and its arrow action before
+-- supplying the laws checked by 'atlas'.
+atlasDataAction
+  :: (forall object.
+        PageElement scope object -> Dominion (cellData object))
+  -> (forall source target.
+        PageElementArrow scope source target
+        -> DomanialInsertion (cellData source) (cellData target))
+  -> AtlasDataAction scope cellData
+atlasDataAction = atlasAction
 
 -- | Construct an atlas object from a pagination and its canonical data
 -- assignment.
 --
--- This prototype deliberately does not check the following laws yet:
+-- LiquidHaskell checks the following supplied laws pointwise:
 --
 -- * Identity: the action on @identityPageElementArrow x@ is extensionally
 --   'DomanialInsertion.identityInsertion'.
 -- * Composition: the action on @g . f@ is extensionally the composite of the
 --   actions on @g@ and @f@.
--- * Data coherence: the action from an occurrence to its normalized
+-- * Tall data coherence: the action from an occurrence to its normalized
 --   representative is extensionally the identity insertion.  Public data
 --   lookup is already defined to be unchanged on page numbers greater than or
 --   equal to 'atlasCardinality'.
@@ -95,16 +166,154 @@ data Atlas
 --
 -- The first two make the data assignment a functor to domanial insertions.
 -- The third is the explicit tall-stability law.  The fourth is the Atlas
--- separation condition from the Lean definition.
+-- separation condition from the Lean definition.  Unit arguments on three of
+-- the witnesses carry refinement preconditions and have no runtime content.
+{-@
+atlas
+  :: paginationValue:Pagination scope origin final
+  -> action:AtlasDataAction scope cellData
+  -> identityLaw:(forall object.
+       occurrence:PageElement scope object
+       -> datum:cellData object
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue)
+                  (identityPageElementArrow occurrence)))
+              datum
+            == datum })
+  -> compositionLaw:(forall source middle target.
+       second:PageElementArrow scope middle target
+       -> first:PageElementArrow scope source middle
+       -> alignment:{() | arrowTarget first == arrowSource second}
+       -> datum:cellData source
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue)
+                  (composePageElementArrows second first)))
+              datum
+            == applyInsertion
+                 (atlasActionMap action
+                   (normalizePageElementArrowAt
+                     (atlasFinalPageLogic paginationValue)
+                     (atlasTraceLimitLogic paginationValue) second))
+                 (applyInsertion
+                   (atlasActionMap action
+                     (normalizePageElementArrowAt
+                       (atlasFinalPageLogic paginationValue)
+                       (atlasTraceLimitLogic paginationValue) first))
+                   datum) })
+  -> coherenceLaw:(forall object.
+       occurrence:PageElement scope object
+       -> coherenceArrow:PageElementArrow scope object object
+       -> conditions:{() |
+            arrowSource coherenceArrow == occurrence
+            && arrowTarget coherenceArrow == normalizePageElementAt
+                 (atlasFinalPageLogic paginationValue)
+                 (atlasTraceLimitLogic paginationValue) occurrence}
+       -> datum:cellData object
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue) coherenceArrow))
+              datum
+            == datum })
+  -> disjointLaw:(forall leftObject rightObject originObject.
+       left:PageElement scope leftObject
+       -> right:PageElement scope rightObject
+       -> leftToOrigin:PageElementArrow scope leftObject originObject
+       -> rightToOrigin:PageElementArrow scope rightObject originObject
+       -> conditions:{() |
+            pageElementPage right == pageElementPage left
+            && pageElementPosition right /= pageElementPosition left
+            && pageElementPage left <= atlasFinalPageLogic paginationValue
+            && arrowSource leftToOrigin == left
+            && pageElementPage (arrowTarget leftToOrigin) == 0
+            && arrowSource rightToOrigin == right
+            && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
+       -> leftDatum:cellData leftObject
+       -> rightDatum:cellData rightObject
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue) leftToOrigin))
+              leftDatum
+            /= applyInsertion
+                 (atlasActionMap action
+                   (normalizePageElementArrowAt
+                     (atlasFinalPageLogic paginationValue)
+                     (atlasTraceLimitLogic paginationValue) rightToOrigin))
+                 rightDatum })
+  -> Atlas scope cellData origin final
+@-}
 atlas
   :: Pagination scope origin final
+  -> AtlasDataAction scope cellData
   -> (forall object.
-        PageElement scope object -> Dominion (cellData object))
-  -> (forall source target.
-        PageElementArrow scope source target
-        -> DomanialInsertion (cellData source) (cellData target))
+        PageElement scope object -> cellData object -> ())
+  -> (forall source middle target.
+        PageElementArrow scope middle target
+        -> PageElementArrow scope source middle
+        -> ()
+        -> cellData source
+        -> ())
+  -> (forall object.
+        PageElement scope object
+        -> PageElementArrow scope object object
+        -> ()
+        -> cellData object
+        -> ())
+  -> (forall leftObject rightObject originObject.
+        PageElement scope leftObject
+        -> PageElement scope rightObject
+        -> PageElementArrow scope leftObject originObject
+        -> PageElementArrow scope rightObject originObject
+        -> ()
+        -> cellData leftObject
+        -> cellData rightObject
+        -> ())
   -> Atlas scope cellData origin final
-atlas = Atlas
+atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw =
+  Atlas
+    paginationValue
+    (atlasData
+      (atlasFinalPage paginationValue)
+      (atlasTraceLimit paginationValue)
+      action
+      identityLaw
+      compositionLaw
+      coherenceLaw
+      disjointLaw)
+
+-- | Final genuine page used by Atlas normalization.
+{-@ measure atlasFinalPageLogic :: Pagination scope origin final -> Natural @-}
+{-@
+assume atlasFinalPage
+  :: value:Pagination scope origin final
+  -> { finalPage:Natural | finalPage == atlasFinalPageLogic value }
+@-}
+atlasFinalPage :: Pagination scope origin final -> Natural
+atlasFinalPage paginationValue = paginationCardinality paginationValue - 1
+
+-- | Maximum transport-trace length used by Atlas normalization.
+{-@ measure atlasTraceLimitLogic :: Pagination scope origin final -> Int @-}
+{-@
+assume atlasTraceLimit
+  :: value:Pagination scope origin final
+  -> { traceLimit:Int | traceLimit == atlasTraceLimitLogic value }
+@-}
+atlasTraceLimit :: Pagination scope origin final -> Int
+atlasTraceLimit paginationValue =
+  fromIntegral (paginationCardinality paginationValue)
 
 -- | Recover the pagination underlying an atlas.
 atlasPagination
@@ -127,8 +336,6 @@ atlasCardinality :: Atlas scope cellData origin final -> Natural
 atlasCardinality = paginationCardinality . atlasPagination
 
 -- | Collapse a tall occurrence to its last genuine representative.
---
--- Intended coherence law: normalizing twice equals normalizing once.
 normalizeAtlasElement
   :: Atlas scope cellData origin final
   -> PageElement scope object
@@ -137,9 +344,6 @@ normalizeAtlasElement value =
   normalizePaginationElement (atlasPagination value)
 
 -- | Normalize both endpoints of a tall page-element arrow.
---
--- Intended coherence laws: this operation preserves identities and
--- composition, and normalizing an arrow twice equals normalizing it once.
 normalizeAtlasArrow
   :: Atlas scope cellData origin final
   -> PageElementArrow scope source target
@@ -150,10 +354,8 @@ normalizeAtlasArrow value =
 -- | The idempotent pagination endomorphism selecting the finite
 -- representatives used by this atlas.
 --
--- Intended coherence law: composing this morphism with itself gives this
--- morphism again.  That law is already verified by the Pagination layer; it
--- is repeated here because it will become the object idempotent in the
--- Karoubi-style presentation of atlas morphisms.
+-- This will become the object idempotent in the Karoubi-style presentation of
+-- atlas morphisms.
 atlasCoherence
   :: Atlas scope cellData origin final
   -> PaginationMorphism scope scope
@@ -161,8 +363,8 @@ atlasCoherence = paginationCoherence . atlasPagination
 
 -- | Retrieve the dominion carried by a page element.
 --
--- The occurrence is normalized before the supplied action is evaluated.
--- Therefore the intended tall-stability equation
+-- The occurrence is normalized before the supplied action is evaluated, so
+-- the tall-stability equation
 --
 -- @
 -- atlasDataAt value x
@@ -175,41 +377,52 @@ atlasDataAt
   -> PageElement scope object
   -> Dominion (cellData object)
 atlasDataAt value occurrence =
-  canonicalDataAt value (normalizeAtlasElement value occurrence)
+  atlasActionDataAt
+    (atlasActionData (storedAtlasData value))
+    (normalizeAtlasElement value occurrence)
 
 -- | Apply the atlas data assignment to a page-element arrow.
 --
 -- The arrow is normalized before the supplied action is evaluated.  The
--- supplied canonical action ought to preserve identities and composition.
--- Together with normalization preserving those operations, that makes this
--- full tall-spine action functorial and constant on the padded tail.
+-- checked canonical action preserves identities and composition.  Together
+-- with normalization preserving those operations, that makes this full
+-- tall-spine action functorial and constant on the padded tail.
 mapAtlasData
   :: Atlas scope cellData origin final
   -> PageElementArrow scope source target
   -> DomanialInsertion (cellData source) (cellData target)
 mapAtlasData value pageArrow =
-  canonicalMapData value (normalizeAtlasArrow value pageArrow)
+  atlasActionMap
+    (atlasActionData (storedAtlasData value))
+    (normalizeAtlasArrow value pageArrow)
 
 -- | The data-layer action from an occurrence to its normalized
 -- representative.
 --
--- Intended coherence law: this is extensionally the identity insertion.  It
--- is the data component of the Atlas's normalization idempotent.
+-- The checked tall-coherence law makes this extensionally the identity
+-- insertion.  It is the data component of the Atlas's normalization
+-- idempotent.
 atlasDataCoherence
   :: Atlas scope cellData origin final
   -> PageElement scope object
   -> DomanialInsertion (cellData object) (cellData object)
 atlasDataCoherence value occurrence =
-  mapAtlasData value
-    (pageElementArrow
-      occurrence
-      (normalizeAtlasElement value occurrence))
+  case normalizePageElementReachableAt
+    (atlasFinalPage (atlasPagination value))
+    (atlasTraceLimit (atlasPagination value))
+    occurrence of
+      () -> mapAtlasData value
+        (pageElementArrow
+          occurrence
+          (normalizePageElementAt
+            (atlasFinalPage (atlasPagination value))
+            (atlasTraceLimit (atlasPagination value))
+            occurrence))
 
 -- | Normalize a datum by applying the data component of Atlas coherence.
 --
--- Intended coherence law: @normalizeAtlasDatum value x = id@ pointwise.  It
--- follows from the identity law for the canonical arrow action because public
--- arrow observation first collapses both endpoints to the same representative.
+-- The checked tall-coherence law makes this operation pointwise equal to the
+-- identity.
 normalizeAtlasDatum
   :: Atlas scope cellData origin final
   -> PageElement scope object

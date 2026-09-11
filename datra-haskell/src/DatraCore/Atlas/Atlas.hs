@@ -2,10 +2,12 @@
 -- infinite padded spine.
 --
 -- This first version exposes objects and their data assignments only.  Atlas
--- morphisms and machine-checked Atlas coherence laws will be added separately
--- after the object representation has settled.
+-- morphisms will be added separately after the object representation has
+-- settled.  Atlas object laws are checked by LiquidHaskell.
 module Atlas
   ( Atlas
+  , AtlasDataAction
+  , atlasDataAction
   , atlas
   , atlasPagination
   , atlasFolio
@@ -22,7 +24,9 @@ module Atlas
 
 import Atlas.Internal
   ( Atlas
+  , AtlasDataAction
   , atlas
+  , atlasDataAction
   , atlasCardinality
   , atlasCoherence
   , atlasDataAt

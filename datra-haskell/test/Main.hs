@@ -519,10 +519,51 @@ testAtlasMapData pageArrow =
             (value - pageElementPage (arrowSource pageArrow))))
     (const ())
 
+testAtlasIdentityLaw
+  :: PageElement scope object
+  -> TestCellData object
+  -> ()
+testAtlasIdentityLaw _ _ = ()
+
+testAtlasCompositionLaw
+  :: PageElementArrow scope middle target
+  -> PageElementArrow scope source middle
+  -> ()
+  -> TestCellData source
+  -> ()
+testAtlasCompositionLaw _ _ _ _ = ()
+
+testAtlasCoherenceLaw
+  :: PageElement scope object
+  -> PageElementArrow scope object object
+  -> ()
+  -> TestCellData object
+  -> ()
+testAtlasCoherenceLaw _ _ _ _ = ()
+
+testAtlasDisjointLaw
+  :: PageElement scope leftObject
+  -> PageElement scope rightObject
+  -> PageElementArrow scope leftObject originObject
+  -> PageElementArrow scope rightObject originObject
+  -> ()
+  -> TestCellData leftObject
+  -> TestCellData rightObject
+  -> ()
+testAtlasDisjointLaw _ _ _ _ _ _ _ = ()
+
 testAtlas :: IO ()
 testAtlas =
   pagination (singletonFolio unitChain) $ \valuePagination ->
-    let valueAtlas = atlas valuePagination testAtlasDataAt testAtlasMapData
+    let dataAction = atlasDataAction testAtlasDataAt testAtlasMapData
+        valueAtlas =
+          atlas
+            valuePagination
+            dataAction
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw
         elements = atlasPageElements valueAtlas
     in case
       ( pageElement <$> pageElementIndex elements 0 (finiteOrdinal 0)
