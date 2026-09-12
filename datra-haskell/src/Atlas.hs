@@ -1,0 +1,133 @@
+-- | Atlases and their morphisms, built over finite paginations with an
+-- explicitly stable infinite padded spine.
+--
+-- Atlas object and primitive-morphism laws are checked by LiquidHaskell.
+module Atlas
+  ( Atlas
+  , AtlasDataAction
+  , AtlasMorphism
+  , AtlasMorphismAction
+  , AtlasObjectMap
+  , AtlasMappedObject
+  , IdentityAtlasObjectMap
+  , AtlasMorphismImage
+  , AtlasObject
+  , AtlasObjectAtlasScope
+  , AtlasObjectPaginationScope
+  , AtlasObjectCellData
+  , AtlasWitness
+  , AtlasHom
+  , identityAtlasHom
+  , composeAtlasHoms
+  , AtlasCellDominion
+  , AtlasCellDominionHandler
+  , AtlasTerritoryIndex
+  , atlasDataAction
+  , atlas
+  , atlasPagination
+  , atlasFolio
+  , atlasPageElements
+  , atlasCardinality
+  , normalizeAtlasElement
+  , normalizeAtlasArrow
+  , atlasCoherence
+  , atlasDataAt
+  , mapAtlasData
+  , atlasDataCoherence
+  , normalizeAtlasDatum
+  , atlasMorphismAction
+  , identityAtlasObjectMap
+  , atlasObjectMap
+  , withAtlasMorphismImage
+  , atlasMorphism
+  , atlasMorphismPagination
+  , mapAtlasMorphismElement
+  , mapAtlasMorphismArrow
+  , mapAtlasMorphismData
+  , identityAtlasMorphism
+  , composeAtlasMorphisms
+  , atlasWitness
+  , atlasHom
+  , materializeAtlasHom
+  , atlasHomPagination
+  , mapAtlasHomElement
+  , mapAtlasHomArrow
+  , mapAtlasHomData
+  , withAtlasCellDominion
+  , withAtlasPageChain
+  , atlasPageCell
+  , atlasOriginCell
+  , atlasExtent
+  , atlasTerritoryChain
+  , atlasTerritory
+  , atlasRegion
+  , atlasElementLT
+  , atlasCoherenceIdempotent
+  ) where
+
+import Atlas.Derived.Internal
+  ( AtlasCellDominion
+  , AtlasCellDominionHandler
+  , AtlasTerritoryIndex
+  , atlasCoherenceIdempotent
+  , atlasElementLT
+  , atlasExtent
+  , atlasOriginCell
+  , atlasPageCell
+  , atlasRegion
+  , atlasTerritory
+  , atlasTerritoryChain
+  , withAtlasCellDominion
+  , withAtlasPageChain
+  )
+import Atlas.Internal
+  ( Atlas
+  , AtlasDataAction
+  , atlas
+  , atlasDataAction
+  , atlasCardinality
+  , atlasCoherence
+  , atlasDataAt
+  , atlasDataCoherence
+  , atlasFolio
+  , atlasPageElements
+  , atlasPagination
+  , mapAtlasData
+  , normalizeAtlasArrow
+  , normalizeAtlasDatum
+  , normalizeAtlasElement
+  )
+import Atlas.Morphism.Internal
+  ( AtlasMorphism
+  , AtlasMorphismAction
+  , AtlasObjectMap
+  , AtlasMappedObject
+  , IdentityAtlasObjectMap
+  , AtlasMorphismImage
+  , AtlasObject
+  , AtlasObjectAtlasScope
+  , AtlasObjectPaginationScope
+  , AtlasObjectCellData
+  , AtlasWitness
+  , AtlasHom
+  , identityAtlasHom
+  , composeAtlasHoms
+  , atlasMorphism
+  , atlasMorphismAction
+  , identityAtlasObjectMap
+  , atlasObjectMap
+  , atlasMorphismPagination
+  , atlasWitness
+  , atlasHom
+  , materializeAtlasHom
+  , atlasHomPagination
+  , mapAtlasHomElement
+  , mapAtlasHomArrow
+  , mapAtlasHomData
+  , composeAtlasMorphisms
+  , identityAtlasMorphism
+  , mapAtlasMorphismArrow
+  , mapAtlasMorphismData
+  , mapAtlasMorphismElement
+  , withAtlasMorphismImage
+  )
