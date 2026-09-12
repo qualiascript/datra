@@ -18,7 +18,7 @@ extra-doc-files:
     README.md
     NOTICE
 extra-source-files:
-    src/LiquidPlugin.h
+    src/DatraCore/DataTransformations/LiquidPlugin.h
 
 common warnings
     ghc-options: -Wall
@@ -72,7 +72,7 @@ library
         build-depends:
             liquidhaskell == 0.9.14.1.1
         cpp-options: -DUSE_LIQUIDHASKELL
-    hs-source-dirs:   src
+    hs-source-dirs:   src/DatraCore/DataTransformations
     default-language: GHC2021
 
 executable datra-haskell
