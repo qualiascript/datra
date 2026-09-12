@@ -2,11 +2,9 @@ cabal-version:      3.0
 name:               datra-haskell
 version:            0.1.0.0
 synopsis:           A new Haskell project
-description:        Haskell implementation of Datra data transformations.
 license:            Apache-2.0
 license-file:       LICENSE
 author:             qualiascript
-maintainer:         qualiascript
 copyright:          2026 qualiascript
 homepage:           https://github.com/qualiascript/datra
 bug-reports:        https://github.com/qualiascript/datra/issues
@@ -18,7 +16,7 @@ extra-doc-files:
     README.md
     NOTICE
 extra-source-files:
-    src/LiquidPlugin.h
+    src/DatraCore/LiquidPlugin.h
 
 common warnings
     ghc-options: -Wall
@@ -31,19 +29,18 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
-        DataTransformations
-    other-modules:
-        Atlas
-        Chain
-        Consolidation
-        DataTransformation
-        DatraOrdinal
-        DomanialInsertion
         Dominion
         FiniteDominion
+        DomanialInsertion
+        DatraOrdinal
+        Chain
+        Consolidation
         Folio
         PageElements
         Pagination
+        Atlas
+        DataTransformation
+    other-modules:
         PageElements.Internal
         PageElements.LiquidInternal
         Pagination.Internal
@@ -71,8 +68,19 @@ library
     if flag(liquid)
         build-depends:
             liquidhaskell == 0.9.14.1.1
-        cpp-options: -DUSE_LIQUIDHASKELL
-    hs-source-dirs:   src
+    hs-source-dirs:
+        src/DatraCore
+        src/DatraCore/Chain
+        src/DatraCore/PageElements
+        src/DatraCore/Pagination
+        src/DatraCore/Atlas
+        src/DatraCore/DataTransformation
+        src/DatraCore/Consolidation
+        src/DatraCore/DatraOrdinal
+        src/DatraCore/Dominion
+        src/DatraCore/FiniteDominion
+        src/DatraCore/DomanialInsertion
+        src/DatraCore/Folio
     default-language: GHC2021
 
 executable datra-haskell
