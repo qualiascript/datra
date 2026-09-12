@@ -2,18 +2,8 @@
 
 module Main (main) where
 
-import Atlas
-import Chain
-import Consolidation
 import qualified Control.Category as Category
-import DataTransformation
-import DatraOrdinal
-import DomanialInsertion
-import Dominion
-import FiniteDominion
-import Folio
-import PageElements
-import Pagination
+import DataTransformations
 import Numeric.Natural (Natural)
 
 import Data.Maybe (isNothing)
@@ -81,6 +71,8 @@ testIdentityInsertion = do
       == map Just [0, 1, 2])
   assert "checked smart constructor applies forward"
     (applyInsertion checkedIdentity True)
+  assert "opposite insertion round-trips"
+    (applyInsertion (unop (op checkedIdentity)) True)
 
 testSpine :: IO ()
 testSpine = do
@@ -145,16 +137,16 @@ testConsolidation = do
     (map (applyConsolidation identity) values == values)
   assert "coconsolidation retains the underlying map"
     (map
-      (applyConsolidation (Consolidation.unop (Consolidation.op halve)))
+      (applyConsolidation (unop (op halve)))
       values
       == map (applyConsolidation halve) values)
   assert "coconsolidation composition follows opposite categorical order"
     (map
       (applyConsolidation
-        (Consolidation.unop
-          (Consolidation.composeCoconsolidations
-            (Consolidation.op halve)
-            (Consolidation.op halve))))
+        (unop
+          (composeCoconsolidations
+            (op halve)
+            (op halve))))
       values
       == map (applyConsolidation doubledHalve) values)
 
@@ -219,9 +211,9 @@ threePageFolio =
     (appendPage
       (singletonFolio unitChain)
       boolChain
-      (Consolidation.op collapseBool))
+      (op collapseBool))
     spine
-    (Consolidation.op nonzero)
+    (op nonzero)
 
 testConsolidationTransport :: IO ()
 testConsolidationTransport = do
@@ -251,8 +243,8 @@ testFolio =
       originUnique threePageFolio () `seq`
         folioMapIdentity False `seq`
           folioMapComposition
-            (Consolidation.op nonzero)
-            (Consolidation.op collapseBool)
+            (op nonzero)
+            (op collapseBool)
             7 `seq` pure ()
       assert "folio counts its genuine pages"
         (folioLength threePageFolio == 3)
