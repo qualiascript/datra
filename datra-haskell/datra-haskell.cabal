@@ -69,18 +69,19 @@ library
         build-depends:
             liquidhaskell == 0.9.14.1.1
     hs-source-dirs:
+        src/DatraCore/AtlasMachinery
+        src/DatraCore/AtlasMachinery/Chain
+        src/DatraCore/AtlasMachinery/PageElements
+        src/DatraCore/AtlasMachinery/Pagination
+        src/DatraCore/AtlasMachinery/Atlas
         src/DatraCore/DataTransformations
-        src/DatraCore/DataTransformations/Chain
-        src/DatraCore/DataTransformations/PageElements
-        src/DatraCore/DataTransformations/Pagination
-        src/DatraCore/DataTransformations/Atlas
         src/DatraCore/DataTransformations/DataTransformation
-        src/DatraCore/DataTransformations/Consolidation
-        src/DatraCore/DataTransformations/DatraOrdinal
-        src/DatraCore/DataTransformations/Dominion
-        src/DatraCore/DataTransformations/FiniteDominion
-        src/DatraCore/DataTransformations/DomanialInsertion
-        src/DatraCore/DataTransformations/Folio
+        src/DatraCore/AtlasMachinery/Consolidation
+        src/DatraCore/AtlasMachinery/DatraOrdinal
+        src/DatraCore/AtlasMachinery/Dominion
+        src/DatraCore/AtlasMachinery/FiniteDominion
+        src/DatraCore/AtlasMachinery/DomanialInsertion
+        src/DatraCore/AtlasMachinery/Folio
     default-language: GHC2021
 
 executable datra-haskell
