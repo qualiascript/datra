@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-#include "../../LiquidPlugin.h"
+#include "../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 
 -- | LiquidHaskell-verified representation used by the hidden implementation.
