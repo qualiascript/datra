@@ -2180,86 +2180,6 @@ theorem dominionLemma : Nonempty (DomInc ⊣ Coa) :=
   ⟨dominionAdjunction⟩
 
 /-%%
-\section{Data Transformations}
-
-\begin{definition}[The Category of Data Transformations]
-The \textbf{Category of Data Transformations}, also called the category of
-\textbf{Data Transformation Sets} or \textbf{DaTra Sets}, is the presheaf
-category
-\[
-  \mathsf{DaTra}=[\Atl^{\mathrm{op}},\Set].
-\]
-As a presheaf category, it is a topos.
-\end{definition}
-%%-/
-
-abbrev DaTra := Atlᵒᵖ ⥤ Type
-
-def Yo : Atl ⥤ DaTra := yoneda
-
-/-- A concrete certificate of the statement that `DaTra` is the displayed
-presheaf category. -/
-def datraToposPresentation : DaTra ≌ (Atlᵒᵖ ⥤ Type) :=
-  CategoryTheory.Equivalence.refl
-
-/-%%
-\begin{definition}[Navigation]
-A \textbf{navigation} of $D:\mathsf{DaTra}$ is a monomorphism
-$\mathsf{Nav}:\Yo(A)\to D$ for some atlas $A$.
-\end{definition}
-%%-/
-
-structure Navigation (D : DaTra) where
-  A : Atl
-  hom : Yo.obj A ⟶ D
-  mono : Mono hom
-
-attribute [instance] Navigation.mono
-
-/-%%
-\begin{definition}[Expedition]
-An \textbf{expedition} is a navigation represented by an Atlas Map.
-\end{definition}
-%%-/
-
-structure Expedition (D : DaTra) extends Navigation D where
-  atlasMap : IsAtlasMap A
-
-/-- Presheaves on the wide category of atlas traversals. -/
-abbrev AtlTravPSh := AtlTravᵒᵖ ⥤ Type
-
-/-- Forget the action of an atlas presheaf on non-traversal arrows. -/
-def DaTra.restrictToAtlTrav : DaTra ⥤ AtlTravPSh :=
-  (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
-
-/-- Presheaves on atlas federations of stable atlas traversals. -/
-abbrev StaDaTravPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
-
-/-- The all-objects wrapper gives Day convolution its own monoidal structure,
-separate from the pointwise cartesian structure on a raw functor category. -/
-def IsStableDataTransversal : ObjectProperty StaDaTravPresheaf := fun _ => True
-
-/-- Stable data transversals: presheaves whose indexing arrows are stable atlas
-traversals.  Stability is therefore enforced by the source category. -/
-abbrev StaDaTrav := IsStableDataTransversal.FullSubcategory
-
-abbrev StaDaTravInc : StaDaTrav ⥤ StaDaTravPresheaf :=
-  IsStableDataTransversal.ι
-
-/-%%
-\begin{definition}[Data Transformation Maps]
-The \textbf{Category of Data Transformation Maps}, denoted
-$\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
-navigations are expeditions.
-\end{definition}
-%%-/
-
-def IsDaTraMap : ObjectProperty DaTra := fun D =>
-  ∀ nav : Navigation D, IsAtlasMap nav.A
-
-abbrev DaTraMap := IsDaTraMap.FullSubcategory
-
-/-%%
 \section{Atlas Federations}
 
 \begin{definition}[Atlas Merge]
@@ -3797,6 +3717,86 @@ instance : SymmetricCategory StableAtlasFamilyᵒᵖ where
     apply Quiver.Hom.unop_inj
     simp
 
+/-%%
+\section{Data Transformations}
+
+\begin{definition}[The Category of Data Transformations]
+The \textbf{Category of Data Transformations}, also called the category of
+\textbf{Data Transformation Sets} or \textbf{DaTra Sets}, is the presheaf
+category
+\[
+  \mathsf{DaTra}=[\Atl^{\mathrm{op}},\Set].
+\]
+As a presheaf category, it is a topos.
+\end{definition}
+%%-/
+
+abbrev DaTra := Atlᵒᵖ ⥤ Type
+
+def Yo : Atl ⥤ DaTra := yoneda
+
+/-- A concrete certificate of the statement that `DaTra` is the displayed
+presheaf category. -/
+def datraToposPresentation : DaTra ≌ (Atlᵒᵖ ⥤ Type) :=
+  CategoryTheory.Equivalence.refl
+
+/-%%
+\begin{definition}[Navigation]
+A \textbf{navigation} of $D:\mathsf{DaTra}$ is a monomorphism
+$\mathsf{Nav}:\Yo(A)\to D$ for some atlas $A$.
+\end{definition}
+%%-/
+
+structure Navigation (D : DaTra) where
+  A : Atl
+  hom : Yo.obj A ⟶ D
+  mono : Mono hom
+
+attribute [instance] Navigation.mono
+
+/-%%
+\begin{definition}[Expedition]
+An \textbf{expedition} is a navigation represented by an Atlas Map.
+\end{definition}
+%%-/
+
+structure Expedition (D : DaTra) extends Navigation D where
+  atlasMap : IsAtlasMap A
+
+/-- Presheaves on the wide category of atlas traversals. -/
+abbrev AtlTravPSh := AtlTravᵒᵖ ⥤ Type
+
+/-- Forget the action of an atlas presheaf on non-traversal arrows. -/
+def DaTra.restrictToAtlTrav : DaTra ⥤ AtlTravPSh :=
+  (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
+
+/-- Presheaves on atlas federations of stable atlas traversals. -/
+abbrev StaDaTravPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
+
+/-- The all-objects wrapper gives Day convolution its own monoidal structure,
+separate from the pointwise cartesian structure on a raw functor category. -/
+def IsStableDataTransversal : ObjectProperty StaDaTravPresheaf := fun _ => True
+
+/-- Stable data transversals: presheaves whose indexing arrows are stable atlas
+traversals.  Stability is therefore enforced by the source category. -/
+abbrev StaDaTrav := IsStableDataTransversal.FullSubcategory
+
+abbrev StaDaTravInc : StaDaTrav ⥤ StaDaTravPresheaf :=
+  IsStableDataTransversal.ι
+
+/-%%
+\begin{definition}[Data Transformation Maps]
+The \textbf{Category of Data Transformation Maps}, denoted
+$\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
+navigations are expeditions.
+\end{definition}
+%%-/
+
+def IsDaTraMap : ObjectProperty DaTra := fun D =>
+  ∀ nav : Navigation D, IsAtlasMap nav.A
+
+abbrev DaTraMap := IsDaTraMap.FullSubcategory
+
 theorem staDaTravInc_essImage (F : StaDaTravPresheaf) :
     StaDaTravInc.essImage F :=
   ⟨⟨F, trivial⟩, ⟨Iso.refl _⟩⟩
@@ -3989,43 +3989,14 @@ arrow action land in $\mathsf{StaDaTrav}$ by construction.
 noncomputable def HorSum : StaDaTravMon × StaDaTravMon ⥤ StaDaTravMon :=
   MonoidalCategory.tensor StaDaTravMon
 
-/-%%
-\begin{definition}[The Stable Data Transversal Braider]
-The \textbf{Stable Data Transversal Braider}
-$\mathsf{Brd}_{F,F'}:F\HorSum F'\to F'\HorSum F$ is the Day convolution
-extension of $\mathsf{AtlBrd}$.
-\end{definition}
-%%-/
-
 noncomputable def Brd (F G : StaDaTravMon) :
     MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F :=
   staDaTravBraiding F G
-
-/-%%
-\begin{definition}[The Stable Data Transversal Associator]
-The \textbf{Stable Data Transversal Associator}
-\[
-  \mathsf{Asoc}_{F,F',F''}:(F\HorSum F')\HorSum F''
-    \longrightarrow F\HorSum(F'\HorSum F'')
-\]
-is the Day convolution extension of $\mathsf{AtlAsoc}$.
-\end{definition}
-%%-/
 
 noncomputable def Asoc (F G H : StaDaTravMon) :
     MonoidalCategory.tensorObj (MonoidalCategory.tensorObj F G) H ≅
       MonoidalCategory.tensorObj F (MonoidalCategory.tensorObj G H) :=
   MonoidalCategory.associator F G H
-
-/-%%
-\begin{definition}[The Stable Data Transversal Unitors]
-The \textbf{Stable Data Transversal Left Unitor}
-$\mathsf{Lu}:I\HorSum F\to F$ and the
-\textbf{Stable Data Transversal Right Unitor}
-$\mathsf{Ru}:F\HorSum I\to F$ are the Day convolution extensions of
-$\mathsf{AtlLu}$ and $\mathsf{AtlRu}$.
-\end{definition}
-%%-/
 
 noncomputable def Lu (F : StaDaTravMon) :
     MonoidalCategory.tensorObj I F ≅ F := MonoidalCategory.leftUnitor F
@@ -4040,9 +4011,9 @@ $\mathsf{StaDaTravMon}$, is
 \[
   \mathsf{StaDaTravMon}=(\mathsf{StaDaTrav},\HorSum,I).
 \]
-Its tensor is Day convolution on the Atlas Federation.  The
-braider, associator, and unitors are induced by retagging that form, so all
-coherence maps remain within stable data transversals.
+Its tensor is Day convolution on the Atlas Federation.  Its braider,
+associator, and unitors are based on the Atlas Braider, Atlas Associator,
+and Atlas Unitors of Definitions 10.6--10.8, respectively.
 \end{definition}
 %%-/
 
