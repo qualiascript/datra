@@ -2225,20 +2225,12 @@ An \textbf{expedition} is a navigation represented by an Atlas Map.
 structure Expedition (D : DaTra) extends Navigation D where
   atlasMap : IsAtlasMap A
 
-abbrev DaTrap := AtlTrapᵒᵖ ⥤ Type
-abbrev DaTrav := AtlTravᵒᵖ ⥤ Type
-
 /-- Presheaves on the wide category of atlas traversals. -/
 abbrev AtlTravPSh := AtlTravᵒᵖ ⥤ Type
 
 /-- Forget the action of an atlas presheaf on non-traversal arrows. -/
 def DaTra.restrictToAtlTrav : DaTra ⥤ AtlTravPSh :=
   (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
-
-/-- The promised identification is definitional after restricting the
-indexing category. -/
-def DaTrav.atlTravPShEquiv : DaTrav ≌ AtlTravPSh :=
-  CategoryTheory.Equivalence.refl
 
 /-- Presheaves on atlas federations of stable atlas traversals. -/
 abbrev StaDaTravPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
@@ -2255,16 +2247,6 @@ abbrev StaDaTravInc : StaDaTrav ⥤ StaDaTravPresheaf :=
   IsStableDataTransversal.ι
 
 /-%%
-\begin{definition}[The Category of Data Transposals]
-The \textbf{Category of Data Transposals}, denoted $\mathsf{DaTrap}$, is
-the presheaf category $[\mathsf{AtlTrap}^{\mathrm{op}},\Set]$.
-\end{definition}
-
-\begin{definition}[The Category of Data Traversals]
-The \textbf{Category of Data Traversals}, denoted $\mathsf{DaTrav}$, is
-the presheaf category $[\mathsf{AtlTrav}^{\mathrm{op}},\Set]$.
-\end{definition}
-
 \begin{definition}[Data Transformation Maps]
 The \textbf{Category of Data Transformation Maps}, denoted
 $\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
