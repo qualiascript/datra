@@ -3,6 +3,8 @@
 module Main (main) where
 
 import Atlas
+import AtlasCovered
+import AtlasMap
 import AtlasTransposal
 import AtlasTransversal
 import Chain
@@ -36,6 +38,7 @@ main = do
   testPageElements
   testPagination
   testAtlas
+  testAtlasMap
   testOrderedAtlasTransposal
   testAtlasTransversal
   testStableAtlasTransversal
@@ -895,6 +898,47 @@ testAtlas =
                                     "Yoneda embeds AtlasHom by postcomposition"
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
+
+testAtlasMap :: IO ()
+testAtlasMap =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let valueMap =
+              atlasMap valueAtlas $ \extent extentDatum ->
+                atlasCoverageWitness
+                  valueAtlas
+                  extent
+                  extentDatum
+                  extent
+                  extentDatum
+                  ()
+            identityMapHom = identityAtlasMapHom
+        in withAtlasMapExtent valueMap $ \extent extentDominion covers -> do
+          withAtlasCoveredDatum (covers (TestCellData 7)) $ \covered datum ->
+            assert "Atlas maps cover every extent datum"
+              ( pageElementPage covered == 0
+                && rank (atlasDataAt valueAtlas covered) datum == 7
+                && rank extentDominion (TestCellData 7) == 7
+              )
+          withPageElement
+            (mapAtlasMapHomElement valueMap identityMapHom extent) $ \mapped ->
+              assert "the Atlas-map category inherits Atlas identity"
+                (pageElementPage mapped == 0)
+          withPageElement
+            (mapAtlasHomElement
+              (atlasMapInclusionObject atlasMapInclusionFunctor valueMap)
+              (atlasMapInclusionHom
+                atlasMapInclusionFunctor
+                (identityMapHom Category.. identityMapHom))
+              extent) $ \mapped ->
+                assert "the Atlas Map Inclusion Functor preserves composition"
+                  (pageElementPage mapped == 0)
 
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =

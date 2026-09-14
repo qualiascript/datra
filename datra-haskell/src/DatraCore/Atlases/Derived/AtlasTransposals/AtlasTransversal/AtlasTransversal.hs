@@ -5,11 +5,6 @@
 -- module adds preservation of coverage by final regions.
 module AtlasTransversal
   ( AtlasTransversal
-  , AtlasCoveredDatum
-  , AtlasCoverageWitness
-  , atlasCoverageWitness
-  , atlasCoveredDatum
-  , withAtlasCoveredDatum
   , atlasTransversal
   , atlasTransversalOrderedTransposal
   , atlasTransversalTransposal
@@ -29,11 +24,7 @@ module AtlasTransversal
   ) where
 
 import AtlasTransversal.Internal
-  ( AtlasCoveredDatum
-  , AtlasCoverageWitness
-  , AtlasTransversal
-  , atlasCoverageWitness
-  , atlasCoveredDatum
+  ( AtlasTransversal
   , atlasTransversal
   , atlasTransversalHom
   , atlasTransversalLeftInverse
@@ -50,5 +41,4 @@ import AtlasTransversal.Internal
   , mapAtlasTransversalData
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject
-  , withAtlasCoveredDatum
   )
