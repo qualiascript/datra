@@ -48,6 +48,9 @@ library
         Charting
         StableAtlasTransversal
         DataTransformation
+        Navigation
+        Expedition
+        DataTransformationMap
     other-modules:
         PageElements.Internal
         PageElements.LiquidInternal
@@ -69,6 +72,9 @@ library
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
+        Navigation.Internal
+        Expedition.Internal
+        DataTransformationMap.Internal
         Chain.Internal
         Consolidation.Internal
         Consolidation.LiquidInternal
@@ -93,6 +99,9 @@ library
         src/DatraCore/Atlases/Core/Atlas
         src/DatraCore/DataTransformations
         src/DatraCore/DataTransformations/DataTransformation
+        src/DatraCore/DataTransformations/Navigation
+        src/DatraCore/DataTransformations/Expedition
+        src/DatraCore/DataTransformations/DataTransformationMap
         src/DatraCore/Atlases/Core/Consolidation
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion
