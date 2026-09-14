@@ -3,21 +3,15 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
+-- GHC does not count names referenced only by LiquidHaskell specifications.
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 #include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
-{-@ embed Natural as int @-}
 
--- | Hidden implementation of Atlas transversals and coverage evidence.
+-- | Hidden implementation of Atlas transversals using Atlas coverage evidence.
 module AtlasTransversal.Internal
   ( AtlasTransversal
-  , AtlasCoveredDatum
-  , AtlasCoverageWitness
-  , atlasCoverageWitness
-  , coverageWitnessCovers
-  , coverageFinalPage
-  , atlasCoveredDatum
-  , withAtlasCoveredDatum
   , atlasTransversal
   , atlasTransversalOrderedTransposal
   , atlasTransversalTransposal
@@ -44,19 +38,17 @@ import Atlas
   , AtlasObjectCellData
   , AtlasObjectPaginationScope
   , AtlasWitness
-  , atlasCardinality
-  , atlasDataAt
-  , atlasOriginCell
   , atlasWitness
-  , mapAtlasData
-  , normalizeAtlasElement
   , withAtlasMorphismImage
+  )
+import AtlasCovered.Internal
+  ( AtlasCoveredDatum (..)
+  , AtlasCoverageWitness
+  , coverageWitnessCovers
   )
 import AtlasTransposal (AtlasTransposal, AtlasTransposalElement)
 import Control.Category (Category (..))
 import DomanialInsertion (applyInsertion)
-import Dominion (rank)
-import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
   ( OrderedAtlasTransposal
   , composeOrderedAtlasTransposals
@@ -76,192 +68,9 @@ import PageElements
   ( PageElement
   , PageElementArrow
   , SomePageElement
-  , pageElementArrow
-  , pageElementPage
-  , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
 import Prelude hiding ((.), id)
-
--- | The existential witness in Lean's @Covered X x t@ predicate: a datum in
--- a final region.  Its constructor is hidden; 'atlasCoverageWitness' is the
--- LiquidHaskell-checked introduction rule.
-type role AtlasCoverageWitness nominal
-data AtlasCoverageWitness atlasObject where
-  AtlasCoverageWitness
-    :: PageElement (AtlasObjectPaginationScope atlasObject) regionObject
-    -> AtlasObjectCellData atlasObject regionObject
-    -> Natural
-    -> Natural
-    -> AtlasCoverageWitness atlasObject
-
--- | A datum together with proof-carrying evidence for Lean's
--- @Covered X x t@ predicate.  The source datum is stored alongside its
--- existential final-region witness, so transversal composition never has to
--- reconstruct or dynamically revalidate the proposition.
-type role AtlasCoveredDatum nominal
-data AtlasCoveredDatum atlasObject where
-  AtlasCoveredDatum
-    :: PageElement (AtlasObjectPaginationScope atlasObject) object
-    -> AtlasObjectCellData atlasObject object
-    -> AtlasCoverageWitness atlasObject
-    -> AtlasCoveredDatum atlasObject
-
--- | Rank the image of a datum in the Atlas extent. Dominion ranks are
--- injective, so equality of these ranks is equality of the origin images.
-{-@ reflect atlasOriginImageRank @-}
-atlasOriginImageRank
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> Natural
-atlasOriginImageRank valueAtlas occurrence datum =
-  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-    rank
-      (atlasDataAt valueAtlas origin)
-      (applyInsertion
-        (mapAtlasData valueAtlas (pageElementArrow occurrence origin))
-        datum)
-
--- Local reflected aliases keep the coverage proposition available to
--- LiquidHaskell across the public facade modules.
-{-@ reflect coveragePage @-}
-coveragePage :: PageElement scope object -> Natural
-coveragePage = pageElementPage
-
-{-@ reflect coverageNormalize @-}
-coverageNormalize
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> PageElement scope object
-coverageNormalize = normalizeAtlasElement
-
-{-@ reflect coverageFinalPage @-}
-coverageFinalPage
-  :: Atlas atlasScope scope cellData origin final
-  -> Natural
-coverageFinalPage valueAtlas = atlasCardinality valueAtlas - 1
-
--- | The proposition witnessed by an 'AtlasCoverageWitness'.  This is a
--- reflected specification function only: transversal execution does not call
--- it.  The first conjunct says that the witness lies in the final genuine
--- page; the second is Lean's equality after mapping both data to the origin.
-{-@ reflect coverageWitnessCovers @-}
-coverageWitnessCovers
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> AtlasCoverageWitness
-       (AtlasObject atlasScope scope cellData)
-  -> Bool
-coverageWitnessCovers
-  valueAtlas
-  source
-  sourceDatum
-  (AtlasCoverageWitness _ _ regionPage regionOriginRank) =
-    regionPage == coverageFinalPage valueAtlas
-      && atlasOriginImageRank valueAtlas source sourceDatum
-        == regionOriginRank
-
--- | Introduce the existential witness for coverage.  The final argument is
--- erased proof evidence. LiquidHaskell accepts a call only when the region is
--- final and the two data have equal images in the Atlas origin.
-{-@
-atlasCoverageWitness
-  :: valueAtlas:Atlas atlasScope scope cellData origin final
-  -> source:PageElement scope object
-  -> sourceDatum:cellData object
-  -> region:PageElement scope regionObject
-  -> regionDatum:cellData regionObject
-  -> conditions:{ proof:() |
-       coveragePage (coverageNormalize valueAtlas region)
-         == coverageFinalPage valueAtlas
-       && atlasOriginImageRank
-            valueAtlas
-            (coverageNormalize valueAtlas source)
-            sourceDatum
-          == atlasOriginImageRank
-               valueAtlas
-               (coverageNormalize valueAtlas region)
-               regionDatum }
-  -> { witness:AtlasCoverageWitness
-         (AtlasObject atlasScope scope cellData) |
-       coverageWitnessCovers
-         valueAtlas
-         (coverageNormalize valueAtlas source)
-         sourceDatum
-         witness }
-@-}
-atlasCoverageWitness
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> PageElement scope regionObject
-  -> cellData regionObject
-  -> ()
-  -> AtlasCoverageWitness
-       (AtlasObject atlasScope scope cellData)
-atlasCoverageWitness
-  valueAtlas _ _ region regionDatum _ =
-    AtlasCoverageWitness
-      (coverageNormalize valueAtlas region)
-      regionDatum
-      (coveragePage (coverageNormalize valueAtlas region))
-      (atlasOriginImageRank
-        valueAtlas
-        (coverageNormalize valueAtlas region)
-        regionDatum)
-
--- | Construct coverage evidence using the compile-time-checked introduction
--- rule above. There is no runtime rejection path.
-{-@
-atlasCoveredDatum
-  :: valueAtlas:Atlas atlasScope scope cellData origin final
-  -> source:PageElement scope object
-  -> sourceDatum:cellData object
-  -> region:PageElement scope regionObject
-  -> regionDatum:cellData regionObject
-  -> conditions:{ proof:() |
-       coveragePage (coverageNormalize valueAtlas region)
-         == coverageFinalPage valueAtlas
-       && atlasOriginImageRank
-            valueAtlas
-            (coverageNormalize valueAtlas source)
-            sourceDatum
-          == atlasOriginImageRank
-               valueAtlas
-               (coverageNormalize valueAtlas region)
-               regionDatum }
-  -> AtlasCoveredDatum (AtlasObject atlasScope scope cellData)
-@-}
-atlasCoveredDatum
-  :: Atlas atlasScope scope cellData origin final
-  -> PageElement scope object
-  -> cellData object
-  -> PageElement scope regionObject
-  -> cellData regionObject
-  -> ()
-  -> AtlasCoveredDatum
-       (AtlasObject atlasScope scope cellData)
-atlasCoveredDatum
-  valueAtlas source sourceDatum region regionDatum conditions =
-    AtlasCoveredDatum
-      (coverageNormalize valueAtlas source)
-      sourceDatum
-      (atlasCoverageWitness
-        valueAtlas source sourceDatum region regionDatum conditions)
-
--- | Eliminate a covered datum while retaining its dependent cell-data type.
-withAtlasCoveredDatum
-  :: AtlasCoveredDatum atlasObject
-  -> (forall object.
-        PageElement (AtlasObjectPaginationScope atlasObject) object
-        -> AtlasObjectCellData atlasObject object
-        -> result)
-  -> result
-withAtlasCoveredDatum
-  (AtlasCoveredDatum occurrence datum _)
-  useCovered = useCovered occurrence datum
 
 -- | A transversal is an ordered transposal whose data action maps every covered
 -- source datum to coverage evidence for its exact target image. Primitive

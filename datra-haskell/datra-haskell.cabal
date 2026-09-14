@@ -39,9 +39,13 @@ library
         PageElements
         Pagination
         Atlas
+        AtlasCovered
+        AtlasMap
         AtlasTransposal
         OrderedAtlasTransposal
         AtlasTransversal
+        AtlasTransversalMap
+        Charting
         StableAtlasTransversal
         DataTransformation
     other-modules:
@@ -54,9 +58,14 @@ library
         Atlas.Derived.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
+        AtlasCovered.Internal
+        AtlasMap.Internal
         AtlasTransposal.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
+        AtlasTransversalMap.Internal
+        Charting.Internal
+        Charting.LiquidInternal
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
@@ -88,6 +97,11 @@ library
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion
         src/DatraCore/Atlases/Derived
+        src/DatraCore/Atlases/Derived/AtlasCovered
+        src/DatraCore/Atlases/Derived/Cartography
+        src/DatraCore/Atlases/Derived/Cartography/AtlasMap
+        src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap
+        src/DatraCore/Atlases/Derived/Cartography/Charting
         src/DatraCore/Atlases/Derived/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal

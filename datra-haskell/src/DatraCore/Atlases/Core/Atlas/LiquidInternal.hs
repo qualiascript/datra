@@ -15,6 +15,10 @@ module Atlas.LiquidInternal
   , atlasActionMap
   , AtlasData
   , atlasActionData
+  , atlasDataIdentityLaw
+  , atlasDataCompositionLaw
+  , atlasDataCoherenceLaw
+  , atlasDataDisjointLaw
   , atlasData
   ) where
 
@@ -95,6 +99,40 @@ data AtlasData
 
 atlasActionData :: AtlasData scope cellData -> AtlasAction scope cellData
 atlasActionData (AtlasData _ _ action _ _ _ _) = action
+
+atlasDataIdentityLaw
+  :: AtlasData scope cellData
+  -> PageElement scope object
+  -> cellData object
+  -> ()
+atlasDataIdentityLaw (AtlasData _ _ _ proof _ _ _) = proof
+
+atlasDataCompositionLaw
+  :: AtlasData scope cellData
+  -> PageElementArrow scope middle target
+  -> PageElementArrow scope source middle
+  -> cellData source
+  -> ()
+atlasDataCompositionLaw (AtlasData _ _ _ _ proof _ _) = proof
+
+atlasDataCoherenceLaw
+  :: AtlasData scope cellData
+  -> PageElement scope object
+  -> PageElementArrow scope object object
+  -> cellData object
+  -> ()
+atlasDataCoherenceLaw (AtlasData _ _ _ _ _ proof _) = proof
+
+atlasDataDisjointLaw
+  :: AtlasData scope cellData
+  -> PageElement scope leftObject
+  -> PageElement scope rightObject
+  -> PageElementArrow scope leftObject originObject
+  -> PageElementArrow scope rightObject originObject
+  -> cellData leftObject
+  -> cellData rightObject
+  -> ()
+atlasDataDisjointLaw (AtlasData _ _ _ _ _ _ proof) = proof
 
 -- | Smart constructor for a checked Atlas data assignment.  LiquidHaskell
 -- validates each supplied witness against the corresponding record field.

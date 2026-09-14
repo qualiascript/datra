@@ -46,9 +46,9 @@ import AtlasTransposal
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
+import AtlasCovered (AtlasCoveredDatum)
 import AtlasTransversal
-  ( AtlasCoveredDatum
-  , AtlasTransversal
+  ( AtlasTransversal
   , atlasTransversalHom
   , atlasTransversalLeftInverse
   , atlasTransversalOrderedTransposal
