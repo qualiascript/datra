@@ -70,7 +70,7 @@ import Atlas.Morphism.Internal
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
   )
-import AtlasCovered.Internal
+import AtlasCoverage.Internal
   ( AtlasCoverageWitness (..)
   , atlasCoveredDatumAt
   , findAtlasCoverage

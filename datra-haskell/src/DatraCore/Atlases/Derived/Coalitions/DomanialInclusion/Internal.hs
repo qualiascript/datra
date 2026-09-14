@@ -54,7 +54,7 @@ import Atlas.Internal
   , atlasWithScope
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCovered.Internal
+import AtlasCoverage.Internal
   ( AtlasCoveredDatum (..)
   , AtlasCoverageWitness
   , atlasCoverageWitness

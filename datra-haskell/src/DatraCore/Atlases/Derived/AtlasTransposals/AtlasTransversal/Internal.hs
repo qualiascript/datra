@@ -41,7 +41,7 @@ import Atlas
   , atlasWitness
   , withAtlasMorphismImage
   )
-import AtlasCovered.Internal
+import AtlasCoverage.Internal
   ( AtlasCoveredDatum (..)
   , AtlasCoverageWitness
   , coverageWitnessCovers

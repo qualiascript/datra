@@ -1,5 +1,5 @@
 -- | Evidence that Atlas data is covered by data in final regions.
-module AtlasCovered
+module AtlasCoverage
   ( AtlasCoverageWitness
   , AtlasCoveredDatum
   , atlasCoverageWitness
@@ -7,7 +7,7 @@ module AtlasCovered
   , withAtlasCoveredDatum
   ) where
 
-import AtlasCovered.Internal
+import AtlasCoverage.Internal
   ( AtlasCoverageWitness
   , AtlasCoveredDatum
   , atlasCoverageWitness

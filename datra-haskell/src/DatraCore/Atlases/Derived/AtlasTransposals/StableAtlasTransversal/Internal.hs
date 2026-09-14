@@ -46,7 +46,7 @@ import AtlasTransposal
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
-import AtlasCovered (AtlasCoveredDatum)
+import AtlasCoverage (AtlasCoveredDatum)
 import AtlasTransversal
   ( AtlasTransversal
   , atlasTransversalHom

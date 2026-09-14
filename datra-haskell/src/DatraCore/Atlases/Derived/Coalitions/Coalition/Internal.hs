@@ -30,7 +30,7 @@ import Atlas
   , withAtlasMorphismImage
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCovered.Internal
+import AtlasCoverage.Internal
   ( AtlasCoveredDatum (..)
   , AtlasCoverageWitness (..)
   , atlasCoverageAt

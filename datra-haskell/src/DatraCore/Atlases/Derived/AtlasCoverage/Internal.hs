@@ -9,7 +9,7 @@
 {-@ embed Natural as int @-}
 
 -- | Hidden implementation of coverage by final Atlas regions.
-module AtlasCovered.Internal
+module AtlasCoverage.Internal
   ( AtlasCoverageWitness (..)
   , AtlasCoveredDatum (..)
   , atlasCoverageWitness

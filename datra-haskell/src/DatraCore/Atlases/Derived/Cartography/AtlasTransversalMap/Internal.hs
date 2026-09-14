@@ -37,7 +37,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   )
-import AtlasCovered (AtlasCoveredDatum)
+import AtlasCoverage (AtlasCoveredDatum)
 import AtlasMap
   ( AtlasMap
   , AtlasMapHom

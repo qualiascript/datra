@@ -3,7 +3,7 @@
 module Main (main) where
 
 import Atlas
-import AtlasCovered
+import AtlasCoverage
 import AtlasMap
 import AtlasTransposal
 import AtlasTransversal

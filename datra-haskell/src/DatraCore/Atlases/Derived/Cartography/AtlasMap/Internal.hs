@@ -54,7 +54,7 @@ import Atlas
   , mapAtlasData
   , materializeAtlasHom
   )
-import AtlasCovered.Internal
+import AtlasCoverage.Internal
   ( AtlasCoveredDatum (..)
   , AtlasCoverageWitness
   , coverageNormalize
