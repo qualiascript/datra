@@ -70,6 +70,7 @@ import Atlas.Morphism.LiquidInternal
   )
 import Control.Category (Category (..))
 import Data.Kind (Type)
+import Data.Type.Equality ((:~:) (Refl))
 import DomanialInsertion
   ( DomanialInsertion
   , composeInsertions
@@ -297,32 +298,34 @@ atlasWitness = AtlasWitness
 -- 'materializeAtlasHom'. Primitive arrows retain their checked
 -- 'AtlasMorphism'; composition is an indexed syntax node.
 type role AtlasHom nominal nominal
-data AtlasHom source target where
-  PrimitiveAtlasHom
-    :: AtlasMorphism
-         sourceAtlasScope targetAtlasScope
-         sourceScope targetScope sourceCellData targetCellData
-    -> AtlasHom
-         (AtlasObject sourceAtlasScope sourceScope sourceCellData)
-         (AtlasObject targetAtlasScope targetScope targetCellData)
-  IdentityAtlasHom
-    :: AtlasHom object object
-  CompositeAtlasHom
-    :: AtlasHom middle target
-    -> AtlasHom source middle
-    -> AtlasHom source target
+data AtlasHom source target
+  = forall sourceAtlasScope targetAtlasScope
+      sourceScope targetScope sourceCellData targetCellData.
+    PrimitiveAtlasHom
+      (source :~:
+        AtlasObject sourceAtlasScope sourceScope sourceCellData)
+      (target :~:
+        AtlasObject targetAtlasScope targetScope targetCellData)
+      (AtlasMorphism
+        sourceAtlasScope targetAtlasScope
+        sourceScope targetScope sourceCellData targetCellData)
+  | IdentityAtlasHom (source :~: target)
+  | forall middle.
+    CompositeAtlasHom
+      (AtlasHom middle target)
+      (AtlasHom source middle)
 
 -- | The symbolic identity used by the ordinary Atlas category.
 identityAtlasHom :: AtlasHom object object
-identityAtlasHom = IdentityAtlasHom
+identityAtlasHom = IdentityAtlasHom Refl
 
 -- | Compose symbolic Atlas arrows, simplifying identity nodes eagerly.
 composeAtlasHoms
   :: AtlasHom middle target
   -> AtlasHom source middle
   -> AtlasHom source target
-composeAtlasHoms IdentityAtlasHom first = first
-composeAtlasHoms second IdentityAtlasHom = second
+composeAtlasHoms (IdentityAtlasHom Refl) first = first
+composeAtlasHoms second (IdentityAtlasHom Refl) = second
 composeAtlasHoms second (CompositeAtlasHom middle first) =
   CompositeAtlasHom (composeAtlasHoms second middle) first
 composeAtlasHoms second first = CompositeAtlasHom second first
@@ -335,7 +338,7 @@ atlasHom
   -> AtlasHom
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
-atlasHom = PrimitiveAtlasHom
+atlasHom = PrimitiveAtlasHom Refl Refl
 
 -- | The target object carried by an already materialized morphism.
 atlasMorphismTargetWitness
@@ -358,8 +361,8 @@ targetAtlasWitness
   :: AtlasWitness source
   -> AtlasHom source target
   -> AtlasWitness target
-targetAtlasWitness sourceWitness IdentityAtlasHom = sourceWitness
-targetAtlasWitness _ (PrimitiveAtlasHom morphism) =
+targetAtlasWitness sourceWitness (IdentityAtlasHom Refl) = sourceWitness
+targetAtlasWitness _ (PrimitiveAtlasHom Refl Refl morphism) =
   atlasMorphismTargetWitness morphism
 targetAtlasWitness sourceWitness (CompositeAtlasHom second first) =
   targetAtlasWitness
@@ -379,9 +382,9 @@ materializeAtlasHom
        (AtlasObjectPaginationScope target)
        (AtlasObjectCellData source)
        (AtlasObjectCellData target)
-materializeAtlasHom (AtlasWitness valueAtlas) IdentityAtlasHom =
+materializeAtlasHom (AtlasWitness valueAtlas) (IdentityAtlasHom Refl) =
   identityAtlasMorphism valueAtlas
-materializeAtlasHom _ (PrimitiveAtlasHom morphism) = morphism
+materializeAtlasHom _ (PrimitiveAtlasHom Refl Refl morphism) = morphism
 materializeAtlasHom sourceWitness (CompositeAtlasHom second first) =
   composeAtlasMorphisms
     (materializeAtlasHom
