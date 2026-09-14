@@ -1,7 +1,11 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
+#include "../../LiquidPlugin.h"
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--higherorder" @-}
 
 -- | Presheaves on the category of Atlases and their natural transformations.
 module DataTransformation.Internal
@@ -73,6 +77,23 @@ data DataTransformationHom
 -- for every Atlas arrow and source value. 'dataTransformationNatural' checks
 -- this callback in the LiquidHaskell layer before the primitive can enter the
 -- categorical syntax.
+{-@
+dataTransformationHom
+  :: sourceTransformation:DataTransformation source
+  -> targetTransformation:DataTransformation target
+  -> componentFunction:(forall atlas.
+       DataTransformationValue source atlas
+       -> DataTransformationValue target atlas)
+  -> naturalityLaw:(forall sourceAtlas targetAtlas.
+       arrow:AtlasHom sourceAtlas targetAtlas
+       -> value:DataTransformationValue source targetAtlas
+       -> { proof:() |
+            componentFunction
+              (mapDataTransformation sourceTransformation arrow value)
+            == mapDataTransformation targetTransformation arrow
+                 (componentFunction value) })
+  -> DataTransformationHom source target
+@-}
 dataTransformationHom
   :: DataTransformation source
   -> DataTransformation target
@@ -89,17 +110,18 @@ dataTransformationHom source target component naturality =
     (dataTransformationNatural source target component naturality)
 
 -- | Evaluate one component of a natural transformation.
+{-@ reflect mapDataTransformationHom @-}
 mapDataTransformationHom
   :: DataTransformationHom source target
   -> DataTransformationValue source atlas
   -> DataTransformationValue target atlas
 mapDataTransformationHom
-  (PrimitiveDataTransformationHom natural) =
-    mapDataTransformationNatural natural
-mapDataTransformationHom IdentityDataTransformationHom = id
+  (PrimitiveDataTransformationHom natural) value =
+    mapDataTransformationNatural natural value
+mapDataTransformationHom IdentityDataTransformationHom value = value
 mapDataTransformationHom
-  (CompositeDataTransformationHom second first) =
-    mapDataTransformationHom second . mapDataTransformationHom first
+  (CompositeDataTransformationHom second first) value =
+    mapDataTransformationHom second (mapDataTransformationHom first value)
 
 -- | Invoke or derive the naturality witness for a natural transformation.
 dataTransformationHomNaturality

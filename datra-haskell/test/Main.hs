@@ -16,8 +16,10 @@ import DataTransformation
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
+import Expedition
 import FiniteDominion
 import Folio
+import Navigation
 import PageElements
 import Pagination
 import Numeric.Natural (Natural)
@@ -41,6 +43,7 @@ main = do
   testPagination
   testAtlas
   testAtlasMap
+  testNavigationAndExpedition
   testCharting
   testOrderedAtlasTransposal
   testAtlasTransversal
@@ -993,6 +996,62 @@ testAtlasMap =
                 assert
                   "Atlas Transversal Map inclusion preserves composition"
                   (pageElementPage mapped == 0)
+
+testNavigationAndExpedition :: IO ()
+testNavigationAndExpedition =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let witness = atlasWitness valueAtlas
+            valueMap =
+              atlasMap valueAtlas $ \extent extentDatum ->
+                atlasCoverageWitness
+                  valueAtlas
+                  extent
+                  extentDatum
+                  extent
+                  extentDatum
+                  ()
+            valueNavigation =
+              navigation witness Category.id Just (const ())
+            valueExpedition =
+              expedition valueMap Category.id Just (const ())
+            refinedExpedition =
+              expeditionFromNavigation valueMap valueNavigation
+            source = Yoneda identityAtlasHom
+        in do
+          navigationLeftInverse valueNavigation source `seq`
+            expeditionLeftInverse valueExpedition source `seq`
+              pure ()
+          case navigationPreimage valueNavigation
+            (mapNavigation valueNavigation source) of
+              Nothing -> fail "navigation left inverse rejected its image"
+              Just (Yoneda recovered) ->
+                withPageElement
+                  (atlasOriginCell valueAtlas) $ \origin ->
+                    withPageElement
+                      (mapAtlasHomElement witness recovered origin) $ \mapped ->
+                        assert "navigations are componentwise monomorphisms"
+                          (pageElementPage mapped == 0)
+          case expeditionPreimage refinedExpedition
+            (mapExpedition refinedExpedition source) of
+              Nothing -> fail "expedition left inverse rejected its image"
+              Just _ ->
+                withAtlasMapExtent
+                  (expeditionAtlasMap valueExpedition) $ \extent _ _ ->
+                    withPageElement
+                      (mapAtlasHomElement
+                        (expeditionAtlas valueExpedition)
+                        identityAtlasHom
+                        extent) $ \mapped ->
+                          assert
+                            "expeditions retain their Atlas-map representation"
+                            (pageElementPage mapped == 0)
 
 testCharting :: IO ()
 testCharting =
