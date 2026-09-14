@@ -8,6 +8,7 @@ module AtlasTransposal
   , AtlasTransposalElement
   , atlasTransposalElement
   , withAtlasTransposalElement
+  , atlasTransposalElementLT
   , atlasTransposal
   , atlasTransposalHom
   , mapAtlasTransposalObject
@@ -26,6 +27,7 @@ import AtlasTransposal.Internal
   , AtlasTransposalElement
   , atlasTransposal
   , atlasTransposalElement
+  , atlasTransposalElementLT
   , atlasTransposalHom
   , atlasTransposalLeftInverse
   , atlasTransposalPagination

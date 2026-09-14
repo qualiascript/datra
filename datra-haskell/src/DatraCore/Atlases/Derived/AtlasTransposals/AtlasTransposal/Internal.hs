@@ -15,6 +15,7 @@ module AtlasTransposal.Internal
   , AtlasTransposalElement
   , atlasTransposalElement
   , withAtlasTransposalElement
+  , atlasTransposalElementLT
   , atlasTransposal
   , atlasTransposalHom
   , mapAtlasTransposalObject
@@ -50,6 +51,7 @@ import DomanialInsertion
   , insertionLeftInverse
   , preimage
   )
+import DatraOrdinal (Ordinal, ordinalLT)
 import PageElements
   ( PageElement
   , PageElementArrow
@@ -59,6 +61,8 @@ import PageElements
   , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
+import PageElements.LiquidInternal (pageElementTrace)
+import Numeric.Natural (Natural)
 import Prelude hiding ((.), id)
 
 -- | One object of the finite page-element category belonging to an Atlas.
@@ -104,6 +108,37 @@ withAtlasTransposalElement
   -> result
 withAtlasTransposalElement (AtlasTransposalElement element) useElement =
   useElement element
+
+-- | The strict Atlas order on genuine elements. The elements have already
+-- been normalized, so this is Lean's @elementLT@: transport both cells to
+-- their common earliest page and compare their positions there.
+{-@ reflect atlasTransposalElementLT @-}
+atlasTransposalElementLT
+  :: AtlasTransposalElement atlasObject
+  -> AtlasTransposalElement atlasObject
+  -> Bool
+atlasTransposalElementLT
+    (AtlasTransposalElement left)
+    (AtlasTransposalElement right) =
+  let commonPage = min (pageElementPage left) (pageElementPage right)
+  in case
+      ( positionAtPage commonPage left
+      , positionAtPage commonPage right
+      ) of
+        (Just leftPosition, Just rightPosition) ->
+          ordinalLT leftPosition rightPosition
+        _ -> False
+
+positionAtPage
+  :: Natural
+  -> PageElement scope object
+  -> Maybe Ordinal
+positionAtPage page occurrence =
+  case drop offset (pageElementTrace occurrence) of
+    position : _ -> Just position
+    [] -> Nothing
+  where
+    offset = fromIntegral (pageElementPage occurrence - page)
 
 -- | An arrow in the wide subcategory of Atlas transposals.
 --
@@ -177,6 +212,7 @@ atlasTransposalHom
 atlasTransposalHom (AtlasTransposal hom _) = hom
 
 -- | Apply the injective object map on genuine Atlas elements.
+{-@ reflect mapAtlasTransposalObject @-}
 mapAtlasTransposalObject
   :: AtlasTransposal source target
   -> AtlasTransposalElement source

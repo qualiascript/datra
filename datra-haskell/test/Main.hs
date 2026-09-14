@@ -16,6 +16,7 @@ import Folio
 import PageElements
 import Pagination
 import Numeric.Natural (Natural)
+import OrderedAtlasTransposal
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -33,6 +34,7 @@ main = do
   testPageElements
   testPagination
   testAtlas
+  testOrderedAtlasTransposal
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -889,3 +891,52 @@ testAtlas =
                                     "Yoneda embeds AtlasHom by postcomposition"
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
+
+testOrderedAtlasTransposal :: IO ()
+testOrderedAtlasTransposal =
+  pagination threePageFolio $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let elements = atlasPageElements valueAtlas
+            at position =
+              pageElement
+                <$> pageElementIndex elements 1 (finiteOrdinal position)
+        in case (at 0, at 1) of
+          (Just someLeft, Just someRight) ->
+            withPageElement someLeft $ \left ->
+              withPageElement someRight $ \right -> do
+                let witness = atlasWitness valueAtlas
+                    transposal =
+                      atlasTransposal
+                        witness
+                        identityAtlasHom
+                        Just
+                        (const ())
+                    ordered =
+                      orderedAtlasTransposal transposal (\_ _ -> ())
+                    composed = ordered Category.. ordered
+                    includedIdentity = Category.id Category.. composed
+                    leftElement = atlasTransposalElement witness left
+                    rightElement = atlasTransposalElement witness right
+                    mappedLeft =
+                      mapOrderedAtlasTransposalObject
+                        includedIdentity leftElement
+                    mappedRight =
+                      mapOrderedAtlasTransposalObject
+                        includedIdentity rightElement
+                assert "ordered transposal test source is strictly ordered"
+                  (atlasTransposalElementLT leftElement rightElement)
+                orderedAtlasTransposalPreservesOrder
+                  includedIdentity leftElement rightElement `seq` pure ()
+                assert "ordered transposals preserve strict Atlas order"
+                  (atlasTransposalElementLT mappedLeft mappedRight)
+                assert "ordered transposals retain transposal injectivity"
+                  ( orderedAtlasTransposalPreimage includedIdentity mappedLeft
+                      == Just leftElement
+                  )
+          _ -> fail "test setup failed: expected two ordered Atlas elements"
