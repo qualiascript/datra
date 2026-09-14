@@ -41,8 +41,10 @@ This work formalizes the semantics of the Datra programming-language project in 
 Data domains are organized into atlases: structured, eventually stable families of
 pages encoding how data is partitioned and related. Data transformations are modeled
 as presheaves on the resulting atlas categories, yielding a topos-theoretic semantics.
-Stable transformations are then assembled over atlas federations, whose horizontal
-sum extends by Day convolution to a symmetric monoidal category.
+Stable transformations are then assembled over atlas federations.  A federation
+retains both the tagged inputs of an atlas merge and the atlas produced by that
+merge; forgetting the tags recovers an ordinary atlas.  Horizontal sum extends
+by Day convolution to a symmetric monoidal category.
 \end{abstract}
 
 \section{Dominions}
@@ -1075,16 +1077,27 @@ def StaAtlTravToAtlTrav : StaAtlTrav ⥤ AtlTrav :=
 
 def StaAtlTravInc : StaAtlTrav ⥤ Atl := StaAtlTravToAtlTrav ⋙ AtlTravInc
 
-/-! `StableAtlasFamily` implements atlas federations of stable atlases.
-The empty family is the empty atlas operation, and concatenation retains all
-components without choosing representatives or identifying their data.  Most
-importantly, every component arrow is an arrow of `StaAtlTrav`, so stability is
-checked by Lean at the boundary of the horizontal construction. -/
+/-! A merge presentation records how an atlas federation was assembled.  Its
+evaluation as an atlas is defined below, once the concrete `AtlMerge`
+construction is available. -/
+
+inductive AtlasMergePresentation where
+  | empty
+  | atom (atlas : Atl)
+  | merge (left right : AtlasMergePresentation)
+
+/-! `StableAtlasFamily` implements atlas federations of stable atlases.  It
+stores both the countably tagged inputs and a presentation of the atlas
+obtained by merging them.  Concatenation retains every tag and combines the
+two merge presentations.  Most importantly, every component arrow is an arrow
+of `StaAtlTrav`, so stability is checked by Lean at the boundary of the
+horizontal construction. -/
 
 structure StableAtlasFamily where
   Index : Type
   countableIndex : Countable Index
   component : Index → StaAtlTrav
+  presentation : AtlasMergePresentation
 
 attribute [instance] StableAtlasFamily.countableIndex
 
@@ -1155,19 +1168,42 @@ def stableAtlasAtom (X : StaAtlTrav) : StableAtlasFamily where
   Index := Unit
   countableIndex := inferInstance
   component := fun _ => X
+  presentation := .atom X.obj.obj
+
+/-- Regard a stable atlas as a singleton federation.  Presheaf restriction
+along this functor is the tag-forgetting part of the passage from stable data
+transversals to ordinary data transformations. -/
+def stableAtlasAtomFunctor : StaAtlTrav ⥤ StableAtlasFamily where
+  obj := stableAtlasAtom
+  map f :=
+    { index := id
+      component := fun _ => f }
+  map_id X := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq rfl
+  map_comp f g := by
+    apply StableAtlasFamilyHom.ext
+    · rfl
+    · intro i
+      exact heq_of_eq rfl
 
 /-- The empty atlas federation has no components. -/
 def stableAtlasUnit : StableAtlasFamily where
   Index := Empty
   countableIndex := inferInstance
   component := fun i => nomatch i
+  presentation := .empty
 
-/-- Federation merge is disjoint tagged retention of components,
-not a categorical coproduct of atlases. -/
+/-- Federation merge retains the disjoint tags and records the corresponding
+atlas merge in the presentation.  It is not a categorical coproduct of
+atlases. -/
 def stableAtlasMerge (X Y : StableAtlasFamily) : StableAtlasFamily where
   Index := Sum X.Index Y.Index
   countableIndex := inferInstance
   component := Sum.elim X.component Y.component
+  presentation := .merge X.presentation Y.presentation
 
 def stableAtlasMergeHom {X₁ X₂ Y₁ Y₂ : StableAtlasFamily}
     (f : X₁ ⟶ Y₁) (g : X₂ ⟶ Y₂) :
@@ -2195,15 +2231,20 @@ page $n$ of $X$ and page $n$ of $Y$.
 \end{definition}
 
 \begin{definition}[Atlas Federation]
-An \textbf{Atlas Federation} is a countable tagged family of atlas objects.
-The category of Atlas Federations is denoted $\mathsf{AtlFed}$.
-A morphism consists of a map of tags and, at each source tag, a stable atlas
-traversal to its selected target tag.
+An \textbf{Atlas Federation} is the data carried by an atlas merge: a
+countable tagged family of atlas objects together with a merge presentation
+whose evaluation is the resulting atlas. The category of Atlas Federations is
+denoted $\mathsf{AtlFed}$.  A morphism consists of a map of tags and, at each source
+tag, a stable atlas traversal to its selected target tag. There is a canonical object-level
+forgetful operation $U:\operatorname{Ob}(\mathsf{AtlFed})\to\operatorname{Ob}(\Atl)$ that
+discards the component tags and retains the resulting atlas.
 \end{definition}
 
 \begin{definition}[The Empty Atlas]
 The \textbf{Empty Atlas} is
-$\mathsf{AtlI}=\mathsf{DomInc}(\varnothing)$, also viewed as an Atlas Federation.
+$\mathsf{AtlI}=\mathsf{DomInc}(\varnothing)$, also viewed as the empty Atlas
+Federation, whose tag family is empty and whose stored result is
+$\mathsf{AtlI}$.
 \end{definition}
 %%-/
 
@@ -3544,6 +3585,37 @@ def bouquetAtlas (X Y : Atl) : Atl where
 /-- The object-level atlas merge used by the horizontal construction. -/
 def AtlMerge (X Y : Atl) : Atl := bouquetAtlas X Y
 
+/-- Evaluate the merge history stored by an atlas federation. -/
+def AtlasMergePresentation.toAtlas : AtlasMergePresentation → Atl
+  | .empty => AtlI
+  | .atom X => X
+  | .merge X Y => AtlMerge X.toAtlas Y.toAtlas
+
+/-- Forget the component tags of an atlas federation and retain the atlas
+produced by its stored merge presentation. -/
+def StableAtlasFamily.toAtlas (X : StableAtlasFamily) : Atl :=
+  X.presentation.toAtlas
+
+/-- The resulting atlas stored by a federation, exposed under the semantic
+name used by the paper. -/
+abbrev StableAtlasFamily.resultingAtlas (X : StableAtlasFamily) : Atl :=
+  X.toAtlas
+
+/-- Object-level tag forgetting for atlas federations. -/
+abbrev StableAtlasFamily.forgetTags (X : StableAtlasFamily) : Atl :=
+  X.resultingAtlas
+
+@[simp]
+theorem stableAtlasAtom_toAtlas (X : StaAtlTrav) :
+    (stableAtlasAtom X).toAtlas = X.obj.obj := rfl
+
+@[simp]
+theorem stableAtlasUnit_toAtlas : stableAtlasUnit.toAtlas = AtlI := rfl
+
+@[simp]
+theorem stableAtlasMerge_toAtlas (X Y : StableAtlasFamily) :
+    (stableAtlasMerge X Y).toAtlas = AtlMerge X.toAtlas Y.toAtlas := rfl
+
 def bouquetTallPred (X Y : Atl) (n : Nat) :
     Fin (bouquetDepth X.Fo Y.Fo) :=
   ⟨min n (bouquetDepth X.Fo Y.Fo - 1), by
@@ -3655,14 +3727,17 @@ The \textbf{Atlas Horizontal Sum Bifunctor}, denoted
 $\mathsf{AtlHorSum}:\mathsf{AtlFed}\times\mathsf{AtlFed}
 \to\mathsf{AtlFed}$, has object action
 \[
-  \mathsf{AtlHorSum}(X,X')=\mathsf{AtlMerge}(X,X').
+  U(\mathsf{AtlHorSum}(F,F'))=
+  \mathsf{AtlMerge}(U(F),U(F')).
 \]
-Here $\mathsf{AtlFed}$ is the category of Atlas Federations; its empty
-federation represents $\mathsf{AtlI}$. Given stable
-traversals $F:X\to Y$ and $F':X'\to Y'$, horizontal
-sum preserves the left and right tags and applies $F$ and $F'$ componentwise.
-Stability fixes the common origin, so this arrow action is again a stable
-atlas traversal.
+On tags, $\mathsf{AtlHorSum}(F,F')$ is their disjoint tagged union; its
+stored merge presentation records the displayed atlas merge.  Thus the
+horizontal sum preserves both the provenance of the two inputs and the atlas
+produced by merging them.  The empty federation represents $\mathsf{AtlI}$.
+Given stable traversals between the components of two pairs of federations,
+horizontal sum preserves the left and right tags and applies the traversals
+componentwise.  Stability fixes the common origin, so the component arrows
+remain stable atlas traversals.
 \end{definition}
 %%-/
 
@@ -3731,7 +3806,7 @@ As a presheaf category, it is a topos.
 \end{definition}
 %%-/
 
-abbrev DaTra := Atlᵒᵖ ⥤ Type
+abbrev DaTra.{v} := Atlᵒᵖ ⥤ Type v
 
 def Yo : Atl ⥤ DaTra := yoneda
 
@@ -3783,6 +3858,29 @@ abbrev StaDaTrav := IsStableDataTransversal.FullSubcategory
 
 abbrev StaDaTravInc : StaDaTrav ⥤ StaDaTravPresheaf :=
   IsStableDataTransversal.ι
+
+/-- Presheaves on single stable atlases, before extension to all atlas
+morphisms. -/
+abbrev StaAtlTravPSh := StaAtlTravᵒᵖ ⥤ Type 3
+
+/-- Forget the multiple tags of a stable data transversal by restricting it
+to singleton atlas federations. -/
+def StaDaTrav.restrictToStableAtlases : StaDaTrav ⥤ StaAtlTravPSh :=
+  StaDaTravInc ⋙
+    (Functor.whiskeringLeft StaAtlTravᵒᵖ StableAtlasFamilyᵒᵖ (Type 3)).obj
+      stableAtlasAtomFunctor.op
+
+/-- Extend a presheaf on stable atlas traversals to an ordinary (large-valued)
+DaTra presheaf along the inclusion of stable traversals into all atlas
+morphisms. -/
+noncomputable def StaAtlTravPSh.extendToDaTra : StaAtlTravPSh ⥤ DaTra.{3} :=
+  StaAtlTravInc.op.lan
+
+/-- Forget a stable data transversal to a DaTra presheaf: first discard the
+federation tags by restricting to singleton federations, then left Kan extend
+from stable atlas traversals to all atlas morphisms. -/
+noncomputable def StaDaTrav.forgetToDaTra : StaDaTrav ⥤ DaTra.{3} :=
+  StaDaTrav.restrictToStableAtlases ⋙ StaAtlTravPSh.extendToDaTra
 
 /-%%
 \begin{definition}[Data Transformation Maps]
@@ -3951,7 +4049,8 @@ noncomputable instance : SymmetricCategory StaDaTrav where
 \begin{definition}[Stable Data Transversals]
 The \textbf{Category of Stable Data Transversals}, denoted
 $\mathsf{StaDaTrav}$, is the presheaf category on Atlas Federations whose
-component arrows lie in $\mathsf{StaAtlTrav}$.
+component arrows lie in $\mathsf{StaAtlTrav}$. Correspondingly, each stable data
+transversal has an underlying DaTra presheaf.
 \end{definition}
 
 \begin{definition}[The Empty Map]
