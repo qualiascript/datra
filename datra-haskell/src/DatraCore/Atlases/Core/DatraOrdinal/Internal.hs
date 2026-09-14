@@ -6,6 +6,7 @@
 -- | Hidden ordinal representation, smart constructors, and arithmetic.
 module DatraOrdinal.Internal
   ( Ordinal(..)
+  , canonicalCoefficients
   , ordinal
   , finiteOrdinal
   , omega
@@ -19,21 +20,48 @@ import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
 
+{-@ reflect canonicalCoefficients @-}
+canonicalCoefficients :: [Natural] -> Bool
+canonicalCoefficients [] = True
+canonicalCoefficients (leading : _) = leading > 0
+
+{-@ type CanonicalCoefficients = { values:[Natural] | canonicalCoefficients values } @-}
+
 -- | An ordinal strictly below omega^omega in canonical Cantor normal form.
-newtype Ordinal = Ordinal
+{-@
+data Ordinal = Ordinal
+  { coefficients :: CanonicalCoefficients
+  }
+@-}
+{-@
+invariant { value:Ordinal |
+  canonicalCoefficients (coefficients value) }
+@-}
+data Ordinal = Ordinal
   { coefficients :: [Natural]
   }
   deriving (Eq, Show)
 
 -- | Construct a canonical ordinal from descending coefficients.
+{-@ reflect ordinal @-}
 ordinal :: [Natural] -> Ordinal
-ordinal = Ordinal . dropWhile (== 0)
+ordinal values = Ordinal (dropLeadingZeros values)
+
+{-@ reflect dropLeadingZeros @-}
+{-@ dropLeadingZeros :: [Natural] -> CanonicalCoefficients @-}
+dropLeadingZeros :: [Natural] -> [Natural]
+dropLeadingZeros [] = []
+dropLeadingZeros values@(leading : rest)
+  | leading > 0 = values
+  | otherwise = dropLeadingZeros rest
 
 -- | Embed a natural number as a finite ordinal.
+{-@ reflect finiteOrdinal @-}
 finiteOrdinal :: Natural -> Ordinal
 finiteOrdinal value = ordinal [value]
 
 -- | The first infinite ordinal.
+{-@ reflect omega @-}
 omega :: Ordinal
 omega = ordinal [1, 0]
 
@@ -64,6 +92,7 @@ lexicographicLT (left : lefts) (right : rights)
   | otherwise = lexicographicLT lefts rights
 
 -- | Ordinal addition. This is generally not commutative.
+{-@ reflect addOrdinals @-}
 addOrdinals :: Ordinal -> Ordinal -> Ordinal
 addOrdinals left (Ordinal []) = left
 addOrdinals (Ordinal leftCoefficients)
@@ -71,7 +100,7 @@ addOrdinals (Ordinal leftCoefficients)
   | length leftCoefficients < length rightCoefficients = right
   | otherwise = case matchingAndLowerLeftCoefficients of
       matchingLeftCoefficient : _ ->
-        Ordinal
+        ordinal
           (higherLeftCoefficients
             ++ (matchingLeftCoefficient + rightLeadingCoefficient)
               : rightLowerCoefficients)
@@ -86,11 +115,12 @@ addOrdinals (Ordinal leftCoefficients)
       splitAt numberOfHigherLeftCoefficients leftCoefficients
 
 -- | Remove a left ordinal prefix when the value lies at or after it.
+{-@ reflect subtractOrdinal @-}
 subtractOrdinal :: Ordinal -> Ordinal -> Maybe Ordinal
 subtractOrdinal (Ordinal left) (Ordinal value)
   | listLength value < listLength left = Nothing
-  | listLength value > listLength left = Just (Ordinal value)
-  | otherwise = Ordinal <$> subtractCoefficients left value
+  | listLength value > listLength left = Just (ordinal value)
+  | otherwise = ordinal <$> subtractCoefficients left value
 
 subtractCoefficients
   :: [Natural]
@@ -104,6 +134,7 @@ subtractCoefficients (left : lefts) (value : values)
 subtractCoefficients _ _ = Nothing
 
 -- | Decode a finite ordinal as a natural number.
+{-@ reflect naturalAtOrdinal @-}
 naturalAtOrdinal :: Ordinal -> Maybe Natural
 naturalAtOrdinal (Ordinal []) = Just 0
 naturalAtOrdinal (Ordinal [value]) = Just value

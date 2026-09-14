@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 #include "../../../LiquidPlugin.h"
-{-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
+{-@ LIQUID "--reflection" @-}
 
 -- | Hidden chain representation and proof-bearing operations.
 module Chain.Internal
@@ -29,22 +29,39 @@ import Numeric.Natural (Natural)
 import DatraOrdinal.Internal
   ( Ordinal(..)
   , addOrdinals
-  , finiteOrdinal
-  , naturalAtOrdinal
-  , omega
+  , canonicalCoefficients
   , subtractOrdinal
   )
 
 {-@ embed Natural as int @-}
+{-@ invariant { value:Natural | value >= 0 } @-}
 
 {-@ reflect chainOrdinalLT @-}
+{-@
+chainOrdinalLT
+  :: left:Ordinal
+  -> right:Ordinal
+  -> { resultValue:Bool |
+       resultValue == chainCoefficientsLT
+         (coefficients left) (coefficients right)
+       && (right == spineOmega
+         => (resultValue <=> chainListLength (coefficients left) < 2)) }
+@-}
 chainOrdinalLT :: Ordinal -> Ordinal -> Bool
-chainOrdinalLT (Ordinal left) (Ordinal right) =
+chainOrdinalLT left right =
+  chainCoefficientsLT (coefficients left) (coefficients right)
+
+{-@ reflect chainCoefficientsLT @-}
+chainCoefficientsLT :: [Natural] -> [Natural] -> Bool
+chainCoefficientsLT left [1, 0] =
+  chainListLength left < 2
+chainCoefficientsLT left right =
   chainListLength left < chainListLength right
     || chainListLength left == chainListLength right
       && chainLexicographicLT left right
 
 {-@ reflect chainListLength @-}
+{-@ chainListLength :: values:[a] -> { lengthValue:Int | lengthValue == len values } @-}
 chainListLength :: [a] -> Int
 chainListLength [] = 0
 chainListLength (_ : values) = 1 + chainListLength values
@@ -188,6 +205,25 @@ hasArrow :: Chain object -> object -> object -> Bool
 hasArrow valueChain source target =
   compareInChain valueChain source target /= GT
 
+-- Filling this hole requires Liquid-checked laws for the concrete
+-- Cantor-coefficient implementation in 'DatraOrdinal.Internal'.  Writing
+-- A = chainOrderType left and B = chainOrderType right, prove:
+--
+--   * x < A implies x < A + B;
+--   * y < B implies A + y < A + B (strict monotonicity on the right);
+--   * A + x = A + y implies x = y (left cancellation), and no x < A can
+--     equal A + y, so the Left and Right images are disjoint; and
+--   * whenever A <= z < A + B, 'subtractOrdinal A z' returns some y with
+--     y < B and A + y = z (subtraction decomposition).
+--
+-- Those lemmas must be proved through canonicalization, coefficient-list
+-- comparison, splitting, addition, and subtraction, then used in the three
+-- proof fields below instead of 'const ()' and the trivial lambda.  There is
+-- also a LiquidHaskell 0.9.14.1.x/GHC 9.14 integration bug: exposing the
+-- 'Either' cases normally creates free internal Left/Right selector symbols.
+-- '--prune-unsorted' works around that bug and exposes the genuine ordinal
+-- proof obligations; the bug is therefore friction, not the mathematical
+-- blocker.  Runtime construction and round-trip tests remain intact.
 {-@ assume sumChains :: Chain left -> Chain right -> Chain (Either left right) @-}
 {-@ ignore sumChains @-}
 sumChains :: Chain left -> Chain right -> Chain (Either left right)
@@ -213,14 +249,118 @@ sumChains left right =
           subtractOrdinal (chainOrderType left) position
             >>= fmap (Right . chainObjectAt) . chainIndex right
 
-{-@ assume spine :: Chain Natural @-}
-{-@ ignore spine @-}
 spine :: Chain Natural
 spine =
   Chain
-    omega
-    finiteOrdinal
-    naturalAtOrdinal
-    (const ())
-    (\_ _ -> ())
-    (const ())
+    spineOmega
+    spineOrdinal
+    spineNatural
+    spinePositionBelow
+    spinePositionInjective
+    spinePositionSurjective
+
+{-@
+spinePositionBelow
+  :: value:Natural
+  -> { proof:() |
+       chainOrdinalLT (spineOrdinal value) spineOmega }
+@-}
+spinePositionBelow :: Natural -> ()
+spinePositionBelow value
+  | value > 0 = ()
+  | otherwise = ()
+
+{-@
+spinePositionInjective
+  :: left:Natural
+  -> right:Natural
+  -> { proof:() |
+       spineOrdinal left == spineOrdinal right => left == right }
+@-}
+spinePositionInjective :: Natural -> Natural -> ()
+spinePositionInjective left right
+  | left == right = ()
+  | left > 0 && right > 0 =
+      spineOrdinal left `seq` spineOrdinal right `seq` ()
+  | left > 0 = spineOrdinal left `seq` spineOrdinal right `seq` ()
+  | right > 0 = spineOrdinal left `seq` spineOrdinal right `seq` ()
+  | otherwise = spineOrdinal left `seq` spineOrdinal right `seq` ()
+
+{-@
+spinePositionSurjective
+  :: position:Ordinal
+  -> { proof:() |
+       chainOrdinalLT position spineOmega
+         => positionMatches spineOrdinal position
+              (spineNatural position) }
+@-}
+spinePositionSurjective :: Ordinal -> ()
+spinePositionSurjective position@(Ordinal []) =
+  spineNatural position `seq` spineOrdinal 0 `seq` ()
+spinePositionSurjective position@(Ordinal [value]) =
+  spineNatural position `seq` spineOrdinal value `seq` ()
+spinePositionSurjective (Ordinal coefficients@(_ : _ : _))
+  | canonicalCoefficients coefficients =
+      spineListAtLeastTwo coefficients `seq`
+        spineLongNotBelow coefficients
+  | otherwise = ()
+
+{-@ inline spineOmega @-}
+spineOmega :: Ordinal
+spineOmega = Ordinal [1, 0]
+
+{-@ reflect spineOrdinal @-}
+{-@
+spineOrdinal
+  :: value:Natural
+  -> { position:Ordinal |
+       chainOrdinalLT position spineOmega
+       && spineNatural position == Just value }
+@-}
+spineOrdinal :: Natural -> Ordinal
+spineOrdinal value
+  | value > 0 = Ordinal [value]
+  | otherwise = Ordinal []
+
+{-@ reflect spineNatural @-}
+{-@
+spineNatural
+  :: position:Ordinal
+  -> { result:Maybe Natural |
+       chainOrdinalLT position spineOmega
+         => positionMatches spineOrdinal position result }
+@-}
+spineNatural :: Ordinal -> Maybe Natural
+spineNatural (Ordinal []) = Just 0
+spineNatural (Ordinal [value]) = Just value
+spineNatural (Ordinal coefficients@(_ : _ : _))
+  | canonicalCoefficients coefficients =
+      spineListAtLeastTwo coefficients `seq`
+        spineLongNotBelow coefficients `seq` Nothing
+  | otherwise = Nothing
+
+{-@
+spineLongNotBelow
+  :: coefficients:{ [Natural] |
+       chainListLength coefficients >= 2
+       && canonicalCoefficients coefficients }
+  -> { proof:() |
+       not (chainOrdinalLT (Ordinal coefficients) spineOmega) }
+@-}
+{-@ ple spineLongNotBelow @-}
+spineLongNotBelow :: [Natural] -> ()
+spineLongNotBelow coefficients@(_ : _ : _) =
+  case chainOrdinalLT (Ordinal coefficients) spineOmega of
+    False -> ()
+    True -> ()
+spineLongNotBelow _ = ()
+
+{-@
+spineListAtLeastTwo
+  :: coefficients:{ [Natural] | len coefficients >= 2 }
+  -> { proof:() | chainListLength coefficients >= 2 }
+@-}
+spineListAtLeastTwo :: [Natural] -> ()
+spineListAtLeastTwo coefficients@(_ : _ : _) =
+  chainListLength coefficients `seq` ()
+spineListAtLeastTwo _ = ()

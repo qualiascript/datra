@@ -31,28 +31,40 @@ module DataTransformation.LiquidInternal
 
 import Atlas.Morphism.Internal (AtlasHom (..))
 import Data.Kind (Type)
+import Data.Type.Equality ((:~:) (Refl))
 
 -- | Interpret a defunctionalized presheaf value-family symbol at an Atlas.
--- This mirrors 'Atlas.AtlasMappedObject' and avoids partially applied type
--- constructors in LiquidHaskell's refinement logic.
 type family DataTransformationValue
   (values :: Type)
   (atlas :: Type) = (value :: Type) | value -> values atlas
 
+-- | The value-family symbol of the representable presheaf.
+data YonedaPresheaf (represented :: Type)
+
+-- | One value of the representable presheaf @Hom(-, represented)@.
+type role Yoneda nominal nominal
+data Yoneda (represented :: Type) (atlas :: Type) = Yoneda
+  { getYoneda :: AtlasHom atlas represented
+  }
+
+type instance
+  DataTransformationValue (YonedaPresheaf represented) atlas =
+    Yoneda represented atlas
+
 {-@ reflect presheafIdentity @-}
 presheafIdentity :: AtlasHom object object
-presheafIdentity = IdentityAtlasHom
+presheafIdentity = IdentityAtlasHom Refl
 
 {-@ reflect presheafCompose @-}
 presheafCompose
   :: AtlasHom middle target
   -> AtlasHom source middle
   -> AtlasHom source target
-presheafCompose IdentityAtlasHom first = first
-presheafCompose second IdentityAtlasHom = second
+presheafCompose second (IdentityAtlasHom Refl) = second
 presheafCompose second (CompositeAtlasHom middle first) =
   CompositeAtlasHom (presheafCompose second middle) first
-presheafCompose second first = CompositeAtlasHom second first
+presheafCompose second first@(PrimitiveAtlasHom _ _ _) =
+  CompositeAtlasHom second first
 
 {-@
 assume presheafRightIdentity
@@ -77,12 +89,13 @@ presheafAssociativity
   -> AtlasHom firstMiddle secondMiddle
   -> AtlasHom source firstMiddle
   -> ()
-presheafAssociativity _ _ IdentityAtlasHom = ()
-presheafAssociativity _ _ (PrimitiveAtlasHom _) = ()
+presheafAssociativity third second (IdentityAtlasHom Refl) =
+  presheafRightIdentity second `seq`
+    presheafRightIdentity (presheafCompose third second)
+presheafAssociativity _ _ (PrimitiveAtlasHom _ _ _) = ()
 presheafAssociativity third second
   (CompositeAtlasHom middle first) =
-    presheafAssociativity third second middle `seq`
-      first `seq` ()
+    presheafAssociativity third second middle `seq` first `seq` ()
 
 -- | The contravariant arrow action of a presheaf, packaged so refinements can
 -- refer to its rank-N function through a first-order accessor.
@@ -100,7 +113,8 @@ mapDataTransformationAction
   -> AtlasHom source target
   -> DataTransformationValue values target
   -> DataTransformationValue values source
-mapDataTransformationAction (DataTransformationAction action) = action
+mapDataTransformationAction
+  (DataTransformationAction action) arrow value = action arrow value
 
 -- | A law-bearing presheaf action.
 type role DataTransformation nominal
@@ -235,8 +249,8 @@ mapDataTransformationComponent
   :: DataTransformationComponent source target
   -> DataTransformationValue source atlas
   -> DataTransformationValue target atlas
-mapDataTransformationComponent (DataTransformationComponent component) =
-  component
+mapDataTransformationComponent
+  (DataTransformationComponent component) value = component value
 
 -- | A primitive natural transformation checked relative to its exact source
 -- and target presheaf actions.
@@ -259,13 +273,13 @@ data DataTransformationNatural source target = DataTransformationNatural
 data DataTransformationNatural
   (source :: Type)
   (target :: Type) = DataTransformationNatural
-  (DataTransformation source)
-  (DataTransformation target)
-  (DataTransformationComponent source target)
-  (forall sourceAtlas targetAtlas.
-    AtlasHom sourceAtlas targetAtlas
-    -> DataTransformationValue source targetAtlas
-    -> ())
+    (DataTransformation source)
+    (DataTransformation target)
+    (DataTransformationComponent source target)
+    (forall sourceAtlas targetAtlas.
+      AtlasHom sourceAtlas targetAtlas
+      -> DataTransformationValue source targetAtlas
+      -> ())
 
 -- | Check one primitive natural transformation.
 {-@
@@ -309,8 +323,8 @@ mapDataTransformationNatural
   -> DataTransformationValue source atlas
   -> DataTransformationValue target atlas
 mapDataTransformationNatural
-  (DataTransformationNatural _ _ component _) =
-    mapDataTransformationComponent component
+  (DataTransformationNatural _ _ component _) value =
+    mapDataTransformationComponent component value
 
 -- | Invoke a primitive's LiquidHaskell-checked naturality square.
 {-@
@@ -330,20 +344,8 @@ dataTransformationNaturalNaturality
   -> DataTransformationValue source targetAtlas
   -> ()
 dataTransformationNaturalNaturality
-  (DataTransformationNatural _ _ _ naturality) = naturality
-
--- | The value-family symbol of the representable presheaf.
-data YonedaPresheaf (represented :: Type)
-
--- | One value of the representable presheaf @Hom(-, represented)@.
-type role Yoneda nominal nominal
-data Yoneda (represented :: Type) (atlas :: Type) = Yoneda
-  { getYoneda :: AtlasHom atlas represented
-  }
-
-type instance
-  DataTransformationValue (YonedaPresheaf represented) atlas =
-    Yoneda represented atlas
+  (DataTransformationNatural _ _ _ naturality) arrow value =
+    naturality arrow value
 
 {-@ reflect mapYoneda @-}
 mapYoneda
@@ -381,9 +383,13 @@ yonedaComposition second first (Yoneda representedArrow) =
 
 -- | The LiquidHaskell-checked Yoneda presheaf represented by an Atlas.
 -- LiquidHaskell checks 'yonedaIdentity' and 'yonedaComposition' above, but
--- cannot currently propagate those higher-rank refinements through the
--- defunctionalized action wrapper. This assumption is only that packaging
--- step; the equations themselves remain checked.
+-- LiquidHaskell 0.9.14.1.1 cannot propagate those refinements when the
+-- rank-N functions are stored in 'DataTransformationAction'. Attempts to
+-- replace the defunctionalized family by a higher-kinded family verify this
+-- package, but then fail in 'yonedaNatural': GHC 9.14 emits coercions between
+-- a partially applied 'Yoneda' constructor and its applied value type, which
+-- Liquid's sort checker cannot unify. Keep this assumption until that
+-- higher-rank/type-family packaging limitation is fixed upstream.
 {-@
 assume yoneda
   :: DataTransformation (YonedaPresheaf represented)
@@ -422,8 +428,11 @@ yonedaNaturality representedArrow arrow (Yoneda value) =
   presheafAssociativity representedArrow value arrow
 
 -- | The checked natural transformation induced by Yoneda on an Atlas arrow.
--- As with 'yoneda', the pointwise theorem 'yonedaNaturality' is checked and
--- only its passage through the rank-N component package is assumed.
+-- The pointwise theorem 'yonedaNaturality' is verified. What remains assumed
+-- is only its storage in the rank-N 'DataTransformationComponent': on GHC
+-- 9.14, both the defunctionalized encoding and the higher-kinded alternative
+-- produce coercion terms that LiquidHaskell either loses at the constructor
+-- boundary or rejects while elaborating the naturality equality.
 {-@
 assume yonedaNatural
   :: AtlasHom source target
@@ -441,6 +450,5 @@ yonedaNatural arrow =
   DataTransformationNatural
     yoneda
     yoneda
-    (DataTransformationComponent
-      (mapYonedaNatural arrow))
+    (DataTransformationComponent (mapYonedaNatural arrow))
     (yonedaNaturality arrow)

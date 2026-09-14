@@ -139,8 +139,8 @@ atlas
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue)
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue)
                   (identityPageElementArrow occurrence)))
               datum
             == datum })
@@ -153,20 +153,20 @@ atlas
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue)
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue)
                   (composePageElementArrows second first)))
               datum
             == applyInsertion
                  (atlasActionMap action
                    (normalizePageElementArrowAt
-                     (atlasFinalPageLogic paginationValue)
-                     (atlasTraceLimitLogic paginationValue) second))
+                     (atlasFinalPage paginationValue)
+                     (atlasTraceLimit paginationValue) second))
                  (applyInsertion
                    (atlasActionMap action
                      (normalizePageElementArrowAt
-                       (atlasFinalPageLogic paginationValue)
-                       (atlasTraceLimitLogic paginationValue) first))
+                       (atlasFinalPage paginationValue)
+                       (atlasTraceLimit paginationValue) first))
                    datum) })
   -> coherenceLaw:(forall object.
        occurrence:PageElement scope object
@@ -174,15 +174,15 @@ atlas
        -> conditions:{() |
             arrowSource coherenceArrow == occurrence
             && arrowTarget coherenceArrow == normalizePageElementAt
-                 (atlasFinalPageLogic paginationValue)
-                 (atlasTraceLimitLogic paginationValue) occurrence}
+                 (atlasFinalPage paginationValue)
+                 (atlasTraceLimit paginationValue) occurrence}
        -> datum:cellData object
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue) coherenceArrow))
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue) coherenceArrow))
               datum
             == datum })
   -> disjointLaw:(forall leftObject rightObject originObject.
@@ -193,7 +193,7 @@ atlas
        -> conditions:{() |
             pageElementPage right == pageElementPage left
             && pageElementPosition right /= pageElementPosition left
-            && pageElementPage left <= atlasFinalPageLogic paginationValue
+            && pageElementPage left <= atlasFinalPage paginationValue
             && arrowSource leftToOrigin == left
             && pageElementPage (arrowTarget leftToOrigin) == 0
             && arrowSource rightToOrigin == right
@@ -204,14 +204,14 @@ atlas
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue) leftToOrigin))
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue) leftToOrigin))
               leftDatum
             /= applyInsertion
                  (atlasActionMap action
                    (normalizePageElementArrowAt
-                     (atlasFinalPageLogic paginationValue)
-                     (atlasTraceLimitLogic paginationValue) rightToOrigin))
+                     (atlasFinalPage paginationValue)
+                     (atlasTraceLimit paginationValue) rightToOrigin))
                  rightDatum })
   -> useAtlas:(forall atlasScope.
        Atlas atlasScope scope cellData origin final -> result)
@@ -272,8 +272,8 @@ atlasWithScope
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue)
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue)
                   (identityPageElementArrow occurrence)))
               datum
             == datum })
@@ -286,20 +286,20 @@ atlasWithScope
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue)
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue)
                   (composePageElementArrows second first)))
               datum
             == applyInsertion
                  (atlasActionMap action
                    (normalizePageElementArrowAt
-                     (atlasFinalPageLogic paginationValue)
-                     (atlasTraceLimitLogic paginationValue) second))
+                     (atlasFinalPage paginationValue)
+                     (atlasTraceLimit paginationValue) second))
                  (applyInsertion
                    (atlasActionMap action
                      (normalizePageElementArrowAt
-                       (atlasFinalPageLogic paginationValue)
-                       (atlasTraceLimitLogic paginationValue) first))
+                       (atlasFinalPage paginationValue)
+                       (atlasTraceLimit paginationValue) first))
                    datum) })
   -> coherenceLaw:(forall object.
        occurrence:PageElement scope object
@@ -307,15 +307,15 @@ atlasWithScope
        -> conditions:{() |
             arrowSource coherenceArrow == occurrence
             && arrowTarget coherenceArrow == normalizePageElementAt
-                 (atlasFinalPageLogic paginationValue)
-                 (atlasTraceLimitLogic paginationValue) occurrence}
+                 (atlasFinalPage paginationValue)
+                 (atlasTraceLimit paginationValue) occurrence}
        -> datum:cellData object
        -> { proof:() |
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue) coherenceArrow))
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue) coherenceArrow))
               datum
             == datum })
   -> disjointLaw:(forall leftObject rightObject originObject.
@@ -326,7 +326,7 @@ atlasWithScope
        -> conditions:{() |
             pageElementPage right == pageElementPage left
             && pageElementPosition right /= pageElementPosition left
-            && pageElementPage left <= atlasFinalPageLogic paginationValue
+            && pageElementPage left <= atlasFinalPage paginationValue
             && arrowSource leftToOrigin == left
             && pageElementPage (arrowTarget leftToOrigin) == 0
             && arrowSource rightToOrigin == right
@@ -337,14 +337,14 @@ atlasWithScope
             applyInsertion
               (atlasActionMap action
                 (normalizePageElementArrowAt
-                  (atlasFinalPageLogic paginationValue)
-                  (atlasTraceLimitLogic paginationValue) leftToOrigin))
+                  (atlasFinalPage paginationValue)
+                  (atlasTraceLimit paginationValue) leftToOrigin))
               leftDatum
             /= applyInsertion
                  (atlasActionMap action
                    (normalizePageElementArrowAt
-                     (atlasFinalPageLogic paginationValue)
-                     (atlasTraceLimitLogic paginationValue) rightToOrigin))
+                     (atlasFinalPage paginationValue)
+                     (atlasTraceLimit paginationValue) rightToOrigin))
                  rightDatum })
   -> Atlas atlasScope scope cellData origin final
 @-}
@@ -394,22 +394,12 @@ atlasWithScope
         disjointLaw)
 
 -- | Final genuine page used by Atlas normalization.
-{-@ measure atlasFinalPageLogic :: Pagination scope origin final -> Natural @-}
-{-@
-assume atlasFinalPage
-  :: value:Pagination scope origin final
-  -> { finalPage:Natural | finalPage == atlasFinalPageLogic value }
-@-}
+{-@ reflect atlasFinalPage @-}
 atlasFinalPage :: Pagination scope origin final -> Natural
 atlasFinalPage paginationValue = paginationCardinality paginationValue - 1
 
 -- | Maximum transport-trace length used by Atlas normalization.
-{-@ measure atlasTraceLimitLogic :: Pagination scope origin final -> Int @-}
-{-@
-assume atlasTraceLimit
-  :: value:Pagination scope origin final
-  -> { traceLimit:Int | traceLimit == atlasTraceLimitLogic value }
-@-}
+{-@ reflect atlasTraceLimit @-}
 atlasTraceLimit :: Pagination scope origin final -> Int
 atlasTraceLimit paginationValue =
   fromIntegral (paginationCardinality paginationValue)
