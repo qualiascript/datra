@@ -13,6 +13,7 @@ import Charting
 import Consolidation
 import qualified Control.Category as Category
 import DataTransformation
+import DataTransformationMap
 import DatraOrdinal
 import DomanialInsertion
 import Dominion
@@ -28,6 +29,7 @@ import StableAtlasTransversal
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
+import Data.Void (Void, absurd)
 
 main :: IO ()
 main = do
@@ -44,6 +46,7 @@ main = do
   testAtlas
   testAtlasMap
   testNavigationAndExpedition
+  testDataTransformationMap
   testCharting
   testOrderedAtlasTransposal
   testAtlasTransversal
@@ -534,6 +537,33 @@ incrementDataTransformation =
     (\(TestDataTransformationValue value) ->
       TestDataTransformationValue (value + 1))
     (\_ _ -> ())
+
+-- The initial presheaf has no navigations: evaluating a purported navigation
+-- on the represented Atlas's identity would produce a 'Void'. Consequently
+-- it satisfies Lean's IsDaTraMap property vacuously.
+data EmptyDataTransformationValues
+
+newtype EmptyDataTransformationValue atlas =
+  EmptyDataTransformationValue Void
+
+type instance
+  DataTransformationValue EmptyDataTransformationValues atlas =
+    EmptyDataTransformationValue atlas
+
+emptyDataTransformation
+  :: DataTransformation EmptyDataTransformationValues
+emptyDataTransformation =
+  dataTransformation
+    (\_ (EmptyDataTransformationValue impossible) -> absurd impossible)
+    (\(EmptyDataTransformationValue impossible) -> absurd impossible)
+    (\_ _ (EmptyDataTransformationValue impossible) -> absurd impossible)
+
+emptyDataTransformationMap
+  :: DataTransformationMap EmptyDataTransformationValues
+emptyDataTransformationMap =
+  dataTransformationMap emptyDataTransformation $ \valueNavigation ->
+    case mapNavigation valueNavigation (Yoneda Category.id) of
+      EmptyDataTransformationValue impossible -> absurd impossible
 
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
@@ -1052,6 +1082,39 @@ testNavigationAndExpedition =
                           assert
                             "expeditions retain their Atlas-map representation"
                             (pageElementPage mapped == 0)
+
+testDataTransformationMap :: IO ()
+testDataTransformationMap = do
+  let valueHom = dataTransformationMapHom incrementDataTransformation
+      identityHom =
+        identityDataTransformationMapHom
+          :: DataTransformationMapHom
+               TestDataTransformationValues
+               TestDataTransformationValues
+      composedHom = composeDataTransformationMapHoms valueHom valueHom
+      categoryComposed = valueHom Category.. valueHom
+      includedHom =
+        dataTransformationMapInclusionHom
+          dataTransformationMapInclusionFunctor
+          (Category.id Category.. valueHom Category.. Category.id)
+      input = TestDataTransformationValue 29
+  dataTransformationMapHomNaturality valueHom Category.id input `seq`
+    dataTransformationMapInclusionObject
+      dataTransformationMapInclusionFunctor
+      emptyDataTransformationMap `seq`
+        pure ()
+  assert "Data Transformation Map identity acts pointwise"
+    (mapDataTransformationMapHom identityHom input == input)
+  assert "Data Transformation Map composition follows categorical order"
+    ( mapDataTransformationMapHom composedHom input
+        == TestDataTransformationValue 31
+      && mapDataTransformationMapHom categoryComposed input
+        == TestDataTransformationValue 31
+    )
+  assert "the full-subcategory inclusion preserves morphism components"
+    ( mapDataTransformationHom includedHom input
+        == TestDataTransformationValue 30
+    )
 
 testCharting :: IO ()
 testCharting =
