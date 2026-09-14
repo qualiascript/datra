@@ -1,7 +1,7 @@
 -- | Atlas transposals whose object maps preserve the strict Atlas order.
 --
 -- This is the first restriction used to build Atlas transversals: it adds the
--- ordering clause from Lean's @IsTraversal@, but intentionally does not add
+-- ordering clause from Lean's @IsTransversal@, but intentionally does not add
 -- the covered-data clause.
 module OrderedAtlasTransposal
   ( OrderedAtlasTransposal

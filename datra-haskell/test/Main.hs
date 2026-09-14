@@ -18,6 +18,7 @@ import PageElements
 import Pagination
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
+import StableAtlasTransversal
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -37,6 +38,7 @@ main = do
   testAtlas
   testOrderedAtlasTransposal
   testAtlasTransversal
+  testStableAtlasTransversal
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -998,3 +1000,42 @@ testAtlasTransversal =
                     ( pageElementPage mapped == 2
                       && rank (atlasDataAt valueAtlas mapped) datum == 9
                     )
+
+testStableAtlasTransversal :: IO ()
+testStableAtlasTransversal =
+  pagination threePageFolio $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        withPageElement (atlasOriginCell valueAtlas) $ \origin -> do
+          let witness = atlasWitness valueAtlas
+              transposal =
+                atlasTransposal witness identityAtlasHom Just (const ())
+              ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+              transversal =
+                atlasTransversal
+                  valueAtlas
+                  valueAtlas
+                  ordered
+                  (\_ targetOccurrence targetDatum ->
+                    atlasCoverageWitness
+                      valueAtlas
+                      targetOccurrence
+                      targetDatum
+                      targetOccurrence
+                      targetDatum
+                      ())
+              stable =
+                stableAtlasTransversal
+                  valueAtlas valueAtlas transversal ()
+              composed = stable Category.. stable
+              originElement = atlasTransposalElement witness origin
+              mappedOrigin =
+                mapStableAtlasTransversalObject composed originElement
+          stableAtlasTransversalPreservesExtent composed `seq`
+            assert "stable Atlas transversals send extent to extent"
+              (mappedOrigin == originElement)

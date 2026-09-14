@@ -97,7 +97,7 @@ data AtlasCoverageWitness atlasObject where
 
 -- | A datum together with proof-carrying evidence for Lean's
 -- @Covered X x t@ predicate.  The source datum is stored alongside its
--- existential final-region witness, so traversal composition never has to
+-- existential final-region witness, so transversal composition never has to
 -- reconstruct or dynamically revalidate the proposition.
 type role AtlasCoveredDatum nominal
 data AtlasCoveredDatum atlasObject where
@@ -143,7 +143,7 @@ coverageFinalPage
 coverageFinalPage valueAtlas = atlasCardinality valueAtlas - 1
 
 -- | The proposition witnessed by an 'AtlasCoverageWitness'.  This is a
--- reflected specification function only: traversal execution does not call
+-- reflected specification function only: transversal execution does not call
 -- it.  The first conjunct says that the witness lies in the final genuine
 -- page; the second is Lean's equality after mapping both data to the origin.
 {-@ reflect coverageWitnessCovers @-}
@@ -263,7 +263,7 @@ withAtlasCoveredDatum
   (AtlasCoveredDatum occurrence datum _)
   useCovered = useCovered occurrence datum
 
--- | A traversal is an ordered transposal whose data action maps every covered
+-- | A transversal is an ordered transposal whose data action maps every covered
 -- source datum to coverage evidence for its exact target image. Primitive
 -- arrows retain source and target Atlases so this condition can be checked;
 -- identities and composites derive it structurally.
@@ -355,14 +355,14 @@ atlasTransversalOrderedTransposal
       (atlasTransversalOrderedTransposal second)
       (atlasTransversalOrderedTransposal first)
 
--- | Include a traversal into the category of Atlas transposals.
+-- | Include a transversal into the category of Atlas transposals.
 atlasTransversalTransposal
   :: AtlasTransversal source target
   -> AtlasTransposal source target
 atlasTransversalTransposal =
   orderedAtlasTransposalTransposal . atlasTransversalOrderedTransposal
 
--- | Include a traversal all the way into the Atlas category.
+-- | Include a transversal all the way into the Atlas category.
 atlasTransversalHom
   :: AtlasTransversal source target
   -> AtlasHom source target
@@ -371,7 +371,7 @@ atlasTransversalHom =
 
 -- | Map a covered datum and derive coverage of its exact target image. This
 -- is total: malformed preservation callbacks are rejected when the primitive
--- traversal is compiled, rather than producing a runtime failure here.
+-- transversal is compiled, rather than producing a runtime failure here.
 mapAtlasTransversalCoveredDatum
   :: AtlasTransversal source target
   -> AtlasCoveredDatum source
@@ -406,7 +406,7 @@ atlasTransversalPreservesCoverage
   -> AtlasCoveredDatum target
 atlasTransversalPreservesCoverage = mapAtlasTransversalCoveredDatum
 
--- | The identity traversal preserves every covered datum unchanged.
+-- | The identity transversal preserves every covered datum unchanged.
 identityAtlasTransversal :: AtlasTransversal object object
 identityAtlasTransversal = IdentityAtlasTransversal
 

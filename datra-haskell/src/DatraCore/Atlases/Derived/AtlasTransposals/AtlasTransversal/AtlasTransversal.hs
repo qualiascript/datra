@@ -1,6 +1,6 @@
 -- | Atlas transversals: ordered transposals that preserve covered data.
 --
--- This completes the two restrictions in Lean's @IsTraversal@: injectivity
+-- This completes the two restrictions in Lean's @IsTransversal@: injectivity
 -- and strict-order preservation come from 'OrderedAtlasTransposal', while this
 -- module adds preservation of coverage by final regions.
 module AtlasTransversal

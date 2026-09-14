@@ -968,7 +968,7 @@ $0$.
 def region (A : Atl) (n : TerritoryIndex A) : DomIns := territory A n
 
 /-%%
-\section{Transposals and Traversals}
+\section{Transposals and Transversals}
 
 \begin{definition}[The Category of Atlas Transposals]
 The \textbf{Category of Atlas Transposals}, denoted $\mathsf{AtlTrap}$, is
@@ -1007,14 +1007,14 @@ theorem covered_region (X : Atl) (k : TerritoryIndex X) (l : territory X k) :
     Covered X (X.Pa.cell X.Fo.lastBase k) l :=
   ⟨k, l, rfl⟩
 
-/-- The order and coverage conditions for atlas traversals. -/
-def IsTraversal : MorphismProperty Atl := fun X Y F =>
+/-- The order and coverage conditions for atlas transversals. -/
+def IsTransversal : MorphismProperty Atl := fun X Y F =>
   Function.Injective F.Pa.obj ∧
   (∀ x y, elementLT _ x y → elementLT _ (F.Pa.obj x) (F.Pa.obj y)) ∧
   (∀ x (t : X.Da.obj x), Covered X x t →
     Covered Y (F.Pa.obj x) (F.Da.app x t))
 
-instance : IsTraversal.IsMultiplicative where
+instance : IsTransversal.IsMultiplicative where
   id_mem X := by
     refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
     intro x t h
@@ -1024,17 +1024,17 @@ instance : IsTraversal.IsMultiplicative where
     intro x t h
     simpa [AtlHom.comp] using hg.2.2 (f.Pa.obj x) (f.Da.app x t) (hf.2.2 x t h)
 
-abbrev AtlTrav := WideSubcategory IsTraversal
+abbrev AtlTrav := WideSubcategory IsTransversal
 
-def AtlTravInc : AtlTrav ⥤ Atl := wideSubcategoryInclusion IsTraversal
+def AtlTravInc : AtlTrav ⥤ Atl := wideSubcategoryInclusion IsTransversal
 
 def AtlTravToAtlTrap : AtlTrav ⥤ AtlTrap where
   obj X := WideSubcategory.mk X.obj
   map f := ⟨f.1, f.2.1⟩
 
 /-%%
-\begin{definition}[The Category of Atlas Traversals]
-The \textbf{Category of Atlas Traversals}, denoted $\mathsf{AtlTrav}$, is
+\begin{definition}[The Category of Atlas Transversals]
+The \textbf{Category of Atlas Transversals}, denoted $\mathsf{AtlTrav}$, is
 the wide subcategory of $\mathsf{AtlTrap}$ whose morphisms satisfy the
 following conditions.  For $F:X\to Y$, let $x=(m,i)$ and $y=(m',j)$, put
 $p=\min(m,m')$, write $F_{Pa}(x)=(n,i')$ and $F_{Pa}(y)=(n',j')$, and put
@@ -1054,26 +1054,26 @@ image under $X_{Da}((|X|-1)\to q)(k)$ is $t$---then this property is preserved
 by $F$.
 \end{definition}
 
-\begin{definition}[The Category of Stable Atlas Traversals]
-The \textbf{Category of Stable Atlas Traversals}, denoted
+\begin{definition}[The Category of Stable Atlas Transversals]
+The \textbf{Category of Stable Atlas Transversals}, denoted
 $\mathsf{StaAtlTrav}$, is the wide subcategory of $\mathsf{AtlTrav}$ whose
 morphisms $F:X\to Y$ satisfy $F_{Pa}(0,0)=(0,0)$.
 \end{definition}
 %%-/
 
-def IsStableTraversal : MorphismProperty AtlTrav := fun X Y F =>
+def IsStableTransversal : MorphismProperty AtlTrav := fun X Y F =>
   F.1.Pa.obj X.obj.Fo.originElement = Y.obj.Fo.originElement
 
-instance : IsStableTraversal.IsMultiplicative where
+instance : IsStableTransversal.IsMultiplicative where
   id_mem _ := rfl
   comp_mem f g hf hg := by
     change g.1.Pa.obj (f.1.Pa.obj _) = _
     rw [hf, hg]
 
-abbrev StaAtlTrav := WideSubcategory IsStableTraversal
+abbrev StaAtlTrav := WideSubcategory IsStableTransversal
 
 def StaAtlTravToAtlTrav : StaAtlTrav ⥤ AtlTrav :=
-  wideSubcategoryInclusion IsStableTraversal
+  wideSubcategoryInclusion IsStableTransversal
 
 def StaAtlTravInc : StaAtlTrav ⥤ Atl := StaAtlTravToAtlTrav ⋙ AtlTravInc
 
@@ -1108,7 +1108,7 @@ structure StableAtlasFamilyHom (X Y : StableAtlasFamily) where
 /-- Each component of an atlas-federation morphism is stable by construction. -/
 theorem StableAtlasFamilyHom.component_stable {X Y : StableAtlasFamily}
     (f : StableAtlasFamilyHom X Y) (i : X.Index) :
-    IsStableTraversal (f.component i).1 :=
+    IsStableTransversal (f.component i).1 :=
   (f.component i).2
 
 @[ext]
@@ -1543,8 +1543,8 @@ The \textbf{Atlas Map Inclusion Functor}
 $\mathsf{AtlMapInc}:\mathsf{AtlMap}\to\Atl$ is the canonical inclusion.
 \end{definition}
 
-\begin{definition}[The Category of Atlas Traversal Maps]
-The \textbf{Category of Atlas Traversal Maps}, denoted
+\begin{definition}[The Category of Atlas Transversal Maps]
+The \textbf{Category of Atlas Transversal Maps}, denoted
 $\mathsf{AtlTravMap}$, is the full subcategory of $\mathsf{AtlTrav}$ whose
 objects are Atlas Maps.
 \end{definition}
@@ -1554,7 +1554,7 @@ def IsAtlasMapTrav : ObjectProperty AtlTrav := fun A => IsAtlasMap A.obj
 abbrev AtlTravMap := IsAtlasMapTrav.FullSubcategory
 
 /-%%
-\begin{definition}[The Atlas Traversal Map Inclusion Functor]
+\begin{definition}[The Atlas Transversal Map Inclusion Functor]
 The canonical inclusion is denoted
 $\mathsf{AtlTravMapInc}:\mathsf{AtlTravMap}\to\mathsf{AtlTrav}$.
 \end{definition}
@@ -1643,15 +1643,15 @@ def chartMap {X Y : AtlTrav} (f : X ⟶ Y) :
         apply Subtype.ext
         exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t.1 }
 
-theorem chartMap_isTraversal {X Y : AtlTrav} (f : X ⟶ Y) :
-    IsTraversal (chartMap f) := by
+theorem chartMap_isTransversal {X Y : AtlTrav} (f : X ⟶ Y) :
+    IsTransversal (chartMap f) := by
   refine ⟨f.2.1, f.2.2.1, ?_⟩
   intro x t _
   exact chart_all_covered Y.obj _ _
 
 def Chr : AtlTrav ⥤ AtlTravMap where
   obj X := ⟨WideSubcategory.mk (chartAtlas X.obj), chart_isAtlasMap X.obj⟩
-  map f := ⟨chartMap f, chartMap_isTraversal f⟩
+  map f := ⟨chartMap f, chartMap_isTransversal f⟩
   map_id _ := by
     apply Subtype.ext
     change chartMap (𝟙 _) = AtlHom.identity _
@@ -1707,14 +1707,14 @@ theorem atlasMap_all_covered {X : Atl} (hX : IsAtlasMap X)
       originImage X (X.Pa.cell X.Fo.lastBase k) l at h
     simpa only [originImage_origin] using h⟩
 
-theorem chartCounit_isTraversal (X : Atl) : IsTraversal (chartCounit X) := by
+theorem chartCounit_isTransversal (X : Atl) : IsTransversal (chartCounit X) := by
   refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
   intro x t _
   simpa [chartCounit] using t.2
 
 def chartCounitTrav (X : AtlTrav) :
     (WideSubcategory.mk (chartAtlas X.obj) : AtlTrav) ⟶ X :=
-  ⟨chartCounit X.obj, chartCounit_isTraversal X.obj⟩
+  ⟨chartCounit X.obj, chartCounit_isTransversal X.obj⟩
 
 def chartLift {A : AtlTravMap} {X : AtlTrav}
     (f : AtlTravMapInc.obj A ⟶ X) :
@@ -1917,7 +1917,7 @@ def Coa : StaAtlTrav ⥤ DomIns where
 /-%%
 \begin{definition}[The Coalition of an Atlas]
 The \textbf{coalition} of an atlas $X$ is the extent of its chart, regarding
-$X$ as an object of the wide category of stable traversals.
+$X$ as an object of the wide category of stable transversals.
 \end{definition}
 %%-/
 
@@ -1994,17 +1994,17 @@ def dominionMap {X Y : DomIns} (f : X ⟶ Y) :
     { app := fun _ => f
       naturality := by intros; apply DomIns.hom_ext; intro; rfl }
 
-theorem dominionMap_isTraversal {X Y : DomIns} (f : X ⟶ Y) :
-    IsTraversal (dominionMap f) := by
+theorem dominionMap_isTransversal {X Y : DomIns} (f : X ⟶ Y) :
+    IsTransversal (dominionMap f) := by
   refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
   intro x t _
   exact atlasMap_all_covered (dominionAtlas_isMap Y) _ _
 
 theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
-    IsStableTraversal
+    IsStableTransversal
       (X := WideSubcategory.mk (dominionAtlas X))
       (Y := WideSubcategory.mk (dominionAtlas Y))
-      ⟨dominionMap f, dominionMap_isTraversal f⟩ := rfl
+      ⟨dominionMap f, dominionMap_isTransversal f⟩ := rfl
 
 /-%%
 \begin{definition}[The Domanial Inclusion Functor]
@@ -2023,7 +2023,7 @@ and $\mathsf{Coa}(\mathsf{DomInc}(X))\cong X$.
 
 def DomInc : DomIns ⥤ StaAtlTrav where
   obj X := WideSubcategory.mk (WideSubcategory.mk (dominionAtlas X))
-  map f := ⟨⟨dominionMap f, dominionMap_isTraversal f⟩,
+  map f := ⟨⟨dominionMap f, dominionMap_isTransversal f⟩,
     dominionMap_isStable f⟩
   map_id _ := by
     apply Subtype.ext
@@ -2061,7 +2061,7 @@ theorem onePage_elementLT_false (X : DomIns) (x y : (dominionAtlas X).El) :
     ((dominionAtlas X).Fo.core.obj m.unop).unop.linearOrder
   exact lt_irrefl _ h
 
-/-- A stable traversal from a one-page atlas determines an embedding into
+/-- A stable transversal from a one-page atlas determines an embedding into
 the covered part of the target extent. -/
 def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
     X ⟶ Coa.obj Y where
@@ -2076,7 +2076,7 @@ def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
     exact congrArg Subtype.val h
 
 /-- Conversely, an embedding into the coalition supplies the unique stable
-traversal from the corresponding one-page atlas. -/
+transversal from the corresponding one-page atlas. -/
 def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
     DomInc.obj X ⟶ Y := by
   let p : (dominionAtlas X).El ⥤ Y.obj.obj.El := onePageToAtlasPa Y.obj.obj
@@ -2097,7 +2097,7 @@ def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
         subst g
         simp [p] }
   let h : dominionAtlas X ⟶ Y.obj.obj := ⟨p, a⟩
-  have htrav : IsTraversal h := by
+  have htrav : IsTransversal h := by
     refine ⟨onePageToAtlasPa_injective Y.obj.obj, ?_, ?_⟩
     · intro x y hxy
       exact (onePage_elementLT_false X x y hxy).elim
@@ -2235,7 +2235,7 @@ An \textbf{Atlas Federation} is the data carried by an atlas merge: a
 countable tagged family of atlas objects together with a merge presentation
 whose evaluation is the resulting atlas. The category of Atlas Federations is
 denoted $\mathsf{AtlFed}$.  A morphism consists of a map of tags and, at each source
-tag, a stable atlas traversal to its selected target tag. There is a canonical object-level
+tag, a stable atlas transversal to its selected target tag. There is a canonical object-level
 forgetful operation $U:\operatorname{Ob}(\mathsf{AtlFed})\to\operatorname{Ob}(\Atl)$ that
 discards the component tags and retains the resulting atlas.
 \end{definition}
@@ -3700,7 +3700,7 @@ def tallBouquetRightElement (X Y : Atl) (y : Y.tall.El) : (AtlMerge X Y).tall.El
 abbrev AtlFed := StableAtlasFamily
 
 /-- The horizontal bifunctor is federation merge on objects and applies a
-stable traversal independently to every tagged component on arrows. -/
+stable transversal independently to every tagged component on arrows. -/
 def AtlHorSum : AtlFed × AtlFed ⥤ AtlFed := StableAtlHorSum
 
 def AtlBrd (X Y : AtlFed) :
@@ -3734,10 +3734,10 @@ On tags, $\mathsf{AtlHorSum}(F,F')$ is their disjoint tagged union; its
 stored merge presentation records the displayed atlas merge.  Thus the
 horizontal sum preserves both the provenance of the two inputs and the atlas
 produced by merging them.  The empty federation represents $\mathsf{AtlI}$.
-Given stable traversals between the components of two pairs of federations,
-horizontal sum preserves the left and right tags and applies the traversals
+Given stable transversals between the components of two pairs of federations,
+horizontal sum preserves the left and right tags and applies the transversals
 componentwise.  Stability fixes the common origin, so the component arrows
-remain stable atlas traversals.
+remain stable atlas transversals.
 \end{definition}
 %%-/
 
@@ -3838,14 +3838,14 @@ An \textbf{expedition} is a navigation represented by an Atlas Map.
 structure Expedition (D : DaTra) extends Navigation D where
   atlasMap : IsAtlasMap A
 
-/-- Presheaves on the wide category of atlas traversals. -/
+/-- Presheaves on the wide category of atlas transversals. -/
 abbrev AtlTravPSh := AtlTravᵒᵖ ⥤ Type
 
-/-- Forget the action of an atlas presheaf on non-traversal arrows. -/
+/-- Forget the action of an atlas presheaf on non-transversal arrows. -/
 def DaTra.restrictToAtlTrav : DaTra ⥤ AtlTravPSh :=
   (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
 
-/-- Presheaves on atlas federations of stable atlas traversals. -/
+/-- Presheaves on atlas federations of stable atlas transversals. -/
 abbrev StaDaTravPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
 
 /-- The all-objects wrapper gives Day convolution its own monoidal structure,
@@ -3853,7 +3853,7 @@ separate from the pointwise cartesian structure on a raw functor category. -/
 def IsStableDataTransversal : ObjectProperty StaDaTravPresheaf := fun _ => True
 
 /-- Stable data transversals: presheaves whose indexing arrows are stable atlas
-traversals.  Stability is therefore enforced by the source category. -/
+transversals.  Stability is therefore enforced by the source category. -/
 abbrev StaDaTrav := IsStableDataTransversal.FullSubcategory
 
 abbrev StaDaTravInc : StaDaTrav ⥤ StaDaTravPresheaf :=
@@ -3870,15 +3870,15 @@ def StaDaTrav.restrictToStableAtlases : StaDaTrav ⥤ StaAtlTravPSh :=
     (Functor.whiskeringLeft StaAtlTravᵒᵖ StableAtlasFamilyᵒᵖ (Type 3)).obj
       stableAtlasAtomFunctor.op
 
-/-- Extend a presheaf on stable atlas traversals to an ordinary (large-valued)
-DaTra presheaf along the inclusion of stable traversals into all atlas
+/-- Extend a presheaf on stable atlas transversals to an ordinary (large-valued)
+DaTra presheaf along the inclusion of stable transversals into all atlas
 morphisms. -/
 noncomputable def StaAtlTravPSh.extendToDaTra : StaAtlTravPSh ⥤ DaTra.{3} :=
   StaAtlTravInc.op.lan
 
 /-- Forget a stable data transversal to a DaTra presheaf: first discard the
 federation tags by restricting to singleton federations, then left Kan extend
-from stable atlas traversals to all atlas morphisms. -/
+from stable atlas transversals to all atlas morphisms. -/
 noncomputable def StaDaTrav.forgetToDaTra : StaDaTrav ⥤ DaTra.{3} :=
   StaDaTrav.restrictToStableAtlases ⋙ StaAtlTravPSh.extendToDaTra
 
