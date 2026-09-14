@@ -7,6 +7,7 @@ import AtlasCovered
 import AtlasMap
 import AtlasTransposal
 import AtlasTransversal
+import AtlasTransversalMap
 import Chain
 import Consolidation
 import qualified Control.Category as Category
@@ -938,6 +939,57 @@ testAtlasMap =
                 (identityMapHom Category.. identityMapHom))
               extent) $ \mapped ->
                 assert "the Atlas Map Inclusion Functor preserves composition"
+                  (pageElementPage mapped == 0)
+          let mapWitness = atlasMapAtlas valueMap
+              transposal =
+                atlasTransposal
+                  mapWitness
+                  identityAtlasHom
+                  Just
+                  (const ())
+              ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+              transversal =
+                atlasTransversal
+                  valueAtlas
+                  valueAtlas
+                  ordered
+                  (\_ targetOccurrence targetDatum ->
+                    atlasCoverageWitness
+                      valueAtlas
+                      targetOccurrence
+                      targetDatum
+                      targetOccurrence
+                      targetDatum
+                      ())
+              transversalMap = atlasTransversalMap transversal
+              composedTransversalMap =
+                Category.id Category.. transversalMap
+          withPageElement
+            (mapAtlasTransversalMapElement
+              valueMap
+              composedTransversalMap
+              extent) $ \mapped ->
+                assert "Atlas transversal maps inherit transversal actions"
+                  (pageElementPage mapped == 0)
+          withAtlasCoveredDatum
+            (mapAtlasTransversalMapCoveredDatum
+              composedTransversalMap
+              (covers (TestCellData 11))) $ \mapped datum ->
+                assert "Atlas transversal maps preserve covered data"
+                  ( pageElementPage mapped == 0
+                    && rank (atlasDataAt valueAtlas mapped) datum == 11
+                  )
+          withPageElement
+            (mapAtlasTransversalElement
+              (atlasTransversalMapInclusionObject
+                atlasTransversalMapInclusionFunctor
+                valueMap)
+              (atlasTransversalMapInclusionHom
+                atlasTransversalMapInclusionFunctor
+                (composedTransversalMap Category.. Category.id))
+              extent) $ \mapped ->
+                assert
+                  "Atlas Transversal Map inclusion preserves composition"
                   (pageElementPage mapped == 0)
 
 testOrderedAtlasTransposal :: IO ()

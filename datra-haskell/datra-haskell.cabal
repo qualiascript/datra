@@ -44,6 +44,7 @@ library
         AtlasTransposal
         OrderedAtlasTransposal
         AtlasTransversal
+        AtlasTransversalMap
         StableAtlasTransversal
         DataTransformation
     other-modules:
@@ -61,6 +62,7 @@ library
         AtlasTransposal.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
+        AtlasTransversalMap.Internal
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
@@ -95,6 +97,7 @@ library
         src/DatraCore/Atlases/Derived/AtlasCovered
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
+        src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap
         src/DatraCore/Atlases/Derived/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
