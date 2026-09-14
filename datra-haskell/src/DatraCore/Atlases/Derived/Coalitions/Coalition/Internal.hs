@@ -68,7 +68,7 @@ import StableAtlasTransversal
 -- | An element of an Atlas coalition.
 --
 -- Like 'AtlasCoveredDatum', this is a dependent datum paired with the witness
--- that it is retained by charting.  Carrying the value and witness together
+-- that it is retained by Charter.  Carrying the value and witness together
 -- makes elimination total: no unchecked rank ever has to be decoded.
 type role CoalitionElement nominal
 data CoalitionElement atlasObject where

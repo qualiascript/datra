@@ -9,7 +9,7 @@ import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
 import Chain
-import Charting
+import Charter
 import Coalition
 import Consolidation
 import qualified Control.Category as Category
@@ -49,7 +49,7 @@ main = do
   testAtlasMap
   testNavigationAndExpedition
   testDataTransformationMap
-  testCharting
+  testCharter
   testOrderedAtlasTransposal
   testAtlasTransversal
   testStableAtlasTransversal
@@ -1133,8 +1133,8 @@ testDataTransformationMap = do
         == TestDataTransformationValue 30
     )
 
-testCharting :: IO ()
-testCharting =
+testCharter :: IO ()
+testCharter =
   pagination (singletonFolio unitChain) $ \valuePagination ->
     atlas
       valuePagination
@@ -1164,8 +1164,8 @@ testCharting =
                     targetOccurrence
                     targetDatum
                     ())
-            chartedMap = chartingFunctorObject valueAtlas
-            mapped = chartingFunctorHom witness witness transversal
+            chartedMap = charterFunctorObject valueAtlas
+            mapped = charterFunctorHom witness witness transversal
             lifted = chartLift valueMap witness transversal
             lowered = chartLower valueAtlas lifted
         in withAtlasMapExtent chartedMap $ \extent chartedDom covers ->
@@ -1177,10 +1177,10 @@ testCharting =
                     chartedCellDataValue candidate
             , candidateValue == 7
             ] of
-            [] -> fail "Charting lost a covered extent datum"
+            [] -> fail "Charter lost a covered extent datum"
             charted : _ -> do
               let TestCellData value = chartedCellDataValue charted
-              assert "Charting retains covered cell data" (value == 7)
+              assert "Charter retains covered cell data" (value == 7)
               case unrank chartedDom (rank chartedDom charted) of
                 Nothing -> fail "charted Dominion rank did not round-trip"
                 Just roundTripped ->
@@ -1207,7 +1207,7 @@ testCharting =
                     let TestCellData mappedValue =
                           chartedCellDataValue
                             (applyInsertion component charted)
-                    in assert "the Charting functor maps covered data"
+                    in assert "the Charter functor maps covered data"
                         (mappedValue == 7)
               withAtlasMorphismImage
                 (mapAtlasTransversalMapData

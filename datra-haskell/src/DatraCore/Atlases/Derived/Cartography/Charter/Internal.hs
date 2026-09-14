@@ -6,11 +6,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
 
--- | Runtime construction of the Charting functor and its hom-set
+-- | Runtime construction of the Charter functor and its hom-set
 -- correspondence. The module intentionally introduces no @data@
 -- declaration: the only new carrier is the proof-transparent newtype in
--- "Charting.LiquidInternal".
-module Charting.Internal
+-- "Charter.LiquidInternal".
+module Charter.Internal
   ( ChartedCellData
   , ChartedAtlasObject
   , chartedCellDataValue
@@ -18,10 +18,10 @@ module Charting.Internal
   , chartAtlasMap
   , chartCounit
   , chartMap
-  , chartingFunctorObject
-  , chartingFunctorHom
-  , chartingFunctorIdentity
-  , chartingFunctorComposition
+  , charterFunctorObject
+  , charterFunctorHom
+  , charterFunctorIdentity
+  , charterFunctorComposition
   , chartLift
   , chartLower
   , chartHomEquivTo
@@ -100,14 +100,14 @@ import AtlasTransversalMap
   , atlasTransversalMapTransversal
   , composeAtlasTransversalMaps
   )
-import Charting.LiquidInternal
+import Charter.LiquidInternal
   ( ChartedCellData
   , chartHomLeftInverseValue
   , chartHomNaturalityLeftValue
   , chartHomNaturalityRightValue
   , chartHomRightInverseValue
-  , chartingCompositionValue
-  , chartingIdentityValue
+  , charterCompositionValue
+  , charterIdentityValue
   , chartedCellData
   , chartedCellDataValue
   , mapChartedCellData
@@ -133,7 +133,7 @@ import PageElements.LiquidInternal
   , somePageElementTransportedReflexive
   )
 
--- | The type-level Atlas object produced by Charting. The original Atlas
+-- | The type-level Atlas object produced by Charter. The original Atlas
 -- object itself names the new Atlas scope, making the object action stable
 -- across separate calls without an empty tag declaration.
 type ChartedAtlasObject source =
@@ -231,7 +231,7 @@ chartCoverageWitness valueAtlas source covered =
         (chartedCellData regionDatum)
         ()
 
--- | Charting lands in Atlas maps: every charted datum already carries the
+-- | Charter lands in Atlas maps: every charted datum already carries the
 -- defining coverage property by construction.
 chartAtlasMap
   :: Atlas atlasScope scope cellData origin final
@@ -298,7 +298,7 @@ relabelElement
 relabelElement targetWitness element =
   withAtlasTransposalElement element (atlasTransposalElement targetWitness)
 
--- | Arrow action of the Charting functor.
+-- | Arrow action of the Charter functor.
 chartMap
   :: AtlasWitness source
   -> AtlasWitness target
@@ -339,26 +339,26 @@ chartMap sourceWitness@(AtlasWitness sourceAtlas)
 
 -- | Object and arrow actions, named separately instead of packaging a
 -- record. This is the requested no-@data@ representation of the functor.
-chartingFunctorObject
+charterFunctorObject
   :: Atlas atlasScope scope cellData origin final
   -> AtlasMap (ChartedAtlasObject (AtlasObject atlasScope scope cellData))
-chartingFunctorObject = chartAtlasMap
+charterFunctorObject = chartAtlasMap
 
-chartingFunctorHom
+charterFunctorHom
   :: AtlasWitness source
   -> AtlasWitness target
   -> AtlasTransversal source target
   -> AtlasTransversalMap
        (ChartedAtlasObject source)
        (ChartedAtlasObject target)
-chartingFunctorHom = chartMap
+charterFunctorHom = chartMap
 
-chartingFunctorIdentity
+charterFunctorIdentity
   :: ChartedCellData atlasObject object
   -> ()
-chartingFunctorIdentity = chartingIdentityValue
+charterFunctorIdentity = charterIdentityValue
 
-chartingFunctorComposition
+charterFunctorComposition
   :: forall source sourceObject middle middleObject target targetObject.
      (AtlasObjectCellData source sourceObject
       -> AtlasObjectCellData middle middleObject)
@@ -366,8 +366,8 @@ chartingFunctorComposition
       -> AtlasObjectCellData target targetObject)
   -> ChartedCellData source sourceObject
   -> ()
-chartingFunctorComposition =
-  chartingCompositionValue
+charterFunctorComposition =
+  charterCompositionValue
     @source @sourceObject @middle @middleObject @target @targetObject
 
 -- | Counit component: forget the coverage subtype.
@@ -457,7 +457,7 @@ chartUnit sourceMap =
             (const ())
 
 -- Internal elimination of the Atlas map's witness, kept here so the public
--- Charting surface need not expose representation constructors.
+-- Charter surface need not expose representation constructors.
 atlasMapAtlasWitness :: AtlasMap object -> AtlasWitness object
 atlasMapAtlasWitness = atlasMapAtlas
 
@@ -539,7 +539,7 @@ chartHomEquivNaturalityRight =
 
 -- | Proof aliases rather than record-shaped proof tokens. Their polymorphic
 -- function values are the hom-equivalence and naturality witnesses checked in
--- "Charting.LiquidInternal".
+-- "Charter.LiquidInternal".
 cartographyAdjunction =
   ( chartHomEquivLeftInverse
   , chartHomEquivRightInverse

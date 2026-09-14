@@ -1672,7 +1672,7 @@ def Chr : AtlTrav ⥤ AtlTravMap where
 /-%%
 \begin{lemma}[Cartography Lemma]
 The inclusion $\mathsf{AtlTravMapInc}$ has a right adjoint, denoted the
-\textbf{Charting Functor}
+\textbf{Charter Functor}
 $\mathsf{Chr}:\mathsf{AtlTrav}\to\mathsf{AtlTravMap}$.
 
 \emph{Proof sketch.}  On an object $X:\mathsf{AtlTrav}$, the functor

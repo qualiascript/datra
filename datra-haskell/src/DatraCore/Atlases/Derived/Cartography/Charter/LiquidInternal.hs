@@ -9,19 +9,19 @@
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
 
--- | Proof-transparent carrier operations used by the Charting functor.
+-- | Proof-transparent carrier operations used by the Charter functor.
 --
 -- This module deliberately uses no @data@ declaration. The charted carrier is
 -- a zero-cost newtype, while the four equations below are the pointwise data
 -- equations in Lean's two inverse and two naturality proofs for
 -- @chartHomEquiv@.
-module Charting.LiquidInternal
+module Charter.LiquidInternal
   ( ChartedCellData
   , chartedCellData
   , chartedCellDataValue
   , mapChartedCellData
-  , chartingIdentityValue
-  , chartingCompositionValue
+  , charterIdentityValue
+  , charterCompositionValue
   , chartHomToValue
   , chartHomFromValue
   , chartHomLeftInverseValue
@@ -34,7 +34,7 @@ import Atlas (AtlasObjectCellData)
 import Data.Kind (Type)
 
 -- | A datum retained by the charted Atlas. Coverage is enforced by the
--- charted dominion and by the smart operations in "Charting.Internal"; it is
+-- charted dominion and by the smart operations in "Charter.Internal"; it is
 -- proof-irrelevant at runtime, so the representation stores only the original
 -- datum, exactly as Lean's subtype coercion does computationally.
 type role ChartedCellData nominal nominal
@@ -70,21 +70,21 @@ composeValues after before value = after (before value)
 identityValue :: a -> a
 identityValue value = value
 
--- | Pointwise identity law for the Charting arrow action.
+-- | Pointwise identity law for the Charter arrow action.
 {-@
-chartingIdentityValue
+charterIdentityValue
   :: value:ChartedCellData atlasObject object
   -> { proof:() |
        mapChartedCellData identityValue value == value }
 @-}
-chartingIdentityValue
+charterIdentityValue
   :: ChartedCellData atlasObject object
   -> ()
-chartingIdentityValue _ = ()
+charterIdentityValue _ = ()
 
--- | Pointwise composition law for the Charting arrow action.
+-- | Pointwise composition law for the Charter arrow action.
 {-@
-chartingCompositionValue
+charterCompositionValue
   :: first:(AtlasObjectCellData source sourceObject
        -> AtlasObjectCellData middle middleObject)
   -> second:(AtlasObjectCellData middle middleObject
@@ -94,7 +94,7 @@ chartingCompositionValue
        mapChartedCellData second (mapChartedCellData first value)
          == mapChartedCellData (composeValues second first) value }
 @-}
-chartingCompositionValue
+charterCompositionValue
   :: forall source sourceObject middle middleObject target targetObject.
      (AtlasObjectCellData source sourceObject
       -> AtlasObjectCellData middle middleObject)
@@ -102,7 +102,7 @@ chartingCompositionValue
       -> AtlasObjectCellData target targetObject)
   -> ChartedCellData source sourceObject
   -> ()
-chartingCompositionValue _ _ _ = ()
+charterCompositionValue _ _ _ = ()
 
 -- | Data component of @chartLift@: apply the original component and retain
 -- its covered result in the charted target.
@@ -156,7 +156,7 @@ chartHomRightInverseValue
   -> ()
 chartHomRightInverseValue _ _ = ()
 
--- | Naturality of @chartHomEquiv@ in its Atlas-map argument: charting
+-- | Naturality of @chartHomEquiv@ in its Atlas-map argument: Charter
 -- commutes with precomposition.
 {-@
 chartHomNaturalityLeftValue
@@ -175,7 +175,7 @@ chartHomNaturalityLeftValue
   -> ()
 chartHomNaturalityLeftValue _ _ _ = ()
 
--- | Naturality in the Atlas-transversal argument: charting commutes with
+-- | Naturality in the Atlas-transversal argument: Charter commutes with
 -- postcomposition.
 {-@
 chartHomNaturalityRightValue

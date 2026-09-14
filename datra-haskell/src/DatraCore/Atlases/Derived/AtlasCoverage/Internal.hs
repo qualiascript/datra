@@ -227,7 +227,7 @@ withAtlasCoveredDatum
 -- executable counterpart needed because Haskell's 'Dominion' carries an
 -- @unrank@ operation whereas Lean's dominions only require a rank embedding.
 -- The search terminates exactly on covered data, which is the only domain on
--- which Charting calls it.
+-- which Charter calls it.
 findAtlasCoverage
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
@@ -237,7 +237,7 @@ findAtlasCoverage valueAtlas source sourceDatum =
   searchAtlasCoverageFrom valueAtlas source sourceDatum 0
 
 -- | The first enumeration index witnessing coverage of a datum. The search
--- is total on the abstract covered carrier used by Charting.
+-- is total on the abstract covered carrier used by Charter.
 {-@ lazy findAtlasCoverageRank @-}
 findAtlasCoverageRank
   :: Atlas atlasScope scope cellData origin final

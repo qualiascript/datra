@@ -1,10 +1,10 @@
--- | The Charting functor from Atlas transversals to Atlas transversal maps.
+-- | The Charter functor from Atlas transversals to Atlas transversal maps.
 --
 -- Its object action restricts every cell to data covered by a final region;
 -- its arrow action is induced by preservation of coverage. The counit and
 -- natural hom-set equivalence expose the right adjunction to the canonical
 -- inclusion.
-module Charting
+module Charter
   ( ChartedCellData
   , ChartedAtlasObject
   , chartedCellDataValue
@@ -12,10 +12,10 @@ module Charting
   , chartAtlasMap
   , chartCounit
   , chartMap
-  , chartingFunctorObject
-  , chartingFunctorHom
-  , chartingFunctorIdentity
-  , chartingFunctorComposition
+  , charterFunctorObject
+  , charterFunctorHom
+  , charterFunctorIdentity
+  , charterFunctorComposition
   , chartLift
   , chartLower
   , chartHomEquivTo
@@ -28,4 +28,4 @@ module Charting
   , cartographyLemma
   ) where
 
-import Charting.Internal
+import Charter.Internal

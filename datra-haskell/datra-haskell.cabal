@@ -45,7 +45,7 @@ library
         OrderedAtlasTransposal
         AtlasTransversal
         AtlasTransversalMap
-        Charting
+        Charter
         Coalition
         DomanialInclusion
         StableAtlasTransversal
@@ -69,8 +69,8 @@ library
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
         AtlasTransversalMap.Internal
-        Charting.Internal
-        Charting.LiquidInternal
+        Charter.Internal
+        Charter.LiquidInternal
         Coalition.Internal
         DomanialInclusion.Internal
         DomanialInclusion.LiquidInternal
@@ -115,7 +115,7 @@ library
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
         src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap
-        src/DatraCore/Atlases/Derived/Cartography/Charting
+        src/DatraCore/Atlases/Derived/Cartography/Charter
         src/DatraCore/Atlases/Derived/Coalitions
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion

@@ -446,7 +446,7 @@ domIncCoaHomEquivNaturalityRight
 domIncCoaHomEquivNaturalityRight = domIncHomNaturalityRightValue
 
 -- | The adjunction proof, following the no-record presentation established by
--- Charting: a tuple of the two inverse and two naturality witnesses.
+-- Charter: a tuple of the two inverse and two naturality witnesses.
 dominionAdjunction =
   ( domIncCoaHomEquivLeftInverse
   , domIncCoaHomEquivRightInverse
