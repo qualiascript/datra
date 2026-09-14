@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Atlas
+import AtlasTransposal
 import Chain
 import Consolidation
 import qualified Control.Category as Category
@@ -725,6 +726,21 @@ testAtlas =
                                 (\_ _ -> ())
                                 (\_ _ -> ()))
                           valueHom = atlasHom valueMorphism
+                          valueWitness = atlasWitness valueAtlas
+                          valueTransposal =
+                            atlasTransposal
+                              valueWitness
+                              valueHom
+                              (\targetElement ->
+                                withAtlasTransposalElement targetElement $
+                                  \targetOccurrence ->
+                                    Just
+                                      (atlasTransposalElement
+                                        valueWitness
+                                        targetOccurrence))
+                              (const ())
+                          includedIdentityTransposal =
+                            Category.id Category.. valueTransposal
                           leftHom = Category.id Category.. valueHom
                           rightHom = valueHom Category.. Category.id
                           associatedLeftHom =
@@ -739,6 +755,34 @@ testAtlas =
                           \mapped ->
                             assert
                               "atlas morphisms normalize their page action"
+                              (pageElementPage mapped == 0)
+                      let sourceElement =
+                            atlasTransposalElement valueWitness padded
+                          mappedElement =
+                            mapAtlasTransposalObject
+                              includedIdentityTransposal
+                              sourceElement
+                      atlasTransposalLeftInverse
+                        includedIdentityTransposal
+                        sourceElement `seq` pure ()
+                      assert
+                        "atlas transposals retain a left inverse under identity"
+                        ( atlasTransposalPreimage
+                            includedIdentityTransposal
+                            mappedElement
+                            == Just sourceElement
+                        )
+                      withAtlasTransposalElement mappedElement $ \mapped ->
+                        assert
+                          "atlas transposals act on genuine Atlas elements"
+                          (pageElementPage mapped == 0)
+                      withPageElement
+                        (mapAtlasTransposalElement
+                          valueWitness
+                          includedIdentityTransposal
+                          padded) $ \mapped ->
+                            assert
+                              "the transposal inclusion retains the Atlas action"
                               (pageElementPage mapped == 0)
                       withAtlasMorphismImage
                         (mapAtlasMorphismData valueMorphism padded) $
