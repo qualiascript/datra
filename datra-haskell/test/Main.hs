@@ -4,6 +4,7 @@ module Main (main) where
 
 import Atlas
 import AtlasTransposal
+import AtlasTransversal
 import Chain
 import Consolidation
 import qualified Control.Category as Category
@@ -35,6 +36,7 @@ main = do
   testPagination
   testAtlas
   testOrderedAtlasTransposal
+  testAtlasTransversal
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -940,3 +942,59 @@ testOrderedAtlasTransposal =
                       == Just leftElement
                   )
           _ -> fail "test setup failed: expected two ordered Atlas elements"
+
+testAtlasTransversal :: IO ()
+testAtlasTransversal =
+  pagination threePageFolio $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let elements = atlasPageElements valueAtlas
+        in case
+          pageElement <$> pageElementIndex elements 2 (finiteOrdinal 5) of
+            Nothing ->
+              fail "test setup failed: expected a final-region element"
+            Just someRegion ->
+              withPageElement someRegion $ \region -> do
+                let witness = atlasWitness valueAtlas
+                    transposal =
+                      atlasTransposal
+                        witness
+                        identityAtlasHom
+                        Just
+                        (const ())
+                    ordered =
+                      orderedAtlasTransposal transposal (\_ _ -> ())
+                    transversal =
+                      atlasTransversal
+                        valueAtlas
+                        valueAtlas
+                        ordered
+                        (\_ targetOccurrence targetDatum ->
+                          atlasCoverageWitness
+                            valueAtlas
+                            targetOccurrence
+                            targetDatum
+                            targetOccurrence
+                            targetDatum
+                            ())
+                    composed = transversal Category.. transversal
+                    covered =
+                      atlasCoveredDatum
+                        valueAtlas
+                        region
+                        (TestCellData 7)
+                        region
+                        (TestCellData 7)
+                        ()
+                    mappedCovered =
+                      mapAtlasTransversalCoveredDatum composed covered
+                withAtlasCoveredDatum mappedCovered $ \mapped datum ->
+                  assert "transversals preserve covered final-region data"
+                    ( pageElementPage mapped == 2
+                      && rank (atlasDataAt valueAtlas mapped) datum == 9
+                    )
