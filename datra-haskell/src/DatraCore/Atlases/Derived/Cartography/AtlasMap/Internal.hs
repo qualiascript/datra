@@ -16,6 +16,7 @@ module AtlasMap.Internal
   , atlasMap
   , atlasMapAtlas
   , withAtlasMapExtent
+  , atlasMapCoversDatum
   , AtlasMapHom
   , atlasMapHom
   , identityAtlasMapHom
@@ -50,6 +51,7 @@ import Atlas
   , mapAtlasHomArrow
   , mapAtlasHomData
   , mapAtlasHomElement
+  , mapAtlasData
   , materializeAtlasHom
   )
 import AtlasCovered.Internal
@@ -59,11 +61,13 @@ import AtlasCovered.Internal
   , coverageWitnessCovers
   )
 import Control.Category (Category (..))
+import DomanialInsertion (applyInsertion)
 import Dominion (Dominion)
 import PageElements
   ( PageElement
   , PageElementArrow
   , SomePageElement
+  , pageElementArrow
   , withPageElement
   )
 import Pagination (PaginationMorphism, SomePageElementArrow)
@@ -142,6 +146,25 @@ withAtlasMapExtent
       extent
       (atlasDataAt valueAtlas extent)
       (\datum -> AtlasCoveredDatum extent datum (coversExtent datum))
+
+-- | Extend the defining extent-coverage witness to any Atlas cell. The datum
+-- is first transported to the origin, exactly as in Lean's
+-- @atlasMap_all_covered@ proof.
+atlasMapCoversDatum
+  :: AtlasMap atlasObject
+  -> PageElement
+       (AtlasObjectPaginationScope atlasObject)
+       object
+  -> AtlasObjectCellData atlasObject object
+  -> AtlasCoverageWitness atlasObject
+atlasMapCoversDatum
+  (AtlasMap valueAtlas extent coversExtent)
+  occurrence
+  datum =
+    coversExtent
+      (applyInsertion
+        (mapAtlasData valueAtlas (pageElementArrow occurrence extent))
+        datum)
 
 -- | A morphism in the full subcategory of Atlas maps. There are no extra
 -- arrow restrictions: between two Atlas-map objects the hom-set is exactly

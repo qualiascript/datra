@@ -9,6 +9,7 @@ import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
 import Chain
+import Charting
 import Consolidation
 import qualified Control.Category as Category
 import DataTransformation
@@ -40,6 +41,7 @@ main = do
   testPagination
   testAtlas
   testAtlasMap
+  testCharting
   testOrderedAtlasTransposal
   testAtlasTransversal
   testStableAtlasTransversal
@@ -992,6 +994,97 @@ testAtlasMap =
                   "Atlas Transversal Map inclusion preserves composition"
                   (pageElementPage mapped == 0)
 
+testCharting :: IO ()
+testCharting =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let witness = atlasWitness valueAtlas
+            valueMap =
+              atlasMap valueAtlas $ \extent extentDatum ->
+                atlasCoverageWitness
+                  valueAtlas extent extentDatum extent extentDatum ()
+            transposal =
+              atlasTransposal witness identityAtlasHom Just (const ())
+            ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+            transversal =
+              atlasTransversal
+                valueAtlas
+                valueAtlas
+                ordered
+                (\_ targetOccurrence targetDatum ->
+                  atlasCoverageWitness
+                    valueAtlas
+                    targetOccurrence
+                    targetDatum
+                    targetOccurrence
+                    targetDatum
+                    ())
+            chartedMap = chartingFunctorObject valueAtlas
+            mapped = chartingFunctorHom witness witness transversal
+            lifted = chartLift valueMap witness transversal
+            lowered = chartLower valueAtlas lifted
+        in withAtlasMapExtent chartedMap $ \extent chartedDom covers ->
+          case
+            [ candidate
+            | index <- [0 .. 100]
+            , Just candidate <- [unrank chartedDom index]
+            , let TestCellData candidateValue =
+                    chartedCellDataValue candidate
+            , candidateValue == 7
+            ] of
+            [] -> fail "Charting lost a covered extent datum"
+            charted : _ -> do
+              let TestCellData value = chartedCellDataValue charted
+              assert "Charting retains covered cell data" (value == 7)
+              case unrank chartedDom (rank chartedDom charted) of
+                Nothing -> fail "charted Dominion rank did not round-trip"
+                Just roundTripped ->
+                  let TestCellData roundTrippedValue =
+                        chartedCellDataValue roundTripped
+                  in assert "charted Dominion rank round-trips"
+                      (roundTrippedValue == 7)
+              withAtlasCoveredDatum (covers charted) $ \covered datum ->
+                let TestCellData coveredValue = chartedCellDataValue datum
+                in assert "charted objects are Atlas maps"
+                    (pageElementPage covered == 0 && coveredValue == 7)
+              withAtlasMorphismImage
+                (mapAtlasTransversalData
+                  (atlasWitness (chartAtlas valueAtlas))
+                  (chartCounit valueAtlas)
+                  extent) $ \target component ->
+                    let TestCellData counitValue =
+                          applyInsertion component charted
+                    in assert "the chart counit forgets only coverage"
+                        (pageElementPage target == 0 && counitValue == 7)
+              withAtlasMorphismImage
+                (mapAtlasTransversalMapData chartedMap mapped extent) $
+                  \_ component ->
+                    let TestCellData mappedValue =
+                          chartedCellDataValue
+                            (applyInsertion component charted)
+                    in assert "the Charting functor maps covered data"
+                        (mappedValue == 7)
+              withAtlasMorphismImage
+                (mapAtlasTransversalMapData
+                  valueMap lifted extent) $ \_ component ->
+                    let TestCellData liftedValue =
+                          chartedCellDataValue
+                            (applyInsertion component (TestCellData 7))
+                    in assert "chartLift realizes the forward hom equivalence"
+                        (liftedValue == 7)
+              withAtlasMorphismImage
+                (mapAtlasTransversalData witness lowered extent) $
+                  \_ component ->
+                    let TestCellData loweredValue =
+                          applyInsertion component (TestCellData 7)
+                    in assert "chartLower is inverse to chartLift on data"
+                        (loweredValue == 7)
 testOrderedAtlasTransposal :: IO ()
 testOrderedAtlasTransposal =
   pagination threePageFolio $ \valuePagination ->

@@ -22,6 +22,8 @@ module Atlas.Morphism.LiquidInternal
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionElement
   , atlasMorphismActionPreservesArrow
+  , atlasMorphismActionNaturality
+  , atlasMorphismObjectMapWitness
   ) where
 
 import Atlas.Internal
@@ -153,6 +155,20 @@ atlasMorphismActionPreservesArrow
   -> ()
 atlasMorphismActionPreservesArrow
   (AtlasMorphismAction _ _ _ _ _ preservesArrow) = preservesArrow
+
+-- | Invoke the checked data-naturality equation retained by a primitive
+-- morphism action. Derived functors use this witness after applying a
+-- proof-transparent carrier wrapper.
+atlasMorphismActionNaturality
+  :: AtlasMorphismAction
+       objectMap sourceAtlasScope targetAtlasScope sourceScope targetScope
+       sourceCellData targetCellData
+       sourceOrigin sourceFinal targetOrigin targetFinal
+  -> PageElementArrow sourceScope sourceObject targetObject
+  -> sourceCellData sourceObject
+  -> ()
+atlasMorphismActionNaturality
+  (AtlasMorphismAction _ _ _ _ naturality _) = naturality
 
 {-@ reflect mapPrimitiveElement @-}
 mapPrimitiveElement

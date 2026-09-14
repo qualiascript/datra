@@ -5,7 +5,7 @@
 
 -- | Hidden runtime representation of the LiquidHaskell-checked Atlas category.
 module Atlas.Morphism.Internal
-  ( AtlasMorphism
+  ( AtlasMorphism (..)
   , AtlasMorphismAction
   , AtlasObjectMap
   , AtlasMappedObject
@@ -14,6 +14,13 @@ module Atlas.Morphism.Internal
   , atlasObjectMap
   , AtlasMorphismImage
   , atlasMorphismAction
+  , atlasMorphismActionNaturality
+  , atlasMorphismActionPreservesArrow
+  , atlasMorphismSource
+  , atlasMorphismTarget
+  , mapAtlasMorphismActionObject
+  , mapAtlasMorphismActionComponent
+  , atlasMorphismObjectMapWitness
   , atlasMorphism
   , withAtlasMorphismImage
   , atlasMorphismPagination
@@ -26,7 +33,7 @@ module Atlas.Morphism.Internal
   , AtlasObjectAtlasScope
   , AtlasObjectPaginationScope
   , AtlasObjectCellData
-  , AtlasWitness
+  , AtlasWitness (..)
   , atlasWitness
   , AtlasHom (..)
   , identityAtlasHom
@@ -52,7 +59,9 @@ import Atlas.Morphism.LiquidInternal
   , identityAtlasObjectMap
   , atlasObjectMap
   , atlasMorphismAction
+  , atlasMorphismActionNaturality
   , atlasMorphismActionPreservesArrow
+  , atlasMorphismObjectMapWitness
   , atlasMorphismSource
   , atlasMorphismTarget
   , mapAtlasMorphismActionComponent

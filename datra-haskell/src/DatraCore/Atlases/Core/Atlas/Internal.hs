@@ -15,6 +15,7 @@ module Atlas.Internal
   , AtlasDataAction
   , atlasDataAction
   , atlas
+  , atlasWithScope
   , atlasPagination
   , atlasFolio
   , atlasPageElements
@@ -26,6 +27,10 @@ module Atlas.Internal
   , mapAtlasData
   , atlasDataCoherence
   , normalizeAtlasDatum
+  , atlasIdentityWitness
+  , atlasCompositionWitness
+  , atlasCoherenceWitness
+  , atlasDisjointWitness
   ) where
 
 import Atlas.LiquidInternal
@@ -36,6 +41,10 @@ import Atlas.LiquidInternal
   , atlasActionDataAt
   , atlasActionMap
   , atlasData
+  , atlasDataIdentityLaw
+  , atlasDataCompositionLaw
+  , atlasDataCoherenceLaw
+  , atlasDataDisjointLaw
   )
 import Data.Kind (Type)
 import DomanialInsertion.LiquidInternal
@@ -240,7 +249,140 @@ atlas
 atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw
     useAtlas =
   useAtlas
-    (Atlas
+    (atlasWithScope
+      paginationValue
+      action
+      identityLaw
+      compositionLaw
+      coherenceLaw
+      disjointLaw)
+
+-- | Internal, deterministically named variant of 'atlas'. Derived functors
+-- use an input object's type-level name as the output scope, so repeated
+-- object and arrow actions agree on exactly the same category object.
+-- Public callers continue to use the generative continuation in 'atlas'.
+{-@
+atlasWithScope
+  :: paginationValue:Pagination scope origin final
+  -> action:AtlasDataAction scope cellData
+  -> identityLaw:(forall object.
+       occurrence:PageElement scope object
+       -> datum:cellData object
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue)
+                  (identityPageElementArrow occurrence)))
+              datum
+            == datum })
+  -> compositionLaw:(forall source middle target.
+       second:PageElementArrow scope middle target
+       -> first:PageElementArrow scope source middle
+       -> alignment:{() | arrowTarget first == arrowSource second}
+       -> datum:cellData source
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue)
+                  (composePageElementArrows second first)))
+              datum
+            == applyInsertion
+                 (atlasActionMap action
+                   (normalizePageElementArrowAt
+                     (atlasFinalPageLogic paginationValue)
+                     (atlasTraceLimitLogic paginationValue) second))
+                 (applyInsertion
+                   (atlasActionMap action
+                     (normalizePageElementArrowAt
+                       (atlasFinalPageLogic paginationValue)
+                       (atlasTraceLimitLogic paginationValue) first))
+                   datum) })
+  -> coherenceLaw:(forall object.
+       occurrence:PageElement scope object
+       -> coherenceArrow:PageElementArrow scope object object
+       -> conditions:{() |
+            arrowSource coherenceArrow == occurrence
+            && arrowTarget coherenceArrow == normalizePageElementAt
+                 (atlasFinalPageLogic paginationValue)
+                 (atlasTraceLimitLogic paginationValue) occurrence}
+       -> datum:cellData object
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue) coherenceArrow))
+              datum
+            == datum })
+  -> disjointLaw:(forall leftObject rightObject originObject.
+       left:PageElement scope leftObject
+       -> right:PageElement scope rightObject
+       -> leftToOrigin:PageElementArrow scope leftObject originObject
+       -> rightToOrigin:PageElementArrow scope rightObject originObject
+       -> conditions:{() |
+            pageElementPage right == pageElementPage left
+            && pageElementPosition right /= pageElementPosition left
+            && pageElementPage left <= atlasFinalPageLogic paginationValue
+            && arrowSource leftToOrigin == left
+            && pageElementPage (arrowTarget leftToOrigin) == 0
+            && arrowSource rightToOrigin == right
+            && arrowTarget rightToOrigin == arrowTarget leftToOrigin}
+       -> leftDatum:cellData leftObject
+       -> rightDatum:cellData rightObject
+       -> { proof:() |
+            applyInsertion
+              (atlasActionMap action
+                (normalizePageElementArrowAt
+                  (atlasFinalPageLogic paginationValue)
+                  (atlasTraceLimitLogic paginationValue) leftToOrigin))
+              leftDatum
+            /= applyInsertion
+                 (atlasActionMap action
+                   (normalizePageElementArrowAt
+                     (atlasFinalPageLogic paginationValue)
+                     (atlasTraceLimitLogic paginationValue) rightToOrigin))
+                 rightDatum })
+  -> Atlas atlasScope scope cellData origin final
+@-}
+atlasWithScope
+  :: Pagination scope origin final
+  -> AtlasDataAction scope cellData
+  -> (forall object.
+        PageElement scope object -> cellData object -> ())
+  -> (forall source middle target.
+        PageElementArrow scope middle target
+        -> PageElementArrow scope source middle
+        -> ()
+        -> cellData source
+        -> ())
+  -> (forall object.
+        PageElement scope object
+        -> PageElementArrow scope object object
+        -> ()
+        -> cellData object
+        -> ())
+  -> (forall leftObject rightObject originObject.
+        PageElement scope leftObject
+        -> PageElement scope rightObject
+        -> PageElementArrow scope leftObject originObject
+        -> PageElementArrow scope rightObject originObject
+        -> ()
+        -> cellData leftObject
+        -> cellData rightObject
+        -> ())
+  -> Atlas atlasScope scope cellData origin final
+atlasWithScope
+  paginationValue
+  action
+  identityLaw
+  compositionLaw
+  coherenceLaw
+  disjointLaw =
+    Atlas
       paginationValue
       (atlasData
         (atlasFinalPage paginationValue)
@@ -249,7 +391,7 @@ atlas paginationValue action identityLaw compositionLaw coherenceLaw disjointLaw
         identityLaw
         compositionLaw
         coherenceLaw
-        disjointLaw))
+        disjointLaw)
 
 -- | Final genuine page used by Atlas normalization.
 {-@ measure atlasFinalPageLogic :: Pagination scope origin final -> Natural @-}
@@ -393,3 +535,41 @@ normalizeAtlasDatum
   -> cellData object
 normalizeAtlasDatum value occurrence =
   applyInsertion (atlasDataCoherence value occurrence)
+
+-- | Reuse the checked laws retained by an Atlas. These eliminators keep
+-- derived constructions proof-bearing instead of asking them to resupply
+-- opaque unit callbacks.
+atlasIdentityWitness
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> ()
+atlasIdentityWitness value = atlasDataIdentityLaw (storedAtlasData value)
+
+atlasCompositionWitness
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElementArrow scope middle target
+  -> PageElementArrow scope source middle
+  -> cellData source
+  -> ()
+atlasCompositionWitness value =
+  atlasDataCompositionLaw (storedAtlasData value)
+
+atlasCoherenceWitness
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> PageElementArrow scope object object
+  -> cellData object
+  -> ()
+atlasCoherenceWitness value = atlasDataCoherenceLaw (storedAtlasData value)
+
+atlasDisjointWitness
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope leftObject
+  -> PageElement scope rightObject
+  -> PageElementArrow scope leftObject originObject
+  -> PageElementArrow scope rightObject originObject
+  -> cellData leftObject
+  -> cellData rightObject
+  -> ()
+atlasDisjointWitness value = atlasDataDisjointLaw (storedAtlasData value)

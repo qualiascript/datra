@@ -10,12 +10,16 @@
 
 -- | Hidden implementation of coverage by final Atlas regions.
 module AtlasCovered.Internal
-  ( AtlasCoverageWitness
+  ( AtlasCoverageWitness (..)
   , AtlasCoveredDatum (..)
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageFinalPage
   , coverageNormalize
+  , atlasOriginImageRank
+  , findAtlasCoverage
+  , findAtlasCoverageRank
+  , atlasCoveredDatumAt
   , atlasCoveredDatum
   , withAtlasCoveredDatum
   ) where
@@ -28,11 +32,16 @@ import Atlas
   , atlasCardinality
   , atlasDataAt
   , atlasOriginCell
+  , atlasTerritory
+  , atlasTerritoryChain
+  , withAtlasCellDominion
   , mapAtlasData
   , normalizeAtlasElement
   )
-import DomanialInsertion (applyInsertion)
-import Dominion (rank)
+import DomanialInsertion (applyInsertion, preimage)
+import Chain (chainIndex)
+import DatraOrdinal (ordinal)
+import Dominion (rank, unrank)
 import Numeric.Natural (Natural)
 import PageElements
   ( PageElement
@@ -212,3 +221,127 @@ withAtlasCoveredDatum
 withAtlasCoveredDatum
   (AtlasCoveredDatum occurrence datum _)
   useCovered = useCovered occurrence datum
+
+-- | Search the countable final territory for a coverage witness. This is the
+-- executable counterpart needed because Haskell's 'Dominion' carries an
+-- @unrank@ operation whereas Lean's dominions only require a rank embedding.
+-- The search terminates exactly on covered data, which is the only domain on
+-- which Charting calls it.
+findAtlasCoverage
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+findAtlasCoverage valueAtlas source sourceDatum =
+  searchAtlasCoverageFrom valueAtlas source sourceDatum 0
+
+-- | The first enumeration index witnessing coverage of a datum. The search
+-- is total on the abstract covered carrier used by Charting.
+{-@ lazy findAtlasCoverageRank @-}
+findAtlasCoverageRank
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> Natural
+findAtlasCoverageRank valueAtlas source sourceDatum = go 0
+  where
+    sourceDominion = atlasDataAt valueAtlas source
+    sourceRank = rank sourceDominion sourceDatum
+
+    go candidate =
+      case atlasCoveredDatumAt valueAtlas source candidate of
+        Just candidateDatum
+          | rank sourceDominion candidateDatum == sourceRank -> candidate
+        _ -> go (candidate + 1)
+
+-- | Decode one finite coverage candidate. A final-region datum is transported
+-- to the origin and pulled back along the selected source cell. Unlike a
+-- membership filter, this operation terminates for every index.
+atlasCoveredDatumAt
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> Natural
+  -> Maybe (cellData object)
+atlasCoveredDatumAt valueAtlas source candidate =
+  case unpairNatural candidate of
+    (positionCode, datumRank) ->
+      case chainIndex
+        (atlasTerritoryChain valueAtlas)
+        (ordinal (decodeNaturalList positionCode)) of
+          Nothing -> Nothing
+          Just territoryIndex ->
+            withAtlasCellDominion
+              (atlasTerritory valueAtlas territoryIndex) $ \region regionDom ->
+                case unrank regionDom datumRank of
+                  Nothing -> Nothing
+                  Just regionDatum ->
+                    withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+                      preimage
+                        (mapAtlasData
+                          valueAtlas (pageElementArrow source origin))
+                        (applyInsertion
+                          (mapAtlasData
+                            valueAtlas (pageElementArrow region origin))
+                          regionDatum)
+
+{-@ lazy searchAtlasCoverageFrom @-}
+searchAtlasCoverageFrom
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> Natural
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+searchAtlasCoverageFrom valueAtlas source sourceDatum candidate =
+  case coverageCandidate valueAtlas source sourceDatum candidate of
+    Just witness -> witness
+    Nothing ->
+      searchAtlasCoverageFrom valueAtlas source sourceDatum (candidate + 1)
+
+coverageCandidate
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> cellData object
+  -> Natural
+  -> Maybe (AtlasCoverageWitness (AtlasObject atlasScope scope cellData))
+coverageCandidate valueAtlas source sourceDatum candidate =
+  case unpairNatural candidate of
+    (positionCode, datumRank) ->
+      case chainIndex
+        (atlasTerritoryChain valueAtlas)
+        (ordinal (decodeNaturalList positionCode)) of
+          Nothing -> Nothing
+          Just territoryIndex ->
+            withAtlasCellDominion
+              (atlasTerritory valueAtlas territoryIndex) $ \region regionDom ->
+                case unrank regionDom datumRank of
+                  Nothing -> Nothing
+                  Just regionDatum
+                    | atlasOriginImageRank valueAtlas source sourceDatum
+                        == atlasOriginImageRank
+                             valueAtlas region regionDatum ->
+                        Just
+                          (AtlasCoverageWitness
+                            region
+                            regionDatum
+                            (coverageFinalPage valueAtlas)
+                            (atlasOriginImageRank
+                              valueAtlas source sourceDatum))
+                    | otherwise -> Nothing
+
+-- | Cantor's diagonal decoding, used twice to enumerate pairs and then all
+-- finite coefficient lists. Consequently every ordinal below omega^omega and
+-- every datum rank is eventually visited.
+{-@ lazy unpairNatural @-}
+unpairNatural :: Natural -> (Natural, Natural)
+unpairNatural = go 0
+  where
+    go diagonal remainder
+      | remainder <= diagonal = (remainder, diagonal - remainder)
+      | otherwise = go (diagonal + 1) (remainder - diagonal - 1)
+
+{-@ lazy decodeNaturalList @-}
+decodeNaturalList :: Natural -> [Natural]
+decodeNaturalList 0 = []
+decodeNaturalList code =
+  let (value, rest) = unpairNatural (code - 1)
+  in value : decodeNaturalList rest
