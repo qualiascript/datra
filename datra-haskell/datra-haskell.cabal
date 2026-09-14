@@ -119,7 +119,8 @@ library
         src/DatraCore/Atlases/Derived/Coalitions
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
-        src/DatraCore/Atlases/Derived/FiniteDominion
+        src/DatraStandardLibrary
+        src/DatraStandardLibrary/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
         src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal
