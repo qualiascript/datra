@@ -46,6 +46,7 @@ library
         AtlasTransversal
         AtlasTransversalMap
         Charting
+        Coalition
         StableAtlasTransversal
         DataTransformation
         Navigation
@@ -69,6 +70,7 @@ library
         AtlasTransversalMap.Internal
         Charting.Internal
         Charting.LiquidInternal
+        Coalition.Internal
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
@@ -111,6 +113,8 @@ library
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
         src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap
         src/DatraCore/Atlases/Derived/Cartography/Charting
+        src/DatraCore/Atlases/Derived/Coalitions
+        src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal

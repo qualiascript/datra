@@ -19,6 +19,7 @@ module AtlasCovered.Internal
   , atlasOriginImageRank
   , findAtlasCoverage
   , findAtlasCoverageRank
+  , atlasCoverageAt
   , atlasCoveredDatumAt
   , atlasCoveredDatum
   , withAtlasCoveredDatum
@@ -263,6 +264,22 @@ atlasCoveredDatumAt
   -> Natural
   -> Maybe (cellData object)
 atlasCoveredDatumAt valueAtlas source candidate =
+  fst <$> atlasCoverageAt valueAtlas source candidate
+
+-- | Decode one coverage candidate together with the evidence that made it a
+-- member of the covered carrier.  Returning the witness alongside the datum
+-- lets downstream dependent carriers stay total instead of reconstructing
+-- evidence with an unchecked search.
+atlasCoverageAt
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> Natural
+  -> Maybe
+       ( cellData object
+       , AtlasCoverageWitness
+           (AtlasObject atlasScope scope cellData)
+       )
+atlasCoverageAt valueAtlas source candidate =
   case unpairNatural candidate of
     (positionCode, datumRank) ->
       case chainIndex
@@ -276,13 +293,26 @@ atlasCoveredDatumAt valueAtlas source candidate =
                   Nothing -> Nothing
                   Just regionDatum ->
                     withPageElement (atlasOriginCell valueAtlas) $ \origin ->
-                      preimage
+                      let regionOriginRank =
+                            atlasOriginImageRank
+                              valueAtlas region regionDatum
+                      in case preimage
                         (mapAtlasData
                           valueAtlas (pageElementArrow source origin))
                         (applyInsertion
                           (mapAtlasData
                             valueAtlas (pageElementArrow region origin))
-                          regionDatum)
+                          regionDatum) of
+                            Nothing -> Nothing
+                            Just sourceDatum ->
+                              Just
+                                ( sourceDatum
+                                , AtlasCoverageWitness
+                                    region
+                                    regionDatum
+                                    (coverageFinalPage valueAtlas)
+                                    regionOriginRank
+                                )
 
 {-@ lazy searchAtlasCoverageFrom @-}
 searchAtlasCoverageFrom

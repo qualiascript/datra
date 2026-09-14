@@ -10,6 +10,7 @@ import AtlasTransversal
 import AtlasTransversalMap
 import Chain
 import Charting
+import Coalition
 import Consolidation
 import qualified Control.Category as Category
 import DataTransformation
@@ -51,6 +52,7 @@ main = do
   testOrderedAtlasTransposal
   testAtlasTransversal
   testStableAtlasTransversal
+  testCoalition
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -598,6 +600,19 @@ testAtlasMapData pageArrow =
         else Just
           (TestCellData
             (value - pageElementPage (arrowSource pageArrow))))
+    (const ())
+
+doubleTestCellData
+  :: DomanialInsertion
+       (TestCellData source)
+       (TestCellData target)
+doubleTestCellData =
+  domanialInsertion
+    (\(TestCellData value) -> TestCellData (value * 2))
+    (\(TestCellData value) ->
+      if even value
+        then Just (TestCellData (value `div` 2))
+        else Nothing)
     (const ())
 
 testAtlasIdentityLaw
@@ -1350,3 +1365,111 @@ testStableAtlasTransversal =
           stableAtlasTransversalPreservesExtent composed `seq`
             assert "stable Atlas transversals send extent to extent"
               (mappedOrigin == originElement)
+
+testCoalition :: IO ()
+testCoalition =
+  pagination (singletonFolio unitChain) $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let witness = atlasWitness valueAtlas
+            transposal =
+              atlasTransposal witness identityAtlasHom Just (const ())
+            ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+            transversal =
+              atlasTransversal
+                valueAtlas
+                valueAtlas
+                ordered
+                (\_ targetOccurrence targetDatum ->
+                  atlasCoverageWitness
+                    valueAtlas
+                    targetOccurrence
+                    targetDatum
+                    targetOccurrence
+                    targetDatum
+                    ())
+            stable =
+              stableAtlasTransversal
+                valueAtlas valueAtlas transversal ()
+            doublingAction =
+              atlasMorphismAction
+                identityAtlasObjectMap
+                valueAtlas
+                valueAtlas
+                id
+                (const doubleTestCellData)
+                (\_ _ -> ())
+                (\_ _ -> ())
+            doublingTransposal =
+              atlasTransposal
+                witness
+                (atlasHom (atlasMorphism doublingAction))
+                Just
+                (const ())
+            doublingTransversal =
+              atlasTransversal
+                valueAtlas
+                valueAtlas
+                (orderedAtlasTransposal
+                  doublingTransposal (\_ _ -> ()))
+                (\_ targetOccurrence targetDatum ->
+                  atlasCoverageWitness
+                    valueAtlas
+                    targetOccurrence
+                    targetDatum
+                    targetOccurrence
+                    targetDatum
+                    ())
+            doublingStable =
+              stableAtlasTransversal
+                valueAtlas valueAtlas doublingTransversal ()
+            valueCoalition = coalition valueAtlas
+        in case
+          [ candidate
+          | index <- [0 .. 100]
+          , Just candidate <- [unrank valueCoalition index]
+          , coalitionElementRank candidate == 7
+          ] of
+            [] -> fail "Coalition lost a covered extent datum"
+            element : _ -> do
+              let decoded =
+                    withCoalitionElement element $ \origin datum ->
+                      ( pageElementPage origin
+                      , rank (atlasDataAt valueAtlas origin) datum
+                      )
+              assert "a coalition is the covered chart extent"
+                (decoded == (0, 7))
+              let mapped =
+                    applyInsertion
+                      (coalizingFunctorHom witness witness stable)
+                      element
+                  composed =
+                    coalizingFunctorHom
+                      witness
+                      witness
+                      (stable Category.. stable)
+              assert "the Coalizing functor maps the stable origin component"
+                (coalitionElementRank mapped == 7)
+              assert "the Coalizing arrow has the inherited partial inverse"
+                (preimage
+                  (coalizingFunctorHom witness witness stable)
+                  mapped == Just element)
+              assert "a coalition preimage outside the arrow image is total"
+                (preimage
+                  (coalizingFunctorHom
+                    witness witness doublingStable)
+                  element == Nothing)
+              assert "the coalition dominion rank round-trips"
+                (unrank valueCoalition (rank valueCoalition element)
+                  == Just element)
+              coalizingFunctorIdentity witness element `seq`
+                coalizingFunctorComposition
+                  witness witness witness stable stable element `seq`
+                    assert "the Coalizing functor preserves composition"
+                      (coalitionElementRank
+                        (applyInsertion composed element) == 7)
