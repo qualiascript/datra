@@ -10,6 +10,7 @@ module PageElements.Internal
   , SomePageElement (..)
   , PageElementArrow
   , pageElements
+  , pageElementsWithScope
   , pageElementIndex
   , pageElementIndexPage
   , pageElementIndexPosition
@@ -116,7 +117,14 @@ pageElements
         PageElements scope origin final -> result)
   -> result
 pageElements pages useCategory =
-  useCategory (PageElements pages)
+  useCategory (pageElementsWithScope pages)
+
+-- | Internal, deterministically scoped variant used by derived functors whose
+-- object action must return the same type-level category on every call.
+pageElementsWithScope
+  :: Folio origin final
+  -> PageElements scope origin final
+pageElementsWithScope = PageElements
 
 -- | Refine a page number and ordinal to an index of this folio's page-element
 -- category.  Pages after the finite presentation repeat its final chain, so

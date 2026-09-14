@@ -16,6 +16,7 @@ import qualified Control.Category as Category
 import DataTransformation
 import DataTransformationMap
 import DatraOrdinal
+import DomanialInclusion
 import DomanialInsertion
 import Dominion
 import Expedition
@@ -53,6 +54,7 @@ main = do
   testAtlasTransversal
   testStableAtlasTransversal
   testCoalition
+  testDomanialInclusion
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -1473,3 +1475,99 @@ testCoalition =
                     assert "the Coalizing functor preserves composition"
                       (coalitionElementRank
                         (applyInsertion composed element) == 7)
+
+testDomanialInclusion :: IO ()
+testDomanialInclusion = do
+  let naturals = dominion id Just (const ())
+      successor :: Natural -> Natural
+      successor = (+ 1)
+      twice :: Natural -> Natural
+      twice = (* 2)
+      included = dominionAtlas naturals
+      includedWitness = atlasWitness included
+      (fromCoalition, intoCoalition) = coaDomIncIso naturals
+      seven = applyInsertion intoCoalition 7
+
+  assert "Coa (DomInc X) is isomorphic to X"
+    (applyInsertion fromCoalition seven == 7)
+  assert "the Coa-DomInc counit has a total inverse"
+    (preimage fromCoalition 7 == Just seven)
+  assert "the Coa-DomInc unit has a total inverse"
+    (preimage intoCoalition seven == Just 7)
+
+  coaDomIncIsoLeftInverse naturals seven `seq`
+    coaDomIncIsoRightInverse naturals 7 `seq` pure ()
+
+  let includedIdentity =
+        dominionMap naturals naturals
+          (identityInsertion :: DomanialInsertion Natural Natural)
+      adjointArrow =
+        domIncCoaHomEquivTo naturals includedWitness includedIdentity
+      restoredArrow =
+        domIncCoaHomEquivFrom naturals includedWitness adjointArrow
+      mappedSeven = applyInsertion adjointArrow 7
+
+  assert "the forward adjunction map lands in the target coalition"
+    (applyInsertion fromCoalition mappedSeven == 7)
+  assert "the forward adjunction map retains its inverse witness"
+    (preimage adjointArrow mappedSeven == Just 7)
+
+  withPageElement (atlasOriginCell included) $ \origin ->
+    case unrank (atlasDataAt included origin) 7 of
+      Nothing -> fail "Domanial Inclusion lost its constant cell datum"
+      Just sourceDatum ->
+        withAtlasMorphismImage
+          (mapStableAtlasTransversalData
+            includedWitness restoredArrow origin) $ \_ component -> do
+              let restoredDatum = applyInsertion component sourceDatum
+              assert "the two adjunction maps are inverse on data"
+                (dominionCellDataValue restoredDatum == 7)
+              assert "the reconstructed component inverse is total on images"
+                (preimage component restoredDatum == Just sourceDatum)
+
+              let observe datum = dominionCellDataValue datum + 1
+              domIncCoaHomEquivLeftInverse observe sourceDatum `seq`
+                domIncCoaHomEquivRightInverse successor 7 `seq`
+                  domIncCoaHomEquivNaturalityLeft
+                    successor observe 7 `seq`
+                      domIncCoaHomEquivNaturalityRight
+                        observe twice 7 `seq` pure ()
+
+  let double =
+        domanialInsertion
+          twice
+          (\value ->
+            if even value then Just (value `div` 2) else Nothing)
+          (const ())
+      increment =
+        domanialInsertion
+          successor
+          (\value ->
+            if value == 0 then Nothing else Just (value - 1))
+          (const ())
+      direct = dominionMap naturals naturals
+        (composeInsertions increment double)
+      staged =
+        composeStableAtlasTransversals
+          (dominionMap naturals naturals increment)
+          (dominionMap naturals naturals double)
+
+  withPageElement (atlasOriginCell included) $ \origin ->
+    case unrank (atlasDataAt included origin) 4 of
+      Nothing -> fail "Domanial Inclusion failed to decode a source datum"
+      Just sourceDatum ->
+        withAtlasMorphismImage
+          (mapStableAtlasTransversalData includedWitness direct origin) $
+            \_ directComponent ->
+              withAtlasMorphismImage
+                (mapStableAtlasTransversalData includedWitness staged origin) $
+                  \_ stagedComponent -> do
+                    assert "the Domanial Inclusion preserves composition"
+                      ( dominionCellDataValue
+                          (applyInsertion directComponent sourceDatum)
+                        == dominionCellDataValue
+                          (applyInsertion stagedComponent sourceDatum)
+                      )
+                    domanialInclusionFunctorIdentity sourceDatum `seq`
+                      domanialInclusionFunctorComposition
+                        twice successor sourceDatum `seq` pure ()

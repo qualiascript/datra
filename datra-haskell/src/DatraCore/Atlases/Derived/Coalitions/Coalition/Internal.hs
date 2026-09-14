@@ -6,8 +6,11 @@
 -- | Hidden implementation of coalitions and the Coalizing functor.
 module Coalition.Internal
   ( CoalitionElement
+  , coalitionElement
   , coalitionElementRank
   , withCoalitionElement
+  , coalitionElementAt
+  , coalitionElementCoverageAt
   , coalition
   , stableCoalitionMap
   , coalizingFunctorObject
@@ -77,6 +80,16 @@ data CoalitionElement atlasObject where
     -> AtlasCoverageWitness atlasObject
     -> CoalitionElement atlasObject
 
+-- | Internal checked introduction rule.  Public clients obtain coalition
+-- elements through 'coalition'; derived constructions may already possess the
+-- exact coverage witness and therefore need not search for it again.
+coalitionElement
+  :: PageElement (AtlasObjectPaginationScope atlasObject) object
+  -> AtlasObjectCellData atlasObject object
+  -> AtlasCoverageWitness atlasObject
+  -> CoalitionElement atlasObject
+coalitionElement = CoalitionElement
+
 coalitionCoverageRank :: AtlasCoverageWitness atlasObject -> Natural
 coalitionCoverageRank (AtlasCoverageWitness _ _ _ originRank) = originRank
 
@@ -104,6 +117,39 @@ withCoalitionElement
   -> result
 withCoalitionElement (CoalitionElement origin datum _) useElement =
   useElement origin datum
+
+-- | Read a coalition datum at another occurrence of the canonical origin
+-- cell.  The Atlas data action supplies the dependent transport, so no cast
+-- or partial pattern match is required.
+coalitionElementAt
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope targetObject
+  -> CoalitionElement (AtlasObject atlasScope scope cellData)
+  -> cellData targetObject
+coalitionElementAt valueAtlas target
+    (CoalitionElement source datum _) =
+  applyInsertion
+    (mapAtlasData valueAtlas (pageElementArrow source target))
+    datum
+
+-- | Transport a coalition element to an exact origin occurrence while
+-- retaining a coverage witness for the transported datum.
+coalitionElementCoverageAt
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope targetObject
+  -> CoalitionElement (AtlasObject atlasScope scope cellData)
+  -> AtlasCoverageWitness (AtlasObject atlasScope scope cellData)
+coalitionElementCoverageAt valueAtlas target
+    element@(CoalitionElement _ _ coverage) =
+  case coverage of
+    AtlasCoverageWitness region regionDatum _ _ ->
+      atlasCoverageWitness
+        valueAtlas
+        target
+        (coalitionElementAt valueAtlas target element)
+        region
+        regionDatum
+        ()
 
 -- | The extent of the charted Atlas.  Its carrier consists precisely of the
 -- covered data in the original Atlas's origin cell.

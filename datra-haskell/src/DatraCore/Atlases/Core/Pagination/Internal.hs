@@ -11,6 +11,7 @@ module Pagination.Internal
   , PaginationMorphism
   , SomePageElementArrow
   , pagination
+  , paginationWithScope
   , paginationFolio
   , paginationPageElements
   , paginationCardinality
@@ -37,8 +38,8 @@ import PageElements
   ( PageElements
   , normalizePageElement
   , normalizePageElementArrow
-  , pageElements
   )
+import PageElements.Internal (pageElementsWithScope)
 import PageElements.LiquidInternal hiding (withPageElementArrow)
 import Pagination.LiquidInternal
   ( composePaginationMorphismsData
@@ -74,8 +75,15 @@ pagination
   -> (forall scope. Pagination scope origin final -> result)
   -> result
 pagination pages usePagination =
-  pageElements pages $ \elements ->
-    usePagination (Pagination pages elements)
+  usePagination (paginationWithScope pages)
+
+-- | Internal, deterministically scoped variant used by derived functors.
+-- Public construction remains generative through 'pagination'.
+paginationWithScope
+  :: Folio origin final
+  -> Pagination scope origin final
+paginationWithScope pages =
+  Pagination pages (pageElementsWithScope pages)
 
 -- | Recover the folio from a pagination.
 paginationFolio :: Pagination scope origin final -> Folio origin final
