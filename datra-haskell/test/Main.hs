@@ -3,6 +3,8 @@
 module Main (main) where
 
 import Atlas
+import AtlasTransposal
+import AtlasTransversal
 import Chain
 import Consolidation
 import qualified Control.Category as Category
@@ -15,6 +17,8 @@ import Folio
 import PageElements
 import Pagination
 import Numeric.Natural (Natural)
+import OrderedAtlasTransposal
+import StableAtlasTransversal
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -32,6 +36,9 @@ main = do
   testPageElements
   testPagination
   testAtlas
+  testOrderedAtlasTransposal
+  testAtlasTransversal
+  testStableAtlasTransversal
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
@@ -725,6 +732,21 @@ testAtlas =
                                 (\_ _ -> ())
                                 (\_ _ -> ()))
                           valueHom = atlasHom valueMorphism
+                          valueWitness = atlasWitness valueAtlas
+                          valueTransposal =
+                            atlasTransposal
+                              valueWitness
+                              valueHom
+                              (\targetElement ->
+                                withAtlasTransposalElement targetElement $
+                                  \targetOccurrence ->
+                                    Just
+                                      (atlasTransposalElement
+                                        valueWitness
+                                        targetOccurrence))
+                              (const ())
+                          includedIdentityTransposal =
+                            Category.id Category.. valueTransposal
                           leftHom = Category.id Category.. valueHom
                           rightHom = valueHom Category.. Category.id
                           associatedLeftHom =
@@ -739,6 +761,34 @@ testAtlas =
                           \mapped ->
                             assert
                               "atlas morphisms normalize their page action"
+                              (pageElementPage mapped == 0)
+                      let sourceElement =
+                            atlasTransposalElement valueWitness padded
+                          mappedElement =
+                            mapAtlasTransposalObject
+                              includedIdentityTransposal
+                              sourceElement
+                      atlasTransposalLeftInverse
+                        includedIdentityTransposal
+                        sourceElement `seq` pure ()
+                      assert
+                        "atlas transposals retain a left inverse under identity"
+                        ( atlasTransposalPreimage
+                            includedIdentityTransposal
+                            mappedElement
+                            == Just sourceElement
+                        )
+                      withAtlasTransposalElement mappedElement $ \mapped ->
+                        assert
+                          "atlas transposals act on genuine Atlas elements"
+                          (pageElementPage mapped == 0)
+                      withPageElement
+                        (mapAtlasTransposalElement
+                          valueWitness
+                          includedIdentityTransposal
+                          padded) $ \mapped ->
+                            assert
+                              "the transposal inclusion retains the Atlas action"
                               (pageElementPage mapped == 0)
                       withAtlasMorphismImage
                         (mapAtlasMorphismData valueMorphism padded) $
@@ -845,3 +895,147 @@ testAtlas =
                                     "Yoneda embeds AtlasHom by postcomposition"
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
+
+testOrderedAtlasTransposal :: IO ()
+testOrderedAtlasTransposal =
+  pagination threePageFolio $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let elements = atlasPageElements valueAtlas
+            at position =
+              pageElement
+                <$> pageElementIndex elements 1 (finiteOrdinal position)
+        in case (at 0, at 1) of
+          (Just someLeft, Just someRight) ->
+            withPageElement someLeft $ \left ->
+              withPageElement someRight $ \right -> do
+                let witness = atlasWitness valueAtlas
+                    transposal =
+                      atlasTransposal
+                        witness
+                        identityAtlasHom
+                        Just
+                        (const ())
+                    ordered =
+                      orderedAtlasTransposal transposal (\_ _ -> ())
+                    composed = ordered Category.. ordered
+                    includedIdentity = Category.id Category.. composed
+                    leftElement = atlasTransposalElement witness left
+                    rightElement = atlasTransposalElement witness right
+                    mappedLeft =
+                      mapOrderedAtlasTransposalObject
+                        includedIdentity leftElement
+                    mappedRight =
+                      mapOrderedAtlasTransposalObject
+                        includedIdentity rightElement
+                assert "ordered transposal test source is strictly ordered"
+                  (atlasTransposalElementLT leftElement rightElement)
+                orderedAtlasTransposalPreservesOrder
+                  includedIdentity leftElement rightElement `seq` pure ()
+                assert "ordered transposals preserve strict Atlas order"
+                  (atlasTransposalElementLT mappedLeft mappedRight)
+                assert "ordered transposals retain transposal injectivity"
+                  ( orderedAtlasTransposalPreimage includedIdentity mappedLeft
+                      == Just leftElement
+                  )
+          _ -> fail "test setup failed: expected two ordered Atlas elements"
+
+testAtlasTransversal :: IO ()
+testAtlasTransversal =
+  pagination threePageFolio $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        let elements = atlasPageElements valueAtlas
+        in case
+          pageElement <$> pageElementIndex elements 2 (finiteOrdinal 5) of
+            Nothing ->
+              fail "test setup failed: expected a final-region element"
+            Just someRegion ->
+              withPageElement someRegion $ \region -> do
+                let witness = atlasWitness valueAtlas
+                    transposal =
+                      atlasTransposal
+                        witness
+                        identityAtlasHom
+                        Just
+                        (const ())
+                    ordered =
+                      orderedAtlasTransposal transposal (\_ _ -> ())
+                    transversal =
+                      atlasTransversal
+                        valueAtlas
+                        valueAtlas
+                        ordered
+                        (\_ targetOccurrence targetDatum ->
+                          atlasCoverageWitness
+                            valueAtlas
+                            targetOccurrence
+                            targetDatum
+                            targetOccurrence
+                            targetDatum
+                            ())
+                    composed = transversal Category.. transversal
+                    covered =
+                      atlasCoveredDatum
+                        valueAtlas
+                        region
+                        (TestCellData 7)
+                        region
+                        (TestCellData 7)
+                        ()
+                    mappedCovered =
+                      mapAtlasTransversalCoveredDatum composed covered
+                withAtlasCoveredDatum mappedCovered $ \mapped datum ->
+                  assert "transversals preserve covered final-region data"
+                    ( pageElementPage mapped == 2
+                      && rank (atlasDataAt valueAtlas mapped) datum == 9
+                    )
+
+testStableAtlasTransversal :: IO ()
+testStableAtlasTransversal =
+  pagination threePageFolio $ \valuePagination ->
+    atlas
+      valuePagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \valueAtlas ->
+        withPageElement (atlasOriginCell valueAtlas) $ \origin -> do
+          let witness = atlasWitness valueAtlas
+              transposal =
+                atlasTransposal witness identityAtlasHom Just (const ())
+              ordered = orderedAtlasTransposal transposal (\_ _ -> ())
+              transversal =
+                atlasTransversal
+                  valueAtlas
+                  valueAtlas
+                  ordered
+                  (\_ targetOccurrence targetDatum ->
+                    atlasCoverageWitness
+                      valueAtlas
+                      targetOccurrence
+                      targetDatum
+                      targetOccurrence
+                      targetDatum
+                      ())
+              stable =
+                stableAtlasTransversal
+                  valueAtlas valueAtlas transversal ()
+              composed = stable Category.. stable
+              originElement = atlasTransposalElement witness origin
+              mappedOrigin =
+                mapStableAtlasTransversalObject composed originElement
+          stableAtlasTransversalPreservesExtent composed `seq`
+            assert "stable Atlas transversals send extent to extent"
+              (mappedOrigin == originElement)

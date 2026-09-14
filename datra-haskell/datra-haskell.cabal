@@ -39,6 +39,10 @@ library
         PageElements
         Pagination
         Atlas
+        AtlasTransposal
+        OrderedAtlasTransposal
+        AtlasTransversal
+        StableAtlasTransversal
         DataTransformation
     other-modules:
         PageElements.Internal
@@ -50,6 +54,10 @@ library
         Atlas.Derived.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
+        AtlasTransposal.Internal
+        OrderedAtlasTransposal.Internal
+        AtlasTransversal.Internal
+        StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
         Chain.Internal
@@ -81,6 +89,11 @@ library
         src/DatraCore/Atlases/Core/Dominion
         src/DatraCore/Atlases/Derived
         src/DatraCore/Atlases/Derived/FiniteDominion
+        src/DatraCore/Atlases/Derived/AtlasTransposals
+        src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
+        src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal
+        src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransversal
+        src/DatraCore/Atlases/Derived/AtlasTransposals/StableAtlasTransversal
         src/DatraCore/Atlases/Core/DomanialInsertion
         src/DatraCore/Atlases/Core/Folio
     default-language: GHC2021
