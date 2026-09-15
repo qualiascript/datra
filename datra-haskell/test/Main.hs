@@ -24,7 +24,7 @@ import qualified Control.Category as Category
 import DataTransformation
 import DataTransformationMap
 import DataTransposal
-import DataTraversal
+import DataTransversal
 import DatraOrdinal
 import DomanialInclusion
 import DomanialInsertion
@@ -613,7 +613,7 @@ type instance
     TestRestrictedDataValue atlas
 
 type instance
-  DataTraversalValue TestRestrictedDataValues atlas =
+  DataTransversalValue TestRestrictedDataValues atlas =
     TestRestrictedDataValue atlas
 
 type instance
@@ -663,20 +663,20 @@ incrementOrderedDataTransposal =
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
 
-testDataTraversal :: DataTraversal TestRestrictedDataValues
-testDataTraversal =
-  dataTraversal
+testDataTransversal :: DataTransversal TestRestrictedDataValues
+testDataTransversal =
+  dataTransversal
     (\_ (TestRestrictedDataValue value) ->
       TestRestrictedDataValue value)
     (const ())
     (\_ _ _ -> ())
 
-incrementDataTraversal
-  :: DataTraversalHom TestRestrictedDataValues TestRestrictedDataValues
-incrementDataTraversal =
-  dataTraversalHom
-    testDataTraversal
-    testDataTraversal
+incrementDataTransversal
+  :: DataTransversalHom TestRestrictedDataValues TestRestrictedDataValues
+incrementDataTransversal =
+  dataTransversalHom
+    testDataTransversal
+    testDataTransversal
     (\(TestRestrictedDataValue value) ->
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
@@ -1879,14 +1879,14 @@ testRestrictedDataTransformations = do
           identityOrderedAtlasTransposal
           input `seq`
             pure ()
-  dataTraversalIdentity testDataTraversal input `seq`
-    dataTraversalComposition
-      testDataTraversal
+  dataTransversalIdentity testDataTransversal input `seq`
+    dataTransversalComposition
+      testDataTransversal
       identityAtlasTransversal
       identityAtlasTransversal
       input `seq`
-        dataTraversalHomNaturality
-          incrementDataTraversal identityAtlasTransversal input `seq`
+        dataTransversalHomNaturality
+          incrementDataTransversal identityAtlasTransversal input `seq`
             pure ()
   stableDataTransversalIdentity testStableDataTransversal input `seq`
     stableDataTransversalComposition
@@ -1961,8 +1961,8 @@ testRestrictedDataTransformations = do
         testDataTransposal identityAtlasTransposal input == input
       && mapOrderedDataTransposal
         testOrderedDataTransposal identityOrderedAtlasTransposal input == input
-      && mapDataTraversal
-        testDataTraversal identityAtlasTransversal input == input
+      && mapDataTransversal
+        testDataTransversal identityAtlasTransversal input == input
       && mapStableDataTransversal
         testStableDataTransversal identityStableAtlasTransversal input == input
       && mapStableConfederalDataTransversal
@@ -1982,8 +1982,8 @@ testRestrictedDataTransformations = do
         (incrementOrderedDataTransposal
           Category.. incrementOrderedDataTransposal)
         input == TestRestrictedDataValue 31
-      && mapDataTraversalHom
-        (incrementDataTraversal Category.. incrementDataTraversal)
+      && mapDataTransversalHom
+        (incrementDataTransversal Category.. incrementDataTransversal)
         input == TestRestrictedDataValue 31
       && mapStableDataTransversalHom
         (incrementStableDataTransversal

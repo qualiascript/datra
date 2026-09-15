@@ -59,7 +59,7 @@ library
         DataTransformation
         DataTransposal
         OrderedDataTransposal
-        DataTraversal
+        DataTransversal
         StableDataTransversal
         StableConfederalDataTransversal
         HorizontalSum
@@ -101,7 +101,7 @@ library
         DataTransformation.LiquidInternal
         DataTransposal.Internal
         OrderedDataTransposal.Internal
-        DataTraversal.Internal
+        DataTransversal.Internal
         StableDataTransversal.Internal
         StableConfederalDataTransversal.Internal
         HorizontalSum.Internal
@@ -136,7 +136,7 @@ library
         src/DatraCore/DataTransformations/DataTransformations/DataTransformation
         src/DatraCore/DataTransformations/DataTransformations/DataTransposal
         src/DatraCore/DataTransformations/DataTransformations/OrderedDataTransposal
-        src/DatraCore/DataTransformations/DataTransformations/DataTraversal
+        src/DatraCore/DataTransformations/DataTransformations/DataTransversal
         src/DatraCore/DataTransformations/DataTransformations/StableDataTransversal
         src/DatraCore/DataTransformations/StableConfederalDataTransversals
         src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversal
