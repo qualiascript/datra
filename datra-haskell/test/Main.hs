@@ -155,10 +155,15 @@ testChainSum = do
       leftValues = map Left [0 .. 4]
       rightValues = map Right [0 .. 4]
       roundTrips value =
-        chainObjectAt (chainIndexOf doubledSpine value)
-          == value
+        fmap chainObjectAt
+          (chainIndex doubledSpine (chainPosition doubledSpine value))
+          == Just value
+  assert "ordinal sum has the summed order type"
+    (chainOrderType doubledSpine == addOrdinals omega omega)
   assert "ordinal sum lookup inverts both summands"
     (all roundTrips (leftValues <> rightValues))
+  assert "ordinal sum rejects its upper bound"
+    (isNothing (chainIndex doubledSpine (chainOrderType doubledSpine)))
 
 halve :: Consolidation Natural Natural
 halve =

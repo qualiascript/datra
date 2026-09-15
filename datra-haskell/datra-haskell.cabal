@@ -111,9 +111,11 @@ library
         Expedition.Internal
         DataTransformationMap.Internal
         Chain.Internal
+        Chain.LiquidInternal
         Consolidation.Internal
         Consolidation.LiquidInternal
         DatraOrdinal.Internal
+        DatraOrdinal.LiquidInternal
         DomanialInsertion.Internal
         DomanialInsertion.LiquidInternal
         Dominion.Internal

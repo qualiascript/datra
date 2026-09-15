@@ -2,6 +2,7 @@
 #include "../../../LiquidPlugin.h"
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--prune-unsorted" @-}
 
 -- | Hidden chain representation and proof-bearing operations.
 module Chain.Internal
@@ -11,6 +12,7 @@ module Chain.Internal
   , positionMatches
   , chainOrderType
   , chainPosition
+  , chainLookup
   , chainIndex
   , chainIndexOf
   , chainObjectAt
@@ -20,7 +22,6 @@ module Chain.Internal
   , chain
   , compareInChain
   , hasArrow
-  , sumChains
   , spine
   ) where
 
@@ -28,10 +29,10 @@ import Numeric.Natural (Natural)
 
 import DatraOrdinal.Internal
   ( Ordinal(..)
-  , addOrdinals
   , canonicalCoefficients
-  , subtractOrdinal
+  , ordinalLT
   )
+import DatraOrdinal.LiquidInternal (ordinalLongNotBelowOmega)
 
 {-@ embed Natural as int @-}
 {-@ invariant { value:Natural | value >= 0 } @-}
@@ -41,39 +42,16 @@ import DatraOrdinal.Internal
 chainOrdinalLT
   :: left:Ordinal
   -> right:Ordinal
-  -> { resultValue:Bool |
-       resultValue == chainCoefficientsLT
-         (coefficients left) (coefficients right)
-       && (right == spineOmega
-         => (resultValue <=> chainListLength (coefficients left) < 2)) }
+  -> { resultValue:Bool | resultValue == ordinalLT left right }
 @-}
 chainOrdinalLT :: Ordinal -> Ordinal -> Bool
-chainOrdinalLT left right =
-  chainCoefficientsLT (coefficients left) (coefficients right)
-
-{-@ reflect chainCoefficientsLT @-}
-chainCoefficientsLT :: [Natural] -> [Natural] -> Bool
-chainCoefficientsLT left [1, 0] =
-  chainListLength left < 2
-chainCoefficientsLT left right =
-  chainListLength left < chainListLength right
-    || chainListLength left == chainListLength right
-      && chainLexicographicLT left right
+chainOrdinalLT left right = ordinalLT left right
 
 {-@ reflect chainListLength @-}
 {-@ chainListLength :: values:[a] -> { lengthValue:Int | lengthValue == len values } @-}
 chainListLength :: [a] -> Int
 chainListLength [] = 0
 chainListLength (_ : values) = 1 + chainListLength values
-
-{-@ reflect chainLexicographicLT @-}
-chainLexicographicLT :: [Natural] -> [Natural] -> Bool
-chainLexicographicLT [] _ = False
-chainLexicographicLT _ [] = False
-chainLexicographicLT (left : lefts) (right : rights)
-  | left < right = True
-  | left > right = False
-  | otherwise = chainLexicographicLT lefts rights
 
 {-@ reflect positionMatches @-}
 positionMatches :: (object -> Ordinal) -> Ordinal -> Maybe object -> Bool
@@ -205,50 +183,6 @@ hasArrow :: Chain object -> object -> object -> Bool
 hasArrow valueChain source target =
   compareInChain valueChain source target /= GT
 
--- Filling this hole requires Liquid-checked laws for the concrete
--- Cantor-coefficient implementation in 'DatraOrdinal.Internal'.  Writing
--- A = chainOrderType left and B = chainOrderType right, prove:
---
---   * x < A implies x < A + B;
---   * y < B implies A + y < A + B (strict monotonicity on the right);
---   * A + x = A + y implies x = y (left cancellation), and no x < A can
---     equal A + y, so the Left and Right images are disjoint; and
---   * whenever A <= z < A + B, 'subtractOrdinal A z' returns some y with
---     y < B and A + y = z (subtraction decomposition).
---
--- Those lemmas must be proved through canonicalization, coefficient-list
--- comparison, splitting, addition, and subtraction, then used in the three
--- proof fields below instead of 'const ()' and the trivial lambda.  There is
--- also a LiquidHaskell 0.9.14.1.x/GHC 9.14 integration bug: exposing the
--- 'Either' cases normally creates free internal Left/Right selector symbols.
--- '--prune-unsorted' works around that bug and exposes the genuine ordinal
--- proof obligations; the bug is therefore friction, not the mathematical
--- blocker.  Runtime construction and round-trip tests remain intact.
-{-@ assume sumChains :: Chain left -> Chain right -> Chain (Either left right) @-}
-{-@ ignore sumChains @-}
-sumChains :: Chain left -> Chain right -> Chain (Either left right)
-sumChains left right =
-  Chain
-    { chainOrderType =
-        addOrdinals (chainOrderType left) (chainOrderType right)
-    , chainPosition = positionInSum
-    , chainLookup = objectInSum
-    , chainPositionBelow = const ()
-    , chainPositionInjective = \_ _ -> ()
-    , chainPositionSurjective = const ()
-    }
-  where
-    positionInSum (Left object) = chainPosition left object
-    positionInSum (Right object) =
-      addOrdinals (chainOrderType left) (chainPosition right object)
-
-    objectInSum position
-      | chainOrdinalLT position (chainOrderType left) =
-          Left . chainObjectAt <$> chainIndex left position
-      | otherwise =
-          subtractOrdinal (chainOrderType left) position
-            >>= fmap (Right . chainObjectAt) . chainIndex right
-
 spine :: Chain Natural
 spine =
   Chain
@@ -350,9 +284,7 @@ spineLongNotBelow
 {-@ ple spineLongNotBelow @-}
 spineLongNotBelow :: [Natural] -> ()
 spineLongNotBelow coefficients@(_ : _ : _) =
-  case chainOrdinalLT (Ordinal coefficients) spineOmega of
-    False -> ()
-    True -> ()
+  ordinalLongNotBelowOmega coefficients
 spineLongNotBelow _ = ()
 
 {-@
