@@ -29,6 +29,7 @@ import DatraOrdinal
 import DomanialInclusion
 import DomanialInsertion
 import Dominion
+import Ellipsis
 import Expedition
 import FiniteDominion
 import Folio
@@ -52,6 +53,7 @@ import Data.Void (Void, absurd)
 
 main :: IO ()
 main = do
+  testEllipsis
   testFiniteDominion
   testIdentityInsertion
   testSpine
@@ -86,6 +88,18 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+testEllipsis :: IO ()
+testEllipsis = do
+  let ranks :: [Natural]
+      ranks = [0, 1, 2, 1000000]
+      terminals = map Terminal ranks
+  assert "ellipsis contains a terminal at every natural rank"
+    (map (fmap terminalRank . unrank ellipsis) ranks == map Just ranks)
+  assert "ellipsis ranks and unranks every terminal"
+    (all
+      (\terminal -> unrank ellipsis (rank ellipsis terminal) == Just terminal)
+      terminals)
 
 testEmptyAtlas :: IO ()
 testEmptyAtlas =

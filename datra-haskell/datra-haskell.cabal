@@ -30,6 +30,7 @@ library
     import:           warnings
     exposed-modules:
         Dominion
+        Ellipsis
         FiniteDominion
         DomanialInsertion
         DatraOrdinal
@@ -119,6 +120,7 @@ library
         DomanialInsertion.Internal
         DomanialInsertion.LiquidInternal
         Dominion.Internal
+        Ellipsis.Internal
         FiniteDominion.Internal
         Folio.Internal
         Folio.LiquidInternal
@@ -170,6 +172,7 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
+        src/DatraTypes/Ellipsis
         src/DatraTypes/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
