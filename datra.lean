@@ -3882,19 +3882,6 @@ from stable atlas transversals to all atlas morphisms. -/
 noncomputable def StaDaTrav.forgetToDaTra : StaDaTrav ⥤ DaTra.{3} :=
   StaDaTrav.restrictToStableAtlases ⋙ StaAtlTravPSh.extendToDaTra
 
-/-%%
-\begin{definition}[Data Transformation Maps]
-The \textbf{Category of Data Transformation Maps}, denoted
-$\mathsf{DaTraMap}$, is the full subcategory of DaTra Sets all of whose
-navigations are expeditions.
-\end{definition}
-%%-/
-
-def IsDaTraMap : ObjectProperty DaTra := fun D =>
-  ∀ nav : Navigation D, IsAtlasMap nav.A
-
-abbrev DaTraMap := IsDaTraMap.FullSubcategory
-
 theorem staDaTravInc_essImage (F : StaDaTravPresheaf) :
     StaDaTravInc.essImage F :=
   ⟨⟨F, trivial⟩, ⟨Iso.refl _⟩⟩
