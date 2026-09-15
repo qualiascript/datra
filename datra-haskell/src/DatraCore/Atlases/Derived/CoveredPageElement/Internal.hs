@@ -33,11 +33,13 @@ import Atlas
   , atlasCardinality
   , atlasDataAt
   , atlasOriginCell
-  , atlasTerritory
-  , atlasTerritoryChain
-  , withAtlasCellDominion
   , mapAtlasData
   , normalizeAtlasElement
+  )
+import AtlasExtent (withAtlasCellDominion)
+import AtlasTerritory
+  ( atlasTerritory
+  , atlasTerritoryChain
   )
 import DomanialInsertion (applyInsertion, preimage)
 import Chain (chainIndex)

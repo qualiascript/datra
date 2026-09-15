@@ -3,11 +3,13 @@
 module Main (main) where
 
 import Atlas
+import AtlasExtent
 import CoveredPageElement
 import AtlasMap
 import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
+import AtlasTerritory
 import Chain
 import Charter
 import Coalition
