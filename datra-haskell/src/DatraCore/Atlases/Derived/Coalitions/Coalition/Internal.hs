@@ -30,8 +30,8 @@ import Atlas
   , withAtlasMorphismImage
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCoverage.Internal
-  ( AtlasCoveredDatum (..)
+import CoveredPageElement.Internal
+  ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness (..)
   , atlasCoverageAt
   , atlasCoverageWitness
@@ -60,15 +60,15 @@ import StableAtlasTransversal
   ( StableAtlasTransversal
   , composeStableAtlasTransversals
   , identityStableAtlasTransversal
-  , mapStableAtlasTransversalCoveredDatum
+  , mapStableAtlasTransversalCoveredPageElement
   , mapStableAtlasTransversalData
   , stableAtlasTransversalPreimage
   )
 
 -- | An element of an Atlas coalition.
 --
--- Like 'AtlasCoveredDatum', this is a dependent datum paired with the witness
--- that it is retained by Charter.  Carrying the value and witness together
+-- Like 'AtlasCoveredPageElement', this is a dependent page element paired with
+-- its datum and the witness that it is retained by Charter. Carrying the value
 -- makes elimination total: no unchecked rank ever has to be decoded.
 type role CoalitionElement nominal
 data CoalitionElement atlasObject where
@@ -152,7 +152,7 @@ coalitionElementCoverageAt valueAtlas target
         ()
 
 -- | The extent of the charted Atlas.  Its carrier consists precisely of the
--- covered data in the original Atlas's origin cell.
+-- covered page elements in the original Atlas's origin cell.
 coalition
   :: Atlas atlasScope scope cellData origin final
   -> Dominion
@@ -197,10 +197,10 @@ stableCoalitionMap
   where
     mapElement
       (CoalitionElement sourceOrigin sourceDatum sourceCoverage) =
-        case mapStableAtlasTransversalCoveredDatum stable
-          (AtlasCoveredDatum
+        case mapStableAtlasTransversalCoveredPageElement stable
+          (AtlasCoveredPageElement
             sourceOrigin sourceDatum sourceCoverage) of
-          AtlasCoveredDatum mappedOrigin mappedDatum targetCoverage ->
+          AtlasCoveredPageElement mappedOrigin mappedDatum targetCoverage ->
             withPageElement
               (atlasOriginCell targetAtlas) $ \targetOrigin ->
                 let toCanonicalOrigin =

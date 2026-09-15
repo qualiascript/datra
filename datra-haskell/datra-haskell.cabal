@@ -39,7 +39,7 @@ library
         PageElements
         Pagination
         Atlas
-        AtlasCoverage
+        CoveredPageElement
         AtlasMap
         AtlasTransposal
         OrderedAtlasTransposal
@@ -63,7 +63,7 @@ library
         Atlas.Derived.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
-        AtlasCoverage.Internal
+        CoveredPageElement.Internal
         AtlasMap.Internal
         AtlasTransposal.Internal
         OrderedAtlasTransposal.Internal
@@ -111,7 +111,7 @@ library
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion
         src/DatraCore/Atlases/Derived
-        src/DatraCore/Atlases/Derived/AtlasCoverage
+        src/DatraCore/Atlases/Derived/CoveredPageElement
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
         src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap

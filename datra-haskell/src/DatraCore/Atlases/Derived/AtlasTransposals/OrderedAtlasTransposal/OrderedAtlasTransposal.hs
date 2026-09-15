@@ -2,7 +2,7 @@
 --
 -- This is the first restriction used to build Atlas transversals: it adds the
 -- ordering clause from Lean's @IsTransversal@, but intentionally does not add
--- the covered-data clause.
+-- the covered-page-element clause.
 module OrderedAtlasTransposal
   ( OrderedAtlasTransposal
   , orderedAtlasTransposal

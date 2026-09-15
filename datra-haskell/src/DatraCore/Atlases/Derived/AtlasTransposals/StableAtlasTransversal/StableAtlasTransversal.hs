@@ -19,7 +19,7 @@ module StableAtlasTransversal
   , mapStableAtlasTransversalElement
   , mapStableAtlasTransversalArrow
   , mapStableAtlasTransversalData
-  , mapStableAtlasTransversalCoveredDatum
+  , mapStableAtlasTransversalCoveredPageElement
   ) where
 
 import StableAtlasTransversal.Internal
@@ -27,7 +27,7 @@ import StableAtlasTransversal.Internal
   , composeStableAtlasTransversals
   , identityStableAtlasTransversal
   , mapStableAtlasTransversalArrow
-  , mapStableAtlasTransversalCoveredDatum
+  , mapStableAtlasTransversalCoveredPageElement
   , mapStableAtlasTransversalData
   , mapStableAtlasTransversalElement
   , mapStableAtlasTransversalObject

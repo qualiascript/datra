@@ -25,7 +25,7 @@ module StableAtlasTransversal.Internal
   , mapStableAtlasTransversalElement
   , mapStableAtlasTransversalArrow
   , mapStableAtlasTransversalData
-  , mapStableAtlasTransversalCoveredDatum
+  , mapStableAtlasTransversalCoveredPageElement
   , stableOriginPreserved
   ) where
 
@@ -46,7 +46,7 @@ import AtlasTransposal
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
-import AtlasCoverage (AtlasCoveredDatum)
+import CoveredPageElement (AtlasCoveredPageElement)
 import AtlasTransversal
   ( AtlasTransversal
   , atlasTransversalHom
@@ -60,7 +60,7 @@ import AtlasTransversal
   , composeAtlasTransversals
   , identityAtlasTransversal
   , mapAtlasTransversalArrow
-  , mapAtlasTransversalCoveredDatum
+  , mapAtlasTransversalCoveredPageElement
   , mapAtlasTransversalData
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject
@@ -313,8 +313,8 @@ stableAtlasTransversalPreservesOrder stable =
 
 stableAtlasTransversalPreservesCoverage
   :: StableAtlasTransversal source target
-  -> AtlasCoveredDatum source
-  -> AtlasCoveredDatum target
+  -> AtlasCoveredPageElement source
+  -> AtlasCoveredPageElement target
 stableAtlasTransversalPreservesCoverage stable =
   atlasTransversalPreservesCoverage (stableAtlasTransversalTransversal stable)
 
@@ -364,9 +364,9 @@ mapStableAtlasTransversalData sourceWitness stable =
     sourceWitness
     (stableAtlasTransversalTransversal stable)
 
-mapStableAtlasTransversalCoveredDatum
+mapStableAtlasTransversalCoveredPageElement
   :: StableAtlasTransversal source target
-  -> AtlasCoveredDatum source
-  -> AtlasCoveredDatum target
-mapStableAtlasTransversalCoveredDatum stable =
-  mapAtlasTransversalCoveredDatum (stableAtlasTransversalTransversal stable)
+  -> AtlasCoveredPageElement source
+  -> AtlasCoveredPageElement target
+mapStableAtlasTransversalCoveredPageElement stable =
+  mapAtlasTransversalCoveredPageElement (stableAtlasTransversalTransversal stable)

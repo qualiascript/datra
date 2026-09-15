@@ -1,4 +1,4 @@
--- | Atlas transversals: ordered transposals that preserve covered data.
+-- | Atlas transversals: ordered transposals that preserve covered page elements.
 --
 -- This completes the two restrictions in Lean's @IsTransversal@: injectivity
 -- and strict-order preservation come from 'OrderedAtlasTransposal', while this
@@ -10,7 +10,7 @@ module AtlasTransversal
   , atlasTransversalTransposal
   , atlasTransversalHom
   , atlasTransversalPreservesCoverage
-  , mapAtlasTransversalCoveredDatum
+  , mapAtlasTransversalCoveredPageElement
   , identityAtlasTransversal
   , composeAtlasTransversals
   , mapAtlasTransversalObject
@@ -37,7 +37,7 @@ import AtlasTransversal.Internal
   , composeAtlasTransversals
   , identityAtlasTransversal
   , mapAtlasTransversalArrow
-  , mapAtlasTransversalCoveredDatum
+  , mapAtlasTransversalCoveredPageElement
   , mapAtlasTransversalData
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject

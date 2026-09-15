@@ -9,9 +9,9 @@
 {-@ embed Natural as int @-}
 
 -- | Hidden implementation of coverage by final Atlas regions.
-module AtlasCoverage.Internal
+module CoveredPageElement.Internal
   ( AtlasCoverageWitness (..)
-  , AtlasCoveredDatum (..)
+  , AtlasCoveredPageElement (..)
   , atlasCoverageWitness
   , coverageWitnessCovers
   , coverageFinalPage
@@ -20,9 +20,9 @@ module AtlasCoverage.Internal
   , findAtlasCoverage
   , findAtlasCoverageRank
   , atlasCoverageAt
-  , atlasCoveredDatumAt
-  , atlasCoveredDatum
-  , withAtlasCoveredDatum
+  , atlasCoveredPageElementAt
+  , atlasCoveredPageElement
+  , withAtlasCoveredPageElement
   ) where
 
 import Atlas
@@ -64,14 +64,15 @@ data AtlasCoverageWitness atlasObject where
     -> Natural
     -> AtlasCoverageWitness atlasObject
 
--- | A datum paired with evidence that it is covered by a final region.
-type role AtlasCoveredDatum nominal
-data AtlasCoveredDatum atlasObject where
-  AtlasCoveredDatum
+-- | A page element paired with its datum and evidence that it is covered by a
+-- final region.
+type role AtlasCoveredPageElement nominal
+data AtlasCoveredPageElement atlasObject where
+  AtlasCoveredPageElement
     :: PageElement (AtlasObjectPaginationScope atlasObject) object
     -> AtlasObjectCellData atlasObject object
     -> AtlasCoverageWitness atlasObject
-    -> AtlasCoveredDatum atlasObject
+    -> AtlasCoveredPageElement atlasObject
 
 -- | Rank the image of a datum in the Atlas extent. Dominion ranks are
 -- injective, so equality of these ranks is equality of the origin images.
@@ -173,9 +174,9 @@ atlasCoverageWitness valueAtlas _ _ region regionDatum _ =
       (coverageNormalize valueAtlas region)
       regionDatum)
 
--- | Construct a covered datum using the checked introduction rule.
+-- | Construct a covered page element using the checked introduction rule.
 {-@
-atlasCoveredDatum
+atlasCoveredPageElement
   :: valueAtlas:Atlas atlasScope scope cellData origin final
   -> source:PageElement scope object
   -> sourceDatum:cellData object
@@ -192,41 +193,42 @@ atlasCoveredDatum
                valueAtlas
                (coverageNormalize valueAtlas region)
                regionDatum }
-  -> AtlasCoveredDatum (AtlasObject atlasScope scope cellData)
+  -> AtlasCoveredPageElement (AtlasObject atlasScope scope cellData)
 @-}
-atlasCoveredDatum
+atlasCoveredPageElement
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> cellData object
   -> PageElement scope regionObject
   -> cellData regionObject
   -> ()
-  -> AtlasCoveredDatum
+  -> AtlasCoveredPageElement
        (AtlasObject atlasScope scope cellData)
-atlasCoveredDatum
+atlasCoveredPageElement
   valueAtlas source sourceDatum region regionDatum conditions =
-    AtlasCoveredDatum
+    AtlasCoveredPageElement
       (coverageNormalize valueAtlas source)
       sourceDatum
       (atlasCoverageWitness
         valueAtlas source sourceDatum region regionDatum conditions)
 
--- | Eliminate a covered datum while retaining its dependent cell-data type.
-withAtlasCoveredDatum
-  :: AtlasCoveredDatum atlasObject
+-- | Eliminate a covered page element while retaining its dependent cell-data
+-- type.
+withAtlasCoveredPageElement
+  :: AtlasCoveredPageElement atlasObject
   -> (forall object.
         PageElement (AtlasObjectPaginationScope atlasObject) object
         -> AtlasObjectCellData atlasObject object
         -> result)
   -> result
-withAtlasCoveredDatum
-  (AtlasCoveredDatum occurrence datum _)
+withAtlasCoveredPageElement
+  (AtlasCoveredPageElement occurrence datum _)
   useCovered = useCovered occurrence datum
 
 -- | Search the countable final territory for a coverage witness. This is the
 -- executable counterpart needed because Haskell's 'Dominion' carries an
 -- @unrank@ operation whereas Lean's dominions only require a rank embedding.
--- The search terminates exactly on covered data, which is the only domain on
+-- The search terminates exactly on covered page elements, the only domain on
 -- which Charter calls it.
 findAtlasCoverage
   :: Atlas atlasScope scope cellData origin final
@@ -250,7 +252,7 @@ findAtlasCoverageRank valueAtlas source sourceDatum = go 0
     sourceRank = rank sourceDominion sourceDatum
 
     go candidate =
-      case atlasCoveredDatumAt valueAtlas source candidate of
+      case atlasCoveredPageElementAt valueAtlas source candidate of
         Just candidateDatum
           | rank sourceDominion candidateDatum == sourceRank -> candidate
         _ -> go (candidate + 1)
@@ -258,12 +260,12 @@ findAtlasCoverageRank valueAtlas source sourceDatum = go 0
 -- | Decode one finite coverage candidate. A final-region datum is transported
 -- to the origin and pulled back along the selected source cell. Unlike a
 -- membership filter, this operation terminates for every index.
-atlasCoveredDatumAt
+atlasCoveredPageElementAt
   :: Atlas atlasScope scope cellData origin final
   -> PageElement scope object
   -> Natural
   -> Maybe (cellData object)
-atlasCoveredDatumAt valueAtlas source candidate =
+atlasCoveredPageElementAt valueAtlas source candidate =
   fst <$> atlasCoverageAt valueAtlas source candidate
 
 -- | Decode one coverage candidate together with the evidence that made it a

@@ -54,8 +54,8 @@ import Atlas.Internal
   , atlasWithScope
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
-import AtlasCoverage.Internal
-  ( AtlasCoveredDatum (..)
+import CoveredPageElement.Internal
+  ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness
   , atlasCoverageWitness
   , findAtlasCoverage
@@ -353,7 +353,7 @@ coaToDomInc sourceDominion (AtlasWitness targetAtlas) insertion =
             ordered
             (\covered targetOccurrence _ ->
               case covered of
-                AtlasCoveredDatum _ sourceDatum _ ->
+                AtlasCoveredPageElement _ sourceDatum _ ->
                   coalitionElementCoverageAt
                     targetAtlas
                     targetOccurrence

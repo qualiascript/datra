@@ -17,7 +17,7 @@ module AtlasTransversal.Internal
   , atlasTransversalTransposal
   , atlasTransversalHom
   , atlasTransversalPreservesCoverage
-  , mapAtlasTransversalCoveredDatum
+  , mapAtlasTransversalCoveredPageElement
   , identityAtlasTransversal
   , composeAtlasTransversals
   , mapAtlasTransversalObject
@@ -41,8 +41,8 @@ import Atlas
   , atlasWitness
   , withAtlasMorphismImage
   )
-import AtlasCoverage.Internal
-  ( AtlasCoveredDatum (..)
+import CoveredPageElement.Internal
+  ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness
   , coverageWitnessCovers
   )
@@ -87,7 +87,7 @@ data AtlasTransversal source target where
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
          (AtlasObject targetAtlasScope targetScope targetCellData)
     -> (forall targetObject.
-         AtlasCoveredDatum
+         AtlasCoveredPageElement
            (AtlasObject sourceAtlasScope sourceScope sourceCellData)
          -> PageElement targetScope targetObject
          -> targetCellData targetObject
@@ -103,9 +103,9 @@ data AtlasTransversal source target where
     -> AtlasTransversal source middle
     -> AtlasTransversal source target
 
--- | Add the covered-data clause to an ordered Atlas transposal.
+-- | Add the covered-page-element clause to an ordered Atlas transposal.
 --
--- The callback receives a covered source datum followed by the exact target
+-- The callback receives a covered source page element followed by the target
 -- element and datum computed by the underlying Atlas morphism. Its result is
 -- statically required to witness coverage of those exact values.
 {-@
@@ -118,7 +118,7 @@ atlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> preservesCoverage:(forall targetObject.
-       AtlasCoveredDatum
+       AtlasCoveredPageElement
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        -> targetOccurrence:PageElement targetScope targetObject
        -> targetDatum:targetCellData targetObject
@@ -139,7 +139,7 @@ atlasTransversal
        (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        (AtlasObject targetAtlasScope targetScope targetCellData)
   -> (forall targetObject.
-       AtlasCoveredDatum
+       AtlasCoveredPageElement
          (AtlasObject sourceAtlasScope sourceScope sourceCellData)
        -> PageElement targetScope targetObject
        -> targetCellData targetObject
@@ -178,44 +178,44 @@ atlasTransversalHom
 atlasTransversalHom =
   orderedAtlasTransposalHom . atlasTransversalOrderedTransposal
 
--- | Map a covered datum and derive coverage of its exact target image. This
+-- | Map a covered page element and derive coverage of its exact target image. This
 -- is total: malformed preservation callbacks are rejected when the primitive
 -- transversal is compiled, rather than producing a runtime failure here.
-mapAtlasTransversalCoveredDatum
+mapAtlasTransversalCoveredPageElement
   :: AtlasTransversal source target
-  -> AtlasCoveredDatum source
-  -> AtlasCoveredDatum target
-mapAtlasTransversalCoveredDatum IdentityAtlasTransversal covered =
+  -> AtlasCoveredPageElement source
+  -> AtlasCoveredPageElement target
+mapAtlasTransversalCoveredPageElement IdentityAtlasTransversal covered =
   covered
-mapAtlasTransversalCoveredDatum
+mapAtlasTransversalCoveredPageElement
   (CompositeAtlasTransversal second first)
   covered =
-    mapAtlasTransversalCoveredDatum second
-      (mapAtlasTransversalCoveredDatum first covered)
-mapAtlasTransversalCoveredDatum
+    mapAtlasTransversalCoveredPageElement second
+      (mapAtlasTransversalCoveredPageElement first covered)
+mapAtlasTransversalCoveredPageElement
   (PrimitiveAtlasTransversal sourceAtlas _ ordered preservesCoverage)
-  covered@(AtlasCoveredDatum sourceOccurrence sourceDatum _) =
+  covered@(AtlasCoveredPageElement sourceOccurrence sourceDatum _) =
     withAtlasMorphismImage
       (mapOrderedAtlasTransposalData
         (atlasWitness sourceAtlas)
         ordered
         sourceOccurrence) $ \targetOccurrence insertion ->
           let targetDatum = applyInsertion insertion sourceDatum
-          in AtlasCoveredDatum
+          in AtlasCoveredPageElement
               targetOccurrence
               targetDatum
               (preservesCoverage covered targetOccurrence targetDatum)
 
--- | The covered-data preservation condition of an Atlas transversal.
+-- | The covered-page-element preservation condition of an Atlas transversal.
 -- This is named separately from the operational mapper so downstream
 -- restrictions can refer directly to the condition they inherit.
 atlasTransversalPreservesCoverage
   :: AtlasTransversal source target
-  -> AtlasCoveredDatum source
-  -> AtlasCoveredDatum target
-atlasTransversalPreservesCoverage = mapAtlasTransversalCoveredDatum
+  -> AtlasCoveredPageElement source
+  -> AtlasCoveredPageElement target
+atlasTransversalPreservesCoverage = mapAtlasTransversalCoveredPageElement
 
--- | The identity transversal preserves every covered datum unchanged.
+-- | The identity transversal preserves every covered page element unchanged.
 identityAtlasTransversal :: AtlasTransversal object object
 identityAtlasTransversal = IdentityAtlasTransversal
 

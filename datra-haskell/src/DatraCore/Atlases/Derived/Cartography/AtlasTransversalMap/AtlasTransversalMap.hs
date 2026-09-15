@@ -15,7 +15,7 @@ module AtlasTransversalMap
   , atlasTransversalMapTransposal
   , atlasTransversalMapHom
   , atlasTransversalMapPreservesCoverage
-  , mapAtlasTransversalMapCoveredDatum
+  , mapAtlasTransversalMapCoveredPageElement
   , mapAtlasTransversalMapObject
   , atlasTransversalMapPreimage
   , atlasTransversalMapLeftInverse
@@ -50,7 +50,7 @@ import AtlasTransversalMap.Internal
   , composeAtlasTransversalMaps
   , identityAtlasTransversalMap
   , mapAtlasTransversalMapArrow
-  , mapAtlasTransversalMapCoveredDatum
+  , mapAtlasTransversalMapCoveredPageElement
   , mapAtlasTransversalMapData
   , mapAtlasTransversalMapElement
   , mapAtlasTransversalMapObject

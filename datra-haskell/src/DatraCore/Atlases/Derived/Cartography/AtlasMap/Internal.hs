@@ -54,8 +54,8 @@ import Atlas
   , mapAtlasData
   , materializeAtlasHom
   )
-import AtlasCoverage.Internal
-  ( AtlasCoveredDatum (..)
+import CoveredPageElement.Internal
+  ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness
   , coverageNormalize
   , coverageWitnessCovers
@@ -136,7 +136,7 @@ withAtlasMapExtent
          extentObject
        -> Dominion (AtlasObjectCellData atlasObject extentObject)
        -> (AtlasObjectCellData atlasObject extentObject
-           -> AtlasCoveredDatum atlasObject)
+           -> AtlasCoveredPageElement atlasObject)
        -> result)
   -> result
 withAtlasMapExtent
@@ -145,7 +145,7 @@ withAtlasMapExtent
     useExtent
       extent
       (atlasDataAt valueAtlas extent)
-      (\datum -> AtlasCoveredDatum extent datum (coversExtent datum))
+      (\datum -> AtlasCoveredPageElement extent datum (coversExtent datum))
 
 -- | Extend the defining extent-coverage witness to any Atlas cell. The datum
 -- is first transported to the origin, exactly as in Lean's

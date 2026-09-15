@@ -15,7 +15,7 @@ module AtlasTransversalMap.Internal
   , atlasTransversalMapTransposal
   , atlasTransversalMapHom
   , atlasTransversalMapPreservesCoverage
-  , mapAtlasTransversalMapCoveredDatum
+  , mapAtlasTransversalMapCoveredPageElement
   , mapAtlasTransversalMapObject
   , atlasTransversalMapPreimage
   , atlasTransversalMapLeftInverse
@@ -37,7 +37,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   )
-import AtlasCoverage (AtlasCoveredDatum)
+import CoveredPageElement (AtlasCoveredPageElement)
 import AtlasMap
   ( AtlasMap
   , AtlasMapHom
@@ -58,7 +58,7 @@ import AtlasTransversal
   , composeAtlasTransversals
   , identityAtlasTransversal
   , mapAtlasTransversalArrow
-  , mapAtlasTransversalCoveredDatum
+  , mapAtlasTransversalCoveredPageElement
   , mapAtlasTransversalData
   , mapAtlasTransversalElement
   , mapAtlasTransversalObject
@@ -145,19 +145,19 @@ atlasTransversalMapHom
 atlasTransversalMapHom =
   atlasTransversalHom . atlasTransversalMapTransversal
 
--- | Map a covered datum using the inherited coverage-preserving action.
-mapAtlasTransversalMapCoveredDatum
+-- | Map a covered page element using the inherited coverage-preserving action.
+mapAtlasTransversalMapCoveredPageElement
   :: AtlasTransversalMap source target
-  -> AtlasCoveredDatum source
-  -> AtlasCoveredDatum target
-mapAtlasTransversalMapCoveredDatum =
-  mapAtlasTransversalCoveredDatum . atlasTransversalMapTransversal
+  -> AtlasCoveredPageElement source
+  -> AtlasCoveredPageElement target
+mapAtlasTransversalMapCoveredPageElement =
+  mapAtlasTransversalCoveredPageElement . atlasTransversalMapTransversal
 
--- | The inherited covered-data preservation condition.
+-- | The inherited covered-page-element preservation condition.
 atlasTransversalMapPreservesCoverage
   :: AtlasTransversalMap source target
-  -> AtlasCoveredDatum source
-  -> AtlasCoveredDatum target
+  -> AtlasCoveredPageElement source
+  -> AtlasCoveredPageElement target
 atlasTransversalMapPreservesCoverage =
   atlasTransversalPreservesCoverage . atlasTransversalMapTransversal
 

@@ -3,7 +3,7 @@
 module Main (main) where
 
 import Atlas
-import AtlasCoverage
+import CoveredPageElement
 import AtlasMap
 import AtlasTransposal
 import AtlasTransversal
@@ -973,10 +973,10 @@ testAtlasMap =
                   ()
             identityMapHom = identityAtlasMapHom
         in withAtlasMapExtent valueMap $ \extent extentDominion covers -> do
-          withAtlasCoveredDatum (covers (TestCellData 7)) $ \covered datum ->
+          withAtlasCoveredPageElement (covers (TestCellData 7)) $ \coveredElement datum ->
             assert "Atlas maps cover every extent datum"
-              ( pageElementPage covered == 0
-                && rank (atlasDataAt valueAtlas covered) datum == 7
+              ( pageElementPage coveredElement == 0
+                && rank (atlasDataAt valueAtlas coveredElement) datum == 7
                 && rank extentDominion (TestCellData 7) == 7
               )
           withPageElement
@@ -1023,11 +1023,11 @@ testAtlasMap =
               extent) $ \mapped ->
                 assert "Atlas transversal maps inherit transversal actions"
                   (pageElementPage mapped == 0)
-          withAtlasCoveredDatum
-            (mapAtlasTransversalMapCoveredDatum
+          withAtlasCoveredPageElement
+            (mapAtlasTransversalMapCoveredPageElement
               composedTransversalMap
               (covers (TestCellData 11))) $ \mapped datum ->
-                assert "Atlas transversal maps preserve covered data"
+                assert "Atlas transversal maps preserve covered page elements"
                   ( pageElementPage mapped == 0
                     && rank (atlasDataAt valueAtlas mapped) datum == 11
                   )
@@ -1177,7 +1177,7 @@ testCharter =
                     chartedCellDataValue candidate
             , candidateValue == 7
             ] of
-            [] -> fail "Charter lost a covered extent datum"
+            [] -> fail "Charter lost a covered extent page element"
             charted : _ -> do
               let TestCellData value = chartedCellDataValue charted
               assert "Charter retains covered cell data" (value == 7)
@@ -1188,10 +1188,10 @@ testCharter =
                         chartedCellDataValue roundTripped
                   in assert "charted Dominion rank round-trips"
                       (roundTrippedValue == 7)
-              withAtlasCoveredDatum (covers charted) $ \covered datum ->
+              withAtlasCoveredPageElement (covers charted) $ \coveredElement datum ->
                 let TestCellData coveredValue = chartedCellDataValue datum
                 in assert "charted objects are Atlas maps"
-                    (pageElementPage covered == 0 && coveredValue == 7)
+                    (pageElementPage coveredElement == 0 && coveredValue == 7)
               withAtlasMorphismImage
                 (mapAtlasTransversalData
                   (atlasWitness (chartAtlas valueAtlas))
@@ -1207,7 +1207,7 @@ testCharter =
                     let TestCellData mappedValue =
                           chartedCellDataValue
                             (applyInsertion component charted)
-                    in assert "the Charter functor maps covered data"
+                    in assert "the Charter functor maps covered page elements"
                         (mappedValue == 7)
               withAtlasMorphismImage
                 (mapAtlasTransversalMapData
@@ -1314,7 +1314,7 @@ testAtlasTransversal =
                             ())
                     composed = transversal Category.. transversal
                     covered =
-                      atlasCoveredDatum
+                      atlasCoveredPageElement
                         valueAtlas
                         region
                         (TestCellData 7)
@@ -1322,9 +1322,9 @@ testAtlasTransversal =
                         (TestCellData 7)
                         ()
                     mappedCovered =
-                      mapAtlasTransversalCoveredDatum composed covered
-                withAtlasCoveredDatum mappedCovered $ \mapped datum ->
-                  assert "transversals preserve covered final-region data"
+                      mapAtlasTransversalCoveredPageElement composed covered
+                withAtlasCoveredPageElement mappedCovered $ \mapped datum ->
+                  assert "transversals preserve covered final-region page elements"
                     ( pageElementPage mapped == 2
                       && rank (atlasDataAt valueAtlas mapped) datum == 9
                     )
@@ -1437,7 +1437,7 @@ testCoalition =
           , Just candidate <- [unrank valueCoalition index]
           , coalitionElementRank candidate == 7
           ] of
-            [] -> fail "Coalition lost a covered extent datum"
+            [] -> fail "Coalition lost a covered extent page element"
             element : _ -> do
               let decoded =
                     withCoalitionElement element $ \origin datum ->

@@ -70,9 +70,9 @@ import Atlas.Morphism.Internal
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
   )
-import AtlasCoverage.Internal
+import CoveredPageElement.Internal
   ( AtlasCoverageWitness (..)
-  , atlasCoveredDatumAt
+  , atlasCoveredPageElementAt
   , findAtlasCoverage
   , findAtlasCoverageRank
   , atlasCoverageWitness
@@ -157,7 +157,7 @@ chartedDominion valueAtlas occurrence =
       findAtlasCoverageRank valueAtlas occurrence . chartedCellDataValue
 
     chartUnrank =
-      fmap chartedCellData . atlasCoveredDatumAt valueAtlas occurrence
+      fmap chartedCellData . atlasCoveredPageElementAt valueAtlas occurrence
 
     chartRoundTrip _ = ()
 
@@ -180,7 +180,7 @@ chartedInsertion valueAtlas pageArrow =
     leftInverse source =
       insertionLeftInverse original (chartedCellDataValue source)
 
--- | Retain exactly the covered data in every Atlas cell.
+-- | Retain exactly the covered page elements in every Atlas cell.
 chartAtlas
   :: Atlas atlasScope scope cellData origin final
   -> Atlas
