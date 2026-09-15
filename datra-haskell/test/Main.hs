@@ -30,6 +30,7 @@ import DomanialInclusion
 import DomanialInsertion
 import Dominion
 import Ellipsis
+import EllipsisRange
 import Expedition
 import FiniteDominion
 import Folio
@@ -54,6 +55,7 @@ import Data.Void (Void, absurd)
 main :: IO ()
 main = do
   testEllipsis
+  testEllipsisRange
   testFiniteDominion
   testIdentityInsertion
   testSpine
@@ -100,6 +102,73 @@ testEllipsis = do
     (all
       (\terminal -> unrank ellipsis (rank ellipsis terminal) == Just terminal)
       terminals)
+
+testEllipsisRange :: IO ()
+testEllipsisRange = do
+  assert "ellipsis range rejects a zero lower bound"
+    (case ellipsisRange (Just 0) Nothing (const ()) of
+      Nothing -> True
+      Just () -> False)
+  assert "ellipsis range rejects a zero upper bound"
+    (case ellipsisRange Nothing (Just 0) (const ()) of
+      Nothing -> True
+      Just () -> False)
+  assert "ellipsis range rejects equal bounds"
+    (case ellipsisRange (Just 3) (Just 3) (const ()) of
+      Nothing -> True
+      Just () -> False)
+  assert "ellipsis range rejects descending bounds"
+    (case ellipsisRange (Just 5) (Just 2) (const ()) of
+      Nothing -> True
+      Just () -> False)
+  case ellipsisRange (Just 2) (Just 5) $ \valueRange -> do
+    let insertion = ellipsisRangeInsertion valueRange
+        expected = [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing]
+        actual = map
+          (fmap ellipsisRangeElementRank
+            . preimage insertion . Terminal)
+          [0 .. 5]
+    assert "bounded ellipsis range is lower-inclusive and upper-exclusive"
+      (actual == expected)
+    assert "ellipsis range insertion satisfies its left-inverse law"
+      (all
+        (\rankValue ->
+          case ellipsisRangeElement valueRange rankValue of
+            Nothing -> False
+            Just element ->
+              preimage insertion (applyInsertion insertion element)
+                == Just element)
+        [2 .. 4])
+    of
+      Nothing -> fail "valid bounded ellipsis range was rejected"
+      Just checks -> checks
+  case ellipsisRange Nothing (Just 5) $ \valueRange ->
+    map
+      (fmap ellipsisRangeElementRank . ellipsisRangeElement valueRange)
+      [0 .. 5]
+    of
+      Nothing -> fail "valid upper-bounded ellipsis range was rejected"
+      Just actual ->
+        assert "missing lower bound includes all lower terminals"
+          (actual == [Just 0, Just 1, Just 2, Just 3, Just 4, Nothing])
+  case ellipsisRange (Just 2) Nothing $ \valueRange ->
+    map
+      (fmap ellipsisRangeElementRank . ellipsisRangeElement valueRange)
+      [1, 2, 1000000]
+    of
+      Nothing -> fail "valid lower-bounded ellipsis range was rejected"
+      Just actual ->
+        assert "missing upper bound includes every later terminal"
+          (actual == [Nothing, Just 2, Just 1000000])
+  case ellipsisRange Nothing Nothing $ \valueRange ->
+    map
+      (fmap ellipsisRangeElementRank . ellipsisRangeElement valueRange)
+      [0, 1, 1000000]
+    of
+      Nothing -> fail "unbounded ellipsis range was rejected"
+      Just actual ->
+        assert "missing bounds include all terminals"
+          (actual == [Just 0, Just 1, Just 1000000])
 
 testEmptyAtlas :: IO ()
 testEmptyAtlas =
