@@ -30,6 +30,7 @@ import DomanialInclusion
 import DomanialInsertion
 import Dominion
 import Ellipsis
+import EllipsisNatural
 import EllipsisRange
 import Expedition
 import FiniteDominion
@@ -56,6 +57,7 @@ main :: IO ()
 main = do
   testEllipsis
   testEllipsisRange
+  testEllipsisNatural
   testFiniteDominion
   testIdentityInsertion
   testSpine
@@ -105,12 +107,21 @@ testEllipsis = do
 
 testEllipsisRange :: IO ()
 testEllipsisRange = do
-  assert "ellipsis range rejects a zero lower bound"
-    (case ellipsisRange (Just 0) Nothing (const ()) of
+  case ellipsisRange (Just 0) Nothing $ \valueRange ->
+    map
+      (fmap ellipsisRangeElementRank . ellipsisRangeElement valueRange)
+      [0, 1]
+    of
+      Nothing -> fail "zero lower bound was rejected"
+      Just actual ->
+        assert "zero is a valid lower bound"
+          (actual == [Just 0, Just 1])
+  assert "ellipsis range rejects an empty implicit-lower range"
+    (case ellipsisRange Nothing (Just 0) (const ()) of
       Nothing -> True
       Just () -> False)
-  assert "ellipsis range rejects a zero upper bound"
-    (case ellipsisRange Nothing (Just 0) (const ()) of
+  assert "ellipsis range rejects an empty zero-bounded range"
+    (case ellipsisRange (Just 0) (Just 0) (const ()) of
       Nothing -> True
       Just () -> False)
   assert "ellipsis range rejects equal bounds"
@@ -169,6 +180,33 @@ testEllipsisRange = do
       Just actual ->
         assert "missing bounds include all terminals"
           (actual == [Just 0, Just 1, Just 1000000])
+
+testEllipsisNatural :: IO ()
+testEllipsisNatural = do
+  case ellipsisNatural 0 $ \natural ->
+    map
+      (fmap ellipsisRangeElementRank
+        . preimage (ellipsisRangeInsertion natural) . Terminal)
+      [0, 1]
+    of
+      Nothing -> fail "zero ellipsis natural was rejected"
+      Just includedRanks ->
+        assert "zero ellipsis natural includes exactly zero"
+          (includedRanks == [Just 0, Nothing])
+  case ellipsisNatural 3 $ \natural -> do
+    let insertion = ellipsisRangeInsertion natural
+        includedRanks = map
+          (fmap ellipsisRangeElementRank
+            . preimage insertion . Terminal)
+          [2, 3, 4]
+    assert "ellipsis natural uses consecutive range bounds"
+      (ellipsisRangeLowerBound natural == Just 3
+        && ellipsisRangeUpperBound natural == Just 4)
+    assert "ellipsis natural includes exactly its value"
+      (includedRanks == [Nothing, Just 3, Nothing])
+    of
+      Nothing -> fail "ellipsis natural was rejected"
+      Just checks -> checks
 
 testEmptyAtlas :: IO ()
 testEmptyAtlas =

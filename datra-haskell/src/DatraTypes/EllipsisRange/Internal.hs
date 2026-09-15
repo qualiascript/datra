@@ -12,6 +12,7 @@ module EllipsisRange.Internal
   ) where
 
 import Data.Kind (Type)
+import Data.Maybe (fromMaybe)
 import DomanialInsertion.Internal (DomanialInsertion, domanialInsertion)
 import Ellipsis.Internal (Ellipsis (Terminal), terminalRank)
 import Numeric.Natural (Natural)
@@ -31,18 +32,16 @@ newtype EllipsisRangeElement (scope :: Type) = EllipsisRangeElement
   }
   deriving (Eq, Show)
 
--- | Validate optional positive bounds and introduce the resulting range with
--- a fresh abstract scope. When both bounds are present, the lower bound must
--- be strictly smaller than the upper bound.
+-- | Validate optional natural-number bounds and introduce the resulting range
+-- with a fresh abstract scope. The range must be nonempty, treating a missing
+-- lower bound as zero.
 ellipsisRange
   :: Maybe Natural
   -> Maybe Natural
   -> (forall scope. EllipsisRange scope -> result)
   -> Maybe result
 ellipsisRange lower upper useRange
-  | validPositiveBound lower
-      && validPositiveBound upper
-      && validOrder lower upper =
+  | validOrder lower upper =
       Just (useRange (EllipsisRange lower upper))
   | otherwise = Nothing
 
@@ -66,12 +65,9 @@ ellipsisRangeInsertion valueRange =
     (ellipsisRangeElement valueRange . terminalRank)
     (const ())
 
-validPositiveBound :: Maybe Natural -> Bool
-validPositiveBound = maybe True (> 0)
-
 validOrder :: Maybe Natural -> Maybe Natural -> Bool
-validOrder (Just lower) (Just upper) = lower < upper
-validOrder _ _ = True
+validOrder maybeLower (Just upper) = fromMaybe 0 maybeLower < upper
+validOrder _ Nothing = True
 
 rankInRange :: EllipsisRange scope -> Natural -> Bool
 rankInRange valueRange rankValue =

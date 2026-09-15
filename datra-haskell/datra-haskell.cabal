@@ -31,6 +31,7 @@ library
     exposed-modules:
         Dominion
         Ellipsis
+        EllipsisNatural
         EllipsisRange
         FiniteDominion
         DomanialInsertion
@@ -122,6 +123,7 @@ library
         DomanialInsertion.LiquidInternal
         Dominion.Internal
         Ellipsis.Internal
+        EllipsisNatural.Internal
         EllipsisRange.Internal
         FiniteDominion.Internal
         Folio.Internal
@@ -175,6 +177,7 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
         src/DatraTypes/Ellipsis
+        src/DatraTypes/EllipsisNatural
         src/DatraTypes/EllipsisRange
         src/DatraTypes/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
