@@ -29,6 +29,8 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        AsciiDominion
+        CanonicalCharsDominion
         Dominion
         Ellipsis
         EllipsisInsertion
@@ -74,6 +76,8 @@ library
         Expedition
         DataTransformationMap
     other-modules:
+        AsciiDominion.Internal
+        CanonicalCharsDominion.Internal
         PageElements.Internal
         PageElements.LiquidInternal
         Pagination.Internal
@@ -178,6 +182,9 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
+        src/DatraTypes/CharacterDominions
+        src/DatraTypes/CharacterDominions/AsciiDominion
+        src/DatraTypes/CharacterDominions/CanonicalCharsDominion
         src/DatraTypes/Ellipses
         src/DatraTypes/Ellipses/Ellipsis
         src/DatraTypes/Ellipses/EllipsisInsertion

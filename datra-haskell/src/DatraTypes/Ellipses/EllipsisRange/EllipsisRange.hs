@@ -2,21 +2,37 @@
 module EllipsisRange
   ( EllipsisRange
   , EllipsisRangeElement
+  , NonOverlappingEllipsisRanges
+  , EllipsisRangeMergeKind (..)
+  , EllipsisRangeMerge (..)
+  , SomeEllipsisRangeMerge (..)
   , ellipsisRange
   , ellipsisRangeLowerBound
   , ellipsisRangeUpperBound
   , ellipsisRangeElement
   , ellipsisRangeElementRank
   , ellipsisRangeInsertion
+  , nonOverlappingEllipsisRanges
+  , mergeEllipsisRanges
+  , mergeSeparatedEllipsisRanges
+  , withMergedEllipsisRange
   ) where
 
 import EllipsisRange.Internal
-  ( EllipsisRange
+  ( EllipsisRangeMerge (..)
+  , EllipsisRangeMergeKind (..)
+  , EllipsisRange
   , EllipsisRangeElement
+  , NonOverlappingEllipsisRanges
+  , SomeEllipsisRangeMerge (..)
   , ellipsisRange
   , ellipsisRangeElement
   , ellipsisRangeElementRank
   , ellipsisRangeInsertion
   , ellipsisRangeLowerBound
+  , mergeEllipsisRanges
+  , mergeSeparatedEllipsisRanges
   , ellipsisRangeUpperBound
+  , nonOverlappingEllipsisRanges
+  , withMergedEllipsisRange
   )
