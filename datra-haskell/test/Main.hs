@@ -4,8 +4,14 @@ module Main (main) where
 
 import Atlas
 import AtlasExtent
+import AtlasConfederation
+import AtlasFederation
+import AtlasHorizontalSum
+import EmptyAtlas
+import EmptyAtlasConfederation
 import CoveredPageElement
 import AtlasMap
+import AtlasMerge
 import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
@@ -35,7 +41,7 @@ import OrderedDataTransposal
 import StableAtlasTransversal
 import StableDataTraversal
 
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import qualified Data.Set as Set
 import Data.Void (Void, absurd)
 
@@ -52,6 +58,10 @@ main = do
   testPageElements
   testPagination
   testAtlas
+  testEmptyAtlas
+  testAtlasMerge
+  testAtlasConfederation
+  testAtlasFederation
   testAtlasMap
   testNavigationAndExpedition
   testDataTransformationMap
@@ -70,6 +80,12 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+testEmptyAtlas :: IO ()
+testEmptyAtlas =
+  emptyAtlas $ \valueAtlas ->
+    assert "the empty Atlas has one empty page"
+      (atlasCardinality valueAtlas == 1)
 
 testFiniteDominion :: IO ()
 testFiniteDominion =
@@ -1056,6 +1072,293 @@ testAtlas =
                                     "Yoneda embeds AtlasHom by postcomposition"
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
+
+testAtlasMerge :: IO ()
+testAtlasMerge = do
+  testSingletonAtlasMerge
+  testDeepAtlasMerge
+
+testSingletonAtlasMerge :: IO ()
+testSingletonAtlasMerge =
+  pagination (singletonFolio unitChain) $ \leftPagination ->
+    atlas
+      leftPagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \leftAtlas ->
+        pagination (singletonFolio unitChain) $ \rightPagination ->
+          atlas
+            rightPagination
+            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw $ \rightAtlas ->
+              atlasMerge leftAtlas rightAtlas $ \mergedAtlas -> do
+                let elements = atlasPageElements mergedAtlas
+                    at pageNumber position =
+                      pageElement <$>
+                        pageElementIndex
+                          elements pageNumber (finiteOrdinal position)
+                assert "Atlas merge adds one page to the greatest input depth"
+                  ( atlasMergeLength leftAtlas rightAtlas == 2
+                    && atlasCardinality mergedAtlas == 2
+                  )
+                case (at 0 0, at 1 0, at 1 1, at 50 0) of
+                  (Just someOrigin, Just someLeft, Just someRight, Just padded) ->
+                    withPageElement someOrigin $ \origin ->
+                      withPageElement someLeft $ \leftCell ->
+                        withPageElement someRight $ \rightCell ->
+                          withPageElement padded $ \paddedLeft -> do
+                            let originDominion = atlasDataAt mergedAtlas origin
+                                leftDominion = atlasDataAt mergedAtlas leftCell
+                                rightDominion = atlasDataAt mergedAtlas rightCell
+                                paddedDominion =
+                                  atlasDataAt mergedAtlas paddedLeft
+                            assert "Atlas merge interleaves its extent ranks"
+                              ( case (unrank originDominion 0,
+                                      unrank originDominion 1) of
+                                  (Just leftDatum, Just rightDatum) ->
+                                    atlasMergeDatumSide leftDatum
+                                      == AtlasMergeLeft
+                                      && atlasMergeDatumRank leftDatum == 0
+                                      && atlasMergeDatumSide rightDatum
+                                        == AtlasMergeRight
+                                      && atlasMergeDatumRank rightDatum == 1
+                                  _ -> False
+                              )
+                            assert "Atlas merge cells retain their tagged image"
+                              ( isJust (unrank leftDominion 0)
+                                && isNothing (unrank leftDominion 1)
+                                && isNothing (unrank rightDominion 0)
+                                && isJust (unrank rightDominion 1)
+                              )
+                            assert "Atlas merge is stable on the padded spine"
+                              ( isJust (unrank paddedDominion 0)
+                                && isNothing (unrank paddedDominion 1)
+                              )
+                  _ -> fail "test setup failed: expected Atlas merge cells"
+
+testDeepAtlasMerge :: IO ()
+testDeepAtlasMerge =
+  pagination threePageFolio $ \leftPagination ->
+    atlas
+      leftPagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \leftAtlas ->
+        pagination (singletonFolio unitChain) $ \rightPagination ->
+          atlas
+            rightPagination
+            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw $ \rightAtlas ->
+              atlasMerge leftAtlas rightAtlas $ \mergedAtlas -> do
+                let elements = atlasPageElements mergedAtlas
+                    at pageNumber position =
+                      pageElement <$>
+                        pageElementIndex
+                          elements pageNumber (finiteOrdinal position)
+                assert "Atlas merge follows the deeper input folio"
+                  (atlasCardinality mergedAtlas == 4)
+                case (at 2 2, at 3 5, at 100 5) of
+                  (Just someRight, Just someLeft, Just somePaddedLeft) ->
+                    withPageElement someRight $ \rightCell ->
+                      withPageElement someLeft $ \leftCell ->
+                        withPageElement somePaddedLeft $ \paddedLeft -> do
+                          assert "Atlas merge pads the shallower input"
+                            ( isJust
+                                (unrank (atlasDataAt mergedAtlas rightCell) 1)
+                              && isNothing
+                                (unrank (atlasDataAt mergedAtlas rightCell) 0)
+                            )
+                          assert "Atlas merge transports deeper component data"
+                            ( isJust
+                                (unrank (atlasDataAt mergedAtlas leftCell) 4)
+                              && isJust
+                                (unrank (atlasDataAt mergedAtlas paddedLeft) 4)
+                            )
+                  _ -> fail "test setup failed: expected deep Atlas merge cells"
+
+testAtlasConfederation :: IO ()
+testAtlasConfederation =
+  pagination (singletonFolio unitChain) $ \leftPagination ->
+    atlas
+      leftPagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \leftAtlas ->
+        pagination (singletonFolio unitChain) $ \rightPagination ->
+          atlas
+            rightPagination
+            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw $ \rightAtlas ->
+              let leftAtom = singletonAtlasConfederation leftAtlas
+                  rightAtom = singletonAtlasConfederation rightAtlas
+              in do
+                  let leftWitness = atlasConfederationWitness leftAtom
+                      identityHom = Category.id
+                      primitiveHom =
+                        singletonAtlasConfederationHom
+                          leftAtlas leftAtlas identityStableAtlasTransversal
+                      rightPrimitiveHom =
+                        singletonAtlasConfederationHom
+                          rightAtlas rightAtlas identityStableAtlasTransversal
+                      composedHom = primitiveHom Category.. primitiveHom
+                      componentCount :: Natural
+                      componentCount =
+                        foldAtlasConfederationComponentHom
+                          (const 0)
+                          (\_ _ _ -> 1)
+                          (+)
+                          (mapAtlasConfederationComponent
+                            leftWitness composedHom ())
+                  assert "Atlas-confederation identity preserves tags"
+                    (mapAtlasConfederationIndex leftWitness identityHom () == ())
+                  atlasConfederationComponentHomStable
+                    (mapAtlasConfederationComponent
+                      leftWitness composedHom ()) `seq` pure ()
+                  assert "Atlas-confederation component maps compose"
+                    (componentCount == 2)
+                  let merged = atlasHorizontalSum leftAtom rightAtom
+                      lemmaResult = horizontalLemma leftAtom rightAtom
+                  do
+                    let indices = atlasConfederationIndexDominion merged
+                        presentation = atlasConfederationPresentation merged
+                        mergedWitness = atlasConfederationWitness merged
+                        mergedHom = atlasHorizontalSumHom
+                          leftAtom rightAtom leftAtom rightAtom
+                          primitiveHom rightPrimitiveHom
+                    assert "Atlas-confederation merge retains disjoint tags"
+                      ( unrank indices 0 == Just (Left ())
+                        && unrank indices 1 == Just (Right ())
+                      )
+                    assert "Atlas-confederation merge retains its presentation"
+                      (atlasMergePresentationSize presentation == 2)
+                    assert "the horizontal lemma creates horizontal sum"
+                      ( atlasMergePresentationSize
+                          (atlasConfederationPresentation lemmaResult) == 2
+                      )
+                    assert "merged Atlas-confederation morphisms map both tags"
+                      ( mapAtlasConfederationIndex
+                          mergedWitness mergedHom (Left ()) == Left ()
+                        && mapAtlasConfederationIndex
+                          mergedWitness mergedHom (Right ()) == Right ()
+                      )
+                    let braided = atlasHorizontalSum rightAtom leftAtom
+                        braidedWitness = atlasConfederationWitness braided
+                        (braiderHom, braiderInv) =
+                          atlasBraider leftAtom rightAtom
+                    assert "the Atlas braider swaps tags in both directions"
+                      ( mapAtlasConfederationIndex
+                          mergedWitness braiderHom (Left ()) == Right ()
+                        && mapAtlasConfederationIndex
+                          braidedWitness braiderInv (Right ()) == Left ()
+                      )
+                    let associatedLeft =
+                          atlasHorizontalSum
+                            (atlasHorizontalSum leftAtom rightAtom)
+                            leftAtom
+                        associatedRight =
+                          atlasHorizontalSum
+                            leftAtom
+                            (atlasHorizontalSum rightAtom leftAtom)
+                        associatedLeftWitness =
+                          atlasConfederationWitness associatedLeft
+                        associatedRightWitness =
+                          atlasConfederationWitness associatedRight
+                        (associatorHom, associatorInv) =
+                          atlasAssociator leftAtom rightAtom leftAtom
+                    assert "the Atlas associator reassociates tags"
+                      ( mapAtlasConfederationIndex
+                          associatedLeftWitness associatorHom
+                          (Left (Right ())) == Right (Left ())
+                        && mapAtlasConfederationIndex
+                          associatedRightWitness associatorInv
+                          (Right (Left ())) == Left (Right ())
+                      )
+                    let leftUnitSource =
+                          atlasHorizontalSum emptyAtlasConfederation leftAtom
+                        rightUnitSource =
+                          atlasHorizontalSum leftAtom emptyAtlasConfederation
+                        leftUnitSourceWitness =
+                          atlasConfederationWitness leftUnitSource
+                        rightUnitSourceWitness =
+                          atlasConfederationWitness rightUnitSource
+                        (leftUnitorHom, leftUnitorInv) =
+                          atlasLeftUnitor leftAtom
+                        (rightUnitorHom, rightUnitorInv) =
+                          atlasRightUnitor leftAtom
+                    assert "the Atlas unitors delete and restore empty tags"
+                      ( mapAtlasConfederationIndex
+                          leftUnitSourceWitness leftUnitorHom (Right ()) == ()
+                        && mapAtlasConfederationIndex
+                          leftWitness leftUnitorInv () == Right ()
+                        && mapAtlasConfederationIndex
+                          rightUnitSourceWitness rightUnitorHom (Left ()) == ()
+                        && mapAtlasConfederationIndex
+                          leftWitness rightUnitorInv () == Left ()
+                      )
+                    withAtlasConfederationResultingAtlas merged $ \result ->
+                      assert "Atlas-confederation presentation evaluates"
+                        (atlasCardinality result == 2)
+                  let empty = emptyAtlasConfederation
+                  do
+                    assert "the empty Atlas confederation has no tags"
+                      (isNothing
+                        (unrank (atlasConfederationIndexDominion empty) 0))
+                    forgetAtlasConfederationTags empty $ \result ->
+                        assert "the empty presentation evaluates to an Atlas"
+                          (atlasCardinality result == 1)
+
+testAtlasFederation :: IO ()
+testAtlasFederation = do
+  let emptyFederation =
+        atlasFederation
+          emptyAtlasConfederation
+          (\impossible _ -> absurd impossible)
+  assert "the empty Atlas federation has no tags"
+    (isNothing (unrank (atlasFederationIndexDominion emptyFederation) 0))
+  forgetAtlasFederationTags emptyFederation $ \result ->
+    assert "forgetting empty federation tags produces the empty Atlas"
+      (atlasCardinality result == 1)
+  emptyAtlas $ \valueAtlas ->
+    let component = atlasConfederationComponentWitness (atlasWitness valueAtlas)
+        atom = AtlasMergeAtom (atlasWitness valueAtlas)
+        correspondingPosition = finiteOrdinal 0
+        twoTagDominion =
+          dominion
+            (\tag -> if tag then 1 else 0)
+            (\tagRank -> case tagRank of
+              0 -> Just False
+              1 -> Just True
+              _ -> Nothing)
+            (const ())
+    in atlasConfederation
+        twoTagDominion
+        (const component)
+        (AtlasMergeNode atom atom) $ \confederation -> do
+          let federation =
+                atlasFederation confederation $ \_ _ ->
+                  SeparatedCorrespondingRegions correspondingPosition
+          assert "a federation does not separate a tag from itself"
+            (isNothing (atlasFederationSeparation federation False False))
+          assert "a federation retains separation evidence for distinct tags"
+            ( atlasFederationSeparation federation False True
+                == Just
+                  (SeparatedCorrespondingRegions correspondingPosition)
+            )
 
 testAtlasMap :: IO ()
 testAtlasMap =
