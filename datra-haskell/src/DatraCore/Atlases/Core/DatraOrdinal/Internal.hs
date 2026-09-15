@@ -11,7 +11,11 @@ module DatraOrdinal.Internal
   , finiteOrdinal
   , omega
   , ordinalLT
+  , coefficientsLT
+  , listLength
+  , lexicographicLT
   , addOrdinals
+  , addCoefficients
   , subtractOrdinal
   , naturalAtOrdinal
   ) where
@@ -19,6 +23,7 @@ module DatraOrdinal.Internal
 import Numeric.Natural (Natural)
 
 {-@ embed Natural as int @-}
+{-@ invariant { value:Natural | value >= 0 } @-}
 
 {-@ reflect canonicalCoefficients @-}
 canonicalCoefficients :: [Natural] -> Bool
@@ -73,11 +78,24 @@ instance Ord Ordinal where
 -- | A reflected strict comparison that agrees with the 'Ord' instance.
 {-@ reflect ordinalLT @-}
 ordinalLT :: Ordinal -> Ordinal -> Bool
-ordinalLT (Ordinal left) (Ordinal right) =
+ordinalLT (Ordinal left) (Ordinal right) = coefficientsLT left right
+
+{-@ reflect coefficientsLT @-}
+{-@
+coefficientsLT
+  :: left:[Natural]
+  -> right:[Natural]
+  -> { result:Bool |
+       result <=> len left < len right
+         || (len left == len right && lexicographicLT left right) }
+@-}
+coefficientsLT :: [Natural] -> [Natural] -> Bool
+coefficientsLT left right =
   listLength left < listLength right
     || listLength left == listLength right && lexicographicLT left right
 
 {-@ reflect listLength @-}
+{-@ listLength :: values:[a] -> { result:Int | result == len values } @-}
 listLength :: [a] -> Int
 listLength [] = 0
 listLength (_ : values) = 1 + listLength values
@@ -94,25 +112,28 @@ lexicographicLT (left : lefts) (right : rights)
 -- | Ordinal addition. This is generally not commutative.
 {-@ reflect addOrdinals @-}
 addOrdinals :: Ordinal -> Ordinal -> Ordinal
-addOrdinals left (Ordinal []) = left
-addOrdinals (Ordinal leftCoefficients)
-  right@(Ordinal (rightLeadingCoefficient : rightLowerCoefficients))
-  | length leftCoefficients < length rightCoefficients = right
-  | otherwise = case matchingAndLowerLeftCoefficients of
-      matchingLeftCoefficient : _ ->
-        ordinal
-          (higherLeftCoefficients
-            ++ (matchingLeftCoefficient + rightLeadingCoefficient)
-              : rightLowerCoefficients)
-      [] -> right
-  where
-    rightCoefficients = rightLeadingCoefficient : rightLowerCoefficients
+addOrdinals (Ordinal left) (Ordinal right) =
+  Ordinal (addCoefficients left right)
 
-    numberOfHigherLeftCoefficients =
-      length leftCoefficients - length rightCoefficients
-
-    (higherLeftCoefficients, matchingAndLowerLeftCoefficients) =
-      splitAt numberOfHigherLeftCoefficients leftCoefficients
+{-@ reflect addCoefficients @-}
+{-@
+addCoefficients
+  :: left:[Natural]
+  -> right:[Natural]
+  -> { result:[Natural] |
+       (canonicalCoefficients left && canonicalCoefficients right
+         => canonicalCoefficients result)
+       && len result == (if len right == 0 then len left
+         else if len left < len right then len right else len left) }
+@-}
+addCoefficients :: [Natural] -> [Natural] -> [Natural]
+addCoefficients left [] = left
+addCoefficients [] right = right
+addCoefficients left@(leftHead : leftTail) right@(rightHead : rightTail)
+  | listLength left < listLength right = right
+  | listLength left == listLength right =
+      (leftHead + rightHead) : rightTail
+  | otherwise = leftHead : addCoefficients leftTail right
 
 -- | Remove a left ordinal prefix when the value lies at or after it.
 {-@ reflect subtractOrdinal @-}
