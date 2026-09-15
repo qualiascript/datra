@@ -6,6 +6,7 @@ import Atlas
 import AtlasExtent
 import CoveredPageElement
 import AtlasMap
+import AtlasMerge
 import AtlasTransposal
 import AtlasTransversal
 import AtlasTransversalMap
@@ -35,7 +36,7 @@ import OrderedDataTransposal
 import StableAtlasTransversal
 import StableDataTraversal
 
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import qualified Data.Set as Set
 import Data.Void (Void, absurd)
 
@@ -52,6 +53,7 @@ main = do
   testPageElements
   testPagination
   testAtlas
+  testAtlasMerge
   testAtlasMap
   testNavigationAndExpedition
   testDataTransformationMap
@@ -1056,6 +1058,119 @@ testAtlas =
                                     "Yoneda embeds AtlasHom by postcomposition"
                                     (pageElementPage mapped == 0)
             _ -> fail "test setup failed: expected atlas elements"
+
+testAtlasMerge :: IO ()
+testAtlasMerge = do
+  testSingletonAtlasMerge
+  testDeepAtlasMerge
+
+testSingletonAtlasMerge :: IO ()
+testSingletonAtlasMerge =
+  pagination (singletonFolio unitChain) $ \leftPagination ->
+    atlas
+      leftPagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \leftAtlas ->
+        pagination (singletonFolio unitChain) $ \rightPagination ->
+          atlas
+            rightPagination
+            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw $ \rightAtlas ->
+              atlasMerge leftAtlas rightAtlas $ \mergedAtlas -> do
+                let elements = atlasPageElements mergedAtlas
+                    at pageNumber position =
+                      pageElement <$>
+                        pageElementIndex
+                          elements pageNumber (finiteOrdinal position)
+                assert "Atlas merge adds one page to the greatest input depth"
+                  ( atlasMergeLength leftAtlas rightAtlas == 2
+                    && atlasCardinality mergedAtlas == 2
+                  )
+                case (at 0 0, at 1 0, at 1 1, at 50 0) of
+                  (Just someOrigin, Just someLeft, Just someRight, Just padded) ->
+                    withPageElement someOrigin $ \origin ->
+                      withPageElement someLeft $ \leftCell ->
+                        withPageElement someRight $ \rightCell ->
+                          withPageElement padded $ \paddedLeft -> do
+                            let originDominion = atlasDataAt mergedAtlas origin
+                                leftDominion = atlasDataAt mergedAtlas leftCell
+                                rightDominion = atlasDataAt mergedAtlas rightCell
+                                paddedDominion =
+                                  atlasDataAt mergedAtlas paddedLeft
+                            assert "Atlas merge interleaves its extent ranks"
+                              ( case (unrank originDominion 0,
+                                      unrank originDominion 1) of
+                                  (Just leftDatum, Just rightDatum) ->
+                                    atlasMergeDatumSide leftDatum
+                                      == AtlasMergeLeft
+                                      && atlasMergeDatumRank leftDatum == 0
+                                      && atlasMergeDatumSide rightDatum
+                                        == AtlasMergeRight
+                                      && atlasMergeDatumRank rightDatum == 1
+                                  _ -> False
+                              )
+                            assert "Atlas merge cells retain their tagged image"
+                              ( isJust (unrank leftDominion 0)
+                                && isNothing (unrank leftDominion 1)
+                                && isNothing (unrank rightDominion 0)
+                                && isJust (unrank rightDominion 1)
+                              )
+                            assert "Atlas merge is stable on the padded spine"
+                              ( isJust (unrank paddedDominion 0)
+                                && isNothing (unrank paddedDominion 1)
+                              )
+                  _ -> fail "test setup failed: expected Atlas merge cells"
+
+testDeepAtlasMerge :: IO ()
+testDeepAtlasMerge =
+  pagination threePageFolio $ \leftPagination ->
+    atlas
+      leftPagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \leftAtlas ->
+        pagination (singletonFolio unitChain) $ \rightPagination ->
+          atlas
+            rightPagination
+            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw $ \rightAtlas ->
+              atlasMerge leftAtlas rightAtlas $ \mergedAtlas -> do
+                let elements = atlasPageElements mergedAtlas
+                    at pageNumber position =
+                      pageElement <$>
+                        pageElementIndex
+                          elements pageNumber (finiteOrdinal position)
+                assert "Atlas merge follows the deeper input folio"
+                  (atlasCardinality mergedAtlas == 4)
+                case (at 2 2, at 3 5, at 100 5) of
+                  (Just someRight, Just someLeft, Just somePaddedLeft) ->
+                    withPageElement someRight $ \rightCell ->
+                      withPageElement someLeft $ \leftCell ->
+                        withPageElement somePaddedLeft $ \paddedLeft -> do
+                          assert "Atlas merge pads the shallower input"
+                            ( isJust
+                                (unrank (atlasDataAt mergedAtlas rightCell) 1)
+                              && isNothing
+                                (unrank (atlasDataAt mergedAtlas rightCell) 0)
+                            )
+                          assert "Atlas merge transports deeper component data"
+                            ( isJust
+                                (unrank (atlasDataAt mergedAtlas leftCell) 4)
+                              && isJust
+                                (unrank (atlasDataAt mergedAtlas paddedLeft) 4)
+                            )
+                  _ -> fail "test setup failed: expected deep Atlas merge cells"
 
 testAtlasMap :: IO ()
 testAtlasMap =

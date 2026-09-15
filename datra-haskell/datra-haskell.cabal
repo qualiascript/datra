@@ -41,6 +41,7 @@ library
         Atlas
         AtlasExtent
         AtlasTerritory
+        AtlasMerge
         CoveredPageElement
         AtlasMap
         AtlasTransposal
@@ -69,6 +70,7 @@ library
         Atlas.Derived.Internal
         AtlasExtent.Internal
         AtlasTerritory.Internal
+        AtlasMerge.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
         CoveredPageElement.Internal
@@ -129,6 +131,8 @@ library
         src/DatraCore/Atlases/Derived
         src/DatraCore/Atlases/Derived/AtlasExtent
         src/DatraCore/Atlases/Derived/AtlasTerritory
+        src/DatraCore/Atlases/Derived/AtlasConfederations
+        src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge
         src/DatraCore/Atlases/Derived/CoveredPageElement
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
