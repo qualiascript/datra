@@ -54,7 +54,7 @@ import Atlas
   , mapAtlasData
   , materializeAtlasHom
   )
-import CoveredPageElement.Internal
+import AtlasCoveredPageElement.Internal
   ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness
   , coverageNormalize

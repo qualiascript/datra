@@ -22,18 +22,16 @@ import AtlasConfederation
   , AtlasConfederationComponent
   , AtlasConfederationHom
   , AtlasConfederationObject
+  , EmptyAtlasConfederationScope
   , MergedAtlasConfederationScope
   , atlasConfederationComponent
   , atlasConfederationHom
+  , emptyAtlasConfederation
   , identityAtlasConfederationComponentHom
   , mergeAtlasConfederationHoms
   , mergeAtlasConfederations
   )
 import Data.Void (Void, absurd)
-import EmptyAtlasConfederation
-  ( EmptyAtlasConfederationScope
-  , emptyAtlasConfederation
-  )
 
 -- | A confederation isomorphism represented by its forward and inverse
 -- morphisms, following the pair convention used by the other Haskell APIs.

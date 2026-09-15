@@ -44,10 +44,9 @@ library
         EmptyAtlas
         AtlasMerge
         AtlasConfederation
-        EmptyAtlasConfederation
         AtlasFederation
         AtlasHorizontalSum
-        CoveredPageElement
+        AtlasCoveredPageElement
         AtlasMap
         AtlasTransposal
         OrderedAtlasTransposal
@@ -61,7 +60,12 @@ library
         DataTransposal
         OrderedDataTransposal
         DataTraversal
-        StableDataTraversal
+        StableDataTransversal
+        StableConfederalDataTransversal
+        HorizontalSum
+        StableConfederalDataTransversalMonoidal
+        StableConfederalDataTransversalKleisli
+        StableConfederalDataTransversalKleisli.Syntax
         Navigation
         Expedition
         DataTransformationMap
@@ -72,18 +76,16 @@ library
         Pagination.LiquidInternal
         Atlas.Internal
         Atlas.LiquidInternal
-        Atlas.Derived.Internal
         AtlasExtent.Internal
         AtlasTerritory.Internal
         EmptyAtlas.Internal
         AtlasMerge.Internal
         AtlasConfederation.Internal
-        EmptyAtlasConfederation.Internal
         AtlasFederation.Internal
         AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
-        CoveredPageElement.Internal
+        AtlasCoveredPageElement.Internal
         AtlasMap.Internal
         AtlasTransposal.Internal
         OrderedAtlasTransposal.Internal
@@ -100,7 +102,11 @@ library
         DataTransposal.Internal
         OrderedDataTransposal.Internal
         DataTraversal.Internal
-        StableDataTraversal.Internal
+        StableDataTransversal.Internal
+        StableConfederalDataTransversal.Internal
+        HorizontalSum.Internal
+        StableConfederalDataTransversalMonoidal.Internal
+        StableConfederalDataTransversalKleisli.Internal
         Navigation.Internal
         Expedition.Internal
         DataTransformationMap.Internal
@@ -126,29 +132,34 @@ library
         src/DatraCore/Atlases/Core/PageElements
         src/DatraCore/Atlases/Core/Pagination
         src/DatraCore/Atlases/Core/Atlas
-        src/DatraCore/DataTransformations
-        src/DatraCore/DataTransformations/DataTransformation
-        src/DatraCore/DataTransformations/DataTransposal
-        src/DatraCore/DataTransformations/OrderedDataTransposal
-        src/DatraCore/DataTransformations/DataTraversal
-        src/DatraCore/DataTransformations/StableDataTraversal
-        src/DatraCore/DataTransformations/Navigation
-        src/DatraCore/DataTransformations/Expedition
-        src/DatraCore/DataTransformations/DataTransformationMap
+        src/DatraCore/DataTransformations/DataTransformations
+        src/DatraCore/DataTransformations/DataTransformations/DataTransformation
+        src/DatraCore/DataTransformations/DataTransformations/DataTransposal
+        src/DatraCore/DataTransformations/DataTransformations/OrderedDataTransposal
+        src/DatraCore/DataTransformations/DataTransformations/DataTraversal
+        src/DatraCore/DataTransformations/DataTransformations/StableDataTransversal
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversal
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals/HorizontalSum
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversalMonoidal
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversalKleisli
+        src/DatraCore/DataTransformations/DataTransformationMaps
+        src/DatraCore/DataTransformations/DataTransformationMaps/Navigation
+        src/DatraCore/DataTransformations/DataTransformationMaps/Expedition
+        src/DatraCore/DataTransformations/DataTransformationMaps/DataTransformationMap
         src/DatraCore/Atlases/Core/Consolidation
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion
-        src/DatraCore/Atlases/Derived
-        src/DatraCore/Atlases/Derived/AtlasExtent
-        src/DatraCore/Atlases/Derived/AtlasTerritory
-        src/DatraCore/Atlases/Derived/EmptyAtlas
+        src/DatraCore/Atlases/Derived/AtlasDerived
+        src/DatraCore/Atlases/Derived/AtlasDerived/AtlasExtent
+        src/DatraCore/Atlases/Derived/AtlasDerived/AtlasTerritory
+        src/DatraCore/Atlases/Derived/AtlasDerived/EmptyAtlas
+        src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement
         src/DatraCore/Atlases/Derived/AtlasConfederations
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasConfederation
-        src/DatraCore/Atlases/Derived/AtlasConfederations/EmptyAtlasConfederation
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasFederation
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasHorizontalSum
-        src/DatraCore/Atlases/Derived/CoveredPageElement
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
         src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap

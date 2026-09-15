@@ -1,3 +1,4 @@
+{-# LANGUAGE QualifiedDo #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
@@ -8,8 +9,7 @@ import AtlasConfederation
 import AtlasFederation
 import AtlasHorizontalSum
 import EmptyAtlas
-import EmptyAtlasConfederation
-import CoveredPageElement
+import AtlasCoveredPageElement
 import AtlasMap
 import AtlasMerge
 import AtlasTransposal
@@ -32,6 +32,7 @@ import Dominion
 import Expedition
 import FiniteDominion
 import Folio
+import HorizontalSum
 import Navigation
 import PageElements
 import Pagination
@@ -39,7 +40,11 @@ import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
 import OrderedDataTransposal
 import StableAtlasTransversal
-import StableDataTraversal
+import StableConfederalDataTransversal
+import StableConfederalDataTransversalKleisli
+import qualified StableConfederalDataTransversalKleisli.Syntax as Kleisli
+import StableConfederalDataTransversalMonoidal
+import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
 import qualified Data.Set as Set
@@ -66,6 +71,7 @@ main = do
   testNavigationAndExpedition
   testDataTransformationMap
   testRestrictedDataTransformations
+  testStableConfederalKleisliSyntax
   testCharter
   testOrderedAtlasTransposal
   testAtlasTransversal
@@ -611,8 +617,13 @@ type instance
     TestRestrictedDataValue atlas
 
 type instance
-  StableDataTraversalValue TestRestrictedDataValues atlas =
+  StableDataTransversalValue TestRestrictedDataValues atlas =
     TestRestrictedDataValue atlas
+
+type instance
+  StableConfederalDataTransversalValue
+    TestRestrictedDataValues confederation =
+      TestRestrictedDataValue confederation
 
 testDataTransposal :: DataTransposal TestRestrictedDataValues
 testDataTransposal =
@@ -670,25 +681,260 @@ incrementDataTraversal =
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
 
-testStableDataTraversal
-  :: StableDataTraversal TestRestrictedDataValues
-testStableDataTraversal =
-  stableDataTraversal
+testStableDataTransversal
+  :: StableDataTransversal TestRestrictedDataValues
+testStableDataTransversal =
+  stableDataTransversal
     (\_ (TestRestrictedDataValue value) ->
       TestRestrictedDataValue value)
     (const ())
     (\_ _ _ -> ())
 
-incrementStableDataTraversal
-  :: StableDataTraversalHom
+incrementStableDataTransversal
+  :: StableDataTransversalHom
        TestRestrictedDataValues TestRestrictedDataValues
-incrementStableDataTraversal =
-  stableDataTraversalHom
-    testStableDataTraversal
-    testStableDataTraversal
+incrementStableDataTransversal =
+  stableDataTransversalHom
+    testStableDataTransversal
+    testStableDataTransversal
     (\(TestRestrictedDataValue value) ->
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
+
+testStableConfederalDataTransversal
+  :: StableConfederalDataTransversal TestRestrictedDataValues
+testStableConfederalDataTransversal =
+  stableConfederalDataTransversal
+    (\_ (TestRestrictedDataValue value) ->
+      TestRestrictedDataValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementStableConfederalDataTransversal
+  :: StableConfederalDataTransversalHom
+       TestRestrictedDataValues TestRestrictedDataValues
+incrementStableConfederalDataTransversal =
+  stableConfederalDataTransversalHom
+    testStableConfederalDataTransversal
+    testStableConfederalDataTransversal
+    (\(TestRestrictedDataValue value) ->
+      TestRestrictedDataValue (value + 1))
+    (\_ _ -> ())
+
+horizontalSumComponents
+  :: HorizontalSumValue
+       TestRestrictedDataValues TestRestrictedDataValues object
+  -> (Natural, Natural)
+horizontalSumComponents
+  (HorizontalSumValue
+    _ _ _
+    (TestRestrictedDataValue left)
+    (TestRestrictedDataValue right)) =
+      (left, right)
+
+data IdentityStableConfederalValues values
+
+newtype IdentityStableConfederalValue values object =
+  IdentityStableConfederalValue
+    (StableConfederalDataTransversalValue values object)
+
+type instance
+  StableConfederalDataTransversalValue
+    (IdentityStableConfederalValues values) object =
+      IdentityStableConfederalValue values object
+
+identityStableConfederalObject
+  :: StableConfederalDataTransversal values
+  -> StableConfederalDataTransversal
+       (IdentityStableConfederalValues values)
+identityStableConfederalObject source =
+  stableConfederalDataTransversal
+    (\arrow (IdentityStableConfederalValue value) ->
+      IdentityStableConfederalValue
+        (mapStableConfederalDataTransversal source arrow value))
+    (\(IdentityStableConfederalValue value) ->
+      stableConfederalDataTransversalIdentity source value)
+    (\second first (IdentityStableConfederalValue value) ->
+      stableConfederalDataTransversalComposition
+        source second first value)
+
+identityStableConfederalArrow
+  :: StableConfederalDataTransversal source
+  -> StableConfederalDataTransversal target
+  -> StableConfederalDataTransversalHom source target
+  -> StableConfederalDataTransversalHom
+       (IdentityStableConfederalValues source)
+       (IdentityStableConfederalValues target)
+identityStableConfederalArrow source target arrow =
+  stableConfederalDataTransversalHom
+    (identityStableConfederalObject source)
+    (identityStableConfederalObject target)
+    (\(IdentityStableConfederalValue value) ->
+      IdentityStableConfederalValue
+        (mapStableConfederalDataTransversalHom arrow value))
+    (\confederationArrow (IdentityStableConfederalValue value) ->
+      stableConfederalDataTransversalHomNaturality
+        arrow confederationArrow value)
+
+identityStableConfederalEndofunctor
+  :: StableConfederalDataTransversalEndofunctor
+       IdentityStableConfederalValues
+identityStableConfederalEndofunctor =
+  stableConfederalDataTransversalEndofunctor
+    identityStableConfederalObject
+    identityStableConfederalArrow
+    (const ())
+    (\_ _ _ _ _ -> ())
+
+identityStableConfederalUnit
+  :: StableConfederalDataTransversal values
+  -> StableConfederalDataTransversalHom
+       values (IdentityStableConfederalValues values)
+identityStableConfederalUnit source =
+  stableConfederalDataTransversalHom
+    source
+    (identityStableConfederalObject source)
+    IdentityStableConfederalValue
+    (\_ _ -> ())
+
+identityStableConfederalMultiplication
+  :: StableConfederalDataTransversal values
+  -> StableConfederalDataTransversalHom
+       (IdentityStableConfederalValues
+         (IdentityStableConfederalValues values))
+       (IdentityStableConfederalValues values)
+identityStableConfederalMultiplication source =
+  stableConfederalDataTransversalHom
+    (identityStableConfederalObject
+      (identityStableConfederalObject source))
+    (identityStableConfederalObject source)
+    (\(IdentityStableConfederalValue
+        (IdentityStableConfederalValue value)) ->
+          IdentityStableConfederalValue value)
+    (\_ _ -> ())
+
+identityStableConfederalFubini
+  :: StableConfederalDataTransversal left
+  -> StableConfederalDataTransversal right
+  -> StableConfederalDataTransversalHom
+       (HorizontalSumValues
+         (IdentityStableConfederalValues left)
+         (IdentityStableConfederalValues right))
+       (IdentityStableConfederalValues
+         (HorizontalSumValues left right))
+identityStableConfederalFubini left right =
+  stableConfederalDataTransversalHom
+    (horizontalSum
+      (identityStableConfederalObject left)
+      (identityStableConfederalObject right))
+    (identityStableConfederalObject (horizontalSum left right))
+    (\(HorizontalSumValue
+        leftConfederation
+        rightConfederation
+        represented
+        (IdentityStableConfederalValue leftValue)
+        (IdentityStableConfederalValue rightValue)) ->
+          IdentityStableConfederalValue
+            (HorizontalSumValue
+              leftConfederation
+              rightConfederation
+              represented
+              leftValue
+              rightValue))
+    (\_ _ -> ())
+
+identityStableConfederalMonad
+  :: CommutativeStableConfederalDataTransversalMonad
+       IdentityStableConfederalValues
+identityStableConfederalMonad =
+  commutativeStableConfederalDataTransversalMonad
+    identityStableConfederalEndofunctor
+    identityStableConfederalUnit
+    identityStableConfederalMultiplication
+    identityStableConfederalFubini
+    (const ())
+    (const ())
+    (const ())
+    (\_ _ -> ())
+
+incrementIdentityStableConfederalKleisli
+  :: StableConfederalDataTransversalKleisliHom
+       IdentityStableConfederalValues
+       TestRestrictedDataValues
+       TestRestrictedDataValues
+incrementIdentityStableConfederalKleisli =
+  stableConfederalKleisliHom
+    (stableConfederalDataTransversalHom
+      testStableConfederalDataTransversal
+      (identityStableConfederalObject
+        testStableConfederalDataTransversal)
+      (\(TestRestrictedDataValue value) ->
+        IdentityStableConfederalValue
+          (TestRestrictedDataValue (value + 1)))
+      (\_ _ -> ()))
+
+identityStableConfederalNatural
+  :: IdentityStableConfederalValue TestRestrictedDataValues object
+  -> Natural
+identityStableConfederalNatural
+  (IdentityStableConfederalValue (TestRestrictedDataValue value)) = value
+
+identityHorizontalSumComponents
+  :: IdentityStableConfederalValue
+       (HorizontalSumValues
+         TestRestrictedDataValues TestRestrictedDataValues)
+       object
+  -> (Natural, Natural)
+identityHorizontalSumComponents
+  (IdentityStableConfederalValue value) = horizontalSumComponents value
+
+testStableConfederalKleisliSyntax :: IO ()
+testStableConfederalKleisliSyntax = do
+  let object = testStableConfederalDataTransversal
+      identityProgram = Kleisli.return object
+      stepProgram =
+        Kleisli.step object incrementIdentityStableConfederalKleisli
+      liftedProgram =
+        Kleisli.lift object incrementStableConfederalDataTransversal
+      qualifiedDoProgram = Kleisli.do
+        identityProgram
+        stepProgram
+        liftedProgram
+      forwardComposition =
+        identityProgram Kleisli.>=> stepProgram Kleisli.>=> liftedProgram
+      reverseComposition =
+        liftedProgram Kleisli.<=< stepProgram Kleisli.<=< identityProgram
+      leftAssociated =
+        (identityProgram Kleisli.>=> stepProgram)
+          Kleisli.>=> liftedProgram
+      rightAssociated =
+        identityProgram
+          Kleisli.>=> (stepProgram Kleisli.>=> liftedProgram)
+      evaluate
+        :: Kleisli.Program
+             IdentityStableConfederalValues
+             TestRestrictedDataValues
+             TestRestrictedDataValues
+        -> Natural
+      evaluate program =
+        identityStableConfederalNatural
+          (mapStableConfederalKleisliHom
+            (Kleisli.run identityStableConfederalMonad program)
+            (TestRestrictedDataValue 29 :: TestRestrictedDataValue ()))
+  assert "Kleisli syntax return is the identity"
+    (evaluate identityProgram == 29)
+  assert "Kleisli syntax introduces an existing Kleisli arrow"
+    (evaluate stepProgram == 30)
+  assert "Kleisli syntax lifts a base-category arrow"
+    (evaluate liftedProgram == 30)
+  assert "qualified do sequences Kleisli arrows from left to right"
+    (evaluate qualifiedDoProgram == 31)
+  assert "forward Kleisli composition agrees with qualified do"
+    (evaluate forwardComposition == evaluate qualifiedDoProgram)
+  assert "reverse Kleisli composition agrees with qualified do"
+    (evaluate reverseComposition == evaluate qualifiedDoProgram)
+  assert "Kleisli syntax composition is associative"
+    (evaluate leftAssociated == evaluate rightAssociated)
 
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
@@ -1544,6 +1790,75 @@ testDataTransformationMap = do
 testRestrictedDataTransformations :: IO ()
 testRestrictedDataTransformations = do
   let input = TestRestrictedDataValue 29 :: TestRestrictedDataValue ()
+      emptyConfederationIdentity =
+        identityAtlasConfederationHom
+          :: AtlasConfederationHom
+               (AtlasConfederationObject EmptyAtlasConfederationScope Void)
+               (AtlasConfederationObject EmptyAtlasConfederationScope Void)
+      reindexedEmptyMapIdentity =
+        mapStableConfederalDataTransversal
+          emptyMap
+          emptyConfederationIdentity
+          emptyConfederationIdentity
+      summedTransformation =
+        testStableConfederalDataTransversal
+          |+| testStableConfederalDataTransversal
+      summedValue =
+        horizontalSumValue
+          emptyAtlasConfederation
+          emptyAtlasConfederation
+          (TestRestrictedDataValue 11)
+          (TestRestrictedDataValue 17)
+      reindexedSummedValue =
+        mapStableConfederalDataTransversal
+          summedTransformation
+          identityAtlasConfederationHom
+          summedValue
+      summedHom =
+        horizontalSumHom
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          incrementStableConfederalDataTransversal
+          incrementStableConfederalDataTransversal
+      identityKleisliReturn =
+        stableConfederalKleisliReturn
+          identityStableConfederalMonad
+          testStableConfederalDataTransversal
+      boundIdentityKleisli =
+        stableConfederalKleisliBind
+          identityStableConfederalMonad
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          incrementIdentityStableConfederalKleisli
+          incrementIdentityStableConfederalKleisli
+      joinedIdentityValue =
+        mapStableConfederalDataTransversalHom
+          (stableConfederalJoin
+            identityStableConfederalMonad
+            testStableConfederalDataTransversal)
+          (IdentityStableConfederalValue
+            (IdentityStableConfederalValue input))
+      mappedIdentityValue =
+        mapStableConfederalDataTransversalHom
+          (stableConfederalFmap
+            identityStableConfederalMonad
+            testStableConfederalDataTransversal
+            testStableConfederalDataTransversal
+            incrementStableConfederalDataTransversal)
+          (IdentityStableConfederalValue input)
+      identityFubiniValue =
+        mapStableConfederalDataTransversalHom
+          (stableConfederalFubini
+            identityStableConfederalMonad
+            testStableConfederalDataTransversal
+            testStableConfederalDataTransversal)
+          (horizontalSumValue
+            emptyAtlasConfederation
+            emptyAtlasConfederation
+            (IdentityStableConfederalValue (TestRestrictedDataValue 11))
+            (IdentityStableConfederalValue (TestRestrictedDataValue 17)))
   dataTransposalIdentity testDataTransposal input `seq`
     dataTransposalComposition
       testDataTransposal
@@ -1573,17 +1888,74 @@ testRestrictedDataTransformations = do
         dataTraversalHomNaturality
           incrementDataTraversal identityAtlasTransversal input `seq`
             pure ()
-  stableDataTraversalIdentity testStableDataTraversal input `seq`
-    stableDataTraversalComposition
-      testStableDataTraversal
+  stableDataTransversalIdentity testStableDataTransversal input `seq`
+    stableDataTransversalComposition
+      testStableDataTransversal
       identityStableAtlasTransversal
       identityStableAtlasTransversal
       input `seq`
-        stableDataTraversalHomNaturality
-          incrementStableDataTraversal
+        stableDataTransversalHomNaturality
+          incrementStableDataTransversal
           identityStableAtlasTransversal
           input `seq`
             pure ()
+  stableConfederalDataTransversalIdentity
+      testStableConfederalDataTransversal input `seq`
+    stableConfederalDataTransversalComposition
+      testStableConfederalDataTransversal
+      identityAtlasConfederationHom
+      identityAtlasConfederationHom
+      input `seq`
+        stableConfederalDataTransversalHomNaturality
+          incrementStableConfederalDataTransversal
+          identityAtlasConfederationHom
+          input `seq`
+            pure ()
+  stableConfederalDataTransversalIdentity
+      emptyMap emptyConfederationIdentity `seq`
+    stableConfederalDataTransversalComposition
+      emptyMap
+      emptyConfederationIdentity
+      emptyConfederationIdentity
+      emptyConfederationIdentity `seq`
+        targetAtlasConfederationWitness
+          (atlasConfederationWitness emptyAtlasConfederation)
+          reindexedEmptyMapIdentity `seq`
+            pure ()
+  stableConfederalDataTransversalIdentity
+      summedTransformation summedValue `seq`
+    stableConfederalDataTransversalComposition
+      summedTransformation
+      identityAtlasConfederationHom
+      identityAtlasConfederationHom
+      summedValue `seq`
+        stableConfederalDataTransversalHomNaturality
+          summedHom identityAtlasConfederationHom summedValue `seq`
+            pure ()
+  stableConfederalEndofunctorIdentity
+      identityStableConfederalEndofunctor
+      testStableConfederalDataTransversal `seq`
+    stableConfederalEndofunctorComposition
+      identityStableConfederalEndofunctor
+      testStableConfederalDataTransversal
+      testStableConfederalDataTransversal
+      testStableConfederalDataTransversal
+      incrementStableConfederalDataTransversal
+      incrementStableConfederalDataTransversal `seq`
+        stableConfederalMonadLeftIdentity
+          identityStableConfederalMonad
+          testStableConfederalDataTransversal `seq`
+            stableConfederalMonadRightIdentity
+              identityStableConfederalMonad
+              testStableConfederalDataTransversal `seq`
+                stableConfederalMonadAssociativity
+                  identityStableConfederalMonad
+                  testStableConfederalDataTransversal `seq`
+                    stableConfederalMonadCommutativity
+                      identityStableConfederalMonad
+                      testStableConfederalDataTransversal
+                      testStableConfederalDataTransversal `seq`
+                        pure ()
   assert "restricted data presheaves act contravariantly"
     ( mapDataTransposal
         testDataTransposal identityAtlasTransposal input == input
@@ -1591,8 +1963,16 @@ testRestrictedDataTransformations = do
         testOrderedDataTransposal identityOrderedAtlasTransposal input == input
       && mapDataTraversal
         testDataTraversal identityAtlasTransversal input == input
-      && mapStableDataTraversal
-        testStableDataTraversal identityStableAtlasTransversal input == input
+      && mapStableDataTransversal
+        testStableDataTransversal identityStableAtlasTransversal input == input
+      && mapStableConfederalDataTransversal
+        testStableConfederalDataTransversal
+        identityAtlasConfederationHom
+        input == input
+      && horizontalSumComponents reindexedSummedValue == (11, 17)
+      && identityStableConfederalNatural mappedIdentityValue == 30
+      && identityStableConfederalNatural joinedIdentityValue == 29
+      && identityHorizontalSumComponents identityFubiniValue == (11, 17)
     )
   assert "restricted natural transformations compose pointwise"
     ( mapDataTransposalHom
@@ -1605,10 +1985,21 @@ testRestrictedDataTransformations = do
       && mapDataTraversalHom
         (incrementDataTraversal Category.. incrementDataTraversal)
         input == TestRestrictedDataValue 31
-      && mapStableDataTraversalHom
-        (incrementStableDataTraversal
-          Category.. incrementStableDataTraversal)
+      && mapStableDataTransversalHom
+        (incrementStableDataTransversal
+          Category.. incrementStableDataTransversal)
         input == TestRestrictedDataValue 31
+      && mapStableConfederalDataTransversalHom
+        (incrementStableConfederalDataTransversal
+          Category.. incrementStableConfederalDataTransversal)
+        input == TestRestrictedDataValue 31
+      && horizontalSumComponents
+        (mapStableConfederalDataTransversalHom summedHom summedValue)
+          == (12, 18)
+      && identityStableConfederalNatural
+        (mapStableConfederalKleisliHom identityKleisliReturn input) == 29
+      && identityStableConfederalNatural
+        (mapStableConfederalKleisliHom boundIdentityKleisli input) == 31
     )
 
 testCharter :: IO ()
@@ -1940,10 +2331,10 @@ testCoalition =
                   (coalizingFunctorHom witness witness stable)
                   mapped == Just element)
               assert "a coalition preimage outside the arrow image is total"
-                (preimage
+                (isNothing (preimage
                   (coalizingFunctorHom
                     witness witness doublingStable)
-                  element == Nothing)
+                  element))
               assert "the coalition dominion rank round-trips"
                 (unrank valueCoalition (rank valueCoalition element)
                   == Just element)

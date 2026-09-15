@@ -31,6 +31,11 @@ module Atlas.Internal
   , atlasCompositionWitness
   , atlasCoherenceWitness
   , atlasDisjointWitness
+  , withAtlasPageChain
+  , atlasPageCell
+  , atlasOriginCell
+  , atlasElementLT
+  , atlasCoherenceIdempotent
   ) where
 
 import Atlas.LiquidInternal
@@ -46,12 +51,15 @@ import Atlas.LiquidInternal
   , atlasDataCoherenceLaw
   , atlasDataDisjointLaw
   )
+import Chain (Chain)
 import Data.Kind (Type)
+import DatraOrdinal (Ordinal, ordinalLT)
 import DomanialInsertion.LiquidInternal
 import Dominion (Dominion)
-import Folio (Folio)
+import Folio (Folio, withPageAt)
 import Numeric.Natural (Natural)
-import PageElements (PageElements)
+import PageElements (PageElementIndex, PageElements)
+import qualified PageElements.Internal as Elements
 import PageElements.LiquidInternal
 import Pagination
   ( Pagination
@@ -60,6 +68,7 @@ import Pagination
   , normalizePaginationElement
   , paginationCardinality
   , paginationCoherence
+  , paginationCoherenceIdempotent
   , paginationFolio
   , paginationPageElements
   )
@@ -563,3 +572,66 @@ atlasDisjointWitness
   -> cellData rightObject
   -> ()
 atlasDisjointWitness value = atlasDataDisjointLaw (storedAtlasData value)
+
+-- | Eliminate the carrier of the @n@th page chain. Pages at or above the
+-- Atlas cardinality are the padded copies of the final genuine chain.
+withAtlasPageChain
+  :: Atlas atlasScope scope cellData origin final
+  -> Natural
+  -> (forall page. Chain page -> result)
+  -> result
+withAtlasPageChain valueAtlas = withPageAt (atlasFolio valueAtlas)
+
+-- | Construct a page cell from an index already certified against this
+-- pagination's page-element spine.
+atlasPageCell
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElementIndex scope
+  -> SomePageElement scope
+atlasPageCell _ = Elements.pageElement
+
+-- | The unique origin cell of an Atlas.
+atlasOriginCell
+  :: Atlas atlasScope scope cellData origin final
+  -> SomePageElement scope
+atlasOriginCell = Elements.originPageElement . atlasPageElements
+
+-- | Compare two cells after transporting them to their common earliest page.
+-- Inputs on the padded tail are normalized before comparison.
+atlasElementLT
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope leftObject
+  -> PageElement scope rightObject
+  -> Bool
+atlasElementLT valueAtlas left right =
+  let normalizedLeft = normalizeAtlasElement valueAtlas left
+      normalizedRight = normalizeAtlasElement valueAtlas right
+      commonPage = min
+        (pageElementPage normalizedLeft)
+        (pageElementPage normalizedRight)
+  in case
+      ( positionAtPage commonPage normalizedLeft
+      , positionAtPage commonPage normalizedRight
+      ) of
+        (Just leftPosition, Just rightPosition) ->
+          ordinalLT leftPosition rightPosition
+        _ -> False
+
+positionAtPage
+  :: Natural
+  -> PageElement scope object
+  -> Maybe Ordinal
+positionAtPage page occurrence =
+  case drop offset (pageElementTrace occurrence) of
+    position : _ -> Just position
+    [] -> Nothing
+  where
+    offset = fromIntegral (pageElementPage occurrence - page)
+
+-- | Pointwise idempotence of the Atlas coherence map.
+atlasCoherenceIdempotent
+  :: Atlas atlasScope scope cellData origin final
+  -> PageElement scope object
+  -> ()
+atlasCoherenceIdempotent valueAtlas =
+  paginationCoherenceIdempotent (atlasPagination valueAtlas)

@@ -37,7 +37,7 @@ import Atlas
   , AtlasObjectPaginationScope
   , AtlasWitness
   )
-import CoveredPageElement (AtlasCoveredPageElement)
+import AtlasCoveredPageElement (AtlasCoveredPageElement)
 import AtlasMap
   ( AtlasMap
   , AtlasMapHom

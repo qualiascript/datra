@@ -12,6 +12,8 @@ module AtlasConfederation.Internal
   , atlasConfederationComponentWitness
   , withAtlasConfederationComponent
   , AtlasConfederation (..)
+  , EmptyAtlasConfederationScope
+  , emptyAtlasConfederation
   , atlasConfederation
   , atlasConfederationIndexDominion
   , atlasConfederationComponent
@@ -54,6 +56,7 @@ import AtlasMerge (atlasMerge)
 import Control.Category (Category (..))
 import Data.Kind (Type)
 import Data.Type.Equality ((:~:) (Refl))
+import Data.Void (Void, absurd)
 import Dominion (Dominion, dominion, rank, unrank)
 import EmptyAtlas (emptyAtlas)
 import Numeric.Natural (Natural)
@@ -129,6 +132,21 @@ data AtlasConfederation (confederationScope :: Type) index = AtlasConfederation
   (Dominion index)
   (index -> AtlasConfederationComponent)
   AtlasMergePresentation
+
+-- | Type-level name for the canonical empty confederation.
+data EmptyAtlasConfederationScope
+
+emptyDominion :: Dominion Void
+emptyDominion = dominion absurd (const Nothing) absurd
+
+-- | The confederation with no tagged components and an 'EmptyAtlas' result.
+emptyAtlasConfederation
+  :: AtlasConfederation EmptyAtlasConfederationScope Void
+emptyAtlasConfederation =
+  AtlasConfederation
+    emptyDominion
+    absurd
+    EmptyAtlasMergePresentation
 
 -- | Introduce an Atlas confederation with a fresh object identity.
 atlasConfederation

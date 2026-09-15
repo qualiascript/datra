@@ -41,7 +41,7 @@ import Atlas
   , atlasWitness
   , withAtlasMorphismImage
   )
-import CoveredPageElement.Internal
+import AtlasCoveredPageElement.Internal
   ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness
   , coverageWitnessCovers
