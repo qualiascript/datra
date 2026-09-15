@@ -198,12 +198,22 @@ executable datra-haskell
     hs-source-dirs:   app
     default-language: GHC2021
 
-test-suite datra-haskell-test
+test-suite datra-core-test
     import:           warnings
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
-    main-is:          Main.hs
+    main-is:          DatraCoreTests.hs
+    build-depends:
+        base >= 4.14 && < 5,
+        datra-haskell
+
+test-suite datra-types-test
+    import:           warnings
+    default-language: GHC2021
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          DatraTypesTests.hs
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
