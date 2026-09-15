@@ -3,6 +3,7 @@ module Main (main) where
 import DomanialInsertion
 import Dominion
 import Ellipsis
+import EllipsisInsertion
 import EllipsisNatural
 import EllipsisRange
 import FiniteDominion
@@ -14,6 +15,7 @@ import qualified Data.Set as Set
 main :: IO ()
 main = do
   testEllipsis
+  testEllipsisInsertion
   testEllipsisRange
   testEllipsisNatural
   testFiniteDominion
@@ -33,6 +35,18 @@ testEllipsis = do
   assert "ellipsis ranks and unranks every terminal"
     (all
       (\terminal -> unrank ellipsis (rank ellipsis terminal) == Just terminal)
+      terminals)
+
+testEllipsisInsertion :: IO ()
+testEllipsisInsertion = do
+  let insertion :: EllipsisInsertion Ellipsis
+      insertion = ellipsisInsertion id Just (const ())
+      terminals = map Terminal [0, 1, 1000000]
+  assert "ellipsis insertion specializes a domanial insertion into ellipsis"
+    (all
+      (\terminal ->
+        preimage insertion (applyInsertion insertion terminal)
+          == Just terminal)
       terminals)
 
 testEllipsisRange :: IO ()
@@ -116,7 +130,7 @@ testEllipsisNatural = do
   case ellipsisNatural 0 $ \natural ->
     map
       (fmap ellipsisRangeElementRank
-        . preimage (ellipsisRangeInsertion natural) . Terminal)
+        . preimage (ellipsisNaturalInsertion natural) . Terminal)
       [0, 1]
     of
       Nothing -> fail "zero ellipsis natural was rejected"
@@ -124,7 +138,7 @@ testEllipsisNatural = do
         assert "zero ellipsis natural includes exactly zero"
           (includedRanks == [Just 0, Nothing])
   case ellipsisNatural 3 $ \natural -> do
-    let insertion = ellipsisRangeInsertion natural
+    let insertion = ellipsisNaturalInsertion natural
         includedRanks = map
           (fmap ellipsisRangeElementRank
             . preimage insertion . Terminal)
