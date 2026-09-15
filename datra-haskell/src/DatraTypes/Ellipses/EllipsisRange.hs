@@ -4,16 +4,19 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 
--- | Hidden ellipsis-range representation and scoped operations.
-module EllipsisRange.Internal
-  ( EllipsisRange (..)
-  , EllipsisRangeElement (..)
-  , NonOverlappingEllipsisRanges (..)
+-- | Nonempty half-open ranges of ellipsis ranks and their merge operations.
+module EllipsisRange
+  ( EllipsisRange
+  , EllipsisRangeElement
+  , NonOverlappingEllipsisRanges
   , EllipsisRangeMergeKind (..)
   , EllipsisRangeMerge (..)
   , SomeEllipsisRangeMerge (..)
   , ellipsisRange
+  , ellipsisRangeLowerBound
+  , ellipsisRangeUpperBound
   , ellipsisRangeElement
+  , ellipsisRangeElementRank
   , ellipsisRangeInsertion
   , nonOverlappingEllipsisRanges
   , mergeEllipsisRanges
@@ -23,9 +26,9 @@ module EllipsisRange.Internal
 
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe)
-import DomanialInsertion.Internal (applyInsertion, preimage)
-import Ellipsis.Internal (Ellipsis (Terminal), terminalRank)
-import EllipsisInsertion.Internal
+import DomanialInsertion (applyInsertion, preimage)
+import Ellipsis (Ellipsis (Terminal), terminalRank)
+import EllipsisInsertion
   ( EllipsisInsertion
   , ellipsisInsertion
   )

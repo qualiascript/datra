@@ -2,15 +2,16 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 
--- | Hidden finite dominion representation and scoped operations.
-module FiniteDominion.Internal
-  ( FiniteDominion (..)
-  , FiniteElement (..)
-  , FiniteIndex (..)
+-- | Finite dominions with scoped membership and bounded-index evidence.
+module FiniteDominion
+  ( FiniteDominion
+  , FiniteElement
+  , FiniteIndex
   , finiteSetDominion
   , finiteAsDominion
   , finiteMember
   , finiteValue
+  , finiteCardinality
   , finiteIndex
   , finiteIndexValue
   , finiteRank
@@ -19,7 +20,7 @@ module FiniteDominion.Internal
 
 import Data.Kind (Type)
 import Data.Set (Set)
-import Dominion.Internal (Dominion, dominion)
+import Dominion (Dominion, dominion)
 import Numeric.Natural (Natural)
 
 import qualified Data.Map.Strict as Map

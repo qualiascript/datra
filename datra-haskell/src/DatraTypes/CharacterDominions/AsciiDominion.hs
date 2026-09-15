@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Hidden implementation of the 256-character ASCII dominion.
-module AsciiDominion.Internal
+-- | The finite dominion of the 256 ASCII code points.
+module AsciiDominion
   ( AsciiDominion
   , asciiCardinality
   , asciiDominion
@@ -9,7 +9,7 @@ module AsciiDominion.Internal
   ) where
 
 import Data.Char (chr)
-import FiniteDominion.Internal
+import FiniteDominion
   ( FiniteDominion
   , finiteIndex
   , finiteSetDominion

@@ -76,8 +76,6 @@ library
         Expedition
         DataTransformationMap
     other-modules:
-        AsciiDominion.Internal
-        CanonicalCharsDominion.Internal
         PageElements.Internal
         PageElements.LiquidInternal
         Pagination.Internal
@@ -127,11 +125,6 @@ library
         DomanialInsertion.Internal
         DomanialInsertion.LiquidInternal
         Dominion.Internal
-        Ellipsis.Internal
-        EllipsisInsertion.Internal
-        EllipsisNatural.Internal
-        EllipsisRange.Internal
-        FiniteDominion.Internal
         Folio.Internal
         Folio.LiquidInternal
     build-depends:
@@ -183,14 +176,7 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
         src/DatraTypes/CharacterDominions
-        src/DatraTypes/CharacterDominions/AsciiDominion
-        src/DatraTypes/CharacterDominions/CanonicalCharsDominion
         src/DatraTypes/Ellipses
-        src/DatraTypes/Ellipses/Ellipsis
-        src/DatraTypes/Ellipses/EllipsisInsertion
-        src/DatraTypes/Ellipses/EllipsisNatural
-        src/DatraTypes/Ellipses/EllipsisRange
-        src/DatraTypes/FiniteDominion
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
         src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal

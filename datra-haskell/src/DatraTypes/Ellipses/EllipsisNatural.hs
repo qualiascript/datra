@@ -1,15 +1,15 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Hidden implementation of naturals as singleton ellipsis ranges.
-module EllipsisNatural.Internal
+-- | Natural numbers represented as singleton ellipsis ranges.
+module EllipsisNatural
   ( EllipsisNatural
   , EllipsisNaturalElement
   , ellipsisNatural
   , ellipsisNaturalInsertion
   ) where
 
-import EllipsisInsertion.Internal (EllipsisInsertion)
-import EllipsisRange.Internal
+import EllipsisInsertion (EllipsisInsertion)
+import EllipsisRange
   ( EllipsisRange
   , EllipsisRangeElement
   , ellipsisRange

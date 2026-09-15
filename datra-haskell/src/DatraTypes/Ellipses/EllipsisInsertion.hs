@@ -1,20 +1,22 @@
--- | Hidden specialization of domanial insertions into 'Ellipsis'.
-module EllipsisInsertion.Internal
+-- | Domanial insertions whose codomain is 'Ellipsis'.
+module EllipsisInsertion
   ( EllipsisInsertion
-  , EllipsisInsertionElement (..)
+  , EllipsisInsertionElement
   , ellipsisInsertion
   , mergeDisjointEllipsisInsertions
   , ellipsisInsertionDominion
+  , ellipsisInsertionElementSource
+  , ellipsisInsertionElementValue
   ) where
 
-import DomanialInsertion.Internal
+import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
   , domanialInsertion
   , preimage
   )
-import Dominion.Internal (Dominion, dominion, unrank)
-import Ellipsis.Internal (Ellipsis (Terminal), terminalRank)
+import Dominion (Dominion, dominion, unrank)
+import Ellipsis (Ellipsis (Terminal), terminalRank)
 
 -- | Any domanial insertion whose codomain is the broadest ellipsis dominion.
 type EllipsisInsertion source = DomanialInsertion source Ellipsis

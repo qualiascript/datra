@@ -1,11 +1,11 @@
--- | The hidden implementation of the countably infinite ellipsis dominion.
-module Ellipsis.Internal
+-- | A countably infinite dominion whose elements are all terminal.
+module Ellipsis
   ( Ellipsis (Terminal)
   , terminalRank
   , ellipsis
   ) where
 
-import Dominion.Internal (Dominion, dominion)
+import Dominion (Dominion, dominion)
 import Numeric.Natural (Natural)
 
 -- | A terminal element of 'ellipsis', uniquely identified by its rank.
