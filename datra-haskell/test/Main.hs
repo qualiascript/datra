@@ -39,7 +39,7 @@ import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
 import OrderedDataTransposal
 import StableAtlasTransversal
-import StableDataTraversal
+import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
 import qualified Data.Set as Set
@@ -611,7 +611,7 @@ type instance
     TestRestrictedDataValue atlas
 
 type instance
-  StableDataTraversalValue TestRestrictedDataValues atlas =
+  StableDataTransversalValue TestRestrictedDataValues atlas =
     TestRestrictedDataValue atlas
 
 testDataTransposal :: DataTransposal TestRestrictedDataValues
@@ -670,22 +670,22 @@ incrementDataTraversal =
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
 
-testStableDataTraversal
-  :: StableDataTraversal TestRestrictedDataValues
-testStableDataTraversal =
-  stableDataTraversal
+testStableDataTransversal
+  :: StableDataTransversal TestRestrictedDataValues
+testStableDataTransversal =
+  stableDataTransversal
     (\_ (TestRestrictedDataValue value) ->
       TestRestrictedDataValue value)
     (const ())
     (\_ _ _ -> ())
 
-incrementStableDataTraversal
-  :: StableDataTraversalHom
+incrementStableDataTransversal
+  :: StableDataTransversalHom
        TestRestrictedDataValues TestRestrictedDataValues
-incrementStableDataTraversal =
-  stableDataTraversalHom
-    testStableDataTraversal
-    testStableDataTraversal
+incrementStableDataTransversal =
+  stableDataTransversalHom
+    testStableDataTransversal
+    testStableDataTransversal
     (\(TestRestrictedDataValue value) ->
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
@@ -1573,14 +1573,14 @@ testRestrictedDataTransformations = do
         dataTraversalHomNaturality
           incrementDataTraversal identityAtlasTransversal input `seq`
             pure ()
-  stableDataTraversalIdentity testStableDataTraversal input `seq`
-    stableDataTraversalComposition
-      testStableDataTraversal
+  stableDataTransversalIdentity testStableDataTransversal input `seq`
+    stableDataTransversalComposition
+      testStableDataTransversal
       identityStableAtlasTransversal
       identityStableAtlasTransversal
       input `seq`
-        stableDataTraversalHomNaturality
-          incrementStableDataTraversal
+        stableDataTransversalHomNaturality
+          incrementStableDataTransversal
           identityStableAtlasTransversal
           input `seq`
             pure ()
@@ -1591,8 +1591,8 @@ testRestrictedDataTransformations = do
         testOrderedDataTransposal identityOrderedAtlasTransposal input == input
       && mapDataTraversal
         testDataTraversal identityAtlasTransversal input == input
-      && mapStableDataTraversal
-        testStableDataTraversal identityStableAtlasTransversal input == input
+      && mapStableDataTransversal
+        testStableDataTransversal identityStableAtlasTransversal input == input
     )
   assert "restricted natural transformations compose pointwise"
     ( mapDataTransposalHom
@@ -1605,9 +1605,9 @@ testRestrictedDataTransformations = do
       && mapDataTraversalHom
         (incrementDataTraversal Category.. incrementDataTraversal)
         input == TestRestrictedDataValue 31
-      && mapStableDataTraversalHom
-        (incrementStableDataTraversal
-          Category.. incrementStableDataTraversal)
+      && mapStableDataTransversalHom
+        (incrementStableDataTransversal
+          Category.. incrementStableDataTransversal)
         input == TestRestrictedDataValue 31
     )
 
