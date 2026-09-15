@@ -39,6 +39,8 @@ library
         PageElements
         Pagination
         Atlas
+        AtlasExtent
+        AtlasTerritory
         CoveredPageElement
         AtlasMap
         AtlasTransposal
@@ -50,6 +52,10 @@ library
         DomanialInclusion
         StableAtlasTransversal
         DataTransformation
+        DataTransposal
+        OrderedDataTransposal
+        DataTraversal
+        StableDataTraversal
         Navigation
         Expedition
         DataTransformationMap
@@ -61,6 +67,8 @@ library
         Atlas.Internal
         Atlas.LiquidInternal
         Atlas.Derived.Internal
+        AtlasExtent.Internal
+        AtlasTerritory.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
         CoveredPageElement.Internal
@@ -77,6 +85,10 @@ library
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
+        DataTransposal.Internal
+        OrderedDataTransposal.Internal
+        DataTraversal.Internal
+        StableDataTraversal.Internal
         Navigation.Internal
         Expedition.Internal
         DataTransformationMap.Internal
@@ -104,6 +116,10 @@ library
         src/DatraCore/Atlases/Core/Atlas
         src/DatraCore/DataTransformations
         src/DatraCore/DataTransformations/DataTransformation
+        src/DatraCore/DataTransformations/DataTransposal
+        src/DatraCore/DataTransformations/OrderedDataTransposal
+        src/DatraCore/DataTransformations/DataTraversal
+        src/DatraCore/DataTransformations/StableDataTraversal
         src/DatraCore/DataTransformations/Navigation
         src/DatraCore/DataTransformations/Expedition
         src/DatraCore/DataTransformations/DataTransformationMap
@@ -111,6 +127,8 @@ library
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion
         src/DatraCore/Atlases/Derived
+        src/DatraCore/Atlases/Derived/AtlasExtent
+        src/DatraCore/Atlases/Derived/AtlasTerritory
         src/DatraCore/Atlases/Derived/CoveredPageElement
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap

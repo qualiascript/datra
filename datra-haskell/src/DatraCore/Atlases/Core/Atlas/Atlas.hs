@@ -19,9 +19,6 @@ module Atlas
   , AtlasHom
   , identityAtlasHom
   , composeAtlasHoms
-  , AtlasCellDominion
-  , AtlasCellDominionHandler
-  , AtlasTerritoryIndex
   , atlasDataAction
   , atlas
   , atlasPagination
@@ -53,31 +50,18 @@ module Atlas
   , mapAtlasHomElement
   , mapAtlasHomArrow
   , mapAtlasHomData
-  , withAtlasCellDominion
   , withAtlasPageChain
   , atlasPageCell
   , atlasOriginCell
-  , atlasExtent
-  , atlasTerritoryChain
-  , atlasTerritory
-  , atlasRegion
   , atlasElementLT
   , atlasCoherenceIdempotent
   ) where
 
 import Atlas.Derived.Internal
-  ( AtlasCellDominion
-  , AtlasCellDominionHandler
-  , AtlasTerritoryIndex
-  , atlasCoherenceIdempotent
+  ( atlasCoherenceIdempotent
   , atlasElementLT
-  , atlasExtent
   , atlasOriginCell
   , atlasPageCell
-  , atlasRegion
-  , atlasTerritory
-  , atlasTerritoryChain
-  , withAtlasCellDominion
   , withAtlasPageChain
   )
 import Atlas.Internal
