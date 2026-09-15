@@ -12,7 +12,7 @@
 \date{}
 
 \newcommand{\code}[1]{\texttt{#1}}
-\newcommand{\StaDaTraMon}{\mathsf{StaDaTraMon}}
+\newcommand{\StaConfDaTravMon}{\mathsf{StaConfDaTravMon}}
 \newcommand{\HorSum}{\boxplus}
 
 \tikzset{
@@ -31,7 +31,7 @@
 This post is meant to serve as context and intuition-building for the
 \href{run:preprint.pdf}{Datra preprint}, and as such, it will take a
 different approach to Datra. We will be focusing on the
-\(\StaDaTraMon\) monoidal category, but instead of introducing it in
+\(\StaConfDaTravMon\) monoidal category, but instead of introducing it in
 technical terms, I will illustrate the ideas underpinning the design of the
 Datra programming language. I will start from the original vision, wherein
 Datra was supposedly a language where ``everything is a map''. This idea has
@@ -116,10 +116,10 @@ after a countably infinite number of nodes are introduced.
 
 To be specific, the data structure we have introduced so far is an atlas
 object, by the terminology of the preprint. An object in
-\(\StaDaTraMon\) can represent multiple atlas objects, by usual sum types
-logic. Atlas morphisms are flexible, but morphisms in \(\StaDaTraMon\) are
+\(\StaConfDaTravMon\) can represent multiple atlas objects, by usual sum types
+logic. Atlas morphisms are flexible, but morphisms in \(\StaConfDaTravMon\) are
 more restrictive. Let us look at the case of two atlas objects represented
-by \(\StaDaTraMon\) and a morphism between the two. The rules are as follows:
+by \(\StaConfDaTravMon\) and a morphism between the two. The rules are as follows:
 each node from the origin atlas must be sent to a node of the target atlas,
 so that the function between atlas nodes is injective. The extent of the
 origin atlas must be sent to the target of the origin atlas. The ordering of
@@ -131,8 +131,8 @@ injection between the data at the two nodes, that is, each node is sent to a
 node with more or equal data. Finally, for any node in the origin, if it has
 a territory in the final page that it is the image of, then this must be
 preserved by the morphism. Each of these rules can be relaxed by moving to a
-different category than \(\StaDaTraMon\), however, all these rules are
-imposed in \(\StaDaTraMon\) itself.
+different category than \(\StaConfDaTravMon\), however, all these rules are
+imposed in \(\StaConfDaTravMon\) itself.
 
     To illustrate why these rules are helpful, consider a morphism
 from \(\code{*}\) to \(\code{[A; [B; C]]}\), where \(\code{*}\) is the
@@ -200,7 +200,7 @@ results of computation at different stages, so that this unifies maps and
 functions within the same semantics.
 
 The so-called ``horizontal sum'' operator, \(\HorSum\), takes two
-\(\StaDaTraMon\) morphisms and puts them side by side. It can be seen as
+\(\StaConfDaTravMon\) morphisms and puts them side by side. It can be seen as
 the operation of merging two trees by letting the extent be the coproduct
 of their respective extents, and each page above 0 being composed of the
 pages of the trees at the respective level. This operation is closely
@@ -279,7 +279,7 @@ there ought to be a way to model Python-style \(\code{kargs}\) /
 \(\code{kwargs}\) as first-class Datra constructions, however, this is
 beyond the scope of this document. The eventual construction of advanced
 Datra features is best kept within the actual Datra programming language,
-which I believe \(\StaDaTraMon\) has enough flexibility to model in a
+which I believe \(\StaConfDaTravMon\) has enough flexibility to model in a
 type-safe manner.
 
 \end{document}
