@@ -13,8 +13,11 @@ module EllipsisRange.Internal
 
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe)
-import DomanialInsertion.Internal (DomanialInsertion, domanialInsertion)
 import Ellipsis.Internal (Ellipsis (Terminal), terminalRank)
+import EllipsisInsertion.Internal
+  ( EllipsisInsertion
+  , ellipsisInsertion
+  )
 import Numeric.Natural (Natural)
 
 -- | A half-open interval of ellipsis ranks. A missing bound leaves that side
@@ -58,9 +61,9 @@ ellipsisRangeElement valueRange rankValue
 -- | Insert exactly the terminals in the half-open range into 'Ellipsis'.
 ellipsisRangeInsertion
   :: EllipsisRange scope
-  -> DomanialInsertion (EllipsisRangeElement scope) Ellipsis
+  -> EllipsisInsertion (EllipsisRangeElement scope)
 ellipsisRangeInsertion valueRange =
-  domanialInsertion
+  ellipsisInsertion
     (Terminal . ellipsisRangeElementRank)
     (ellipsisRangeElement valueRange . terminalRank)
     (const ())
