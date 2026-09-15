@@ -4,6 +4,7 @@ module Main (main) where
 
 import Atlas
 import AtlasExtent
+import AtlasConfederation
 import CoveredPageElement
 import AtlasMap
 import AtlasMerge
@@ -54,6 +55,7 @@ main = do
   testPagination
   testAtlas
   testAtlasMerge
+  testAtlasConfederation
   testAtlasMap
   testNavigationAndExpedition
   testDataTransformationMap
@@ -1171,6 +1173,83 @@ testDeepAtlasMerge =
                                 (unrank (atlasDataAt mergedAtlas paddedLeft) 4)
                             )
                   _ -> fail "test setup failed: expected deep Atlas merge cells"
+
+testAtlasConfederation :: IO ()
+testAtlasConfederation =
+  pagination (singletonFolio unitChain) $ \leftPagination ->
+    atlas
+      leftPagination
+      (atlasDataAction testAtlasDataAt testAtlasMapData)
+      testAtlasIdentityLaw
+      testAtlasCompositionLaw
+      testAtlasCoherenceLaw
+      testAtlasDisjointLaw $ \leftAtlas ->
+        pagination (singletonFolio unitChain) $ \rightPagination ->
+          atlas
+            rightPagination
+            (atlasDataAction testAtlasDataAt testAtlasMapData)
+            testAtlasIdentityLaw
+            testAtlasCompositionLaw
+            testAtlasCoherenceLaw
+            testAtlasDisjointLaw $ \rightAtlas ->
+              let leftAtom = singletonAtlasConfederation leftAtlas
+                  rightAtom = singletonAtlasConfederation rightAtlas
+              in do
+                  let leftWitness = atlasConfederationWitness leftAtom
+                      identityHom = Category.id
+                      primitiveHom =
+                        singletonAtlasConfederationHom
+                          leftAtlas leftAtlas identityStableAtlasTransversal
+                      rightPrimitiveHom =
+                        singletonAtlasConfederationHom
+                          rightAtlas rightAtlas identityStableAtlasTransversal
+                      composedHom = primitiveHom Category.. primitiveHom
+                      componentCount :: Natural
+                      componentCount =
+                        foldAtlasConfederationComponentHom
+                          (const 0)
+                          (\_ _ _ -> 1)
+                          (+)
+                          (mapAtlasConfederationComponent
+                            leftWitness composedHom ())
+                  assert "Atlas-confederation identity preserves tags"
+                    (mapAtlasConfederationIndex leftWitness identityHom () == ())
+                  atlasConfederationComponentHomStable
+                    (mapAtlasConfederationComponent
+                      leftWitness composedHom ()) `seq` pure ()
+                  assert "Atlas-confederation component maps compose"
+                    (componentCount == 2)
+                  let merged = mergeAtlasConfederations leftAtom rightAtom
+                  do
+                    let indices = atlasConfederationIndexDominion merged
+                        presentation = atlasConfederationPresentation merged
+                        mergedWitness = atlasConfederationWitness merged
+                        mergedHom = mergeAtlasConfederationHoms
+                          leftAtom rightAtom leftAtom rightAtom
+                          primitiveHom rightPrimitiveHom
+                    assert "Atlas-confederation merge retains disjoint tags"
+                      ( unrank indices 0 == Just (Left ())
+                        && unrank indices 1 == Just (Right ())
+                      )
+                    assert "Atlas-confederation merge retains its presentation"
+                      (atlasMergePresentationSize presentation == 2)
+                    assert "merged Atlas-confederation morphisms map both tags"
+                      ( mapAtlasConfederationIndex
+                          mergedWitness mergedHom (Left ()) == Left ()
+                        && mapAtlasConfederationIndex
+                          mergedWitness mergedHom (Right ()) == Right ()
+                      )
+                    withAtlasConfederationResultingAtlas merged $ \result ->
+                      assert "Atlas-confederation presentation evaluates"
+                        (atlasCardinality result == 2)
+                  let empty = emptyAtlasConfederation
+                  do
+                    assert "the empty Atlas confederation has no tags"
+                      (isNothing
+                        (unrank (atlasConfederationIndexDominion empty) 0))
+                    forgetAtlasConfederationTags empty $ \result ->
+                        assert "the empty presentation evaluates to an Atlas"
+                          (atlasCardinality result == 1)
 
 testAtlasMap :: IO ()
 testAtlasMap =

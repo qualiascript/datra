@@ -1,0 +1,43 @@
+-- | Countably tagged Atlas confederations and their stable component maps.
+module AtlasConfederation
+  ( AtlasMergePresentation (..)
+  , atlasMergePresentationSize
+  , withAtlasMergePresentationAtlas
+  , AtlasConfederationComponent
+  , atlasConfederationComponentWitness
+  , withAtlasConfederationComponent
+  , AtlasConfederation
+  , atlasConfederation
+  , atlasConfederationIndexDominion
+  , atlasConfederationComponent
+  , atlasConfederationPresentation
+  , withAtlasConfederationResultingAtlas
+  , forgetAtlasConfederationTags
+  , AtlasConfederationObject
+  , AtlasConfederationObjectIndex
+  , AtlasConfederationWitness
+  , atlasConfederationWitness
+  , AtlasConfederationComponentHom
+  , atlasConfederationComponentHom
+  , identityAtlasConfederationComponentHom
+  , composeAtlasConfederationComponentHoms
+  , foldAtlasConfederationComponentHom
+  , atlasConfederationComponentHomStable
+  , AtlasConfederationHom
+  , atlasConfederationHom
+  , identityAtlasConfederationHom
+  , composeAtlasConfederationHoms
+  , mapAtlasConfederationIndex
+  , mapAtlasConfederationComponent
+  , targetAtlasConfederationWitness
+  , SingletonAtlasConfederationScope
+  , EmptyAtlasConfederationScope
+  , MergedAtlasConfederationScope
+  , singletonAtlasConfederation
+  , singletonAtlasConfederationHom
+  , emptyAtlasConfederation
+  , mergeAtlasConfederations
+  , mergeAtlasConfederationHoms
+  ) where
+
+import AtlasConfederation.Internal
