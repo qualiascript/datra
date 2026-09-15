@@ -63,6 +63,8 @@ library
         StableDataTransversal
         StableConfederalDataTransversal
         HorizontalSum
+        StableConfederalDataTransversalMonoidal
+        StableConfederalDataTransversalKleisli
         Navigation
         Expedition
         DataTransformationMap
@@ -102,6 +104,8 @@ library
         StableDataTransversal.Internal
         StableConfederalDataTransversal.Internal
         HorizontalSum.Internal
+        StableConfederalDataTransversalMonoidal.Internal
+        StableConfederalDataTransversalKleisli.Internal
         Navigation.Internal
         Expedition.Internal
         DataTransformationMap.Internal
@@ -136,6 +140,8 @@ library
         src/DatraCore/DataTransformations/StableConfederalDataTransversals
         src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversal
         src/DatraCore/DataTransformations/StableConfederalDataTransversals/HorizontalSum
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversalMonoidal
+        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversalKleisli
         src/DatraCore/DataTransformations/DataTransformationMaps
         src/DatraCore/DataTransformations/DataTransformationMaps/Navigation
         src/DatraCore/DataTransformations/DataTransformationMaps/Expedition
