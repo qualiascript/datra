@@ -5,6 +5,7 @@ module Main (main) where
 import Atlas
 import AtlasExtent
 import AtlasConfederation
+import AtlasFederation
 import EmptyAtlas
 import EmptyAtlasConfederation
 import CoveredPageElement
@@ -59,6 +60,7 @@ main = do
   testEmptyAtlas
   testAtlasMerge
   testAtlasConfederation
+  testAtlasFederation
   testAtlasMap
   testNavigationAndExpedition
   testDataTransformationMap
@@ -1259,6 +1261,44 @@ testAtlasConfederation =
                     forgetAtlasConfederationTags empty $ \result ->
                         assert "the empty presentation evaluates to an Atlas"
                           (atlasCardinality result == 1)
+
+testAtlasFederation :: IO ()
+testAtlasFederation = do
+  let emptyFederation =
+        atlasFederation
+          emptyAtlasConfederation
+          (\impossible _ -> absurd impossible)
+  assert "the empty Atlas federation has no tags"
+    (isNothing (unrank (atlasFederationIndexDominion emptyFederation) 0))
+  forgetAtlasFederationTags emptyFederation $ \result ->
+    assert "forgetting empty federation tags produces the empty Atlas"
+      (atlasCardinality result == 1)
+  emptyAtlas $ \valueAtlas ->
+    let component = atlasConfederationComponentWitness (atlasWitness valueAtlas)
+        atom = AtlasMergeAtom (atlasWitness valueAtlas)
+        correspondingPosition = finiteOrdinal 0
+        twoTagDominion =
+          dominion
+            (\tag -> if tag then 1 else 0)
+            (\tagRank -> case tagRank of
+              0 -> Just False
+              1 -> Just True
+              _ -> Nothing)
+            (const ())
+    in atlasConfederation
+        twoTagDominion
+        (const component)
+        (AtlasMergeNode atom atom) $ \confederation -> do
+          let federation =
+                atlasFederation confederation $ \_ _ ->
+                  SeparatedCorrespondingRegions correspondingPosition
+          assert "a federation does not separate a tag from itself"
+            (isNothing (atlasFederationSeparation federation False False))
+          assert "a federation retains separation evidence for distinct tags"
+            ( atlasFederationSeparation federation False True
+                == Just
+                  (SeparatedCorrespondingRegions correspondingPosition)
+            )
 
 testAtlasMap :: IO ()
 testAtlasMap =
