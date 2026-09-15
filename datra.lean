@@ -955,6 +955,12 @@ $\Ter(A)(k)=A_{Da}(|A|-1,k)$.
 
 def TerritoryIndex (A : Atl) : Type := StoredTerritoryIndex A
 
+instance (A : Atl) : LinearOrder (TerritoryIndex A) :=
+  (A.Fo.core.obj A.Fo.lastIndex).unop.linearOrder
+
+instance (A : Atl) : WellFoundedLT (TerritoryIndex A) :=
+  (A.Fo.core.obj A.Fo.lastIndex).unop.wellFoundedLT
+
 def territory (A : Atl) (k : TerritoryIndex A) : DomIns :=
   storedTerritory A k
 
@@ -966,6 +972,40 @@ $0$.
 %%-/
 
 def region (A : Atl) (n : TerritoryIndex A) : DomIns := territory A n
+
+/-%%
+\begin{definition}[Covered Page Element]
+A \textbf{covered page element} of an atlas $X$ is a page element $x$
+together with a datum $t\in X_{Da}(x)$ whose image in the extent is the image
+of a datum in a final region.
+\end{definition}
+%%-/
+
+def elementLT (X : Atl) (x y : X.El) : Prop :=
+  let m := X.Fo.commonBase x.1 y.1
+  letI : LinearOrder (X.Fo.Cell m) :=
+    (X.Fo.core.obj m.unop).unop.linearOrder
+  X.Fo.cellDiagram.map (X.Fo.toCommonLeft x.1 y.1) x.2 <
+  X.Fo.cellDiagram.map (X.Fo.toCommonRight x.1 y.1) y.2
+
+/-- The image of a datum in the extent. -/
+def originImage (X : Atl) (x : X.El) (t : X.Da.obj x) : extent X :=
+  storedOriginImage X x t
+
+/-- A datum is covered when its image in the extent comes from a final region. -/
+def Covered (X : Atl) (x : X.El) (t : X.Da.obj x) : Prop :=
+  storedCovered X x t
+
+/-- A page element, its dependent datum, and evidence that the datum is
+covered by a final region. -/
+structure CoveredPageElement (X : Atl) where
+  pageElement : X.El
+  datum : X.Da.obj pageElement
+  covered : Covered X pageElement datum
+
+theorem covered_region (X : Atl) (k : TerritoryIndex X) (l : territory X k) :
+    Covered X (X.Pa.cell X.Fo.lastBase k) l :=
+  ⟨k, l, rfl⟩
 
 /-%%
 \section{Transposals and Transversals}
@@ -988,70 +1028,94 @@ abbrev AtlTrap := WideSubcategory IsTransposal
 
 def AtlTrapInc : AtlTrap ⥤ Atl := wideSubcategoryInclusion IsTransposal
 
-def elementLT (X : Atl) (x y : X.El) : Prop :=
-  let m := X.Fo.commonBase x.1 y.1
-  letI : LinearOrder (X.Fo.Cell m) :=
-    (X.Fo.core.obj m.unop).unop.linearOrder
-  X.Fo.cellDiagram.map (X.Fo.toCommonLeft x.1 y.1) x.2 <
-  X.Fo.cellDiagram.map (X.Fo.toCommonRight x.1 y.1) y.2
+/-%%
+\begin{definition}[The Category of Ordered Atlas Transposals]
+The \textbf{Category of Ordered Atlas Transposals}, denoted
+$\mathsf{OrdAtlTrap}$, is the wide subcategory of $\mathsf{AtlTrap}$ whose
+morphisms preserve the strict order on page elements.  Explicitly, for
+$F:X\to Y$, let $x=(m,i)$ and $y=(m',j)$, put $p=\min(m,m')$, write
+$F_{Pa}(x)=(n,i')$ and $F_{Pa}(y)=(n',j')$, and put $p'=\min(n,n')$.  If
+$c^X_{m,p}$ and $c^X_{m',p}$ are the induced consolidations, and likewise for
+$Y$, then
+\[
+  c^X_{m,p}(i)<c^X_{m',p}(j)
+  \quad\Longrightarrow\quad
+  c^Y_{n,p'}(i')<c^Y_{n',p'}(j').
+\]
+\end{definition}
+%%-/
 
-/-- The image of a datum in the extent. -/
-def originImage (X : Atl) (x : X.El) (t : X.Da.obj x) : extent X :=
-  storedOriginImage X x t
+/-- Atlas transposals whose object maps preserve strict atlas order. -/
+def IsOrderedTransposal : MorphismProperty Atl := fun _ _ F =>
+  IsTransposal F ∧
+    ∀ x y, elementLT _ x y → elementLT _ (F.Pa.obj x) (F.Pa.obj y)
 
-/-- A datum is covered when its image in the extent comes from a final region. -/
-def Covered (X : Atl) (x : X.El) (t : X.Da.obj x) : Prop :=
-  storedCovered X x t
+instance : IsOrderedTransposal.IsMultiplicative where
+  id_mem _ := ⟨Function.injective_id, fun _ _ h => h⟩
+  comp_mem _ _ hf hg :=
+    ⟨hg.1.comp hf.1, fun _ _ h => hg.2 _ _ (hf.2 _ _ h)⟩
 
-theorem covered_region (X : Atl) (k : TerritoryIndex X) (l : territory X k) :
-    Covered X (X.Pa.cell X.Fo.lastBase k) l :=
-  ⟨k, l, rfl⟩
+abbrev OrdAtlTrap := WideSubcategory IsOrderedTransposal
 
-/-- The order and coverage conditions for atlas transversals. -/
-def IsTransversal : MorphismProperty Atl := fun X Y F =>
-  Function.Injective F.Pa.obj ∧
-  (∀ x y, elementLT _ x y → elementLT _ (F.Pa.obj x) (F.Pa.obj y)) ∧
-  (∀ x (t : X.Da.obj x), Covered X x t →
-    Covered Y (F.Pa.obj x) (F.Da.app x t))
+def OrdAtlTrapInc : OrdAtlTrap ⥤ Atl :=
+  wideSubcategoryInclusion IsOrderedTransposal
+
+def OrdAtlTrapToAtlTrap : OrdAtlTrap ⥤ AtlTrap where
+  obj X := WideSubcategory.mk X.obj
+  map f := ⟨f.1, f.2.1⟩
+
+/-- An atlas morphism preserves covered page elements when the exact image of
+each covered page element is covered. -/
+def PreservesCoveredPageElements {X Y : Atl} (F : X ⟶ Y) : Prop :=
+  ∀ c : CoveredPageElement X,
+    Covered Y (F.Pa.obj c.pageElement) (F.Da.app c.pageElement c.datum)
+
+/-- Apply a coverage-preserving atlas morphism to a covered page element. -/
+def CoveredPageElement.map {X Y : Atl} (F : X ⟶ Y)
+    (hF : PreservesCoveredPageElements F) (c : CoveredPageElement X) :
+    CoveredPageElement Y where
+  pageElement := F.Pa.obj c.pageElement
+  datum := F.Da.app c.pageElement c.datum
+  covered := hF c
+
+/-- Atlas transversals are ordered atlas transposals that preserve covered
+page elements. -/
+def IsTransversal : MorphismProperty Atl := fun _ _ F =>
+  IsOrderedTransposal F ∧ PreservesCoveredPageElements F
 
 instance : IsTransversal.IsMultiplicative where
-  id_mem X := by
-    refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
-    intro x t h
-    simpa [AtlHom.identity] using h
+  id_mem _ := by
+    refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
+    intro c
+    simpa [AtlHom.identity] using c.covered
   comp_mem f g hf hg := by
-    refine ⟨hg.1.comp hf.1, fun x y h => hg.2.1 _ _ (hf.2.1 _ _ h), ?_⟩
-    intro x t h
-    simpa [AtlHom.comp] using hg.2.2 (f.Pa.obj x) (f.Da.app x t) (hf.2.2 x t h)
+    refine ⟨⟨hg.1.1.comp hf.1.1,
+      fun x y h => hg.1.2 _ _ (hf.1.2 _ _ h)⟩, ?_⟩
+    intro c
+    simpa [AtlHom.comp] using hg.2 (c.map f hf.2)
 
 abbrev AtlTrav := WideSubcategory IsTransversal
 
-def AtlTravInc : AtlTrav ⥤ Atl := wideSubcategoryInclusion IsTransversal
+/-- Map a covered page element along an atlas transversal. -/
+def mapAtlasTransversalCoveredPageElement {X Y : AtlTrav} (F : X ⟶ Y)
+    (c : CoveredPageElement X.obj) : CoveredPageElement Y.obj :=
+  c.map F.1 F.2.2
+
+def AtlTravToOrdAtlTrap : AtlTrav ⥤ OrdAtlTrap :=
+  { obj := fun X => WideSubcategory.mk X.obj
+    map := fun f => ⟨f.1, f.2.1⟩ }
 
 def AtlTravToAtlTrap : AtlTrav ⥤ AtlTrap where
   obj X := WideSubcategory.mk X.obj
-  map f := ⟨f.1, f.2.1⟩
+  map f := ⟨f.1, f.2.1.1⟩
+
+def AtlTravInc : AtlTrav ⥤ Atl := wideSubcategoryInclusion IsTransversal
 
 /-%%
 \begin{definition}[The Category of Atlas Transversals]
 The \textbf{Category of Atlas Transversals}, denoted $\mathsf{AtlTrav}$, is
-the wide subcategory of $\mathsf{AtlTrap}$ whose morphisms satisfy the
-following conditions.  For $F:X\to Y$, let $x=(m,i)$ and $y=(m',j)$, put
-$p=\min(m,m')$, write $F_{Pa}(x)=(n,i')$ and $F_{Pa}(y)=(n',j')$, and put
-$p'=\min(n,n')$.  Let $c^X_{m,p}$ and $c^X_{m',p}$ denote the
-consolidations induced by the folio $X_{Fo}$, and define the analogous
-maps for $Y$.  If
-\[
-  c^X_{m,p}(i)<c^X_{m',p}(j),
-\]
-then
-\[
-  c^Y_{n,p'}(i')<c^Y_{n',p'}(j').
-\]
-Furthermore, if $q\in|X|$ and $t\in X_{Da}(q)$ is in the image of a final
-region---that is, there exist $k\in|\Ter(X)|$ and $l\in\Ter(X)(k)$ whose
-image under $X_{Da}((|X|-1)\to q)(k)$ is $t$---then this property is preserved
-by $F$.
+the wide subcategory of $\mathsf{OrdAtlTrap}$ whose morphisms preserve covered
+page elements: the exact image of every covered page element is covered.
 \end{definition}
 
 \begin{definition}[The Category of Stable Atlas Transversals]
@@ -1100,6 +1164,37 @@ structure StableAtlasFamily where
   presentation : AtlasMergePresentation
 
 attribute [instance] StableAtlasFamily.countableIndex
+
+/-- The ordinal indexing the regions of an atlas. -/
+def regionOrdinal (A : Atl) : Ordinal :=
+  Ordinal.type (fun i j : TerritoryIndex A => i < j)
+
+/-- The one-element dominion used to represent elements categorically. -/
+def oneDominion : DomIns where
+  toDom :=
+    { Carrier := Unit
+      rank :=
+        { toFun := fun _ => 0
+          inj' := fun _ _ _ => Subsingleton.elim _ _ } }
+
+/-- There is no simultaneous pair of elements of the two dominions, expressed
+as morphisms from the one-element dominion. -/
+def NoCommonElement (X Y : DomIns) : Prop :=
+  ¬ (Nonempty (oneDominion ⟶ X) ∧ Nonempty (oneDominion ⟶ Y))
+
+/-- An atlas federation is a confederation whose distinct components either
+have different region ordinals or have disjoint corresponding regions at some
+index. -/
+def IsAtlasFederation (F : StableAtlasFamily) : Prop :=
+  ∀ i j : F.Index, i ≠ j →
+    let X := (F.component i).obj.obj
+    let Y := (F.component j).obj.obj
+    regionOrdinal X ≠ regionOrdinal Y ∨
+      ∃ e : TerritoryIndex X ≃o TerritoryIndex Y,
+        ∃ k, NoCommonElement (region X k) (region Y (e k))
+
+/-- Atlas confederations satisfying the federation separation condition. -/
+def AtlasFederation := {F : StableAtlasFamily // IsAtlasFederation F}
 
 structure StableAtlasFamilyHom (X Y : StableAtlasFamily) where
   index : X.Index → Y.Index
@@ -1633,7 +1728,8 @@ def chartMap {X Y : AtlTrav} (f : X ⟶ Y) :
   Pa := f.1.Pa
   Da :=
     { app := fun x =>
-        { toFun := fun t => ⟨f.1.Da.app x t.1, f.2.2.2 x t.1 t.2⟩
+        { toFun := fun t => ⟨f.1.Da.app x t.1,
+            (mapAtlasTransversalCoveredPageElement f ⟨x, t.1, t.2⟩).covered⟩
           inj' := fun a b h => Subtype.ext <| (f.1.Da.app x).injective <|
             congrArg Subtype.val h }
       naturality := by
@@ -1645,8 +1741,8 @@ def chartMap {X Y : AtlTrav} (f : X ⟶ Y) :
 
 theorem chartMap_isTransversal {X Y : AtlTrav} (f : X ⟶ Y) :
     IsTransversal (chartMap f) := by
-  refine ⟨f.2.1, f.2.2.1, ?_⟩
-  intro x t _
+  refine ⟨f.2.1, ?_⟩
+  intro _
   exact chart_all_covered Y.obj _ _
 
 def Chr : AtlTrav ⥤ AtlTravMap where
@@ -1708,9 +1804,9 @@ theorem atlasMap_all_covered {X : Atl} (hX : IsAtlasMap X)
     simpa only [originImage_origin] using h⟩
 
 theorem chartCounit_isTransversal (X : Atl) : IsTransversal (chartCounit X) := by
-  refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
-  intro x t _
-  simpa [chartCounit] using t.2
+  refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
+  intro c
+  simpa [chartCounit] using c.datum.2
 
 def chartCounitTrav (X : AtlTrav) :
     (WideSubcategory.mk (chartAtlas X.obj) : AtlTrav) ⟶ X :=
@@ -1725,7 +1821,8 @@ def chartLift {A : AtlTravMap} {X : AtlTrav}
         Da :=
           { app := fun x =>
               { toFun := fun t => ⟨f.1.Da.app x t,
-                  f.2.2.2 x t (atlasMap_all_covered A.property x t)⟩
+                  (mapAtlasTransversalCoveredPageElement f
+                    ⟨x, t, atlasMap_all_covered A.property x t⟩).covered⟩
                 inj' := by
                   intro a b h
                   apply (f.1.Da.app x).injective
@@ -1736,8 +1833,8 @@ def chartLift {A : AtlTravMap} {X : AtlTrav}
               intro t
               apply Subtype.ext
               exact congrFun (congrArg Function.Embedding.toFun (f.1.Da.naturality g)) t } }
-  · refine ⟨f.2.1, f.2.2.1, ?_⟩
-    intro x t _
+  · refine ⟨f.2.1, ?_⟩
+    intro _
     exact chart_all_covered X.obj _ _
 
 def chartHomEquiv (A : AtlTravMap) (X : AtlTrav) :
@@ -1868,7 +1965,8 @@ def stableCoalitionMap {X Y : StaAtlTrav} (f : X ⟶ Y) :
     coveredDom X.obj.obj X.obj.obj.Fo.originElement ⟶
       coveredDom Y.obj.obj Y.obj.obj.Fo.originElement where
   toFun t := by
-    have hc := f.1.2.2.2 X.obj.obj.Fo.originElement t.1 t.2
+    have hc := (mapAtlasTransversalCoveredPageElement f.1
+      ⟨X.obj.obj.Fo.originElement, t.1, t.2⟩).covered
     exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
       ⟨f.1.1.Da.app X.obj.obj.Fo.originElement t.1, hc⟩
   inj' := fun a b h => by
@@ -1996,8 +2094,8 @@ def dominionMap {X Y : DomIns} (f : X ⟶ Y) :
 
 theorem dominionMap_isTransversal {X Y : DomIns} (f : X ⟶ Y) :
     IsTransversal (dominionMap f) := by
-  refine ⟨Function.injective_id, fun _ _ h => h, ?_⟩
-  intro x t _
+  refine ⟨⟨Function.injective_id, fun _ _ h => h⟩, ?_⟩
+  intro _
   exact atlasMap_all_covered (dominionAtlas_isMap Y) _ _
 
 theorem dominionMap_isStable {X Y : DomIns} (f : X ⟶ Y) :
@@ -2066,8 +2164,9 @@ the covered part of the target extent. -/
 def domIncToCoa {X : DomIns} {Y : StaAtlTrav} (f : DomInc.obj X ⟶ Y) :
     X ⟶ Coa.obj Y where
   toFun x := by
-    have hc := f.1.2.2.2 onePageFolio.originElement x
-      (atlasMap_all_covered (dominionAtlas_isMap X) _ x)
+    have hc := (mapAtlasTransversalCoveredPageElement f.1
+      ⟨onePageFolio.originElement, x,
+        atlasMap_all_covered (dominionAtlas_isMap X) _ x⟩).covered
     exact coveredMap (X := Y.obj.obj) (eqToHom f.2)
       ⟨f.1.1.Da.app onePageFolio.originElement x, hc⟩
   inj' := fun a b h => by
@@ -2098,12 +2197,12 @@ def coaToDomInc {X : DomIns} {Y : StaAtlTrav} (f : X ⟶ Coa.obj Y) :
         simp [p] }
   let h : dominionAtlas X ⟶ Y.obj.obj := ⟨p, a⟩
   have htrav : IsTransversal h := by
-    refine ⟨onePageToAtlasPa_injective Y.obj.obj, ?_, ?_⟩
+    refine ⟨⟨onePageToAtlasPa_injective Y.obj.obj, ?_⟩, ?_⟩
     · intro x y hxy
       exact (onePage_elementLT_false X x y hxy).elim
-    · intro x t _
-      change Covered Y.obj.obj Y.obj.obj.Fo.originElement (f t).1
-      exact (f t).2
+    · intro c
+      change Covered Y.obj.obj Y.obj.obj.Fo.originElement (f c.datum).1
+      exact (f c.datum).2
   exact ⟨⟨h, htrav⟩, rfl⟩
 
 def coaDomIncIso (X : DomIns) : Coa.obj (DomInc.obj X) ≅ X where
@@ -2153,8 +2252,9 @@ def domIncCoaHomEquiv (X : DomIns) (Y : StaAtlTrav) :
         { toFun := fun x =>
             (coveredMap (X := Y.obj.obj) (eqToHom f.2)
               ⟨e x, by
-                exact f.1.2.2.2 onePageFolio.originElement x
-                  (atlasMap_all_covered (dominionAtlas_isMap X) _ x)⟩).1
+                exact (mapAtlasTransversalCoveredPageElement f.1
+                  ⟨onePageFolio.originElement, x,
+                    atlasMap_all_covered (dominionAtlas_isMap X) _ x⟩).covered⟩).1
           inj' := by
             intro a b hab
             apply e.injective
@@ -2238,6 +2338,14 @@ denoted $\mathsf{AtlFed}$.  A morphism consists of a map of tags and, at each so
 tag, a stable atlas transversal to its selected target tag. There is a canonical object-level
 forgetful operation $U:\operatorname{Ob}(\mathsf{AtlFed})\to\operatorname{Ob}(\Atl)$ that
 discards the component tags and retains the resulting atlas.
+\end{definition}
+
+\begin{definition}[Atlas Federation]
+An \textbf{Atlas Federation} is an Atlas Confederation $(A_i)_{i\in I}$ such
+that, for distinct $i,j\in I$, either the region-indexing chains of $A_i$ and
+$A_j$ have different order types, or some pair of corresponding regions (under
+their order isomorphism) has no common element; equivalently, there is no pair
+of morphisms from the one-element dominion to those two regions.
 \end{definition}
 
 \begin{definition}[The Empty Atlas]
