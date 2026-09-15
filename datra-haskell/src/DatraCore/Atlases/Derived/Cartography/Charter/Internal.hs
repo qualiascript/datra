@@ -70,7 +70,7 @@ import Atlas.Morphism.Internal
   , mapAtlasMorphismActionComponent
   , mapAtlasMorphismActionObject
   )
-import CoveredPageElement.Internal
+import AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness (..)
   , atlasCoveredPageElementAt
   , findAtlasCoverage

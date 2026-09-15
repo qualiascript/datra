@@ -7,6 +7,8 @@ module AtlasConfederation
   , atlasConfederationComponentWitness
   , withAtlasConfederationComponent
   , AtlasConfederation
+  , EmptyAtlasConfederationScope
+  , emptyAtlasConfederation
   , atlasConfederation
   , atlasConfederationIndexDominion
   , atlasConfederationComponent

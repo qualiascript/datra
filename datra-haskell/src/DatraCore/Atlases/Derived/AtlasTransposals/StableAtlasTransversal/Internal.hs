@@ -46,7 +46,7 @@ import AtlasTransposal
   , atlasTransposalElement
   , withAtlasTransposalElement
   )
-import CoveredPageElement (AtlasCoveredPageElement)
+import AtlasCoveredPageElement (AtlasCoveredPageElement)
 import AtlasTransversal
   ( AtlasTransversal
   , atlasTransversalHom

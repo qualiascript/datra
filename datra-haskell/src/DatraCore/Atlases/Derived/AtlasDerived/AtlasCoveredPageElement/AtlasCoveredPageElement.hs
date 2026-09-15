@@ -1,5 +1,5 @@
 -- | Evidence that Atlas data is covered by data in final regions.
-module CoveredPageElement
+module AtlasCoveredPageElement
   ( AtlasCoverageWitness
   , AtlasCoveredPageElement
   , atlasCoverageWitness
@@ -7,7 +7,7 @@ module CoveredPageElement
   , withAtlasCoveredPageElement
   ) where
 
-import CoveredPageElement.Internal
+import AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness
   , AtlasCoveredPageElement
   , atlasCoverageWitness

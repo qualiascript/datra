@@ -3,13 +3,13 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
-#include "../../../LiquidPlugin.h"
+#include "../../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ embed Natural as int @-}
 
 -- | Hidden implementation of coverage by final Atlas regions.
-module CoveredPageElement.Internal
+module AtlasCoveredPageElement.Internal
   ( AtlasCoverageWitness (..)
   , AtlasCoveredPageElement (..)
   , atlasCoverageWitness

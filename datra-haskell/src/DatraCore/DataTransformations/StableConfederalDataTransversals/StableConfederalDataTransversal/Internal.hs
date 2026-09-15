@@ -23,12 +23,12 @@ module StableConfederalDataTransversal.Internal
 import AtlasConfederation
   ( AtlasConfederationHom
   , AtlasConfederationObject
+  , EmptyAtlasConfederationScope
   , composeAtlasConfederationHoms
   )
 import Control.Category (Category (..))
 import Data.Kind (Type)
 import Data.Void (Void)
-import EmptyAtlasConfederation (EmptyAtlasConfederationScope)
 import Prelude hiding ((.), id)
 
 -- | Interpret a defunctionalized stable-confederal carrier at an Atlas

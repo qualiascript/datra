@@ -8,8 +8,7 @@ import AtlasConfederation
 import AtlasFederation
 import AtlasHorizontalSum
 import EmptyAtlas
-import EmptyAtlasConfederation
-import CoveredPageElement
+import AtlasCoveredPageElement
 import AtlasMap
 import AtlasMerge
 import AtlasTransposal

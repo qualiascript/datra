@@ -30,7 +30,7 @@ import Atlas
   , withAtlasMorphismImage
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
-import CoveredPageElement.Internal
+import AtlasCoveredPageElement.Internal
   ( AtlasCoveredPageElement (..)
   , AtlasCoverageWitness (..)
   , atlasCoverageAt

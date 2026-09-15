@@ -57,13 +57,6 @@ module Atlas
   , atlasCoherenceIdempotent
   ) where
 
-import Atlas.Derived.Internal
-  ( atlasCoherenceIdempotent
-  , atlasElementLT
-  , atlasOriginCell
-  , atlasPageCell
-  , withAtlasPageChain
-  )
 import Atlas.Internal
   ( Atlas
   , AtlasDataAction
@@ -71,15 +64,20 @@ import Atlas.Internal
   , atlasDataAction
   , atlasCardinality
   , atlasCoherence
+  , atlasCoherenceIdempotent
   , atlasDataAt
   , atlasDataCoherence
   , atlasFolio
+  , atlasElementLT
+  , atlasOriginCell
+  , atlasPageCell
   , atlasPageElements
   , atlasPagination
   , mapAtlasData
   , normalizeAtlasArrow
   , normalizeAtlasDatum
   , normalizeAtlasElement
+  , withAtlasPageChain
   )
 import Atlas.Morphism.Internal
   ( AtlasMorphism

@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeFamilies #-}
 -- GHC does not count names referenced only by LiquidHaskell specifications.
 {-# OPTIONS_GHC -Wno-unused-imports #-}
-#include "../../LiquidPlugin.h"
+#include "../../../LiquidPlugin.h"
 {-@ LIQUID "--reflection" @-}
 {-@ LIQUID "--ple" @-}
 {-@ LIQUID "--higherorder" @-}
