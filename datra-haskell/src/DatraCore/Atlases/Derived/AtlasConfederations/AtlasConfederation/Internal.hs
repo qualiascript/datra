@@ -1,4 +1,3 @@
-{-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
@@ -12,7 +11,7 @@ module AtlasConfederation.Internal
   , AtlasConfederationComponent
   , atlasConfederationComponentWitness
   , withAtlasConfederationComponent
-  , AtlasConfederation
+  , AtlasConfederation (..)
   , atlasConfederation
   , atlasConfederationIndexDominion
   , atlasConfederationComponent
@@ -37,11 +36,9 @@ module AtlasConfederation.Internal
   , mapAtlasConfederationComponent
   , targetAtlasConfederationWitness
   , SingletonAtlasConfederationScope
-  , EmptyAtlasConfederationScope
   , MergedAtlasConfederationScope
   , singletonAtlasConfederation
   , singletonAtlasConfederationHom
-  , emptyAtlasConfederation
   , mergeAtlasConfederations
   , mergeAtlasConfederationHoms
   ) where
@@ -50,24 +47,16 @@ import Atlas
   ( Atlas
   , AtlasObject
   , AtlasWitness
-  , atlas
-  , atlasDataAction
   , atlasWitness
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
 import AtlasMerge (atlasMerge)
-import Chain (Chain, chain)
 import Control.Category (Category (..))
 import Data.Kind (Type)
 import Data.Type.Equality ((:~:) (Refl))
-import Data.Void (Void, absurd)
-import DatraOrdinal (finiteOrdinal)
-import DomanialInsertion (DomanialInsertion, domanialInsertion)
 import Dominion (Dominion, dominion, rank, unrank)
-import Folio (singletonFolio)
+import EmptyAtlas (emptyAtlas)
 import Numeric.Natural (Natural)
-import PageElements (PageElement, PageElementArrow)
-import qualified Pagination
 import Prelude hiding ((.), id)
 import StableAtlasTransversal
   ( StableAtlasTransversal
@@ -93,55 +82,6 @@ atlasMergePresentationSize EmptyAtlasMergePresentation = 0
 atlasMergePresentationSize (AtlasMergeAtom _) = 1
 atlasMergePresentationSize (AtlasMergeNode left right) =
   atlasMergePresentationSize left + atlasMergePresentationSize right
-
-unitChain :: Chain ()
-unitChain =
-  chain
-    (finiteOrdinal 1)
-    (const (finiteOrdinal 0))
-    (\position ->
-      if position == finiteOrdinal 0 then Just () else Nothing)
-    (const ())
-    (\_ _ -> ())
-    (const ())
-
-data EmptyAtlasDatum object
-
-emptyAtlas
-  :: (forall atlasScope paginationScope.
-       Atlas atlasScope paginationScope EmptyAtlasDatum () ()
-       -> result)
-  -> result
-emptyAtlas useAtlas =
-  Pagination.pagination (singletonFolio unitChain) $ \valuePagination ->
-    atlas
-      valuePagination
-      (atlasDataAction emptyDominionAt emptyDataMap)
-      (\_ impossible -> absurdEmptyDatum impossible)
-      (\_ _ _ impossible -> absurdEmptyDatum impossible)
-      (\_ _ _ impossible -> absurdEmptyDatum impossible)
-      (\_ _ _ _ _ impossible _ -> absurdEmptyDatum impossible)
-      useAtlas
-  where
-    emptyDominionAt
-      :: PageElement scope object
-      -> Dominion (EmptyAtlasDatum object)
-    emptyDominionAt _ =
-      dominion absurdEmptyDatum (const Nothing) absurdEmptyDatum
-
-    emptyDataMap
-      :: PageElementArrow scope source target
-      -> DomanialInsertion
-           (EmptyAtlasDatum source)
-           (EmptyAtlasDatum target)
-    emptyDataMap _ =
-      domanialInsertion
-        absurdEmptyDatum
-        (const Nothing)
-        absurdEmptyDatum
-
-absurdEmptyDatum :: EmptyAtlasDatum object -> result
-absurdEmptyDatum impossible = case impossible of {}
 
 -- | Evaluate a presentation to its concrete Atlas.  The rank-polymorphic
 -- continuation hides the different dependent data family introduced by each
@@ -453,9 +393,6 @@ unitDominion =
     (\valueRank -> if valueRank == 0 then Just () else Nothing)
     (const ())
 
-emptyDominion :: Dominion Void
-emptyDominion = dominion absurd (const Nothing) absurd
-
 sumDominions
   :: Dominion left
   -> Dominion right
@@ -472,7 +409,6 @@ sumDominions left right =
 
 -- | Type-level names for the canonical confederation constructors.
 data SingletonAtlasConfederationScope atlasObject
-data EmptyAtlasConfederationScope
 data MergedAtlasConfederationScope leftScope rightScope
 
 -- | Regard one Atlas as a singleton confederation.
@@ -522,15 +458,6 @@ singletonAtlasConfederationHom sourceAtlas targetAtlas transversal =
       (atlasWitness sourceAtlas)
       (atlasWitness targetAtlas)
       transversal))
-
--- | The empty Atlas confederation.
-emptyAtlasConfederation
-  :: AtlasConfederation EmptyAtlasConfederationScope Void
-emptyAtlasConfederation =
-  AtlasConfederation
-    emptyDominion
-    absurd
-    EmptyAtlasMergePresentation
 
 -- | Retain the disjoint tags of two confederations and merge their stored
 -- presentations.  This is an object operation, not a categorical coproduct.

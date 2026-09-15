@@ -5,6 +5,8 @@ module Main (main) where
 import Atlas
 import AtlasExtent
 import AtlasConfederation
+import EmptyAtlas
+import EmptyAtlasConfederation
 import CoveredPageElement
 import AtlasMap
 import AtlasMerge
@@ -54,6 +56,7 @@ main = do
   testPageElements
   testPagination
   testAtlas
+  testEmptyAtlas
   testAtlasMerge
   testAtlasConfederation
   testAtlasMap
@@ -74,6 +77,12 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+testEmptyAtlas :: IO ()
+testEmptyAtlas =
+  emptyAtlas $ \valueAtlas ->
+    assert "the empty Atlas has one empty page"
+      (atlasCardinality valueAtlas == 1)
 
 testFiniteDominion :: IO ()
 testFiniteDominion =

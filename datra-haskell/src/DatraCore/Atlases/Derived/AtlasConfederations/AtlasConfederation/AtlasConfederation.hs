@@ -31,11 +31,9 @@ module AtlasConfederation
   , mapAtlasConfederationComponent
   , targetAtlasConfederationWitness
   , SingletonAtlasConfederationScope
-  , EmptyAtlasConfederationScope
   , MergedAtlasConfederationScope
   , singletonAtlasConfederation
   , singletonAtlasConfederationHom
-  , emptyAtlasConfederation
   , mergeAtlasConfederations
   , mergeAtlasConfederationHoms
   ) where
