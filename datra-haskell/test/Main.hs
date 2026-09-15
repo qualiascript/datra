@@ -17,6 +17,8 @@ import Consolidation
 import qualified Control.Category as Category
 import DataTransformation
 import DataTransformationMap
+import DataTransposal
+import DataTraversal
 import DatraOrdinal
 import DomanialInclusion
 import DomanialInsertion
@@ -29,7 +31,9 @@ import PageElements
 import Pagination
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
+import OrderedDataTransposal
 import StableAtlasTransversal
+import StableDataTraversal
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -51,6 +55,7 @@ main = do
   testAtlasMap
   testNavigationAndExpedition
   testDataTransformationMap
+  testRestrictedDataTransformations
   testCharter
   testOrderedAtlasTransposal
   testAtlasTransversal
@@ -570,6 +575,104 @@ emptyDataTransformationMap =
   dataTransformationMap emptyDataTransformation $ \valueNavigation ->
     case mapNavigation valueNavigation (Yoneda Category.id) of
       EmptyDataTransformationValue impossible -> absurd impossible
+
+newtype TestRestrictedDataValue atlas =
+  TestRestrictedDataValue Natural
+  deriving (Eq, Show)
+
+data TestRestrictedDataValues
+
+type instance
+  DataTransposalValue TestRestrictedDataValues atlas =
+    TestRestrictedDataValue atlas
+
+type instance
+  OrderedDataTransposalValue TestRestrictedDataValues atlas =
+    TestRestrictedDataValue atlas
+
+type instance
+  DataTraversalValue TestRestrictedDataValues atlas =
+    TestRestrictedDataValue atlas
+
+type instance
+  StableDataTraversalValue TestRestrictedDataValues atlas =
+    TestRestrictedDataValue atlas
+
+testDataTransposal :: DataTransposal TestRestrictedDataValues
+testDataTransposal =
+  dataTransposal
+    (\_ (TestRestrictedDataValue value) ->
+      TestRestrictedDataValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementDataTransposal
+  :: DataTransposalHom TestRestrictedDataValues TestRestrictedDataValues
+incrementDataTransposal =
+  dataTransposalHom
+    testDataTransposal
+    testDataTransposal
+    (\(TestRestrictedDataValue value) ->
+      TestRestrictedDataValue (value + 1))
+    (\_ _ -> ())
+
+testOrderedDataTransposal
+  :: OrderedDataTransposal TestRestrictedDataValues
+testOrderedDataTransposal =
+  orderedDataTransposal
+    (\_ (TestRestrictedDataValue value) ->
+      TestRestrictedDataValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementOrderedDataTransposal
+  :: OrderedDataTransposalHom
+       TestRestrictedDataValues TestRestrictedDataValues
+incrementOrderedDataTransposal =
+  orderedDataTransposalHom
+    testOrderedDataTransposal
+    testOrderedDataTransposal
+    (\(TestRestrictedDataValue value) ->
+      TestRestrictedDataValue (value + 1))
+    (\_ _ -> ())
+
+testDataTraversal :: DataTraversal TestRestrictedDataValues
+testDataTraversal =
+  dataTraversal
+    (\_ (TestRestrictedDataValue value) ->
+      TestRestrictedDataValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementDataTraversal
+  :: DataTraversalHom TestRestrictedDataValues TestRestrictedDataValues
+incrementDataTraversal =
+  dataTraversalHom
+    testDataTraversal
+    testDataTraversal
+    (\(TestRestrictedDataValue value) ->
+      TestRestrictedDataValue (value + 1))
+    (\_ _ -> ())
+
+testStableDataTraversal
+  :: StableDataTraversal TestRestrictedDataValues
+testStableDataTraversal =
+  stableDataTraversal
+    (\_ (TestRestrictedDataValue value) ->
+      TestRestrictedDataValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementStableDataTraversal
+  :: StableDataTraversalHom
+       TestRestrictedDataValues TestRestrictedDataValues
+incrementStableDataTraversal =
+  stableDataTraversalHom
+    testStableDataTraversal
+    testStableDataTraversal
+    (\(TestRestrictedDataValue value) ->
+      TestRestrictedDataValue (value + 1))
+    (\_ _ -> ())
 
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
@@ -1133,6 +1236,76 @@ testDataTransformationMap = do
   assert "the full-subcategory inclusion preserves morphism components"
     ( mapDataTransformationHom includedHom input
         == TestDataTransformationValue 30
+    )
+
+testRestrictedDataTransformations :: IO ()
+testRestrictedDataTransformations = do
+  let input = TestRestrictedDataValue 29 :: TestRestrictedDataValue ()
+  dataTransposalIdentity testDataTransposal input `seq`
+    dataTransposalComposition
+      testDataTransposal
+      identityAtlasTransposal
+      identityAtlasTransposal
+      input `seq`
+        dataTransposalHomNaturality
+          incrementDataTransposal identityAtlasTransposal input `seq`
+            pure ()
+  orderedDataTransposalIdentity testOrderedDataTransposal input `seq`
+    orderedDataTransposalComposition
+      testOrderedDataTransposal
+      identityOrderedAtlasTransposal
+      identityOrderedAtlasTransposal
+      input `seq`
+        orderedDataTransposalHomNaturality
+          incrementOrderedDataTransposal
+          identityOrderedAtlasTransposal
+          input `seq`
+            pure ()
+  dataTraversalIdentity testDataTraversal input `seq`
+    dataTraversalComposition
+      testDataTraversal
+      identityAtlasTransversal
+      identityAtlasTransversal
+      input `seq`
+        dataTraversalHomNaturality
+          incrementDataTraversal identityAtlasTransversal input `seq`
+            pure ()
+  stableDataTraversalIdentity testStableDataTraversal input `seq`
+    stableDataTraversalComposition
+      testStableDataTraversal
+      identityStableAtlasTransversal
+      identityStableAtlasTransversal
+      input `seq`
+        stableDataTraversalHomNaturality
+          incrementStableDataTraversal
+          identityStableAtlasTransversal
+          input `seq`
+            pure ()
+  assert "restricted data presheaves act contravariantly"
+    ( mapDataTransposal
+        testDataTransposal identityAtlasTransposal input == input
+      && mapOrderedDataTransposal
+        testOrderedDataTransposal identityOrderedAtlasTransposal input == input
+      && mapDataTraversal
+        testDataTraversal identityAtlasTransversal input == input
+      && mapStableDataTraversal
+        testStableDataTraversal identityStableAtlasTransversal input == input
+    )
+  assert "restricted natural transformations compose pointwise"
+    ( mapDataTransposalHom
+        (incrementDataTransposal Category.. incrementDataTransposal)
+        input == TestRestrictedDataValue 31
+      && mapOrderedDataTransposalHom
+        (incrementOrderedDataTransposal
+          Category.. incrementOrderedDataTransposal)
+        input == TestRestrictedDataValue 31
+      && mapDataTraversalHom
+        (incrementDataTraversal Category.. incrementDataTraversal)
+        input == TestRestrictedDataValue 31
+      && mapStableDataTraversalHom
+        (incrementStableDataTraversal
+          Category.. incrementStableDataTraversal)
+        input == TestRestrictedDataValue 31
     )
 
 testCharter :: IO ()
