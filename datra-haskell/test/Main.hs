@@ -32,6 +32,7 @@ import Dominion
 import Expedition
 import FiniteDominion
 import Folio
+import HorizontalSum
 import Navigation
 import PageElements
 import Pagination
@@ -715,6 +716,17 @@ incrementStableConfederalDataTransversal =
     (\(TestRestrictedDataValue value) ->
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
+
+horizontalSumComponents
+  :: HorizontalSumValue
+       TestRestrictedDataValues TestRestrictedDataValues object
+  -> (Natural, Natural)
+horizontalSumComponents
+  (HorizontalSumValue
+    _ _ _
+    (TestRestrictedDataValue left)
+    (TestRestrictedDataValue right)) =
+      (left, right)
 
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
@@ -1580,6 +1592,28 @@ testRestrictedDataTransformations = do
           emptyMap
           emptyConfederationIdentity
           emptyConfederationIdentity
+      summedTransformation =
+        testStableConfederalDataTransversal
+          |+| testStableConfederalDataTransversal
+      summedValue =
+        horizontalSumValue
+          emptyAtlasConfederation
+          emptyAtlasConfederation
+          (TestRestrictedDataValue 11)
+          (TestRestrictedDataValue 17)
+      reindexedSummedValue =
+        mapStableConfederalDataTransversal
+          summedTransformation
+          identityAtlasConfederationHom
+          summedValue
+      summedHom =
+        horizontalSumHom
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          testStableConfederalDataTransversal
+          incrementStableConfederalDataTransversal
+          incrementStableConfederalDataTransversal
   dataTransposalIdentity testDataTransposal input `seq`
     dataTransposalComposition
       testDataTransposal
@@ -1643,6 +1677,16 @@ testRestrictedDataTransformations = do
           (atlasConfederationWitness emptyAtlasConfederation)
           reindexedEmptyMapIdentity `seq`
             pure ()
+  stableConfederalDataTransversalIdentity
+      summedTransformation summedValue `seq`
+    stableConfederalDataTransversalComposition
+      summedTransformation
+      identityAtlasConfederationHom
+      identityAtlasConfederationHom
+      summedValue `seq`
+        stableConfederalDataTransversalHomNaturality
+          summedHom identityAtlasConfederationHom summedValue `seq`
+            pure ()
   assert "restricted data presheaves act contravariantly"
     ( mapDataTransposal
         testDataTransposal identityAtlasTransposal input == input
@@ -1656,6 +1700,7 @@ testRestrictedDataTransformations = do
         testStableConfederalDataTransversal
         identityAtlasConfederationHom
         input == input
+      && horizontalSumComponents reindexedSummedValue == (11, 17)
     )
   assert "restricted natural transformations compose pointwise"
     ( mapDataTransposalHom
@@ -1676,6 +1721,9 @@ testRestrictedDataTransformations = do
         (incrementStableConfederalDataTransversal
           Category.. incrementStableConfederalDataTransversal)
         input == TestRestrictedDataValue 31
+      && horizontalSumComponents
+        (mapStableConfederalDataTransversalHom summedHom summedValue)
+          == (12, 18)
     )
 
 testCharter :: IO ()
