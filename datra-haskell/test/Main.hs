@@ -39,6 +39,7 @@ import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
 import OrderedDataTransposal
 import StableAtlasTransversal
+import StableConfederalDataTransversal
 import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
@@ -614,6 +615,11 @@ type instance
   StableDataTransversalValue TestRestrictedDataValues atlas =
     TestRestrictedDataValue atlas
 
+type instance
+  StableConfederalDataTransversalValue
+    TestRestrictedDataValues confederation =
+      TestRestrictedDataValue confederation
+
 testDataTransposal :: DataTransposal TestRestrictedDataValues
 testDataTransposal =
   dataTransposal
@@ -686,6 +692,26 @@ incrementStableDataTransversal =
   stableDataTransversalHom
     testStableDataTransversal
     testStableDataTransversal
+    (\(TestRestrictedDataValue value) ->
+      TestRestrictedDataValue (value + 1))
+    (\_ _ -> ())
+
+testStableConfederalDataTransversal
+  :: StableConfederalDataTransversal TestRestrictedDataValues
+testStableConfederalDataTransversal =
+  stableConfederalDataTransversal
+    (\_ (TestRestrictedDataValue value) ->
+      TestRestrictedDataValue value)
+    (const ())
+    (\_ _ _ -> ())
+
+incrementStableConfederalDataTransversal
+  :: StableConfederalDataTransversalHom
+       TestRestrictedDataValues TestRestrictedDataValues
+incrementStableConfederalDataTransversal =
+  stableConfederalDataTransversalHom
+    testStableConfederalDataTransversal
+    testStableConfederalDataTransversal
     (\(TestRestrictedDataValue value) ->
       TestRestrictedDataValue (value + 1))
     (\_ _ -> ())
@@ -1544,6 +1570,16 @@ testDataTransformationMap = do
 testRestrictedDataTransformations :: IO ()
 testRestrictedDataTransformations = do
   let input = TestRestrictedDataValue 29 :: TestRestrictedDataValue ()
+      emptyConfederationIdentity =
+        identityAtlasConfederationHom
+          :: AtlasConfederationHom
+               (AtlasConfederationObject EmptyAtlasConfederationScope Void)
+               (AtlasConfederationObject EmptyAtlasConfederationScope Void)
+      reindexedEmptyMapIdentity =
+        mapStableConfederalDataTransversal
+          emptyMap
+          emptyConfederationIdentity
+          emptyConfederationIdentity
   dataTransposalIdentity testDataTransposal input `seq`
     dataTransposalComposition
       testDataTransposal
@@ -1584,6 +1620,29 @@ testRestrictedDataTransformations = do
           identityStableAtlasTransversal
           input `seq`
             pure ()
+  stableConfederalDataTransversalIdentity
+      testStableConfederalDataTransversal input `seq`
+    stableConfederalDataTransversalComposition
+      testStableConfederalDataTransversal
+      identityAtlasConfederationHom
+      identityAtlasConfederationHom
+      input `seq`
+        stableConfederalDataTransversalHomNaturality
+          incrementStableConfederalDataTransversal
+          identityAtlasConfederationHom
+          input `seq`
+            pure ()
+  stableConfederalDataTransversalIdentity
+      emptyMap emptyConfederationIdentity `seq`
+    stableConfederalDataTransversalComposition
+      emptyMap
+      emptyConfederationIdentity
+      emptyConfederationIdentity
+      emptyConfederationIdentity `seq`
+        targetAtlasConfederationWitness
+          (atlasConfederationWitness emptyAtlasConfederation)
+          reindexedEmptyMapIdentity `seq`
+            pure ()
   assert "restricted data presheaves act contravariantly"
     ( mapDataTransposal
         testDataTransposal identityAtlasTransposal input == input
@@ -1593,6 +1652,10 @@ testRestrictedDataTransformations = do
         testDataTraversal identityAtlasTransversal input == input
       && mapStableDataTransversal
         testStableDataTransversal identityStableAtlasTransversal input == input
+      && mapStableConfederalDataTransversal
+        testStableConfederalDataTransversal
+        identityAtlasConfederationHom
+        input == input
     )
   assert "restricted natural transformations compose pointwise"
     ( mapDataTransposalHom
@@ -1608,6 +1671,10 @@ testRestrictedDataTransformations = do
       && mapStableDataTransversalHom
         (incrementStableDataTransversal
           Category.. incrementStableDataTransversal)
+        input == TestRestrictedDataValue 31
+      && mapStableConfederalDataTransversalHom
+        (incrementStableConfederalDataTransversal
+          Category.. incrementStableConfederalDataTransversal)
         input == TestRestrictedDataValue 31
     )
 

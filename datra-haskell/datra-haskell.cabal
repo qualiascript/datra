@@ -62,6 +62,7 @@ library
         OrderedDataTransposal
         DataTraversal
         StableDataTransversal
+        StableConfederalDataTransversal
         Navigation
         Expedition
         DataTransformationMap
@@ -101,6 +102,7 @@ library
         OrderedDataTransposal.Internal
         DataTraversal.Internal
         StableDataTransversal.Internal
+        StableConfederalDataTransversal.Internal
         Navigation.Internal
         Expedition.Internal
         DataTransformationMap.Internal
@@ -132,6 +134,7 @@ library
         src/DatraCore/DataTransformations/OrderedDataTransposal
         src/DatraCore/DataTransformations/DataTraversal
         src/DatraCore/DataTransformations/StableDataTransversal
+        src/DatraCore/DataTransformations/StableConfederalDataTransversal
         src/DatraCore/DataTransformations/Navigation
         src/DatraCore/DataTransformations/Expedition
         src/DatraCore/DataTransformations/DataTransformationMap
