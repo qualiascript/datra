@@ -6,6 +6,7 @@ import Atlas
 import AtlasExtent
 import AtlasConfederation
 import AtlasFederation
+import AtlasHorizontalSum
 import EmptyAtlas
 import EmptyAtlasConfederation
 import CoveredPageElement
@@ -1230,12 +1231,13 @@ testAtlasConfederation =
                       leftWitness composedHom ()) `seq` pure ()
                   assert "Atlas-confederation component maps compose"
                     (componentCount == 2)
-                  let merged = mergeAtlasConfederations leftAtom rightAtom
+                  let merged = atlasHorizontalSum leftAtom rightAtom
+                      lemmaResult = horizontalLemma leftAtom rightAtom
                   do
                     let indices = atlasConfederationIndexDominion merged
                         presentation = atlasConfederationPresentation merged
                         mergedWitness = atlasConfederationWitness merged
-                        mergedHom = mergeAtlasConfederationHoms
+                        mergedHom = atlasHorizontalSumHom
                           leftAtom rightAtom leftAtom rightAtom
                           primitiveHom rightPrimitiveHom
                     assert "Atlas-confederation merge retains disjoint tags"
@@ -1244,11 +1246,69 @@ testAtlasConfederation =
                       )
                     assert "Atlas-confederation merge retains its presentation"
                       (atlasMergePresentationSize presentation == 2)
+                    assert "the horizontal lemma creates horizontal sum"
+                      ( atlasMergePresentationSize
+                          (atlasConfederationPresentation lemmaResult) == 2
+                      )
                     assert "merged Atlas-confederation morphisms map both tags"
                       ( mapAtlasConfederationIndex
                           mergedWitness mergedHom (Left ()) == Left ()
                         && mapAtlasConfederationIndex
                           mergedWitness mergedHom (Right ()) == Right ()
+                      )
+                    let braided = atlasHorizontalSum rightAtom leftAtom
+                        braidedWitness = atlasConfederationWitness braided
+                        (braiderHom, braiderInv) =
+                          atlasBraider leftAtom rightAtom
+                    assert "the Atlas braider swaps tags in both directions"
+                      ( mapAtlasConfederationIndex
+                          mergedWitness braiderHom (Left ()) == Right ()
+                        && mapAtlasConfederationIndex
+                          braidedWitness braiderInv (Right ()) == Left ()
+                      )
+                    let associatedLeft =
+                          atlasHorizontalSum
+                            (atlasHorizontalSum leftAtom rightAtom)
+                            leftAtom
+                        associatedRight =
+                          atlasHorizontalSum
+                            leftAtom
+                            (atlasHorizontalSum rightAtom leftAtom)
+                        associatedLeftWitness =
+                          atlasConfederationWitness associatedLeft
+                        associatedRightWitness =
+                          atlasConfederationWitness associatedRight
+                        (associatorHom, associatorInv) =
+                          atlasAssociator leftAtom rightAtom leftAtom
+                    assert "the Atlas associator reassociates tags"
+                      ( mapAtlasConfederationIndex
+                          associatedLeftWitness associatorHom
+                          (Left (Right ())) == Right (Left ())
+                        && mapAtlasConfederationIndex
+                          associatedRightWitness associatorInv
+                          (Right (Left ())) == Left (Right ())
+                      )
+                    let leftUnitSource =
+                          atlasHorizontalSum emptyAtlasConfederation leftAtom
+                        rightUnitSource =
+                          atlasHorizontalSum leftAtom emptyAtlasConfederation
+                        leftUnitSourceWitness =
+                          atlasConfederationWitness leftUnitSource
+                        rightUnitSourceWitness =
+                          atlasConfederationWitness rightUnitSource
+                        (leftUnitorHom, leftUnitorInv) =
+                          atlasLeftUnitor leftAtom
+                        (rightUnitorHom, rightUnitorInv) =
+                          atlasRightUnitor leftAtom
+                    assert "the Atlas unitors delete and restore empty tags"
+                      ( mapAtlasConfederationIndex
+                          leftUnitSourceWitness leftUnitorHom (Right ()) == ()
+                        && mapAtlasConfederationIndex
+                          leftWitness leftUnitorInv () == Right ()
+                        && mapAtlasConfederationIndex
+                          rightUnitSourceWitness rightUnitorHom (Left ()) == ()
+                        && mapAtlasConfederationIndex
+                          leftWitness rightUnitorInv () == Left ()
                       )
                     withAtlasConfederationResultingAtlas merged $ \result ->
                       assert "Atlas-confederation presentation evaluates"

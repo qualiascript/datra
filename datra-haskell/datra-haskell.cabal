@@ -46,6 +46,7 @@ library
         AtlasConfederation
         EmptyAtlasConfederation
         AtlasFederation
+        AtlasHorizontalSum
         CoveredPageElement
         AtlasMap
         AtlasTransposal
@@ -79,6 +80,7 @@ library
         AtlasConfederation.Internal
         EmptyAtlasConfederation.Internal
         AtlasFederation.Internal
+        AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
         CoveredPageElement.Internal
@@ -145,6 +147,7 @@ library
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasConfederation
         src/DatraCore/Atlases/Derived/AtlasConfederations/EmptyAtlasConfederation
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasFederation
+        src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasHorizontalSum
         src/DatraCore/Atlases/Derived/CoveredPageElement
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
