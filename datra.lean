@@ -3912,9 +3912,37 @@ category
 \]
 As a presheaf category, it is a topos.
 \end{definition}
+
+\begin{definition}[Data Transposals]
+The \textbf{Category of Data Transposals}, denoted $\mathsf{DaTrap}$, is
+$[\mathsf{AtlTrap}^{\mathrm{op}},\Set]$.
+\end{definition}
+
+\begin{definition}[Ordered Data Transposals]
+The \textbf{Category of Ordered Data Transposals}, denoted
+$\mathsf{OrdDaTrap}$, is $[\mathsf{OrdAtlTrap}^{\mathrm{op}},\Set]$.
+\end{definition}
+
+\begin{definition}[Data Transversals]
+The \textbf{Category of Data Transversals}, denoted $\mathsf{DaTrav}$, is
+$[\mathsf{AtlTrav}^{\mathrm{op}},\Set]$.
+\end{definition}
+
+\begin{definition}[Stable Data Transversals]
+The \textbf{Category of Stable Data Transversals}, denoted
+$\mathsf{StaDaTrav}$, is $[\mathsf{StaAtlTrav}^{\mathrm{op}},\Set]$.
+\end{definition}
 %%-/
 
 abbrev DaTra.{v} := Atlᵒᵖ ⥤ Type v
+
+abbrev DaTrap.{v} := AtlTrapᵒᵖ ⥤ Type v
+
+abbrev OrdDaTrap.{v} := OrdAtlTrapᵒᵖ ⥤ Type v
+
+abbrev DaTrav.{v} := AtlTravᵒᵖ ⥤ Type v
+
+abbrev StaDaTrav.{v} := StaAtlTravᵒᵖ ⥤ Type v
 
 def Yo : Atl ⥤ DaTra := yoneda
 
@@ -3946,49 +3974,42 @@ An \textbf{expedition} is a navigation represented by an Atlas Map.
 structure Expedition (D : DaTra) extends Navigation D where
   atlasMap : IsAtlasMap A
 
-/-- Presheaves on the wide category of atlas transversals. -/
-abbrev AtlTravPSh := AtlTravᵒᵖ ⥤ Type
-
 /-- Forget the action of an atlas presheaf on non-transversal arrows. -/
-def DaTra.restrictToAtlTrav : DaTra ⥤ AtlTravPSh :=
+def DaTra.restrictToAtlTrav : DaTra ⥤ DaTrav :=
   (Functor.whiskeringLeft AtlTravᵒᵖ Atlᵒᵖ Type).obj AtlTravInc.op
 
 /-- Presheaves on atlas confederations of stable atlas transversals. -/
-abbrev StaDaTravPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
+abbrev StaDaTraPresheaf := StableAtlasFamilyᵒᵖ ⥤ Type 3
 
 /-- The all-objects wrapper gives Day convolution its own monoidal structure,
 separate from the pointwise cartesian structure on a raw functor category. -/
-def IsStableDataTransversal : ObjectProperty StaDaTravPresheaf := fun _ => True
+def IsStableDataTransformation : ObjectProperty StaDaTraPresheaf := fun _ => True
 
-/-- Stable data transversals: presheaves whose indexing arrows are stable atlas
+/-- Stable data transformations: presheaves whose indexing arrows are stable atlas
 transversals.  Stability is therefore enforced by the source category. -/
-abbrev StaDaTrav := IsStableDataTransversal.FullSubcategory
+abbrev StaDaTra := IsStableDataTransformation.FullSubcategory
 
-abbrev StaDaTravInc : StaDaTrav ⥤ StaDaTravPresheaf :=
-  IsStableDataTransversal.ι
+abbrev StaDaTraInc : StaDaTra ⥤ StaDaTraPresheaf :=
+  IsStableDataTransformation.ι
 
-/-- Presheaves on single stable atlases, before extension to all atlas
-morphisms. -/
-abbrev StaAtlTravPSh := StaAtlTravᵒᵖ ⥤ Type 3
-
-/-- Forget the multiple tags of a stable data transversal by restricting it
+/-- Forget the multiple tags of a stable data transformation by restricting it
 to singleton atlas confederations. -/
-def StaDaTrav.restrictToStableAtlases : StaDaTrav ⥤ StaAtlTravPSh :=
-  StaDaTravInc ⋙
+def StaDaTra.restrictToStableAtlases : StaDaTra ⥤ StaDaTrav.{3} :=
+  StaDaTraInc ⋙
     (Functor.whiskeringLeft StaAtlTravᵒᵖ StableAtlasFamilyᵒᵖ (Type 3)).obj
       stableAtlasAtomFunctor.op
 
 /-- Extend a presheaf on stable atlas transversals to an ordinary (large-valued)
 DaTra presheaf along the inclusion of stable transversals into all atlas
 morphisms. -/
-noncomputable def StaAtlTravPSh.extendToDaTra : StaAtlTravPSh ⥤ DaTra.{3} :=
+noncomputable def StaDaTrav.extendToDaTra : StaDaTrav.{3} ⥤ DaTra.{3} :=
   StaAtlTravInc.op.lan
 
-/-- Forget a stable data transversal to a DaTra presheaf: first discard the
+/-- Forget a stable data transformation to a DaTra presheaf: first discard the
 confederation tags by restricting to singleton confederations, then left Kan extend
 from stable atlas transversals to all atlas morphisms. -/
-noncomputable def StaDaTrav.forgetToDaTra : StaDaTrav ⥤ DaTra.{3} :=
-  StaDaTrav.restrictToStableAtlases ⋙ StaAtlTravPSh.extendToDaTra
+noncomputable def StaDaTra.forgetToDaTra : StaDaTra ⥤ DaTra.{3} :=
+  StaDaTra.restrictToStableAtlases ⋙ StaDaTrav.extendToDaTra
 
 /-%%
 \begin{definition}[Data Transformation Maps]
@@ -4003,11 +4024,11 @@ def IsDaTraMap : ObjectProperty DaTra := fun D =>
 
 abbrev DaTraMap := IsDaTraMap.FullSubcategory
 
-theorem staDaTravInc_essImage (F : StaDaTravPresheaf) :
-    StaDaTravInc.essImage F :=
+theorem staDaTraInc_essImage (F : StaDaTraPresheaf) :
+    StaDaTraInc.essImage F :=
   ⟨⟨F, trivial⟩, ⟨Iso.refl _⟩⟩
 
-instance staDaTravPreservesTensorRightForTensor (v : Type 3)
+instance staDaTraPreservesTensorRightForTensor (v : Type 3)
     (d : StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
       (CostructuredArrow (MonoidalCategory.tensor StableAtlasFamilyᵒᵖ) d)
@@ -4015,7 +4036,7 @@ instance staDaTravPreservesTensorRightForTensor (v : Type 3)
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-instance staDaTravPreservesTensorRightForUnit (v : Type 3)
+instance staDaTraPreservesTensorRightForUnit (v : Type 3)
     (d : StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
       (CostructuredArrow
@@ -4025,7 +4046,7 @@ instance staDaTravPreservesTensorRightForUnit (v : Type 3)
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-instance staDaTravPreservesTensorRightForUnitProduct (v : Type 3)
+instance staDaTraPreservesTensorRightForUnitProduct (v : Type 3)
     (d : StableAtlasFamilyᵒᵖ × StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
       (CostructuredArrow
@@ -4036,7 +4057,7 @@ instance staDaTravPreservesTensorRightForUnitProduct (v : Type 3)
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-instance staDaTravPreservesTensorRightForTensorProduct (v : Type 3)
+instance staDaTraPreservesTensorRightForTensorProduct (v : Type 3)
     (d : StableAtlasFamilyᵒᵖ × StableAtlasFamilyᵒᵖ) :
     PreservesColimitsOfShape
       (CostructuredArrow
@@ -4046,119 +4067,119 @@ instance staDaTravPreservesTensorRightForTensorProduct (v : Type 3)
   preservesColimitsOfShape_of_natIso
     (BraidedCategory.tensorLeftIsoTensorRight v)
 
-noncomputable def staDaTravMonoidal : MonoidalCategory StaDaTrav :=
-  MonoidalCategory.monoidalOfHasDayConvolutions StaDaTravInc
-    (ObjectProperty.fullyFaithfulι IsStableDataTransversal)
-    (fun _ _ => staDaTravInc_essImage _)
-    (staDaTravInc_essImage _)
+noncomputable def staDaTraMonoidal : MonoidalCategory StaDaTra :=
+  MonoidalCategory.monoidalOfHasDayConvolutions StaDaTraInc
+    (ObjectProperty.fullyFaithfulι IsStableDataTransformation)
+    (fun _ _ => staDaTraInc_essImage _)
+    (staDaTraInc_essImage _)
 
-noncomputable instance : MonoidalCategory StaDaTrav := staDaTravMonoidal
+noncomputable instance : MonoidalCategory StaDaTra := staDaTraMonoidal
 
-noncomputable instance staDaTravLawful :
+noncomputable instance staDaTraLawful :
     MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct
-      StableAtlasFamilyᵒᵖ (Type 3) StaDaTrav :=
+      StableAtlasFamilyᵒᵖ (Type 3) StaDaTra :=
   MonoidalCategory.lawfulDayConvolutionMonoidalCategoryStructOfHasDayConvolutions
-    StaDaTravInc (ObjectProperty.fullyFaithfulι IsStableDataTransversal)
-    (fun _ _ => staDaTravInc_essImage _)
-    (staDaTravInc_essImage _)
+    StaDaTraInc (ObjectProperty.fullyFaithfulι IsStableDataTransformation)
+    (fun _ _ => staDaTraInc_essImage _)
+    (staDaTraInc_essImage _)
 
-noncomputable instance staDaTravDayConvolution (F G : StaDaTrav) :
-    MonoidalCategory.DayConvolution (StaDaTravInc.obj F) (StaDaTravInc.obj G) :=
+noncomputable instance staDaTraDayConvolution (F G : StaDaTra) :
+    MonoidalCategory.DayConvolution (StaDaTraInc.obj F) (StaDaTraInc.obj G) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution
-    StableAtlasFamilyᵒᵖ (Type 3) StaDaTrav F G
+    StableAtlasFamilyᵒᵖ (Type 3) StaDaTra F G
 
-noncomputable instance staDaTravDayConvolutionRightNested (F G H : StaDaTrav) :
-    MonoidalCategory.DayConvolution (StaDaTravInc.obj F)
+noncomputable instance staDaTraDayConvolutionRightNested (F G H : StaDaTra) :
+    MonoidalCategory.DayConvolution (StaDaTraInc.obj F)
       (MonoidalCategory.DayConvolution.convolution
-        (StaDaTravInc.obj G) (StaDaTravInc.obj H)) :=
+        (StaDaTraInc.obj G) (StaDaTraInc.obj H)) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution₂
-    StableAtlasFamilyᵒᵖ (Type 3) StaDaTrav F G H
+    StableAtlasFamilyᵒᵖ (Type 3) StaDaTra F G H
 
-noncomputable instance staDaTravDayConvolutionLeftNested (F G H : StaDaTrav) :
+noncomputable instance staDaTraDayConvolutionLeftNested (F G H : StaDaTra) :
     MonoidalCategory.DayConvolution
       (MonoidalCategory.DayConvolution.convolution
-        (StaDaTravInc.obj F) (StaDaTravInc.obj G))
-      (StaDaTravInc.obj H) :=
+        (StaDaTraInc.obj F) (StaDaTraInc.obj G))
+      (StaDaTraInc.obj H) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolution₂'
-    StableAtlasFamilyᵒᵖ (Type 3) StaDaTrav F G H
+    StableAtlasFamilyᵒᵖ (Type 3) StaDaTra F G H
 
-noncomputable def staDaTravBraiding (F G : StaDaTrav) :
+noncomputable def staDaTraBraiding (F G : StaDaTra) :
     MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F := by
-  exact (ObjectProperty.fullyFaithfulι IsStableDataTransversal).preimageIso
+  exact (ObjectProperty.fullyFaithfulι IsStableDataTransformation).preimageIso
     (MonoidalCategory.DayConvolution.braiding
-      (StaDaTravInc.obj F) (StaDaTravInc.obj G))
+      (StaDaTraInc.obj F) (StaDaTraInc.obj G))
 
-theorem staDaTravInc_map_braiding_hom (F G : StaDaTrav) :
-    StaDaTravInc.map (staDaTravBraiding F G).hom =
+theorem staDaTraInc_map_braiding_hom (F G : StaDaTra) :
+    StaDaTraInc.map (staDaTraBraiding F G).hom =
       (MonoidalCategory.DayConvolution.braiding
-        (StaDaTravInc.obj F) (StaDaTravInc.obj G)).hom := by
-  exact (ObjectProperty.fullyFaithfulι IsStableDataTransversal).map_preimage _
+        (StaDaTraInc.obj F) (StaDaTraInc.obj G)).hom := by
+  exact (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_preimage _
 
-theorem staDaTravInc_map_tensorHom {F₁ F₂ G₁ G₂ : StaDaTrav}
+theorem staDaTraInc_map_tensorHom {F₁ F₂ G₁ G₂ : StaDaTra}
     (f : F₁ ⟶ F₂) (g : G₁ ⟶ G₂) :
-    StaDaTravInc.map (MonoidalCategory.tensorHom f g) =
+    StaDaTraInc.map (MonoidalCategory.tensorHom f g) =
       MonoidalCategory.DayConvolution.map
-        (StaDaTravInc.map f) (StaDaTravInc.map g) := by
-  simpa [StaDaTravInc, staDaTravLawful] using
+        (StaDaTraInc.map f) (StaDaTraInc.map g) := by
+  simpa [StaDaTraInc, staDaTraLawful] using
     (MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.ι_map_tensorHom_hom_eq_tensorHom
-      StableAtlasFamilyᵒᵖ (Type 3) StaDaTrav f g)
+      StableAtlasFamilyᵒᵖ (Type 3) StaDaTra f g)
 
-theorem staDaTravInc_map_associator_hom (F G H : StaDaTrav) :
-    StaDaTravInc.map (MonoidalCategory.associator F G H).hom =
+theorem staDaTraInc_map_associator_hom (F G H : StaDaTra) :
+    StaDaTraInc.map (MonoidalCategory.associator F G H).hom =
       (MonoidalCategory.DayConvolution.associator
-        (StaDaTravInc.obj F) (StaDaTravInc.obj G) (StaDaTravInc.obj H)).hom := by
-  simpa [StaDaTravInc, staDaTravLawful] using
+        (StaDaTraInc.obj F) (StaDaTraInc.obj G) (StaDaTraInc.obj H)).hom := by
+  simpa [StaDaTraInc, staDaTraLawful] using
     (MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.ι_map_associator_hom_eq_associator_hom
-      StableAtlasFamilyᵒᵖ (Type 3) StaDaTrav F G H)
+      StableAtlasFamilyᵒᵖ (Type 3) StaDaTra F G H)
 
-noncomputable instance staDaTravBraided : BraidedCategory StaDaTrav where
-  braiding := staDaTravBraiding
+noncomputable instance staDaTraBraided : BraidedCategory StaDaTra where
+  braiding := staDaTraBraiding
   braiding_naturality_right := fun X {_ _} f => by
     rw [← MonoidalCategory.id_tensorHom, ← MonoidalCategory.tensorHom_id]
-    apply (ObjectProperty.fullyFaithfulι IsStableDataTransversal).map_injective
-    simp only [Functor.map_comp, staDaTravInc_map_tensorHom,
-      staDaTravInc_map_braiding_hom]
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
+    simp only [Functor.map_comp, staDaTraInc_map_tensorHom,
+      staDaTraInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_right
-      (StaDaTravInc.obj X) (StaDaTravInc.map f)
+      (StaDaTraInc.obj X) (StaDaTraInc.map f)
   braiding_naturality_left := fun {_ _} f Z => by
     rw [← MonoidalCategory.tensorHom_id, ← MonoidalCategory.id_tensorHom]
-    apply (ObjectProperty.fullyFaithfulι IsStableDataTransversal).map_injective
-    simp only [Functor.map_comp, staDaTravInc_map_tensorHom,
-      staDaTravInc_map_braiding_hom]
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
+    simp only [Functor.map_comp, staDaTraInc_map_tensorHom,
+      staDaTraInc_map_braiding_hom]
     exact MonoidalCategory.DayConvolution.braiding_naturality_left
-      (StaDaTravInc.map f) (StaDaTravInc.obj Z)
+      (StaDaTraInc.map f) (StaDaTraInc.obj Z)
   hexagon_forward := fun X Y Z => by
-    apply (ObjectProperty.fullyFaithfulι IsStableDataTransversal).map_injective
-    simp only [Functor.map_comp, staDaTravInc_map_associator_hom,
-      staDaTravInc_map_braiding_hom]
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
+    simp only [Functor.map_comp, staDaTraInc_map_associator_hom,
+      staDaTraInc_map_braiding_hom]
     rw [← MonoidalCategory.tensorHom_id, ← MonoidalCategory.id_tensorHom]
-    simp only [staDaTravInc_map_tensorHom]
+    simp only [staDaTraInc_map_tensorHom]
     exact MonoidalCategory.DayConvolution.hexagon_forward
-      (StaDaTravInc.obj X) (StaDaTravInc.obj Y) (StaDaTravInc.obj Z)
+      (StaDaTraInc.obj X) (StaDaTraInc.obj Y) (StaDaTraInc.obj Z)
   hexagon_reverse := fun X Y Z => by
-    apply (ObjectProperty.fullyFaithfulι IsStableDataTransversal).map_injective
-    simp only [Functor.map_comp, staDaTravInc_map_braiding_hom]
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
+    simp only [Functor.map_comp, staDaTraInc_map_braiding_hom]
     rw [← MonoidalCategory.id_tensorHom, ← MonoidalCategory.tensorHom_id]
-    simp only [staDaTravInc_map_tensorHom]
+    simp only [staDaTraInc_map_tensorHom]
     exact MonoidalCategory.DayConvolution.hexagon_reverse
-      (StaDaTravInc.obj X) (StaDaTravInc.obj Y) (StaDaTravInc.obj Z)
+      (StaDaTraInc.obj X) (StaDaTraInc.obj Y) (StaDaTraInc.obj Z)
 
 set_option maxHeartbeats 2400000 in
-noncomputable instance : SymmetricCategory StaDaTrav where
+noncomputable instance : SymmetricCategory StaDaTra where
   symmetry F G := by
-    apply (ObjectProperty.fullyFaithfulι IsStableDataTransversal).map_injective
+    apply (ObjectProperty.fullyFaithfulι IsStableDataTransformation).map_injective
     simp only [Functor.map_comp]
     exact MonoidalCategory.DayConvolution.symmetry
-      (StaDaTravInc.obj F) (StaDaTravInc.obj G)
+      (StaDaTraInc.obj F) (StaDaTraInc.obj G)
 
 /-%%
-\section{Stable Data Transversals}
+\section{Stable Data Transformations}
 
-\begin{definition}[Stable Data Transversals]
-The \textbf{Category of Stable Data Transversals}, denoted
-$\mathsf{StaDaTrav}$, is the presheaf category on Atlas Confederations whose
+\begin{definition}[Stable Data Transformations]
+The \textbf{Category of Stable Data Transformations}, denoted
+$\mathsf{StaDaTra}$, is the presheaf category on Atlas Confederations whose
 component arrows lie in $\mathsf{StaAtlTrav}$. Correspondingly, each stable data
-transversal has an underlying DaTra presheaf.
+transformation has an underlying DaTra presheaf.
 \end{definition}
 
 \begin{definition}[The Empty Map]
@@ -4170,53 +4191,53 @@ empty Atlas Confederation:
 \end{definition}
 %%-/
 
-/-- `StaDaTravMon` is definitionally the category of stable data transversals
+/-- `StaDaTraMon` is definitionally the category of stable data transformations
 equipped with the Day convolution instance above. -/
-abbrev StaDaTravMon := StaDaTrav
+abbrev StaDaTraMon := StaDaTra
 
-noncomputable def I : StaDaTravMon := MonoidalCategory.tensorUnit StaDaTravMon
+noncomputable def I : StaDaTraMon := MonoidalCategory.tensorUnit StaDaTraMon
 
 noncomputable def I_dayConvolutionUnit :
-    MonoidalCategory.DayConvolutionUnit (StaDaTravInc.obj I) :=
+    MonoidalCategory.DayConvolutionUnit (StaDaTraInc.obj I) :=
   MonoidalCategory.LawfulDayConvolutionMonoidalCategoryStruct.convolutionUnit
-    StableAtlasFamilyᵒᵖ (Type 3) StaDaTravMon
+    StableAtlasFamilyᵒᵖ (Type 3) StaDaTraMon
 
 /-%%
 \begin{definition}[The Horizontal Sum Bifunctor]
 The \textbf{Horizontal Sum Bifunctor}, denoted
-$\mathsf{HorSum}:\mathsf{StaDaTrav}\times\mathsf{StaDaTrav}\to
-\mathsf{StaDaTrav}$, or in infix notation by
-$\HorSum:\mathsf{StaDaTrav}\times\mathsf{StaDaTrav}\to\mathsf{StaDaTrav}$,
+$\mathsf{HorSum}:\mathsf{StaDaTra}\times\mathsf{StaDaTra}\to
+\mathsf{StaDaTra}$, or in infix notation by
+$\HorSum:\mathsf{StaDaTra}\times\mathsf{StaDaTra}\to\mathsf{StaDaTra}$,
 is the Day convolution extension of stable atlas horizontal sum.  Because
 the indexing morphisms are arrows of $\mathsf{StaAtlTrav}$, its result and its
-arrow action land in $\mathsf{StaDaTrav}$ by construction.
+arrow action land in $\mathsf{StaDaTra}$ by construction.
 \end{definition}
 %%-/
 
-noncomputable def HorSum : StaDaTravMon × StaDaTravMon ⥤ StaDaTravMon :=
-  MonoidalCategory.tensor StaDaTravMon
+noncomputable def HorSum : StaDaTraMon × StaDaTraMon ⥤ StaDaTraMon :=
+  MonoidalCategory.tensor StaDaTraMon
 
-noncomputable def Brd (F G : StaDaTravMon) :
+noncomputable def Brd (F G : StaDaTraMon) :
     MonoidalCategory.tensorObj F G ≅ MonoidalCategory.tensorObj G F :=
-  staDaTravBraiding F G
+  staDaTraBraiding F G
 
-noncomputable def Asoc (F G H : StaDaTravMon) :
+noncomputable def Asoc (F G H : StaDaTraMon) :
     MonoidalCategory.tensorObj (MonoidalCategory.tensorObj F G) H ≅
       MonoidalCategory.tensorObj F (MonoidalCategory.tensorObj G H) :=
   MonoidalCategory.associator F G H
 
-noncomputable def Lu (F : StaDaTravMon) :
+noncomputable def Lu (F : StaDaTraMon) :
     MonoidalCategory.tensorObj I F ≅ F := MonoidalCategory.leftUnitor F
 
-noncomputable def Ru (F : StaDaTravMon) :
+noncomputable def Ru (F : StaDaTraMon) :
     MonoidalCategory.tensorObj F I ≅ F := MonoidalCategory.rightUnitor F
 
 /-%%
-\begin{definition}[Stable Data Transversals Monoidal Category]
-The \textbf{Stable Data Transversals Monoidal Category}, denoted
-$\mathsf{StaDaTravMon}$, is
+\begin{definition}[Stable Data Transformations Monoidal Category]
+The \textbf{Stable Data Transformations Monoidal Category}, denoted
+$\mathsf{StaDaTraMon}$, is
 \[
-  \mathsf{StaDaTravMon}=(\mathsf{StaDaTrav},\HorSum,I).
+  \mathsf{StaDaTraMon}=(\mathsf{StaDaTra},\HorSum,I).
 \]
 Its tensor is Day convolution on the Atlas Confederation.  Its braider,
 associator, and unitors are based on the Atlas Braider, Atlas Associator,
@@ -4224,7 +4245,7 @@ and Atlas Unitors of Definitions 10.6--10.8, respectively.
 \end{definition}
 %%-/
 
-theorem serenityLemma : Nonempty (SymmetricCategory StaDaTravMon) :=
+theorem serenityLemma : Nonempty (SymmetricCategory StaDaTraMon) :=
   ⟨inferInstance⟩
 end
 
