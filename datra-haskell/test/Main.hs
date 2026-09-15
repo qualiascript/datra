@@ -1,3 +1,4 @@
+{-# LANGUAGE QualifiedDo #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Main (main) where
@@ -41,6 +42,7 @@ import OrderedDataTransposal
 import StableAtlasTransversal
 import StableConfederalDataTransversal
 import StableConfederalDataTransversalKleisli
+import qualified StableConfederalDataTransversalKleisli.Syntax as Kleisli
 import StableConfederalDataTransversalMonoidal
 import StableDataTransversal
 
@@ -69,6 +71,7 @@ main = do
   testNavigationAndExpedition
   testDataTransformationMap
   testRestrictedDataTransformations
+  testStableConfederalKleisliSyntax
   testCharter
   testOrderedAtlasTransposal
   testAtlasTransversal
@@ -884,6 +887,54 @@ identityHorizontalSumComponents
   -> (Natural, Natural)
 identityHorizontalSumComponents
   (IdentityStableConfederalValue value) = horizontalSumComponents value
+
+testStableConfederalKleisliSyntax :: IO ()
+testStableConfederalKleisliSyntax = do
+  let object = testStableConfederalDataTransversal
+      identityProgram = Kleisli.return object
+      stepProgram =
+        Kleisli.step object incrementIdentityStableConfederalKleisli
+      liftedProgram =
+        Kleisli.lift object incrementStableConfederalDataTransversal
+      qualifiedDoProgram = Kleisli.do
+        identityProgram
+        stepProgram
+        liftedProgram
+      forwardComposition =
+        identityProgram Kleisli.>=> stepProgram Kleisli.>=> liftedProgram
+      reverseComposition =
+        liftedProgram Kleisli.<=< stepProgram Kleisli.<=< identityProgram
+      leftAssociated =
+        (identityProgram Kleisli.>=> stepProgram)
+          Kleisli.>=> liftedProgram
+      rightAssociated =
+        identityProgram
+          Kleisli.>=> (stepProgram Kleisli.>=> liftedProgram)
+      evaluate
+        :: Kleisli.Program
+             IdentityStableConfederalValues
+             TestRestrictedDataValues
+             TestRestrictedDataValues
+        -> Natural
+      evaluate program =
+        identityStableConfederalNatural
+          (mapStableConfederalKleisliHom
+            (Kleisli.run identityStableConfederalMonad program)
+            (TestRestrictedDataValue 29 :: TestRestrictedDataValue ()))
+  assert "Kleisli syntax return is the identity"
+    (evaluate identityProgram == 29)
+  assert "Kleisli syntax introduces an existing Kleisli arrow"
+    (evaluate stepProgram == 30)
+  assert "Kleisli syntax lifts a base-category arrow"
+    (evaluate liftedProgram == 30)
+  assert "qualified do sequences Kleisli arrows from left to right"
+    (evaluate qualifiedDoProgram == 31)
+  assert "forward Kleisli composition agrees with qualified do"
+    (evaluate forwardComposition == evaluate qualifiedDoProgram)
+  assert "reverse Kleisli composition agrees with qualified do"
+    (evaluate reverseComposition == evaluate qualifiedDoProgram)
+  assert "Kleisli syntax composition is associative"
+    (evaluate leftAssociated == evaluate rightAssociated)
 
 -- The page offset makes it observable whether 'atlasDataAt' normalized its
 -- input before consulting the canonical data assignment.
@@ -2280,10 +2331,10 @@ testCoalition =
                   (coalizingFunctorHom witness witness stable)
                   mapped == Just element)
               assert "a coalition preimage outside the arrow image is total"
-                (preimage
+                (isNothing (preimage
                   (coalizingFunctorHom
                     witness witness doublingStable)
-                  element == Nothing)
+                  element))
               assert "the coalition dominion rank round-trips"
                 (unrank valueCoalition (rank valueCoalition element)
                   == Just element)

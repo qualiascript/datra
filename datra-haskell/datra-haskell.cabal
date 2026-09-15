@@ -65,6 +65,7 @@ library
         HorizontalSum
         StableConfederalDataTransversalMonoidal
         StableConfederalDataTransversalKleisli
+        StableConfederalDataTransversalKleisli.Syntax
         Navigation
         Expedition
         DataTransformationMap
