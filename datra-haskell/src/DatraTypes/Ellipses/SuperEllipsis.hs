@@ -1,5 +1,8 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | The inductive hierarchy of recursive ellipses.
 --
@@ -17,6 +20,8 @@ module SuperEllipsis
   ( SuperEllipsis
   , SuperEllipsisLayer
   , SuperEllipsisRank
+  , SuperEllipsisTarget
+  , superEllipsisTargetRank
   , dotSuperEllipsisRank
   , nextSuperEllipsisRank
   , superEllipsisRankOrderType
@@ -108,6 +113,18 @@ type SuperEllipsisLayer predecessor =
 -- the hidden natural records its finite exponent.
 type role SuperEllipsisRank nominal
 newtype SuperEllipsisRank target = SuperEllipsisRank Natural
+
+-- | Runtime rank evidence for every target in the inductive hierarchy.
+class SuperEllipsisTarget target where
+  superEllipsisTargetRank :: SuperEllipsisRank target
+
+instance SuperEllipsisTarget Dot where
+  superEllipsisTargetRank = dotSuperEllipsisRank
+
+instance SuperEllipsisTarget predecessor =>
+    SuperEllipsisTarget (SuperEllipsis predecessor) where
+  superEllipsisTargetRank =
+    nextSuperEllipsisRank superEllipsisTargetRank
 
 -- | Rank zero: the singleton 'Dot', whose order type is one.
 dotSuperEllipsisRank :: SuperEllipsisRank Dot
