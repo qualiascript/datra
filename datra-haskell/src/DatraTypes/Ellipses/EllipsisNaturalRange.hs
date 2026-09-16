@@ -1,38 +1,76 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE TypeFamilies #-}
 
--- | Nonempty half-open natural ranges of Ellipsis regions and their merges.
+-- | Nonempty half-open natural ranges and their ordered concatenations.
 module EllipsisNaturalRange
   ( EllipsisNaturalRange
   , EllipsisNaturalRangeElement
-  , NonOverlappingEllipsisNaturalRanges
-  , EllipsisNaturalRangeMergeKind (..)
-  , EllipsisNaturalRangeMerge (..)
-  , SomeEllipsisNaturalRangeMerge (..)
+  , EllipsisNaturalRangeMap
+  , EllipsisNaturalRangeConcatValues
+  , EllipsisNaturalRangeConcatValue
+  , EllipsisNaturalRangeConcatKind (..)
+  , EllipsisNaturalRangeConcat (..)
+  , SomeEllipsisNaturalRangeConcat (..)
   , ellipsisNaturalRange
   , ellipsisNaturalRangeLowerBound
   , ellipsisNaturalRangeUpperBound
   , ellipsisNaturalRangeElement
   , ellipsisNaturalRangeElementRank
   , ellipsisNaturalRangeInsertion
-  , nonOverlappingEllipsisNaturalRanges
+  , ellipsisNaturalRangeMap
+  , concatEllipsisNaturalRanges
   , mergeEllipsisNaturalRanges
-  , mergeSeparatedEllipsisNaturalRanges
-  , withMergedEllipsisNaturalRange
+  , ellipsisNaturalRangeConcatMap
+  , ellipsisNaturalRangeConcatValue
+  , ellipsisNaturalRangeConcatInsertion
+  , concatEllipsisNaturalRangeInsertion
   ) where
 
+import AtlasConfederation
+  ( AtlasConfederation
+  , AtlasConfederationObject
+  , MergedAtlasConfederationScope
+  , SingletonAtlasConfederationScope
+  , identityAtlasConfederationHom
+  , singletonAtlasConfederation
+  )
+import ChainedDominionAtlas
+  ( ChainedDominionAtlasObject
+  , chainedDominionAtlas
+  , chainedDominionAtlasMap
+  )
+import Chain (Chain, chain)
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe)
+import DatraOrdinal
+  ( finiteOrdinal
+  , naturalAtOrdinal
+  , omega
+  )
+import Dominion (Dominion, dominion)
 import Ellipsis (EllipsisTerminal (Terminal), terminalRank)
 import EllipsisInsertion
   ( EllipsisInsertion
   , ellipsisInsertion
   , mergeDisjointEllipsisInsertions
   )
+import MapMakingOperators.ConcatOperator
+  ( Concat (..)
+  , ConcatOperatorValue
+  , ConcatOperatorValues
+  , concatValue
+  , (<.>)
+  )
 import Numeric.Natural (Natural)
+import StableConfederalData
+  ( EmbeddedAtlasMap
+  , StableConfederalData
+  , embedAtlasMap
+  )
 
 -- | A half-open interval of ellipsis ranks. A missing bound leaves that side
 -- unrestricted.
@@ -49,44 +87,72 @@ newtype EllipsisNaturalRangeElement (scope :: Type) = EllipsisNaturalRangeElemen
   }
   deriving (Eq, Show)
 
--- | The relative order of two ranges whose images do not overlap.
-data EllipsisNaturalRangeOrder
-  = FirstBeforeSecond
-  | SecondBeforeFirst
+-- | The representable stable-confederal map whose final chain is exactly one
+-- natural range.
+type EllipsisNaturalRangeMap scope =
+  EmbeddedAtlasMap
+    (ChainedDominionAtlasObject (EllipsisNaturalRangeElement scope))
 
--- | Evidence that two ranges do not overlap. Its constructor is hidden from
--- the public API, so it can only be obtained after checking their bounds.
-data NonOverlappingEllipsisNaturalRanges leftScope rightScope =
-  NonOverlappingEllipsisNaturalRanges
-    (EllipsisNaturalRange leftScope)
-    (EllipsisNaturalRange rightScope)
-    EllipsisNaturalRangeOrder
+type EllipsisNaturalRangeConfederationScope scope =
+  SingletonAtlasConfederationScope
+    (ChainedDominionAtlasObject (EllipsisNaturalRangeElement scope))
 
--- | The type-level classification of a range merge result.
-data EllipsisNaturalRangeMergeKind
-  = EllipsisNaturalRangeMergeResult
-  | EllipsisInsertionMergeResult
+-- | The stable-confederal carrier produced by ordered range concatenation.
+type EllipsisNaturalRangeConcatValues leftScope rightScope =
+  ConcatOperatorValues
+    (EllipsisNaturalRangeMap leftScope)
+    (EllipsisNaturalRangeMap rightScope)
 
--- | A merge result indexed by whether its image is itself a contiguous range.
-data EllipsisNaturalRangeMerge
-    (kind :: EllipsisNaturalRangeMergeKind)
+type EllipsisNaturalRangeConcatObject leftScope rightScope =
+  AtlasConfederationObject
+    (MergedAtlasConfederationScope
+      (EllipsisNaturalRangeConfederationScope leftScope)
+      (EllipsisNaturalRangeConfederationScope rightScope))
+    (Either () ())
+
+-- | A concrete value of the ordered concatenation map.
+type EllipsisNaturalRangeConcatValue leftScope rightScope =
+  ConcatOperatorValue
+    (EllipsisNaturalRangeMap leftScope)
+    (EllipsisNaturalRangeMap rightScope)
+    (EllipsisNaturalRangeConcatObject leftScope rightScope)
+
+-- | Whether an ordered concatenation also has an injective interpretation as
+-- a subtype of Ellipsis.
+data EllipsisNaturalRangeConcatKind
+  = EllipsisInsertionConcat
+  | EllipsisMapConcat
+
+-- | An ordered concat map, refined with an Ellipsis insertion exactly when
+-- the two absolute range images are disjoint. The map is retained in both
+-- constructors because concatenation is ordered even when its image set is
+-- the same after swapping operands.
+data EllipsisNaturalRangeConcat
+    (kind :: EllipsisNaturalRangeConcatKind)
     leftScope
     rightScope where
-  MergedEllipsisNaturalRange
-    :: EllipsisNaturalRange unionScope
-    -> EllipsisNaturalRangeMerge 'EllipsisNaturalRangeMergeResult leftScope rightScope
-  MergedEllipsisInsertion
-    :: EllipsisInsertion
-        (Either
-          (EllipsisNaturalRangeElement leftScope)
-          (EllipsisNaturalRangeElement rightScope))
-    -> EllipsisNaturalRangeMerge 'EllipsisInsertionMergeResult leftScope rightScope
+  ConcatenatedEllipsisInsertion
+    :: StableConfederalData
+         (EllipsisNaturalRangeConcatValues leftScope rightScope)
+    -> EllipsisNaturalRangeConcatValue leftScope rightScope
+    -> EllipsisInsertion
+         (Either
+           (EllipsisNaturalRangeElement leftScope)
+           (EllipsisNaturalRangeElement rightScope))
+    -> EllipsisNaturalRangeConcat
+         'EllipsisInsertionConcat leftScope rightScope
+  ConcatenatedEllipsisMap
+    :: StableConfederalData
+         (EllipsisNaturalRangeConcatValues leftScope rightScope)
+    -> EllipsisNaturalRangeConcatValue leftScope rightScope
+    -> EllipsisNaturalRangeConcat
+         'EllipsisMapConcat leftScope rightScope
 
--- | Existentially package the result kind selected from runtime bounds.
-data SomeEllipsisNaturalRangeMerge leftScope rightScope where
-  SomeEllipsisNaturalRangeMerge
-    :: EllipsisNaturalRangeMerge kind leftScope rightScope
-    -> SomeEllipsisNaturalRangeMerge leftScope rightScope
+-- | Existentially package the capability selected from runtime bounds.
+data SomeEllipsisNaturalRangeConcat leftScope rightScope where
+  SomeEllipsisNaturalRangeConcat
+    :: EllipsisNaturalRangeConcat kind leftScope rightScope
+    -> SomeEllipsisNaturalRangeConcat leftScope rightScope
 
 -- | Validate optional natural-number bounds and introduce the resulting range
 -- with a fresh abstract scope. The range must be nonempty, treating a missing
@@ -111,6 +177,15 @@ ellipsisNaturalRangeElement valueRange rankValue
       Just (EllipsisNaturalRangeElement rankValue)
   | otherwise = Nothing
 
+ellipsisNaturalRangeDominion
+  :: EllipsisNaturalRange scope
+  -> Dominion (EllipsisNaturalRangeElement scope)
+ellipsisNaturalRangeDominion valueRange =
+  dominion
+    ellipsisNaturalRangeElementRank
+    (ellipsisNaturalRangeElement valueRange)
+    (const ())
+
 -- | Insert exactly the terminals in the half-open range into 'Ellipsis'.
 ellipsisNaturalRangeInsertion
   :: EllipsisNaturalRange scope
@@ -121,64 +196,146 @@ ellipsisNaturalRangeInsertion valueRange =
     (ellipsisNaturalRangeElement valueRange . terminalRank)
     (const ())
 
--- | Check that the two ranges do not overlap and retain their relative order
--- as evidence required by 'mergeEllipsisNaturalRanges'. Touching ranges are
--- allowed.
-nonOverlappingEllipsisNaturalRanges
+rangeFirstElement
+  :: EllipsisNaturalRange scope
+  -> EllipsisNaturalRangeElement scope
+rangeFirstElement =
+  EllipsisNaturalRangeElement . fromMaybe 0
+    . ellipsisNaturalRangeLowerBound
+
+rangeChain
+  :: EllipsisNaturalRange scope
+  -> Chain (EllipsisNaturalRangeElement scope)
+rangeChain valueRange =
+  chain
+    rangeOrderType
+    (finiteOrdinal . relativeRank)
+    (\position -> do
+      offset <- naturalAtOrdinal position
+      ellipsisNaturalRangeElement valueRange (rangeStart + offset))
+    (const ())
+    (\_ _ -> ())
+    (const ())
+  where
+    rangeStart =
+      fromMaybe 0 (ellipsisNaturalRangeLowerBound valueRange)
+
+    rangeOrderType =
+      case ellipsisNaturalRangeUpperBound valueRange of
+        Just upper -> finiteOrdinal (upper - rangeStart)
+        Nothing -> omega
+
+    relativeRank element =
+      ellipsisNaturalRangeElementRank element - rangeStart
+
+rangeAtlas
+  :: EllipsisNaturalRange scope
+  -> AtlasConfederation
+       (EllipsisNaturalRangeConfederationScope scope)
+       ()
+rangeAtlas valueRange =
+  singletonAtlasConfederation
+    (chainedDominionAtlas
+      (rangeFirstElement valueRange)
+      (rangeChain valueRange)
+      (ellipsisNaturalRangeDominion valueRange))
+
+-- | Interpret a range as the representable map with its exact finite or
+-- omega-length final chain.
+ellipsisNaturalRangeMap
+  :: EllipsisNaturalRange scope
+  -> StableConfederalData (EllipsisNaturalRangeMap scope)
+ellipsisNaturalRangeMap valueRange =
+  embedAtlasMap
+    (chainedDominionAtlasMap
+      (rangeFirstElement valueRange)
+      (rangeChain valueRange)
+      (ellipsisNaturalRangeDominion valueRange))
+
+rangeConcatValue
   :: EllipsisNaturalRange leftScope
   -> EllipsisNaturalRange rightScope
-  -> Maybe (NonOverlappingEllipsisNaturalRanges leftScope rightScope)
-nonOverlappingEllipsisNaturalRanges first second
-  | rangeBefore first second =
-      Just (NonOverlappingEllipsisNaturalRanges first second FirstBeforeSecond)
-  | rangeBefore second first =
-      Just (NonOverlappingEllipsisNaturalRanges first second SecondBeforeFirst)
-  | otherwise = Nothing
+  -> EllipsisNaturalRangeConcatValue leftScope rightScope
+rangeConcatValue first second =
+  concatValue
+    (rangeAtlas first)
+    (rangeAtlas second)
+    identityAtlasConfederationHom
+    identityAtlasConfederationHom
 
--- | Merge two non-overlapping ranges. Adjacent ranges produce a range at the
--- result type; ranges separated by a gap produce the more general ellipsis
--- insertion whose source is their disjoint union.
-mergeEllipsisNaturalRanges
-  :: NonOverlappingEllipsisNaturalRanges leftScope rightScope
-  -> SomeEllipsisNaturalRangeMerge leftScope rightScope
-mergeEllipsisNaturalRanges
-    (NonOverlappingEllipsisNaturalRanges first second order)
-  | rangesTouch first second order =
-      SomeEllipsisNaturalRangeMerge
-        (MergedEllipsisNaturalRange (combinedRange first second order))
-  | otherwise =
-      SomeEllipsisNaturalRangeMerge
-        (MergedEllipsisInsertion (disjointInsertion first second))
+-- | Concatenate ranges from left to right. Swapping the operands changes the
+-- resulting ordinal sum. Disjoint absolute images additionally produce the
+-- insertion capability required for constructing an Ellipsis subtype;
+-- overlapping images deliberately return only the map presentation.
+concatEllipsisNaturalRanges
+  :: EllipsisNaturalRange leftScope
+  -> EllipsisNaturalRange rightScope
+  -> SomeEllipsisNaturalRangeConcat leftScope rightScope
+concatEllipsisNaturalRanges first second =
+  let valueMap =
+        ellipsisNaturalRangeMap first <.> ellipsisNaturalRangeMap second
+      value = rangeConcatValue first second
+  in if rangesOverlap first second
+      then SomeEllipsisNaturalRangeConcat
+        (ConcatenatedEllipsisMap valueMap value)
+      else SomeEllipsisNaturalRangeConcat
+        (ConcatenatedEllipsisInsertion
+          valueMap
+          value
+          (mergeDisjointEllipsisInsertions
+            (ellipsisNaturalRangeInsertion first)
+            (ellipsisNaturalRangeInsertion second)))
 
--- | Merge ranges only when they are separated by a gap. Overlapping or
--- adjacent inputs return 'Nothing'; adjacency is represented by a range merge
--- rather than an insertion merge.
-mergeSeparatedEllipsisNaturalRanges
+-- | Range merging is ordered concatenation; this name is retained for the
+-- domain operation while making its noncommutative semantics explicit in the
+-- result value.
+mergeEllipsisNaturalRanges
+  :: EllipsisNaturalRange leftScope
+  -> EllipsisNaturalRange rightScope
+  -> SomeEllipsisNaturalRangeConcat leftScope rightScope
+mergeEllipsisNaturalRanges = concatEllipsisNaturalRanges
+
+ellipsisNaturalRangeConcatMap
+  :: EllipsisNaturalRangeConcat kind leftScope rightScope
+  -> StableConfederalData
+       (EllipsisNaturalRangeConcatValues leftScope rightScope)
+ellipsisNaturalRangeConcatMap
+    (ConcatenatedEllipsisInsertion valueMap _ _) = valueMap
+ellipsisNaturalRangeConcatMap (ConcatenatedEllipsisMap valueMap _) = valueMap
+
+ellipsisNaturalRangeConcatValue
+  :: EllipsisNaturalRangeConcat kind leftScope rightScope
+  -> EllipsisNaturalRangeConcatValue leftScope rightScope
+ellipsisNaturalRangeConcatValue
+    (ConcatenatedEllipsisInsertion _ value _) = value
+ellipsisNaturalRangeConcatValue (ConcatenatedEllipsisMap _ value) = value
+
+ellipsisNaturalRangeConcatInsertion
+  :: EllipsisNaturalRangeConcat
+       'EllipsisInsertionConcat leftScope rightScope
+  -> EllipsisInsertion
+       (Either
+         (EllipsisNaturalRangeElement leftScope)
+         (EllipsisNaturalRangeElement rightScope))
+ellipsisNaturalRangeConcatInsertion
+    (ConcatenatedEllipsisInsertion _ _ insertion) = insertion
+
+-- | Request only the subtype capability. Overlapping concatenations return
+-- 'Nothing' while remaining available through 'concatEllipsisNaturalRanges'
+-- as ordered maps.
+concatEllipsisNaturalRangeInsertion
   :: EllipsisNaturalRange leftScope
   -> EllipsisNaturalRange rightScope
   -> Maybe
-      (EllipsisInsertion
-        (Either
-          (EllipsisNaturalRangeElement leftScope)
-          (EllipsisNaturalRangeElement rightScope)))
-mergeSeparatedEllipsisNaturalRanges first second = do
-  nonOverlapping <- nonOverlappingEllipsisNaturalRanges first second
-  case mergeEllipsisNaturalRanges nonOverlapping of
-    SomeEllipsisNaturalRangeMerge (MergedEllipsisInsertion insertion) ->
-      Just insertion
-    SomeEllipsisNaturalRangeMerge (MergedEllipsisNaturalRange _) -> Nothing
-
--- | Eliminate a merge result known at the type level to be a contiguous
--- range. The continuation keeps the merged range's fresh scope from escaping.
-withMergedEllipsisNaturalRange
-  :: EllipsisNaturalRangeMerge
-      'EllipsisNaturalRangeMergeResult
-      leftScope
-      rightScope
-  -> (forall unionScope. EllipsisNaturalRange unionScope -> result)
-  -> result
-withMergedEllipsisNaturalRange (MergedEllipsisNaturalRange valueRange) useRange =
-  useRange valueRange
+       (EllipsisInsertion
+         (Either
+           (EllipsisNaturalRangeElement leftScope)
+           (EllipsisNaturalRangeElement rightScope)))
+concatEllipsisNaturalRangeInsertion first second =
+  case concatEllipsisNaturalRanges first second of
+    SomeEllipsisNaturalRangeConcat
+        (ConcatenatedEllipsisInsertion _ _ insertion) -> Just insertion
+    SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) -> Nothing
 
 validOrder :: Maybe Natural -> Maybe Natural -> Bool
 validOrder maybeLower (Just upper) = fromMaybe 0 maybeLower < upper
@@ -191,6 +348,13 @@ rankInRange valueRange rankValue =
     && maybe True (rankValue <)
       (ellipsisNaturalRangeUpperBound valueRange)
 
+rangesOverlap
+  :: EllipsisNaturalRange leftScope
+  -> EllipsisNaturalRange rightScope
+  -> Bool
+rangesOverlap first second =
+  not (rangeBefore first second || rangeBefore second first)
+
 rangeBefore
   :: EllipsisNaturalRange firstScope
   -> EllipsisNaturalRange secondScope
@@ -201,40 +365,12 @@ rangeBefore first second =
     Just firstUpper ->
       firstUpper <= fromMaybe 0 (ellipsisNaturalRangeLowerBound second)
 
-rangesTouch
-  :: EllipsisNaturalRange leftScope
-  -> EllipsisNaturalRange rightScope
-  -> EllipsisNaturalRangeOrder
-  -> Bool
-rangesTouch first second FirstBeforeSecond =
-  ellipsisNaturalRangeUpperBound first
-    == Just (fromMaybe 0 (ellipsisNaturalRangeLowerBound second))
-rangesTouch first second SecondBeforeFirst =
-  ellipsisNaturalRangeUpperBound second
-    == Just (fromMaybe 0 (ellipsisNaturalRangeLowerBound first))
-
-combinedRange
-  :: EllipsisNaturalRange leftScope
-  -> EllipsisNaturalRange rightScope
-  -> EllipsisNaturalRangeOrder
-  -> EllipsisNaturalRange unionScope
-combinedRange first second FirstBeforeSecond =
-  EllipsisNaturalRange
-    (ellipsisNaturalRangeLowerBound first)
-    (ellipsisNaturalRangeUpperBound second)
-combinedRange first second SecondBeforeFirst =
-  EllipsisNaturalRange
-    (ellipsisNaturalRangeLowerBound second)
-    (ellipsisNaturalRangeUpperBound first)
-
-disjointInsertion
-  :: EllipsisNaturalRange leftScope
-  -> EllipsisNaturalRange rightScope
-  -> EllipsisInsertion
-      (Either
-        (EllipsisNaturalRangeElement leftScope)
-        (EllipsisNaturalRangeElement rightScope))
-disjointInsertion first second =
-  mergeDisjointEllipsisInsertions
-    (ellipsisNaturalRangeInsertion first)
-    (ellipsisNaturalRangeInsertion second)
+instance
+    Concat
+      (EllipsisNaturalRange leftScope)
+      (EllipsisNaturalRange rightScope) where
+  type ConcatResult
+      (EllipsisNaturalRange leftScope)
+      (EllipsisNaturalRange rightScope) =
+        SomeEllipsisNaturalRangeConcat leftScope rightScope
+  (<.>) = concatEllipsisNaturalRanges

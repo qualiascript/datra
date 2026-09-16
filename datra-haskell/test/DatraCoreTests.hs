@@ -17,6 +17,7 @@ import AtlasTransversal
 import AtlasTransversalMap
 import AtlasTerritory
 import Chain
+import ChainedDominionAtlas
 import Charter
 import Coalition
 import Consolidation
@@ -53,6 +54,7 @@ import Data.Void (Void, absurd)
 main :: IO ()
 main = do
   testIdentityInsertion
+  testChainedDominionAtlas
   testRankedDominionAtlas
   testSpine
   testChainSum
@@ -144,6 +146,52 @@ testRankedDominionAtlas = do
   assert "ranked dominion coalition elements retain target ranks"
     (coalitionElementRank
       (rankedDominionCoalitionElement naturals 37) == 37)
+
+testChainedDominionAtlas :: IO ()
+testChainedDominionAtlas = do
+  let selectedDominion =
+        dominion
+          id
+          (\valueRank ->
+            if valueRank == 3 || valueRank == 4
+              then Just valueRank
+              else Nothing)
+          (const ())
+      selectedChain =
+        chain
+          (finiteOrdinal 2)
+          (finiteOrdinal . subtract 3)
+          (\position -> do
+            offset <- naturalAtOrdinal position
+            if offset < 2 then Just (3 + offset) else Nothing)
+          (const ())
+          (\_ _ -> ())
+          (const ())
+      valueAtlas =
+        chainedDominionAtlas 3 selectedChain selectedDominion
+      finalContains position =
+        case pageElementIndex
+          (atlasPageElements valueAtlas) 1 (finiteOrdinal position) of
+            Just _ -> True
+            Nothing -> False
+  assert "a chained dominion Atlas uses the supplied finite order type"
+    ( atlasCardinality valueAtlas == 2
+      && finalContains 0
+      && finalContains 1
+      && not (finalContains 2)
+    )
+  withAtlasMapExtent
+    (chainedDominionAtlasMap 3 selectedChain selectedDominion) $
+      \_ extent coversExtent ->
+        assert "a chained dominion Atlas covers every selected value"
+          ( all
+              (\valueRank ->
+                case unrank extent valueRank of
+                  Just datum -> coversExtent datum `seq` True
+                  Nothing -> False)
+              [3, 4]
+            && isNothing (unrank extent 2)
+          )
 
 testSpine :: IO ()
 testSpine = do

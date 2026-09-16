@@ -24,9 +24,9 @@ import EllipsisNatural (EllipsisNatural, ellipsisNatural)
 import EllipsisNaturalRange
   ( EllipsisNaturalRange
   , EllipsisNaturalRangeElement
+  , concatEllipsisNaturalRangeInsertion
   , ellipsisNaturalRange
   , ellipsisNaturalRangeInsertion
-  , mergeSeparatedEllipsisNaturalRanges
   )
 import FiniteDominion
   ( FiniteElement
@@ -114,11 +114,11 @@ canonicalCharsInsertion
   mergeDisjointEllipsisInsertions
     (fromMaybe
       (error "apostrophe and digit ranges are not separated")
-      (mergeSeparatedEllipsisNaturalRanges apostropheRange digitRange))
+      (concatEllipsisNaturalRangeInsertion apostropheRange digitRange))
     (mergeDisjointEllipsisInsertions
       (fromMaybe
         (error "uppercase and underscore ranges are not separated")
-        (mergeSeparatedEllipsisNaturalRanges uppercaseRange underscoreRange))
+        (concatEllipsisNaturalRangeInsertion uppercaseRange underscoreRange))
       (ellipsisNaturalRangeInsertion lowercaseRange))
 
 insertionElementToCanonicalChar

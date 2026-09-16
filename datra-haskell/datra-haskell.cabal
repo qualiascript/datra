@@ -66,6 +66,7 @@ library
         AtlasMap
         AtlasTransposal
         OrderedAtlasTransposal
+        ChainedDominionAtlas
         RankedDominionAtlas
         AtlasTransversal
         AtlasTransversalMap

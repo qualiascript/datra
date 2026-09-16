@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -18,6 +19,8 @@ module MapMakingOperators.ConcatOperator
   , concatOperator
   , concatToSequential
   , withConcatOrderedTransposal
+  , Concat
+  , ConcatResult
   , (<.>)
   ) where
 
@@ -374,13 +377,25 @@ instance {-# OVERLAPPING #-}
     withConcatOrderedTransposal value $ \_ concatAtlas _ ->
       useAtlas concatAtlas
 
--- | Legal Haskell spelling of the requested @<,>@ operation.  ASCII comma is
--- punctuation rather than an operator character in Haskell's lexer.
-infixr 7 <.>
+-- | Values that admit ordered concatenation. The associated result lets
+-- domain types refine a concat with additional capabilities, while stable-
+-- confederal data retains the ordinary map-making result.
+class Concat left right where
+  type ConcatResult left right :: Type
+  (<.>) :: left -> right -> ConcatResult left right
 
-(<.>)
-  :: (SequentialOperand left, SequentialOperand right)
-  => StableConfederalData left
-  -> StableConfederalData right
-  -> StableConfederalData (ConcatOperatorValues left right)
-(<.>) = concatOperator
+instance
+    (SequentialOperand left, SequentialOperand right) =>
+    Concat
+      (StableConfederalData left)
+      (StableConfederalData right) where
+  type ConcatResult
+      (StableConfederalData left)
+      (StableConfederalData right) =
+        StableConfederalData (ConcatOperatorValues left right)
+  (<.>) = concatOperator
+
+-- | Legal Haskell spelling of the requested @<,>@ operation. ASCII comma is
+-- punctuation rather than an operator character in Haskell's lexer. The
+-- operation is ordered: swapping its operands changes the ordinal sum.
+infixr 7 <.>

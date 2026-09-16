@@ -29,9 +29,10 @@ import AtlasTransposal
   ( atlasTransposalElement
   , withAtlasTransposalElement
   )
+import AtlasSequence (atlasSequenceDatumMember)
 import CanonicalCharsDominion
 import Dominion
-import DatraOrdinal (finiteOrdinal)
+import DatraOrdinal (addOrdinals, finiteOrdinal, omega)
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
   ( dot
@@ -678,71 +679,143 @@ testEllipsisNaturalRangeMerge :: IO ()
 testEllipsisNaturalRangeMerge = do
   withEllipsisNaturalRange (Just 2) (Just 4) $ \first ->
     withEllipsisNaturalRange (Just 10) (Just 12) $ \second ->
-      case nonOverlappingEllipsisNaturalRanges first second of
-        Nothing -> fail "disjoint ranges were reported as overlapping"
-        Just disjoint ->
-          case mergeEllipsisNaturalRanges disjoint of
-            SomeEllipsisNaturalRangeMerge (MergedEllipsisNaturalRange _) ->
-              fail "ranges separated by a gap produced a range"
-            SomeEllipsisNaturalRangeMerge (MergedEllipsisInsertion insertion) -> do
-              let includedRanks = map
-                    (fmap (either ellipsisNaturalRangeElementRank
-                                  ellipsisNaturalRangeElementRank)
-                      . ellipsisInsertionPreimage insertion . Terminal)
-                    [1, 2, 3, 4, 9, 10, 11, 12]
-              assert "merge insertion includes exactly both disjoint ranges"
-                (includedRanks
-                  == [ Nothing, Just 2, Just 3, Nothing
-                     , Nothing, Just 10, Just 11, Nothing
-                     ])
+      case mergeEllipsisNaturalRanges first second of
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) ->
+          fail "disjoint ranges produced only a map"
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ value insertion) -> do
+          let includedRanks = map
+                (fmap (either ellipsisNaturalRangeElementRank
+                              ellipsisNaturalRangeElementRank)
+                  . ellipsisInsertionPreimage insertion . Terminal)
+                [1, 2, 3, 4, 9, 10, 11, 12]
+              extentMember combinedRank =
+                withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+                  withPageElement (atlasOriginCell concatAtlas) $ \origin ->
+                    atlasSequenceDatumMember
+                      <$> unrank
+                        (atlasDataAt concatAtlas origin)
+                        combinedRank
+          assert "concat insertion includes exactly both disjoint ranges"
+            (includedRanks
+              == [ Nothing, Just 2, Just 3, Nothing
+                 , Nothing, Just 10, Just 11, Nothing
+                 ])
+          assert "range concat preserves left and right operand tags"
+            (map extentMember [4, 5, 20, 21]
+              == [Just 0, Nothing, Nothing, Just 1])
   withEllipsisNaturalRange (Just 2) (Just 4) $ \first ->
     withEllipsisNaturalRange (Just 4) (Just 7) $ \second ->
-      case nonOverlappingEllipsisNaturalRanges first second of
-        Nothing -> fail "adjacent ranges were reported as overlapping"
-        Just adjacent ->
-          case mergeEllipsisNaturalRanges adjacent of
-            SomeEllipsisNaturalRangeMerge (MergedEllipsisInsertion _) ->
-              fail "adjacent ranges did not produce a range"
-            SomeEllipsisNaturalRangeMerge result@(MergedEllipsisNaturalRange _) ->
-              withMergedEllipsisNaturalRange result $ \combined ->
-                assert "adjacent range merge spans both inputs"
-                  (ellipsisNaturalRangeLowerBound combined == Just 2
-                    && ellipsisNaturalRangeUpperBound combined == Just 7)
+      case mergeEllipsisNaturalRanges first second of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ _ insertion) ->
+          assert "adjacent ranges retain subtype capability"
+            (all
+              (\rankValue ->
+                case ellipsisInsertionPreimage insertion (Terminal rankValue) of
+                  Just _ -> True
+                  Nothing -> False)
+              [2 .. 6])
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) ->
+          fail "adjacent non-overlapping ranges produced only a map"
   withEllipsisNaturalRange (Just 10) (Just 12) $ \first ->
     withEllipsisNaturalRange (Just 2) (Just 4) $ \second ->
-      case nonOverlappingEllipsisNaturalRanges first second of
-        Nothing -> fail "reverse disjoint ranges were reported as overlapping"
-        Just disjoint ->
-          case mergeEllipsisNaturalRanges disjoint of
-            SomeEllipsisNaturalRangeMerge (MergedEllipsisNaturalRange _) ->
-              fail "reverse ranges separated by a gap produced a range"
-            SomeEllipsisNaturalRangeMerge (MergedEllipsisInsertion insertion) ->
-              assert "reverse merge preserves both original range branches"
-                (map
-                  (fmap (either ellipsisNaturalRangeElementRank
-                                ellipsisNaturalRangeElementRank)
-                    . ellipsisInsertionPreimage insertion . Terminal)
-                  [2, 3, 10, 11]
-                  == map Just [2, 3, 10, 11])
-  withEllipsisNaturalRange (Just 4) (Just 7) $ \first ->
-    withEllipsisNaturalRange (Just 2) (Just 4) $ \second ->
-      case nonOverlappingEllipsisNaturalRanges first second of
-        Nothing -> fail "reverse adjacent ranges were reported as overlapping"
-        Just adjacent ->
-          case mergeEllipsisNaturalRanges adjacent of
-            SomeEllipsisNaturalRangeMerge (MergedEllipsisInsertion _) ->
-              fail "reverse adjacent ranges did not produce a range"
-            SomeEllipsisNaturalRangeMerge result@(MergedEllipsisNaturalRange _) ->
-              withMergedEllipsisNaturalRange result $ \combined ->
-                assert "reverse adjacent merge orders and spans both inputs"
-                  (ellipsisNaturalRangeLowerBound combined == Just 2
-                    && ellipsisNaturalRangeUpperBound combined == Just 7)
+      case mergeEllipsisNaturalRanges first second of
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) ->
+          fail "reverse disjoint ranges produced only a map"
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ value insertion) -> do
+          let extentMember combinedRank =
+                withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+                  withPageElement (atlasOriginCell concatAtlas) $ \origin ->
+                    atlasSequenceDatumMember
+                      <$> unrank
+                        (atlasDataAt concatAtlas origin)
+                        combinedRank
+          assert "reverse concat preserves both insertion branches"
+            (map
+              (fmap (either ellipsisNaturalRangeElementRank
+                            ellipsisNaturalRangeElementRank)
+                . ellipsisInsertionPreimage insertion . Terminal)
+              [2, 3, 10, 11]
+              == map Just [2, 3, 10, 11])
+          assert "swapping ranges changes the ordered concat presentation"
+            (map extentMember [4, 5, 20, 21]
+              == [Nothing, Just 1, Just 0, Nothing])
   withEllipsisNaturalRange (Just 2) (Just 5) $ \first ->
     withEllipsisNaturalRange (Just 4) (Just 7) $ \second ->
-      assert "overlapping ranges cannot produce non-overlap evidence"
-        (case nonOverlappingEllipsisNaturalRanges first second of
-          Nothing -> True
-          Just _ -> False)
+      case mergeEllipsisNaturalRanges first second of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ _ _) ->
+          fail "overlapping ranges produced an Ellipsis insertion"
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+          withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+            assert "overlapping ranges retain their ordered concat map"
+              (atlasPageHasExactly concatAtlas 1 6)
+  withEllipsisNaturalRange (Just 3) Nothing $ \first ->
+    withEllipsisNaturalRange (Just 5) Nothing $ \second ->
+      case concatEllipsisNaturalRanges first second of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ _ _) ->
+          fail "overlapping unbounded ranges produced an Ellipsis insertion"
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+          withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+            let finalContains position =
+                  case pageElementIndex
+                    (atlasPageElements concatAtlas) 1 position of
+                      Just _ -> True
+                      Nothing -> False
+            in assert "two unbounded ranges concatenate with order type omega + omega"
+              ( all finalContains
+                  [ finiteOrdinal 0
+                  , finiteOrdinal 1000
+                  , omega
+                  , addOrdinals omega (finiteOrdinal 1000)
+                  ]
+                && not (finalContains (addOrdinals omega omega))
+              )
+  withEllipsisNaturalRange (Just 3) Nothing $ \first ->
+    withEllipsisNaturalRange (Just 2) (Just 20) $ \second -> do
+      case first <.> second of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ _ _) ->
+          fail "overlapping omega-plus-finite ranges produced an insertion"
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+          withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+            let finalContains position =
+                  case pageElementIndex
+                    (atlasPageElements concatAtlas) 1 position of
+                      Just _ -> True
+                      Nothing -> False
+            in assert "an unbounded then finite range has order type omega + 18"
+              ( all finalContains
+                  [ finiteOrdinal 1000
+                  , omega
+                  , addOrdinals omega (finiteOrdinal 17)
+                  ]
+                && not
+                  (finalContains
+                    (addOrdinals omega (finiteOrdinal 18)))
+              )
+      case second <.> first of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ _ _) ->
+          fail "overlapping finite-plus-omega ranges produced an insertion"
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+          withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+            let finalContains position =
+                  case pageElementIndex
+                    (atlasPageElements concatAtlas) 1 position of
+                      Just _ -> True
+                      Nothing -> False
+            in assert "swapping omega and finite ranges changes the ordinal sum"
+              ( all finalContains
+                  [ finiteOrdinal 17
+                  , finiteOrdinal 18
+                  , finiteOrdinal 1000
+                  ]
+                && not (finalContains omega)
+              )
 
 testEllipsisNatural :: IO ()
 testEllipsisNatural = do
