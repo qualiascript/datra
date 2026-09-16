@@ -6,7 +6,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | Associatively flattened, ordered Atlas expansion.
-module SequentialOperator
+module MapMakingOperators.SequentialOperator
   ( SequentialOperatorValues
   , SequentialOperatorValue
   , SequentialOperand

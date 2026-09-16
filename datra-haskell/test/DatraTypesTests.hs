@@ -39,9 +39,8 @@ import Ellipsis
 import EllipsisInsertion
 import EllipsisNatural
 import EllipsisNaturalRange
-import ExpansionOperator
-import ExpansionOperator.Syntax
 import FiniteDominion
+import MapMakingOperators
 import Numeric.Natural (Natural)
 import PageElements
   ( pageElement
@@ -58,8 +57,6 @@ import OrderedAtlasTransposal
 import StableAtlasTransversal
   ( stableAtlasTransversalPreservesCoverage
   )
-import SequentialOperator
-import SequentialOperator.Syntax
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -69,6 +66,7 @@ main = do
   testAsciiDominion
   testCanonicalCharsDominion
   testSequentialOperator
+  testConcatOperator
   testGroupedSequentialExpansion
   testComplexOperatorStructure
   testEllipsis
@@ -235,6 +233,54 @@ testSequentialOperator = do
     verify
       "left-associated sequence flattens three operands onto page 1"
       leftTriple
+
+testConcatOperator :: IO ()
+testConcatOperator = do
+  let concatenated = ellipsis <.> ellipsis
+      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+      pair ::
+        ConcatOperatorValue Ellipsis Ellipsis EllipsisPairObject
+      pair =
+        concatValue
+          ellipsisConfederation
+          ellipsisConfederation
+          identityAtlasConfederationHom
+          identityAtlasConfederationHom
+      mappedFinalPage sequenceAtlas concatAtlas inclusion =
+        case pageElementIndex
+          (atlasPageElements concatAtlas) 1 (finiteOrdinal 0) of
+            Nothing -> False
+            Just index ->
+              withPageElement (pageElement index) $ \sourceElement ->
+                let source = atlasTransposalElement
+                      (atlasWitness concatAtlas) sourceElement
+                    target = mapOrderedAtlasTransposalObject inclusion source
+                in withAtlasTransposalElement target $ \targetElement ->
+                    pageElementPage targetElement
+                      == atlasCardinality sequenceAtlas - 1
+                      && pageElementPosition targetElement == finiteOrdinal 0
+                      && orderedAtlasTransposalPreimage inclusion target
+                        == Just source
+      middlePageIsForgotten sequenceAtlas inclusion =
+        case pageElementIndex
+          (atlasPageElements sequenceAtlas) 1 (finiteOrdinal 0) of
+            Nothing -> False
+            Just index ->
+              withPageElement (pageElement index) $ \middleElement ->
+                isNothing
+                  (orderedAtlasTransposalPreimage inclusion
+                    (atlasTransposalElement
+                      (atlasWitness sequenceAtlas) middleElement))
+  concatenated `seq`
+    withConcatOrderedTransposal pair $
+      \sequenceAtlas concatAtlas inclusion ->
+        assert
+          "concat retains only the extent and sequential final page"
+          ( atlasCardinality sequenceAtlas == 3
+            && atlasCardinality concatAtlas == 2
+            && mappedFinalPage sequenceAtlas concatAtlas inclusion
+            && middlePageIsForgotten sequenceAtlas inclusion
+          )
 
 testGroupedSequentialExpansion :: IO ()
 testGroupedSequentialExpansion = do

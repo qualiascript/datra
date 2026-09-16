@@ -30,10 +30,13 @@ library
     import:           warnings
     exposed-modules:
         AsciiDominion
-        ExpansionOperator
-        ExpansionOperator.Syntax
-        SequentialOperator
-        SequentialOperator.Syntax
+        MapMakingOperators
+        MapMakingOperators.ConcatOperator
+        MapMakingOperators.ConcatOperator.Syntax
+        MapMakingOperators.ExpansionOperator
+        MapMakingOperators.ExpansionOperator.Syntax
+        MapMakingOperators.SequentialOperator
+        MapMakingOperators.SequentialOperator.Syntax
         CanonicalCharsDominion
         Dominion
         Ellipsis
@@ -182,8 +185,6 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
-        src/DatraTypes/ExpansionOperator
-        src/DatraTypes/SequentialOperator
         src/DatraTypes/CharacterDominions
         src/DatraTypes/Ellipses
         src/DatraCore/Atlases/Derived/AtlasTransposals
