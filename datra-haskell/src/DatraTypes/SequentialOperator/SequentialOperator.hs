@@ -10,6 +10,7 @@ module SequentialOperator
   ( SequentialOperatorValues
   , SequentialOperatorValue
   , SequentialOperand
+  , withSequentialOperandAtlas
   , SequentialAtlasTraversal
   , sequentialAtlasTraversalPosition
   , withSequentialAtlasTraversal
@@ -82,11 +83,24 @@ class SequentialOperand values where
     -> StableConfederalDataValue
          values (AtlasConfederationObject scope index)
     -> NonEmpty AtlasSequenceMember
+  sequentialOperandMembers confederation value =
+    withSequentialOperandAtlas confederation value $ \valueAtlas ->
+      atlasSequenceMember valueAtlas :| []
+
+  -- | Evaluate the Atlas that should be treated as one operand when a
+  -- non-flattening operator places a boundary around this value.
+  withSequentialOperandAtlas
+    :: AtlasConfederation scope index
+    -> StableConfederalDataValue
+         values (AtlasConfederationObject scope index)
+    -> (forall atlasScope paginationScope cellData origin final.
+         Atlas atlasScope paginationScope cellData origin final
+         -> result)
+    -> result
 
 instance {-# OVERLAPPABLE #-} SequentialOperand values where
-  sequentialOperandMembers confederation _ =
-    withAtlasConfederationResultingAtlas confederation $ \valueAtlas ->
-      atlasSequenceMember valueAtlas :| []
+  withSequentialOperandAtlas confederation _ =
+    withAtlasConfederationResultingAtlas confederation
 
 instance {-# OVERLAPPING #-}
     (SequentialOperand left, SequentialOperand right) =>
@@ -96,6 +110,10 @@ instance {-# OVERLAPPING #-}
         (HorizontalSumValue left right _ leftValue rightValue)) =
     sequentialOperandMembers left leftValue
       <> sequentialOperandMembers right rightValue
+
+  withSequentialOperandAtlas _ value useAtlas =
+    withSequentialAtlasTraversals value $ \valueAtlas _ ->
+      useAtlas valueAtlas
 
 -- | One member's canonical ordered traversal into the flattened result.
 data SequentialAtlasTraversal target where

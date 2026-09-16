@@ -5,7 +5,8 @@ module Main (main) where
 
 import AsciiDominion
 import Atlas
-  ( atlasCardinality
+  ( Atlas
+  , atlasCardinality
   , atlasDataAt
   , atlasOriginCell
   , atlasPageElements
@@ -38,6 +39,8 @@ import Ellipsis
 import EllipsisInsertion
 import EllipsisNatural
 import EllipsisNaturalRange
+import ExpansionOperator
+import ExpansionOperator.Syntax
 import FiniteDominion
 import Numeric.Natural (Natural)
 import PageElements
@@ -66,6 +69,8 @@ main = do
   testAsciiDominion
   testCanonicalCharsDominion
   testSequentialOperator
+  testGroupedSequentialExpansion
+  testComplexOperatorStructure
   testEllipsis
   testEllipsisInsertion
   testEllipsisInsertionDominion
@@ -78,6 +83,21 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+atlasPageHasExactly
+  :: Atlas atlasScope paginationScope cellData origin final
+  -> Natural
+  -> Natural
+  -> Bool
+atlasPageHasExactly valueAtlas pageNumber cellCount =
+  let elements = atlasPageElements valueAtlas
+      exists position =
+        case pageElementIndex
+          elements pageNumber (finiteOrdinal position) of
+            Just _ -> True
+            Nothing -> False
+      positions = take (fromIntegral cellCount) [0 ..]
+  in all exists positions && not (exists cellCount)
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope EllipsisAtlasObject
@@ -92,12 +112,18 @@ type EllipsisPairScope =
 type EllipsisPairObject =
   AtlasConfederationObject EllipsisPairScope (Either () ())
 
+type EllipsisTripleValues =
+  SequentialOperatorValues Ellipsis EllipsisPairValues
+
+type EllipsisTripleScope =
+  MergedAtlasConfederationScope
+    EllipsisConfederationScope
+    EllipsisPairScope
+
+type EllipsisTripleIndex = Either () (Either () ())
+
 type EllipsisTripleObject =
-  AtlasConfederationObject
-    (MergedAtlasConfederationScope
-      EllipsisConfederationScope
-      EllipsisPairScope)
-    (Either () (Either () ()))
+  AtlasConfederationObject EllipsisTripleScope EllipsisTripleIndex
 
 type EllipsisLeftTripleObject =
   AtlasConfederationObject
@@ -105,6 +131,30 @@ type EllipsisLeftTripleObject =
       EllipsisPairScope
       EllipsisConfederationScope)
     (Either (Either () ()) ())
+
+type EllipsisGroupedPairsObject =
+  AtlasConfederationObject
+    (MergedAtlasConfederationScope EllipsisPairScope EllipsisPairScope)
+    (Either (Either () ()) (Either () ()))
+
+type EllipsisFiveGroupValues =
+  ExpansionOperatorValues EllipsisTripleValues EllipsisPairValues
+
+type EllipsisFiveGroupScope =
+  MergedAtlasConfederationScope EllipsisTripleScope EllipsisPairScope
+
+type EllipsisFiveGroupIndex =
+  Either EllipsisTripleIndex (Either () ())
+
+type EllipsisFiveGroupObject =
+  AtlasConfederationObject EllipsisFiveGroupScope EllipsisFiveGroupIndex
+
+type EllipsisComplexObject =
+  AtlasConfederationObject
+    (MergedAtlasConfederationScope
+      EllipsisFiveGroupScope
+      EllipsisFiveGroupScope)
+    (Either EllipsisFiveGroupIndex EllipsisFiveGroupIndex)
 
 testSequentialOperator :: IO ()
 testSequentialOperator = do
@@ -185,6 +235,145 @@ testSequentialOperator = do
     verify
       "left-associated sequence flattens three operands onto page 1"
       leftTriple
+
+testGroupedSequentialExpansion :: IO ()
+testGroupedSequentialExpansion = do
+  let groupedObject =
+        (ellipsis <:> ellipsis) <+> (ellipsis <:> ellipsis)
+      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+      pairConfederation = mergeAtlasConfederations
+        ellipsisConfederation ellipsisConfederation
+      pair ::
+        SequentialOperatorValue Ellipsis Ellipsis EllipsisPairObject
+      pair =
+        sequentialValue
+          ellipsisConfederation
+          ellipsisConfederation
+          identityAtlasConfederationHom
+          identityAtlasConfederationHom
+      groupedPairs ::
+        ExpansionOperatorValue
+          EllipsisPairValues
+          EllipsisPairValues
+          EllipsisGroupedPairsObject
+      groupedPairs =
+        expansionValue pairConfederation pairConfederation pair pair
+      mapsInnerPairToPageTwo sourceAtlas inclusion offset =
+        let elements = atlasPageElements sourceAtlas
+            mapsPosition position =
+              case pageElementIndex
+                elements 1 (finiteOrdinal position) of
+                  Nothing -> False
+                  Just index ->
+                    withPageElement (pageElement index) $ \sourceElement ->
+                      let source = atlasTransposalElement
+                            (atlasWitness sourceAtlas) sourceElement
+                          target = mapOrderedAtlasTransposalObject
+                            inclusion source
+                      in withAtlasTransposalElement target $ \targetElement ->
+                          pageElementPage targetElement == 2
+                            && pageElementPosition targetElement
+                              == finiteOrdinal (offset + position)
+        in all mapsPosition [0, 1]
+  groupedObject `seq`
+    withExpansionOrderedTransposals groupedPairs $
+      \leftPair rightPair expanded leftTraversal rightTraversal ->
+        assert
+          "expansion groups two flattened pairs into pages of 2 then 4"
+          ( atlasPageHasExactly expanded 1 2
+            && atlasPageHasExactly expanded 2 4
+            && mapsInnerPairToPageTwo leftPair leftTraversal 0
+            && mapsInnerPairToPageTwo rightPair rightTraversal 2
+          )
+
+testComplexOperatorStructure :: IO ()
+testComplexOperatorStructure = do
+  let complexObject =
+        ( (ellipsis <:> ellipsis <:> ellipsis)
+            <+> (ellipsis <:> ellipsis)
+        )
+          <+>
+        ( (ellipsis <:> ellipsis <:> ellipsis)
+            <+> (ellipsis <:> ellipsis)
+        )
+      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+      pairConfederation = mergeAtlasConfederations
+        ellipsisConfederation ellipsisConfederation
+      tripleConfederation = mergeAtlasConfederations
+        ellipsisConfederation pairConfederation
+      fiveGroupConfederation = mergeAtlasConfederations
+        tripleConfederation pairConfederation
+      pair ::
+        SequentialOperatorValue Ellipsis Ellipsis EllipsisPairObject
+      pair =
+        sequentialValue
+          ellipsisConfederation
+          ellipsisConfederation
+          identityAtlasConfederationHom
+          identityAtlasConfederationHom
+      triple ::
+        SequentialOperatorValue
+          Ellipsis
+          EllipsisPairValues
+          EllipsisTripleObject
+      triple =
+        sequentialValue
+          ellipsisConfederation
+          pairConfederation
+          identityAtlasConfederationHom
+          pair
+      fiveGroup ::
+        ExpansionOperatorValue
+          EllipsisTripleValues
+          EllipsisPairValues
+          EllipsisFiveGroupObject
+      fiveGroup =
+        expansionValue
+          tripleConfederation
+          pairConfederation
+          triple
+          pair
+      complex ::
+        ExpansionOperatorValue
+          EllipsisFiveGroupValues
+          EllipsisFiveGroupValues
+          EllipsisComplexObject
+      complex =
+        expansionValue
+          fiveGroupConfederation
+          fiveGroupConfederation
+          fiveGroup
+          fiveGroup
+      mapsFiveLeavesToPageThree sourceAtlas inclusion offset =
+        let elements = atlasPageElements sourceAtlas
+            mapsPosition position =
+              case pageElementIndex
+                elements 2 (finiteOrdinal position) of
+                  Nothing -> False
+                  Just index ->
+                    withPageElement (pageElement index) $ \sourceElement ->
+                      let source = atlasTransposalElement
+                            (atlasWitness sourceAtlas) sourceElement
+                          target = mapOrderedAtlasTransposalObject
+                            inclusion source
+                      in withAtlasTransposalElement target $ \targetElement ->
+                          pageElementPage targetElement == 3
+                            && pageElementPosition targetElement
+                              == finiteOrdinal (offset + position)
+        in all mapsPosition [0 .. 4]
+  complexObject `seq`
+    withExpansionOrderedTransposals complex $
+      \leftGroup rightGroup expanded leftTraversal rightTraversal ->
+        assert
+          "nested sequence and expansion structure has pages 2, 4, then 10"
+          ( atlasPageHasExactly expanded 1 2
+            && atlasPageHasExactly expanded 2 4
+            && atlasPageHasExactly expanded 3 10
+            && atlasPageHasExactly leftGroup 2 5
+            && atlasPageHasExactly rightGroup 2 5
+            && mapsFiveLeavesToPageThree leftGroup leftTraversal 0
+            && mapsFiveLeavesToPageThree rightGroup rightTraversal 5
+          )
 
 testAsciiDominion :: IO ()
 testAsciiDominion =
