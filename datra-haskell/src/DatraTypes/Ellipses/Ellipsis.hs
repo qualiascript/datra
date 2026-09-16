@@ -1,9 +1,14 @@
--- | The recursive ellipsis stable-confederal datum and its concrete Atlas map.
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
+
+-- | The rank-one super ellipsis and its concrete Atlas map.
 module Ellipsis
   ( Ellipsis
   , EllipsisValue
-  , EllipsisTerminal (Terminal)
+  , EllipsisTerminal
+  , pattern Terminal
   , terminalRank
+  , ellipsisRank
   , ellipsis
   , ellipsisUnfolded
   , ellipsisFold
@@ -32,19 +37,14 @@ import AtlasConfederation
   )
 import AtlasMap (AtlasMap)
 import Coalition (CoalitionElement)
-import Dominion (Dominion, dominion)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import Dominion (Dominion)
 import Dot (Dot, dot, dotAtlas)
 import Numeric.Natural (Natural)
 import MapOperators.ConcatOperator
   ( ConcatOperatorValue
   , ConcatOperatorValues
   , concatValue
-  )
-import RankedDominionAtlas
-  ( RankedDominionAtlasObject
-  , rankedDominionAtlas
-  , rankedDominionAtlasMap
-  , rankedDominionCoalitionElement
   )
 import StableConfederalData
   ( StableConfederalData
@@ -53,37 +53,67 @@ import StableConfederalData
   )
 import SuperEllipsis
   ( SuperEllipsis
-  , SuperEllipsisValue
-  , rollSuperEllipsisValue
+  , SuperEllipsisAtlasObject
+  , SuperEllipsisLayer
+  , SuperEllipsisRank
+  , SuperEllipsisTerminal
+  , dotSuperEllipsisRank
+  , nextSuperEllipsisRank
+  , rollSuperEllipsisLayer
   , superEllipsis
   , superEllipsisFold
   , superEllipsisUnfold
   , superEllipsisUnfolded
-  , withSuperEllipsisValue
+  , superEllipsisAtlas
+  , superEllipsisAtlasMap
+  , superEllipsisCoalitionElement
+  , superEllipsisDominion
+  , superEllipsisTerminal
+  , superEllipsisTerminalPosition
+  , superEllipsisZeroTerminal
+  , withSuperEllipsisLayer
   )
 
--- | A terminal region of Ellipsis, uniquely identified by its absolute rank.
-newtype EllipsisTerminal = Terminal
-  { terminalRank :: Natural
-  }
-  deriving (Eq, Show)
+-- | A terminal region of the rank-one super ellipsis.
+type EllipsisTerminal = SuperEllipsisTerminal Ellipsis
 
--- | The object name of the generic ranked-dominion Atlas specialized to
--- Ellipsis terminals.
-type EllipsisAtlasObject = RankedDominionAtlasObject EllipsisTerminal
+-- | Backward-compatible natural presentation of a rank-one terminal.
+pattern Terminal :: Natural -> EllipsisTerminal
+pattern Terminal value <- (terminalRank -> value)
+  where
+    Terminal value =
+      case superEllipsisTerminal ellipsisRank (finiteOrdinal value) of
+        Just terminal -> terminal
+        Nothing -> superEllipsisZeroTerminal ellipsisRank
+
+{-# COMPLETE Terminal #-}
+
+terminalRank :: EllipsisTerminal -> Natural
+terminalRank terminal =
+  case naturalAtOrdinal (superEllipsisTerminalPosition terminal) of
+    Just value -> value
+    Nothing -> 0
+
+-- | The object name of the generic super-ellipsis Atlas specialized to rank
+-- one.
+type EllipsisAtlasObject = SuperEllipsisAtlasObject Ellipsis
 
 -- | The first super ellipsis: level zero is 'Dot', and this successor solves
 -- @Ellipsis = Dot <.> Ellipsis@.
 type Ellipsis = SuperEllipsis Dot
 
+-- | Runtime rank evidence for @Ellipsis = SuperEllipsis Dot@.
+ellipsisRank :: SuperEllipsisRank Ellipsis
+ellipsisRank = nextSuperEllipsisRank dotSuperEllipsisRank
+
 -- | One observable @Dot <.> Ellipsis@ layer.
 type EllipsisValue =
-  SuperEllipsisValue Dot
+  SuperEllipsisLayer Dot
 
 -- | The rank presentation is the extent dominion of the representing Atlas,
 -- rather than Ellipsis itself.
 ellipsisDominion :: Dominion EllipsisTerminal
-ellipsisDominion = dominion terminalRank (Just . Terminal) (const ())
+ellipsisDominion = superEllipsisDominion ellipsisRank
 
 -- | The cardinality-two Atlas whose origin is the omega dominion and whose
 -- final page is the omega chain of singleton (terminal) regions.
@@ -93,13 +123,13 @@ ellipsisAtlas
        (AtlasObjectPaginationScope EllipsisAtlasObject)
        (AtlasObjectCellData EllipsisAtlasObject)
        ()
-       Natural
-ellipsisAtlas = rankedDominionAtlas ellipsisDominion
+       EllipsisTerminal
+ellipsisAtlas = superEllipsisAtlas ellipsisRank
 
 -- | The concrete omega Atlas map solving the recursive presentation. Every
 -- origin datum is covered by the singleton region at the same natural rank.
 ellipsisAtlasMap :: AtlasMap EllipsisAtlasObject
-ellipsisAtlasMap = rankedDominionAtlasMap ellipsisDominion
+ellipsisAtlasMap = superEllipsisAtlasMap ellipsisRank
 
 -- | The canonical covered origin element at a rank. This identifies the
 -- coalition of the representing Atlas with 'ellipsisDominion'.
@@ -107,14 +137,14 @@ ellipsisCoalitionElement
   :: EllipsisTerminal
   -> CoalitionElement EllipsisAtlasObject
 ellipsisCoalitionElement =
-  rankedDominionCoalitionElement ellipsisDominion
+  superEllipsisCoalitionElement ellipsisRank
 
 -- | Eliminate exactly one recursive layer.
 withEllipsisValue
   :: EllipsisValue object
   -> (ConcatOperatorValue Dot Ellipsis object -> result)
   -> result
-withEllipsisValue = withSuperEllipsisValue
+withEllipsisValue = withSuperEllipsisLayer
 
 -- | The recursive equation itself. Haskell's lazy binding makes this a
 -- guarded fixed point: the concat node is available before its Ellipsis tail
@@ -154,7 +184,7 @@ type EllipsisConfederationObject =
 -- Its represented arrow selects the recursive tail of @Dot + Ellipsis@; the
 -- left generator supplies the new leading Dot.
 ellipsisValue :: EllipsisValue EllipsisConfederationObject
-ellipsisValue = rollSuperEllipsisValue
+ellipsisValue = rollSuperEllipsisLayer
   (mapStableConfederalData
     ellipsisUnfolded
     tailInclusion

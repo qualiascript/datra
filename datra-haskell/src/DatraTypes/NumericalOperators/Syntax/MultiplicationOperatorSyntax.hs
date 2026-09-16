@@ -1,19 +1,19 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Infix syntax for ellipsis-natural multiplication.
+-- | Infix syntax for natural multiplication.
 module NumericalOperators.Syntax.MultiplicationOperatorSyntax
   ( (*)
   ) where
 
-import EllipsisNatural (EllipsisNatural)
+import Natural qualified as Datra
 import NumericalOperators.MultiplicationOperator (multiplicationOperator)
 import Prelude hiding ((*))
 
 infixl 7 *
 
 (*)
-  :: EllipsisNatural leftScope
-  -> EllipsisNatural rightScope
-  -> (forall resultScope. EllipsisNatural resultScope -> result)
+  :: Datra.Natural leftScope
+  -> Datra.Natural rightScope
+  -> (forall resultScope. Datra.Natural resultScope -> result)
   -> Maybe result
 (*) = multiplicationOperator

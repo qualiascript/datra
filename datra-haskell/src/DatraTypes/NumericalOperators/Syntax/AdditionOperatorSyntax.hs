@@ -1,19 +1,19 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Infix syntax for ellipsis-natural addition.
+-- | Infix syntax for natural addition.
 module NumericalOperators.Syntax.AdditionOperatorSyntax
   ( (+)
   ) where
 
-import EllipsisNatural (EllipsisNatural)
+import Natural qualified as Datra
 import NumericalOperators.AdditionOperator (additionOperator)
 import Prelude hiding ((+))
 
 infixl 6 +
 
 (+)
-  :: EllipsisNatural leftScope
-  -> EllipsisNatural rightScope
-  -> (forall resultScope. EllipsisNatural resultScope -> result)
+  :: Datra.Natural leftScope
+  -> Datra.Natural rightScope
+  -> (forall resultScope. Datra.Natural resultScope -> result)
   -> Maybe result
 (+) = additionOperator

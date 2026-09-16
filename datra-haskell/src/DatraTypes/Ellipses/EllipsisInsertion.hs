@@ -1,4 +1,4 @@
--- | Stable Atlas transversals whose codomain represents 'Ellipsis'.
+-- | Rank-one specialization of 'SuperEllipsisInsertion'.
 module EllipsisInsertion
   ( EllipsisInsertion
   , EllipsisInsertionElement
@@ -15,50 +15,36 @@ module EllipsisInsertion
   , ellipsisInsertionElementValue
   ) where
 
+import Chain (Chain)
 import DomanialInclusion (DominionAtlasObject)
-import Chain (Chain, sumChains)
-import DomanialInsertion
-  ( DomanialInsertion
-  , applyInsertion
-  , domanialInsertion
-  , insertionLeftInverse
-  , preimage
-  )
-import Dominion (Dominion, dominion, unrank)
+import Dominion (Dominion)
 import Ellipsis
-  ( EllipsisTerminal (Terminal)
+  ( Ellipsis
   , EllipsisAtlasObject
-  , ellipsisDominion
-  , terminalRank
+  , EllipsisTerminal
+  , ellipsisRank
   )
-import RankedDominionAtlas (rankedDominionInsertionTraversal)
 import StableAtlasTransversal (StableAtlasTransversal)
+import SuperEllipsisInsertion
+  ( SuperEllipsisInsertion
+  , SuperEllipsisInsertionElement
+  , applySuperEllipsisInsertion
+  , mergeDisjointSuperEllipsisInsertions
+  , superEllipsisInsertion
+  , superEllipsisInsertionChain
+  , superEllipsisInsertionDominion
+  , superEllipsisInsertionElementSource
+  , superEllipsisInsertionElementValue
+  , superEllipsisInsertionFirst
+  , superEllipsisInsertionLeftInverse
+  , superEllipsisInsertionPreimage
+  , superEllipsisInsertionTraversal
+  )
 
--- | An insertion into Ellipsis is represented categorically by a stable Atlas
--- transversal from the one-page atlas of its source dominion to the
--- cardinality-two Ellipsis Atlas map. Its domanial insertion retains the
--- executable presentation from which DatraCore constructs that traversal.
-data EllipsisInsertion source = EllipsisInsertion
-  { ellipsisInsertionFirst :: Maybe source
-  , ellipsisInsertionChain :: Chain source
-  , ellipsisInsertionTraversal
-      :: StableAtlasTransversal
-           (DominionAtlasObject source)
-           EllipsisAtlasObject
-  , ellipsisInsertionDomanial
-      :: DomanialInsertion source EllipsisTerminal
-  }
+type EllipsisInsertion = SuperEllipsisInsertion Ellipsis
 
--- | An element of a dominion restricted to the regions selected by an
--- Ellipsis insertion. The source value witnesses membership in its image.
-data EllipsisInsertionElement source value = EllipsisInsertionElement
-  { ellipsisInsertionElementSource :: source
-  , ellipsisInsertionElementValue :: value
-  }
-  deriving (Eq, Show)
+type EllipsisInsertionElement = SuperEllipsisInsertionElement Ellipsis
 
--- | Construct the stable Atlas transversal selected by an injective map of
--- source values to Ellipsis regions.
 ellipsisInsertion
   :: Maybe source
   -> Chain source
@@ -66,86 +52,57 @@ ellipsisInsertion
   -> (EllipsisTerminal -> Maybe source)
   -> (source -> ())
   -> EllipsisInsertion source
-ellipsisInsertion first sourceChain forward backward leftInverse =
-  EllipsisInsertion
-    { ellipsisInsertionFirst = first
-    , ellipsisInsertionChain = sourceChain
-    , ellipsisInsertionTraversal =
-        rankedDominionInsertionTraversal
-          ellipsisDominion
-          insertion
-    , ellipsisInsertionDomanial = insertion
-    }
-  where
-    insertion = domanialInsertion forward backward leftInverse
+ellipsisInsertion = superEllipsisInsertion ellipsisRank
 
--- | Apply the executable domanial presentation underlying the traversal.
+ellipsisInsertionFirst :: EllipsisInsertion source -> Maybe source
+ellipsisInsertionFirst = superEllipsisInsertionFirst
+
+ellipsisInsertionChain :: EllipsisInsertion source -> Chain source
+ellipsisInsertionChain = superEllipsisInsertionChain
+
+ellipsisInsertionTraversal
+  :: EllipsisInsertion source
+  -> StableAtlasTransversal
+       (DominionAtlasObject source)
+       EllipsisAtlasObject
+ellipsisInsertionTraversal = superEllipsisInsertionTraversal
+
 applyEllipsisInsertion
   :: EllipsisInsertion source
   -> source
   -> EllipsisTerminal
-applyEllipsisInsertion insertion =
-  applyInsertion (ellipsisInsertionDomanial insertion)
+applyEllipsisInsertion = applySuperEllipsisInsertion
 
--- | Recover a source value from an Ellipsis terminal when it lies in the
--- traversal's image.
 ellipsisInsertionPreimage
   :: EllipsisInsertion source
   -> EllipsisTerminal
   -> Maybe source
-ellipsisInsertionPreimage insertion =
-  preimage (ellipsisInsertionDomanial insertion)
+ellipsisInsertionPreimage = superEllipsisInsertionPreimage
 
--- | Invoke the insertion's left-inverse witness.
 ellipsisInsertionLeftInverse
   :: EllipsisInsertion source
   -> source
   -> ()
-ellipsisInsertionLeftInverse =
-  insertionLeftInverse . ellipsisInsertionDomanial
+ellipsisInsertionLeftInverse = superEllipsisInsertionLeftInverse
 
--- | Merge insertions with disjoint images. The disjointness precondition is
--- necessary so that the tagged source remains injective.
 mergeDisjointEllipsisInsertions
   :: EllipsisInsertion left
   -> EllipsisInsertion right
   -> EllipsisInsertion (Either left right)
-mergeDisjointEllipsisInsertions first second =
-  ellipsisInsertion
-    (case ellipsisInsertionFirst first of
-      Just value -> Just (Left value)
-      Nothing -> Right <$> ellipsisInsertionFirst second)
-    (sumChains
-      (ellipsisInsertionChain first)
-      (ellipsisInsertionChain second))
-    forward
-    backward
-    (const ())
-  where
-    forward (Left value) = applyEllipsisInsertion first value
-    forward (Right value) = applyEllipsisInsertion second value
+mergeDisjointEllipsisInsertions = mergeDisjointSuperEllipsisInsertions
 
-    backward terminal =
-      case ellipsisInsertionPreimage first terminal of
-        Just value -> Just (Left value)
-        Nothing -> Right <$> ellipsisInsertionPreimage second terminal
-
--- | Restrict a dominion to the absolute ranks selected by an Ellipsis Atlas
--- transversal. The traversal's image is expected to lie within the input
--- dominion.
 ellipsisInsertionDominion
   :: Dominion value
   -> EllipsisInsertion source
   -> Dominion (EllipsisInsertionElement source value)
-ellipsisInsertionDominion valueDominion insertion =
-  dominion selectedRank selectedAt (const ())
-  where
-    selectedRank =
-      terminalRank
-        . applyEllipsisInsertion insertion
-        . ellipsisInsertionElementSource
+ellipsisInsertionDominion = superEllipsisInsertionDominion
 
-    selectedAt rankValue = do
-      source <- ellipsisInsertionPreimage insertion (Terminal rankValue)
-      value <- unrank valueDominion rankValue
-      pure (EllipsisInsertionElement source value)
+ellipsisInsertionElementSource
+  :: EllipsisInsertionElement source value
+  -> source
+ellipsisInsertionElementSource = superEllipsisInsertionElementSource
+
+ellipsisInsertionElementValue
+  :: EllipsisInsertionElement source value
+  -> value
+ellipsisInsertionElementValue = superEllipsisInsertionElementValue

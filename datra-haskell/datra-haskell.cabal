@@ -50,10 +50,13 @@ library
         Dominion
         Dot
         SuperEllipsis
+        SuperEllipsisInsertion
+        SuperEllipsisRange
+        SuperEllipsisValue
         Ellipsis
         EllipsisInsertion
-        EllipsisNatural
-        EllipsisNaturalRange
+        Natural
+        NaturalRange
         FiniteDominion
         FixedPoint
         DomanialInsertion

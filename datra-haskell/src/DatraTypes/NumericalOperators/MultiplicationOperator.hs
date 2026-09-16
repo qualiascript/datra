@@ -1,21 +1,21 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Multiplication of singleton ellipsis naturals.
+-- | Multiplication of singleton natural values.
 module NumericalOperators.MultiplicationOperator
   ( multiplicationOperator
   ) where
 
-import EllipsisNatural (EllipsisNatural)
+import Natural qualified as Datra
 import NumericalOperators.Internal (applyNaturalOperator)
 import Prelude (Maybe)
 
 import qualified Prelude
 
--- | Multiply two ellipsis naturals and introduce the result with a fresh
+-- | Multiply two naturals and introduce the result with a fresh
 -- scope.
 multiplicationOperator
-  :: EllipsisNatural leftScope
-  -> EllipsisNatural rightScope
-  -> (forall resultScope. EllipsisNatural resultScope -> result)
+  :: Datra.Natural leftScope
+  -> Datra.Natural rightScope
+  -> (forall resultScope. Datra.Natural resultScope -> result)
   -> Maybe result
 multiplicationOperator = applyNaturalOperator (Prelude.*)

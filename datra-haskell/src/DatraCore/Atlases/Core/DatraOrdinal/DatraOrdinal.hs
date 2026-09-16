@@ -4,10 +4,13 @@ module DatraOrdinal
   , ordinal
   , finiteOrdinal
   , omega
+  , omegaPower
   , ordinalLT
   , addOrdinals
   , subtractOrdinal
   , naturalAtOrdinal
+  , ordinalAtNaturalRank
+  , naturalRankOfOrdinal
   ) where
 
 import DatraOrdinal.Internal
@@ -15,8 +18,11 @@ import DatraOrdinal.Internal
   , addOrdinals
   , finiteOrdinal
   , naturalAtOrdinal
+  , naturalRankOfOrdinal
   , omega
+  , omegaPower
   , ordinal
+  , ordinalAtNaturalRank
   , ordinalLT
   , subtractOrdinal
   )

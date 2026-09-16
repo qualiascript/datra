@@ -1,19 +1,19 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Infix syntax for ellipsis-natural exponentiation.
+-- | Infix syntax for natural exponentiation.
 module NumericalOperators.Syntax.ExponentiationOperatorSyntax
   ( (^)
   ) where
 
-import EllipsisNatural (EllipsisNatural)
+import Natural qualified as Datra
 import NumericalOperators.ExponentiationOperator (exponentiationOperator)
 import Prelude hiding ((^))
 
 infixr 8 ^
 
 (^)
-  :: EllipsisNatural baseScope
-  -> EllipsisNatural exponentScope
-  -> (forall resultScope. EllipsisNatural resultScope -> result)
+  :: Datra.Natural baseScope
+  -> Datra.Natural exponentScope
+  -> (forall resultScope. Datra.Natural resultScope -> result)
   -> Maybe result
 (^) = exponentiationOperator

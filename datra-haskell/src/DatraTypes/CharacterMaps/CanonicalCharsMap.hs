@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 
 -- | Canonical identifier characters obtained by ordered access into ASCII.
@@ -19,7 +20,7 @@ import Chain (Chain, chain)
 import Control.Arrow ((&&&))
 import Control.Monad ((>=>))
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
-import Ellipsis (EllipsisTerminal (Terminal), terminalRank)
+import Ellipsis (pattern Terminal, terminalRank)
 import EllipsisInsertion (EllipsisInsertion, ellipsisInsertion)
 import MapOperators.AccessOperator
   ( AccessElement

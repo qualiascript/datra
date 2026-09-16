@@ -10,6 +10,7 @@ module DatraOrdinal.Internal
   , ordinal
   , finiteOrdinal
   , omega
+  , omegaPower
   , ordinalLT
   , coefficientsLT
   , listLength
@@ -18,6 +19,8 @@ module DatraOrdinal.Internal
   , addCoefficients
   , subtractOrdinal
   , naturalAtOrdinal
+  , ordinalAtNaturalRank
+  , naturalRankOfOrdinal
   ) where
 
 import Numeric.Natural (Natural)
@@ -69,6 +72,15 @@ finiteOrdinal value = ordinal [value]
 {-@ reflect omega @-}
 omega :: Ordinal
 omega = ordinal [1, 0]
+
+-- | The finite power @omega^n@.  In particular, @omega^0 = 1@.
+omegaPower :: Natural -> Ordinal
+omegaPower 0 = finiteOrdinal 1
+omegaPower power = ordinal (1 : zeros power)
+  where
+    zeros count
+      | count > 0 = 0 : zeros (count - 1)
+      | otherwise = []
 
 instance Ord Ordinal where
   compare (Ordinal left) (Ordinal right) =
@@ -160,3 +172,54 @@ naturalAtOrdinal :: Ordinal -> Maybe Natural
 naturalAtOrdinal (Ordinal []) = Just 0
 naturalAtOrdinal (Ordinal [value]) = Just value
 naturalAtOrdinal _ = Nothing
+
+-- | Decode one natural in the canonical enumeration of ordinals below
+-- @omega^width@.  A fixed-width coefficient vector is decoded by iterated
+-- Cantor unpairing, then canonicalized by 'ordinal'.
+ordinalAtNaturalRank :: Natural -> Natural -> Maybe Ordinal
+ordinalAtNaturalRank width code = ordinal <$> coefficientTuple width code
+
+-- | Encode an ordinal below @omega^width@ in the inverse canonical natural
+-- enumeration.  Ordinals outside that bound are rejected.
+naturalRankOfOrdinal :: Natural -> Ordinal -> Maybe Natural
+naturalRankOfOrdinal width value@(Ordinal values)
+  | not (ordinalLT value (omegaPower width)) = Nothing
+  | otherwise = encodeTuple (padCoefficients width values)
+
+coefficientTuple :: Natural -> Natural -> Maybe [Natural]
+coefficientTuple 0 0 = Just []
+coefficientTuple 0 _ = Nothing
+coefficientTuple 1 code = Just [code]
+coefficientTuple width code =
+  let (leading, rest) = unpairNatural code
+  in (leading :) <$> coefficientTuple (width - 1) rest
+
+padCoefficients :: Natural -> [Natural] -> [Natural]
+padCoefficients width values = prependZeros (width - listNaturalLength values) values
+
+listNaturalLength :: [value] -> Natural
+listNaturalLength [] = 0
+listNaturalLength (_ : values) = 1 + listNaturalLength values
+
+prependZeros :: Natural -> [Natural] -> [Natural]
+prependZeros count values
+  | count > 0 = 0 : prependZeros (count - 1) values
+  | otherwise = values
+
+encodeTuple :: [Natural] -> Maybe Natural
+encodeTuple [] = Just 0
+encodeTuple [value] = Just value
+encodeTuple (value : values) = pairNatural value <$> encodeTuple values
+
+pairNatural :: Natural -> Natural -> Natural
+pairNatural first second =
+  let diagonal = first + second
+  in diagonal * (diagonal + 1) `div` 2 + first
+
+{-@ lazy unpairNatural @-}
+unpairNatural :: Natural -> (Natural, Natural)
+unpairNatural = go 0
+  where
+    go diagonal remainder
+      | remainder <= diagonal = (remainder, diagonal - remainder)
+      | otherwise = go (diagonal + 1) (remainder - diagonal - 1)

@@ -2,7 +2,7 @@
 
 -- | Ordered access to the final page of a finite Atlas map.
 --
--- An 'EllipsisInsertion' supplies both the absolute final-page indices and
+-- A 'SuperEllipsisInsertion' supplies both the absolute final-page indices and
 -- the order in which they are requested.  Successful access constructs a
 -- fresh two-page chained Atlas map in precisely that order.  Failure means
 -- that the insertion was empty, non-finite, or named an index outside the
@@ -41,11 +41,10 @@ import Control.Arrow ((&&&))
 import Control.Monad ((>=>))
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Dominion (Dominion, dominion, rank, unrank)
-import Ellipsis (terminalRank)
-import EllipsisInsertion
-  ( EllipsisInsertion
-  , applyEllipsisInsertion
-  , ellipsisInsertionChain
+import SuperEllipsisInsertion
+  ( SuperEllipsisInsertion
+  , superEllipsisInsertionChain
+  , superEllipsisInsertionPosition
   )
 import Numeric.Natural (Natural)
 
@@ -115,11 +114,12 @@ data AccessElement source value = AccessElement
 -- source Atlas's values.
 accessOperator
   :: IndexedAtlasMap value
-  -> EllipsisInsertion source
+  -> SuperEllipsisInsertion target source
   -> Maybe (IndexedAtlasMap (AccessElement source value))
 accessOperator valueAtlas insertion = do
   requestedCardinality <-
-    naturalAtOrdinal (chainOrderType (ellipsisInsertionChain insertion))
+    naturalAtOrdinal
+      (chainOrderType (superEllipsisInsertionChain insertion))
   if requestedCardinality == 0
     then Nothing
     else do
@@ -144,11 +144,12 @@ accessOperator valueAtlas insertion = do
       | otherwise = do
           sourceIndex <-
             chainIndex
-              (ellipsisInsertionChain insertion)
+              (superEllipsisInsertionChain insertion)
               (finiteOrdinal position)
           let source = chainObjectAt sourceIndex
-              requestedIndex =
-                terminalRank (applyEllipsisInsertion insertion source)
+          requestedIndex <-
+            naturalAtOrdinal
+              (superEllipsisInsertionPosition insertion source)
           value <- indexedAtlasValueAt valueAtlas requestedIndex
           remaining <- collect (position + 1) cardinality
           pure (AccessElement position source value : remaining)

@@ -1,3 +1,4 @@
+{-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | The inductive hierarchy of recursive ellipses.
@@ -14,16 +15,50 @@
 -- finite iteration reaches every power below omega to the omega.
 module SuperEllipsis
   ( SuperEllipsis
-  , SuperEllipsisValue
+  , SuperEllipsisLayer
+  , SuperEllipsisRank
+  , dotSuperEllipsisRank
+  , nextSuperEllipsisRank
+  , superEllipsisRankOrderType
+  , SuperEllipsisTerminal
+  , superEllipsisTerminal
+  , superEllipsisZeroTerminal
+  , superEllipsisTerminalPosition
+  , superEllipsisDominion
+  , superEllipsisChain
+  , SuperEllipsisAtlasObject
+  , superEllipsisAtlas
+  , superEllipsisAtlasMap
+  , superEllipsisCoalitionElement
   , superEllipsis
   , superEllipsisUnfolded
   , superEllipsisFold
   , superEllipsisUnfold
-  , rollSuperEllipsisValue
-  , unrollSuperEllipsisValue
-  , withSuperEllipsisValue
+  , rollSuperEllipsisLayer
+  , unrollSuperEllipsisLayer
+  , withSuperEllipsisLayer
   ) where
 
+import AtlasMap (AtlasMap)
+import Chain (Chain, chain)
+import ChainedDominionAtlas
+  ( ChainedDominionAtlas
+  , ChainedDominionAtlasObject
+  , chainedDominionAtlas
+  , chainedDominionAtlasMap
+  , chainedDominionCoalitionElement
+  )
+import Coalition (CoalitionElement)
+import DatraOrdinal
+  ( Ordinal
+  , finiteOrdinal
+  , naturalRankOfOrdinal
+  , omegaPower
+  , ordinalAtNaturalRank
+  , ordinalLT
+  )
+import Dominion (Dominion, dominion)
+import Dot (Dot)
 import FixedPoint
   ( FixedPoint
   , FixedPointValue
@@ -41,6 +76,7 @@ import MapOperators.ConcatOperator
   )
 import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
 import MapOperators.SequentialOperator (SequentialOperand)
+import Numeric.Natural (Natural)
 import StableConfederalData
   ( StableConfederalData
   , StableConfederalDataHom
@@ -53,19 +89,131 @@ data SuperEllipsisTag predecessor
 
 -- | The successor of one level in the super-ellipsis hierarchy.
 --
--- The base of the induction is @Dot@, supplied by the caller; this module
--- deliberately does not import either @Dot@ or @Ellipsis@, so higher levels
--- cannot create a module cycle through their specializations.
+-- The base of the induction is @Dot@.  This module remains below @Ellipsis@
+-- in the dependency graph, so higher levels cannot cycle through their
+-- rank-one specialization.
 type SuperEllipsis predecessor =
   FixedPoint
     (SuperEllipsisTag predecessor)
     (ConcatOperatorValues predecessor)
 
 -- | One observable @predecessor <.> SuperEllipsis predecessor@ layer.
-type SuperEllipsisValue predecessor =
+type SuperEllipsisLayer predecessor =
   FixedPointValue
     (SuperEllipsisTag predecessor)
     (ConcatOperatorValues predecessor)
+
+-- | Runtime evidence for one member of the inductive hierarchy.  The type
+-- parameter identifies the corresponding stable-confederal carrier, while
+-- the hidden natural records its finite exponent.
+type role SuperEllipsisRank nominal
+newtype SuperEllipsisRank target = SuperEllipsisRank Natural
+
+-- | Rank zero: the singleton 'Dot', whose order type is one.
+dotSuperEllipsisRank :: SuperEllipsisRank Dot
+dotSuperEllipsisRank = SuperEllipsisRank 0
+
+-- | Advance from rank @n@ to rank @n+1@.
+nextSuperEllipsisRank
+  :: SuperEllipsisRank target
+  -> SuperEllipsisRank (SuperEllipsis target)
+nextSuperEllipsisRank (SuperEllipsisRank value) =
+  SuperEllipsisRank (value + 1)
+
+-- | The ordinal order type represented at a rank: one at rank zero and
+-- @omega^n@ at every positive finite rank.
+superEllipsisRankOrderType :: SuperEllipsisRank target -> Ordinal
+superEllipsisRankOrderType (SuperEllipsisRank value) = omegaPower value
+
+-- | A position certified to lie below one super-ellipsis rank.
+type role SuperEllipsisTerminal nominal
+newtype SuperEllipsisTerminal target = SuperEllipsisTerminal
+  { superEllipsisTerminalPosition :: Ordinal
+  }
+  deriving (Eq, Show)
+
+-- | Refine an ordinal to a position at the selected rank.
+superEllipsisTerminal
+  :: SuperEllipsisRank target
+  -> Ordinal
+  -> Maybe (SuperEllipsisTerminal target)
+superEllipsisTerminal valueRank position
+  | ordinalLT position (superEllipsisRankOrderType valueRank) =
+      Just (SuperEllipsisTerminal position)
+  | otherwise = Nothing
+
+-- | Zero belongs to every rank in the hierarchy.
+superEllipsisZeroTerminal
+  :: SuperEllipsisRank target
+  -> SuperEllipsisTerminal target
+superEllipsisZeroTerminal _ = SuperEllipsisTerminal (finiteOrdinal 0)
+
+-- | The countable dominion of all positions below a rank.  Fixed-length
+-- coefficient vectors give a duplicate-free enumeration of @omega^n@.
+superEllipsisDominion
+  :: SuperEllipsisRank target
+  -> Dominion (SuperEllipsisTerminal target)
+superEllipsisDominion valueRank@(SuperEllipsisRank level) =
+  dominion terminalCode terminalAt (const ())
+  where
+    terminalAt code =
+      ordinalAtNaturalRank level code
+        >>= superEllipsisTerminal valueRank
+
+    terminalCode terminal =
+      case naturalRankOfOrdinal
+        level (superEllipsisTerminalPosition terminal) of
+          Just code -> code
+          Nothing -> 0
+
+-- | The canonical chain of all terminals in ordinal order.
+superEllipsisChain
+  :: SuperEllipsisRank target
+  -> Chain (SuperEllipsisTerminal target)
+superEllipsisChain valueRank =
+  chain
+    (superEllipsisRankOrderType valueRank)
+    superEllipsisTerminalPosition
+    (superEllipsisTerminal valueRank)
+    (const ())
+    (\_ _ -> ())
+    (const ())
+
+-- | Concrete chained-Atlas presentation associated with a rank.
+type SuperEllipsisAtlasObject target =
+  ChainedDominionAtlasObject (SuperEllipsisTerminal target)
+
+superEllipsisAtlas
+  :: SuperEllipsisRank target
+  -> ChainedDominionAtlas (SuperEllipsisTerminal target)
+superEllipsisAtlas valueRank =
+  chainedDominionAtlas
+    zero
+    (superEllipsisChain valueRank)
+    (superEllipsisDominion valueRank)
+  where
+    zero = superEllipsisZeroTerminal valueRank
+
+superEllipsisAtlasMap
+  :: SuperEllipsisRank target
+  -> AtlasMap (SuperEllipsisAtlasObject target)
+superEllipsisAtlasMap valueRank =
+  chainedDominionAtlasMap
+    zero
+    (superEllipsisChain valueRank)
+    (superEllipsisDominion valueRank)
+  where
+    zero = superEllipsisZeroTerminal valueRank
+
+superEllipsisCoalitionElement
+  :: SuperEllipsisRank target
+  -> SuperEllipsisTerminal target
+  -> CoalitionElement (SuperEllipsisAtlasObject target)
+superEllipsisCoalitionElement valueRank =
+  chainedDominionCoalitionElement
+    (superEllipsisZeroTerminal valueRank)
+    (superEllipsisChain valueRank)
+    (superEllipsisDominion valueRank)
 
 -- | Tie the guarded recursive equation for the successor of @predecessor@.
 superEllipsis
@@ -101,30 +249,30 @@ superEllipsisUnfold
 superEllipsisUnfold predecessor = unrollFixedPoint (predecessor <.>)
 
 -- | Introduce one recursive value layer.
-rollSuperEllipsisValue
+rollSuperEllipsisLayer
   :: ConcatOperatorValue
        predecessor
        (SuperEllipsis predecessor)
        object
-  -> SuperEllipsisValue predecessor object
-rollSuperEllipsisValue = rollFixedPointValue
+  -> SuperEllipsisLayer predecessor object
+rollSuperEllipsisLayer = rollFixedPointValue
 
 -- | Observe one recursive value layer.
-unrollSuperEllipsisValue
-  :: SuperEllipsisValue predecessor object
+unrollSuperEllipsisLayer
+  :: SuperEllipsisLayer predecessor object
   -> ConcatOperatorValue
        predecessor
        (SuperEllipsis predecessor)
        object
-unrollSuperEllipsisValue = unrollFixedPointValue
+unrollSuperEllipsisLayer = unrollFixedPointValue
 
 -- | Observe one recursive layer without exposing its representation.
-withSuperEllipsisValue
-  :: SuperEllipsisValue predecessor object
+withSuperEllipsisLayer
+  :: SuperEllipsisLayer predecessor object
   -> (ConcatOperatorValue
         predecessor
         (SuperEllipsis predecessor)
         object
       -> result)
   -> result
-withSuperEllipsisValue = withFixedPointValue
+withSuperEllipsisLayer = withFixedPointValue

@@ -3,18 +3,18 @@ module MapOperators.Syntax.AccessOperatorSyntax
   ( (<@>)
   ) where
 
-import EllipsisInsertion (EllipsisInsertion)
 import MapOperators.AccessOperator
   ( AccessElement
   , IndexedAtlasMap
   , accessOperator
   )
+import SuperEllipsisInsertion (SuperEllipsisInsertion)
 
 infixl 8 <@>
 
 -- | Infix form of 'accessOperator'.
 (<@>)
   :: IndexedAtlasMap value
-  -> EllipsisInsertion source
+  -> SuperEllipsisInsertion target source
   -> Maybe (IndexedAtlasMap (AccessElement source value))
 (<@>) = accessOperator
