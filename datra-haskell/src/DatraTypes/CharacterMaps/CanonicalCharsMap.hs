@@ -1,4 +1,3 @@
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 
 -- | Canonical identifier characters obtained by ordered access into ASCII.
@@ -20,8 +19,7 @@ import Chain (Chain, chain)
 import Control.Arrow ((&&&))
 import Control.Monad ((>=>))
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
-import Ellipsis (pattern Terminal, terminalRank)
-import EllipsisInsertion (EllipsisInsertion, ellipsisInsertion)
+import Ellipsis (Ellipsis)
 import MapOperators.AccessOperator
   ( AccessElement
   , IndexedAtlasMap
@@ -30,6 +28,17 @@ import MapOperators.AccessOperator
   )
 import MapOperators.Syntax.AccessOperatorSyntax ((<@>))
 import Numeric.Natural (Natural)
+import SuperEllipsisInsertion
+  ( SuperEllipsisInsertion
+  , superEllipsisInsertion
+  )
+import SuperEllipsis
+  ( dotSuperEllipsisRank
+  , nextSuperEllipsisRank
+  , superEllipsisTerminal
+  , superEllipsisTerminalPosition
+  , superEllipsisZeroTerminal
+  )
 
 import qualified Data.Map.Strict as Map
 
@@ -82,14 +91,24 @@ canonicalIndexChain =
     (\_ _ -> ())
     (const ())
 
-canonicalCharsInsertion :: EllipsisInsertion CanonicalCharIndex
+canonicalCharsInsertion
+  :: SuperEllipsisInsertion Ellipsis CanonicalCharIndex
 canonicalCharsInsertion =
-  ellipsisInsertion
+  superEllipsisInsertion
+    rankOne
     (Just (CanonicalCharIndex 0 39))
     canonicalIndexChain
-    (Terminal . canonicalAsciiRank)
-    ((`Map.lookup` canonicalIndicesByAsciiRank) . terminalRank)
+    terminalAt
+    (naturalAtOrdinal . superEllipsisTerminalPosition
+      >=> (`Map.lookup` canonicalIndicesByAsciiRank))
     (const ())
+  where
+    rankOne = nextSuperEllipsisRank dotSuperEllipsisRank
+    terminalAt index =
+      case superEllipsisTerminal
+        rankOne (finiteOrdinal (canonicalAsciiRank index)) of
+          Just terminal -> terminal
+          Nothing -> superEllipsisZeroTerminal rankOne
 
 -- | Construct the canonical-character map by applying '<@>' to the ASCII
 -- map.  The result is 'Nothing' only if the internal insertion ever ceases to

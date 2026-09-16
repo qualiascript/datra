@@ -55,8 +55,8 @@ library
         SuperEllipsisValue
         Ellipsis
         EllipsisInsertion
-        Natural
-        NaturalRange
+        EllipsisRange
+        EllipsisNatural
         FiniteDominion
         FixedPoint
         DomanialInsertion

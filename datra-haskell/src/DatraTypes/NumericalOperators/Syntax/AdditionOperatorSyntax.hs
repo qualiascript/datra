@@ -5,15 +5,15 @@ module NumericalOperators.Syntax.AdditionOperatorSyntax
   ( (+)
   ) where
 
-import Natural qualified as Datra
+import EllipsisNatural qualified as Datra
 import NumericalOperators.AdditionOperator (additionOperator)
 import Prelude hiding ((+))
 
 infixl 6 +
 
 (+)
-  :: Datra.Natural leftScope
-  -> Datra.Natural rightScope
-  -> (forall resultScope. Datra.Natural resultScope -> result)
+  :: Datra.EllipsisNatural leftScope
+  -> Datra.EllipsisNatural rightScope
+  -> (forall resultScope. Datra.EllipsisNatural resultScope -> result)
   -> Maybe result
 (+) = additionOperator

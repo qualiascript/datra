@@ -49,8 +49,9 @@ import ChainedDominionAtlas
   , chainedDominionAtlas
   , chainedDominionAtlasMap
   )
+import Control.Monad (void)
 import Data.Kind (Type)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -207,8 +208,8 @@ superEllipsisRange valueRank start target useRange = do
               Just ()
           | otherwise -> Nothing
         NegativeOne
-          | start == Nothing -> Nothing
-          | otherwise -> () <$ naturalAtOrdinal startValue
+          | isNothing start -> Nothing
+          | otherwise -> void (naturalAtOrdinal startValue)
         UnboundedTarget -> Just ()
 
     validateDirection =
