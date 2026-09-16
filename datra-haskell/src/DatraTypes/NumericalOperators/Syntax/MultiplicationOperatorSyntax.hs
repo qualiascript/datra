@@ -1,4 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Infix syntax for ordinal multiplication.
 module NumericalOperators.Syntax.MultiplicationOperatorSyntax
@@ -6,15 +8,25 @@ module NumericalOperators.Syntax.MultiplicationOperatorSyntax
   ) where
 
 import NumericalOperators.MultiplicationOperator (multiplicationOperator)
+import NumericalOperators.NumericalOperand
+  ( KnownSuperEllipsisLevel
+  , MultiplicationNumericalLevel
+  , MultiplicationResult
+  , NumericalOperand
+  )
 import Prelude hiding ((*))
-import SuperEllipsisValue (SuperEllipsisValue)
 
 infixl 7 *
 
 (*)
-  :: SuperEllipsisValue target leftScope
-  -> SuperEllipsisValue target rightScope
+  :: ( NumericalOperand left
+     , NumericalOperand right
+     , KnownSuperEllipsisLevel
+         (MultiplicationNumericalLevel left right)
+     )
+  => left
+  -> right
   -> (forall resultScope.
-        SuperEllipsisValue target resultScope -> result)
+        MultiplicationResult left right resultScope -> result)
   -> Maybe result
 (*) = multiplicationOperator

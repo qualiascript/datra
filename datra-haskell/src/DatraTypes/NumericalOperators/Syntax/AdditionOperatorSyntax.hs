@@ -1,4 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Infix syntax for ordinal addition.
 module NumericalOperators.Syntax.AdditionOperatorSyntax
@@ -6,15 +8,24 @@ module NumericalOperators.Syntax.AdditionOperatorSyntax
   ) where
 
 import NumericalOperators.AdditionOperator (additionOperator)
+import NumericalOperators.NumericalOperand
+  ( BinaryNumericalLevel
+  , KnownSuperEllipsisLevel
+  , NumericalOperand
+  , NumericalResult
+  )
 import Prelude hiding ((+))
-import SuperEllipsisValue (SuperEllipsisValue)
 
 infixl 6 +
 
 (+)
-  :: SuperEllipsisValue target leftScope
-  -> SuperEllipsisValue target rightScope
+  :: ( NumericalOperand left
+     , NumericalOperand right
+     , KnownSuperEllipsisLevel (BinaryNumericalLevel left right)
+     )
+  => left
+  -> right
   -> (forall resultScope.
-        SuperEllipsisValue target resultScope -> result)
+        NumericalResult left right resultScope -> result)
   -> Maybe result
 (+) = additionOperator

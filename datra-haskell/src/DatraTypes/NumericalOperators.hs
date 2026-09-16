@@ -3,6 +3,7 @@ module NumericalOperators
   ( module NumericalOperators.AdditionOperator
   , module NumericalOperators.MultiplicationOperator
   , module NumericalOperators.ExponentiationOperator
+  , module NumericalOperators.NumericalOperand
   , (+)
   , (*)
   , (^)
@@ -11,6 +12,7 @@ module NumericalOperators
 import NumericalOperators.AdditionOperator
 import NumericalOperators.ExponentiationOperator
 import NumericalOperators.MultiplicationOperator
+import NumericalOperators.NumericalOperand
 import NumericalOperators.Syntax.AdditionOperatorSyntax ((+))
 import NumericalOperators.Syntax.ExponentiationOperatorSyntax ((^))
 import NumericalOperators.Syntax.MultiplicationOperatorSyntax ((*))

@@ -43,6 +43,7 @@ library
         NumericalOperators.AdditionOperator
         NumericalOperators.ExponentiationOperator
         NumericalOperators.MultiplicationOperator
+        NumericalOperators.NumericalOperand
         NumericalOperators.Syntax.AdditionOperatorSyntax
         NumericalOperators.Syntax.ExponentiationOperatorSyntax
         NumericalOperators.Syntax.MultiplicationOperatorSyntax

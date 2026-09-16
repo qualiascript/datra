@@ -1184,6 +1184,7 @@ testNumericalOperators = do
   assertNumericalOperator "rankOneData-natural zero exponent" (Numeric.^) 7 0 1
   assertNumericalOperator "rankOneData-natural zero-to-zero power" (Numeric.^) 0 0 1
   testGenericOrdinalOperators
+  testStableDatumNumericalOperands
 
 testGenericOrdinalOperators :: IO ()
 testGenericOrdinalOperators = do
@@ -1212,6 +1213,49 @@ testGenericOrdinalOperators = do
              )
         )
     _ -> fail "higher-rank ordinal operator setup was rejected"
+
+testStableDatumNumericalOperands :: IO ()
+testStableDatumNumericalOperands = do
+  let levelTwoData :: StableConfederalData (SuperEllipsis Ellipsis)
+      levelTwoData = superEllipsis rankOneData
+      omegaSquared = ordinal [1, 0, 0]
+      binaryResults =
+        ( join ((Numeric.+) dot dot superEllipsisValueOrdinal)
+        , join ((Numeric.+) dot rankOneData superEllipsisValueOrdinal)
+        , join ((Numeric.+) rankOneData dot superEllipsisValueOrdinal)
+        , join ((Numeric.*) dot rankOneData superEllipsisValueOrdinal)
+        , join ((Numeric.*) rankOneData dot superEllipsisValueOrdinal)
+        , join ((Numeric.*) rankOneData rankOneData
+            superEllipsisValueOrdinal)
+        , join ((Numeric.+) rankOneData levelTwoData
+            superEllipsisValueOrdinal)
+        , join ((Numeric.+) levelTwoData rankOneData
+            superEllipsisValueOrdinal)
+        )
+  assert "stable data denote successive omega powers in binary operators"
+    ( binaryResults
+      == ( Just (finiteOrdinal 2)
+         , Just omega
+         , Just (addOrdinals omega (finiteOrdinal 1))
+         , Just omega
+         , Just omega
+         , Just omegaSquared
+         , Just omegaSquared
+         , Just (ordinal [1, 1, 0])
+         )
+    )
+  case DatraNatural.ellipsisNatural 3 $ \three ->
+      join ((Numeric.^) dot three superEllipsisValueOrdinal) of
+    Just (Just result) ->
+      assert "Dot exponentiation interprets Dot as one"
+        (result == finiteOrdinal 1)
+    _ -> fail "Dot exponentiation was rejected"
+  case DatraNatural.ellipsisNatural 1 $ \one ->
+      join ((Numeric.^) rankOneData one superEllipsisValueOrdinal) of
+    Just (Just result) ->
+      assert "Ellipsis exponentiation interprets Ellipsis as omega"
+        (result == omega)
+    _ -> fail "Ellipsis exponentiation was rejected"
 
 assertNumericalOperator
   :: String

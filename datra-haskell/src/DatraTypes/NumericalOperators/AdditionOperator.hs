@@ -1,4 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Addition of singleton ordinal values.
 module NumericalOperators.AdditionOperator
@@ -7,15 +9,23 @@ module NumericalOperators.AdditionOperator
 
 import DatraOrdinal (addOrdinals)
 import NumericalOperators.Internal (applyOrdinalOperator)
+import NumericalOperators.NumericalOperand
+  ( BinaryNumericalLevel
+  , KnownSuperEllipsisLevel
+  , NumericalOperand
+  , NumericalResult
+  )
 import Prelude (Maybe)
-import SuperEllipsisValue (SuperEllipsisValue)
 
--- | Add two ordinals at the same super-ellipsis rank and introduce the result
--- with a fresh scope. At rank one the result is an 'EllipsisNatural'.
+-- | Add two ordinal operands at their least common super-ellipsis rank.
 additionOperator
-  :: SuperEllipsisValue target leftScope
-  -> SuperEllipsisValue target rightScope
+  :: ( NumericalOperand left
+     , NumericalOperand right
+     , KnownSuperEllipsisLevel (BinaryNumericalLevel left right)
+     )
+  => left
+  -> right
   -> (forall resultScope.
-        SuperEllipsisValue target resultScope -> result)
+        NumericalResult left right resultScope -> result)
   -> Maybe result
 additionOperator = applyOrdinalOperator addOrdinals
