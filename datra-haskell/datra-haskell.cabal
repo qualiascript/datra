@@ -39,6 +39,7 @@ library
         MapMakingOperators.SequentialOperator.Syntax
         CanonicalCharsDominion
         Dominion
+        Dot
         Ellipsis
         EllipsisInsertion
         EllipsisNatural

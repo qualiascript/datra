@@ -33,7 +33,14 @@ import AtlasTransposal
 import CanonicalCharsDominion
 import Dominion
 import DatraOrdinal (finiteOrdinal)
-import DomanialInclusion (dominionAtlas)
+import DomanialInclusion (dominionAtlas, dominionCellDataValue)
+import Dot
+  ( dot
+  , dotAtlas
+  , dotAtlasMap
+  , dotDominion
+  , dotTerminal
+  )
 import DomanialInsertion (applyInsertion, preimage)
 import Ellipsis
 import EllipsisInsertion
@@ -65,6 +72,7 @@ main :: IO ()
 main = do
   testAsciiDominion
   testCanonicalCharsDominion
+  testDot
   testSequentialOperator
   testConcatOperator
   testGroupedSequentialExpansion
@@ -96,6 +104,30 @@ atlasPageHasExactly valueAtlas pageNumber cellCount =
             Nothing -> False
       positions = take (fromIntegral cellCount) [0 ..]
   in all exists positions && not (exists cellCount)
+
+testDot :: IO ()
+testDot =
+  dot `seq`
+    withAtlasMapExtent dotAtlasMap $ \_ extent coversExtent ->
+      let uniqueDatum = unrank extent 0
+          coveredAtOnlyCell =
+            case uniqueDatum of
+              Nothing -> False
+              Just datum ->
+                withAtlasCoveredPageElement
+                  (coversExtent datum) $ \occurrence _ ->
+                    pageElementPage occurrence == 0
+                      && pageElementPosition occurrence == finiteOrdinal 0
+      in assert
+          "dot is the domanial inclusion of one terminal"
+          ( atlasCardinality dotAtlas == 1
+            && atlasPageHasExactly dotAtlas 0 1
+            && rank dotDominion dotTerminal == 0
+            && unrank dotDominion 0 == Just dotTerminal
+            && isNothing (unrank dotDominion 1)
+            && fmap dominionCellDataValue uniqueDatum == Just dotTerminal
+            && coveredAtOnlyCell
+          )
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope EllipsisAtlasObject
