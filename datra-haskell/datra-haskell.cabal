@@ -32,20 +32,32 @@ library
         AsciiMap
         MapOperators
         MapOperators.AccessOperator
-        MapOperators.AccessOperator.Syntax
         MapOperators.ConcatOperator
-        MapOperators.ConcatOperator.Syntax
         MapOperators.ExpansionOperator
-        MapOperators.ExpansionOperator.Syntax
         MapOperators.SequentialOperator
-        MapOperators.SequentialOperator.Syntax
+        MapOperators.Syntax.AccessOperatorSyntax
+        MapOperators.Syntax.ConcatOperatorSyntax
+        MapOperators.Syntax.ExpansionOperatorSyntax
+        MapOperators.Syntax.SequentialOperatorSyntax
+        NumericalOperators
+        NumericalOperators.AdditionOperator
+        NumericalOperators.ExponentiationOperator
+        NumericalOperators.MultiplicationOperator
+        NumericalOperators.NumericalOperand
+        NumericalOperators.Syntax.AdditionOperatorSyntax
+        NumericalOperators.Syntax.ExponentiationOperatorSyntax
+        NumericalOperators.Syntax.MultiplicationOperatorSyntax
         CanonicalCharsMap
         Dominion
         Dot
+        SuperEllipsis
+        SuperEllipsisInsertion
+        SuperEllipsisRange
+        SuperEllipsisValue
         Ellipsis
         EllipsisInsertion
+        EllipsisRange
         EllipsisNatural
-        EllipsisNaturalRange
         FiniteDominion
         FixedPoint
         DomanialInsertion
@@ -142,6 +154,7 @@ library
         Dominion.Internal
         Folio.Internal
         Folio.LiquidInternal
+        NumericalOperators.Internal
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9

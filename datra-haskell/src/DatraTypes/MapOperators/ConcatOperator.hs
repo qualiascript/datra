@@ -19,9 +19,7 @@ module MapOperators.ConcatOperator
   , concatOperator
   , concatToSequential
   , withConcatOrderedTransposal
-  , Concat
-  , ConcatResult
-  , (<.>)
+  , Concat (ConcatResult, concatOperands)
   ) where
 
 import Atlas
@@ -382,7 +380,7 @@ instance {-# OVERLAPPING #-}
 -- confederal data retains the ordinary map-making result.
 class Concat left right where
   type ConcatResult left right :: Type
-  (<.>) :: left -> right -> ConcatResult left right
+  concatOperands :: left -> right -> ConcatResult left right
 
 instance
     (SequentialOperand left, SequentialOperand right) =>
@@ -393,9 +391,4 @@ instance
       (StableConfederalData left)
       (StableConfederalData right) =
         StableConfederalData (ConcatOperatorValues left right)
-  (<.>) = concatOperator
-
--- | Legal Haskell spelling of the requested @<,>@ operation. ASCII comma is
--- punctuation rather than an operator character in Haskell's lexer. The
--- operation is ordered: swapping its operands changes the ordinal sum.
-infixr 7 <.>
+  concatOperands = concatOperator

@@ -17,20 +17,24 @@ import AtlasConfederation
   ( AtlasConfederationObject
   , MergedAtlasConfederationScope
   , SingletonAtlasConfederationScope
+  , identityAtlasConfederationHom
   , mergeAtlasConfederations
+  , rightAtlasConfederationInclusion
   , singletonAtlasConfederation
   )
 import AtlasCoveredPageElement
   ( atlasCoveredPageElement
   , withAtlasCoveredPageElement
   )
-import AtlasMap (withAtlasMapExtent)
+import AtlasMap (AtlasMap, withAtlasMapExtent)
 import AtlasTransposal
   ( atlasTransposalElement
   , withAtlasTransposalElement
   )
 import AtlasSequence (atlasSequenceDatumMember)
 import CanonicalCharsMap
+import ChainedDominionAtlas (ChainedDominionAtlas)
+import Control.Monad (join)
 import Dominion
 import Chain
   ( chain
@@ -43,10 +47,12 @@ import DatraOrdinal
   , finiteOrdinal
   , naturalAtOrdinal
   , omega
+  , ordinal
   )
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
-  ( dot
+  ( Dot
+  , dot
   , dotAtlas
   , dotAtlasMap
   , dotDominion
@@ -54,9 +60,7 @@ import Dot
   )
 import DomanialInsertion (applyInsertion, preimage)
 import Ellipsis
-import EllipsisInsertion
-import EllipsisNatural
-import EllipsisNaturalRange
+import EllipsisNatural qualified as DatraNatural
 import FiniteDominion
 import MapOperators
 import Numeric.Natural (Natural)
@@ -75,10 +79,20 @@ import OrderedAtlasTransposal
 import StableAtlasTransversal
   ( stableAtlasTransversalPreservesCoverage
   )
-import StableConfederalData (mapStableConfederalDataHom)
+import StableConfederalData
+  ( StableConfederalData
+  , StableConfederalDataHom
+  , mapStableConfederalData
+  , mapStableConfederalDataHom
+  )
+import SuperEllipsis
+import SuperEllipsisInsertion
+import qualified SuperEllipsisRange as SuperRange
+import SuperEllipsisValue
 
-import Data.Maybe (isNothing)
+import Data.Maybe (fromMaybe, isNothing)
 import qualified Data.Set as Set
+import qualified NumericalOperators as Numeric
 
 main :: IO ()
 main = do
@@ -91,11 +105,14 @@ main = do
   testGroupedSequentialExpansion
   testComplexOperatorStructure
   testEllipsis
-  testEllipsisInsertion
-  testEllipsisInsertionDominion
-  testEllipsisNaturalRange
-  testEllipsisNaturalRangeMerge
+  testSuperEllipsis
+  testSuperEllipsisRange
+  testSuperEllipsisInsertion
+  testSuperEllipsisInsertionDominion
+  testRankOneRange
+  testRankOneRangeMerge
   testEllipsisNatural
+  testNumericalOperators
   testFiniteDominion
 
 assert :: String -> Bool -> IO ()
@@ -142,8 +159,153 @@ testDot =
             && coveredAtOnlyCell
           )
 
+-- The hierarchy is structural: Dot is level zero, Ellipsis is level one,
+-- and applying the successor once more constructs level two.
+type SuperEllipsisTwo = SuperEllipsis Ellipsis
+
+type RankOneTerminal = SuperEllipsisTerminal Ellipsis
+
+type RankOneAtlasObject = SuperEllipsisAtlasObject Ellipsis
+
+rankOneRank :: SuperEllipsisRank Ellipsis
+rankOneRank = nextSuperEllipsisRank dotSuperEllipsisRank
+
+rankOneTerminal :: Natural -> RankOneTerminal
+rankOneTerminal value =
+  fromMaybe
+    (superEllipsisZeroTerminal rankOneRank)
+    (superEllipsisTerminal rankOneRank (finiteOrdinal value))
+
+rankOneTerminalRank :: RankOneTerminal -> Natural
+rankOneTerminalRank =
+  fromMaybe 0 . naturalAtOrdinal . superEllipsisTerminalPosition
+
+rankOneDominion :: Dominion RankOneTerminal
+rankOneDominion = superEllipsisDominion rankOneRank
+
+rankOneAtlas :: ChainedDominionAtlas RankOneTerminal
+rankOneAtlas = superEllipsisAtlas rankOneRank
+
+rankOneAtlasMap :: AtlasMap RankOneAtlasObject
+rankOneAtlasMap = superEllipsisAtlasMap rankOneRank
+
+rankOneData :: StableConfederalData Ellipsis
+rankOneData = superEllipsis dot
+
+rankOneUnfolded
+  :: StableConfederalData (ConcatOperatorValues Dot Ellipsis)
+rankOneUnfolded = superEllipsisUnfolded dot
+
+rankOneFold
+  :: StableConfederalDataHom
+       (ConcatOperatorValues Dot Ellipsis)
+       Ellipsis
+rankOneFold = superEllipsisFold dot
+
+rankOneUnfold
+  :: StableConfederalDataHom
+       Ellipsis
+       (ConcatOperatorValues Dot Ellipsis)
+rankOneUnfold = superEllipsisUnfold dot
+
+type RankOneConfederationScope =
+  SingletonAtlasConfederationScope RankOneAtlasObject
+
+type RankOneConfederationObject =
+  AtlasConfederationObject RankOneConfederationScope ()
+
+rankOneValue :: SuperEllipsisLayer Dot RankOneConfederationObject
+rankOneValue = rollSuperEllipsisLayer
+  (mapStableConfederalData
+    rankOneUnfolded
+    tailInclusion
+    (concatValue
+      dotConfederation
+      rankOneConfederation
+      identityAtlasConfederationHom
+      rankOneValue))
+  where
+    dotConfederation = singletonAtlasConfederation dotAtlas
+    rankOneConfederation = singletonAtlasConfederation rankOneAtlas
+    tailInclusion = rightAtlasConfederationInclusion
+      dotConfederation rankOneConfederation
+
+testSuperEllipsis :: IO ()
+testSuperEllipsis = do
+  let levelOne :: StableConfederalData (SuperEllipsis Dot)
+      levelOne = rankOneData
+      levelTwo :: StableConfederalData SuperEllipsisTwo
+      levelTwo = superEllipsis rankOneData
+      levelTwoUnfolded = superEllipsisUnfolded rankOneData
+      levelTwoFold = superEllipsisFold rankOneData
+      levelTwoUnfold = superEllipsisUnfold rankOneData
+      roundTripValue =
+        rollSuperEllipsisLayer (unrollSuperEllipsisLayer rankOneValue)
+  levelOne `seq`
+    levelTwo `seq`
+      levelTwoUnfolded `seq`
+        levelTwoFold `seq`
+          levelTwoUnfold `seq`
+            roundTripValue `seq`
+              assert "super rankOneData constructs Ellipsis and its successor" True
+
+testSuperEllipsisRange :: IO ()
+testSuperEllipsisRange = asciiMap $ \ascii -> do
+  let rankTwo = nextSuperEllipsisRank rankOneRank
+      rankTwoDominion = superEllipsisDominion rankTwo
+      positions =
+        [ finiteOrdinal 0
+        , finiteOrdinal 65
+        , omega
+        , addOrdinals omega (finiteOrdinal 2)
+        ]
+      terminalRoundTrips position = do
+        terminal <- superEllipsisTerminal rankTwo position
+        unrank rankTwoDominion (rank rankTwoDominion terminal)
+  assert "rank-two terminals use the canonical DatraOrdinal enumeration"
+    (map terminalRoundTrips positions
+      == map (superEllipsisTerminal rankTwo) positions)
+  case SuperRange.superEllipsisRange
+      rankTwo
+      (Just omega)
+      (SuperRange.FiniteTarget
+        (addOrdinals omega (finiteOrdinal 3))) $ \valueRange -> do
+    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+        at position = do
+          sourceIndex <- chainIndex
+            (superEllipsisInsertionChain insertion)
+            (finiteOrdinal position)
+          pure
+            (superEllipsisInsertionPosition
+              insertion (chainObjectAt sourceIndex))
+    assert "rank-two ranges retain transfinite ordinal positions"
+      (map at [0 .. 3]
+        == map Just
+          [ omega
+          , addOrdinals omega (finiteOrdinal 1)
+          , addOrdinals omega (finiteOrdinal 2)
+          ] <> [Nothing])
+    assert "finite maps reject transfinite super-rankOneData positions"
+      (case ascii <@> insertion of
+        Nothing -> True
+        Just _ -> False)
+    of
+      Nothing -> fail "valid transfinite rank-two range was rejected"
+      Just checks -> checks
+  case SuperRange.superEllipsisRange
+      rankTwo
+      (Just (finiteOrdinal 65))
+      (SuperRange.FiniteTarget (finiteOrdinal 68)) $ \valueRange ->
+    case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
+      Nothing -> False
+      Just selected -> indexedAtlasCardinality selected == 3
+    of
+      Nothing -> fail "valid finite rank-two range was rejected"
+      Just fits ->
+        assert "access accepts a higher-rank insertion that fits the map" fits
+
 type EllipsisConfederationScope =
-  SingletonAtlasConfederationScope EllipsisAtlasObject
+  SingletonAtlasConfederationScope RankOneAtlasObject
 
 type EllipsisPairValues = SequentialOperatorValues Ellipsis Ellipsis
 
@@ -201,8 +363,8 @@ type EllipsisComplexObject =
 
 testSequentialOperator :: IO ()
 testSequentialOperator = do
-  let sequenced = ellipsis <:> ellipsis <:> ellipsis
-      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+  let sequenced = rankOneData <:> rankOneData <:> rankOneData
+      ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
       pair ::
@@ -211,15 +373,15 @@ testSequentialOperator = do
         sequentialValue
           ellipsisConfederation
           ellipsisConfederation
-          ellipsisValue
-          ellipsisValue
+          rankOneValue
+          rankOneValue
       triple ::
         SequentialOperatorValue Ellipsis EllipsisPairValues EllipsisTripleObject
       triple =
         sequentialValue
           ellipsisConfederation
           pairConfederation
-          ellipsisValue
+          rankOneValue
           pair
       leftTriple ::
         SequentialOperatorValue EllipsisPairValues Ellipsis
@@ -229,7 +391,7 @@ testSequentialOperator = do
           pairConfederation
           ellipsisConfederation
           pair
-          ellipsisValue
+          rankOneValue
       traversalSelectsItsCell mergedAtlas traversal =
         withSequentialAtlasTraversal traversal $
           \position sourceAtlas inclusion ->
@@ -281,16 +443,16 @@ testSequentialOperator = do
 
 testConcatOperator :: IO ()
 testConcatOperator = do
-  let concatenated = ellipsis <.> ellipsis
-      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+  let concatenated = rankOneData <.> rankOneData
+      ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pair ::
         ConcatOperatorValue Ellipsis Ellipsis EllipsisPairObject
       pair =
         concatValue
           ellipsisConfederation
           ellipsisConfederation
-          ellipsisValue
-          ellipsisValue
+          rankOneValue
+          rankOneValue
       mappedFinalPage sequenceAtlas concatAtlas inclusion =
         case pageElementIndex
           (atlasPageElements concatAtlas) 1 (finiteOrdinal 0) of
@@ -330,8 +492,8 @@ testConcatOperator = do
 testGroupedSequentialExpansion :: IO ()
 testGroupedSequentialExpansion = do
   let groupedObject =
-        ellipsis <:> ellipsis <+> ellipsis <:> ellipsis
-      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+        rankOneData <:> rankOneData <+> rankOneData <:> rankOneData
+      ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
       pair ::
@@ -340,8 +502,8 @@ testGroupedSequentialExpansion = do
         sequentialValue
           ellipsisConfederation
           ellipsisConfederation
-          ellipsisValue
-          ellipsisValue
+          rankOneValue
+          rankOneValue
       groupedPairs ::
         ExpansionOperatorValue
           EllipsisPairValues
@@ -380,10 +542,10 @@ testGroupedSequentialExpansion = do
 testComplexOperatorStructure :: IO ()
 testComplexOperatorStructure = do
   let fiveObject =
-        ellipsis <:> ellipsis <:> ellipsis
-          <+> ellipsis <:> ellipsis
+        rankOneData <:> rankOneData <:> rankOneData
+          <+> rankOneData <:> rankOneData
       complexObject = fiveObject <+> fiveObject
-      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+      ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
       tripleConfederation = mergeAtlasConfederations
@@ -396,8 +558,8 @@ testComplexOperatorStructure = do
         sequentialValue
           ellipsisConfederation
           ellipsisConfederation
-          ellipsisValue
-          ellipsisValue
+          rankOneValue
+          rankOneValue
       triple ::
         SequentialOperatorValue
           Ellipsis
@@ -407,7 +569,7 @@ testComplexOperatorStructure = do
         sequentialValue
           ellipsisConfederation
           pairConfederation
-          ellipsisValue
+          rankOneValue
           pair
       fiveGroup ::
         ExpansionOperatorValue
@@ -497,14 +659,14 @@ testCanonicalCharsMap =
 testAccessOperator :: IO ()
 testAccessOperator =
   asciiMap $ \ascii -> do
-    withEllipsisNaturalRange (Just 10) (Just 12) $ \first ->
-      withEllipsisNaturalRange (Just 2) (Just 4) $ \second ->
-        case concatEllipsisNaturalRanges first second of
-          SomeEllipsisNaturalRangeConcat
-              (ConcatenatedEllipsisMap _ _) ->
+    withRankOneRange (Just 10) (Just 12) $ \first ->
+      withRankOneRange (Just 2) (Just 4) $ \second ->
+        case SuperRange.concatSuperEllipsisRanges first second of
+          SuperRange.SomeSuperEllipsisRangeConcat
+              (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
             fail "disjoint access ranges produced only a map"
-          SomeEllipsisNaturalRangeConcat
-              (ConcatenatedEllipsisInsertion _ _ insertion) ->
+          SuperRange.SomeSuperEllipsisRangeConcat
+              (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ insertion) ->
             case ascii <@> insertion of
               Nothing -> fail "in-bounds reordered access was rejected"
               Just selected -> do
@@ -520,28 +682,74 @@ testAccessOperator =
                 assert "access returns a flattened two-page map"
                   (atlasCardinality valueAtlas == 2
                     && atlasPageHasExactly valueAtlas 1 4)
-    withEllipsisNaturalRange (Just 255) (Just 257) $ \outside ->
+    withRankOneRange (Just 255) (Just 257) $ \outside ->
       assert "access rejects an insertion exceeding final cardinality"
-        (case ascii <@> ellipsisNaturalRangeInsertion outside of
+        (case ascii <@> SuperRange.superEllipsisRangeInsertion outside of
           Nothing -> True
           Just _ -> False)
 
-withEllipsisNaturalRange
+withRankOneRange
   :: Maybe Natural
   -> Maybe Natural
-  -> (forall scope. EllipsisNaturalRange scope -> IO ())
+  -> (forall scope. SuperRange.SuperEllipsisRange Ellipsis scope -> IO ())
   -> IO ()
-withEllipsisNaturalRange lower upper useRange =
-  case ellipsisNaturalRange
+withRankOneRange lower upper useRange =
+  case rankOneRange
       lower
-      (maybe UnboundedTarget FiniteTarget upper)
+      (maybe
+        SuperRange.UnboundedTarget
+        (SuperRange.FiniteTarget . finiteOrdinal)
+        upper)
       useRange of
-    Nothing -> fail "test setup failed: valid ellipsis range was rejected"
+    Nothing -> fail "test setup failed: valid rankOneData range was rejected"
     Just checks -> checks
+
+rankOneRange
+  :: Maybe Natural
+  -> SuperRange.SuperEllipsisRangeTarget
+  -> (forall scope.
+        SuperRange.SuperEllipsisRange Ellipsis scope -> result)
+  -> Maybe result
+rankOneRange start =
+  SuperRange.superEllipsisRange rankOneRank (finiteOrdinal <$> start)
+
+rankOneRangeElement
+  :: SuperRange.SuperEllipsisRange Ellipsis scope
+  -> Natural
+  -> Maybe (SuperRange.SuperEllipsisRangeElement Ellipsis scope)
+rankOneRangeElement valueRange =
+  SuperRange.superEllipsisRangeElement valueRange . finiteOrdinal
+
+rankOneElementRank
+  :: SuperRange.SuperEllipsisRangeElement Ellipsis scope
+  -> Natural
+rankOneElementRank element =
+  case naturalAtOrdinal
+    (SuperRange.superEllipsisRangeElementPosition element) of
+      Just value -> value
+      Nothing -> 0
+
+rankOneRangeSize
+  :: SuperRange.SuperEllipsisRange Ellipsis scope
+  -> Maybe Natural
+rankOneRangeSize =
+  naturalAtOrdinal . SuperRange.superEllipsisRangeOrderType
+
+rankOneRangeLowerBound
+  :: SuperRange.SuperEllipsisRange Ellipsis scope
+  -> Maybe Natural
+rankOneRangeLowerBound valueRange =
+  SuperRange.superEllipsisRangeLowerBound valueRange >>= naturalAtOrdinal
+
+rankOneRangeUpperBound
+  :: SuperRange.SuperEllipsisRange Ellipsis scope
+  -> Maybe Natural
+rankOneRangeUpperBound valueRange =
+  SuperRange.superEllipsisRangeUpperBound valueRange >>= naturalAtOrdinal
 
 testEllipsis :: IO ()
 testEllipsis =
-  withAtlasMapExtent ellipsisAtlasMap $ \_ extent coversExtent -> do
+  withAtlasMapExtent rankOneAtlasMap $ \_ extent coversExtent -> do
     let ranks :: [Natural]
         ranks = [0, 1, 2, 1000000]
         roundTrips valueRank =
@@ -550,24 +758,24 @@ testEllipsis =
           case unrank extent valueRank of
             Nothing -> False
             Just datum -> coversExtent datum `seq` True
-    ellipsis `seq` pure ()
-    assert "ellipsis is represented by a cardinality-two Atlas map"
-      (atlasCardinality ellipsisAtlas == 2)
-    assert "ellipsis has one covered terminal region at every natural rank"
+    rankOneData `seq` pure ()
+    assert "rankOneData is represented by a cardinality-two Atlas map"
+      (atlasCardinality rankOneAtlas == 2)
+    assert "rankOneData has one covered terminal region at every natural rank"
       (all roundTrips ranks && all covered ranks)
-    let elements = atlasPageElements ellipsisAtlas
+    let elements = atlasPageElements rankOneAtlas
         terminalRegion valueRank = do
           index <- pageElementIndex elements 1 (finiteOrdinal valueRank)
           pure $ withPageElement (pageElement index) $ \region ->
-            let regionDominion = atlasDataAt ellipsisAtlas region
+            let regionDominion = atlasDataAt rankOneAtlas region
             in fmap (rank regionDominion) (unrank regionDominion 0) == Just 0
                 && isNothing (unrank regionDominion 1)
     assert "all omega final regions carry the same terminal dominion"
       (map terminalRegion ranks == map (const (Just True)) ranks)
     let unfolded =
-          mapStableConfederalDataHom ellipsisUnfold ellipsisValue
+          mapStableConfederalDataHom rankOneUnfold rankOneValue
         rerolled =
-          mapStableConfederalDataHom ellipsisFold unfolded
+          mapStableConfederalDataHom rankOneFold unfolded
         hasRecursiveShape layer =
           withConcatOrderedTransposal layer $
             \sequenceAtlas recursiveAtlas _ ->
@@ -583,34 +791,34 @@ testEllipsis =
                         Just _ -> True
                         Nothing -> False)
                   [0, 1, 2, 100]
-    assert "ellipsis unrolls as Dot concatenated with Ellipsis"
+    assert "rankOneData unrolls as Dot concatenated with Ellipsis"
       (hasRecursiveShape unfolded)
-    withEllipsisValue rerolled $ \rerolledLayer ->
+    withSuperEllipsisLayer rerolled $ \rerolledLayer ->
       assert "rolling the Ellipsis layer restores the fixed-point value"
         (hasRecursiveShape rerolledLayer)
 
-testEllipsisInsertion :: IO ()
-testEllipsisInsertion = do
-  let insertion :: EllipsisInsertion EllipsisTerminal
-      insertion = ellipsisInsertion
-        (Just (Terminal 0))
+testSuperEllipsisInsertion :: IO ()
+testSuperEllipsisInsertion = do
+  let insertion :: SuperEllipsisInsertion Ellipsis RankOneTerminal
+      insertion = superEllipsisInsertion rankOneRank
+        (Just (rankOneTerminal 0))
         (chain
           omega
-          (finiteOrdinal . terminalRank)
-          (fmap Terminal . naturalAtOrdinal)
+          (finiteOrdinal . rankOneTerminalRank)
+          (fmap rankOneTerminal . naturalAtOrdinal)
           (const ())
           (\_ _ -> ())
           (const ()))
         id
         Just
         (const ())
-      terminals = map Terminal [0, 1, 1000000]
+      terminals = map rankOneTerminal [0, 1, 1000000]
       traversalPreservesTerminal terminal =
-        let sourceAtlas = dominionAtlas ellipsisDominion
+        let sourceAtlas = dominionAtlas rankOneDominion
         in withPageElement (atlasOriginCell sourceAtlas) $ \sourceOrigin ->
           case unrank
             (atlasDataAt sourceAtlas sourceOrigin)
-            (terminalRank terminal) of
+            (rankOneTerminalRank terminal) of
               Nothing -> False
               Just sourceDatum ->
                 let sourceCovered =
@@ -623,97 +831,100 @@ testEllipsisInsertion = do
                         ()
                     targetCovered =
                       stableAtlasTransversalPreservesCoverage
-                        (ellipsisInsertionTraversal insertion)
+                        (superEllipsisInsertionTraversal insertion)
                         sourceCovered
                 in withAtlasCoveredPageElement targetCovered $
                   \targetOccurrence targetDatum ->
                     rank
-                      (atlasDataAt ellipsisAtlas targetOccurrence)
+                      (atlasDataAt rankOneAtlas targetOccurrence)
                       targetDatum
-                      == terminalRank terminal
-  assert "ellipsis insertion is an Atlas traversal into ellipsis"
+                      == rankOneTerminalRank terminal
+  assert "rankOneData insertion is an Atlas traversal into rankOneData"
     (all traversalPreservesTerminal terminals
       && all
       (\terminal ->
-        ellipsisInsertionPreimage insertion
-          (applyEllipsisInsertion insertion terminal) == Just terminal)
+        superEllipsisInsertionPreimage insertion
+          (applySuperEllipsisInsertion insertion terminal) == Just terminal)
       terminals)
 
-testEllipsisInsertionDominion :: IO ()
-testEllipsisInsertionDominion =
+testSuperEllipsisInsertionDominion :: IO ()
+testSuperEllipsisInsertionDominion =
   asciiMap $ \ascii ->
-    withEllipsisNaturalRange (Just 65) (Just 68) $ \valueRange -> do
-      let selected = ellipsisInsertionDominion
+    withRankOneRange (Just 65) (Just 68) $ \valueRange -> do
+      let selected = superEllipsisInsertionDominion
             (indexedAtlasDominion ascii)
-            (ellipsisNaturalRangeInsertion valueRange)
+            (SuperRange.superEllipsisRangeInsertion valueRange)
           selectedCharacter =
             fmap
-              (asciiCharacterValue . ellipsisInsertionElementValue)
+              (asciiCharacterValue . superEllipsisInsertionElementValue)
               . unrank selected
-      assert "ellipsis insertion restricts a dominion to selected ranks"
+      assert "rankOneData insertion restricts a dominion to selected ranks"
         (map selectedCharacter [64, 65, 66, 67, 68]
           == [Nothing, Just 'A', Just 'B', Just 'C', Nothing])
-      assert "ellipsis insertion dominion preserves absolute ranks"
+      assert "rankOneData insertion dominion preserves absolute ranks"
         (map (fmap (rank selected) . unrank selected) [65, 66, 67]
           == map Just [65, 66, 67])
 
-testEllipsisNaturalRange :: IO ()
-testEllipsisNaturalRange = do
+testRankOneRange :: IO ()
+testRankOneRange = do
   assert "an omitted first endpoint cannot descend from infinity"
-    (case ellipsisNaturalRange Nothing NegativeOne (const ()) of
+    (case rankOneRange Nothing SuperRange.NegativeOne (const ()) of
       Nothing -> True
       Just () -> False)
-  case ellipsisNaturalRange (Just 3) (FiniteTarget 3) $ \valueRange -> do
-    let insertion = ellipsisNaturalRangeInsertion valueRange
+  case rankOneRange
+      (Just 3) (SuperRange.FiniteTarget (finiteOrdinal 3)) $ \valueRange -> do
+    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
     assert "equal endpoints form a valid empty range"
       ( all
           (\rankValue ->
-            ellipsisNaturalRangeElement valueRange rankValue == Nothing)
+            rankOneRangeElement valueRange rankValue == Nothing)
           [0 .. 6]
-        && ellipsisInsertionFirst insertion == Nothing
-        && ellipsisNaturalRangeSize valueRange == Just 0
-        && chainOrderType (ellipsisInsertionChain insertion)
+        && superEllipsisInsertionFirst insertion == Nothing
+        && rankOneRangeSize valueRange == Just 0
+        && chainOrderType (superEllipsisInsertionChain insertion)
           == finiteOrdinal 0
       )
     of
       Nothing -> fail "equal endpoints were rejected"
       Just checks -> checks
-  withEllipsisNaturalRange (Just 3) (Just 3) $ \emptyRange ->
-    withEllipsisNaturalRange (Just 5) (Just 7) $ \nonemptyRange ->
+  withRankOneRange (Just 3) (Just 3) $ \emptyRange ->
+    withRankOneRange (Just 5) (Just 7) $ \nonemptyRange ->
       case emptyRange <.> nonemptyRange of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisMap _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "an empty range prevented insertion concatenation"
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ value insertion) ->
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ value insertion) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "an empty range contributes zero ordered cells"
               ( atlasPageHasExactly concatAtlas 1 2
-                && case ellipsisInsertionFirst insertion of
+                && case superEllipsisInsertionFirst insertion of
                     Just (Right element) ->
-                      ellipsisNaturalRangeElementRank element == 5
+                      rankOneElementRank element == 5
                     _ -> False
               )
-  case ellipsisNaturalRange (Just 4) (FiniteTarget 1) $ \valueRange -> do
-    let insertion = ellipsisNaturalRangeInsertion valueRange
+  case rankOneRange
+      (Just 4) (SuperRange.FiniteTarget (finiteOrdinal 1)) $ \valueRange -> do
+    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         at position =
-          ellipsisNaturalRangeElementRank . chainObjectAt
+          rankOneElementRank . chainObjectAt
             <$> chainIndex
-              (ellipsisInsertionChain insertion)
+              (superEllipsisInsertionChain insertion)
               (finiteOrdinal position)
     assert "a descending range is first-inclusive and second-exclusive"
       (map at [0 .. 3] == [Just 4, Just 3, Just 2, Nothing]
         && map
-          (fmap ellipsisNaturalRangeElementRank
-            . ellipsisNaturalRangeElement valueRange)
+          (fmap rankOneElementRank
+            . rankOneRangeElement valueRange)
           [0 .. 5]
           == [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing])
     of
       Nothing -> fail "descending range was rejected"
       Just checks -> checks
-  case ellipsisNaturalRange (Just 5) (FiniteTarget 0) $ \valueRange -> do
+  case rankOneRange
+      (Just 5) (SuperRange.FiniteTarget (finiteOrdinal 0)) $ \valueRange -> do
     let included rankValue =
-          case ellipsisNaturalRangeElement valueRange rankValue of
+          case rankOneRangeElement valueRange rankValue of
             Nothing -> False
             Just _ -> True
     assert "a finite zero target remains exclusive"
@@ -722,12 +933,12 @@ testEllipsisNaturalRange = do
     of
       Nothing -> fail "finite zero target was rejected"
       Just checks -> checks
-  case ellipsisNaturalRange (Just 5) NegativeOne $ \valueRange -> do
-    let insertion = ellipsisNaturalRangeInsertion valueRange
+  case rankOneRange (Just 5) SuperRange.NegativeOne $ \valueRange -> do
+    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         at position =
-          ellipsisNaturalRangeElementRank . chainObjectAt
+          rankOneElementRank . chainObjectAt
             <$> chainIndex
-              (ellipsisInsertionChain insertion)
+              (superEllipsisInsertionChain insertion)
               (finiteOrdinal position)
     assert "NegativeOne descends through zero inclusively"
       (map at [0 .. 6]
@@ -735,68 +946,70 @@ testEllipsisNaturalRange = do
     of
       Nothing -> fail "NegativeOne target was rejected"
       Just checks -> checks
-  case ellipsisNaturalRange (Just 2) (FiniteTarget 5) $ \valueRange -> do
-    let insertion = ellipsisNaturalRangeInsertion valueRange
+  case rankOneRange
+      (Just 2) (SuperRange.FiniteTarget (finiteOrdinal 5)) $ \valueRange -> do
+    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         expected = [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing]
         actual = map
-          (fmap ellipsisNaturalRangeElementRank
-            . ellipsisInsertionPreimage insertion . Terminal)
+          (fmap rankOneElementRank
+            . superEllipsisInsertionPreimage insertion . rankOneTerminal)
           [0 .. 5]
-    assert "bounded ellipsis range is lower-inclusive and upper-exclusive"
+    assert "bounded rankOneData range is lower-inclusive and upper-exclusive"
       (actual == expected)
-    assert "ellipsis range insertion satisfies its left-inverse law"
+    assert "rankOneData range insertion satisfies its left-inverse law"
       (all
         (\rankValue ->
-          case ellipsisNaturalRangeElement valueRange rankValue of
+          case rankOneRangeElement valueRange rankValue of
             Nothing -> False
             Just element ->
-              ellipsisInsertionPreimage insertion (applyEllipsisInsertion insertion element)
+              superEllipsisInsertionPreimage insertion (applySuperEllipsisInsertion insertion element)
                 == Just element)
         [2 .. 4])
     of
-      Nothing -> fail "valid bounded ellipsis range was rejected"
+      Nothing -> fail "valid bounded rankOneData range was rejected"
       Just checks -> checks
-  case ellipsisNaturalRange Nothing (FiniteTarget 5) $ \valueRange ->
+  case rankOneRange
+      Nothing (SuperRange.FiniteTarget (finiteOrdinal 5)) $ \valueRange ->
     map
-      (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
+      (fmap rankOneElementRank . rankOneRangeElement valueRange)
       [0 .. 5]
     of
-      Nothing -> fail "valid upper-bounded ellipsis range was rejected"
+      Nothing -> fail "valid upper-bounded rankOneData range was rejected"
       Just actual ->
         assert "missing lower bound includes all lower terminals"
           (actual == [Just 0, Just 1, Just 2, Just 3, Just 4, Nothing])
-  case ellipsisNaturalRange (Just 2) UnboundedTarget $ \valueRange ->
+  case rankOneRange (Just 2) SuperRange.UnboundedTarget $ \valueRange ->
     map
-      (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
+      (fmap rankOneElementRank . rankOneRangeElement valueRange)
       [1, 2, 1000000]
     of
-      Nothing -> fail "valid lower-bounded ellipsis range was rejected"
+      Nothing -> fail "valid lower-bounded rankOneData range was rejected"
       Just actual ->
         assert "missing upper bound includes every later terminal"
           (actual == [Nothing, Just 2, Just 1000000])
-  case ellipsisNaturalRange Nothing UnboundedTarget $ \valueRange ->
+  case rankOneRange Nothing SuperRange.UnboundedTarget $ \valueRange ->
     map
-      (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
+      (fmap rankOneElementRank . rankOneRangeElement valueRange)
       [0, 1, 1000000]
     of
-      Nothing -> fail "unbounded ellipsis range was rejected"
+      Nothing -> fail "unbounded rankOneData range was rejected"
       Just actual ->
         assert "missing bounds include all terminals"
           (actual == [Just 0, Just 1, Just 1000000])
 
-testEllipsisNaturalRangeMerge :: IO ()
-testEllipsisNaturalRangeMerge = do
-  withEllipsisNaturalRange (Just 2) (Just 4) $ \first ->
-    withEllipsisNaturalRange (Just 10) (Just 12) $ \second ->
-      case mergeEllipsisNaturalRanges first second of
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) ->
+testRankOneRangeMerge :: IO ()
+testRankOneRangeMerge = do
+  withRankOneRange (Just 2) (Just 4) $ \first ->
+    withRankOneRange (Just 10) (Just 12) $ \second ->
+      case SuperRange.mergeSuperEllipsisRanges first second of
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "disjoint ranges produced only a map"
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ value insertion) -> do
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ value insertion) -> do
           let includedRanks = map
-                (fmap (either ellipsisNaturalRangeElementRank
-                              ellipsisNaturalRangeElementRank)
-                  . ellipsisInsertionPreimage insertion . Terminal)
+                (fmap (either rankOneElementRank
+                              rankOneElementRank)
+                  . superEllipsisInsertionPreimage insertion . rankOneTerminal)
                 [1, 2, 3, 4, 9, 10, 11, 12]
               extentMember combinedRank =
                 withConcatOrderedTransposal value $ \_ concatAtlas _ ->
@@ -813,27 +1026,27 @@ testEllipsisNaturalRangeMerge = do
           assert "range concat preserves left and right operand tags"
             (map extentMember [4, 5, 20, 21]
               == [Just 0, Nothing, Nothing, Just 1])
-  withEllipsisNaturalRange (Just 2) (Just 4) $ \first ->
-    withEllipsisNaturalRange (Just 4) (Just 7) $ \second ->
-      case mergeEllipsisNaturalRanges first second of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ _ insertion) ->
+  withRankOneRange (Just 2) (Just 4) $ \first ->
+    withRankOneRange (Just 4) (Just 7) $ \second ->
+      case SuperRange.mergeSuperEllipsisRanges first second of
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ insertion) ->
           assert "adjacent ranges retain subtype capability"
             (all
               (\rankValue ->
-                case ellipsisInsertionPreimage insertion (Terminal rankValue) of
+                case superEllipsisInsertionPreimage insertion (rankOneTerminal rankValue) of
                   Just _ -> True
                   Nothing -> False)
               [2 .. 6])
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "adjacent non-overlapping ranges produced only a map"
-  withEllipsisNaturalRange (Just 10) (Just 12) $ \first ->
-    withEllipsisNaturalRange (Just 2) (Just 4) $ \second ->
-      case mergeEllipsisNaturalRanges first second of
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) ->
+  withRankOneRange (Just 10) (Just 12) $ \first ->
+    withRankOneRange (Just 2) (Just 4) $ \second ->
+      case SuperRange.mergeSuperEllipsisRanges first second of
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "reverse disjoint ranges produced only a map"
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ value insertion) -> do
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ value insertion) -> do
           let extentMember combinedRank =
                 withConcatOrderedTransposal value $ \_ concatAtlas _ ->
                   withPageElement (atlasOriginCell concatAtlas) $ \origin ->
@@ -843,31 +1056,31 @@ testEllipsisNaturalRangeMerge = do
                         combinedRank
           assert "reverse concat preserves both insertion branches"
             (map
-              (fmap (either ellipsisNaturalRangeElementRank
-                            ellipsisNaturalRangeElementRank)
-                . ellipsisInsertionPreimage insertion . Terminal)
+              (fmap (either rankOneElementRank
+                            rankOneElementRank)
+                . superEllipsisInsertionPreimage insertion . rankOneTerminal)
               [2, 3, 10, 11]
               == map Just [2, 3, 10, 11])
           assert "swapping ranges changes the ordered concat presentation"
             (map extentMember [4, 5, 20, 21]
               == [Nothing, Just 1, Just 0, Nothing])
-  withEllipsisNaturalRange (Just 2) (Just 5) $ \first ->
-    withEllipsisNaturalRange (Just 4) (Just 7) $ \second ->
-      case mergeEllipsisNaturalRanges first second of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ _ _) ->
+  withRankOneRange (Just 2) (Just 5) $ \first ->
+    withRankOneRange (Just 4) (Just 7) $ \second ->
+      case SuperRange.mergeSuperEllipsisRanges first second of
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping ranges produced an Ellipsis insertion"
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "overlapping ranges retain their ordered concat map"
               (atlasPageHasExactly concatAtlas 1 6)
-  withEllipsisNaturalRange (Just 3) Nothing $ \first ->
-    withEllipsisNaturalRange (Just 5) Nothing $ \second ->
-      case concatEllipsisNaturalRanges first second of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ _ _) ->
+  withRankOneRange (Just 3) Nothing $ \first ->
+    withRankOneRange (Just 5) Nothing $ \second ->
+      case SuperRange.concatSuperEllipsisRanges first second of
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping unbounded ranges produced an Ellipsis insertion"
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -883,13 +1096,13 @@ testEllipsisNaturalRangeMerge = do
                   ]
                 && not (finalContains (addOrdinals omega omega))
               )
-  withEllipsisNaturalRange (Just 3) Nothing $ \first ->
-    withEllipsisNaturalRange (Just 2) (Just 20) $ \second -> do
+  withRankOneRange (Just 3) Nothing $ \first ->
+    withRankOneRange (Just 2) (Just 20) $ \second -> do
       case first <.> second of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping omega-plus-finite ranges produced an insertion"
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -907,10 +1120,10 @@ testEllipsisNaturalRangeMerge = do
                     (addOrdinals omega (finiteOrdinal 18)))
               )
       case second <.> first of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping finite-plus-omega ranges produced an insertion"
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -925,43 +1138,174 @@ testEllipsisNaturalRangeMerge = do
                   ]
                 && not (finalContains omega)
               )
-  withEllipsisNaturalRange (Just 4) (Just 1) $ \descending ->
-    withEllipsisNaturalRange (Just 3) (Just 6) $ \ascending ->
+  withRankOneRange (Just 4) (Just 1) $ \descending ->
+    withRankOneRange (Just 3) (Just 6) $ \ascending ->
       case descending <.> ascending of
-        SomeEllipsisNaturalRangeConcat
-            (ConcatenatedEllipsisInsertion _ _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat
+            (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping descending and ascending ranges produced an insertion"
-        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "descending ranges retain their order in overlapping maps"
               (atlasPageHasExactly concatAtlas 1 6)
 
 testEllipsisNatural :: IO ()
 testEllipsisNatural = do
-  case ellipsisNatural 0 $ \natural ->
+  case DatraNatural.ellipsisNatural 0 $ \natural ->
     map
-      (fmap ellipsisNaturalRangeElementRank
-        . ellipsisInsertionPreimage (ellipsisNaturalInsertion natural) . Terminal)
+      (fmap rankOneElementRank
+        . superEllipsisInsertionPreimage (DatraNatural.ellipsisNaturalInsertion natural) . rankOneTerminal)
       [0, 1]
     of
-      Nothing -> fail "zero ellipsis natural was rejected"
+      Nothing -> fail "zero rankOneData natural was rejected"
       Just includedRanks ->
-        assert "zero ellipsis natural includes exactly zero"
+        assert "zero rankOneData natural includes exactly zero"
           (includedRanks == [Just 0, Nothing])
-  case ellipsisNatural 3 $ \natural -> do
-    let insertion = ellipsisNaturalInsertion natural
+  case DatraNatural.ellipsisNatural 3 $ \natural -> do
+    let insertion = DatraNatural.ellipsisNaturalInsertion natural
         includedRanks = map
-          (fmap ellipsisNaturalRangeElementRank
-            . ellipsisInsertionPreimage insertion . Terminal)
+          (fmap rankOneElementRank
+            . superEllipsisInsertionPreimage insertion . rankOneTerminal)
           [2, 3, 4]
-    assert "ellipsis natural uses consecutive range bounds"
-      (ellipsisNaturalRangeLowerBound natural == Just 3
-        && ellipsisNaturalRangeUpperBound natural == Just 4)
-    assert "ellipsis natural includes exactly its value"
+    assert "rankOneData natural uses consecutive range bounds"
+      (rankOneRangeLowerBound natural == Just 3
+        && rankOneRangeUpperBound natural == Just 4)
+    assert "rankOneData natural includes exactly its value"
       (includedRanks == [Nothing, Just 3, Nothing])
     of
-      Nothing -> fail "ellipsis natural was rejected"
+      Nothing -> fail "rankOneData natural was rejected"
       Just checks -> checks
+
+testNumericalOperators :: IO ()
+testNumericalOperators = do
+  assertNumericalOperator "rankOneData-natural addition" (Numeric.+) 2 3 5
+  assertNumericalOperator "rankOneData-natural multiplication" (Numeric.*) 4 5 20
+  assertNumericalOperator "rankOneData-natural exponentiation" (Numeric.^) 2 10 1024
+  assertNumericalOperator "rankOneData-natural zero exponent" (Numeric.^) 7 0 1
+  assertNumericalOperator "rankOneData-natural zero-to-zero power" (Numeric.^) 0 0 1
+  testGenericOrdinalOperators
+  testStableDatumNumericalOperands
+
+testGenericOrdinalOperators :: IO ()
+testGenericOrdinalOperators = do
+  let rankThree =
+        nextSuperEllipsisRank (nextSuperEllipsisRank rankOneRank)
+      omegaPlusOne = addOrdinals omega (finiteOrdinal 1)
+      operatorResults =
+        superEllipsisValue rankThree omegaPlusOne $ \left ->
+          superEllipsisValue rankThree omega $ \right ->
+            DatraNatural.ellipsisNatural 2 $ \two ->
+              ( join ((Numeric.+) left right superEllipsisValueOrdinal)
+              , join ((Numeric.+) right left superEllipsisValueOrdinal)
+              , join ((Numeric.*) left right superEllipsisValueOrdinal)
+              , join ((Numeric.*) right left superEllipsisValueOrdinal)
+              , join ((Numeric.^) left two superEllipsisValueOrdinal)
+              )
+  case operatorResults of
+    Just (Just (Just actual)) ->
+      assert "higher-rank numerical operators use ordered ordinal arithmetic"
+        ( actual
+          == ( Just (ordinal [2, 0])
+             , Just (ordinal [2, 1])
+             , Just (ordinal [1, 0, 0])
+             , Just (ordinal [1, 1, 0])
+             , Just (ordinal [1, 1, 1])
+             )
+        )
+    _ -> fail "higher-rank ordinal operator setup was rejected"
+
+testStableDatumNumericalOperands :: IO ()
+testStableDatumNumericalOperands = do
+  let levelTwoData :: StableConfederalData (SuperEllipsis Ellipsis)
+      levelTwoData = superEllipsis rankOneData
+      omegaSquared = ordinal [1, 0, 0]
+      isEllipsisFormulation
+        :: StableConfederalData Ellipsis -> Bool
+      isEllipsisFormulation value = value `seq` True
+      isLevelTwoFormulation
+        :: StableConfederalData (SuperEllipsis Ellipsis) -> Bool
+      isLevelTwoFormulation value = value `seq` True
+      binaryResults =
+        ( join ((Numeric.+) dot dot superEllipsisValueOrdinal)
+        , join ((Numeric.+) dot rankOneData superEllipsisValueOrdinal)
+        , join ((Numeric.+) rankOneData dot superEllipsisValueOrdinal)
+        , (Numeric.*) dot rankOneData isEllipsisFormulation
+        , (Numeric.*) rankOneData dot isEllipsisFormulation
+        , (Numeric.*) rankOneData rankOneData
+            isLevelTwoFormulation
+        , join ((Numeric.+) rankOneData levelTwoData
+            superEllipsisValueOrdinal)
+        , join ((Numeric.+) levelTwoData rankOneData
+            superEllipsisValueOrdinal)
+        )
+  assert "stable data denote successive omega powers in binary operators"
+    ( binaryResults
+      == ( Just (finiteOrdinal 2)
+         , Just omega
+         , Just (addOrdinals omega (finiteOrdinal 1))
+         , Just True
+         , Just True
+         , Just True
+         , Just omegaSquared
+         , Just (ordinal [1, 1, 0])
+         )
+    )
+  case DatraNatural.ellipsisNatural 0 $ \zero ->
+      join ((Numeric.+) rankOneData zero superEllipsisValueOrdinal) of
+    Just (Just result) ->
+      assert "adding zero soft-casts a formulation to an explicit value"
+        (result == omega)
+    _ -> fail "formulation soft cast was rejected"
+  case DatraNatural.ellipsisNatural 3 $ \three ->
+      (Numeric.^) dot three Numeric.someSuperEllipsisLevel of
+    Just (Just result) ->
+      assert "Dot exponentiation returns Dot"
+        (result == 0)
+    _ -> fail "Dot exponentiation was rejected"
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      (Numeric.^) rankOneData two Numeric.someSuperEllipsisLevel of
+    Just (Just result) ->
+      assert "Ellipsis squared returns the level-two formulation"
+        (result == 2)
+    _ -> fail "Ellipsis squared was rejected"
+  case DatraNatural.ellipsisNatural 0 $ \zero ->
+      (Numeric.^) rankOneData zero Numeric.someSuperEllipsisLevel of
+    Just (Just result) ->
+      assert "Ellipsis to zero returns Dot"
+        (result == 0)
+    _ -> fail "Ellipsis to zero was rejected"
+  let rankThree =
+        nextSuperEllipsisRank (nextSuperEllipsisRank rankOneRank)
+      explicitOmegaSquared =
+        superEllipsisValue rankThree omega $ \omegaValue ->
+          DatraNatural.ellipsisNatural 2 $ \two ->
+            join ((Numeric.^) omegaValue two superEllipsisValueOrdinal)
+  case explicitOmegaSquared of
+    Just (Just (Just result)) ->
+      assert "an explicit omega base returns an explicit omega-squared value"
+        (result == omegaSquared)
+    _ -> fail "explicit omega exponentiation was rejected"
+
+assertNumericalOperator
+  :: String
+  -> (forall leftScope rightScope result.
+        DatraNatural.EllipsisNatural leftScope
+        -> DatraNatural.EllipsisNatural rightScope
+        -> (forall resultScope. DatraNatural.EllipsisNatural resultScope -> result)
+        -> Maybe result)
+  -> Natural
+  -> Natural
+  -> Natural
+  -> IO ()
+assertNumericalOperator label operator leftValue rightValue expected =
+  case DatraNatural.ellipsisNatural leftValue $ \left ->
+    DatraNatural.ellipsisNatural rightValue $ \right ->
+      operator left right $ \result ->
+        rankOneRangeLowerBound result == Just expected
+          && rankOneRangeUpperBound result == Just (expected + 1)
+  of
+    Just (Just (Just matches)) -> assert label matches
+    _ -> fail ("test setup failed: " <> label)
 
 testFiniteDominion :: IO ()
 testFiniteDominion =

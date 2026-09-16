@@ -11,12 +11,16 @@ module ChainedDominionAtlas
   , ChainedDominionAtlasObject
   , chainedDominionAtlas
   , chainedDominionAtlasMap
+  , chainedDominionCoalitionElement
+  , chainedDominionInsertionTraversal
   ) where
 
 import Atlas
   ( Atlas
   , AtlasObject
+  , atlasOriginCell
   , atlasPageElements
+  , atlasWitness
   )
 import Atlas.Internal (atlasDataAction, atlasWithScope)
 import AtlasCoveredPageElement
@@ -32,8 +36,21 @@ import Chain
   , chainPosition
   )
 import Consolidation (consolidation, op)
-import DomanialInclusion (singletonChain)
-import DomanialInsertion (DomanialInsertion, domanialInsertion)
+import Coalition (CoalitionElement, coalitionElementRank)
+import Coalition.Internal (coalitionElement)
+import DomanialInclusion
+  ( DominionAtlasObject
+  , coaToDomInc
+  , singletonChain
+  )
+import DomanialInsertion
+  ( DomanialInsertion
+  , applyInsertion
+  , domanialInsertion
+  , insertionLeftInverse
+  , preimage
+  , pullbackDominion
+  )
 import Dominion (Dominion, dominion, rank, unrank)
 import Folio (Folio, appendPage, singletonFolio)
 import PageElements
@@ -48,6 +65,7 @@ import PageElements
 import PageElements.Internal (lastPageElement)
 import Pagination (Pagination)
 import Pagination.Internal (paginationWithScope)
+import StableAtlasTransversal (StableAtlasTransversal)
 
 -- | Data carried by the extent or by one selected final-chain region.
 data ChainedDominionCellData value object
@@ -230,3 +248,50 @@ chainedDominionAtlasMap firstValue valueChain valueDominion =
   atlasMap
     (chainedDominionAtlas firstValue valueChain valueDominion)
     (chainedDominionCoverage firstValue valueChain valueDominion)
+
+-- | The canonical covered extent element corresponding to one chained
+-- dominion value.
+chainedDominionCoalitionElement
+  :: value
+  -> Chain value
+  -> Dominion value
+  -> value
+  -> CoalitionElement (ChainedDominionAtlasObject value)
+chainedDominionCoalitionElement firstValue valueChain valueDominion value =
+  withPageElement (atlasOriginCell valueAtlas) $ \origin ->
+    let datum = ChainedDominionExtentDatum value
+    in coalitionElement
+        origin
+        datum
+        (chainedDominionCoverage
+          firstValue valueChain valueDominion origin datum)
+  where
+    valueAtlas = chainedDominionAtlas firstValue valueChain valueDominion
+
+-- | Lift an insertion between dominions to the stable traversal into a
+-- chained Atlas map.
+chainedDominionInsertionTraversal
+  :: value
+  -> Chain value
+  -> Dominion value
+  -> DomanialInsertion source value
+  -> StableAtlasTransversal
+       (DominionAtlasObject source)
+       (ChainedDominionAtlasObject value)
+chainedDominionInsertionTraversal
+    firstValue valueChain targetDominion insertion =
+  coaToDomInc
+    (pullbackDominion targetDominion insertion)
+    (atlasWitness
+      (chainedDominionAtlas firstValue valueChain targetDominion))
+    coalitionInsertion
+  where
+    coalitionInsertion =
+      domanialInsertion
+        (chainedDominionCoalitionElement
+          firstValue valueChain targetDominion
+          . applyInsertion insertion)
+        (\element ->
+          unrank targetDominion (coalitionElementRank element)
+            >>= preimage insertion)
+        (insertionLeftInverse insertion)

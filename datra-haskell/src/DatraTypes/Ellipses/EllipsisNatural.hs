@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Natural numbers represented as singleton ellipsis ranges.
+-- | Natural numbers represented as rank-one super-ellipsis values.
 module EllipsisNatural
   ( EllipsisNatural
   , EllipsisNaturalElement
@@ -8,33 +8,35 @@ module EllipsisNatural
   , ellipsisNaturalInsertion
   ) where
 
-import EllipsisInsertion (EllipsisInsertion)
-import EllipsisNaturalRange
-  ( EllipsisNaturalRange
-  , EllipsisNaturalRangeElement
-  , EllipsisNaturalRangeTarget (FiniteTarget)
-  , ellipsisNaturalRange
-  , ellipsisNaturalRangeInsertion
-  )
+import DatraOrdinal (finiteOrdinal)
+import Ellipsis (Ellipsis)
 import Numeric.Natural (Natural)
+import SuperEllipsis
+  ( dotSuperEllipsisRank
+  , nextSuperEllipsisRank
+  )
+import SuperEllipsisInsertion (SuperEllipsisInsertion)
+import SuperEllipsisValue
+  ( SuperEllipsisValue
+  , SuperEllipsisValueElement
+  , superEllipsisValue
+  , superEllipsisValueInsertion
+  )
 
--- | A natural number represented by the singleton ellipsis range @[m,m+1)@.
-type EllipsisNatural = EllipsisNaturalRange
+type EllipsisNatural = SuperEllipsisValue Ellipsis
 
--- | The sole member of one ellipsis-natural singleton range.
-type EllipsisNaturalElement = EllipsisNaturalRangeElement
+type EllipsisNaturalElement = SuperEllipsisValueElement Ellipsis
 
--- | Construct the singleton range containing exactly @m@, including when
--- @m@ is zero.
 ellipsisNatural
   :: Natural
   -> (forall scope. EllipsisNatural scope -> result)
   -> Maybe result
 ellipsisNatural value =
-  ellipsisNaturalRange (Just value) (FiniteTarget (value + 1))
+  superEllipsisValue
+    (nextSuperEllipsisRank dotSuperEllipsisRank)
+    (finiteOrdinal value)
 
--- | Insert this singleton natural into 'Ellipsis'.
 ellipsisNaturalInsertion
   :: EllipsisNatural scope
-  -> EllipsisInsertion (EllipsisNaturalElement scope)
-ellipsisNaturalInsertion = ellipsisNaturalRangeInsertion
+  -> SuperEllipsisInsertion Ellipsis (EllipsisNaturalElement scope)
+ellipsisNaturalInsertion = superEllipsisValueInsertion
