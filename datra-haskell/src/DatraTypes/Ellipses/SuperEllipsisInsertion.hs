@@ -3,6 +3,7 @@ module SuperEllipsisInsertion
   ( SuperEllipsisInsertion
   , SuperEllipsisInsertionElement
   , superEllipsisInsertion
+  , fullSuperEllipsisInsertion
   , superEllipsisInsertionRank
   , superEllipsisInsertionFirst
   , superEllipsisInsertionChain
@@ -90,6 +91,21 @@ superEllipsisInsertion
     targetDominion = superEllipsisDominion valueRank
     insertion = domanialInsertion forward backward leftInverse
     zero = superEllipsisZeroTerminal valueRank
+
+-- | The identity insertion of every position in a super-ellipsis target.
+-- This is the insertion underlying the corresponding formulation and may
+-- therefore have a transfinite order type.
+fullSuperEllipsisInsertion
+  :: SuperEllipsisRank target
+  -> SuperEllipsisInsertion target (SuperEllipsisTerminal target)
+fullSuperEllipsisInsertion valueRank =
+  superEllipsisInsertion
+    valueRank
+    (Just (superEllipsisZeroTerminal valueRank))
+    (superEllipsisChain valueRank)
+    id
+    Just
+    (const ())
 
 applySuperEllipsisInsertion
   :: SuperEllipsisInsertion target source

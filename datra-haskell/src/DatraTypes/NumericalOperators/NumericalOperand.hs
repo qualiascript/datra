@@ -46,10 +46,12 @@ import StableConfederalData (StableConfederalData)
 import SuperEllipsis
   ( SuperEllipsis
   , SuperEllipsisRank
+  , SuperEllipsisTarget
   , dotSuperEllipsisRank
   , nextSuperEllipsisRank
   , superEllipsis
   , superEllipsisRankOrderType
+  , superEllipsisTargetRank
   )
 import SuperEllipsisRange (SuperEllipsisRange)
 import SuperEllipsisValue
@@ -91,22 +93,18 @@ instance
   knownSuperEllipsisData =
     superEllipsis (knownSuperEllipsisData @level)
 
-class SuperEllipsisCarrier target where
+class SuperEllipsisTarget target => SuperEllipsisCarrier target where
   type SuperEllipsisCarrierLevel target :: SuperEllipsisLevel
-  superEllipsisCarrierRank :: SuperEllipsisRank target
   superEllipsisCarrierLevelNatural :: Natural
 
 instance SuperEllipsisCarrier Dot where
   type SuperEllipsisCarrierLevel Dot = 'DotLevel
-  superEllipsisCarrierRank = dotSuperEllipsisRank
   superEllipsisCarrierLevelNatural = 0
 
 instance SuperEllipsisCarrier predecessor =>
     SuperEllipsisCarrier (SuperEllipsis predecessor) where
   type SuperEllipsisCarrierLevel (SuperEllipsis predecessor) =
     'NextLevel (SuperEllipsisCarrierLevel predecessor)
-  superEllipsisCarrierRank =
-    nextSuperEllipsisRank (superEllipsisCarrierRank @predecessor)
   superEllipsisCarrierLevelNatural =
     1 + superEllipsisCarrierLevelNatural @predecessor
 
@@ -128,7 +126,7 @@ instance SuperEllipsisCarrier target =>
   type NumericalOperandLevel (StableConfederalData target) =
     'NextLevel (SuperEllipsisCarrierLevel target)
   numericalOperandOrdinal _ =
-    Just (superEllipsisRankOrderType (superEllipsisCarrierRank @target))
+    Just (superEllipsisRankOrderType (superEllipsisTargetRank @target))
 
 type family MaximumSuperEllipsisLevel left right where
   MaximumSuperEllipsisLevel 'DotLevel right = right

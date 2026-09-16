@@ -41,6 +41,7 @@ import Chain
   , chainIndex
   , chainObjectAt
   , chainOrderType
+  , spine
   )
 import DatraOrdinal
   ( addOrdinals
@@ -298,7 +299,8 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
       (SuperRange.FiniteTarget (finiteOrdinal 68)) $ \valueRange ->
     case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
       Nothing -> False
-      Just selected -> indexedAtlasCardinality selected == 3
+      Just selected ->
+        indexedAtlasCardinality selected == finiteOrdinal 3
     of
       Nothing -> fail "valid finite rank-two range was rejected"
       Just fits ->
@@ -630,7 +632,8 @@ testAsciiMap =
     let valueAtlas = asciiAtlas ascii
     assert "ASCII map has two pages and 256 final cells"
       (asciiCardinality == 256
-        && indexedAtlasCardinality ascii == asciiCardinality
+        && indexedAtlasCardinality ascii
+          == finiteOrdinal asciiCardinality
         && atlasCardinality valueAtlas == 2
         && atlasPageHasExactly valueAtlas 1 asciiCardinality)
     assert "ASCII map positions contain matching characters"
@@ -649,7 +652,8 @@ testCanonicalCharsMap =
       assert "canonical characters retain their ASCII order under access"
         (map (canonicalCharacterAt canonical) positions == expected)
       assert "canonical character access produces a two-page 64-cell map"
-        ( indexedAtlasCardinality canonical == canonicalCharsCardinality
+        ( indexedAtlasCardinality canonical
+            == finiteOrdinal canonicalCharsCardinality
           && atlasCardinality valueAtlas == 2
           && atlasPageHasExactly valueAtlas 1 canonicalCharsCardinality
         )) of
@@ -659,6 +663,49 @@ testCanonicalCharsMap =
 testAccessOperator :: IO ()
 testAccessOperator =
   asciiMap $ \ascii -> do
+    case ascii <@> dot of
+      Nothing -> fail "Dot's underlying range was rejected"
+      Just selected ->
+        assert "access interprets Dot as its full one-element range"
+          ( indexedAtlasCardinality selected == finiteOrdinal 1
+            && fmap
+              (asciiCharacterValue . accessElementValue)
+              (indexedAtlasValueAt selected 0) == Just '\0'
+          )
+    assert "a finite map rejects Ellipsis's unbounded underlying range"
+      (case ascii <@> rankOneData of
+        Nothing -> True
+        Just _ -> False)
+    let naturalDominion = dominion id Just (const ())
+        omegaMap = indexedAtlasMapFromChain 0 spine naturalDominion
+    case omegaMap <@> rankOneData of
+      Nothing -> fail "Ellipsis's range was rejected by an omega map"
+      Just selected ->
+        assert "access preserves an unbounded range that fits the map"
+          ( indexedAtlasCardinality selected == omega
+            && map
+              (fmap accessElementValue . indexedAtlasValueAt selected)
+              [0, 1, 1000000]
+              == map Just [0, 1, 1000000]
+          )
+    let rankTwo = nextSuperEllipsisRank rankOneRank
+        rankTwoMap = indexedAtlasMapFromChain
+          (superEllipsisZeroTerminal rankTwo)
+          (superEllipsisChain rankTwo)
+          (superEllipsisDominion rankTwo)
+        levelTwoData :: StableConfederalData (SuperEllipsis Ellipsis)
+        levelTwoData = superEllipsis rankOneData
+    case rankTwoMap <@> levelTwoData of
+      Nothing -> fail "level-two formulation access was rejected"
+      Just selected ->
+        assert "access remains ordinal-indexed above omega"
+          ( indexedAtlasCardinality selected == ordinal [1, 0, 0]
+            && fmap
+              ( superEllipsisTerminalPosition
+                . accessElementValue
+              )
+              (indexedAtlasValueAtOrdinal selected omega) == Just omega
+          )
     withRankOneRange (Just 10) (Just 12) $ \first ->
       withRankOneRange (Just 2) (Just 4) $ \second ->
         case SuperRange.concatSuperEllipsisRanges first second of
