@@ -29,18 +29,25 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
-        AsciiDominion
-        ExpansionOperator
-        ExpansionOperator.Syntax
-        SequentialOperator
-        SequentialOperator.Syntax
-        CanonicalCharsDominion
+        AsciiMap
+        MapOperators
+        MapOperators.AccessOperator
+        MapOperators.AccessOperator.Syntax
+        MapOperators.ConcatOperator
+        MapOperators.ConcatOperator.Syntax
+        MapOperators.ExpansionOperator
+        MapOperators.ExpansionOperator.Syntax
+        MapOperators.SequentialOperator
+        MapOperators.SequentialOperator.Syntax
+        CanonicalCharsMap
         Dominion
+        Dot
         Ellipsis
         EllipsisInsertion
         EllipsisNatural
         EllipsisNaturalRange
         FiniteDominion
+        FixedPoint
         DomanialInsertion
         DatraOrdinal
         Chain
@@ -61,6 +68,8 @@ library
         AtlasMap
         AtlasTransposal
         OrderedAtlasTransposal
+        ChainedDominionAtlas
+        RankedDominionAtlas
         AtlasTransversal
         AtlasTransversalMap
         Charter
@@ -182,9 +191,7 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
-        src/DatraTypes/ExpansionOperator
-        src/DatraTypes/SequentialOperator
-        src/DatraTypes/CharacterDominions
+        src/DatraTypes/CharacterMaps
         src/DatraTypes/Ellipses
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal

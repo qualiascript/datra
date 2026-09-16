@@ -15,6 +15,8 @@ module DomanialInclusion.Internal
   , onePageFolio
   , onePagePagination
   , dominionAtlas
+  , dominionAtlasMap
+  , dominionCoalitionElement
   , dominionMap
   , domanialInclusionFunctorObject
   , domanialInclusionFunctorHom
@@ -60,6 +62,7 @@ import AtlasCoveredPageElement.Internal
   , atlasCoverageWitness
   , findAtlasCoverage
   )
+import AtlasMap (AtlasMap, atlasMap)
 import AtlasTransposal
   ( atlasTransposal
   , atlasTransposalElement
@@ -210,6 +213,15 @@ dominionCoverage
 dominionCoverage valueAtlas occurrence datum =
   atlasCoverageWitness
     valueAtlas occurrence datum occurrence datum ()
+
+-- | The one-page domanial inclusion is automatically an Atlas map: its
+-- unique cell is simultaneously the extent and the final region.
+dominionAtlasMap
+  :: Dominion a
+  -> AtlasMap (DominionAtlasObject a)
+dominionAtlasMap valueDominion =
+  let valueAtlas = dominionAtlas valueDominion
+  in atlasMap valueAtlas (dominionCoverage valueAtlas)
 
 dominionCoalitionElement
   :: Dominion a

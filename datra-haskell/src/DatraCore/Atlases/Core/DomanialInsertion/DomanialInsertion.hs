@@ -7,6 +7,7 @@ module DomanialInsertion
   , domanialInsertion
   , identityInsertion
   , composeInsertions
+  , pullbackDominion
   , CodomanialInsertion
   , op
   , unop
@@ -22,5 +23,6 @@ import DomanialInsertion.Internal
   , insertionLeftInverse
   , op
   , preimage
+  , pullbackDominion
   , unop
   )

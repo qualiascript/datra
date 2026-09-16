@@ -14,6 +14,7 @@ module Folio.Internal
   , originUnique
   , folioMapIdentity
   , folioMapComposition
+  , folioOriginToFinal
   , lastChain
   , paddedIndex
   , pageOrder
@@ -77,6 +78,15 @@ originUnique = originUniqueData
 
 lastChain :: Folio origin final -> Chain final
 lastChain = lastPageData
+
+-- | Compose every generating page map into the canonical coconsolidation
+-- from the origin page to the final genuine page.
+folioOriginToFinal
+  :: Folio origin final
+  -> Coconsolidation origin final
+folioOriginToFinal (OriginFolio _ _ _) = identityFolioMap
+folioOriginToFinal (SnocPage _ previous _ transition) =
+  composeFolioMaps transition (folioOriginToFinal previous)
 
 -- | Clamp a spine index to the final genuine page.
 paddedIndex :: Folio origin final -> Natural -> Natural

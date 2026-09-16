@@ -6,6 +6,7 @@ module DomanialInsertion.Internal
   , domanialInsertion
   , identityInsertion
   , composeInsertions
+  , pullbackDominion
   , CodomanialInsertion (..)
   , op
   , unop
@@ -15,6 +16,13 @@ import Control.Category (Category (..))
 import DomanialInsertion.LiquidInternal
   ( DomanialInsertion (..)
   , domanialInsertion
+  )
+import Dominion
+  ( Dominion
+  , dominion
+  , dominionCoherence
+  , rank
+  , unrank
   )
 import Prelude hiding ((.), id)
 
@@ -43,6 +51,22 @@ composeInsertions
 identityInsertion :: DomanialInsertion a a
 identityInsertion =
   DomanialInsertion id Just (const ())
+
+-- | Equip an insertion's source with the ranking induced from its target.
+-- The target dominion and the insertion's partial inverse jointly provide the
+-- source's total rank, executable unranking, and round-trip witness.
+pullbackDominion
+  :: Dominion b
+  -> DomanialInsertion a b
+  -> Dominion a
+pullbackDominion targetDominion insertion =
+  dominion
+    (rank targetDominion . applyInsertion insertion)
+    (\valueRank ->
+      unrank targetDominion valueRank >>= preimage insertion)
+    (\value ->
+      dominionCoherence targetDominion (applyInsertion insertion value)
+        `seq` insertionLeftInverse insertion value)
 
 -- LiquidHaskell 0.9.4 cannot parse declarations for the symbolic Category
 -- method `(.)`. The law-carrying representation and smart constructor are

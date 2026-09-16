@@ -42,6 +42,8 @@ module AtlasConfederation.Internal
   , singletonAtlasConfederation
   , singletonAtlasConfederationHom
   , mergeAtlasConfederations
+  , leftAtlasConfederationInclusion
+  , rightAtlasConfederationInclusion
   , mergeAtlasConfederationHoms
   ) where
 
@@ -496,6 +498,42 @@ mergeAtlasConfederations left right =
     (AtlasMergeNode
       (atlasConfederationPresentation left)
       (atlasConfederationPresentation right))
+
+-- | Include the left family into a tagged merge using identity component
+-- arrows.
+leftAtlasConfederationInclusion
+  :: AtlasConfederation leftScope leftIndex
+  -> AtlasConfederation rightScope rightIndex
+  -> AtlasConfederationHom
+       (AtlasConfederationObject leftScope leftIndex)
+       (AtlasConfederationObject
+         (MergedAtlasConfederationScope leftScope rightScope)
+         (Either leftIndex rightIndex))
+leftAtlasConfederationInclusion left right =
+  atlasConfederationHom
+    left
+    (mergeAtlasConfederations left right)
+    Left
+    (identityAtlasConfederationComponentHom
+      . atlasConfederationComponent left)
+
+-- | Include the right family into a tagged merge using identity component
+-- arrows.
+rightAtlasConfederationInclusion
+  :: AtlasConfederation leftScope leftIndex
+  -> AtlasConfederation rightScope rightIndex
+  -> AtlasConfederationHom
+       (AtlasConfederationObject rightScope rightIndex)
+       (AtlasConfederationObject
+         (MergedAtlasConfederationScope leftScope rightScope)
+         (Either leftIndex rightIndex))
+rightAtlasConfederationInclusion left right =
+  atlasConfederationHom
+    right
+    (mergeAtlasConfederations left right)
+    Right
+    (identityAtlasConfederationComponentHom
+      . atlasConfederationComponent right)
 
 -- | Apply two confederation morphisms componentwise to merged
 -- confederations.  The tag map is 'Either'-functorial and each branch retains

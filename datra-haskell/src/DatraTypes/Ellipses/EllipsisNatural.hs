@@ -12,6 +12,7 @@ import EllipsisInsertion (EllipsisInsertion)
 import EllipsisNaturalRange
   ( EllipsisNaturalRange
   , EllipsisNaturalRangeElement
+  , EllipsisNaturalRangeTarget (FiniteTarget)
   , ellipsisNaturalRange
   , ellipsisNaturalRangeInsertion
   )
@@ -30,7 +31,7 @@ ellipsisNatural
   -> (forall scope. EllipsisNatural scope -> result)
   -> Maybe result
 ellipsisNatural value =
-  ellipsisNaturalRange (Just value) (Just (value + 1))
+  ellipsisNaturalRange (Just value) (FiniteTarget (value + 1))
 
 -- | Insert this singleton natural into 'Ellipsis'.
 ellipsisNaturalInsertion

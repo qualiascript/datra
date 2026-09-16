@@ -12,6 +12,8 @@ module DomanialInclusion
   , onePageFolio
   , onePagePagination
   , dominionAtlas
+  , dominionAtlasMap
+  , dominionCoalitionElement
   , dominionMap
   , domanialInclusionFunctorObject
   , domanialInclusionFunctorHom
