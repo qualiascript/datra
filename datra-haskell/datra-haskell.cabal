@@ -30,6 +30,8 @@ library
     import:           warnings
     exposed-modules:
         AsciiDominion
+        SequentialOperator
+        SequentialOperator.Syntax
         CanonicalCharsDominion
         Dominion
         Ellipsis
@@ -49,6 +51,7 @@ library
         AtlasTerritory
         EmptyAtlas
         AtlasMerge
+        AtlasSequence
         AtlasConfederation
         AtlasFederation
         AtlasHorizontalSum
@@ -165,6 +168,7 @@ library
         src/DatraCore/Atlases/Derived/AtlasDerived/AtlasCoveredPageElement
         src/DatraCore/Atlases/Derived/AtlasConfederations
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasMerge
+        src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasSequence
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasConfederation
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasFederation
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasHorizontalSum
@@ -176,6 +180,7 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
+        src/DatraTypes/SequentialOperator
         src/DatraTypes/CharacterDominions
         src/DatraTypes/Ellipses
         src/DatraCore/Atlases/Derived/AtlasTransposals

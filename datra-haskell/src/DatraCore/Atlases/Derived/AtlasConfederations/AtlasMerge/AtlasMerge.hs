@@ -12,6 +12,8 @@ module AtlasMerge
   , atlasMergeLength
   , atlasMergeFolio
   , atlasMerge
+  , atlasMergeLeftOrderedTransposal
+  , atlasMergeRightOrderedTransposal
   ) where
 
 import AtlasMerge.Internal
@@ -19,6 +21,8 @@ import AtlasMerge.Internal
   , AtlasMergePageCell
   , AtlasMergeSide (..)
   , atlasMerge
+  , atlasMergeLeftOrderedTransposal
+  , atlasMergeRightOrderedTransposal
   , atlasMergeDatumRank
   , atlasMergeDatumSide
   , atlasMergeFolio

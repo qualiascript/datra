@@ -9,16 +9,31 @@ import Atlas
   , atlasDataAt
   , atlasOriginCell
   , atlasPageElements
+  , atlasWitness
+  , withAtlasMorphismImage
+  )
+import AtlasConfederation
+  ( AtlasConfederationObject
+  , MergedAtlasConfederationScope
+  , SingletonAtlasConfederationScope
+  , identityAtlasConfederationHom
+  , mergeAtlasConfederations
+  , singletonAtlasConfederation
   )
 import AtlasCoveredPageElement
   ( atlasCoveredPageElement
   , withAtlasCoveredPageElement
   )
 import AtlasMap (withAtlasMapExtent)
+import AtlasTransposal
+  ( atlasTransposalElement
+  , withAtlasTransposalElement
+  )
 import CanonicalCharsDominion
 import Dominion
 import DatraOrdinal (finiteOrdinal)
 import DomanialInclusion (dominionAtlas)
+import DomanialInsertion (applyInsertion, preimage)
 import Ellipsis
 import EllipsisInsertion
 import EllipsisNatural
@@ -28,11 +43,20 @@ import Numeric.Natural (Natural)
 import PageElements
   ( pageElement
   , pageElementIndex
+  , pageElementPage
+  , pageElementPosition
   , withPageElement
+  )
+import OrderedAtlasTransposal
+  ( mapOrderedAtlasTransposalObject
+  , mapOrderedAtlasTransposalData
+  , orderedAtlasTransposalPreimage
   )
 import StableAtlasTransversal
   ( stableAtlasTransversalPreservesCoverage
   )
+import SequentialOperator
+import SequentialOperator.Syntax
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -41,6 +65,7 @@ main :: IO ()
 main = do
   testAsciiDominion
   testCanonicalCharsDominion
+  testSequentialOperator
   testEllipsis
   testEllipsisInsertion
   testEllipsisInsertionDominion
@@ -53,6 +78,113 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+type EllipsisConfederationScope =
+  SingletonAtlasConfederationScope EllipsisAtlasObject
+
+type EllipsisPairValues = SequentialOperatorValues Ellipsis Ellipsis
+
+type EllipsisPairScope =
+  MergedAtlasConfederationScope
+    EllipsisConfederationScope
+    EllipsisConfederationScope
+
+type EllipsisPairObject =
+  AtlasConfederationObject EllipsisPairScope (Either () ())
+
+type EllipsisTripleObject =
+  AtlasConfederationObject
+    (MergedAtlasConfederationScope
+      EllipsisConfederationScope
+      EllipsisPairScope)
+    (Either () (Either () ()))
+
+type EllipsisLeftTripleObject =
+  AtlasConfederationObject
+    (MergedAtlasConfederationScope
+      EllipsisPairScope
+      EllipsisConfederationScope)
+    (Either (Either () ()) ())
+
+testSequentialOperator :: IO ()
+testSequentialOperator = do
+  let sequenced = ellipsis <:> ellipsis <:> ellipsis
+      ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
+      pairConfederation = mergeAtlasConfederations
+        ellipsisConfederation ellipsisConfederation
+      pair ::
+        SequentialOperatorValue Ellipsis Ellipsis EllipsisPairObject
+      pair =
+        sequentialValue
+          ellipsisConfederation
+          ellipsisConfederation
+          identityAtlasConfederationHom
+          identityAtlasConfederationHom
+      triple ::
+        SequentialOperatorValue Ellipsis EllipsisPairValues EllipsisTripleObject
+      triple =
+        sequentialValue
+          ellipsisConfederation
+          pairConfederation
+          identityAtlasConfederationHom
+          pair
+      leftTriple ::
+        SequentialOperatorValue EllipsisPairValues Ellipsis
+          EllipsisLeftTripleObject
+      leftTriple =
+        sequentialValue
+          pairConfederation
+          ellipsisConfederation
+          pair
+          identityAtlasConfederationHom
+      traversalSelectsItsCell mergedAtlas traversal =
+        withSequentialAtlasTraversal traversal $
+          \position sourceAtlas inclusion ->
+            withPageElement (atlasOriginCell sourceAtlas) $ \extent ->
+              let source = atlasTransposalElement
+                    (atlasWitness sourceAtlas) extent
+                  target = mapOrderedAtlasTransposalObject inclusion source
+              in withAtlasTransposalElement target $ \occurrence ->
+                  pageElementPage occurrence == 1
+                    && pageElementPosition occurrence
+                      == finiteOrdinal position
+                    && orderedAtlasTransposalPreimage inclusion target
+                      == Just source
+                    && withAtlasMorphismImage
+                      (mapOrderedAtlasTransposalData
+                        (atlasWitness sourceAtlas)
+                        inclusion
+                        extent) (\targetCell component ->
+                          case unrank (atlasDataAt sourceAtlas extent) 0 of
+                            Nothing -> False
+                            Just sourceDatum ->
+                              let targetDatum =
+                                    applyInsertion component sourceDatum
+                              in rank
+                                  (atlasDataAt mergedAtlas targetCell)
+                                  targetDatum == position
+                                && fmap
+                                  (rank (atlasDataAt sourceAtlas extent))
+                                  (preimage component targetDatum)
+                                  == Just 0)
+      verify label value =
+        withSequentialAtlasTraversals value $ \mergedAtlas traversals ->
+          assert label
+            ( atlasCardinality mergedAtlas == 3
+              && fmap sequentialAtlasTraversalPosition traversals == [0, 1, 2]
+              && all (traversalSelectsItsCell mergedAtlas) traversals
+              && case pageElementIndex
+                  (atlasPageElements mergedAtlas) 1 (finiteOrdinal 3) of
+                    Nothing -> True
+                    Just _ -> False
+            )
+  sequenced `seq` do
+    verify
+      "right-associated sequence flattens three operands onto page 1"
+      triple
+    verify
+      "left-associated sequence flattens three operands onto page 1"
+      leftTriple
 
 testAsciiDominion :: IO ()
 testAsciiDominion =

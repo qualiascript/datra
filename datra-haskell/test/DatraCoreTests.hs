@@ -1321,10 +1321,97 @@ testSingletonAtlasMerge =
                       pageElement <$>
                         pageElementIndex
                           elements pageNumber (finiteOrdinal position)
+                    leftInclusion =
+                      atlasMergeLeftOrderedTransposal
+                        leftAtlas rightAtlas mergedAtlas
+                    rightInclusion =
+                      atlasMergeRightOrderedTransposal
+                        leftAtlas rightAtlas mergedAtlas
                 assert "Atlas merge adds one page to the greatest input depth"
                   ( atlasMergeLength leftAtlas rightAtlas == 2
                     && atlasCardinality mergedAtlas == 2
                   )
+                withPageElement (atlasOriginCell leftAtlas) $ \leftExtent ->
+                  withPageElement (atlasOriginCell rightAtlas) $ \rightExtent ->
+                    let leftSource =
+                          atlasTransposalElement
+                            (atlasWitness leftAtlas) leftExtent
+                        rightSource =
+                          atlasTransposalElement
+                            (atlasWitness rightAtlas) rightExtent
+                        leftTarget =
+                          mapOrderedAtlasTransposalObject
+                            leftInclusion leftSource
+                        rightTarget =
+                          mapOrderedAtlasTransposalObject
+                            rightInclusion rightSource
+                        atExpectedPosition expected target =
+                          withAtlasTransposalElement target $ \occurrence ->
+                            pageElementPage occurrence == 1
+                              && pageElementPosition occurrence
+                                == finiteOrdinal expected
+                    in assert
+                      "ordered merge inclusions select the two extent cells"
+                      ( atExpectedPosition 0 leftTarget
+                        && atExpectedPosition 1 rightTarget
+                        && orderedAtlasTransposalPreimage
+                          leftInclusion leftTarget == Just leftSource
+                        && orderedAtlasTransposalPreimage
+                          rightInclusion rightTarget == Just rightSource
+                        && isNothing
+                          (orderedAtlasTransposalPreimage
+                            leftInclusion rightTarget)
+                        && isNothing
+                          (orderedAtlasTransposalPreimage
+                            rightInclusion leftTarget)
+                      )
+                    >> withAtlasMorphismImage
+                      (mapOrderedAtlasTransposalData
+                        (atlasWitness leftAtlas)
+                        leftInclusion
+                        leftExtent) (\leftTargetCell leftComponent ->
+                          withAtlasMorphismImage
+                            (mapOrderedAtlasTransposalData
+                              (atlasWitness rightAtlas)
+                              rightInclusion
+                              rightExtent) (\rightTargetCell rightComponent ->
+                                let leftExtentData =
+                                      atlasDataAt leftAtlas leftExtent
+                                    rightExtentData =
+                                      atlasDataAt rightAtlas rightExtent
+                                    leftTargetData =
+                                      atlasDataAt mergedAtlas leftTargetCell
+                                    rightTargetData =
+                                      atlasDataAt mergedAtlas rightTargetCell
+                                    componentIsomorphism
+                                      expectedRank
+                                      sourceData
+                                      targetData
+                                      component =
+                                        case unrank sourceData 0 of
+                                          Nothing -> False
+                                          Just sourceDatum ->
+                                            let targetDatum =
+                                                  applyInsertion
+                                                    component sourceDatum
+                                            in rank targetData targetDatum
+                                                == expectedRank
+                                              && fmap (rank sourceData)
+                                                (preimage component targetDatum)
+                                                == Just 0
+                                in assert
+                                  "merge page-1 cells are extent-isomorphic"
+                                  ( componentIsomorphism
+                                      0
+                                      leftExtentData
+                                      leftTargetData
+                                      leftComponent
+                                    && componentIsomorphism
+                                      1
+                                      rightExtentData
+                                      rightTargetData
+                                      rightComponent
+                                  )))
                 case (at 0 0, at 1 0, at 1 1, at 50 0) of
                   (Just someOrigin, Just someLeft, Just someRight, Just padded) ->
                     withPageElement someOrigin $ \origin ->

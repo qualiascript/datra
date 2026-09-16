@@ -1,5 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Hidden implementation of the object-level Atlas merge.
 module AtlasMerge.Internal
@@ -11,18 +13,34 @@ module AtlasMerge.Internal
   , atlasMergeLength
   , atlasMergeFolio
   , atlasMerge
+  , atlasMergeLeftOrderedTransposal
+  , atlasMergeRightOrderedTransposal
   ) where
 
 import Atlas
   ( Atlas
+  , AtlasMappedObject
+  , AtlasObject
+  , AtlasObjectMap
   , atlas
   , atlasCardinality
   , atlasDataAction
   , atlasDataAt
   , atlasFolio
+  , atlasHom
+  , atlasMorphism
+  , atlasMorphismAction
+  , atlasObjectMap
   , atlasOriginCell
   , atlasPageElements
+  , atlasWitness
   , mapAtlasData
+  )
+import AtlasTransposal
+  ( AtlasTransposalElement
+  , atlasTransposal
+  , atlasTransposalElement
+  , withAtlasTransposalElement
   )
 import Chain
   ( Chain
@@ -51,7 +69,7 @@ import DomanialInsertion
   , domanialInsertion
   , preimage
   )
-import Dominion (Dominion, dominion, unrank)
+import Dominion (Dominion, dominion, rank, unrank)
 import Folio
   ( Folio
   , appendPage
@@ -76,6 +94,10 @@ import PageElements.LiquidInternal
   ( PageElement (..)
   )
 import qualified Pagination
+import OrderedAtlasTransposal
+  ( OrderedAtlasTransposal
+  , orderedAtlasTransposal
+  )
 
 -- | Which input Atlas supplied a cell or datum in a merge.
 data AtlasMergeSide = AtlasMergeLeft | AtlasMergeRight
@@ -444,3 +466,207 @@ atlasMerge left right useMerge =
         (\_ _ _ _ -> ())
         (\_ _ _ _ _ _ _ -> ())
         useMerge
+
+-- | Type-level object actions for the two canonical inclusions into an Atlas
+-- merge. Every input cell lands on the corresponding non-origin merge cell.
+data LeftAtlasMergeObjectMap
+data RightAtlasMergeObjectMap
+
+type instance
+  AtlasMappedObject LeftAtlasMergeObjectMap sourceObject =
+    AtlasMergePageCell
+
+type instance
+  AtlasMappedObject RightAtlasMergeObjectMap sourceObject =
+    AtlasMergePageCell
+
+retypePageElement
+  :: PageElement scope sourceObject
+  -> PageElement scope targetObject
+retypePageElement (PageElement page position trace cell) =
+  PageElement page position trace cell
+
+mergePageElementAt
+  :: Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
+  -> Natural
+  -> Ordinal
+  -> PageElement mergeScope AtlasMergePageCell
+mergePageElementAt mergedAtlas pageNumber position =
+  case pageElementIndex
+    (atlasPageElements mergedAtlas) pageNumber position of
+      Just index ->
+        withPageElement (pageElement index) retypePageElement
+      Nothing -> error "Atlas merge inclusion produced an invalid cell"
+
+leftMergeElement
+  :: Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
+  -> PageElement leftScope sourceObject
+  -> PageElement mergeScope AtlasMergePageCell
+leftMergeElement mergedAtlas source =
+  mergePageElementAt
+    mergedAtlas
+    (pageElementPage source + 1)
+    (pageElementPosition source)
+
+rightMergeElement
+  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
+  -> Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
+  -> PageElement rightScope sourceObject
+  -> PageElement mergeScope AtlasMergePageCell
+rightMergeElement leftAtlas mergedAtlas source =
+  withPageAt (atlasFolio leftAtlas) (pageElementPage source) $ \leftPage ->
+    mergePageElementAt
+      mergedAtlas
+      (pageElementPage source + 1)
+      (addOrdinals
+        (chainOrderType leftPage)
+        (pageElementPosition source))
+
+leftMergeComponent
+  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
+  -> PageElement leftScope sourceObject
+  -> DomanialInsertion
+       (leftData sourceObject)
+       (AtlasMergeDatum AtlasMergePageCell)
+leftMergeComponent leftAtlas source =
+  domanialInsertion
+    (AtlasMergeLeftDatum . rank sourceDominion)
+    leftPreimage
+    (const ())
+  where
+    sourceDominion = atlasDataAt leftAtlas source
+
+    leftPreimage (AtlasMergeLeftDatum valueRank) =
+      unrank sourceDominion valueRank
+    leftPreimage (AtlasMergeRightDatum _) = Nothing
+
+rightMergeComponent
+  :: Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
+  -> PageElement rightScope sourceObject
+  -> DomanialInsertion
+       (rightData sourceObject)
+       (AtlasMergeDatum AtlasMergePageCell)
+rightMergeComponent rightAtlas source =
+  domanialInsertion
+    (AtlasMergeRightDatum . rank sourceDominion)
+    rightPreimage
+    (const ())
+  where
+    sourceDominion = atlasDataAt rightAtlas source
+
+    rightPreimage (AtlasMergeLeftDatum _) = Nothing
+    rightPreimage (AtlasMergeRightDatum valueRank) =
+      unrank sourceDominion valueRank
+
+leftMergeObjectPreimage
+  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
+  -> AtlasTransposalElement
+       (AtlasObject mergeAtlasScope mergeScope AtlasMergeDatum)
+  -> Maybe
+       (AtlasTransposalElement
+         (AtlasObject leftAtlasScope leftScope leftData))
+leftMergeObjectPreimage leftAtlas target =
+  withAtlasTransposalElement target $ \targetElement ->
+    if pageElementPage targetElement == 0
+      then Nothing
+      else do
+        index <- pageElementIndex
+          (atlasPageElements leftAtlas)
+          (pageElementPage targetElement - 1)
+          (pageElementPosition targetElement)
+        pure $ withPageElement (pageElement index) $
+          atlasTransposalElement (atlasWitness leftAtlas)
+
+rightMergeObjectPreimage
+  :: Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
+  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
+  -> AtlasTransposalElement
+       (AtlasObject mergeAtlasScope mergeScope AtlasMergeDatum)
+  -> Maybe
+       (AtlasTransposalElement
+         (AtlasObject rightAtlasScope rightScope rightData))
+rightMergeObjectPreimage leftAtlas rightAtlas target =
+  withAtlasTransposalElement target $ \targetElement ->
+    if pageElementPage targetElement == 0
+      then Nothing
+      else
+        let sourcePage = pageElementPage targetElement - 1
+        in withPageAt (atlasFolio leftAtlas) sourcePage $ \leftPage -> do
+          sourcePosition <- subtractOrdinal
+            (chainOrderType leftPage)
+            (pageElementPosition targetElement)
+          index <- pageElementIndex
+            (atlasPageElements rightAtlas)
+            sourcePage
+            sourcePosition
+          pure $ withPageElement (pageElement index) $
+            atlasTransposalElement (atlasWitness rightAtlas)
+
+-- | The canonical order-preserving inclusion of the left Atlas into its
+-- merge. Its extent is sent to element 0 of merge page 1.
+atlasMergeLeftOrderedTransposal
+  :: forall leftAtlasScope leftScope leftData leftOrigin leftFinal
+      rightAtlasScope rightScope rightData rightOrigin rightFinal
+      mergeAtlasScope mergeScope.
+     Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
+  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
+  -> Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
+  -> OrderedAtlasTransposal
+       (AtlasObject leftAtlasScope leftScope leftData)
+       (AtlasObject mergeAtlasScope mergeScope AtlasMergeDatum)
+atlasMergeLeftOrderedTransposal leftAtlas _ mergedAtlas =
+  orderedAtlasTransposal transposal (\_ _ -> ())
+  where
+    hom =
+      atlasHom
+        (atlasMorphism
+          (atlasMorphismAction
+            (atlasObjectMap :: AtlasObjectMap LeftAtlasMergeObjectMap)
+            leftAtlas
+            mergedAtlas
+            (leftMergeElement mergedAtlas)
+            (leftMergeComponent leftAtlas)
+            (\_ _ -> ())
+            (\_ _ -> ())))
+
+    transposal =
+      atlasTransposal
+        (atlasWitness leftAtlas)
+        hom
+        (leftMergeObjectPreimage leftAtlas)
+        (const ())
+
+-- | The canonical order-preserving inclusion of the right Atlas into its
+-- merge. Its extent is sent to element 1 of merge page 1, after the left
+-- extent.
+atlasMergeRightOrderedTransposal
+  :: forall leftAtlasScope leftScope leftData leftOrigin leftFinal
+      rightAtlasScope rightScope rightData rightOrigin rightFinal
+      mergeAtlasScope mergeScope.
+     Atlas leftAtlasScope leftScope leftData leftOrigin leftFinal
+  -> Atlas rightAtlasScope rightScope rightData rightOrigin rightFinal
+  -> Atlas mergeAtlasScope mergeScope AtlasMergeDatum () AtlasMergePageCell
+  -> OrderedAtlasTransposal
+       (AtlasObject rightAtlasScope rightScope rightData)
+       (AtlasObject mergeAtlasScope mergeScope AtlasMergeDatum)
+atlasMergeRightOrderedTransposal leftAtlas rightAtlas mergedAtlas =
+  orderedAtlasTransposal transposal (\_ _ -> ())
+  where
+    hom =
+      atlasHom
+        (atlasMorphism
+          (atlasMorphismAction
+            (atlasObjectMap :: AtlasObjectMap RightAtlasMergeObjectMap)
+            rightAtlas
+            mergedAtlas
+            (rightMergeElement leftAtlas mergedAtlas)
+            (rightMergeComponent rightAtlas)
+            (\_ _ -> ())
+            (\_ _ -> ())))
+
+    transposal =
+      atlasTransposal
+        (atlasWitness rightAtlas)
+        hom
+        (rightMergeObjectPreimage leftAtlas rightAtlas)
+        (const ())
