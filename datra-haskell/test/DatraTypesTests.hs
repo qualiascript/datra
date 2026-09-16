@@ -1219,14 +1219,20 @@ testStableDatumNumericalOperands = do
   let levelTwoData :: StableConfederalData (SuperEllipsis Ellipsis)
       levelTwoData = superEllipsis rankOneData
       omegaSquared = ordinal [1, 0, 0]
+      isEllipsisFormulation
+        :: StableConfederalData Ellipsis -> Bool
+      isEllipsisFormulation value = value `seq` True
+      isLevelTwoFormulation
+        :: StableConfederalData (SuperEllipsis Ellipsis) -> Bool
+      isLevelTwoFormulation value = value `seq` True
       binaryResults =
         ( join ((Numeric.+) dot dot superEllipsisValueOrdinal)
         , join ((Numeric.+) dot rankOneData superEllipsisValueOrdinal)
         , join ((Numeric.+) rankOneData dot superEllipsisValueOrdinal)
-        , join ((Numeric.*) dot rankOneData superEllipsisValueOrdinal)
-        , join ((Numeric.*) rankOneData dot superEllipsisValueOrdinal)
-        , join ((Numeric.*) rankOneData rankOneData
-            superEllipsisValueOrdinal)
+        , (Numeric.*) dot rankOneData isEllipsisFormulation
+        , (Numeric.*) rankOneData dot isEllipsisFormulation
+        , (Numeric.*) rankOneData rankOneData
+            isLevelTwoFormulation
         , join ((Numeric.+) rankOneData levelTwoData
             superEllipsisValueOrdinal)
         , join ((Numeric.+) levelTwoData rankOneData
@@ -1237,25 +1243,48 @@ testStableDatumNumericalOperands = do
       == ( Just (finiteOrdinal 2)
          , Just omega
          , Just (addOrdinals omega (finiteOrdinal 1))
-         , Just omega
-         , Just omega
-         , Just omegaSquared
+         , Just True
+         , Just True
+         , Just True
          , Just omegaSquared
          , Just (ordinal [1, 1, 0])
          )
     )
-  case DatraNatural.ellipsisNatural 3 $ \three ->
-      join ((Numeric.^) dot three superEllipsisValueOrdinal) of
+  case DatraNatural.ellipsisNatural 0 $ \zero ->
+      join ((Numeric.+) rankOneData zero superEllipsisValueOrdinal) of
     Just (Just result) ->
-      assert "Dot exponentiation interprets Dot as one"
-        (result == finiteOrdinal 1)
-    _ -> fail "Dot exponentiation was rejected"
-  case DatraNatural.ellipsisNatural 1 $ \one ->
-      join ((Numeric.^) rankOneData one superEllipsisValueOrdinal) of
-    Just (Just result) ->
-      assert "Ellipsis exponentiation interprets Ellipsis as omega"
+      assert "adding zero soft-casts a formulation to an explicit value"
         (result == omega)
-    _ -> fail "Ellipsis exponentiation was rejected"
+    _ -> fail "formulation soft cast was rejected"
+  case DatraNatural.ellipsisNatural 3 $ \three ->
+      (Numeric.^) dot three Numeric.someSuperEllipsisLevel of
+    Just (Just result) ->
+      assert "Dot exponentiation returns Dot"
+        (result == 0)
+    _ -> fail "Dot exponentiation was rejected"
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      (Numeric.^) rankOneData two Numeric.someSuperEllipsisLevel of
+    Just (Just result) ->
+      assert "Ellipsis squared returns the level-two formulation"
+        (result == 2)
+    _ -> fail "Ellipsis squared was rejected"
+  case DatraNatural.ellipsisNatural 0 $ \zero ->
+      (Numeric.^) rankOneData zero Numeric.someSuperEllipsisLevel of
+    Just (Just result) ->
+      assert "Ellipsis to zero returns Dot"
+        (result == 0)
+    _ -> fail "Ellipsis to zero was rejected"
+  let rankThree =
+        nextSuperEllipsisRank (nextSuperEllipsisRank rankOneRank)
+      explicitOmegaSquared =
+        superEllipsisValue rankThree omega $ \omegaValue ->
+          DatraNatural.ellipsisNatural 2 $ \two ->
+            join ((Numeric.^) omegaValue two superEllipsisValueOrdinal)
+  case explicitOmegaSquared of
+    Just (Just (Just result)) ->
+      assert "an explicit omega base returns an explicit omega-squared value"
+        (result == omegaSquared)
+    _ -> fail "explicit omega exponentiation was rejected"
 
 assertNumericalOperator
   :: String

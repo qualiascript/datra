@@ -1,6 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -23,16 +26,29 @@ module NumericalOperators.NumericalOperand
   , SuperEllipsisAt
   , KnownSuperEllipsisLevel
   , knownSuperEllipsisRank
+  , KnownSuperEllipsisData
+  , knownSuperEllipsisData
+  , SuperEllipsisCarrier
+  , SuperEllipsisCarrierLevel
+  , superEllipsisCarrierLevelNatural
+  , AddSuperEllipsisLevels
+  , SomeSuperEllipsis
+  , someSuperEllipsisLevel
+  , someSuperEllipsis
+  , withSomeSuperEllipsis
   ) where
 
 import DatraOrdinal (Ordinal)
-import Dot (Dot)
+import Dot (Dot, dot)
+import Numeric.Natural (Natural)
+import MapOperators.SequentialOperator (SequentialOperand)
 import StableConfederalData (StableConfederalData)
 import SuperEllipsis
   ( SuperEllipsis
   , SuperEllipsisRank
   , dotSuperEllipsisRank
   , nextSuperEllipsisRank
+  , superEllipsis
   , superEllipsisRankOrderType
   )
 import SuperEllipsisRange (SuperEllipsisRange)
@@ -61,13 +77,29 @@ instance KnownSuperEllipsisLevel level =>
   knownSuperEllipsisRank =
     nextSuperEllipsisRank (knownSuperEllipsisRank @level)
 
+class KnownSuperEllipsisData level where
+  knownSuperEllipsisData :: StableConfederalData (SuperEllipsisAt level)
+
+instance KnownSuperEllipsisData 'DotLevel where
+  knownSuperEllipsisData = dot
+
+instance
+    ( KnownSuperEllipsisData level
+    , SequentialOperand (SuperEllipsisAt level)
+    ) =>
+    KnownSuperEllipsisData ('NextLevel level) where
+  knownSuperEllipsisData =
+    superEllipsis (knownSuperEllipsisData @level)
+
 class SuperEllipsisCarrier target where
   type SuperEllipsisCarrierLevel target :: SuperEllipsisLevel
   superEllipsisCarrierRank :: SuperEllipsisRank target
+  superEllipsisCarrierLevelNatural :: Natural
 
 instance SuperEllipsisCarrier Dot where
   type SuperEllipsisCarrierLevel Dot = 'DotLevel
   superEllipsisCarrierRank = dotSuperEllipsisRank
+  superEllipsisCarrierLevelNatural = 0
 
 instance SuperEllipsisCarrier predecessor =>
     SuperEllipsisCarrier (SuperEllipsis predecessor) where
@@ -75,6 +107,8 @@ instance SuperEllipsisCarrier predecessor =>
     'NextLevel (SuperEllipsisCarrierLevel predecessor)
   superEllipsisCarrierRank =
     nextSuperEllipsisRank (superEllipsisCarrierRank @predecessor)
+  superEllipsisCarrierLevelNatural =
+    1 + superEllipsisCarrierLevelNatural @predecessor
 
 class NumericalOperand operand where
   type NumericalOperandLevel operand :: SuperEllipsisLevel
@@ -141,3 +175,33 @@ type MultiplicationNumericalTarget left right =
 
 type MultiplicationResult left right =
   SuperEllipsisValue (MultiplicationNumericalTarget left right)
+
+-- | A formulation whose precise finite level is chosen at runtime.
+data SomeSuperEllipsis where
+  SomeSuperEllipsis
+    :: ( SequentialOperand target
+       , SuperEllipsisCarrier target
+       )
+    => Natural
+    -> StableConfederalData target
+    -> SomeSuperEllipsis
+
+someSuperEllipsis :: Natural -> SomeSuperEllipsis
+someSuperEllipsis 0 = SomeSuperEllipsis 0 dot
+someSuperEllipsis level =
+  case someSuperEllipsis (level - 1) of
+    SomeSuperEllipsis _ predecessor ->
+      SomeSuperEllipsis level (superEllipsis predecessor)
+
+someSuperEllipsisLevel :: SomeSuperEllipsis -> Natural
+someSuperEllipsisLevel (SomeSuperEllipsis level _) = level
+
+withSomeSuperEllipsis
+  :: SomeSuperEllipsis
+  -> (forall target.
+        ( SequentialOperand target
+        , SuperEllipsisCarrier target
+        ) =>
+        StableConfederalData target -> result)
+  -> result
+withSomeSuperEllipsis (SomeSuperEllipsis _ value) useValue = useValue value

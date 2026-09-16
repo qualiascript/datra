@@ -18,6 +18,7 @@ import NumericalOperators.NumericalOperand
 import Prelude (Maybe)
 
 -- | Add two ordinal operands at their least common super-ellipsis rank.
+-- Adding zero therefore acts as a soft cast to an explicit value.
 additionOperator
   :: ( NumericalOperand left
      , NumericalOperand right

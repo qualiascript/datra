@@ -7,26 +7,20 @@ module NumericalOperators.Syntax.MultiplicationOperatorSyntax
   ( (*)
   ) where
 
-import NumericalOperators.MultiplicationOperator (multiplicationOperator)
-import NumericalOperators.NumericalOperand
-  ( KnownSuperEllipsisLevel
-  , MultiplicationNumericalLevel
-  , MultiplicationResult
-  , NumericalOperand
+import NumericalOperators.MultiplicationOperator
+  ( MultiplicationOperands
+  , MultiplicationOutput
+  , multiplicationOperator
   )
 import Prelude hiding ((*))
 
 infixl 7 *
 
 (*)
-  :: ( NumericalOperand left
-     , NumericalOperand right
-     , KnownSuperEllipsisLevel
-         (MultiplicationNumericalLevel left right)
-     )
+  :: MultiplicationOperands left right
   => left
   -> right
   -> (forall resultScope.
-        MultiplicationResult left right resultScope -> result)
+        MultiplicationOutput left right resultScope -> result)
   -> Maybe result
 (*) = multiplicationOperator

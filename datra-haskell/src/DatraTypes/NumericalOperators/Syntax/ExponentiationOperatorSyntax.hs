@@ -8,26 +8,20 @@ module NumericalOperators.Syntax.ExponentiationOperatorSyntax
   ) where
 
 import EllipsisNatural (EllipsisNatural)
-import NumericalOperators.ExponentiationOperator (exponentiationOperator)
-import NumericalOperators.NumericalOperand
-  ( KnownSuperEllipsisLevel
-  , NumericalOperand
-  , NumericalOperandLevel
-  , NumericalOperandTarget
+import NumericalOperators.ExponentiationOperator
+  ( ExponentiationOperand
+  , ExponentiationOutput
+  , exponentiationOperator
   )
 import Prelude hiding ((^))
-import SuperEllipsisValue (SuperEllipsisValue)
 
 infixr 8 ^
 
 (^)
-  :: ( NumericalOperand base
-     , KnownSuperEllipsisLevel (NumericalOperandLevel base)
-     )
+  :: ExponentiationOperand base
   => base
   -> EllipsisNatural exponentScope
   -> (forall resultScope.
-        SuperEllipsisValue
-          (NumericalOperandTarget base) resultScope -> result)
+        ExponentiationOutput base resultScope -> result)
   -> Maybe result
 (^) = exponentiationOperator
