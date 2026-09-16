@@ -51,7 +51,7 @@ import ChainedDominionAtlas
   )
 import Control.Monad (void)
 import Data.Kind (Type)
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -88,21 +88,21 @@ import SuperEllipsisInsertion
   )
 
 data SuperEllipsisRangeTarget
-  = FiniteTarget Ordinal
-  | NegativeOne
-  | UnboundedTarget
+  = GivenTarget Ordinal
+  | MinusSign
+  | PlusSign
   deriving (Eq, Show)
 
 type role SuperEllipsisRange nominal nominal
 data SuperEllipsisRange target (scope :: Type) = SuperEllipsisRange
   { superEllipsisRangeRank :: SuperEllipsisRank target
-  , superEllipsisRangeStart :: Maybe Ordinal
+  , superEllipsisRangeStart :: Ordinal
   , superEllipsisRangeTarget :: SuperEllipsisRangeTarget
   }
 
 superEllipsisRangeLowerBound
   :: SuperEllipsisRange target scope
-  -> Maybe Ordinal
+  -> Ordinal
 superEllipsisRangeLowerBound = superEllipsisRangeStart
 
 superEllipsisRangeUpperBound
@@ -110,9 +110,9 @@ superEllipsisRangeUpperBound
   -> Maybe Ordinal
 superEllipsisRangeUpperBound valueRange =
   case superEllipsisRangeTarget valueRange of
-    FiniteTarget target -> Just target
-    NegativeOne -> Nothing
-    UnboundedTarget -> Nothing
+    GivenTarget target -> Just target
+    MinusSign -> Nothing
+    PlusSign -> Nothing
 
 type role SuperEllipsisRangeElement nominal nominal
 newtype SuperEllipsisRangeElement target (scope :: Type) =
@@ -179,12 +179,14 @@ data SomeSuperEllipsisRangeConcat target leftScope rightScope where
     :: SuperEllipsisRangeConcat target kind leftScope rightScope
     -> SomeSuperEllipsisRangeConcat target leftScope rightScope
 
--- | Introduce a range after checking both endpoints against its rank.
+-- | Introduce a range after checking both endpoints against its rank.  The
+-- first endpoint is always explicit; callers must pass zero rather than omit
+-- it.
 -- Descending ranges are admitted only for finite endpoints, since an
 -- infinite descending sequence is not an ordinal-indexed chain.
 superEllipsisRange
   :: SuperEllipsisRank target
-  -> Maybe Ordinal
+  -> Ordinal
   -> SuperEllipsisRangeTarget
   -> (forall scope. SuperEllipsisRange target scope -> result)
   -> Maybe result
@@ -194,29 +196,26 @@ superEllipsisRange valueRank start target useRange = do
   validateDirection
   pure (useRange (SuperEllipsisRange valueRank start target))
   where
-    startValue = fromMaybe (finiteOrdinal 0) start
     rankLimit = superEllipsisRankOrderType valueRank
 
     validateStart
-      | ordinalLT startValue rankLimit = Just ()
+      | ordinalLT start rankLimit = Just ()
       | otherwise = Nothing
 
     validateTarget =
       case target of
-        FiniteTarget targetValue
+        GivenTarget targetValue
           | targetValue == rankLimit || ordinalLT targetValue rankLimit ->
               Just ()
           | otherwise -> Nothing
-        NegativeOne
-          | isNothing start -> Nothing
-          | otherwise -> void (naturalAtOrdinal startValue)
-        UnboundedTarget -> Just ()
+        MinusSign -> void (naturalAtOrdinal start)
+        PlusSign -> Just ()
 
     validateDirection =
       case target of
-        FiniteTarget targetValue
-          | ordinalLT targetValue startValue -> do
-              _ <- naturalAtOrdinal startValue
+        GivenTarget targetValue
+          | ordinalLT targetValue start -> do
+              _ <- naturalAtOrdinal start
               _ <- naturalAtOrdinal targetValue
               Just ()
           | otherwise -> Just ()
@@ -287,7 +286,8 @@ rangeFirstElement valueRange
 rangeSeedElement
   :: SuperEllipsisRange target scope
   -> SuperEllipsisRangeElement target scope
-rangeSeedElement = SuperEllipsisRangeElement . rangeStartValue
+rangeSeedElement =
+  SuperEllipsisRangeElement . superEllipsisRangeStart
 
 rangeChain
   :: SuperEllipsisRange target scope
@@ -308,14 +308,14 @@ elementAtRelativePosition
 elementAtRelativePosition valueRange offset = do
   absolute <-
     case superEllipsisRangeTarget valueRange of
-      FiniteTarget target
+      GivenTarget target
         | ordinalLT target start -> descendingAt target
         | otherwise -> Just (addOrdinals start offset)
-      NegativeOne -> descendingAt (finiteOrdinal 0)
-      UnboundedTarget -> Just (addOrdinals start offset)
+      MinusSign -> descendingAt (finiteOrdinal 0)
+      PlusSign -> Just (addOrdinals start offset)
   superEllipsisRangeElement valueRange absolute
   where
-    start = rangeStartValue valueRange
+    start = superEllipsisRangeStart valueRange
     descendingAt _ = do
       startNatural <- naturalAtOrdinal start
       offsetNatural <- naturalAtOrdinal offset
@@ -329,13 +329,13 @@ relativePosition
   -> Ordinal
 relativePosition valueRange position =
   case superEllipsisRangeTarget valueRange of
-    FiniteTarget target
+    GivenTarget target
       | ordinalLT target start -> finiteDifference start position
       | otherwise -> ascendingDifference
-    NegativeOne -> finiteDifference start position
-    UnboundedTarget -> ascendingDifference
+    MinusSign -> finiteDifference start position
+    PlusSign -> ascendingDifference
   where
-    start = rangeStartValue valueRange
+    start = superEllipsisRangeStart valueRange
     ascendingDifference =
       fromMaybe (finiteOrdinal 0) (subtractOrdinal start position)
 
@@ -350,19 +350,19 @@ superEllipsisRangeOrderType
   -> Ordinal
 superEllipsisRangeOrderType valueRange =
   case superEllipsisRangeTarget valueRange of
-    FiniteTarget target
+    GivenTarget target
       | ordinalLT target start -> finiteDifference start target
       | otherwise -> ordinalDifference start target
-    NegativeOne ->
+    MinusSign ->
       case naturalAtOrdinal start of
         Just value -> finiteOrdinal (value + 1)
         Nothing -> finiteOrdinal 0
-    UnboundedTarget ->
+    PlusSign ->
       ordinalDifference
         start
         (superEllipsisRankOrderType (superEllipsisRangeRank valueRange))
   where
-    start = rangeStartValue valueRange
+    start = superEllipsisRangeStart valueRange
     ordinalDifference left right =
       fromMaybe (finiteOrdinal 0) (subtractOrdinal left right)
     finiteDifference left right =
@@ -472,29 +472,26 @@ concatSuperEllipsisRangeInsertion first second =
     SomeSuperEllipsisRangeConcat
         (ConcatenatedSuperEllipsisMap _ _) -> Nothing
 
-rangeStartValue :: SuperEllipsisRange target scope -> Ordinal
-rangeStartValue = fromMaybe (finiteOrdinal 0) . superEllipsisRangeStart
-
 positionInRange
   :: SuperEllipsisRange target scope
   -> Ordinal
   -> Bool
 positionInRange valueRange position =
   case superEllipsisRangeTarget valueRange of
-    FiniteTarget target
+    GivenTarget target
       | ordinalLT start target ->
           not (ordinalLT position start) && ordinalLT position target
       | ordinalLT target start ->
           ordinalLT target position && not (ordinalLT start position)
       | otherwise -> False
-    NegativeOne -> not (ordinalLT start position)
-    UnboundedTarget ->
+    MinusSign -> not (ordinalLT start position)
+    PlusSign ->
       not (ordinalLT position start)
         && ordinalLT position
              (superEllipsisRankOrderType
                (superEllipsisRangeRank valueRange))
   where
-    start = rangeStartValue valueRange
+    start = superEllipsisRangeStart valueRange
 
 rangesOverlap
   :: SuperEllipsisRange target leftScope
@@ -512,19 +509,19 @@ rangeImageBounds
   -> Maybe (Ordinal, Ordinal)
 rangeImageBounds valueRange =
   case superEllipsisRangeTarget valueRange of
-    FiniteTarget target
+    GivenTarget target
       | ordinalLT start target -> Just (start, target)
       | ordinalLT target start ->
           Just (successor target, successor start)
       | otherwise -> Nothing
-    NegativeOne -> Just (finiteOrdinal 0, successor start)
-    UnboundedTarget ->
+    MinusSign -> Just (finiteOrdinal 0, successor start)
+    PlusSign ->
       Just
         ( start
         , superEllipsisRankOrderType (superEllipsisRangeRank valueRange)
         )
   where
-    start = rangeStartValue valueRange
+    start = superEllipsisRangeStart valueRange
     successor value = addOrdinals value (finiteOrdinal 1)
 
 instance

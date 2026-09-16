@@ -268,8 +268,8 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
       == map (superEllipsisTerminal rankTwo) positions)
   case SuperRange.superEllipsisRange
       rankTwo
-      (Just omega)
-      (SuperRange.FiniteTarget
+      omega
+      (SuperRange.GivenTarget
         (addOrdinals omega (finiteOrdinal 3))) $ \valueRange -> do
     let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         at position = do
@@ -295,8 +295,8 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
       Just checks -> checks
   case SuperRange.superEllipsisRange
       rankTwo
-      (Just (finiteOrdinal 65))
-      (SuperRange.FiniteTarget (finiteOrdinal 68)) $ \valueRange ->
+      (finiteOrdinal 65)
+      (SuperRange.GivenTarget (finiteOrdinal 68)) $ \valueRange ->
     case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
       Nothing -> False
       Just selected ->
@@ -706,8 +706,8 @@ testAccessOperator =
               )
               (indexedAtlasValueAtOrdinal selected omega) == Just omega
           )
-    withRankOneRange (Just 10) (Just 12) $ \first ->
-      withRankOneRange (Just 2) (Just 4) $ \second ->
+    withRankOneRange 10 (Just 12) $ \first ->
+      withRankOneRange 2 (Just 4) $ \second ->
         case SuperRange.concatSuperEllipsisRanges first second of
           SuperRange.SomeSuperEllipsisRangeConcat
               (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
@@ -729,14 +729,14 @@ testAccessOperator =
                 assert "access returns a flattened two-page map"
                   (atlasCardinality valueAtlas == 2
                     && atlasPageHasExactly valueAtlas 1 4)
-    withRankOneRange (Just 255) (Just 257) $ \outside ->
+    withRankOneRange 255 (Just 257) $ \outside ->
       assert "access rejects an insertion exceeding final cardinality"
         (case ascii <@> SuperRange.superEllipsisRangeInsertion outside of
           Nothing -> True
           Just _ -> False)
 
 withRankOneRange
-  :: Maybe Natural
+  :: Natural
   -> Maybe Natural
   -> (forall scope. SuperRange.SuperEllipsisRange Ellipsis scope -> IO ())
   -> IO ()
@@ -744,21 +744,21 @@ withRankOneRange lower upper useRange =
   case rankOneRange
       lower
       (maybe
-        SuperRange.UnboundedTarget
-        (SuperRange.FiniteTarget . finiteOrdinal)
+        SuperRange.PlusSign
+        (SuperRange.GivenTarget . finiteOrdinal)
         upper)
       useRange of
     Nothing -> fail "test setup failed: valid rankOneData range was rejected"
     Just checks -> checks
 
 rankOneRange
-  :: Maybe Natural
+  :: Natural
   -> SuperRange.SuperEllipsisRangeTarget
   -> (forall scope.
         SuperRange.SuperEllipsisRange Ellipsis scope -> result)
   -> Maybe result
 rankOneRange start =
-  SuperRange.superEllipsisRange rankOneRank (finiteOrdinal <$> start)
+  SuperRange.superEllipsisRange rankOneRank (finiteOrdinal start)
 
 rankOneRangeElement
   :: SuperRange.SuperEllipsisRange Ellipsis scope
@@ -786,7 +786,7 @@ rankOneRangeLowerBound
   :: SuperRange.SuperEllipsisRange Ellipsis scope
   -> Maybe Natural
 rankOneRangeLowerBound valueRange =
-  SuperRange.superEllipsisRangeLowerBound valueRange >>= naturalAtOrdinal
+  naturalAtOrdinal (SuperRange.superEllipsisRangeLowerBound valueRange)
 
 rankOneRangeUpperBound
   :: SuperRange.SuperEllipsisRange Ellipsis scope
@@ -897,7 +897,7 @@ testSuperEllipsisInsertion = do
 testSuperEllipsisInsertionDominion :: IO ()
 testSuperEllipsisInsertionDominion =
   asciiMap $ \ascii ->
-    withRankOneRange (Just 65) (Just 68) $ \valueRange -> do
+    withRankOneRange 65 (Just 68) $ \valueRange -> do
       let selected = superEllipsisInsertionDominion
             (indexedAtlasDominion ascii)
             (SuperRange.superEllipsisRangeInsertion valueRange)
@@ -914,12 +914,8 @@ testSuperEllipsisInsertionDominion =
 
 testRankOneRange :: IO ()
 testRankOneRange = do
-  assert "an omitted first endpoint cannot descend from infinity"
-    (case rankOneRange Nothing SuperRange.NegativeOne (const ()) of
-      Nothing -> True
-      Just () -> False)
   case rankOneRange
-      (Just 3) (SuperRange.FiniteTarget (finiteOrdinal 3)) $ \valueRange -> do
+      3 (SuperRange.GivenTarget (finiteOrdinal 3)) $ \valueRange -> do
     let insertion = SuperRange.superEllipsisRangeInsertion valueRange
     assert "equal endpoints form a valid empty range"
       ( all
@@ -934,8 +930,8 @@ testRankOneRange = do
     of
       Nothing -> fail "equal endpoints were rejected"
       Just checks -> checks
-  withRankOneRange (Just 3) (Just 3) $ \emptyRange ->
-    withRankOneRange (Just 5) (Just 7) $ \nonemptyRange ->
+  withRankOneRange 3 (Just 3) $ \emptyRange ->
+    withRankOneRange 5 (Just 7) $ \nonemptyRange ->
       case emptyRange <.> nonemptyRange of
         SuperRange.SomeSuperEllipsisRangeConcat
             (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
@@ -951,7 +947,7 @@ testRankOneRange = do
                     _ -> False
               )
   case rankOneRange
-      (Just 4) (SuperRange.FiniteTarget (finiteOrdinal 1)) $ \valueRange -> do
+      4 (SuperRange.GivenTarget (finiteOrdinal 1)) $ \valueRange -> do
     let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         at position =
           rankOneElementRank . chainObjectAt
@@ -969,7 +965,7 @@ testRankOneRange = do
       Nothing -> fail "descending range was rejected"
       Just checks -> checks
   case rankOneRange
-      (Just 5) (SuperRange.FiniteTarget (finiteOrdinal 0)) $ \valueRange -> do
+      5 (SuperRange.GivenTarget (finiteOrdinal 0)) $ \valueRange -> do
     let included rankValue =
           case rankOneRangeElement valueRange rankValue of
             Nothing -> False
@@ -980,21 +976,21 @@ testRankOneRange = do
     of
       Nothing -> fail "finite zero target was rejected"
       Just checks -> checks
-  case rankOneRange (Just 5) SuperRange.NegativeOne $ \valueRange -> do
+  case rankOneRange 5 SuperRange.MinusSign $ \valueRange -> do
     let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         at position =
           rankOneElementRank . chainObjectAt
             <$> chainIndex
               (superEllipsisInsertionChain insertion)
               (finiteOrdinal position)
-    assert "NegativeOne descends through zero inclusively"
+    assert "MinusSign descends through zero inclusively"
       (map at [0 .. 6]
         == [Just 5, Just 4, Just 3, Just 2, Just 1, Just 0, Nothing])
     of
-      Nothing -> fail "NegativeOne target was rejected"
+      Nothing -> fail "MinusSign target was rejected"
       Just checks -> checks
   case rankOneRange
-      (Just 2) (SuperRange.FiniteTarget (finiteOrdinal 5)) $ \valueRange -> do
+      2 (SuperRange.GivenTarget (finiteOrdinal 5)) $ \valueRange -> do
     let insertion = SuperRange.superEllipsisRangeInsertion valueRange
         expected = [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing]
         actual = map
@@ -1016,16 +1012,16 @@ testRankOneRange = do
       Nothing -> fail "valid bounded rankOneData range was rejected"
       Just checks -> checks
   case rankOneRange
-      Nothing (SuperRange.FiniteTarget (finiteOrdinal 5)) $ \valueRange ->
+      0 (SuperRange.GivenTarget (finiteOrdinal 5)) $ \valueRange ->
     map
       (fmap rankOneElementRank . rankOneRangeElement valueRange)
       [0 .. 5]
     of
       Nothing -> fail "valid upper-bounded rankOneData range was rejected"
       Just actual ->
-        assert "missing lower bound includes all lower terminals"
+        assert "an explicit zero lower bound includes lower terminals"
           (actual == [Just 0, Just 1, Just 2, Just 3, Just 4, Nothing])
-  case rankOneRange (Just 2) SuperRange.UnboundedTarget $ \valueRange ->
+  case rankOneRange 2 SuperRange.PlusSign $ \valueRange ->
     map
       (fmap rankOneElementRank . rankOneRangeElement valueRange)
       [1, 2, 1000000]
@@ -1034,20 +1030,20 @@ testRankOneRange = do
       Just actual ->
         assert "missing upper bound includes every later terminal"
           (actual == [Nothing, Just 2, Just 1000000])
-  case rankOneRange Nothing SuperRange.UnboundedTarget $ \valueRange ->
+  case rankOneRange 0 SuperRange.PlusSign $ \valueRange ->
     map
       (fmap rankOneElementRank . rankOneRangeElement valueRange)
       [0, 1, 1000000]
     of
       Nothing -> fail "unbounded rankOneData range was rejected"
       Just actual ->
-        assert "missing bounds include all terminals"
+        assert "zero-to-unbounded includes all terminals"
           (actual == [Just 0, Just 1, Just 1000000])
 
 testRankOneRangeMerge :: IO ()
 testRankOneRangeMerge = do
-  withRankOneRange (Just 2) (Just 4) $ \first ->
-    withRankOneRange (Just 10) (Just 12) $ \second ->
+  withRankOneRange 2 (Just 4) $ \first ->
+    withRankOneRange 10 (Just 12) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "disjoint ranges produced only a map"
@@ -1073,8 +1069,8 @@ testRankOneRangeMerge = do
           assert "range concat preserves left and right operand tags"
             (map extentMember [4, 5, 20, 21]
               == [Just 0, Nothing, Nothing, Just 1])
-  withRankOneRange (Just 2) (Just 4) $ \first ->
-    withRankOneRange (Just 4) (Just 7) $ \second ->
+  withRankOneRange 2 (Just 4) $ \first ->
+    withRankOneRange 4 (Just 7) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ insertion) ->
@@ -1087,8 +1083,8 @@ testRankOneRangeMerge = do
               [2 .. 6])
         SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "adjacent non-overlapping ranges produced only a map"
-  withRankOneRange (Just 10) (Just 12) $ \first ->
-    withRankOneRange (Just 2) (Just 4) $ \second ->
+  withRankOneRange 10 (Just 12) $ \first ->
+    withRankOneRange 2 (Just 4) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "reverse disjoint ranges produced only a map"
@@ -1111,8 +1107,8 @@ testRankOneRangeMerge = do
           assert "swapping ranges changes the ordered concat presentation"
             (map extentMember [4, 5, 20, 21]
               == [Nothing, Just 1, Just 0, Nothing])
-  withRankOneRange (Just 2) (Just 5) $ \first ->
-    withRankOneRange (Just 4) (Just 7) $ \second ->
+  withRankOneRange 2 (Just 5) $ \first ->
+    withRankOneRange 4 (Just 7) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
@@ -1121,8 +1117,8 @@ testRankOneRangeMerge = do
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "overlapping ranges retain their ordered concat map"
               (atlasPageHasExactly concatAtlas 1 6)
-  withRankOneRange (Just 3) Nothing $ \first ->
-    withRankOneRange (Just 5) Nothing $ \second ->
+  withRankOneRange 3 Nothing $ \first ->
+    withRankOneRange 5 Nothing $ \second ->
       case SuperRange.concatSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
@@ -1143,8 +1139,8 @@ testRankOneRangeMerge = do
                   ]
                 && not (finalContains (addOrdinals omega omega))
               )
-  withRankOneRange (Just 3) Nothing $ \first ->
-    withRankOneRange (Just 2) (Just 20) $ \second -> do
+  withRankOneRange 3 Nothing $ \first ->
+    withRankOneRange 2 (Just 20) $ \second -> do
       case first <.> second of
         SuperRange.SomeSuperEllipsisRangeConcat
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
@@ -1185,8 +1181,8 @@ testRankOneRangeMerge = do
                   ]
                 && not (finalContains omega)
               )
-  withRankOneRange (Just 4) (Just 1) $ \descending ->
-    withRankOneRange (Just 3) (Just 6) $ \ascending ->
+  withRankOneRange 4 (Just 1) $ \descending ->
+    withRankOneRange 3 (Just 6) $ \ascending ->
       case descending <.> ascending of
         SuperRange.SomeSuperEllipsisRangeConcat
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->

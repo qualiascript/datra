@@ -15,7 +15,7 @@ import SuperEllipsisInsertion (SuperEllipsisInsertion)
 import SuperEllipsisRange
   ( SuperEllipsisRange
   , SuperEllipsisRangeElement
-  , SuperEllipsisRangeTarget (FiniteTarget)
+  , SuperEllipsisRangeTarget (GivenTarget)
   , superEllipsisRange
   , superEllipsisRangeLowerBound
   , superEllipsisRangeUpperBound
@@ -36,16 +36,16 @@ superEllipsisValue
 superEllipsisValue valueRank value =
   superEllipsisRange
     valueRank
-    (Just value)
-    (FiniteTarget (addOrdinals value (finiteOrdinal 1)))
+    value
+    (GivenTarget (addOrdinals value (finiteOrdinal 1)))
 
 -- | Recover the represented ordinal, checking the singleton-range invariant.
 superEllipsisValueOrdinal
   :: SuperEllipsisValue target scope
   -> Maybe Ordinal
 superEllipsisValueOrdinal value = do
-  lower <- superEllipsisRangeLowerBound value
   upper <- superEllipsisRangeUpperBound value
+  let lower = superEllipsisRangeLowerBound value
   if upper == addOrdinals lower (finiteOrdinal 1)
     then Just lower
     else Nothing
