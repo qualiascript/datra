@@ -6,7 +6,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 -- | A non-associative grouping boundary for stable-confederal data.
-module MapMakingOperators.ExpansionOperator
+module MapOperators.ExpansionOperator
   ( ExpansionOperatorValues
   , ExpansionOperatorValue
   , expansionValue
@@ -36,7 +36,7 @@ import HorizontalSum
   , horizontalSumValue
   )
 import OrderedAtlasTransposal (OrderedAtlasTransposal)
-import MapMakingOperators.SequentialOperator
+import MapOperators.SequentialOperator
   ( SequentialOperand
   , withSequentialOperandAtlas
   )

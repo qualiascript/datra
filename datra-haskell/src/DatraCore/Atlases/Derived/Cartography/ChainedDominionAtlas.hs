@@ -7,6 +7,7 @@
 -- Atlas, the final order type is exactly the supplied chain's order type.
 module ChainedDominionAtlas
   ( ChainedDominionCellData
+  , ChainedDominionAtlas
   , ChainedDominionAtlasObject
   , chainedDominionAtlas
   , chainedDominionAtlasMap
@@ -62,6 +63,14 @@ type ChainedDominionAtlasObject value =
     (ChainedDominionAtlasScope value)
     (ChainedDominionPaginationScope value)
     (ChainedDominionCellData value)
+
+type ChainedDominionAtlas value =
+  Atlas
+    (ChainedDominionAtlasScope value)
+    (ChainedDominionPaginationScope value)
+    (ChainedDominionCellData value)
+    ()
+    value
 
 chainedDominionFolio
   :: value
@@ -172,12 +181,7 @@ chainedDominionAtlas
   :: value
   -> Chain value
   -> Dominion value
-  -> Atlas
-       (ChainedDominionAtlasScope value)
-       (ChainedDominionPaginationScope value)
-       (ChainedDominionCellData value)
-       ()
-       value
+  -> ChainedDominionAtlas value
 chainedDominionAtlas firstValue valueChain valueDominion =
   atlasWithScope
     (chainedDominionPagination firstValue valueChain)

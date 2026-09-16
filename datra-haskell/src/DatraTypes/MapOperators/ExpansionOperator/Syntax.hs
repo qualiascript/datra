@@ -1,9 +1,9 @@
 -- | Infix syntax for an explicit non-associative grouping boundary.
-module MapMakingOperators.ExpansionOperator.Syntax
+module MapOperators.ExpansionOperator.Syntax
   ( (<+>)
   ) where
 
-import MapMakingOperators.ExpansionOperator
+import MapOperators.ExpansionOperator
   ( ExpansionOperatorValues
   , expansionOperator
   )

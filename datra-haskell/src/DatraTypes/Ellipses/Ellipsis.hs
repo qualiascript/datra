@@ -45,7 +45,7 @@ import FixedPoint
   , withFixedPointValue
   )
 import Numeric.Natural (Natural)
-import MapMakingOperators.ConcatOperator
+import MapOperators.ConcatOperator
   ( ConcatOperatorValue
   , ConcatOperatorValues
   , concatValue

@@ -1,9 +1,9 @@
 -- | Infix syntax for flattened sequential expansion.
-module MapMakingOperators.SequentialOperator.Syntax
+module MapOperators.SequentialOperator.Syntax
   ( (<:>)
   ) where
 
-import MapMakingOperators.SequentialOperator
+import MapOperators.SequentialOperator
   ( SequentialOperand
   , SequentialOperatorValues
   , sequentialOperator

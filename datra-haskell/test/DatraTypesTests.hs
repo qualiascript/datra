@@ -3,7 +3,7 @@
 
 module Main (main) where
 
-import AsciiDominion
+import AsciiMap
 import Atlas
   ( Atlas
   , atlasCardinality
@@ -30,9 +30,15 @@ import AtlasTransposal
   , withAtlasTransposalElement
   )
 import AtlasSequence (atlasSequenceDatumMember)
-import CanonicalCharsDominion
+import CanonicalCharsMap
 import Dominion
-import DatraOrdinal (addOrdinals, finiteOrdinal, omega)
+import Chain (chain)
+import DatraOrdinal
+  ( addOrdinals
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , omega
+  )
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
   ( dot
@@ -47,7 +53,7 @@ import EllipsisInsertion
 import EllipsisNatural
 import EllipsisNaturalRange
 import FiniteDominion
-import MapMakingOperators
+import MapOperators
 import Numeric.Natural (Natural)
 import PageElements
   ( pageElement
@@ -71,8 +77,9 @@ import qualified Data.Set as Set
 
 main :: IO ()
 main = do
-  testAsciiDominion
-  testCanonicalCharsDominion
+  testAsciiMap
+  testCanonicalCharsMap
+  testAccessOperator
   testDot
   testSequentialOperator
   testConcatOperator
@@ -450,37 +457,69 @@ testComplexOperatorStructure = do
             && mapsFiveLeavesToPageThree rightGroup rightTraversal 5
           )
 
-testAsciiDominion :: IO ()
-testAsciiDominion =
-  asciiDominion $ \ascii -> do
-    assert "ASCII dominion has 256 ranks"
+testAsciiMap :: IO ()
+testAsciiMap =
+  asciiMap $ \ascii -> do
+    let valueAtlas = asciiAtlas ascii
+    assert "ASCII map has two pages and 256 final cells"
       (asciiCardinality == 256
-        && finiteCardinality ascii == asciiCardinality)
-    assert "ASCII dominion maps ranks to matching characters"
+        && indexedAtlasCardinality ascii == asciiCardinality
+        && atlasCardinality valueAtlas == 2
+        && atlasPageHasExactly valueAtlas 1 asciiCardinality)
+    assert "ASCII map positions contain matching characters"
       (map (asciiCharacterAt ascii) [0, 65, 97, 255, 256]
         == [Just '\0', Just 'A', Just 'a', Just '\255', Nothing])
 
-testCanonicalCharsDominion :: IO ()
-testCanonicalCharsDominion =
-  canonicalCharsDominion $ \canonical -> do
-    let boundaryRanks =
-          [38, 39, 40, 47, 48, 57, 58, 64, 65, 90, 91, 94, 95, 96, 97, 122, 123]
-        expected =
-          [ Nothing, Just '\'', Nothing
-          , Nothing, Just '0', Just '9', Nothing
-          , Nothing, Just 'A', Just 'Z', Nothing
-          , Nothing, Just '_', Nothing
-          , Just 'a', Just 'z', Nothing
-          ]
-        included = filter
-          (\valueRank -> case canonicalCharacterAt canonical valueRank of
-            Nothing -> False
-            Just _ -> True)
-          [0 .. 255]
-    assert "canonical character dominion uses exact ASCII ranks"
-      (map (canonicalCharacterAt canonical) boundaryRanks == expected)
-    assert "canonical character dominion contains exactly 64 characters"
-      (fromIntegral (length included) == canonicalCharsCardinality)
+testCanonicalCharsMap :: IO ()
+testCanonicalCharsMap =
+  case canonicalCharsMap (\canonical -> do
+      let valueAtlas = indexedAtlasAtlas canonical
+          positions = [0, 1, 10, 11, 36, 37, 38, 63, 64]
+          expected =
+            [ Just '\'', Just '0', Just '9', Just 'A', Just 'Z'
+            , Just '_', Just 'a', Just 'z', Nothing
+            ]
+      assert "canonical characters retain their ASCII order under access"
+        (map (canonicalCharacterAt canonical) positions == expected)
+      assert "canonical character access produces a two-page 64-cell map"
+        ( indexedAtlasCardinality canonical == canonicalCharsCardinality
+          && atlasCardinality valueAtlas == 2
+          && atlasPageHasExactly valueAtlas 1 canonicalCharsCardinality
+        )) of
+    Nothing -> fail "canonical character insertion did not fit ASCII"
+    Just checks -> checks
+
+testAccessOperator :: IO ()
+testAccessOperator =
+  asciiMap $ \ascii -> do
+    withEllipsisNaturalRange (Just 10) (Just 12) $ \first ->
+      withEllipsisNaturalRange (Just 2) (Just 4) $ \second ->
+        case concatEllipsisNaturalRanges first second of
+          SomeEllipsisNaturalRangeConcat
+              (ConcatenatedEllipsisMap _ _) ->
+            fail "disjoint access ranges produced only a map"
+          SomeEllipsisNaturalRangeConcat
+              (ConcatenatedEllipsisInsertion _ _ insertion) ->
+            case ascii <@> insertion of
+              Nothing -> fail "in-bounds reordered access was rejected"
+              Just selected -> do
+                let selectedCharacter position =
+                      asciiCharacterValue . accessElementValue
+                        <$> indexedAtlasValueAt selected position
+                    valueAtlas = indexedAtlasAtlas selected
+                assert "access follows insertion order and can reorder values"
+                  (map selectedCharacter [0 .. 4]
+                    == [ Just '\10', Just '\11', Just '\2', Just '\3'
+                       , Nothing
+                       ])
+                assert "access returns a flattened two-page map"
+                  (atlasCardinality valueAtlas == 2
+                    && atlasPageHasExactly valueAtlas 1 4)
+    withEllipsisNaturalRange (Just 255) (Just 257) $ \outside ->
+      assert "access rejects an insertion exceeding final cardinality"
+        (case ascii <@> ellipsisNaturalRangeInsertion outside of
+          Nothing -> True
+          Just _ -> False)
 
 withEllipsisNaturalRange
   :: Maybe Natural
@@ -545,7 +584,18 @@ testEllipsis =
 testEllipsisInsertion :: IO ()
 testEllipsisInsertion = do
   let insertion :: EllipsisInsertion EllipsisTerminal
-      insertion = ellipsisInsertion id Just (const ())
+      insertion = ellipsisInsertion
+        (Terminal 0)
+        (chain
+          omega
+          (finiteOrdinal . terminalRank)
+          (fmap Terminal . naturalAtOrdinal)
+          (const ())
+          (\_ _ -> ())
+          (const ()))
+        id
+        Just
+        (const ())
       terminals = map Terminal [0, 1, 1000000]
       traversalPreservesTerminal terminal =
         let sourceAtlas = dominionAtlas ellipsisDominion
@@ -583,14 +633,14 @@ testEllipsisInsertion = do
 
 testEllipsisInsertionDominion :: IO ()
 testEllipsisInsertionDominion =
-  asciiDominion $ \ascii ->
+  asciiMap $ \ascii ->
     withEllipsisNaturalRange (Just 65) (Just 68) $ \valueRange -> do
       let selected = ellipsisInsertionDominion
-            (finiteAsDominion ascii)
+            (indexedAtlasDominion ascii)
             (ellipsisNaturalRangeInsertion valueRange)
           selectedCharacter =
             fmap
-              (finiteValue . ellipsisInsertionElementValue)
+              (asciiCharacterValue . ellipsisInsertionElementValue)
               . unrank selected
       assert "ellipsis insertion restricts a dominion to selected ranks"
         (map selectedCharacter [64, 65, 66, 67, 68]

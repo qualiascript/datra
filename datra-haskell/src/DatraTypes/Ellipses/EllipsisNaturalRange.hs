@@ -58,7 +58,7 @@ import EllipsisInsertion
   , ellipsisInsertion
   , mergeDisjointEllipsisInsertions
   )
-import MapMakingOperators.ConcatOperator
+import MapOperators.ConcatOperator
   ( Concat (..)
   , ConcatOperatorValue
   , ConcatOperatorValues
@@ -192,6 +192,8 @@ ellipsisNaturalRangeInsertion
   -> EllipsisInsertion (EllipsisNaturalRangeElement scope)
 ellipsisNaturalRangeInsertion valueRange =
   ellipsisInsertion
+    (rangeFirstElement valueRange)
+    (rangeChain valueRange)
     (Terminal . ellipsisNaturalRangeElementRank)
     (ellipsisNaturalRangeElement valueRange . terminalRank)
     (const ())

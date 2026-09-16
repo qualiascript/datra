@@ -12,7 +12,7 @@
 -- then retains only its extent and final genuine page.  The canonical ordered
 -- transposal returned by 'withConcatOrderedTransposal' includes those two
 -- surviving pages back into the full sequential presentation.
-module MapMakingOperators.ConcatOperator
+module MapOperators.ConcatOperator
   ( ConcatOperatorValues
   , ConcatOperatorValue
   , concatValue
@@ -81,7 +81,7 @@ import PageElements
   )
 import PageElements.LiquidInternal (PageElement (..))
 import qualified Pagination
-import MapMakingOperators.SequentialOperator
+import MapOperators.SequentialOperator
   ( SequentialOperand
   , SequentialOperatorValue
   , SequentialOperatorValues

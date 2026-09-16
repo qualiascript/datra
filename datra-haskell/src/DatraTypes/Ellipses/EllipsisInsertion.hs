@@ -3,6 +3,8 @@ module EllipsisInsertion
   ( EllipsisInsertion
   , EllipsisInsertionElement
   , ellipsisInsertion
+  , ellipsisInsertionFirst
+  , ellipsisInsertionChain
   , ellipsisInsertionTraversal
   , applyEllipsisInsertion
   , ellipsisInsertionPreimage
@@ -14,6 +16,7 @@ module EllipsisInsertion
   ) where
 
 import DomanialInclusion (DominionAtlasObject)
+import Chain (Chain, sumChains)
 import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
@@ -36,7 +39,9 @@ import StableAtlasTransversal (StableAtlasTransversal)
 -- cardinality-two Ellipsis Atlas map. Its domanial insertion retains the
 -- executable presentation from which DatraCore constructs that traversal.
 data EllipsisInsertion source = EllipsisInsertion
-  { ellipsisInsertionTraversal
+  { ellipsisInsertionFirst :: source
+  , ellipsisInsertionChain :: Chain source
+  , ellipsisInsertionTraversal
       :: StableAtlasTransversal
            (DominionAtlasObject source)
            EllipsisAtlasObject
@@ -55,13 +60,17 @@ data EllipsisInsertionElement source value = EllipsisInsertionElement
 -- | Construct the stable Atlas transversal selected by an injective map of
 -- source values to Ellipsis regions.
 ellipsisInsertion
-  :: (source -> EllipsisTerminal)
+  :: source
+  -> Chain source
+  -> (source -> EllipsisTerminal)
   -> (EllipsisTerminal -> Maybe source)
   -> (source -> ())
   -> EllipsisInsertion source
-ellipsisInsertion forward backward leftInverse =
+ellipsisInsertion first sourceChain forward backward leftInverse =
   EllipsisInsertion
-    { ellipsisInsertionTraversal =
+    { ellipsisInsertionFirst = first
+    , ellipsisInsertionChain = sourceChain
+    , ellipsisInsertionTraversal =
         rankedDominionInsertionTraversal
           ellipsisDominion
           insertion
@@ -102,7 +111,14 @@ mergeDisjointEllipsisInsertions
   -> EllipsisInsertion right
   -> EllipsisInsertion (Either left right)
 mergeDisjointEllipsisInsertions first second =
-  ellipsisInsertion forward backward (const ())
+  ellipsisInsertion
+    (Left (ellipsisInsertionFirst first))
+    (sumChains
+      (ellipsisInsertionChain first)
+      (ellipsisInsertionChain second))
+    forward
+    backward
+    (const ())
   where
     forward (Left value) = applyEllipsisInsertion first value
     forward (Right value) = applyEllipsisInsertion second value
