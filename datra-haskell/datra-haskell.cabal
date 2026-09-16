@@ -67,11 +67,12 @@ library
         OrderedDataTransposal
         DataTransversal
         StableDataTransversal
-        StableConfederalDataTransversal
+        StableConfederalData
         HorizontalSum
-        StableConfederalDataTransversalMonoidal
-        StableConfederalDataTransversalKleisli
-        StableConfederalDataTransversalKleisli.Syntax
+        HorizontalSum.Syntax
+        StableConfederalDataMonoidal
+        StableConfederalDataKleisli
+        StableConfederalDataKleisli.Syntax
         Navigation
         Expedition
         DataTransformationMap
@@ -109,10 +110,10 @@ library
         OrderedDataTransposal.Internal
         DataTransversal.Internal
         StableDataTransversal.Internal
-        StableConfederalDataTransversal.Internal
+        StableConfederalData.Internal
         HorizontalSum.Internal
-        StableConfederalDataTransversalMonoidal.Internal
-        StableConfederalDataTransversalKleisli.Internal
+        StableConfederalDataMonoidal.Internal
+        StableConfederalDataKleisli.Internal
         Navigation.Internal
         Expedition.Internal
         DataTransformationMap.Internal
@@ -145,11 +146,11 @@ library
         src/DatraCore/DataTransformations/DataTransformations/OrderedDataTransposal
         src/DatraCore/DataTransformations/DataTransformations/DataTransversal
         src/DatraCore/DataTransformations/DataTransformations/StableDataTransversal
-        src/DatraCore/DataTransformations/StableConfederalDataTransversals
-        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversal
-        src/DatraCore/DataTransformations/StableConfederalDataTransversals/HorizontalSum
-        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversalMonoidal
-        src/DatraCore/DataTransformations/StableConfederalDataTransversals/StableConfederalDataTransversalKleisli
+        src/DatraCore/DataTransformations/StableConfederalData
+        src/DatraCore/DataTransformations/StableConfederalData/StableConfederalData
+        src/DatraCore/DataTransformations/StableConfederalData/HorizontalSum
+        src/DatraCore/DataTransformations/StableConfederalData/StableConfederalDataMonoidal
+        src/DatraCore/DataTransformations/StableConfederalData/StableConfederalDataKleisli
         src/DatraCore/DataTransformations/DataTransformationMaps
         src/DatraCore/DataTransformations/DataTransformationMaps/Navigation
         src/DatraCore/DataTransformations/DataTransformationMaps/Expedition

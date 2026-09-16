@@ -1,22 +1,21 @@
--- | The symmetric monoidal category of stable confederal data transversals
+-- | The symmetric monoidal category of stable confederal data
 -- and its commutative monads.
-module StableConfederalDataTransversalMonoidal
+module StableConfederalDataMonoidal
   ( EmptyMapValues
   , emptyMap
   , HorizontalSumValues
   , HorizontalSumValue (..)
   , horizontalSumValue
   , horizontalSum
-  , (|+|)
   , horizontalSumHom
-  , StableConfederalDataTransversalEndofunctor
-  , stableConfederalDataTransversalEndofunctor
-  , mapStableConfederalDataTransversalObject
-  , mapStableConfederalDataTransversalArrow
+  , StableConfederalDataEndofunctor
+  , stableConfederalDataEndofunctor
+  , mapStableConfederalDataObject
+  , mapStableConfederalDataArrow
   , stableConfederalEndofunctorIdentity
   , stableConfederalEndofunctorComposition
-  , CommutativeStableConfederalDataTransversalMonad
-  , commutativeStableConfederalDataTransversalMonad
+  , CommutativeStableConfederalDataMonad
+  , commutativeStableConfederalDataMonad
   , stableConfederalReturn
   , stableConfederalFmap
   , stableConfederalJoin
@@ -29,5 +28,5 @@ module StableConfederalDataTransversalMonoidal
   ) where
 
 import HorizontalSum
-import StableConfederalDataTransversal (EmptyMapValues, emptyMap)
-import StableConfederalDataTransversalMonoidal.Internal
+import StableConfederalData (EmptyMapValues, emptyMap)
+import StableConfederalDataMonoidal.Internal

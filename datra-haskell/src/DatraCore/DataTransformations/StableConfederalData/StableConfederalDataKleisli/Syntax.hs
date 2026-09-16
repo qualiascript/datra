@@ -6,7 +6,7 @@
 -- Import this module qualified and enable @QualifiedDo@:
 --
 -- @
--- import qualified StableConfederalDataTransversalKleisli.Syntax as K
+-- import qualified StableConfederalDataKleisli.Syntax as K
 --
 -- pipeline = K.do
 --   validate
@@ -17,7 +17,7 @@
 -- This syntax expresses categorical sequencing.  It intentionally does not
 -- define '(>>=)': a Kleisli arrow produces a categorical codomain, not a
 -- Haskell value that could be supplied to a continuation.
-module StableConfederalDataTransversalKleisli.Syntax
+module StableConfederalDataKleisli.Syntax
   ( Program
   , step
   , lift
@@ -31,18 +31,18 @@ module StableConfederalDataTransversalKleisli.Syntax
 import qualified Control.Category as Category
 import Data.Kind (Type)
 import Prelude hiding ((>>), return)
-import StableConfederalDataTransversal
-  ( StableConfederalDataTransversal
-  , StableConfederalDataTransversalHom
+import StableConfederalData
+  ( StableConfederalData
+  , StableConfederalDataHom
   )
-import StableConfederalDataTransversalKleisli
-  ( StableConfederalDataTransversalKleisliHom
+import StableConfederalDataKleisli
+  ( StableConfederalDataKleisliHom
   , stableConfederalKleisliBind
   , stableConfederalKleisliHom
   , stableConfederalKleisliReturn
   )
-import StableConfederalDataTransversalMonoidal
-  ( CommutativeStableConfederalDataTransversalMonad
+import StableConfederalDataMonoidal
+  ( CommutativeStableConfederalDataMonad
   , stableConfederalReturn
   )
 
@@ -64,22 +64,22 @@ data ProgramResult
   (target :: Type)
   result =
     ProgramResult
-      (StableConfederalDataTransversal target)
-      (CommutativeStableConfederalDataTransversalMonad transform
-        -> StableConfederalDataTransversalKleisliHom
+      (StableConfederalData target)
+      (CommutativeStableConfederalDataMonad transform
+        -> StableConfederalDataKleisliHom
              transform source target)
 
 -- | Introduce an existing Kleisli arrow as one syntax step.
 step
-  :: StableConfederalDataTransversal target
-  -> StableConfederalDataTransversalKleisliHom transform source target
+  :: StableConfederalData target
+  -> StableConfederalDataKleisliHom transform source target
   -> Program transform source target
 step target arrow = ProgramResult target (const arrow)
 
 -- | Lift a base-category arrow into the Kleisli syntax.
 lift
-  :: StableConfederalDataTransversal target
-  -> StableConfederalDataTransversalHom source target
+  :: StableConfederalData target
+  -> StableConfederalDataHom source target
   -> Program transform source target
 lift target arrow =
   ProgramResult target $ \monad ->
@@ -88,14 +88,14 @@ lift target arrow =
 
 -- | Interpret a program using one commutative stable-confederal monad.
 run
-  :: CommutativeStableConfederalDataTransversalMonad transform
+  :: CommutativeStableConfederalDataMonad transform
   -> Program transform source target
-  -> StableConfederalDataTransversalKleisliHom transform source target
+  -> StableConfederalDataKleisliHom transform source target
 run monad (ProgramResult _ build) = build monad
 
 -- | The identity program, given by the Kleisli-category identity.
 return
-  :: StableConfederalDataTransversal values
+  :: StableConfederalData values
   -> Program transform values values
 return values =
   ProgramResult values $ \monad ->

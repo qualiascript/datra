@@ -1,6 +1,6 @@
 -- | The Kleisli category of a commutative stable-confederal monad.
-module StableConfederalDataTransversalKleisli
-  ( StableConfederalDataTransversalKleisliHom
+module StableConfederalDataKleisli
+  ( StableConfederalDataKleisliHom
   , stableConfederalKleisliHom
   , stableConfederalKleisliArrow
   , mapStableConfederalKleisliHom
@@ -9,5 +9,5 @@ module StableConfederalDataTransversalKleisli
   , stableConfederalKleisliBind
   ) where
 
-import StableConfederalDataTransversalKleisli.Internal
+import StableConfederalDataKleisli.Internal
 

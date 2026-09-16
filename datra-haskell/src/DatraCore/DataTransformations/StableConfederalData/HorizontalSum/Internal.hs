@@ -4,14 +4,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- | Hidden implementation of Day convolution on stable confederal data
--- transversals.
+-- | Hidden implementation of Day convolution on stable confederal data.
 module HorizontalSum.Internal
   ( HorizontalSumValues
   , HorizontalSumValue (..)
   , horizontalSumValue
   , horizontalSum
-  , (|+|)
   , horizontalSumHom
   ) where
 
@@ -25,17 +23,17 @@ import AtlasConfederation
   )
 import Data.Kind (Type)
 import Prelude (Either, const)
-import StableConfederalDataTransversal
-  ( StableConfederalDataTransversal
-  , StableConfederalDataTransversalHom
-  , StableConfederalDataTransversalValue
-  , mapStableConfederalDataTransversalHom
-  , stableConfederalDataTransversal
-  , stableConfederalDataTransversalHom
+import StableConfederalData
+  ( StableConfederalData
+  , StableConfederalDataHom
+  , StableConfederalDataValue
+  , mapStableConfederalDataHom
+  , stableConfederalData
+  , stableConfederalDataHom
   )
 
 -- | Defunctionalized carrier for the Day convolution of two stable
--- confederal data transversals.
+-- confederal data objects.
 data HorizontalSumValues (left :: Type) (right :: Type)
 
 -- | A Day-convolution generator at @object@.
@@ -56,14 +54,14 @@ data HorizontalSumValue
          (AtlasConfederationObject
            (MergedAtlasConfederationScope leftScope rightScope)
            (Either leftIndex rightIndex))
-    -> StableConfederalDataTransversalValue
+    -> StableConfederalDataValue
          left (AtlasConfederationObject leftScope leftIndex)
-    -> StableConfederalDataTransversalValue
+    -> StableConfederalDataValue
          right (AtlasConfederationObject rightScope rightIndex)
     -> HorizontalSumValue left right object
 
 type instance
-  StableConfederalDataTransversalValue
+  StableConfederalDataValue
     (HorizontalSumValues left right) object =
       HorizontalSumValue left right object
 
@@ -72,9 +70,9 @@ type instance
 horizontalSumValue
   :: AtlasConfederation leftScope leftIndex
   -> AtlasConfederation rightScope rightIndex
-  -> StableConfederalDataTransversalValue
+  -> StableConfederalDataValue
        left (AtlasConfederationObject leftScope leftIndex)
-  -> StableConfederalDataTransversalValue
+  -> StableConfederalDataValue
        right (AtlasConfederationObject rightScope rightIndex)
   -> HorizontalSumValue
        left
@@ -85,14 +83,13 @@ horizontalSumValue
 horizontalSumValue left right =
   HorizontalSumValue left right identityAtlasConfederationHom
 
--- | Day convolution extending Atlas horizontal sum to stable confederal data
--- transversals.
+-- | Day convolution extending Atlas horizontal sum to stable confederal data.
 horizontalSum
-  :: StableConfederalDataTransversal left
-  -> StableConfederalDataTransversal right
-  -> StableConfederalDataTransversal (HorizontalSumValues left right)
+  :: StableConfederalData left
+  -> StableConfederalData right
+  -> StableConfederalData (HorizontalSumValues left right)
 horizontalSum _ _ =
-  stableConfederalDataTransversal
+  stableConfederalData
     reindex
     (const ())
     (\_ _ _ -> ())
@@ -110,30 +107,21 @@ horizontalSum _ _ =
           leftValue
           rightValue
 
--- | Infix alias for 'horizontalSum'.
-infixr 6 |+|
-
-(|+|)
-  :: StableConfederalDataTransversal left
-  -> StableConfederalDataTransversal right
-  -> StableConfederalDataTransversal (HorizontalSumValues left right)
-(|+|) = horizontalSum
-
 -- | Apply two natural transformations under horizontal sum.
 horizontalSumHom
   :: forall leftSource rightSource leftTarget rightTarget.
-     StableConfederalDataTransversal leftSource
-  -> StableConfederalDataTransversal rightSource
-  -> StableConfederalDataTransversal leftTarget
-  -> StableConfederalDataTransversal rightTarget
-  -> StableConfederalDataTransversalHom leftSource leftTarget
-  -> StableConfederalDataTransversalHom rightSource rightTarget
-  -> StableConfederalDataTransversalHom
+     StableConfederalData leftSource
+  -> StableConfederalData rightSource
+  -> StableConfederalData leftTarget
+  -> StableConfederalData rightTarget
+  -> StableConfederalDataHom leftSource leftTarget
+  -> StableConfederalDataHom rightSource rightTarget
+  -> StableConfederalDataHom
        (HorizontalSumValues leftSource rightSource)
        (HorizontalSumValues leftTarget rightTarget)
 horizontalSumHom
   leftSource rightSource leftTarget rightTarget leftHom rightHom =
-    stableConfederalDataTransversalHom
+    stableConfederalDataHom
       (horizontalSum leftSource rightSource)
       (horizontalSum leftTarget rightTarget)
       mapComponents
@@ -148,5 +136,5 @@ horizontalSumHom
           left
           right
           represented
-          (mapStableConfederalDataTransversalHom leftHom leftValue)
-          (mapStableConfederalDataTransversalHom rightHom rightValue)
+          (mapStableConfederalDataHom leftHom leftValue)
+          (mapStableConfederalDataHom rightHom rightValue)
