@@ -84,7 +84,7 @@ canonicalIndexChain =
 canonicalCharsInsertion :: EllipsisInsertion CanonicalCharIndex
 canonicalCharsInsertion =
   ellipsisInsertion
-    (CanonicalCharIndex 0 39)
+    (Just (CanonicalCharIndex 0 39))
     canonicalIndexChain
     (Terminal . canonicalAsciiRank)
     ((`Map.lookup` canonicalIndicesByAsciiRank) . terminalRank)

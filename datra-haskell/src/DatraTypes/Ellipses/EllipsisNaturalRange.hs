@@ -5,9 +5,10 @@
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- | Nonempty half-open natural ranges and their ordered concatenations.
+-- | Ordered half-open natural ranges and their concatenations.
 module EllipsisNaturalRange
   ( EllipsisNaturalRange
+  , EllipsisNaturalRangeTarget (..)
   , EllipsisNaturalRangeElement
   , EllipsisNaturalRangeMap
   , EllipsisNaturalRangeConcatValues
@@ -16,8 +17,11 @@ module EllipsisNaturalRange
   , EllipsisNaturalRangeConcat (..)
   , SomeEllipsisNaturalRangeConcat (..)
   , ellipsisNaturalRange
+  , ellipsisNaturalRangeStart
+  , ellipsisNaturalRangeTarget
   , ellipsisNaturalRangeLowerBound
   , ellipsisNaturalRangeUpperBound
+  , ellipsisNaturalRangeSize
   , ellipsisNaturalRangeElement
   , ellipsisNaturalRangeElementRank
   , ellipsisNaturalRangeInsertion
@@ -44,10 +48,12 @@ import ChainedDominionAtlas
   , chainedDominionAtlasMap
   )
 import Chain (Chain, chain)
+import Control.Monad ((>=>))
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe)
 import DatraOrdinal
-  ( finiteOrdinal
+  ( Ordinal
+  , finiteOrdinal
   , naturalAtOrdinal
   , omega
   )
@@ -72,13 +78,39 @@ import StableConfederalData
   , embedAtlasMap
   )
 
--- | A half-open interval of ellipsis ranks. A missing bound leaves that side
--- unrestricted.
+-- | The second endpoint of a natural range. 'NegativeOne' is the special
+-- target immediately below zero, while 'UnboundedTarget' retains the
+-- existing upward-infinite range.
+data EllipsisNaturalRangeTarget
+  = FiniteTarget Natural
+  | NegativeOne
+  | UnboundedTarget
+  deriving (Eq, Show)
+
+-- | An ordered half-open interval of ellipsis ranks. A missing first endpoint
+-- denotes zero except when paired with 'NegativeOne', which is rejected by
+-- 'ellipsisNaturalRange' because it would mean descending from infinity.
 type role EllipsisNaturalRange nominal
 data EllipsisNaturalRange (scope :: Type) = EllipsisNaturalRange
-  { ellipsisNaturalRangeLowerBound :: Maybe Natural
-  , ellipsisNaturalRangeUpperBound :: Maybe Natural
+  { ellipsisNaturalRangeStart :: Maybe Natural
+  , ellipsisNaturalRangeTarget :: EllipsisNaturalRangeTarget
   }
+
+-- | Backward-compatible name for the written first endpoint.
+ellipsisNaturalRangeLowerBound
+  :: EllipsisNaturalRange scope
+  -> Maybe Natural
+ellipsisNaturalRangeLowerBound = ellipsisNaturalRangeStart
+
+-- | Recover a finite written target. Both special targets return 'Nothing'.
+ellipsisNaturalRangeUpperBound
+  :: EllipsisNaturalRange scope
+  -> Maybe Natural
+ellipsisNaturalRangeUpperBound valueRange =
+  case ellipsisNaturalRangeTarget valueRange of
+    FiniteTarget target -> Just target
+    NegativeOne -> Nothing
+    UnboundedTarget -> Nothing
 
 -- | An ellipsis rank known to belong to one particular range.
 type role EllipsisNaturalRangeElement nominal
@@ -154,18 +186,18 @@ data SomeEllipsisNaturalRangeConcat leftScope rightScope where
     :: EllipsisNaturalRangeConcat kind leftScope rightScope
     -> SomeEllipsisNaturalRangeConcat leftScope rightScope
 
--- | Validate optional natural-number bounds and introduce the resulting range
--- with a fresh abstract scope. The range must be nonempty, treating a missing
--- lower bound as zero.
+-- | Introduce an ordered range with a fresh abstract scope. Equal finite
+-- endpoints produce the empty range; a smaller finite target produces a
+-- descending range. The sole invalid form is @..NegativeOne@ with no first
+-- endpoint, since that would imply counting down from infinity.
 ellipsisNaturalRange
   :: Maybe Natural
-  -> Maybe Natural
+  -> EllipsisNaturalRangeTarget
   -> (forall scope. EllipsisNaturalRange scope -> result)
   -> Maybe result
-ellipsisNaturalRange lower upper useRange
-  | validOrder lower upper =
-      Just (useRange (EllipsisNaturalRange lower upper))
-  | otherwise = Nothing
+ellipsisNaturalRange Nothing NegativeOne _ = Nothing
+ellipsisNaturalRange start target useRange =
+  Just (useRange (EllipsisNaturalRange start target))
 
 -- | Refine an absolute ellipsis rank to membership in this range.
 ellipsisNaturalRangeElement
@@ -200,35 +232,50 @@ ellipsisNaturalRangeInsertion valueRange =
 
 rangeFirstElement
   :: EllipsisNaturalRange scope
+  -> Maybe (EllipsisNaturalRangeElement scope)
+rangeFirstElement valueRange
+  | ellipsisNaturalRangeSize valueRange == Just 0 = Nothing
+  | otherwise = Just (rangeSeedElement valueRange)
+
+rangeSeedElement
+  :: EllipsisNaturalRange scope
   -> EllipsisNaturalRangeElement scope
-rangeFirstElement =
-  EllipsisNaturalRangeElement . fromMaybe 0
-    . ellipsisNaturalRangeLowerBound
+rangeSeedElement = EllipsisNaturalRangeElement . rangeStartValue
 
 rangeChain
   :: EllipsisNaturalRange scope
   -> Chain (EllipsisNaturalRangeElement scope)
 rangeChain valueRange =
   chain
-    rangeOrderType
+    (rangeOrderType valueRange)
     (finiteOrdinal . relativeRank)
-    (\position -> do
-      offset <- naturalAtOrdinal position
-      ellipsisNaturalRangeElement valueRange (rangeStart + offset))
+    (naturalAtOrdinal >=> elementAtOffset)
     (const ())
     (\_ _ -> ())
     (const ())
   where
-    rangeStart =
-      fromMaybe 0 (ellipsisNaturalRangeLowerBound valueRange)
+    rangeStart = rangeStartValue valueRange
 
-    rangeOrderType =
-      case ellipsisNaturalRangeUpperBound valueRange of
-        Just upper -> finiteOrdinal (upper - rangeStart)
-        Nothing -> omega
+    elementAtOffset offset =
+      ellipsisNaturalRangeElement valueRange
+        (case ellipsisNaturalRangeTarget valueRange of
+          FiniteTarget target
+            | rangeStart <= target -> rangeStart + offset
+            | offset <= rangeStart -> rangeStart - offset
+            | otherwise -> 0
+          NegativeOne
+            | offset <= rangeStart -> rangeStart - offset
+            | otherwise -> 0
+          UnboundedTarget -> rangeStart + offset)
 
     relativeRank element =
-      ellipsisNaturalRangeElementRank element - rangeStart
+      let elementRank = ellipsisNaturalRangeElementRank element
+      in case ellipsisNaturalRangeTarget valueRange of
+          FiniteTarget target
+            | rangeStart <= target -> elementRank - rangeStart
+            | otherwise -> rangeStart - elementRank
+          NegativeOne -> rangeStart - elementRank
+          UnboundedTarget -> elementRank - rangeStart
 
 rangeAtlas
   :: EllipsisNaturalRange scope
@@ -238,7 +285,7 @@ rangeAtlas
 rangeAtlas valueRange =
   singletonAtlasConfederation
     (chainedDominionAtlas
-      (rangeFirstElement valueRange)
+      (rangeSeedElement valueRange)
       (rangeChain valueRange)
       (ellipsisNaturalRangeDominion valueRange))
 
@@ -250,7 +297,7 @@ ellipsisNaturalRangeMap
 ellipsisNaturalRangeMap valueRange =
   embedAtlasMap
     (chainedDominionAtlasMap
-      (rangeFirstElement valueRange)
+      (rangeSeedElement valueRange)
       (rangeChain valueRange)
       (ellipsisNaturalRangeDominion valueRange))
 
@@ -339,33 +386,75 @@ concatEllipsisNaturalRangeInsertion first second =
         (ConcatenatedEllipsisInsertion _ _ insertion) -> Just insertion
     SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ _) -> Nothing
 
-validOrder :: Maybe Natural -> Maybe Natural -> Bool
-validOrder maybeLower (Just upper) = fromMaybe 0 maybeLower < upper
-validOrder _ Nothing = True
+rangeStartValue :: EllipsisNaturalRange scope -> Natural
+rangeStartValue = fromMaybe 0 . ellipsisNaturalRangeStart
+
+-- | The finite number of elements, or 'Nothing' for an upward-unbounded
+-- range.
+ellipsisNaturalRangeSize
+  :: EllipsisNaturalRange scope
+  -> Maybe Natural
+ellipsisNaturalRangeSize valueRange =
+  case ellipsisNaturalRangeTarget valueRange of
+    FiniteTarget target
+      | start <= target -> Just (target - start)
+      | otherwise -> Just (start - target)
+    NegativeOne -> Just (start + 1)
+    UnboundedTarget -> Nothing
+  where
+    start = rangeStartValue valueRange
+
+rangeOrderType :: EllipsisNaturalRange scope -> Ordinal
+rangeOrderType valueRange =
+  maybe omega finiteOrdinal (ellipsisNaturalRangeSize valueRange)
 
 rankInRange :: EllipsisNaturalRange scope -> Natural -> Bool
 rankInRange valueRange rankValue =
-  maybe True (<= rankValue)
-    (ellipsisNaturalRangeLowerBound valueRange)
-    && maybe True (rankValue <)
-      (ellipsisNaturalRangeUpperBound valueRange)
+  case ellipsisNaturalRangeTarget valueRange of
+    FiniteTarget target
+      | start < target -> start <= rankValue && rankValue < target
+      | start > target -> target < rankValue && rankValue <= start
+      | otherwise -> False
+    NegativeOne -> rankValue <= start
+    UnboundedTarget -> start <= rankValue
+  where
+    start = rangeStartValue valueRange
 
 rangesOverlap
   :: EllipsisNaturalRange leftScope
   -> EllipsisNaturalRange rightScope
   -> Bool
 rangesOverlap first second =
-  not (rangeBefore first second || rangeBefore second first)
+  case (rangeImageBounds first, rangeImageBounds second) of
+    (Nothing, _) -> False
+    (_, Nothing) -> False
+    (Just firstBounds, Just secondBounds) ->
+      not
+        (imageBefore firstBounds secondBounds
+          || imageBefore secondBounds firstBounds)
 
-rangeBefore
-  :: EllipsisNaturalRange firstScope
-  -> EllipsisNaturalRange secondScope
+-- Inclusive minimum and optional inclusive maximum of a nonempty image.
+rangeImageBounds
+  :: EllipsisNaturalRange scope
+  -> Maybe (Natural, Maybe Natural)
+rangeImageBounds valueRange =
+  case ellipsisNaturalRangeTarget valueRange of
+    FiniteTarget target
+      | start < target -> Just (start, Just (target - 1))
+      | start > target -> Just (target + 1, Just start)
+      | otherwise -> Nothing
+    NegativeOne -> Just (0, Just start)
+    UnboundedTarget -> Just (start, Nothing)
+  where
+    start = rangeStartValue valueRange
+
+imageBefore
+  :: (Natural, Maybe Natural)
+  -> (Natural, Maybe Natural)
   -> Bool
-rangeBefore first second =
-  case ellipsisNaturalRangeUpperBound first of
-    Nothing -> False
-    Just firstUpper ->
-      firstUpper <= fromMaybe 0 (ellipsisNaturalRangeLowerBound second)
+imageBefore (_, Nothing) _ = False
+imageBefore (_, Just firstMaximum) (secondMinimum, _) =
+  firstMaximum < secondMinimum
 
 instance
     Concat

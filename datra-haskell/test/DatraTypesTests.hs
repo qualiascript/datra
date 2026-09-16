@@ -32,7 +32,12 @@ import AtlasTransposal
 import AtlasSequence (atlasSequenceDatumMember)
 import CanonicalCharsMap
 import Dominion
-import Chain (chain)
+import Chain
+  ( chain
+  , chainIndex
+  , chainObjectAt
+  , chainOrderType
+  )
 import DatraOrdinal
   ( addOrdinals
   , finiteOrdinal
@@ -527,7 +532,10 @@ withEllipsisNaturalRange
   -> (forall scope. EllipsisNaturalRange scope -> IO ())
   -> IO ()
 withEllipsisNaturalRange lower upper useRange =
-  case ellipsisNaturalRange lower upper useRange of
+  case ellipsisNaturalRange
+      lower
+      (maybe UnboundedTarget FiniteTarget upper)
+      useRange of
     Nothing -> fail "test setup failed: valid ellipsis range was rejected"
     Just checks -> checks
 
@@ -585,7 +593,7 @@ testEllipsisInsertion :: IO ()
 testEllipsisInsertion = do
   let insertion :: EllipsisInsertion EllipsisTerminal
       insertion = ellipsisInsertion
-        (Terminal 0)
+        (Just (Terminal 0))
         (chain
           omega
           (finiteOrdinal . terminalRank)
@@ -651,32 +659,83 @@ testEllipsisInsertionDominion =
 
 testEllipsisNaturalRange :: IO ()
 testEllipsisNaturalRange = do
-  case ellipsisNaturalRange (Just 0) Nothing $ \valueRange ->
-    map
-      (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
-      [0, 1]
+  assert "an omitted first endpoint cannot descend from infinity"
+    (case ellipsisNaturalRange Nothing NegativeOne (const ()) of
+      Nothing -> True
+      Just () -> False)
+  case ellipsisNaturalRange (Just 3) (FiniteTarget 3) $ \valueRange -> do
+    let insertion = ellipsisNaturalRangeInsertion valueRange
+    assert "equal endpoints form a valid empty range"
+      ( all
+          (\rankValue ->
+            ellipsisNaturalRangeElement valueRange rankValue == Nothing)
+          [0 .. 6]
+        && ellipsisInsertionFirst insertion == Nothing
+        && ellipsisNaturalRangeSize valueRange == Just 0
+        && chainOrderType (ellipsisInsertionChain insertion)
+          == finiteOrdinal 0
+      )
     of
-      Nothing -> fail "zero lower bound was rejected"
-      Just actual ->
-        assert "zero is a valid lower bound"
-          (actual == [Just 0, Just 1])
-  assert "ellipsis range rejects an empty implicit-lower range"
-    (case ellipsisNaturalRange Nothing (Just 0) (const ()) of
-      Nothing -> True
-      Just () -> False)
-  assert "ellipsis range rejects an empty zero-bounded range"
-    (case ellipsisNaturalRange (Just 0) (Just 0) (const ()) of
-      Nothing -> True
-      Just () -> False)
-  assert "ellipsis range rejects equal bounds"
-    (case ellipsisNaturalRange (Just 3) (Just 3) (const ()) of
-      Nothing -> True
-      Just () -> False)
-  assert "ellipsis range rejects descending bounds"
-    (case ellipsisNaturalRange (Just 5) (Just 2) (const ()) of
-      Nothing -> True
-      Just () -> False)
-  case ellipsisNaturalRange (Just 2) (Just 5) $ \valueRange -> do
+      Nothing -> fail "equal endpoints were rejected"
+      Just checks -> checks
+  withEllipsisNaturalRange (Just 3) (Just 3) $ \emptyRange ->
+    withEllipsisNaturalRange (Just 5) (Just 7) $ \nonemptyRange ->
+      case emptyRange <.> nonemptyRange of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisMap _ _) ->
+          fail "an empty range prevented insertion concatenation"
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ value insertion) ->
+          withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+            assert "an empty range contributes zero ordered cells"
+              ( atlasPageHasExactly concatAtlas 1 2
+                && case ellipsisInsertionFirst insertion of
+                    Just (Right element) ->
+                      ellipsisNaturalRangeElementRank element == 5
+                    _ -> False
+              )
+  case ellipsisNaturalRange (Just 4) (FiniteTarget 1) $ \valueRange -> do
+    let insertion = ellipsisNaturalRangeInsertion valueRange
+        at position =
+          ellipsisNaturalRangeElementRank . chainObjectAt
+            <$> chainIndex
+              (ellipsisInsertionChain insertion)
+              (finiteOrdinal position)
+    assert "a descending range is first-inclusive and second-exclusive"
+      (map at [0 .. 3] == [Just 4, Just 3, Just 2, Nothing]
+        && map
+          (fmap ellipsisNaturalRangeElementRank
+            . ellipsisNaturalRangeElement valueRange)
+          [0 .. 5]
+          == [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing])
+    of
+      Nothing -> fail "descending range was rejected"
+      Just checks -> checks
+  case ellipsisNaturalRange (Just 5) (FiniteTarget 0) $ \valueRange -> do
+    let included rankValue =
+          case ellipsisNaturalRangeElement valueRange rankValue of
+            Nothing -> False
+            Just _ -> True
+    assert "a finite zero target remains exclusive"
+      (map included [0 .. 6]
+        == [False, True, True, True, True, True, False])
+    of
+      Nothing -> fail "finite zero target was rejected"
+      Just checks -> checks
+  case ellipsisNaturalRange (Just 5) NegativeOne $ \valueRange -> do
+    let insertion = ellipsisNaturalRangeInsertion valueRange
+        at position =
+          ellipsisNaturalRangeElementRank . chainObjectAt
+            <$> chainIndex
+              (ellipsisInsertionChain insertion)
+              (finiteOrdinal position)
+    assert "NegativeOne descends through zero inclusively"
+      (map at [0 .. 6]
+        == [Just 5, Just 4, Just 3, Just 2, Just 1, Just 0, Nothing])
+    of
+      Nothing -> fail "NegativeOne target was rejected"
+      Just checks -> checks
+  case ellipsisNaturalRange (Just 2) (FiniteTarget 5) $ \valueRange -> do
     let insertion = ellipsisNaturalRangeInsertion valueRange
         expected = [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing]
         actual = map
@@ -697,7 +756,7 @@ testEllipsisNaturalRange = do
     of
       Nothing -> fail "valid bounded ellipsis range was rejected"
       Just checks -> checks
-  case ellipsisNaturalRange Nothing (Just 5) $ \valueRange ->
+  case ellipsisNaturalRange Nothing (FiniteTarget 5) $ \valueRange ->
     map
       (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
       [0 .. 5]
@@ -706,7 +765,7 @@ testEllipsisNaturalRange = do
       Just actual ->
         assert "missing lower bound includes all lower terminals"
           (actual == [Just 0, Just 1, Just 2, Just 3, Just 4, Nothing])
-  case ellipsisNaturalRange (Just 2) Nothing $ \valueRange ->
+  case ellipsisNaturalRange (Just 2) UnboundedTarget $ \valueRange ->
     map
       (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
       [1, 2, 1000000]
@@ -715,7 +774,7 @@ testEllipsisNaturalRange = do
       Just actual ->
         assert "missing upper bound includes every later terminal"
           (actual == [Nothing, Just 2, Just 1000000])
-  case ellipsisNaturalRange Nothing Nothing $ \valueRange ->
+  case ellipsisNaturalRange Nothing UnboundedTarget $ \valueRange ->
     map
       (fmap ellipsisNaturalRangeElementRank . ellipsisNaturalRangeElement valueRange)
       [0, 1, 1000000]
@@ -866,6 +925,16 @@ testEllipsisNaturalRangeMerge = do
                   ]
                 && not (finalContains omega)
               )
+  withEllipsisNaturalRange (Just 4) (Just 1) $ \descending ->
+    withEllipsisNaturalRange (Just 3) (Just 6) $ \ascending ->
+      case descending <.> ascending of
+        SomeEllipsisNaturalRangeConcat
+            (ConcatenatedEllipsisInsertion _ _ _) ->
+          fail "overlapping descending and ascending ranges produced an insertion"
+        SomeEllipsisNaturalRangeConcat (ConcatenatedEllipsisMap _ value) ->
+          withConcatOrderedTransposal value $ \_ concatAtlas _ ->
+            assert "descending ranges retain their order in overlapping maps"
+              (atlasPageHasExactly concatAtlas 1 6)
 
 testEllipsisNatural :: IO ()
 testEllipsisNatural = do

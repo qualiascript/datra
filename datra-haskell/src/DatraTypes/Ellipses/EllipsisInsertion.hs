@@ -39,7 +39,7 @@ import StableAtlasTransversal (StableAtlasTransversal)
 -- cardinality-two Ellipsis Atlas map. Its domanial insertion retains the
 -- executable presentation from which DatraCore constructs that traversal.
 data EllipsisInsertion source = EllipsisInsertion
-  { ellipsisInsertionFirst :: source
+  { ellipsisInsertionFirst :: Maybe source
   , ellipsisInsertionChain :: Chain source
   , ellipsisInsertionTraversal
       :: StableAtlasTransversal
@@ -60,7 +60,7 @@ data EllipsisInsertionElement source value = EllipsisInsertionElement
 -- | Construct the stable Atlas transversal selected by an injective map of
 -- source values to Ellipsis regions.
 ellipsisInsertion
-  :: source
+  :: Maybe source
   -> Chain source
   -> (source -> EllipsisTerminal)
   -> (EllipsisTerminal -> Maybe source)
@@ -112,7 +112,9 @@ mergeDisjointEllipsisInsertions
   -> EllipsisInsertion (Either left right)
 mergeDisjointEllipsisInsertions first second =
   ellipsisInsertion
-    (Left (ellipsisInsertionFirst first))
+    (case ellipsisInsertionFirst first of
+      Just value -> Just (Left value)
+      Nothing -> Right <$> ellipsisInsertionFirst second)
     (sumChains
       (ellipsisInsertionChain first)
       (ellipsisInsertionChain second))
