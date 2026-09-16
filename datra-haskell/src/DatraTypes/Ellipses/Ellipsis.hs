@@ -49,8 +49,8 @@ import MapOperators.ConcatOperator
   ( ConcatOperatorValue
   , ConcatOperatorValues
   , concatValue
-  , (<.>)
   )
+import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
 import RankedDominionAtlas
   ( RankedDominionAtlasObject
   , rankedDominionAtlas

@@ -1,5 +1,5 @@
 -- | Infix syntax for flattened sequential expansion.
-module MapOperators.SequentialOperator.Syntax
+module MapOperators.Syntax.SequentialOperatorSyntax
   ( (<:>)
   ) where
 

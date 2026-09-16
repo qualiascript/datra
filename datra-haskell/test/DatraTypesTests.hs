@@ -79,6 +79,7 @@ import StableConfederalData (mapStableConfederalDataHom)
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
+import qualified NumericalOperators as Numeric
 
 main :: IO ()
 main = do
@@ -96,6 +97,7 @@ main = do
   testEllipsisNaturalRange
   testEllipsisNaturalRangeMerge
   testEllipsisNatural
+  testNumericalOperators
   testFiniteDominion
 
 assert :: String -> Bool -> IO ()
@@ -962,6 +964,35 @@ testEllipsisNatural = do
     of
       Nothing -> fail "ellipsis natural was rejected"
       Just checks -> checks
+
+testNumericalOperators :: IO ()
+testNumericalOperators = do
+  assertNumericalOperator "ellipsis-natural addition" (Numeric.+) 2 3 5
+  assertNumericalOperator "ellipsis-natural multiplication" (Numeric.*) 4 5 20
+  assertNumericalOperator "ellipsis-natural exponentiation" (Numeric.^) 2 10 1024
+  assertNumericalOperator "ellipsis-natural zero exponent" (Numeric.^) 7 0 1
+  assertNumericalOperator "ellipsis-natural zero-to-zero power" (Numeric.^) 0 0 1
+
+assertNumericalOperator
+  :: String
+  -> (forall leftScope rightScope result.
+        EllipsisNatural leftScope
+        -> EllipsisNatural rightScope
+        -> (forall resultScope. EllipsisNatural resultScope -> result)
+        -> Maybe result)
+  -> Natural
+  -> Natural
+  -> Natural
+  -> IO ()
+assertNumericalOperator label operator leftValue rightValue expected =
+  case ellipsisNatural leftValue $ \left ->
+    ellipsisNatural rightValue $ \right ->
+      operator left right $ \result ->
+        ellipsisNaturalRangeLowerBound result == Just expected
+          && ellipsisNaturalRangeUpperBound result == Just (expected + 1)
+  of
+    Just (Just (Just matches)) -> assert label matches
+    _ -> fail ("test setup failed: " <> label)
 
 testFiniteDominion :: IO ()
 testFiniteDominion =

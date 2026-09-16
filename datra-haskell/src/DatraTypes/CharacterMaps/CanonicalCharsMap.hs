@@ -26,8 +26,8 @@ import MapOperators.AccessOperator
   , IndexedAtlasMap
   , accessElementValue
   , indexedAtlasValueAt
-  , (<@>)
   )
+import MapOperators.Syntax.AccessOperatorSyntax ((<@>))
 import Numeric.Natural (Natural)
 
 import qualified Data.Map.Strict as Map

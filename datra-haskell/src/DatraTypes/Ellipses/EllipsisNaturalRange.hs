@@ -65,12 +65,12 @@ import EllipsisInsertion
   , mergeDisjointEllipsisInsertions
   )
 import MapOperators.ConcatOperator
-  ( Concat (..)
+  ( Concat (ConcatResult, concatOperands)
   , ConcatOperatorValue
   , ConcatOperatorValues
   , concatValue
-  , (<.>)
   )
+import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
 import Numeric.Natural (Natural)
 import StableConfederalData
   ( EmbeddedAtlasMap
@@ -464,4 +464,4 @@ instance
       (EllipsisNaturalRange leftScope)
       (EllipsisNaturalRange rightScope) =
         SomeEllipsisNaturalRangeConcat leftScope rightScope
-  (<.>) = concatEllipsisNaturalRanges
+  concatOperands = concatEllipsisNaturalRanges

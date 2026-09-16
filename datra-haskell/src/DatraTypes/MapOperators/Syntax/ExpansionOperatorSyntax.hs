@@ -1,5 +1,5 @@
 -- | Infix syntax for an explicit non-associative grouping boundary.
-module MapOperators.ExpansionOperator.Syntax
+module MapOperators.Syntax.ExpansionOperatorSyntax
   ( (<+>)
   ) where
 

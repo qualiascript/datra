@@ -21,7 +21,6 @@ module MapOperators.AccessOperator
   , accessElementSource
   , accessElementValue
   , accessOperator
-  , (<@>)
   ) where
 
 import AtlasMap (AtlasMap)
@@ -153,12 +152,3 @@ accessOperator valueAtlas insertion = do
           value <- indexedAtlasValueAt valueAtlas requestedIndex
           remaining <- collect (position + 1) cardinality
           pure (AccessElement position source value : remaining)
-
-infixl 8 <@>
-
--- | Infix form of 'accessOperator'.
-(<@>)
-  :: IndexedAtlasMap value
-  -> EllipsisInsertion source
-  -> Maybe (IndexedAtlasMap (AccessElement source value))
-(<@>) = accessOperator
