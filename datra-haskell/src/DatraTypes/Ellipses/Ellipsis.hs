@@ -34,23 +34,12 @@ import AtlasMap (AtlasMap)
 import Coalition (CoalitionElement)
 import Dominion (Dominion, dominion)
 import Dot (Dot, dot, dotAtlas)
-import FixedPoint
-  ( FixedPoint
-  , FixedPointValue
-  , fixedPoint
-  , fixedPointLayer
-  , rollFixedPoint
-  , rollFixedPointValue
-  , unrollFixedPoint
-  , withFixedPointValue
-  )
 import Numeric.Natural (Natural)
 import MapOperators.ConcatOperator
   ( ConcatOperatorValue
   , ConcatOperatorValues
   , concatValue
   )
-import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
 import RankedDominionAtlas
   ( RankedDominionAtlasObject
   , rankedDominionAtlas
@@ -61,6 +50,16 @@ import StableConfederalData
   ( StableConfederalData
   , StableConfederalDataHom
   , mapStableConfederalData
+  )
+import SuperEllipsis
+  ( SuperEllipsis
+  , SuperEllipsisValue
+  , rollSuperEllipsisValue
+  , superEllipsis
+  , superEllipsisFold
+  , superEllipsisUnfold
+  , superEllipsisUnfolded
+  , withSuperEllipsisValue
   )
 
 -- | A terminal region of Ellipsis, uniquely identified by its absolute rank.
@@ -73,18 +72,13 @@ newtype EllipsisTerminal = Terminal
 -- Ellipsis terminals.
 type EllipsisAtlasObject = RankedDominionAtlasObject EllipsisTerminal
 
--- | A private nominal tag keeps Ellipsis distinct from other fixed points of
--- the same operator.
-data EllipsisTag
-
--- | The fixed point of concatenating one 'Dot' in front of the recursive
--- value.
-type Ellipsis =
-  FixedPoint EllipsisTag (ConcatOperatorValues Dot)
+-- | The first super ellipsis: level zero is 'Dot', and this successor solves
+-- @Ellipsis = Dot <.> Ellipsis@.
+type Ellipsis = SuperEllipsis Dot
 
 -- | One observable @Dot <.> Ellipsis@ layer.
 type EllipsisValue =
-  FixedPointValue EllipsisTag (ConcatOperatorValues Dot)
+  SuperEllipsisValue Dot
 
 -- | The rank presentation is the extent dominion of the representing Atlas,
 -- rather than Ellipsis itself.
@@ -120,19 +114,19 @@ withEllipsisValue
   :: EllipsisValue object
   -> (ConcatOperatorValue Dot Ellipsis object -> result)
   -> result
-withEllipsisValue = withFixedPointValue
+withEllipsisValue = withSuperEllipsisValue
 
 -- | The recursive equation itself. Haskell's lazy binding makes this a
 -- guarded fixed point: the concat node is available before its Ellipsis tail
 -- is demanded.
 ellipsisUnfolded
   :: StableConfederalData (ConcatOperatorValues Dot Ellipsis)
-ellipsisUnfolded = fixedPointLayer (dot <.>)
+ellipsisUnfolded = superEllipsisUnfolded dot
 
 -- | The stable-confederal action of the fixed point, transported through its
 -- single concat layer.
 ellipsis :: StableConfederalData Ellipsis
-ellipsis = fixedPoint (dot <.>)
+ellipsis = superEllipsis dot
 
 -- | Fold one @Dot <.> Ellipsis@ layer into the fixed point.
 ellipsisFold
@@ -140,7 +134,7 @@ ellipsisFold
        (ConcatOperatorValues Dot Ellipsis)
        Ellipsis
 ellipsisFold =
-  rollFixedPoint (dot <.>)
+  superEllipsisFold dot
 
 -- | Unfold the fixed point into @Dot <.> Ellipsis@.
 ellipsisUnfold
@@ -148,7 +142,7 @@ ellipsisUnfold
        Ellipsis
        (ConcatOperatorValues Dot Ellipsis)
 ellipsisUnfold =
-  unrollFixedPoint (dot <.>)
+  superEllipsisUnfold dot
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope EllipsisAtlasObject
@@ -160,7 +154,7 @@ type EllipsisConfederationObject =
 -- Its represented arrow selects the recursive tail of @Dot + Ellipsis@; the
 -- left generator supplies the new leading Dot.
 ellipsisValue :: EllipsisValue EllipsisConfederationObject
-ellipsisValue = rollFixedPointValue
+ellipsisValue = rollSuperEllipsisValue
   (mapStableConfederalData
     ellipsisUnfolded
     tailInclusion

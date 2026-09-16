@@ -46,7 +46,8 @@ import DatraOrdinal
   )
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
-  ( dot
+  ( Dot
+  , dot
   , dotAtlas
   , dotAtlasMap
   , dotDominion
@@ -75,7 +76,11 @@ import OrderedAtlasTransposal
 import StableAtlasTransversal
   ( stableAtlasTransversalPreservesCoverage
   )
-import StableConfederalData (mapStableConfederalDataHom)
+import StableConfederalData
+  ( StableConfederalData
+  , mapStableConfederalDataHom
+  )
+import SuperEllipsis
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -92,6 +97,7 @@ main = do
   testGroupedSequentialExpansion
   testComplexOperatorStructure
   testEllipsis
+  testSuperEllipsis
   testEllipsisInsertion
   testEllipsisInsertionDominion
   testEllipsisNaturalRange
@@ -143,6 +149,29 @@ testDot =
             && fmap dominionCellDataValue uniqueDatum == Just dotTerminal
             && coveredAtOnlyCell
           )
+
+-- The hierarchy is structural: Dot is level zero, Ellipsis is level one,
+-- and applying the successor once more constructs level two.
+type SuperEllipsisTwo = SuperEllipsis Ellipsis
+
+testSuperEllipsis :: IO ()
+testSuperEllipsis = do
+  let levelOne :: StableConfederalData (SuperEllipsis Dot)
+      levelOne = ellipsis
+      levelTwo :: StableConfederalData SuperEllipsisTwo
+      levelTwo = superEllipsis ellipsis
+      levelTwoUnfolded = superEllipsisUnfolded ellipsis
+      levelTwoFold = superEllipsisFold ellipsis
+      levelTwoUnfold = superEllipsisUnfold ellipsis
+      roundTripValue =
+        rollSuperEllipsisValue (unrollSuperEllipsisValue ellipsisValue)
+  levelOne `seq`
+    levelTwo `seq`
+      levelTwoUnfolded `seq`
+        levelTwoFold `seq`
+          levelTwoUnfold `seq`
+            roundTripValue `seq`
+              assert "super ellipsis constructs Ellipsis and its successor" True
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope EllipsisAtlasObject

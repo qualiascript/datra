@@ -49,6 +49,7 @@ library
         CanonicalCharsMap
         Dominion
         Dot
+        SuperEllipsis
         Ellipsis
         EllipsisInsertion
         EllipsisNatural
