@@ -10,9 +10,9 @@ import SequentialOperator
   )
 import StableConfederalData (StableConfederalData)
 
--- | Associate syntax to the right; the semantic presentation is flattened
--- through either parenthesization.
-infixr 6 <:>
+-- | Bind more tightly than '<+>', so an unparenthesized mixture first forms
+-- its local flattened sequences and then introduces expansion boundaries.
+infixr 7 <:>
 
 (<:>)
   :: (SequentialOperand left, SequentialOperand right)

@@ -239,7 +239,7 @@ testSequentialOperator = do
 testGroupedSequentialExpansion :: IO ()
 testGroupedSequentialExpansion = do
   let groupedObject =
-        (ellipsis <:> ellipsis) <+> (ellipsis <:> ellipsis)
+        ellipsis <:> ellipsis <+> ellipsis <:> ellipsis
       ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
@@ -288,14 +288,10 @@ testGroupedSequentialExpansion = do
 
 testComplexOperatorStructure :: IO ()
 testComplexOperatorStructure = do
-  let complexObject =
-        ( (ellipsis <:> ellipsis <:> ellipsis)
-            <+> (ellipsis <:> ellipsis)
-        )
-          <+>
-        ( (ellipsis <:> ellipsis <:> ellipsis)
-            <+> (ellipsis <:> ellipsis)
-        )
+  let fiveObject =
+        ellipsis <:> ellipsis <:> ellipsis
+          <+> ellipsis <:> ellipsis
+      complexObject = fiveObject <+> fiveObject
       ellipsisConfederation = singletonAtlasConfederation ellipsisAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
