@@ -9,19 +9,19 @@ module EllipsisNatural
   ) where
 
 import EllipsisInsertion (EllipsisInsertion)
-import EllipsisRange
-  ( EllipsisRange
-  , EllipsisRangeElement
-  , ellipsisRange
-  , ellipsisRangeInsertion
+import EllipsisNaturalRange
+  ( EllipsisNaturalRange
+  , EllipsisNaturalRangeElement
+  , ellipsisNaturalRange
+  , ellipsisNaturalRangeInsertion
   )
 import Numeric.Natural (Natural)
 
 -- | A natural number represented by the singleton ellipsis range @[m,m+1)@.
-type EllipsisNatural = EllipsisRange
+type EllipsisNatural = EllipsisNaturalRange
 
 -- | The sole member of one ellipsis-natural singleton range.
-type EllipsisNaturalElement = EllipsisRangeElement
+type EllipsisNaturalElement = EllipsisNaturalRangeElement
 
 -- | Construct the singleton range containing exactly @m@, including when
 -- @m@ is zero.
@@ -30,10 +30,10 @@ ellipsisNatural
   -> (forall scope. EllipsisNatural scope -> result)
   -> Maybe result
 ellipsisNatural value =
-  ellipsisRange (Just value) (Just (value + 1))
+  ellipsisNaturalRange (Just value) (Just (value + 1))
 
 -- | Insert this singleton natural into 'Ellipsis'.
 ellipsisNaturalInsertion
   :: EllipsisNatural scope
   -> EllipsisInsertion (EllipsisNaturalElement scope)
-ellipsisNaturalInsertion = ellipsisRangeInsertion
+ellipsisNaturalInsertion = ellipsisNaturalRangeInsertion

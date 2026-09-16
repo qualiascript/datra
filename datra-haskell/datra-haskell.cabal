@@ -35,7 +35,7 @@ library
         Ellipsis
         EllipsisInsertion
         EllipsisNatural
-        EllipsisRange
+        EllipsisNaturalRange
         FiniteDominion
         DomanialInsertion
         DatraOrdinal

@@ -12,14 +12,18 @@ module StableConfederalData
   , stableConfederalDataHomNaturality
   , EmptyMapValues
   , emptyMap
+  , EmbeddedAtlasMap
+  , embedAtlasMap
   ) where
 
 import StableConfederalData.Internal
   ( EmptyMapValues
+  , EmbeddedAtlasMap
   , StableConfederalData
   , StableConfederalDataHom
   , StableConfederalDataValue
   , emptyMap
+  , embedAtlasMap
   , mapStableConfederalData
   , mapStableConfederalDataHom
   , stableConfederalData

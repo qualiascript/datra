@@ -21,12 +21,12 @@ import EllipsisInsertion
   , mergeDisjointEllipsisInsertions
   )
 import EllipsisNatural (EllipsisNatural, ellipsisNatural)
-import EllipsisRange
-  ( EllipsisRange
-  , EllipsisRangeElement
-  , ellipsisRange
-  , ellipsisRangeInsertion
-  , mergeSeparatedEllipsisRanges
+import EllipsisNaturalRange
+  ( EllipsisNaturalRange
+  , EllipsisNaturalRangeElement
+  , ellipsisNaturalRange
+  , ellipsisNaturalRangeInsertion
+  , mergeSeparatedEllipsisNaturalRanges
   )
 import FiniteDominion
   ( FiniteElement
@@ -58,10 +58,10 @@ canonicalCharsDominion
 canonicalCharsDominion useCanonical =
   asciiDominion $ \ascii ->
     withEllipsisNatural 39 $ \apostropheRange ->
-      withEllipsisRange 48 58 $ \digitRange ->
-        withEllipsisRange 65 91 $ \uppercaseRange ->
+      withEllipsisNaturalRange 48 58 $ \digitRange ->
+        withEllipsisNaturalRange 65 91 $ \uppercaseRange ->
           withEllipsisNatural 95 $ \underscoreRange ->
-            withEllipsisRange 97 123 $ \lowercaseRange ->
+            withEllipsisNaturalRange 97 123 $ \lowercaseRange ->
               let asciiValues = finiteAsDominion ascii
                   selected = ellipsisInsertionDominion
                     asciiValues
@@ -91,20 +91,20 @@ canonicalCharacterAt valueDominion valueRank =
 
 canonicalCharsInsertion
   :: EllipsisNatural apostropheScope
-  -> EllipsisRange digitScope
-  -> EllipsisRange uppercaseScope
+  -> EllipsisNaturalRange digitScope
+  -> EllipsisNaturalRange uppercaseScope
   -> EllipsisNatural underscoreScope
-  -> EllipsisRange lowercaseScope
+  -> EllipsisNaturalRange lowercaseScope
   -> EllipsisInsertion
       (Either
         (Either
-          (EllipsisRangeElement apostropheScope)
-          (EllipsisRangeElement digitScope))
+          (EllipsisNaturalRangeElement apostropheScope)
+          (EllipsisNaturalRangeElement digitScope))
         (Either
           (Either
-            (EllipsisRangeElement uppercaseScope)
-            (EllipsisRangeElement underscoreScope))
-          (EllipsisRangeElement lowercaseScope)))
+            (EllipsisNaturalRangeElement uppercaseScope)
+            (EllipsisNaturalRangeElement underscoreScope))
+          (EllipsisNaturalRangeElement lowercaseScope)))
 canonicalCharsInsertion
     apostropheRange
     digitRange
@@ -114,12 +114,12 @@ canonicalCharsInsertion
   mergeDisjointEllipsisInsertions
     (fromMaybe
       (error "apostrophe and digit ranges are not separated")
-      (mergeSeparatedEllipsisRanges apostropheRange digitRange))
+      (mergeSeparatedEllipsisNaturalRanges apostropheRange digitRange))
     (mergeDisjointEllipsisInsertions
       (fromMaybe
         (error "uppercase and underscore ranges are not separated")
-        (mergeSeparatedEllipsisRanges uppercaseRange underscoreRange))
-      (ellipsisRangeInsertion lowercaseRange))
+        (mergeSeparatedEllipsisNaturalRanges uppercaseRange underscoreRange))
+      (ellipsisNaturalRangeInsertion lowercaseRange))
 
 insertionElementToCanonicalChar
   :: EllipsisInsertionElement selection (FiniteElement scope Char)
@@ -136,12 +136,12 @@ withEllipsisNatural value useNatural =
     (error "an ellipsis natural must contain exactly one value")
     (ellipsisNatural value useNatural)
 
-withEllipsisRange
+withEllipsisNaturalRange
   :: Natural
   -> Natural
-  -> (forall scope. EllipsisRange scope -> result)
+  -> (forall scope. EllipsisNaturalRange scope -> result)
   -> result
-withEllipsisRange lower upper useRange =
+withEllipsisNaturalRange lower upper useRange =
   fromMaybe
     (error "canonical character ranges must be nonempty")
-    (ellipsisRange (Just lower) (Just upper) useRange)
+    (ellipsisNaturalRange (Just lower) (Just upper) useRange)

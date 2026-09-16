@@ -18,14 +18,20 @@ module StableConfederalData.Internal
   , stableConfederalDataHomNaturality
   , EmptyMapValues
   , emptyMap
+  , EmbeddedAtlasMap
+  , embedAtlasMap
   ) where
 
 import AtlasConfederation
   ( AtlasConfederationHom
   , AtlasConfederationObject
   , EmptyAtlasConfederationScope
+  , SingletonAtlasConfederationScope
   , composeAtlasConfederationHoms
+  , singletonAtlasConfederation
   )
+import Atlas.Morphism.Internal (AtlasWitness (..))
+import AtlasMap (AtlasMap, atlasMapAtlas)
 import Control.Category (Category (..))
 import Data.Kind (Type)
 import Data.Void (Void)
@@ -197,3 +203,32 @@ emptyMap =
     (flip composeAtlasConfederationHoms)
     (const ())
     (\_ _ _ -> ())
+
+-- | Defunctionalized carrier of the Yoneda embedding of an Atlas map. The
+-- Atlas map first becomes a singleton stable Atlas confederation; its value at
+-- @X@ is therefore the hom-set from @X@ to that singleton confederation.
+data EmbeddedAtlasMap atlasObject
+
+type instance
+  StableConfederalDataValue
+    (EmbeddedAtlasMap atlasObject)
+    confederation =
+      AtlasConfederationHom
+        confederation
+        (AtlasConfederationObject
+          (SingletonAtlasConfederationScope atlasObject)
+          ())
+
+-- | Embed an Atlas map into stable confederal data by the singleton-family
+-- embedding followed by Yoneda.
+embedAtlasMap
+  :: AtlasMap atlasObject
+  -> StableConfederalData (EmbeddedAtlasMap atlasObject)
+embedAtlasMap valueMap =
+  case atlasMapAtlas valueMap of
+    AtlasWitness valueAtlas ->
+      singletonAtlasConfederation valueAtlas `seq`
+        stableConfederalData
+          (flip composeAtlasConfederationHoms)
+          (const ())
+          (\_ _ _ -> ())
