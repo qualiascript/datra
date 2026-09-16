@@ -1,20 +1,21 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Addition of singleton natural values.
+-- | Addition of singleton ordinal values.
 module NumericalOperators.AdditionOperator
   ( additionOperator
   ) where
 
-import EllipsisNatural qualified as Datra
-import NumericalOperators.Internal (applyNaturalOperator)
+import DatraOrdinal (addOrdinals)
+import NumericalOperators.Internal (applyOrdinalOperator)
 import Prelude (Maybe)
+import SuperEllipsisValue (SuperEllipsisValue)
 
-import qualified Prelude
-
--- | Add two naturals and introduce the result with a fresh scope.
+-- | Add two ordinals at the same super-ellipsis rank and introduce the result
+-- with a fresh scope. At rank one the result is an 'EllipsisNatural'.
 additionOperator
-  :: Datra.EllipsisNatural leftScope
-  -> Datra.EllipsisNatural rightScope
-  -> (forall resultScope. Datra.EllipsisNatural resultScope -> result)
+  :: SuperEllipsisValue target leftScope
+  -> SuperEllipsisValue target rightScope
+  -> (forall resultScope.
+        SuperEllipsisValue target resultScope -> result)
   -> Maybe result
-additionOperator = applyNaturalOperator (Prelude.+)
+additionOperator = applyOrdinalOperator addOrdinals

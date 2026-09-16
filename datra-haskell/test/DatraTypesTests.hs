@@ -34,6 +34,7 @@ import AtlasTransposal
 import AtlasSequence (atlasSequenceDatumMember)
 import CanonicalCharsMap
 import ChainedDominionAtlas (ChainedDominionAtlas)
+import Control.Monad (join)
 import Dominion
 import Chain
   ( chain
@@ -46,6 +47,7 @@ import DatraOrdinal
   , finiteOrdinal
   , naturalAtOrdinal
   , omega
+  , ordinal
   )
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
@@ -86,6 +88,7 @@ import StableConfederalData
 import SuperEllipsis
 import SuperEllipsisInsertion
 import qualified SuperEllipsisRange as SuperRange
+import SuperEllipsisValue
 
 import Data.Maybe (fromMaybe, isNothing)
 import qualified Data.Set as Set
@@ -1180,6 +1183,35 @@ testNumericalOperators = do
   assertNumericalOperator "rankOneData-natural exponentiation" (Numeric.^) 2 10 1024
   assertNumericalOperator "rankOneData-natural zero exponent" (Numeric.^) 7 0 1
   assertNumericalOperator "rankOneData-natural zero-to-zero power" (Numeric.^) 0 0 1
+  testGenericOrdinalOperators
+
+testGenericOrdinalOperators :: IO ()
+testGenericOrdinalOperators = do
+  let rankThree =
+        nextSuperEllipsisRank (nextSuperEllipsisRank rankOneRank)
+      omegaPlusOne = addOrdinals omega (finiteOrdinal 1)
+      operatorResults =
+        superEllipsisValue rankThree omegaPlusOne $ \left ->
+          superEllipsisValue rankThree omega $ \right ->
+            DatraNatural.ellipsisNatural 2 $ \two ->
+              ( join ((Numeric.+) left right superEllipsisValueOrdinal)
+              , join ((Numeric.+) right left superEllipsisValueOrdinal)
+              , join ((Numeric.*) left right superEllipsisValueOrdinal)
+              , join ((Numeric.*) right left superEllipsisValueOrdinal)
+              , join ((Numeric.^) left two superEllipsisValueOrdinal)
+              )
+  case operatorResults of
+    Just (Just (Just actual)) ->
+      assert "higher-rank numerical operators use ordered ordinal arithmetic"
+        ( actual
+          == ( Just (ordinal [2, 0])
+             , Just (ordinal [2, 1])
+             , Just (ordinal [1, 0, 0])
+             , Just (ordinal [1, 1, 0])
+             , Just (ordinal [1, 1, 1])
+             )
+        )
+    _ -> fail "higher-rank ordinal operator setup was rejected"
 
 assertNumericalOperator
   :: String

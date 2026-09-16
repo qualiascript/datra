@@ -1,21 +1,22 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Exponentiation of singleton natural values.
+-- | Finite exponentiation of singleton ordinal values.
 module NumericalOperators.ExponentiationOperator
   ( exponentiationOperator
   ) where
 
-import EllipsisNatural qualified as Datra
-import NumericalOperators.Internal (applyNaturalOperator)
+import DatraOrdinal (powerOrdinal)
+import EllipsisNatural (EllipsisNatural)
+import NumericalOperators.Internal (applyOrdinalExponentOperator)
 import Prelude (Maybe)
+import SuperEllipsisValue (SuperEllipsisValue)
 
-import qualified Prelude
-
--- | Raise the first natural to the power of the second and introduce
--- the result with a fresh scope. As for 'Prelude.^', @0 ^ 0@ is @1@.
+-- | Raise an ordinal base to an Ellipsis-natural exponent. The result keeps
+-- the base's rank; @0 ^ 0@ is one.
 exponentiationOperator
-  :: Datra.EllipsisNatural baseScope
-  -> Datra.EllipsisNatural exponentScope
-  -> (forall resultScope. Datra.EllipsisNatural resultScope -> result)
+  :: SuperEllipsisValue target baseScope
+  -> EllipsisNatural exponentScope
+  -> (forall resultScope.
+        SuperEllipsisValue target resultScope -> result)
   -> Maybe result
-exponentiationOperator = applyNaturalOperator (Prelude.^)
+exponentiationOperator = applyOrdinalExponentOperator powerOrdinal

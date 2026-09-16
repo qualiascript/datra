@@ -1,19 +1,20 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Infix syntax for natural multiplication.
+-- | Infix syntax for ordinal multiplication.
 module NumericalOperators.Syntax.MultiplicationOperatorSyntax
   ( (*)
   ) where
 
-import EllipsisNatural qualified as Datra
 import NumericalOperators.MultiplicationOperator (multiplicationOperator)
 import Prelude hiding ((*))
+import SuperEllipsisValue (SuperEllipsisValue)
 
 infixl 7 *
 
 (*)
-  :: Datra.EllipsisNatural leftScope
-  -> Datra.EllipsisNatural rightScope
-  -> (forall resultScope. Datra.EllipsisNatural resultScope -> result)
+  :: SuperEllipsisValue target leftScope
+  -> SuperEllipsisValue target rightScope
+  -> (forall resultScope.
+        SuperEllipsisValue target resultScope -> result)
   -> Maybe result
 (*) = multiplicationOperator

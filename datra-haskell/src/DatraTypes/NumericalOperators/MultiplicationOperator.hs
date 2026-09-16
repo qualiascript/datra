@@ -1,21 +1,21 @@
 {-# LANGUAGE RankNTypes #-}
 
--- | Multiplication of singleton natural values.
+-- | Multiplication of singleton ordinal values.
 module NumericalOperators.MultiplicationOperator
   ( multiplicationOperator
   ) where
 
-import EllipsisNatural qualified as Datra
-import NumericalOperators.Internal (applyNaturalOperator)
+import DatraOrdinal (multiplyOrdinals)
+import NumericalOperators.Internal (applyOrdinalOperator)
 import Prelude (Maybe)
+import SuperEllipsisValue (SuperEllipsisValue)
 
-import qualified Prelude
-
--- | Multiply two naturals and introduce the result with a fresh
--- scope.
+-- | Multiply two ordinals at the same super-ellipsis rank. Operand order is
+-- significant outside rank one.
 multiplicationOperator
-  :: Datra.EllipsisNatural leftScope
-  -> Datra.EllipsisNatural rightScope
-  -> (forall resultScope. Datra.EllipsisNatural resultScope -> result)
+  :: SuperEllipsisValue target leftScope
+  -> SuperEllipsisValue target rightScope
+  -> (forall resultScope.
+        SuperEllipsisValue target resultScope -> result)
   -> Maybe result
-multiplicationOperator = applyNaturalOperator (Prelude.*)
+multiplicationOperator = applyOrdinalOperator multiplyOrdinals

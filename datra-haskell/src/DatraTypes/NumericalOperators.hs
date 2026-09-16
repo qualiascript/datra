@@ -1,4 +1,4 @@
--- | Operators for arithmetic on singleton ellipsis naturals.
+-- | Ordinal arithmetic on singleton super-ellipsis values.
 module NumericalOperators
   ( module NumericalOperators.AdditionOperator
   , module NumericalOperators.MultiplicationOperator

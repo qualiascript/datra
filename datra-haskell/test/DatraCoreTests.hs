@@ -103,6 +103,19 @@ testDatraOrdinalEnumeration = do
       && omegaPower 1 == omega
       && omegaPower 2 == ordinal [1, 0, 0]
     )
+  let omegaPlusOne = addOrdinals omega (finiteOrdinal 1)
+  assert "ordinal addition is ordered"
+    ( addOrdinals omegaPlusOne omega == ordinal [2, 0]
+      && addOrdinals omega omegaPlusOne == ordinal [2, 1]
+    )
+  assert "ordinal multiplication is ordered"
+    ( multiplyOrdinals omegaPlusOne omega == ordinal [1, 0, 0]
+      && multiplyOrdinals omega omegaPlusOne == ordinal [1, 1, 0]
+    )
+  assert "finite ordinal exponentiation uses ordinal multiplication"
+    ( powerOrdinal omegaPlusOne 0 == finiteOrdinal 1
+      && powerOrdinal omegaPlusOne 2 == ordinal [1, 1, 1]
+    )
 
 testEmptyAtlas :: IO ()
 testEmptyAtlas =
