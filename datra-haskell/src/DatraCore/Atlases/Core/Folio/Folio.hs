@@ -11,6 +11,7 @@ module Folio
   , originUnique
   , folioMapIdentity
   , folioMapComposition
+  , folioOriginToFinal
   , lastChain
   , paddedIndex
   , pageOrder
@@ -27,6 +28,7 @@ import Folio.Internal
   , folio
   , folioLength
   , folioMapComposition
+  , folioOriginToFinal
   , folioMapIdentity
   , lastChain
   , originChain

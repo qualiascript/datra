@@ -21,18 +21,14 @@ import Atlas
   , AtlasObjectCellData
   , AtlasObjectPaginationScope
   )
-import AtlasCoveredPageElement
-  ( AtlasCoverageWitness
-  , atlasCoverageWitness
-  )
-import AtlasMap (AtlasMap, atlasMap)
+import AtlasMap (AtlasMap)
 import DomanialInclusion
   ( DominionAtlasObject
   , dominionAtlas
+  , dominionAtlasMap
   )
 import Dominion (Dominion, dominion)
 import Numeric.Natural (Natural)
-import PageElements (PageElement)
 import StableConfederalData
   ( EmbeddedAtlasMap
   , StableConfederalData
@@ -75,20 +71,10 @@ dotAtlas
        ()
 dotAtlas = dominionAtlas dotDominion
 
-dotCoverage
-  :: PageElement
-       (AtlasObjectPaginationScope DotAtlasObject)
-       object
-  -> AtlasObjectCellData DotAtlasObject object
-  -> AtlasCoverageWitness DotAtlasObject
-dotCoverage occurrence datum =
-  atlasCoverageWitness
-    dotAtlas occurrence datum occurrence datum ()
-
 -- | The one-page inclusion is already an Atlas map: its only datum is covered
 -- by its only cell, which is both the extent and the final region.
 dotAtlasMap :: AtlasMap DotAtlasObject
-dotAtlasMap = atlasMap dotAtlas dotCoverage
+dotAtlasMap = dominionAtlasMap dotDominion
 
 -- | The stable-confederal value represented by the singleton domanial
 -- inclusion.

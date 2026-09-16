@@ -52,21 +52,15 @@ import AtlasTransposal
   , withAtlasTransposalElement
   )
 import Data.Kind (Type)
-import Consolidation (Coconsolidation)
 import DomanialInsertion (DomanialInsertion, identityInsertion)
 import Folio
-  ( Folio
-  , appendPage
+  ( appendPage
   , folio
+  , folioOriginToFinal
   , lastChain
   , originChain
   , originUnique
   , originValue
-  )
-import Folio.LiquidInternal
-  ( FolioData (..)
-  , composeFolioMaps
-  , identityFolioMap
   )
 import OrderedAtlasTransposal
   ( OrderedAtlasTransposal
@@ -219,13 +213,6 @@ concatDataMap sequenceAtlas sourceArrow =
       (sequenceElement sequenceAtlas (arrowSource sourceArrow))
       (sequenceElement sequenceAtlas (arrowTarget sourceArrow)))
 
-originToFinal
-  :: Folio origin final
-  -> Coconsolidation origin final
-originToFinal (OriginFolio {}) = identityFolioMap
-originToFinal (SnocPage _ previous _ transition) =
-  composeFolioMaps transition (originToFinal previous)
-
 withCollapsedSequenceAtlas
   :: Atlas
        sequenceAtlasScope
@@ -251,7 +238,7 @@ withCollapsedSequenceAtlas sequenceAtlas useConcat =
             (originValue pages)
             (originUnique pages))
           (lastChain pages)
-          (originToFinal pages)
+          (folioOriginToFinal pages)
   in Pagination.pagination collapsedPages $ \collapsedPagination ->
       atlas
         collapsedPagination

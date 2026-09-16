@@ -29,9 +29,8 @@ import Data.Maybe (fromMaybe)
 import Ellipsis (EllipsisTerminal (Terminal), terminalRank)
 import EllipsisInsertion
   ( EllipsisInsertion
-  , applyEllipsisInsertion
   , ellipsisInsertion
-  , ellipsisInsertionPreimage
+  , mergeDisjointEllipsisInsertions
   )
 import Numeric.Natural (Natural)
 
@@ -236,15 +235,6 @@ disjointInsertion
         (EllipsisNaturalRangeElement leftScope)
         (EllipsisNaturalRangeElement rightScope))
 disjointInsertion first second =
-  ellipsisInsertion forward backward (const ())
-  where
-    firstInsertion = ellipsisNaturalRangeInsertion first
-    secondInsertion = ellipsisNaturalRangeInsertion second
-
-    forward (Left element) = applyEllipsisInsertion firstInsertion element
-    forward (Right element) = applyEllipsisInsertion secondInsertion element
-
-    backward terminal =
-      case ellipsisInsertionPreimage firstInsertion terminal of
-        Just element -> Just (Left element)
-        Nothing -> Right <$> ellipsisInsertionPreimage secondInsertion terminal
+  mergeDisjointEllipsisInsertions
+    (ellipsisNaturalRangeInsertion first)
+    (ellipsisNaturalRangeInsertion second)

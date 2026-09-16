@@ -13,12 +13,7 @@ module EllipsisInsertion
   , ellipsisInsertionElementValue
   ) where
 
-import Atlas (atlasWitness)
-import Coalition (CoalitionElement, coalitionElementRank)
-import DomanialInclusion
-  ( DominionAtlasObject
-  , coaToDomInc
-  )
+import DomanialInclusion (DominionAtlasObject)
 import DomanialInsertion
   ( DomanialInsertion
   , applyInsertion
@@ -30,23 +25,23 @@ import Dominion (Dominion, dominion, unrank)
 import Ellipsis
   ( EllipsisTerminal (Terminal)
   , EllipsisAtlasObject
-  , ellipsisAtlas
-  , ellipsisCoalitionElement
+  , ellipsisDominion
   , terminalRank
   )
+import RankedDominionAtlas (rankedDominionInsertionTraversal)
 import StableAtlasTransversal (StableAtlasTransversal)
 
 -- | An insertion into Ellipsis is represented categorically by a stable Atlas
 -- transversal from the one-page atlas of its source dominion to the
--- cardinality-two Ellipsis Atlas map. Its coalition insertion retains the
--- executable presentation of that traversal.
+-- cardinality-two Ellipsis Atlas map. Its domanial insertion retains the
+-- executable presentation from which DatraCore constructs that traversal.
 data EllipsisInsertion source = EllipsisInsertion
   { ellipsisInsertionTraversal
       :: StableAtlasTransversal
            (DominionAtlasObject source)
            EllipsisAtlasObject
-  , ellipsisInsertionCoalition
-      :: DomanialInsertion source (CoalitionElement EllipsisAtlasObject)
+  , ellipsisInsertionDomanial
+      :: DomanialInsertion source EllipsisTerminal
   }
 
 -- | An element of a dominion restricted to the regions selected by an
@@ -67,34 +62,21 @@ ellipsisInsertion
 ellipsisInsertion forward backward leftInverse =
   EllipsisInsertion
     { ellipsisInsertionTraversal =
-        coaToDomInc
-          sourceDominion
-          (atlasWitness ellipsisAtlas)
-          coalitionInsertion
-    , ellipsisInsertionCoalition = coalitionInsertion
+        rankedDominionInsertionTraversal
+          ellipsisDominion
+          insertion
+    , ellipsisInsertionDomanial = insertion
     }
   where
-    sourceDominion =
-      dominion
-        (terminalRank . forward)
-        (backward . Terminal)
-        leftInverse
+    insertion = domanialInsertion forward backward leftInverse
 
-    coalitionInsertion =
-      domanialInsertion
-        (ellipsisCoalitionElement . forward)
-        (backward . Terminal . coalitionElementRank)
-        leftInverse
-
--- | Apply an insertion by evaluating its Atlas traversal on coalitions.
+-- | Apply the executable domanial presentation underlying the traversal.
 applyEllipsisInsertion
   :: EllipsisInsertion source
   -> source
   -> EllipsisTerminal
 applyEllipsisInsertion insertion =
-  Terminal
-    . coalitionElementRank
-    . applyInsertion (ellipsisInsertionCoalition insertion)
+  applyInsertion (ellipsisInsertionDomanial insertion)
 
 -- | Recover a source value from an Ellipsis terminal when it lies in the
 -- traversal's image.
@@ -103,7 +85,7 @@ ellipsisInsertionPreimage
   -> EllipsisTerminal
   -> Maybe source
 ellipsisInsertionPreimage insertion =
-  preimage (ellipsisInsertionCoalition insertion) . ellipsisCoalitionElement
+  preimage (ellipsisInsertionDomanial insertion)
 
 -- | Invoke the insertion's left-inverse witness.
 ellipsisInsertionLeftInverse
@@ -111,7 +93,7 @@ ellipsisInsertionLeftInverse
   -> source
   -> ()
 ellipsisInsertionLeftInverse =
-  insertionLeftInverse . ellipsisInsertionCoalition
+  insertionLeftInverse . ellipsisInsertionDomanial
 
 -- | Merge insertions with disjoint images. The disjointness precondition is
 -- necessary so that the tagged source remains injective.

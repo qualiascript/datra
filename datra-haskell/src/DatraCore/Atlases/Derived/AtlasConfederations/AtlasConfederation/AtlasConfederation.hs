@@ -37,6 +37,8 @@ module AtlasConfederation
   , singletonAtlasConfederation
   , singletonAtlasConfederationHom
   , mergeAtlasConfederations
+  , leftAtlasConfederationInclusion
+  , rightAtlasConfederationInclusion
   , mergeAtlasConfederationHoms
   ) where
 

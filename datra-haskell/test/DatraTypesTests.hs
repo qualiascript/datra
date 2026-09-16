@@ -17,7 +17,6 @@ import AtlasConfederation
   ( AtlasConfederationObject
   , MergedAtlasConfederationScope
   , SingletonAtlasConfederationScope
-  , identityAtlasConfederationHom
   , mergeAtlasConfederations
   , singletonAtlasConfederation
   )
@@ -198,15 +197,15 @@ testSequentialOperator = do
         sequentialValue
           ellipsisConfederation
           ellipsisConfederation
-          identityAtlasConfederationHom
-          identityAtlasConfederationHom
+          ellipsisValue
+          ellipsisValue
       triple ::
         SequentialOperatorValue Ellipsis EllipsisPairValues EllipsisTripleObject
       triple =
         sequentialValue
           ellipsisConfederation
           pairConfederation
-          identityAtlasConfederationHom
+          ellipsisValue
           pair
       leftTriple ::
         SequentialOperatorValue EllipsisPairValues Ellipsis
@@ -216,7 +215,7 @@ testSequentialOperator = do
           pairConfederation
           ellipsisConfederation
           pair
-          identityAtlasConfederationHom
+          ellipsisValue
       traversalSelectsItsCell mergedAtlas traversal =
         withSequentialAtlasTraversal traversal $
           \position sourceAtlas inclusion ->
@@ -276,8 +275,8 @@ testConcatOperator = do
         concatValue
           ellipsisConfederation
           ellipsisConfederation
-          identityAtlasConfederationHom
-          identityAtlasConfederationHom
+          ellipsisValue
+          ellipsisValue
       mappedFinalPage sequenceAtlas concatAtlas inclusion =
         case pageElementIndex
           (atlasPageElements concatAtlas) 1 (finiteOrdinal 0) of
@@ -327,8 +326,8 @@ testGroupedSequentialExpansion = do
         sequentialValue
           ellipsisConfederation
           ellipsisConfederation
-          identityAtlasConfederationHom
-          identityAtlasConfederationHom
+          ellipsisValue
+          ellipsisValue
       groupedPairs ::
         ExpansionOperatorValue
           EllipsisPairValues
@@ -383,8 +382,8 @@ testComplexOperatorStructure = do
         sequentialValue
           ellipsisConfederation
           ellipsisConfederation
-          identityAtlasConfederationHom
-          identityAtlasConfederationHom
+          ellipsisValue
+          ellipsisValue
       triple ::
         SequentialOperatorValue
           Ellipsis
@@ -394,7 +393,7 @@ testComplexOperatorStructure = do
         sequentialValue
           ellipsisConfederation
           pairConfederation
-          identityAtlasConfederationHom
+          ellipsisValue
           pair
       fiveGroup ::
         ExpansionOperatorValue
@@ -516,6 +515,23 @@ testEllipsis =
                 && isNothing (unrank regionDominion 1)
     assert "all omega final regions carry the same terminal dominion"
       (map terminalRegion ranks == map (const (Just True)) ranks)
+    withEllipsisValue ellipsisValue $ \unfolded ->
+      withConcatOrderedTransposal unfolded $
+        \sequenceAtlas recursiveAtlas _ ->
+          assert "ellipsis unfolds as Dot concatenated with Ellipsis"
+            ( atlasCardinality sequenceAtlas == 3
+              && atlasPageHasExactly sequenceAtlas 1 2
+              && atlasCardinality recursiveAtlas == 2
+              && all
+                (\position ->
+                  case pageElementIndex
+                    (atlasPageElements recursiveAtlas)
+                    1
+                    (finiteOrdinal position) of
+                      Just _ -> True
+                      Nothing -> False)
+                [0, 1, 2, 100]
+            )
 
 testEllipsisInsertion :: IO ()
 testEllipsisInsertion = do

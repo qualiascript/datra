@@ -39,6 +39,7 @@ import Pagination
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
 import OrderedDataTransposal
+import RankedDominionAtlas
 import StableAtlasTransversal
 import StableConfederalData
 import StableConfederalDataKleisli
@@ -52,6 +53,7 @@ import Data.Void (Void, absurd)
 main :: IO ()
 main = do
   testIdentityInsertion
+  testRankedDominionAtlas
   testSpine
   testChainSum
   testConsolidation
@@ -101,6 +103,47 @@ testIdentityInsertion = do
       == map Just [0, 1, 2])
   assert "checked smart constructor applies forward"
     (applyInsertion checkedIdentity True)
+
+  let naturals = dominion id Just (const ())
+      boolInsertion =
+        domanialInsertion
+          (\value -> if value then 4 else 2)
+          (\value ->
+            case value of
+              2 -> Just False
+              4 -> Just True
+              _ -> Nothing)
+          (const ())
+      bools = pullbackDominion naturals boolInsertion
+  assert "an insertion pulls its target dominion back to its source"
+    ( rank bools False == 2
+      && rank bools True == 4
+      && unrank bools 2 == Just False
+      && unrank bools 4 == Just True
+      && isNothing (unrank bools 3)
+    )
+
+testRankedDominionAtlas :: IO ()
+testRankedDominionAtlas = do
+  let naturals = dominion id Just (const ())
+      valueAtlas = rankedDominionAtlas naturals
+      selectedRanks :: [Natural]
+      selectedRanks = [0, 1, 7, 1000]
+      regionAt valueRank = do
+        index <- pageElementIndex
+          (atlasPageElements valueAtlas) 1 (finiteOrdinal valueRank)
+        pure $ withPageElement (pageElement index) $ \region ->
+          let regionDominion = atlasDataAt valueAtlas region
+          in isJust (unrank regionDominion 0)
+              && isNothing (unrank regionDominion 1)
+  assert "a ranked dominion Atlas has an extent and a final rank page"
+    (atlasCardinality valueAtlas == 2)
+  assert "every natural rank selects one singleton final region"
+    (map regionAt selectedRanks
+      == map (const (Just True)) selectedRanks)
+  assert "ranked dominion coalition elements retain target ranks"
+    (coalitionElementRank
+      (rankedDominionCoalitionElement naturals 37) == 37)
 
 testSpine :: IO ()
 testSpine = do
