@@ -63,6 +63,7 @@ import OrderedAtlasTransposal
 import StableAtlasTransversal
   ( stableAtlasTransversalPreservesCoverage
   )
+import StableConfederalData (mapStableConfederalDataHom)
 
 import Data.Maybe (isNothing)
 import qualified Data.Set as Set
@@ -515,23 +516,30 @@ testEllipsis =
                 && isNothing (unrank regionDominion 1)
     assert "all omega final regions carry the same terminal dominion"
       (map terminalRegion ranks == map (const (Just True)) ranks)
-    withEllipsisValue ellipsisValue $ \unfolded ->
-      withConcatOrderedTransposal unfolded $
-        \sequenceAtlas recursiveAtlas _ ->
-          assert "ellipsis unfolds as Dot concatenated with Ellipsis"
-            ( atlasCardinality sequenceAtlas == 3
-              && atlasPageHasExactly sequenceAtlas 1 2
-              && atlasCardinality recursiveAtlas == 2
-              && all
-                (\position ->
-                  case pageElementIndex
-                    (atlasPageElements recursiveAtlas)
-                    1
-                    (finiteOrdinal position) of
-                      Just _ -> True
-                      Nothing -> False)
-                [0, 1, 2, 100]
-            )
+    let unfolded =
+          mapStableConfederalDataHom ellipsisUnfold ellipsisValue
+        rerolled =
+          mapStableConfederalDataHom ellipsisFold unfolded
+        hasRecursiveShape layer =
+          withConcatOrderedTransposal layer $
+            \sequenceAtlas recursiveAtlas _ ->
+              atlasCardinality sequenceAtlas == 3
+                && atlasPageHasExactly sequenceAtlas 1 2
+                && atlasCardinality recursiveAtlas == 2
+                && all
+                  (\position ->
+                    case pageElementIndex
+                      (atlasPageElements recursiveAtlas)
+                      1
+                      (finiteOrdinal position) of
+                        Just _ -> True
+                        Nothing -> False)
+                  [0, 1, 2, 100]
+    assert "ellipsis unrolls as Dot concatenated with Ellipsis"
+      (hasRecursiveShape unfolded)
+    withEllipsisValue rerolled $ \rerolledLayer ->
+      assert "rolling the Ellipsis layer restores the fixed-point value"
+        (hasRecursiveShape rerolledLayer)
 
 testEllipsisInsertion :: IO ()
 testEllipsisInsertion = do

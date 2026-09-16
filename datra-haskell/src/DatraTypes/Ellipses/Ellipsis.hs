@@ -1,7 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RoleAnnotations #-}
-{-# LANGUAGE TypeFamilies #-}
-
 -- | The recursive ellipsis stable-confederal datum and its concrete Atlas map.
 module Ellipsis
   ( Ellipsis
@@ -38,6 +34,16 @@ import AtlasMap (AtlasMap)
 import Coalition (CoalitionElement)
 import Dominion (Dominion, dominion)
 import Dot (Dot, dot, dotAtlas)
+import FixedPoint
+  ( FixedPoint
+  , FixedPointValue
+  , fixedPoint
+  , fixedPointLayer
+  , rollFixedPoint
+  , rollFixedPointValue
+  , unrollFixedPoint
+  , withFixedPointValue
+  )
 import Numeric.Natural (Natural)
 import MapMakingOperators.ConcatOperator
   ( ConcatOperatorValue
@@ -54,12 +60,7 @@ import RankedDominionAtlas
 import StableConfederalData
   ( StableConfederalData
   , StableConfederalDataHom
-  , StableConfederalDataValue
   , mapStableConfederalData
-  , stableConfederalData
-  , stableConfederalDataComposition
-  , stableConfederalDataHom
-  , stableConfederalDataIdentity
   )
 
 -- | A terminal region of Ellipsis, uniquely identified by its absolute rank.
@@ -72,18 +73,18 @@ newtype EllipsisTerminal = Terminal
 -- Ellipsis terminals.
 type EllipsisAtlasObject = RankedDominionAtlasObject EllipsisTerminal
 
--- | The nominal fixed point of concatenating one 'Dot' in front of another
--- Ellipsis.
-data Ellipsis
+-- | A private nominal tag keeps Ellipsis distinct from other fixed points of
+-- the same operator.
+data EllipsisTag
 
--- | One layer of the fixed point.  The constructor remains private so every
--- value is observed through the equation @Ellipsis = Dot <.> Ellipsis@.
-type role EllipsisValue nominal
-newtype EllipsisValue object = EllipsisValue
-  (ConcatOperatorValue Dot Ellipsis object)
+-- | The fixed point of concatenating one 'Dot' in front of the recursive
+-- value.
+type Ellipsis =
+  FixedPoint EllipsisTag (ConcatOperatorValues Dot)
 
-type instance StableConfederalDataValue Ellipsis object =
-  EllipsisValue object
+-- | One observable @Dot <.> Ellipsis@ layer.
+type EllipsisValue =
+  FixedPointValue EllipsisTag (ConcatOperatorValues Dot)
 
 -- | The rank presentation is the extent dominion of the representing Atlas,
 -- rather than Ellipsis itself.
@@ -119,28 +120,19 @@ withEllipsisValue
   :: EllipsisValue object
   -> (ConcatOperatorValue Dot Ellipsis object -> result)
   -> result
-withEllipsisValue (EllipsisValue value) useValue = useValue value
+withEllipsisValue = withFixedPointValue
 
 -- | The recursive equation itself. Haskell's lazy binding makes this a
 -- guarded fixed point: the concat node is available before its Ellipsis tail
 -- is demanded.
 ellipsisUnfolded
   :: StableConfederalData (ConcatOperatorValues Dot Ellipsis)
-ellipsisUnfolded = dot <.> ellipsis
+ellipsisUnfolded = fixedPointLayer (dot <.>)
 
 -- | The stable-confederal action of the fixed point, transported through its
 -- single concat layer.
 ellipsis :: StableConfederalData Ellipsis
-ellipsis =
-  stableConfederalData
-    (\arrow (EllipsisValue value) ->
-      EllipsisValue
-        (mapStableConfederalData ellipsisUnfolded arrow value))
-    (\(EllipsisValue value) ->
-      stableConfederalDataIdentity ellipsisUnfolded value)
-    (\second first (EllipsisValue value) ->
-      stableConfederalDataComposition
-        ellipsisUnfolded second first value)
+ellipsis = fixedPoint (dot <.>)
 
 -- | Fold one @Dot <.> Ellipsis@ layer into the fixed point.
 ellipsisFold
@@ -148,11 +140,7 @@ ellipsisFold
        (ConcatOperatorValues Dot Ellipsis)
        Ellipsis
 ellipsisFold =
-  stableConfederalDataHom
-    ellipsisUnfolded
-    ellipsis
-    EllipsisValue
-    (\_ _ -> ())
+  rollFixedPoint (dot <.>)
 
 -- | Unfold the fixed point into @Dot <.> Ellipsis@.
 ellipsisUnfold
@@ -160,11 +148,7 @@ ellipsisUnfold
        Ellipsis
        (ConcatOperatorValues Dot Ellipsis)
 ellipsisUnfold =
-  stableConfederalDataHom
-    ellipsis
-    ellipsisUnfolded
-    (\(EllipsisValue value) -> value)
-    (\_ _ -> ())
+  unrollFixedPoint (dot <.>)
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope EllipsisAtlasObject
@@ -176,7 +160,7 @@ type EllipsisConfederationObject =
 -- Its represented arrow selects the recursive tail of @Dot + Ellipsis@; the
 -- left generator supplies the new leading Dot.
 ellipsisValue :: EllipsisValue EllipsisConfederationObject
-ellipsisValue = EllipsisValue
+ellipsisValue = rollFixedPointValue
   (mapStableConfederalData
     ellipsisUnfolded
     tailInclusion

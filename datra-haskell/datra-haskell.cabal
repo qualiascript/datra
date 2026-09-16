@@ -45,6 +45,7 @@ library
         EllipsisNatural
         EllipsisNaturalRange
         FiniteDominion
+        FixedPoint
         DomanialInsertion
         DatraOrdinal
         Chain
