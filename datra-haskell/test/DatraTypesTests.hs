@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Main (main) where
@@ -61,6 +62,7 @@ import Dot
   )
 import DomanialInsertion (applyInsertion, preimage)
 import Ellipsis
+import Ellipsis.Syntax ((...), (<..>), (..+), (..-))
 import EllipsisNatural qualified as DatraNatural
 import MapOperators
 import Numeric.Natural (Natural)
@@ -187,9 +189,6 @@ rankOneAtlas = superEllipsisAtlas rankOneRank
 rankOneAtlasMap :: AtlasMap RankOneAtlasObject
 rankOneAtlasMap = superEllipsisAtlasMap rankOneRank
 
-rankOneData :: StableConfederalData Ellipsis
-rankOneData = superEllipsis dot
-
 rankOneUnfolded
   :: StableConfederalData (ConcatOperatorValues Dot Ellipsis)
 rankOneUnfolded = superEllipsisUnfolded dot
@@ -231,12 +230,12 @@ rankOneValue = rollSuperEllipsisLayer
 testSuperEllipsis :: IO ()
 testSuperEllipsis = do
   let levelOne :: StableConfederalData (SuperEllipsis Dot)
-      levelOne = rankOneData
+      levelOne = (...)
       levelTwo :: StableConfederalData SuperEllipsisTwo
-      levelTwo = superEllipsis rankOneData
-      levelTwoUnfolded = superEllipsisUnfolded rankOneData
-      levelTwoFold = superEllipsisFold rankOneData
-      levelTwoUnfold = superEllipsisUnfold rankOneData
+      levelTwo = superEllipsis (...)
+      levelTwoUnfolded = superEllipsisUnfolded (...)
+      levelTwoFold = superEllipsisFold (...)
+      levelTwoUnfold = superEllipsisUnfold (...)
       roundTripValue =
         rollSuperEllipsisLayer (unrollSuperEllipsisLayer rankOneValue)
   levelOne `seq`
@@ -263,41 +262,41 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
   assert "rank-two terminals use the canonical DatraOrdinal enumeration"
     (map terminalRoundTrips positions
       == map (superEllipsisTerminal rankTwo) positions)
-  case SuperRange.superEllipsisRange
-      rankTwo
-      omega
-      (SuperRange.GivenTarget
-        (addOrdinals omega (finiteOrdinal 3))) $ \valueRange -> do
-    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
-        at position = do
-          sourceIndex <- chainIndex
-            (superEllipsisInsertionChain insertion)
-            (finiteOrdinal position)
-          pure
-            (superEllipsisInsertionPosition
-              insertion (chainObjectAt sourceIndex))
-    assert "rank-two ranges retain transfinite ordinal positions"
-      (map at [0 .. 3]
-        == map Just
-          [ omega
-          , addOrdinals omega (finiteOrdinal 1)
-          , addOrdinals omega (finiteOrdinal 2)
-          ] <> [Nothing])
-    assert "finite maps reject transfinite super-rankOneData positions"
-      (case ascii <@> insertion of
-        Nothing -> True
-        Just _ -> False)
+  case join (superEllipsisValue rankTwo omega $ \origin ->
+      join (superEllipsisValue
+        rankTwo
+        (addOrdinals omega (finiteOrdinal 3)) $ \target ->
+          (origin <..> target) $ \valueRange -> do
+            let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+                at position = do
+                  sourceIndex <- chainIndex
+                    (superEllipsisInsertionChain insertion)
+                    (finiteOrdinal position)
+                  pure
+                    (superEllipsisInsertionPosition
+                      insertion (chainObjectAt sourceIndex))
+            assert "rank-two ranges retain transfinite ordinal positions"
+              (map at [0 .. 3]
+                == map Just
+                  [ omega
+                  , addOrdinals omega (finiteOrdinal 1)
+                  , addOrdinals omega (finiteOrdinal 2)
+                  ] <> [Nothing])
+            assert
+              "finite maps reject transfinite super-rankOneData positions"
+              (case ascii <@> insertion of
+                Nothing -> True
+                Just _ -> False)))
     of
       Nothing -> fail "valid transfinite rank-two range was rejected"
       Just checks -> checks
-  case SuperRange.superEllipsisRange
-      rankTwo
-      (finiteOrdinal 65)
-      (SuperRange.GivenTarget (finiteOrdinal 68)) $ \valueRange ->
-    case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
-      Nothing -> False
-      Just selected ->
-        indexedAtlasCardinality selected == finiteOrdinal 3
+  case join (superEllipsisValue rankTwo (finiteOrdinal 65) $ \origin ->
+      join (superEllipsisValue rankTwo (finiteOrdinal 68) $ \target ->
+        (origin <..> target) $ \valueRange ->
+          case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
+            Nothing -> False
+            Just selected ->
+              indexedAtlasCardinality selected == finiteOrdinal 3))
     of
       Nothing -> fail "valid finite rank-two range was rejected"
       Just fits ->
@@ -313,52 +312,48 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
         pure
           (superEllipsisInsertionPosition
             insertion (chainObjectAt sourceIndex))
-  case SuperRange.superEllipsisRange
-      rankTwo
-      (atFiniteTail 3)
-      SuperRange.MinusSign $ \valueRange -> do
-    assert "transfinite MinusSign ranges include their finite-tail base"
-      ( map (insertionAt valueRange) [0 .. 4]
-          == map Just
-            [ atFiniteTail 3
-            , atFiniteTail 2
-            , atFiniteTail 1
-            , omegaTimesTwo
-            ] <> [Nothing]
-      )
-    assert "transfinite MinusSign ranges have finite order type"
-      (SuperRange.superEllipsisRangeOrderType valueRange == finiteOrdinal 4)
-    assert "transfinite MinusSign ranges do not cross their limit base"
-      (isNothing (SuperRange.superEllipsisRangeElement valueRange omega))
+  case join (superEllipsisValue rankTwo (atFiniteTail 3) $ \origin ->
+      (origin ..-) $ \valueRange -> do
+        assert "transfinite MinusSign ranges include their finite-tail base"
+          ( map (insertionAt valueRange) [0 .. 4]
+              == map Just
+                [ atFiniteTail 3
+                , atFiniteTail 2
+                , atFiniteTail 1
+                , omegaTimesTwo
+                ] <> [Nothing]
+          )
+        assert "transfinite MinusSign ranges have finite order type"
+          (SuperRange.superEllipsisRangeOrderType valueRange
+            == finiteOrdinal 4)
+        assert "transfinite MinusSign ranges do not cross their limit base"
+          (isNothing (SuperRange.superEllipsisRangeElement valueRange omega)))
     of
       Nothing -> fail "valid transfinite MinusSign range was rejected"
       Just checks -> checks
   let highFiniteTail = atFiniteTail 100000
       lowFiniteTail = atFiniteTail 15
-  case SuperRange.superEllipsisRange
-      rankTwo
-      highFiniteTail
-      (SuperRange.GivenTarget lowFiniteTail) $ \valueRange -> do
-    assert "same-base transfinite descending ranges are admitted"
-      ( map (insertionAt valueRange) [0, 1, 99984, 99985]
-          == [ Just highFiniteTail
-             , Just (atFiniteTail 99999)
-             , Just (atFiniteTail 16)
-             , Nothing
-             ]
-      )
-    assert "explicit descending targets remain exclusive"
-      (SuperRange.superEllipsisRangeOrderType valueRange
-        == finiteOrdinal 99985)
+  case join (superEllipsisValue rankTwo highFiniteTail $ \origin ->
+      join (superEllipsisValue rankTwo lowFiniteTail $ \target ->
+        (origin <..> target) $ \valueRange -> do
+          assert "same-base transfinite descending ranges are admitted"
+            ( map (insertionAt valueRange) [0, 1, 99984, 99985]
+                == [ Just highFiniteTail
+                   , Just (atFiniteTail 99999)
+                   , Just (atFiniteTail 16)
+                   , Nothing
+                   ]
+            )
+          assert "explicit descending targets remain exclusive"
+            (SuperRange.superEllipsisRangeOrderType valueRange
+              == finiteOrdinal 99985)))
     of
       Nothing -> fail "same-base transfinite descending range was rejected"
       Just checks -> checks
   assert "descending across a limit boundary is rejected"
-    (case SuperRange.superEllipsisRange
-        rankTwo
-        highFiniteTail
-        (SuperRange.GivenTarget omega)
-        (const ()) of
+    (case join (superEllipsisValue rankTwo highFiniteTail $ \origin ->
+        join (superEllipsisValue rankTwo omega $ \target ->
+          (origin <..> target) (const ()))) of
       Nothing -> True
       Just () -> False)
 
@@ -421,7 +416,7 @@ type EllipsisComplexObject =
 
 testSequentialOperator :: IO ()
 testSequentialOperator = do
-  let sequenced = rankOneData <:> rankOneData <:> rankOneData
+  let sequenced = (...) <:> (...) <:> (...)
       ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
@@ -501,7 +496,7 @@ testSequentialOperator = do
 
 testConcatOperator :: IO ()
 testConcatOperator = do
-  let concatenated = rankOneData <.> rankOneData
+  let concatenated = (...) <.> (...)
       ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pair ::
         ConcatOperatorValue Ellipsis Ellipsis EllipsisPairObject
@@ -550,7 +545,7 @@ testConcatOperator = do
 testGroupedSequentialExpansion :: IO ()
 testGroupedSequentialExpansion = do
   let groupedObject =
-        rankOneData <:> rankOneData <+> rankOneData <:> rankOneData
+        (...) <:> (...) <+> (...) <:> (...)
       ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pairConfederation = mergeAtlasConfederations
         ellipsisConfederation ellipsisConfederation
@@ -600,8 +595,8 @@ testGroupedSequentialExpansion = do
 testComplexOperatorStructure :: IO ()
 testComplexOperatorStructure = do
   let fiveObject =
-        rankOneData <:> rankOneData <:> rankOneData
-          <+> rankOneData <:> rankOneData
+        (...) <:> (...) <:> (...)
+          <+> (...) <:> (...)
       complexObject = fiveObject <+> fiveObject
       ellipsisConfederation = singletonAtlasConfederation rankOneAtlas
       pairConfederation = mergeAtlasConfederations
@@ -729,12 +724,12 @@ testAccessOperator =
               (indexedAtlasValueAt selected 0) == Just '\0'
           )
     assert "a finite map rejects Ellipsis's unbounded underlying range"
-      (case ascii <@> rankOneData of
+      (case ascii <@> (...) of
         Nothing -> True
         Just _ -> False)
     let naturalDominion = dominion id Just (const ())
         omegaMap = indexedAtlasMapFromChain 0 spine naturalDominion
-    case omegaMap <@> rankOneData of
+    case omegaMap <@> (...) of
       Nothing -> fail "Ellipsis's range was rejected by an omega map"
       Just selected ->
         assert "access preserves an unbounded range that fits the map"
@@ -750,7 +745,7 @@ testAccessOperator =
           (superEllipsisChain rankTwo)
           (superEllipsisDominion rankTwo)
         levelTwoData :: StableConfederalData (SuperEllipsis Ellipsis)
-        levelTwoData = superEllipsis rankOneData
+        levelTwoData = superEllipsis (...)
     case rankTwoMap <@> levelTwoData of
       Nothing -> fail "level-two formulation access was rejected"
       Just selected ->
@@ -790,36 +785,43 @@ testAccessOperator =
         (case ascii <@> SuperRange.superEllipsisRangeInsertion outside of
           Nothing -> True
           Just _ -> False)
-    withRankOneRange 0 (Just 1) $ \zero -> do
-      withRankOneRange 2 (Just 10) $ \valueRange -> do
-        let selectedPosition selected =
-              SuperRange.superEllipsisRangeElementPosition
-                . accessElementValue
-                <$> indexedAtlasValueAt selected 0
-            insertion = SuperRange.superEllipsisRangeInsertion valueRange
-        case valueRange <@> zero of
-          Nothing -> fail "a range on the left of access was rejected"
-          Just selected ->
-            assert "range access at zero returns the range's first value"
-              (selectedPosition selected == Just (finiteOrdinal 2))
-        case insertion <@> zero of
-          Nothing -> fail "an insertion on the left of access was rejected"
-          Just selected ->
-            assert "insertion access uses its underlying Atlas map"
-              (selectedPosition selected == Just (finiteOrdinal 2))
-      case rankOneRange
-          3 (SuperRange.GivenTarget (finiteOrdinal 3)) $ \emptyRange -> do
-        assert "an empty range converts to the empty map"
-          (case SuperRange.superEllipsisRangeAtlasMap emptyRange of
-            EmptySuperEllipsisInsertionMap _ -> True
-            IndexedSuperEllipsisInsertionMap _ -> False)
-        assert "an empty insertion map is not indexable by access"
-          (case emptyRange <@> zero of
-            Nothing -> True
-            Just _ -> False)
-        of
-          Nothing -> fail "valid empty range was rejected"
-          Just checks -> checks
+    withEllipsisNatural 0 $ \zero -> do
+      withEllipsisNatural 2 $ \two ->
+        withEllipsisNatural 10 $ \ten ->
+          case (two <..> ten) $ \valueRange -> do
+            let selectedPosition selected =
+                  SuperRange.superEllipsisRangeElementPosition
+                    . accessElementValue
+                    <$> indexedAtlasValueAt selected 0
+                insertion =
+                  SuperRange.superEllipsisRangeInsertion valueRange
+            case valueRange <@> zero of
+              Nothing -> fail "a range on the left of access was rejected"
+              Just selected ->
+                assert "range access at zero returns the range's first value"
+                  (selectedPosition selected == Just (finiteOrdinal 2))
+            case insertion <@> zero of
+              Nothing ->
+                fail "an insertion on the left of access was rejected"
+              Just selected ->
+                assert "insertion access uses its underlying Atlas map"
+                  (selectedPosition selected == Just (finiteOrdinal 2))
+            of
+              Nothing -> fail "the bounded access range was rejected"
+              Just checks -> checks
+      withEllipsisNatural 3 $ \three ->
+        case (three <..> three) $ \emptyRange -> do
+          assert "an empty range converts to the empty map"
+            (case SuperRange.superEllipsisRangeAtlasMap emptyRange of
+              EmptySuperEllipsisInsertionMap _ -> True
+              IndexedSuperEllipsisInsertionMap _ -> False)
+          assert "an empty insertion map is not indexable by access"
+            (case emptyRange <@> zero of
+              Nothing -> True
+              Just _ -> False)
+          of
+            Nothing -> fail "valid empty range was rejected"
+            Just checks -> checks
 
 withRankOneRange
   :: Natural
@@ -837,6 +839,15 @@ withRankOneRange lower upper useRange =
     Nothing -> fail "test setup failed: valid rankOneData range was rejected"
     Just checks -> checks
 
+withEllipsisNatural
+  :: Natural
+  -> (forall scope. DatraNatural.EllipsisNatural scope -> IO ())
+  -> IO ()
+withEllipsisNatural value useValue =
+  case DatraNatural.ellipsisNatural value useValue of
+    Nothing -> fail "test setup failed: valid Ellipsis natural was rejected"
+    Just checks -> checks
+
 rankOneRange
   :: Natural
   -> SuperRange.SuperEllipsisRangeTarget
@@ -844,7 +855,15 @@ rankOneRange
         SuperRange.SuperEllipsisRange Ellipsis scope -> result)
   -> Maybe result
 rankOneRange start =
-  SuperRange.superEllipsisRange rankOneRank (finiteOrdinal start)
+  \target useRange ->
+    join (DatraNatural.ellipsisNatural start $ \origin ->
+      case target of
+        SuperRange.GivenTarget targetOrdinal -> do
+          targetNatural <- naturalAtOrdinal targetOrdinal
+          join (DatraNatural.ellipsisNatural targetNatural $ \targetValue ->
+            (origin <..> targetValue) useRange)
+        SuperRange.MinusSign -> (origin ..-) useRange
+        SuperRange.PlusSign -> (origin ..+) useRange)
 
 rankOneRangeElement
   :: SuperRange.SuperEllipsisRange Ellipsis scope
@@ -891,7 +910,7 @@ testEllipsis =
           case unrank extent valueRank of
             Nothing -> False
             Just datum -> coversExtent datum `seq` True
-    rankOneData `seq` pure ()
+    (...) `seq` pure ()
     assert "rankOneData is represented by a cardinality-two Atlas map"
       (atlasCardinality rankOneAtlas == 2)
     assert "rankOneData has one covered terminal region at every natural rank"
@@ -1000,22 +1019,22 @@ testSuperEllipsisInsertionDominion =
 
 testRankOneRange :: IO ()
 testRankOneRange = do
-  case rankOneRange
-      3 (SuperRange.GivenTarget (finiteOrdinal 3)) $ \valueRange -> do
-    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
-    assert "equal endpoints form a valid empty range"
-      ( all
-          (\rankValue ->
-            rankOneRangeElement valueRange rankValue == Nothing)
-          [0 .. 6]
-        && superEllipsisInsertionFirst insertion == Nothing
-        && rankOneRangeSize valueRange == Just 0
-        && chainOrderType (superEllipsisInsertionChain insertion)
-          == finiteOrdinal 0
-      )
-    of
-      Nothing -> fail "equal endpoints were rejected"
-      Just checks -> checks
+  withEllipsisNatural 3 $ \three ->
+    case (three <..> three) $ \valueRange -> do
+      let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+      assert "equal endpoints form a valid empty range"
+        ( all
+            (\rankValue ->
+              rankOneRangeElement valueRange rankValue == Nothing)
+            [0 .. 6]
+          && superEllipsisInsertionFirst insertion == Nothing
+          && rankOneRangeSize valueRange == Just 0
+          && chainOrderType (superEllipsisInsertionChain insertion)
+            == finiteOrdinal 0
+        )
+      of
+        Nothing -> fail "equal endpoints were rejected"
+        Just checks -> checks
   withRankOneRange 3 (Just 3) $ \emptyRange ->
     withRankOneRange 5 (Just 7) $ \nonemptyRange ->
       case emptyRange <.> nonemptyRange of
@@ -1032,99 +1051,107 @@ testRankOneRange = do
                       rankOneElementRank element == 5
                     _ -> False
               )
-  case rankOneRange
-      4 (SuperRange.GivenTarget (finiteOrdinal 1)) $ \valueRange -> do
-    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
-        at position =
-          rankOneElementRank . chainObjectAt
-            <$> chainIndex
-              (superEllipsisInsertionChain insertion)
-              (finiteOrdinal position)
-    assert "a descending range is first-inclusive and second-exclusive"
-      (map at [0 .. 3] == [Just 4, Just 3, Just 2, Nothing]
-        && map
-          (fmap rankOneElementRank
-            . rankOneRangeElement valueRange)
+  withEllipsisNatural 4 $ \four ->
+    withEllipsisNatural 1 $ \one ->
+      case (four <..> one) $ \valueRange -> do
+        let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+            at position =
+              rankOneElementRank . chainObjectAt
+                <$> chainIndex
+                  (superEllipsisInsertionChain insertion)
+                  (finiteOrdinal position)
+        assert "a descending range is first-inclusive and second-exclusive"
+          (map at [0 .. 3] == [Just 4, Just 3, Just 2, Nothing]
+            && map
+              (fmap rankOneElementRank
+                . rankOneRangeElement valueRange)
+              [0 .. 5]
+              == [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing])
+        of
+          Nothing -> fail "descending range was rejected"
+          Just checks -> checks
+  withEllipsisNatural 5 $ \five -> do
+    withEllipsisNatural 0 $ \zero ->
+      case (five <..> zero) $ \valueRange -> do
+        let included rankValue =
+              case rankOneRangeElement valueRange rankValue of
+                Nothing -> False
+                Just _ -> True
+        assert "a finite zero target remains exclusive"
+          (map included [0 .. 6]
+            == [False, True, True, True, True, True, False])
+        of
+          Nothing -> fail "finite zero target was rejected"
+          Just checks -> checks
+    case (five ..-) $ \valueRange -> do
+      let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+          at position =
+            rankOneElementRank . chainObjectAt
+              <$> chainIndex
+                (superEllipsisInsertionChain insertion)
+                (finiteOrdinal position)
+      assert "MinusSign descends through zero inclusively"
+        (map at [0 .. 6]
+          == [Just 5, Just 4, Just 3, Just 2, Just 1, Just 0, Nothing])
+      of
+        Nothing -> fail "MinusSign target was rejected"
+        Just checks -> checks
+  withEllipsisNatural 2 $ \two ->
+    withEllipsisNatural 5 $ \five ->
+      case (two <..> five) $ \valueRange -> do
+        let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+            expected = [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing]
+            actual = map
+              (fmap rankOneElementRank
+                . superEllipsisInsertionPreimage insertion . rankOneTerminal)
+              [0 .. 5]
+        assert
+          "bounded rankOneData range is lower-inclusive and upper-exclusive"
+          (actual == expected)
+        assert "rankOneData range insertion satisfies its left-inverse law"
+          (all
+            (\rankValue ->
+              case rankOneRangeElement valueRange rankValue of
+                Nothing -> False
+                Just element ->
+                  superEllipsisInsertionPreimage insertion
+                    (applySuperEllipsisInsertion insertion element)
+                    == Just element)
+            [2 .. 4])
+        of
+          Nothing -> fail "valid bounded rankOneData range was rejected"
+          Just checks -> checks
+  withEllipsisNatural 0 $ \zero ->
+    withEllipsisNatural 5 $ \five ->
+      case (zero <..> five) $ \valueRange ->
+        map
+          (fmap rankOneElementRank . rankOneRangeElement valueRange)
           [0 .. 5]
-          == [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing])
-    of
-      Nothing -> fail "descending range was rejected"
-      Just checks -> checks
-  case rankOneRange
-      5 (SuperRange.GivenTarget (finiteOrdinal 0)) $ \valueRange -> do
-    let included rankValue =
-          case rankOneRangeElement valueRange rankValue of
-            Nothing -> False
-            Just _ -> True
-    assert "a finite zero target remains exclusive"
-      (map included [0 .. 6]
-        == [False, True, True, True, True, True, False])
-    of
-      Nothing -> fail "finite zero target was rejected"
-      Just checks -> checks
-  case rankOneRange 5 SuperRange.MinusSign $ \valueRange -> do
-    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
-        at position =
-          rankOneElementRank . chainObjectAt
-            <$> chainIndex
-              (superEllipsisInsertionChain insertion)
-              (finiteOrdinal position)
-    assert "MinusSign descends through zero inclusively"
-      (map at [0 .. 6]
-        == [Just 5, Just 4, Just 3, Just 2, Just 1, Just 0, Nothing])
-    of
-      Nothing -> fail "MinusSign target was rejected"
-      Just checks -> checks
-  case rankOneRange
-      2 (SuperRange.GivenTarget (finiteOrdinal 5)) $ \valueRange -> do
-    let insertion = SuperRange.superEllipsisRangeInsertion valueRange
-        expected = [Nothing, Nothing, Just 2, Just 3, Just 4, Nothing]
-        actual = map
-          (fmap rankOneElementRank
-            . superEllipsisInsertionPreimage insertion . rankOneTerminal)
-          [0 .. 5]
-    assert "bounded rankOneData range is lower-inclusive and upper-exclusive"
-      (actual == expected)
-    assert "rankOneData range insertion satisfies its left-inverse law"
-      (all
-        (\rankValue ->
-          case rankOneRangeElement valueRange rankValue of
-            Nothing -> False
-            Just element ->
-              superEllipsisInsertionPreimage insertion (applySuperEllipsisInsertion insertion element)
-                == Just element)
-        [2 .. 4])
-    of
-      Nothing -> fail "valid bounded rankOneData range was rejected"
-      Just checks -> checks
-  case rankOneRange
-      0 (SuperRange.GivenTarget (finiteOrdinal 5)) $ \valueRange ->
-    map
-      (fmap rankOneElementRank . rankOneRangeElement valueRange)
-      [0 .. 5]
-    of
-      Nothing -> fail "valid upper-bounded rankOneData range was rejected"
-      Just actual ->
-        assert "an explicit zero lower bound includes lower terminals"
-          (actual == [Just 0, Just 1, Just 2, Just 3, Just 4, Nothing])
-  case rankOneRange 2 SuperRange.PlusSign $ \valueRange ->
-    map
-      (fmap rankOneElementRank . rankOneRangeElement valueRange)
-      [1, 2, 1000000]
-    of
-      Nothing -> fail "valid lower-bounded rankOneData range was rejected"
-      Just actual ->
-        assert "missing upper bound includes every later terminal"
-          (actual == [Nothing, Just 2, Just 1000000])
-  case rankOneRange 0 SuperRange.PlusSign $ \valueRange ->
-    map
-      (fmap rankOneElementRank . rankOneRangeElement valueRange)
-      [0, 1, 1000000]
-    of
-      Nothing -> fail "unbounded rankOneData range was rejected"
-      Just actual ->
-        assert "zero-to-unbounded includes all terminals"
-          (actual == [Just 0, Just 1, Just 1000000])
+        of
+          Nothing -> fail "valid upper-bounded rankOneData range was rejected"
+          Just actual ->
+            assert "an explicit zero lower bound includes lower terminals"
+              (actual == [Just 0, Just 1, Just 2, Just 3, Just 4, Nothing])
+  withEllipsisNatural 2 $ \two ->
+    case (two ..+) $ \valueRange ->
+      map
+        (fmap rankOneElementRank . rankOneRangeElement valueRange)
+        [1, 2, 1000000]
+      of
+        Nothing -> fail "valid lower-bounded rankOneData range was rejected"
+        Just actual ->
+          assert "missing upper bound includes every later terminal"
+            (actual == [Nothing, Just 2, Just 1000000])
+  withEllipsisNatural 0 $ \zero ->
+    case (zero ..+) $ \valueRange ->
+      map
+        (fmap rankOneElementRank . rankOneRangeElement valueRange)
+        [0, 1, 1000000]
+      of
+        Nothing -> fail "unbounded rankOneData range was rejected"
+        Just actual ->
+          assert "zero-to-unbounded includes all terminals"
+            (actual == [Just 0, Just 1, Just 1000000])
 
 testRankOneRangeMerge :: IO ()
 testRankOneRangeMerge = do
@@ -1346,7 +1373,7 @@ testGenericOrdinalOperators = do
 testStableDatumNumericalOperands :: IO ()
 testStableDatumNumericalOperands = do
   let levelTwoData :: StableConfederalData (SuperEllipsis Ellipsis)
-      levelTwoData = superEllipsis rankOneData
+      levelTwoData = superEllipsis (...)
       omegaSquared = ordinal [1, 0, 0]
       isEllipsisFormulation
         :: StableConfederalData Ellipsis -> Bool
@@ -1356,15 +1383,14 @@ testStableDatumNumericalOperands = do
       isLevelTwoFormulation value = value `seq` True
       binaryResults =
         ( join ((Numeric.+) dot dot superEllipsisValueOrdinal)
-        , join ((Numeric.+) dot rankOneData superEllipsisValueOrdinal)
-        , join ((Numeric.+) rankOneData dot superEllipsisValueOrdinal)
-        , (Numeric.*) dot rankOneData isEllipsisFormulation
-        , (Numeric.*) rankOneData dot isEllipsisFormulation
-        , (Numeric.*) rankOneData rankOneData
-            isLevelTwoFormulation
-        , join ((Numeric.+) rankOneData levelTwoData
+        , join ((Numeric.+) dot (...) superEllipsisValueOrdinal)
+        , join ((Numeric.+) (...) dot superEllipsisValueOrdinal)
+        , (Numeric.*) dot (...) isEllipsisFormulation
+        , (Numeric.*) (...) dot isEllipsisFormulation
+        , (Numeric.*) (...) (...) isLevelTwoFormulation
+        , join ((Numeric.+) (...) levelTwoData
             superEllipsisValueOrdinal)
-        , join ((Numeric.+) levelTwoData rankOneData
+        , join ((Numeric.+) levelTwoData (...)
             superEllipsisValueOrdinal)
         )
   assert "stable data denote successive omega powers in binary operators"
@@ -1380,7 +1406,7 @@ testStableDatumNumericalOperands = do
          )
     )
   case DatraNatural.ellipsisNatural 0 $ \zero ->
-      join ((Numeric.+) rankOneData zero superEllipsisValueOrdinal) of
+      join ((Numeric.+) (...) zero superEllipsisValueOrdinal) of
     Just (Just result) ->
       assert "adding zero soft-casts a formulation to an explicit value"
         (result == omega)
@@ -1392,13 +1418,13 @@ testStableDatumNumericalOperands = do
         (result == 0)
     _ -> fail "Dot exponentiation was rejected"
   case DatraNatural.ellipsisNatural 2 $ \two ->
-      (Numeric.^) rankOneData two Numeric.someSuperEllipsisLevel of
+      (Numeric.^) (...) two Numeric.someSuperEllipsisLevel of
     Just (Just result) ->
       assert "Ellipsis squared returns the level-two formulation"
         (result == 2)
     _ -> fail "Ellipsis squared was rejected"
   case DatraNatural.ellipsisNatural 0 $ \zero ->
-      (Numeric.^) rankOneData zero Numeric.someSuperEllipsisLevel of
+      (Numeric.^) (...) zero Numeric.someSuperEllipsisLevel of
     Just (Just result) ->
       assert "Ellipsis to zero returns Dot"
         (result == 0)
