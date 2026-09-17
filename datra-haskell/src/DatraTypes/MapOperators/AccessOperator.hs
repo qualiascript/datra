@@ -68,6 +68,7 @@ import SuperEllipsis
   )
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion
+  , SuperEllipsisAtlasMap
   , SuperEllipsisInsertionMap (..)
   , applySuperEllipsisInsertion
   , fullSuperEllipsisInsertion
@@ -79,8 +80,10 @@ import SuperEllipsisInsertion
   , superEllipsisInsertionMap
   )
 import SuperEllipsisRange
-  ( SuperEllipsisRange
+  ( SomeSuperEllipsisRangeConcat
+  , SuperEllipsisRange
   , SuperEllipsisRangeElement
+  , someSuperEllipsisRangeConcatAtlasMap
   , superEllipsisRangeAtlasMap
   , superEllipsisRangeInsertion
   )
@@ -95,8 +98,8 @@ instance AccessMapOperand (IndexedAtlasMap value) where
   type AccessValue (IndexedAtlasMap value) = value
   accessMap = Just
 
-instance AccessMapOperand (SuperEllipsisInsertionMap source) where
-  type AccessValue (SuperEllipsisInsertionMap source) = source
+instance AccessMapOperand (SuperEllipsisAtlasMap source) where
+  type AccessValue (SuperEllipsisAtlasMap source) = source
   accessMap insertionMap =
     case insertionMap of
       EmptySuperEllipsisInsertionMap _ -> Nothing
@@ -110,6 +113,15 @@ instance AccessMapOperand (SuperEllipsisRange (target :: Type) scope) where
   type AccessValue (SuperEllipsisRange target scope) =
     SuperEllipsisRangeElement target scope
   accessMap = accessMap . superEllipsisRangeAtlasMap
+
+instance AccessMapOperand
+    (SomeSuperEllipsisRangeConcat (target :: Type) leftScope rightScope) where
+  type AccessValue
+      (SomeSuperEllipsisRangeConcat target leftScope rightScope) =
+        Either
+          (SuperEllipsisRangeElement target leftScope)
+          (SuperEllipsisRangeElement target rightScope)
+  accessMap = accessMap . someSuperEllipsisRangeConcatAtlasMap
 
 -- | A selected final-page value together with the insertion source that
 -- requested it and its new position in the accessed map.

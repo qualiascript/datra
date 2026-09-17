@@ -13,6 +13,7 @@ module SuperEllipsisRange
   , SuperEllipsisRangeMap
   , SuperEllipsisRangeConcatValues
   , SuperEllipsisRangeConcatValue
+  , SuperEllipsisRangeConcatAtlasMap
   , SuperEllipsisRangeConcatKind (..)
   , SuperEllipsisRangeConcat (..)
   , SomeSuperEllipsisRangeConcat (..)
@@ -28,11 +29,13 @@ module SuperEllipsisRange
   , superEllipsisRangeInsertion
   , superEllipsisRangeAtlasMap
   , superEllipsisRangeMap
+  , concatSuperEllipsisRangeMaps
   , concatSuperEllipsisRanges
   , mergeSuperEllipsisRanges
   , superEllipsisRangeConcatMap
   , superEllipsisRangeConcatValue
   , superEllipsisRangeConcatInsertion
+  , someSuperEllipsisRangeConcatAtlasMap
   , concatSuperEllipsisRangeInsertion
   ) where
 
@@ -44,7 +47,7 @@ import AtlasConfederation
   , identityAtlasConfederationHom
   , singletonAtlasConfederation
   )
-import Chain (Chain, chain)
+import Chain (Chain, chain, sumChains)
 import ChainedDominionAtlas
   ( ChainedDominionAtlasObject
   , chainedDominionAtlas
@@ -67,11 +70,13 @@ import MapOperators.ConcatOperator
   , ConcatOperatorValues
   , concatValue
   )
+import MapOperators.IndexedAtlasMap (indexedAtlasMapFromChain)
 import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
 import StableConfederalData
   ( EmbeddedAtlasMap
   , StableConfederalData
   , embedAtlasMap
+  , emptyMap
   )
 import SuperEllipsis
   ( SuperEllipsisRank
@@ -83,7 +88,8 @@ import SuperEllipsis
   )
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion
-  , SuperEllipsisInsertionMap
+  , SuperEllipsisAtlasMap
+  , SuperEllipsisInsertionMap (..)
   , mergeDisjointSuperEllipsisInsertions
   , superEllipsisInsertion
   , superEllipsisInsertionMap
@@ -149,6 +155,12 @@ type SuperEllipsisRangeConcatValue target leftScope rightScope =
     (SuperEllipsisRangeMap target rightScope)
     (SuperEllipsisRangeConcatObject target leftScope rightScope)
 
+type SuperEllipsisRangeConcatAtlasMap target leftScope rightScope =
+  SuperEllipsisAtlasMap
+    (Either
+      (SuperEllipsisRangeElement target leftScope)
+      (SuperEllipsisRangeElement target rightScope))
+
 data SuperEllipsisRangeConcatKind
   = SuperEllipsisInsertionConcat
   | SuperEllipsisMapConcat
@@ -178,8 +190,15 @@ data SuperEllipsisRangeConcat
 
 data SomeSuperEllipsisRangeConcat target leftScope rightScope where
   SomeSuperEllipsisRangeConcat
-    :: SuperEllipsisRangeConcat target kind leftScope rightScope
+    :: SuperEllipsisRangeConcatAtlasMap target leftScope rightScope
+    -> SuperEllipsisRangeConcat target kind leftScope rightScope
     -> SomeSuperEllipsisRangeConcat target leftScope rightScope
+
+someSuperEllipsisRangeConcatAtlasMap
+  :: SomeSuperEllipsisRangeConcat target leftScope rightScope
+  -> SuperEllipsisRangeConcatAtlasMap target leftScope rightScope
+someSuperEllipsisRangeConcatAtlasMap
+    (SomeSuperEllipsisRangeConcat valueMap _) = valueMap
 
 -- | Introduce a range after checking both endpoints against its rank.  The
 -- first endpoint is always explicit; callers must pass zero rather than omit
@@ -280,7 +299,7 @@ superEllipsisRangeInsertion valueRange =
 -- presents.  An empty range becomes the empty map.
 superEllipsisRangeAtlasMap
   :: SuperEllipsisRange target scope
-  -> SuperEllipsisInsertionMap
+  -> SuperEllipsisAtlasMap
        (SuperEllipsisRangeElement target scope)
 superEllipsisRangeAtlasMap =
   superEllipsisInsertionMap . superEllipsisRangeInsertion
@@ -405,18 +424,53 @@ rangeConcatValue first second =
     identityAtlasConfederationHom
     identityAtlasConfederationHom
 
+-- | Concatenate two ranges as an Atlas map, retaining repeated target
+-- positions as distinct left and right values.  This conversion is valid
+-- whether or not the two ranges can also be merged as one insertion.
+concatSuperEllipsisRangeMaps
+  :: SuperEllipsisRange target leftScope
+  -> SuperEllipsisRange target rightScope
+  -> SuperEllipsisRangeConcatAtlasMap target leftScope rightScope
+concatSuperEllipsisRangeMaps first second =
+  case (rangeFirstElement first, rangeFirstElement second) of
+    (Nothing, Nothing) -> EmptySuperEllipsisInsertionMap emptyMap
+    (Just firstValue, _) -> indexed (Left firstValue)
+    (Nothing, Just secondValue) -> indexed (Right secondValue)
+  where
+    valueChain = sumChains (rangeChain first) (rangeChain second)
+    valueDominion =
+      sumDominions (rangeDominion first) (rangeDominion second)
+    indexed firstValue =
+      IndexedSuperEllipsisInsertionMap
+        (indexedAtlasMapFromChain firstValue valueChain valueDominion)
+
+sumDominions
+  :: Dominion left
+  -> Dominion right
+  -> Dominion (Either left right)
+sumDominions left right =
+  dominion sumRank sumUnrank (const ())
+  where
+    sumRank (Left value) = 2 * rank left value
+    sumRank (Right value) = 2 * rank right value + 1
+
+    sumUnrank valueRank
+      | even valueRank = Left <$> unrank left (valueRank `div` 2)
+      | otherwise = Right <$> unrank right (valueRank `div` 2)
+
 concatSuperEllipsisRanges
   :: SuperEllipsisRange target leftScope
   -> SuperEllipsisRange target rightScope
   -> SomeSuperEllipsisRangeConcat target leftScope rightScope
 concatSuperEllipsisRanges first second =
-  let valueMap =
+  let atlasMap = concatSuperEllipsisRangeMaps first second
+      valueMap =
         superEllipsisRangeMap first <.> superEllipsisRangeMap second
       value = rangeConcatValue first second
   in if rangesOverlap first second
-      then SomeSuperEllipsisRangeConcat
+      then SomeSuperEllipsisRangeConcat atlasMap
         (ConcatenatedSuperEllipsisMap valueMap value)
-      else SomeSuperEllipsisRangeConcat
+      else SomeSuperEllipsisRangeConcat atlasMap
         (ConcatenatedSuperEllipsisInsertion
           valueMap
           value
@@ -469,9 +523,9 @@ concatSuperEllipsisRangeInsertion
            (SuperEllipsisRangeElement target rightScope)))
 concatSuperEllipsisRangeInsertion first second =
   case concatSuperEllipsisRanges first second of
-    SomeSuperEllipsisRangeConcat
+    SomeSuperEllipsisRangeConcat _
         (ConcatenatedSuperEllipsisInsertion _ _ insertion) -> Just insertion
-    SomeSuperEllipsisRangeConcat
+    SomeSuperEllipsisRangeConcat _
         (ConcatenatedSuperEllipsisMap _ _) -> Nothing
 
 positionInRange

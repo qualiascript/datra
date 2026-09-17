@@ -2,6 +2,7 @@
 module SuperEllipsisInsertion
   ( SuperEllipsisInsertion
   , SuperEllipsisInsertionMap (..)
+  , SuperEllipsisAtlasMap
   , SuperEllipsisInsertionElement
   , superEllipsisInsertion
   , superEllipsisInsertionMap
@@ -74,6 +75,10 @@ data SuperEllipsisInsertionMap source
       (StableConfederalData EmptyMapValues)
   | IndexedSuperEllipsisInsertionMap (IndexedAtlasMap source)
 
+-- | General name for the Atlas map underlying an insertion or insertion-like
+-- value.
+type SuperEllipsisAtlasMap = SuperEllipsisInsertionMap
+
 -- | A value restricted to positions selected by an insertion.
 data SuperEllipsisInsertionElement target source value =
   SuperEllipsisInsertionElement
@@ -116,7 +121,7 @@ superEllipsisInsertion
 -- chain.  Unlike indexed maps, the empty map needs no first-element witness.
 superEllipsisInsertionMap
   :: SuperEllipsisInsertion target source
-  -> SuperEllipsisInsertionMap source
+  -> SuperEllipsisAtlasMap source
 superEllipsisInsertionMap insertion =
   case superEllipsisInsertionFirst insertion of
     Nothing -> EmptySuperEllipsisInsertionMap emptyMap

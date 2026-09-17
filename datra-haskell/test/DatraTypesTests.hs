@@ -759,11 +759,13 @@ testAccessOperator =
           )
     withRankOneRange 10 (Just 12) $ \first ->
       withRankOneRange 2 (Just 4) $ \second ->
-        case SuperRange.concatSuperEllipsisRanges first second of
+        case first <.> second of
           SuperRange.SomeSuperEllipsisRangeConcat
+              _
               (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
             fail "disjoint access ranges produced only a map"
           SuperRange.SomeSuperEllipsisRangeConcat
+              _
               (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ insertion) ->
             case ascii <@> insertion of
               Nothing -> fail "in-bounds reordered access was rejected"
@@ -822,6 +824,54 @@ testAccessOperator =
           of
             Nothing -> fail "valid empty range was rejected"
             Just checks -> checks
+    withEllipsisNatural 2 $ \two ->
+      withEllipsisNatural 3 $ \three ->
+        case (two ..+) $ \fromTwo ->
+          case (three ..+) $ \fromThree -> do
+            let concatenated = fromTwo <.> fromThree
+                selectedOrdinal selected =
+                  either
+                    SuperRange.superEllipsisRangeElementPosition
+                    SuperRange.superEllipsisRangeElementPosition
+                    . accessElementValue
+                    <$> indexedAtlasValueAt selected 0
+            case concatenated of
+              SuperRange.SomeSuperEllipsisRangeConcat
+                  _
+                  (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
+                fail "overlapping unbounded ranges produced an insertion"
+              SuperRange.SomeSuperEllipsisRangeConcat
+                  atlasMap
+                  (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
+                case atlasMap of
+                  EmptySuperEllipsisInsertionMap _ ->
+                    fail "two unbounded ranges produced the empty map"
+                  IndexedSuperEllipsisInsertionMap valueMap ->
+                    assert "overlapping unbounded ranges form an Atlas map"
+                      (indexedAtlasCardinality valueMap
+                        == addOrdinals omega omega)
+            case concatenated <@> two of
+              Nothing -> fail "concat-map access at finite index failed"
+              Just selected ->
+                assert "concat-map index 2 selects 4 from the first range"
+                  (selectedOrdinal selected == Just (finiteOrdinal 4))
+            case (Numeric.+) (...) two $ \omegaPlusTwo ->
+                case concatenated <@> omegaPlusTwo of
+                  Nothing ->
+                    fail "concat-map access at omega plus 2 failed"
+                  Just selected ->
+                    assert
+                      "concat-map index omega plus 2 selects 5 from the second range"
+                      (selectedOrdinal selected == Just (finiteOrdinal 5))
+              of
+                Nothing -> fail "omega plus 2 index construction failed"
+                Just checks -> checks
+          of
+            Nothing -> fail "the range from 3 was rejected"
+            Just checks -> checks
+        of
+          Nothing -> fail "the range from 2 was rejected"
+          Just checks -> checks
 
 withRankOneRange
   :: Natural
@@ -1039,9 +1089,11 @@ testRankOneRange = do
     withRankOneRange 5 (Just 7) $ \nonemptyRange ->
       case emptyRange <.> nonemptyRange of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "an empty range prevented insertion concatenation"
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ value insertion) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "an empty range contributes zero ordered cells"
@@ -1158,9 +1210,10 @@ testRankOneRangeMerge = do
   withRankOneRange 2 (Just 4) $ \first ->
     withRankOneRange 10 (Just 12) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "disjoint ranges produced only a map"
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ value insertion) -> do
           let includedRanks = map
                 (fmap (either rankOneElementRank
@@ -1186,6 +1239,7 @@ testRankOneRangeMerge = do
     withRankOneRange 4 (Just 7) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ insertion) ->
           assert "adjacent ranges retain subtype capability"
             (all
@@ -1194,14 +1248,15 @@ testRankOneRangeMerge = do
                   Just _ -> True
                   Nothing -> False)
               [2 .. 6])
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "adjacent non-overlapping ranges produced only a map"
   withRankOneRange 10 (Just 12) $ \first ->
     withRankOneRange 2 (Just 4) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ _) ->
           fail "reverse disjoint ranges produced only a map"
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ value insertion) -> do
           let extentMember combinedRank =
                 withConcatOrderedTransposal value $ \_ concatAtlas _ ->
@@ -1224,19 +1279,21 @@ testRankOneRangeMerge = do
     withRankOneRange 4 (Just 7) $ \second ->
       case SuperRange.mergeSuperEllipsisRanges first second of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping ranges produced an Ellipsis insertion"
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "overlapping ranges retain their ordered concat map"
               (atlasPageHasExactly concatAtlas 1 6)
   withRankOneRange 3 Nothing $ \first ->
     withRankOneRange 5 Nothing $ \second ->
-      case SuperRange.concatSuperEllipsisRanges first second of
+      case first <.> second of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping unbounded ranges produced an Ellipsis insertion"
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -1256,9 +1313,10 @@ testRankOneRangeMerge = do
     withRankOneRange 2 (Just 20) $ \second -> do
       case first <.> second of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping omega-plus-finite ranges produced an insertion"
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -1277,9 +1335,10 @@ testRankOneRangeMerge = do
               )
       case second <.> first of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping finite-plus-omega ranges produced an insertion"
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -1298,9 +1357,10 @@ testRankOneRangeMerge = do
     withRankOneRange 3 (Just 6) $ \ascending ->
       case descending <.> ascending of
         SuperRange.SomeSuperEllipsisRangeConcat
+            _
             (SuperRange.ConcatenatedSuperEllipsisInsertion _ _ _) ->
           fail "overlapping descending and ascending ranges produced an insertion"
-        SuperRange.SomeSuperEllipsisRangeConcat (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
+        SuperRange.SomeSuperEllipsisRangeConcat _ (SuperRange.ConcatenatedSuperEllipsisMap _ value) ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "descending ranges retain their order in overlapping maps"
               (atlasPageHasExactly concatAtlas 1 6)
