@@ -302,6 +302,65 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
       Nothing -> fail "valid finite rank-two range was rejected"
       Just fits ->
         assert "access accepts a higher-rank insertion that fits the map" fits
+  let omegaTimesTwo = ordinal [2, 0]
+      atFiniteTail finiteTail =
+        addOrdinals omegaTimesTwo (finiteOrdinal finiteTail)
+      insertionAt valueRange position = do
+        let insertion = SuperRange.superEllipsisRangeInsertion valueRange
+        sourceIndex <- chainIndex
+          (superEllipsisInsertionChain insertion)
+          (finiteOrdinal position)
+        pure
+          (superEllipsisInsertionPosition
+            insertion (chainObjectAt sourceIndex))
+  case SuperRange.superEllipsisRange
+      rankTwo
+      (atFiniteTail 3)
+      SuperRange.MinusSign $ \valueRange -> do
+    assert "transfinite MinusSign ranges include their finite-tail base"
+      ( map (insertionAt valueRange) [0 .. 4]
+          == map Just
+            [ atFiniteTail 3
+            , atFiniteTail 2
+            , atFiniteTail 1
+            , omegaTimesTwo
+            ] <> [Nothing]
+      )
+    assert "transfinite MinusSign ranges have finite order type"
+      (SuperRange.superEllipsisRangeOrderType valueRange == finiteOrdinal 4)
+    assert "transfinite MinusSign ranges do not cross their limit base"
+      (isNothing (SuperRange.superEllipsisRangeElement valueRange omega))
+    of
+      Nothing -> fail "valid transfinite MinusSign range was rejected"
+      Just checks -> checks
+  let highFiniteTail = atFiniteTail 100000
+      lowFiniteTail = atFiniteTail 15
+  case SuperRange.superEllipsisRange
+      rankTwo
+      highFiniteTail
+      (SuperRange.GivenTarget lowFiniteTail) $ \valueRange -> do
+    assert "same-base transfinite descending ranges are admitted"
+      ( map (insertionAt valueRange) [0, 1, 99984, 99985]
+          == [ Just highFiniteTail
+             , Just (atFiniteTail 99999)
+             , Just (atFiniteTail 16)
+             , Nothing
+             ]
+      )
+    assert "explicit descending targets remain exclusive"
+      (SuperRange.superEllipsisRangeOrderType valueRange
+        == finiteOrdinal 99985)
+    of
+      Nothing -> fail "same-base transfinite descending range was rejected"
+      Just checks -> checks
+  assert "descending across a limit boundary is rejected"
+    (case SuperRange.superEllipsisRange
+        rankTwo
+        highFiniteTail
+        (SuperRange.GivenTarget omega)
+        (const ()) of
+      Nothing -> True
+      Just () -> False)
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope RankOneAtlasObject

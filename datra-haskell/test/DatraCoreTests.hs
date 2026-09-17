@@ -104,6 +104,8 @@ testDatraOrdinalEnumeration = do
       && omegaPower 2 == ordinal [1, 0, 0]
     )
   let omegaPlusOne = addOrdinals omega (finiteOrdinal 1)
+  assert "finite-tail splitting preserves the transfinite base"
+    (splitFiniteTail (ordinal [2, 3]) == (ordinal [2, 0], 3))
   assert "ordinal addition is ordered"
     ( addOrdinals omegaPlusOne omega == ordinal [2, 0]
       && addOrdinals omega omegaPlusOne == ordinal [2, 1]

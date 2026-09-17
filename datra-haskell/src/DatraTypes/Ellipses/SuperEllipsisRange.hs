@@ -49,15 +49,14 @@ import ChainedDominionAtlas
   , chainedDominionAtlas
   , chainedDominionAtlasMap
   )
-import Control.Monad (void)
 import Data.Kind (Type)
 import Data.Maybe (fromMaybe)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
   , finiteOrdinal
-  , naturalAtOrdinal
   , ordinalLT
+  , splitFiniteTail
   , subtractOrdinal
   )
 import Dominion (Dominion, dominion, rank, unrank)
@@ -182,8 +181,8 @@ data SomeSuperEllipsisRangeConcat target leftScope rightScope where
 -- | Introduce a range after checking both endpoints against its rank.  The
 -- first endpoint is always explicit; callers must pass zero rather than omit
 -- it.
--- Descending ranges are admitted only for finite endpoints, since an
--- infinite descending sequence is not an ordinal-indexed chain.
+-- Descending ranges are admitted only when both endpoints have the same
+-- limit part, so every step removes one element from a finite tail.
 superEllipsisRange
   :: SuperEllipsisRank target
   -> Ordinal
@@ -208,16 +207,14 @@ superEllipsisRange valueRank start target useRange = do
           | targetValue == rankLimit || ordinalLT targetValue rankLimit ->
               Just ()
           | otherwise -> Nothing
-        MinusSign -> void (naturalAtOrdinal start)
+        MinusSign -> Just ()
         PlusSign -> Just ()
 
     validateDirection =
       case target of
         GivenTarget targetValue
-          | ordinalLT targetValue start -> do
-              _ <- naturalAtOrdinal start
-              _ <- naturalAtOrdinal targetValue
-              Just ()
+          | ordinalLT targetValue start
+              && not (sameFiniteBase start targetValue) -> Nothing
           | otherwise -> Just ()
         _ -> Just ()
 
@@ -309,18 +306,19 @@ elementAtRelativePosition valueRange offset = do
   absolute <-
     case superEllipsisRangeTarget valueRange of
       GivenTarget target
-        | ordinalLT target start -> descendingAt target
+        | ordinalLT target start -> descendingAt
         | otherwise -> Just (addOrdinals start offset)
-      MinusSign -> descendingAt (finiteOrdinal 0)
+      MinusSign -> descendingAt
       PlusSign -> Just (addOrdinals start offset)
   superEllipsisRangeElement valueRange absolute
   where
     start = superEllipsisRangeStart valueRange
-    descendingAt _ = do
-      startNatural <- naturalAtOrdinal start
-      offsetNatural <- naturalAtOrdinal offset
-      if offsetNatural <= startNatural
-        then Just (finiteOrdinal (startNatural - offsetNatural))
+    descendingAt = do
+      let (base, startTail) = splitFiniteTail start
+          (offsetBase, offsetTail) = splitFiniteTail offset
+      if offsetBase == finiteOrdinal 0 && offsetTail <= startTail
+        then Just
+          (addOrdinals base (finiteOrdinal (startTail - offsetTail)))
         else Nothing
 
 relativePosition
@@ -330,20 +328,17 @@ relativePosition
 relativePosition valueRange position =
   case superEllipsisRangeTarget valueRange of
     GivenTarget target
-      | ordinalLT target start -> finiteDifference start position
+      | ordinalLT target start -> descendingDifference
       | otherwise -> ascendingDifference
-    MinusSign -> finiteDifference start position
+    MinusSign -> descendingDifference
     PlusSign -> ascendingDifference
   where
     start = superEllipsisRangeStart valueRange
     ascendingDifference =
       fromMaybe (finiteOrdinal 0) (subtractOrdinal start position)
 
-    finiteDifference left right =
-      case (naturalAtOrdinal left, naturalAtOrdinal right) of
-        (Just leftValue, Just rightValue) ->
-          finiteOrdinal (leftValue - rightValue)
-        _ -> finiteOrdinal 0
+    descendingDifference =
+      fromMaybe (finiteOrdinal 0) (finiteTailDifference start position)
 
 superEllipsisRangeOrderType
   :: SuperEllipsisRange target scope
@@ -351,12 +346,12 @@ superEllipsisRangeOrderType
 superEllipsisRangeOrderType valueRange =
   case superEllipsisRangeTarget valueRange of
     GivenTarget target
-      | ordinalLT target start -> finiteDifference start target
+      | ordinalLT target start ->
+          fromMaybe (finiteOrdinal 0) (finiteTailDifference start target)
       | otherwise -> ordinalDifference start target
     MinusSign ->
-      case naturalAtOrdinal start of
-        Just value -> finiteOrdinal (value + 1)
-        Nothing -> finiteOrdinal 0
+      let (_, finiteTail) = splitFiniteTail start
+      in finiteOrdinal (finiteTail + 1)
     PlusSign ->
       ordinalDifference
         start
@@ -365,11 +360,6 @@ superEllipsisRangeOrderType valueRange =
     start = superEllipsisRangeStart valueRange
     ordinalDifference left right =
       fromMaybe (finiteOrdinal 0) (subtractOrdinal left right)
-    finiteDifference left right =
-      case (naturalAtOrdinal left, naturalAtOrdinal right) of
-        (Just leftValue, Just rightValue) ->
-          finiteOrdinal (leftValue - rightValue)
-        _ -> finiteOrdinal 0
 
 rangeAtlas
   :: SuperEllipsisRange target scope
@@ -482,9 +472,12 @@ positionInRange valueRange position =
       | ordinalLT start target ->
           not (ordinalLT position start) && ordinalLT position target
       | ordinalLT target start ->
-          ordinalLT target position && not (ordinalLT start position)
+          sameFiniteBase start position
+            && ordinalLT target position
+            && not (ordinalLT start position)
       | otherwise -> False
-    MinusSign -> not (ordinalLT start position)
+    MinusSign ->
+      sameFiniteBase start position && not (ordinalLT start position)
     PlusSign ->
       not (ordinalLT position start)
         && ordinalLT position
@@ -514,7 +507,9 @@ rangeImageBounds valueRange =
       | ordinalLT target start ->
           Just (successor target, successor start)
       | otherwise -> Nothing
-    MinusSign -> Just (finiteOrdinal 0, successor start)
+    MinusSign ->
+      let (base, _) = splitFiniteTail start
+      in Just (base, successor start)
     PlusSign ->
       Just
         ( start
@@ -523,6 +518,20 @@ rangeImageBounds valueRange =
   where
     start = superEllipsisRangeStart valueRange
     successor value = addOrdinals value (finiteOrdinal 1)
+
+sameFiniteBase :: Ordinal -> Ordinal -> Bool
+sameFiniteBase left right =
+  let (leftBase, _) = splitFiniteTail left
+      (rightBase, _) = splitFiniteTail right
+  in leftBase == rightBase
+
+finiteTailDifference :: Ordinal -> Ordinal -> Maybe Ordinal
+finiteTailDifference left right =
+  let (leftBase, leftTail) = splitFiniteTail left
+      (rightBase, rightTail) = splitFiniteTail right
+  in if leftBase == rightBase && rightTail <= leftTail
+      then Just (finiteOrdinal (leftTail - rightTail))
+      else Nothing
 
 instance
     Concat

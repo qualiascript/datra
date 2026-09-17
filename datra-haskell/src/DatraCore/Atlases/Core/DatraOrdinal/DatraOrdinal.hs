@@ -11,6 +11,7 @@ module DatraOrdinal
   , powerOrdinal
   , subtractOrdinal
   , naturalAtOrdinal
+  , splitFiniteTail
   , ordinalAtNaturalRank
   , naturalRankOfOrdinal
   ) where
@@ -29,6 +30,16 @@ import DatraOrdinal.Internal
   , subtractOrdinal
   )
 import Numeric.Natural (Natural)
+
+-- | Split off an ordinal's finite tail.  The first component is zero or a
+-- limit ordinal, and adding the second component reconstructs the input.
+splitFiniteTail :: Ordinal -> (Ordinal, Natural)
+splitFiniteTail (Ordinal []) = (finiteOrdinal 0, 0)
+splitFiniteTail (Ordinal values) =
+  case reverse values of
+    finitePart : reversedPrefix ->
+      (ordinal (reverse (0 : reversedPrefix)), finitePart)
+    [] -> (finiteOrdinal 0, 0)
 
 -- | Ordinal multiplication below @omega^omega@. Positive-degree terms on
 -- the right absorb lower terms on the left, so this is generally not
