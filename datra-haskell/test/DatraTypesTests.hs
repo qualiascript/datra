@@ -62,7 +62,6 @@ import Dot
 import DomanialInsertion (applyInsertion, preimage)
 import Ellipsis
 import EllipsisNatural qualified as DatraNatural
-import FiniteDominion
 import MapOperators
 import Numeric.Natural (Natural)
 import PageElements
@@ -92,7 +91,6 @@ import qualified SuperEllipsisRange as SuperRange
 import SuperEllipsisValue
 
 import Data.Maybe (fromMaybe, isNothing)
-import qualified Data.Set as Set
 import qualified NumericalOperators as Numeric
 
 main :: IO ()
@@ -114,7 +112,6 @@ main = do
   testRankOneRangeMerge
   testEllipsisNatural
   testNumericalOperators
-  testFiniteDominion
 
 assert :: String -> Bool -> IO ()
 assert label condition
@@ -1349,33 +1346,3 @@ assertNumericalOperator label operator leftValue rightValue expected =
   of
     Just (Just (Just matches)) -> assert label matches
     _ -> fail ("test setup failed: " <> label)
-
-testFiniteDominion :: IO ()
-testFiniteDominion =
-  finiteSetDominion (Set.fromList ['a', 'b', 'c']) $ \finite -> do
-    let members = traverse (finiteMember finite) ['a', 'b', 'c']
-    case members of
-      Nothing -> fail "test setup failed: carrier member was rejected"
-      Just carrier -> do
-        let valueDominion = finiteAsDominion finite
-            valueRanks :: [Natural]
-            valueRanks = map (rank valueDominion) carrier
-        assert "finite dominion ranks its carrier"
-          (valueRanks == [0, 1, 2])
-        assert "finite dominion rejects values outside its carrier"
-          (isNothing (finiteMember finite 'z'))
-        assert "finite bounded rank unrank is total"
-          (all
-            (\value -> finiteUnrank (finiteRank value) == value)
-            carrier)
-        assert "finite dominion rank round-trips every carrier value"
-          (all
-            (\value ->
-              unrank valueDominion (rank valueDominion value) == Just value)
-            carrier)
-        assert "finite dominion only constructs bounded indices"
-          (map (fmap finiteIndexValue . finiteIndex finite) [0, 1, 2, 3]
-            == [Just 0, Just 1, Just 2, Nothing])
-        assert "finite dominion unrank is inverse"
-          (map (fmap finiteValue . unrank valueDominion) [0, 1, 2, 3]
-            == [Just 'a', Just 'b', Just 'c', Nothing])

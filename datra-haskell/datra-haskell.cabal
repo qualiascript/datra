@@ -58,7 +58,6 @@ library
         EllipsisInsertion
         EllipsisRange
         EllipsisNatural
-        FiniteDominion
         FixedPoint
         DomanialInsertion
         DatraOrdinal
