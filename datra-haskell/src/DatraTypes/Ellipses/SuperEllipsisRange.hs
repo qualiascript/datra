@@ -26,6 +26,7 @@ module SuperEllipsisRange
   , superEllipsisRangeElement
   , superEllipsisRangeElementPosition
   , superEllipsisRangeInsertion
+  , superEllipsisRangeAtlasMap
   , superEllipsisRangeMap
   , concatSuperEllipsisRanges
   , mergeSuperEllipsisRanges
@@ -82,8 +83,10 @@ import SuperEllipsis
   )
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion
+  , SuperEllipsisInsertionMap
   , mergeDisjointSuperEllipsisInsertions
   , superEllipsisInsertion
+  , superEllipsisInsertionMap
   )
 
 data SuperEllipsisRangeTarget
@@ -272,6 +275,15 @@ superEllipsisRangeInsertion valueRange =
       superEllipsisRangeElement
         valueRange
         (superEllipsisTerminalPosition terminal)
+
+-- | Convert a range through its underlying insertion to the Atlas map it
+-- presents.  An empty range becomes the empty map.
+superEllipsisRangeAtlasMap
+  :: SuperEllipsisRange target scope
+  -> SuperEllipsisInsertionMap
+       (SuperEllipsisRangeElement target scope)
+superEllipsisRangeAtlasMap =
+  superEllipsisInsertionMap . superEllipsisRangeInsertion
 
 rangeFirstElement
   :: SuperEllipsisRange target scope

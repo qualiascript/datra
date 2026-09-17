@@ -22,6 +22,7 @@ module MapOperators.AccessOperator
   , indexedAtlasCardinality
   , indexedAtlasValueAt
   , indexedAtlasValueAtOrdinal
+  , AccessMapOperand (AccessValue, accessMap)
   , AccessElement
   , accessElementPosition
   , accessElementSource
@@ -30,22 +31,13 @@ module MapOperators.AccessOperator
   , accessOperator
   ) where
 
-import AtlasMap (AtlasMap)
 import Chain
-  ( Chain
-  , chain
+  ( chain
   , chainIndex
   , chainObjectAt
   , chainOrderType
   , chainPosition
   )
-import ChainedDominionAtlas
-  ( ChainedDominionAtlas
-  , ChainedDominionAtlasObject
-  , chainedDominionAtlas
-  , chainedDominionAtlasMap
-  )
-import Control.Monad ((>=>))
 import DatraOrdinal
   ( Ordinal
   , finiteOrdinal
@@ -53,7 +45,19 @@ import DatraOrdinal
   , ordinalLT
   )
 import Data.Kind (Type)
-import Dominion (Dominion, dominion, rank, unrank)
+import Dominion (dominion, rank, unrank)
+import MapOperators.IndexedAtlasMap
+  ( IndexedAtlasMap
+  , indexedAtlasAtlas
+  , indexedAtlasAtlasMap
+  , indexedAtlasCardinality
+  , indexedAtlasChain
+  , indexedAtlasDominion
+  , indexedAtlasMap
+  , indexedAtlasMapFromChain
+  , indexedAtlasValueAt
+  , indexedAtlasValueAtOrdinal
+  )
 import StableConfederalData (StableConfederalData)
 import SuperEllipsis
   ( SuperEllipsisTarget
@@ -64,6 +68,7 @@ import SuperEllipsis
   )
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion
+  , SuperEllipsisInsertionMap (..)
   , applySuperEllipsisInsertion
   , fullSuperEllipsisInsertion
   , superEllipsisInsertionChain
@@ -71,73 +76,40 @@ import SuperEllipsisInsertion
   , superEllipsisInsertionPosition
   , superEllipsisInsertionPreimage
   , superEllipsisInsertionRank
+  , superEllipsisInsertionMap
   )
-import Numeric.Natural (Natural)
+import SuperEllipsisRange
+  ( SuperEllipsisRange
+  , SuperEllipsisRangeElement
+  , superEllipsisRangeAtlasMap
+  , superEllipsisRangeInsertion
+  )
 
--- | A nonempty value-indexed Atlas map whose final chain may have any order
--- type below omega to the omega.
-type role IndexedAtlasMap nominal
-data IndexedAtlasMap value = IndexedAtlasMap
-  { indexedAtlasCardinality :: Ordinal
-  , indexedAtlasChain :: Chain value
-  , indexedAtlasDominion :: Dominion value
-  , indexedAtlasAtlas :: ChainedDominionAtlas value
-  , indexedAtlasAtlasMap
-      :: AtlasMap (ChainedDominionAtlasObject value)
-  }
+-- | A value that can supply the nonempty indexed Atlas map on the left of
+-- access.  Empty insertion maps deliberately have no indexed form.
+class AccessMapOperand operand where
+  type AccessValue operand :: Type
+  accessMap :: operand -> Maybe (IndexedAtlasMap (AccessValue operand))
 
--- | Build a two-page indexed Atlas map from a dense finite dominion.
--- The supplied first value is nonemptiness evidence.
-indexedAtlasMap
-  :: Natural
-  -> value
-  -> Dominion value
-  -> IndexedAtlasMap value
-indexedAtlasMap cardinality first valueDominion =
-  indexedAtlasMapFromChain first valueChain valueDominion
-  where
-    valueChain =
-      chain
-        (finiteOrdinal cardinality)
-        (finiteOrdinal . rank valueDominion)
-        (naturalAtOrdinal >=> unrank valueDominion)
-        (const ())
-        (\_ _ -> ())
-        (const ())
+instance AccessMapOperand (IndexedAtlasMap value) where
+  type AccessValue (IndexedAtlasMap value) = value
+  accessMap = Just
 
--- | Build an indexed Atlas map from an arbitrary nonempty ordinal chain and
--- a countable dominion of the same values.
-indexedAtlasMapFromChain
-  :: value
-  -> Chain value
-  -> Dominion value
-  -> IndexedAtlasMap value
-indexedAtlasMapFromChain first valueChain valueDominion =
-  IndexedAtlasMap
-    { indexedAtlasCardinality = chainOrderType valueChain
-    , indexedAtlasChain = valueChain
-    , indexedAtlasDominion = valueDominion
-    , indexedAtlasAtlas =
-        chainedDominionAtlas first valueChain valueDominion
-    , indexedAtlasAtlasMap =
-        chainedDominionAtlasMap first valueChain valueDominion
-    }
+instance AccessMapOperand (SuperEllipsisInsertionMap source) where
+  type AccessValue (SuperEllipsisInsertionMap source) = source
+  accessMap insertionMap =
+    case insertionMap of
+      EmptySuperEllipsisInsertionMap _ -> Nothing
+      IndexedSuperEllipsisInsertionMap valueMap -> Just valueMap
 
--- | Look up a final-page value by its finite page index.
-indexedAtlasValueAt
-  :: IndexedAtlasMap value
-  -> Natural
-  -> Maybe value
-indexedAtlasValueAt valueAtlas =
-  indexedAtlasValueAtOrdinal valueAtlas . finiteOrdinal
+instance AccessMapOperand (SuperEllipsisInsertion target source) where
+  type AccessValue (SuperEllipsisInsertion target source) = source
+  accessMap = accessMap . superEllipsisInsertionMap
 
--- | Look up a final-page value by an arbitrary ordinal page index.
-indexedAtlasValueAtOrdinal
-  :: IndexedAtlasMap value
-  -> Ordinal
-  -> Maybe value
-indexedAtlasValueAtOrdinal valueAtlas position =
-  chainObjectAt <$> chainIndex (indexedAtlasChain valueAtlas) position
+instance AccessMapOperand (SuperEllipsisRange (target :: Type) scope) where
+  type AccessValue (SuperEllipsisRange target scope) =
+    SuperEllipsisRangeElement target scope
+  accessMap = accessMap . superEllipsisRangeAtlasMap
 
 -- | A selected final-page value together with the insertion source that
 -- requested it and its new position in the accessed map.
@@ -166,6 +138,12 @@ instance AccessOperand
   withAccessOperandInsertion insertion useInsertion =
     useInsertion insertion
 
+instance AccessOperand (SuperEllipsisRange (target :: Type) scope) where
+  type AccessSource (SuperEllipsisRange target scope) =
+    SuperEllipsisRangeElement target scope
+  withAccessOperandInsertion valueRange useInsertion =
+    useInsertion (superEllipsisRangeInsertion valueRange)
+
 instance SuperEllipsisTarget target =>
     AccessOperand (StableConfederalData target) where
   type AccessSource (StableConfederalData target) =
@@ -178,12 +156,14 @@ instance SuperEllipsisTarget target =>
 -- insertion's image need not be monotone, so this operation can reorder the
 -- source Atlas's values.
 accessOperator
-  :: AccessOperand operand
-  => IndexedAtlasMap value
+  :: (AccessMapOperand mapOperand, AccessOperand operand)
+  => mapOperand
   -> operand
   -> Maybe
-       (IndexedAtlasMap (AccessElement (AccessSource operand) value))
-accessOperator valueAtlas operand =
+       (IndexedAtlasMap
+         (AccessElement (AccessSource operand) (AccessValue mapOperand)))
+accessOperator mapOperand operand = do
+  valueAtlas <- accessMap mapOperand
   withAccessOperandInsertion operand (accessInsertionOperator valueAtlas)
 
 accessInsertionOperator

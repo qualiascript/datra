@@ -32,6 +32,7 @@ library
         AsciiMap
         MapOperators
         MapOperators.AccessOperator
+        MapOperators.IndexedAtlasMap
         MapOperators.ConcatOperator
         MapOperators.ExpansionOperator
         MapOperators.SequentialOperator

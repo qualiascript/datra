@@ -790,6 +790,36 @@ testAccessOperator =
         (case ascii <@> SuperRange.superEllipsisRangeInsertion outside of
           Nothing -> True
           Just _ -> False)
+    withRankOneRange 0 (Just 1) $ \zero -> do
+      withRankOneRange 2 (Just 10) $ \valueRange -> do
+        let selectedPosition selected =
+              SuperRange.superEllipsisRangeElementPosition
+                . accessElementValue
+                <$> indexedAtlasValueAt selected 0
+            insertion = SuperRange.superEllipsisRangeInsertion valueRange
+        case valueRange <@> zero of
+          Nothing -> fail "a range on the left of access was rejected"
+          Just selected ->
+            assert "range access at zero returns the range's first value"
+              (selectedPosition selected == Just (finiteOrdinal 2))
+        case insertion <@> zero of
+          Nothing -> fail "an insertion on the left of access was rejected"
+          Just selected ->
+            assert "insertion access uses its underlying Atlas map"
+              (selectedPosition selected == Just (finiteOrdinal 2))
+      case rankOneRange
+          3 (SuperRange.GivenTarget (finiteOrdinal 3)) $ \emptyRange -> do
+        assert "an empty range converts to the empty map"
+          (case SuperRange.superEllipsisRangeAtlasMap emptyRange of
+            EmptySuperEllipsisInsertionMap _ -> True
+            IndexedSuperEllipsisInsertionMap _ -> False)
+        assert "an empty insertion map is not indexable by access"
+          (case emptyRange <@> zero of
+            Nothing -> True
+            Just _ -> False)
+        of
+          Nothing -> fail "valid empty range was rejected"
+          Just checks -> checks
 
 withRankOneRange
   :: Natural

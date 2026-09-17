@@ -5,8 +5,10 @@ module MapOperators.Syntax.AccessOperatorSyntax
 
 import MapOperators.AccessOperator
   ( AccessElement
+  , AccessMapOperand
   , AccessOperand
   , AccessSource
+  , AccessValue
   , IndexedAtlasMap
   , accessOperator
   )
@@ -15,9 +17,10 @@ infixl 8 <@>
 
 -- | Infix form of 'accessOperator'.
 (<@>)
-  :: AccessOperand operand
-  => IndexedAtlasMap value
+  :: (AccessMapOperand mapOperand, AccessOperand operand)
+  => mapOperand
   -> operand
   -> Maybe
-       (IndexedAtlasMap (AccessElement (AccessSource operand) value))
+       (IndexedAtlasMap
+         (AccessElement (AccessSource operand) (AccessValue mapOperand)))
 (<@>) = accessOperator

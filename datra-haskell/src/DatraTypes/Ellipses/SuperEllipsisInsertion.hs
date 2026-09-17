@@ -1,8 +1,10 @@
 -- | Stable Atlas transversals into any finite-rank 'SuperEllipsis'.
 module SuperEllipsisInsertion
   ( SuperEllipsisInsertion
+  , SuperEllipsisInsertionMap (..)
   , SuperEllipsisInsertionElement
   , superEllipsisInsertion
+  , superEllipsisInsertionMap
   , fullSuperEllipsisInsertion
   , superEllipsisInsertionRank
   , superEllipsisInsertionFirst
@@ -13,6 +15,7 @@ module SuperEllipsisInsertion
   , superEllipsisInsertionPreimage
   , superEllipsisInsertionLeftInverse
   , mergeDisjointSuperEllipsisInsertions
+  , superEllipsisInsertionSourceDominion
   , superEllipsisInsertionDominion
   , superEllipsisInsertionElementSource
   , superEllipsisInsertionElementValue
@@ -30,7 +33,16 @@ import DomanialInsertion
   , preimage
   )
 import Dominion (Dominion, dominion, rank, unrank)
+import MapOperators.IndexedAtlasMap
+  ( IndexedAtlasMap
+  , indexedAtlasMapFromChain
+  )
 import StableAtlasTransversal (StableAtlasTransversal)
+import StableConfederalData
+  ( EmptyMapValues
+  , StableConfederalData
+  , emptyMap
+  )
 import SuperEllipsis
   ( SuperEllipsisAtlasObject
   , SuperEllipsisRank
@@ -53,6 +65,14 @@ data SuperEllipsisInsertion target source = SuperEllipsisInsertion
   , superEllipsisInsertionDomanial
       :: DomanialInsertion source (SuperEllipsisTerminal target)
   }
+
+-- | The Atlas map presented by an insertion.  Empty insertions present the
+-- empty map; nonempty insertions retain their source values and chain order in
+-- an indexed chained Atlas map.
+data SuperEllipsisInsertionMap source
+  = EmptySuperEllipsisInsertionMap
+      (StableConfederalData EmptyMapValues)
+  | IndexedSuperEllipsisInsertionMap (IndexedAtlasMap source)
 
 -- | A value restricted to positions selected by an insertion.
 data SuperEllipsisInsertionElement target source value =
@@ -91,6 +111,21 @@ superEllipsisInsertion
     targetDominion = superEllipsisDominion valueRank
     insertion = domanialInsertion forward backward leftInverse
     zero = superEllipsisZeroTerminal valueRank
+
+-- | Convert an insertion to the Atlas map presented by its ordered source
+-- chain.  Unlike indexed maps, the empty map needs no first-element witness.
+superEllipsisInsertionMap
+  :: SuperEllipsisInsertion target source
+  -> SuperEllipsisInsertionMap source
+superEllipsisInsertionMap insertion =
+  case superEllipsisInsertionFirst insertion of
+    Nothing -> EmptySuperEllipsisInsertionMap emptyMap
+    Just first ->
+      IndexedSuperEllipsisInsertionMap
+        (indexedAtlasMapFromChain
+          first
+          (superEllipsisInsertionChain insertion)
+          (superEllipsisInsertionSourceDominion insertion))
 
 -- | The identity insertion of every position in a super-ellipsis target.
 -- This is the insertion underlying the corresponding formulation and may
@@ -160,6 +195,22 @@ mergeDisjointSuperEllipsisInsertions first second =
       case superEllipsisInsertionPreimage first terminal of
         Just value -> Just (Left value)
         Nothing -> Right <$> superEllipsisInsertionPreimage second terminal
+
+-- | The insertion source as a dominion, ranked through its absolute target
+-- position.
+superEllipsisInsertionSourceDominion
+  :: SuperEllipsisInsertion target source
+  -> Dominion source
+superEllipsisInsertionSourceDominion insertion =
+  dominion sourceRank sourceAt (const ())
+  where
+    targetDominion =
+      superEllipsisDominion (superEllipsisInsertionRank insertion)
+    sourceRank =
+      rank targetDominion . applySuperEllipsisInsertion insertion
+    sourceAt valueRank = do
+      terminal <- unrank targetDominion valueRank
+      superEllipsisInsertionPreimage insertion terminal
 
 -- | Restrict a dominion indexed by the canonical natural enumeration of the
 -- target rank to the insertion image.
