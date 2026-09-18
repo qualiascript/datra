@@ -59,8 +59,9 @@ library
         EllipsisRange
         EllipsisNatural
         DatraLanguage.Diagnostics
-        DatraLanguage.Diagnostics.English
         DatraLanguage.Diagnostics.Interpreter
+        DatraLanguage.Diagnostics.Locales.English
+        DatraLanguage.Diagnostics.Locales.Română
         DatraLanguage.Diagnostics.Localization
         FixedPoint
         DomanialInsertion
@@ -164,6 +165,7 @@ library
         Evaluation.Numerical
         Evaluation.Range
         Evaluation.Value
+        DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9
@@ -229,9 +231,9 @@ executable datra-haskell
     import:           warnings
     main-is:          Main.hs
     other-modules:
-        DatraLanguage.Interpreting
-        DatraLanguage.Parsing
-        DatraLanguage.Rendering
+        Interpreting
+        Parsing
+        Rendering
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
@@ -271,7 +273,7 @@ test-suite datra-parsing-test
         app
     main-is:          DatraParsingTests.hs
     other-modules:
-        DatraLanguage.Parsing
+        Parsing
     ghc-options:      -main-is DatraParsingTests.main
     build-depends:
         base >= 4.14 && < 5,
@@ -289,8 +291,8 @@ test-suite datra-interpreting-test
         app
     main-is:          DatraInterpretingTests.hs
     other-modules:
-        DatraLanguage.Interpreting
-        DatraLanguage.Rendering
+        Interpreting
+        Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:
         base >= 4.14 && < 5,

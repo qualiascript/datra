@@ -2,7 +2,7 @@
 --
 -- This display-stage module translates strongly typed domain errors into
 -- prose. Domain modules do not depend on it.
-module DatraLanguage.Diagnostics.English
+module DatraLanguage.Diagnostics.Locales.English
   ( localizeAccessError
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
@@ -10,20 +10,18 @@ module DatraLanguage.Diagnostics.English
   , englishOrdinal
   ) where
 
-import Data.List (intercalate)
-import DatraLanguage.AST.Operator
-  ( Operator (..)
-  , ellipsisSymbol
-  , operatorCanonicalSymbol
-  , operatorSourceSymbol
-  )
-import DatraOrdinal (Ordinal, ordinalCoefficients)
 import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
 import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
   )
+import DatraLanguage.Diagnostics.Locales.Rendering
+  ( renderOrdinal
+  , renderRangeBounds
+  , renderRangeDescription
+  )
+import DatraOrdinal (Ordinal)
 import MapOperators.AccessOperator
   ( AccessError
       ( AccessInsertionRankExceedsMap
@@ -32,13 +30,12 @@ import MapOperators.AccessOperator
   )
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError (SuperEllipsisRangesOverlap)
-  , SuperEllipsisRangeDescription (..)
+  , SuperEllipsisRangeDescription
   , SuperEllipsisRangeError
       ( SuperEllipsisRangeInvalidDescendingBounds
       , SuperEllipsisRangeStartOutsideRank
       , SuperEllipsisRangeTargetOutsideRank
       )
-  , SuperEllipsisRangeTarget (..)
   )
 
 localizeAccessError :: AccessError -> LocalizedMessage
@@ -124,57 +121,12 @@ localizeSuperEllipsisRangeConcatError
     "cannot use overlapping ranges to access a map"
     [ "first range: " <> englishRangeDescription first
     , "second range: " <> englishRangeDescription second
-    , "overlap: " <> englishOrdinal lower
-        <> sourceSymbol RangeOperator <> englishOrdinal upper
+    , "overlap: " <> renderRangeBounds lower upper
         <> " (upper bound excluded)"
     ]
 
 englishRangeDescription :: SuperEllipsisRangeDescription -> String
-englishRangeDescription description =
-  englishOrdinal (describedRangeStart description)
-    <> case describedRangeTarget description of
-      GivenTarget target ->
-        sourceSymbol RangeOperator <> englishOrdinal target
-      PlusSign -> sourceSymbol RangePlusOperator
-      MinusSign -> sourceSymbol RangeMinusOperator
+englishRangeDescription = renderRangeDescription
 
 englishOrdinal :: Ordinal -> String
-englishOrdinal value =
-  case ordinalCoefficients value of
-    [] -> "0"
-    coefficients ->
-      intercalate (spacedSourceSymbol AdditionOperator)
-        [ renderTerm power coefficient
-        | (power, coefficient) <- zip [degree, degree - 1 .. 0] coefficients
-        , coefficient /= 0
-        ]
-      where
-        degree = length coefficients - 1
-        renderTerm 0 coefficient = show coefficient
-        renderTerm 1 1 = parenthesizedEllipsis
-        renderTerm 1 coefficient =
-          parenthesizedEllipsis
-            <> spacedSourceSymbol MultiplicationOperator
-            <> show coefficient
-        renderTerm power 1 =
-          parenthesizedEllipsis
-            <> sourceSymbol ExponentiationOperator
-            <> show power
-        renderTerm power coefficient =
-          parenthesizedEllipsis
-            <> sourceSymbol ExponentiationOperator
-            <> show power
-            <> spacedSourceSymbol MultiplicationOperator
-            <> show coefficient
-
-parenthesizedEllipsis :: String
-parenthesizedEllipsis = "(" <> ellipsisSymbol <> ")"
-
-sourceSymbol :: Operator -> String
-sourceSymbol operator =
-  case operatorSourceSymbol operator of
-    Just value -> value
-    Nothing -> operatorCanonicalSymbol operator
-
-spacedSourceSymbol :: Operator -> String
-spacedSourceSymbol operator = " " <> sourceSymbol operator <> " "
+englishOrdinal = renderOrdinal

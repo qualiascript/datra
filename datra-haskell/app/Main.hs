@@ -6,9 +6,9 @@ import DatraLanguage.Diagnostics.Localization
   ( Locale (English)
   , renderDatraError
   )
-import DatraLanguage.Interpreting (interpretLocatedExpression)
-import DatraLanguage.Parsing (parseDatraLocatedWithSourceName)
-import DatraLanguage.Rendering (renderInterpretedValue)
+import Interpreting (interpretLocatedExpression)
+import Parsing (parseDatraLocatedWithSourceName)
+import Rendering (renderInterpretedValue)
 
 main :: IO ()
 main = do

@@ -15,7 +15,7 @@ import DatraLanguage.AST.Syntax
   , (<@>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
-import DatraLanguage.Interpreting
+import Interpreting
   ( InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
@@ -31,7 +31,7 @@ import DatraLanguage.Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   )
-import DatraLanguage.Rendering (renderInterpretedValue)
+import Rendering (renderInterpretedValue)
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -45,7 +45,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English)
+  ( Locale (English, Română)
   , renderDatraError
   )
 import MapOperators.AccessOperator
@@ -426,6 +426,13 @@ testLocatedRejection = do
           == "<test>:1:5: left operand must be numerical\n"
               <> "  actual value kind: map"
       Right _ -> False)
+  assert "Romanian interpretation errors are localized only at display time"
+    (case interpretLocatedExpression (Located sourceSpan expressionValue) of
+      Left valueError ->
+        renderDatraError Română valueError
+          == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
+              <> "  tipul efectiv al valorii: hartă"
+      Right _ -> False)
   let overlapExpression =
         (<@>)
           (AtlasMap (map natural [0 .. 9]))
@@ -444,4 +451,13 @@ testLocatedRejection = do
               <> "  first range: 2..5\n"
               <> "  second range: 4..7\n"
               <> "  overlap: 4..5 (upper bound excluded)"
+      Right _ -> False)
+  assert "Romanian overlap diagnostics use Datra range notation"
+    (case interpretLocatedExpression (Located sourceSpan overlapExpression) of
+      Left valueError ->
+        renderDatraError Română valueError
+          == "<test>:1:5: intervalele suprapuse nu pot fi folosite pentru a accesa o hartă\n"
+              <> "  primul interval: 2..5\n"
+              <> "  al doilea interval: 4..7\n"
+              <> "  suprapunere: 4..5 (limita superioară este exclusă)"
       Right _ -> False)

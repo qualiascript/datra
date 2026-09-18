@@ -2,7 +2,7 @@
 --
 -- This module deliberately owns syntax traversal only. Checked semantic
 -- operations and all type errors are provided by 'DatraTypes'.
-module DatraLanguage.Interpreting
+module Interpreting
   ( InterpretedValue
   , CanonicalResult (..)
   , InterpretedValueKind (..)

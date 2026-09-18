@@ -13,15 +13,16 @@ import DatraLanguage.Diagnostics
   , LocalizedMessage
   , renderDatraErrorWith
   )
-import DatraLanguage.Diagnostics.English qualified as English
 import DatraLanguage.Diagnostics.Interpreter (InterpretingError)
+import DatraLanguage.Diagnostics.Locales.English qualified as English
+import DatraLanguage.Diagnostics.Locales.Română qualified as Română
 import MapOperators.AccessOperator (AccessError)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError
   , SuperEllipsisRangeError
   )
 
-data Locale = English
+data Locale = English | Română
   deriving (Eq, Ord, Show)
 
 class LocalizedDiagnostic reason where
@@ -29,16 +30,21 @@ class LocalizedDiagnostic reason where
 
 instance LocalizedDiagnostic AccessError where
   localizeDiagnostic English = English.localizeAccessError
+  localizeDiagnostic Română = Română.localizeAccessError
 
 instance LocalizedDiagnostic InterpretingError where
   localizeDiagnostic English = English.localizeInterpretingError
+  localizeDiagnostic Română = Română.localizeInterpretingError
 
 instance LocalizedDiagnostic SuperEllipsisRangeError where
   localizeDiagnostic English = English.localizeSuperEllipsisRangeError
+  localizeDiagnostic Română = Română.localizeSuperEllipsisRangeError
 
 instance LocalizedDiagnostic SuperEllipsisRangeConcatError where
   localizeDiagnostic English =
     English.localizeSuperEllipsisRangeConcatError
+  localizeDiagnostic Română =
+    Română.localizeSuperEllipsisRangeConcatError
 
 renderDatraError
   :: LocalizedDiagnostic reason

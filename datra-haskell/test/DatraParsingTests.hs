@@ -23,7 +23,7 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
-import DatraLanguage.Parsing (parseDatra, parseDatraLocated)
+import Parsing (parseDatra, parseDatraLocated)
 
 main :: IO ()
 main = do

@@ -1,4 +1,4 @@
-module DatraLanguage.Rendering
+module Rendering
   ( renderCanonicalResult
   , renderInterpretedValue
   ) where

@@ -72,7 +72,7 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English)
+  ( Locale (English, Română)
   , LocalizedDiagnostic (localizeDiagnostic)
   , renderDatraError
   )
@@ -178,6 +178,9 @@ testDiagnostics = do
         (finiteOrdinal 3)
       localized = localizeDiagnostic English reason
       rendered = renderDatraError English (atSourceSpan sourceSpan reason)
+      localizedRomanian = localizeDiagnostic Română reason
+      renderedRomanian =
+        renderDatraError Română (atSourceSpan sourceSpan reason)
   assert "English access localization has exact structured text"
     (localized
       == LocalizedMessage
@@ -188,6 +191,16 @@ testDiagnostics = do
   assert "localized diagnostics render exact source position and text"
     (rendered
       == "<test>:1:5: the access insertion selects a position outside the map\n  selected position: 4\n  map final-page order type: 3")
+  assert "Romanian access localization has exact structured text"
+    (localizedRomanian
+      == LocalizedMessage
+          "inserția de acces selectează o poziție din afara hărții"
+          [ "poziția selectată: 4"
+          , "tipul de ordine al ultimei pagini din hartă: 3"
+          ])
+  assert "Romanian diagnostics retain source positions and diacritics"
+    (renderedRomanian
+      == "<test>:1:5: inserția de acces selectează o poziție din afara hărții\n  poziția selectată: 4\n  tipul de ordine al ultimei pagini din hartă: 3")
   assert "English diagnostics render omega in Datra notation"
     (localizeDiagnostic
         English

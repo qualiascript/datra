@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module DatraLanguage.Parsing
+module Parsing
   ( parseDatra
   , parseDatraWithSourceName
   , parseDatraLocated
