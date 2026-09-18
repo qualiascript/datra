@@ -1,0 +1,7 @@
+.git
+.gitignore
+dist
+dist-newstyle
+*.iml
+resources
+
