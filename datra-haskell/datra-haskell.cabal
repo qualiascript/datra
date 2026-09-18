@@ -220,10 +220,14 @@ library
 executable datra-haskell
     import:           warnings
     main-is:          Main.hs
+    other-modules:
+        Datra.AST
+        Datra.Parsing
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
         megaparsec >= 9.8 && < 10,
+        parser-combinators >= 1.3 && < 2,
         text >= 2.0 && < 2.2
     hs-source-dirs:   app
     default-language: GHC2021
@@ -249,17 +253,33 @@ test-suite datra-types-test
         containers >= 0.6 && < 0.9,
         datra-haskell
 
-test-suite datra-interpreter-test
+test-suite datra-parsing-test
     import:           warnings
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:
         test
         app
-    main-is:          DatraInterpreterTests.hs
-    other-modules:    Main
-    ghc-options:      -main-is DatraInterpreterTests.main
+    main-is:          DatraParsingTests.hs
+    other-modules:
+        Datra.AST
+        Datra.Parsing
+    ghc-options:      -main-is DatraParsingTests.main
     build-depends:
         base >= 4.14 && < 5,
         megaparsec >= 9.8 && < 10,
+        parser-combinators >= 1.3 && < 2,
         text >= 2.0 && < 2.2
+
+test-suite datra-interpreting-test
+    import:           warnings
+    default-language: GHC2021
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:
+        test
+        app
+    main-is:          DatraInterpretingTests.hs
+    other-modules:    Datra.Interpreting
+    ghc-options:      -main-is DatraInterpretingTests.main
+    build-depends:
+        base >= 4.14 && < 5
