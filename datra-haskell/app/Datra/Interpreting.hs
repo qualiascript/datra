@@ -96,7 +96,6 @@ data InterpretingError
   = ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | ExpectedInsertionOperand InterpretedValueKind
-  | RangeRanksDoNotMatch Natural Natural
   | RangeConstructionRejected Range.SuperEllipsisRangeError
   | RangeConcatenationRejected Range.SuperEllipsisRangeConcatError
   | NumericalResultOutsideRank Natural Ordinal
@@ -442,9 +441,17 @@ makeRangeAt
   -> Range.SuperEllipsisRangeTarget
   -> Either InterpretingError InterpretedValue
 makeRangeAt level start target =
+  interpretedRangeValue <$> makeEvaluatedRangeAt level start target
+
+makeEvaluatedRangeAt
+  :: Natural
+  -> Ordinal
+  -> Range.SuperEllipsisRangeTarget
+  -> Either InterpretingError EvaluatedRange
+makeEvaluatedRangeAt level start target =
   withRank level $ \valueRank ->
     case Range.superEllipsisRangeEither valueRank start target $ \valueRange ->
-        interpretedRangeValue (EvaluatedRange level valueRange) of
+        EvaluatedRange level valueRange of
       Left rejection -> Left (RangeConstructionRejected rejection)
       Right value -> Right value
 
@@ -546,18 +553,34 @@ concatenateValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 concatenateValues left right = do
-  insertionCapability <- concatenateRangeCapability left right
-  let finalValues =
-        appendOrderedValues
-          (interpretedMapFinalValues (interpretedMap left))
-          (interpretedMapFinalValues (interpretedMap right))
+  normalizedRanges <- traverse promoteRangesToCommonRank
+    (concatenatedRanges left right)
+  insertionCapability <-
+    case normalizedRanges of
+      Nothing -> Right NoInsertion
+      Just ranges -> concatenateRangeCapability ranges
+  let (form, finalValues) =
+        case normalizedRanges of
+          Just ranges ->
+            ( RangeConcatenationForm ranges
+            , foldl'
+                appendOrderedValues
+                emptyOrderedValues
+                (map
+                  (interpretedMapFinalValues
+                    . interpretedMap
+                    . interpretedRangeValue)
+                  ranges)
+            )
+          Nothing ->
+            ( MapForm
+            , appendOrderedValues
+                (interpretedMapFinalValues (interpretedMap left))
+                (interpretedMapFinalValues (interpretedMap right))
+            )
       cardinality
         | orderedValuesOrderType finalValues == finiteOrdinal 0 = 0
         | otherwise = 2
-      form =
-        case concatenatedRanges left right of
-          Just ranges -> RangeConcatenationForm ranges
-          Nothing -> MapForm
   pure
     (InterpretedValue
       form
@@ -580,31 +603,37 @@ valueRanges value =
     RangeConcatenationForm ranges -> Just ranges
     _ -> Nothing
 
-concatenateRangeCapability
-  :: InterpretedValue
-  -> InterpretedValue
-  -> Either InterpretingError InsertionCapability
-concatenateRangeCapability left right =
-  case concatenatedRanges left right of
-    Nothing -> Right NoInsertion
-    Just [] -> Right NoInsertion
-    Just ranges -> do
-      ensureMatchingRangeRanks ranges
-      case firstRangeOverlap ranges of
-        Left rejection -> Right (RejectedInsertion rejection)
-        Right () ->
-          Right
-            (ValidInsertion
-              (foldl1 appendInsertion (map rangeInsertion ranges)))
-
-ensureMatchingRangeRanks
+promoteRangesToCommonRank
   :: [EvaluatedRange]
-  -> Either InterpretingError ()
-ensureMatchingRangeRanks [] = Right ()
-ensureMatchingRangeRanks (EvaluatedRange firstLevel _ : rest) =
-  case [level | EvaluatedRange level _ <- rest, level /= firstLevel] of
-    [] -> Right ()
-    level : _ -> Left (RangeRanksDoNotMatch firstLevel level)
+  -> Either InterpretingError [EvaluatedRange]
+promoteRangesToCommonRank [] = Right []
+promoteRangesToCommonRank ranges =
+  traverse (promoteRange resultLevel) ranges
+  where
+    resultLevel = maximum [level | EvaluatedRange level _ <- ranges]
+
+promoteRange
+  :: Natural
+  -> EvaluatedRange
+  -> Either InterpretingError EvaluatedRange
+promoteRange level evaluatedRange =
+  let description = rangeDescription evaluatedRange
+  in makeEvaluatedRangeAt
+      level
+      (Range.describedRangeStart description)
+      (Range.describedRangeTarget description)
+
+concatenateRangeCapability
+  :: [EvaluatedRange]
+  -> Either InterpretingError InsertionCapability
+concatenateRangeCapability [] = Right NoInsertion
+concatenateRangeCapability ranges =
+  case firstRangeOverlap ranges of
+    Left rejection -> Right (RejectedInsertion rejection)
+    Right () ->
+      Right
+        (ValidInsertion
+          (foldl1 appendInsertion (map rangeInsertion ranges)))
 
 firstRangeOverlap
   :: [EvaluatedRange]

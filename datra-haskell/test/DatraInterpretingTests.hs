@@ -195,6 +195,25 @@ testAccess = do
             [0 .. 6]
     assert "access follows concatenated insertion order"
       (selected == map Just [2 .. 7] <> [Nothing])
+  let rankTwoEight =
+        Addition
+          (Multiplication EllipsisLiteral (EllipsisNatural 0))
+          (EllipsisNatural 8)
+      mixedRankInsertion =
+        MapConcatenation
+          (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
+          (SuperEllipsisRange (EllipsisNatural 5) rankTwoEight)
+  expectValue "mixed-rank range access"
+      (MapAccess source mixedRankInsertion) $ \value -> do
+    let valueMap = interpretedMap value
+        selected =
+          map
+            (\position ->
+              interpretedMapValueAt valueMap (finiteOrdinal position)
+                >>= naturalOrdinal)
+            [0 .. 6]
+    assert "range concatenation promotes both ranges to their common rank"
+      (selected == map Just [2 .. 7] <> [Nothing])
   expectValue
       "empty access"
       (MapAccess
