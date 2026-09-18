@@ -78,6 +78,14 @@ main = do
     "[2..\n]"
     "(..+ 2)"
   assertAstOutput
+    "a postfix range ends before lower-precedence access"
+    "(...) .. @ 5"
+    "(<@> (..+ ...) 5)"
+  assertAstOutput
+    "a postfix range ends before lower-precedence concatenation"
+    "2.., 5"
+    "(<.> (..+ 2) 5)"
+  assertAstOutput
     "Haskell arithmetic precedence"
     "[1 + 2 * 3 ^ 4]"
     "(+ 1 (* 2 (^ 3 4)))"

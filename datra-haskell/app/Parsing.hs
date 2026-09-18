@@ -286,7 +286,7 @@ rangeSuffix lowerBound =
         SuperEllipsisRange lowerBound <$> rangeEndpoint
     , do
         _ <- continuedOperator AST.RangePlusOperator
-        _ <- lookAhead expressionEnd
+        _ <- lookAhead postfixRangeEnd
         pure (SuperEllipsisRangePlus lowerBound)
     ]
 
@@ -364,6 +364,18 @@ trailingComma =
 expressionEnd :: Parser ()
 expressionEnd =
   void (choice [char ']', char ')', char ';']) <|> eof
+
+-- A postfix range also ends before an operator from the lower-precedence map
+-- layer. Keeping these boundaries separate from 'expressionEnd' avoids
+-- changing how trailing concatenation is classified after its comma.
+postfixRangeEnd :: Parser ()
+postfixRangeEnd =
+  expressionEnd
+    <|> void
+      (choice
+        [ operatorToken AST.ConcatenationOperator
+        , operatorToken AST.AccessOperator
+        ])
 
 ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
