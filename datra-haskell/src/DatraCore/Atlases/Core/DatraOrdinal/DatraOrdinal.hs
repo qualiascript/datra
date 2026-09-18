@@ -2,6 +2,7 @@
 module DatraOrdinal
   ( Ordinal
   , ordinal
+  , ordinalCoefficients
   , finiteOrdinal
   , omega
   , omegaPower
@@ -30,6 +31,13 @@ import DatraOrdinal.Internal
   , subtractOrdinal
   )
 import Numeric.Natural (Natural)
+
+-- | Inspect the canonical Cantor-normal-form coefficients from the highest
+-- power of omega through the finite coefficient. The empty list denotes zero.
+-- The constructor remains hidden, so callers cannot construct a
+-- non-canonical ordinal by using this observation function.
+ordinalCoefficients :: Ordinal -> [Natural]
+ordinalCoefficients (Ordinal values) = values
 
 -- | Split off an ordinal's finite tail.  The first component is zero or a
 -- limit ordinal, and adding the second component reconstructs the input.

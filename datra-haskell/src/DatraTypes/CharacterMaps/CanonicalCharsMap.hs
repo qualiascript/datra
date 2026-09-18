@@ -26,6 +26,7 @@ import MapOperators.AccessOperator
   , accessElementValue
   , indexedAtlasValueAt
   )
+import MapOperators.OrderedAtlasMap (orderedAtlasMapIndexed)
 import MapOperators.Syntax.AccessOperatorSyntax ((<@>))
 import Numeric.Natural (Natural)
 import SuperEllipsisInsertion
@@ -117,7 +118,9 @@ canonicalCharsMap
   -> Maybe result
 canonicalCharsMap useCanonical =
   asciiMap
-    (fmap useCanonical . (<@> canonicalCharsInsertion))
+    (\ascii -> do
+      selected <- ascii <@> canonicalCharsInsertion
+      useCanonical <$> orderedAtlasMapIndexed selected)
 
 canonicalCharValue :: CanonicalChar scope -> Char
 canonicalCharValue = asciiCharacterValue . accessElementValue

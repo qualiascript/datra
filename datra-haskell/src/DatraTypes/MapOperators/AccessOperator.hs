@@ -4,10 +4,10 @@
 -- | Ordered access to the final page of an ordinal-indexed Atlas map.
 --
 -- A 'SuperEllipsisInsertion' supplies both the absolute final-page indices and
--- the order in which they are requested.  Successful access constructs a
--- fresh two-page chained Atlas map in precisely that order.  Failure means
--- that the insertion was empty or could not be certified to lie inside the
--- left Atlas's final order type.
+-- the order in which they are requested. Nonempty access constructs a fresh
+-- two-page chained Atlas map in precisely that order; an empty source or
+-- selection produces 'EmptyOrderedAtlasMap'. Detailed failures explain why a
+-- nonempty insertion could not be certified inside the left Atlas.
 module MapOperators.AccessOperator
   ( IndexedAtlasMap
   , indexedAtlasMap
@@ -20,23 +20,27 @@ module MapOperators.AccessOperator
   , indexedAtlasValueAt
   , indexedAtlasValueAtOrdinal
   , OrderedAtlasMap (..)
+  , orderedAtlasMapCardinality
+  , orderedAtlasMapValueAt
+  , orderedAtlasMapValueAtOrdinal
   , HasOrderedAtlasMap (OrderedAtlasElement, orderedAtlasMap)
   , AccessElement
   , accessElementPosition
   , accessElementSource
   , accessElementValue
+  , AccessError (..)
+  , validateAccessSelection
   , HasSuperEllipsisInsertion
       ( InsertionTarget
       , InsertionSource
       , superEllipsisInsertionOf
       )
   , accessOperator
+  , accessOperatorEither
   ) where
 
 import Chain
   ( chain
-  , chainIndex
-  , chainObjectAt
   , chainOrderType
   , chainPosition
   )
@@ -62,7 +66,9 @@ import MapOperators.IndexedAtlasMap
 import MapOperators.OrderedAtlasMap
   ( HasOrderedAtlasMap (..)
   , OrderedAtlasMap (..)
-  , orderedAtlasMapIndexed
+  , orderedAtlasMapCardinality
+  , orderedAtlasMapValueAt
+  , orderedAtlasMapValueAtOrdinal
   )
 import SuperEllipsis
   ( superEllipsisDominion
@@ -73,10 +79,10 @@ import SuperEllipsisInsertion
   , SuperEllipsisInsertion
   , applySuperEllipsisInsertion
   , superEllipsisInsertionChain
-  , superEllipsisInsertionFirst
   , superEllipsisInsertionPosition
   , superEllipsisInsertionPreimage
   , superEllipsisInsertionRank
+  , withSuperEllipsisInsertionSources
   )
 
 -- | A selected final-page value together with the insertion source that
@@ -89,6 +95,11 @@ data AccessElement source value = AccessElement
   }
   deriving (Eq, Show)
 
+data AccessError
+  = AccessInsertionRankExceedsMap Ordinal Ordinal
+  | AccessPositionOutOfBounds Ordinal Ordinal
+  deriving (Eq, Show)
+
 -- | Access final-page indices in insertion-chain order.  In particular, the
 -- insertion's image need not be monotone, so this operation can reorder the
 -- source Atlas's values.
@@ -97,60 +108,84 @@ accessOperator
   => mapOperand
   -> operand
   -> Maybe
-       (IndexedAtlasMap
+       (OrderedAtlasMap
          (AccessElement
            (InsertionSource operand)
            (OrderedAtlasElement mapOperand)))
-accessOperator mapOperand operand = do
-  valueAtlas <- orderedAtlasMapIndexed (orderedAtlasMap mapOperand)
-  accessInsertionOperator valueAtlas (superEllipsisInsertionOf operand)
+accessOperator mapOperand operand =
+  case accessOperatorEither mapOperand operand of
+    Left _ -> Nothing
+    Right result -> Just result
 
-accessInsertionOperator
+accessOperatorEither
+  :: (HasOrderedAtlasMap mapOperand, HasSuperEllipsisInsertion operand)
+  => mapOperand
+  -> operand
+  -> Either
+       AccessError
+       (OrderedAtlasMap
+         (AccessElement
+           (InsertionSource operand)
+           (OrderedAtlasElement mapOperand)))
+accessOperatorEither mapOperand operand =
+  case orderedAtlasMap mapOperand of
+    EmptyOrderedAtlasMap -> Right EmptyOrderedAtlasMap
+    NonEmptyOrderedAtlasMap valueAtlas ->
+      accessInsertionOperatorEither
+        valueAtlas
+        (superEllipsisInsertionOf operand)
+
+accessInsertionOperatorEither
   :: IndexedAtlasMap value
   -> SuperEllipsisInsertion target source
-  -> Maybe (IndexedAtlasMap (AccessElement source value))
-accessInsertionOperator valueAtlas insertion = do
-  validateFits
-  firstSource <- superEllipsisInsertionFirst insertion
-  first <- selectedValue firstSource
-  pure (indexedAtlasMapFromChain first selectedChain selectedDominion)
+  -> Either
+       AccessError
+       (OrderedAtlasMap (AccessElement source value))
+accessInsertionOperatorEither valueAtlas insertion =
+  withSuperEllipsisInsertionSources
+    insertion
+    (Right EmptyOrderedAtlasMap) $ \firstSource sourceAt -> do
+      validateAccessSelection
+        targetOrderType
+        (chainOrderType insertionChain)
+        mapOrderType
+        (Just . superEllipsisInsertionPosition insertion . sourceAt)
+      first <- selectedValue firstSource
+      pure
+        (NonEmptyOrderedAtlasMap
+          (indexedAtlasMapFromChain
+            first
+            (selectedChain sourceAt)
+            selectedDominion))
   where
     insertionChain = superEllipsisInsertionChain insertion
     insertionRank = superEllipsisInsertionRank insertion
     targetOrderType = superEllipsisRankOrderType insertionRank
     mapOrderType = chainOrderType (indexedAtlasChain valueAtlas)
 
-    validateFits
-      | targetOrderType == mapOrderType
-          || ordinalLT targetOrderType mapOrderType = Just ()
-      | otherwise = do
-          finiteOrderType <- naturalAtOrdinal (chainOrderType insertionChain)
-          validateFinite 0 finiteOrderType
+    selectedValue source =
+      let selectedPosition =
+            superEllipsisInsertionPosition insertion source
+      in case indexedAtlasValueAtOrdinal valueAtlas selectedPosition of
+          Nothing ->
+            Left (AccessPositionOutOfBounds selectedPosition mapOrderType)
+          Just value ->
+            Right
+              (AccessElement
+                (chainPosition insertionChain source)
+                source
+                value)
 
-    validateFinite position cardinality
-      | position == cardinality = Just ()
-      | otherwise = do
-          sourceIndex <- chainIndex insertionChain (finiteOrdinal position)
-          _ <- selectedValue (chainObjectAt sourceIndex)
-          validateFinite (position + 1) cardinality
+    selectedValueMaybe source =
+      case selectedValue source of
+        Left _ -> Nothing
+        Right value -> Just value
 
-    selectedValue source = do
-      value <- indexedAtlasValueAtOrdinal
-        valueAtlas
-        (superEllipsisInsertionPosition insertion source)
-      pure
-        (AccessElement
-          (chainPosition insertionChain source)
-          source
-          value)
-
-    selectedChain =
+    selectedChain sourceAt =
       chain
         (chainOrderType insertionChain)
         accessElementPosition
-        (\position -> do
-          sourceIndex <- chainIndex insertionChain position
-          selectedValue (chainObjectAt sourceIndex))
+        (selectedValueMaybe . sourceAt)
         (const ())
         (\_ _ -> ())
         (const ())
@@ -164,5 +199,39 @@ accessInsertionOperator valueAtlas insertion = do
         (\valueRank -> do
           terminal <- unrank targetDominion valueRank
           source <- superEllipsisInsertionPreimage insertion terminal
-          selectedValue source)
+          selectedValueMaybe source)
         (const ())
+
+-- | Validate an ordinal-indexed selection independently of its concrete
+-- map and insertion witnesses. Existential interpreters can therefore use
+-- the same checked access boundary as the statically typed operator.
+validateAccessSelection
+  :: Ordinal
+  -> Ordinal
+  -> Ordinal
+  -> (Ordinal -> Maybe Ordinal)
+  -> Either AccessError ()
+validateAccessSelection insertionRankLimit insertionOrderType mapOrderType
+    selectedPositionAt
+  | insertionRankLimit == mapOrderType
+      || ordinalLT insertionRankLimit mapOrderType = Right ()
+  | otherwise =
+      case naturalAtOrdinal insertionOrderType of
+        Nothing ->
+          Left
+            (AccessInsertionRankExceedsMap
+              insertionRankLimit mapOrderType)
+        Just cardinality -> validateFinite 0 cardinality
+  where
+    validateFinite position cardinality
+      | position == cardinality = Right ()
+      | otherwise =
+          case selectedPositionAt (finiteOrdinal position) of
+            Nothing -> validateFinite (position + 1) cardinality
+            Just selectedPosition
+              | ordinalLT selectedPosition mapOrderType ->
+                  validateFinite (position + 1) cardinality
+              | otherwise ->
+                  Left
+                    (AccessPositionOutOfBounds
+                      selectedPosition mapOrderType)
