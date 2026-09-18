@@ -1,11 +1,17 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+
 -- | Stable Atlas transversals into any finite-rank 'SuperEllipsis'.
 module SuperEllipsisInsertion
   ( SuperEllipsisInsertion
-  , SuperEllipsisInsertionMap (..)
-  , SuperEllipsisAtlasMap
   , SuperEllipsisInsertionElement
+  , HasSuperEllipsisInsertion
+      ( InsertionTarget
+      , InsertionSource
+      , superEllipsisInsertionOf
+      )
   , superEllipsisInsertion
-  , superEllipsisInsertionMap
+  , superEllipsisInsertionOrderedMap
   , fullSuperEllipsisInsertion
   , superEllipsisInsertionRank
   , superEllipsisInsertionFirst
@@ -22,9 +28,15 @@ module SuperEllipsisInsertion
   , superEllipsisInsertionElementValue
   ) where
 
-import Chain (Chain, sumChains)
+import Chain
+  ( Chain
+  , chainIndex
+  , chainObjectAt
+  , sumChains
+  )
 import ChainedDominionAtlas (chainedDominionInsertionTraversal)
-import DatraOrdinal (Ordinal)
+import DatraOrdinal (Ordinal, finiteOrdinal)
+import Data.Kind (Type)
 import DomanialInclusion (DominionAtlasObject)
 import DomanialInsertion
   ( DomanialInsertion
@@ -34,30 +46,28 @@ import DomanialInsertion
   , preimage
   )
 import Dominion (Dominion, dominion, rank, unrank)
-import MapOperators.IndexedAtlasMap
-  ( IndexedAtlasMap
-  , indexedAtlasMapFromChain
+import MapOperators.IndexedAtlasMap (indexedAtlasMapFromChain)
+import MapOperators.OrderedAtlasMap
+  ( HasOrderedAtlasMap (..)
+  , OrderedAtlasMap (..)
   )
 import StableAtlasTransversal (StableAtlasTransversal)
-import StableConfederalData
-  ( EmptyMapValues
-  , StableConfederalData
-  , emptyMap
-  )
+import StableConfederalData (StableConfederalData)
 import SuperEllipsis
   ( SuperEllipsisAtlasObject
   , SuperEllipsisRank
   , SuperEllipsisTerminal
+  , SuperEllipsisTarget
   , superEllipsisChain
   , superEllipsisDominion
   , superEllipsisTerminalPosition
+  , superEllipsisTargetRank
   , superEllipsisZeroTerminal
   )
 
 -- | An ordered insertion into the ordinal positions of one super ellipsis.
-data SuperEllipsisInsertion target source = SuperEllipsisInsertion
+data SuperEllipsisInsertion (target :: Type) source = SuperEllipsisInsertion
   { superEllipsisInsertionRank :: SuperEllipsisRank target
-  , superEllipsisInsertionFirst :: Maybe source
   , superEllipsisInsertionChain :: Chain source
   , superEllipsisInsertionTraversal
       :: StableAtlasTransversal
@@ -67,42 +77,51 @@ data SuperEllipsisInsertion target source = SuperEllipsisInsertion
       :: DomanialInsertion source (SuperEllipsisTerminal target)
   }
 
--- | The Atlas map presented by an insertion.  Empty insertions present the
--- empty map; nonempty insertions retain their source values and chain order in
--- an indexed chained Atlas map.
-data SuperEllipsisInsertionMap source
-  = EmptySuperEllipsisInsertionMap
-      (StableConfederalData EmptyMapValues)
-  | IndexedSuperEllipsisInsertionMap (IndexedAtlasMap source)
-
--- | General name for the Atlas map underlying an insertion or insertion-like
--- value.
-type SuperEllipsisAtlasMap = SuperEllipsisInsertionMap
-
 -- | A value restricted to positions selected by an insertion.
-data SuperEllipsisInsertionElement target source value =
+data SuperEllipsisInsertionElement (target :: Type) source value =
   SuperEllipsisInsertionElement
     { superEllipsisInsertionElementSource :: source
     , superEllipsisInsertionElementValue :: value
     }
   deriving (Eq, Show)
 
+-- | A value with an ordered, injective presentation into one super ellipsis.
+class HasSuperEllipsisInsertion operand where
+  type InsertionTarget operand :: Type
+  type InsertionSource operand :: Type
+  superEllipsisInsertionOf
+    :: operand
+    -> SuperEllipsisInsertion
+         (InsertionTarget operand)
+         (InsertionSource operand)
+
+instance HasSuperEllipsisInsertion (SuperEllipsisInsertion target source) where
+  type InsertionTarget (SuperEllipsisInsertion target source) = target
+  type InsertionSource (SuperEllipsisInsertion target source) = source
+  superEllipsisInsertionOf = id
+
+instance SuperEllipsisTarget target =>
+    HasSuperEllipsisInsertion (StableConfederalData target) where
+  type InsertionTarget (StableConfederalData target) = target
+  type InsertionSource (StableConfederalData target) =
+    SuperEllipsisTerminal target
+  superEllipsisInsertionOf _ =
+    fullSuperEllipsisInsertion superEllipsisTargetRank
+
 -- | Construct an insertion from mutually inverse certified-terminal maps.
 -- Ordinals are refined before this boundary, so applying an insertion is
 -- total and cannot fail at runtime.
 superEllipsisInsertion
   :: SuperEllipsisRank target
-  -> Maybe source
   -> Chain source
   -> (source -> SuperEllipsisTerminal target)
   -> (SuperEllipsisTerminal target -> Maybe source)
   -> (source -> ())
   -> SuperEllipsisInsertion target source
 superEllipsisInsertion
-    valueRank first sourceChain forward backward leftInverse =
+    valueRank sourceChain forward backward leftInverse =
   SuperEllipsisInsertion
     { superEllipsisInsertionRank = valueRank
-    , superEllipsisInsertionFirst = first
     , superEllipsisInsertionChain = sourceChain
     , superEllipsisInsertionTraversal =
         chainedDominionInsertionTraversal
@@ -117,20 +136,35 @@ superEllipsisInsertion
     insertion = domanialInsertion forward backward leftInverse
     zero = superEllipsisZeroTerminal valueRank
 
+-- | The first source value, derived from the chain so emptiness and the
+-- nonempty witness cannot disagree.
+superEllipsisInsertionFirst
+  :: SuperEllipsisInsertion target source
+  -> Maybe source
+superEllipsisInsertionFirst insertion =
+  chainObjectAt
+    <$> chainIndex
+      (superEllipsisInsertionChain insertion)
+      (finiteOrdinal 0)
+
 -- | Convert an insertion to the Atlas map presented by its ordered source
 -- chain.  Unlike indexed maps, the empty map needs no first-element witness.
-superEllipsisInsertionMap
+superEllipsisInsertionOrderedMap
   :: SuperEllipsisInsertion target source
-  -> SuperEllipsisAtlasMap source
-superEllipsisInsertionMap insertion =
+  -> OrderedAtlasMap source
+superEllipsisInsertionOrderedMap insertion =
   case superEllipsisInsertionFirst insertion of
-    Nothing -> EmptySuperEllipsisInsertionMap emptyMap
+    Nothing -> EmptyOrderedAtlasMap
     Just first ->
-      IndexedSuperEllipsisInsertionMap
+      NonEmptyOrderedAtlasMap
         (indexedAtlasMapFromChain
           first
           (superEllipsisInsertionChain insertion)
           (superEllipsisInsertionSourceDominion insertion))
+
+instance HasOrderedAtlasMap (SuperEllipsisInsertion target source) where
+  type OrderedAtlasElement (SuperEllipsisInsertion target source) = source
+  orderedAtlasMap = superEllipsisInsertionOrderedMap
 
 -- | The identity insertion of every position in a super-ellipsis target.
 -- This is the insertion underlying the corresponding formulation and may
@@ -141,7 +175,6 @@ fullSuperEllipsisInsertion
 fullSuperEllipsisInsertion valueRank =
   superEllipsisInsertion
     valueRank
-    (Just (superEllipsisZeroTerminal valueRank))
     (superEllipsisChain valueRank)
     id
     Just
@@ -183,9 +216,6 @@ mergeDisjointSuperEllipsisInsertions
 mergeDisjointSuperEllipsisInsertions first second =
   superEllipsisInsertion
     (superEllipsisInsertionRank first)
-    (case superEllipsisInsertionFirst first of
-      Just value -> Just (Left value)
-      Nothing -> Right <$> superEllipsisInsertionFirst second)
     (sumChains
       (superEllipsisInsertionChain first)
       (superEllipsisInsertionChain second))

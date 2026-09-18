@@ -96,7 +96,6 @@ canonicalCharsInsertion
 canonicalCharsInsertion =
   superEllipsisInsertion
     rankOne
-    (Just (CanonicalCharIndex 0 39))
     canonicalIndexChain
     terminalAt
     (naturalAtOrdinal . superEllipsisTerminalPosition

@@ -4,7 +4,7 @@ module MapOperators.Syntax.SequentialOperatorSyntax
   ) where
 
 import MapOperators.SequentialOperator
-  ( SequentialOperand
+  ( SequentialPresentation
   , SequentialOperatorValues
   , sequentialOperator
   )
@@ -15,7 +15,7 @@ import StableConfederalData (StableConfederalData)
 infixr 7 <:>
 
 (<:>)
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => StableConfederalData left
   -> StableConfederalData right
   -> StableConfederalData (SequentialOperatorValues left right)

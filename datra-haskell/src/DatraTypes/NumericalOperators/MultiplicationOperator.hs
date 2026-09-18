@@ -1,3 +1,5 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -16,19 +18,19 @@ module NumericalOperators.MultiplicationOperator
 import DatraOrdinal (multiplyOrdinals)
 import NumericalOperators.Internal (applyOrdinalMultiplication)
 import NumericalOperators.NumericalOperand
-  ( AddSuperEllipsisLevels
-  , KnownSuperEllipsisData
+  ( KnownSuperEllipsisData
   , KnownSuperEllipsisLevel
   , MultiplicationNumericalLevel
   , MultiplicationResult
+  , NumericalForm (..)
+  , NumericalOperand
+  , NumericalOperandForm
+  , PreviousSuperEllipsisLevel
   , SuperEllipsisAt
-  , SuperEllipsisCarrier
-  , SuperEllipsisCarrierLevel
   , knownSuperEllipsisData
   )
 import Prelude (Maybe (..))
 import StableConfederalData (StableConfederalData)
-import SuperEllipsisRange (SuperEllipsisRange)
 
 class MultiplicationOperands left right where
   type MultiplicationOutput left right scope
@@ -39,98 +41,86 @@ class MultiplicationOperands left right where
           MultiplicationOutput left right resultScope -> result)
     -> Maybe result
 
-instance
-    ( SuperEllipsisCarrier leftTarget
-    , SuperEllipsisCarrier rightTarget
-    , KnownSuperEllipsisLevel
-        (MultiplicationNumericalLevel
-          (SuperEllipsisRange leftTarget leftScope)
-          (SuperEllipsisRange rightTarget rightScope))
-    ) =>
-    MultiplicationOperands
-      (SuperEllipsisRange leftTarget leftScope)
-      (SuperEllipsisRange rightTarget rightScope) where
-  type MultiplicationOutput
-      (SuperEllipsisRange leftTarget leftScope)
-      (SuperEllipsisRange rightTarget rightScope)
-      resultScope =
-    MultiplicationResult
-      (SuperEllipsisRange leftTarget leftScope)
-      (SuperEllipsisRange rightTarget rightScope)
-      resultScope
-  applyMultiplicationOperands =
-    applyOrdinalMultiplication multiplyOrdinals
-
-instance
-    ( SuperEllipsisCarrier formulationTarget
-    , SuperEllipsisCarrier valueTarget
-    , KnownSuperEllipsisLevel
-        (MultiplicationNumericalLevel
-          (StableConfederalData formulationTarget)
-          (SuperEllipsisRange valueTarget valueScope))
-    ) =>
-    MultiplicationOperands
-      (StableConfederalData formulationTarget)
-      (SuperEllipsisRange valueTarget valueScope) where
-  type MultiplicationOutput
-      (StableConfederalData formulationTarget)
-      (SuperEllipsisRange valueTarget valueScope)
-      resultScope =
-    MultiplicationResult
-      (StableConfederalData formulationTarget)
-      (SuperEllipsisRange valueTarget valueScope)
-      resultScope
-  applyMultiplicationOperands =
-    applyOrdinalMultiplication multiplyOrdinals
-
-instance
-    ( SuperEllipsisCarrier valueTarget
-    , SuperEllipsisCarrier formulationTarget
-    , KnownSuperEllipsisLevel
-        (MultiplicationNumericalLevel
-          (SuperEllipsisRange valueTarget valueScope)
-          (StableConfederalData formulationTarget))
-    ) =>
-    MultiplicationOperands
-      (SuperEllipsisRange valueTarget valueScope)
-      (StableConfederalData formulationTarget) where
-  type MultiplicationOutput
-      (SuperEllipsisRange valueTarget valueScope)
-      (StableConfederalData formulationTarget)
-      resultScope =
-    MultiplicationResult
-      (SuperEllipsisRange valueTarget valueScope)
-      (StableConfederalData formulationTarget)
-      resultScope
-  applyMultiplicationOperands =
-    applyOrdinalMultiplication multiplyOrdinals
-
-instance
-    forall leftTarget rightTarget.
-    ( SuperEllipsisCarrier leftTarget
-    , SuperEllipsisCarrier rightTarget
-    , KnownSuperEllipsisData
-        (AddSuperEllipsisLevels
-          (SuperEllipsisCarrierLevel leftTarget)
-          (SuperEllipsisCarrierLevel rightTarget))
-    ) =>
-    MultiplicationOperands
-      (StableConfederalData leftTarget)
-      (StableConfederalData rightTarget) where
-  type MultiplicationOutput
-      (StableConfederalData leftTarget)
-      (StableConfederalData rightTarget)
-      _resultScope =
+type family MultiplicationOutputFor
+    (leftForm :: NumericalForm)
+    (rightForm :: NumericalForm)
+    left
+    right
+    scope where
+  MultiplicationOutputFor
+      'FormulationNumerical 'FormulationNumerical left right _scope =
     StableConfederalData
       (SuperEllipsisAt
-        (AddSuperEllipsisLevels
-          (SuperEllipsisCarrierLevel leftTarget)
-          (SuperEllipsisCarrierLevel rightTarget)))
-  applyMultiplicationOperands _ _ useResult =
+        (PreviousSuperEllipsisLevel
+          (MultiplicationNumericalLevel left right)))
+  MultiplicationOutputFor _leftForm _rightForm left right scope =
+    MultiplicationResult left right scope
+
+class ApplyMultiplication
+    (leftForm :: NumericalForm)
+    (rightForm :: NumericalForm)
+    left
+    right where
+  applyMultiplication
+    :: left
+    -> right
+    -> (forall resultScope.
+          MultiplicationOutputFor
+            leftForm rightForm left right resultScope -> result)
+    -> Maybe result
+
+instance
+    ( NumericalOperand left
+    , NumericalOperand right
+    , KnownSuperEllipsisLevel (MultiplicationNumericalLevel left right)
+    ) =>
+    ApplyMultiplication 'ExplicitNumerical rightForm left right where
+  applyMultiplication = applyOrdinalMultiplication multiplyOrdinals
+
+instance
+    ( NumericalOperand left
+    , NumericalOperand right
+    , KnownSuperEllipsisLevel (MultiplicationNumericalLevel left right)
+    ) =>
+    ApplyMultiplication
+      'FormulationNumerical 'ExplicitNumerical left right where
+  applyMultiplication = applyOrdinalMultiplication multiplyOrdinals
+
+instance
+    ( NumericalOperand left
+    , NumericalOperand right
+    , KnownSuperEllipsisData
+        (PreviousSuperEllipsisLevel
+          (MultiplicationNumericalLevel left right))
+    ) =>
+    ApplyMultiplication
+      'FormulationNumerical 'FormulationNumerical left right where
+  applyMultiplication _ _ useResult =
     Just (useResult (knownSuperEllipsisData
-      @(AddSuperEllipsisLevels
-        (SuperEllipsisCarrierLevel leftTarget)
-        (SuperEllipsisCarrierLevel rightTarget))))
+      @(PreviousSuperEllipsisLevel
+        (MultiplicationNumericalLevel left right))))
+
+instance
+    ( NumericalOperand left
+    , NumericalOperand right
+    , ApplyMultiplication
+        (NumericalOperandForm left)
+        (NumericalOperandForm right)
+        left
+        right
+    ) =>
+    MultiplicationOperands left right where
+  type MultiplicationOutput left right scope =
+    MultiplicationOutputFor
+      (NumericalOperandForm left)
+      (NumericalOperandForm right)
+      left
+      right
+      scope
+  applyMultiplicationOperands =
+    applyMultiplication
+      @(NumericalOperandForm left)
+      @(NumericalOperandForm right)
 
 multiplicationOperator
   :: MultiplicationOperands left right
@@ -140,3 +130,5 @@ multiplicationOperator
         MultiplicationOutput left right resultScope -> result)
   -> Maybe result
 multiplicationOperator = applyMultiplicationOperands
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}

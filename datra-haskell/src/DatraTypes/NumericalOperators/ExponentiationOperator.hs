@@ -1,5 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -17,16 +20,17 @@ import EllipsisNatural (EllipsisNatural)
 import NumericalOperators.Internal (applyOrdinalExponentOperator)
 import NumericalOperators.NumericalOperand
   ( KnownSuperEllipsisLevel
+  , NumericalForm (..)
+  , NumericalOperand
+  , NumericalOperandForm
   , NumericalOperandLevel
   , NumericalOperandTarget
+  , PreviousSuperEllipsisLevel
   , SomeSuperEllipsis
-  , SuperEllipsisCarrier
+  , knownSuperEllipsisLevelNatural
   , someSuperEllipsis
-  , superEllipsisCarrierLevelNatural
   )
 import Prelude (Maybe (..), (*), (>>=))
-import StableConfederalData (StableConfederalData)
-import SuperEllipsisRange (SuperEllipsisRange)
 import SuperEllipsisValue
   ( SuperEllipsisValue
   , superEllipsisValueOrdinal
@@ -41,31 +45,55 @@ class ExponentiationOperand base where
           ExponentiationOutput base resultScope -> result)
     -> Maybe result
 
-instance
-    ( SuperEllipsisCarrier target
-    , KnownSuperEllipsisLevel
-        (NumericalOperandLevel (SuperEllipsisRange target scope))
-    ) =>
-    ExponentiationOperand (SuperEllipsisRange target scope) where
-  type ExponentiationOutput
-      (SuperEllipsisRange target scope) resultScope =
+type family ExponentiationOutputFor
+    (form :: NumericalForm)
+    base
+    scope where
+  ExponentiationOutputFor 'ExplicitNumerical base scope =
     SuperEllipsisValue
-      (NumericalOperandTarget (SuperEllipsisRange target scope))
-      resultScope
-  applyExponentiationOperand =
-    applyOrdinalExponentOperator powerOrdinal
-
-instance forall target.
-    SuperEllipsisCarrier target =>
-    ExponentiationOperand (StableConfederalData target) where
-  type ExponentiationOutput (StableConfederalData target) scope =
+      (NumericalOperandTarget base)
+      scope
+  ExponentiationOutputFor 'FormulationNumerical _base _scope =
     SomeSuperEllipsis
-  applyExponentiationOperand _ exponentValue useResult =
-    superEllipsisValueOrdinal exponentValue
-      >>= naturalAtOrdinal
+
+class ApplyExponentiation (form :: NumericalForm) base where
+  applyExponentiation
+    :: base
+    -> EllipsisNatural exponentScope
+    -> (forall resultScope.
+          ExponentiationOutputFor form base resultScope -> result)
+    -> Maybe result
+
+instance
+    ( NumericalOperand base
+    , KnownSuperEllipsisLevel (NumericalOperandLevel base)
+    ) =>
+    ApplyExponentiation 'ExplicitNumerical base where
+  applyExponentiation = applyOrdinalExponentOperator powerOrdinal
+
+instance
+    ( NumericalOperand base
+    , KnownSuperEllipsisLevel
+        (PreviousSuperEllipsisLevel (NumericalOperandLevel base))
+    ) =>
+    ApplyExponentiation 'FormulationNumerical base where
+  applyExponentiation _ exponentValue useResult =
+    naturalAtOrdinal (superEllipsisValueOrdinal exponentValue)
       >>= (\power ->
         Just (useResult (someSuperEllipsis
-          (superEllipsisCarrierLevelNatural @target * power))))
+          (knownSuperEllipsisLevelNatural
+            @(PreviousSuperEllipsisLevel (NumericalOperandLevel base))
+            * power))))
+
+instance
+    ( NumericalOperand base
+    , ApplyExponentiation (NumericalOperandForm base) base
+    ) =>
+    ExponentiationOperand base where
+  type ExponentiationOutput base scope =
+    ExponentiationOutputFor (NumericalOperandForm base) base scope
+  applyExponentiationOperand =
+    applyExponentiation @(NumericalOperandForm base)
 
 -- | Raise a base to an Ellipsis-natural exponent.  Explicit bases produce
 -- explicit ordinal values.  Formulation bases produce formulations, with the
@@ -78,3 +106,5 @@ exponentiationOperator
         ExponentiationOutput base resultScope -> result)
   -> Maybe result
 exponentiationOperator = applyExponentiationOperand
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}

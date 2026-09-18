@@ -55,12 +55,10 @@ infixl 5 ..+, ..-
         -> result)
   -> Maybe result
 left <..> right = \useRange -> do
-  start <- numericalOperandOrdinal left
-  target <- numericalOperandOrdinal right
   superEllipsisRange
     (knownSuperEllipsisRank @(BinaryNumericalLevel left right))
-    start
-    (GivenTarget target)
+    (numericalOperandOrdinal left)
+    (GivenTarget (numericalOperandOrdinal right))
     useRange
 
 -- | Construct a range from an explicit origin through the rest of its rank.
@@ -75,10 +73,9 @@ left <..> right = \useRange -> do
         -> result)
   -> Maybe result
 (..+) origin useRange = do
-  start <- numericalOperandOrdinal origin
   superEllipsisRange
     (knownSuperEllipsisRank @(NumericalOperandLevel origin))
-    start
+    (numericalOperandOrdinal origin)
     PlusSign
     useRange
 
@@ -94,9 +91,8 @@ left <..> right = \useRange -> do
         -> result)
   -> Maybe result
 (..-) origin useRange = do
-  start <- numericalOperandOrdinal origin
   superEllipsisRange
     (knownSuperEllipsisRank @(NumericalOperandLevel origin))
-    start
+    (numericalOperandOrdinal origin)
     MinusSign
     useRange

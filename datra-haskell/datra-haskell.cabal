@@ -33,6 +33,7 @@ library
         MapOperators
         MapOperators.AccessOperator
         MapOperators.IndexedAtlasMap
+        MapOperators.OrderedAtlasMap
         MapOperators.ConcatOperator
         MapOperators.ExpansionOperator
         MapOperators.SequentialOperator
