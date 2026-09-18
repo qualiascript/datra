@@ -84,6 +84,66 @@ main = do
     "arithmetic and map expansion fixity conflict is parenthesized"
     "[[1 + 2]; [3 * 4]]"
     "(1 + 2) <+> 3 * 4"
+  assertAstOutput
+    "outer map brackets are inferred"
+    "2 + 3"
+    "2 + 3"
+  assertAstOutput
+    "completed lines become map elements"
+    "2\n3"
+    "2 <:> 3"
+  assertAstOutput
+    "a newline after an operator continues the expression"
+    "2 +\n3\n4"
+    "(2 + 3) <:> 4"
+  assertAstOutput
+    "comments do not hide a required continuation"
+    "2 + # continue addition\n3\n# blank comment line\n4"
+    "(2 + 3) <:> 4"
+  assertAstOutput
+    "blank lines do not create empty map elements"
+    "\n# heading\n2\n\n# between values\n3\n"
+    "2 <:> 3"
+  assertAstOutput
+    "completed postfix ranges end an implicit map line"
+    "2..+\n3..-"
+    "(2 ..+) <:> (3 ..-)"
+  assertAstOutput
+    "ellipsis is complete despite ending in dots"
+    "...\n2"
+    "... <:> 2"
+  assertAstOutput
+    "bounded range and concatenation operators continue across lines"
+    "2..\n4,\n5..+"
+    "(2 <..> 4) <.> (5 ..+)"
+  assertAstOutput
+    "exponentiation continues and remains right associative"
+    "2 ^\n3 ^\n4"
+    "2 ^ 3 ^ 4"
+  assertAstOutput
+    "newlines separate expressions in an explicit map"
+    "[2\n3]"
+    "2 <:> 3"
+  assertAstOutput
+    "newline inference applies independently to nested maps"
+    "[[1\n2]\n[3\n4]]"
+    "1 <:> 2 <+> 3 <:> 4"
+  assertAstOutput
+    "outer brackets are inferred unless both delimiters are present"
+    "[1]\n2"
+    "1 <+> 2"
+  assertAstOutput
+    "operator continuation also applies in explicit maps"
+    "[2 +\n3\n4]"
+    "(2 + 3) <:> 4"
+  assertAstOutput
+    "newlines inside unfinished expressions are ignored"
+    "[2 + \n 3]"
+    "2 + 3"
+  assertAstOutput
+    "multiline parenthesized expressions remain one expression"
+    "(2 +\n3)\n4"
+    "(2 + 3) <:> 4"
   assertParsed
     "exponentiation associates right"
     "[2 ^ 3 ^ 4]"
@@ -118,7 +178,10 @@ main = do
             (AtlasMap [EllipsisNatural 3, EllipsisNatural 4]))
           (EllipsisNatural 0)
       ])
-  assertRejected "top-level expression must be a map" "10"
+  assertAstOutput
+    "a single unbracketed expression becomes a singleton map"
+    "10"
+    "10"
   assertAstOutput
     "trailing semicolons are ignored"
     "[1; 2; # trailing separators\n ; ; ]"
@@ -127,6 +190,12 @@ main = do
   assertRejected "bounded ranges are non-associative" "[1..2..3]"
   assertRejected "addition requires a right operand" "[1 +]"
   assertRejected "parentheses must be balanced" "[(1 + 2]"
+  assertRejected
+    "an operator starting the next line is not retroactive continuation"
+    "2\n+ 3"
+  assertRejected
+    "separate maps with both outer delimiter characters are not rewrapped"
+    "[1]\n[2]"
 
 assertAstOutput :: String -> String -> String -> IO ()
 assertAstOutput label source expected =
