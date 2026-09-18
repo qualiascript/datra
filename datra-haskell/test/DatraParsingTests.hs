@@ -133,6 +133,10 @@ main = do
     "[1]\n2"
     "1 <+> 2"
   assertAstOutput
+    "brackets inside comments do not affect outer bracket inference"
+    "[1]\n2 # ] is only a comment"
+    "1 <+> 2"
+  assertAstOutput
     "operator continuation also applies in explicit maps"
     "[2 +\n3\n4]"
     "(2 + 3) <:> 4"
