@@ -54,6 +54,7 @@ import DatraOrdinal
   , ordinal
   , ordinalCoefficients
   )
+import qualified DatraTypes as Types
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
   ( Dot
@@ -113,6 +114,7 @@ main :: IO ()
 main = do
   testOrdinalInspection
   testDiagnostics
+  testEvaluationBoundary
   testAsciiMap
   testCanonicalCharsMap
   testAccessOperator
@@ -139,6 +141,26 @@ testOrdinalInspection = do
     (ordinalCoefficients (ordinal [0, 2, 0, 3]) == [2, 0, 3])
   assert "zero has no canonical coefficients"
     (null (ordinalCoefficients (finiteOrdinal 0)))
+
+testEvaluationBoundary :: IO ()
+testEvaluationBoundary = do
+  let emptyMap = Types.makeAtlasMap 0 []
+  assert "DatraTypes rejects non-numerical operands without AST interpretation"
+    (case Types.addValues emptyMap (Types.naturalValue 1) of
+      Left
+          (Types.ExpectedNumericalOperand
+            Types.LeftOperand Types.MapValueKind) -> True
+      _ -> False)
+  assert "DatraTypes owns checked range construction"
+    (case Types.boundedRangeValue
+        (Types.formulationValue 1)
+        (Types.naturalValue 2) of
+      Left
+          (Types.RangeConstructionRejected
+            (SuperRange.SuperEllipsisRangeInvalidDescendingBounds
+              start target)) ->
+        start == omega && target == finiteOrdinal 2
+      _ -> False)
 
 testDiagnostics :: IO ()
 testDiagnostics = do

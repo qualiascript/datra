@@ -29,6 +29,7 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        DatraTypes
         AsciiMap
         MapOperators
         MapOperators.AccessOperator
@@ -161,6 +162,12 @@ library
         Folio.Internal
         Folio.LiquidInternal
         NumericalOperators.Internal
+        Evaluation.Access
+        Evaluation.Construction
+        Evaluation.Map
+        Evaluation.Numerical
+        Evaluation.Range
+        Evaluation.Value
     build-depends:
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9
@@ -227,6 +234,7 @@ executable datra-haskell
     other-modules:
         Datra.AST
         Datra.Interpreting
+        Datra.Interpreting.Map
         Datra.Parsing
         Datra.Rendering
     build-depends:
@@ -289,6 +297,7 @@ test-suite datra-interpreting-test
     other-modules:
         Datra.AST
         Datra.Interpreting
+        Datra.Interpreting.Map
         Datra.Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:

@@ -29,6 +29,7 @@ module MapOperators.AccessOperator
   , accessElementSource
   , accessElementValue
   , AccessError (..)
+  , validateAccessSelection
   , HasSuperEllipsisInsertion
       ( InsertionTarget
       , InsertionSource
@@ -144,7 +145,11 @@ accessInsertionOperatorEither valueAtlas insertion =
   withSuperEllipsisInsertionSources
     insertion
     (Right EmptyOrderedAtlasMap) $ \firstSource sourceAt -> do
-      validateFits sourceAt
+      validateAccessSelection
+        targetOrderType
+        (chainOrderType insertionChain)
+        mapOrderType
+        (Just . superEllipsisInsertionPosition insertion . sourceAt)
       first <- selectedValue firstSource
       pure
         (NonEmptyOrderedAtlasMap
@@ -157,24 +162,6 @@ accessInsertionOperatorEither valueAtlas insertion =
     insertionRank = superEllipsisInsertionRank insertion
     targetOrderType = superEllipsisRankOrderType insertionRank
     mapOrderType = chainOrderType (indexedAtlasChain valueAtlas)
-
-    validateFits sourceAt
-      | targetOrderType == mapOrderType
-          || ordinalLT targetOrderType mapOrderType = Right ()
-      | otherwise =
-          case naturalAtOrdinal (chainOrderType insertionChain) of
-            Nothing ->
-              Left
-                (AccessInsertionRankExceedsMap
-                  targetOrderType mapOrderType)
-            Just finiteOrderType ->
-              validateFinite sourceAt 0 finiteOrderType
-
-    validateFinite sourceAt position cardinality
-      | position == cardinality = Right ()
-      | otherwise = do
-          _ <- selectedValue (sourceAt (finiteOrdinal position))
-          validateFinite sourceAt (position + 1) cardinality
 
     selectedValue source =
       let selectedPosition =
@@ -214,3 +201,37 @@ accessInsertionOperatorEither valueAtlas insertion =
           source <- superEllipsisInsertionPreimage insertion terminal
           selectedValueMaybe source)
         (const ())
+
+-- | Validate an ordinal-indexed selection independently of its concrete
+-- map and insertion witnesses. Existential interpreters can therefore use
+-- the same checked access boundary as the statically typed operator.
+validateAccessSelection
+  :: Ordinal
+  -> Ordinal
+  -> Ordinal
+  -> (Ordinal -> Maybe Ordinal)
+  -> Either AccessError ()
+validateAccessSelection insertionRankLimit insertionOrderType mapOrderType
+    selectedPositionAt
+  | insertionRankLimit == mapOrderType
+      || ordinalLT insertionRankLimit mapOrderType = Right ()
+  | otherwise =
+      case naturalAtOrdinal insertionOrderType of
+        Nothing ->
+          Left
+            (AccessInsertionRankExceedsMap
+              insertionRankLimit mapOrderType)
+        Just cardinality -> validateFinite 0 cardinality
+  where
+    validateFinite position cardinality
+      | position == cardinality = Right ()
+      | otherwise =
+          case selectedPositionAt (finiteOrdinal position) of
+            Nothing -> validateFinite (position + 1) cardinality
+            Just selectedPosition
+              | ordinalLT selectedPosition mapOrderType ->
+                  validateFinite (position + 1) cardinality
+              | otherwise ->
+                  Left
+                    (AccessPositionOutOfBounds
+                      selectedPosition mapOrderType)

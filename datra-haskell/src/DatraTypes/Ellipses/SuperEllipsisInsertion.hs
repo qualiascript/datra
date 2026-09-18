@@ -4,6 +4,13 @@
 -- | Stable Atlas transversals into any finite-rank 'SuperEllipsis'.
 module SuperEllipsisInsertion
   ( SuperEllipsisInsertion
+  , SomeSuperEllipsisInsertion
+  , eraseSuperEllipsisInsertion
+  , fullSomeSuperEllipsisInsertion
+  , appendSomeSuperEllipsisInsertion
+  , someSuperEllipsisInsertionRank
+  , someSuperEllipsisInsertionOrderType
+  , someSuperEllipsisInsertionPositionAt
   , SuperEllipsisInsertionElement
   , HasSuperEllipsisInsertion
       ( InsertionTarget
@@ -33,10 +40,17 @@ import Chain
   ( Chain
   , chainIndex
   , chainObjectAt
+  , chainOrderType
   , sumChains
   )
 import ChainedDominionAtlas (chainedDominionInsertionTraversal)
-import DatraOrdinal (Ordinal, finiteOrdinal)
+import DatraOrdinal
+  ( Ordinal
+  , addOrdinals
+  , finiteOrdinal
+  , ordinalLT
+  , subtractOrdinal
+  )
 import Data.Kind (Type)
 import DomanialInclusion (DominionAtlasObject)
 import DomanialInsertion
@@ -52,6 +66,7 @@ import MapOperators.OrderedAtlasMap
   ( HasOrderedAtlasMap (..)
   , OrderedAtlasMap (..)
   )
+import Numeric.Natural (Natural)
 import StableAtlasTransversal (StableAtlasTransversal)
 import StableConfederalData (StableConfederalData)
 import SuperEllipsis
@@ -61,9 +76,11 @@ import SuperEllipsis
   , SuperEllipsisTarget
   , superEllipsisChain
   , superEllipsisDominion
+  , superEllipsisRankLevel
   , superEllipsisTerminalPosition
   , superEllipsisTargetRank
   , superEllipsisZeroTerminal
+  , withSuperEllipsisRank
   )
 
 -- | An ordered insertion into the ordinal positions of one super ellipsis.
@@ -78,6 +95,63 @@ data SuperEllipsisInsertion (target :: Type) source = SuperEllipsisInsertion
   , superEllipsisInsertionDomanial
       :: DomanialInsertion source (SuperEllipsisTerminal target)
   }
+
+-- | A rank- and source-erased insertion used when an evaluator combines
+-- witnesses chosen existentially at runtime. Construction stays here so the
+-- erased presentation cannot drift from insertion semantics.
+data SomeSuperEllipsisInsertion = SomeSuperEllipsisInsertion
+  { someSuperEllipsisInsertionRank :: Natural
+  , someSuperEllipsisInsertionOrderType :: Ordinal
+  , someSuperEllipsisInsertionPositionAt :: Ordinal -> Maybe Ordinal
+  }
+
+eraseSuperEllipsisInsertion
+  :: SuperEllipsisInsertion target source
+  -> SomeSuperEllipsisInsertion
+eraseSuperEllipsisInsertion insertion =
+  SomeSuperEllipsisInsertion
+    (superEllipsisRankLevel (superEllipsisInsertionRank insertion))
+    (chainOrderType insertionChain)
+    (\position -> do
+      sourceIndex <- chainIndex insertionChain position
+      pure
+        (superEllipsisInsertionPosition
+          insertion
+          (chainObjectAt sourceIndex)))
+  where
+    insertionChain = superEllipsisInsertionChain insertion
+
+-- | The erased identity insertion at a runtime-selected finite rank.
+fullSomeSuperEllipsisInsertion :: Natural -> SomeSuperEllipsisInsertion
+fullSomeSuperEllipsisInsertion level =
+  withSuperEllipsisRank level
+    (eraseSuperEllipsisInsertion . fullSuperEllipsisInsertion)
+
+-- | Concatenate two erased insertions while retaining the larger ambient
+-- target rank. Disjointness is checked separately by range semantics.
+appendSomeSuperEllipsisInsertion
+  :: SomeSuperEllipsisInsertion
+  -> SomeSuperEllipsisInsertion
+  -> SomeSuperEllipsisInsertion
+appendSomeSuperEllipsisInsertion left right =
+  SomeSuperEllipsisInsertion
+    (max
+      (someSuperEllipsisInsertionRank left)
+      (someSuperEllipsisInsertionRank right))
+    combinedOrderType
+    positionAt
+  where
+    leftOrderType = someSuperEllipsisInsertionOrderType left
+    combinedOrderType =
+      addOrdinals
+        leftOrderType
+        (someSuperEllipsisInsertionOrderType right)
+    positionAt position
+      | ordinalLT position leftOrderType =
+          someSuperEllipsisInsertionPositionAt left position
+      | otherwise = do
+          rightPosition <- subtractOrdinal leftOrderType position
+          someSuperEllipsisInsertionPositionAt right rightPosition
 
 -- | A source chain is either empty or has a first element and a total lookup
 -- for its in-bounds ordinal positions. The constructors stay private so an

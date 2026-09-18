@@ -77,7 +77,7 @@ operandSide LeftOperand = "left"
 operandSide RightOperand = "right"
 
 valueKind :: InterpretedValueKind -> String
-valueKind NaturalValueKind = "Ellipsis-natural"
+valueKind NaturalValueKind = "natural"
 valueKind ExplicitOrdinalValueKind = "explicit ordinal"
 valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"

@@ -5,7 +5,7 @@ module Datra.Rendering
 
 import Data.Char (isDigit)
 import Data.List (intercalate)
-import Datra.Interpreting
+import DatraTypes
   ( CanonicalResult (..)
   , InterpretedValue
   , interpretedCanonicalResult

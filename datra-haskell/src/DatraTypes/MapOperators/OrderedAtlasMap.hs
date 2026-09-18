@@ -3,6 +3,10 @@
 -- | Possibly-empty Atlas maps with an explicit final-page ordering.
 module MapOperators.OrderedAtlasMap
   ( OrderedAtlasMap (..)
+  , OrdinalOrderedValues (..)
+  , emptyOrdinalOrderedValues
+  , singletonOrdinalOrderedValues
+  , appendOrdinalOrderedValues
   , orderedAtlasMapIndexed
   , orderedAtlasMapCardinality
   , orderedAtlasMapValueAt
@@ -11,7 +15,13 @@ module MapOperators.OrderedAtlasMap
   ) where
 
 import Data.Kind (Type)
-import DatraOrdinal (Ordinal, finiteOrdinal)
+import DatraOrdinal
+  ( Ordinal
+  , addOrdinals
+  , finiteOrdinal
+  , ordinalLT
+  , subtractOrdinal
+  )
 import MapOperators.IndexedAtlasMap
   ( IndexedAtlasMap
   , indexedAtlasCardinality
@@ -27,6 +37,41 @@ import Numeric.Natural (Natural)
 data OrderedAtlasMap value
   = EmptyOrderedAtlasMap
   | NonEmptyOrderedAtlasMap (IndexedAtlasMap value)
+
+-- | A lightweight ordinal-indexed ordering used after existential Atlas
+-- witnesses have been erased. Unlike 'OrderedAtlasMap', this representation
+-- can also describe transfinite sequences without exposing their source type.
+data OrdinalOrderedValues value = OrdinalOrderedValues
+  { ordinalOrderedValuesOrderType :: Ordinal
+  , ordinalOrderedValueAt :: Ordinal -> Maybe value
+  }
+
+emptyOrdinalOrderedValues :: OrdinalOrderedValues value
+emptyOrdinalOrderedValues =
+  OrdinalOrderedValues (finiteOrdinal 0) (const Nothing)
+
+singletonOrdinalOrderedValues :: value -> OrdinalOrderedValues value
+singletonOrdinalOrderedValues value =
+  OrdinalOrderedValues
+    (finiteOrdinal 1)
+    (\position ->
+      if position == finiteOrdinal 0 then Just value else Nothing)
+
+appendOrdinalOrderedValues
+  :: OrdinalOrderedValues value
+  -> OrdinalOrderedValues value
+  -> OrdinalOrderedValues value
+appendOrdinalOrderedValues left right =
+  OrdinalOrderedValues combinedOrderType valueAt
+  where
+    leftOrderType = ordinalOrderedValuesOrderType left
+    combinedOrderType =
+      addOrdinals leftOrderType (ordinalOrderedValuesOrderType right)
+    valueAt position
+      | ordinalLT position leftOrderType = ordinalOrderedValueAt left position
+      | otherwise = do
+          rightPosition <- subtractOrdinal leftOrderType position
+          ordinalOrderedValueAt right rightPosition
 
 orderedAtlasMapIndexed :: OrderedAtlasMap value -> Maybe (IndexedAtlasMap value)
 orderedAtlasMapIndexed EmptyOrderedAtlasMap = Nothing

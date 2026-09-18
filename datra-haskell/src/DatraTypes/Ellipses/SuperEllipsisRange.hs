@@ -46,6 +46,7 @@ module SuperEllipsisRange
   , describeSuperEllipsisRange
   , analyzeSuperEllipsisRangeConcat
   , analyzeSuperEllipsisRangeDescriptions
+  , validateSuperEllipsisRangeDescriptions
   ) where
 
 import AtlasConfederation
@@ -665,6 +666,25 @@ analyzeSuperEllipsisRangeDescriptions firstDescription secondDescription
           , describedRangeTarget = describedRangeTarget secondDescription
           }
   | otherwise = RangeConcatDisjoint firstDescription secondDescription
+
+-- | Reject the first overlapping pair in a collection of range
+-- descriptions. Empty and merely adjacent ranges are accepted.
+validateSuperEllipsisRangeDescriptions
+  :: [SuperEllipsisRangeDescription]
+  -> Either SuperEllipsisRangeConcatError ()
+validateSuperEllipsisRangeDescriptions [] = Right ()
+validateSuperEllipsisRangeDescriptions (first : rest) = do
+  mapM_ (ensureDisjoint first) rest
+  validateSuperEllipsisRangeDescriptions rest
+  where
+    ensureDisjoint left right =
+      case analyzeSuperEllipsisRangeDescriptions left right of
+        RangeConcatOverlapping
+            firstDescription secondDescription lower upper ->
+          Left
+            (SuperEllipsisRangesOverlap
+              firstDescription secondDescription lower upper)
+        _ -> Right ()
 
 data RangeDirection = AscendingRange | DescendingRange
   deriving (Eq)
