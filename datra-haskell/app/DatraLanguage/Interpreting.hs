@@ -2,7 +2,7 @@
 --
 -- This module deliberately owns syntax traversal only. Checked semantic
 -- operations and all type errors are provided by 'DatraTypes'.
-module Datra.Interpreting
+module DatraLanguage.Interpreting
   ( InterpretedValue
   , CanonicalResult (..)
   , InterpretedValueKind (..)
@@ -24,9 +24,9 @@ module Datra.Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Datra.AST (Expression (..))
+import DatraLanguage.AST (Expression (..))
 import DatraTypes
-import Diagnostics
+import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located)
   , atSourceSpan

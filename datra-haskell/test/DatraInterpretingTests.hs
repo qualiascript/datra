@@ -2,8 +2,8 @@
 
 module DatraInterpretingTests (main) where
 
-import Datra.AST (Expression (..))
-import Datra.AST.Syntax
+import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST.Syntax
   ( natural
   , (...)
   , (<:>)
@@ -14,8 +14,8 @@ import Datra.AST.Syntax
   , (<.>)
   , (<@>)
   )
-import Datra.AST.Syntax qualified as AST
-import Datra.Interpreting
+import DatraLanguage.AST.Syntax qualified as AST
+import DatraLanguage.Interpreting
   ( InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
@@ -31,20 +31,20 @@ import Datra.Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   )
-import Datra.Rendering (renderInterpretedValue)
+import DatraLanguage.Rendering (renderInterpretedValue)
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
   , omega
   , ordinal
   )
-import Diagnostics
+import DatraLanguage.Diagnostics
   ( DatraError (DatraError)
   , Located (Located)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
-import Diagnostics.Localization
+import DatraLanguage.Diagnostics.Localization
   ( Locale (English)
   , renderDatraError
   )

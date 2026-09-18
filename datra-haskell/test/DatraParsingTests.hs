@@ -2,11 +2,11 @@
 
 module DatraParsingTests (main) where
 
-import Datra.AST
+import DatraLanguage.AST
   ( Expression (..)
   , renderExpression
   )
-import Datra.AST.Syntax
+import DatraLanguage.AST.Syntax
   ( natural
   , (...)
   , (<:>)
@@ -17,13 +17,13 @@ import Datra.AST.Syntax
   , (<.>)
   , (<@>)
   )
-import Datra.AST.Syntax qualified as AST
-import Datra.Parsing (parseDatra, parseDatraLocated)
-import Diagnostics
+import DatraLanguage.AST.Syntax qualified as AST
+import DatraLanguage.Diagnostics
   ( Located (Located)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
+import DatraLanguage.Parsing (parseDatra, parseDatraLocated)
 
 main :: IO ()
 main = do

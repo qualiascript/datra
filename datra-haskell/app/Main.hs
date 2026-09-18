@@ -1,14 +1,14 @@
 module Main (main) where
 
-import Datra.AST (renderExpression)
-import Datra.Interpreting (interpretLocatedExpression)
-import Datra.Parsing (parseDatraLocatedWithSourceName)
-import Datra.Rendering (renderInterpretedValue)
-import Diagnostics (Located (locatedValue))
-import Diagnostics.Localization
+import DatraLanguage.AST (renderExpression)
+import DatraLanguage.Diagnostics (Located (locatedValue))
+import DatraLanguage.Diagnostics.Localization
   ( Locale (English)
   , renderDatraError
   )
+import DatraLanguage.Interpreting (interpretLocatedExpression)
+import DatraLanguage.Parsing (parseDatraLocatedWithSourceName)
+import DatraLanguage.Rendering (renderInterpretedValue)
 
 main :: IO ()
 main = do

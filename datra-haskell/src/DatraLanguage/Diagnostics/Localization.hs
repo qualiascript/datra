@@ -2,19 +2,19 @@
 --
 -- This is intentionally a presentation-layer module. Domain modules expose
 -- typed error reasons without importing locales or human-language messages.
-module Diagnostics.Localization
+module DatraLanguage.Diagnostics.Localization
   ( Locale (..)
   , LocalizedDiagnostic (..)
   , renderDatraError
   ) where
 
-import Diagnostics
+import DatraLanguage.Diagnostics
   ( DatraError
   , LocalizedMessage
   , renderDatraErrorWith
   )
-import Diagnostics.English qualified as English
-import Diagnostics.Interpreter (InterpretingError)
+import DatraLanguage.Diagnostics.English qualified as English
+import DatraLanguage.Diagnostics.Interpreter (InterpretingError)
 import MapOperators.AccessOperator (AccessError)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError

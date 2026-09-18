@@ -1,4 +1,4 @@
-module Datra.AST
+module DatraLanguage.AST
   ( Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
@@ -7,7 +7,7 @@ module Datra.AST
   ) where
 
 import Data.List (intercalate)
-import Datra.AST.Operator
+import DatraLanguage.AST.Operator
   ( Associativity (..)
   , Operator (..)
   , ellipsisSymbol

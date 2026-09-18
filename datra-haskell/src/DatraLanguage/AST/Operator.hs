@@ -1,5 +1,5 @@
 -- | The complete operator vocabulary owned by Datra's abstract syntax.
-module Datra.AST.Operator
+module DatraLanguage.AST.Operator
   ( Operator (..)
   , Associativity (..)
   , operatorCanonicalSymbol

@@ -32,7 +32,7 @@ module DatraTypes
   , interpretedMapValueAt
   ) where
 
-import Diagnostics.Interpreter
+import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)

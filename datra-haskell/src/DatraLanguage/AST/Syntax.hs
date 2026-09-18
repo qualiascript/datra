@@ -1,7 +1,7 @@
 {-# LANGUAGE PostfixOperators #-}
 
 -- | Symbolic Haskell constructors for Datra ASTs.
-module Datra.AST.Syntax
+module DatraLanguage.AST.Syntax
   ( natural
   , emptyMap
   , (...)
@@ -17,7 +17,7 @@ module Datra.AST.Syntax
   , (<@>)
   ) where
 
-import Datra.AST (Expression (..))
+import DatraLanguage.AST (Expression (..))
 import Numeric.Natural (Natural)
 import Prelude hiding ((+), (*), (^))
 

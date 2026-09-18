@@ -65,13 +65,13 @@ import Dot
   , dotTerminal
   )
 import DomanialInsertion (applyInsertion, preimage)
-import Diagnostics
+import DatraLanguage.Diagnostics
   ( LocalizedMessage (LocalizedMessage)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   , atSourceSpan
   )
-import Diagnostics.Localization
+import DatraLanguage.Diagnostics.Localization
   ( Locale (English)
   , LocalizedDiagnostic (localizeDiagnostic)
   , renderDatraError

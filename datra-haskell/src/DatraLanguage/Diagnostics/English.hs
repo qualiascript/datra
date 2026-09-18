@@ -2,7 +2,7 @@
 --
 -- This display-stage module translates strongly typed domain errors into
 -- prose. Domain modules do not depend on it.
-module Diagnostics.English
+module DatraLanguage.Diagnostics.English
   ( localizeAccessError
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
@@ -11,15 +11,15 @@ module Diagnostics.English
   ) where
 
 import Data.List (intercalate)
-import Datra.AST.Operator
+import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
   , operatorSourceSymbol
   )
 import DatraOrdinal (Ordinal, ordinalCoefficients)
-import Diagnostics (LocalizedMessage (LocalizedMessage))
-import Diagnostics.Interpreter
+import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
+import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)

@@ -29,9 +29,9 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
-        Datra.AST
-        Datra.AST.Operator
-        Datra.AST.Syntax
+        DatraLanguage.AST
+        DatraLanguage.AST.Operator
+        DatraLanguage.AST.Syntax
         DatraTypes
         AsciiMap
         MapOperators
@@ -58,10 +58,10 @@ library
         EllipsisInsertion
         EllipsisRange
         EllipsisNatural
-        Diagnostics
-        Diagnostics.English
-        Diagnostics.Interpreter
-        Diagnostics.Localization
+        DatraLanguage.Diagnostics
+        DatraLanguage.Diagnostics.English
+        DatraLanguage.Diagnostics.Interpreter
+        DatraLanguage.Diagnostics.Localization
         FixedPoint
         DomanialInsertion
         DatraOrdinal
@@ -171,7 +171,7 @@ library
         build-depends:
             liquidhaskell == 0.9.14.1.1
     hs-source-dirs:
-        src/DatraLanguage
+        src
         src/DatraCore/Atlases/Core
         src/DatraCore/Atlases/Core/Chain
         src/DatraCore/Atlases/Core/PageElements
@@ -229,9 +229,9 @@ executable datra-haskell
     import:           warnings
     main-is:          Main.hs
     other-modules:
-        Datra.Interpreting
-        Datra.Parsing
-        Datra.Rendering
+        DatraLanguage.Interpreting
+        DatraLanguage.Parsing
+        DatraLanguage.Rendering
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
@@ -271,7 +271,7 @@ test-suite datra-parsing-test
         app
     main-is:          DatraParsingTests.hs
     other-modules:
-        Datra.Parsing
+        DatraLanguage.Parsing
     ghc-options:      -main-is DatraParsingTests.main
     build-depends:
         base >= 4.14 && < 5,
@@ -289,8 +289,8 @@ test-suite datra-interpreting-test
         app
     main-is:          DatraInterpretingTests.hs
     other-modules:
-        Datra.Interpreting
-        Datra.Rendering
+        DatraLanguage.Interpreting
+        DatraLanguage.Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:
         base >= 4.14 && < 5,

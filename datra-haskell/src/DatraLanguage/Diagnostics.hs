@@ -4,7 +4,7 @@
 
 -- | Source localization and structured diagnostics shared by the parser,
 -- type checker, and interpreter.
-module Diagnostics
+module DatraLanguage.Diagnostics
   ( SourcePosition (..)
   , SourceSpan (..)
   , Located (..)

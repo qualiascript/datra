@@ -9,7 +9,7 @@ import DatraOrdinal
   , omegaPower
   )
 import Data.Bifunctor qualified as Bifunctor
-import Diagnostics.Interpreter (InterpretingError (..))
+import DatraLanguage.Diagnostics.Interpreter (InterpretingError (..))
 import Evaluation.Value
 import MapOperators.AccessOperator
   ( validateAccessSelection )

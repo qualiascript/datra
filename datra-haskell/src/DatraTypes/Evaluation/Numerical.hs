@@ -15,7 +15,7 @@ import DatraOrdinal
   , omegaPower
   , powerOrdinal
   )
-import Diagnostics.Interpreter
+import DatraLanguage.Diagnostics.Interpreter
   ( InterpretingError (..)
   , OperandSide (..)
   )

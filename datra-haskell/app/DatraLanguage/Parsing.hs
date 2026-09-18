@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Datra.Parsing
+module DatraLanguage.Parsing
   ( parseDatra
   , parseDatraWithSourceName
   , parseDatraLocated
@@ -17,7 +17,7 @@ import Data.Bifunctor (first)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
-import Datra.AST
+import DatraLanguage.AST
   ( Expression
       ( Addition
       , AtlasMap
@@ -32,8 +32,8 @@ import Datra.AST
       , SuperEllipsisRangePlus
       )
   )
-import Datra.AST.Operator qualified as AST
-import Diagnostics
+import DatraLanguage.AST.Operator qualified as AST
+import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)

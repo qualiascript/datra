@@ -1,11 +1,11 @@
-module Datra.Rendering
+module DatraLanguage.Rendering
   ( renderCanonicalResult
   , renderInterpretedValue
   ) where
 
 import Data.Char (isDigit)
 import Data.List (intercalate)
-import Datra.AST.Operator
+import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
