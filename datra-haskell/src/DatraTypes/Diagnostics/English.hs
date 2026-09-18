@@ -14,7 +14,6 @@ import Diagnostics (LocalizedMessage (LocalizedMessage))
 import MapOperators.AccessOperator
   ( AccessError
       ( AccessInsertionRankExceedsMap
-      , AccessMalformedInsertion
       , AccessPositionOutOfBounds
       )
   )
@@ -42,11 +41,6 @@ localizeAccessError reason =
         [ "selected position: " <> englishOrdinal position
         , "map final-page order type: " <> englishOrdinal mapOrderType
         ]
-    AccessMalformedInsertion position ->
-      LocalizedMessage
-        "the access insertion is internally inconsistent"
-        ["missing insertion-chain position: " <> englishOrdinal position]
-
 localizeSuperEllipsisRangeError
   :: SuperEllipsisRangeError
   -> LocalizedMessage

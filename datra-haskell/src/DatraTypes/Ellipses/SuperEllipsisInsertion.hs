@@ -15,6 +15,7 @@ module SuperEllipsisInsertion
   , fullSuperEllipsisInsertion
   , superEllipsisInsertionRank
   , superEllipsisInsertionFirst
+  , withSuperEllipsisInsertionSources
   , superEllipsisInsertionChain
   , superEllipsisInsertionTraversal
   , applySuperEllipsisInsertion
@@ -69,6 +70,7 @@ import SuperEllipsis
 data SuperEllipsisInsertion (target :: Type) source = SuperEllipsisInsertion
   { superEllipsisInsertionRank :: SuperEllipsisRank target
   , superEllipsisInsertionChain :: Chain source
+  , superEllipsisInsertionSources :: InsertionSources source
   , superEllipsisInsertionTraversal
       :: StableAtlasTransversal
            (DominionAtlasObject source)
@@ -76,6 +78,13 @@ data SuperEllipsisInsertion (target :: Type) source = SuperEllipsisInsertion
   , superEllipsisInsertionDomanial
       :: DomanialInsertion source (SuperEllipsisTerminal target)
   }
+
+-- | A source chain is either empty or has a first element and a total lookup
+-- for its in-bounds ordinal positions. The constructors stay private so an
+-- access operation never has to represent a missing in-bounds source.
+data InsertionSources source
+  = EmptyInsertionSources
+  | NonEmptyInsertionSources source (Ordinal -> source)
 
 -- | A value restricted to positions selected by an insertion.
 data SuperEllipsisInsertionElement (target :: Type) source value =
@@ -123,6 +132,7 @@ superEllipsisInsertion
   SuperEllipsisInsertion
     { superEllipsisInsertionRank = valueRank
     , superEllipsisInsertionChain = sourceChain
+    , superEllipsisInsertionSources = insertionSources
     , superEllipsisInsertionTraversal =
         chainedDominionInsertionTraversal
           zero
@@ -135,6 +145,16 @@ superEllipsisInsertion
     targetDominion = superEllipsisDominion valueRank
     insertion = domanialInsertion forward backward leftInverse
     zero = superEllipsisZeroTerminal valueRank
+    insertionSources =
+      case chainIndex sourceChain (finiteOrdinal 0) of
+        Nothing -> EmptyInsertionSources
+        Just firstIndex ->
+          let first = chainObjectAt firstIndex
+              sourceAt position =
+                case chainIndex sourceChain position of
+                  Nothing -> first
+                  Just sourceIndex -> chainObjectAt sourceIndex
+          in NonEmptyInsertionSources first sourceAt
 
 -- | The first source value, derived from the chain so emptiness and the
 -- nonempty witness cannot disagree.
@@ -142,10 +162,20 @@ superEllipsisInsertionFirst
   :: SuperEllipsisInsertion target source
   -> Maybe source
 superEllipsisInsertionFirst insertion =
-  chainObjectAt
-    <$> chainIndex
-      (superEllipsisInsertionChain insertion)
-      (finiteOrdinal 0)
+  withSuperEllipsisInsertionSources insertion Nothing (\first _ -> Just first)
+
+-- | Eliminate the source-chain shape. In the nonempty branch, the first
+-- source is explicit and lookup is total for every position below the
+-- insertion chain's order type.
+withSuperEllipsisInsertionSources
+  :: SuperEllipsisInsertion target source
+  -> result
+  -> (source -> (Ordinal -> source) -> result)
+  -> result
+withSuperEllipsisInsertionSources insertion whenEmpty whenNonEmpty =
+  case superEllipsisInsertionSources insertion of
+    EmptyInsertionSources -> whenEmpty
+    NonEmptyInsertionSources first sourceAt -> whenNonEmpty first sourceAt
 
 -- | Convert an insertion to the Atlas map presented by its ordered source
 -- chain.  Unlike indexed maps, the empty map needs no first-element witness.

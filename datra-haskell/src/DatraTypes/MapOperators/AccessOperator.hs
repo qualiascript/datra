@@ -40,8 +40,6 @@ module MapOperators.AccessOperator
 
 import Chain
   ( chain
-  , chainIndex
-  , chainObjectAt
   , chainOrderType
   , chainPosition
   )
@@ -80,10 +78,10 @@ import SuperEllipsisInsertion
   , SuperEllipsisInsertion
   , applySuperEllipsisInsertion
   , superEllipsisInsertionChain
-  , superEllipsisInsertionFirst
   , superEllipsisInsertionPosition
   , superEllipsisInsertionPreimage
   , superEllipsisInsertionRank
+  , withSuperEllipsisInsertionSources
   )
 
 -- | A selected final-page value together with the insertion source that
@@ -99,7 +97,6 @@ data AccessElement source value = AccessElement
 data AccessError
   = AccessInsertionRankExceedsMap Ordinal Ordinal
   | AccessPositionOutOfBounds Ordinal Ordinal
-  | AccessMalformedInsertion Ordinal
   deriving (Eq, Show)
 
 -- | Access final-page indices in insertion-chain order.  In particular, the
@@ -144,21 +141,24 @@ accessInsertionOperatorEither
        AccessError
        (OrderedAtlasMap (AccessElement source value))
 accessInsertionOperatorEither valueAtlas insertion =
-  case superEllipsisInsertionFirst insertion of
-    Nothing -> Right EmptyOrderedAtlasMap
-    Just firstSource -> do
-      validateFits
+  withSuperEllipsisInsertionSources
+    insertion
+    (Right EmptyOrderedAtlasMap) $ \firstSource sourceAt -> do
+      validateFits sourceAt
       first <- selectedValue firstSource
       pure
         (NonEmptyOrderedAtlasMap
-          (indexedAtlasMapFromChain first selectedChain selectedDominion))
+          (indexedAtlasMapFromChain
+            first
+            (selectedChain sourceAt)
+            selectedDominion))
   where
     insertionChain = superEllipsisInsertionChain insertion
     insertionRank = superEllipsisInsertionRank insertion
     targetOrderType = superEllipsisRankOrderType insertionRank
     mapOrderType = chainOrderType (indexedAtlasChain valueAtlas)
 
-    validateFits
+    validateFits sourceAt
       | targetOrderType == mapOrderType
           || ordinalLT targetOrderType mapOrderType = Right ()
       | otherwise =
@@ -167,17 +167,14 @@ accessInsertionOperatorEither valueAtlas insertion =
               Left
                 (AccessInsertionRankExceedsMap
                   targetOrderType mapOrderType)
-            Just finiteOrderType -> validateFinite 0 finiteOrderType
+            Just finiteOrderType ->
+              validateFinite sourceAt 0 finiteOrderType
 
-    validateFinite position cardinality
+    validateFinite sourceAt position cardinality
       | position == cardinality = Right ()
-      | otherwise =
-          let ordinalPosition = finiteOrdinal position
-          in case chainIndex insertionChain ordinalPosition of
-              Nothing -> Left (AccessMalformedInsertion ordinalPosition)
-              Just sourceIndex -> do
-                _ <- selectedValue (chainObjectAt sourceIndex)
-                validateFinite (position + 1) cardinality
+      | otherwise = do
+          _ <- selectedValue (sourceAt (finiteOrdinal position))
+          validateFinite sourceAt (position + 1) cardinality
 
     selectedValue source =
       let selectedPosition =
@@ -197,13 +194,11 @@ accessInsertionOperatorEither valueAtlas insertion =
         Left _ -> Nothing
         Right value -> Just value
 
-    selectedChain =
+    selectedChain sourceAt =
       chain
         (chainOrderType insertionChain)
         accessElementPosition
-        (\position -> do
-          sourceIndex <- chainIndex insertionChain position
-          selectedValueMaybe (chainObjectAt sourceIndex))
+        (selectedValueMaybe . sourceAt)
         (const ())
         (\_ _ -> ())
         (const ())
