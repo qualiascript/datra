@@ -4,6 +4,7 @@ The Datra parser and interpreter are built with:
 
 - GHC 9.14.1
 - cabal-install 3.18.1.0
+- Z3 (the SMT solver used by Liquid Haskell)
 
 The ordinary `cabal.project` selects the repository-scoped GHC installation.
 The Docker image uses `cabal.docker.project` instead, which selects the pinned
@@ -18,15 +19,16 @@ From this directory, run:
 docker build --tag datra-haskell .
 ```
 
-The build verifies both tool versions, builds the executable with the Liquid
-Haskell flag enabled, and performs a CLI smoke test. The image supports Docker's
-`amd64` and `arm64` platforms.
+The build verifies the toolchain and SMT solver, builds the executable with the
+Liquid Haskell flag enabled, and performs a CLI smoke test. The image supports
+Docker's `amd64` and `arm64` platforms.
 
 Verify the installed tools if needed:
 
 ```sh
 docker run --rm --entrypoint cabal datra-haskell --version
 docker run --rm --entrypoint ghc datra-haskell --version
+docker run --rm --entrypoint z3 datra-haskell --version
 ```
 
 ## Run with the default files

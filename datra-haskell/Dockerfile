@@ -3,6 +3,14 @@ FROM haskell:9.14.1-bookworm
 ARG CABAL_VERSION=3.18.1.0
 ARG TARGETARCH
 
+# Liquid Haskell delegates refinement checking to an external SMT solver.
+# Keep Z3 in the image so both image builds and interactive development can
+# use the liquid plugin.
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends z3 && \
+    rm -rf /var/lib/apt/lists/* && \
+    z3 --version
+
 # The GHC 9.14.1 official image currently contains an older cabal-install.
 # Install the exact Cabal version used by this project and verify the GHCup
 # bindist before replacing /usr/local/bin/cabal.
