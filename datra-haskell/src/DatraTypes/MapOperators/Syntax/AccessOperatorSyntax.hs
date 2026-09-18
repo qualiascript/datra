@@ -8,7 +8,7 @@ import MapOperators.AccessOperator
   , HasOrderedAtlasMap
   , HasSuperEllipsisInsertion
   , InsertionSource
-  , IndexedAtlasMap
+  , OrderedAtlasMap
   , OrderedAtlasElement
   , accessOperator
   )
@@ -21,7 +21,7 @@ infixl 8 <@>
   => mapOperand
   -> operand
   -> Maybe
-       (IndexedAtlasMap
+       (OrderedAtlasMap
          (AccessElement
            (InsertionSource operand)
            (OrderedAtlasElement mapOperand)))

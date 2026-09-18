@@ -9,6 +9,10 @@
 module SuperEllipsisRange
   ( SuperEllipsisRange
   , SuperEllipsisRangeTarget (..)
+  , SuperEllipsisRangeError (..)
+  , SuperEllipsisRangeDescription (..)
+  , SuperEllipsisRangeConcatAnalysis (..)
+  , SuperEllipsisRangeConcatError (..)
   , SuperEllipsisRangeElement
   , SuperEllipsisRangeMap
   , SuperEllipsisRangeConcatValues
@@ -16,6 +20,7 @@ module SuperEllipsisRange
   , SuperEllipsisRangeConcatOrderedMap
   , SuperEllipsisRangeConcat
   , superEllipsisRange
+  , superEllipsisRangeEither
   , superEllipsisRangeRank
   , superEllipsisRangeStart
   , superEllipsisRangeTarget
@@ -33,8 +38,12 @@ module SuperEllipsisRange
   , superEllipsisRangeConcatMap
   , superEllipsisRangeConcatValue
   , superEllipsisRangeConcatInsertion
+  , superEllipsisRangeConcatInsertionResult
   , superEllipsisRangeConcatOrderedMap
   , concatSuperEllipsisRangeInsertion
+  , concatSuperEllipsisRangeInsertionEither
+  , describeSuperEllipsisRange
+  , analyzeSuperEllipsisRangeConcat
   ) where
 
 import AtlasConfederation
@@ -99,6 +108,44 @@ data SuperEllipsisRangeTarget
   = GivenTarget Ordinal
   | MinusSign
   | PlusSign
+  deriving (Eq, Show)
+
+-- | Reasons a range cannot be constructed at its selected rank.
+data SuperEllipsisRangeError
+  = SuperEllipsisRangeStartOutsideRank Ordinal Ordinal
+  | SuperEllipsisRangeTargetOutsideRank Ordinal Ordinal
+  | SuperEllipsisRangeInvalidDescendingBounds Ordinal Ordinal
+  deriving (Eq, Show)
+
+-- | Scope-free range information suitable for diagnostics and canonical
+-- result presentation.
+data SuperEllipsisRangeDescription = SuperEllipsisRangeDescription
+  { describedRangeRankLimit :: Ordinal
+  , describedRangeStart :: Ordinal
+  , describedRangeTarget :: SuperEllipsisRangeTarget
+  }
+  deriving (Eq, Show)
+
+-- | Whether an ordered concatenation can be represented by one range, stays
+-- as two disjoint ranges, or repeats positions because its images overlap.
+data SuperEllipsisRangeConcatAnalysis
+  = RangeConcatCanonical SuperEllipsisRangeDescription
+  | RangeConcatDisjoint
+      SuperEllipsisRangeDescription
+      SuperEllipsisRangeDescription
+  | RangeConcatOverlapping
+      SuperEllipsisRangeDescription
+      SuperEllipsisRangeDescription
+      Ordinal
+      Ordinal
+  deriving (Eq, Show)
+
+data SuperEllipsisRangeConcatError
+  = SuperEllipsisRangesOverlap
+      SuperEllipsisRangeDescription
+      SuperEllipsisRangeDescription
+      Ordinal
+      Ordinal
   deriving (Eq, Show)
 
 type role SuperEllipsisRange nominal nominal
@@ -170,8 +217,9 @@ data SuperEllipsisRangeConcat
            (SuperEllipsisRangeConcatValues target leftScope rightScope)
   , superEllipsisRangeConcatValue
       :: SuperEllipsisRangeConcatValue target leftScope rightScope
-  , superEllipsisRangeConcatInsertion
-      :: Maybe
+  , superEllipsisRangeConcatInsertionResult
+      :: Either
+           SuperEllipsisRangeConcatError
            (SuperEllipsisInsertion
              target
              (Either
@@ -188,6 +236,20 @@ instance HasOrderedAtlasMap
       (SuperEllipsisRangeElement target rightScope)
   orderedAtlasMap = superEllipsisRangeConcatOrderedMap
 
+-- | Compatibility projection for callers that do not need a diagnostic.
+superEllipsisRangeConcatInsertion
+  :: SuperEllipsisRangeConcat target leftScope rightScope
+  -> Maybe
+       (SuperEllipsisInsertion
+         target
+         (Either
+           (SuperEllipsisRangeElement target leftScope)
+           (SuperEllipsisRangeElement target rightScope)))
+superEllipsisRangeConcatInsertion value =
+  case superEllipsisRangeConcatInsertionResult value of
+    Left _ -> Nothing
+    Right insertion -> Just insertion
+
 -- | Introduce a range after checking both endpoints against its rank.  The
 -- first endpoint is always explicit; callers must pass zero rather than omit
 -- it.
@@ -199,7 +261,19 @@ superEllipsisRange
   -> SuperEllipsisRangeTarget
   -> (forall scope. SuperEllipsisRange target scope -> result)
   -> Maybe result
-superEllipsisRange valueRank start target useRange = do
+superEllipsisRange valueRank start target useRange =
+  case superEllipsisRangeEither valueRank start target useRange of
+    Left _ -> Nothing
+    Right result -> Just result
+
+-- | Detailed variant of 'superEllipsisRange'.
+superEllipsisRangeEither
+  :: SuperEllipsisRank target
+  -> Ordinal
+  -> SuperEllipsisRangeTarget
+  -> (forall scope. SuperEllipsisRange target scope -> result)
+  -> Either SuperEllipsisRangeError result
+superEllipsisRangeEither valueRank start target useRange = do
   validateStart
   validateTarget
   validateDirection
@@ -208,25 +282,31 @@ superEllipsisRange valueRank start target useRange = do
     rankLimit = superEllipsisRankOrderType valueRank
 
     validateStart
-      | ordinalLT start rankLimit = Just ()
-      | otherwise = Nothing
+      | ordinalLT start rankLimit = Right ()
+      | otherwise =
+          Left (SuperEllipsisRangeStartOutsideRank start rankLimit)
 
     validateTarget =
       case target of
         GivenTarget targetValue
           | targetValue == rankLimit || ordinalLT targetValue rankLimit ->
-              Just ()
-          | otherwise -> Nothing
-        MinusSign -> Just ()
-        PlusSign -> Just ()
+              Right ()
+          | otherwise ->
+              Left
+                (SuperEllipsisRangeTargetOutsideRank targetValue rankLimit)
+        MinusSign -> Right ()
+        PlusSign -> Right ()
 
     validateDirection =
       case target of
         GivenTarget targetValue
           | ordinalLT targetValue start
-              && not (sameFiniteBase start targetValue) -> Nothing
-          | otherwise -> Just ()
-        _ -> Just ()
+              && not (sameFiniteBase start targetValue) ->
+                  Left
+                    (SuperEllipsisRangeInvalidDescendingBounds
+                      start targetValue)
+          | otherwise -> Right ()
+        _ -> Right ()
 
 superEllipsisRangeElement
   :: SuperEllipsisRange target scope
@@ -465,12 +545,7 @@ concatSuperEllipsisRanges first second =
       valueMap =
         superEllipsisRangeMap first <.> superEllipsisRangeMap second
       value = rangeConcatValue first second
-      insertion
-        | rangesOverlap first second = Nothing
-        | otherwise = Just
-            (mergeDisjointSuperEllipsisInsertions
-              (superEllipsisRangeInsertion first)
-              (superEllipsisRangeInsertion second))
+      insertion = concatSuperEllipsisRangeInsertionEither first second
   in SuperEllipsisRangeConcat atlasMap valueMap value insertion
 
 mergeSuperEllipsisRanges
@@ -489,8 +564,118 @@ concatSuperEllipsisRangeInsertion
            (SuperEllipsisRangeElement target leftScope)
            (SuperEllipsisRangeElement target rightScope)))
 concatSuperEllipsisRangeInsertion first second =
-  superEllipsisRangeConcatInsertion
-    (concatSuperEllipsisRanges first second)
+  case concatSuperEllipsisRangeInsertionEither first second of
+    Left _ -> Nothing
+    Right insertion -> Just insertion
+
+-- | Detailed insertion projection for a range concatenation. Overlapping
+-- ranges still form a valid ordered map, but cannot form an injective
+-- selection for map access.
+concatSuperEllipsisRangeInsertionEither
+  :: SuperEllipsisRange target leftScope
+  -> SuperEllipsisRange target rightScope
+  -> Either
+       SuperEllipsisRangeConcatError
+       (SuperEllipsisInsertion
+         target
+         (Either
+           (SuperEllipsisRangeElement target leftScope)
+           (SuperEllipsisRangeElement target rightScope)))
+concatSuperEllipsisRangeInsertionEither first second =
+  case analyzeSuperEllipsisRangeConcat first second of
+    RangeConcatOverlapping
+        firstDescription secondDescription lower upper ->
+      Left
+        (SuperEllipsisRangesOverlap
+          firstDescription secondDescription lower upper)
+    _ ->
+      Right
+        (mergeDisjointSuperEllipsisInsertions
+          (superEllipsisRangeInsertion first)
+          (superEllipsisRangeInsertion second))
+
+describeSuperEllipsisRange
+  :: SuperEllipsisRange target scope
+  -> SuperEllipsisRangeDescription
+describeSuperEllipsisRange valueRange =
+  SuperEllipsisRangeDescription
+    { describedRangeRankLimit =
+        superEllipsisRankOrderType (superEllipsisRangeRank valueRange)
+    , describedRangeStart = superEllipsisRangeStart valueRange
+    , describedRangeTarget = superEllipsisRangeTarget valueRange
+    }
+
+-- | Analyze an ordered pair without discarding ordering or duplicate-image
+-- information. Empty ranges are identities. Adjacent ranges canonicalize
+-- only when their traversal directions agree.
+analyzeSuperEllipsisRangeConcat
+  :: SuperEllipsisRange target leftScope
+  -> SuperEllipsisRange target rightScope
+  -> SuperEllipsisRangeConcatAnalysis
+analyzeSuperEllipsisRangeConcat first second
+  | rangeIsEmpty first = RangeConcatCanonical secondDescription
+  | rangeIsEmpty second = RangeConcatCanonical firstDescription
+  | Just (lower, upper) <- rangeOverlapBounds first second =
+      RangeConcatOverlapping
+        firstDescription secondDescription lower upper
+  | rangesAreContiguous first second =
+      RangeConcatCanonical
+        SuperEllipsisRangeDescription
+          { describedRangeRankLimit =
+              describedRangeRankLimit firstDescription
+          , describedRangeStart = describedRangeStart firstDescription
+          , describedRangeTarget = describedRangeTarget secondDescription
+          }
+  | otherwise = RangeConcatDisjoint firstDescription secondDescription
+  where
+    firstDescription = describeSuperEllipsisRange first
+    secondDescription = describeSuperEllipsisRange second
+
+data RangeDirection = AscendingRange | DescendingRange
+  deriving (Eq)
+
+rangeDirection
+  :: SuperEllipsisRange target scope
+  -> Maybe RangeDirection
+rangeDirection valueRange =
+  case superEllipsisRangeTarget valueRange of
+    GivenTarget target
+      | ordinalLT start target -> Just AscendingRange
+      | ordinalLT target start -> Just DescendingRange
+      | otherwise -> Nothing
+    PlusSign -> Just AscendingRange
+    MinusSign -> Just DescendingRange
+  where
+    start = superEllipsisRangeStart valueRange
+
+rangeIsEmpty :: SuperEllipsisRange target scope -> Bool
+rangeIsEmpty valueRange =
+  superEllipsisRangeOrderType valueRange == finiteOrdinal 0
+
+rangesAreContiguous
+  :: SuperEllipsisRange target leftScope
+  -> SuperEllipsisRange target rightScope
+  -> Bool
+rangesAreContiguous first second =
+  case superEllipsisRangeTarget first of
+    GivenTarget boundary ->
+      boundary == superEllipsisRangeStart second
+        && rangeDirection first == rangeDirection second
+    _ -> False
+
+rangeOverlapBounds
+  :: SuperEllipsisRange target leftScope
+  -> SuperEllipsisRange target rightScope
+  -> Maybe (Ordinal, Ordinal)
+rangeOverlapBounds first second =
+  case (rangeImageBounds first, rangeImageBounds second) of
+    (Just (firstLower, firstUpper), Just (secondLower, secondUpper))
+      | ordinalLT overlapLower overlapUpper ->
+          Just (overlapLower, overlapUpper)
+      where
+        overlapLower = max firstLower secondLower
+        overlapUpper = min firstUpper secondUpper
+    _ -> Nothing
 
 positionInRange
   :: SuperEllipsisRange target scope
@@ -515,17 +700,6 @@ positionInRange valueRange position =
                (superEllipsisRangeRank valueRange))
   where
     start = superEllipsisRangeStart valueRange
-
-rangesOverlap
-  :: SuperEllipsisRange target leftScope
-  -> SuperEllipsisRange target rightScope
-  -> Bool
-rangesOverlap first second =
-  case (rangeImageBounds first, rangeImageBounds second) of
-    (Nothing, _) -> False
-    (_, Nothing) -> False
-    (Just (firstLower, firstUpper), Just (secondLower, secondUpper)) ->
-      ordinalLT firstLower secondUpper && ordinalLT secondLower firstUpper
 
 rangeImageBounds
   :: SuperEllipsisRange target scope

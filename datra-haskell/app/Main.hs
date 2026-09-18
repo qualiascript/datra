@@ -1,12 +1,15 @@
 module Main (main) where
 
 import Datra.AST (renderExpression)
-import Datra.Parsing (parseDatra)
+import Datra.Parsing (parseDatraWithSourceName)
 
 main :: IO ()
 main = do
-  source <- readFile "input.datra"
-  case parseDatra source of
+  let inputPath = "resources/input.datra"
+  source <- readFile inputPath
+  case parseDatraWithSourceName inputPath source of
     Left message -> ioError (userError message)
     Right expression ->
-      writeFile "output.datra.ast" (renderExpression expression <> "\n")
+      writeFile
+        "resources/output.datra.ast"
+        (renderExpression expression <> "\n")

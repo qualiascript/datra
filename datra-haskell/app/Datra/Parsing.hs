@@ -2,6 +2,7 @@
 
 module Datra.Parsing
   ( parseDatra
+  , parseDatraWithSourceName
   ) where
 
 import Control.Applicative (empty, some, (<|>))
@@ -49,12 +50,19 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 
 type Parser = Parsec Void Text
 
--- | Parse one top-level map. If the first and last significant characters
--- are not '[' and ']', the top-level brackets are implicit.
+-- | Parse an in-memory Datra resource without associating it with a real
+-- filesystem path. This is the entry point used by tests and other callers
+-- that already have the source contents.
 parseDatra :: String -> Either String Expression
-parseDatra source =
+parseDatra = parseDatraWithSourceName "<input>"
+
+-- | Parse one top-level map with a source name used only in diagnostics. If
+-- the first and last significant characters are not '[' and ']', the
+-- top-level brackets are implicit.
+parseDatraWithSourceName :: FilePath -> String -> Either String Expression
+parseDatraWithSourceName sourceName source =
   first errorBundlePretty
-    (parse resource "input.datra" (Text.pack source))
+    (parse resource sourceName (Text.pack source))
 
 resource :: Parser Expression
 resource = do

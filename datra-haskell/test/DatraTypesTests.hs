@@ -52,6 +52,7 @@ import DatraOrdinal
   , naturalAtOrdinal
   , omega
   , ordinal
+  , ordinalCoefficients
   )
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
@@ -63,6 +64,17 @@ import Dot
   , dotTerminal
   )
 import DomanialInsertion (applyInsertion, preimage)
+import Diagnostics
+  ( LocalizedMessage (LocalizedMessage)
+  , SourcePosition (SourcePosition)
+  , SourceSpan (SourceSpan)
+  , atSourceSpan
+  )
+import Diagnostics.Localization
+  ( Locale (English)
+  , LocalizedDiagnostic (localizeDiagnostic)
+  , renderDatraError
+  )
 import Ellipsis
 import Ellipsis.Syntax ((...), (<..>), (..+), (..-))
 import EllipsisNatural qualified as DatraNatural
@@ -99,6 +111,8 @@ import qualified NumericalOperators as Numeric
 
 main :: IO ()
 main = do
+  testOrdinalInspection
+  testDiagnostics
   testAsciiMap
   testCanonicalCharsMap
   testAccessOperator
@@ -114,9 +128,60 @@ main = do
   testSuperEllipsisInsertionDominion
   testRankOneRange
   testRankOneRangeMerge
+  testRankOneRangeAnalysis
   testEllipsisNatural
   testNumericalOperators
   testTypingAbstractions
+
+testOrdinalInspection :: IO ()
+testOrdinalInspection = do
+  assert "ordinal inspection exposes canonical coefficients"
+    (ordinalCoefficients (ordinal [0, 2, 0, 3]) == [2, 0, 3])
+  assert "zero has no canonical coefficients"
+    (null (ordinalCoefficients (finiteOrdinal 0)))
+
+testDiagnostics :: IO ()
+testDiagnostics = do
+  let sourceSpan =
+        SourceSpan
+          "<test>"
+          (SourcePosition 4 1 5)
+          (SourcePosition 12 1 13)
+      reason = AccessPositionOutOfBounds
+        (finiteOrdinal 4)
+        (finiteOrdinal 3)
+      localized = localizeDiagnostic English reason
+      rendered = renderDatraError English (atSourceSpan sourceSpan reason)
+  assert "English access localization has exact structured text"
+    (localized
+      == LocalizedMessage
+          "the access insertion selects a position outside the map"
+          [ "selected position: 4"
+          , "map final-page order type: 3"
+          ])
+  assert "localized diagnostics render exact source position and text"
+    (rendered
+      == "<test>:1:5: the access insertion selects a position outside the map\n  selected position: 4\n  map final-page order type: 3")
+  assert "English diagnostics render omega in Datra notation"
+    (localizeDiagnostic
+        English
+        (AccessInsertionRankExceedsMap omega (finiteOrdinal 256))
+      == LocalizedMessage
+          "the access insertion has a larger rank than the map"
+          [ "insertion rank limit: (...)"
+          , "map final-page order type: 256"
+          ])
+  assert "English diagnostics put ordinal coefficients on the right"
+    (localizeDiagnostic
+        English
+        (AccessInsertionRankExceedsMap
+          (ordinal [2, 0, 3])
+          (finiteOrdinal 256))
+      == LocalizedMessage
+          "the access insertion has a larger rank than the map"
+          [ "insertion rank limit: (...)^2 * 2 + 3"
+          , "map final-page order type: 256"
+          ])
 
 assert :: String -> Bool -> IO ()
 assert label condition
@@ -287,9 +352,11 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
                   ] <> [Nothing])
             assert
               "finite maps reject transfinite super-rankOneData positions"
-              (case ascii <@> insertion of
-                Nothing -> True
-                Just _ -> False)))
+              (case accessOperatorEither ascii insertion of
+                Left (AccessPositionOutOfBounds position mapOrderType) ->
+                  position == omega
+                    && mapOrderType == finiteOrdinal 256
+                _ -> False)))
     of
       Nothing -> fail "valid transfinite rank-two range was rejected"
       Just checks -> checks
@@ -299,7 +366,7 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
           case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
             Nothing -> False
             Just selected ->
-              indexedAtlasCardinality selected == finiteOrdinal 3))
+              orderedAtlasMapCardinality selected == finiteOrdinal 3))
     of
       Nothing -> fail "valid finite rank-two range was rejected"
       Just fits ->
@@ -353,12 +420,17 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
     of
       Nothing -> fail "same-base transfinite descending range was rejected"
       Just checks -> checks
-  assert "descending across a limit boundary is rejected"
-    (case join (superEllipsisValue rankTwo highFiniteTail $ \origin ->
-        join (superEllipsisValue rankTwo omega $ \target ->
-          (origin <..> target) (const ()))) of
-      Nothing -> True
-      Just () -> False)
+  assert "descending across a limit boundary reports invalid bounds"
+    (case SuperRange.superEllipsisRangeEither
+        rankTwo
+        highFiniteTail
+        (SuperRange.GivenTarget omega)
+        (const ()) of
+      Left
+          (SuperRange.SuperEllipsisRangeInvalidDescendingBounds
+            start target) ->
+        start == highFiniteTail && target == omega
+      _ -> False)
 
 type EllipsisConfederationScope =
   SingletonAtlasConfederationScope RankOneAtlasObject
@@ -721,24 +793,26 @@ testAccessOperator =
       Nothing -> fail "Dot's underlying range was rejected"
       Just selected ->
         assert "access interprets Dot as its full one-element range"
-          ( indexedAtlasCardinality selected == finiteOrdinal 1
+          ( orderedAtlasMapCardinality selected == finiteOrdinal 1
             && fmap
               (asciiCharacterValue . accessElementValue)
-              (indexedAtlasValueAt selected 0) == Just '\0'
+              (orderedAtlasMapValueAt selected 0) == Just '\0'
           )
-    assert "a finite map rejects Ellipsis's unbounded underlying range"
-      (case ascii <@> (...) of
-        Nothing -> True
-        Just _ -> False)
+    assert "a finite map reports Ellipsis's insertion rank mismatch"
+      (case accessOperatorEither ascii (...) of
+        Left (AccessInsertionRankExceedsMap insertionRank mapOrderType) ->
+          insertionRank == omega
+            && mapOrderType == finiteOrdinal 256
+        _ -> False)
     let naturalDominion = dominion id Just (const ())
         omegaMap = indexedAtlasMapFromChain 0 spine naturalDominion
     case omegaMap <@> (...) of
       Nothing -> fail "Ellipsis's range was rejected by an omega map"
       Just selected ->
         assert "access preserves an unbounded range that fits the map"
-          ( indexedAtlasCardinality selected == omega
+          ( orderedAtlasMapCardinality selected == omega
             && map
-              (fmap accessElementValue . indexedAtlasValueAt selected)
+              (fmap accessElementValue . orderedAtlasMapValueAt selected)
               [0, 1, 1000000]
               == map Just [0, 1, 1000000]
           )
@@ -753,12 +827,12 @@ testAccessOperator =
       Nothing -> fail "level-two formulation access was rejected"
       Just selected ->
         assert "access remains ordinal-indexed above omega"
-          ( indexedAtlasCardinality selected == ordinal [1, 0, 0]
+          ( orderedAtlasMapCardinality selected == ordinal [1, 0, 0]
             && fmap
               ( superEllipsisTerminalPosition
                 . accessElementValue
               )
-              (indexedAtlasValueAtOrdinal selected omega) == Just omega
+              (orderedAtlasMapValueAtOrdinal selected omega) == Just omega
           )
     withRankOneRange 10 (Just 12) $ \first ->
       withRankOneRange 2 (Just 4) $ \second ->
@@ -772,21 +846,27 @@ testAccessOperator =
               Just selected -> do
                 let selectedCharacter position =
                       asciiCharacterValue . accessElementValue
-                        <$> indexedAtlasValueAt selected position
-                    valueAtlas = indexedAtlasAtlas selected
+                        <$> orderedAtlasMapValueAt selected position
                 assert "access follows insertion order and can reorder values"
                   (map selectedCharacter [0 .. 4]
                     == [ Just '\10', Just '\11', Just '\2', Just '\3'
                        , Nothing
                        ])
                 assert "access returns a flattened two-page map"
-                  (atlasCardinality valueAtlas == 2
-                    && atlasPageHasExactly valueAtlas 1 4)
+                  (case selected of
+                    EmptyOrderedAtlasMap -> False
+                    NonEmptyOrderedAtlasMap valueMap ->
+                      let valueAtlas = indexedAtlasAtlas valueMap
+                      in atlasCardinality valueAtlas == 2
+                          && atlasPageHasExactly valueAtlas 1 4)
     withRankOneRange 255 (Just 257) $ \outside ->
-      assert "access rejects an insertion exceeding final cardinality"
-        (case ascii <@> SuperRange.superEllipsisRangeInsertion outside of
-          Nothing -> True
-          Just _ -> False)
+      let insertion = SuperRange.superEllipsisRangeInsertion outside
+      in assert "access reports the first out-of-bounds position"
+        (case accessOperatorEither ascii insertion of
+          Left (AccessPositionOutOfBounds position mapOrderType) ->
+            position == finiteOrdinal 256
+              && mapOrderType == finiteOrdinal 256
+          _ -> False)
     withEllipsisNatural 0 $ \zero -> do
       withEllipsisNatural 2 $ \two ->
         withEllipsisNatural 10 $ \ten ->
@@ -794,7 +874,7 @@ testAccessOperator =
             let selectedPosition selected =
                   SuperRange.superEllipsisRangeElementPosition
                     . accessElementValue
-                    <$> indexedAtlasValueAt selected 0
+                    <$> orderedAtlasMapValueAt selected 0
                 insertion =
                   SuperRange.superEllipsisRangeInsertion valueRange
             case valueRange <@> zero of
@@ -817,10 +897,15 @@ testAccessOperator =
             (case SuperRange.superEllipsisRangeOrderedMap emptyRange of
               EmptyOrderedAtlasMap -> True
               NonEmptyOrderedAtlasMap _ -> False)
-          assert "an empty insertion map is not indexable by access"
+          assert "an empty insertion produces an empty access map"
             (case emptyRange <@> zero of
-              Nothing -> True
-              Just _ -> False)
+              Just EmptyOrderedAtlasMap -> True
+              _ -> False)
+          let emptyMap = EmptyOrderedAtlasMap :: OrderedAtlasMap Natural
+          assert "access accepts an empty source map"
+            (case emptyMap <@> zero of
+              Just EmptyOrderedAtlasMap -> True
+              _ -> False)
           of
             Nothing -> fail "valid empty range was rejected"
             Just checks -> checks
@@ -834,11 +919,10 @@ testAccessOperator =
                     SuperRange.superEllipsisRangeElementPosition
                     SuperRange.superEllipsisRangeElementPosition
                     . accessElementValue
-                    <$> indexedAtlasValueAt selected 0
-            case SuperRange.superEllipsisRangeConcatInsertion concatenated of
-              Just _ ->
-                fail "overlapping unbounded ranges produced an insertion"
-              Nothing ->
+                    <$> orderedAtlasMapValueAt selected 0
+            case SuperRange.superEllipsisRangeConcatInsertionResult concatenated of
+              Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper)
+                | lower == finiteOrdinal 3 && upper == omega ->
                 case SuperRange.superEllipsisRangeConcatOrderedMap concatenated of
                   EmptyOrderedAtlasMap ->
                     fail "two unbounded ranges produced the empty map"
@@ -846,6 +930,10 @@ testAccessOperator =
                     assert "overlapping unbounded ranges form an Atlas map"
                       (indexedAtlasCardinality valueMap
                         == addOrdinals omega omega)
+              Left rejection ->
+                fail ("unbounded ranges reported the wrong rejection: " <> show rejection)
+              Right _ ->
+                fail "overlapping unbounded ranges produced an insertion"
             case concatenated <@> two of
               Nothing -> fail "concat-map access at finite index failed"
               Just selected ->
@@ -1198,6 +1286,81 @@ testRankOneRange = do
           assert "zero-to-unbounded includes all terminals"
             (actual == [Just 0, Just 1, Just 1000000])
 
+testRankOneRangeAnalysis :: IO ()
+testRankOneRangeAnalysis = do
+  case SuperRange.superEllipsisRangeEither
+      rankOneRank omega SuperRange.PlusSign (const ()) of
+    Left (SuperRange.SuperEllipsisRangeStartOutsideRank start rankLimit) ->
+      assert "range construction identifies an out-of-rank start"
+        (start == omega && rankLimit == omega)
+    Left _ -> fail "range construction returned the wrong typed error"
+    Right _ -> fail "an out-of-rank range start was accepted"
+
+  let targetBeyondRank = addOrdinals omega (finiteOrdinal 1)
+  case SuperRange.superEllipsisRangeEither
+      rankOneRank
+      (finiteOrdinal 0)
+      (SuperRange.GivenTarget targetBeyondRank)
+      (const ()) of
+    Left (SuperRange.SuperEllipsisRangeTargetOutsideRank target rankLimit) ->
+      assert "range construction identifies an out-of-rank target"
+        (target == targetBeyondRank && rankLimit == omega)
+    Left rejection ->
+      fail ("range target returned the wrong rejection: " <> show rejection)
+    Right _ -> fail "an out-of-rank range target was accepted"
+
+  withRankOneRange 2 (Just 5) $ \first ->
+    withRankOneRange 5 Nothing $ \second -> do
+      let expected =
+            SuperRange.SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 2)
+              SuperRange.PlusSign
+      assert "adjacent ascending ranges canonicalize to one open range"
+        (SuperRange.analyzeSuperEllipsisRangeConcat first second
+          == SuperRange.RangeConcatCanonical expected)
+
+  withRankOneRange 5 (Just 3) $ \first ->
+    withRankOneRange 3 (Just 4) $ \second ->
+      assert "ranges with different directions do not canonicalize"
+        (case SuperRange.analyzeSuperEllipsisRangeConcat first second of
+          SuperRange.RangeConcatDisjoint _ _ -> True
+          _ -> False)
+
+  withRankOneRange 5 (Just 3) $ \first ->
+    withRankOneRange 3 (Just 1) $ \second ->
+      assert "adjacent descending ranges canonicalize in traversal order"
+        (SuperRange.analyzeSuperEllipsisRangeConcat first second
+          == SuperRange.RangeConcatCanonical
+              (SuperRange.SuperEllipsisRangeDescription
+                omega
+                (finiteOrdinal 5)
+                (SuperRange.GivenTarget (finiteOrdinal 1))))
+
+  withRankOneRange 3 Nothing $ \first ->
+    withRankOneRange 4 Nothing $ \second -> do
+      let analysis =
+            SuperRange.analyzeSuperEllipsisRangeConcat first second
+      assert "overlapping open ranges report their exact overlap"
+        (case analysis of
+          SuperRange.RangeConcatOverlapping _ _ lower upper ->
+            lower == finiteOrdinal 4 && upper == omega
+          _ -> False)
+      assert "overlapping ranges have a typed insertion error"
+        (case SuperRange.concatSuperEllipsisRangeInsertionEither
+            first second of
+          Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper) ->
+            lower == finiteOrdinal 4 && upper == omega
+          Right _ -> False)
+
+  withRankOneRange 2 (Just 2) $ \emptyRange ->
+    withRankOneRange 5 Nothing $ \nonemptyRange ->
+      assert "an empty range is a canonical concatenation identity"
+        (SuperRange.analyzeSuperEllipsisRangeConcat
+            emptyRange nonemptyRange
+          == SuperRange.RangeConcatCanonical
+              (SuperRange.describeSuperEllipsisRange nonemptyRange))
+
 testRankOneRangeMerge :: IO ()
 testRankOneRangeMerge = do
   withRankOneRange 2 (Just 4) $ \first ->
@@ -1271,21 +1434,23 @@ testRankOneRangeMerge = do
     withRankOneRange 4 (Just 7) $ \second ->
       let concatenated = SuperRange.mergeSuperEllipsisRanges first second
           value = SuperRange.superEllipsisRangeConcatValue concatenated
-      in case SuperRange.superEllipsisRangeConcatInsertion concatenated of
-        Just _ ->
-          fail "overlapping ranges produced an Ellipsis insertion"
-        Nothing ->
+      in case SuperRange.superEllipsisRangeConcatInsertionResult concatenated of
+        Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper)
+          | lower == finiteOrdinal 4 && upper == finiteOrdinal 5 ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "overlapping ranges retain their ordered concat map"
               (atlasPageHasExactly concatAtlas 1 6)
+        Left rejection ->
+          fail ("overlapping ranges reported the wrong rejection: " <> show rejection)
+        Right _ ->
+          fail "overlapping ranges produced an Ellipsis insertion"
   withRankOneRange 3 Nothing $ \first ->
     withRankOneRange 5 Nothing $ \second ->
       let concatenated = first <.> second
           value = SuperRange.superEllipsisRangeConcatValue concatenated
-      in case SuperRange.superEllipsisRangeConcatInsertion concatenated of
-        Just _ ->
-          fail "overlapping unbounded ranges produced an Ellipsis insertion"
-        Nothing ->
+      in case SuperRange.superEllipsisRangeConcatInsertionResult concatenated of
+        Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper)
+          | lower == finiteOrdinal 5 && upper == omega ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -1301,14 +1466,17 @@ testRankOneRangeMerge = do
                   ]
                 && not (finalContains (addOrdinals omega omega))
               )
+        Left rejection ->
+          fail ("unbounded ranges reported the wrong rejection: " <> show rejection)
+        Right _ ->
+          fail "overlapping unbounded ranges produced an Ellipsis insertion"
   withRankOneRange 3 Nothing $ \first ->
     withRankOneRange 2 (Just 20) $ \second -> do
       let concatenated = first <.> second
           value = SuperRange.superEllipsisRangeConcatValue concatenated
-      case SuperRange.superEllipsisRangeConcatInsertion concatenated of
-        Just _ ->
-          fail "overlapping omega-plus-finite ranges produced an insertion"
-        Nothing ->
+      case SuperRange.superEllipsisRangeConcatInsertionResult concatenated of
+        Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper)
+          | lower == finiteOrdinal 3 && upper == finiteOrdinal 20 ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -1325,12 +1493,15 @@ testRankOneRangeMerge = do
                   (finalContains
                     (addOrdinals omega (finiteOrdinal 18)))
               )
+        Left rejection ->
+          fail ("omega-plus-finite ranges reported the wrong rejection: " <> show rejection)
+        Right _ ->
+          fail "overlapping omega-plus-finite ranges produced an insertion"
       let reversed = second <.> first
           reversedValue = SuperRange.superEllipsisRangeConcatValue reversed
-      case SuperRange.superEllipsisRangeConcatInsertion reversed of
-        Just _ ->
-          fail "overlapping finite-plus-omega ranges produced an insertion"
-        Nothing ->
+      case SuperRange.superEllipsisRangeConcatInsertionResult reversed of
+        Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper)
+          | lower == finiteOrdinal 3 && upper == finiteOrdinal 20 ->
           withConcatOrderedTransposal reversedValue $ \_ concatAtlas _ ->
             let finalContains position =
                   case pageElementIndex
@@ -1345,17 +1516,24 @@ testRankOneRangeMerge = do
                   ]
                 && not (finalContains omega)
               )
+        Left rejection ->
+          fail ("finite-plus-omega ranges reported the wrong rejection: " <> show rejection)
+        Right _ ->
+          fail "overlapping finite-plus-omega ranges produced an insertion"
   withRankOneRange 4 (Just 1) $ \descending ->
     withRankOneRange 3 (Just 6) $ \ascending ->
       let concatenated = descending <.> ascending
           value = SuperRange.superEllipsisRangeConcatValue concatenated
-      in case SuperRange.superEllipsisRangeConcatInsertion concatenated of
-        Just _ ->
-          fail "overlapping descending and ascending ranges produced an insertion"
-        Nothing ->
+      in case SuperRange.superEllipsisRangeConcatInsertionResult concatenated of
+        Left (SuperRange.SuperEllipsisRangesOverlap _ _ lower upper)
+          | lower == finiteOrdinal 3 && upper == finiteOrdinal 5 ->
           withConcatOrderedTransposal value $ \_ concatAtlas _ ->
             assert "descending ranges retain their order in overlapping maps"
               (atlasPageHasExactly concatAtlas 1 6)
+        Left rejection ->
+          fail ("mixed-direction ranges reported the wrong rejection: " <> show rejection)
+        Right _ ->
+          fail "overlapping descending and ascending ranges produced an insertion"
 
 testEllipsisNatural :: IO ()
 testEllipsisNatural = do
