@@ -38,18 +38,18 @@ library
         MapOperators.ConcatOperator
         MapOperators.ExpansionOperator
         MapOperators.SequentialOperator
-        MapOperators.Syntax.AccessOperatorSyntax
-        MapOperators.Syntax.ConcatOperatorSyntax
-        MapOperators.Syntax.ExpansionOperatorSyntax
-        MapOperators.Syntax.SequentialOperatorSyntax
+        Syntax.AccessOperatorSyntax
+        Syntax.ConcatOperatorSyntax
+        Syntax.ExpansionOperatorSyntax
+        Syntax.SequentialOperatorSyntax
         NumericalOperators
         NumericalOperators.AdditionOperator
         NumericalOperators.ExponentiationOperator
         NumericalOperators.MultiplicationOperator
         NumericalOperators.NumericalOperand
-        NumericalOperators.Syntax.AdditionOperatorSyntax
-        NumericalOperators.Syntax.ExponentiationOperatorSyntax
-        NumericalOperators.Syntax.MultiplicationOperatorSyntax
+        Syntax.AdditionOperatorSyntax
+        Syntax.ExponentiationOperatorSyntax
+        Syntax.MultiplicationOperatorSyntax
         CanonicalCharsMap
         Dominion
         Dot
@@ -58,7 +58,7 @@ library
         SuperEllipsisRange
         SuperEllipsisValue
         Ellipsis
-        Ellipsis.Syntax
+        Syntax.EllipsisSyntax
         EllipsisInsertion
         EllipsisRange
         EllipsisNatural
@@ -234,7 +234,6 @@ executable datra-haskell
     other-modules:
         Datra.AST
         Datra.Interpreting
-        Datra.Interpreting.Map
         Datra.Parsing
         Datra.Rendering
     build-depends:
@@ -297,7 +296,6 @@ test-suite datra-interpreting-test
     other-modules:
         Datra.AST
         Datra.Interpreting
-        Datra.Interpreting.Map
         Datra.Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:

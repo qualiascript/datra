@@ -10,6 +10,7 @@ module HorizontalSum.Internal
   , HorizontalSumValue (..)
   , horizontalSumValue
   , horizontalSum
+  , (|+|)
   , horizontalSumHom
   ) where
 
@@ -107,6 +108,15 @@ horizontalSum _ _ =
           leftValue
           rightValue
 
+-- | Infix form of 'horizontalSum'.
+infixr 6 |+|
+
+(|+|)
+  :: StableConfederalData left
+  -> StableConfederalData right
+  -> StableConfederalData (HorizontalSumValues left right)
+(|+|) = horizontalSum
+
 -- | Apply two natural transformations under horizontal sum.
 horizontalSumHom
   :: forall leftSource rightSource leftTarget rightTarget.
@@ -122,8 +132,8 @@ horizontalSumHom
 horizontalSumHom
   leftSource rightSource leftTarget rightTarget leftHom rightHom =
     stableConfederalDataHom
-      (horizontalSum leftSource rightSource)
-      (horizontalSum leftTarget rightTarget)
+      (leftSource |+| rightSource)
+      (leftTarget |+| rightTarget)
       mapComponents
       (\_ _ -> ())
   where

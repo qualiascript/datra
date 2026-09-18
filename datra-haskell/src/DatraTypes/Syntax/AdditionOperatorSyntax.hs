@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Infix syntax for ordinal addition.
-module NumericalOperators.Syntax.AdditionOperatorSyntax
+module Syntax.AdditionOperatorSyntax
   ( (+)
   ) where
 

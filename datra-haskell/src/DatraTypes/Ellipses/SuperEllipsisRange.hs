@@ -85,7 +85,7 @@ import MapOperators.OrderedAtlasMap
   ( HasOrderedAtlasMap (..)
   , OrderedAtlasMap (..)
   )
-import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
+import Syntax.ConcatOperatorSyntax ((<.>))
 import StableConfederalData
   ( EmbeddedAtlasMap
   , StableConfederalData

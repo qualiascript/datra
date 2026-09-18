@@ -32,9 +32,9 @@ import Data.Kind (Type)
 import HorizontalSum
   ( HorizontalSumValue (..)
   , HorizontalSumValues
-  , horizontalSum
   , horizontalSumValue
   )
+import HorizontalSum.Syntax ((|+|))
 import OrderedAtlasTransposal (OrderedAtlasTransposal)
 import MapOperators.SequentialOperator
   ( SequentialPresentation
@@ -100,7 +100,7 @@ expansionOperator left right =
     (\second first (ExpansionOperatorValue value) ->
       stableConfederalDataComposition summed second first value)
   where
-    summed = horizontalSum left right
+    summed = left |+| right
 
 -- | Forget the explicit grouping presentation to its horizontal sum.
 expansionToHorizontalSum
@@ -112,7 +112,7 @@ expansionToHorizontalSum
 expansionToHorizontalSum left right =
   stableConfederalDataHom
     (expansionOperator left right)
-    (horizontalSum left right)
+    (left |+| right)
     unwrap
     (\_ _ -> ())
   where

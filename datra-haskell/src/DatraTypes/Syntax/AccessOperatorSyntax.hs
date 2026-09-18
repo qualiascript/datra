@@ -1,5 +1,5 @@
 -- | Infix syntax for ordered Atlas access.
-module MapOperators.Syntax.AccessOperatorSyntax
+module Syntax.AccessOperatorSyntax
   ( (<@>)
   ) where
 

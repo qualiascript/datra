@@ -14,7 +14,7 @@ import MapOperators.AccessOperator
 import MapOperators.ConcatOperator
 import MapOperators.ExpansionOperator
 import MapOperators.SequentialOperator
-import MapOperators.Syntax.AccessOperatorSyntax ((<@>))
-import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
-import MapOperators.Syntax.ExpansionOperatorSyntax ((<+>))
-import MapOperators.Syntax.SequentialOperatorSyntax ((<:>))
+import Syntax.AccessOperatorSyntax ((<@>))
+import Syntax.ConcatOperatorSyntax ((<.>))
+import Syntax.ExpansionOperatorSyntax ((<+>))
+import Syntax.SequentialOperatorSyntax ((<:>))

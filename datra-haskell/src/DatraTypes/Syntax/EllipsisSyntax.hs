@@ -6,7 +6,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Symbolic syntax for Ellipsis and super-ellipsis ranges.
-module Ellipsis.Syntax
+module Syntax.EllipsisSyntax
   ( (...)
   , (<..>)
   , (..+)

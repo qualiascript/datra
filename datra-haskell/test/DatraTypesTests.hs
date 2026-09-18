@@ -77,7 +77,7 @@ import Diagnostics.Localization
   , renderDatraError
   )
 import Ellipsis
-import Ellipsis.Syntax ((...), (<..>), (..+), (..-))
+import Syntax.EllipsisSyntax ((...), (<..>), (..+), (..-))
 import EllipsisNatural qualified as DatraNatural
 import MapOperators
 import Numeric.Natural (Natural)

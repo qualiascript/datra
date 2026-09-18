@@ -918,10 +918,10 @@ identityStableConfederalFubini
          (HorizontalSumValues left right))
 identityStableConfederalFubini left right =
   stableConfederalDataHom
-    (horizontalSum
-      (identityStableConfederalObject left)
-      (identityStableConfederalObject right))
-    (identityStableConfederalObject (horizontalSum left right))
+    ( identityStableConfederalObject left
+      |+| identityStableConfederalObject right
+    )
+    (identityStableConfederalObject (left |+| right))
     (\(HorizontalSumValue
         leftConfederation
         rightConfederation

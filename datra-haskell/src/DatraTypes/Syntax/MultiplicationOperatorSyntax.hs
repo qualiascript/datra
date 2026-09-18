@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Infix syntax for ordinal multiplication.
-module NumericalOperators.Syntax.MultiplicationOperatorSyntax
+module Syntax.MultiplicationOperatorSyntax
   ( (*)
   ) where
 

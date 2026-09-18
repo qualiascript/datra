@@ -27,7 +27,7 @@ import MapOperators.AccessOperator
   , indexedAtlasValueAt
   )
 import MapOperators.OrderedAtlasMap (orderedAtlasMapIndexed)
-import MapOperators.Syntax.AccessOperatorSyntax ((<@>))
+import Syntax.AccessOperatorSyntax ((<@>))
 import Numeric.Natural (Natural)
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion

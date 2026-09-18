@@ -13,7 +13,7 @@ import NumericalOperators.AdditionOperator
 import NumericalOperators.ExponentiationOperator
 import NumericalOperators.MultiplicationOperator
 import NumericalOperators.NumericalOperand
-import NumericalOperators.Syntax.AdditionOperatorSyntax ((+))
-import NumericalOperators.Syntax.ExponentiationOperatorSyntax ((^))
-import NumericalOperators.Syntax.MultiplicationOperatorSyntax ((*))
 import Prelude hiding ((+), (*), (^))
+import Syntax.AdditionOperatorSyntax ((+))
+import Syntax.ExponentiationOperatorSyntax ((^))
+import Syntax.MultiplicationOperatorSyntax ((*))

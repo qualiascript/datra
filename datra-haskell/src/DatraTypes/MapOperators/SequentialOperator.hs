@@ -41,9 +41,9 @@ import Data.List.NonEmpty (NonEmpty (..))
 import HorizontalSum
   ( HorizontalSumValue (..)
   , HorizontalSumValues
-  , horizontalSum
   , horizontalSumValue
   )
+import HorizontalSum.Syntax ((|+|))
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal (OrderedAtlasTransposal)
 import StableConfederalData
@@ -183,7 +183,7 @@ sequentialOperator left right =
     (\second first (SequentialOperatorValue value) ->
       stableConfederalDataComposition summed second first value)
   where
-    summed = horizontalSum left right
+    summed = left |+| right
 
 -- | Forget the flattened geometric presentation, retaining the universal
 -- morphism to the binary horizontal sum of the two parsed operands.
@@ -197,7 +197,7 @@ sequentialToHorizontalSum
 sequentialToHorizontalSum left right =
   stableConfederalDataHom
     (sequentialOperator left right)
-    (horizontalSum left right)
+    (left |+| right)
     unwrap
     (\_ _ -> ())
   where

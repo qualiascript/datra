@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Infix syntax for finite ordinal exponentiation.
-module NumericalOperators.Syntax.ExponentiationOperatorSyntax
+module Syntax.ExponentiationOperatorSyntax
   ( (^)
   ) where
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Infix syntax for two-page concatenation.
-module MapOperators.Syntax.ConcatOperatorSyntax
+module Syntax.ConcatOperatorSyntax
   ( (<.>)
   ) where
 

@@ -99,7 +99,7 @@ import MapOperators.ConcatOperator
   ( ConcatOperatorValue
   , ConcatOperatorValues
   )
-import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
+import Syntax.ConcatOperatorSyntax ((<.>))
 import MapOperators.SequentialOperator (SequentialPresentation)
 import Numeric.Natural (Natural)
 import StableConfederalData
