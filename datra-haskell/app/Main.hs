@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main
   ( Expression (..)
   , interpretDatra
@@ -6,21 +8,26 @@ module Main
   , renderExpression
   ) where
 
-import Data.Char (isSpace)
+import Control.Applicative (empty)
+import Data.Bifunctor (first)
 import Data.List (intercalate)
 import Data.Maybe (mapMaybe)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Void (Void)
 import Numeric.Natural (Natural)
-import Text.ParserCombinators.ReadP
-  ( ReadP
-  , char
+import Text.Megaparsec
+  ( Parsec
+  , between
+  , choice
   , eof
-  , look
-  , munch
-  , munch1
-  , pfail
-  , readP_to_S
-  , (<++)
+  , errorBundlePretty
+  , many
+  , parse
+  , sepEndBy
   )
+import Text.Megaparsec.Char (space1)
+import Text.Megaparsec.Char.Lexer qualified as Lexer
 
 -- | The source language supported by the first interpreter version.
 data Expression
@@ -37,65 +44,39 @@ interpretDatra source = renderExpression <$> parseDatra source
 -- wherever whitespace is accepted.
 parseDatra :: String -> Either String Expression
 parseDatra source =
-  case [expressionValue | (expressionValue, "") <- readP_to_S resource source] of
-    [] -> Left "expected a map made from natural numbers, '[', ']', and ';'"
-    expressions -> Right (last expressions)
+  first errorBundlePretty
+    (parse resource "input.datra" (Text.pack source))
+
+type Parser = Parsec Void Text
+
+resource :: Parser Expression
+resource = spaceConsumer *> atlasMap <* eof
+
+atlasMap :: Parser Expression
+atlasMap = AtlasMap <$> between (symbol "[") (symbol "]") elements
   where
-    resource = skipTrivia *> atlasMap <* skipTrivia <* eof
+    elements = do
+      expressions <- expression `sepEndBy` semicolon
+      _ <- many semicolon
+      pure expressions
 
-atlasMap :: ReadP Expression
-atlasMap = do
-  _ <- char '['
-  skipTrivia
-  expressions <- emptyMap <++ nonEmptyMap
-  pure (AtlasMap expressions)
-  where
-    emptyMap = char ']' *> skipTrivia *> pure []
-    nonEmptyMap = do
-      first <- expression
-      rest <- remainingExpressions
-      _ <- char ']'
-      skipTrivia
-      pure (first : rest)
+expression :: Parser Expression
+expression = choice [atlasMap, ellipsisNatural]
 
-    remainingExpressions =
-      (do
-        _ <- char ';'
-        skipTrivia
-        trailingSeparators <++ moreExpressions)
-      <++ pure []
+ellipsisNatural :: Parser Expression
+ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 
-    moreExpressions = do
-      next <- expression
-      remaining <- remainingExpressions
-      pure (next : remaining)
+spaceConsumer :: Parser ()
+spaceConsumer = Lexer.space space1 (Lexer.skipLineComment "#") empty
 
-    trailingSeparators = do
-      remainingInput <- look
-      case remainingInput of
-        ']' : _ -> pure []
-        ';' : _ -> char ';' *> skipTrivia *> trailingSeparators
-        _ -> pfail
+lexeme :: Parser value -> Parser value
+lexeme = Lexer.lexeme spaceConsumer
 
-expression :: ReadP Expression
-expression = atlasMap <++ ellipsisNatural
+symbol :: Text -> Parser Text
+symbol = Lexer.symbol spaceConsumer
 
-ellipsisNatural :: ReadP Expression
-ellipsisNatural = do
-  digits <- munch1 isAsciiDigit
-  skipTrivia
-  pure (EllipsisNatural (read digits))
-  where
-    isAsciiDigit character = character >= '0' && character <= '9'
-
-skipTrivia :: ReadP ()
-skipTrivia = do
-  _ <- munch isSpace
-  (do
-      _ <- char '#'
-      _ <- munch (/= '\n')
-      skipTrivia)
-    <++ pure ()
+semicolon :: Parser Text
+semicolon = symbol ";"
 
 -- | Render map structure using the operators from "MapOperators". Direct
 -- natural-number neighbours form a flattened '<:>' sequence. A bracketed
@@ -154,7 +135,8 @@ lowerSegment (MapSegment expressionValue) = lower expressionValue
 combineExpansions :: [OperatorExpression] -> OperatorExpression
 combineExpansions [] = EmptyMap
 combineExpansions [expressionValue] = expressionValue
-combineExpansions (first : rest) = Expansion first (combineExpansions rest)
+combineExpansions (firstExpression : rest) =
+  Expansion firstExpression (combineExpansions rest)
 
 renderOperator :: Int -> OperatorExpression -> String
 renderOperator _ (NaturalValue value) = show value

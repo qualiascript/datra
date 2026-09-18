@@ -222,7 +222,9 @@ executable datra-haskell
     main-is:          Main.hs
     build-depends:
         base >= 4.14 && < 5,
-        datra-haskell
+        datra-haskell,
+        megaparsec >= 9.8 && < 10,
+        text >= 2.0 && < 2.2
     hs-source-dirs:   app
     default-language: GHC2021
 
@@ -258,4 +260,6 @@ test-suite datra-interpreter-test
     other-modules:    Main
     ghc-options:      -main-is DatraInterpreterTests.main
     build-depends:
-        base >= 4.14 && < 5
+        base >= 4.14 && < 5,
+        megaparsec >= 9.8 && < 10,
+        text >= 2.0 && < 2.2
