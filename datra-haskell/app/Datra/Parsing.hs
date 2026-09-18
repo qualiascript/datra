@@ -7,7 +7,7 @@ module Datra.Parsing
 import Control.Applicative (empty, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
-  ( Operator (InfixL, InfixN, InfixR, Postfix)
+  ( Operator (InfixL, InfixR, Postfix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
@@ -99,33 +99,86 @@ mapSeparator =
     <|> void (some lineBreak)
 
 expression :: Parser Expression
-expression = makeExprParser term operatorTable
+expression = makeExprParser rangeExpression mapOperatorTable
+
+-- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
+-- is permitted at this precedence level. Each explicit endpoint is a complete
+-- arithmetic expression; nested ranges therefore require parentheses.
+rangeExpression :: Parser Expression
+rangeExpression =
+  try prefixRange
+    <|> try explicitRange
+    <|> arithmeticExpression
+
+prefixRange :: Parser Expression
+prefixRange = do
+  _ <- continuedSymbol ".."
+  SuperEllipsisRange (EllipsisNatural 0) <$> rangeEndpoint
+
+explicitRange :: Parser Expression
+explicitRange = do
+  lowerBound <- rangeEndpoint
+  rangeSuffix lowerBound
+
+rangeSuffix :: Expression -> Parser Expression
+rangeSuffix lowerBound =
+  choice
+    [ SuperEllipsisRangeMinus lowerBound <$ symbol "..-"
+    , try $ do
+        _ <- continuedSymbol ".."
+        SuperEllipsisRange lowerBound <$> rangeEndpoint
+    , do
+        _ <- continuedSymbol ".."
+        _ <- lookAhead expressionEnd
+        pure (SuperEllipsisRangePlus lowerBound)
+    ]
+
+arithmeticExpression :: Parser Expression
+arithmeticExpression = makeExprParser term arithmeticOperatorTable
+
+-- A bare Ellipsis value cannot be a range endpoint. Parentheses deliberately
+-- return to the complete expression grammar, making forms such as '(...)..'
+-- explicit while keeping grouping out of the AST.
+rangeEndpoint :: Parser Expression
+rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
 term =
   choice
-    [ between
-        (symbol "(" <* lineSpaceConsumer)
-        (lineSpaceConsumer *> symbol ")")
-        expression
+    [ parenthesizedExpression
     , atlasMap
     , EllipsisLiteral <$ symbol "..."
     , ellipsisNatural
     ]
 
--- Arithmetic follows Haskell. Ranges bind after arithmetic, concatenation
--- combines completed map/range expressions, and access is the final map
--- operation. This lets a map access consume a concatenated range insertion.
-operatorTable :: [[Operator Parser Expression]]
-operatorTable =
+rangeEndpointTerm :: Parser Expression
+rangeEndpointTerm =
+  choice
+    [ parenthesizedExpression
+    , atlasMap
+    , ellipsisNatural
+    ]
+
+parenthesizedExpression :: Parser Expression
+parenthesizedExpression =
+  between
+    (symbol "(" <* lineSpaceConsumer)
+    (lineSpaceConsumer *> symbol ")")
+    expression
+
+-- Arithmetic follows Haskell and binds more tightly than range construction.
+arithmeticOperatorTable :: [[Operator Parser Expression]]
+arithmeticOperatorTable =
   [ [InfixR (Exponentiation <$ continuedSymbol "^")]
   , [InfixL (Multiplication <$ continuedSymbol "*")]
   , [InfixL (Addition <$ continuedSymbol "+")]
-  , [ Postfix (SuperEllipsisRangePlus <$ symbol "..+")
-    , Postfix (SuperEllipsisRangeMinus <$ symbol "..-")
-    , InfixN (SuperEllipsisRange <$ continuedSymbol "..")
-    ]
-  , [InfixR (MapConcatenation <$ infixComma)]
+  ]
+
+-- Concatenation binds after ranges, while access is the final map operation.
+-- This lets a map access consume a concatenated range insertion.
+mapOperatorTable :: [[Operator Parser Expression]]
+mapOperatorTable =
+  [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
   , [InfixL (MapAccess <$ continuedSymbol "@")]
   ]

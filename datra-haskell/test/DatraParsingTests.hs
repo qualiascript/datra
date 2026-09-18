@@ -42,8 +42,20 @@ main = do
     "2 <..> 10"
   assertAstOutput
     "open super-ellipsis ranges"
-    "[2..+; 10..-]"
+    "[2..; 10..-]"
     "(2 ..+) <:> (10 ..-)"
+  assertAstOutput
+    "a prefix range starts at zero"
+    "[..10]"
+    "0 <..> 10"
+  assertAstOutput
+    "a prefix range greedily continues across a newline"
+    "[..\n10]"
+    "0 <..> 10"
+  assertAstOutput
+    "a postfix range can end before a closing delimiter"
+    "[2..\n]"
+    "2 ..+"
   assertAstOutput
     "Haskell arithmetic precedence"
     "[1 + 2 * 3 ^ 4]"
@@ -145,8 +157,8 @@ main = do
     "\n# heading\n2\n\n# between values\n3\n"
     "2 <:> 3"
   assertAstOutput
-    "completed postfix ranges end an implicit map line"
-    "2..+\n3..-"
+    "a semicolon separates a postfix range from the next map line"
+    "2..;\n3..-"
     "(2 ..+) <:> (3 ..-)"
   assertAstOutput
     "ellipsis is complete despite ending in dots"
@@ -154,8 +166,12 @@ main = do
     "... <:> 2"
   assertAstOutput
     "bounded range and concatenation operators continue across lines"
-    "2..\n4,\n5..+"
+    "2..\n4,\n5.."
     "(2 <..> 4) <.> (5 ..+)"
+  assertAstOutput
+    "an ambiguous postfix range greedily consumes a following operand"
+    "[2..\n4]"
+    "2 <..> 4"
   assertAstOutput
     "exponentiation continues and remains right associative"
     "2 ^\n3 ^\n4"
@@ -237,6 +253,38 @@ main = do
     "[1, 2,,]"
   assertRejected "empty entries in the middle are rejected" "[1;;2]"
   assertRejected "bounded ranges are non-associative" "[1..2..3]"
+  assertRejected "prefix and postfix ranges cannot be chained" "[..2..]"
+  assertRejected "adjacent range markers cannot be chained" "[1....2]"
+  assertRejected "the old explicit plus spelling is rejected" "[1..+]"
+  assertAstOutput
+    "parentheses permit an explicitly nested range"
+    "[(1..2)..]"
+    "(1 <..> 2) ..+"
+  assertParsed
+    "a parenthesized Ellipsis can be a postfix range argument"
+    "[(...)..]"
+    (AtlasMap
+      [SuperEllipsisRangePlus EllipsisLiteral])
+  assertAstOutput
+    "a parenthesized Ellipsis can be a prefix range argument"
+    "[..(...)]"
+    "0 <..> ..."
+  assertAstOutput
+    "a parenthesized Ellipsis can be a bounded range argument"
+    "[(...)..2; 1..(...)]"
+    "(... <..> 2) <:> (1 <..> ...)"
+  assertRejected
+    "a bare Ellipsis cannot be a postfix range argument"
+    "[... ..]"
+  assertRejected
+    "a bare Ellipsis cannot be a prefix range argument"
+    "[.. ...]"
+  assertRejected
+    "a bare Ellipsis cannot be a bounded lower argument"
+    "[... .. 2]"
+  assertRejected
+    "a bare Ellipsis cannot be a bounded upper argument"
+    "[1.. ...]"
   assertRejected "addition requires a right operand" "[1 +]"
   assertRejected "parentheses must be balanced" "[(1 + 2]"
   assertRejected
