@@ -39,6 +39,7 @@ import Text.Megaparsec
   , lookAhead
   , many
   , manyTill
+  , notFollowedBy
   , parse
   , sepEndBy
   , try
@@ -87,10 +88,7 @@ atlasMap =
       elements
 
 elements :: Parser [Expression]
-elements = do
-  expressions <- expression `sepEndBy` mapSeparator
-  _ <- many (semicolon <* lineSpaceConsumer)
-  pure expressions
+elements = expression `sepEndBy` mapSeparator
 
 -- A newline is a separator only while parsing map elements. Newlines after
 -- an infix operator are consumed by 'continuedSymbol' before this parser can
@@ -127,9 +125,31 @@ operatorTable =
     , Postfix (SuperEllipsisRangeMinus <$ symbol "..-")
     , InfixN (SuperEllipsisRange <$ continuedSymbol "..")
     ]
-  , [InfixR (MapConcatenation <$ continuedSymbol ",")]
+  , [InfixR (MapConcatenation <$ infixComma)]
+  , [Postfix (finishConcatenation <$ trailingComma)]
   , [InfixL (MapAccess <$ continuedSymbol "@")]
   ]
+
+finishConcatenation :: Expression -> Expression
+finishConcatenation expressionValue@(MapConcatenation _ _) =
+  expressionValue
+finishConcatenation expressionValue =
+  MapConcatenation expressionValue (AtlasMap [])
+
+infixComma :: Parser Text
+infixComma =
+  try (continuedSymbol "," <* notFollowedBy expressionEnd)
+
+-- A comma is postfix only when no right operand occurs before the current
+-- expression closes. Otherwise the infix parser consumes the same comma and
+-- any intervening newlines as ordinary concatenation.
+trailingComma :: Parser Text
+trailingComma =
+  try (continuedSymbol "," <* lookAhead expressionEnd)
+
+expressionEnd :: Parser ()
+expressionEnd =
+  void (choice [char ']', char ')', char ';']) <|> eof
 
 ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal

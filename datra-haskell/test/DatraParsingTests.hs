@@ -68,6 +68,46 @@ main = do
     "range concatenation"
     "[1..3, 5..7]"
     "(1 <..> 3) <.> (5 <..> 7)"
+  assertParsed
+    "a trailing comma concatenates an empty map"
+    "[1,]"
+    (AtlasMap
+      [ MapConcatenation
+          (EllipsisNatural 1)
+          (AtlasMap [])
+      ])
+  assertAstOutput
+    "a trailing comma retains its semantic value"
+    "[1,]"
+    "1 <.> []"
+  assertAstOutput
+    "a trailing comma works at the inferred map boundary"
+    "1,"
+    "1 <.> []"
+  assertAstOutput
+    "a trailing comma can precede a newline and closing delimiter"
+    "[1, # no right operand\n]"
+    "1 <.> []"
+  assertAstOutput
+    "a comma followed by an expression across a newline stays infix"
+    "[1,\n2]"
+    "1 <.> 2"
+  assertParsed
+    "a trailing comma is removed from an existing concatenation"
+    "[1, 2,]"
+    (AtlasMap
+      [ MapConcatenation
+          (EllipsisNatural 1)
+          (EllipsisNatural 2)
+      ])
+  assertAstOutput
+    "an existing concatenation does not gain an empty map"
+    "[1, 2,]"
+    "1 <.> 2"
+  assertAstOutput
+    "a trailing comma can precede a map separator"
+    "[1,; 2]"
+    "(1 <.> []) <:> 2"
   assertAstOutput
     "access consumes a concatenated range insertion"
     "[... @ 1..3, 5..7]"
@@ -187,9 +227,14 @@ main = do
     "10"
     "10"
   assertAstOutput
-    "trailing semicolons are ignored"
-    "[1; 2; # trailing separators\n ; ; ]"
+    "one trailing semicolon is ignored"
+    "[1; 2; # trailing separator\n]"
     "1 <:> 2"
+  assertRejected "multiple trailing semicolons are rejected" "[1; 2;;]"
+  assertRejected "multiple trailing commas are rejected" "[1,,]"
+  assertRejected
+    "multiple trailing commas after concatenation are rejected"
+    "[1, 2,,]"
   assertRejected "empty entries in the middle are rejected" "[1;;2]"
   assertRejected "bounded ranges are non-associative" "[1..2..3]"
   assertRejected "addition requires a right operand" "[1 +]"
