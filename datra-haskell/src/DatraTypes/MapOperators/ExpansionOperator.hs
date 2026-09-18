@@ -37,8 +37,8 @@ import HorizontalSum
   )
 import OrderedAtlasTransposal (OrderedAtlasTransposal)
 import MapOperators.SequentialOperator
-  ( SequentialOperand
-  , withSequentialOperandAtlas
+  ( SequentialPresentation
+  , withSequentialPresentationAtlas
   )
 import StableConfederalData
   ( StableConfederalData
@@ -123,7 +123,7 @@ expansionToHorizontalSum left right =
 -- side of this binary merge. Thus expansion preserves a chosen sequence
 -- boundary instead of recursively flattening through it.
 withExpansionOrderedTransposals
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => ExpansionOperatorValue left right object
   -> (forall leftAtlasScope leftPaginationScope leftData leftOrigin leftFinal
        rightAtlasScope rightPaginationScope rightData rightOrigin rightFinal
@@ -160,8 +160,8 @@ withExpansionOrderedTransposals
     (ExpansionOperatorValue
       (HorizontalSumValue left right _ leftValue rightValue))
     useExpansion =
-  withSequentialOperandAtlas left leftValue $ \leftAtlas ->
-    withSequentialOperandAtlas right rightValue $ \rightAtlas ->
+  withSequentialPresentationAtlas left leftValue $ \leftAtlas ->
+    withSequentialPresentationAtlas right rightValue $ \rightAtlas ->
       atlasMerge leftAtlas rightAtlas $ \mergedAtlas ->
         useExpansion
           leftAtlas
@@ -175,8 +175,8 @@ withExpansionOrderedTransposals
 -- Expansion is opaque when it appears inside another sequential expression:
 -- its entire grouped Atlas contributes one sequential member.
 instance {-# OVERLAPPING #-}
-    (SequentialOperand left, SequentialOperand right) =>
-    SequentialOperand (ExpansionOperatorValues left right) where
-  withSequentialOperandAtlas _ value useAtlas =
+    (SequentialPresentation left, SequentialPresentation right) =>
+    SequentialPresentation (ExpansionOperatorValues left right) where
+  withSequentialPresentationAtlas _ value useAtlas =
     withExpansionOrderedTransposals value $
       \_ _ mergedAtlas _ _ -> useAtlas mergedAtlas

@@ -1,5 +1,9 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -20,8 +24,15 @@ module SuperEllipsis
   ( SuperEllipsis
   , SuperEllipsisLayer
   , SuperEllipsisRank
+  , SuperEllipsisLevel (..)
+  , SuperEllipsisAt
+  , KnownSuperEllipsisLevel
+  , knownSuperEllipsisRank
+  , knownSuperEllipsisLevelNatural
   , SuperEllipsisTarget
+  , SuperEllipsisTargetLevel
   , superEllipsisTargetRank
+  , superEllipsisTargetLevelNatural
   , dotSuperEllipsisRank
   , nextSuperEllipsisRank
   , superEllipsisRankOrderType
@@ -80,7 +91,7 @@ import MapOperators.ConcatOperator
   , ConcatOperatorValues
   )
 import MapOperators.Syntax.ConcatOperatorSyntax ((<.>))
-import MapOperators.SequentialOperator (SequentialOperand)
+import MapOperators.SequentialOperator (SequentialPresentation)
 import Numeric.Natural (Natural)
 import StableConfederalData
   ( StableConfederalData
@@ -108,6 +119,17 @@ type SuperEllipsisLayer predecessor =
     (SuperEllipsisTag predecessor)
     (ConcatOperatorValues predecessor)
 
+-- | A type-level index for the finite super-ellipsis hierarchy.
+data SuperEllipsisLevel
+  = DotLevel
+  | NextLevel SuperEllipsisLevel
+
+-- | Recover the stable-confederal carrier at a type-level hierarchy index.
+type family SuperEllipsisAt (level :: SuperEllipsisLevel) where
+  SuperEllipsisAt 'DotLevel = Dot
+  SuperEllipsisAt ('NextLevel level) =
+    SuperEllipsis (SuperEllipsisAt level)
+
 -- | Runtime evidence for one member of the inductive hierarchy.  The type
 -- parameter identifies the corresponding stable-confederal carrier, while
 -- the hidden natural records its finite exponent.
@@ -116,15 +138,39 @@ newtype SuperEllipsisRank target = SuperEllipsisRank Natural
 
 -- | Runtime rank evidence for every target in the inductive hierarchy.
 class SuperEllipsisTarget target where
+  type SuperEllipsisTargetLevel target :: SuperEllipsisLevel
   superEllipsisTargetRank :: SuperEllipsisRank target
+  superEllipsisTargetLevelNatural :: Natural
 
 instance SuperEllipsisTarget Dot where
+  type SuperEllipsisTargetLevel Dot = 'DotLevel
   superEllipsisTargetRank = dotSuperEllipsisRank
+  superEllipsisTargetLevelNatural = 0
 
 instance SuperEllipsisTarget predecessor =>
     SuperEllipsisTarget (SuperEllipsis predecessor) where
+  type SuperEllipsisTargetLevel (SuperEllipsis predecessor) =
+    'NextLevel (SuperEllipsisTargetLevel predecessor)
   superEllipsisTargetRank =
     nextSuperEllipsisRank superEllipsisTargetRank
+  superEllipsisTargetLevelNatural =
+    1 + superEllipsisTargetLevelNatural @predecessor
+
+-- | Runtime rank evidence for a level produced by type-level arithmetic.
+class KnownSuperEllipsisLevel level where
+  knownSuperEllipsisRank :: SuperEllipsisRank (SuperEllipsisAt level)
+  knownSuperEllipsisLevelNatural :: Natural
+
+instance KnownSuperEllipsisLevel 'DotLevel where
+  knownSuperEllipsisRank = dotSuperEllipsisRank
+  knownSuperEllipsisLevelNatural = 0
+
+instance KnownSuperEllipsisLevel level =>
+    KnownSuperEllipsisLevel ('NextLevel level) where
+  knownSuperEllipsisRank =
+    nextSuperEllipsisRank (knownSuperEllipsisRank @level)
+  knownSuperEllipsisLevelNatural =
+    1 + knownSuperEllipsisLevelNatural @level
 
 -- | Rank zero: the singleton 'Dot', whose order type is one.
 dotSuperEllipsisRank :: SuperEllipsisRank Dot
@@ -234,14 +280,14 @@ superEllipsisCoalitionElement valueRank =
 
 -- | Tie the guarded recursive equation for the successor of @predecessor@.
 superEllipsis
-  :: SequentialOperand predecessor
+  :: SequentialPresentation predecessor
   => StableConfederalData predecessor
   -> StableConfederalData (SuperEllipsis predecessor)
 superEllipsis predecessor = fixedPoint (predecessor <.>)
 
 -- | Expose one layer of the recursive equation.
 superEllipsisUnfolded
-  :: SequentialOperand predecessor
+  :: SequentialPresentation predecessor
   => StableConfederalData predecessor
   -> StableConfederalData
        (ConcatOperatorValues predecessor (SuperEllipsis predecessor))
@@ -249,7 +295,7 @@ superEllipsisUnfolded predecessor = fixedPointLayer (predecessor <.>)
 
 -- | Fold one recursive layer into its super ellipsis.
 superEllipsisFold
-  :: SequentialOperand predecessor
+  :: SequentialPresentation predecessor
   => StableConfederalData predecessor
   -> StableConfederalDataHom
        (ConcatOperatorValues predecessor (SuperEllipsis predecessor))
@@ -258,7 +304,7 @@ superEllipsisFold predecessor = rollFixedPoint (predecessor <.>)
 
 -- | Unfold a super ellipsis into one recursive layer.
 superEllipsisUnfold
-  :: SequentialOperand predecessor
+  :: SequentialPresentation predecessor
   => StableConfederalData predecessor
   -> StableConfederalDataHom
        (SuperEllipsis predecessor)

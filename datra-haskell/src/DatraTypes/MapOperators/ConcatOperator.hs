@@ -80,12 +80,12 @@ import PageElements
 import PageElements.LiquidInternal (PageElement (..))
 import qualified Pagination
 import MapOperators.SequentialOperator
-  ( SequentialOperand
+  ( SequentialPresentation
   , SequentialOperatorValue
   , SequentialOperatorValues
   , sequentialOperator
   , sequentialValue
-  , withSequentialOperandAtlas
+  , withSequentialPresentationAtlas
   , withSequentialAtlasTraversals
   )
 import StableConfederalData
@@ -114,7 +114,7 @@ type instance
 -- | Introduce a concatenation value using the same Day-convolution carrier as
 -- the sequential operator.
 concatValue
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => AtlasConfederation leftScope leftIndex
   -> AtlasConfederation rightScope rightIndex
   -> StableConfederalDataValue
@@ -134,7 +134,7 @@ concatValue left right leftValue rightValue =
 -- | Form concatenated stable-confederal data.  Its presheaf action is exactly
 -- the sequential action; only the representing Atlas presentation differs.
 concatOperator
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => StableConfederalData left
   -> StableConfederalData right
   -> StableConfederalData (ConcatOperatorValues left right)
@@ -153,7 +153,7 @@ concatOperator left right =
 -- | Forget the two-page presentation and retain the underlying sequential
 -- value.
 concatToSequential
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => StableConfederalData left
   -> StableConfederalData right
   -> StableConfederalDataHom
@@ -336,7 +336,7 @@ concatOrderedTransposal concatAtlas sequenceAtlas =
 -- the collapse into the full presentation by mapping page 1 to the latter's
 -- final genuine page.
 withConcatOrderedTransposal
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => ConcatOperatorValue left right object
   -> (forall sequenceAtlasScope sequenceScope
              concatAtlasScope concatScope.
@@ -369,9 +369,9 @@ withConcatOrderedTransposal (ConcatOperatorValue value) useConcat =
 -- Concatenation is opaque when used as one operand of another sequential
 -- expression: its already-collapsed Atlas contributes as a single member.
 instance {-# OVERLAPPING #-}
-    (SequentialOperand left, SequentialOperand right) =>
-    SequentialOperand (ConcatOperatorValues left right) where
-  withSequentialOperandAtlas _ value useAtlas =
+    (SequentialPresentation left, SequentialPresentation right) =>
+    SequentialPresentation (ConcatOperatorValues left right) where
+  withSequentialPresentationAtlas _ value useAtlas =
     withConcatOrderedTransposal value $ \_ concatAtlas _ ->
       useAtlas concatAtlas
 
@@ -383,7 +383,7 @@ class Concat left right where
   concatOperands :: left -> right -> ConcatResult left right
 
 instance
-    (SequentialOperand left, SequentialOperand right) =>
+    (SequentialPresentation left, SequentialPresentation right) =>
     Concat
       (StableConfederalData left)
       (StableConfederalData right) where

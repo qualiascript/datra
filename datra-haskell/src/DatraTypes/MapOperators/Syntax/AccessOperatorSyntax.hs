@@ -5,11 +5,11 @@ module MapOperators.Syntax.AccessOperatorSyntax
 
 import MapOperators.AccessOperator
   ( AccessElement
-  , AccessMapOperand
-  , AccessOperand
-  , AccessSource
-  , AccessValue
+  , HasOrderedAtlasMap
+  , HasSuperEllipsisInsertion
+  , InsertionSource
   , IndexedAtlasMap
+  , OrderedAtlasElement
   , accessOperator
   )
 
@@ -17,10 +17,12 @@ infixl 8 <@>
 
 -- | Infix form of 'accessOperator'.
 (<@>)
-  :: (AccessMapOperand mapOperand, AccessOperand operand)
+  :: (HasOrderedAtlasMap mapOperand, HasSuperEllipsisInsertion operand)
   => mapOperand
   -> operand
   -> Maybe
        (IndexedAtlasMap
-         (AccessElement (AccessSource operand) (AccessValue mapOperand)))
+         (AccessElement
+           (InsertionSource operand)
+           (OrderedAtlasElement mapOperand)))
 (<@>) = accessOperator

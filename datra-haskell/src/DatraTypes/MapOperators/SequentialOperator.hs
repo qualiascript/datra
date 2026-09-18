@@ -9,8 +9,8 @@
 module MapOperators.SequentialOperator
   ( SequentialOperatorValues
   , SequentialOperatorValue
-  , SequentialOperand
-  , withSequentialOperandAtlas
+  , SequentialPresentation
+  , withSequentialPresentationAtlas
   , SequentialAtlasTraversal
   , sequentialAtlasTraversalPosition
   , withSequentialAtlasTraversal
@@ -58,7 +58,7 @@ import StableConfederalData
   )
 
 -- | Defunctionalized binary carrier. Nested occurrences are flattened by
--- 'SequentialOperand', so their geometric presentation is associative even
+-- 'SequentialPresentation', so their geometric presentation is associative even
 -- though the Haskell carrier records the expression's binary parse tree.
 data SequentialOperatorValues (left :: Type) (right :: Type)
 
@@ -77,19 +77,19 @@ type instance
 -- Ordinary values contribute one resulting Atlas. Sequential values
 -- recursively contribute their leaves. The instances make flattening work
 -- through either parenthesization.
-class SequentialOperand values where
-  sequentialOperandMembers
+class SequentialPresentation values where
+  sequentialPresentationMembers
     :: AtlasConfederation scope index
     -> StableConfederalDataValue
          values (AtlasConfederationObject scope index)
     -> NonEmpty AtlasSequenceMember
-  sequentialOperandMembers confederation value =
-    withSequentialOperandAtlas confederation value $ \valueAtlas ->
+  sequentialPresentationMembers confederation value =
+    withSequentialPresentationAtlas confederation value $ \valueAtlas ->
       atlasSequenceMember valueAtlas :| []
 
   -- | Evaluate the Atlas that should be treated as one operand when a
   -- non-flattening operator places a boundary around this value.
-  withSequentialOperandAtlas
+  withSequentialPresentationAtlas
     :: AtlasConfederation scope index
     -> StableConfederalDataValue
          values (AtlasConfederationObject scope index)
@@ -98,20 +98,20 @@ class SequentialOperand values where
          -> result)
     -> result
 
-instance {-# OVERLAPPABLE #-} SequentialOperand values where
-  withSequentialOperandAtlas confederation _ =
+instance {-# OVERLAPPABLE #-} SequentialPresentation values where
+  withSequentialPresentationAtlas confederation _ =
     withAtlasConfederationResultingAtlas confederation
 
 instance {-# OVERLAPPING #-}
-    (SequentialOperand left, SequentialOperand right) =>
-    SequentialOperand (SequentialOperatorValues left right) where
-  sequentialOperandMembers _
+    (SequentialPresentation left, SequentialPresentation right) =>
+    SequentialPresentation (SequentialOperatorValues left right) where
+  sequentialPresentationMembers _
       (SequentialOperatorValue
         (HorizontalSumValue left right _ leftValue rightValue)) =
-    sequentialOperandMembers left leftValue
-      <> sequentialOperandMembers right rightValue
+    sequentialPresentationMembers left leftValue
+      <> sequentialPresentationMembers right rightValue
 
-  withSequentialOperandAtlas _ value useAtlas =
+  withSequentialPresentationAtlas _ value useAtlas =
     withSequentialAtlasTraversals value $ \valueAtlas _ ->
       useAtlas valueAtlas
 
@@ -149,7 +149,7 @@ withSequentialAtlasTraversal
 -- | Introduce a binary generator. If either supplied value is already
 -- sequential, its leaves are retained for the flattened presentation.
 sequentialValue
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => AtlasConfederation leftScope leftIndex
   -> AtlasConfederation rightScope rightIndex
   -> StableConfederalDataValue
@@ -169,7 +169,7 @@ sequentialValue left right leftValue rightValue =
 -- | Form a sequential universal object. Its presheaf action is inherited
 -- from DatraCore's Day convolution; only its Atlas presentation is flattened.
 sequentialOperator
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => StableConfederalData left
   -> StableConfederalData right
   -> StableConfederalData (SequentialOperatorValues left right)
@@ -188,7 +188,7 @@ sequentialOperator left right =
 -- | Forget the flattened geometric presentation, retaining the universal
 -- morphism to the binary horizontal sum of the two parsed operands.
 sequentialToHorizontalSum
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => StableConfederalData left
   -> StableConfederalData right
   -> StableConfederalDataHom
@@ -243,7 +243,7 @@ indexedTraversals members mergedAtlas =
 -- page-1 cell per recursively flattened operand, in source order, and one
 -- canonical ordered Atlas traversal for each such cell.
 withSequentialAtlasTraversals
-  :: (SequentialOperand left, SequentialOperand right)
+  :: (SequentialPresentation left, SequentialPresentation right)
   => SequentialOperatorValue left right object
   -> (forall mergeAtlasScope mergePaginationScope.
        Atlas
@@ -262,8 +262,8 @@ withSequentialAtlasTraversals
       (HorizontalSumValue left right _ leftValue rightValue))
     useSequence =
   let members =
-        sequentialOperandMembers left leftValue
-          <> sequentialOperandMembers right rightValue
+        sequentialPresentationMembers left leftValue
+          <> sequentialPresentationMembers right rightValue
   in atlasSequence members $ \mergedAtlas ->
       useSequence
         mergedAtlas

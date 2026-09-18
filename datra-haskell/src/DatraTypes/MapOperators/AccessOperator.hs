@@ -1,8 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 -- | Ordered access to the final page of an ordinal-indexed Atlas map.
 --
@@ -22,12 +19,17 @@ module MapOperators.AccessOperator
   , indexedAtlasCardinality
   , indexedAtlasValueAt
   , indexedAtlasValueAtOrdinal
-  , AccessMapOperand (AccessValue, accessMap)
+  , OrderedAtlasMap (..)
+  , HasOrderedAtlasMap (OrderedAtlasElement, orderedAtlasMap)
   , AccessElement
   , accessElementPosition
   , accessElementSource
   , accessElementValue
-  , AccessOperand (AccessSource)
+  , HasSuperEllipsisInsertion
+      ( InsertionTarget
+      , InsertionSource
+      , superEllipsisInsertionOf
+      )
   , accessOperator
   ) where
 
@@ -44,7 +46,6 @@ import DatraOrdinal
   , naturalAtOrdinal
   , ordinalLT
   )
-import Data.Kind (Type)
 import Dominion (dominion, rank, unrank)
 import MapOperators.IndexedAtlasMap
   ( IndexedAtlasMap
@@ -58,70 +59,25 @@ import MapOperators.IndexedAtlasMap
   , indexedAtlasValueAt
   , indexedAtlasValueAtOrdinal
   )
-import StableConfederalData (StableConfederalData)
+import MapOperators.OrderedAtlasMap
+  ( HasOrderedAtlasMap (..)
+  , OrderedAtlasMap (..)
+  , orderedAtlasMapIndexed
+  )
 import SuperEllipsis
-  ( SuperEllipsisTarget
-  , SuperEllipsisTerminal
-  , superEllipsisDominion
+  ( superEllipsisDominion
   , superEllipsisRankOrderType
-  , superEllipsisTargetRank
   )
 import SuperEllipsisInsertion
-  ( SuperEllipsisInsertion
-  , SuperEllipsisAtlasMap
-  , SuperEllipsisInsertionMap (..)
+  ( HasSuperEllipsisInsertion (..)
+  , SuperEllipsisInsertion
   , applySuperEllipsisInsertion
-  , fullSuperEllipsisInsertion
   , superEllipsisInsertionChain
   , superEllipsisInsertionFirst
   , superEllipsisInsertionPosition
   , superEllipsisInsertionPreimage
   , superEllipsisInsertionRank
-  , superEllipsisInsertionMap
   )
-import SuperEllipsisRange
-  ( SomeSuperEllipsisRangeConcat
-  , SuperEllipsisRange
-  , SuperEllipsisRangeElement
-  , someSuperEllipsisRangeConcatAtlasMap
-  , superEllipsisRangeAtlasMap
-  , superEllipsisRangeInsertion
-  )
-
--- | A value that can supply the nonempty indexed Atlas map on the left of
--- access.  Empty insertion maps deliberately have no indexed form.
-class AccessMapOperand operand where
-  type AccessValue operand :: Type
-  accessMap :: operand -> Maybe (IndexedAtlasMap (AccessValue operand))
-
-instance AccessMapOperand (IndexedAtlasMap value) where
-  type AccessValue (IndexedAtlasMap value) = value
-  accessMap = Just
-
-instance AccessMapOperand (SuperEllipsisAtlasMap source) where
-  type AccessValue (SuperEllipsisAtlasMap source) = source
-  accessMap insertionMap =
-    case insertionMap of
-      EmptySuperEllipsisInsertionMap _ -> Nothing
-      IndexedSuperEllipsisInsertionMap valueMap -> Just valueMap
-
-instance AccessMapOperand (SuperEllipsisInsertion target source) where
-  type AccessValue (SuperEllipsisInsertion target source) = source
-  accessMap = accessMap . superEllipsisInsertionMap
-
-instance AccessMapOperand (SuperEllipsisRange (target :: Type) scope) where
-  type AccessValue (SuperEllipsisRange target scope) =
-    SuperEllipsisRangeElement target scope
-  accessMap = accessMap . superEllipsisRangeAtlasMap
-
-instance AccessMapOperand
-    (SomeSuperEllipsisRangeConcat (target :: Type) leftScope rightScope) where
-  type AccessValue
-      (SomeSuperEllipsisRangeConcat target leftScope rightScope) =
-        Either
-          (SuperEllipsisRangeElement target leftScope)
-          (SuperEllipsisRangeElement target rightScope)
-  accessMap = accessMap . someSuperEllipsisRangeConcatAtlasMap
 
 -- | A selected final-page value together with the insertion source that
 -- requested it and its new position in the accessed map.
@@ -133,50 +89,21 @@ data AccessElement source value = AccessElement
   }
   deriving (Eq, Show)
 
--- | An access operand supplies an ordered insertion into a super-ellipsis
--- target.  A formulation denotes the identity insertion of its complete
--- underlying range; it is never truncated to fit the accessed map.
-class AccessOperand operand where
-  type AccessSource operand :: Type
-  withAccessOperandInsertion
-    :: operand
-    -> (forall (target :: Type).
-          SuperEllipsisInsertion target (AccessSource operand) -> result)
-    -> result
-
-instance AccessOperand
-    (SuperEllipsisInsertion (target :: Type) source) where
-  type AccessSource (SuperEllipsisInsertion target source) = source
-  withAccessOperandInsertion insertion useInsertion =
-    useInsertion insertion
-
-instance AccessOperand (SuperEllipsisRange (target :: Type) scope) where
-  type AccessSource (SuperEllipsisRange target scope) =
-    SuperEllipsisRangeElement target scope
-  withAccessOperandInsertion valueRange useInsertion =
-    useInsertion (superEllipsisRangeInsertion valueRange)
-
-instance SuperEllipsisTarget target =>
-    AccessOperand (StableConfederalData target) where
-  type AccessSource (StableConfederalData target) =
-    SuperEllipsisTerminal target
-  withAccessOperandInsertion _ useInsertion =
-    useInsertion
-      (fullSuperEllipsisInsertion superEllipsisTargetRank)
-
 -- | Access final-page indices in insertion-chain order.  In particular, the
 -- insertion's image need not be monotone, so this operation can reorder the
 -- source Atlas's values.
 accessOperator
-  :: (AccessMapOperand mapOperand, AccessOperand operand)
+  :: (HasOrderedAtlasMap mapOperand, HasSuperEllipsisInsertion operand)
   => mapOperand
   -> operand
   -> Maybe
        (IndexedAtlasMap
-         (AccessElement (AccessSource operand) (AccessValue mapOperand)))
+         (AccessElement
+           (InsertionSource operand)
+           (OrderedAtlasElement mapOperand)))
 accessOperator mapOperand operand = do
-  valueAtlas <- accessMap mapOperand
-  withAccessOperandInsertion operand (accessInsertionOperator valueAtlas)
+  valueAtlas <- orderedAtlasMapIndexed (orderedAtlasMap mapOperand)
+  accessInsertionOperator valueAtlas (superEllipsisInsertionOf operand)
 
 accessInsertionOperator
   :: IndexedAtlasMap value

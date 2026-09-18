@@ -46,11 +46,11 @@ applyOrdinalOperator
         NumericalResult left right resultScope -> result)
   -> Maybe result
 applyOrdinalOperator operator left right useResult = do
-  leftValue <- numericalOperandOrdinal left
-  rightValue <- numericalOperandOrdinal right
   superEllipsisValue
     (knownSuperEllipsisRank @(BinaryNumericalLevel left right))
-    (operator leftValue rightValue)
+    (operator
+      (numericalOperandOrdinal left)
+      (numericalOperandOrdinal right))
     useResult
 
 -- | Apply ordinal multiplication at the rank guaranteed to contain the
@@ -69,12 +69,12 @@ applyOrdinalMultiplication
         MultiplicationResult left right resultScope -> result)
   -> Maybe result
 applyOrdinalMultiplication operator left right useResult = do
-  leftValue <- numericalOperandOrdinal left
-  rightValue <- numericalOperandOrdinal right
   superEllipsisValue
     (knownSuperEllipsisRank
       @(MultiplicationNumericalLevel left right))
-    (operator leftValue rightValue)
+    (operator
+      (numericalOperandOrdinal left)
+      (numericalOperandOrdinal right))
     useResult
 
 -- | Apply ordinal exponentiation with a finite Ellipsis-natural exponent.
@@ -91,10 +91,8 @@ applyOrdinalExponentOperator
           (NumericalOperandTarget base) resultScope -> result)
   -> Maybe result
 applyOrdinalExponentOperator operator base exponentValue useResult = do
-  baseValue <- numericalOperandOrdinal base
-  exponentOrdinal <- superEllipsisValueOrdinal exponentValue
-  power <- naturalAtOrdinal exponentOrdinal
+  power <- naturalAtOrdinal (superEllipsisValueOrdinal exponentValue)
   superEllipsisValue
     (knownSuperEllipsisRank @(NumericalOperandLevel base))
-    (operator baseValue power)
+    (operator (numericalOperandOrdinal base) power)
     useResult

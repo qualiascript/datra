@@ -1,29 +1,42 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Individual ordinal values represented as singleton super-ellipsis ranges.
 module SuperEllipsisValue
   ( SuperEllipsisValue
   , SuperEllipsisValueElement
   , superEllipsisValue
+  , superEllipsisValueRange
   , superEllipsisValueOrdinal
   , superEllipsisValueInsertion
   ) where
 
 import DatraOrdinal (Ordinal, addOrdinals, finiteOrdinal)
+import Data.Kind (Type)
+import MapOperators.OrderedAtlasMap (HasOrderedAtlasMap (..))
 import SuperEllipsis (SuperEllipsisRank)
-import SuperEllipsisInsertion (SuperEllipsisInsertion)
+import SuperEllipsisInsertion
+  ( HasSuperEllipsisInsertion (..)
+  , SuperEllipsisInsertion
+  )
 import SuperEllipsisRange
   ( SuperEllipsisRange
   , SuperEllipsisRangeElement
   , SuperEllipsisRangeTarget (GivenTarget)
   , superEllipsisRange
   , superEllipsisRangeLowerBound
-  , superEllipsisRangeUpperBound
   , superEllipsisRangeInsertion
   )
 
 -- | A single value below one finite-rank super ellipsis.
-type SuperEllipsisValue = SuperEllipsisRange
+--
+-- This is deliberately nominal rather than a synonym for
+-- 'SuperEllipsisRange': arbitrary ranges must not type-check as numerical
+-- values.  The hidden constructor records that the wrapped range was created
+-- by 'superEllipsisValue' and is therefore a singleton.
+newtype SuperEllipsisValue (target :: Type) scope = SuperEllipsisValue
+  { superEllipsisValueRange :: SuperEllipsisRange target scope
+  }
 
 type SuperEllipsisValueElement = SuperEllipsisRangeElement
 
@@ -33,25 +46,35 @@ superEllipsisValue
   -> Ordinal
   -> (forall scope. SuperEllipsisValue target scope -> result)
   -> Maybe result
-superEllipsisValue valueRank value =
+superEllipsisValue valueRank value useValue =
   superEllipsisRange
     valueRank
     value
     (GivenTarget (addOrdinals value (finiteOrdinal 1)))
+    (useValue . SuperEllipsisValue)
 
--- | Recover the represented ordinal, checking the singleton-range invariant.
+-- | Recover the represented ordinal.  The hidden constructor makes this
+-- projection total.
 superEllipsisValueOrdinal
   :: SuperEllipsisValue target scope
-  -> Maybe Ordinal
-superEllipsisValueOrdinal value = do
-  upper <- superEllipsisRangeUpperBound value
-  let lower = superEllipsisRangeLowerBound value
-  if upper == addOrdinals lower (finiteOrdinal 1)
-    then Just lower
-    else Nothing
+  -> Ordinal
+superEllipsisValueOrdinal =
+  superEllipsisRangeLowerBound . superEllipsisValueRange
 
 superEllipsisValueInsertion
   :: SuperEllipsisValue target scope
   -> SuperEllipsisInsertion
        target (SuperEllipsisValueElement target scope)
-superEllipsisValueInsertion = superEllipsisRangeInsertion
+superEllipsisValueInsertion =
+  superEllipsisRangeInsertion . superEllipsisValueRange
+
+instance HasSuperEllipsisInsertion (SuperEllipsisValue target scope) where
+  type InsertionTarget (SuperEllipsisValue target scope) = target
+  type InsertionSource (SuperEllipsisValue target scope) =
+    SuperEllipsisValueElement target scope
+  superEllipsisInsertionOf = superEllipsisValueInsertion
+
+instance HasOrderedAtlasMap (SuperEllipsisValue target scope) where
+  type OrderedAtlasElement (SuperEllipsisValue target scope) =
+    SuperEllipsisValueElement target scope
+  orderedAtlasMap = orderedAtlasMap . superEllipsisValueRange
