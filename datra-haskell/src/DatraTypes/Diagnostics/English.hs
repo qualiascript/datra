@@ -4,13 +4,20 @@
 -- prose. Domain modules do not depend on it.
 module Diagnostics.English
   ( localizeAccessError
+  , localizeInterpretingError
   , localizeSuperEllipsisRangeError
   , localizeSuperEllipsisRangeConcatError
+  , englishOrdinal
   ) where
 
 import Data.List (intercalate)
 import DatraOrdinal (Ordinal, ordinalCoefficients)
 import Diagnostics (LocalizedMessage (LocalizedMessage))
+import Diagnostics.Interpreter
+  ( InterpretedValueKind (..)
+  , InterpretingError (..)
+  , OperandSide (..)
+  )
 import MapOperators.AccessOperator
   ( AccessError
       ( AccessInsertionRankExceedsMap
@@ -19,11 +26,13 @@ import MapOperators.AccessOperator
   )
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError (SuperEllipsisRangesOverlap)
+  , SuperEllipsisRangeDescription (..)
   , SuperEllipsisRangeError
       ( SuperEllipsisRangeInvalidDescendingBounds
       , SuperEllipsisRangeStartOutsideRank
       , SuperEllipsisRangeTargetOutsideRank
       )
+  , SuperEllipsisRangeTarget (..)
   )
 
 localizeAccessError :: AccessError -> LocalizedMessage
@@ -41,6 +50,46 @@ localizeAccessError reason =
         [ "selected position: " <> englishOrdinal position
         , "map final-page order type: " <> englishOrdinal mapOrderType
         ]
+
+localizeInterpretingError :: InterpretingError -> LocalizedMessage
+localizeInterpretingError reason =
+  case reason of
+    ExpectedNumericalOperand side actual ->
+      LocalizedMessage
+        (operandSide side <> " operand must be numerical")
+        ["actual value kind: " <> valueKind actual]
+    ExpectedNaturalExponent actual ->
+      LocalizedMessage
+        "exponent must be an Ellipsis-natural value"
+        ["actual value kind: " <> valueKind actual]
+    ExpectedInsertionOperand actual ->
+      LocalizedMessage
+        "right operand of map access must define a super-ellipsis insertion"
+        ["actual value kind: " <> valueKind actual]
+    RangeConstructionRejected rejection ->
+      localizeSuperEllipsisRangeError rejection
+    RangeConcatenationRejected rejection ->
+      localizeSuperEllipsisRangeConcatError rejection
+    NumericalResultOutsideRank level value ->
+      LocalizedMessage
+        "numerical result does not fit its inferred super-ellipsis rank"
+        [ "inferred rank: " <> show level
+        , "result: " <> englishOrdinal value
+        ]
+    AccessRejected rejection -> localizeAccessError rejection
+
+operandSide :: OperandSide -> String
+operandSide LeftOperand = "left"
+operandSide RightOperand = "right"
+
+valueKind :: InterpretedValueKind -> String
+valueKind NaturalValueKind = "Ellipsis-natural"
+valueKind ExplicitOrdinalValueKind = "explicit ordinal"
+valueKind FormulationValueKind = "super-ellipsis formulation"
+valueKind RangeValueKind = "range"
+valueKind RangeConcatenationValueKind = "range concatenation"
+valueKind MapValueKind = "map"
+
 localizeSuperEllipsisRangeError
   :: SuperEllipsisRangeError
   -> LocalizedMessage
@@ -73,11 +122,20 @@ localizeSuperEllipsisRangeConcatError
     (SuperEllipsisRangesOverlap first second lower upper) =
   LocalizedMessage
     "cannot use overlapping ranges to access a map"
-    [ "first range: " <> show first
-    , "second range: " <> show second
+    [ "first range: " <> englishRangeDescription first
+    , "second range: " <> englishRangeDescription second
     , "overlap: " <> englishOrdinal lower
-        <> " through " <> englishOrdinal upper
+        <> ".." <> englishOrdinal upper
+        <> " (upper bound excluded)"
     ]
+
+englishRangeDescription :: SuperEllipsisRangeDescription -> String
+englishRangeDescription description =
+  englishOrdinal (describedRangeStart description)
+    <> case describedRangeTarget description of
+      GivenTarget target -> ".." <> englishOrdinal target
+      PlusSign -> ".."
+      MinusSign -> "..-"
 
 englishOrdinal :: Ordinal -> String
 englishOrdinal value =

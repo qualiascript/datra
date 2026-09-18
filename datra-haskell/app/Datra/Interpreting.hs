@@ -10,6 +10,7 @@
 -- fresh range scopes chosen while interpreting source expressions.
 module Datra.Interpreting
   ( InterpretedValue
+  , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
   , InterpretingError (..)
@@ -18,6 +19,7 @@ module Datra.Interpreting
   , interpretLocatedExpression
   , interpretExpressionReason
   , interpretedValueKind
+  , interpretedCanonicalResult
   , interpretedExplicitOrdinal
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -28,6 +30,7 @@ module Datra.Interpreting
   ) where
 
 import Chain (chainIndex, chainObjectAt, chainOrderType)
+import Control.Monad ((>=>))
 import Data.Bifunctor qualified as Bifunctor
 import Data.Kind (Type)
 import Datra.AST (Expression (..))
@@ -47,6 +50,11 @@ import Diagnostics
   , Located (Located)
   , atSourceSpan
   , withoutSourceSpan
+  )
+import Diagnostics.Interpreter
+  ( InterpretedValueKind (..)
+  , InterpretingError (..)
+  , OperandSide (..)
   )
 import MapOperators.AccessOperator
   ( AccessError
@@ -77,30 +85,6 @@ import SuperEllipsisValue
   , superEllipsisValue
   , superEllipsisValueOrdinal
   )
-
-data OperandSide = LeftOperand | RightOperand
-  deriving (Eq, Show)
-
-data InterpretedValueKind
-  = NaturalValueKind
-  | ExplicitOrdinalValueKind
-  | FormulationValueKind
-  | RangeValueKind
-  | RangeConcatenationValueKind
-  | MapValueKind
-  deriving (Eq, Show)
-
--- | Every rejection is identified by a constructor. Human-language text is
--- deliberately left to the diagnostics presentation layer.
-data InterpretingError
-  = ExpectedNumericalOperand OperandSide InterpretedValueKind
-  | ExpectedNaturalExponent InterpretedValueKind
-  | ExpectedInsertionOperand InterpretedValueKind
-  | RangeConstructionRejected Range.SuperEllipsisRangeError
-  | RangeConcatenationRejected Range.SuperEllipsisRangeConcatError
-  | NumericalResultOutsideRank Natural Ordinal
-  | AccessRejected AccessError
-  deriving (Eq, Show)
 
 data ExplicitOrigin = NaturalOrigin | ComputedOrigin
 
@@ -143,12 +127,26 @@ data OrderedValues = OrderedValues
 data InterpretedMap = InterpretedMap
   { interpretedMapCardinality :: Natural
   , interpretedMapFinalValues :: OrderedValues
+  , interpretedMapComponents :: [CanonicalResult]
   }
+
+-- | A normalized, source-independent presentation of an evaluated value.
+-- Maps contain compact final-page components, so an infinite range remains
+-- renderable without attempting to enumerate it.
+data CanonicalResult
+  = CanonicalExplicit Natural Ordinal
+  | CanonicalFormulation Natural
+  | CanonicalRange Range.SuperEllipsisRangeDescription
+  | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
+  | CanonicalMap Natural [CanonicalResult]
+  | CanonicalSuperEllipsisInsertion
+  deriving (Eq, Show)
 
 data InterpretedValue = InterpretedValue
   { interpretedForm :: ValueForm
   , interpretedInsertionCapability :: InsertionCapability
   , interpretedMap :: InterpretedMap
+  , interpretedCanonicalResult :: CanonicalResult
   }
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
@@ -390,11 +388,13 @@ explicitInterpretedValue explicitValue = value
   where
     (level, ordinalValue) = explicitOrdinal explicitValue
     insertion = singletonInsertion level ordinalValue
+    canonical = CanonicalExplicit level ordinalValue
     value =
       InterpretedValue
         (ExplicitForm explicitValue)
         (ValidInsertion insertion)
-        (singletonMap value)
+        (singletonMap canonical value)
+        canonical
 
 makeFormulation :: Natural -> InterpretedValue
 makeFormulation level = value
@@ -412,7 +412,9 @@ makeFormulation level = value
       InterpretedValue
         (FormulationForm formulation)
         (ValidInsertion insertion)
-        (InterpretedMap 1 values)
+        (InterpretedMap 1 values [canonical])
+        canonical
+    canonical = CanonicalFormulation level
 
 makeBoundedRange
   :: EvaluatedExplicit
@@ -460,15 +462,20 @@ interpretedRangeValue evaluatedRange =
   InterpretedValue
     (RangeForm evaluatedRange)
     (ValidInsertion insertion)
-    (mapFromInsertion insertion)
+    (mapFromInsertion insertion [canonical])
+    canonical
   where
     insertion = rangeInsertion evaluatedRange
+    canonical = CanonicalRange (rangeDescription evaluatedRange)
 
 rangeDescription
   :: EvaluatedRange
   -> Range.SuperEllipsisRangeDescription
 rangeDescription (EvaluatedRange _ valueRange) =
   Range.describeSuperEllipsisRange valueRange
+
+evaluatedRangeLevel :: EvaluatedRange -> Natural
+evaluatedRangeLevel (EvaluatedRange level _) = level
 
 rangeInsertion :: EvaluatedRange -> RuntimeInsertion
 rangeInsertion (EvaluatedRange level valueRange) =
@@ -502,10 +509,10 @@ identityInsertion level =
       (\position ->
         if ordinalLT position orderType then Just position else Nothing)
 
-mapFromInsertion :: RuntimeInsertion -> InterpretedMap
-mapFromInsertion insertion =
+mapFromInsertion :: RuntimeInsertion -> [CanonicalResult] -> InterpretedMap
+mapFromInsertion insertion components =
   InterpretedMap
-    (if runtimeInsertionOrderType insertion == finiteOrdinal 0 then 0 else 1)
+    (if isEmpty then 0 else 1)
     (OrderedValues
       (runtimeInsertionOrderType insertion)
       (\position -> do
@@ -515,6 +522,9 @@ mapFromInsertion insertion =
             ComputedOrigin
             (runtimeInsertionRank insertion)
             absolute)))
+    (if isEmpty then [] else components)
+  where
+    isEmpty = runtimeInsertionOrderType insertion == finiteOrdinal 0
 
 interpretAtlasMap
   :: [Expression]
@@ -534,11 +544,15 @@ interpretAtlasMap expressions = do
       cardinality
         | mapDepth == 0 = 0
         | otherwise = mapDepth + 1
+      components =
+        concatMap (interpretedMapComponents . interpretedMap) values
+      canonical = CanonicalMap cardinality components
   pure
     (InterpretedValue
       MapForm
       NoInsertion
-      (InterpretedMap cardinality finalValues))
+      (InterpretedMap cardinality finalValues components)
+      canonical)
 
 expressionNestingDepth :: Expression -> InterpretedValue -> Natural
 expressionNestingDepth expressionValue value =
@@ -553,16 +567,18 @@ concatenateValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 concatenateValues left right = do
-  normalizedRanges <- traverse promoteRangesToCommonRank
-    (concatenatedRanges left right)
+  normalizedRanges <-
+    traverse
+      (promoteRangesToCommonRank >=> canonicalizeRanges)
+      (concatenatedRanges left right)
   insertionCapability <-
     case normalizedRanges of
       Nothing -> Right NoInsertion
       Just ranges -> concatenateRangeCapability ranges
-  let (form, finalValues) =
+  let (form, finalValues, components, canonical) =
         case normalizedRanges of
           Just ranges ->
-            ( RangeConcatenationForm ranges
+            ( canonicalRangeForm ranges
             , foldl'
                 appendOrderedValues
                 emptyOrderedValues
@@ -571,21 +587,45 @@ concatenateValues left right = do
                     . interpretedMap
                     . interpretedRangeValue)
                   ranges)
+            , [canonicalRanges ranges]
+            , canonicalRanges ranges
             )
           Nothing ->
             ( MapForm
             , appendOrderedValues
                 (interpretedMapFinalValues (interpretedMap left))
                 (interpretedMapFinalValues (interpretedMap right))
+            , interpretedMapComponents (interpretedMap left)
+                <> interpretedMapComponents (interpretedMap right)
+            , CanonicalMap
+                2
+                ( interpretedMapComponents (interpretedMap left)
+                    <> interpretedMapComponents (interpretedMap right)
+                )
             )
       cardinality
         | orderedValuesOrderType finalValues == finiteOrdinal 0 = 0
         | otherwise = 2
+      resultCanonical =
+        case canonical of
+          CanonicalMap _ mapComponents ->
+            CanonicalMap cardinality mapComponents
+          _ -> canonical
   pure
     (InterpretedValue
       form
       insertionCapability
-      (InterpretedMap cardinality finalValues))
+      (InterpretedMap cardinality finalValues components)
+      resultCanonical)
+
+canonicalRangeForm :: [EvaluatedRange] -> ValueForm
+canonicalRangeForm [valueRange] = RangeForm valueRange
+canonicalRangeForm ranges = RangeConcatenationForm ranges
+
+canonicalRanges :: [EvaluatedRange] -> CanonicalResult
+canonicalRanges [valueRange] = CanonicalRange (rangeDescription valueRange)
+canonicalRanges ranges =
+  CanonicalRangeConcatenation (map rangeDescription ranges)
 
 concatenatedRanges
   :: InterpretedValue
@@ -622,6 +662,28 @@ promoteRange level evaluatedRange =
       level
       (Range.describedRangeStart description)
       (Range.describedRangeTarget description)
+
+canonicalizeRanges
+  :: [EvaluatedRange]
+  -> Either InterpretingError [EvaluatedRange]
+canonicalizeRanges [] = Right []
+canonicalizeRanges (firstRange : rest) = go [firstRange] rest
+  where
+    go canonical [] = Right canonical
+    go [] remaining = canonicalizeRanges remaining
+    go canonical nextRanges@(nextRange : remaining) =
+      case reverse canonical of
+        [] -> go [] nextRanges
+        previousRange : reversedPrefix ->
+          case analyzeRangePair previousRange nextRange of
+            Range.RangeConcatCanonical description -> do
+              merged <-
+                makeEvaluatedRangeAt
+                  (evaluatedRangeLevel previousRange)
+                  (Range.describedRangeStart description)
+                  (Range.describedRangeTarget description)
+              go (reverse reversedPrefix <> [merged]) remaining
+            _ -> go (canonical <> [nextRange]) remaining
 
 concatenateRangeCapability
   :: [EvaluatedRange]
@@ -696,7 +758,14 @@ accessValues mapValue insertionValue = do
         Left (RangeConcatenationRejected rejection)
       ValidInsertion valueInsertion -> Right valueInsertion
   selected <- accessMap (interpretedMap mapValue) insertion
-  pure (InterpretedValue MapForm NoInsertion selected)
+  pure
+    (InterpretedValue
+      MapForm
+      NoInsertion
+      selected
+      (CanonicalMap
+        (interpretedMapCardinality selected)
+        (interpretedMapComponents selected)))
 
 accessMap
   :: InterpretedMap
@@ -711,12 +780,24 @@ accessMap sourceMap insertion
             OrderedValues insertionOrderType $ \position -> do
               selectedPosition <- runtimeInsertionPositionAt insertion position
               orderedValueAt sourceValues selectedPosition
-      Right (InterpretedMap 2 selectedValues)
+          components = selectedComponents selectedValues insertionOrderType
+      Right (InterpretedMap 2 selectedValues components)
   where
     sourceValues = interpretedMapFinalValues sourceMap
     sourceOrderType = orderedValuesOrderType sourceValues
     insertionOrderType = runtimeInsertionOrderType insertion
     rankOrderType = omegaPower (runtimeInsertionRank insertion)
+
+    selectedComponents selectedValues orderType =
+      case naturalAtOrdinal orderType of
+        Nothing -> [CanonicalSuperEllipsisInsertion]
+        Just cardinality ->
+          concatMap
+            (maybe []
+              (interpretedMapComponents . interpretedMap)
+              . orderedValueAt selectedValues
+              . finiteOrdinal)
+            [0 .. cardinality - 1]
 
     validateFits
       | rankOrderType == sourceOrderType
@@ -748,16 +829,17 @@ emptyOrderedValues :: OrderedValues
 emptyOrderedValues = OrderedValues (finiteOrdinal 0) (const Nothing)
 
 emptyInterpretedMap :: InterpretedMap
-emptyInterpretedMap = InterpretedMap 0 emptyOrderedValues
+emptyInterpretedMap = InterpretedMap 0 emptyOrderedValues []
 
-singletonMap :: InterpretedValue -> InterpretedMap
-singletonMap value =
+singletonMap :: CanonicalResult -> InterpretedValue -> InterpretedMap
+singletonMap canonical value =
   InterpretedMap
     1
     (OrderedValues
       (finiteOrdinal 1)
       (\position ->
         if position == finiteOrdinal 0 then Just value else Nothing))
+    [canonical]
 
 appendOrderedValues :: OrderedValues -> OrderedValues -> OrderedValues
 appendOrderedValues left right =

@@ -14,6 +14,7 @@ import Diagnostics
   , renderDatraErrorWith
   )
 import Diagnostics.English qualified as English
+import Diagnostics.Interpreter (InterpretingError)
 import MapOperators.AccessOperator (AccessError)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError
@@ -28,6 +29,9 @@ class LocalizedDiagnostic reason where
 
 instance LocalizedDiagnostic AccessError where
   localizeDiagnostic English = English.localizeAccessError
+
+instance LocalizedDiagnostic InterpretingError where
+  localizeDiagnostic English = English.localizeInterpretingError
 
 instance LocalizedDiagnostic SuperEllipsisRangeError where
   localizeDiagnostic English = English.localizeSuperEllipsisRangeError

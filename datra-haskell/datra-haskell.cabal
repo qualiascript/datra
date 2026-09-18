@@ -63,6 +63,7 @@ library
         EllipsisNatural
         Diagnostics
         Diagnostics.English
+        Diagnostics.Interpreter
         Diagnostics.Localization
         FixedPoint
         DomanialInsertion
@@ -225,7 +226,9 @@ executable datra-haskell
     main-is:          Main.hs
     other-modules:
         Datra.AST
+        Datra.Interpreting
         Datra.Parsing
+        Datra.Rendering
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
@@ -286,6 +289,7 @@ test-suite datra-interpreting-test
     other-modules:
         Datra.AST
         Datra.Interpreting
+        Datra.Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:
         base >= 4.14 && < 5,
