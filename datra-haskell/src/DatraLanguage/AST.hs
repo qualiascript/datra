@@ -9,20 +9,17 @@ module DatraLanguage.AST
   ) where
 
 import DatraLanguage.AST.Operator
-  ( Associativity (..)
-  , Operator (..)
+  ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
-  , operatorFixity
   )
 import Numeric.Natural (Natural)
 import Prettyprinter
   ( Doc
-  , concatWith
+  , hsep
   , layoutCompact
   , parens
   , pretty
-  , (<+>)
   )
 import Prettyprinter.Render.String (renderString)
 
@@ -71,7 +68,7 @@ toOperatorExpression = lower
 
 renderOperatorExpression :: OperatorExpression -> String
 renderOperatorExpression =
-  renderString . layoutCompact . prettyOperator TopLevel
+  renderString . layoutCompact . prettyOperator
 
 normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
@@ -157,48 +154,39 @@ combineExpansions [expressionValue] = expressionValue
 combineExpansions (firstExpression : rest) =
   Expansion firstExpression (combineExpansions rest)
 
-data OperandSide = LeftOperand | RightOperand
-  deriving (Eq)
-
-data RenderContext
-  = TopLevel
-  | OperatorOperand Operator OperandSide
-
-prettyOperator :: RenderContext -> OperatorExpression -> Doc annotation
-prettyOperator context expressionValue =
-  parenthesizeWhen (requiresParentheses context expressionValue)
-    (prettyWithoutParentheses expressionValue)
-
-prettyWithoutParentheses :: OperatorExpression -> Doc annotation
-prettyWithoutParentheses (NaturalValue value) = pretty value
-prettyWithoutParentheses EllipsisValue = pretty ellipsisSymbol
-prettyWithoutParentheses EmptyMap = "[]"
-prettyWithoutParentheses (Sequential expressions) =
-  prettyRightAssociativeChain SequentialOperator expressions
-prettyWithoutParentheses (Expansion left right) =
+prettyOperator :: OperatorExpression -> Doc annotation
+prettyOperator (NaturalValue value) = pretty value
+prettyOperator EllipsisValue = pretty ellipsisSymbol
+prettyOperator EmptyMap = "[]"
+prettyOperator (Sequential []) = "[]"
+prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
+prettyOperator (Sequential expressions) =
+  prettyFormFor SequentialOperator (map prettyOperator expressions)
+prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
-prettyWithoutParentheses (Range lowerBound upperBound) =
+prettyOperator (Range lowerBound upperBound) =
   prettyBinary RangeOperator lowerBound upperBound
-prettyWithoutParentheses (RangePlus lowerBound) =
-  prettyOperator
-    (OperatorOperand RangePlusOperator LeftOperand)
-    lowerBound
-    <+> pretty (operatorCanonicalSymbol RangePlusOperator)
-prettyWithoutParentheses (RangeMinus upperBound) =
-  prettyOperator
-    (OperatorOperand RangeMinusOperator LeftOperand)
-    upperBound
-    <+> pretty (operatorCanonicalSymbol RangeMinusOperator)
-prettyWithoutParentheses (Add left right) =
+prettyOperator (RangePlus lowerBound) =
+  prettyUnary RangePlusOperator lowerBound
+prettyOperator (RangeMinus upperBound) =
+  prettyUnary RangeMinusOperator upperBound
+prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
-prettyWithoutParentheses (Multiply left right) =
+prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
-prettyWithoutParentheses (Power left right) =
+prettyOperator (Power left right) =
   prettyBinary ExponentiationOperator left right
-prettyWithoutParentheses (Concatenate left right) =
+prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
-prettyWithoutParentheses (Access left right) =
+prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
+
+prettyUnary
+  :: Operator
+  -> OperatorExpression
+  -> Doc annotation
+prettyUnary operator operand =
+  prettyFormFor operator [prettyOperator operand]
 
 prettyBinary
   :: Operator
@@ -206,65 +194,11 @@ prettyBinary
   -> OperatorExpression
   -> Doc annotation
 prettyBinary operator left right =
-  prettyOperator (OperatorOperand operator LeftOperand) left
-    <+> pretty (operatorCanonicalSymbol operator)
-    <+> prettyOperator (OperatorOperand operator RightOperand) right
+  prettyFormFor operator [prettyOperator left, prettyOperator right]
 
-prettyRightAssociativeChain
-  :: Operator
-  -> [OperatorExpression]
-  -> Doc annotation
-prettyRightAssociativeChain _ [] = "[]"
-prettyRightAssociativeChain _ [expressionValue] =
-  prettyOperator TopLevel expressionValue
-prettyRightAssociativeChain operator expressions =
-  concatWith
-    (\left right ->
-      left <+> pretty (operatorCanonicalSymbol operator) <+> right)
-    ( map
-        (prettyOperator (OperatorOperand operator LeftOperand))
-        (init expressions)
-        <> [ prettyOperator
-               (OperatorOperand operator RightOperand)
-               (last expressions)
-           ]
-    )
+prettyFormFor :: Operator -> [Doc annotation] -> Doc annotation
+prettyFormFor operator = prettyForm (operatorCanonicalSymbol operator)
 
-requiresParentheses :: RenderContext -> OperatorExpression -> Bool
-requiresParentheses TopLevel _ = False
-requiresParentheses (OperatorOperand parent side) child =
-  case operatorKind child of
-    Nothing -> False
-    Just childOperator ->
-      let (parentPrecedence, parentAssociativity) = operatorFixity parent
-          (childPrecedence, childAssociativity) =
-            operatorFixity childOperator
-      in case compare childPrecedence parentPrecedence of
-          LT -> True
-          GT -> False
-          EQ
-            | parentAssociativity /= childAssociativity -> True
-            | otherwise ->
-                case parentAssociativity of
-                  AssociateLeft -> side == RightOperand
-                  AssociateRight -> side == LeftOperand
-                  AssociateNone -> True
-
-operatorKind :: OperatorExpression -> Maybe Operator
-operatorKind (NaturalValue _) = Nothing
-operatorKind EllipsisValue = Nothing
-operatorKind EmptyMap = Nothing
-operatorKind (Sequential _) = Just SequentialOperator
-operatorKind (Expansion _ _) = Just ExpansionOperator
-operatorKind (Range _ _) = Just RangeOperator
-operatorKind (RangePlus _) = Just RangePlusOperator
-operatorKind (RangeMinus _) = Just RangeMinusOperator
-operatorKind (Add _ _) = Just AdditionOperator
-operatorKind (Multiply _ _) = Just MultiplicationOperator
-operatorKind (Power _ _) = Just ExponentiationOperator
-operatorKind (Concatenate _ _) = Just ConcatenationOperator
-operatorKind (Access _ _) = Just AccessOperator
-
-parenthesizeWhen :: Bool -> Doc annotation -> Doc annotation
-parenthesizeWhen True value = parens value
-parenthesizeWhen False value = value
+prettyForm :: String -> [Doc annotation] -> Doc annotation
+prettyForm headName operands =
+  parens (hsep (pretty headName : operands))

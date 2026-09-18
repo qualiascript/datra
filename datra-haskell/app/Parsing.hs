@@ -14,7 +14,7 @@ module Parsing
 import Control.Applicative (empty, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
-  ( Operator (InfixL, InfixN, InfixR, Postfix)
+  ( Operator (InfixL, InfixR, Postfix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
@@ -94,7 +94,7 @@ parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
     (parse locatedResource resourceName (Text.pack source))
 
--- | Parse the canonical operator notation emitted by 'renderExpression'.
+-- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either String Expression
 parseDatraAst = parseDatraAstWithSourceName "<ast-input>"
 
@@ -148,47 +148,57 @@ astResource :: Parser Expression
 astResource = astSpaceConsumer *> astExpression <* eof
 
 astExpression :: Parser Expression
-astExpression = makeExprParser astTerm astOperatorTable
+astExpression = astForm <|> astAtom
 
-astTerm :: Parser Expression
-astTerm =
+astAtom :: Parser Expression
+astAtom =
   choice
-    [ between (astSymbol "(") (astSymbol ")") astExpression
-    , AtlasMap [] <$ astSymbol "[]"
+    [ AtlasMap [] <$ astSymbol "[]"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , EllipsisNatural <$> astLexeme Lexer.decimal
     ]
 
-astOperatorTable :: [[Operator Parser Expression]]
-astOperatorTable =
-  [ [ InfixR
-        (Exponentiation <$ astOperatorToken AST.ExponentiationOperator)
-    , InfixL (MapAccess <$ astOperatorToken AST.AccessOperator)
-    ]
-  , [ InfixR (sequenceExpressions <$ astOperatorToken AST.SequentialOperator)
-    , InfixR
-        (MapConcatenation <$ astOperatorToken AST.ConcatenationOperator)
-    , InfixL
-        (Multiplication <$ astOperatorToken AST.MultiplicationOperator)
-    ]
-  , [ InfixN (MapExpansion <$ astOperatorToken AST.ExpansionOperator)
-    , InfixL (Addition <$ astOperatorToken AST.AdditionOperator)
-    ]
-  , [ Postfix (SuperEllipsisRangePlus <$ astOperatorToken AST.RangePlusOperator)
-    , Postfix
-        (SuperEllipsisRangeMinus <$ astOperatorToken AST.RangeMinusOperator)
-    , InfixN
-        (SuperEllipsisRange <$ astOperatorToken AST.RangeOperator)
-    ]
-  ]
+astForm :: Parser Expression
+astForm =
+  between (astSymbol "(") (astSymbol ")")
+    (choice
+      [ astSequence
+      , astBinary AST.ExpansionOperator MapExpansion
+      , astBinary AST.RangeOperator SuperEllipsisRange
+      , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
+      , astUnary AST.RangeMinusOperator SuperEllipsisRangeMinus
+      , astBinary AST.AdditionOperator Addition
+      , astBinary AST.MultiplicationOperator Multiplication
+      , astBinary AST.ExponentiationOperator Exponentiation
+      , astBinary AST.ConcatenationOperator MapConcatenation
+      , astBinary AST.AccessOperator MapAccess
+      ])
 
-sequenceExpressions :: Expression -> Expression -> Expression
-sequenceExpressions left right =
-  MapSequence (sequenceMembers left <> sequenceMembers right)
+astSequence :: Parser Expression
+astSequence = do
+  _ <- astOperatorToken AST.SequentialOperator
+  firstExpression <- astExpression
+  secondExpression <- astExpression
+  remainingExpressions <- many astExpression
+  pure
+    (MapSequence
+      (firstExpression : secondExpression : remainingExpressions))
 
-sequenceMembers :: Expression -> [Expression]
-sequenceMembers (MapSequence expressions) = expressions
-sequenceMembers expressionValue = [expressionValue]
+astUnary
+  :: AST.Operator
+  -> (Expression -> Expression)
+  -> Parser Expression
+astUnary operator constructor = do
+  _ <- astOperatorToken operator
+  constructor <$> astExpression
+
+astBinary
+  :: AST.Operator
+  -> (Expression -> Expression -> Expression)
+  -> Parser Expression
+astBinary operator constructor = do
+  _ <- astOperatorToken operator
+  constructor <$> astExpression <*> astExpression
 
 astSpaceConsumer :: Parser ()
 astSpaceConsumer = Lexer.space space1 lineComment empty
