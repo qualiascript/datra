@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module DatraLanguage.AST
   ( Expression (..)
   , OperatorExpression (..)
@@ -6,7 +8,6 @@ module DatraLanguage.AST
   , renderOperatorExpression
   ) where
 
-import Data.List (intercalate)
 import DatraLanguage.AST.Operator
   ( Associativity (..)
   , Operator (..)
@@ -15,6 +16,15 @@ import DatraLanguage.AST.Operator
   , operatorFixity
   )
 import Numeric.Natural (Natural)
+import Prettyprinter
+  ( Doc
+  , concatWith
+  , layoutCompact
+  , parens
+  , pretty
+  , (<+>)
+  )
+import Prettyprinter.Render.String (renderString)
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
@@ -60,7 +70,8 @@ toOperatorExpression :: Expression -> OperatorExpression
 toOperatorExpression = lower
 
 renderOperatorExpression :: OperatorExpression -> String
-renderOperatorExpression = renderOperator TopLevel
+renderOperatorExpression =
+  renderString . layoutCompact . prettyOperator TopLevel
 
 normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
@@ -153,65 +164,67 @@ data RenderContext
   = TopLevel
   | OperatorOperand Operator OperandSide
 
-renderOperator :: RenderContext -> OperatorExpression -> String
-renderOperator context expressionValue =
+prettyOperator :: RenderContext -> OperatorExpression -> Doc annotation
+prettyOperator context expressionValue =
   parenthesizeWhen (requiresParentheses context expressionValue)
-    (renderWithoutParentheses expressionValue)
+    (prettyWithoutParentheses expressionValue)
 
-renderWithoutParentheses :: OperatorExpression -> String
-renderWithoutParentheses (NaturalValue value) = show value
-renderWithoutParentheses EllipsisValue = ellipsisSymbol
-renderWithoutParentheses EmptyMap = "[]"
-renderWithoutParentheses (Sequential expressions) =
-  renderRightAssociativeChain SequentialOperator expressions
-renderWithoutParentheses (Expansion left right) =
-  renderBinary ExpansionOperator left right
-renderWithoutParentheses (Range lowerBound upperBound) =
-  renderBinary RangeOperator lowerBound upperBound
-renderWithoutParentheses (RangePlus lowerBound) =
-  renderOperator
+prettyWithoutParentheses :: OperatorExpression -> Doc annotation
+prettyWithoutParentheses (NaturalValue value) = pretty value
+prettyWithoutParentheses EllipsisValue = pretty ellipsisSymbol
+prettyWithoutParentheses EmptyMap = "[]"
+prettyWithoutParentheses (Sequential expressions) =
+  prettyRightAssociativeChain SequentialOperator expressions
+prettyWithoutParentheses (Expansion left right) =
+  prettyBinary ExpansionOperator left right
+prettyWithoutParentheses (Range lowerBound upperBound) =
+  prettyBinary RangeOperator lowerBound upperBound
+prettyWithoutParentheses (RangePlus lowerBound) =
+  prettyOperator
     (OperatorOperand RangePlusOperator LeftOperand)
     lowerBound
-    <> " " <> operatorCanonicalSymbol RangePlusOperator
-renderWithoutParentheses (RangeMinus upperBound) =
-  renderOperator
+    <+> pretty (operatorCanonicalSymbol RangePlusOperator)
+prettyWithoutParentheses (RangeMinus upperBound) =
+  prettyOperator
     (OperatorOperand RangeMinusOperator LeftOperand)
     upperBound
-    <> " " <> operatorCanonicalSymbol RangeMinusOperator
-renderWithoutParentheses (Add left right) =
-  renderBinary AdditionOperator left right
-renderWithoutParentheses (Multiply left right) =
-  renderBinary MultiplicationOperator left right
-renderWithoutParentheses (Power left right) =
-  renderBinary ExponentiationOperator left right
-renderWithoutParentheses (Concatenate left right) =
-  renderBinary ConcatenationOperator left right
-renderWithoutParentheses (Access left right) =
-  renderBinary AccessOperator left right
+    <+> pretty (operatorCanonicalSymbol RangeMinusOperator)
+prettyWithoutParentheses (Add left right) =
+  prettyBinary AdditionOperator left right
+prettyWithoutParentheses (Multiply left right) =
+  prettyBinary MultiplicationOperator left right
+prettyWithoutParentheses (Power left right) =
+  prettyBinary ExponentiationOperator left right
+prettyWithoutParentheses (Concatenate left right) =
+  prettyBinary ConcatenationOperator left right
+prettyWithoutParentheses (Access left right) =
+  prettyBinary AccessOperator left right
 
-renderBinary
+prettyBinary
   :: Operator
   -> OperatorExpression
   -> OperatorExpression
-  -> String
-renderBinary operator left right =
-  renderOperator (OperatorOperand operator LeftOperand) left
-    <> " " <> operatorCanonicalSymbol operator <> " "
-    <> renderOperator (OperatorOperand operator RightOperand) right
+  -> Doc annotation
+prettyBinary operator left right =
+  prettyOperator (OperatorOperand operator LeftOperand) left
+    <+> pretty (operatorCanonicalSymbol operator)
+    <+> prettyOperator (OperatorOperand operator RightOperand) right
 
-renderRightAssociativeChain
+prettyRightAssociativeChain
   :: Operator
   -> [OperatorExpression]
-  -> String
-renderRightAssociativeChain _ [] = "[]"
-renderRightAssociativeChain _ [expressionValue] =
-  renderOperator TopLevel expressionValue
-renderRightAssociativeChain operator expressions =
-  intercalate (" " <> operatorCanonicalSymbol operator <> " ")
+  -> Doc annotation
+prettyRightAssociativeChain _ [] = "[]"
+prettyRightAssociativeChain _ [expressionValue] =
+  prettyOperator TopLevel expressionValue
+prettyRightAssociativeChain operator expressions =
+  concatWith
+    (\left right ->
+      left <+> pretty (operatorCanonicalSymbol operator) <+> right)
     ( map
-        (renderOperator (OperatorOperand operator LeftOperand))
+        (prettyOperator (OperatorOperand operator LeftOperand))
         (init expressions)
-        <> [ renderOperator
+        <> [ prettyOperator
                (OperatorOperand operator RightOperand)
                (last expressions)
            ]
@@ -252,6 +265,6 @@ operatorKind (Power _ _) = Just ExponentiationOperator
 operatorKind (Concatenate _ _) = Just ConcatenationOperator
 operatorKind (Access _ _) = Just AccessOperator
 
-parenthesizeWhen :: Bool -> String -> String
-parenthesizeWhen True value = "(" <> value <> ")"
+parenthesizeWhen :: Bool -> Doc annotation -> Doc annotation
+parenthesizeWhen True value = parens value
 parenthesizeWhen False value = value

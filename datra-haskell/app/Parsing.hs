@@ -5,12 +5,16 @@ module Parsing
   , parseDatraWithSourceName
   , parseDatraLocated
   , parseDatraLocatedWithSourceName
+  , parseDatraAst
+  , parseDatraAstWithSourceName
+  , parseDatraAstLocated
+  , parseDatraAstLocatedWithSourceName
   ) where
 
 import Control.Applicative (empty, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
-  ( Operator (InfixL, InfixR, Postfix)
+  ( Operator (InfixL, InfixN, InfixR, Postfix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
@@ -26,6 +30,8 @@ import DatraLanguage.AST
       , Exponentiation
       , MapAccess
       , MapConcatenation
+      , MapExpansion
+      , MapSequence
       , Multiplication
       , SuperEllipsisRange
       , SuperEllipsisRangeMinus
@@ -88,11 +94,40 @@ parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
     (parse locatedResource resourceName (Text.pack source))
 
+-- | Parse the canonical operator notation emitted by 'renderExpression'.
+parseDatraAst :: String -> Either String Expression
+parseDatraAst = parseDatraAstWithSourceName "<ast-input>"
+
+parseDatraAstWithSourceName
+  :: FilePath
+  -> String
+  -> Either String Expression
+parseDatraAstWithSourceName sourceName source =
+  locatedValue <$> parseDatraAstLocatedWithSourceName sourceName source
+
+parseDatraAstLocated :: String -> Either String (Located Expression)
+parseDatraAstLocated =
+  parseDatraAstLocatedWithSourceName "<ast-input>"
+
+parseDatraAstLocatedWithSourceName
+  :: FilePath
+  -> String
+  -> Either String (Located Expression)
+parseDatraAstLocatedWithSourceName resourceName source =
+  first errorBundlePretty
+    (parse locatedAstResource resourceName (Text.pack source))
+
 locatedResource :: Parser (Located Expression)
-locatedResource = do
+locatedResource = located resource
+
+locatedAstResource :: Parser (Located Expression)
+locatedAstResource = located astResource
+
+located :: Parser Expression -> Parser (Located Expression)
+located parser = do
   startOffset <- getOffset
   start <- getSourcePos
-  expressionValue <- resource
+  expressionValue <- parser
   endOffset <- getOffset
   end <- getSourcePos
   pure
@@ -108,6 +143,64 @@ locatedResource = do
           (fromIntegral (unPos (sourceLine end)))
           (fromIntegral (unPos (sourceColumn end)))))
       expressionValue)
+
+astResource :: Parser Expression
+astResource = astSpaceConsumer *> astExpression <* eof
+
+astExpression :: Parser Expression
+astExpression = makeExprParser astTerm astOperatorTable
+
+astTerm :: Parser Expression
+astTerm =
+  choice
+    [ between (astSymbol "(") (astSymbol ")") astExpression
+    , AtlasMap [] <$ astSymbol "[]"
+    , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
+    , EllipsisNatural <$> astLexeme Lexer.decimal
+    ]
+
+astOperatorTable :: [[Operator Parser Expression]]
+astOperatorTable =
+  [ [ InfixR
+        (Exponentiation <$ astOperatorToken AST.ExponentiationOperator)
+    , InfixL (MapAccess <$ astOperatorToken AST.AccessOperator)
+    ]
+  , [ InfixR (sequenceExpressions <$ astOperatorToken AST.SequentialOperator)
+    , InfixR
+        (MapConcatenation <$ astOperatorToken AST.ConcatenationOperator)
+    , InfixL
+        (Multiplication <$ astOperatorToken AST.MultiplicationOperator)
+    ]
+  , [ InfixN (MapExpansion <$ astOperatorToken AST.ExpansionOperator)
+    , InfixL (Addition <$ astOperatorToken AST.AdditionOperator)
+    ]
+  , [ Postfix (SuperEllipsisRangePlus <$ astOperatorToken AST.RangePlusOperator)
+    , Postfix
+        (SuperEllipsisRangeMinus <$ astOperatorToken AST.RangeMinusOperator)
+    , InfixN
+        (SuperEllipsisRange <$ astOperatorToken AST.RangeOperator)
+    ]
+  ]
+
+sequenceExpressions :: Expression -> Expression -> Expression
+sequenceExpressions left right =
+  MapSequence (sequenceMembers left <> sequenceMembers right)
+
+sequenceMembers :: Expression -> [Expression]
+sequenceMembers (MapSequence expressions) = expressions
+sequenceMembers expressionValue = [expressionValue]
+
+astSpaceConsumer :: Parser ()
+astSpaceConsumer = Lexer.space space1 lineComment empty
+
+astLexeme :: Parser value -> Parser value
+astLexeme = Lexer.lexeme astSpaceConsumer
+
+astSymbol :: Text -> Parser Text
+astSymbol = Lexer.symbol astSpaceConsumer
+
+astOperatorToken :: AST.Operator -> Parser Text
+astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
 
 resource :: Parser Expression
 resource = do

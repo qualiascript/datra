@@ -168,7 +168,8 @@ library
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
         base >= 4.14 && < 5,
-        containers >= 0.6 && < 0.9
+        containers >= 0.6 && < 0.9,
+        prettyprinter >= 1.7 && < 1.8
     if flag(liquid)
         build-depends:
             liquidhaskell == 0.9.14.1.1
@@ -238,7 +239,9 @@ executable datra-haskell
         base >= 4.14 && < 5,
         datra-haskell,
         megaparsec >= 9.8 && < 10,
+        optparse-applicative >= 0.18 && < 0.20,
         parser-combinators >= 1.3 && < 2,
+        prettyprinter >= 1.7 && < 1.8,
         text >= 2.0 && < 2.2
     hs-source-dirs:   app
     default-language: GHC2021
@@ -296,4 +299,5 @@ test-suite datra-interpreting-test
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:
         base >= 4.14 && < 5,
-        datra-haskell
+        datra-haskell,
+        prettyprinter >= 1.7 && < 1.8

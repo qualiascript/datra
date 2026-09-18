@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | Source localization and structured diagnostics shared by the parser,
 -- type checker, and interpreter.
@@ -16,6 +17,14 @@ module DatraLanguage.Diagnostics
   ) where
 
 import Numeric.Natural (Natural)
+import Prettyprinter
+  ( Doc
+  , hardline
+  , indent
+  , layoutCompact
+  , pretty
+  )
+import Prettyprinter.Render.String (renderString)
 
 -- | A zero-based source offset paired with one-based line and column numbers.
 data SourcePosition = SourcePosition
@@ -65,20 +74,25 @@ renderDatraErrorWith
   -> DatraError reason
   -> String
 renderDatraErrorWith localize valueError =
-  locationPrefix
-    <> localizedSummary message
-    <> concatMap ("\n  " <>) (localizedDetails message)
+  renderString . layoutCompact $
+    locationPrefix
+      <> pretty (localizedSummary message)
+      <> foldMap (\detail -> hardline <> indent 2 (pretty detail))
+        (localizedDetails message)
   where
     reason = datraErrorReason valueError
     message = localize reason
     locationPrefix =
       case datraErrorSpan valueError of
-        Nothing -> ""
+        Nothing -> mempty
         Just sourceSpan ->
           let position = sourceStart sourceSpan
-          in sourceName sourceSpan
-              <> ":"
-              <> show (sourceLine position)
-              <> ":"
-              <> show (sourceColumn position)
-              <> ": "
+          in prettySourceLocation sourceSpan position <> ": "
+
+prettySourceLocation :: SourceSpan -> SourcePosition -> Doc annotation
+prettySourceLocation sourceSpan position =
+  pretty (sourceName sourceSpan)
+    <> ":"
+    <> pretty (sourceLine position)
+    <> ":"
+    <> pretty (sourceColumn position)

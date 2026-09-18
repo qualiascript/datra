@@ -1,10 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Rendering
   ( renderCanonicalResult
   , renderInterpretedValue
   ) where
 
 import Data.Char (isDigit)
-import Data.List (intercalate)
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
@@ -21,6 +22,14 @@ import DatraOrdinal
   , ordinalCoefficients
   )
 import Numeric.Natural (Natural)
+import Prettyprinter
+  ( Doc
+  , concatWith
+  , layoutCompact
+  , parens
+  , pretty
+  )
+import Prettyprinter.Render.String (renderString)
 import SuperEllipsisRange
   ( SuperEllipsisRangeDescription (..)
   , SuperEllipsisRangeTarget (..)
@@ -33,53 +42,60 @@ renderInterpretedValue :: InterpretedValue -> String
 renderInterpretedValue = renderCanonicalResult . interpretedCanonicalResult
 
 renderCanonicalResult :: CanonicalResult -> String
-renderCanonicalResult result =
+renderCanonicalResult = renderCompact . prettyCanonicalResult
+
+prettyCanonicalResult :: CanonicalResult -> Doc annotation
+prettyCanonicalResult result =
   case result of
-    CanonicalExplicit _ value -> renderExplicit value
-    CanonicalFormulation level -> renderFormulation level
-    CanonicalRange description -> renderRange description
+    CanonicalExplicit _ value -> prettyExplicit value
+    CanonicalFormulation level -> prettyFormulation level
+    CanonicalRange description -> prettyRange description
     CanonicalRangeConcatenation descriptions ->
-      intercalate ", " (map renderRange descriptions)
+      concatWith (\left right -> left <> ", " <> right)
+        (map prettyRange descriptions)
     CanonicalMap cardinality components ->
-      renderMap cardinality components
+      prettyMap cardinality components
     CanonicalSuperEllipsisInsertion -> "<SuperEllipsisInsertion>"
 
-renderMap :: Natural -> [CanonicalResult] -> String
-renderMap 0 _ = "[]"
-renderMap cardinality components =
+prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
+prettyMap 0 _ = "[]"
+prettyMap cardinality components =
   nest (cardinality - 1)
-    (intercalate "; " (map renderCanonicalResult components))
+    (concatWith (\left right -> left <> "; " <> right)
+      (map prettyCanonicalResult components))
   where
     nest 0 value = value
     nest depth value = "[" <> nest (depth - 1) value <> "]"
 
-renderRange :: SuperEllipsisRangeDescription -> String
-renderRange description =
+prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
+prettyRange description =
   case describedRangeTarget description of
     GivenTarget target ->
       startText
-        <> sourceSymbol RangeOperator
+        <> prettySourceSymbol RangeOperator
         <> rangeEndpoint (renderRangeBoundary target)
-    PlusSign -> startText <> sourceSymbol RangePlusOperator
-    MinusSign -> startText <> sourceSymbol RangeMinusOperator
+    PlusSign -> startText <> prettySourceSymbol RangePlusOperator
+    MinusSign -> startText <> prettySourceSymbol RangeMinusOperator
   where
     start = describedRangeStart description
-    startText = rangeEndpoint (renderExplicit start)
+    startText = rangeEndpoint (renderCompact (prettyExplicit start))
 
-rangeEndpoint :: String -> String
+rangeEndpoint :: String -> Doc annotation
 rangeEndpoint value
-  | not (null value) && all isDigit value = value
-  | otherwise = "(" <> value <> ")"
+  | not (null value) && all isDigit value = pretty value
+  | otherwise = parens (pretty value)
 
-renderFormulation :: Natural -> String
-renderFormulation 0 =
-  ellipsisSymbol <> sourceSymbol ExponentiationOperator <> "0"
-renderFormulation 1 = ellipsisSymbol
-renderFormulation level =
-  ellipsisSymbol <> sourceSymbol ExponentiationOperator <> show level
+prettyFormulation :: Natural -> Doc annotation
+prettyFormulation 0 =
+  pretty ellipsisSymbol <> prettySourceSymbol ExponentiationOperator <> "0"
+prettyFormulation 1 = pretty ellipsisSymbol
+prettyFormulation level =
+  pretty ellipsisSymbol
+    <> prettySourceSymbol ExponentiationOperator
+    <> pretty level
 
-renderExplicit :: Ordinal -> String
-renderExplicit = renderExplicitMinimal
+prettyExplicit :: Ordinal -> Doc annotation
+prettyExplicit = prettyExplicitMinimal
 
 -- At an upper range boundary, a pure omega power is most naturally written
 -- as the corresponding formulation. The boundary may equal the rank limit,
@@ -89,24 +105,26 @@ renderRangeBoundary value =
   case ordinalCoefficients value of
     1 : remaining
       | not (null remaining) && all (== 0) remaining ->
-          renderFormulation (fromIntegral (length remaining))
-    _ -> renderExplicitMinimal value
+          renderCompact (prettyFormulation (fromIntegral (length remaining)))
+    _ -> renderCompact (prettyExplicitMinimal value)
 
 -- A transfinite ordinal with no finite tail receives an explicit @+ 0@.
 -- This distinguishes the value omega from the Ellipsis formulation, and the
 -- same rule applies at every higher super-ellipsis level.
-renderExplicitMinimal :: Ordinal -> String
-renderExplicitMinimal value
+prettyExplicitMinimal :: Ordinal -> Doc annotation
+prettyExplicitMinimal value
   | isZero value = "0"
   | otherwise =
-      renderOrdinal value
+      prettyOrdinal value
         <> if hasTransfiniteTerm value && hasZeroFiniteTail value
-             then spacedSourceSymbol AdditionOperator <> "0"
-             else ""
+             then prettySpacedSourceSymbol AdditionOperator <> "0"
+             else mempty
 
-renderOrdinal :: Ordinal -> String
-renderOrdinal value =
-  intercalate (spacedSourceSymbol AdditionOperator)
+prettyOrdinal :: Ordinal -> Doc annotation
+prettyOrdinal value =
+  concatWith
+    (\left right ->
+      left <> prettySpacedSourceSymbol AdditionOperator <> right)
     [ renderTerm power coefficient
     | (power, coefficient) <- zip [degree, degree - 1 .. 0] coefficients
     , coefficient /= 0
@@ -115,22 +133,29 @@ renderOrdinal value =
     coefficients = ordinalCoefficients value
     degree = length coefficients - 1
 
-    renderTerm 0 coefficient = show coefficient
-    renderTerm 1 1 = ellipsisSymbol
+    renderTerm 0 coefficient = pretty coefficient
+    renderTerm 1 1 = pretty ellipsisSymbol
     renderTerm 1 coefficient =
-      ellipsisSymbol
-        <> spacedSourceSymbol MultiplicationOperator
-        <> show coefficient
+      pretty ellipsisSymbol
+        <> prettySpacedSourceSymbol MultiplicationOperator
+        <> pretty coefficient
     renderTerm power 1 =
-      ellipsisSymbol
-        <> sourceSymbol ExponentiationOperator
-        <> show power
+      pretty ellipsisSymbol
+        <> prettySourceSymbol ExponentiationOperator
+        <> pretty power
     renderTerm power coefficient =
-      ellipsisSymbol
-        <> sourceSymbol ExponentiationOperator
-        <> show power
-        <> spacedSourceSymbol MultiplicationOperator
-        <> show coefficient
+      pretty ellipsisSymbol
+        <> prettySourceSymbol ExponentiationOperator
+        <> pretty power
+        <> prettySpacedSourceSymbol MultiplicationOperator
+        <> pretty coefficient
+
+prettySourceSymbol :: Operator -> Doc annotation
+prettySourceSymbol = pretty . sourceSymbol
+
+prettySpacedSourceSymbol :: Operator -> Doc annotation
+prettySpacedSourceSymbol operator =
+  " " <> prettySourceSymbol operator <> " "
 
 sourceSymbol :: Operator -> String
 sourceSymbol operator =
@@ -138,8 +163,8 @@ sourceSymbol operator =
     Just value -> value
     Nothing -> operatorCanonicalSymbol operator
 
-spacedSourceSymbol :: Operator -> String
-spacedSourceSymbol operator = " " <> sourceSymbol operator <> " "
+renderCompact :: Doc annotation -> String
+renderCompact = renderString . layoutCompact
 
 isZero :: Ordinal -> Bool
 isZero = null . ordinalCoefficients

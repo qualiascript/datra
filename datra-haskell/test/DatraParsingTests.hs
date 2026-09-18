@@ -23,7 +23,7 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
-import Parsing (parseDatra, parseDatraLocated)
+import Parsing (parseDatra, parseDatraAst, parseDatraLocated)
 
 main :: IO ()
 main = do
@@ -357,7 +357,7 @@ assertAstOutput label source expected =
   case renderExpression <$> parseDatra source of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right actual
-      | actual == expected -> pure ()
+      | actual == expected -> assertAstRoundTrip label actual
       | otherwise ->
           fail
             ( label
@@ -365,6 +365,22 @@ assertAstOutput label source expected =
                 <> show expected
                 <> ", got "
                 <> show actual
+            )
+
+assertAstRoundTrip :: String -> String -> IO ()
+assertAstRoundTrip label renderedAst =
+  case renderExpression <$> parseDatraAst renderedAst of
+    Left message ->
+      fail (label <> ": emitted AST could not be parsed: " <> message)
+    Right roundTripped
+      | roundTripped == renderedAst -> pure ()
+      | otherwise ->
+          fail
+            ( label
+                <> ": AST round trip changed "
+                <> show renderedAst
+                <> " to "
+                <> show roundTripped
             )
 
 assertRejected :: String -> String -> IO ()

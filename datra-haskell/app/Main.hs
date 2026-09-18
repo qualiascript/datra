@@ -1,29 +1,233 @@
 module Main (main) where
 
-import DatraLanguage.AST (renderExpression)
+import Data.Char (toLower)
+import DatraLanguage.AST (Expression, renderExpression)
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English)
+  ( Locale (English, Română)
   , renderDatraError
   )
-import Interpreting (interpretLocatedExpression)
-import Parsing (parseDatraLocatedWithSourceName)
+import Interpreting (InterpretedValue, interpretLocatedExpression)
+import Options.Applicative
+import Parsing
+  ( parseDatraAstLocatedWithSourceName
+  , parseDatraLocatedWithSourceName
+  )
 import Rendering (renderInterpretedValue)
+import System.Exit (die)
+
+data Command
+  = Build Input FilePath FilePath Locale
+  | GenerateAst Input FilePath
+  | InterpretAst Input FilePath Locale
+
+data Input
+  = InputFile FilePath
+  | InlineInput String
+
+defaultSourcePath :: FilePath
+defaultSourcePath = "input.datra"
+
+defaultAstPath :: FilePath
+defaultAstPath = "output.datra.ast"
+
+defaultOutputPath :: FilePath
+defaultOutputPath = "output.datra"
 
 main :: IO ()
-main = do
-  let inputPath = "resources/input.datra"
-  source <- readFile inputPath
-  case parseDatraLocatedWithSourceName inputPath source of
-    Left message -> ioError (userError message)
-    Right locatedExpression -> do
-      writeFile
-        "resources/output.datra.ast"
-        (renderExpression (locatedValue locatedExpression) <> "\n")
-      case interpretLocatedExpression locatedExpression of
-        Left valueError ->
-          ioError (userError (renderDatraError English valueError))
-        Right value ->
-          writeFile
-            "resources/output.datra"
-            (renderInterpretedValue value <> "\n")
+main = runCommand =<< customExecParser parserPreferences commandInfo
+
+parserPreferences :: ParserPrefs
+parserPreferences = prefs showHelpOnError
+
+commandInfo :: ParserInfo Command
+commandInfo =
+  info
+    (helper <*> commandParser)
+    ( fullDesc
+        <> header "datra-haskell - parse and interpret Datra"
+        <> progDesc
+          ( "With no subcommand, parse input.datra and write "
+              <> "output.datra.ast and output.datra"
+          )
+    )
+
+commandParser :: Parser Command
+commandParser = commandSubparser <|> buildParser
+
+commandSubparser :: Parser Command
+commandSubparser =
+  hsubparser
+    ( command "ast"
+        (info generateAstParser
+          (progDesc "Parse Datra source and emit only its canonical AST"))
+        <> command "interpret"
+          (info interpretAstParser
+            (progDesc "Interpret canonical Datra AST notation directly"))
+        <> command "build"
+          (info buildParser
+            (progDesc "Generate the AST and interpret the Datra source"))
+    )
+
+buildParser :: Parser Command
+buildParser =
+  Build
+    <$> sourceInputParser defaultSourcePath
+    <*> outputPathOption
+      "ast-output"
+      Nothing
+      defaultAstPath
+      "FILE"
+      "Write the canonical AST to FILE; use - for stdout"
+    <*> outputPathOption
+      "output"
+      (Just 'o')
+      defaultOutputPath
+      "FILE"
+      "Write the interpreted value to FILE; use - for stdout"
+    <*> localeOption
+
+generateAstParser :: Parser Command
+generateAstParser =
+  GenerateAst
+    <$> sourceInputParser defaultSourcePath
+    <*> outputPathOption
+      "output"
+      (Just 'o')
+      defaultAstPath
+      "FILE"
+      "Write the canonical AST to FILE; use - for stdout"
+
+interpretAstParser :: Parser Command
+interpretAstParser =
+  InterpretAst
+    <$> astInputParser defaultAstPath
+    <*> outputPathOption
+      "output"
+      (Just 'o')
+      defaultOutputPath
+      "FILE"
+      "Write the interpreted value to FILE; use - for stdout"
+    <*> localeOption
+
+sourceInputParser :: FilePath -> Parser Input
+sourceInputParser defaultPath =
+  InlineInput
+    <$> strOption
+      ( long "source"
+          <> metavar "DATRA"
+          <> help "Read Datra source directly from this argument"
+      )
+    <|> fileInputParser defaultPath "Datra source"
+
+astInputParser :: FilePath -> Parser Input
+astInputParser defaultPath =
+  InlineInput
+    <$> strOption
+      ( long "ast"
+          <> metavar "AST"
+          <> help "Read canonical Datra AST notation from this argument"
+      )
+    <|> fileInputParser defaultPath "canonical Datra AST"
+
+fileInputParser :: FilePath -> String -> Parser Input
+fileInputParser defaultPath inputDescription =
+  InputFile
+    <$> strOption
+      ( long "input"
+          <> short 'i'
+          <> metavar "FILE"
+          <> value defaultPath
+          <> showDefault
+          <> help ("Read " <> inputDescription <> " from FILE; use - for stdin")
+      )
+
+outputPathOption
+  :: String
+  -> Maybe Char
+  -> FilePath
+  -> String
+  -> String
+  -> Parser FilePath
+outputPathOption longName shortName defaultPath meta description =
+  strOption
+    ( long longName
+        <> foldMap short shortName
+        <> metavar meta
+        <> value defaultPath
+        <> showDefault
+        <> help description
+    )
+
+localeOption :: Parser Locale
+localeOption =
+  option localeReader
+    ( long "locale"
+        <> metavar "LOCALE"
+        <> value English
+        <> showDefaultWith localeName
+        <> help "Diagnostic locale: english or română"
+    )
+
+localeReader :: ReadM Locale
+localeReader = eitherReader $ \localeText ->
+  case map toLower localeText of
+    "en" -> Right English
+    "english" -> Right English
+    "ro" -> Right Română
+    "română" -> Right Română
+    "romana" -> Right Română
+    "romanian" -> Right Română
+    _ -> Left "expected english, en, română, romana, romanian, or ro"
+
+localeName :: Locale -> String
+localeName English = "english"
+localeName Română = "română"
+
+runCommand :: Command -> IO ()
+runCommand commandValue =
+  case commandValue of
+    Build input astPath outputPath locale -> do
+      (sourceName, source) <- readInput input
+      locatedExpression <-
+        parseOrFail (parseDatraLocatedWithSourceName sourceName source)
+      writeOutput astPath
+        (renderExpression (locatedValue locatedExpression))
+      interpreted <- interpretOrFail locale locatedExpression
+      writeOutput outputPath (renderInterpretedValue interpreted)
+    GenerateAst input outputPath -> do
+      (sourceName, source) <- readInput input
+      locatedExpression <-
+        parseOrFail (parseDatraLocatedWithSourceName sourceName source)
+      writeOutput outputPath
+        (renderExpression (locatedValue locatedExpression))
+    InterpretAst input outputPath locale -> do
+      (sourceName, source) <- readInput input
+      locatedExpression <-
+        parseOrFail (parseDatraAstLocatedWithSourceName sourceName source)
+      interpreted <- interpretOrFail locale locatedExpression
+      writeOutput outputPath (renderInterpretedValue interpreted)
+
+parseOrFail :: Either String value -> IO value
+parseOrFail = either die pure
+
+interpretOrFail
+  :: Locale
+  -> Located Expression
+  -> IO InterpretedValue
+interpretOrFail locale =
+  either (die . renderDatraError locale) pure
+    . interpretLocatedExpression
+
+readInput :: Input -> IO (FilePath, String)
+readInput (InlineInput source) = pure ("<command-line>", source)
+readInput (InputFile "-") = do
+  source <- getContents
+  pure ("<stdin>", source)
+readInput (InputFile path) = do
+  source <- readFile path
+  pure (path, source)
+
+writeOutput :: FilePath -> String -> IO ()
+writeOutput "-" rendered = putStrLn rendered
+writeOutput path rendered = writeFile path (rendered <> "\n")

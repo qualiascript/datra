@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | Language-neutral rendering shared by diagnostic locales.
 module DatraLanguage.Diagnostics.Locales.Rendering
   ( renderOrdinal
@@ -5,7 +7,6 @@ module DatraLanguage.Diagnostics.Locales.Rendering
   , renderRangeDescription
   ) where
 
-import Data.List (intercalate)
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
@@ -13,55 +14,79 @@ import DatraLanguage.AST.Operator
   , operatorSourceSymbol
   )
 import DatraOrdinal (Ordinal, ordinalCoefficients)
+import Prettyprinter
+  ( Doc
+  , concatWith
+  , layoutCompact
+  , parens
+  , pretty
+  )
+import Prettyprinter.Render.String (renderString)
 import SuperEllipsisRange
   ( SuperEllipsisRangeDescription (..)
   , SuperEllipsisRangeTarget (..)
   )
 
 renderRangeDescription :: SuperEllipsisRangeDescription -> String
-renderRangeDescription description =
-  renderOrdinal (describedRangeStart description)
+renderRangeDescription = renderCompact . prettyRangeDescription
+
+prettyRangeDescription
+  :: SuperEllipsisRangeDescription
+  -> Doc annotation
+prettyRangeDescription description =
+  prettyOrdinal (describedRangeStart description)
     <> case describedRangeTarget description of
       GivenTarget target ->
-        sourceSymbol RangeOperator <> renderOrdinal target
-      PlusSign -> sourceSymbol RangePlusOperator
-      MinusSign -> sourceSymbol RangeMinusOperator
+        prettySourceSymbol RangeOperator <> prettyOrdinal target
+      PlusSign -> prettySourceSymbol RangePlusOperator
+      MinusSign -> prettySourceSymbol RangeMinusOperator
 
 renderRangeBounds :: Ordinal -> Ordinal -> String
 renderRangeBounds lower upper =
-  renderOrdinal lower <> sourceSymbol RangeOperator <> renderOrdinal upper
+  renderCompact
+    (prettyOrdinal lower
+      <> prettySourceSymbol RangeOperator
+      <> prettyOrdinal upper)
 
 renderOrdinal :: Ordinal -> String
-renderOrdinal value =
+renderOrdinal = renderCompact . prettyOrdinal
+
+prettyOrdinal :: Ordinal -> Doc annotation
+prettyOrdinal value =
   case ordinalCoefficients value of
     [] -> "0"
     coefficients ->
-      intercalate (spacedSourceSymbol AdditionOperator)
+      concatWith
+        (\left right ->
+          left <> prettySpacedSourceSymbol AdditionOperator <> right)
         [ renderTerm power coefficient
         | (power, coefficient) <- zip [degree, degree - 1 .. 0] coefficients
         , coefficient /= 0
         ]
       where
         degree = length coefficients - 1
-        renderTerm 0 coefficient = show coefficient
+        renderTerm 0 coefficient = pretty coefficient
         renderTerm 1 1 = parenthesizedEllipsis
         renderTerm 1 coefficient =
           parenthesizedEllipsis
-            <> spacedSourceSymbol MultiplicationOperator
-            <> show coefficient
+            <> prettySpacedSourceSymbol MultiplicationOperator
+            <> pretty coefficient
         renderTerm power 1 =
           parenthesizedEllipsis
-            <> sourceSymbol ExponentiationOperator
-            <> show power
+            <> prettySourceSymbol ExponentiationOperator
+            <> pretty power
         renderTerm power coefficient =
           parenthesizedEllipsis
-            <> sourceSymbol ExponentiationOperator
-            <> show power
-            <> spacedSourceSymbol MultiplicationOperator
-            <> show coefficient
+            <> prettySourceSymbol ExponentiationOperator
+            <> pretty power
+            <> prettySpacedSourceSymbol MultiplicationOperator
+            <> pretty coefficient
 
-parenthesizedEllipsis :: String
-parenthesizedEllipsis = "(" <> ellipsisSymbol <> ")"
+parenthesizedEllipsis :: Doc annotation
+parenthesizedEllipsis = parens (pretty ellipsisSymbol)
+
+prettySourceSymbol :: Operator -> Doc annotation
+prettySourceSymbol = pretty . sourceSymbol
 
 sourceSymbol :: Operator -> String
 sourceSymbol operator =
@@ -69,5 +94,9 @@ sourceSymbol operator =
     Just value -> value
     Nothing -> operatorCanonicalSymbol operator
 
-spacedSourceSymbol :: Operator -> String
-spacedSourceSymbol operator = " " <> sourceSymbol operator <> " "
+prettySpacedSourceSymbol :: Operator -> Doc annotation
+prettySpacedSourceSymbol operator =
+  " " <> prettySourceSymbol operator <> " "
+
+renderCompact :: Doc annotation -> String
+renderCompact = renderString . layoutCompact
