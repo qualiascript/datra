@@ -246,3 +246,16 @@ test-suite datra-types-test
         base >= 4.14 && < 5,
         containers >= 0.6 && < 0.9,
         datra-haskell
+
+test-suite datra-interpreter-test
+    import:           warnings
+    default-language: GHC2021
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:
+        test
+        app
+    main-is:          DatraInterpreterTests.hs
+    other-modules:    Main
+    ghc-options:      -main-is DatraInterpreterTests.main
+    build-depends:
+        base >= 4.14 && < 5
