@@ -21,6 +21,7 @@ module SuperEllipsisRange
   , SuperEllipsisRangeConcat
   , superEllipsisRange
   , superEllipsisRangeEither
+  , superEllipsisSingletonRange
   , superEllipsisRangeRank
   , superEllipsisRangeStart
   , superEllipsisRangeTarget
@@ -90,7 +91,10 @@ import StableConfederalData
   , embedAtlasMap
   )
 import SuperEllipsis
-  ( SuperEllipsisRank
+  ( MinimalSuperEllipsisOrdinal
+  , SuperEllipsisRank
+  , minimalSuperEllipsisOrdinalRank
+  , minimalSuperEllipsisOrdinalValue
   , superEllipsisDominion
   , superEllipsisRankOrderType
   , superEllipsisTerminal
@@ -308,6 +312,22 @@ superEllipsisRangeEither valueRank start target useRange = do
                       start targetValue)
           | otherwise -> Right ()
         _ -> Right ()
+
+-- | Construct the singleton range certified by a minimal ordinal/rank pair.
+-- Its successor cannot exceed that rank's limit, so no failure case is
+-- exposed to callers.
+superEllipsisSingletonRange
+  :: MinimalSuperEllipsisOrdinal target
+  -> (forall scope. SuperEllipsisRange target scope -> result)
+  -> result
+superEllipsisSingletonRange minimalValue useRange =
+  useRange
+    (SuperEllipsisRange
+      (minimalSuperEllipsisOrdinalRank minimalValue)
+      value
+      (GivenTarget (addOrdinals value (finiteOrdinal 1))))
+  where
+    value = minimalSuperEllipsisOrdinalValue minimalValue
 
 superEllipsisRangeElement
   :: SuperEllipsisRange target scope
@@ -638,7 +658,9 @@ analyzeSuperEllipsisRangeDescriptions firstDescription secondDescription
       RangeConcatCanonical
         SuperEllipsisRangeDescription
           { describedRangeRankLimit =
-              describedRangeRankLimit firstDescription
+              max
+                (describedRangeRankLimit firstDescription)
+                (describedRangeRankLimit secondDescription)
           , describedRangeStart = describedRangeStart firstDescription
           , describedRangeTarget = describedRangeTarget secondDescription
           }

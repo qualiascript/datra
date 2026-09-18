@@ -7,9 +7,7 @@ module Diagnostics.Interpreter
   , OperandSide (..)
   ) where
 
-import DatraOrdinal (Ordinal)
 import MapOperators.AccessOperator (AccessError)
-import Numeric.Natural (Natural)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError
   , SuperEllipsisRangeError
@@ -33,6 +31,5 @@ data InterpretingError
   | ExpectedInsertionOperand InterpretedValueKind
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
-  | NumericalResultOutsideRank Natural Ordinal
   | AccessRejected AccessError
   deriving (Eq, Show)

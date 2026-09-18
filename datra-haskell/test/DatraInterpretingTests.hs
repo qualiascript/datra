@@ -173,17 +173,15 @@ testCanonicalResults = do
         (SuperEllipsisRange (EllipsisNatural 5) (EllipsisNatural 2))) $ \value ->
     assert "adjacent descending ranges canonicalize in traversal order"
       (renderInterpretedValue value == "9..2")
-  let rankTwoFive =
-        Addition
-          (Multiplication EllipsisLiteral (EllipsisNatural 0))
-          (EllipsisNatural 5)
+  let levelTwoFormulation =
+        Exponentiation EllipsisLiteral (EllipsisNatural 2)
   expectValue
-      "adjacent mixed-rank ranges"
+      "adjacent cross-rank ranges"
       (MapConcatenation
         (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-        (SuperEllipsisRangePlus rankTwoFive)) $ \value ->
-    assert "canonicalization happens after promotion to the common rank"
-      (renderInterpretedValue value == "(... * 0 + 2)..")
+        (SuperEllipsisRange (EllipsisNatural 5) levelTwoFormulation)) $ \value ->
+    assert "contiguous cross-rank ranges widen to the larger range"
+      (renderInterpretedValue value == "2..(...^2)")
   expectValue
       "disjoint ranges"
       (MapConcatenation
@@ -227,12 +225,12 @@ testRendering = do
     assert "higher formulations render by kind"
       (renderInterpretedValue value == "...^2")
   expectValue
-      "rank-two finite value"
+      "zero multiplication"
       (Addition
         (Multiplication EllipsisLiteral (EllipsisNatural 0))
         (EllipsisNatural 2)) $ \value ->
-    assert "multiplication by zero appears only as a required rank witness"
-      (renderInterpretedValue value == "... * 0 + 2")
+    assert "arithmetic results return to their minimal rank"
+      (renderInterpretedValue value == "2")
   expectValue
       "map containing a canonical range"
       (AtlasMap
@@ -292,25 +290,16 @@ testAccess = do
       (selected == map Just [2 .. 7] <> [Nothing])
     assert "finite access renders its selected result values"
       (renderInterpretedValue value == "[2; 3; 4; 5; 6; 7]")
-  let rankTwoEight =
-        Addition
-          (Multiplication EllipsisLiteral (EllipsisNatural 0))
-          (EllipsisNatural 8)
+  let levelTwoFormulation =
+        Exponentiation EllipsisLiteral (EllipsisNatural 2)
       mixedRankInsertion =
         MapConcatenation
           (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-          (SuperEllipsisRange (EllipsisNatural 5) rankTwoEight)
+          (SuperEllipsisRange (EllipsisNatural 5) levelTwoFormulation)
   expectValue "mixed-rank range access"
-      (MapAccess source mixedRankInsertion) $ \value -> do
-    let valueMap = interpretedMap value
-        selected =
-          map
-            (\position ->
-              interpretedMapValueAt valueMap (finiteOrdinal position)
-                >>= naturalOrdinal)
-            [0 .. 6]
-    assert "range concatenation promotes both ranges to their common rank"
-      (selected == map Just [2 .. 7] <> [Nothing])
+      (MapAccess levelTwoFormulation mixedRankInsertion) $ \value ->
+    assert "cross-rank range concatenation retains insertion capability"
+      (renderInterpretedValue value == "[<SuperEllipsisInsertion>]")
   expectValue
       "empty access"
       (MapAccess

@@ -30,7 +30,6 @@ module Datra.Interpreting
   ) where
 
 import Chain (chainIndex, chainObjectAt, chainOrderType)
-import Control.Monad ((>=>))
 import Data.Bifunctor qualified as Bifunctor
 import Data.Kind (Type)
 import Datra.AST (Expression (..))
@@ -82,7 +81,8 @@ import SuperEllipsisInsertion
 import SuperEllipsisRange qualified as Range
 import SuperEllipsisValue
   ( SuperEllipsisValue
-  , superEllipsisValue
+  , canonicalSuperEllipsisValue
+  , minimumSuperEllipsisValueRank
   , superEllipsisValueOrdinal
   )
 
@@ -210,12 +210,13 @@ interpretExpressionReason
   -> Either InterpretingError InterpretedValue
 interpretExpressionReason expressionValue =
   case expressionValue of
-    EllipsisNatural value -> makeExplicit NaturalOrigin 1 (finiteOrdinal value)
+    EllipsisNatural value -> makeExplicit NaturalOrigin (finiteOrdinal value)
     EllipsisLiteral -> Right (makeFormulation 1)
     AtlasMap expressions -> interpretAtlasMap expressions
     SuperEllipsisRange lower upper -> do
       lowerValue <- interpretExpressionReason lower >>= asExplicit LeftOperand
-      upperValue <- interpretExpressionReason upper >>= asExplicit RightOperand
+      upperValue <-
+        interpretExpressionReason upper >>= asRangeUpperBoundary RightOperand
       makeBoundedRange lowerValue upperValue
     SuperEllipsisRangePlus lower -> do
       lowerValue <- interpretExpressionReason lower >>= asExplicit LeftOperand
@@ -281,7 +282,6 @@ asExplicit side value =
       let level = someSuperEllipsisLevel formulation
       in makeExplicitValue
           ComputedOrigin
-          (level + 1)
           (omegaPower level)
     _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
 
@@ -289,15 +289,25 @@ explicitOrdinal :: EvaluatedExplicit -> (Natural, Ordinal)
 explicitOrdinal (EvaluatedExplicit level _ value) =
   (level, superEllipsisValueOrdinal value)
 
+asRangeUpperBoundary
+  :: OperandSide
+  -> InterpretedValue
+  -> Either InterpretingError (Natural, Ordinal)
+asRangeUpperBoundary side value =
+  case interpretedForm value of
+    ExplicitForm explicitValue -> Right (explicitOrdinal explicitValue)
+    FormulationForm formulation ->
+      let level = someSuperEllipsisLevel formulation
+      in Right (level, omegaPower level)
+    _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
+
 addNumerical
   :: NumericalValue
   -> NumericalValue
   -> Either InterpretingError InterpretedValue
 addNumerical left right =
-  makeExplicit ComputedOrigin resultLevel
+  makeExplicit ComputedOrigin
     (addOrdinals (numericalOrdinal left) (numericalOrdinal right))
-  where
-    resultLevel = max (numericalLevel left) (numericalLevel right)
 
 multiplyNumerical
   :: NumericalValue
@@ -308,14 +318,8 @@ multiplyNumerical
     (FormulationNumericalValue rightLevel) =
   Right (makeFormulation (leftLevel + rightLevel))
 multiplyNumerical left right =
-  makeExplicit ComputedOrigin resultLevel
+  makeExplicit ComputedOrigin
     (multiplyOrdinals (numericalOrdinal left) (numericalOrdinal right))
-  where
-    leftLevel = numericalLevel left
-    rightLevel = numericalLevel right
-    resultLevel
-      | leftLevel == 0 || rightLevel == 0 = 0
-      | otherwise = leftLevel + rightLevel - 1
 
 exponentiateValues
   :: InterpretedValue
@@ -329,10 +333,9 @@ exponentiateValues base exponentValue = do
         (makeFormulation
           (someSuperEllipsisLevel formulation * naturalPower))
     ExplicitForm explicitValue ->
-      let (level, ordinalValue) = explicitOrdinal explicitValue
+      let (_, ordinalValue) = explicitOrdinal explicitValue
       in makeExplicit
           ComputedOrigin
-          level
           (powerOrdinal ordinalValue naturalPower)
     _ ->
       Left
@@ -354,34 +357,28 @@ naturalExponent value =
         _ -> Left (ExpectedNaturalExponent (interpretedValueKind value))
     _ -> Left (ExpectedNaturalExponent (interpretedValueKind value))
 
-numericalLevel :: NumericalValue -> Natural
-numericalLevel (ExplicitNumericalValue level _) = level
-numericalLevel (FormulationNumericalValue level) = level + 1
-
 numericalOrdinal :: NumericalValue -> Ordinal
 numericalOrdinal (ExplicitNumericalValue _ value) = value
 numericalOrdinal (FormulationNumericalValue level) = omegaPower level
 
 makeExplicit
   :: ExplicitOrigin
-  -> Natural
   -> Ordinal
   -> Either InterpretingError InterpretedValue
-makeExplicit origin level ordinalValue = do
-  explicitValue <- makeExplicitValue origin level ordinalValue
+makeExplicit origin ordinalValue = do
+  explicitValue <- makeExplicitValue origin ordinalValue
   pure (explicitInterpretedValue explicitValue)
 
 makeExplicitValue
   :: ExplicitOrigin
-  -> Natural
   -> Ordinal
   -> Either InterpretingError EvaluatedExplicit
-makeExplicitValue origin level ordinalValue =
-  withRank level $ \valueRank ->
-    case superEllipsisValue valueRank ordinalValue $ \value ->
-        EvaluatedExplicit level origin value of
-      Nothing -> Left (NumericalResultOutsideRank level ordinalValue)
-      Just result -> Right result
+makeExplicitValue origin ordinalValue =
+  Right
+    (canonicalSuperEllipsisValue ordinalValue $ \value ->
+      EvaluatedExplicit level origin value)
+  where
+    level = minimumSuperEllipsisValueRank ordinalValue
 
 explicitInterpretedValue :: EvaluatedExplicit -> InterpretedValue
 explicitInterpretedValue explicitValue = value
@@ -407,7 +404,7 @@ makeFormulation level = value
         (\position -> do
           absolute <- runtimeInsertionPositionAt insertion position
           either (const Nothing) Just
-            (makeExplicit ComputedOrigin level absolute))
+            (makeExplicit ComputedOrigin absolute))
     value =
       InterpretedValue
         (FormulationForm formulation)
@@ -418,11 +415,10 @@ makeFormulation level = value
 
 makeBoundedRange
   :: EvaluatedExplicit
-  -> EvaluatedExplicit
+  -> (Natural, Ordinal)
   -> Either InterpretingError InterpretedValue
-makeBoundedRange lower upper =
+makeBoundedRange lower (upperLevel, upperOrdinal) =
   let (lowerLevel, lowerOrdinal) = explicitOrdinal lower
-      (upperLevel, upperOrdinal) = explicitOrdinal upper
       resultLevel = max lowerLevel upperLevel
   in makeRangeAt
       resultLevel
@@ -520,7 +516,6 @@ mapFromInsertion insertion components =
         either (const Nothing) Just
           (makeExplicit
             ComputedOrigin
-            (runtimeInsertionRank insertion)
             absolute)))
     (if isEmpty then [] else components)
   where
@@ -568,9 +563,7 @@ concatenateValues
   -> Either InterpretingError InterpretedValue
 concatenateValues left right = do
   normalizedRanges <-
-    traverse
-      (promoteRangesToCommonRank >=> canonicalizeRanges)
-      (concatenatedRanges left right)
+    traverse canonicalizeRanges (concatenatedRanges left right)
   insertionCapability <-
     case normalizedRanges of
       Nothing -> Right NoInsertion
@@ -643,26 +636,6 @@ valueRanges value =
     RangeConcatenationForm ranges -> Just ranges
     _ -> Nothing
 
-promoteRangesToCommonRank
-  :: [EvaluatedRange]
-  -> Either InterpretingError [EvaluatedRange]
-promoteRangesToCommonRank [] = Right []
-promoteRangesToCommonRank ranges =
-  traverse (promoteRange resultLevel) ranges
-  where
-    resultLevel = maximum [level | EvaluatedRange level _ <- ranges]
-
-promoteRange
-  :: Natural
-  -> EvaluatedRange
-  -> Either InterpretingError EvaluatedRange
-promoteRange level evaluatedRange =
-  let description = rangeDescription evaluatedRange
-  in makeEvaluatedRangeAt
-      level
-      (Range.describedRangeStart description)
-      (Range.describedRangeTarget description)
-
 canonicalizeRanges
   :: [EvaluatedRange]
   -> Either InterpretingError [EvaluatedRange]
@@ -679,11 +652,23 @@ canonicalizeRanges (firstRange : rest) = go [firstRange] rest
             Range.RangeConcatCanonical description -> do
               merged <-
                 makeEvaluatedRangeAt
-                  (evaluatedRangeLevel previousRange)
+                  (canonicalRangeLevel
+                    previousRange nextRange description)
                   (Range.describedRangeStart description)
                   (Range.describedRangeTarget description)
               go (reverse reversedPrefix <> [merged]) remaining
             _ -> go (canonical <> [nextRange]) remaining
+
+canonicalRangeLevel
+  :: EvaluatedRange
+  -> EvaluatedRange
+  -> Range.SuperEllipsisRangeDescription
+  -> Natural
+canonicalRangeLevel previousRange nextRange description
+  | Range.describedRangeRankLimit description
+      == Range.describedRangeRankLimit (rangeDescription previousRange) =
+      evaluatedRangeLevel previousRange
+  | otherwise = evaluatedRangeLevel nextRange
 
 concatenateRangeCapability
   :: [EvaluatedRange]
@@ -729,7 +714,7 @@ analyzeRangePair firstRange secondRange =
 appendInsertion :: RuntimeInsertion -> RuntimeInsertion -> RuntimeInsertion
 appendInsertion left right =
   RuntimeInsertion
-    (runtimeInsertionRank left)
+    (max (runtimeInsertionRank left) (runtimeInsertionRank right))
     combinedOrderType
     positionAt
   where

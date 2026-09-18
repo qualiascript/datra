@@ -360,17 +360,27 @@ testSuperEllipsisRange = asciiMap $ \ascii -> do
     of
       Nothing -> fail "valid transfinite rank-two range was rejected"
       Just checks -> checks
-  case join (superEllipsisValue rankTwo (finiteOrdinal 65) $ \origin ->
-      join (superEllipsisValue rankTwo (finiteOrdinal 68) $ \target ->
-        (origin <..> target) $ \valueRange ->
-          case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
-            Nothing -> False
-            Just selected ->
-              orderedAtlasMapCardinality selected == finiteOrdinal 3))
-    of
-      Nothing -> fail "valid finite rank-two range was rejected"
-      Just fits ->
-        assert "access accepts a higher-rank insertion that fits the map" fits
+  assert "finite values cannot be constructed above their minimal rank"
+    (case superEllipsisValue rankTwo (finiteOrdinal 65) (const ()) of
+      Nothing -> True
+      Just () -> False)
+  assert "canonical value construction chooses the minimal rank"
+    (canonicalSuperEllipsisValue (finiteOrdinal 65) $ \value ->
+      superEllipsisRankLevel
+        (SuperRange.superEllipsisRangeRank
+          (superEllipsisValueRange value)) == 1)
+  case SuperRange.superEllipsisRangeEither
+      rankTwo
+      (finiteOrdinal 65)
+      (SuperRange.GivenTarget (finiteOrdinal 68)) $ \valueRange ->
+        case ascii <@> SuperRange.superEllipsisRangeInsertion valueRange of
+          Nothing -> False
+          Just selected ->
+            orderedAtlasMapCardinality selected == finiteOrdinal 3 of
+    Left rejection ->
+      fail ("valid finite rank-two range was rejected: " <> show rejection)
+    Right fits ->
+      assert "ranges may still select finite positions in a higher rank" fits
   let omegaTimesTwo = ordinal [2, 0]
       atFiniteTail finiteTail =
         addOrdinals omegaTimesTwo (finiteOrdinal finiteTail)
@@ -1320,6 +1330,27 @@ testRankOneRangeAnalysis = do
         (SuperRange.analyzeSuperEllipsisRangeConcat first second
           == SuperRange.RangeConcatCanonical expected)
 
+  let omegaSquared = ordinal [1, 0, 0]
+      finitePrefix =
+        SuperRange.SuperEllipsisRangeDescription
+          omega
+          (finiteOrdinal 2)
+          (SuperRange.GivenTarget (finiteOrdinal 5))
+      transfiniteSuffix =
+        SuperRange.SuperEllipsisRangeDescription
+          omegaSquared
+          (finiteOrdinal 5)
+          (SuperRange.GivenTarget omegaSquared)
+      widenedRange =
+        SuperRange.SuperEllipsisRangeDescription
+          omegaSquared
+          (finiteOrdinal 2)
+          (SuperRange.GivenTarget omegaSquared)
+  assert "contiguous descriptions canonicalize across range ranks"
+    (SuperRange.analyzeSuperEllipsisRangeDescriptions
+      finitePrefix transfiniteSuffix
+      == SuperRange.RangeConcatCanonical widenedRange)
+
   withRankOneRange 5 (Just 3) $ \first ->
     withRankOneRange 3 (Just 4) $ \second ->
       assert "ranges with different directions do not canonicalize"
@@ -1627,28 +1658,24 @@ testTypingAbstractions = do
 
 testGenericOrdinalOperators :: IO ()
 testGenericOrdinalOperators = do
-  let rankThree =
-        nextSuperEllipsisRank (nextSuperEllipsisRank rankOneRank)
+  let rankTwo = nextSuperEllipsisRank rankOneRank
       omegaPlusOne = addOrdinals omega (finiteOrdinal 1)
       operatorResults =
-        superEllipsisValue rankThree omegaPlusOne $ \left ->
-          superEllipsisValue rankThree omega $ \right ->
-            DatraNatural.ellipsisNatural 2 $ \two ->
-              ( (Numeric.+) left right superEllipsisValueOrdinal
-              , (Numeric.+) right left superEllipsisValueOrdinal
-              , (Numeric.*) left right superEllipsisValueOrdinal
-              , (Numeric.*) right left superEllipsisValueOrdinal
-              , (Numeric.^) left two superEllipsisValueOrdinal
-              )
+        superEllipsisValue rankTwo omegaPlusOne $ \left ->
+          superEllipsisValue rankTwo omega $ \right ->
+            ( (Numeric.+) left right superEllipsisValueOrdinal
+            , (Numeric.+) right left superEllipsisValueOrdinal
+            , (Numeric.*) left right superEllipsisValueOrdinal
+            , (Numeric.*) right left superEllipsisValueOrdinal
+            )
   case operatorResults of
-    Just (Just (Just actual)) ->
+    Just (Just actual) ->
       assert "higher-rank numerical operators use ordered ordinal arithmetic"
         ( actual
           == ( Just (ordinal [2, 0])
              , Just (ordinal [2, 1])
              , Just (ordinal [1, 0, 0])
              , Just (ordinal [1, 1, 0])
-             , Just (ordinal [1, 1, 1])
              )
         )
     _ -> fail "higher-rank ordinal operator setup was rejected"
@@ -1710,17 +1737,15 @@ testStableDatumNumericalOperands = do
       assert "Ellipsis to zero returns Dot"
         (result == 0)
     _ -> fail "Ellipsis to zero was rejected"
-  let rankThree =
-        nextSuperEllipsisRank (nextSuperEllipsisRank rankOneRank)
+  let rankTwo = nextSuperEllipsisRank rankOneRank
       explicitOmegaSquared =
-        superEllipsisValue rankThree omega $ \omegaValue ->
+        superEllipsisValue rankTwo omega $ \omegaValue ->
           DatraNatural.ellipsisNatural 2 $ \two ->
             (Numeric.^) omegaValue two superEllipsisValueOrdinal
   case explicitOmegaSquared of
-    Just (Just (Just result)) ->
-      assert "an explicit omega base returns an explicit omega-squared value"
-        (result == omegaSquared)
-    _ -> fail "explicit omega exponentiation was rejected"
+    Just (Just Nothing) -> pure ()
+    _ ->
+      fail "rank-specific exponentiation constructed a non-minimal value"
 
 assertNumericalOperator
   :: String

@@ -33,8 +33,15 @@ module SuperEllipsis
   , SuperEllipsisTargetLevel
   , superEllipsisTargetRank
   , superEllipsisTargetLevelNatural
+  , MinimalSuperEllipsisOrdinal
+  , withMinimalSuperEllipsisOrdinal
+  , minimalSuperEllipsisOrdinalRank
+  , minimalSuperEllipsisOrdinalValue
+  , minimumSuperEllipsisValueRank
+  , withSuperEllipsisRank
   , dotSuperEllipsisRank
   , nextSuperEllipsisRank
+  , superEllipsisRankLevel
   , superEllipsisRankOrderType
   , SuperEllipsisTerminal
   , superEllipsisTerminal
@@ -70,9 +77,11 @@ import DatraOrdinal
   , finiteOrdinal
   , naturalRankOfOrdinal
   , omegaPower
+  , ordinalCoefficients
   , ordinalAtNaturalRank
   , ordinalLT
   )
+import Data.Kind (Type)
 import Dominion (Dominion, dominion)
 import Dot (Dot)
 import FixedPoint
@@ -182,6 +191,61 @@ nextSuperEllipsisRank
   -> SuperEllipsisRank (SuperEllipsis target)
 nextSuperEllipsisRank (SuperEllipsisRank value) =
   SuperEllipsisRank (value + 1)
+
+superEllipsisRankLevel :: SuperEllipsisRank target -> Natural
+superEllipsisRankLevel (SuperEllipsisRank value) = value
+
+-- | Select a rank existentially from its runtime level. Clients receive both
+-- the rank witness and its corresponding target constraint, without being
+-- able to forge a mismatched target type.
+withSuperEllipsisRank
+  :: Natural
+  -> (forall (target :: Type).
+        SuperEllipsisTarget target
+        => SuperEllipsisRank target
+        -> result)
+  -> result
+withSuperEllipsisRank 0 useRank = useRank dotSuperEllipsisRank
+withSuperEllipsisRank level useRank =
+  withSuperEllipsisRank (level - 1) $ \predecessorRank ->
+    useRank (nextSuperEllipsisRank predecessorRank)
+
+-- | Evidence that an ordinal is paired with its unique minimal value rank.
+-- The constructor is hidden so clients cannot attach an unnecessarily large
+-- carrier to a value.
+data MinimalSuperEllipsisOrdinal target = MinimalSuperEllipsisOrdinal
+  (SuperEllipsisRank target)
+  Ordinal
+
+-- | Naturals, including zero, occupy rank one. A transfinite ordinal occupies
+-- exactly one rank above its highest nonzero omega exponent.
+minimumSuperEllipsisValueRank :: Ordinal -> Natural
+minimumSuperEllipsisValueRank value =
+  fromIntegral (max 1 (length (ordinalCoefficients value)))
+
+-- | Select the unique minimal rank for an ordinal and expose the pairing
+-- existentially. The opaque evidence cannot be forged by clients.
+withMinimalSuperEllipsisOrdinal
+  :: Ordinal
+  -> (forall (target :: Type).
+        SuperEllipsisTarget target
+        => MinimalSuperEllipsisOrdinal target
+        -> result)
+  -> result
+withMinimalSuperEllipsisOrdinal value useValue =
+  withSuperEllipsisRank (minimumSuperEllipsisValueRank value) $ \valueRank ->
+    useValue (MinimalSuperEllipsisOrdinal valueRank value)
+
+minimalSuperEllipsisOrdinalRank
+  :: MinimalSuperEllipsisOrdinal target
+  -> SuperEllipsisRank target
+minimalSuperEllipsisOrdinalRank (MinimalSuperEllipsisOrdinal valueRank _) =
+  valueRank
+
+minimalSuperEllipsisOrdinalValue
+  :: MinimalSuperEllipsisOrdinal target
+  -> Ordinal
+minimalSuperEllipsisOrdinalValue (MinimalSuperEllipsisOrdinal _ value) = value
 
 -- | The ordinal order type represented at a rank: one at rank zero and
 -- @omega^n@ at every positive finite rank.

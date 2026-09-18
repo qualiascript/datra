@@ -60,7 +60,7 @@ localizeInterpretingError reason =
         ["actual value kind: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
-        "exponent must be an Ellipsis-natural value"
+        "exponent must be a natural value"
         ["actual value kind: " <> valueKind actual]
     ExpectedInsertionOperand actual ->
       LocalizedMessage
@@ -70,12 +70,6 @@ localizeInterpretingError reason =
       localizeSuperEllipsisRangeError rejection
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
-    NumericalResultOutsideRank level value ->
-      LocalizedMessage
-        "numerical result does not fit its inferred super-ellipsis rank"
-        [ "inferred rank: " <> show level
-        , "result: " <> englishOrdinal value
-        ]
     AccessRejected rejection -> localizeAccessError rejection
 
 operandSide :: OperandSide -> String

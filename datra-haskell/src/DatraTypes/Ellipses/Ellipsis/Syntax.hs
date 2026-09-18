@@ -16,12 +16,12 @@ module Ellipsis.Syntax
 import Dot (dot)
 import Ellipsis (Ellipsis)
 import NumericalOperators.NumericalOperand
-  ( BinaryNumericalLevel
-  , BinaryNumericalTarget
-  , KnownSuperEllipsisLevel
+  ( KnownSuperEllipsisLevel
   , NumericalOperand
   , NumericalOperandLevel
   , NumericalOperandTarget
+  , RangeNumericalLevel
+  , RangeNumericalTarget
   , knownSuperEllipsisRank
   , numericalOperandOrdinal
   )
@@ -41,22 +41,23 @@ infixl 5 ..+, ..-
 (...) = superEllipsis dot
 
 -- | Construct a lower-inclusive, upper-exclusive range at the least rank
--- containing both explicit endpoint values.
+-- containing its lower value and upper boundary. A formulation on the right
+-- denotes the boundary of its own rank rather than a value in the next rank.
 (<..>)
   :: forall left right result.
      ( NumericalOperand left
      , NumericalOperand right
-     , KnownSuperEllipsisLevel (BinaryNumericalLevel left right)
+     , KnownSuperEllipsisLevel (RangeNumericalLevel left right)
      )
   => left
   -> right
   -> (forall scope.
-        SuperEllipsisRange (BinaryNumericalTarget left right) scope
+        SuperEllipsisRange (RangeNumericalTarget left right) scope
         -> result)
   -> Maybe result
 left <..> right = \useRange -> do
   superEllipsisRange
-    (knownSuperEllipsisRank @(BinaryNumericalLevel left right))
+    (knownSuperEllipsisRank @(RangeNumericalLevel left right))
     (numericalOperandOrdinal left)
     (GivenTarget (numericalOperandOrdinal right))
     useRange

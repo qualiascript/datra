@@ -19,6 +19,8 @@ module NumericalOperators.NumericalOperand
   , NumericalOperandTarget
   , BinaryNumericalLevel
   , BinaryNumericalTarget
+  , RangeNumericalLevel
+  , RangeNumericalTarget
   , NumericalResult
   , MultiplicationNumericalLevel
   , MultiplicationNumericalTarget
@@ -125,6 +127,27 @@ type BinaryNumericalLevel left right =
 
 type BinaryNumericalTarget left right =
   SuperEllipsisAt (BinaryNumericalLevel left right)
+
+type family RangeUpperNumericalLevelFor
+    (form :: NumericalForm)
+    operand where
+  RangeUpperNumericalLevelFor 'ExplicitNumerical operand =
+    NumericalOperandLevel operand
+  RangeUpperNumericalLevelFor 'FormulationNumerical operand =
+    PreviousSuperEllipsisLevel (NumericalOperandLevel operand)
+
+-- | A bounded range treats a formulation on its right as an upper boundary,
+-- not as an explicit value one rank higher. Thus @5..(...^2)@ naturally has
+-- rank two and ends at that rank's limit.
+type RangeNumericalLevel left right =
+  MaximumSuperEllipsisLevel
+    (NumericalOperandLevel left)
+    (RangeUpperNumericalLevelFor
+      (NumericalOperandForm right)
+      right)
+
+type RangeNumericalTarget left right =
+  SuperEllipsisAt (RangeNumericalLevel left right)
 
 type NumericalResult left right =
   SuperEllipsisValue (BinaryNumericalTarget left right)

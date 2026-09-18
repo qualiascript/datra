@@ -29,7 +29,7 @@ renderInterpretedValue = renderCanonicalResult . interpretedCanonicalResult
 renderCanonicalResult :: CanonicalResult -> String
 renderCanonicalResult result =
   case result of
-    CanonicalExplicit level value -> renderExplicit level value
+    CanonicalExplicit _ value -> renderExplicit value
     CanonicalFormulation level -> renderFormulation level
     CanonicalRange description -> renderRange description
     CanonicalRangeConcatenation descriptions ->
@@ -51,21 +51,14 @@ renderRange :: SuperEllipsisRangeDescription -> String
 renderRange description =
   case describedRangeTarget description of
     GivenTarget target ->
-      boundedStartText target
+      startText
         <> ".."
-        <> rangeEndpoint (renderExplicitMinimal target)
-    PlusSign -> rankPreservingStartText <> ".."
-    MinusSign -> rankPreservingStartText <> "..-"
+        <> rangeEndpoint (renderRangeBoundary target)
+    PlusSign -> startText <> ".."
+    MinusSign -> startText <> "..-"
   where
-    level = rankLevel (describedRangeRankLimit description)
     start = describedRangeStart description
-    rankPreservingStartText =
-      rangeEndpoint
-        (renderExplicit level start)
-    boundedStartText target
-      | max (ordinalMinimumLevel start) (ordinalMinimumLevel target) >= level =
-          rangeEndpoint (renderExplicitMinimal start)
-      | otherwise = rankPreservingStartText
+    startText = rangeEndpoint (renderExplicit start)
 
 rangeEndpoint :: String -> String
 rangeEndpoint value
@@ -77,22 +70,19 @@ renderFormulation 0 = "...^0"
 renderFormulation 1 = "..."
 renderFormulation level = "...^" <> show level
 
-renderExplicit :: Natural -> Ordinal -> String
-renderExplicit level value
-  | level <= minimalLevel = renderedValue
-  | otherwise = renderRankWitness level value renderedValue
-  where
-    minimalLevel = ordinalMinimumLevel value
-    renderedValue = renderExplicitMinimal value
+renderExplicit :: Ordinal -> String
+renderExplicit = renderExplicitMinimal
 
--- Multiplication by zero is a rank witness, not numerical simplification.
--- It is emitted only when an ordinal has been promoted above the least rank
--- capable of containing it, because otherwise reparsing would lose that rank.
-renderRankWitness :: Natural -> Ordinal -> String -> String
-renderRankWitness level value renderedValue =
-  renderFormulation (level - 1)
-    <> " * 0"
-    <> if isZero value then "" else " + " <> renderedValue
+-- At an upper range boundary, a pure omega power is most naturally written
+-- as the corresponding formulation. The boundary may equal the rank limit,
+-- so this does not manufacture a value in the following rank.
+renderRangeBoundary :: Ordinal -> String
+renderRangeBoundary value =
+  case ordinalCoefficients value of
+    1 : remaining
+      | not (null remaining) && all (== 0) remaining ->
+          renderFormulation (fromIntegral (length remaining))
+    _ -> renderExplicitMinimal value
 
 -- A transfinite ordinal with no finite tail receives an explicit @+ 0@.
 -- This distinguishes the value omega from the Ellipsis formulation, and the
@@ -123,14 +113,6 @@ renderOrdinal value =
     renderTerm power 1 = "...^" <> show power
     renderTerm power coefficient =
       "...^" <> show power <> " * " <> show coefficient
-
-rankLevel :: Ordinal -> Natural
-rankLevel rankLimit =
-  fromIntegral (max 0 (length (ordinalCoefficients rankLimit) - 1))
-
-ordinalMinimumLevel :: Ordinal -> Natural
-ordinalMinimumLevel value =
-  fromIntegral (max 1 (length (ordinalCoefficients value)))
 
 isZero :: Ordinal -> Bool
 isZero = null . ordinalCoefficients
