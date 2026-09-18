@@ -1,9 +1,19 @@
 module Datra.AST
   ( Expression (..)
+  , OperatorExpression (..)
+  , toOperatorExpression
   , renderExpression
+  , renderOperatorExpression
   ) where
 
 import Data.List (intercalate)
+import Datra.AST.Operator
+  ( Associativity (..)
+  , Operator (..)
+  , ellipsisSymbol
+  , operatorCanonicalSymbol
+  , operatorFixity
+  )
 import Numeric.Natural (Natural)
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
@@ -12,6 +22,8 @@ data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
   | AtlasMap [Expression]
+  | MapSequence [Expression]
+  | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
   | SuperEllipsisRangePlus Expression
   | SuperEllipsisRangeMinus Expression
@@ -22,10 +34,11 @@ data Expression
   | MapAccess Expression Expression
   deriving (Eq, Show)
 
--- | Lower map notation and render the unevaluated AST using the operators
--- exported by the Datra libraries.
+-- | Lower map notation and render the unevaluated AST using canonical AST
+-- operator notation.
 renderExpression :: Expression -> String
-renderExpression = renderOperator TopLevel . lower . normalizeExpression
+renderExpression =
+  renderOperatorExpression . toOperatorExpression . normalizeExpression
 
 data OperatorExpression
   = NaturalValue Natural
@@ -41,6 +54,13 @@ data OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
+  deriving (Eq, Show)
+
+toOperatorExpression :: Expression -> OperatorExpression
+toOperatorExpression = lower
+
+renderOperatorExpression :: OperatorExpression -> String
+renderOperatorExpression = renderOperator TopLevel
 
 normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
@@ -48,6 +68,11 @@ normalizeExpression EllipsisLiteral = EllipsisLiteral
 normalizeExpression (AtlasMap expressions) =
   AtlasMap
     (filter (not . isEmptyMap) (map normalizeExpression expressions))
+normalizeExpression (MapSequence expressions) =
+  MapSequence
+    (filter (not . isEmptyMap) (map normalizeExpression expressions))
+normalizeExpression (MapExpansion left right) =
+  MapExpansion (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (SuperEllipsisRange lowerBound upperBound) =
   SuperEllipsisRange
     (normalizeExpression lowerBound)
@@ -69,6 +94,7 @@ normalizeExpression (MapAccess left right) =
 
 isEmptyMap :: Expression -> Bool
 isEmptyMap (AtlasMap []) = True
+isEmptyMap (MapSequence []) = True
 isEmptyMap _ = False
 
 lower :: Expression -> OperatorExpression
@@ -77,6 +103,8 @@ lower EllipsisLiteral = EllipsisValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
+lower (MapSequence expressions) = Sequential (map lower expressions)
+lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
   Range (lower lowerBound) (lower upperBound)
 lower (SuperEllipsisRangePlus lowerBound) = RangePlus (lower lowerBound)
@@ -118,26 +146,12 @@ combineExpansions [expressionValue] = expressionValue
 combineExpansions (firstExpression : rest) =
   Expansion firstExpression (combineExpansions rest)
 
-data Associativity = AssociateLeft | AssociateRight | AssociateNone
-  deriving (Eq)
-
-data OperatorKind
-  = SequentialOperator
-  | ExpansionOperator
-  | RangeOperator
-  | RangePostfixOperator
-  | AdditionOperator
-  | MultiplicationOperator
-  | ExponentiationOperator
-  | ConcatenationOperator
-  | AccessOperator
-
 data OperandSide = LeftOperand | RightOperand
   deriving (Eq)
 
 data RenderContext
   = TopLevel
-  | OperatorOperand OperatorKind OperandSide
+  | OperatorOperand Operator OperandSide
 
 renderOperator :: RenderContext -> OperatorExpression -> String
 renderOperator context expressionValue =
@@ -146,56 +160,54 @@ renderOperator context expressionValue =
 
 renderWithoutParentheses :: OperatorExpression -> String
 renderWithoutParentheses (NaturalValue value) = show value
-renderWithoutParentheses EllipsisValue = "..."
+renderWithoutParentheses EllipsisValue = ellipsisSymbol
 renderWithoutParentheses EmptyMap = "[]"
 renderWithoutParentheses (Sequential expressions) =
-  renderRightAssociativeChain SequentialOperator " <:> " expressions
+  renderRightAssociativeChain SequentialOperator expressions
 renderWithoutParentheses (Expansion left right) =
-  renderBinary ExpansionOperator " <+> " left right
+  renderBinary ExpansionOperator left right
 renderWithoutParentheses (Range lowerBound upperBound) =
-  renderBinary RangeOperator " <..> " lowerBound upperBound
+  renderBinary RangeOperator lowerBound upperBound
 renderWithoutParentheses (RangePlus lowerBound) =
   renderOperator
-    (OperatorOperand RangePostfixOperator LeftOperand)
+    (OperatorOperand RangePlusOperator LeftOperand)
     lowerBound
-    <> " ..+"
+    <> " " <> operatorCanonicalSymbol RangePlusOperator
 renderWithoutParentheses (RangeMinus upperBound) =
   renderOperator
-    (OperatorOperand RangePostfixOperator LeftOperand)
+    (OperatorOperand RangeMinusOperator LeftOperand)
     upperBound
-    <> " ..-"
+    <> " " <> operatorCanonicalSymbol RangeMinusOperator
 renderWithoutParentheses (Add left right) =
-  renderBinary AdditionOperator " + " left right
+  renderBinary AdditionOperator left right
 renderWithoutParentheses (Multiply left right) =
-  renderBinary MultiplicationOperator " * " left right
+  renderBinary MultiplicationOperator left right
 renderWithoutParentheses (Power left right) =
-  renderBinary ExponentiationOperator " ^ " left right
+  renderBinary ExponentiationOperator left right
 renderWithoutParentheses (Concatenate left right) =
-  renderBinary ConcatenationOperator " <.> " left right
+  renderBinary ConcatenationOperator left right
 renderWithoutParentheses (Access left right) =
-  renderBinary AccessOperator " <@> " left right
+  renderBinary AccessOperator left right
 
 renderBinary
-  :: OperatorKind
-  -> String
+  :: Operator
   -> OperatorExpression
   -> OperatorExpression
   -> String
-renderBinary operator symbolText left right =
+renderBinary operator left right =
   renderOperator (OperatorOperand operator LeftOperand) left
-    <> symbolText
+    <> " " <> operatorCanonicalSymbol operator <> " "
     <> renderOperator (OperatorOperand operator RightOperand) right
 
 renderRightAssociativeChain
-  :: OperatorKind
-  -> String
+  :: Operator
   -> [OperatorExpression]
   -> String
-renderRightAssociativeChain _ _ [] = "[]"
-renderRightAssociativeChain _ _ [expressionValue] =
+renderRightAssociativeChain _ [] = "[]"
+renderRightAssociativeChain _ [expressionValue] =
   renderOperator TopLevel expressionValue
-renderRightAssociativeChain operator symbolText expressions =
-  intercalate symbolText
+renderRightAssociativeChain operator expressions =
+  intercalate (" " <> operatorCanonicalSymbol operator <> " ")
     ( map
         (renderOperator (OperatorOperand operator LeftOperand))
         (init expressions)
@@ -225,31 +237,20 @@ requiresParentheses (OperatorOperand parent side) child =
                   AssociateRight -> side == LeftOperand
                   AssociateNone -> True
 
-operatorKind :: OperatorExpression -> Maybe OperatorKind
+operatorKind :: OperatorExpression -> Maybe Operator
 operatorKind (NaturalValue _) = Nothing
 operatorKind EllipsisValue = Nothing
 operatorKind EmptyMap = Nothing
 operatorKind (Sequential _) = Just SequentialOperator
 operatorKind (Expansion _ _) = Just ExpansionOperator
 operatorKind (Range _ _) = Just RangeOperator
-operatorKind (RangePlus _) = Just RangePostfixOperator
-operatorKind (RangeMinus _) = Just RangePostfixOperator
+operatorKind (RangePlus _) = Just RangePlusOperator
+operatorKind (RangeMinus _) = Just RangeMinusOperator
 operatorKind (Add _ _) = Just AdditionOperator
 operatorKind (Multiply _ _) = Just MultiplicationOperator
 operatorKind (Power _ _) = Just ExponentiationOperator
 operatorKind (Concatenate _ _) = Just ConcatenationOperator
 operatorKind (Access _ _) = Just AccessOperator
-
-operatorFixity :: OperatorKind -> (Int, Associativity)
-operatorFixity SequentialOperator = (7, AssociateRight)
-operatorFixity ExpansionOperator = (6, AssociateNone)
-operatorFixity RangeOperator = (5, AssociateNone)
-operatorFixity RangePostfixOperator = (5, AssociateLeft)
-operatorFixity AdditionOperator = (6, AssociateLeft)
-operatorFixity MultiplicationOperator = (7, AssociateLeft)
-operatorFixity ExponentiationOperator = (8, AssociateRight)
-operatorFixity ConcatenationOperator = (7, AssociateRight)
-operatorFixity AccessOperator = (8, AssociateLeft)
 
 parenthesizeWhen :: Bool -> String -> String
 parenthesizeWhen True value = "(" <> value <> ")"

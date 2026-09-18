@@ -1,9 +1,23 @@
+{-# LANGUAGE PostfixOperators #-}
+
 module DatraParsingTests (main) where
 
 import Datra.AST
   ( Expression (..)
   , renderExpression
   )
+import Datra.AST.Syntax
+  ( natural
+  , (...)
+  , (<:>)
+  , (<+>)
+  , (<..>)
+  , (..+)
+  , (..-)
+  , (<.>)
+  , (<@>)
+  )
+import Datra.AST.Syntax qualified as AST
 import Datra.Parsing (parseDatra, parseDatraLocated)
 import Diagnostics
   ( Located (Located)
@@ -14,6 +28,7 @@ import Diagnostics
 main :: IO ()
 main = do
   assertLocatedParse
+  assertAstSyntax
   assertAstOutput
     "flat map"
     "[1; 2; 10]"
@@ -90,8 +105,8 @@ main = do
     "a trailing comma concatenates an empty map"
     "[1,]"
     (AtlasMap
-      [ MapConcatenation
-          (EllipsisNatural 1)
+      [ (<.>)
+          (natural 1)
           (AtlasMap [])
       ])
   assertAstOutput
@@ -114,9 +129,9 @@ main = do
     "a trailing comma is removed from an existing concatenation"
     "[1, 2,]"
     (AtlasMap
-      [ MapConcatenation
-          (EllipsisNatural 1)
-          (EllipsisNatural 2)
+      [ (<.>)
+          (natural 1)
+          (natural 2)
       ])
   assertAstOutput
     "an existing concatenation does not gain an empty map"
@@ -214,35 +229,35 @@ main = do
     "exponentiation associates right"
     "[2 ^ 3 ^ 4]"
     (AtlasMap
-      [ Exponentiation
-          (EllipsisNatural 2)
-          (Exponentiation (EllipsisNatural 3) (EllipsisNatural 4))
+      [ (AST.^)
+          (natural 2)
+          ((AST.^) (natural 3) (natural 4))
       ])
   assertParsed
     "addition associates left"
     "[1 + 2 + 3]"
     (AtlasMap
-      [ Addition
-          (Addition (EllipsisNatural 1) (EllipsisNatural 2))
-          (EllipsisNatural 3)
+      [ (AST.+)
+          ((AST.+) (natural 1) (natural 2))
+          (natural 3)
       ])
   assertParsed
     "access associates left"
     "[... @ 1 @ 2]"
     (AtlasMap
-      [ MapAccess
-          (MapAccess EllipsisLiteral (EllipsisNatural 1))
-          (EllipsisNatural 2)
+      [ (<@>)
+          ((<@>) (...) (natural 1))
+          (natural 2)
       ])
   assertParsed
     "map is itself an expression"
     "[([1; 2], [3; 4]) @ 0]"
     (AtlasMap
-      [ MapAccess
-          (MapConcatenation
-            (AtlasMap [EllipsisNatural 1, EllipsisNatural 2])
-            (AtlasMap [EllipsisNatural 3, EllipsisNatural 4]))
-          (EllipsisNatural 0)
+      [ (<@>)
+          ((<.>)
+            (AtlasMap [natural 1, natural 2])
+            (AtlasMap [natural 3, natural 4]))
+          (natural 0)
       ])
   assertAstOutput
     "a single unbracketed expression becomes a singleton map"
@@ -270,7 +285,7 @@ main = do
     "a parenthesized Ellipsis can be a postfix range argument"
     "[(...)..]"
     (AtlasMap
-      [SuperEllipsisRangePlus EllipsisLiteral])
+      [(..+) (...)])
   assertAstOutput
     "a parenthesized Ellipsis can be a prefix range argument"
     "[..(...)]"
@@ -321,6 +336,21 @@ assertLocatedParse =
         )
     Right actual ->
       fail ("located parse returned an unexpected value: " <> show actual)
+
+assertAstSyntax :: IO ()
+assertAstSyntax = do
+  assert "sequential and expansion symbols construct canonical AST nodes"
+    ( renderExpression
+        ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
+        == "1 <:> 2 <+> 3 <:> 4"
+    )
+  assert "range, arithmetic, concatenation, and access symbols construct ASTs"
+    ( renderExpression
+        ( ((natural 1 AST.+ natural 2 AST.* natural 3) <..> (...))
+            <.> ((natural 4 ..+) <@> (natural 5 ..-))
+        )
+        == "(1 + 2 * 3 <..> ...) <.> (4 ..+) <@> (5 ..-)"
+    )
 
 assertAstOutput :: String -> String -> String -> IO ()
 assertAstOutput label source expected =

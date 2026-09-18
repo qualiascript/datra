@@ -1,20 +1,16 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE PostfixOperators #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- | Symbolic syntax for Ellipsis and super-ellipsis ranges.
-module Syntax.EllipsisSyntax
-  ( (...)
-  , (<..>)
-  , (..+)
-  , (..-)
+-- | Rank-inferred construction of ranges from numerical operands.
+module NumericalOperators.Range
+  ( boundedSuperEllipsisRange
+  , openPlusSuperEllipsisRange
+  , openMinusSuperEllipsisRange
   ) where
 
-import Dot (dot)
-import Ellipsis (Ellipsis)
 import NumericalOperators.NumericalOperand
   ( KnownSuperEllipsisLevel
   , NumericalOperand
@@ -25,25 +21,16 @@ import NumericalOperators.NumericalOperand
   , knownSuperEllipsisRank
   , numericalOperandOrdinal
   )
-import StableConfederalData (StableConfederalData)
-import SuperEllipsis (superEllipsis)
 import SuperEllipsisRange
   ( SuperEllipsisRange
-  , SuperEllipsisRangeTarget (MinusSign, PlusSign, GivenTarget)
+  , SuperEllipsisRangeTarget (GivenTarget, MinusSign, PlusSign)
   , superEllipsisRange
   )
-
-infix 5 <..>
-infixl 5 ..+, ..-
-
--- | The rank-one Ellipsis formulation.
-(...) :: StableConfederalData Ellipsis
-(...) = superEllipsis dot
 
 -- | Construct a lower-inclusive, upper-exclusive range at the least rank
 -- containing its lower value and upper boundary. A formulation on the right
 -- denotes the boundary of its own rank rather than a value in the next rank.
-(<..>)
+boundedSuperEllipsisRange
   :: forall left right result.
      ( NumericalOperand left
      , NumericalOperand right
@@ -55,7 +42,7 @@ infixl 5 ..+, ..-
         SuperEllipsisRange (RangeNumericalTarget left right) scope
         -> result)
   -> Maybe result
-left <..> right = \useRange -> do
+boundedSuperEllipsisRange left right useRange =
   superEllipsisRange
     (knownSuperEllipsisRank @(RangeNumericalLevel left right))
     (numericalOperandOrdinal left)
@@ -63,7 +50,7 @@ left <..> right = \useRange -> do
     useRange
 
 -- | Construct a range from an explicit origin through the rest of its rank.
-(..+)
+openPlusSuperEllipsisRange
   :: forall origin result.
      ( NumericalOperand origin
      , KnownSuperEllipsisLevel (NumericalOperandLevel origin)
@@ -73,7 +60,7 @@ left <..> right = \useRange -> do
         SuperEllipsisRange (NumericalOperandTarget origin) scope
         -> result)
   -> Maybe result
-(..+) origin useRange = do
+openPlusSuperEllipsisRange origin useRange =
   superEllipsisRange
     (knownSuperEllipsisRank @(NumericalOperandLevel origin))
     (numericalOperandOrdinal origin)
@@ -81,7 +68,7 @@ left <..> right = \useRange -> do
     useRange
 
 -- | Construct the longest descending range that only removes a finite tail.
-(..-)
+openMinusSuperEllipsisRange
   :: forall origin result.
      ( NumericalOperand origin
      , KnownSuperEllipsisLevel (NumericalOperandLevel origin)
@@ -91,7 +78,7 @@ left <..> right = \useRange -> do
         SuperEllipsisRange (NumericalOperandTarget origin) scope
         -> result)
   -> Maybe result
-(..-) origin useRange = do
+openMinusSuperEllipsisRange origin useRange =
   superEllipsisRange
     (knownSuperEllipsisRank @(NumericalOperandLevel origin))
     (numericalOperandOrdinal origin)

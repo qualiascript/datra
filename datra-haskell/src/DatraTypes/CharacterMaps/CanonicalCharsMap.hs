@@ -23,11 +23,11 @@ import Ellipsis (Ellipsis)
 import MapOperators.AccessOperator
   ( AccessElement
   , IndexedAtlasMap
+  , accessOperator
   , accessElementValue
   , indexedAtlasValueAt
   )
 import MapOperators.OrderedAtlasMap (orderedAtlasMapIndexed)
-import Syntax.AccessOperatorSyntax ((<@>))
 import Numeric.Natural (Natural)
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion
@@ -110,16 +110,16 @@ canonicalCharsInsertion =
           Just terminal -> terminal
           Nothing -> superEllipsisZeroTerminal rankOne
 
--- | Construct the canonical-character map by applying '<@>' to the ASCII
--- map.  The result is 'Nothing' only if the internal insertion ever ceases to
--- fit the 256-element ASCII page.
+-- | Construct the canonical-character map by selecting from the ASCII map.
+-- The result is 'Nothing' only if the internal insertion ever ceases to fit
+-- the 256-element ASCII page.
 canonicalCharsMap
   :: (forall scope. CanonicalCharsMap scope -> result)
   -> Maybe result
 canonicalCharsMap useCanonical =
   asciiMap
     (\ascii -> do
-      selected <- ascii <@> canonicalCharsInsertion
+      selected <- accessOperator ascii canonicalCharsInsertion
       useCanonical <$> orderedAtlasMapIndexed selected)
 
 canonicalCharValue :: CanonicalChar scope -> Char

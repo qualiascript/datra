@@ -85,7 +85,6 @@ import MapOperators.OrderedAtlasMap
   ( HasOrderedAtlasMap (..)
   , OrderedAtlasMap (..)
   )
-import Syntax.ConcatOperatorSyntax ((<.>))
 import StableConfederalData
   ( EmbeddedAtlasMap
   , StableConfederalData
@@ -565,7 +564,9 @@ concatSuperEllipsisRanges
 concatSuperEllipsisRanges first second =
   let atlasMap = concatSuperEllipsisRangeOrderedMaps first second
       valueMap =
-        superEllipsisRangeMap first <.> superEllipsisRangeMap second
+        concatOperands
+          (superEllipsisRangeMap first)
+          (superEllipsisRangeMap second)
       value = rangeConcatValue first second
       insertion = concatSuperEllipsisRangeInsertionEither first second
   in SuperEllipsisRangeConcat atlasMap valueMap value insertion

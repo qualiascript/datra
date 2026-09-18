@@ -56,6 +56,11 @@ interpretExpressionReason expressionValue =
     EllipsisLiteral -> Right (formulationValue 1)
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
+    MapSequence expressions ->
+      interpretAtlasMapWith interpretExpressionReason expressions
+    MapExpansion left right ->
+      interpretExpressionReason
+        (AtlasMap [ensureMapLevel left, ensureMapLevel right])
     SuperEllipsisRange lower upper -> do
       lowerValue <- interpretExpressionReason lower
       upperValue <- interpretExpressionReason upper
@@ -107,7 +112,19 @@ interpretAtlasMapWith interpret expressions = do
 expressionNestingDepth :: Expression -> InterpretedValue -> Natural
 expressionNestingDepth expressionValue value =
   case expressionValue of
-    AtlasMap _ ->
+    AtlasMap _ -> mapNestingDepth
+    MapSequence _ -> mapNestingDepth
+    MapExpansion _ _ -> mapNestingDepth
+    _ -> 0
+  where
+    mapNestingDepth =
       let cardinality = interpretedMapCardinality (interpretedMap value)
       in if cardinality == 0 then 0 else cardinality - 1
-    _ -> 0
+
+ensureMapLevel :: Expression -> Expression
+ensureMapLevel expressionValue =
+  case expressionValue of
+    AtlasMap _ -> expressionValue
+    MapSequence _ -> expressionValue
+    MapExpansion _ _ -> expressionValue
+    _ -> AtlasMap [expressionValue]

@@ -96,10 +96,10 @@ import FixedPoint
   , withFixedPointValue
   )
 import MapOperators.ConcatOperator
-  ( ConcatOperatorValue
+  ( Concat (concatOperands)
+  , ConcatOperatorValue
   , ConcatOperatorValues
   )
-import Syntax.ConcatOperatorSyntax ((<.>))
 import MapOperators.SequentialOperator (SequentialPresentation)
 import Numeric.Natural (Natural)
 import StableConfederalData
@@ -347,7 +347,7 @@ superEllipsis
   :: SequentialPresentation predecessor
   => StableConfederalData predecessor
   -> StableConfederalData (SuperEllipsis predecessor)
-superEllipsis predecessor = fixedPoint (predecessor <.>)
+superEllipsis predecessor = fixedPoint (concatOperands predecessor)
 
 -- | Expose one layer of the recursive equation.
 superEllipsisUnfolded
@@ -355,7 +355,8 @@ superEllipsisUnfolded
   => StableConfederalData predecessor
   -> StableConfederalData
        (ConcatOperatorValues predecessor (SuperEllipsis predecessor))
-superEllipsisUnfolded predecessor = fixedPointLayer (predecessor <.>)
+superEllipsisUnfolded predecessor =
+  fixedPointLayer (concatOperands predecessor)
 
 -- | Fold one recursive layer into its super ellipsis.
 superEllipsisFold
@@ -364,7 +365,7 @@ superEllipsisFold
   -> StableConfederalDataHom
        (ConcatOperatorValues predecessor (SuperEllipsis predecessor))
        (SuperEllipsis predecessor)
-superEllipsisFold predecessor = rollFixedPoint (predecessor <.>)
+superEllipsisFold predecessor = rollFixedPoint (concatOperands predecessor)
 
 -- | Unfold a super ellipsis into one recursive layer.
 superEllipsisUnfold
@@ -373,7 +374,8 @@ superEllipsisUnfold
   -> StableConfederalDataHom
        (SuperEllipsis predecessor)
        (ConcatOperatorValues predecessor (SuperEllipsis predecessor))
-superEllipsisUnfold predecessor = unrollFixedPoint (predecessor <.>)
+superEllipsisUnfold predecessor =
+  unrollFixedPoint (concatOperands predecessor)
 
 -- | Introduce one recursive value layer.
 rollSuperEllipsisLayer

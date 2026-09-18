@@ -5,6 +5,12 @@ module Datra.Rendering
 
 import Data.Char (isDigit)
 import Data.List (intercalate)
+import Datra.AST.Operator
+  ( Operator (..)
+  , ellipsisSymbol
+  , operatorCanonicalSymbol
+  , operatorSourceSymbol
+  )
 import DatraTypes
   ( CanonicalResult (..)
   , InterpretedValue
@@ -52,10 +58,10 @@ renderRange description =
   case describedRangeTarget description of
     GivenTarget target ->
       startText
-        <> ".."
+        <> sourceSymbol RangeOperator
         <> rangeEndpoint (renderRangeBoundary target)
-    PlusSign -> startText <> ".."
-    MinusSign -> startText <> "..-"
+    PlusSign -> startText <> sourceSymbol RangePlusOperator
+    MinusSign -> startText <> sourceSymbol RangeMinusOperator
   where
     start = describedRangeStart description
     startText = rangeEndpoint (renderExplicit start)
@@ -66,9 +72,11 @@ rangeEndpoint value
   | otherwise = "(" <> value <> ")"
 
 renderFormulation :: Natural -> String
-renderFormulation 0 = "...^0"
-renderFormulation 1 = "..."
-renderFormulation level = "...^" <> show level
+renderFormulation 0 =
+  ellipsisSymbol <> sourceSymbol ExponentiationOperator <> "0"
+renderFormulation 1 = ellipsisSymbol
+renderFormulation level =
+  ellipsisSymbol <> sourceSymbol ExponentiationOperator <> show level
 
 renderExplicit :: Ordinal -> String
 renderExplicit = renderExplicitMinimal
@@ -93,12 +101,12 @@ renderExplicitMinimal value
   | otherwise =
       renderOrdinal value
         <> if hasTransfiniteTerm value && hasZeroFiniteTail value
-             then " + 0"
+             then spacedSourceSymbol AdditionOperator <> "0"
              else ""
 
 renderOrdinal :: Ordinal -> String
 renderOrdinal value =
-  intercalate " + "
+  intercalate (spacedSourceSymbol AdditionOperator)
     [ renderTerm power coefficient
     | (power, coefficient) <- zip [degree, degree - 1 .. 0] coefficients
     , coefficient /= 0
@@ -108,11 +116,30 @@ renderOrdinal value =
     degree = length coefficients - 1
 
     renderTerm 0 coefficient = show coefficient
-    renderTerm 1 1 = "..."
-    renderTerm 1 coefficient = "... * " <> show coefficient
-    renderTerm power 1 = "...^" <> show power
+    renderTerm 1 1 = ellipsisSymbol
+    renderTerm 1 coefficient =
+      ellipsisSymbol
+        <> spacedSourceSymbol MultiplicationOperator
+        <> show coefficient
+    renderTerm power 1 =
+      ellipsisSymbol
+        <> sourceSymbol ExponentiationOperator
+        <> show power
     renderTerm power coefficient =
-      "...^" <> show power <> " * " <> show coefficient
+      ellipsisSymbol
+        <> sourceSymbol ExponentiationOperator
+        <> show power
+        <> spacedSourceSymbol MultiplicationOperator
+        <> show coefficient
+
+sourceSymbol :: Operator -> String
+sourceSymbol operator =
+  case operatorSourceSymbol operator of
+    Just value -> value
+    Nothing -> operatorCanonicalSymbol operator
+
+spacedSourceSymbol :: Operator -> String
+spacedSourceSymbol operator = " " <> sourceSymbol operator <> " "
 
 isZero :: Ordinal -> Bool
 isZero = null . ordinalCoefficients

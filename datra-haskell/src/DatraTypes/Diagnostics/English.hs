@@ -11,6 +11,12 @@ module Diagnostics.English
   ) where
 
 import Data.List (intercalate)
+import Datra.AST.Operator
+  ( Operator (..)
+  , ellipsisSymbol
+  , operatorCanonicalSymbol
+  , operatorSourceSymbol
+  )
 import DatraOrdinal (Ordinal, ordinalCoefficients)
 import Diagnostics (LocalizedMessage (LocalizedMessage))
 import Diagnostics.Interpreter
@@ -119,7 +125,7 @@ localizeSuperEllipsisRangeConcatError
     [ "first range: " <> englishRangeDescription first
     , "second range: " <> englishRangeDescription second
     , "overlap: " <> englishOrdinal lower
-        <> ".." <> englishOrdinal upper
+        <> sourceSymbol RangeOperator <> englishOrdinal upper
         <> " (upper bound excluded)"
     ]
 
@@ -127,16 +133,17 @@ englishRangeDescription :: SuperEllipsisRangeDescription -> String
 englishRangeDescription description =
   englishOrdinal (describedRangeStart description)
     <> case describedRangeTarget description of
-      GivenTarget target -> ".." <> englishOrdinal target
-      PlusSign -> ".."
-      MinusSign -> "..-"
+      GivenTarget target ->
+        sourceSymbol RangeOperator <> englishOrdinal target
+      PlusSign -> sourceSymbol RangePlusOperator
+      MinusSign -> sourceSymbol RangeMinusOperator
 
 englishOrdinal :: Ordinal -> String
 englishOrdinal value =
   case ordinalCoefficients value of
     [] -> "0"
     coefficients ->
-      intercalate " + "
+      intercalate (spacedSourceSymbol AdditionOperator)
         [ renderTerm power coefficient
         | (power, coefficient) <- zip [degree, degree - 1 .. 0] coefficients
         , coefficient /= 0
@@ -144,8 +151,30 @@ englishOrdinal value =
       where
         degree = length coefficients - 1
         renderTerm 0 coefficient = show coefficient
-        renderTerm 1 1 = "(...)"
-        renderTerm 1 coefficient = "(...) * " <> show coefficient
-        renderTerm power 1 = "(...)^" <> show power
+        renderTerm 1 1 = parenthesizedEllipsis
+        renderTerm 1 coefficient =
+          parenthesizedEllipsis
+            <> spacedSourceSymbol MultiplicationOperator
+            <> show coefficient
+        renderTerm power 1 =
+          parenthesizedEllipsis
+            <> sourceSymbol ExponentiationOperator
+            <> show power
         renderTerm power coefficient =
-          "(...)^" <> show power <> " * " <> show coefficient
+          parenthesizedEllipsis
+            <> sourceSymbol ExponentiationOperator
+            <> show power
+            <> spacedSourceSymbol MultiplicationOperator
+            <> show coefficient
+
+parenthesizedEllipsis :: String
+parenthesizedEllipsis = "(" <> ellipsisSymbol <> ")"
+
+sourceSymbol :: Operator -> String
+sourceSymbol operator =
+  case operatorSourceSymbol operator of
+    Just value -> value
+    Nothing -> operatorCanonicalSymbol operator
+
+spacedSourceSymbol :: Operator -> String
+spacedSourceSymbol operator = " " <> sourceSymbol operator <> " "

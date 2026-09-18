@@ -32,6 +32,7 @@ import Datra.AST
       , SuperEllipsisRangePlus
       )
   )
+import Datra.AST.Operator qualified as AST
 import Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -164,7 +165,7 @@ rangeExpression =
 
 prefixRange :: Parser Expression
 prefixRange = do
-  _ <- continuedSymbol ".."
+  _ <- continuedOperator AST.RangeOperator
   SuperEllipsisRange (EllipsisNatural 0) <$> rangeEndpoint
 
 explicitRange :: Parser Expression
@@ -175,12 +176,13 @@ explicitRange = do
 rangeSuffix :: Expression -> Parser Expression
 rangeSuffix lowerBound =
   choice
-    [ SuperEllipsisRangeMinus lowerBound <$ symbol "..-"
+    [ SuperEllipsisRangeMinus lowerBound
+        <$ operatorToken AST.RangeMinusOperator
     , try $ do
-        _ <- continuedSymbol ".."
+        _ <- continuedOperator AST.RangeOperator
         SuperEllipsisRange lowerBound <$> rangeEndpoint
     , do
-        _ <- continuedSymbol ".."
+        _ <- continuedOperator AST.RangePlusOperator
         _ <- lookAhead expressionEnd
         pure (SuperEllipsisRangePlus lowerBound)
     ]
@@ -199,7 +201,7 @@ term =
   choice
     [ parenthesizedExpression
     , atlasMap
-    , EllipsisLiteral <$ symbol "..."
+    , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , ellipsisNatural
     ]
 
@@ -221,9 +223,9 @@ parenthesizedExpression =
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
 arithmeticOperatorTable =
-  [ [InfixR (Exponentiation <$ continuedSymbol "^")]
-  , [InfixL (Multiplication <$ continuedSymbol "*")]
-  , [InfixL (Addition <$ continuedSymbol "+")]
+  [ [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
+  , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
+  , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
   ]
 
 -- Concatenation binds after ranges, while access is the final map operation.
@@ -232,7 +234,7 @@ mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
-  , [InfixL (MapAccess <$ continuedSymbol "@")]
+  , [InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]
   ]
 
 finishConcatenation :: Expression -> Expression
@@ -243,14 +245,18 @@ finishConcatenation expressionValue =
 
 infixComma :: Parser Text
 infixComma =
-  try (continuedSymbol "," <* notFollowedBy expressionEnd)
+  try
+    (continuedOperator AST.ConcatenationOperator
+      <* notFollowedBy expressionEnd)
 
 -- A comma is postfix only when no right operand occurs before the current
 -- expression closes. Otherwise the infix parser consumes the same comma and
 -- any intervening newlines as ordinary concatenation.
 trailingComma :: Parser Text
 trailingComma =
-  try (continuedSymbol "," <* lookAhead expressionEnd)
+  try
+    (continuedOperator AST.ConcatenationOperator
+      <* lookAhead expressionEnd)
 
 expressionEnd :: Parser ()
 expressionEnd =
@@ -285,6 +291,18 @@ symbol = Lexer.symbol horizontalSpaceConsumer
 
 continuedSymbol :: Text -> Parser Text
 continuedSymbol value = symbol value <* lineSpaceConsumer
+
+operatorSourceText :: AST.Operator -> Text
+operatorSourceText operator =
+  case AST.operatorSourceSymbol operator of
+    Just value -> Text.pack value
+    Nothing -> error "operator has no concrete source token"
+
+operatorToken :: AST.Operator -> Parser Text
+operatorToken = symbol . operatorSourceText
+
+continuedOperator :: AST.Operator -> Parser Text
+continuedOperator = continuedSymbol . operatorSourceText
 
 semicolon :: Parser Text
 semicolon = symbol ";"

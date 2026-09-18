@@ -29,6 +29,9 @@ flag liquid
 library
     import:           warnings
     exposed-modules:
+        Datra.AST
+        Datra.AST.Operator
+        Datra.AST.Syntax
         DatraTypes
         AsciiMap
         MapOperators
@@ -38,18 +41,12 @@ library
         MapOperators.ConcatOperator
         MapOperators.ExpansionOperator
         MapOperators.SequentialOperator
-        Syntax.AccessOperatorSyntax
-        Syntax.ConcatOperatorSyntax
-        Syntax.ExpansionOperatorSyntax
-        Syntax.SequentialOperatorSyntax
         NumericalOperators
         NumericalOperators.AdditionOperator
         NumericalOperators.ExponentiationOperator
         NumericalOperators.MultiplicationOperator
         NumericalOperators.NumericalOperand
-        Syntax.AdditionOperatorSyntax
-        Syntax.ExponentiationOperatorSyntax
-        Syntax.MultiplicationOperatorSyntax
+        NumericalOperators.Range
         CanonicalCharsMap
         Dominion
         Dot
@@ -58,7 +55,6 @@ library
         SuperEllipsisRange
         SuperEllipsisValue
         Ellipsis
-        Syntax.EllipsisSyntax
         EllipsisInsertion
         EllipsisRange
         EllipsisNatural
@@ -175,6 +171,7 @@ library
         build-depends:
             liquidhaskell == 0.9.14.1.1
     hs-source-dirs:
+        src/DatraLanguage
         src/DatraCore/Atlases/Core
         src/DatraCore/Atlases/Core/Chain
         src/DatraCore/Atlases/Core/PageElements
@@ -232,7 +229,6 @@ executable datra-haskell
     import:           warnings
     main-is:          Main.hs
     other-modules:
-        Datra.AST
         Datra.Interpreting
         Datra.Parsing
         Datra.Rendering
@@ -275,7 +271,6 @@ test-suite datra-parsing-test
         app
     main-is:          DatraParsingTests.hs
     other-modules:
-        Datra.AST
         Datra.Parsing
     ghc-options:      -main-is DatraParsingTests.main
     build-depends:
@@ -294,7 +289,6 @@ test-suite datra-interpreting-test
         app
     main-is:          DatraInterpretingTests.hs
     other-modules:
-        Datra.AST
         Datra.Interpreting
         Datra.Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
