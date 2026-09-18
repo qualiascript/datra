@@ -4,10 +4,16 @@ import Datra.AST
   ( Expression (..)
   , renderExpression
   )
-import Datra.Parsing (parseDatra)
+import Datra.Parsing (parseDatra, parseDatraLocated)
+import Diagnostics
+  ( Located (Located)
+  , SourcePosition (SourcePosition)
+  , SourceSpan (SourceSpan)
+  )
 
 main :: IO ()
 main = do
+  assertLocatedParse
   assertAstOutput
     "flat map"
     "[1; 2; 10]"
@@ -293,6 +299,28 @@ main = do
   assertRejected
     "separate maps with both outer delimiter characters are not rewrapped"
     "[1]\n[2]"
+
+assert :: String -> Bool -> IO ()
+assert label condition
+  | condition = pure ()
+  | otherwise = fail ("test failed: " <> label)
+
+assertLocatedParse :: IO ()
+assertLocatedParse =
+  case parseDatraLocated "[1; 2]" of
+    Left message -> fail ("located parse unexpectedly failed: " <> message)
+    Right
+        (Located
+          (SourceSpan source start end)
+          (AtlasMap [EllipsisNatural 1, EllipsisNatural 2])) ->
+      assert
+        "located parsing uses an in-memory source span"
+        ( source == "<input>"
+          && start == SourcePosition 0 1 1
+          && end == SourcePosition 6 1 7
+        )
+    Right actual ->
+      fail ("located parse returned an unexpected value: " <> show actual)
 
 assertAstOutput :: String -> String -> String -> IO ()
 assertAstOutput label source expected =

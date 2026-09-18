@@ -3,6 +3,8 @@
 module Datra.Parsing
   ( parseDatra
   , parseDatraWithSourceName
+  , parseDatraLocated
+  , parseDatraLocatedWithSourceName
   ) where
 
 import Control.Applicative (empty, some, (<|>))
@@ -30,6 +32,11 @@ import Datra.AST
       , SuperEllipsisRangePlus
       )
   )
+import Diagnostics
+  ( Located (Located, locatedValue)
+  , SourcePosition (SourcePosition)
+  , SourceSpan (SourceSpan)
+  )
 import Text.Megaparsec
   ( Parsec
   , anySingle
@@ -37,13 +44,19 @@ import Text.Megaparsec
   , choice
   , eof
   , errorBundlePretty
+  , getOffset
+  , getSourcePos
   , lookAhead
   , many
   , manyTill
   , notFollowedBy
   , parse
   , sepEndBy
+  , sourceColumn
+  , sourceLine
+  , sourceName
   , try
+  , unPos
   )
 import Text.Megaparsec.Char (char, eol, hspace1, space1)
 import Text.Megaparsec.Char.Lexer qualified as Lexer
@@ -61,8 +74,39 @@ parseDatra = parseDatraWithSourceName "<input>"
 -- top-level brackets are implicit.
 parseDatraWithSourceName :: FilePath -> String -> Either String Expression
 parseDatraWithSourceName sourceName source =
+  locatedValue <$> parseDatraLocatedWithSourceName sourceName source
+
+parseDatraLocated :: String -> Either String (Located Expression)
+parseDatraLocated = parseDatraLocatedWithSourceName "<input>"
+
+parseDatraLocatedWithSourceName
+  :: FilePath
+  -> String
+  -> Either String (Located Expression)
+parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
-    (parse resource sourceName (Text.pack source))
+    (parse locatedResource resourceName (Text.pack source))
+
+locatedResource :: Parser (Located Expression)
+locatedResource = do
+  startOffset <- getOffset
+  start <- getSourcePos
+  expressionValue <- resource
+  endOffset <- getOffset
+  end <- getSourcePos
+  pure
+    (Located
+      (SourceSpan
+        (sourceName start)
+        (SourcePosition
+          (fromIntegral startOffset)
+          (fromIntegral (unPos (sourceLine start)))
+          (fromIntegral (unPos (sourceColumn start))))
+        (SourcePosition
+          (fromIntegral endOffset)
+          (fromIntegral (unPos (sourceLine end)))
+          (fromIntegral (unPos (sourceColumn end)))))
+      expressionValue)
 
 resource :: Parser Expression
 resource = do

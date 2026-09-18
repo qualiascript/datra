@@ -44,6 +44,7 @@ module SuperEllipsisRange
   , concatSuperEllipsisRangeInsertionEither
   , describeSuperEllipsisRange
   , analyzeSuperEllipsisRangeConcat
+  , analyzeSuperEllipsisRangeDescriptions
   ) where
 
 import AtlasConfederation
@@ -612,13 +613,28 @@ analyzeSuperEllipsisRangeConcat
   :: SuperEllipsisRange target leftScope
   -> SuperEllipsisRange target rightScope
   -> SuperEllipsisRangeConcatAnalysis
-analyzeSuperEllipsisRangeConcat first second
-  | rangeIsEmpty first = RangeConcatCanonical secondDescription
-  | rangeIsEmpty second = RangeConcatCanonical firstDescription
-  | Just (lower, upper) <- rangeOverlapBounds first second =
+analyzeSuperEllipsisRangeConcat first second =
+  analyzeSuperEllipsisRangeDescriptions
+    (describeSuperEllipsisRange first)
+    (describeSuperEllipsisRange second)
+
+-- | Analyze validated, scope-free range descriptions. This is the dynamic
+-- counterpart of 'analyzeSuperEllipsisRangeConcat' used after existential
+-- range scopes have been hidden by the interpreter.
+analyzeSuperEllipsisRangeDescriptions
+  :: SuperEllipsisRangeDescription
+  -> SuperEllipsisRangeDescription
+  -> SuperEllipsisRangeConcatAnalysis
+analyzeSuperEllipsisRangeDescriptions firstDescription secondDescription
+  | descriptionIsEmpty firstDescription =
+      RangeConcatCanonical secondDescription
+  | descriptionIsEmpty secondDescription =
+      RangeConcatCanonical firstDescription
+  | Just (lower, upper) <- descriptionOverlapBounds
+      firstDescription secondDescription =
       RangeConcatOverlapping
         firstDescription secondDescription lower upper
-  | rangesAreContiguous first second =
+  | descriptionsAreContiguous firstDescription secondDescription =
       RangeConcatCanonical
         SuperEllipsisRangeDescription
           { describedRangeRankLimit =
@@ -627,48 +643,27 @@ analyzeSuperEllipsisRangeConcat first second
           , describedRangeTarget = describedRangeTarget secondDescription
           }
   | otherwise = RangeConcatDisjoint firstDescription secondDescription
-  where
-    firstDescription = describeSuperEllipsisRange first
-    secondDescription = describeSuperEllipsisRange second
 
 data RangeDirection = AscendingRange | DescendingRange
   deriving (Eq)
 
-rangeDirection
-  :: SuperEllipsisRange target scope
-  -> Maybe RangeDirection
-rangeDirection valueRange =
-  case superEllipsisRangeTarget valueRange of
-    GivenTarget target
-      | ordinalLT start target -> Just AscendingRange
-      | ordinalLT target start -> Just DescendingRange
-      | otherwise -> Nothing
-    PlusSign -> Just AscendingRange
-    MinusSign -> Just DescendingRange
-  where
-    start = superEllipsisRangeStart valueRange
-
-rangeIsEmpty :: SuperEllipsisRange target scope -> Bool
-rangeIsEmpty valueRange =
-  superEllipsisRangeOrderType valueRange == finiteOrdinal 0
-
-rangesAreContiguous
-  :: SuperEllipsisRange target leftScope
-  -> SuperEllipsisRange target rightScope
+descriptionsAreContiguous
+  :: SuperEllipsisRangeDescription
+  -> SuperEllipsisRangeDescription
   -> Bool
-rangesAreContiguous first second =
-  case superEllipsisRangeTarget first of
+descriptionsAreContiguous first second =
+  case describedRangeTarget first of
     GivenTarget boundary ->
-      boundary == superEllipsisRangeStart second
-        && rangeDirection first == rangeDirection second
+      boundary == describedRangeStart second
+        && descriptionDirection first == descriptionDirection second
     _ -> False
 
-rangeOverlapBounds
-  :: SuperEllipsisRange target leftScope
-  -> SuperEllipsisRange target rightScope
+descriptionOverlapBounds
+  :: SuperEllipsisRangeDescription
+  -> SuperEllipsisRangeDescription
   -> Maybe (Ordinal, Ordinal)
-rangeOverlapBounds first second =
-  case (rangeImageBounds first, rangeImageBounds second) of
+descriptionOverlapBounds first second =
+  case (descriptionImageBounds first, descriptionImageBounds second) of
     (Just (firstLower, firstUpper), Just (secondLower, secondUpper))
       | ordinalLT overlapLower overlapUpper ->
           Just (overlapLower, overlapUpper)
@@ -701,11 +696,11 @@ positionInRange valueRange position =
   where
     start = superEllipsisRangeStart valueRange
 
-rangeImageBounds
-  :: SuperEllipsisRange target scope
+descriptionImageBounds
+  :: SuperEllipsisRangeDescription
   -> Maybe (Ordinal, Ordinal)
-rangeImageBounds valueRange =
-  case superEllipsisRangeTarget valueRange of
+descriptionImageBounds description =
+  case describedRangeTarget description of
     GivenTarget target
       | ordinalLT start target -> Just (start, target)
       | ordinalLT target start ->
@@ -715,13 +710,30 @@ rangeImageBounds valueRange =
       let (base, _) = splitFiniteTail start
       in Just (base, successor start)
     PlusSign ->
-      Just
-        ( start
-        , superEllipsisRankOrderType (superEllipsisRangeRank valueRange)
-        )
+      Just (start, describedRangeRankLimit description)
   where
-    start = superEllipsisRangeStart valueRange
+    start = describedRangeStart description
     successor value = addOrdinals value (finiteOrdinal 1)
+
+descriptionDirection
+  :: SuperEllipsisRangeDescription
+  -> Maybe RangeDirection
+descriptionDirection description =
+  case describedRangeTarget description of
+    GivenTarget target
+      | ordinalLT start target -> Just AscendingRange
+      | ordinalLT target start -> Just DescendingRange
+      | otherwise -> Nothing
+    PlusSign -> Just AscendingRange
+    MinusSign -> Just DescendingRange
+  where
+    start = describedRangeStart description
+
+descriptionIsEmpty :: SuperEllipsisRangeDescription -> Bool
+descriptionIsEmpty description =
+  case describedRangeTarget description of
+    GivenTarget target -> target == describedRangeStart description
+    _ -> False
 
 sameFiniteBase :: Ordinal -> Ordinal -> Bool
 sameFiniteBase left right =
