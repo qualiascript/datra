@@ -230,6 +230,11 @@ testCanonicalResults = do
 
 testRendering :: IO ()
 testRendering = do
+  expectValue
+      "singleton arithmetic map"
+      (AtlasMap [(AST.+) (natural 2) (natural 2)]) $ \value ->
+    assert "singleton maps render as their sole canonical value"
+      (renderInterpretedValue value == "4")
   expectValue "formulation Ellipsis" (...) $ \value ->
     assert "literal Ellipsis retains formulation syntax"
       (renderInterpretedValue value == "...")
@@ -262,8 +267,8 @@ testRendering = do
             ((<..>) (natural 2) (natural 5))
             ((..+) (natural 5))
         ]) $ \value ->
-    assert "maps render canonical infinite components without enumeration"
-      (renderInterpretedValue value == "[2..]")
+    assert "singleton range maps render without enumeration or brackets"
+      (renderInterpretedValue value == "2..")
 
 testMaps :: IO ()
 testMaps = do
@@ -333,7 +338,7 @@ testAccess = do
   expectValue "mixed-rank range access"
       ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
     assert "cross-rank range concatenation retains insertion capability"
-      (renderInterpretedValue value == "[<SuperEllipsisInsertion>]")
+      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
   expectValue
       "empty access"
       ((<@>)
@@ -348,7 +353,7 @@ testAccess = do
       "symbolic access result"
       ((<@>) (...) (...)) $ \value ->
     assert "non-literal infinite selections use the symbolic fallback"
-      (renderInterpretedValue value == "[<SuperEllipsisInsertion>]")
+      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
 
 testTypedRejections :: IO ()
 testTypedRejections = do

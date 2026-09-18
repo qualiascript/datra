@@ -59,6 +59,7 @@ prettyCanonicalResult result =
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "[]"
+prettyMap _ [component] = prettyCanonicalResult component
 prettyMap cardinality components =
   nest (cardinality - 1)
     (concatWith (\left right -> left <> "; " <> right)
