@@ -1,0 +1,238 @@
+{-# LANGUAGE OverloadedStrings #-}
+
+module Datra.Parsing
+  ( parseDatra
+  ) where
+
+import Control.Applicative (empty, some, (<|>))
+import Control.Monad (void)
+import Control.Monad.Combinators.Expr
+  ( Operator (InfixL, InfixR, Postfix)
+  , makeExprParser
+  )
+import Data.Bifunctor (first)
+import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.Void (Void)
+import Datra.AST
+  ( Expression
+      ( Addition
+      , AtlasMap
+      , EllipsisLiteral
+      , EllipsisNatural
+      , Exponentiation
+      , MapAccess
+      , MapConcatenation
+      , Multiplication
+      , SuperEllipsisRange
+      , SuperEllipsisRangeMinus
+      , SuperEllipsisRangePlus
+      )
+  )
+import Text.Megaparsec
+  ( Parsec
+  , anySingle
+  , between
+  , choice
+  , eof
+  , errorBundlePretty
+  , lookAhead
+  , many
+  , manyTill
+  , notFollowedBy
+  , parse
+  , sepEndBy
+  , try
+  )
+import Text.Megaparsec.Char (char, eol, hspace1, space1)
+import Text.Megaparsec.Char.Lexer qualified as Lexer
+
+type Parser = Parsec Void Text
+
+-- | Parse one top-level map. If the first and last significant characters
+-- are not '[' and ']', the top-level brackets are implicit.
+parseDatra :: String -> Either String Expression
+parseDatra source =
+  first errorBundlePretty
+    (parse resource "input.datra" (Text.pack source))
+
+resource :: Parser Expression
+resource = do
+  fullSpaceConsumer
+  result <-
+    (try (lookAhead outerMapEnvelope) *> atlasMap)
+      <|> (AtlasMap <$> elements)
+  fullSpaceConsumer
+  eof
+  pure result
+
+-- This lookahead expresses the outer-bracket rule without rewriting the
+-- source. Comments are consumed as a unit so a ']' inside one cannot be
+-- mistaken for the final significant character.
+outerMapEnvelope :: Parser ()
+outerMapEnvelope =
+  void
+    ( char '['
+        *> manyTill envelopeCharacter
+          (try (char ']' *> fullSpaceConsumer <* eof))
+    )
+  where
+    envelopeCharacter = lineComment <|> void anySingle
+
+atlasMap :: Parser Expression
+atlasMap =
+  AtlasMap
+    <$> between
+      (symbol "[" <* lineSpaceConsumer)
+      (symbol "]")
+      elements
+
+elements :: Parser [Expression]
+elements = expression `sepEndBy` mapSeparator
+
+-- A newline is a separator only while parsing map elements. Newlines after
+-- an infix operator are consumed by 'continuedSymbol' before this parser can
+-- see them.
+mapSeparator :: Parser ()
+mapSeparator =
+  void (semicolon <* lineSpaceConsumer)
+    <|> void (some lineBreak)
+
+expression :: Parser Expression
+expression = makeExprParser rangeExpression mapOperatorTable
+
+-- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
+-- is permitted at this precedence level. Each explicit endpoint is a complete
+-- arithmetic expression; nested ranges therefore require parentheses.
+rangeExpression :: Parser Expression
+rangeExpression =
+  try prefixRange
+    <|> try explicitRange
+    <|> arithmeticExpression
+
+prefixRange :: Parser Expression
+prefixRange = do
+  _ <- continuedSymbol ".."
+  SuperEllipsisRange (EllipsisNatural 0) <$> rangeEndpoint
+
+explicitRange :: Parser Expression
+explicitRange = do
+  lowerBound <- rangeEndpoint
+  rangeSuffix lowerBound
+
+rangeSuffix :: Expression -> Parser Expression
+rangeSuffix lowerBound =
+  choice
+    [ SuperEllipsisRangeMinus lowerBound <$ symbol "..-"
+    , try $ do
+        _ <- continuedSymbol ".."
+        SuperEllipsisRange lowerBound <$> rangeEndpoint
+    , do
+        _ <- continuedSymbol ".."
+        _ <- lookAhead expressionEnd
+        pure (SuperEllipsisRangePlus lowerBound)
+    ]
+
+arithmeticExpression :: Parser Expression
+arithmeticExpression = makeExprParser term arithmeticOperatorTable
+
+-- A bare Ellipsis value cannot be a range endpoint. Parentheses deliberately
+-- return to the complete expression grammar, making forms such as '(...)..'
+-- explicit while keeping grouping out of the AST.
+rangeEndpoint :: Parser Expression
+rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
+
+term :: Parser Expression
+term =
+  choice
+    [ parenthesizedExpression
+    , atlasMap
+    , EllipsisLiteral <$ symbol "..."
+    , ellipsisNatural
+    ]
+
+rangeEndpointTerm :: Parser Expression
+rangeEndpointTerm =
+  choice
+    [ parenthesizedExpression
+    , atlasMap
+    , ellipsisNatural
+    ]
+
+parenthesizedExpression :: Parser Expression
+parenthesizedExpression =
+  between
+    (symbol "(" <* lineSpaceConsumer)
+    (lineSpaceConsumer *> symbol ")")
+    expression
+
+-- Arithmetic follows Haskell and binds more tightly than range construction.
+arithmeticOperatorTable :: [[Operator Parser Expression]]
+arithmeticOperatorTable =
+  [ [InfixR (Exponentiation <$ continuedSymbol "^")]
+  , [InfixL (Multiplication <$ continuedSymbol "*")]
+  , [InfixL (Addition <$ continuedSymbol "+")]
+  ]
+
+-- Concatenation binds after ranges, while access is the final map operation.
+-- This lets a map access consume a concatenated range insertion.
+mapOperatorTable :: [[Operator Parser Expression]]
+mapOperatorTable =
+  [ [InfixR (MapConcatenation <$ infixComma)]
+  , [Postfix (finishConcatenation <$ trailingComma)]
+  , [InfixL (MapAccess <$ continuedSymbol "@")]
+  ]
+
+finishConcatenation :: Expression -> Expression
+finishConcatenation expressionValue@(MapConcatenation _ _) =
+  expressionValue
+finishConcatenation expressionValue =
+  MapConcatenation expressionValue (AtlasMap [])
+
+infixComma :: Parser Text
+infixComma =
+  try (continuedSymbol "," <* notFollowedBy expressionEnd)
+
+-- A comma is postfix only when no right operand occurs before the current
+-- expression closes. Otherwise the infix parser consumes the same comma and
+-- any intervening newlines as ordinary concatenation.
+trailingComma :: Parser Text
+trailingComma =
+  try (continuedSymbol "," <* lookAhead expressionEnd)
+
+expressionEnd :: Parser ()
+expressionEnd =
+  void (choice [char ']', char ')', char ';']) <|> eof
+
+ellipsisNatural :: Parser Expression
+ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
+
+-- Horizontal trivia belongs to the preceding token. Keeping line breaks out
+-- of the ordinary lexeme consumer lets the grammar decide whether each one
+-- is a map separator or expression continuation.
+horizontalSpaceConsumer :: Parser ()
+horizontalSpaceConsumer = Lexer.space hspace1 lineComment empty
+
+fullSpaceConsumer :: Parser ()
+fullSpaceConsumer = Lexer.space space1 lineComment empty
+
+lineComment :: Parser ()
+lineComment = Lexer.skipLineComment "#"
+
+lineSpaceConsumer :: Parser ()
+lineSpaceConsumer = horizontalSpaceConsumer *> void (many lineBreak)
+
+lineBreak :: Parser ()
+lineBreak = void (eol <* horizontalSpaceConsumer)
+
+lexeme :: Parser value -> Parser value
+lexeme = Lexer.lexeme horizontalSpaceConsumer
+
+symbol :: Text -> Parser Text
+symbol = Lexer.symbol horizontalSpaceConsumer
+
+continuedSymbol :: Text -> Parser Text
+continuedSymbol value = symbol value <* lineSpaceConsumer
+
+semicolon :: Parser Text
+semicolon = symbol ";"
