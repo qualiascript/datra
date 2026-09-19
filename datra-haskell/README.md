@@ -95,7 +95,7 @@ docker run --rm datra-haskell:prod build \
   --output -
 ```
 
-The `--ast-output /dev/null` option discards the AST output; `--output -`
+The `--output -` option
 prints the interpreted result to the terminal:
 
 ```text
