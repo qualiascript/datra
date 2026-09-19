@@ -2,3 +2,6 @@ packages: .
 with-compiler: ghc
 with-hc-pkg: ghc-pkg
 
+-- The runtime image has no GHC/Cabal package store. Link Haskell libraries into
+-- the executable; system libraries (such as glibc and GMP) remain dynamic.
+executable-dynamic: False
