@@ -11,6 +11,32 @@ Both Docker targets use `cabal.docker.project` instead, which selects the pinned
 compiler and Cabal executable from the container. This prevents a host Cabal
 or the repository-relative `../.tools` paths from affecting container builds.
 
+## Download and install the latest production image
+
+To run Datra without compiling it, use the prebuilt release image. You need
+Docker and curl; you do not need a repository checkout or a Haskell toolchain.
+
+[Download the latest production image](https://github.com/qualiascript/datra/releases/latest/download/datra-prod.tar.gz)
+or run:
+
+```sh
+mkdir -p dist
+curl --fail --location \
+  https://github.com/qualiascript/datra/releases/latest/download/datra-prod.tar.gz \
+  --output dist/datra-prod.tar.gz && \
+  sudo docker image load --input dist/datra-prod.tar.gz
+```
+
+This loads `datra-haskell:prod` into your local Docker image store. Continue
+with [Run the whole pipeline](#run-the-whole-pipeline) below. If your account
+can access Docker directly, omit `sudo`; otherwise use `sudo docker` in the
+run commands too. Check the release notes for the supported platform.
+
+The latest release must contain an asset named exactly `datra-prod.tar.gz`.
+Publish each new production image under that same asset filename so this
+link continues to work. The `&&` runs the Docker load only if the download
+succeeds. Repeat these commands to install a newer release.
+
 ## Build development and production images
 
 The images have separate targets and tags:
@@ -60,7 +86,7 @@ docker image inspect datra-haskell:development datra-haskell:prod \
 
 ## Run the whole pipeline
 
-The `build` command parses and interprets Datra source. After building the
+The `build` command parses and interprets Datra source. After downloading or building the
 production image, run the whole pipeline and print only the final result:
 
 ```sh
