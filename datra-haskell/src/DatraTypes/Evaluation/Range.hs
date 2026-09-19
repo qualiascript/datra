@@ -14,7 +14,7 @@ module Evaluation.Range
 
 import Data.Kind (Type)
 import DatraOrdinal (Ordinal)
-import Diagnostics.Interpreter
+import DatraLanguage.Diagnostics.Interpreter
   ( InterpretingError (..)
   , OperandSide (..)
   )

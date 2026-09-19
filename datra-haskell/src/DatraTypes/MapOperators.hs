@@ -4,17 +4,9 @@ module MapOperators
   , module MapOperators.SequentialOperator
   , module MapOperators.ExpansionOperator
   , module MapOperators.ConcatOperator
-  , (<@>)
-  , (<.>)
-  , (<:>)
-  , (<+>)
   ) where
 
 import MapOperators.AccessOperator
 import MapOperators.ConcatOperator
 import MapOperators.ExpansionOperator
 import MapOperators.SequentialOperator
-import Syntax.AccessOperatorSyntax ((<@>))
-import Syntax.ConcatOperatorSyntax ((<.>))
-import Syntax.ExpansionOperatorSyntax ((<+>))
-import Syntax.SequentialOperatorSyntax ((<:>))

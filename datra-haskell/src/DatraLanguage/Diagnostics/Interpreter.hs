@@ -1,7 +1,7 @@
 -- | Strongly typed reasons that compilation or evaluation of a Datra AST can
 -- fail. Presentation text and locale selection live in the existing
 -- diagnostics presentation modules.
-module Diagnostics.Interpreter
+module DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)

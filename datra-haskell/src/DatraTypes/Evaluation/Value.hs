@@ -34,7 +34,7 @@ module Evaluation.Value
   ) where
 
 import DatraOrdinal (Ordinal)
-import Diagnostics.Interpreter (InterpretedValueKind (..))
+import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues

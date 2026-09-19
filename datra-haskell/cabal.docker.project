@@ -1,0 +1,4 @@
+packages: .
+with-compiler: ghc
+with-hc-pkg: ghc-pkg
+

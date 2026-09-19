@@ -1,0 +1,50 @@
+-- | The complete operator vocabulary owned by Datra's abstract syntax.
+module DatraLanguage.AST.Operator
+  ( Operator (..)
+  , operatorCanonicalSymbol
+  , operatorSourceSymbol
+  , ellipsisSymbol
+  ) where
+
+data Operator
+  = SequentialOperator
+  | ExpansionOperator
+  | RangeOperator
+  | RangePlusOperator
+  | RangeMinusOperator
+  | AdditionOperator
+  | MultiplicationOperator
+  | ExponentiationOperator
+  | ConcatenationOperator
+  | AccessOperator
+  deriving (Eq, Show)
+
+-- | Canonical notation used when rendering an AST.
+operatorCanonicalSymbol :: Operator -> String
+operatorCanonicalSymbol SequentialOperator = "<:>"
+operatorCanonicalSymbol ExpansionOperator = "<+>"
+operatorCanonicalSymbol RangeOperator = "<..>"
+operatorCanonicalSymbol RangePlusOperator = "..+"
+operatorCanonicalSymbol RangeMinusOperator = "..-"
+operatorCanonicalSymbol AdditionOperator = "+"
+operatorCanonicalSymbol MultiplicationOperator = "*"
+operatorCanonicalSymbol ExponentiationOperator = "^"
+operatorCanonicalSymbol ConcatenationOperator = "<.>"
+operatorCanonicalSymbol AccessOperator = "<@>"
+
+-- | Concrete source spelling, when an operator is represented by one token.
+-- Sequential and expansion structure comes from map separators and nesting.
+operatorSourceSymbol :: Operator -> Maybe String
+operatorSourceSymbol SequentialOperator = Nothing
+operatorSourceSymbol ExpansionOperator = Nothing
+operatorSourceSymbol RangeOperator = Just ".."
+operatorSourceSymbol RangePlusOperator = Just ".."
+operatorSourceSymbol RangeMinusOperator = Just "..-"
+operatorSourceSymbol AdditionOperator = Just "+"
+operatorSourceSymbol MultiplicationOperator = Just "*"
+operatorSourceSymbol ExponentiationOperator = Just "^"
+operatorSourceSymbol ConcatenationOperator = Just ","
+operatorSourceSymbol AccessOperator = Just "@"
+
+ellipsisSymbol :: String
+ellipsisSymbol = "..."

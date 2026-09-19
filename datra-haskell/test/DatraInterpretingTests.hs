@@ -1,7 +1,21 @@
+{-# LANGUAGE PostfixOperators #-}
+
 module DatraInterpretingTests (main) where
 
-import Datra.AST (Expression (..))
-import Datra.Interpreting
+import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST.Syntax
+  ( natural
+  , (...)
+  , (<:>)
+  , (<+>)
+  , (<..>)
+  , (..+)
+  , (..-)
+  , (<.>)
+  , (<@>)
+  )
+import DatraLanguage.AST.Syntax qualified as AST
+import Interpreting
   ( InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
@@ -17,21 +31,21 @@ import Datra.Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   )
-import Datra.Rendering (renderInterpretedValue)
+import Rendering (renderInterpretedValue)
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
   , omega
   , ordinal
   )
-import Diagnostics
+import DatraLanguage.Diagnostics
   ( DatraError (DatraError)
   , Located (Located)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
-import Diagnostics.Localization
-  ( Locale (English)
+import DatraLanguage.Diagnostics.Localization
+  ( Locale (English, Română)
   , renderDatraError
   )
 import MapOperators.AccessOperator
@@ -44,7 +58,7 @@ import Numeric.Natural (Natural)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError (SuperEllipsisRangesOverlap)
   , SuperEllipsisRangeDescription (SuperEllipsisRangeDescription)
-  , SuperEllipsisRangeTarget (GivenTarget, PlusSign)
+  , SuperEllipsisRangeTarget (GivenTarget, MinusSign, PlusSign)
   )
 
 main :: IO ()
@@ -79,47 +93,47 @@ naturalOrdinal value = do
 
 testLiteralsAndArithmetic :: IO ()
 testLiteralsAndArithmetic = do
-  expectValue "natural literal" (EllipsisNatural 10) $ \value ->
+  expectValue "natural literal" (natural 10) $ \value ->
     assert "naturals remain typed rank-one explicit values"
       ( interpretedValueKind value == NaturalValueKind
         && interpretedExplicitOrdinal value
           == Just (1, finiteOrdinal 10)
       )
-  expectValue "Ellipsis literal" EllipsisLiteral $ \value ->
+  expectValue "Ellipsis literal" (...) $ \value ->
     assert "Ellipsis remains a formulation rather than an explicit ordinal"
       (interpretedFormulationLevel value == Just 1)
   expectValue
       "arithmetic precedence AST"
-      (Addition
-        (EllipsisNatural 1)
-        (Multiplication (EllipsisNatural 2) (EllipsisNatural 3))) $ \value ->
+      ((AST.+)
+        (natural 1)
+        ((AST.*) (natural 2) (natural 3))) $ \value ->
     assert "natural arithmetic evaluates through ordinal operators"
       (interpretedExplicitOrdinal value == Just (1, finiteOrdinal 7))
   expectValue
       "Ellipsis soft coercion"
-      (Addition EllipsisLiteral (EllipsisNatural 0)) $ \value ->
+      ((AST.+) (...) (natural 0)) $ \value ->
     assert "adding zero coerces Ellipsis to an explicit rank-two omega"
       (interpretedExplicitOrdinal value == Just (2, omega))
   expectValue
       "formulation multiplication"
-      (Multiplication EllipsisLiteral EllipsisLiteral) $ \value ->
+      ((AST.*) (...) (...)) $ \value ->
     assert "multiplying two Ellipsis formulations produces level two"
       (interpretedFormulationLevel value == Just 2)
   expectValue
       "zero formulation exponent"
-      (Exponentiation EllipsisLiteral (EllipsisNatural 0)) $ \value ->
+      ((AST.^) (...) (natural 0)) $ \value ->
     assert "Ellipsis to zero evaluates to Dot"
       (interpretedFormulationLevel value == Just 0)
   expectValue
       "second formulation exponent"
-      (Exponentiation EllipsisLiteral (EllipsisNatural 2)) $ \value ->
+      ((AST.^) (...) (natural 2)) $ \value ->
     assert "Ellipsis squared evaluates to a level-two formulation"
       (interpretedFormulationLevel value == Just 2)
   expectValue
       "ordinal multiplication order"
-      (Multiplication
-        (Addition EllipsisLiteral (EllipsisNatural 1))
-        (EllipsisNatural 2)) $ \value ->
+      ((AST.*)
+        ((AST.+) (...) (natural 1))
+        (natural 2)) $ \value ->
     assert "ordinal multiplication preserves noncommutative order"
       (interpretedExplicitOrdinal value
         == Just (2, ordinal [2, 1]))
@@ -128,7 +142,7 @@ testRanges :: IO ()
 testRanges = do
   expectValue
       "bounded range"
-      (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5)) $ \value ->
+      ((<..>) (natural 2) (natural 5)) $ \value ->
     assert "bounded range retains its typed description"
       (interpretedRangeDescription value
         == Just
@@ -138,7 +152,7 @@ testRanges = do
             (GivenTarget (finiteOrdinal 5))))
   expectValue
       "open range"
-      (SuperEllipsisRangePlus (EllipsisNatural 2)) $ \value ->
+      ((..+) (natural 2)) $ \value ->
     assert "postfix range retains its open target"
       (interpretedRangeDescription value
         == Just
@@ -148,7 +162,7 @@ testRanges = do
             PlusSign))
   expectValue
       "parenthesized Ellipsis range semantics"
-      (SuperEllipsisRangePlus EllipsisLiteral) $ \value ->
+      ((..+) (...)) $ \value ->
     assert "Ellipsis range endpoint is silently promoted to rank two"
       (interpretedRangeDescription value
         == Just
@@ -156,97 +170,122 @@ testRanges = do
             (ordinal [1, 0, 0])
             omega
             PlusSign))
+  expectValue
+      "descending range"
+      ((..-) (natural 2)) $ \value ->
+    assert "descending range syntax retains its target"
+      (interpretedRangeDescription value
+        == Just
+          (SuperEllipsisRangeDescription
+            omega
+            (finiteOrdinal 2)
+            MinusSign))
 
 testCanonicalResults :: IO ()
 testCanonicalResults = do
   expectValue
       "adjacent ascending ranges"
-      (MapConcatenation
-        (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-        (SuperEllipsisRangePlus (EllipsisNatural 5))) $ \value ->
+      ((<.>)
+        ((<..>) (natural 2) (natural 5))
+        ((..+) (natural 5))) $ \value ->
     assert "adjacent ascending ranges canonicalize to one open range"
       (renderInterpretedValue value == "2..")
   expectValue
       "adjacent descending ranges"
-      (MapConcatenation
-        (SuperEllipsisRange (EllipsisNatural 9) (EllipsisNatural 5))
-        (SuperEllipsisRange (EllipsisNatural 5) (EllipsisNatural 2))) $ \value ->
+      ((<.>)
+        ((<..>) (natural 9) (natural 5))
+        ((<..>) (natural 5) (natural 2))) $ \value ->
     assert "adjacent descending ranges canonicalize in traversal order"
       (renderInterpretedValue value == "9..2")
   let levelTwoFormulation =
-        Exponentiation EllipsisLiteral (EllipsisNatural 2)
+        (AST.^) (...) (natural 2)
   expectValue
       "adjacent cross-rank ranges"
-      (MapConcatenation
-        (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-        (SuperEllipsisRange (EllipsisNatural 5) levelTwoFormulation)) $ \value ->
+      ((<.>)
+        ((<..>) (natural 2) (natural 5))
+        ((<..>) (natural 5) levelTwoFormulation)) $ \value ->
     assert "contiguous cross-rank ranges widen to the larger range"
       (renderInterpretedValue value == "2..(...^2)")
   expectValue
       "disjoint ranges"
-      (MapConcatenation
-        (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-        (SuperEllipsisRangePlus (EllipsisNatural 8))) $ \value ->
+      ((<.>)
+        ((<..>) (natural 2) (natural 5))
+        ((..+) (natural 8))) $ \value ->
     assert "disjoint ranges retain their ordered concatenation"
       (renderInterpretedValue value == "2..5, 8..")
   expectValue
       "empty then nonempty range"
-      (MapConcatenation
-        (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 2))
-        (SuperEllipsisRangePlus (EllipsisNatural 5))) $ \value ->
+      ((<.>)
+        ((<..>) (natural 2) (natural 2))
+        ((..+) (natural 5))) $ \value ->
     assert "empty ranges are canonical concatenation identities"
       (renderInterpretedValue value == "5..")
   expectValue
       "overlapping range value"
-      (MapConcatenation
-        (SuperEllipsisRangePlus (EllipsisNatural 3))
-        (SuperEllipsisRangePlus (EllipsisNatural 4))) $ \value ->
+      ((<.>)
+        ((..+) (natural 3))
+        ((..+) (natural 4))) $ \value ->
     assert "overlapping ranges remain an ordered map result"
       (renderInterpretedValue value == "3.., 4..")
 
 testRendering :: IO ()
 testRendering = do
-  expectValue "formulation Ellipsis" EllipsisLiteral $ \value ->
+  expectValue
+      "singleton arithmetic map"
+      (AtlasMap [(AST.+) (natural 2) (natural 2)]) $ \value ->
+    assert "singleton maps render as their sole canonical value"
+      (renderInterpretedValue value == "4")
+  expectValue "formulation Ellipsis" (...) $ \value ->
     assert "literal Ellipsis retains formulation syntax"
       (renderInterpretedValue value == "...")
   expectValue
       "explicit omega"
-      (Addition EllipsisLiteral (EllipsisNatural 0)) $ \value ->
+      ((AST.+) (...) (natural 0)) $ \value ->
     assert "explicit omega is distinguished from the formulation"
       (renderInterpretedValue value == "... + 0")
   expectValue
       "Dot formulation"
-      (Exponentiation EllipsisLiteral (EllipsisNatural 0)) $ \value ->
+      ((AST.^) (...) (natural 0)) $ \value ->
     assert "Dot uses the agreed formulation syntax"
       (renderInterpretedValue value == "...^0")
   expectValue
       "second super-ellipsis formulation"
-      (Exponentiation EllipsisLiteral (EllipsisNatural 2)) $ \value ->
+      ((AST.^) (...) (natural 2)) $ \value ->
     assert "higher formulations render by kind"
       (renderInterpretedValue value == "...^2")
   expectValue
       "zero multiplication"
-      (Addition
-        (Multiplication EllipsisLiteral (EllipsisNatural 0))
-        (EllipsisNatural 2)) $ \value ->
+      ((AST.+)
+        ((AST.*) (...) (natural 0))
+        (natural 2)) $ \value ->
     assert "arithmetic results return to their minimal rank"
       (renderInterpretedValue value == "2")
   expectValue
       "map containing a canonical range"
       (AtlasMap
-        [ MapConcatenation
-            (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-            (SuperEllipsisRangePlus (EllipsisNatural 5))
+        [ (<.>)
+            ((<..>) (natural 2) (natural 5))
+            ((..+) (natural 5))
         ]) $ \value ->
-    assert "maps render canonical infinite components without enumeration"
-      (renderInterpretedValue value == "[2..]")
+    assert "singleton range maps render without enumeration or brackets"
+      (renderInterpretedValue value == "2..")
 
 testMaps :: IO ()
 testMaps = do
+  expectValue
+      "operator sequence"
+      (natural 1 <:> natural 2) $ \value ->
+    assert "sequential AST syntax constructs a flat two-page map"
+      (interpretedMapCardinality (interpretedMap value) == 2)
+  expectValue
+      "operator expansion"
+      ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4)) $ \value ->
+    assert "expansion AST syntax introduces one additional map level"
+      (interpretedMapCardinality (interpretedMap value) == 3)
   let nested =
         AtlasMap
-          [ AtlasMap [EllipsisNatural 1, EllipsisNatural 2]
-          , AtlasMap [EllipsisNatural 3, EllipsisNatural 4]
+          [ AtlasMap [natural 1, natural 2]
+          , AtlasMap [natural 3, natural 4]
           ]
   expectValue "nested map" nested $ \value -> do
     let valueMap = interpretedMap value
@@ -264,21 +303,21 @@ testMaps = do
       (renderInterpretedValue value == "[[1; 2; 3; 4]]")
   expectValue
       "map concatenation"
-      (MapConcatenation
-        (AtlasMap [EllipsisNatural 1, EllipsisNatural 2])
-        (AtlasMap [EllipsisNatural 3])) $ \value ->
+      ((<.>)
+        (AtlasMap [natural 1, natural 2])
+        (AtlasMap [natural 3])) $ \value ->
     assert "map concatenation appends final-page order types"
       (interpretedMapFinalOrderType (interpretedMap value)
         == finiteOrdinal 3)
 
 testAccess :: IO ()
 testAccess = do
-  let source = AtlasMap (map EllipsisNatural [0 .. 9])
+  let source = AtlasMap (map natural [0 .. 9])
       insertion =
-        MapConcatenation
-          (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-          (SuperEllipsisRange (EllipsisNatural 5) (EllipsisNatural 8))
-  expectValue "range-concatenation access" (MapAccess source insertion) $ \value -> do
+        (<.>)
+          ((<..>) (natural 2) (natural 5))
+          ((<..>) (natural 5) (natural 8))
+  expectValue "range-concatenation access" ((<@>) source insertion) $ \value -> do
     let valueMap = interpretedMap value
         selected =
           map
@@ -291,20 +330,20 @@ testAccess = do
     assert "finite access renders its selected result values"
       (renderInterpretedValue value == "[2; 3; 4; 5; 6; 7]")
   let levelTwoFormulation =
-        Exponentiation EllipsisLiteral (EllipsisNatural 2)
+        (AST.^) (...) (natural 2)
       mixedRankInsertion =
-        MapConcatenation
-          (SuperEllipsisRange (EllipsisNatural 2) (EllipsisNatural 5))
-          (SuperEllipsisRange (EllipsisNatural 5) levelTwoFormulation)
+        (<.>)
+          ((<..>) (natural 2) (natural 5))
+          ((<..>) (natural 5) levelTwoFormulation)
   expectValue "mixed-rank range access"
-      (MapAccess levelTwoFormulation mixedRankInsertion) $ \value ->
+      ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
     assert "cross-rank range concatenation retains insertion capability"
-      (renderInterpretedValue value == "[<SuperEllipsisInsertion>]")
+      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
   expectValue
       "empty access"
-      (MapAccess
+      ((<@>)
         (AtlasMap [])
-        (SuperEllipsisRange (EllipsisNatural 3) (EllipsisNatural 3))) $ \value ->
+        ((<..>) (natural 3) (natural 3))) $ \value ->
     assert "empty maps and ranges are accepted by access"
       ( interpretedMapCardinality (interpretedMap value) == 0
         && interpretedMapFinalOrderType (interpretedMap value)
@@ -312,31 +351,31 @@ testAccess = do
       )
   expectValue
       "symbolic access result"
-      (MapAccess EllipsisLiteral EllipsisLiteral) $ \value ->
+      ((<@>) (...) (...)) $ \value ->
     assert "non-literal infinite selections use the symbolic fallback"
-      (renderInterpretedValue value == "[<SuperEllipsisInsertion>]")
+      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
 
 testTypedRejections :: IO ()
 testTypedRejections = do
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
-        (Addition (AtlasMap []) (EllipsisNatural 1)) of
+        ((AST.+) (AtlasMap []) (natural 1)) of
       Left (ExpectedNumericalOperand LeftOperand MapValueKind) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretExpressionReason
-        (Exponentiation
-          (EllipsisNatural 2)
-          (Addition EllipsisLiteral (EllipsisNatural 0))) of
+        ((AST.^)
+          (natural 2)
+          ((AST.+) (...) (natural 0))) of
       Left (ExpectedNaturalExponent ExplicitOrdinalValueKind) -> True
       _ -> False)
   assert "out-of-bounds access reports the first invalid position"
     (case interpretExpressionReason
-        (MapAccess
-          (AtlasMap (map EllipsisNatural [0 .. 2]))
-          (SuperEllipsisRange
-            (EllipsisNatural 2)
-            (EllipsisNatural 5))) of
+        ((<@>)
+          (AtlasMap (map natural [0 .. 2]))
+          ((<..>)
+            (natural 2)
+            (natural 5))) of
       Left
           (AccessRejected
             (AccessPositionOutOfBounds position orderType)) ->
@@ -344,9 +383,9 @@ testTypedRejections = do
       _ -> False)
   assert "infinite-rank access reports the map order type"
     (case interpretExpressionReason
-        (MapAccess
-          (AtlasMap (map EllipsisNatural [0 .. 2]))
-          EllipsisLiteral) of
+        ((<@>)
+          (AtlasMap (map natural [0 .. 2]))
+          (...)) of
       Left
           (AccessRejected
             (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
@@ -354,15 +393,15 @@ testTypedRejections = do
       _ -> False)
   assert "overlapping access ranges retain the exact overlap rejection"
     (case interpretExpressionReason
-        (MapAccess
-          (AtlasMap (map EllipsisNatural [0 .. 9]))
-          (MapConcatenation
-            (SuperEllipsisRange
-              (EllipsisNatural 2)
-              (EllipsisNatural 5))
-            (SuperEllipsisRange
-              (EllipsisNatural 4)
-              (EllipsisNatural 7)))) of
+        ((<@>)
+          (AtlasMap (map natural [0 .. 9]))
+          ((<.>)
+            ((<..>)
+              (natural 2)
+              (natural 5))
+            ((<..>)
+              (natural 4)
+              (natural 7)))) of
       Left
           (RangeConcatenationRejected
             (SuperEllipsisRangesOverlap _ _ lower upper)) ->
@@ -376,7 +415,7 @@ testLocatedRejection = do
           "<test>"
           (SourcePosition 4 1 5)
           (SourcePosition 10 1 11)
-      expressionValue = Addition (AtlasMap []) (EllipsisNatural 1)
+      expressionValue = (AST.+) (AtlasMap []) (natural 1)
   assert "typed interpretation errors retain their supplied source span"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left
@@ -392,16 +431,23 @@ testLocatedRejection = do
           == "<test>:1:5: left operand must be numerical\n"
               <> "  actual value kind: map"
       Right _ -> False)
+  assert "Romanian interpretation errors are localized only at display time"
+    (case interpretLocatedExpression (Located sourceSpan expressionValue) of
+      Left valueError ->
+        renderDatraError Română valueError
+          == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
+              <> "  tipul efectiv al valorii: hartă"
+      Right _ -> False)
   let overlapExpression =
-        MapAccess
-          (AtlasMap (map EllipsisNatural [0 .. 9]))
-          (MapConcatenation
-            (SuperEllipsisRange
-              (EllipsisNatural 2)
-              (EllipsisNatural 5))
-            (SuperEllipsisRange
-              (EllipsisNatural 4)
-              (EllipsisNatural 7)))
+        (<@>)
+          (AtlasMap (map natural [0 .. 9]))
+          ((<.>)
+            ((<..>)
+              (natural 2)
+              (natural 5))
+            ((<..>)
+              (natural 4)
+              (natural 7)))
   assert "overlap diagnostics use source range notation and half-open bounds"
     (case interpretLocatedExpression (Located sourceSpan overlapExpression) of
       Left valueError ->
@@ -410,4 +456,13 @@ testLocatedRejection = do
               <> "  first range: 2..5\n"
               <> "  second range: 4..7\n"
               <> "  overlap: 4..5 (upper bound excluded)"
+      Right _ -> False)
+  assert "Romanian overlap diagnostics use Datra range notation"
+    (case interpretLocatedExpression (Located sourceSpan overlapExpression) of
+      Left valueError ->
+        renderDatraError Română valueError
+          == "<test>:1:5: intervalele suprapuse nu pot fi folosite pentru a accesa o hartă\n"
+              <> "  primul interval: 2..5\n"
+              <> "  al doilea interval: 4..7\n"
+              <> "  suprapunere: 4..5 (limita superioară este exclusă)"
       Right _ -> False)

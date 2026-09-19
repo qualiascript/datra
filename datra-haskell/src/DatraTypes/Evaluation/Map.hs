@@ -5,7 +5,7 @@ module Evaluation.Map
   ) where
 
 import DatraOrdinal (finiteOrdinal)
-import Diagnostics.Interpreter (InterpretingError)
+import DatraLanguage.Diagnostics.Interpreter (InterpretingError)
 import Evaluation.Range
   ( canonicalizeRanges
   , concatenateRangeCapability

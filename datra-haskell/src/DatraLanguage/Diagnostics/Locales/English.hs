@@ -2,7 +2,7 @@
 --
 -- This display-stage module translates strongly typed domain errors into
 -- prose. Domain modules do not depend on it.
-module Diagnostics.English
+module DatraLanguage.Diagnostics.Locales.English
   ( localizeAccessError
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
@@ -10,14 +10,18 @@ module Diagnostics.English
   , englishOrdinal
   ) where
 
-import Data.List (intercalate)
-import DatraOrdinal (Ordinal, ordinalCoefficients)
-import Diagnostics (LocalizedMessage (LocalizedMessage))
-import Diagnostics.Interpreter
+import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
+import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
   )
+import DatraLanguage.Diagnostics.Locales.Rendering
+  ( renderOrdinal
+  , renderRangeBounds
+  , renderRangeDescription
+  )
+import DatraOrdinal (Ordinal)
 import MapOperators.AccessOperator
   ( AccessError
       ( AccessInsertionRankExceedsMap
@@ -26,13 +30,12 @@ import MapOperators.AccessOperator
   )
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError (SuperEllipsisRangesOverlap)
-  , SuperEllipsisRangeDescription (..)
+  , SuperEllipsisRangeDescription
   , SuperEllipsisRangeError
       ( SuperEllipsisRangeInvalidDescendingBounds
       , SuperEllipsisRangeStartOutsideRank
       , SuperEllipsisRangeTargetOutsideRank
       )
-  , SuperEllipsisRangeTarget (..)
   )
 
 localizeAccessError :: AccessError -> LocalizedMessage
@@ -118,34 +121,12 @@ localizeSuperEllipsisRangeConcatError
     "cannot use overlapping ranges to access a map"
     [ "first range: " <> englishRangeDescription first
     , "second range: " <> englishRangeDescription second
-    , "overlap: " <> englishOrdinal lower
-        <> ".." <> englishOrdinal upper
+    , "overlap: " <> renderRangeBounds lower upper
         <> " (upper bound excluded)"
     ]
 
 englishRangeDescription :: SuperEllipsisRangeDescription -> String
-englishRangeDescription description =
-  englishOrdinal (describedRangeStart description)
-    <> case describedRangeTarget description of
-      GivenTarget target -> ".." <> englishOrdinal target
-      PlusSign -> ".."
-      MinusSign -> "..-"
+englishRangeDescription = renderRangeDescription
 
 englishOrdinal :: Ordinal -> String
-englishOrdinal value =
-  case ordinalCoefficients value of
-    [] -> "0"
-    coefficients ->
-      intercalate " + "
-        [ renderTerm power coefficient
-        | (power, coefficient) <- zip [degree, degree - 1 .. 0] coefficients
-        , coefficient /= 0
-        ]
-      where
-        degree = length coefficients - 1
-        renderTerm 0 coefficient = show coefficient
-        renderTerm 1 1 = "(...)"
-        renderTerm 1 coefficient = "(...) * " <> show coefficient
-        renderTerm power 1 = "(...)^" <> show power
-        renderTerm power coefficient =
-          "(...)^" <> show power <> " * " <> show coefficient
+englishOrdinal = renderOrdinal
