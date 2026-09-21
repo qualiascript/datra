@@ -59,7 +59,6 @@ prettyCanonicalResult result =
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalMap cardinality components ->
       prettyMap cardinality components
-    CanonicalSuperEllipsisInsertion -> "<SuperEllipsisInsertion>"
 
 prettyNaturalRange
   :: Natural

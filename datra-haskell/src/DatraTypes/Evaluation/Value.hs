@@ -116,7 +116,6 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalAsciiString String
   | CanonicalMap Natural [CanonicalResult]
-  | CanonicalSuperEllipsisInsertion
   deriving (Eq, Show)
 
 data InterpretedValue = InterpretedValue

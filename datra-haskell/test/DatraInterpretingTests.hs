@@ -618,8 +618,10 @@ testAccess = do
           ((<..>) (natural 5) levelTwoFormulation)
   expectValue "mixed-rank range access"
       ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
-    assert "cross-rank range concatenation retains insertion capability"
-      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
+    assert "a cofinal mixed-rank selection canonicalizes as a formulation"
+      ( interpretedValueKind value == FormulationValueKind
+        && renderInterpretedValue value == "...^2"
+      )
   expectValue
       "empty access"
       ((<@>)
@@ -633,8 +635,52 @@ testAccess = do
   expectValue
       "symbolic access result"
       ((<@>) (...) (...)) $ \value ->
-    assert "non-literal infinite selections use the symbolic fallback"
-      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
+    assert "full formulation access remains the same formulation"
+      ( interpretedValueKind value == FormulationValueKind
+        && renderInterpretedValue value == "..."
+      )
+  expectValue
+      "cofinal formulation range access"
+      ((<@>) (...) ((..+) (natural 5))) $ \value ->
+    assert "a cofinal formulation tail canonicalizes as the formulation"
+      ( interpretedValueKind value == FormulationValueKind
+        && renderInterpretedValue value == "..."
+      )
+  expectRangeAccess
+    "a formulation acts as a full-prefix range selector"
+    RangeValueKind
+    ((..+) (natural 10))
+    (...)
+    "10.."
+  expectRangeAccess
+    "an AtlasMap wrapper preserves its range source"
+    RangeValueKind
+    (AtlasMap [((..+) (natural 2))])
+    ((..+) (natural 5))
+    "7.."
+  expectRangeAccess
+    "an infinite selection skips a finite AtlasMap prefix"
+    RangeValueKind
+    (AtlasMap [natural 42, ((..+) (natural 2))])
+    ((..+) (natural 5))
+    "6.."
+  expectValue
+      "non-injective infinite AtlasMap access"
+      ((<@>)
+        (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
+        ((..+) (natural 0))) $ \value ->
+    assert "overlapping result ranges remain an exact ordinary map"
+      ( interpretedValueKind value == MapValueKind
+        && renderInterpretedValue value == "[1; 1..]"
+      )
+  expectRangeAccess
+    "a canonicalized non-injective result remains accessible"
+    RangeValueKind
+    ((<@>)
+      (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
+      ((..+) (natural 0)))
+    ((..+) (natural 1))
+    "1.."
 
 testTypedRejections :: IO ()
 testTypedRejections = do
