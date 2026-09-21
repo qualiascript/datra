@@ -27,7 +27,7 @@ import AtlasConfederation
   , singletonAtlasConfederation
   )
 import AtlasFederation
-  ( AtlasFederationSeparation (SeparatedCorrespondingRegions)
+  ( AtlasFederationSeparation (SeparatedCorrespondingPageElements)
   , atlasFederationIndexDominion
   , atlasFederationSeparation
   )
@@ -269,7 +269,8 @@ testNaturalRange = do
               (Just left, Just right) ->
                 atlasFederationSeparation federation left right
                   == Just
-                    (SeparatedCorrespondingRegions (finiteOrdinal 0))
+                    (SeparatedCorrespondingPageElements
+                      1 (finiteOrdinal 0))
               _ -> False)
     of
       Just (Just (Just tests)) -> tests

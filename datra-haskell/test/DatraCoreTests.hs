@@ -1779,13 +1779,15 @@ testAtlasFederation = do
         (AtlasMergeNode atom atom) $ \confederation -> do
           let federation =
                 atlasFederation confederation $ \_ _ ->
-                  SeparatedCorrespondingRegions correspondingPosition
+                  SeparatedCorrespondingPageElements
+                    0 correspondingPosition
           assert "a federation does not separate a tag from itself"
             (isNothing (atlasFederationSeparation federation False False))
           assert "a federation retains separation evidence for distinct tags"
             ( atlasFederationSeparation federation False True
                 == Just
-                  (SeparatedCorrespondingRegions correspondingPosition)
+                  (SeparatedCorrespondingPageElements
+                    0 correspondingPosition)
             )
 
 testAtlasMap :: IO ()
@@ -2217,7 +2219,7 @@ testForgetStableConfederalData =
         singletonConfederation = singletonAtlasConfederation valueAtlas
         singletonFederation =
           atlasFederation singletonConfederation $ \_ _ ->
-            DifferentRegionOrderTypes
+            DifferentPageOrderTypes 0
         embeddedFederationValue =
           embeddedAtlasFederationValue
             identityAtlasConfederationHom

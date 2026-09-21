@@ -40,8 +40,8 @@ import AtlasConfederation
 import AtlasFederation
   ( AtlasFederation
   , AtlasFederationSeparation
-      ( DifferentRegionOrderTypes
-      , SeparatedCorrespondingRegions
+      ( DifferentPageOrderTypes
+      , SeparatedCorrespondingPageElements
       )
   , atlasFederation
   )
@@ -384,8 +384,10 @@ subrangesSeparated
   -> NaturalSubrange scope
   -> AtlasFederationSeparation
 subrangesSeparated left right
-  | subrangeSize left /= subrangeSize right = DifferentRegionOrderTypes
-  | otherwise = SeparatedCorrespondingRegions (finiteOrdinal 0)
+  | subrangeSize left /= subrangeSize right =
+      DifferentPageOrderTypes 1
+  | otherwise =
+      SeparatedCorrespondingPageElements 1 (finiteOrdinal 0)
 
 subrangeSize :: NaturalSubrange scope -> Maybe Natural
 subrangeSize EmptySubrange = Just 0

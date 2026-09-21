@@ -1165,9 +1165,29 @@ structure StableAtlasFamily where
 
 attribute [instance] StableAtlasFamily.countableIndex
 
-/-- The ordinal indexing the regions of an atlas. -/
-def regionOrdinal (A : Atl) : Ordinal :=
-  Ordinal.type (fun i j : TerritoryIndex A => i < j)
+/-- The cells at one page of an Atlas's full, eventually constant spine. -/
+def AtlasPageIndex (A : Atl) (page : Nat) : Type :=
+  A.Fo.SpineCell page
+
+instance (A : Atl) (page : Nat) : LinearOrder (AtlasPageIndex A page) :=
+  (A.Fo.pageChain page).linearOrder
+
+instance (A : Atl) (page : Nat) : WellFoundedLT (AtlasPageIndex A page) :=
+  (A.Fo.pageChain page).wellFoundedLT
+
+/-- The ordinal indexing the cells at one page of an Atlas. -/
+def pageOrdinal (A : Atl) (page : Nat) : Ordinal :=
+  Ordinal.type (fun i j : AtlasPageIndex A page => i < j)
+
+/-- A cell at a specified page, regarded as an object of the tall Atlas. -/
+def indexedPageElement (A : Atl) (page : Nat)
+    (index : AtlasPageIndex A page) : A.tall.El :=
+  ⟨op page, index⟩
+
+/-- The datum dominion carried by a page element at a specified ordinal. -/
+def pageElementData (A : Atl) (page : Nat)
+    (index : AtlasPageIndex A page) : DomIns :=
+  A.tall.Da.obj (indexedPageElement A page index)
 
 /-- The one-element dominion used to represent elements categorically. -/
 def oneDominion : DomIns where
@@ -1182,16 +1202,21 @@ as morphisms from the one-element dominion. -/
 def NoCommonElement (X Y : DomIns) : Prop :=
   ¬ (Nonempty (oneDominion ⟶ X) ∧ Nonempty (oneDominion ⟶ Y))
 
-/-- An atlas federation is a confederation whose distinct components either
-have different region ordinals or have disjoint corresponding regions at some
-index. -/
+/-- An atlas federation is a confederation whose distinct components can be
+separated at some page of their full spines.  At that page, either their cell
+chains have different ordinal types or a pair of cells at the same ordinal
+carry dominions with no common element.  The previous territory-only
+condition is the special case obtained by choosing a repeated final page. -/
 def IsAtlasFederation (F : StableAtlasFamily) : Prop :=
   ∀ i j : F.Index, i ≠ j →
     let X := (F.component i).obj.obj
     let Y := (F.component j).obj.obj
-    regionOrdinal X ≠ regionOrdinal Y ∨
-      ∃ e : TerritoryIndex X ≃o TerritoryIndex Y,
-        ∃ k, NoCommonElement (region X k) (region Y (e k))
+    ∃ page : Nat,
+      pageOrdinal X page ≠ pageOrdinal Y page ∨
+        ∃ e : AtlasPageIndex X page ≃o AtlasPageIndex Y page,
+          ∃ k, NoCommonElement
+            (pageElementData X page k)
+            (pageElementData Y page (e k))
 
 /-- Atlas confederations satisfying the federation separation condition. -/
 def AtlasFederation := {F : StableAtlasFamily // IsAtlasFederation F}
@@ -2342,10 +2367,11 @@ discards the component tags and retains the resulting atlas.
 
 \begin{definition}[Atlas Federation]
 An \textbf{Atlas Federation} is an Atlas Confederation $(A_i)_{i\in I}$ such
-that, for distinct $i,j\in I$, either the region-indexing chains of $A_i$ and
-$A_j$ have different order types, or some pair of corresponding regions (under
-their order isomorphism) has no common element; equivalently, there is no pair
-of morphisms from the one-element dominion to those two regions.
+that, for distinct $i,j\in I$, there is some page of their full, eventually
+constant spines where either the cell-indexing chains have different order
+types, or a pair of page elements at the same ordinal (under the chains' order
+isomorphism) carries dominions with no common element; equivalently, there is
+no pair of morphisms from the one-element dominion to those two dominions.
 \end{definition}
 
 \begin{definition}[The Empty Atlas]

@@ -27,13 +27,15 @@ import AtlasConfederation
   )
 import DatraOrdinal (Ordinal)
 import Dominion (Dominion, rank)
+import Numeric.Natural (Natural)
 
 -- | Evidence for the disjunction in Lean's @IsAtlasFederation@ predicate.
--- Equal-order components carry the position of corresponding regions for
--- which the caller has established that no common element exists.
+-- The page is measured on the full padded spine. Equal-order pages also carry
+-- the ordinal position of corresponding page elements for which the caller
+-- has established that no common element exists.
 data AtlasFederationSeparation
-  = DifferentRegionOrderTypes
-  | SeparatedCorrespondingRegions Ordinal
+  = DifferentPageOrderTypes Natural
+  | SeparatedCorrespondingPageElements Natural Ordinal
   deriving (Eq, Show)
 
 -- | An Atlas confederation equipped with a separation witness for every pair
