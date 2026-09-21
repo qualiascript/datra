@@ -387,6 +387,30 @@ testMaps = do
 
 testAccess :: IO ()
 testAccess = do
+  let threeValues =
+        (<.>)
+          (natural 1)
+          ((<.>) (natural 2) (natural 3))
+  expectValue
+      "natural upwards range access"
+      ((<@>) threeValues (NaturalRangeUpwards 1)) $ \value ->
+    assert "natural range access clips upwards to the largest fitting range"
+      (renderInterpretedValue value == "[2; 3]")
+  expectValue
+      "bounded natural range access"
+      ((<@>) threeValues (NaturalRange 1 10)) $ \value ->
+    assert "bounded natural range access clips its inclusive target"
+      (renderInterpretedValue value == "[2; 3]")
+  expectValue
+      "descending natural range access"
+      ((<@>) threeValues (NaturalRange 10 0)) $ \value ->
+    assert "descending natural range access clips its inclusive origin"
+      (renderInterpretedValue value == "[3; 2; 1]")
+  expectValue
+      "empty natural range access"
+      ((<@>) threeValues (NaturalRangeUpwards 10)) $ \value ->
+    assert "natural range access always has its empty federation member"
+      (renderInterpretedValue value == "[]")
   expectValue
       "ASCII-string singleton access"
       ((<@>) (AsciiStringLiteral "abcd") (natural 2)) $ \value ->
@@ -493,6 +517,18 @@ testTypedRejections = do
         ((<@>)
           (AtlasMap (map natural [0 .. 2]))
           (...)) of
+      Left
+          (AccessRejected
+            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
+        insertionLimit == omega && mapOrderType == finiteOrdinal 3
+      _ -> False)
+  assert "ordinary open ranges still fail instead of clipping"
+    (case interpretExpressionReason
+        ((<@>)
+          ((<.>)
+            (natural 1)
+            ((<.>) (natural 2) (natural 3)))
+          ((..+) (natural 1))) of
       Left
           (AccessRejected
             (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->

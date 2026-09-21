@@ -153,6 +153,10 @@ main = do
     "from 2 upwards"
     "(from 2 upwards)"
   assertAstOutput
+    "natural range access"
+    "1, 2, 3 @ from 1 upwards"
+    "(<@> (<.> 1 (<.> 2 3)) (from 1 upwards))"
+  assertAstOutput
     "natural range keywords continue across lines"
     "from\n2\nto\n5"
     "(from 2 to 5)"

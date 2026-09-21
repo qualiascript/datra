@@ -20,9 +20,12 @@ module NaturalRange
   , naturalRangeTarget
   , naturalRangeDirection
   , naturalRangeEmptySubrange
+  , naturalRangeFullSubrange
+  , naturalRangeLargestSubrangeBelow
   , naturalRangeFiniteSubrange
   , naturalRangeUpwardsSubrange
   , naturalSubrangeDescription
+  , naturalSubrangeEllipsisRange
   ) where
 
 import Atlas (AtlasWitness, atlasWitness)
@@ -153,6 +156,38 @@ naturalRangeEmptySubrange
   -> NaturalSubrange rangeScope
 naturalRangeEmptySubrange _ = EmptySubrange
 
+-- | The federation index corresponding to the entire outer range.
+naturalRangeFullSubrange
+  :: NaturalRange rangeScope federationScope
+  -> NaturalSubrange rangeScope
+naturalRangeFullSubrange valueRange =
+  case naturalRangeTarget valueRange of
+    FiniteNaturalTarget target ->
+      FiniteSubrange (naturalRangeStart valueRange) target
+    UpwardsTarget -> UpwardsSubrange (naturalRangeStart valueRange)
+
+-- | Select the largest member whose natural positions are all strictly below
+-- the supplied finite limit.  The empty member makes this operation total.
+naturalRangeLargestSubrangeBelow
+  :: NaturalRange rangeScope federationScope
+  -> Natural
+  -> NaturalSubrange rangeScope
+naturalRangeLargestSubrangeBelow valueRange limit
+  | limit == 0 = EmptySubrange
+  | otherwise =
+      case naturalRangeTarget valueRange of
+        UpwardsTarget
+          | start < limit -> FiniteSubrange start (limit - 1)
+          | otherwise -> EmptySubrange
+        FiniteNaturalTarget target
+          | start <= target && start < limit ->
+              FiniteSubrange start (min target (limit - 1))
+          | start > target && target < limit ->
+              FiniteSubrange (min start (limit - 1)) target
+          | otherwise -> EmptySubrange
+  where
+    start = naturalRangeStart valueRange
+
 -- | Refine finite inclusive endpoints to membership in this federation.
 -- Endpoints must lie within the outer range and follow its direction.
 naturalRangeFiniteSubrange
@@ -189,6 +224,22 @@ naturalSubrangeDescription (FiniteSubrange start target) =
   FiniteNaturalSubrange start target
 naturalSubrangeDescription (UpwardsSubrange start) =
   UpwardsNaturalSubrange start
+
+-- | Materialize a federation member as the core range used by access and
+-- other range operations.
+naturalSubrangeEllipsisRange
+  :: NaturalSubrange scope
+  -> (forall rangeScope. EllipsisRange rangeScope -> result)
+  -> Maybe result
+naturalSubrangeEllipsisRange EmptySubrange =
+  superEllipsisRange
+    (nextSuperEllipsisRank dotSuperEllipsisRank)
+    (finiteOrdinal 0)
+    (GivenTarget (finiteOrdinal 0))
+naturalSubrangeEllipsisRange (FiniteSubrange start target) =
+  inclusiveEllipsisRange start (FiniteNaturalTarget target)
+naturalSubrangeEllipsisRange (UpwardsSubrange start) =
+  inclusiveEllipsisRange start UpwardsTarget
 
 inclusiveEllipsisRange
   :: Natural

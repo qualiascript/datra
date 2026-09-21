@@ -12,21 +12,64 @@ import Data.Bifunctor qualified as Bifunctor
 import DatraLanguage.Diagnostics.Interpreter (InterpretingError (..))
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Value
+import NaturalRange qualified
 import MapOperators.AccessOperator
   ( validateAccessSelection )
 import SuperEllipsisInsertion
-  ( someSuperEllipsisInsertionOrderType
+  ( eraseSuperEllipsisInsertion
+  , someSuperEllipsisInsertionOrderType
   , someSuperEllipsisInsertionPositionAt
   , someSuperEllipsisInsertionRank
   )
+import SuperEllipsisRange qualified as Range
 
 accessValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-accessValues mapValue insertionValue = do
-  insertion <- requireInsertion insertionValue
+accessValues mapValue insertionValue =
+  case interpretedForm insertionValue of
+    NaturalRangeForm naturalRange ->
+      accessNaturalRange mapValue naturalRange
+    _ -> do
+      insertion <- requireInsertion insertionValue
+      accessWithInsertion mapValue insertion
+
+accessNaturalRange
+  :: InterpretedValue
+  -> EvaluatedNaturalRange
+  -> Either InterpretingError InterpretedValue
+accessNaturalRange mapValue (EvaluatedNaturalRange valueRange) =
+  case NaturalRange.naturalSubrangeEllipsisRange selectedRange $ \range ->
+      accessWithInsertion
+        mapValue
+        (eraseSuperEllipsisInsertion
+          (Range.superEllipsisRangeInsertion range)) of
+    Just result -> result
+    Nothing -> finishAccess mapValue emptyInterpretedMap
+  where
+    sourceOrderType =
+      interpretedMapFinalOrderType (interpretedMap mapValue)
+    selectedRange =
+      case naturalAtOrdinal sourceOrderType of
+        Just finiteLimit ->
+          NaturalRange.naturalRangeLargestSubrangeBelow
+            valueRange finiteLimit
+        Nothing -> NaturalRange.naturalRangeFullSubrange valueRange
+
+accessWithInsertion
+  :: InterpretedValue
+  -> SomeSuperEllipsisInsertion
+  -> Either InterpretingError InterpretedValue
+accessWithInsertion mapValue insertion = do
   selected <- accessMap (interpretedMap mapValue) insertion
+  finishAccess mapValue selected
+
+finishAccess
+  :: InterpretedValue
+  -> InterpretedMap
+  -> Either InterpretingError InterpretedValue
+finishAccess mapValue selected =
   let ordinaryResult =
         InterpretedValue
           MapForm
@@ -35,7 +78,7 @@ accessValues mapValue insertionValue = do
           (CanonicalMap
             (interpretedMapCardinality selected)
             (interpretedMapComponents selected))
-  pure
+  in pure
     (case interpretedForm mapValue of
       AsciiStringForm _ ->
         maybe ordinaryResult makeAsciiString
