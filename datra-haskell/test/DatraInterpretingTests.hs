@@ -106,7 +106,7 @@ testLiteralsAndArithmetic = do
         && interpretedMapCardinality valueMap == 2
         && interpretedMapFinalOrderType valueMap == finiteOrdinal 3
         && characterCodes == map Just [97, 255, 97] <> [Nothing]
-        && renderInterpretedValue value == "\"a\255a\""
+        && renderInterpretedValue value == "\"a\\FFa\""
       )
   expectValue "empty ASCII string" (AsciiStringLiteral "") $ \value ->
     assert "the empty ASCII string retains its literal while using an empty map"

@@ -2,6 +2,7 @@
 
 module DatraParsingTests (main) where
 
+import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
   , renderExpression
@@ -24,6 +25,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import Parsing (parseDatra, parseDatraAst, parseDatraLocated)
+import Numeric (showHex)
 
 main :: IO ()
 main = do
@@ -81,6 +83,23 @@ main = do
     "StandardString decodes and canonicalizes escaped newlines"
     "\"first\\nsecond\""
     "\"first\\nsecond\""
+  assertAstOutput
+    "StandardString accepts and canonicalizes hexadecimal byte escapes"
+    "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
+    "\"\\00\\08\\08\\09\\1F\\7F\\FF\""
+  assertParsed
+    "StandardString hexadecimal escapes select ASCII-map characters"
+    "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
+    (AtlasMap [AsciiStringLiteral ['\0', '\8', '\8', '\9', '\31', '\127', '\255']])
+  assertAstOutput
+    "StandardString canonicalizes a hexadecimal newline to its named escape"
+    "\"\\0A\""
+    "\"\\n\""
+  assertAstOutput
+    "StandardString leaves keyboard-visible ASCII characters literal"
+    "\" !#%&'()*+,-./:;<=>?@[]^_`{|}~\""
+    "\" !#%&'()*+,-./:;<=>?@[]^_`{|}~\""
+  assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
     "[\"  first\nsecond  \"]"
@@ -373,6 +392,37 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+assertAllHexadecimalAsciiEscapes :: IO ()
+assertAllHexadecimalAsciiEscapes = do
+  mapM_ assertTwoDigitEscape [0 .. 255]
+  mapM_ assertOneDigitEscape [0 .. 15]
+  where
+    assertTwoDigitEscape byteValue =
+      assertHexadecimalEscape
+        ("two-digit hexadecimal escape " <> hexadecimalByte byteValue)
+        (hexadecimalByte byteValue)
+        byteValue
+
+    assertOneDigitEscape byteValue =
+      assertHexadecimalEscape
+        ("one-digit hexadecimal escape " <> hexadecimalDigit byteValue)
+        (hexadecimalDigit byteValue)
+        byteValue
+
+    assertHexadecimalEscape label digits byteValue =
+      assertParsed
+        label
+        ("\"\\" <> digits <> "\"")
+        (AtlasMap [AsciiStringLiteral [chr byteValue]])
+
+    hexadecimalByte byteValue =
+      case hexadecimalDigit byteValue of
+        [digit] -> ['0', digit]
+        digits -> digits
+
+    hexadecimalDigit byteValue =
+      map toUpper (showHex byteValue "")
 
 assertLocatedParse :: IO ()
 assertLocatedParse =

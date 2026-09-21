@@ -11,14 +11,14 @@ module Parsing
   , parseDatraAstLocatedWithSourceName
   ) where
 
-import Control.Applicative (empty, some, (<|>))
+import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
-import Data.Char (ord)
+import Data.Char (chr, digitToInt, isHexDigit, ord)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -408,7 +408,8 @@ identifierStringToken =
       <*> many (satisfy isCanonicalCharacter))
 
 -- | The standard quoted spelling. It is multiline by default and retains all
--- contents exactly. Newline, quote, and backslash have escaped spellings.
+-- contents exactly. Newline, quote, and backslash have named escaped spellings;
+-- any byte can also be written using one or two hexadecimal digits.
 standardString :: Parser String
 standardString = lexeme standardStringToken
 
@@ -426,12 +427,23 @@ standardStringCharacter =
       [ '"' <$ char '"'
       , '\\' <$ char '\\'
       , '\n' <$ char 'n'
+      , hexadecimalAsciiCharacter
       ])
     <|> satisfy
       (\character ->
         character /= '"'
           && character /= '\\'
           && isAsciiCharacter character)
+
+hexadecimalAsciiCharacter :: Parser Char
+hexadecimalAsciiCharacter = do
+  firstDigit <- satisfy isHexDigit
+  secondDigit <- optional (satisfy isHexDigit)
+  let byteValue =
+        case secondDigit of
+          Nothing -> digitToInt firstDigit
+          Just digit -> 16 * digitToInt firstDigit + digitToInt digit
+  pure (chr byteValue)
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

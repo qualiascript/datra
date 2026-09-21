@@ -9,12 +9,14 @@ module DatraLanguage.AST
   , renderAsciiStringLiteral
   ) where
 
+import Data.Char (ord, toUpper)
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
   )
 import Numeric.Natural (Natural)
+import Numeric (showHex)
 import Prettyprinter
   ( Doc
   , hsep
@@ -210,7 +212,8 @@ prettyForm headName operands =
   parens (hsep (pretty headName : operands))
 
 -- | Render an identifier string when possible, otherwise use the standard
--- quoted spelling. Standard strings escape newline, quote, and backslash.
+-- quoted spelling. Standard strings leave the keyboard-visible ASCII range
+-- literal and use hexadecimal escapes for every other byte except newline.
 renderAsciiStringLiteral :: String -> String
 renderAsciiStringLiteral value@(first : rest)
   | isLeadingCanonicalCharacter first
@@ -220,7 +223,19 @@ renderAsciiStringLiteral value = '"' : foldr escape "\"" value
     escape '\n' rest = '\\' : 'n' : rest
     escape '"' rest = '\\' : '"' : rest
     escape '\\' rest = '\\' : '\\' : rest
+    escape character rest
+      | isAsciiByte character && not (isKeyboardCharacter character) =
+          '\\' : hexadecimalByte character <> rest
     escape character rest = character : rest
+
+    hexadecimalByte character =
+      case map toUpper (showHex (ord character) "") of
+        [digit] -> ['0', digit]
+        digits -> digits
+
+    isAsciiByte character = ord character < 256
+    isKeyboardCharacter character =
+      0x20 <= ord character && ord character <= 0x7e
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =
