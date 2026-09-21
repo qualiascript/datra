@@ -23,8 +23,7 @@ import MapOperators.AccessOperator
   ( validateAccessSelection )
 import Numeric.Natural (Natural)
 import SuperEllipsisInsertion
-  ( eraseSuperEllipsisInsertion
-  , someSuperEllipsisInsertionOrderType
+  ( someSuperEllipsisInsertionOrderType
   , someSuperEllipsisInsertionPositionAt
   , someSuperEllipsisInsertionRank
   )
@@ -55,10 +54,7 @@ accessNaturalRange
   -> Either InterpretingError InterpretedValue
 accessNaturalRange mapValue (EvaluatedNaturalRange valueRange) =
   case NaturalRange.naturalSubrangeEllipsisRange selectedRange $ \range ->
-      accessWithInsertion
-        mapValue
-        (eraseSuperEllipsisInsertion
-          (Range.superEllipsisRangeInsertion range)) of
+      accessWithRange mapValue (EvaluatedRange 1 range) of
     Just result -> result
     Nothing -> finishAccess mapValue emptyInterpretedMap
   where
@@ -71,13 +67,22 @@ accessNaturalRange mapValue (EvaluatedNaturalRange valueRange) =
             valueRange finiteLimit
         Nothing -> NaturalRange.naturalRangeFullSubrange valueRange
 
-accessWithInsertion
+accessWithRange
   :: InterpretedValue
-  -> SomeSuperEllipsisInsertion
+  -> EvaluatedRange
   -> Either InterpretingError InterpretedValue
-accessWithInsertion mapValue insertion = do
-  selected <- accessMap (interpretedMap mapValue) insertion
-  finishAccess mapValue selected
+accessWithRange mapValue selectionRange = do
+  selected <-
+    accessMap
+      (interpretedMap mapValue)
+      (rangeInsertion selectionRange)
+  case valueRanges mapValue of
+    Just sourceRanges -> do
+      result <-
+        rangeAccessResult selected
+          (rangeAccessDescriptions sourceRanges [selectionRange])
+      maybe (finishAccess mapValue selected) Right result
+    Nothing -> finishAccess mapValue selected
 
 finishAccess
   :: InterpretedValue

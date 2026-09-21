@@ -418,6 +418,38 @@ testAccess = do
     assert "natural range access always has its empty federation member"
       (renderInterpretedValue value == "[]")
   expectRangeAccess
+    "natural upwards access canonicalizes a bounded source range"
+    RangeValueKind
+    ((<..>) (natural 100) (natural 123))
+    (NaturalRangeUpwards 5)
+    "105..123"
+  expectRangeAccess
+    "bounded natural access canonicalizes a source range"
+    RangeValueKind
+    ((<..>) (natural 100) (natural 123))
+    (NaturalRange 5 10)
+    "105..111"
+  expectRangeAccess
+    "descending natural access canonicalizes a source range"
+    RangeValueKind
+    ((<..>) (natural 100) (natural 123))
+    (NaturalRange 10 5)
+    "110..104"
+  expectRangeAccess
+    "natural upwards access preserves source range gaps"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((<..>) (natural 10) (natural 14)))
+    (NaturalRangeUpwards 1)
+    "3..5, 10..14"
+  expectRangeAccess
+    "natural upwards access canonicalizes an open source range"
+    RangeValueKind
+    ((..+) (natural 10))
+    (NaturalRangeUpwards 5)
+    "15.."
+  expectRangeAccess
     "open range access stays an open range"
     RangeValueKind
     ((..+) (natural 10))
