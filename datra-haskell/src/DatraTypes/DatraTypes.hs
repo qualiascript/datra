@@ -19,6 +19,8 @@ module DatraTypes
   , boundedRangeValue
   , openPlusRangeValue
   , openMinusRangeValue
+  , naturalRangeValue
+  , naturalRangeUpwardsValue
   , makeAtlasMap
   , concatenateValues
   , accessValues
@@ -55,6 +57,8 @@ import Evaluation.Numerical
   )
 import Evaluation.Range
   ( boundedRangeValue
+  , naturalRangeUpwardsValue
+  , naturalRangeValue
   , openMinusRangeValue
   , openPlusRangeValue
   )

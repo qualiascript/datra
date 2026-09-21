@@ -38,6 +38,8 @@ data Expression
   | SuperEllipsisRange Expression Expression
   | SuperEllipsisRangePlus Expression
   | SuperEllipsisRangeMinus Expression
+  | NaturalRange Natural Natural
+  | NaturalRangeUpwards Natural
   | Addition Expression Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
@@ -61,6 +63,8 @@ data OperatorExpression
   | Range OperatorExpression OperatorExpression
   | RangePlus OperatorExpression
   | RangeMinus OperatorExpression
+  | InclusiveNaturalRange Natural Natural
+  | InclusiveNaturalRangeUpwards Natural
   | Add OperatorExpression OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
@@ -95,6 +99,8 @@ normalizeExpression (SuperEllipsisRangePlus lowerBound) =
   SuperEllipsisRangePlus (normalizeExpression lowerBound)
 normalizeExpression (SuperEllipsisRangeMinus upperBound) =
   SuperEllipsisRangeMinus (normalizeExpression upperBound)
+normalizeExpression (NaturalRange origin target) = NaturalRange origin target
+normalizeExpression (NaturalRangeUpwards origin) = NaturalRangeUpwards origin
 normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Multiplication left right) =
@@ -124,6 +130,8 @@ lower (SuperEllipsisRange lowerBound upperBound) =
   Range (lower lowerBound) (lower upperBound)
 lower (SuperEllipsisRangePlus lowerBound) = RangePlus (lower lowerBound)
 lower (SuperEllipsisRangeMinus upperBound) = RangeMinus (lower upperBound)
+lower (NaturalRange origin target) = InclusiveNaturalRange origin target
+lower (NaturalRangeUpwards origin) = InclusiveNaturalRangeUpwards origin
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
@@ -178,6 +186,10 @@ prettyOperator (RangePlus lowerBound) =
   prettyUnary RangePlusOperator lowerBound
 prettyOperator (RangeMinus upperBound) =
   prettyUnary RangeMinusOperator upperBound
+prettyOperator (InclusiveNaturalRange origin target) =
+  prettyForm "from" [pretty origin, "to", pretty target]
+prettyOperator (InclusiveNaturalRangeUpwards origin) =
+  prettyForm "from" [pretty origin, "upwards"]
 prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Multiply left right) =

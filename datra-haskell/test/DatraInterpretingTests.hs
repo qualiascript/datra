@@ -162,6 +162,42 @@ testLiteralsAndArithmetic = do
 testRanges :: IO ()
 testRanges = do
   expectValue
+      "inclusive natural range"
+      (NaturalRange 2 5) $ \value ->
+    assert "natural ranges retain their inclusive canonical form"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 2)
+              (GivenTarget (finiteOrdinal 6)))
+        && renderInterpretedValue value == "from 2 to 5"
+      )
+  expectValue
+      "descending inclusive natural range"
+      (NaturalRange 5 0) $ \value ->
+    assert "zero-target natural ranges use the descending open boundary"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 5)
+              MinusSign)
+        && renderInterpretedValue value == "from 5 to 0"
+      )
+  expectValue
+      "upwards natural range"
+      (NaturalRangeUpwards 2) $ \value ->
+    assert "upwards natural ranges retain their canonical keyword"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 2)
+              PlusSign)
+        && renderInterpretedValue value == "from 2 upwards"
+      )
+  expectValue
       "bounded range"
       ((<..>) (natural 2) (natural 5)) $ \value ->
     assert "bounded range retains its typed description"

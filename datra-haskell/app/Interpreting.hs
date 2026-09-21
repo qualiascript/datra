@@ -70,6 +70,8 @@ interpretExpressionReason expressionValue =
       interpretExpressionReason lower >>= openPlusRangeValue
     SuperEllipsisRangeMinus upper ->
       interpretExpressionReason upper >>= openMinusRangeValue
+    NaturalRange origin target -> naturalRangeValue origin target
+    NaturalRangeUpwards origin -> naturalRangeUpwardsValue origin
     Addition left right ->
       interpretBinary addValues left right
     Multiplication left right ->
