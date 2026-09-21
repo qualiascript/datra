@@ -16,6 +16,12 @@ module Evaluation.Range
   ) where
 
 import Data.Kind (Type)
+import AtlasMapFederation
+  ( AtlasMapFederationExpression
+      ( PrimitiveAtlasMapFederation
+      , SingletonAtlasMapFederation
+      )
+  )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import DatraLanguage.Diagnostics.Interpreter
   ( InterpretingError (..)
@@ -92,14 +98,20 @@ interpretedNaturalRangeValue
   -> InterpretedValue
 interpretedNaturalRangeValue valueRange =
   InterpretedValue
-    (NaturalRangeForm (EvaluatedNaturalRange valueRange))
-    (ValidInsertion insertion)
-    (mapFromInsertion insertion [canonical])
-    canonical
+    { interpretedForm = NaturalRangeForm evaluatedNaturalRange
+    , interpretedInsertionCapability = ValidInsertion insertion
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation =
+        PrimitiveAtlasMapFederation
+          (NaturalRangeAtlasMapFederation evaluatedNaturalRange)
+    , interpretedCanonicalResult = canonical
+    }
   where
+    evaluatedNaturalRange = EvaluatedNaturalRange valueRange
     evaluated =
       EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
     insertion = rangeInsertion evaluated
+    valueMap = mapFromInsertion insertion [canonical]
     canonical =
       CanonicalNaturalRange
         (NaturalRange.naturalRangeStart valueRange)
@@ -127,6 +139,9 @@ interpretedNaturalRangeFallback start target = do
       { interpretedForm = RangeForm evaluated
       , interpretedInsertionCapability = ValidInsertion insertion
       , interpretedMap = mapFromInsertion insertion [canonical]
+      , interpretedAtlasMapFederation =
+          SingletonAtlasMapFederation
+            (mapFromInsertion insertion [canonical])
       , interpretedCanonicalResult = canonical
       }
 
@@ -172,13 +187,17 @@ makeEvaluatedRangeAt level start target =
 interpretedRangeValue :: EvaluatedRange -> InterpretedValue
 interpretedRangeValue evaluatedRange =
   InterpretedValue
-    (RangeForm evaluatedRange)
-    (ValidInsertion insertion)
-    (mapFromInsertion insertion [canonical])
-    canonical
+    { interpretedForm = RangeForm evaluatedRange
+    , interpretedInsertionCapability = ValidInsertion insertion
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation =
+        SingletonAtlasMapFederation valueMap
+    , interpretedCanonicalResult = canonical
+    }
   where
     insertion = rangeInsertion evaluatedRange
     canonical = CanonicalRange (rangeDescription evaluatedRange)
+    valueMap = mapFromInsertion insertion [canonical]
 
 canonicalizeRanges
   :: [EvaluatedRange]

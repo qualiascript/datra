@@ -60,8 +60,10 @@ interpretExpressionReason expressionValue =
     MapSequence expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
     MapExpansion left right ->
-      interpretExpressionReason
-        (AtlasMap [ensureMapLevel left, ensureMapLevel right])
+      interpretAtlasMapWithBuilder
+        makeAtlasExpansion
+        interpretExpressionReason
+        [ensureMapLevel left, ensureMapLevel right]
     SuperEllipsisRange lower upper -> do
       lowerValue <- interpretExpressionReason lower
       upperValue <- interpretExpressionReason upper
@@ -101,6 +103,14 @@ interpretAtlasMapWith
   -> [Expression]
   -> Either InterpretingError InterpretedValue
 interpretAtlasMapWith interpret expressions = do
+  interpretAtlasMapWithBuilder makeAtlasMap interpret expressions
+
+interpretAtlasMapWithBuilder
+  :: (Natural -> [InterpretedValue] -> InterpretedValue)
+  -> (Expression -> Either InterpretingError InterpretedValue)
+  -> [Expression]
+  -> Either InterpretingError InterpretedValue
+interpretAtlasMapWithBuilder buildMap interpret expressions = do
   values <- traverse interpret expressions
   let nestingDepths =
         zipWith expressionNestingDepth expressions values
@@ -110,7 +120,7 @@ interpretAtlasMapWith interpret expressions = do
       cardinality
         | mapDepth == 0 = 0
         | otherwise = mapDepth + 1
-  pure (makeAtlasMap cardinality values)
+  pure (buildMap cardinality values)
 
 expressionNestingDepth :: Expression -> InterpretedValue -> Natural
 expressionNestingDepth expressionValue value =

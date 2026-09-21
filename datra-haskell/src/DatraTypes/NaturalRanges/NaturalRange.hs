@@ -19,6 +19,8 @@ module NaturalRange
   , naturalRangeStart
   , naturalRangeTarget
   , naturalRangeDirection
+  , naturalRangesDisjoint
+  , naturalRangeOverlapWitness
   , naturalRangeEmptySubrange
   , naturalRangeFullSubrange
   , naturalRangeLargestSubrangeBelow
@@ -215,6 +217,48 @@ naturalRangeUpwardsSubrange valueRange start =
       | naturalRangeStart valueRange <= start ->
           Just (UpwardsSubrange start)
     _ -> Nothing
+
+-- | Decide whether the value domains of two natural ranges are disjoint.
+-- Traversal direction is irrelevant: concatenation ambiguity depends on
+-- values which may occur on both sides, not on the order in which they occur.
+naturalRangesDisjoint
+  :: NaturalRange leftRangeScope leftFederationScope
+  -> NaturalRange rightRangeScope rightFederationScope
+  -> Bool
+naturalRangesDisjoint left right =
+  case naturalRangeOverlapWitness left right of
+    Nothing -> True
+    Just _ -> False
+
+-- | Produce a shared value when two natural ranges overlap.  Because every
+-- NaturalRange federation contains both its empty range and every singleton,
+-- this value is also a concrete witness that concatenation is non-injective:
+-- @[x] ++ [] == [] ++ [x]@.
+naturalRangeOverlapWitness
+  :: NaturalRange leftRangeScope leftFederationScope
+  -> NaturalRange rightRangeScope rightFederationScope
+  -> Maybe Natural
+naturalRangeOverlapWitness left right =
+  let (leftLower, leftUpper) = naturalRangeBounds left
+      (rightLower, rightUpper) = naturalRangeBounds right
+      lower = max leftLower rightLower
+  in if withinUpper lower leftUpper && withinUpper lower rightUpper
+      then Just lower
+      else Nothing
+
+naturalRangeBounds
+  :: NaturalRange rangeScope federationScope
+  -> (Natural, Maybe Natural)
+naturalRangeBounds valueRange =
+  case naturalRangeTarget valueRange of
+    UpwardsTarget -> (naturalRangeStart valueRange, Nothing)
+    FiniteNaturalTarget target ->
+      (min (naturalRangeStart valueRange) target,
+       Just (max (naturalRangeStart valueRange) target))
+
+withinUpper :: Natural -> Maybe Natural -> Bool
+withinUpper _ Nothing = True
+withinUpper value (Just upper) = value <= upper
 
 naturalSubrangeDescription
   :: NaturalSubrange scope

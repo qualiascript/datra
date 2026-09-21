@@ -12,6 +12,9 @@ import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
+  , AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
   )
 import DatraLanguage.Diagnostics.Locales.Rendering
   ( renderOrdinal
@@ -74,10 +77,31 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    AtlasMapFederationOperationRefuted refutation ->
+      case refutation of
+        AtlasMapFederationConcatenationCollision value ->
+          LocalizedMessage
+            "concatenarea nu produce o federație de hărți Atlas"
+            [ "valoarea " <> show value
+                <> " apare pe ambele părți în două configurații"
+            ]
+        AtlasMapFederationAccessHasEmptyCounterexample ->
+          LocalizedMessage
+            "accesarea eșuează pentru un membru al federației"
+            ["harta vidă este contraexemplu pentru selecția nevidă"]
+    AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure operation) ->
+      LocalizedMessage
+        "compilatorul nu poate decide această operație pe federații"
+        ["operația: " <> federationOperation operation]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"
         ["caracter: " <> show character]
+
+federationOperation :: AtlasMapFederationOperation -> String
+federationOperation AtlasMapFederationConcatenation = "concatenare"
+federationOperation AtlasMapFederationAccess = "accesare"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "stâng"

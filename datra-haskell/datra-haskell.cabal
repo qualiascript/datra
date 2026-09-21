@@ -59,6 +59,7 @@ library
         EllipsisRange
         EllipsisNatural
         NaturalRange
+        AtlasMapFederation
         DatraLanguage.Diagnostics
         DatraLanguage.Diagnostics.Interpreter
         DatraLanguage.Diagnostics.Locales.English
@@ -221,6 +222,7 @@ library
         src/DatraTypes/Strings
         src/DatraTypes/Ellipses
         src/DatraTypes/NaturalRanges
+        src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
         src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal

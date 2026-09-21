@@ -13,6 +13,8 @@ module Evaluation.Value
   , InsertionCapability (..)
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
+  , InterpretedAtlasMapFederationPrimitive (..)
+  , InterpretedAtlasMapFederation
   , CanonicalResult (..)
   , InterpretedValue (..)
   , interpretedValueKind
@@ -38,6 +40,7 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
+import AtlasMapFederation (AtlasMapFederationExpression)
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
@@ -105,6 +108,18 @@ data InterpretedMap = InterpretedMap
   , interpretedMapComponents :: [CanonicalResult]
   }
 
+-- | Primitive Atlas-map federation kinds understood by the interpreter.
+-- The generic construction tree lives in 'AtlasMapFederation'; extending the
+-- language with another primitive family only extends this open semantic
+-- boundary and its decision procedures.
+data InterpretedAtlasMapFederationPrimitive
+  = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
+
+type InterpretedAtlasMapFederation =
+  AtlasMapFederationExpression
+    InterpretedAtlasMapFederationPrimitive
+    InterpretedMap
+
 -- | A normalized, source-independent presentation of an evaluated value.
 -- Maps contain compact final-page components, so an infinite range remains
 -- renderable without attempting to enumerate it.
@@ -114,6 +129,7 @@ data CanonicalResult
   | CanonicalRange Range.SuperEllipsisRangeDescription
   | CanonicalNaturalRange Natural NaturalRange.NaturalRangeTarget
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
+  | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
   | CanonicalMap Natural [CanonicalResult]
   deriving (Eq, Show)
@@ -122,6 +138,7 @@ data InterpretedValue = InterpretedValue
   { interpretedForm :: ValueForm
   , interpretedInsertionCapability :: InsertionCapability
   , interpretedMap :: InterpretedMap
+  , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
   , interpretedCanonicalResult :: CanonicalResult
   }
 

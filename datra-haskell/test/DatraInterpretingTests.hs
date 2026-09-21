@@ -31,6 +31,11 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   )
+import DatraLanguage.Diagnostics.Interpreter
+  ( AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
+  )
 import Rendering (renderInterpretedValue)
 import DatraOrdinal
   ( finiteOrdinal
@@ -68,6 +73,7 @@ main = do
   testCanonicalResults
   testRendering
   testMaps
+  testAtlasMapFederations
   testAccess
   testTypedRejections
   testLocatedRejection
@@ -385,6 +391,65 @@ testMaps = do
       (interpretedMapFinalOrderType (interpretedMap value)
         == finiteOrdinal 3)
 
+testAtlasMapFederations :: IO ()
+testAtlasMapFederations = do
+  expectValue
+      "a structured map retains NaturalRange syntax"
+      (AtlasMap [natural 2, NaturalRange 2 10]) $ \value ->
+    assert "NaturalRange structure survives a sequential product"
+      (renderInterpretedValue value == "[2; from 2 to 10]")
+  expectValue
+      "disjoint NaturalRange concatenation"
+      ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
+    assert "disjoint finite NaturalRanges form a federation"
+      (renderInterpretedValue value
+        == "from 2 to 5, from 6 to 9")
+  expectValue
+      "descending disjoint NaturalRange concatenation"
+      ((<.>) (NaturalRange 9 6) (NaturalRange 5 2)) $ \value ->
+    assert "NaturalRange disjointness ignores traversal direction"
+      (renderInterpretedValue value
+        == "from 9 to 6, from 5 to 2")
+  expectValue
+      "finite then disjoint upwards NaturalRange"
+      ((<.>) (NaturalRange 2 5) (NaturalRangeUpwards 6)) $ \value ->
+    assert "a finite domain below an upwards domain is disjoint"
+      (renderInterpretedValue value
+        == "from 2 to 5, from 6 upwards")
+  assert "overlapping finite NaturalRanges have a collision witness"
+    (case interpretExpressionReason
+        ((<.>) (NaturalRange 2 5) (NaturalRange 3 6)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            (AtlasMapFederationConcatenationCollision 3)) -> True
+      _ -> False)
+  assert "a shared NaturalRange endpoint is overlap"
+    (case interpretExpressionReason
+        ((<.>) (NaturalRange 2 5) (NaturalRangeUpwards 5)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            (AtlasMapFederationConcatenationCollision 5)) -> True
+      _ -> False)
+  assert "two upwards NaturalRanges always overlap"
+    (case interpretExpressionReason
+        ((<.>)
+          (NaturalRangeUpwards 2)
+          (NaturalRangeUpwards 20)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            (AtlasMapFederationConcatenationCollision 20)) -> True
+      _ -> False)
+  assert "unknown structured concatenation is undecidable, not refuted"
+    (case interpretExpressionReason
+        ((<.>)
+          (NaturalRange 2 4 <:> NaturalRange 8 10)
+          (NaturalRange 20 22 <:> NaturalRange 30 32)) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationConcatenation)) -> True
+      _ -> False)
+
 testAccess :: IO ()
 testAccess = do
   let threeValues =
@@ -681,6 +746,56 @@ testAccess = do
       ((..+) (natural 0)))
     ((..+) (natural 1))
     "1.."
+  expectValue
+      "NaturalRange accessed by NaturalRange"
+      ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
+    assert "NaturalRange access returns a NaturalRange"
+      (renderInterpretedValue value == "from 3 to 10")
+  expectValue
+      "upwards NaturalRange accessed by NaturalRange"
+      ((<@>)
+        (NaturalRangeUpwards 2)
+        (NaturalRangeUpwards 5)) $ \value ->
+    assert "open NaturalRange access stays open"
+      (renderInterpretedValue value == "from 7 upwards")
+  expectValue
+      "descending NaturalRange accessed in reverse"
+      ((<@>) (NaturalRange 10 2) (NaturalRange 3 1)) $ \value ->
+    assert "NaturalRange access composes traversal directions"
+      (renderInterpretedValue value == "from 7 to 9")
+  expectValue
+      "NaturalRange access with no fitting member"
+      ((<@>)
+        (NaturalRange 2 4)
+        (NaturalRangeUpwards 10)) $ \value ->
+    assert "the empty result is the common NaturalRange access member"
+      (renderInterpretedValue value == "[]")
+  expectValue
+      "NaturalRange accessed by empty ordinary range"
+      ((<@>)
+        (NaturalRange 2 10)
+        ((<..>) (natural 0) (natural 0))) $ \value ->
+    assert "empty selection succeeds on every federation member"
+      (renderInterpretedValue value == "[]")
+  assert "nonempty ordinary access is refuted by the empty member"
+    (case interpretExpressionReason
+        ((<@>)
+          (NaturalRange 2 10)
+          ((<..>) (natural 0) (natural 1))) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationAccessHasEmptyCounterexample) -> True
+      _ -> False)
+  assert "structured federation access can remain undecidable"
+    (case interpretExpressionReason
+        ((<@>)
+          (NaturalRange 2 5 <:> NaturalRange 8 10)
+          ((<..>) (natural 0) (natural 1))) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationAccess)) -> True
+      _ -> False)
 
 testTypedRejections :: IO ()
 testTypedRejections = do

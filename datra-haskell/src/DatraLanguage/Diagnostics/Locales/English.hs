@@ -15,6 +15,9 @@ import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
+  , AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
   )
 import DatraLanguage.Diagnostics.Locales.Rendering
   ( renderOrdinal
@@ -74,10 +77,31 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    AtlasMapFederationOperationRefuted refutation ->
+      case refutation of
+        AtlasMapFederationConcatenationCollision value ->
+          LocalizedMessage
+            "concatenation does not produce an Atlas-map federation"
+            [ "the value " <> show value
+                <> " occurs on both sides and has two configurations"
+            ]
+        AtlasMapFederationAccessHasEmptyCounterexample ->
+          LocalizedMessage
+            "access fails for a member of the left Atlas-map federation"
+            ["the empty map is a counterexample for the nonempty selection"]
+    AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure operation) ->
+      LocalizedMessage
+        "the compiler cannot decide this Atlas-map federation operation"
+        ["operation: " <> federationOperation operation]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "string contains a character outside the ASCII map"
         ["character: " <> show character]
+
+federationOperation :: AtlasMapFederationOperation -> String
+federationOperation AtlasMapFederationConcatenation = "concatenation"
+federationOperation AtlasMapFederationAccess = "access"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "left"

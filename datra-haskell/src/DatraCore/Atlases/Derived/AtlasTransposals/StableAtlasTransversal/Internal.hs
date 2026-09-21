@@ -13,6 +13,7 @@ module StableAtlasTransversal.Internal
   , stableAtlasTransversalOrderedTransposal
   , stableAtlasTransversalTransposal
   , stableAtlasTransversalHom
+  , stableAtlasTransversalSourceWitness
   , stableAtlasTransversalPreservesExtent
   , identityStableAtlasTransversal
   , composeStableAtlasTransversals
@@ -247,6 +248,23 @@ stableAtlasTransversalHom
   -> AtlasHom source target
 stableAtlasTransversalHom =
   atlasTransversalHom . stableAtlasTransversalTransversal
+
+-- | Recover the source Atlas witness from the target witness carried by a
+-- value.  This is the object action needed when a presheaf is restricted
+-- along the wide inclusion of stable Atlas transversals.
+stableAtlasTransversalSourceWitness
+  :: StableAtlasTransversal source target
+  -> AtlasWitness target
+  -> AtlasWitness source
+stableAtlasTransversalSourceWitness
+    (PrimitiveStableAtlasTransversal sourceAtlas _ _ _) _ =
+  atlasWitness sourceAtlas
+stableAtlasTransversalSourceWitness IdentityStableAtlasTransversal target =
+  target
+stableAtlasTransversalSourceWitness
+    (CompositeStableAtlasTransversal second first) target =
+  stableAtlasTransversalSourceWitness first
+    (stableAtlasTransversalSourceWitness second target)
 
 -- | Invoke the primitive or structurally derived extent-preservation proof.
 stableAtlasTransversalPreservesExtent

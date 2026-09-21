@@ -16,10 +16,26 @@ module StableDataTransversal.Internal
   , stableDataTransversalHom
   , mapStableDataTransversalHom
   , stableDataTransversalHomNaturality
+  , ExtendedStableDataTransversal
+  , LeftKanExtensionValue
+  , leftKanExtensionValue
+  , withLeftKanExtensionValue
+  , extendStableDataTransversalToDataTransformation
+  , extendStableDataTransversalHomToDataTransformation
+  , StableDataTransversalExtensionFunctor (..)
+  , stableDataTransversalExtensionFunctor
   ) where
 
+import Atlas (AtlasHom, AtlasWitness, composeAtlasHoms)
 import Control.Category (Category (..))
 import Data.Kind (Type)
+import DataTransformation
+  ( DataTransformation
+  , DataTransformationHom
+  , DataTransformationValue
+  , dataTransformation
+  , dataTransformationHom
+  )
 import Prelude hiding ((.), id)
 import StableAtlasTransversal (StableAtlasTransversal)
 
@@ -143,3 +159,108 @@ instance Category StableDataTransversalHom where
   IdentityStableDataTransversalHom . first = first
   second . IdentityStableDataTransversalHom = second
   second . first = CompositeStableDataTransversalHom second first
+
+-- | Defunctionalized carrier of the left Kan extension from stable Atlas
+-- transversals to all Atlas morphisms.
+data ExtendedStableDataTransversal stableValues
+
+-- | One coend presentation @[A -> i(B), value in F(B)]@.  Haskell retains a
+-- representative of the mathematical quotient; the coend relation is
+-- proof-irrelevant at runtime, so eliminators must be invariant under stable
+-- reindexing of the represented value.
+type role LeftKanExtensionValue nominal nominal
+data LeftKanExtensionValue stableValues source where
+  LeftKanExtensionValue
+    :: AtlasWitness target
+    -> AtlasHom source target
+    -> StableDataTransversalValue stableValues target
+    -> LeftKanExtensionValue stableValues source
+
+type instance
+  DataTransformationValue
+    (ExtendedStableDataTransversal stableValues)
+    source =
+      LeftKanExtensionValue stableValues source
+
+leftKanExtensionValue
+  :: AtlasWitness target
+  -> AtlasHom source target
+  -> StableDataTransversalValue stableValues target
+  -> LeftKanExtensionValue stableValues source
+leftKanExtensionValue = LeftKanExtensionValue
+
+withLeftKanExtensionValue
+  :: LeftKanExtensionValue stableValues source
+  -> (forall target.
+       AtlasWitness target
+       -> AtlasHom source target
+       -> StableDataTransversalValue stableValues target
+       -> result)
+  -> result
+withLeftKanExtensionValue
+    (LeftKanExtensionValue target arrow value) useValue =
+  useValue target arrow value
+
+-- | Left Kan extend a presheaf on the wide stable-transversal subcategory to
+-- a presheaf on all Atlases.  Atlas reindexing precomposes the coend arrow;
+-- the coend relation accounts for stable reindexing of the stored value.
+extendStableDataTransversalToDataTransformation
+  :: StableDataTransversal stableValues
+  -> DataTransformation (ExtendedStableDataTransversal stableValues)
+extendStableDataTransversalToDataTransformation _ =
+  dataTransformation
+    (\arrow (LeftKanExtensionValue target represented value) ->
+      LeftKanExtensionValue
+        target
+        (composeAtlasHoms represented arrow)
+        value)
+    (const ())
+    (\_ _ _ -> ())
+
+-- | The arrow action of left Kan extension.  It changes only the stored
+-- presheaf value and retains the representing Atlas arrow.
+extendStableDataTransversalHomToDataTransformation
+  :: StableDataTransversalHom source target
+  -> DataTransformationHom
+       (ExtendedStableDataTransversal source)
+       (ExtendedStableDataTransversal target)
+extendStableDataTransversalHomToDataTransformation
+    (PrimitiveStableDataTransversalHom source target component _) =
+  dataTransformationHom
+    (extendStableDataTransversalToDataTransformation source)
+    (extendStableDataTransversalToDataTransformation target)
+    (\(LeftKanExtensionValue witness represented value) ->
+      LeftKanExtensionValue witness represented (component value))
+    (\_ _ -> ())
+extendStableDataTransversalHomToDataTransformation
+    IdentityStableDataTransversalHom = id
+extendStableDataTransversalHomToDataTransformation
+    (CompositeStableDataTransversalHom second first) =
+  extendStableDataTransversalHomToDataTransformation second
+    . extendStableDataTransversalHomToDataTransformation first
+
+-- | Executable object and arrow action of
+-- @StaDaTrav.extendToDaTra = Lan_(StaAtlTravInc^op)@.
+data StableDataTransversalExtensionFunctor =
+  StableDataTransversalExtensionFunctor
+    { stableDataTransversalExtensionObject
+        :: forall values.
+           StableDataTransversal values
+        -> DataTransformation (ExtendedStableDataTransversal values)
+    , stableDataTransversalExtensionHom
+        :: forall source target.
+           StableDataTransversalHom source target
+        -> DataTransformationHom
+             (ExtendedStableDataTransversal source)
+             (ExtendedStableDataTransversal target)
+    }
+
+stableDataTransversalExtensionFunctor
+  :: StableDataTransversalExtensionFunctor
+stableDataTransversalExtensionFunctor =
+  StableDataTransversalExtensionFunctor
+    { stableDataTransversalExtensionObject =
+        extendStableDataTransversalToDataTransformation
+    , stableDataTransversalExtensionHom =
+        extendStableDataTransversalHomToDataTransformation
+    }

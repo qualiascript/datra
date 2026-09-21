@@ -10,12 +10,26 @@ module StableDataTransversal
   , stableDataTransversalHom
   , mapStableDataTransversalHom
   , stableDataTransversalHomNaturality
+  , ExtendedStableDataTransversal
+  , LeftKanExtensionValue
+  , leftKanExtensionValue
+  , withLeftKanExtensionValue
+  , extendStableDataTransversalToDataTransformation
+  , extendStableDataTransversalHomToDataTransformation
+  , StableDataTransversalExtensionFunctor (..)
+  , stableDataTransversalExtensionFunctor
   ) where
 
 import StableDataTransversal.Internal
   ( StableDataTransversal
   , StableDataTransversalHom
+  , StableDataTransversalExtensionFunctor (..)
   , StableDataTransversalValue
+  , ExtendedStableDataTransversal
+  , LeftKanExtensionValue
+  , extendStableDataTransversalToDataTransformation
+  , extendStableDataTransversalHomToDataTransformation
+  , leftKanExtensionValue
   , mapStableDataTransversal
   , mapStableDataTransversalHom
   , stableDataTransversal
@@ -23,4 +37,6 @@ import StableDataTransversal.Internal
   , stableDataTransversalHom
   , stableDataTransversalHomNaturality
   , stableDataTransversalIdentity
+  , stableDataTransversalExtensionFunctor
+  , withLeftKanExtensionValue
   )

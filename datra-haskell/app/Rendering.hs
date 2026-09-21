@@ -56,6 +56,9 @@ prettyCanonicalResult result =
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
+    CanonicalConcatenation members ->
+      concatWith (\left right -> left <> ", " <> right)
+        (map prettyCanonicalResult members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalMap cardinality components ->
       prettyMap cardinality components

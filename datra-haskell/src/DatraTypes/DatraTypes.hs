@@ -22,6 +22,7 @@ module DatraTypes
   , naturalRangeValue
   , naturalRangeUpwardsValue
   , makeAtlasMap
+  , makeAtlasExpansion
   , concatenateValues
   , accessValues
   , interpretedValueKind
@@ -48,6 +49,7 @@ import Evaluation.Construction
   )
 import Evaluation.Map
   ( concatenateValues
+  , makeAtlasExpansion
   , makeAtlasMap
   )
 import Evaluation.Numerical
