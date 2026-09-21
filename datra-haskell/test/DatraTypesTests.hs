@@ -7,6 +7,7 @@
 module Main (main) where
 
 import AsciiMap
+import qualified AsciiString
 import Atlas
   ( Atlas
   , atlasCardinality
@@ -35,8 +36,6 @@ import AtlasTransposal
   , withAtlasTransposalElement
   )
 import AtlasSequence (atlasSequenceDatumMember)
-import CanonicalCharsMap
-import LeadingCanonicalCharsMap
 import ChainedDominionAtlas (ChainedDominionAtlas)
 import Control.Monad (join)
 import Dominion
@@ -121,8 +120,7 @@ main = do
   testDiagnostics
   testEvaluationBoundary
   testAsciiMap
-  testCanonicalCharsMap
-  testLeadingCanonicalCharsMap
+  testAsciiString
   testAccessOperator
   testDot
   testSequentialOperator
@@ -823,45 +821,49 @@ testAsciiMap =
       (map (asciiCharacterAt ascii) [0, 65, 97, 255, 256]
         == [Just '\0', Just 'A', Just 'a', Just '\255', Nothing])
 
-testCanonicalCharsMap :: IO ()
-testCanonicalCharsMap =
-  case canonicalCharsMap (\canonical -> do
-      let valueAtlas = indexedAtlasAtlas canonical
-          positions = [0, 1, 10, 11, 36, 37, 38, 63, 64]
-          expected =
-            [ Just '\'', Just '0', Just '9', Just 'A', Just 'Z'
-            , Just '_', Just 'a', Just 'z', Nothing
-            ]
-      assert "canonical characters retain their ASCII order under access"
-        (map (canonicalCharacterAt canonical) positions == expected)
-      assert "canonical character access produces a two-page 64-cell map"
-        ( indexedAtlasCardinality canonical
-            == finiteOrdinal canonicalCharsCardinality
-          && atlasCardinality valueAtlas == 2
-          && atlasPageHasExactly valueAtlas 1 canonicalCharsCardinality
-        )) of
-    Nothing -> fail "canonical character insertion did not fit ASCII"
+testAsciiString :: IO ()
+testAsciiString = do
+  case AsciiString.asciiString "" $ \emptyString ->
+      assert "an empty ASCII string has the canonical empty presentation"
+        ( AsciiString.asciiStringLength emptyString == 0
+          && AsciiString.asciiStringValue emptyString == ""
+          && isNothing (AsciiString.asciiStringCharacterAt emptyString 0)
+          && case orderedAtlasMap emptyString of
+            EmptyOrderedAtlasMap -> True
+            NonEmptyOrderedAtlasMap _ -> False
+        ) of
+    Nothing -> fail "an empty ASCII string was rejected"
     Just checks -> checks
-
-testLeadingCanonicalCharsMap :: IO ()
-testLeadingCanonicalCharsMap =
-  case leadingCanonicalCharsMap (\leadingCanonical -> do
-      let valueAtlas = indexedAtlasAtlas leadingCanonical
-          positions = [0, 25, 26, 27, 52, 53]
-          expected =
-            [Just 'A', Just 'Z', Just '_', Just 'a', Just 'z', Nothing]
-      assert "leading canonical characters retain their canonical order"
-        (map (leadingCanonicalCharacterAt leadingCanonical) positions
-          == expected)
-      assert "leading canonical access produces a two-page 53-cell map"
-        ( indexedAtlasCardinality leadingCanonical
-            == finiteOrdinal leadingCanonicalCharsCardinality
-          && atlasCardinality valueAtlas == 2
-          && atlasPageHasExactly
-            valueAtlas 1 leadingCanonicalCharsCardinality
-        )) of
-    Nothing -> fail "leading canonical character insertion did not fit"
+  case AsciiString.asciiString "aA_0'a\255" $ \value ->
+      case orderedAtlasMap value of
+        EmptyOrderedAtlasMap -> fail "a nonempty ASCII string produced an empty map"
+        NonEmptyOrderedAtlasMap valueMap -> do
+          let valueAtlas = indexedAtlasAtlas valueMap
+          assert "an ASCII string retains arbitrary and repeated characters"
+            ( AsciiString.asciiStringLength value == 7
+              && AsciiString.asciiStringValue value == "aA_0'a\255"
+              && map (AsciiString.asciiStringCharacterAt value) [0 .. 7]
+                == map Just "aA_0'a\255" <> [Nothing]
+            )
+          assert "a nonempty ASCII string is a finite two-page map"
+            ( indexedAtlasCardinality valueMap == finiteOrdinal 7
+              && atlasCardinality valueAtlas == 2
+              && atlasPageHasExactly valueAtlas 1 7
+            ) of
+    Nothing -> fail "a valid ASCII string was rejected"
     Just checks -> checks
+  assert "an out-of-map character is rejected"
+    (isNothing (AsciiString.asciiString "\x100" (const ())))
+  case AsciiString.asciiString "left" $ \left ->
+      AsciiString.asciiString "" $ \emptyString ->
+        AsciiString.appendAsciiStrings left emptyString $ \unchanged ->
+          AsciiString.asciiString "right" $ \right ->
+            AsciiString.appendAsciiStrings unchanged right $ \combined ->
+              AsciiString.asciiStringValue combined of
+    Just (Just (Just (Just (Just combined)))) ->
+      assert "ASCII-string concatenation has the empty string as identity"
+        (combined == "leftright")
+    _ -> fail "valid ASCII-string concatenation was rejected"
 
 testAccessOperator :: IO ()
 testAccessOperator =

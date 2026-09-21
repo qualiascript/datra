@@ -34,6 +34,7 @@ library
         DatraLanguage.AST.Syntax
         DatraTypes
         AsciiMap
+        AsciiString
         MapOperators
         MapOperators.AccessOperator
         MapOperators.IndexedAtlasMap
@@ -47,8 +48,6 @@ library
         NumericalOperators.MultiplicationOperator
         NumericalOperators.NumericalOperand
         NumericalOperators.Range
-        CanonicalCharsMap
-        LeadingCanonicalCharsMap
         Dominion
         Dot
         SuperEllipsis
@@ -218,7 +217,7 @@ library
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
-        src/DatraTypes/CharacterMaps
+        src/DatraTypes/Strings
         src/DatraTypes/Ellipses
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
