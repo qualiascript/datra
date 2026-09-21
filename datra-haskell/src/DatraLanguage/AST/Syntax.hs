@@ -3,6 +3,7 @@
 -- | Symbolic Haskell constructors for Datra ASTs.
 module DatraLanguage.AST.Syntax
   ( natural
+  , asciiString
   , emptyMap
   , (...)
   , (<:>)
@@ -23,6 +24,9 @@ import Prelude hiding ((+), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
+
+asciiString :: String -> Expression
+asciiString = AsciiStringLiteral
 
 emptyMap :: Expression
 emptyMap = AtlasMap []

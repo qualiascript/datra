@@ -20,6 +20,7 @@ module Evaluation.Value
   , interpretedRangeDescription
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , asciiStringFromInterpretedMap
   , explicitOrdinal
   , explicitInsertion
   , rangeDescription
@@ -29,11 +30,14 @@ module Evaluation.Value
   , emptyInterpretedMap
   , singletonMap
   , emptyOrdinalOrderedValues
+  , singletonOrdinalOrderedValues
   , appendOrdinalOrderedValues
   , appendSomeSuperEllipsisInsertion
   ) where
 
-import DatraOrdinal (Ordinal)
+import Control.Monad (guard)
+import Data.Char (chr)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
@@ -78,6 +82,7 @@ data ValueForm
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | RangeConcatenationForm [EvaluatedRange]
+  | AsciiStringForm String
   | MapForm
 
 data InsertionCapability
@@ -99,6 +104,7 @@ data CanonicalResult
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
+  | CanonicalAsciiString String
   | CanonicalMap Natural [CanonicalResult]
   | CanonicalSuperEllipsisInsertion
   deriving (Eq, Show)
@@ -118,6 +124,7 @@ interpretedValueKind value =
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     RangeConcatenationForm _ -> RangeConcatenationValueKind
+    AsciiStringForm _ -> AsciiStringValueKind
     MapForm -> MapValueKind
 
 interpretedExplicitOrdinal
@@ -152,6 +159,24 @@ interpretedMapValueAt
   -> Ordinal
   -> Maybe InterpretedValue
 interpretedMapValueAt = ordinalOrderedValueAt . interpretedMapFinalValues
+
+-- | Recover ASCII characters from a finite interpreted map. String operators
+-- use this after delegating their ordering to the ordinary map operations.
+asciiStringFromInterpretedMap :: InterpretedMap -> Maybe String
+asciiStringFromInterpretedMap valueMap = do
+  cardinality <- naturalAtOrdinal (interpretedMapFinalOrderType valueMap)
+  traverse characterAt (finitePositions cardinality)
+  where
+    characterAt position = do
+      value <- interpretedMapValueAt valueMap position
+      (_, ordinalValue) <- interpretedExplicitOrdinal value
+      characterCode <- naturalAtOrdinal ordinalValue
+      guard (characterCode < 256)
+      pure (chr (fromIntegral characterCode))
+
+    finitePositions 0 = []
+    finitePositions cardinality =
+      map finiteOrdinal [0 .. cardinality - 1]
 
 explicitOrdinal :: EvaluatedExplicit -> (Natural, Ordinal)
 explicitOrdinal (EvaluatedExplicit level _ value) =

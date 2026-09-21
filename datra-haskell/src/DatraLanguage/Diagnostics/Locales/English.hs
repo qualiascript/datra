@@ -74,6 +74,10 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    InvalidAsciiStringCharacter character ->
+      LocalizedMessage
+        "string contains a character outside the ASCII map"
+        ["character: " <> show character]
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "left"
@@ -85,6 +89,7 @@ valueKind ExplicitOrdinalValueKind = "explicit ordinal"
 valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
+valueKind AsciiStringValueKind = "ASCII string"
 valueKind MapValueKind = "map"
 
 localizeSuperEllipsisRangeError

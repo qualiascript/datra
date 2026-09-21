@@ -93,6 +93,27 @@ naturalOrdinal value = do
 
 testLiteralsAndArithmetic :: IO ()
 testLiteralsAndArithmetic = do
+  expectValue "ASCII string literal" (AsciiStringLiteral "a\255a") $ \value -> do
+    let valueMap = interpretedMap value
+        characterCodes =
+          map
+            (\position ->
+              interpretedMapValueAt valueMap (finiteOrdinal position)
+                >>= naturalOrdinal)
+            [0 .. 3]
+    assert "ASCII strings retain their map shape and character order"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality valueMap == 2
+        && interpretedMapFinalOrderType valueMap == finiteOrdinal 3
+        && characterCodes == map Just [97, 255, 97] <> [Nothing]
+        && renderInterpretedValue value == "\"a\\FFa\""
+      )
+  expectValue "empty ASCII string" (AsciiStringLiteral "") $ \value ->
+    assert "the empty ASCII string retains its literal while using an empty map"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 0
+        && renderInterpretedValue value == "\"\""
+      )
   expectValue "natural literal" (natural 10) $ \value ->
     assert "naturals remain typed rank-one explicit values"
       ( interpretedValueKind value == NaturalValueKind
@@ -273,6 +294,24 @@ testRendering = do
 testMaps :: IO ()
 testMaps = do
   expectValue
+      "ASCII-string concatenation"
+      ((<.>) (AsciiStringLiteral "ab") (AsciiStringLiteral "_1")) $ \value ->
+    assert "ordinary concatenation remembers its ASCII-string result"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 2
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 4
+        && renderInterpretedValue value == "$ab_1"
+      )
+  expectValue
+      "empty ASCII-string concatenation"
+      ((<.>) (AsciiStringLiteral "") (AsciiStringLiteral "")) $ \value ->
+    assert "concatenating empty strings remains an empty ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 0
+        && renderInterpretedValue value == "\"\""
+      )
+  expectValue
       "operator sequence"
       (natural 1 <:> natural 2) $ \value ->
     assert "sequential AST syntax constructs a flat two-page map"
@@ -312,6 +351,34 @@ testMaps = do
 
 testAccess :: IO ()
 testAccess = do
+  expectValue
+      "ASCII-string singleton access"
+      ((<@>) (AsciiStringLiteral "abcd") (natural 2)) $ \value ->
+    assert "ordinary access remembers its ASCII-string result"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 1
+        && renderInterpretedValue value == "$c"
+      )
+  expectValue
+      "ASCII-string range access"
+      ((<@>)
+        (AsciiStringLiteral "abcd")
+        ((<..>) (natural 1) (natural 3))) $ \value ->
+    assert "range access retains the selected ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "$bc"
+      )
+  expectValue
+      "empty ASCII-string access"
+      ((<@>)
+        (AsciiStringLiteral "abcd")
+        ((<..>) (natural 1) (natural 1))) $ \value ->
+    assert "empty access remains an empty ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 0
+        && renderInterpretedValue value == "\"\""
+      )
   let source = AtlasMap (map natural [0 .. 9])
       insertion =
         (<.>)
@@ -357,6 +424,10 @@ testAccess = do
 
 testTypedRejections :: IO ()
 testTypedRejections = do
+  assert "non-ASCII programmatic string literals are rejected"
+    (case interpretExpressionReason (AsciiStringLiteral "λ") of
+      Left (InvalidAsciiStringCharacter 'λ') -> True
+      _ -> False)
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
         ((AST.+) (AtlasMap []) (natural 1)) of

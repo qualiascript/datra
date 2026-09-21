@@ -22,6 +22,7 @@ data InterpretedValueKind
   | FormulationValueKind
   | RangeValueKind
   | RangeConcatenationValueKind
+  | AsciiStringValueKind
   | MapValueKind
   deriving (Eq, Show)
 
@@ -32,4 +33,5 @@ data InterpretingError
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | AccessRejected AccessError
+  | InvalidAsciiStringCharacter Char
   deriving (Eq, Show)

@@ -1,12 +1,14 @@
 -- | Total constructors for primitive evaluated Datra values.
 module Evaluation.Construction
   ( makeNatural
+  , makeAsciiString
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
   , mapFromInsertion
   ) where
 
+import Data.Char (ord)
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -23,6 +25,29 @@ import SuperEllipsisInsertion
 
 makeNatural :: Natural -> InterpretedValue
 makeNatural = makeExplicit NaturalOrigin . finiteOrdinal
+
+-- | Construct the semantic two-page presentation of a nonempty ASCII string,
+-- or the canonical empty presentation for an empty string.
+makeAsciiString :: String -> InterpretedValue
+makeAsciiString characters = value
+  where
+    characterValues =
+      map (makeNatural . fromIntegral . ord) characters
+    finalValues =
+      foldl'
+        appendOrdinalOrderedValues
+        emptyOrdinalOrderedValues
+        (map singletonOrdinalOrderedValues characterValues)
+    canonical = CanonicalAsciiString characters
+    value =
+      InterpretedValue
+        (AsciiStringForm characters)
+        NoInsertion
+        (InterpretedMap
+          (if null characters then 0 else 2)
+          finalValues
+          [canonical])
+        canonical
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin

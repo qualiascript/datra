@@ -11,19 +11,22 @@ module Parsing
   , parseDatraAstLocatedWithSourceName
   ) where
 
-import Control.Applicative (empty, some, (<|>))
+import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
+import Data.Char (chr, digitToInt, isHexDigit, ord)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import DatraLanguage.AST
   ( Expression
       ( Addition
+      , AsciiStringLiteral
       , AtlasMap
       , EllipsisLiteral
       , EllipsisNatural
@@ -62,6 +65,7 @@ import Text.Megaparsec
   , sourceColumn
   , sourceLine
   , sourceName
+  , satisfy
   , try
   , unPos
   )
@@ -155,6 +159,8 @@ astAtom =
   choice
     [ AtlasMap [] <$ astSymbol "[]"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> astIdentifierString
+    , AsciiStringLiteral <$> astStandardString
     , EllipsisNatural <$> astLexeme Lexer.decimal
     ]
 
@@ -233,7 +239,10 @@ outerMapEnvelope =
           (try (char ']' *> fullSpaceConsumer <* eof))
     )
   where
-    envelopeCharacter = lineComment <|> void anySingle
+    envelopeCharacter =
+      lineComment
+        <|> try (void standardStringToken)
+        <|> void anySingle
 
 atlasMap :: Parser Expression
 atlasMap =
@@ -305,6 +314,8 @@ term =
     [ parenthesizedExpression
     , atlasMap
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> identifierString
+    , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
 
@@ -313,6 +324,8 @@ rangeEndpointTerm =
   choice
     [ parenthesizedExpression
     , atlasMap
+    , AsciiStringLiteral <$> identifierString
+    , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
 
@@ -379,6 +392,105 @@ postfixRangeEnd =
 
 ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
+
+-- | The compact identifier spelling: a dollar sign, one leading canonical
+-- character, then any number of canonical characters.
+identifierString :: Parser String
+identifierString = lexeme identifierStringToken
+
+astIdentifierString :: Parser String
+astIdentifierString = astLexeme identifierStringToken
+
+identifierStringToken :: Parser String
+identifierStringToken =
+  char '$'
+    *> ((:)
+      <$> satisfy isLeadingCanonicalCharacter
+      <*> many (satisfy isCanonicalCharacter))
+
+-- | The standard quoted spelling. It is multiline by default and retains all
+-- non-comment contents exactly. A hash begins a line comment, while newline,
+-- quote, backslash, and a literal hash have named escaped spellings. Any byte
+-- can also be written using one or two hexadecimal digits.
+standardString :: Parser String
+standardString = lexeme standardStringToken
+
+astStandardString :: Parser String
+astStandardString = astLexeme standardStringToken
+
+standardStringToken :: Parser String
+standardStringToken =
+  between (char '"') (char '"')
+    (catMaybes <$> many standardStringPart)
+
+standardStringPart :: Parser (Maybe Char)
+standardStringPart =
+  choice
+    [ Nothing <$ standardStringComment
+    , Just <$> standardStringCharacter
+    ]
+
+-- Unlike an ordinary line comment, a comment within a string also ends at the
+-- string's closing quote. The terminator is left for the surrounding parser,
+-- preserving a newline as string content or allowing the quote to close it.
+standardStringComment :: Parser ()
+standardStringComment =
+  char '#'
+    *> void
+      (manyTill anySingle
+        (lookAhead
+          ( void (char '"')
+            <|> void (char '\n')
+            <|> eof
+          )))
+
+standardStringCharacter :: Parser Char
+standardStringCharacter =
+  (char '\\'
+    *> choice
+      [ '"' <$ char '"'
+      , '\\' <$ char '\\'
+      , '#' <$ char '#'
+      , '\n' <$ char 'n'
+      , hexadecimalAsciiCharacter
+      ])
+    <|> satisfy
+      (\character ->
+        character /= '"'
+          && character /= '\\'
+          && character /= '#'
+          && isAsciiCharacter character)
+
+hexadecimalAsciiCharacter :: Parser Char
+hexadecimalAsciiCharacter = do
+  firstDigit <- satisfy isHexDigit
+  secondDigit <- optional (satisfy isHexDigit)
+  let byteValue =
+        case secondDigit of
+          Nothing -> digitToInt firstDigit
+          Just digit -> 16 * digitToInt firstDigit + digitToInt digit
+  pure (chr byteValue)
+
+isLeadingCanonicalCharacter :: Char -> Bool
+isLeadingCanonicalCharacter character =
+  isAsciiLetter character || character == '_'
+
+isCanonicalCharacter :: Char -> Bool
+isCanonicalCharacter character =
+  isLeadingCanonicalCharacter character
+    || isAsciiDigit character
+    || character == '\''
+
+isAsciiLetter :: Char -> Bool
+isAsciiLetter character =
+  ('a' <= character && character <= 'z')
+    || ('A' <= character && character <= 'Z')
+
+isAsciiDigit :: Char -> Bool
+isAsciiDigit character = '0' <= character && character <= '9'
+
+isAsciiCharacter :: Char -> Bool
+isAsciiCharacter character = ord character < 256
 
 -- Horizontal trivia belongs to the preceding token. Keeping line breaks out
 -- of the ordinary lexeme consumer lets the grammar decide whether each one

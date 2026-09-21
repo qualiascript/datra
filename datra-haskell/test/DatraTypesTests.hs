@@ -7,6 +7,7 @@
 module Main (main) where
 
 import AsciiMap
+import qualified AsciiString
 import Atlas
   ( Atlas
   , atlasCardinality
@@ -35,7 +36,6 @@ import AtlasTransposal
   , withAtlasTransposalElement
   )
 import AtlasSequence (atlasSequenceDatumMember)
-import CanonicalCharsMap
 import ChainedDominionAtlas (ChainedDominionAtlas)
 import Control.Monad (join)
 import Dominion
@@ -120,7 +120,7 @@ main = do
   testDiagnostics
   testEvaluationBoundary
   testAsciiMap
-  testCanonicalCharsMap
+  testAsciiString
   testAccessOperator
   testDot
   testSequentialOperator
@@ -821,24 +821,82 @@ testAsciiMap =
       (map (asciiCharacterAt ascii) [0, 65, 97, 255, 256]
         == [Just '\0', Just 'A', Just 'a', Just '\255', Nothing])
 
-testCanonicalCharsMap :: IO ()
-testCanonicalCharsMap =
-  case canonicalCharsMap (\canonical -> do
-      let valueAtlas = indexedAtlasAtlas canonical
-          positions = [0, 1, 10, 11, 36, 37, 38, 63, 64]
-          expected =
-            [ Just '\'', Just '0', Just '9', Just 'A', Just 'Z'
-            , Just '_', Just 'a', Just 'z', Nothing
-            ]
-      assert "canonical characters retain their ASCII order under access"
-        (map (canonicalCharacterAt canonical) positions == expected)
-      assert "canonical character access produces a two-page 64-cell map"
-        ( indexedAtlasCardinality canonical
-            == finiteOrdinal canonicalCharsCardinality
-          && atlasCardinality valueAtlas == 2
-          && atlasPageHasExactly valueAtlas 1 canonicalCharsCardinality
-        )) of
-    Nothing -> fail "canonical character insertion did not fit ASCII"
+testAsciiString :: IO ()
+testAsciiString = do
+  case AsciiString.asciiString "" $ \emptyString ->
+      assert "an empty ASCII string has the canonical empty presentation"
+        ( AsciiString.asciiStringLength emptyString == 0
+          && AsciiString.asciiStringValue emptyString == ""
+          && isNothing (AsciiString.asciiStringCharacterAt emptyString 0)
+          && case orderedAtlasMap emptyString of
+            EmptyOrderedAtlasMap -> True
+            NonEmptyOrderedAtlasMap _ -> False
+        ) of
+    Nothing -> fail "an empty ASCII string was rejected"
+    Just checks -> checks
+  case AsciiString.asciiString "aA_0'a\255" $ \value ->
+      case orderedAtlasMap value of
+        EmptyOrderedAtlasMap -> fail "a nonempty ASCII string produced an empty map"
+        NonEmptyOrderedAtlasMap valueMap -> do
+          let valueAtlas = indexedAtlasAtlas valueMap
+          assert "an ASCII string retains arbitrary and repeated characters"
+            ( AsciiString.asciiStringLength value == 7
+              && AsciiString.asciiStringValue value == "aA_0'a\255"
+              && map (AsciiString.asciiStringCharacterAt value) [0 .. 7]
+                == map Just "aA_0'a\255" <> [Nothing]
+            )
+          assert "a nonempty ASCII string is a finite two-page map"
+            ( indexedAtlasCardinality valueMap == finiteOrdinal 7
+              && atlasCardinality valueAtlas == 2
+              && atlasPageHasExactly valueAtlas 1 7
+            ) of
+    Nothing -> fail "a valid ASCII string was rejected"
+    Just checks -> checks
+  assert "an out-of-map character is rejected"
+    (isNothing (AsciiString.asciiString "\x100" (const ())))
+  case AsciiString.asciiString "left" $ \left ->
+      AsciiString.asciiString "" $ \emptyString ->
+        AsciiString.asciiString "right" $ \right ->
+          let unchanged = left `concatOperands` emptyString
+              combined = unchanged `concatOperands` right
+          in
+            ( AsciiString.asciiStringValue unchanged
+            , AsciiString.asciiStringValue combined
+            , orderedAtlasMapCardinality (orderedAtlasMap combined)
+            ) of
+    Just (Just (Just (unchanged, combined, cardinality))) ->
+      assert "ordinary concatenation retains ASCII-string behavior"
+        ( unchanged == "left"
+          && combined == "leftright"
+          && cardinality == finiteOrdinal 9
+        )
+    _ -> fail "valid ASCII-string concatenation was rejected"
+  case AsciiString.asciiString "abcd" $ \value -> do
+      withEllipsisNatural 2 $ \two ->
+        case AsciiString.accessAsciiString value two of
+          Nothing -> fail "valid ASCII-string access was rejected"
+          Just selected ->
+            assert "ordinary access retains ASCII-string behavior"
+              (AsciiString.asciiStringValue selected == "c")
+      withEllipsisNatural 1 $ \one ->
+        withEllipsisNatural 3 $ \three ->
+          do
+            case boundedSuperEllipsisRange one three $ \selection ->
+                AsciiString.asciiStringValue
+                  <$> AsciiString.accessAsciiString value selection of
+              Nothing -> fail "ASCII-string access range was rejected"
+              Just selected ->
+                assert "range access retains ASCII-string behavior"
+                  (selected == Just "bc")
+            case boundedSuperEllipsisRange one one $ \selection ->
+                AsciiString.asciiStringValue
+                  <$> AsciiString.accessAsciiString value selection of
+              Nothing -> fail "empty ASCII-string access was rejected"
+              Just selected ->
+                assert "empty access remains an empty ASCII string"
+                  (selected == Just "")
+    of
+    Nothing -> fail "ASCII-string access setup was rejected"
     Just checks -> checks
 
 testAccessOperator :: IO ()

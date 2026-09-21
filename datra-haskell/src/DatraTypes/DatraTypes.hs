@@ -11,6 +11,7 @@ module DatraTypes
   , InterpretingError (..)
   , OperandSide (..)
   , naturalValue
+  , asciiStringValue
   , formulationValue
   , addValues
   , multiplyValues
@@ -39,7 +40,8 @@ import DatraLanguage.Diagnostics.Interpreter
   )
 import Evaluation.Access (accessValues)
 import Evaluation.Construction
-  ( makeFormulation
+  ( makeAsciiString
+  , makeFormulation
   , makeNatural
   )
 import Evaluation.Map
@@ -72,8 +74,17 @@ import Evaluation.Value
   )
 import Numeric.Natural (Natural)
 
+import Data.Char (ord)
+import Data.List (find)
+
 naturalValue :: Natural -> InterpretedValue
 naturalValue = makeNatural
+
+asciiStringValue :: String -> Either InterpretingError InterpretedValue
+asciiStringValue value =
+  case find ((>= 256) . ord) value of
+    Just character -> Left (InvalidAsciiStringCharacter character)
+    Nothing -> Right (makeAsciiString value)
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation

@@ -2,6 +2,7 @@
 
 module DatraParsingTests (main) where
 
+import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
   , renderExpression
@@ -24,6 +25,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import Parsing (parseDatra, parseDatraAst, parseDatraLocated)
+import Numeric (showHex)
 
 main :: IO ()
 main = do
@@ -57,6 +59,79 @@ main = do
     "ellipsis literal"
     "[...]"
     "..."
+  assertParsed
+    "IdentifierString produces an ASCII string literal"
+    "$text"
+    (AtlasMap [AsciiStringLiteral "text"])
+  assertAstOutput
+    "IdentifierString accepts all canonical continuation characters"
+    "$A_0'z"
+    "$A_0'z"
+  assertAstOutput
+    "StandardString canonicalizes to IdentifierString when possible"
+    "\"text\""
+    "$text"
+  assertAstOutput
+    "StandardString supports the empty string"
+    "\"\""
+    "\"\""
+  assertAstOutput
+    "StandardString escapes quote and backslash"
+    "\"say \\\"hi\\\" and \\\\ path\""
+    "\"say \\\"hi\\\" and \\\\ path\""
+  assertAstOutput
+    "StandardString decodes and canonicalizes escaped newlines"
+    "\"first\\nsecond\""
+    "\"first\\nsecond\""
+  assertAstOutput
+    "StandardString accepts and canonicalizes hexadecimal byte escapes"
+    "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
+    "\"\\00\\08\\08\\09\\1F\\7F\\FF\""
+  assertParsed
+    "StandardString hexadecimal escapes select ASCII-map characters"
+    "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
+    (AtlasMap [AsciiStringLiteral ['\0', '\8', '\8', '\9', '\31', '\127', '\255']])
+  assertAstOutput
+    "StandardString canonicalizes a hexadecimal newline to its named escape"
+    "\"\\0A\""
+    "\"\\n\""
+  assertAstOutput
+    "StandardString leaves nonsyntactic keyboard-visible characters literal"
+    "\" !%&'()*+,-./:;<=>?@[]^_`{|}~\""
+    "\" !%&'()*+,-./:;<=>?@[]^_`{|}~\""
+  assertAstOutput
+    "StandardString line comments retain their terminating newline"
+    "\"Comment test#this is a comment!\n\""
+    "\"Comment test\\n\""
+  assertParsed
+    "StandardString comments may terminate at the closing quote"
+    "\"Hello#, world!\""
+    (AtlasMap [AsciiStringLiteral "Hello"])
+  assertAstOutput
+    "StandardString comments ending at a quote retain canonical rendering"
+    "\"Hello#, world!\""
+    "$Hello"
+  assertAstOutput
+    "StandardString escapes a literal hash"
+    "\"literal \\# character\""
+    "\"literal \\# character\""
+  assertAllHexadecimalAsciiEscapes
+  assertAstOutput
+    "StandardString preserves multiline leading and trailing characters"
+    "[\"  first\nsecond  \"]"
+    "\"  first\\nsecond  \""
+  assertParsed
+    "StandardString treats syntax and comments as literal contents"
+    "[\"\\#;[value]\n$still_text\"]"
+    (AtlasMap [AsciiStringLiteral "#;[value]\n$still_text"])
+  assertAstOutput
+    "strings use the ordinary concatenation operator"
+    "$ab, $cd"
+    "(<.> $ab $cd)"
+  assertAstOutput
+    "strings use the ordinary access operator"
+    "$abcd @ 1..3"
+    "(<@> $abcd (<..> 1 3))"
   assertAstOutput
     "bounded super-ellipsis range"
     "[2..10]"
@@ -276,6 +351,12 @@ main = do
     "[1; 2; # trailing separator\n]"
     "(<:> 1 2)"
   assertRejected "multiple trailing semicolons are rejected" "[1; 2;;]"
+  assertRejected "IdentifierString requires a leading canonical character" "$0bad"
+  assertRejected "IdentifierString rejects a missing body" "$"
+  assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
+  assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
+  assertRejected "StandardString rejects an unterminated literal" "\"bad"
+  assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
   assertRejected "multiple trailing commas are rejected" "[1,,]"
   assertRejected
     "multiple trailing commas after concatenation are rejected"
@@ -328,6 +409,37 @@ assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
 
+assertAllHexadecimalAsciiEscapes :: IO ()
+assertAllHexadecimalAsciiEscapes = do
+  mapM_ assertTwoDigitEscape [0 .. 255]
+  mapM_ assertOneDigitEscape [0 .. 15]
+  where
+    assertTwoDigitEscape byteValue =
+      assertHexadecimalEscape
+        ("two-digit hexadecimal escape " <> hexadecimalByte byteValue)
+        (hexadecimalByte byteValue)
+        byteValue
+
+    assertOneDigitEscape byteValue =
+      assertHexadecimalEscape
+        ("one-digit hexadecimal escape " <> hexadecimalDigit byteValue)
+        (hexadecimalDigit byteValue)
+        byteValue
+
+    assertHexadecimalEscape label digits byteValue =
+      assertParsed
+        label
+        ("\"\\" <> digits <> "\"")
+        (AtlasMap [AsciiStringLiteral [chr byteValue]])
+
+    hexadecimalByte byteValue =
+      case hexadecimalDigit byteValue of
+        [digit] -> ['0', digit]
+        digits -> digits
+
+    hexadecimalDigit byteValue =
+      map toUpper (showHex byteValue "")
+
 assertLocatedParse :: IO ()
 assertLocatedParse =
   case parseDatraLocated "[1; 2]" of
@@ -347,6 +459,11 @@ assertLocatedParse =
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do
+  assert "ASCII-string syntax chooses its canonical spelling"
+    ( renderExpression (AST.asciiString "name_1") == "$name_1"
+      && renderExpression (AST.asciiString "a\"b\\c\n")
+        == "\"a\\\"b\\\\c\\n\""
+    )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression
         ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))

@@ -6,6 +6,7 @@ module Evaluation.Map
 
 import DatraOrdinal (finiteOrdinal)
 import DatraLanguage.Diagnostics.Interpreter (InterpretingError)
+import Evaluation.Construction (makeAsciiString)
 import Evaluation.Range
   ( canonicalizeRanges
   , concatenateRangeCapability
@@ -76,12 +77,19 @@ concatenateValues left right = do
           CanonicalMap _ mapComponents ->
             CanonicalMap cardinality mapComponents
           _ -> canonical
+      resultMap = InterpretedMap cardinality finalValues components
+      ordinaryResult =
+        InterpretedValue
+          form
+          insertionCapability
+          resultMap
+          resultCanonical
   pure
-    (InterpretedValue
-      form
-      insertionCapability
-      (InterpretedMap cardinality finalValues components)
-      resultCanonical)
+    (case (interpretedForm left, interpretedForm right) of
+      (AsciiStringForm _, AsciiStringForm _) ->
+        maybe ordinaryResult makeAsciiString
+          (asciiStringFromInterpretedMap resultMap)
+      _ -> ordinaryResult)
 
 canonicalRangeForm :: [EvaluatedRange] -> ValueForm
 canonicalRangeForm [valueRange] = RangeForm valueRange
