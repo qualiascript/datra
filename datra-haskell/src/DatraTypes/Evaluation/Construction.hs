@@ -53,6 +53,8 @@ makeAsciiString characters = value
         , interpretedMap = valueMap
         , interpretedAtlasMapFederation =
             SingletonAtlasMapFederation valueMap
+        , interpretedTotalAtlasMap =
+            Just (InterpretedTotalAtlasMap valueMap)
         , interpretedCanonicalResult = canonical
         }
 
@@ -80,6 +82,8 @@ explicitInterpretedValue explicitValue = value
         , interpretedMap = valueMap
         , interpretedAtlasMapFederation =
             SingletonAtlasMapFederation valueMap
+        , interpretedTotalAtlasMap =
+            Just (InterpretedTotalAtlasMap valueMap)
         , interpretedCanonicalResult = canonical
         }
 
@@ -102,6 +106,8 @@ makeFormulation level = value
         , interpretedMap = valueMap
         , interpretedAtlasMapFederation =
             SingletonAtlasMapFederation valueMap
+        , interpretedTotalAtlasMap =
+            Just (InterpretedTotalAtlasMap valueMap)
         , interpretedCanonicalResult = canonical
         }
     canonical = CanonicalFormulation level

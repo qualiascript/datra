@@ -35,6 +35,7 @@ import DatraLanguage.AST
       , MapConcatenation
       , MapExpansion
       , MapSequence
+      , MapSpecification
       , Multiplication
       , NaturalRange
       , NaturalRangeUpwards
@@ -182,6 +183,7 @@ astForm =
       , astBinary AST.ExponentiationOperator Exponentiation
       , astBinary AST.ConcatenationOperator MapConcatenation
       , astBinary AST.AccessOperator MapAccess
+      , astBinary AST.SpecificationOperator MapSpecification
       ])
 
 astSequence :: Parser Expression
@@ -383,13 +385,15 @@ arithmeticOperatorTable =
   , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
   ]
 
--- Concatenation binds after ranges, while access is the final map operation.
--- This lets a map access consume a concatenated range insertion.
+-- Concatenation binds after ranges, access follows it, and specification is
+-- the final map operation.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
   , [InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]
+  , [InfixL
+      (MapSpecification <$ continuedOperator AST.SpecificationOperator)]
   ]
 
 finishConcatenation :: Expression -> Expression
@@ -427,6 +431,7 @@ postfixRangeEnd =
       (choice
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
+        , operatorToken AST.SpecificationOperator
         ])
 
 ellipsisNatural :: Parser Expression

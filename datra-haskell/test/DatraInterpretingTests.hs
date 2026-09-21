@@ -13,6 +13,7 @@ import DatraLanguage.AST.Syntax
   , (..-)
   , (<.>)
   , (<@>)
+  , (<~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import Interpreting
@@ -75,6 +76,7 @@ main = do
   testMaps
   testAtlasMapFederations
   testAccess
+  testSpecification
   testTypedRejections
   testLocatedRejection
 
@@ -795,6 +797,78 @@ testAccess = do
           (AtlasMapFederationOperationUndecidable
             (NoAtlasMapFederationDecisionProcedure
               AtlasMapFederationAccess)) -> True
+      _ -> False)
+
+testSpecification :: IO ()
+testSpecification = do
+  let expectSpecification label source target expected =
+        expectValue label ((<~>) source target) $ \value ->
+          assert label
+            ( interpretedValueKind value == SpecificationValueKind
+              && renderInterpretedValue value == expected
+            )
+      expectNoMember label source target =
+        assert label
+          (case interpretExpressionReason ((<~>) source target) of
+            Left
+                (AtlasMapFederationOperationRefuted
+                  AtlasMapFederationSpecificationHasNoMatchingMember) -> True
+            _ -> False)
+  expectSpecification
+    "bounded ascending range specification"
+    ((<..>) (natural 2) (natural 5))
+    (NaturalRange 0 10)
+    "2..5 ~> from 0 to 10"
+  expectSpecification
+    "bounded descending range specification"
+    ((<..>) (natural 5) (natural 2))
+    (NaturalRange 10 0)
+    "5..2 ~> from 10 to 0"
+  expectSpecification
+    "open range specification"
+    ((..+) (natural 2))
+    (NaturalRangeUpwards 0)
+    "2.. ~> from 0 upwards"
+  expectSpecification
+    "empty range specification"
+    ((<..>) (natural 0) (natural 0))
+    (NaturalRange 5 8)
+    "0..0 ~> from 5 to 8"
+  expectSpecification
+    "flat total Atlas map specification"
+    (AtlasMap [natural 2, natural 3, natural 4])
+    (NaturalRange 0 10)
+    "[2; 3; 4] ~> from 0 to 10"
+  expectNoMember
+    "range outside the target NaturalRange is a counterexample"
+    ((<..>) (natural 2) (natural 5))
+    (NaturalRange 3 10)
+  expectNoMember
+    "open range cannot select a finite NaturalRange member"
+    ((..+) (natural 2))
+    (NaturalRange 0 10)
+  expectNoMember
+    "a noncontiguous total map has no NaturalRange member"
+    (AtlasMap [natural 2, natural 4])
+    (NaturalRange 0 10)
+  expectNoMember
+    "a one-page natural has no identity-pagination NaturalRange member"
+    (natural 2)
+    (NaturalRange 0 10)
+  assert "a NaturalRange federation is not itself a TotalAtlasMap"
+    (case interpretExpressionReason
+        ((<~>) (NaturalRange 2 5) (NaturalRange 0 10)) of
+      Left (ExpectedTotalAtlasMap RangeValueKind) -> True
+      _ -> False)
+  assert "an unknown specification target remains undecided"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<..>) (natural 2) (natural 5))
+          ((<..>) (natural 0) (natural 10))) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationSpecification)) -> True
       _ -> False)
 
 testTypedRejections :: IO ()

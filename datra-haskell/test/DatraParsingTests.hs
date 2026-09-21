@@ -17,6 +17,7 @@ import DatraLanguage.AST.Syntax
   , (..-)
   , (<.>)
   , (<@>)
+  , (<~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.Diagnostics
@@ -59,6 +60,14 @@ main = do
     "ellipsis literal"
     "[...]"
     "..."
+  assertAstOutput
+    "specification into a NaturalRange"
+    "2..5 ~> from 0 upwards"
+    "(<~> (<..> 2 5) (from 0 upwards))"
+  assertAstOutput
+    "specification binds after access and concatenation"
+    "1, 2 @ from 0 upwards ~> from 0 to 10"
+    "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -498,6 +507,11 @@ assertAstSyntax = do
             <.> ((natural 4 ..+) <@> (natural 5 ..-))
         )
         == "(<.> (<..> (+ 1 (* 2 3)) ...) (<@> (..+ 4) (..- 5)))"
+    )
+  assert "the specification symbol constructs its canonical AST node"
+    ( renderExpression
+        (((natural 2 <..> natural 5) <~> AST.fromUpwards 0))
+        == "(<~> (<..> 2 5) (from 0 upwards))"
     )
 
 assertAstOutput :: String -> String -> String -> IO ()

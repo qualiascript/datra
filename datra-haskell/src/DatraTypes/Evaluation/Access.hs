@@ -196,23 +196,39 @@ finishStaticAccess
 finishStaticAccess mapValue selected source selectionRanges =
   case sourceFormulationLevel source
       >> pureOmegaPowerLevel (interpretedMapFinalOrderType selected) of
-    Just level -> Right (formulationAccessResult selected level)
+    Just level ->
+      Right
+        (formulationAccessResult
+          (hasTotalAtlasMap mapValue) selected level)
     Nothing -> do
       result <-
-        rangeAccessResult selected
+        rangeAccessResult
+          (hasTotalAtlasMap mapValue)
+          selected
           (rangeAccessDescriptions
             (sourceDescribedRanges source)
             selectionRanges)
       maybe (finishAccess mapValue selected) Right result
 
-formulationAccessResult :: InterpretedMap -> Natural -> InterpretedValue
-formulationAccessResult selected level =
+formulationAccessResult
+  :: Bool
+  -> InterpretedMap
+  -> Natural
+  -> InterpretedValue
+formulationAccessResult sourceIsTotal selected level =
   template
     { interpretedMap =
         selected { interpretedMapComponents = [canonical] }
     , interpretedAtlasMapFederation =
         SingletonAtlasMapFederation
           (selected { interpretedMapComponents = [canonical] })
+    , interpretedTotalAtlasMap =
+        if sourceIsTotal
+          then
+            Just
+              (InterpretedTotalAtlasMap
+                (selected { interpretedMapComponents = [canonical] }))
+          else Nothing
     }
   where
     template = makeFormulation level
@@ -234,6 +250,10 @@ finishAccess mapValue selected =
           , interpretedMap = selected
           , interpretedAtlasMapFederation =
               SingletonAtlasMapFederation selected
+          , interpretedTotalAtlasMap =
+              if hasTotalAtlasMap mapValue
+                then Just (InterpretedTotalAtlasMap selected)
+                else Nothing
           , interpretedCanonicalResult = canonical
           }
   in pure
@@ -244,11 +264,12 @@ finishAccess mapValue selected =
       _ -> ordinaryResult)
 
 rangeAccessResult
-  :: InterpretedMap
+  :: Bool
+  -> InterpretedMap
   -> [DescribedRange]
   -> Either InterpretingError (Maybe InterpretedValue)
-rangeAccessResult _ [] = Right Nothing
-rangeAccessResult selected describedRanges = do
+rangeAccessResult _ _ [] = Right Nothing
+rangeAccessResult sourceIsTotal selected describedRanges = do
   ranges <- traverse makeRange describedRanges
   let insertionCapability =
         RangeEvaluation.concatenateRangeCapability ranges
@@ -280,6 +301,13 @@ rangeAccessResult selected describedRanges = do
       , interpretedAtlasMapFederation =
           SingletonAtlasMapFederation
             (selected { interpretedMapComponents = [canonical] })
+      , interpretedTotalAtlasMap =
+          if sourceIsTotal
+            then
+              Just
+                (InterpretedTotalAtlasMap
+                  (selected { interpretedMapComponents = [canonical] }))
+            else Nothing
       , interpretedCanonicalResult = canonical
       }
   where
@@ -289,6 +317,9 @@ rangeAccessResult selected describedRanges = do
         (describedRangeLevel described)
         (Range.describedRangeStart (describedRangeDescription described))
         (Range.describedRangeTarget (describedRangeDescription described))
+
+hasTotalAtlasMap :: InterpretedValue -> Bool
+hasTotalAtlasMap = maybe False (const True) . interpretedTotalAtlasMap
 
 describedRangeCanonical :: DescribedRange -> CanonicalResult
 describedRangeCanonical described
@@ -342,6 +373,12 @@ accessSource value =
         , sourceIsRangeLike = False
         , sourceFormulationLevel = Nothing
         }
+    SpecificationForm _ ->
+      AccessSource
+        { sourceDescribedRanges = []
+        , sourceIsRangeLike = False
+        , sourceFormulationLevel = Nothing
+        }
     ExplicitForm explicitValue ->
       let (level, ordinalValue) = explicitOrdinal explicitValue
       in AccessSource
@@ -391,6 +428,7 @@ canonicalAccessSource canonical =
           characters)
     CanonicalMap _ components ->
       combineAccessSources (map canonicalAccessSource components)
+    CanonicalSpecification _ _ -> ordinarySource []
   where
     ordinarySource ranges =
       AccessSource ranges False Nothing

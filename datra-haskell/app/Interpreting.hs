@@ -84,6 +84,8 @@ interpretExpressionReason expressionValue =
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->
       interpretBinary accessValues mapOperand insertionOperand
+    MapSpecification sourceOperand targetOperand ->
+      interpretBinary specifyValues sourceOperand targetOperand
 
 interpretBinary
   :: ( InterpretedValue

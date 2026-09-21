@@ -30,6 +30,8 @@ import Numeric.Natural (Natural)
 import NaturalRange qualified
 
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
+makeAtlasMap _ [value]
+  | SpecificationForm _ <- interpretedForm value = value
 makeAtlasMap cardinality values =
   makeProductMap cardinality values SequentialAtlasMapFederation
 
@@ -73,8 +75,14 @@ makeProductMap cardinality values productFederation = value
         , interpretedInsertionCapability = NoInsertion
         , interpretedMap = valueMap
         , interpretedAtlasMapFederation = federation
+        , interpretedTotalAtlasMap =
+            if all hasTotalMap values
+                && atlasMapFederationExpressionIsSingleton federation
+              then Just (InterpretedTotalAtlasMap valueMap)
+              else Nothing
         , interpretedCanonicalResult = canonical
         }
+    hasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
 concatenateValues
   :: InterpretedValue
@@ -165,6 +173,11 @@ concatenateValues left right = do
           , interpretedInsertionCapability = insertionCapability
           , interpretedMap = resultMap
           , interpretedAtlasMapFederation = resultFederation
+          , interpretedTotalAtlasMap =
+              if operandsAreTotal
+                  && atlasMapFederationExpressionIsSingleton resultFederation
+                then Just (InterpretedTotalAtlasMap resultMap)
+                else Nothing
           , interpretedCanonicalResult = finalCanonical
           }
   pure
@@ -173,6 +186,10 @@ concatenateValues left right = do
         maybe ordinaryResult makeAsciiString
           (asciiStringFromInterpretedMap resultMap)
       _ -> ordinaryResult)
+  where
+    operandsAreTotal =
+      isTotal left && isTotal right
+    isTotal = maybe False (const True) . interpretedTotalAtlasMap
 
 decideFederationConcatenation
   :: InterpretedAtlasMapFederation

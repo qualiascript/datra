@@ -72,6 +72,10 @@ localizeInterpretingError reason =
             <> "o inserție cu super-elipsă"
         )
         ["tipul efectiv al valorii: " <> valueKind actual]
+    ExpectedTotalAtlasMap actual ->
+      LocalizedMessage
+        "operandul stâng al specificării trebuie să fie o hartă Atlas totală"
+        ["tipul efectiv al valorii: " <> valueKind actual]
     RangeConstructionRejected rejection ->
       localizeSuperEllipsisRangeError rejection
     RangeConcatenationRejected rejection ->
@@ -89,6 +93,12 @@ localizeInterpretingError reason =
           LocalizedMessage
             "accesarea eșuează pentru un membru al federației"
             ["harta vidă este contraexemplu pentru selecția nevidă"]
+        AtlasMapFederationSpecificationHasNoMatchingMember ->
+          LocalizedMessage
+            "specificarea nu are o hartă Atlas corespunzătoare în federație"
+            [ "harta Atlas totală sursă este un contraexemplu: niciun membru "
+                <> "nu admite morfismul cu paginație identitate"
+            ]
     AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure operation) ->
       LocalizedMessage
@@ -102,6 +112,7 @@ localizeInterpretingError reason =
 federationOperation :: AtlasMapFederationOperation -> String
 federationOperation AtlasMapFederationConcatenation = "concatenare"
 federationOperation AtlasMapFederationAccess = "accesare"
+federationOperation AtlasMapFederationSpecification = "specificare"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "stâng"
@@ -115,6 +126,7 @@ valueKind RangeValueKind = "interval"
 valueKind RangeConcatenationValueKind = "concatenare de intervale"
 valueKind AsciiStringValueKind = "șir ASCII"
 valueKind MapValueKind = "hartă"
+valueKind SpecificationValueKind = "morfism de specificare"
 
 localizeSuperEllipsisRangeError
   :: SuperEllipsisRangeError

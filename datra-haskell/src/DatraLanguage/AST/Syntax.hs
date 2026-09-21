@@ -18,6 +18,7 @@ module DatraLanguage.AST.Syntax
   , (^)
   , (<.>)
   , (<@>)
+  , (<~>)
   ) where
 
 import DatraLanguage.AST (Expression (..))
@@ -92,3 +93,8 @@ infixl 8 <@>
 
 (<@>) :: Expression -> Expression -> Expression
 (<@>) = MapAccess
+
+infixl 4 <~>
+
+(<~>) :: Expression -> Expression -> Expression
+(<~>) = MapSpecification

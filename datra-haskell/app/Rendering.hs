@@ -26,6 +26,7 @@ import Numeric.Natural (Natural)
 import NaturalRange (NaturalRangeTarget (..))
 import Prettyprinter
   ( Doc
+  , (<+>)
   , concatWith
   , layoutCompact
   , parens
@@ -62,6 +63,10 @@ prettyCanonicalResult result =
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalMap cardinality components ->
       prettyMap cardinality components
+    CanonicalSpecification source target ->
+      prettyCanonicalResult source
+        <+> prettySourceSymbol SpecificationOperator
+        <+> prettyCanonicalResult target
 
 prettyNaturalRange
   :: Natural

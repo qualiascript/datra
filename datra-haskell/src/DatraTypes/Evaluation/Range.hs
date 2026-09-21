@@ -104,6 +104,7 @@ interpretedNaturalRangeValue valueRange =
     , interpretedAtlasMapFederation =
         PrimitiveAtlasMapFederation
           (NaturalRangeAtlasMapFederation evaluatedNaturalRange)
+    , interpretedTotalAtlasMap = Nothing
     , interpretedCanonicalResult = canonical
     }
   where
@@ -142,6 +143,10 @@ interpretedNaturalRangeFallback start target = do
       , interpretedAtlasMapFederation =
           SingletonAtlasMapFederation
             (mapFromInsertion insertion [canonical])
+      , interpretedTotalAtlasMap =
+          Just
+            (InterpretedTotalAtlasMap
+              (mapFromInsertion insertion [canonical]))
       , interpretedCanonicalResult = canonical
       }
 
@@ -192,6 +197,8 @@ interpretedRangeValue evaluatedRange =
     , interpretedMap = valueMap
     , interpretedAtlasMapFederation =
         SingletonAtlasMapFederation valueMap
+    , interpretedTotalAtlasMap =
+        Just (InterpretedTotalAtlasMap valueMap)
     , interpretedCanonicalResult = canonical
     }
   where

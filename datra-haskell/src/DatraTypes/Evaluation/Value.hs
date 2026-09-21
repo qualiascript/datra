@@ -8,6 +8,8 @@ module Evaluation.Value
   , EvaluatedExplicit (..)
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
+  , InterpretedTotalAtlasMap (..)
+  , EvaluatedSpecification (..)
   , ValueForm (..)
   , SomeSuperEllipsisInsertion
   , InsertionCapability (..)
@@ -88,6 +90,23 @@ data EvaluatedNaturalRange where
     :: NaturalRange.NaturalRange rangeScope federationScope
     -> EvaluatedNaturalRange
 
+-- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
+-- is attached only by constructors known to give every final-page region a
+-- singleton value; being a singleton federation is not sufficient by itself.
+newtype InterpretedTotalAtlasMap = InterpretedTotalAtlasMap
+  { interpretedTotalAtlasMapUnderlying :: InterpretedMap
+  }
+
+-- | Erased semantic witness for a successful specification into a primitive
+-- NaturalRange federation.  The core 'SpecificationOperator' module carries
+-- the non-erased categorical form used when concrete Atlas witnesses remain
+-- available.
+data EvaluatedSpecification = EvaluatedSpecification
+  { evaluatedSpecificationSource :: InterpretedTotalAtlasMap
+  , evaluatedSpecificationTarget :: InterpretedAtlasMapFederation
+  , evaluatedSpecificationMember :: NaturalRange.NaturalSubrangeDescription
+  }
+
 data ValueForm
   = ExplicitForm EvaluatedExplicit
   | FormulationForm SomeSuperEllipsis
@@ -95,6 +114,7 @@ data ValueForm
   | NaturalRangeForm EvaluatedNaturalRange
   | RangeConcatenationForm [EvaluatedRange]
   | AsciiStringForm String
+  | SpecificationForm EvaluatedSpecification
   | MapForm
 
 data InsertionCapability
@@ -132,6 +152,7 @@ data CanonicalResult
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
   | CanonicalMap Natural [CanonicalResult]
+  | CanonicalSpecification CanonicalResult CanonicalResult
   deriving (Eq, Show)
 
 data InterpretedValue = InterpretedValue
@@ -139,6 +160,7 @@ data InterpretedValue = InterpretedValue
   , interpretedInsertionCapability :: InsertionCapability
   , interpretedMap :: InterpretedMap
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
+  , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
   , interpretedCanonicalResult :: CanonicalResult
   }
 
@@ -152,6 +174,7 @@ interpretedValueKind value =
     NaturalRangeForm _ -> RangeValueKind
     RangeConcatenationForm _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
+    SpecificationForm _ -> SpecificationValueKind
     MapForm -> MapValueKind
 
 interpretedExplicitOrdinal

@@ -60,6 +60,8 @@ library
         EllipsisNatural
         NaturalRange
         AtlasMapFederation
+        TotalAtlasMap
+        SpecificationOperator
         DatraLanguage.Diagnostics
         DatraLanguage.Diagnostics.Interpreter
         DatraLanguage.Diagnostics.Locales.English
@@ -126,6 +128,7 @@ library
         Atlas.Morphism.LiquidInternal
         AtlasCoveredPageElement.Internal
         AtlasMap.Internal
+        TotalAtlasMap.Internal
         AtlasTransposal.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
@@ -166,6 +169,7 @@ library
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Range
+        Evaluation.Specification
         Evaluation.Value
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
@@ -213,6 +217,7 @@ library
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasHorizontalSum
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
+        src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap
         src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap
         src/DatraCore/Atlases/Derived/Cartography/Charter
         src/DatraCore/Atlases/Derived/Coalitions

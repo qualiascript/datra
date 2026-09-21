@@ -45,6 +45,7 @@ data Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
   | MapAccess Expression Expression
+  | MapSpecification Expression Expression
   deriving (Eq, Show)
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
@@ -70,6 +71,7 @@ data OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
+  | Specify OperatorExpression OperatorExpression
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -111,6 +113,8 @@ normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (MapSpecification left right) =
+  MapSpecification (normalizeExpression left) (normalizeExpression right)
 
 isEmptyMap :: Expression -> Bool
 isEmptyMap (AtlasMap []) = True
@@ -138,6 +142,7 @@ lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
 lower (MapAccess left right) = Access (lower left) (lower right)
+lower (MapSpecification left right) = Specify (lower left) (lower right)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -200,6 +205,8 @@ prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
+prettyOperator (Specify left right) =
+  prettyBinary SpecificationOperator left right
 
 prettyUnary
   :: Operator

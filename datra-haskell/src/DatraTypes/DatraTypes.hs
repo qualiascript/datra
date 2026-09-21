@@ -25,6 +25,7 @@ module DatraTypes
   , makeAtlasExpansion
   , concatenateValues
   , accessValues
+  , specifyValues
   , interpretedValueKind
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
@@ -64,6 +65,7 @@ import Evaluation.Range
   , openMinusRangeValue
   , openPlusRangeValue
   )
+import Evaluation.Specification (specifyValues)
 import Evaluation.Value
   ( CanonicalResult (..)
   , InterpretedMap

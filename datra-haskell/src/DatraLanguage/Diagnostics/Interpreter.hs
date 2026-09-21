@@ -28,11 +28,13 @@ data InterpretedValueKind
   | RangeConcatenationValueKind
   | AsciiStringValueKind
   | MapValueKind
+  | SpecificationValueKind
   deriving (Eq, Show)
 
 data AtlasMapFederationOperation
   = AtlasMapFederationConcatenation
   | AtlasMapFederationAccess
+  | AtlasMapFederationSpecification
   deriving (Eq, Show)
 
 -- | A constructive counterexample proving that a federation operation is
@@ -40,6 +42,7 @@ data AtlasMapFederationOperation
 data AtlasMapFederationRefutation
   = AtlasMapFederationConcatenationCollision Natural
   | AtlasMapFederationAccessHasEmptyCounterexample
+  | AtlasMapFederationSpecificationHasNoMatchingMember
   deriving (Eq, Show)
 
 data AtlasMapFederationUncertainty
@@ -50,6 +53,7 @@ data InterpretingError
   = ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | ExpectedInsertionOperand InterpretedValueKind
+  | ExpectedTotalAtlasMap InterpretedValueKind
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | AccessRejected AccessError
