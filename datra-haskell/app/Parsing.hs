@@ -19,6 +19,7 @@ import Control.Monad.Combinators.Expr
   )
 import Data.Bifunctor (first)
 import Data.Char (chr, digitToInt, isHexDigit, ord)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -408,8 +409,9 @@ identifierStringToken =
       <*> many (satisfy isCanonicalCharacter))
 
 -- | The standard quoted spelling. It is multiline by default and retains all
--- contents exactly. Newline, quote, and backslash have named escaped spellings;
--- any byte can also be written using one or two hexadecimal digits.
+-- non-comment contents exactly. A hash begins a line comment, while newline,
+-- quote, backslash, and a literal hash have named escaped spellings. Any byte
+-- can also be written using one or two hexadecimal digits.
 standardString :: Parser String
 standardString = lexeme standardStringToken
 
@@ -418,7 +420,29 @@ astStandardString = astLexeme standardStringToken
 
 standardStringToken :: Parser String
 standardStringToken =
-  between (char '"') (char '"') (many standardStringCharacter)
+  between (char '"') (char '"')
+    (catMaybes <$> many standardStringPart)
+
+standardStringPart :: Parser (Maybe Char)
+standardStringPart =
+  choice
+    [ Nothing <$ standardStringComment
+    , Just <$> standardStringCharacter
+    ]
+
+-- Unlike an ordinary line comment, a comment within a string also ends at the
+-- string's closing quote. The terminator is left for the surrounding parser,
+-- preserving a newline as string content or allowing the quote to close it.
+standardStringComment :: Parser ()
+standardStringComment =
+  char '#'
+    *> void
+      (manyTill anySingle
+        (lookAhead
+          ( void (char '"')
+            <|> void (char '\n')
+            <|> eof
+          )))
 
 standardStringCharacter :: Parser Char
 standardStringCharacter =
@@ -426,6 +450,7 @@ standardStringCharacter =
     *> choice
       [ '"' <$ char '"'
       , '\\' <$ char '\\'
+      , '#' <$ char '#'
       , '\n' <$ char 'n'
       , hexadecimalAsciiCharacter
       ])
@@ -433,6 +458,7 @@ standardStringCharacter =
       (\character ->
         character /= '"'
           && character /= '\\'
+          && character /= '#'
           && isAsciiCharacter character)
 
 hexadecimalAsciiCharacter :: Parser Char

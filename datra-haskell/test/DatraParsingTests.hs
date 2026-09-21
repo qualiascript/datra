@@ -96,9 +96,25 @@ main = do
     "\"\\0A\""
     "\"\\n\""
   assertAstOutput
-    "StandardString leaves keyboard-visible ASCII characters literal"
-    "\" !#%&'()*+,-./:;<=>?@[]^_`{|}~\""
-    "\" !#%&'()*+,-./:;<=>?@[]^_`{|}~\""
+    "StandardString leaves nonsyntactic keyboard-visible characters literal"
+    "\" !%&'()*+,-./:;<=>?@[]^_`{|}~\""
+    "\" !%&'()*+,-./:;<=>?@[]^_`{|}~\""
+  assertAstOutput
+    "StandardString line comments retain their terminating newline"
+    "\"Comment test#this is a comment!\n\""
+    "\"Comment test\\n\""
+  assertParsed
+    "StandardString comments may terminate at the closing quote"
+    "\"Hello#, world!\""
+    (AtlasMap [AsciiStringLiteral "Hello"])
+  assertAstOutput
+    "StandardString comments ending at a quote retain canonical rendering"
+    "\"Hello#, world!\""
+    "$Hello"
+  assertAstOutput
+    "StandardString escapes a literal hash"
+    "\"literal \\# character\""
+    "\"literal \\# character\""
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
@@ -106,7 +122,7 @@ main = do
     "\"  first\\nsecond  \""
   assertParsed
     "StandardString treats syntax and comments as literal contents"
-    "[\"#;[value]\n$still_text\"]"
+    "[\"\\#;[value]\n$still_text\"]"
     (AtlasMap [AsciiStringLiteral "#;[value]\n$still_text"])
   assertAstOutput
     "strings use the ordinary concatenation operator"

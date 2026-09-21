@@ -223,6 +223,7 @@ renderAsciiStringLiteral value = '"' : foldr escape "\"" value
     escape '\n' rest = '\\' : 'n' : rest
     escape '"' rest = '\\' : '"' : rest
     escape '\\' rest = '\\' : '\\' : rest
+    escape '#' rest = '\\' : '#' : rest
     escape character rest
       | isAsciiByte character && not (isKeyboardCharacter character) =
           '\\' : hexadecimalByte character <> rest
