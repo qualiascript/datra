@@ -18,12 +18,14 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Bifunctor (first)
+import Data.Char (ord)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import DatraLanguage.AST
   ( Expression
       ( Addition
+      , AsciiStringLiteral
       , AtlasMap
       , EllipsisLiteral
       , EllipsisNatural
@@ -62,6 +64,7 @@ import Text.Megaparsec
   , sourceColumn
   , sourceLine
   , sourceName
+  , satisfy
   , try
   , unPos
   )
@@ -155,6 +158,8 @@ astAtom =
   choice
     [ AtlasMap [] <$ astSymbol "[]"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> astIdentifierString
+    , AsciiStringLiteral <$> astStandardString
     , EllipsisNatural <$> astLexeme Lexer.decimal
     ]
 
@@ -233,7 +238,10 @@ outerMapEnvelope =
           (try (char ']' *> fullSpaceConsumer <* eof))
     )
   where
-    envelopeCharacter = lineComment <|> void anySingle
+    envelopeCharacter =
+      lineComment
+        <|> try (void standardStringToken)
+        <|> void anySingle
 
 atlasMap :: Parser Expression
 atlasMap =
@@ -305,6 +313,8 @@ term =
     [ parenthesizedExpression
     , atlasMap
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> identifierString
+    , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
 
@@ -313,6 +323,8 @@ rangeEndpointTerm =
   choice
     [ parenthesizedExpression
     , atlasMap
+    , AsciiStringLiteral <$> identifierString
+    , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
 
@@ -379,6 +391,68 @@ postfixRangeEnd =
 
 ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
+
+-- | The compact identifier spelling: a dollar sign, one leading canonical
+-- character, then any number of canonical characters.
+identifierString :: Parser String
+identifierString = lexeme identifierStringToken
+
+astIdentifierString :: Parser String
+astIdentifierString = astLexeme identifierStringToken
+
+identifierStringToken :: Parser String
+identifierStringToken =
+  char '$'
+    *> ((:)
+      <$> satisfy isLeadingCanonicalCharacter
+      <*> many (satisfy isCanonicalCharacter))
+
+-- | The standard quoted spelling. It is multiline by default and retains all
+-- contents exactly. Newline, quote, and backslash have escaped spellings.
+standardString :: Parser String
+standardString = lexeme standardStringToken
+
+astStandardString :: Parser String
+astStandardString = astLexeme standardStringToken
+
+standardStringToken :: Parser String
+standardStringToken =
+  between (char '"') (char '"') (many standardStringCharacter)
+
+standardStringCharacter :: Parser Char
+standardStringCharacter =
+  (char '\\'
+    *> choice
+      [ '"' <$ char '"'
+      , '\\' <$ char '\\'
+      , '\n' <$ char 'n'
+      ])
+    <|> satisfy
+      (\character ->
+        character /= '"'
+          && character /= '\\'
+          && isAsciiCharacter character)
+
+isLeadingCanonicalCharacter :: Char -> Bool
+isLeadingCanonicalCharacter character =
+  isAsciiLetter character || character == '_'
+
+isCanonicalCharacter :: Char -> Bool
+isCanonicalCharacter character =
+  isLeadingCanonicalCharacter character
+    || isAsciiDigit character
+    || character == '\''
+
+isAsciiLetter :: Char -> Bool
+isAsciiLetter character =
+  ('a' <= character && character <= 'z')
+    || ('A' <= character && character <= 'Z')
+
+isAsciiDigit :: Char -> Bool
+isAsciiDigit character = '0' <= character && character <= '9'
+
+isAsciiCharacter :: Char -> Bool
+isAsciiCharacter character = ord character < 256
 
 -- Horizontal trivia belongs to the preceding token. Keeping line breaks out
 -- of the ordinary lexeme consumer lets the grammar decide whether each one

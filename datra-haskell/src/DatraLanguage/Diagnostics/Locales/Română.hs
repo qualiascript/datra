@@ -74,6 +74,10 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    InvalidAsciiStringCharacter character ->
+      LocalizedMessage
+        "șirul conține un caracter din afara hărții ASCII"
+        ["caracter: " <> show character]
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "stâng"
@@ -85,6 +89,7 @@ valueKind ExplicitOrdinalValueKind = "ordinal explicit"
 valueKind FormulationValueKind = "formulare cu super-elipsă"
 valueKind RangeValueKind = "interval"
 valueKind RangeConcatenationValueKind = "concatenare de intervale"
+valueKind AsciiStringValueKind = "șir ASCII"
 valueKind MapValueKind = "hartă"
 
 localizeSuperEllipsisRangeError

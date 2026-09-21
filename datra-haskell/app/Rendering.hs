@@ -12,6 +12,7 @@ import DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   , operatorSourceSymbol
   )
+import DatraLanguage.AST (renderAsciiStringLiteral)
 import DatraTypes
   ( CanonicalResult (..)
   , InterpretedValue
@@ -53,6 +54,7 @@ prettyCanonicalResult result =
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
+    CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalMap cardinality components ->
       prettyMap cardinality components
     CanonicalSuperEllipsisInsertion -> "<SuperEllipsisInsertion>"

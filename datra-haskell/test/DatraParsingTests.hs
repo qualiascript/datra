@@ -57,6 +57,38 @@ main = do
     "ellipsis literal"
     "[...]"
     "..."
+  assertParsed
+    "IdentifierString produces an ASCII string literal"
+    "$text"
+    (AtlasMap [AsciiStringLiteral "text"])
+  assertAstOutput
+    "IdentifierString accepts all canonical continuation characters"
+    "$A_0'z"
+    "$A_0'z"
+  assertAstOutput
+    "StandardString canonicalizes to IdentifierString when possible"
+    "\"text\""
+    "$text"
+  assertAstOutput
+    "StandardString supports the empty string"
+    "\"\""
+    "\"\""
+  assertAstOutput
+    "StandardString escapes quote and backslash"
+    "\"say \\\"hi\\\" and \\\\ path\""
+    "\"say \\\"hi\\\" and \\\\ path\""
+  assertAstOutput
+    "StandardString decodes and canonicalizes escaped newlines"
+    "\"first\\nsecond\""
+    "\"first\\nsecond\""
+  assertAstOutput
+    "StandardString preserves multiline leading and trailing characters"
+    "[\"  first\nsecond  \"]"
+    "\"  first\\nsecond  \""
+  assertParsed
+    "StandardString treats syntax and comments as literal contents"
+    "[\"#;[value]\n$still_text\"]"
+    (AtlasMap [AsciiStringLiteral "#;[value]\n$still_text"])
   assertAstOutput
     "bounded super-ellipsis range"
     "[2..10]"
@@ -276,6 +308,12 @@ main = do
     "[1; 2; # trailing separator\n]"
     "(<:> 1 2)"
   assertRejected "multiple trailing semicolons are rejected" "[1; 2;;]"
+  assertRejected "IdentifierString requires a leading canonical character" "$0bad"
+  assertRejected "IdentifierString rejects a missing body" "$"
+  assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
+  assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
+  assertRejected "StandardString rejects an unterminated literal" "\"bad"
+  assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
   assertRejected "multiple trailing commas are rejected" "[1,,]"
   assertRejected
     "multiple trailing commas after concatenation are rejected"
@@ -347,6 +385,11 @@ assertLocatedParse =
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do
+  assert "ASCII-string syntax chooses its canonical spelling"
+    ( renderExpression (AST.asciiString "name_1") == "$name_1"
+      && renderExpression (AST.asciiString "a\"b\\c\n")
+        == "\"a\\\"b\\\\c\\n\""
+    )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression
         ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))

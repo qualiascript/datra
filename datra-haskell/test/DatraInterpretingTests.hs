@@ -93,6 +93,27 @@ naturalOrdinal value = do
 
 testLiteralsAndArithmetic :: IO ()
 testLiteralsAndArithmetic = do
+  expectValue "ASCII string literal" (AsciiStringLiteral "a\255a") $ \value -> do
+    let valueMap = interpretedMap value
+        characterCodes =
+          map
+            (\position ->
+              interpretedMapValueAt valueMap (finiteOrdinal position)
+                >>= naturalOrdinal)
+            [0 .. 3]
+    assert "ASCII strings retain their map shape and character order"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality valueMap == 2
+        && interpretedMapFinalOrderType valueMap == finiteOrdinal 3
+        && characterCodes == map Just [97, 255, 97] <> [Nothing]
+        && renderInterpretedValue value == "\"a\255a\""
+      )
+  expectValue "empty ASCII string" (AsciiStringLiteral "") $ \value ->
+    assert "the empty ASCII string retains its literal while using an empty map"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 0
+        && renderInterpretedValue value == "\"\""
+      )
   expectValue "natural literal" (natural 10) $ \value ->
     assert "naturals remain typed rank-one explicit values"
       ( interpretedValueKind value == NaturalValueKind
@@ -357,6 +378,10 @@ testAccess = do
 
 testTypedRejections :: IO ()
 testTypedRejections = do
+  assert "non-ASCII programmatic string literals are rejected"
+    (case interpretExpressionReason (AsciiStringLiteral "λ") of
+      Left (InvalidAsciiStringCharacter 'λ') -> True
+      _ -> False)
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
         ((AST.+) (AtlasMap []) (natural 1)) of

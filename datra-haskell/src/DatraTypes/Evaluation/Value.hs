@@ -29,6 +29,7 @@ module Evaluation.Value
   , emptyInterpretedMap
   , singletonMap
   , emptyOrdinalOrderedValues
+  , singletonOrdinalOrderedValues
   , appendOrdinalOrderedValues
   , appendSomeSuperEllipsisInsertion
   ) where
@@ -78,6 +79,7 @@ data ValueForm
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | RangeConcatenationForm [EvaluatedRange]
+  | AsciiStringForm String
   | MapForm
 
 data InsertionCapability
@@ -99,6 +101,7 @@ data CanonicalResult
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
+  | CanonicalAsciiString String
   | CanonicalMap Natural [CanonicalResult]
   | CanonicalSuperEllipsisInsertion
   deriving (Eq, Show)
@@ -118,6 +121,7 @@ interpretedValueKind value =
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     RangeConcatenationForm _ -> RangeConcatenationValueKind
+    AsciiStringForm _ -> AsciiStringValueKind
     MapForm -> MapValueKind
 
 interpretedExplicitOrdinal

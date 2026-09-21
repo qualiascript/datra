@@ -54,6 +54,7 @@ interpretExpressionReason expressionValue =
   case expressionValue of
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
+    AsciiStringLiteral value -> asciiStringValue value
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
     MapSequence expressions ->

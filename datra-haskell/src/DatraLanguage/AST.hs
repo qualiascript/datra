@@ -6,6 +6,7 @@ module DatraLanguage.AST
   , toOperatorExpression
   , renderExpression
   , renderOperatorExpression
+  , renderAsciiStringLiteral
   ) where
 
 import DatraLanguage.AST.Operator
@@ -28,6 +29,7 @@ import Prettyprinter.Render.String (renderString)
 data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
+  | AsciiStringLiteral String
   | AtlasMap [Expression]
   | MapSequence [Expression]
   | MapExpansion Expression Expression
@@ -50,6 +52,7 @@ renderExpression =
 data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
+  | AsciiStringValue String
   | EmptyMap
   | Sequential [OperatorExpression]
   | Expansion OperatorExpression OperatorExpression
@@ -73,6 +76,7 @@ renderOperatorExpression =
 normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
+normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression (AtlasMap expressions) =
   AtlasMap
     (filter (not . isEmptyMap) (map normalizeExpression expressions))
@@ -108,6 +112,7 @@ isEmptyMap _ = False
 lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
+lower (AsciiStringLiteral value) = AsciiStringValue value
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -157,6 +162,7 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
+prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
 prettyOperator EmptyMap = "[]"
 prettyOperator (Sequential []) = "[]"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -202,3 +208,31 @@ prettyFormFor operator = prettyForm (operatorCanonicalSymbol operator)
 prettyForm :: String -> [Doc annotation] -> Doc annotation
 prettyForm headName operands =
   parens (hsep (pretty headName : operands))
+
+-- | Render an identifier string when possible, otherwise use the standard
+-- quoted spelling. Standard strings escape newline, quote, and backslash.
+renderAsciiStringLiteral :: String -> String
+renderAsciiStringLiteral value@(first : rest)
+  | isLeadingCanonicalCharacter first
+      && all isCanonicalCharacter rest = '$' : value
+renderAsciiStringLiteral value = '"' : foldr escape "\"" value
+  where
+    escape '\n' rest = '\\' : 'n' : rest
+    escape '"' rest = '\\' : '"' : rest
+    escape '\\' rest = '\\' : '\\' : rest
+    escape character rest = character : rest
+
+isLeadingCanonicalCharacter :: Char -> Bool
+isLeadingCanonicalCharacter character =
+  isAsciiLetter character || character == '_'
+
+isCanonicalCharacter :: Char -> Bool
+isCanonicalCharacter character =
+  isLeadingCanonicalCharacter character
+    || ('0' <= character && character <= '9')
+    || character == '\''
+
+isAsciiLetter :: Char -> Bool
+isAsciiLetter character =
+  ('a' <= character && character <= 'z')
+    || ('A' <= character && character <= 'Z')
