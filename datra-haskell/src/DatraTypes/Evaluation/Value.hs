@@ -20,6 +20,7 @@ module Evaluation.Value
   , interpretedRangeDescription
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , asciiStringFromInterpretedMap
   , explicitOrdinal
   , explicitInsertion
   , rangeDescription
@@ -34,7 +35,9 @@ module Evaluation.Value
   , appendSomeSuperEllipsisInsertion
   ) where
 
-import DatraOrdinal (Ordinal)
+import Control.Monad (guard)
+import Data.Char (chr)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
@@ -156,6 +159,24 @@ interpretedMapValueAt
   -> Ordinal
   -> Maybe InterpretedValue
 interpretedMapValueAt = ordinalOrderedValueAt . interpretedMapFinalValues
+
+-- | Recover ASCII characters from a finite interpreted map. String operators
+-- use this after delegating their ordering to the ordinary map operations.
+asciiStringFromInterpretedMap :: InterpretedMap -> Maybe String
+asciiStringFromInterpretedMap valueMap = do
+  cardinality <- naturalAtOrdinal (interpretedMapFinalOrderType valueMap)
+  traverse characterAt (finitePositions cardinality)
+  where
+    characterAt position = do
+      value <- interpretedMapValueAt valueMap position
+      (_, ordinalValue) <- interpretedExplicitOrdinal value
+      characterCode <- naturalAtOrdinal ordinalValue
+      guard (characterCode < 256)
+      pure (chr (fromIntegral characterCode))
+
+    finitePositions 0 = []
+    finitePositions cardinality =
+      map finiteOrdinal [0 .. cardinality - 1]
 
 explicitOrdinal :: EvaluatedExplicit -> (Natural, Ordinal)
 explicitOrdinal (EvaluatedExplicit level _ value) =

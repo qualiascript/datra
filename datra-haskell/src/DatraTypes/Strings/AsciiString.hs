@@ -1,7 +1,10 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Finite strings whose characters are selected from the ASCII map.
 --
@@ -10,10 +13,13 @@
 module AsciiString
   ( AsciiString
   , AsciiStringCharacter
+  , ConcatenatedAsciiStringCharacter
+  , AsciiStringElement
   , asciiString
   , asciiStringLength
   , asciiStringValue
   , appendAsciiStrings
+  , accessAsciiString
   , asciiStringCharacterPosition
   , asciiStringCharacterValue
   , asciiStringCharacterAt
@@ -35,9 +41,13 @@ import EllipsisNatural
   )
 import MapOperators.AccessOperator
   ( AccessElement
+  , HasSuperEllipsisInsertion
+      ( InsertionSource
+      )
   , accessElementValue
   , accessOperator
   )
+import MapOperators.ConcatOperator (Concat (..))
 import MapOperators.IndexedAtlasMap (indexedAtlasMap)
 import MapOperators.OrderedAtlasMap
   ( HasOrderedAtlasMap (..)
@@ -66,16 +76,48 @@ data AsciiStringCharacter asciiScope where
 -- | A finite sequence of ASCII characters. The constructor is hidden so every
 -- nonempty value retains the dense finite-page invariant.
 type role AsciiString nominal
-newtype AsciiString asciiScope = AsciiString
+newtype AsciiString character = AsciiString
   { getAsciiStringOrderedAtlasMap
-      :: OrderedAtlasMap (AsciiStringCharacter asciiScope)
+      :: OrderedAtlasMap character
   }
+
+-- | Character witnesses that can be observed through an ASCII string.
+class AsciiStringElement character where
+  asciiStringElementValue :: character -> Char
+
+instance AsciiStringElement (AsciiStringCharacter scope) where
+  asciiStringElementValue = asciiStringCharacterValue
+
+instance
+    (AsciiStringElement left, AsciiStringElement right) =>
+    AsciiStringElement (Either left right) where
+  asciiStringElementValue (Left value) = asciiStringElementValue value
+  asciiStringElementValue (Right value) = asciiStringElementValue value
+
+instance AsciiStringElement value =>
+    AsciiStringElement (AccessElement source value) where
+  asciiStringElementValue = asciiStringElementValue . accessElementValue
+
+-- | A character retained from one side of an underlying map concatenation.
+data ConcatenatedAsciiStringCharacter left right =
+  ConcatenatedAsciiStringCharacter
+    Natural
+    (Either left right)
+
+instance
+    (AsciiStringElement left, AsciiStringElement right) =>
+    AsciiStringElement (ConcatenatedAsciiStringCharacter left right) where
+  asciiStringElementValue
+      (ConcatenatedAsciiStringCharacter _ character) =
+    asciiStringElementValue character
 
 -- | Introduce a string by accessing the ASCII map once for each character.
 -- Returns 'Nothing' when any supplied character lies outside that map.
 asciiString
   :: Prelude.String
-  -> (forall asciiScope. AsciiString asciiScope -> result)
+  -> (forall asciiScope.
+       AsciiString (AsciiStringCharacter asciiScope)
+       -> result)
   -> Maybe result
 asciiString characters useString =
   asciiMap $ \ascii -> do
@@ -101,27 +143,34 @@ selectAsciiCharacter ascii (position, character) =
 orderedCharacters
   :: [AsciiStringCharacter asciiScope]
   -> OrderedAtlasMap (AsciiStringCharacter asciiScope)
-orderedCharacters [] = EmptyOrderedAtlasMap
-orderedCharacters characters@(first : _) =
+orderedCharacters = orderedCharactersBy asciiStringCharacterPosition
+
+orderedCharactersBy
+  :: (character -> Natural)
+  -> [character]
+  -> OrderedAtlasMap character
+orderedCharactersBy _ [] = EmptyOrderedAtlasMap
+orderedCharactersBy position characters@(first : _) =
   NonEmptyOrderedAtlasMap
     (indexedAtlasMap
       (naturalLength characters)
       first
-      (asciiStringCharacterDominion characters))
+      (positionedDominion position characters))
 
-asciiStringCharacterDominion
-  :: [AsciiStringCharacter asciiScope]
-  -> Dominion (AsciiStringCharacter asciiScope)
-asciiStringCharacterDominion characters =
+positionedDominion
+  :: (character -> Natural)
+  -> [character]
+  -> Dominion character
+positionedDominion position characters =
   dominion
-    asciiStringCharacterPosition
+    position
     (`Map.lookup` charactersByPosition)
     (const ())
   where
     charactersByPosition =
       Map.fromList
         (map (\character ->
-          (asciiStringCharacterPosition character, character)) characters)
+          (position character, character)) characters)
 
 naturalLength :: [value] -> Natural
 naturalLength = foldl' (\lengthSoFar _ -> lengthSoFar + 1) 0
@@ -143,7 +192,10 @@ asciiStringLength (AsciiString characters) =
     Nothing -> 0
 
 -- | Recover the ordinary Haskell string in page-1 order.
-asciiStringValue :: AsciiString scope -> Prelude.String
+asciiStringValue
+  :: AsciiStringElement character
+  => AsciiString character
+  -> Prelude.String
 asciiStringValue value = collect 0
   where
     collect position
@@ -153,24 +205,64 @@ asciiStringValue value = collect 0
             Just character -> character : collect (position + 1)
             Nothing -> []
 
--- | Concatenate two strings and introduce the result with a fresh scope.
+-- | Concatenate the underlying ordered Atlas maps and retain string behavior.
 appendAsciiStrings
-  :: AsciiString leftScope
-  -> AsciiString rightScope
-  -> (forall scope. AsciiString scope -> result)
-  -> Maybe result
-appendAsciiStrings left right =
-  asciiString (asciiStringValue left <> asciiStringValue right)
+  :: AsciiString left
+  -> AsciiString right
+  -> AsciiString (ConcatenatedAsciiStringCharacter left right)
+appendAsciiStrings (AsciiString left) (AsciiString right) =
+  AsciiString
+    (orderedCharactersBy
+      concatenatedPosition
+      ( zipWith
+          ConcatenatedAsciiStringCharacter
+          [0 ..]
+          (map Left (orderedValues left) <> map Right (orderedValues right))
+      ))
+  where
+    concatenatedPosition
+      (ConcatenatedAsciiStringCharacter position _) = position
+
+orderedValues :: OrderedAtlasMap value -> [value]
+orderedValues values =
+  case naturalAtOrdinal (orderedAtlasMapCardinality values) of
+    Nothing -> []
+    Just cardinality -> collect 0 cardinality
+  where
+    collect position cardinality
+      | position == cardinality = []
+      | otherwise =
+          case orderedAtlasMapValueAt values position of
+            Just value -> value : collect (position + 1) cardinality
+            Nothing -> []
+
+-- | Access the underlying ordered Atlas map and retain string behavior.
+accessAsciiString
+  :: HasSuperEllipsisInsertion operand
+  => AsciiString character
+  -> operand
+  -> Maybe
+       (AsciiString
+         (AccessElement (InsertionSource operand) character))
+accessAsciiString (AsciiString characters) operand =
+  AsciiString <$> accessOperator characters operand
 
 -- | Look up a character by its zero-based page-1 position.
 asciiStringCharacterAt
-  :: AsciiString scope
+  :: AsciiStringElement character
+  => AsciiString character
   -> Natural
   -> Maybe Char
 asciiStringCharacterAt (AsciiString characters) position =
-  asciiStringCharacterValue
+  asciiStringElementValue
     <$> orderedAtlasMapValueAt characters position
 
-instance HasOrderedAtlasMap (AsciiString scope) where
-  type OrderedAtlasElement (AsciiString scope) = AsciiStringCharacter scope
+instance HasOrderedAtlasMap (AsciiString character) where
+  type OrderedAtlasElement (AsciiString character) = character
   orderedAtlasMap = getAsciiStringOrderedAtlasMap
+
+instance
+    Concat (AsciiString left) (AsciiString right) where
+  type ConcatResult (AsciiString left) (AsciiString right) =
+    AsciiString (ConcatenatedAsciiStringCharacter left right)
+  concatOperands = appendAsciiStrings

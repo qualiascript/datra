@@ -294,6 +294,24 @@ testRendering = do
 testMaps :: IO ()
 testMaps = do
   expectValue
+      "ASCII-string concatenation"
+      ((<.>) (AsciiStringLiteral "ab") (AsciiStringLiteral "_1")) $ \value ->
+    assert "ordinary concatenation remembers its ASCII-string result"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 2
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 4
+        && renderInterpretedValue value == "$ab_1"
+      )
+  expectValue
+      "empty ASCII-string concatenation"
+      ((<.>) (AsciiStringLiteral "") (AsciiStringLiteral "")) $ \value ->
+    assert "concatenating empty strings remains an empty ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 0
+        && renderInterpretedValue value == "\"\""
+      )
+  expectValue
       "operator sequence"
       (natural 1 <:> natural 2) $ \value ->
     assert "sequential AST syntax constructs a flat two-page map"
@@ -333,6 +351,34 @@ testMaps = do
 
 testAccess :: IO ()
 testAccess = do
+  expectValue
+      "ASCII-string singleton access"
+      ((<@>) (AsciiStringLiteral "abcd") (natural 2)) $ \value ->
+    assert "ordinary access remembers its ASCII-string result"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 1
+        && renderInterpretedValue value == "$c"
+      )
+  expectValue
+      "ASCII-string range access"
+      ((<@>)
+        (AsciiStringLiteral "abcd")
+        ((<..>) (natural 1) (natural 3))) $ \value ->
+    assert "range access retains the selected ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "$bc"
+      )
+  expectValue
+      "empty ASCII-string access"
+      ((<@>)
+        (AsciiStringLiteral "abcd")
+        ((<..>) (natural 1) (natural 1))) $ \value ->
+    assert "empty access remains an empty ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedMapCardinality (interpretedMap value) == 0
+        && renderInterpretedValue value == "\"\""
+      )
   let source = AtlasMap (map natural [0 .. 9])
       insertion =
         (<.>)

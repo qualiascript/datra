@@ -856,14 +856,48 @@ testAsciiString = do
     (isNothing (AsciiString.asciiString "\x100" (const ())))
   case AsciiString.asciiString "left" $ \left ->
       AsciiString.asciiString "" $ \emptyString ->
-        AsciiString.appendAsciiStrings left emptyString $ \unchanged ->
-          AsciiString.asciiString "right" $ \right ->
-            AsciiString.appendAsciiStrings unchanged right $ \combined ->
-              AsciiString.asciiStringValue combined of
-    Just (Just (Just (Just (Just combined)))) ->
-      assert "ASCII-string concatenation has the empty string as identity"
-        (combined == "leftright")
+        AsciiString.asciiString "right" $ \right ->
+          let unchanged = left `concatOperands` emptyString
+              combined = unchanged `concatOperands` right
+          in
+            ( AsciiString.asciiStringValue unchanged
+            , AsciiString.asciiStringValue combined
+            , orderedAtlasMapCardinality (orderedAtlasMap combined)
+            ) of
+    Just (Just (Just (unchanged, combined, cardinality))) ->
+      assert "ordinary concatenation retains ASCII-string behavior"
+        ( unchanged == "left"
+          && combined == "leftright"
+          && cardinality == finiteOrdinal 9
+        )
     _ -> fail "valid ASCII-string concatenation was rejected"
+  case AsciiString.asciiString "abcd" $ \value -> do
+      withEllipsisNatural 2 $ \two ->
+        case AsciiString.accessAsciiString value two of
+          Nothing -> fail "valid ASCII-string access was rejected"
+          Just selected ->
+            assert "ordinary access retains ASCII-string behavior"
+              (AsciiString.asciiStringValue selected == "c")
+      withEllipsisNatural 1 $ \one ->
+        withEllipsisNatural 3 $ \three ->
+          do
+            case boundedSuperEllipsisRange one three $ \selection ->
+                AsciiString.asciiStringValue
+                  <$> AsciiString.accessAsciiString value selection of
+              Nothing -> fail "ASCII-string access range was rejected"
+              Just selected ->
+                assert "range access retains ASCII-string behavior"
+                  (selected == Just "bc")
+            case boundedSuperEllipsisRange one one $ \selection ->
+                AsciiString.asciiStringValue
+                  <$> AsciiString.accessAsciiString value selection of
+              Nothing -> fail "empty ASCII-string access was rejected"
+              Just selected ->
+                assert "empty access remains an empty ASCII string"
+                  (selected == Just "")
+    of
+    Nothing -> fail "ASCII-string access setup was rejected"
+    Just checks -> checks
 
 testAccessOperator :: IO ()
 testAccessOperator =

@@ -10,6 +10,7 @@ import DatraOrdinal
   )
 import Data.Bifunctor qualified as Bifunctor
 import DatraLanguage.Diagnostics.Interpreter (InterpretingError (..))
+import Evaluation.Construction (makeAsciiString)
 import Evaluation.Value
 import MapOperators.AccessOperator
   ( validateAccessSelection )
@@ -26,14 +27,20 @@ accessValues
 accessValues mapValue insertionValue = do
   insertion <- requireInsertion insertionValue
   selected <- accessMap (interpretedMap mapValue) insertion
+  let ordinaryResult =
+        InterpretedValue
+          MapForm
+          NoInsertion
+          selected
+          (CanonicalMap
+            (interpretedMapCardinality selected)
+            (interpretedMapComponents selected))
   pure
-    (InterpretedValue
-      MapForm
-      NoInsertion
-      selected
-      (CanonicalMap
-        (interpretedMapCardinality selected)
-        (interpretedMapComponents selected)))
+    (case interpretedForm mapValue of
+      AsciiStringForm _ ->
+        maybe ordinaryResult makeAsciiString
+          (asciiStringFromInterpretedMap selected)
+      _ -> ordinaryResult)
 
 requireInsertion
   :: InterpretedValue

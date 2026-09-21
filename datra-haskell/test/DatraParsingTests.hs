@@ -90,6 +90,14 @@ main = do
     "[\"#;[value]\n$still_text\"]"
     (AtlasMap [AsciiStringLiteral "#;[value]\n$still_text"])
   assertAstOutput
+    "strings use the ordinary concatenation operator"
+    "$ab, $cd"
+    "(<.> $ab $cd)"
+  assertAstOutput
+    "strings use the ordinary access operator"
+    "$abcd @ 1..3"
+    "(<@> $abcd (<..> 1 3))"
+  assertAstOutput
     "bounded super-ellipsis range"
     "[2..10]"
     "(<..> 2 10)"
