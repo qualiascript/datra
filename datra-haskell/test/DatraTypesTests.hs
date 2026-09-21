@@ -36,6 +36,7 @@ import AtlasTransposal
   )
 import AtlasSequence (atlasSequenceDatumMember)
 import CanonicalCharsMap
+import LeadingCanonicalCharsMap
 import ChainedDominionAtlas (ChainedDominionAtlas)
 import Control.Monad (join)
 import Dominion
@@ -121,6 +122,7 @@ main = do
   testEvaluationBoundary
   testAsciiMap
   testCanonicalCharsMap
+  testLeadingCanonicalCharsMap
   testAccessOperator
   testDot
   testSequentialOperator
@@ -839,6 +841,26 @@ testCanonicalCharsMap =
           && atlasPageHasExactly valueAtlas 1 canonicalCharsCardinality
         )) of
     Nothing -> fail "canonical character insertion did not fit ASCII"
+    Just checks -> checks
+
+testLeadingCanonicalCharsMap :: IO ()
+testLeadingCanonicalCharsMap =
+  case leadingCanonicalCharsMap (\leadingCanonical -> do
+      let valueAtlas = indexedAtlasAtlas leadingCanonical
+          positions = [0, 25, 26, 27, 52, 53]
+          expected =
+            [Just 'A', Just 'Z', Just '_', Just 'a', Just 'z', Nothing]
+      assert "leading canonical characters retain their canonical order"
+        (map (leadingCanonicalCharacterAt leadingCanonical) positions
+          == expected)
+      assert "leading canonical access produces a two-page 53-cell map"
+        ( indexedAtlasCardinality leadingCanonical
+            == finiteOrdinal leadingCanonicalCharsCardinality
+          && atlasCardinality valueAtlas == 2
+          && atlasPageHasExactly
+            valueAtlas 1 leadingCanonicalCharsCardinality
+        )) of
+    Nothing -> fail "leading canonical character insertion did not fit"
     Just checks -> checks
 
 testAccessOperator :: IO ()
