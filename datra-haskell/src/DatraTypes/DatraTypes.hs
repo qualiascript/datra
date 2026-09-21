@@ -21,9 +21,14 @@ module DatraTypes
   , openMinusRangeValue
   , naturalRangeValue
   , naturalRangeUpwardsValue
+  , valuedNaturalRangeValue
+  , valuedNaturalRangeUpwardsValue
+  , naturalTypeValue
   , makeAtlasMap
+  , makeAtlasExpansion
   , concatenateValues
   , accessValues
+  , specifyValues
   , interpretedValueKind
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
@@ -48,6 +53,7 @@ import Evaluation.Construction
   )
 import Evaluation.Map
   ( concatenateValues
+  , makeAtlasExpansion
   , makeAtlasMap
   )
 import Evaluation.Numerical
@@ -57,11 +63,15 @@ import Evaluation.Numerical
   )
 import Evaluation.Range
   ( boundedRangeValue
+  , naturalTypeValue
   , naturalRangeUpwardsValue
   , naturalRangeValue
   , openMinusRangeValue
   , openPlusRangeValue
+  , valuedNaturalRangeUpwardsValue
+  , valuedNaturalRangeValue
   )
+import Evaluation.Specification (specifyValues)
 import Evaluation.Value
   ( CanonicalResult (..)
   , InterpretedMap

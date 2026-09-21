@@ -7,6 +7,7 @@ module SuperEllipsisValue
   , SuperEllipsisValueElement
   , superEllipsisValue
   , canonicalSuperEllipsisValue
+  , naturalSuperEllipsisValue
   , minimumSuperEllipsisValueRank
   , superEllipsisValueRange
   , superEllipsisValueOrdinal
@@ -19,9 +20,12 @@ import DatraOrdinal
   , finiteOrdinal
   )
 import Data.Kind (Type)
+import Dot (Dot)
 import MapOperators.OrderedAtlasMap (HasOrderedAtlasMap (..))
+import Numeric.Natural (Natural)
 import SuperEllipsis
   ( SuperEllipsisRank
+  , SuperEllipsis
   , SuperEllipsisTarget
   , minimumSuperEllipsisValueRank
   , superEllipsisRankLevel
@@ -39,6 +43,7 @@ import SuperEllipsisRange
   , superEllipsisRangeLowerBound
   , superEllipsisRangeInsertion
   , superEllipsisSingletonRange
+  , finiteSuperEllipsisSingletonRange
   )
 
 -- | A single value below one finite-rank super ellipsis.
@@ -65,6 +70,17 @@ canonicalSuperEllipsisValue
 canonicalSuperEllipsisValue value useValue =
   withMinimalSuperEllipsisOrdinal value $ \minimalValue ->
     superEllipsisSingletonRange minimalValue (useValue . SuperEllipsisValue)
+
+-- | Total rank-one construction for a finite natural value.
+naturalSuperEllipsisValue
+  :: Natural
+  -> (forall scope.
+       SuperEllipsisValue (SuperEllipsis Dot) scope
+       -> result)
+  -> result
+naturalSuperEllipsisValue value useValue =
+  finiteSuperEllipsisSingletonRange value
+    (useValue . SuperEllipsisValue)
 
 -- | Introduce the singleton range containing one ordinal value.
 superEllipsisValue

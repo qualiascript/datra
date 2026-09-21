@@ -9,6 +9,8 @@ module Evaluation.Construction
   ) where
 
 import Data.Char (ord)
+import AtlasMapFederation
+  ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -39,15 +41,22 @@ makeAsciiString characters = value
         emptyOrdinalOrderedValues
         (map singletonOrdinalOrderedValues characterValues)
     canonical = CanonicalAsciiString characters
+    valueMap =
+      InterpretedMap
+        (if null characters then 0 else 2)
+        finalValues
+        [canonical]
     value =
       InterpretedValue
-        (AsciiStringForm characters)
-        NoInsertion
-        (InterpretedMap
-          (if null characters then 0 else 2)
-          finalValues
-          [canonical])
-        canonical
+        { interpretedForm = AsciiStringForm characters
+        , interpretedInsertionCapability = NoInsertion
+        , interpretedMap = valueMap
+        , interpretedAtlasMapFederation =
+            SingletonAtlasMapFederation valueMap
+        , interpretedTotalAtlasMap =
+            Just (InterpretedTotalAtlasMap valueMap)
+        , interpretedCanonicalResult = canonical
+        }
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin
@@ -65,12 +74,18 @@ explicitInterpretedValue explicitValue = value
     (level, ordinalValue) = explicitOrdinal explicitValue
     insertion = explicitInsertion explicitValue
     canonical = CanonicalExplicit level ordinalValue
+    valueMap = singletonMap canonical value
     value =
       InterpretedValue
-        (ExplicitForm explicitValue)
-        (ValidInsertion insertion)
-        (singletonMap canonical value)
-        canonical
+        { interpretedForm = ExplicitForm explicitValue
+        , interpretedInsertionCapability = ValidInsertion insertion
+        , interpretedMap = valueMap
+        , interpretedAtlasMapFederation =
+            SingletonAtlasMapFederation valueMap
+        , interpretedTotalAtlasMap =
+            Just (InterpretedTotalAtlasMap valueMap)
+        , interpretedCanonicalResult = canonical
+        }
 
 makeFormulation :: Natural -> InterpretedValue
 makeFormulation level = value
@@ -83,12 +98,18 @@ makeFormulation level = value
         (\position -> do
           absolute <- someSuperEllipsisInsertionPositionAt insertion position
           pure (makeExplicit ComputedOrigin absolute))
+    valueMap = InterpretedMap 1 values [canonical]
     value =
       InterpretedValue
-        (FormulationForm formulation)
-        (ValidInsertion insertion)
-        (InterpretedMap 1 values [canonical])
-        canonical
+        { interpretedForm = FormulationForm formulation
+        , interpretedInsertionCapability = ValidInsertion insertion
+        , interpretedMap = valueMap
+        , interpretedAtlasMapFederation =
+            SingletonAtlasMapFederation valueMap
+        , interpretedTotalAtlasMap =
+            Just (InterpretedTotalAtlasMap valueMap)
+        , interpretedCanonicalResult = canonical
+        }
     canonical = CanonicalFormulation level
 
 mapFromInsertion

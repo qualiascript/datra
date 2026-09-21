@@ -74,6 +74,7 @@ main = do
   testNavigationAndExpedition
   testDataTransformationMap
   testRestrictedDataTransformations
+  testForgetStableConfederalData
   testStableConfederalKleisliSyntax
   testCharter
   testOrderedAtlasTransposal
@@ -1778,13 +1779,15 @@ testAtlasFederation = do
         (AtlasMergeNode atom atom) $ \confederation -> do
           let federation =
                 atlasFederation confederation $ \_ _ ->
-                  SeparatedCorrespondingRegions correspondingPosition
+                  SeparatedCorrespondingPageElements
+                    0 correspondingPosition
           assert "a federation does not separate a tag from itself"
             (isNothing (atlasFederationSeparation federation False False))
           assert "a federation retains separation evidence for distinct tags"
             ( atlasFederationSeparation federation False True
                 == Just
-                  (SeparatedCorrespondingRegions correspondingPosition)
+                  (SeparatedCorrespondingPageElements
+                    0 correspondingPosition)
             )
 
 testAtlasMap :: IO ()
@@ -2155,6 +2158,7 @@ testRestrictedDataTransformations = do
       && identityStableConfederalNatural joinedIdentityValue == 29
       && identityHorizontalSumComponents identityFubiniValue == (11, 17)
     )
+
   assert "restricted natural transformations compose pointwise"
     ( mapDataTransposalHom
         (incrementDataTransposal Category.. incrementDataTransposal)
@@ -2182,6 +2186,77 @@ testRestrictedDataTransformations = do
       && identityStableConfederalNatural
         (mapStableConfederalKleisliHom boundIdentityKleisli input) == 31
     )
+
+testForgetStableConfederalData :: IO ()
+testForgetStableConfederalData =
+  emptyAtlas $ \valueAtlas -> do
+    let witness = atlasWitness valueAtlas
+        restricted =
+          restrictStableConfederalDataToStableAtlases
+            testStableConfederalData
+        restrictedValue =
+          restrictedStableConfederalDataValue
+            witness
+            (TestRestrictedDataValue 41)
+        reindexedRestricted =
+          mapStableDataTransversal
+            restricted
+            identityStableAtlasTransversal
+            restrictedValue
+        forgotten =
+          forgetStableConfederalDataToDataTransformation
+            testStableConfederalData
+        extendedValue =
+          leftKanExtensionValue witness Category.id restrictedValue
+        reindexedExtended =
+          mapDataTransformation forgotten Category.id extendedValue
+        forgottenIncrement =
+          stableConfederalDataForgetfulHom
+            stableConfederalDataForgetfulFunctor
+            incrementStableConfederalData
+        mappedExtended =
+          mapDataTransformationHom forgottenIncrement extendedValue
+        singletonConfederation = singletonAtlasConfederation valueAtlas
+        singletonFederation =
+          atlasFederation singletonConfederation $ \_ _ ->
+            DifferentPageOrderTypes 0
+        embeddedFederationValue =
+          embeddedAtlasFederationValue
+            identityAtlasConfederationHom
+        restrictedFederationValue =
+          restrictedStableConfederalDataValue
+            witness embeddedFederationValue
+        forgottenFederation =
+          forgetAtlasFederationToDataTransformation singletonFederation
+        extendedFederationValue =
+          leftKanExtensionValue
+            witness Category.id restrictedFederationValue
+        reindexedFederationValue =
+          mapDataTransformation
+            forgottenFederation Category.id extendedFederationValue
+    withRestrictedStableConfederalDataValue reindexedRestricted $ \_
+        (TestRestrictedDataValue value) ->
+      assert
+        "stable confederal restriction acts through singleton confederations"
+        (value == 41)
+    withLeftKanExtensionValue reindexedExtended $ \_ _ restrictedResult ->
+      withRestrictedStableConfederalDataValue restrictedResult $ \_
+          (TestRestrictedDataValue value) ->
+        assert
+          "stable confederal forgetting left-Kan-extends to all Atlas arrows"
+          (value == 41)
+    withLeftKanExtensionValue mappedExtended $ \_ _ restrictedResult ->
+      withRestrictedStableConfederalDataValue restrictedResult $ \_
+          (TestRestrictedDataValue value) ->
+        assert
+          "stable confederal forgetting maps natural transformations"
+          (value == 42)
+    withLeftKanExtensionValue reindexedFederationValue $ \_ _ federationRestricted ->
+      withRestrictedStableConfederalDataValue federationRestricted $ \_ embedded ->
+        withEmbeddedAtlasFederationValue embedded $ \federationArrow ->
+          assert
+            "Atlas federation forgetting composes Yoneda, restriction, and Lan"
+            (federationArrow `seq` True)
 
 testCharter :: IO ()
 testCharter =

@@ -14,21 +14,57 @@ module StableConfederalData
   , emptyMap
   , EmbeddedAtlasMap
   , embedAtlasMap
+  , RestrictedStableConfederalData
+  , RestrictedStableConfederalDataValue
+  , restrictedStableConfederalDataValue
+  , withRestrictedStableConfederalDataValue
+  , restrictStableConfederalDataToStableAtlases
+  , restrictStableConfederalDataHomToStableAtlases
+  , ForgottenStableConfederalData
+  , forgetStableConfederalDataToDataTransformation
+  , forgetStableConfederalDataHomToDataTransformation
+  , StableConfederalDataForgetfulFunctor (..)
+  , stableConfederalDataForgetfulFunctor
+  , EmbeddedAtlasFederation
+  , EmbeddedAtlasFederationValue
+  , embeddedAtlasFederationValue
+  , withEmbeddedAtlasFederationValue
+  , embedAtlasFederation
+  , ForgottenAtlasFederation
+  , forgetAtlasFederationToDataTransformation
   ) where
 
 import StableConfederalData.Internal
   ( EmptyMapValues
+  , EmbeddedAtlasFederation
+  , EmbeddedAtlasFederationValue
   , EmbeddedAtlasMap
+  , ForgottenAtlasFederation
   , StableConfederalData
   , StableConfederalDataHom
+  , StableConfederalDataForgetfulFunctor (..)
   , StableConfederalDataValue
   , emptyMap
+  , ForgottenStableConfederalData
+  , forgetStableConfederalDataToDataTransformation
+  , forgetStableConfederalDataHomToDataTransformation
+  , forgetAtlasFederationToDataTransformation
+  , embeddedAtlasFederationValue
+  , embedAtlasFederation
   , embedAtlasMap
   , mapStableConfederalData
   , mapStableConfederalDataHom
+  , RestrictedStableConfederalData
+  , RestrictedStableConfederalDataValue
+  , restrictedStableConfederalDataValue
+  , restrictStableConfederalDataToStableAtlases
+  , restrictStableConfederalDataHomToStableAtlases
   , stableConfederalData
   , stableConfederalDataComposition
   , stableConfederalDataHom
   , stableConfederalDataHomNaturality
   , stableConfederalDataIdentity
+  , stableConfederalDataForgetfulFunctor
+  , withRestrictedStableConfederalDataValue
+  , withEmbeddedAtlasFederationValue
   )

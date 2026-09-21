@@ -15,6 +15,9 @@ import DatraLanguage.Diagnostics.Interpreter
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
+  , AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
   )
 import DatraLanguage.Diagnostics.Locales.Rendering
   ( renderOrdinal
@@ -69,15 +72,54 @@ localizeInterpretingError reason =
       LocalizedMessage
         "right operand of map access must define a super-ellipsis insertion"
         ["actual value kind: " <> valueKind actual]
+    ExpectedTotalAtlasMap actual ->
+      LocalizedMessage
+        "left operand of specification must be a total Atlas map"
+        ["actual value kind: " <> valueKind actual]
     RangeConstructionRejected rejection ->
       localizeSuperEllipsisRangeError rejection
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    AtlasMapFederationOperationRefuted refutation ->
+      case refutation of
+        AtlasMapFederationConcatenationCollision value ->
+          LocalizedMessage
+            "concatenation does not produce an Atlas-map federation"
+            [ "the value " <> show value
+                <> " occurs on both sides and has two configurations"
+            ]
+        AtlasMapFederationAccessHasEmptyCounterexample ->
+          LocalizedMessage
+            "access fails for a member of the left Atlas-map federation"
+            ["the empty map is a counterexample for the nonempty selection"]
+        AtlasMapFederationSpecificationHasNoMatchingMember ->
+          LocalizedMessage
+            "specification has no matching Atlas map in the target federation"
+            [ "the source total Atlas map is a counterexample: no target "
+                <> "member admits the required identity-pagination morphism"
+            ]
+        AtlasMapFederationSubfederationHasMissingMember ->
+          LocalizedMessage
+            "the intermediate federation is not an Atlas subfederation of the target"
+            [ "an Atlas map in the intermediate federation is absent from "
+                <> "the final federation"
+            ]
+    AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure operation) ->
+      LocalizedMessage
+        "the compiler cannot decide this Atlas-map federation operation"
+        ["operation: " <> federationOperation operation]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "string contains a character outside the ASCII map"
         ["character: " <> show character]
+
+federationOperation :: AtlasMapFederationOperation -> String
+federationOperation AtlasMapFederationConcatenation = "concatenation"
+federationOperation AtlasMapFederationAccess = "access"
+federationOperation AtlasMapFederationSpecification = "specification"
+federationOperation AtlasMapFederationSubfederation = "subfederation"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "left"
@@ -91,6 +133,7 @@ valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
 valueKind AsciiStringValueKind = "ASCII string"
 valueKind MapValueKind = "map"
+valueKind SpecificationValueKind = "specification morphism"
 
 localizeSuperEllipsisRangeError
   :: SuperEllipsisRangeError

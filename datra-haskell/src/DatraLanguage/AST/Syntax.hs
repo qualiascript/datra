@@ -13,11 +13,15 @@ module DatraLanguage.AST.Syntax
   , (..-)
   , fromTo
   , fromUpwards
+  , withinTo
+  , withinUpwards
+  , naturalType
   , (+)
   , (*)
   , (^)
   , (<.>)
   , (<@>)
+  , (<~>)
   ) where
 
 import DatraLanguage.AST (Expression (..))
@@ -68,6 +72,15 @@ fromTo = NaturalRange
 fromUpwards :: Natural -> Expression
 fromUpwards = NaturalRangeUpwards
 
+withinTo :: Natural -> Natural -> Expression
+withinTo = ValuedNaturalRange
+
+withinUpwards :: Natural -> Expression
+withinUpwards = ValuedNaturalRangeUpwards
+
+naturalType :: Expression
+naturalType = NaturalType
+
 infixl 6 +
 
 (+) :: Expression -> Expression -> Expression
@@ -92,3 +105,8 @@ infixl 8 <@>
 
 (<@>) :: Expression -> Expression -> Expression
 (<@>) = MapAccess
+
+infixl 4 <~>
+
+(<~>) :: Expression -> Expression -> Expression
+(<~>) = MapSpecification

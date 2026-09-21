@@ -40,11 +40,15 @@ data Expression
   | SuperEllipsisRangeMinus Expression
   | NaturalRange Natural Natural
   | NaturalRangeUpwards Natural
+  | ValuedNaturalRange Natural Natural
+  | ValuedNaturalRangeUpwards Natural
+  | NaturalType
   | Addition Expression Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
   | MapAccess Expression Expression
+  | MapSpecification Expression Expression
   deriving (Eq, Show)
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
@@ -65,11 +69,15 @@ data OperatorExpression
   | RangeMinus OperatorExpression
   | InclusiveNaturalRange Natural Natural
   | InclusiveNaturalRangeUpwards Natural
+  | InclusiveValuedNaturalRange Natural Natural
+  | InclusiveValuedNaturalRangeUpwards Natural
+  | NaturalTypeValue
   | Add OperatorExpression OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
+  | Specify OperatorExpression OperatorExpression
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -101,6 +109,11 @@ normalizeExpression (SuperEllipsisRangeMinus upperBound) =
   SuperEllipsisRangeMinus (normalizeExpression upperBound)
 normalizeExpression (NaturalRange origin target) = NaturalRange origin target
 normalizeExpression (NaturalRangeUpwards origin) = NaturalRangeUpwards origin
+normalizeExpression (ValuedNaturalRange origin target) =
+  ValuedNaturalRange origin target
+normalizeExpression (ValuedNaturalRangeUpwards origin) =
+  ValuedNaturalRangeUpwards origin
+normalizeExpression NaturalType = NaturalType
 normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Multiplication left right) =
@@ -111,6 +124,8 @@ normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (MapSpecification left right) =
+  MapSpecification (normalizeExpression left) (normalizeExpression right)
 
 isEmptyMap :: Expression -> Bool
 isEmptyMap (AtlasMap []) = True
@@ -132,12 +147,18 @@ lower (SuperEllipsisRangePlus lowerBound) = RangePlus (lower lowerBound)
 lower (SuperEllipsisRangeMinus upperBound) = RangeMinus (lower upperBound)
 lower (NaturalRange origin target) = InclusiveNaturalRange origin target
 lower (NaturalRangeUpwards origin) = InclusiveNaturalRangeUpwards origin
+lower (ValuedNaturalRange origin target) =
+  InclusiveValuedNaturalRange origin target
+lower (ValuedNaturalRangeUpwards origin) =
+  InclusiveValuedNaturalRangeUpwards origin
+lower NaturalType = NaturalTypeValue
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
 lower (MapAccess left right) = Access (lower left) (lower right)
+lower (MapSpecification left right) = Specify (lower left) (lower right)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -190,6 +211,11 @@ prettyOperator (InclusiveNaturalRange origin target) =
   prettyForm "from" [pretty origin, "to", pretty target]
 prettyOperator (InclusiveNaturalRangeUpwards origin) =
   prettyForm "from" [pretty origin, "upwards"]
+prettyOperator (InclusiveValuedNaturalRange origin target) =
+  prettyForm "within" [pretty origin, "to", pretty target]
+prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
+  prettyForm "within" [pretty origin, "upwards"]
+prettyOperator NaturalTypeValue = "Nat"
 prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Multiply left right) =
@@ -200,6 +226,8 @@ prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
+prettyOperator (Specify left right) =
+  prettyBinary SpecificationOperator left right
 
 prettyUnary
   :: Operator

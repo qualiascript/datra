@@ -5,6 +5,7 @@ module EllipsisNatural
   ( EllipsisNatural
   , EllipsisNaturalElement
   , ellipsisNatural
+  , ellipsisNaturalTotal
   , ellipsisNaturalInsertion
   ) where
 
@@ -21,6 +22,7 @@ import SuperEllipsisValue
   , SuperEllipsisValueElement
   , superEllipsisValue
   , superEllipsisValueInsertion
+  , naturalSuperEllipsisValue
   )
 
 type EllipsisNatural = SuperEllipsisValue Ellipsis
@@ -35,6 +37,14 @@ ellipsisNatural value =
   superEllipsisValue
     (nextSuperEllipsisRank dotSuperEllipsisRank)
     (finiteOrdinal value)
+
+-- | Total constructor justified by every finite natural lying strictly below
+-- the rank-one Ellipsis limit.
+ellipsisNaturalTotal
+  :: Natural
+  -> (forall scope. EllipsisNatural scope -> result)
+  -> result
+ellipsisNaturalTotal = naturalSuperEllipsisValue
 
 ellipsisNaturalInsertion
   :: EllipsisNatural scope

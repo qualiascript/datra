@@ -22,6 +22,7 @@ module SuperEllipsisRange
   , superEllipsisRange
   , superEllipsisRangeEither
   , superEllipsisSingletonRange
+  , finiteSuperEllipsisSingletonRange
   , superEllipsisRangeRank
   , superEllipsisRangeStart
   , superEllipsisRangeTarget
@@ -74,6 +75,7 @@ import DatraOrdinal
   , subtractOrdinal
   )
 import Dominion (Dominion, dominion, rank, unrank)
+import Dot (Dot)
 import MapOperators.ConcatOperator
   ( Concat (ConcatResult, concatOperands)
   , ConcatOperatorValue
@@ -85,6 +87,7 @@ import MapOperators.OrderedAtlasMap
   ( HasOrderedAtlasMap (..)
   , OrderedAtlasMap (..)
   )
+import Numeric.Natural (Natural)
 import StableConfederalData
   ( EmbeddedAtlasMap
   , StableConfederalData
@@ -92,7 +95,9 @@ import StableConfederalData
   )
 import SuperEllipsis
   ( MinimalSuperEllipsisOrdinal
+  , SuperEllipsis
   , SuperEllipsisRank
+  , dotSuperEllipsisRank
   , minimalSuperEllipsisOrdinalRank
   , minimalSuperEllipsisOrdinalValue
   , superEllipsisDominion
@@ -100,6 +105,7 @@ import SuperEllipsis
   , superEllipsisTerminal
   , superEllipsisTerminalPosition
   , superEllipsisZeroTerminal
+  , nextSuperEllipsisRank
   )
 import SuperEllipsisInsertion
   ( SuperEllipsisInsertion
@@ -328,6 +334,20 @@ superEllipsisSingletonRange minimalValue useRange =
       (GivenTarget (addOrdinals value (finiteOrdinal 1))))
   where
     value = minimalSuperEllipsisOrdinalValue minimalValue
+
+-- | Total singleton construction for a finite natural at rank one.
+finiteSuperEllipsisSingletonRange
+  :: Natural
+  -> (forall scope.
+       SuperEllipsisRange (SuperEllipsis Dot) scope
+       -> result)
+  -> result
+finiteSuperEllipsisSingletonRange value useRange =
+  useRange
+    (SuperEllipsisRange
+      (nextSuperEllipsisRank dotSuperEllipsisRank)
+      (finiteOrdinal value)
+      (GivenTarget (finiteOrdinal (value + 1))))
 
 superEllipsisRangeElement
   :: SuperEllipsisRange target scope

@@ -3,6 +3,10 @@ module Evaluation.Access
   ( accessValues
   ) where
 
+import AtlasMapFederation
+  ( AtlasMapFederationExpression (..)
+  , atlasMapFederationExpressionIsSingleton
+  )
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -16,7 +20,14 @@ import DatraOrdinal
   )
 import Data.Bifunctor qualified as Bifunctor
 import Data.Char (ord)
-import DatraLanguage.Diagnostics.Interpreter (InterpretingError (..))
+import DatraLanguage.Diagnostics.Interpreter
+  ( AtlasMapFederationOperation (AtlasMapFederationAccess)
+  , AtlasMapFederationRefutation
+      (AtlasMapFederationAccessHasEmptyCounterexample)
+  , AtlasMapFederationUncertainty
+      (NoAtlasMapFederationDecisionProcedure)
+  , InterpretingError (..)
+  )
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Range qualified as RangeEvaluation
 import Evaluation.Value
@@ -37,20 +48,104 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
-  case interpretedForm insertionValue of
-    NaturalRangeForm naturalRange ->
-      accessNaturalRange mapValue naturalRange
-    _ -> do
+  case (naturalRangeFederation mapValue,
+        naturalRangeFederation insertionValue) of
+    (Just sourceRange, Just selectionRange) ->
+      accessNaturalRanges mapValue sourceRange selectionRange
+    (Nothing, Just naturalRange)
+      | atlasMapFederationExpressionIsSingleton
+          (interpretedAtlasMapFederation mapValue) ->
+          accessNaturalRange mapValue naturalRange
+      | otherwise -> undecidableFederationAccess
+    (_, Nothing) -> do
       insertion <- requireInsertion insertionValue
-      selected <- accessMap (interpretedMap mapValue) insertion
-      let source = accessSource mapValue
-      case accessSelection insertionValue of
-        Just selectionRanges
-          | sourceIsRangeLike source
-              || naturalAtOrdinal
-                  (someSuperEllipsisInsertionOrderType insertion) == Nothing ->
-            finishStaticAccess mapValue selected source selectionRanges
-        _ -> finishAccess mapValue selected
+      if someSuperEllipsisInsertionOrderType insertion == finiteOrdinal 0
+        then finishAccess mapValue emptyInterpretedMap
+        else case naturalRangeFederation mapValue of
+          Just _ ->
+            Left
+              (AtlasMapFederationOperationRefuted
+                AtlasMapFederationAccessHasEmptyCounterexample)
+          Nothing
+            | atlasMapFederationExpressionIsSingleton
+                (interpretedAtlasMapFederation mapValue) ->
+                accessSingleton mapValue insertionValue insertion
+            | otherwise -> undecidableFederationAccess
+
+naturalRangeFederation
+  :: InterpretedValue
+  -> Maybe EvaluatedNaturalRange
+naturalRangeFederation value =
+  case interpretedAtlasMapFederation value of
+    PrimitiveAtlasMapFederation
+        (NaturalRangeAtlasMapFederation naturalRange) ->
+      Just naturalRange
+    _ -> Nothing
+
+undecidableFederationAccess
+  :: Either InterpretingError InterpretedValue
+undecidableFederationAccess =
+  Left
+    (AtlasMapFederationOperationUndecidable
+      (NoAtlasMapFederationDecisionProcedure AtlasMapFederationAccess))
+
+accessSingleton
+  :: InterpretedValue
+  -> InterpretedValue
+  -> SomeSuperEllipsisInsertion
+  -> Either InterpretingError InterpretedValue
+accessSingleton mapValue insertionValue insertion = do
+  selected <- accessMap (interpretedMap mapValue) insertion
+  let source = accessSource mapValue
+  case accessSelection insertionValue of
+    Just selectionRanges
+      | sourceIsRangeLike source
+          || naturalAtOrdinal
+              (someSuperEllipsisInsertionOrderType insertion) == Nothing ->
+        finishStaticAccess mapValue selected source selectionRanges
+    _ -> finishAccess mapValue selected
+
+accessNaturalRanges
+  :: InterpretedValue
+  -> EvaluatedNaturalRange
+  -> EvaluatedNaturalRange
+  -> Either InterpretingError InterpretedValue
+accessNaturalRanges mapValue _ selectionRange = do
+  selected <- accessNaturalRange mapValue selectionRange
+  naturalRangeAccessResult selected
+
+naturalRangeAccessResult
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
+naturalRangeAccessResult selected =
+  case interpretedCanonicalResult selected of
+    CanonicalMap 0 _ -> Right selected
+    CanonicalExplicit _ value ->
+      case naturalAtOrdinal value of
+        Just natural -> RangeEvaluation.naturalRangeValue natural natural
+        Nothing -> Right selected
+    CanonicalRange description ->
+      case naturalAtOrdinal (Range.describedRangeStart description) of
+        Nothing -> Right selected
+        Just start ->
+          case Range.describedRangeTarget description of
+            Range.PlusSign ->
+              RangeEvaluation.naturalRangeUpwardsValue start
+            Range.MinusSign ->
+              RangeEvaluation.naturalRangeValue start 0
+            Range.GivenTarget boundary ->
+              case naturalAtOrdinal boundary of
+                Nothing -> Right selected
+                Just targetBoundary
+                  | ordinalLT
+                      (Range.describedRangeStart description)
+                      boundary ->
+                      RangeEvaluation.naturalRangeValue
+                        start (targetBoundary - 1)
+                  | otherwise ->
+                      RangeEvaluation.naturalRangeValue
+                        start (targetBoundary + 1)
+    _ -> Right selected
 
 accessNaturalRange
   :: InterpretedValue
@@ -101,20 +196,39 @@ finishStaticAccess
 finishStaticAccess mapValue selected source selectionRanges =
   case sourceFormulationLevel source
       >> pureOmegaPowerLevel (interpretedMapFinalOrderType selected) of
-    Just level -> Right (formulationAccessResult selected level)
+    Just level ->
+      Right
+        (formulationAccessResult
+          (hasTotalAtlasMap mapValue) selected level)
     Nothing -> do
       result <-
-        rangeAccessResult selected
+        rangeAccessResult
+          (hasTotalAtlasMap mapValue)
+          selected
           (rangeAccessDescriptions
             (sourceDescribedRanges source)
             selectionRanges)
       maybe (finishAccess mapValue selected) Right result
 
-formulationAccessResult :: InterpretedMap -> Natural -> InterpretedValue
-formulationAccessResult selected level =
+formulationAccessResult
+  :: Bool
+  -> InterpretedMap
+  -> Natural
+  -> InterpretedValue
+formulationAccessResult sourceIsTotal selected level =
   template
     { interpretedMap =
         selected { interpretedMapComponents = [canonical] }
+    , interpretedAtlasMapFederation =
+        SingletonAtlasMapFederation
+          (selected { interpretedMapComponents = [canonical] })
+    , interpretedTotalAtlasMap =
+        if sourceIsTotal
+          then
+            Just
+              (InterpretedTotalAtlasMap
+                (selected { interpretedMapComponents = [canonical] }))
+          else Nothing
     }
   where
     template = makeFormulation level
@@ -125,14 +239,23 @@ finishAccess
   -> InterpretedMap
   -> Either InterpretingError InterpretedValue
 finishAccess mapValue selected =
-  let ordinaryResult =
+  let canonical =
+        CanonicalMap
+          (interpretedMapCardinality selected)
+          (interpretedMapComponents selected)
+      ordinaryResult =
         InterpretedValue
-          MapForm
-          NoInsertion
-          selected
-          (CanonicalMap
-            (interpretedMapCardinality selected)
-            (interpretedMapComponents selected))
+          { interpretedForm = MapForm
+          , interpretedInsertionCapability = NoInsertion
+          , interpretedMap = selected
+          , interpretedAtlasMapFederation =
+              SingletonAtlasMapFederation selected
+          , interpretedTotalAtlasMap =
+              if hasTotalAtlasMap mapValue
+                then Just (InterpretedTotalAtlasMap selected)
+                else Nothing
+          , interpretedCanonicalResult = canonical
+          }
   in pure
     (case interpretedForm mapValue of
       AsciiStringForm _ ->
@@ -141,11 +264,12 @@ finishAccess mapValue selected =
       _ -> ordinaryResult)
 
 rangeAccessResult
-  :: InterpretedMap
+  :: Bool
+  -> InterpretedMap
   -> [DescribedRange]
   -> Either InterpretingError (Maybe InterpretedValue)
-rangeAccessResult _ [] = Right Nothing
-rangeAccessResult selected describedRanges = do
+rangeAccessResult _ _ [] = Right Nothing
+rangeAccessResult sourceIsTotal selected describedRanges = do
   ranges <- traverse makeRange describedRanges
   let insertionCapability =
         RangeEvaluation.concatenateRangeCapability ranges
@@ -174,6 +298,16 @@ rangeAccessResult selected describedRanges = do
       , interpretedInsertionCapability = resultCapability
       , interpretedMap =
           selected { interpretedMapComponents = [canonical] }
+      , interpretedAtlasMapFederation =
+          SingletonAtlasMapFederation
+            (selected { interpretedMapComponents = [canonical] })
+      , interpretedTotalAtlasMap =
+          if sourceIsTotal
+            then
+              Just
+                (InterpretedTotalAtlasMap
+                  (selected { interpretedMapComponents = [canonical] }))
+            else Nothing
       , interpretedCanonicalResult = canonical
       }
   where
@@ -183,6 +317,9 @@ rangeAccessResult selected describedRanges = do
         (describedRangeLevel described)
         (Range.describedRangeStart (describedRangeDescription described))
         (Range.describedRangeTarget (describedRangeDescription described))
+
+hasTotalAtlasMap :: InterpretedValue -> Bool
+hasTotalAtlasMap = maybe False (const True) . interpretedTotalAtlasMap
 
 describedRangeCanonical :: DescribedRange -> CanonicalResult
 describedRangeCanonical described
@@ -214,6 +351,11 @@ accessSource value =
       rangeSource
         [evaluatedDescribedRange
           (naturalRangeAsEvaluatedRange valueRange)]
+    ValuedNaturalRangeForm _ ->
+      case interpretedRangeDescription value of
+        Just description ->
+          rangeSource [describedRangeFromDescription description]
+        Nothing -> rangeSource []
     RangeConcatenationForm ranges ->
       rangeSource (map evaluatedDescribedRange ranges)
     FormulationForm formulation ->
@@ -233,6 +375,12 @@ accessSource value =
             map
               (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
               characters
+        , sourceIsRangeLike = False
+        , sourceFormulationLevel = Nothing
+        }
+    SpecificationForm _ ->
+      AccessSource
+        { sourceDescribedRanges = []
         , sourceIsRangeLike = False
         , sourceFormulationLevel = Nothing
         }
@@ -274,8 +422,14 @@ canonicalAccessSource canonical =
       rangeSource [describedRangeFromDescription description]
     CanonicalNaturalRange start target ->
       rangeSource [naturalDescribedRange start target]
+    CanonicalValuedNaturalRange start target ->
+      rangeSource [naturalDescribedRange start target]
+    CanonicalNaturalType ->
+      rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
     CanonicalRangeConcatenation descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
+    CanonicalConcatenation members ->
+      combineAccessSources (map canonicalAccessSource members)
     CanonicalAsciiString characters ->
       ordinarySource
         (map
@@ -283,6 +437,7 @@ canonicalAccessSource canonical =
           characters)
     CanonicalMap _ components ->
       combineAccessSources (map canonicalAccessSource components)
+    CanonicalSpecification _ _ -> ordinarySource []
   where
     ordinarySource ranges =
       AccessSource ranges False Nothing

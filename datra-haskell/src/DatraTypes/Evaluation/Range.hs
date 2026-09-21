@@ -9,6 +9,9 @@ module Evaluation.Range
   , openMinusRangeValue
   , naturalRangeValue
   , naturalRangeUpwardsValue
+  , valuedNaturalRangeValue
+  , valuedNaturalRangeUpwardsValue
+  , naturalTypeValue
   , interpretedRangeValue
   , makeEvaluatedRangeAt
   , canonicalizeRanges
@@ -16,6 +19,12 @@ module Evaluation.Range
   ) where
 
 import Data.Kind (Type)
+import AtlasMapFederation
+  ( AtlasMapFederationExpression
+      ( PrimitiveAtlasMapFederation
+      , SingletonAtlasMapFederation
+      )
+  )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import DatraLanguage.Diagnostics.Interpreter
   ( InterpretingError (..)
@@ -30,6 +39,8 @@ import Evaluation.Value
 import Numeric.Natural (Natural)
 import EllipsisNatural qualified
 import NaturalRange qualified
+import NaturalType qualified
+import ValuedNaturalRange qualified
 import NumericalOperators.NumericalOperand
   ( someSuperEllipsis
   , withSomeSuperEllipsis
@@ -87,23 +98,90 @@ naturalRangeUpwardsValue start =
       Just (Just value) -> Right value
       _ -> interpretedNaturalRangeFallback start NaturalRange.UpwardsTarget
 
+valuedNaturalRangeValue
+  :: Natural
+  -> Natural
+  -> Either InterpretingError InterpretedValue
+valuedNaturalRangeValue start target =
+  EllipsisNatural.ellipsisNaturalTotal start $ \origin ->
+    EllipsisNatural.ellipsisNaturalTotal target $ \destination ->
+      case ValuedNaturalRange.valuedNaturalRangeEither
+          origin destination
+          (interpretedValuedNaturalRangeValue
+            (CanonicalValuedNaturalRange
+              start (NaturalRange.FiniteNaturalTarget target))) of
+        Left rejection -> Left (RangeConstructionRejected rejection)
+        Right value -> Right value
+
+valuedNaturalRangeUpwardsValue
+  :: Natural
+  -> Either InterpretingError InterpretedValue
+valuedNaturalRangeUpwardsValue start =
+  EllipsisNatural.ellipsisNaturalTotal start $ \origin ->
+    case ValuedNaturalRange.valuedNaturalRangeEither
+        origin NaturalRange.upwards
+        (interpretedValuedNaturalRangeValue
+          (CanonicalValuedNaturalRange start NaturalRange.UpwardsTarget)) of
+      Left rejection -> Left (RangeConstructionRejected rejection)
+      Right value -> Right value
+
+naturalTypeValue :: Either InterpretingError InterpretedValue
+naturalTypeValue =
+  case NaturalType.naturalTypeEither
+      (interpretedValuedNaturalRangeValue CanonicalNaturalType) of
+    Left rejection -> Left (RangeConstructionRejected rejection)
+    Right value -> Right value
+
 interpretedNaturalRangeValue
   :: NaturalRange.NaturalRange rangeScope federationScope
   -> InterpretedValue
 interpretedNaturalRangeValue valueRange =
   InterpretedValue
-    (NaturalRangeForm (EvaluatedNaturalRange valueRange))
-    (ValidInsertion insertion)
-    (mapFromInsertion insertion [canonical])
-    canonical
+    { interpretedForm = NaturalRangeForm evaluatedNaturalRange
+    , interpretedInsertionCapability = ValidInsertion insertion
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation =
+        PrimitiveAtlasMapFederation
+          (NaturalRangeAtlasMapFederation evaluatedNaturalRange)
+    , interpretedTotalAtlasMap = Nothing
+    , interpretedCanonicalResult = canonical
+    }
   where
+    evaluatedNaturalRange = EvaluatedNaturalRange valueRange
     evaluated =
       EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
     insertion = rangeInsertion evaluated
+    valueMap = mapFromInsertion insertion [canonical]
     canonical =
       CanonicalNaturalRange
         (NaturalRange.naturalRangeStart valueRange)
         (NaturalRange.naturalRangeTarget valueRange)
+
+interpretedValuedNaturalRangeValue
+  :: CanonicalResult
+  -> ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
+  -> InterpretedValue
+interpretedValuedNaturalRangeValue canonical valueRange =
+  InterpretedValue
+    { interpretedForm =
+        ValuedNaturalRangeForm evaluatedValuedNaturalRange
+    , interpretedInsertionCapability = ValidInsertion insertion
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation =
+        PrimitiveAtlasMapFederation
+          (ValuedNaturalRangeAtlasMapFederation
+            evaluatedValuedNaturalRange)
+    , interpretedTotalAtlasMap = Nothing
+    , interpretedCanonicalResult = canonical
+    }
+  where
+    evaluatedValuedNaturalRange = EvaluatedValuedNaturalRange valueRange
+    evaluated =
+      EvaluatedRange
+        1
+        (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
+    insertion = rangeInsertion evaluated
+    valueMap = mapFromInsertion insertion [canonical]
 
 interpretedNaturalRangeFallback
   :: Natural
@@ -127,6 +205,13 @@ interpretedNaturalRangeFallback start target = do
       { interpretedForm = RangeForm evaluated
       , interpretedInsertionCapability = ValidInsertion insertion
       , interpretedMap = mapFromInsertion insertion [canonical]
+      , interpretedAtlasMapFederation =
+          SingletonAtlasMapFederation
+            (mapFromInsertion insertion [canonical])
+      , interpretedTotalAtlasMap =
+          Just
+            (InterpretedTotalAtlasMap
+              (mapFromInsertion insertion [canonical]))
       , interpretedCanonicalResult = canonical
       }
 
@@ -172,13 +257,19 @@ makeEvaluatedRangeAt level start target =
 interpretedRangeValue :: EvaluatedRange -> InterpretedValue
 interpretedRangeValue evaluatedRange =
   InterpretedValue
-    (RangeForm evaluatedRange)
-    (ValidInsertion insertion)
-    (mapFromInsertion insertion [canonical])
-    canonical
+    { interpretedForm = RangeForm evaluatedRange
+    , interpretedInsertionCapability = ValidInsertion insertion
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation =
+        SingletonAtlasMapFederation valueMap
+    , interpretedTotalAtlasMap =
+        Just (InterpretedTotalAtlasMap valueMap)
+    , interpretedCanonicalResult = canonical
+    }
   where
     insertion = rangeInsertion evaluatedRange
     canonical = CanonicalRange (rangeDescription evaluatedRange)
+    valueMap = mapFromInsertion insertion [canonical]
 
 canonicalizeRanges
   :: [EvaluatedRange]

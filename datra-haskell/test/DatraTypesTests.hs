@@ -27,7 +27,7 @@ import AtlasConfederation
   , singletonAtlasConfederation
   )
 import AtlasFederation
-  ( AtlasFederationSeparation (SeparatedCorrespondingRegions)
+  ( AtlasFederationSeparation (SeparatedCorrespondingPageElements)
   , atlasFederationIndexDominion
   , atlasFederationSeparation
   )
@@ -85,6 +85,7 @@ import Ellipsis
 import EllipsisNatural qualified as DatraNatural
 import MapOperators
 import NaturalRange
+import NaturalType qualified
 import Numeric.Natural (Natural)
 import NumericalOperators.Range
   ( boundedSuperEllipsisRange
@@ -116,6 +117,7 @@ import SuperEllipsis
 import SuperEllipsisInsertion
 import qualified SuperEllipsisRange as SuperRange
 import SuperEllipsisValue
+import ValuedNaturalRange
 
 import Data.Maybe (fromMaybe, isNothing)
 import qualified NumericalOperators as Numeric
@@ -143,6 +145,7 @@ main = do
   testRankOneRangeAnalysis
   testEllipsisNatural
   testNaturalRange
+  testValuedNaturalRange
   testNumericalOperators
   testTypingAbstractions
 
@@ -269,7 +272,8 @@ testNaturalRange = do
               (Just left, Just right) ->
                 atlasFederationSeparation federation left right
                   == Just
-                    (SeparatedCorrespondingRegions (finiteOrdinal 0))
+                    (SeparatedCorrespondingPageElements
+                      1 (finiteOrdinal 0))
               _ -> False)
     of
       Just (Just (Just tests)) -> tests
@@ -339,6 +343,62 @@ testNaturalRange = do
         assert "upwards creates a.. and federates ascending subranges"
           condition
       _ -> fail "test setup failed: upwards NaturalRange"
+
+testValuedNaturalRange :: IO ()
+testValuedNaturalRange = do
+  case DatraNatural.ellipsisNaturalTotal 2 $ \two ->
+      DatraNatural.ellipsisNaturalTotal 5 $ \five ->
+        valuedNaturalRange two five $ \valueRange ->
+          let federation = valuedNaturalRangeFederation valueRange
+              indices = atlasFederationIndexDominion federation
+              values =
+                fmap valuedNaturalValue
+                  <$> traverse (unrank indices) [0 .. 3]
+              first = unrank indices 0
+              second = unrank indices 1
+          in ( values == Just [2, 3, 4, 5]
+              && isNothing (unrank indices 4)
+              && valuedNaturalRangeContains valueRange 2
+              && valuedNaturalRangeContains valueRange 5
+              && not (valuedNaturalRangeContains valueRange 6)
+              && case (first, second) of
+                  (Just left, Just right) ->
+                    atlasFederationSeparation federation left right
+                      == Just
+                        (SeparatedCorrespondingPageElements
+                          1 (finiteOrdinal 0))
+                  _ -> False
+             ) of
+    Just condition ->
+      assert
+        "ValuedNaturalRange federates exactly its EllipsisNatural values"
+        condition
+    Nothing -> fail "test setup failed: finite ValuedNaturalRange"
+
+  case DatraNatural.ellipsisNaturalTotal 5 $ \five ->
+      DatraNatural.ellipsisNaturalTotal 2 $ \two ->
+        valuedNaturalRange five two $ \valueRange ->
+          let indices =
+                atlasFederationIndexDominion
+                  (valuedNaturalRangeFederation valueRange)
+          in fmap valuedNaturalValue
+              <$> traverse (unrank indices) [0 .. 3] of
+    Just (Just values) ->
+      assert
+        "descending ValuedNaturalRange indices follow its traversal"
+        (values == [5, 4, 3, 2])
+    _ -> fail "test setup failed: descending ValuedNaturalRange"
+
+  case NaturalType.naturalType $ \valueRange ->
+      let indices =
+            atlasFederationIndexDominion
+              (valuedNaturalRangeFederation valueRange)
+      in fmap valuedNaturalValue
+          <$> traverse (unrank indices) [0 .. 4] of
+    Just (Just values) ->
+      assert "NaturalType is within 0 upwards"
+        (values == [0, 1, 2, 3, 4])
+    _ -> fail "test setup failed: NaturalType"
 
 atlasPageHasExactly
   :: Atlas atlasScope paginationScope cellData origin final

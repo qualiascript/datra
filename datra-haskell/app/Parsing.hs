@@ -23,6 +23,7 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
+import Numeric.Natural (Natural)
 import DatraLanguage.AST
   ( Expression
       ( Addition
@@ -35,12 +36,16 @@ import DatraLanguage.AST
       , MapConcatenation
       , MapExpansion
       , MapSequence
+      , MapSpecification
       , Multiplication
+      , NaturalType
       , NaturalRange
       , NaturalRangeUpwards
       , SuperEllipsisRange
       , SuperEllipsisRangeMinus
       , SuperEllipsisRangePlus
+      , ValuedNaturalRange
+      , ValuedNaturalRangeUpwards
       )
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -161,6 +166,7 @@ astAtom :: Parser Expression
 astAtom =
   choice
     [ AtlasMap [] <$ astSymbol "[]"
+    , NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
     , AsciiStringLiteral <$> astStandardString
@@ -172,7 +178,7 @@ astForm =
   between (astSymbol "(") (astSymbol ")")
     (choice
       [ astSequence
-      , astNaturalRange
+      , astNaturalRangeExpression
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -182,6 +188,7 @@ astForm =
       , astBinary AST.ExponentiationOperator Exponentiation
       , astBinary AST.ConcatenationOperator MapConcatenation
       , astBinary AST.AccessOperator MapAccess
+      , astBinary AST.SpecificationOperator MapSpecification
       ])
 
 astSequence :: Parser Expression
@@ -194,14 +201,30 @@ astSequence = do
     (MapSequence
       (firstExpression : secondExpression : remainingExpressions))
 
-astNaturalRange :: Parser Expression
-astNaturalRange = do
-  _ <- astSymbol "from"
+data NaturalRangePrefix = FromRange | WithinRange
+
+data NaturalRangeBounds
+  = NaturalRangeTo Natural Natural
+  | NaturalRangeFromUpwards Natural
+
+astNaturalRangeExpression :: Parser Expression
+astNaturalRangeExpression = do
+  prefix <- choice
+    [ FromRange <$ astSymbol "from"
+    , WithinRange <$ astSymbol "within"
+    ]
+  bounds <- astNaturalRangeBounds
+  pure (naturalRangeExpressionFor prefix bounds)
+
+-- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
+-- after a @from@ or @within@ prefix.
+astNaturalRangeBounds :: Parser NaturalRangeBounds
+astNaturalRangeBounds = do
   origin <- astLexeme Lexer.decimal
   choice
-    [ NaturalRange origin
+    [ NaturalRangeTo origin
         <$> (astSymbol "to" *> astLexeme Lexer.decimal)
-    , NaturalRangeUpwards origin <$ astSymbol "upwards"
+    , NaturalRangeFromUpwards origin <$ astSymbol "upwards"
     ]
 
 astUnary
@@ -328,6 +351,7 @@ term =
     [ parenthesizedExpression
     , atlasMap
     , try naturalRangeExpression
+    , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
@@ -346,13 +370,36 @@ rangeEndpointTerm =
 
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
-  _ <- continuedKeyword "from"
+  prefix <- choice
+    [ FromRange <$ continuedKeyword "from"
+    , WithinRange <$ continuedKeyword "within"
+    ]
+  bounds <- naturalRangeBounds
+  pure (naturalRangeExpressionFor prefix bounds)
+
+-- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
+-- after a @from@ or @within@ prefix.
+naturalRangeBounds :: Parser NaturalRangeBounds
+naturalRangeBounds = do
   origin <- Lexer.decimal <* keywordSeparator
   choice
-    [ NaturalRange origin
+    [ NaturalRangeTo origin
         <$> (continuedKeyword "to" *> lexeme Lexer.decimal)
-    , NaturalRangeUpwards origin <$ keyword "upwards"
+    , NaturalRangeFromUpwards origin <$ keyword "upwards"
     ]
+
+naturalRangeExpressionFor
+  :: NaturalRangePrefix
+  -> NaturalRangeBounds
+  -> Expression
+naturalRangeExpressionFor FromRange (NaturalRangeTo origin target) =
+  NaturalRange origin target
+naturalRangeExpressionFor FromRange (NaturalRangeFromUpwards origin) =
+  NaturalRangeUpwards origin
+naturalRangeExpressionFor WithinRange (NaturalRangeTo origin target) =
+  ValuedNaturalRange origin target
+naturalRangeExpressionFor WithinRange (NaturalRangeFromUpwards origin) =
+  ValuedNaturalRangeUpwards origin
 
 keyword :: Text -> Parser Text
 keyword value = lexeme (keywordToken value)
@@ -383,13 +430,15 @@ arithmeticOperatorTable =
   , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
   ]
 
--- Concatenation binds after ranges, while access is the final map operation.
--- This lets a map access consume a concatenated range insertion.
+-- Concatenation binds after ranges, access follows it, and specification is
+-- the final map operation.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
   , [InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]
+  , [InfixL
+      (MapSpecification <$ continuedOperator AST.SpecificationOperator)]
   ]
 
 finishConcatenation :: Expression -> Expression
@@ -427,6 +476,7 @@ postfixRangeEnd =
       (choice
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
+        , operatorToken AST.SpecificationOperator
         ])
 
 ellipsisNatural :: Parser Expression

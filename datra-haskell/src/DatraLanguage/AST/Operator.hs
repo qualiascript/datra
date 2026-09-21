@@ -17,6 +17,7 @@ data Operator
   | ExponentiationOperator
   | ConcatenationOperator
   | AccessOperator
+  | SpecificationOperator
   deriving (Eq, Show)
 
 -- | Canonical notation used when rendering an AST.
@@ -31,6 +32,7 @@ operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
 operatorCanonicalSymbol AccessOperator = "<@>"
+operatorCanonicalSymbol SpecificationOperator = "<~>"
 
 -- | Concrete source spelling, when an operator is represented by one token.
 -- Sequential and expansion structure comes from map separators and nesting.
@@ -45,6 +47,7 @@ operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","
 operatorSourceSymbol AccessOperator = Just "@"
+operatorSourceSymbol SpecificationOperator = Just "~>"
 
 ellipsisSymbol :: String
 ellipsisSymbol = "..."
