@@ -59,6 +59,8 @@ library
         EllipsisRange
         EllipsisNatural
         NaturalRange
+        ValuedNaturalRange
+        NaturalType
         AtlasMapFederation
         AtlasMapSubfederation
         TotalAtlasMap
@@ -228,6 +230,8 @@ library
         src/DatraTypes/Strings
         src/DatraTypes/Ellipses
         src/DatraTypes/NaturalRanges
+        src/DatraTypes/ValuedNaturalRanges
+        src/DatraTypes/NaturalTypes
         src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal

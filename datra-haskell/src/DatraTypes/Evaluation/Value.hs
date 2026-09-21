@@ -8,7 +8,9 @@ module Evaluation.Value
   , EvaluatedExplicit (..)
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
+  , EvaluatedValuedNaturalRange (..)
   , InterpretedTotalAtlasMap (..)
+  , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
   , ValueForm (..)
   , SomeSuperEllipsisInsertion
@@ -54,6 +56,7 @@ import MapOperators.OrderedAtlasMap
   )
 import Numeric.Natural (Natural)
 import NaturalRange qualified
+import ValuedNaturalRange qualified
 import NumericalOperators.NumericalOperand
   ( SomeSuperEllipsis
   , someSuperEllipsisLevel
@@ -90,6 +93,11 @@ data EvaluatedNaturalRange where
     :: NaturalRange.NaturalRange rangeScope federationScope
     -> EvaluatedNaturalRange
 
+data EvaluatedValuedNaturalRange where
+  EvaluatedValuedNaturalRange
+    :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
+    -> EvaluatedValuedNaturalRange
+
 -- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
 -- is attached only by constructors known to give every final-page region a
 -- singleton value; being a singleton federation is not sufficient by itself.
@@ -97,14 +105,20 @@ newtype InterpretedTotalAtlasMap = InterpretedTotalAtlasMap
   { interpretedTotalAtlasMapUnderlying :: InterpretedMap
   }
 
--- | Erased semantic witness for a successful specification into a primitive
--- NaturalRange federation.  The core 'SpecificationOperator' module carries
--- the non-erased categorical form used when concrete Atlas witnesses remain
--- available.
+-- | The selected member stays tagged by primitive federation family.  A
+-- singleton range Atlas and an EllipsisNatural value Atlas are deliberately
+-- distinct even when they carry the same natural.
+data EvaluatedAtlasMapFederationMember
+  = EvaluatedNaturalRangeMember NaturalRange.NaturalSubrangeDescription
+  | EvaluatedValuedNaturalRangeMember Natural
+
+-- | Erased semantic witness for a successful specification.  The core
+-- 'SpecificationOperator' module carries the non-erased categorical form used
+-- when concrete Atlas witnesses remain available.
 data EvaluatedSpecification = EvaluatedSpecification
   { evaluatedSpecificationSource :: InterpretedTotalAtlasMap
   , evaluatedSpecificationTarget :: InterpretedAtlasMapFederation
-  , evaluatedSpecificationMember :: NaturalRange.NaturalSubrangeDescription
+  , evaluatedSpecificationMember :: EvaluatedAtlasMapFederationMember
   }
 
 data ValueForm
@@ -112,6 +126,7 @@ data ValueForm
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
+  | ValuedNaturalRangeForm EvaluatedValuedNaturalRange
   | RangeConcatenationForm [EvaluatedRange]
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
@@ -134,6 +149,7 @@ data InterpretedMap = InterpretedMap
 -- boundary and its decision procedures.
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
+  | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -148,6 +164,8 @@ data CanonicalResult
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
   | CanonicalNaturalRange Natural NaturalRange.NaturalRangeTarget
+  | CanonicalValuedNaturalRange Natural NaturalRange.NaturalRangeTarget
+  | CanonicalNaturalType
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
@@ -172,6 +190,7 @@ interpretedValueKind value =
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind
+    ValuedNaturalRangeForm _ -> RangeValueKind
     RangeConcatenationForm _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
@@ -200,6 +219,8 @@ interpretedRangeDescription value =
     RangeForm valueRange -> Just (rangeDescription valueRange)
     NaturalRangeForm valueRange ->
       Just (rangeDescription (naturalRangeAsEvaluatedRange valueRange))
+    ValuedNaturalRangeForm valueRange ->
+      Just (rangeDescription (valuedNaturalRangeAsEvaluatedRange valueRange))
     _ -> Nothing
 
 interpretedMapFinalOrderType :: InterpretedMap -> Ordinal
@@ -256,12 +277,23 @@ naturalRangeAsEvaluatedRange :: EvaluatedNaturalRange -> EvaluatedRange
 naturalRangeAsEvaluatedRange (EvaluatedNaturalRange valueRange) =
   EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
 
+valuedNaturalRangeAsEvaluatedRange
+  :: EvaluatedValuedNaturalRange
+  -> EvaluatedRange
+valuedNaturalRangeAsEvaluatedRange
+    (EvaluatedValuedNaturalRange valueRange) =
+  EvaluatedRange
+    1
+    (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
+
 valueRanges :: InterpretedValue -> Maybe [EvaluatedRange]
 valueRanges value =
   case interpretedForm value of
     RangeForm valueRange -> Just [valueRange]
     NaturalRangeForm valueRange ->
       Just [naturalRangeAsEvaluatedRange valueRange]
+    ValuedNaturalRangeForm valueRange ->
+      Just [valuedNaturalRangeAsEvaluatedRange valueRange]
     RangeConcatenationForm ranges -> Just ranges
     _ -> Nothing
 

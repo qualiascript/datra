@@ -54,6 +54,9 @@ prettyCanonicalResult result =
     CanonicalFormulation level -> prettyFormulation level
     CanonicalRange description -> prettyRange description
     CanonicalNaturalRange origin target -> prettyNaturalRange origin target
+    CanonicalValuedNaturalRange origin target ->
+      prettyValuedNaturalRange origin target
+    CanonicalNaturalType -> "Nat"
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
@@ -77,6 +80,16 @@ prettyNaturalRange origin target =
     FiniteNaturalTarget final ->
       "from " <> pretty origin <> " to " <> pretty final
     UpwardsTarget -> "from " <> pretty origin <> " upwards"
+
+prettyValuedNaturalRange
+  :: Natural
+  -> NaturalRangeTarget
+  -> Doc annotation
+prettyValuedNaturalRange origin target =
+  case target of
+    FiniteNaturalTarget final ->
+      "within " <> pretty origin <> " to " <> pretty final
+    UpwardsTarget -> "within " <> pretty origin <> " upwards"
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "[]"

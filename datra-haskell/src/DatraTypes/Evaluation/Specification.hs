@@ -30,10 +30,12 @@ import Evaluation.Value
 import NaturalRange qualified
 import Numeric.Natural (Natural)
 import SuperEllipsisRange qualified as Range
+import ValuedNaturalRange qualified
 
--- | NaturalRange is special here: each of its members is an empty Atlas or a
--- chained-dominion Atlas whose final regions are singleton sets.  This fact
--- belongs to this decision procedure and is not inferred for arbitrary
+-- | NaturalRange and ValuedNaturalRange have separate target-specific
+-- decision procedures.  NaturalRange members are range Atlases;
+-- ValuedNaturalRange members are individual EllipsisNatural Atlases.  Both
+-- families have total members, but that fact is not inferred for arbitrary
 -- Atlas-map federations.
 specifyValues
   :: InterpretedValue
@@ -54,26 +56,43 @@ specifyTotalAtlasMap source target = do
     case interpretedTotalAtlasMap source of
       Just totalMap -> Right totalMap
       Nothing -> Left (ExpectedTotalAtlasMap (interpretedValueKind source))
-  case targetNaturalRange target of
-    Nothing ->
-      Left
-        (AtlasMapFederationOperationUndecidable
-          (NoAtlasMapFederationDecisionProcedure
-            AtlasMapFederationSpecification))
-    Just (EvaluatedNaturalRange targetRange) ->
+  case interpretedAtlasMapFederation target of
+    PrimitiveAtlasMapFederation
+        (NaturalRangeAtlasMapFederation
+          (EvaluatedNaturalRange targetRange)) ->
       case sourceNaturalSubrange source
           >>= selectNaturalRangeMember targetRange of
-        Nothing ->
-          Left
-            (AtlasMapFederationOperationRefuted
-              AtlasMapFederationSpecificationHasNoMatchingMember)
+        Nothing -> noMatchingMember
         Just member ->
           Right
             (specifiedValue
               totalSource
               (interpretedCanonicalResult source)
               target
-              member)
+              (EvaluatedNaturalRangeMember member))
+    PrimitiveAtlasMapFederation
+        (ValuedNaturalRangeAtlasMapFederation
+          (EvaluatedValuedNaturalRange targetRange)) ->
+      case sourceEllipsisNatural source
+          >>= selectValuedNaturalRangeMember targetRange of
+        Nothing -> noMatchingMember
+        Just member ->
+          Right
+            (specifiedValue
+              totalSource
+              (interpretedCanonicalResult source)
+              target
+              (EvaluatedValuedNaturalRangeMember member))
+    _ ->
+      Left
+        (AtlasMapFederationOperationUndecidable
+          (NoAtlasMapFederationDecisionProcedure
+            AtlasMapFederationSpecification))
+  where
+    noMatchingMember =
+      Left
+        (AtlasMapFederationOperationRefuted
+          AtlasMapFederationSpecificationHasNoMatchingMember)
 
 -- | Compose a prior specification with inclusion of its whole target
 -- federation into a larger target.  Checking only the previously selected
@@ -120,12 +139,26 @@ decidePrimitiveSubfederation
   | otherwise =
       AtlasMapFederationRefuted
         AtlasMapFederationSubfederationHasMissingMember
+decidePrimitiveSubfederation
+    (ValuedNaturalRangeAtlasMapFederation
+      (EvaluatedValuedNaturalRange sourceRange))
+    (ValuedNaturalRangeAtlasMapFederation
+      (EvaluatedValuedNaturalRange targetRange))
+  | ValuedNaturalRange.valuedNaturalRangeIsSubfederationOf
+      sourceRange targetRange =
+      AtlasMapFederationProved ()
+  | otherwise =
+      AtlasMapFederationRefuted
+        AtlasMapFederationSubfederationHasMissingMember
+decidePrimitiveSubfederation _ _ =
+  AtlasMapFederationRefuted
+    AtlasMapFederationSubfederationHasMissingMember
 
 specifiedValue
   :: InterpretedTotalAtlasMap
   -> CanonicalResult
   -> InterpretedValue
-  -> NaturalRange.NaturalSubrangeDescription
+  -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
 specifiedValue totalSource sourceCanonical target member =
   InterpretedValue
@@ -169,15 +202,21 @@ selectNaturalRangeMember targetRange candidate =
       NaturalRange.naturalSubrangeDescription
         <$> NaturalRange.naturalRangeUpwardsSubrange targetRange start
 
-targetNaturalRange
-  :: InterpretedValue
-  -> Maybe EvaluatedNaturalRange
-targetNaturalRange value =
-  case interpretedAtlasMapFederation value of
-    PrimitiveAtlasMapFederation
-        (NaturalRangeAtlasMapFederation naturalRange) ->
-      Just naturalRange
+sourceEllipsisNatural :: InterpretedValue -> Maybe Natural
+sourceEllipsisNatural value =
+  case interpretedForm value of
+    ExplicitForm explicitValue ->
+      let (level, ordinalValue) = explicitOrdinal explicitValue
+      in if level == 1 then naturalAtOrdinal ordinalValue else Nothing
     _ -> Nothing
+
+selectValuedNaturalRangeMember
+  :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
+  -> Natural
+  -> Maybe Natural
+selectValuedNaturalRangeMember targetRange candidate =
+  candidate
+    <$ ValuedNaturalRange.valuedNaturalRangeValue targetRange candidate
 
 sourceNaturalSubrange
   :: InterpretedValue

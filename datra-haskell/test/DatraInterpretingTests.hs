@@ -206,6 +206,38 @@ testRanges = do
         && renderInterpretedValue value == "from 2 upwards"
       )
   expectValue
+      "inclusive valued natural range"
+      (ValuedNaturalRange 2 5) $ \value ->
+    assert "valued natural ranges retain within syntax"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 2)
+              (GivenTarget (finiteOrdinal 6)))
+        && renderInterpretedValue value == "within 2 to 5"
+      )
+  expectValue
+      "descending valued natural range"
+      (ValuedNaturalRange 5 2) $ \value ->
+    assert "descending valued ranges retain within syntax"
+      (renderInterpretedValue value == "within 5 to 2")
+  expectValue
+      "upwards valued natural range"
+      (ValuedNaturalRangeUpwards 2) $ \value ->
+    assert "upwards valued ranges retain within syntax"
+      (renderInterpretedValue value == "within 2 upwards")
+  expectValue "NaturalType" NaturalType $ \value ->
+    assert "Nat is canonically distinct from its expanded synonym"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 0)
+              PlusSign)
+        && renderInterpretedValue value == "Nat"
+      )
+  expectValue
       "bounded range"
       ((<..>) (natural 2) (natural 5)) $ \value ->
     assert "bounded range retains its typed description"
@@ -440,6 +472,26 @@ testAtlasMapFederations = do
       Left
           (AtlasMapFederationOperationRefuted
             (AtlasMapFederationConcatenationCollision 20)) -> True
+      _ -> False)
+  expectValue
+      "disjoint ValuedNaturalRange concatenation"
+      ((<.>) (ValuedNaturalRange 2 5) (ValuedNaturalRange 6 9)) $ \value ->
+    assert "disjoint valued ranges form a federation"
+      (renderInterpretedValue value
+        == "within 2 to 5, within 6 to 9")
+  assert "overlapping ValuedNaturalRanges have a collision witness"
+    (case interpretExpressionReason
+        ((<.>) (ValuedNaturalRange 2 5) (ValuedNaturalRange 4 8)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            (AtlasMapFederationConcatenationCollision 4)) -> True
+      _ -> False)
+  assert "NaturalRange and ValuedNaturalRange singleton Atlases can collide"
+    (case interpretExpressionReason
+        ((<.>) (NaturalRange 2 5) (ValuedNaturalRange 5 8)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            (AtlasMapFederationConcatenationCollision 5)) -> True
       _ -> False)
   assert "unknown structured concatenation is undecidable, not refuted"
     (case interpretExpressionReason
@@ -839,6 +891,40 @@ testSpecification = do
     (AtlasMap [natural 2, natural 3, natural 4])
     (NaturalRange 0 10)
     "[2; 3; 4] ~> from 0 to 10"
+  expectSpecification
+    "EllipsisNatural specification into a ValuedNaturalRange"
+    (natural 2)
+    (ValuedNaturalRange 0 5)
+    "2 ~> within 0 to 5"
+  expectSpecification
+    "computed EllipsisNatural specification into a ValuedNaturalRange"
+    ((AST.+) (natural 1) (natural 1))
+    (ValuedNaturalRange 0 5)
+    "2 ~> within 0 to 5"
+  expectSpecification
+    "EllipsisNatural specification into a descending ValuedNaturalRange"
+    (natural 2)
+    (ValuedNaturalRange 5 0)
+    "2 ~> within 5 to 0"
+  expectSpecification
+    "EllipsisNatural specification into Nat"
+    (natural 2)
+    NaturalType
+    "2 ~> Nat"
+  expectValue
+      "ValuedNaturalRange subfederation specification composition"
+      ((<~>)
+        ((<~>) (natural 2) (ValuedNaturalRange 2 5))
+        NaturalType) $ \value ->
+    assert "Nat composition erases the intermediate valued range"
+      (renderInterpretedValue value == "2 ~> Nat")
+  expectValue
+      "ValuedNaturalRange inclusion ignores traversal direction"
+      ((<~>)
+        ((<~>) (natural 2) (ValuedNaturalRange 2 5))
+        (ValuedNaturalRange 5 0)) $ \value ->
+    assert "valued subfederation composition retains the final direction"
+      (renderInterpretedValue value == "2 ~> within 5 to 0")
   expectValue
       "NaturalRange subfederation specification composition"
       ((<~>)
@@ -902,6 +988,14 @@ testSpecification = do
     "a one-page natural has no identity-pagination NaturalRange member"
     (natural 2)
     (NaturalRange 0 10)
+  expectNoMember
+    "a value outside a ValuedNaturalRange is a counterexample"
+    (natural 6)
+    (ValuedNaturalRange 0 5)
+  expectNoMember
+    "a range is not an EllipsisNatural value member"
+    ((<..>) (natural 2) (natural 3))
+    (ValuedNaturalRange 0 5)
   assert "a NaturalRange federation is not itself a TotalAtlasMap"
     (case interpretExpressionReason
         ((<~>) (NaturalRange 2 5) (NaturalRange 0 10)) of
@@ -961,6 +1055,15 @@ testSpecification = do
           (AtlasMapFederationOperationUndecidable
             (NoAtlasMapFederationDecisionProcedure
               AtlasMapFederationSubfederation)) -> True
+      _ -> False)
+  assert "NaturalRange and ValuedNaturalRange are distinct federation families"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>) (natural 2) (ValuedNaturalRange 0 5))
+          (NaturalRange 0 5)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSubfederationHasMissingMember) -> True
       _ -> False)
 
 testTypedRejections :: IO ()

@@ -74,6 +74,11 @@ interpretExpressionReason expressionValue =
       interpretExpressionReason upper >>= openMinusRangeValue
     NaturalRange origin target -> naturalRangeValue origin target
     NaturalRangeUpwards origin -> naturalRangeUpwardsValue origin
+    ValuedNaturalRange origin target ->
+      valuedNaturalRangeValue origin target
+    ValuedNaturalRangeUpwards origin ->
+      valuedNaturalRangeUpwardsValue origin
+    NaturalType -> naturalTypeValue
     Addition left right ->
       interpretBinary addValues left right
     Multiplication left right ->

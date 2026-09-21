@@ -351,6 +351,11 @@ accessSource value =
       rangeSource
         [evaluatedDescribedRange
           (naturalRangeAsEvaluatedRange valueRange)]
+    ValuedNaturalRangeForm _ ->
+      case interpretedRangeDescription value of
+        Just description ->
+          rangeSource [describedRangeFromDescription description]
+        Nothing -> rangeSource []
     RangeConcatenationForm ranges ->
       rangeSource (map evaluatedDescribedRange ranges)
     FormulationForm formulation ->
@@ -417,6 +422,10 @@ canonicalAccessSource canonical =
       rangeSource [describedRangeFromDescription description]
     CanonicalNaturalRange start target ->
       rangeSource [naturalDescribedRange start target]
+    CanonicalValuedNaturalRange start target ->
+      rangeSource [naturalDescribedRange start target]
+    CanonicalNaturalType ->
+      rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
     CanonicalRangeConcatenation descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
     CanonicalConcatenation members ->

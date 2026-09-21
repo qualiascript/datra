@@ -14,6 +14,7 @@ module NaturalRange
   , NaturalSubrange
   , NaturalSubrangeDescription (..)
   , naturalRange
+  , naturalRangeEither
   , naturalRangeEllipsisRange
   , naturalRangeFederation
   , naturalRangeStart
@@ -61,8 +62,10 @@ import SuperEllipsis
   , nextSuperEllipsisRank
   )
 import SuperEllipsisRange
-  ( SuperEllipsisRangeTarget (GivenTarget, MinusSign, PlusSign)
+  ( SuperEllipsisRangeError
+  , SuperEllipsisRangeTarget (GivenTarget, MinusSign, PlusSign)
   , superEllipsisRange
+  , superEllipsisRangeEither
   , superEllipsisRangeOrderedMap
   )
 import SuperEllipsisValue (superEllipsisValueOrdinal)
@@ -140,7 +143,20 @@ naturalRange
        -> result)
   -> Maybe result
 naturalRange origin endpoint useRange =
-  inclusiveEllipsisRange start target $ \valueRange ->
+  case naturalRangeEither origin endpoint useRange of
+    Left _ -> Nothing
+    Right result -> Just result
+
+naturalRangeEither
+  :: NaturalRangeEndpoint endpoint
+  => EllipsisNatural originScope
+  -> endpoint
+  -> (forall rangeScope federationScope.
+       NaturalRange rangeScope federationScope
+       -> result)
+  -> Either SuperEllipsisRangeError result
+naturalRangeEither origin endpoint useRange =
+  inclusiveEllipsisRangeEither start target $ \valueRange ->
     naturalRangeFederationFor valueRange start target $ \federation ->
       useRange
         NaturalRange
@@ -318,6 +334,19 @@ inclusiveEllipsisRange
   -> Maybe result
 inclusiveEllipsisRange start target =
   superEllipsisRange
+    ellipsisRank
+    (finiteOrdinal start)
+    (ellipsisTarget start target)
+  where
+    ellipsisRank = nextSuperEllipsisRank dotSuperEllipsisRank
+
+inclusiveEllipsisRangeEither
+  :: Natural
+  -> NaturalRangeTarget
+  -> (forall scope. EllipsisRange scope -> result)
+  -> Either SuperEllipsisRangeError result
+inclusiveEllipsisRangeEither start target =
+  superEllipsisRangeEither
     ellipsisRank
     (finiteOrdinal start)
     (ellipsisTarget start target)

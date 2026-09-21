@@ -13,6 +13,9 @@ module DatraLanguage.AST.Syntax
   , (..-)
   , fromTo
   , fromUpwards
+  , withinTo
+  , withinUpwards
+  , naturalType
   , (+)
   , (*)
   , (^)
@@ -68,6 +71,15 @@ fromTo = NaturalRange
 
 fromUpwards :: Natural -> Expression
 fromUpwards = NaturalRangeUpwards
+
+withinTo :: Natural -> Natural -> Expression
+withinTo = ValuedNaturalRange
+
+withinUpwards :: Natural -> Expression
+withinUpwards = ValuedNaturalRangeUpwards
+
+naturalType :: Expression
+naturalType = NaturalType
 
 infixl 6 +
 

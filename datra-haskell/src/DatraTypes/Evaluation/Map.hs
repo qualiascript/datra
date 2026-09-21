@@ -28,6 +28,7 @@ import Evaluation.Range
 import Evaluation.Value
 import Numeric.Natural (Natural)
 import NaturalRange qualified
+import ValuedNaturalRange qualified
 
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
 makeAtlasMap _ [value]
@@ -215,13 +216,56 @@ decideFederationConcatenation
     Just witness ->
       AtlasMapFederationRefuted
         (AtlasMapFederationConcatenationCollision witness)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
+      (ValuedNaturalRangeAtlasMapFederation
+        (EvaluatedValuedNaturalRange leftRange)))
+    (PrimitiveAtlasMapFederation
+      (ValuedNaturalRangeAtlasMapFederation
+        (EvaluatedValuedNaturalRange rightRange))) =
+  overlapDecision
+    (ValuedNaturalRange.valuedNaturalRangesOverlapWitness
+      leftRange rightRange)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
+      (NaturalRangeAtlasMapFederation
+        (EvaluatedNaturalRange naturalRange)))
+    (PrimitiveAtlasMapFederation
+      (ValuedNaturalRangeAtlasMapFederation
+        (EvaluatedValuedNaturalRange valuedRange))) =
+  overlapDecision
+    (ValuedNaturalRange.valuedNaturalRangeOverlapNaturalRange
+      valuedRange naturalRange)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
+      (ValuedNaturalRangeAtlasMapFederation
+        (EvaluatedValuedNaturalRange valuedRange)))
+    (PrimitiveAtlasMapFederation
+      (NaturalRangeAtlasMapFederation
+        (EvaluatedNaturalRange naturalRange))) =
+  overlapDecision
+    (ValuedNaturalRange.valuedNaturalRangeOverlapNaturalRange
+      valuedRange naturalRange)
 decideFederationConcatenation _ _ =
   AtlasMapFederationUndecidable
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationConcatenation)
 
+overlapDecision
+  :: Maybe Natural
+  -> AtlasMapFederationDecision
+       AtlasMapFederationRefutation
+       AtlasMapFederationUncertainty
+       ()
+overlapDecision Nothing = AtlasMapFederationProved ()
+overlapDecision (Just witness) =
+  AtlasMapFederationRefuted
+    (AtlasMapFederationConcatenationCollision witness)
+
 canonicalContainsNaturalRange :: CanonicalResult -> Bool
 canonicalContainsNaturalRange (CanonicalNaturalRange _ _) = True
+canonicalContainsNaturalRange (CanonicalValuedNaturalRange _ _) = True
+canonicalContainsNaturalRange CanonicalNaturalType = True
 canonicalContainsNaturalRange (CanonicalConcatenation members) =
   any canonicalContainsNaturalRange members
 canonicalContainsNaturalRange (CanonicalMap _ members) =

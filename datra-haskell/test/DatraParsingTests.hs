@@ -65,6 +65,28 @@ main = do
     "2..5 ~> from 0 upwards"
     "(<~> (<..> 2 5) (from 0 upwards))"
   assertAstOutput
+    "bounded ValuedNaturalRange"
+    "within 2 to 5"
+    "(within 2 to 5)"
+  assertAstOutput
+    "upwards ValuedNaturalRange"
+    "within 2 upwards"
+    "(within 2 upwards)"
+  assertAstOutput
+    "NaturalType literal"
+    "Nat"
+    "Nat"
+  assertAstOutput
+    "EllipsisNatural specification into NaturalType"
+    "2 ~> Nat"
+    "(<~> 2 Nat)"
+  assertRejected
+    "shared bounded range suffix is not an expression"
+    "2 to 5"
+  assertRejected
+    "shared upwards range suffix is not an expression"
+    "2 upwards"
+  assertAstOutput
     "specification binds after access and concatenation"
     "1, 2 @ from 0 upwards ~> from 0 to 10"
     "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
@@ -516,6 +538,12 @@ assertAstSyntax = do
     ( renderExpression
         (((natural 2 <..> natural 5) <~> AST.fromUpwards 0))
         == "(<~> (<..> 2 5) (from 0 upwards))"
+    )
+  assert "valued natural range constructors retain their distinct prefix"
+    ( renderExpression (AST.withinTo 2 5) == "(within 2 to 5)"
+      && renderExpression (AST.withinUpwards 2)
+        == "(within 2 upwards)"
+      && renderExpression AST.naturalType == "Nat"
     )
 
 assertAstOutput :: String -> String -> String -> IO ()

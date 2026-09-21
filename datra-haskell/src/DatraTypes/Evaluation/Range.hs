@@ -9,6 +9,9 @@ module Evaluation.Range
   , openMinusRangeValue
   , naturalRangeValue
   , naturalRangeUpwardsValue
+  , valuedNaturalRangeValue
+  , valuedNaturalRangeUpwardsValue
+  , naturalTypeValue
   , interpretedRangeValue
   , makeEvaluatedRangeAt
   , canonicalizeRanges
@@ -36,6 +39,8 @@ import Evaluation.Value
 import Numeric.Natural (Natural)
 import EllipsisNatural qualified
 import NaturalRange qualified
+import NaturalType qualified
+import ValuedNaturalRange qualified
 import NumericalOperators.NumericalOperand
   ( someSuperEllipsis
   , withSomeSuperEllipsis
@@ -93,6 +98,40 @@ naturalRangeUpwardsValue start =
       Just (Just value) -> Right value
       _ -> interpretedNaturalRangeFallback start NaturalRange.UpwardsTarget
 
+valuedNaturalRangeValue
+  :: Natural
+  -> Natural
+  -> Either InterpretingError InterpretedValue
+valuedNaturalRangeValue start target =
+  EllipsisNatural.ellipsisNaturalTotal start $ \origin ->
+    EllipsisNatural.ellipsisNaturalTotal target $ \destination ->
+      case ValuedNaturalRange.valuedNaturalRangeEither
+          origin destination
+          (interpretedValuedNaturalRangeValue
+            (CanonicalValuedNaturalRange
+              start (NaturalRange.FiniteNaturalTarget target))) of
+        Left rejection -> Left (RangeConstructionRejected rejection)
+        Right value -> Right value
+
+valuedNaturalRangeUpwardsValue
+  :: Natural
+  -> Either InterpretingError InterpretedValue
+valuedNaturalRangeUpwardsValue start =
+  EllipsisNatural.ellipsisNaturalTotal start $ \origin ->
+    case ValuedNaturalRange.valuedNaturalRangeEither
+        origin NaturalRange.upwards
+        (interpretedValuedNaturalRangeValue
+          (CanonicalValuedNaturalRange start NaturalRange.UpwardsTarget)) of
+      Left rejection -> Left (RangeConstructionRejected rejection)
+      Right value -> Right value
+
+naturalTypeValue :: Either InterpretingError InterpretedValue
+naturalTypeValue =
+  case NaturalType.naturalTypeEither
+      (interpretedValuedNaturalRangeValue CanonicalNaturalType) of
+    Left rejection -> Left (RangeConstructionRejected rejection)
+    Right value -> Right value
+
 interpretedNaturalRangeValue
   :: NaturalRange.NaturalRange rangeScope federationScope
   -> InterpretedValue
@@ -117,6 +156,32 @@ interpretedNaturalRangeValue valueRange =
       CanonicalNaturalRange
         (NaturalRange.naturalRangeStart valueRange)
         (NaturalRange.naturalRangeTarget valueRange)
+
+interpretedValuedNaturalRangeValue
+  :: CanonicalResult
+  -> ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
+  -> InterpretedValue
+interpretedValuedNaturalRangeValue canonical valueRange =
+  InterpretedValue
+    { interpretedForm =
+        ValuedNaturalRangeForm evaluatedValuedNaturalRange
+    , interpretedInsertionCapability = ValidInsertion insertion
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation =
+        PrimitiveAtlasMapFederation
+          (ValuedNaturalRangeAtlasMapFederation
+            evaluatedValuedNaturalRange)
+    , interpretedTotalAtlasMap = Nothing
+    , interpretedCanonicalResult = canonical
+    }
+  where
+    evaluatedValuedNaturalRange = EvaluatedValuedNaturalRange valueRange
+    evaluated =
+      EvaluatedRange
+        1
+        (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
+    insertion = rangeInsertion evaluated
+    valueMap = mapFromInsertion insertion [canonical]
 
 interpretedNaturalRangeFallback
   :: Natural

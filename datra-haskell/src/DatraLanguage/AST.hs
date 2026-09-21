@@ -40,6 +40,9 @@ data Expression
   | SuperEllipsisRangeMinus Expression
   | NaturalRange Natural Natural
   | NaturalRangeUpwards Natural
+  | ValuedNaturalRange Natural Natural
+  | ValuedNaturalRangeUpwards Natural
+  | NaturalType
   | Addition Expression Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
@@ -66,6 +69,9 @@ data OperatorExpression
   | RangeMinus OperatorExpression
   | InclusiveNaturalRange Natural Natural
   | InclusiveNaturalRangeUpwards Natural
+  | InclusiveValuedNaturalRange Natural Natural
+  | InclusiveValuedNaturalRangeUpwards Natural
+  | NaturalTypeValue
   | Add OperatorExpression OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
@@ -103,6 +109,11 @@ normalizeExpression (SuperEllipsisRangeMinus upperBound) =
   SuperEllipsisRangeMinus (normalizeExpression upperBound)
 normalizeExpression (NaturalRange origin target) = NaturalRange origin target
 normalizeExpression (NaturalRangeUpwards origin) = NaturalRangeUpwards origin
+normalizeExpression (ValuedNaturalRange origin target) =
+  ValuedNaturalRange origin target
+normalizeExpression (ValuedNaturalRangeUpwards origin) =
+  ValuedNaturalRangeUpwards origin
+normalizeExpression NaturalType = NaturalType
 normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Multiplication left right) =
@@ -136,6 +147,11 @@ lower (SuperEllipsisRangePlus lowerBound) = RangePlus (lower lowerBound)
 lower (SuperEllipsisRangeMinus upperBound) = RangeMinus (lower upperBound)
 lower (NaturalRange origin target) = InclusiveNaturalRange origin target
 lower (NaturalRangeUpwards origin) = InclusiveNaturalRangeUpwards origin
+lower (ValuedNaturalRange origin target) =
+  InclusiveValuedNaturalRange origin target
+lower (ValuedNaturalRangeUpwards origin) =
+  InclusiveValuedNaturalRangeUpwards origin
+lower NaturalType = NaturalTypeValue
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
@@ -195,6 +211,11 @@ prettyOperator (InclusiveNaturalRange origin target) =
   prettyForm "from" [pretty origin, "to", pretty target]
 prettyOperator (InclusiveNaturalRangeUpwards origin) =
   prettyForm "from" [pretty origin, "upwards"]
+prettyOperator (InclusiveValuedNaturalRange origin target) =
+  prettyForm "within" [pretty origin, "to", pretty target]
+prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
+  prettyForm "within" [pretty origin, "upwards"]
+prettyOperator NaturalTypeValue = "Nat"
 prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Multiply left right) =
