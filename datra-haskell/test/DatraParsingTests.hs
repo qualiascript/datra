@@ -68,6 +68,10 @@ main = do
     "specification binds after access and concatenation"
     "1, 2 @ from 0 upwards ~> from 0 to 10"
     "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
+  assertAstOutput
+    "specification chains associate through the intermediate federation"
+    "2..3 ~> from 2 to 5 ~> from 2 to 8"
+    "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"

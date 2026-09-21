@@ -35,6 +35,7 @@ data AtlasMapFederationOperation
   = AtlasMapFederationConcatenation
   | AtlasMapFederationAccess
   | AtlasMapFederationSpecification
+  | AtlasMapFederationSubfederation
   deriving (Eq, Show)
 
 -- | A constructive counterexample proving that a federation operation is
@@ -43,6 +44,7 @@ data AtlasMapFederationRefutation
   = AtlasMapFederationConcatenationCollision Natural
   | AtlasMapFederationAccessHasEmptyCounterexample
   | AtlasMapFederationSpecificationHasNoMatchingMember
+  | AtlasMapFederationSubfederationHasMissingMember
   deriving (Eq, Show)
 
 data AtlasMapFederationUncertainty

@@ -4,11 +4,19 @@ module Evaluation.Specification
   ) where
 
 import AtlasMapFederation
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
+  ( AtlasMapFederationDecision (..)
+  , AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
+  )
+import AtlasMapSubfederation (decideAtlasMapSubfederation)
 import DatraLanguage.Diagnostics.Interpreter
-  ( AtlasMapFederationOperation (AtlasMapFederationSpecification)
+  ( AtlasMapFederationOperation
+      ( AtlasMapFederationSpecification
+      , AtlasMapFederationSubfederation
+      )
   , AtlasMapFederationRefutation
-      (AtlasMapFederationSpecificationHasNoMatchingMember)
+      ( AtlasMapFederationSpecificationHasNoMatchingMember
+      , AtlasMapFederationSubfederationHasMissingMember
+      )
   , AtlasMapFederationUncertainty
       (NoAtlasMapFederationDecisionProcedure)
   , InterpretingError (..)
@@ -31,7 +39,17 @@ specifyValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-specifyValues source target = do
+specifyValues source target =
+  case interpretedForm source of
+    SpecificationForm specification ->
+      widenSpecification source specification target
+    _ -> specifyTotalAtlasMap source target
+
+specifyTotalAtlasMap
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyTotalAtlasMap source target = do
   totalSource <-
     case interpretedTotalAtlasMap source of
       Just totalMap -> Right totalMap
@@ -43,43 +61,113 @@ specifyValues source target = do
           (NoAtlasMapFederationDecisionProcedure
             AtlasMapFederationSpecification))
     Just (EvaluatedNaturalRange targetRange) ->
-      case sourceNaturalSubrange source >>= select targetRange of
+      case sourceNaturalSubrange source
+          >>= selectNaturalRangeMember targetRange of
         Nothing ->
           Left
             (AtlasMapFederationOperationRefuted
               AtlasMapFederationSpecificationHasNoMatchingMember)
         Just member ->
           Right
-            InterpretedValue
-              { interpretedForm =
-                  SpecificationForm
-                    EvaluatedSpecification
-                      { evaluatedSpecificationSource = totalSource
-                      , evaluatedSpecificationTarget =
-                          interpretedAtlasMapFederation target
-                      , evaluatedSpecificationMember = member
-                      }
-              , interpretedInsertionCapability = NoInsertion
-              , interpretedMap = interpretedMap source
-              , interpretedAtlasMapFederation =
-                  interpretedAtlasMapFederation target
-              , interpretedTotalAtlasMap = Nothing
-              , interpretedCanonicalResult =
-                  CanonicalSpecification
-                    (interpretedCanonicalResult source)
-                    (interpretedCanonicalResult target)
-              }
-  where
-    select targetRange candidate =
-      case candidate of
-        NaturalRange.EmptyNaturalSubrange -> Just candidate
-        NaturalRange.FiniteNaturalSubrange start final ->
-          NaturalRange.naturalSubrangeDescription
-            <$> NaturalRange.naturalRangeFiniteSubrange
-                  targetRange start final
-        NaturalRange.UpwardsNaturalSubrange start ->
-          NaturalRange.naturalSubrangeDescription
-            <$> NaturalRange.naturalRangeUpwardsSubrange targetRange start
+            (specifiedValue
+              totalSource
+              (interpretedCanonicalResult source)
+              target
+              member)
+
+-- | Compose a prior specification with inclusion of its whole target
+-- federation into a larger target.  Checking only the previously selected
+-- member would be weaker: the intermediate object itself must be an Atlas
+-- subfederation of the final object.
+widenSpecification
+  :: InterpretedValue
+  -> EvaluatedSpecification
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+widenSpecification source specification target =
+  case decideAtlasMapSubfederation
+      (NoAtlasMapFederationDecisionProcedure
+        AtlasMapFederationSubfederation)
+      decidePrimitiveSubfederation
+      (evaluatedSpecificationTarget specification)
+      (interpretedAtlasMapFederation target) of
+    AtlasMapFederationRefuted refutation ->
+      Left (AtlasMapFederationOperationRefuted refutation)
+    AtlasMapFederationUndecidable uncertainty ->
+      Left (AtlasMapFederationOperationUndecidable uncertainty)
+    AtlasMapFederationProved () ->
+      Right
+        (specifiedValue
+          (evaluatedSpecificationSource specification)
+          (originalSpecificationSource source)
+          target
+          (evaluatedSpecificationMember specification))
+
+decidePrimitiveSubfederation
+  :: InterpretedAtlasMapFederationPrimitive
+  -> InterpretedAtlasMapFederationPrimitive
+  -> AtlasMapFederationDecision
+       AtlasMapFederationRefutation
+       AtlasMapFederationUncertainty
+       ()
+decidePrimitiveSubfederation
+    (NaturalRangeAtlasMapFederation
+      (EvaluatedNaturalRange sourceRange))
+    (NaturalRangeAtlasMapFederation
+      (EvaluatedNaturalRange targetRange))
+  | NaturalRange.naturalRangeIsSubfederationOf sourceRange targetRange =
+      AtlasMapFederationProved ()
+  | otherwise =
+      AtlasMapFederationRefuted
+        AtlasMapFederationSubfederationHasMissingMember
+
+specifiedValue
+  :: InterpretedTotalAtlasMap
+  -> CanonicalResult
+  -> InterpretedValue
+  -> NaturalRange.NaturalSubrangeDescription
+  -> InterpretedValue
+specifiedValue totalSource sourceCanonical target member =
+  InterpretedValue
+    { interpretedForm =
+        SpecificationForm
+          EvaluatedSpecification
+            { evaluatedSpecificationSource = totalSource
+            , evaluatedSpecificationTarget =
+                interpretedAtlasMapFederation target
+            , evaluatedSpecificationMember = member
+            }
+    , interpretedInsertionCapability = NoInsertion
+    , interpretedMap = interpretedTotalAtlasMapUnderlying totalSource
+    , interpretedAtlasMapFederation =
+        interpretedAtlasMapFederation target
+    , interpretedTotalAtlasMap = Nothing
+    , interpretedCanonicalResult =
+        CanonicalSpecification
+          sourceCanonical
+          (interpretedCanonicalResult target)
+    }
+
+originalSpecificationSource :: InterpretedValue -> CanonicalResult
+originalSpecificationSource value =
+  case interpretedCanonicalResult value of
+    CanonicalSpecification source _ -> source
+    canonical -> canonical
+
+selectNaturalRangeMember
+  :: NaturalRange.NaturalRange rangeScope federationScope
+  -> NaturalRange.NaturalSubrangeDescription
+  -> Maybe NaturalRange.NaturalSubrangeDescription
+selectNaturalRangeMember targetRange candidate =
+  case candidate of
+    NaturalRange.EmptyNaturalSubrange -> Just candidate
+    NaturalRange.FiniteNaturalSubrange start final ->
+      NaturalRange.naturalSubrangeDescription
+        <$> NaturalRange.naturalRangeFiniteSubrange
+              targetRange start final
+    NaturalRange.UpwardsNaturalSubrange start ->
+      NaturalRange.naturalSubrangeDescription
+        <$> NaturalRange.naturalRangeUpwardsSubrange targetRange start
 
 targetNaturalRange
   :: InterpretedValue

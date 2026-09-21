@@ -99,6 +99,12 @@ localizeInterpretingError reason =
             [ "the source total Atlas map is a counterexample: no target "
                 <> "member admits the required identity-pagination morphism"
             ]
+        AtlasMapFederationSubfederationHasMissingMember ->
+          LocalizedMessage
+            "the intermediate federation is not an Atlas subfederation of the target"
+            [ "an Atlas map in the intermediate federation is absent from "
+                <> "the final federation"
+            ]
     AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure operation) ->
       LocalizedMessage
@@ -113,6 +119,7 @@ federationOperation :: AtlasMapFederationOperation -> String
 federationOperation AtlasMapFederationConcatenation = "concatenation"
 federationOperation AtlasMapFederationAccess = "access"
 federationOperation AtlasMapFederationSpecification = "specification"
+federationOperation AtlasMapFederationSubfederation = "subfederation"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "left"

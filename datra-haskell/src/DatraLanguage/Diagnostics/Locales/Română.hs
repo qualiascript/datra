@@ -99,6 +99,12 @@ localizeInterpretingError reason =
             [ "harta Atlas totală sursă este un contraexemplu: niciun membru "
                 <> "nu admite morfismul cu paginație identitate"
             ]
+        AtlasMapFederationSubfederationHasMissingMember ->
+          LocalizedMessage
+            "federația intermediară nu este o subfederație Atlas a țintei"
+            [ "o hartă Atlas din federația intermediară lipsește din "
+                <> "federația finală"
+            ]
     AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure operation) ->
       LocalizedMessage
@@ -113,6 +119,7 @@ federationOperation :: AtlasMapFederationOperation -> String
 federationOperation AtlasMapFederationConcatenation = "concatenare"
 federationOperation AtlasMapFederationAccess = "accesare"
 federationOperation AtlasMapFederationSpecification = "specificare"
+federationOperation AtlasMapFederationSubfederation = "subfederație"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "stâng"

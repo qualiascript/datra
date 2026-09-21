@@ -839,6 +839,53 @@ testSpecification = do
     (AtlasMap [natural 2, natural 3, natural 4])
     (NaturalRange 0 10)
     "[2; 3; 4] ~> from 0 to 10"
+  expectValue
+      "NaturalRange subfederation specification composition"
+      ((<~>)
+        ((<~>)
+          ((<..>) (natural 2) (natural 3))
+          (NaturalRange 2 5))
+        (NaturalRange 2 8)) $ \value ->
+    assert "composition erases the intermediate subfederation"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "2..3 ~> from 2 to 8"
+      )
+  expectValue
+      "finite NaturalRange subfederation of an upwards NaturalRange"
+      ((<~>)
+        ((<~>)
+          ((<..>) (natural 3) (natural 5))
+          (NaturalRange 2 5))
+        (NaturalRangeUpwards 0)) $ \value ->
+    assert "finite-to-upwards composition is canonicalized"
+      (renderInterpretedValue value == "3..5 ~> from 0 upwards")
+  expectValue
+      "upwards NaturalRange subfederation composition"
+      ((<~>)
+        ((<~>)
+          ((..+) (natural 3))
+          (NaturalRangeUpwards 2))
+        (NaturalRangeUpwards 0)) $ \value ->
+    assert "upwards-to-upwards composition is canonicalized"
+      (renderInterpretedValue value == "3.. ~> from 0 upwards")
+  expectValue
+      "descending NaturalRange subfederation composition"
+      ((<~>)
+        ((<~>)
+          ((<..>) (natural 5) (natural 2))
+          (NaturalRange 6 1))
+        (NaturalRange 8 0)) $ \value ->
+    assert "descending composition preserves the original source"
+      (renderInterpretedValue value == "5..2 ~> from 8 to 0")
+  expectValue
+      "singleton NaturalRange subfederation changes direction"
+      ((<~>)
+        ((<~>)
+          ((<..>) (natural 2) (natural 3))
+          (NaturalRange 2 2))
+        (NaturalRange 5 0)) $ \value ->
+    assert "a singleton federation belongs to either direction"
+      (renderInterpretedValue value == "2..3 ~> from 5 to 0")
   expectNoMember
     "range outside the target NaturalRange is a counterexample"
     ((<..>) (natural 2) (natural 5))
@@ -869,6 +916,51 @@ testSpecification = do
           (AtlasMapFederationOperationUndecidable
             (NoAtlasMapFederationDecisionProcedure
               AtlasMapFederationSpecification)) -> True
+      _ -> False)
+  assert "composition rejects an intermediate federation with a missing member"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>)
+            ((<..>) (natural 2) (natural 4))
+            (NaturalRange 2 5))
+          (NaturalRange 2 3)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSubfederationHasMissingMember) -> True
+      _ -> False)
+  assert "composition rejects incompatible NaturalRange directions"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>)
+            ((<..>) (natural 2) (natural 3))
+            (NaturalRange 2 5))
+          (NaturalRange 5 2)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSubfederationHasMissingMember) -> True
+      _ -> False)
+  assert "an upwards intermediate federation is not finite"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>)
+            ((..+) (natural 3))
+            (NaturalRangeUpwards 2))
+          (NaturalRange 0 10)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSubfederationHasMissingMember) -> True
+      _ -> False)
+  assert "an unknown subfederation relation remains undecided"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>)
+            ((<..>) (natural 2) (natural 3))
+            (NaturalRange 2 5))
+          ((<..>) (natural 0) (natural 10))) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationSubfederation)) -> True
       _ -> False)
 
 testTypedRejections :: IO ()

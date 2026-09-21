@@ -60,6 +60,7 @@ library
         EllipsisNatural
         NaturalRange
         AtlasMapFederation
+        AtlasMapSubfederation
         TotalAtlasMap
         SpecificationOperator
         DatraLanguage.Diagnostics
