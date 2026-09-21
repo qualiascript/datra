@@ -391,6 +391,12 @@ testAccess = do
         (<.>)
           (natural 1)
           ((<.>) (natural 2) (natural 3))
+      expectRangeAccess label expectedKind sourceValue selectionValue expected =
+        expectValue label ((<@>) sourceValue selectionValue) $ \value ->
+          assert label
+            ( interpretedValueKind value == expectedKind
+              && renderInterpretedValue value == expected
+            )
   expectValue
       "natural upwards range access"
       ((<@>) threeValues (NaturalRangeUpwards 1)) $ \value ->
@@ -411,6 +417,122 @@ testAccess = do
       ((<@>) threeValues (NaturalRangeUpwards 10)) $ \value ->
     assert "natural range access always has its empty federation member"
       (renderInterpretedValue value == "[]")
+  expectRangeAccess
+    "open range access stays an open range"
+    RangeValueKind
+    ((..+) (natural 10))
+    ((..+) (natural 5))
+    "15.."
+  expectRangeAccess
+    "bounded range access canonicalizes selected runs"
+    RangeConcatenationValueKind
+    ((<..>) (natural 2) (natural 20))
+    ((<.>)
+      ((<..>) (natural 3) (natural 8))
+      ((<..>) (natural 11) (natural 13)))
+    "5..10, 13..15"
+  expectRangeAccess
+    "an open selector crosses a finite source prefix"
+    RangeValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 4))
+      ((..+) (natural 10)))
+    ((..+) (natural 2))
+    "10.."
+  expectRangeAccess
+    "source and selector concatenations stay range concatenations"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 4))
+      ((..+) (natural 10)))
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((..+) (natural 8)))
+    "10..13, 16.."
+  expectRangeAccess
+    "ascending source with descending selection"
+    RangeValueKind
+    ((<..>) (natural 2) (natural 20))
+    ((<..>) (natural 8) (natural 3))
+    "10..5"
+  expectRangeAccess
+    "descending source with ascending selections"
+    RangeConcatenationValueKind
+    ((<..>) (natural 20) (natural 2))
+    ((<.>)
+      ((<..>) (natural 3) (natural 8))
+      ((<..>) (natural 11) (natural 13)))
+    "17..12, 9..7"
+  expectRangeAccess
+    "descending source and selection compose to ascending"
+    RangeValueKind
+    ((<..>) (natural 20) (natural 2))
+    ((<..>) (natural 8) (natural 3))
+    "12..17"
+  expectRangeAccess
+    "descending selection reverses source-component order"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((<..>) (natural 10) (natural 14)))
+    ((<..>) (natural 6) (natural 1))
+    "13..9, 4..3"
+  expectRangeAccess
+    "a descending result ending at zero uses the minus form"
+    RangeValueKind
+    ((<..>) (natural 0) (natural 10))
+    ((..-) (natural 5))
+    "5..-"
+  expectRangeAccess
+    "a selection crossing source ranges splits at the value gap"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((<..>) (natural 10) (natural 14)))
+    ((<..>) (natural 1) (natural 6))
+    "3..5, 10..13"
+  expectRangeAccess
+    "empty range-on-range access stays empty"
+    MapValueKind
+    ((<..>) (natural 2) (natural 20))
+    ((<..>) (natural 5) (natural 5))
+    "[]"
+  expectRangeAccess
+    "bounded transfinite range access remains symbolic"
+    RangeValueKind
+    ((<..>) (natural 2) (...))
+    ((<..>) (natural 3) (...))
+    "5..(...)"
+  expectRangeAccess
+    "open transfinite range access computes its limit boundary"
+    RangeValueKind
+    ((..+) ((AST.+) (...) (natural 2)))
+    ((..+) (natural 3))
+    "(... + 5)..(... * 2 + 0)"
+  expectRangeAccess
+    "selection can begin after an infinite source component"
+    RangeValueKind
+    ((<.>)
+      ((..+) (natural 2))
+      ((..+) ((AST.+) (...) (natural 10))))
+    ((..+) (...))
+    "(... + 10).."
+  expectRangeAccess
+    "descending transfinite selection preserves finite-tail arithmetic"
+    RangeValueKind
+    ((<.>)
+      ((..+) (natural 2))
+      ((..+) ((AST.+) (...) (natural 10))))
+    ((<..>)
+      ((AST.+) (...) (natural 2))
+      ((AST.+) (...) (natural 0)))
+    "(... + 12)..(... + 10)"
+  expectRangeAccess
+    "a computed range result remains reusable as an insertion"
+    RangeValueKind
+    ((..+) (natural 0))
+    ((<@>) ((..+) (natural 10)) ((..+) (natural 5)))
+    "15.."
   expectValue
       "ASCII-string singleton access"
       ((<@>) (AsciiStringLiteral "abcd") (natural 2)) $ \value ->

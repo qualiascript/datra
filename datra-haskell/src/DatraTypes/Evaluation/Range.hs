@@ -10,6 +10,7 @@ module Evaluation.Range
   , naturalRangeValue
   , naturalRangeUpwardsValue
   , interpretedRangeValue
+  , makeEvaluatedRangeAt
   , canonicalizeRanges
   , concatenateRangeCapability
   ) where
