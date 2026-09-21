@@ -50,46 +50,104 @@ import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
 import Data.Void (Void, absurd)
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Hedgehog (testProperty)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 main :: IO ()
-main = do
-  testIdentityInsertion
-  testDatraOrdinalEnumeration
-  testChainedDominionAtlas
-  testRankedDominionAtlas
-  testSpine
-  testChainSum
-  testConsolidation
-  testConsolidationSum
-  testConsolidationTransport
-  testFolio
-  testPageElements
-  testPagination
-  testAtlas
-  testEmptyAtlas
-  testAtlasMerge
-  testAtlasConfederation
-  testAtlasFederation
-  testAtlasMap
-  testNavigationAndExpedition
-  testDataTransformationMap
-  testRestrictedDataTransformations
-  testForgetStableConfederalData
-  testStableConfederalKleisliSyntax
-  testCharter
-  testOrderedAtlasTransposal
-  testAtlasTransversal
-  testStableAtlasTransversal
-  testCoalition
-  testDomanialInclusion
+main = defaultMain testTree
+
+testTree :: TestTree
+testTree =
+  testGroup "Datra core"
+    [ testGroup "examples"
+        [ testCase "identity insertion" testIdentityInsertion
+        , testCase "ordinal enumeration" testDatraOrdinalEnumeration
+        , testCase "chained dominion atlas" testChainedDominionAtlas
+        , testCase "ranked dominion atlas" testRankedDominionAtlas
+        , testCase "spine" testSpine
+        , testCase "chain sum" testChainSum
+        , testCase "consolidation" testConsolidation
+        , testCase "consolidation sum" testConsolidationSum
+        , testCase "consolidation transport" testConsolidationTransport
+        , testCase "folio" testFolio
+        , testCase "page elements" testPageElements
+        , testCase "pagination" testPagination
+        , testCase "atlas" testAtlas
+        , testCase "empty atlas" testEmptyAtlas
+        , testCase "atlas merge" testAtlasMerge
+        , testCase "atlas confederation" testAtlasConfederation
+        , testCase "atlas federation" testAtlasFederation
+        , testCase "atlas map" testAtlasMap
+        , testCase "navigation and expedition" testNavigationAndExpedition
+        , testCase "data transformation map" testDataTransformationMap
+        , testCase "restricted data transformations" testRestrictedDataTransformations
+        , testCase "forget stable confederal data" testForgetStableConfederalData
+        , testCase "stable confederal Kleisli syntax" testStableConfederalKleisliSyntax
+        , testCase "charter" testCharter
+        , testCase "ordered atlas transposal" testOrderedAtlasTransposal
+        , testCase "atlas transversal" testAtlasTransversal
+        , testCase "stable atlas transversal" testStableAtlasTransversal
+        , testCase "coalition" testCoalition
+        , testCase "domanial inclusion" testDomanialInclusion
+        ]
+    , testGroup "properties"
+        [ testProperty "finite ordinals round-trip naturals" propFiniteOrdinalRoundTrip
+        , testProperty "ordinal construction is canonical" propOrdinalCanonical
+        , testProperty "ordinal ranks round-trip" propOrdinalRankRoundTrip
+        , testProperty "finite-tail splitting reconstructs ordinals" propSplitFiniteTail
+        , testProperty "spine positions round-trip" propSpineRoundTrip
+        , testProperty "identity insertions round-trip" propIdentityInsertion
+        ]
+    ]
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
 
 assert :: String -> Bool -> IO ()
-assert label condition
-  | condition = pure ()
-  | otherwise = fail ("test failed: " <> label)
+assert = assertBool
+
+propFiniteOrdinalRoundTrip :: H.Property
+propFiniteOrdinalRoundTrip = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 1000000))
+  naturalAtOrdinal (finiteOrdinal value) H.=== Just value
+
+propOrdinalCanonical :: H.Property
+propOrdinalCanonical = H.property $ do
+  coefficients <- H.forAll
+    (Gen.list (Range.linear 0 8) (Gen.integral (Range.linear 0 1000)))
+  ordinalCoefficients (ordinal coefficients)
+    H.=== dropWhile (== 0) coefficients
+
+propOrdinalRankRoundTrip :: H.Property
+propOrdinalRankRoundTrip = H.property $ do
+  width <- H.forAll (Gen.integral (Range.linear 1 6))
+  code <- H.forAll (Gen.integral (Range.linear 0 100000))
+  (ordinalAtNaturalRank width code >>= naturalRankOfOrdinal width)
+    H.=== Just code
+
+propSplitFiniteTail :: H.Property
+propSplitFiniteTail = H.property $ do
+  coefficients <- H.forAll
+    (Gen.list (Range.linear 0 8) (Gen.integral (Range.linear 0 1000)))
+  let value = ordinal coefficients
+      (prefix, finiteTail) = splitFiniteTail value
+  addOrdinals prefix (finiteOrdinal finiteTail) H.=== value
+
+propSpineRoundTrip :: H.Property
+propSpineRoundTrip = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 1000000))
+  chainObjectAt (chainIndexOf spine value) H.=== value
+
+propIdentityInsertion :: H.Property
+propIdentityInsertion = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 1000000))
+  let insertion = identityInsertion :: DomanialInsertion Natural Natural
+  applyInsertion insertion value H.=== value
+  preimage insertion value H.=== Just value
 
 testDatraOrdinalEnumeration :: IO ()
 testDatraOrdinalEnumeration = do

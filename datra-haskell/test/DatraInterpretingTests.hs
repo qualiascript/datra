@@ -61,29 +61,77 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError (SuperEllipsisRangesOverlap)
   , SuperEllipsisRangeDescription (SuperEllipsisRangeDescription)
   , SuperEllipsisRangeTarget (GivenTarget, MinusSign, PlusSign)
   )
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Hedgehog (testProperty)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 main :: IO ()
-main = do
-  testLiteralsAndArithmetic
-  testRanges
-  testCanonicalResults
-  testRendering
-  testMaps
-  testAtlasMapFederations
-  testAccess
-  testSpecification
-  testTypedRejections
-  testLocatedRejection
+main = defaultMain testTree
+
+testTree :: TestTree
+testTree =
+  testGroup "Datra interpreter"
+    [ testGroup "examples"
+        [ testCase "literals and arithmetic" testLiteralsAndArithmetic
+        , testCase "ranges" testRanges
+        , testCase "canonical results" testCanonicalResults
+        , testCase "rendering" testRendering
+        , testCase "maps" testMaps
+        , testCase "atlas-map federations" testAtlasMapFederations
+        , testCase "access" testAccess
+        , testCase "specification" testSpecification
+        , testCase "typed rejections" testTypedRejections
+        , testCase "located rejection" testLocatedRejection
+        ]
+    , testGroup "properties"
+        [ testProperty "natural addition agrees with Haskell" propNaturalAddition
+        , testProperty "natural multiplication agrees with Haskell" propNaturalMultiplication
+        , testProperty "natural exponentiation agrees with Haskell" propNaturalExponentiation
+        ]
+    ]
 
 assert :: String -> Bool -> IO ()
-assert label condition
-  | condition = pure ()
-  | otherwise = fail ("test failed: " <> label)
+assert = assertBool
+
+propNaturalAddition :: H.Property
+propNaturalAddition = H.property $ do
+  left <- H.forAll naturalGen
+  right <- H.forAll naturalGen
+  interpretedNatural (Addition (EllipsisNatural left) (EllipsisNatural right))
+    H.=== Just (left + right)
+
+propNaturalMultiplication :: H.Property
+propNaturalMultiplication = H.property $ do
+  left <- H.forAll naturalGen
+  right <- H.forAll naturalGen
+  interpretedNatural
+      (Multiplication (EllipsisNatural left) (EllipsisNatural right))
+    H.=== Just (left * right)
+
+propNaturalExponentiation :: H.Property
+propNaturalExponentiation = H.property $ do
+  base <- H.forAll (Gen.integral (Range.linear 0 12))
+  exponentValue <- H.forAll (Gen.integral (Range.linear 0 8))
+  interpretedNatural
+      (Exponentiation (EllipsisNatural base) (EllipsisNatural exponentValue))
+    H.=== Just (base ^ exponentValue)
+
+naturalGen :: H.Gen Natural
+naturalGen = Gen.integral (Range.linear 0 10000)
+
+interpretedNatural :: Expression -> Maybe Natural
+interpretedNatural expressionValue =
+  case interpretExpressionReason expressionValue of
+    Left _ -> Nothing
+    Right value -> naturalOrdinal value
 
 expectValue :: String -> Expression -> (InterpretedValue -> IO ()) -> IO ()
 expectValue label expressionValue check =

@@ -27,9 +27,28 @@ import DatraLanguage.Diagnostics
   )
 import Parsing (parseDatra, parseDatraAst, parseDatraLocated)
 import Numeric (showHex)
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Hedgehog (testProperty)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 main :: IO ()
-main = do
+main = defaultMain testTree
+
+testTree :: TestTree
+testTree =
+  testGroup "Datra parser"
+    [ testCase "syntax regressions" regressionTests
+    , testGroup "properties"
+        [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
+        , testProperty "natural maps parse in order" propNaturalMapParsing
+        ]
+    ]
+
+regressionTests :: IO ()
+regressionTests = do
   assertLocatedParse
   assertAstSyntax
   assertAstOutput
@@ -463,9 +482,62 @@ main = do
     "[1]\n[2]"
 
 assert :: String -> Bool -> IO ()
-assert label condition
-  | condition = pure ()
-  | otherwise = fail ("test failed: " <> label)
+assert = assertBool
+
+propAstRoundTrip :: H.Property
+propAstRoundTrip = H.property $ do
+  expressionValue <- H.forAll genExpression
+  let rendered = renderExpression expressionValue
+  case parseDatraAst rendered of
+    Left message -> do
+      H.footnote message
+      H.failure
+    Right roundTripped -> renderExpression roundTripped H.=== rendered
+
+propNaturalMapParsing :: H.Property
+propNaturalMapParsing = H.property $ do
+  values <- H.forAll
+    (Gen.list (Range.linear 0 40) (Gen.integral (Range.linear 0 100000)))
+  let source = "[" <> joinWith "; " (map show values) <> "]"
+      expected = AtlasMap (map EllipsisNatural values)
+  parseDatra source H.=== Right expected
+
+genExpression :: H.Gen Expression
+genExpression =
+  Gen.recursive Gen.choice
+    [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
+    , pure EllipsisLiteral
+    , AsciiStringLiteral
+        <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
+    , pure NaturalType
+    , NaturalRange
+        <$> Gen.integral (Range.linear 0 1000)
+        <*> Gen.integral (Range.linear 0 1000)
+    , NaturalRangeUpwards <$> Gen.integral (Range.linear 0 1000)
+    , ValuedNaturalRange
+        <$> Gen.integral (Range.linear 0 1000)
+        <*> Gen.integral (Range.linear 0 1000)
+    , ValuedNaturalRangeUpwards <$> Gen.integral (Range.linear 0 1000)
+    ]
+    [ AtlasMap <$> Gen.list (Range.linear 0 6) genExpression
+    , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
+    , Gen.subterm2 genExpression genExpression MapExpansion
+    , Gen.subterm2 genExpression genExpression SuperEllipsisRange
+    , Gen.subterm genExpression SuperEllipsisRangePlus
+    , Gen.subterm genExpression SuperEllipsisRangeMinus
+    , Gen.subterm2 genExpression genExpression Addition
+    , Gen.subterm2 genExpression genExpression Multiplication
+    , Gen.subterm2 genExpression genExpression Exponentiation
+    , Gen.subterm2 genExpression genExpression MapConcatenation
+    , Gen.subterm2 genExpression genExpression MapAccess
+    , Gen.subterm2 genExpression genExpression MapSpecification
+    ]
+
+joinWith :: String -> [String] -> String
+joinWith _ [] = ""
+joinWith _ [value] = value
+joinWith separator (value : values) =
+  value <> separator <> joinWith separator values
 
 assertAllHexadecimalAsciiEscapes :: IO ()
 assertAllHexadecimalAsciiEscapes = do

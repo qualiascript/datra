@@ -21,6 +21,13 @@ extra-source-files:
 common warnings
     ghc-options: -Wall
 
+common test-dependencies
+    build-depends:
+        hedgehog >= 1.4 && < 1.8,
+        tasty >= 1.5 && < 1.6,
+        tasty-hedgehog >= 1.4 && < 1.5,
+        tasty-hunit >= 0.10 && < 0.11
+
 flag liquid
     description: Enable LiquidHaskell verification during ordinary builds
     default:     True
@@ -230,8 +237,6 @@ library
         src/DatraTypes/Strings
         src/DatraTypes/Ellipses
         src/DatraTypes/NaturalRanges
-        src/DatraTypes/ValuedNaturalRanges
-        src/DatraTypes/NaturalTypes
         src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
@@ -261,7 +266,7 @@ executable datra-haskell
     default-language: GHC2021
 
 test-suite datra-core-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
@@ -271,7 +276,7 @@ test-suite datra-core-test
         datra-haskell
 
 test-suite datra-types-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
@@ -282,7 +287,7 @@ test-suite datra-types-test
         datra-haskell
 
 test-suite datra-parsing-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:
@@ -300,7 +305,7 @@ test-suite datra-parsing-test
         text >= 2.0 && < 2.2
 
 test-suite datra-interpreting-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:
