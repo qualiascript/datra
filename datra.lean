@@ -4054,9 +4054,7 @@ abbrev DaTraMap.{v} := IsDaTraMap.{v}.FullSubcategory
 /-%%
 \begin{definition}[Atlas Map Federations]
 An \textbf{Atlas Map Federation} is an Atlas Federation whose canonical
-forgotten DaTra Set is a Data Transformation Map.  Equivalently, after the
-federation is embedded in stable confederal data and its component tags are
-forgotten, every navigation of the resulting DaTra Set is an expedition.
+forgotten DaTra Set is a Data Transformation Map.
 \end{definition}
 %%-/
 
