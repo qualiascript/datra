@@ -1655,6 +1655,21 @@ def IsAtlasMap : ObjectProperty Atl := fun A =>
 
 abbrev AtlMap := IsAtlasMap.FullSubcategory
 
+/-%%
+\begin{definition}[Total Atlas Maps]
+A \textbf{Total Atlas Map} is an Atlas Map whose every final region contains
+exactly one element.
+\end{definition}
+%%-/
+
+/-- An Atlas Map is total when every one of its final regions is a singleton. -/
+def IsTotalAtlasMap (A : AtlMap) : Prop :=
+  ∀ k : TerritoryIndex A.obj,
+    Nonempty (territory A.obj k) ∧ Subsingleton (territory A.obj k)
+
+/-- Atlas Maps whose final regions are singletons. -/
+def TotalAtlasMap := {A : AtlMap // IsTotalAtlasMap A}
+
 def AtlMapInc : AtlMap ⥤ Atl := ObjectProperty.ι IsAtlasMap
 
 /-%%
@@ -3939,16 +3954,6 @@ category
 As a presheaf category, it is a topos.
 \end{definition}
 
-\begin{definition}[Data Transposals]
-The \textbf{Category of Data Transposals}, denoted $\mathsf{DaTrap}$, is
-$[\mathsf{AtlTrap}^{\mathrm{op}},\Set]$.
-\end{definition}
-
-\begin{definition}[Ordered Data Transposals]
-The \textbf{Category of Ordered Data Transposals}, denoted
-$\mathsf{OrdDaTrap}$, is $[\mathsf{OrdAtlTrap}^{\mathrm{op}},\Set]$.
-\end{definition}
-
 \begin{definition}[Data Transversals]
 The \textbf{Category of Data Transversals}, denoted $\mathsf{DaTrav}$, is
 $[\mathsf{AtlTrav}^{\mathrm{op}},\Set]$.
@@ -3962,15 +3967,11 @@ $\mathsf{StaDaTrav}$, is $[\mathsf{StaAtlTrav}^{\mathrm{op}},\Set]$.
 
 abbrev DaTra.{v} := Atlᵒᵖ ⥤ Type v
 
-abbrev DaTrap.{v} := AtlTrapᵒᵖ ⥤ Type v
-
-abbrev OrdDaTrap.{v} := OrdAtlTrapᵒᵖ ⥤ Type v
-
 abbrev DaTrav.{v} := AtlTravᵒᵖ ⥤ Type v
 
 abbrev StaDaTrav.{v} := StaAtlTravᵒᵖ ⥤ Type v
 
-def Yo : Atl ⥤ DaTra := yoneda
+def Yo.{v} : Atl ⥤ DaTra.{v} := uliftYoneda.{v}
 
 /-- A concrete certificate of the statement that `DaTra` is the displayed
 presheaf category. -/
@@ -3984,7 +3985,7 @@ $\mathsf{Nav}:\Yo(A)\to D$ for some atlas $A$.
 \end{definition}
 %%-/
 
-structure Navigation (D : DaTra) where
+structure Navigation.{v} (D : DaTra.{v}) where
   A : Atl
   hom : Yo.obj A ⟶ D
   mono : Mono hom
@@ -3997,7 +3998,7 @@ An \textbf{expedition} is a navigation represented by an Atlas Map.
 \end{definition}
 %%-/
 
-structure Expedition (D : DaTra) extends Navigation D where
+structure Expedition.{v} (D : DaTra.{v}) extends Navigation D where
   atlasMap : IsAtlasMap A
 
 /-- Forget the action of an atlas presheaf on non-transversal arrows. -/
@@ -4045,10 +4046,39 @@ navigations are expeditions.
 \end{definition}
 %%-/
 
-def IsDaTraMap : ObjectProperty DaTra := fun D =>
+def IsDaTraMap.{v} : ObjectProperty DaTra.{v} := fun D =>
   ∀ nav : Navigation D, IsAtlasMap nav.A
 
-abbrev DaTraMap := IsDaTraMap.FullSubcategory
+abbrev DaTraMap.{v} := IsDaTraMap.{v}.FullSubcategory
+
+/-%%
+\begin{definition}[Atlas Map Federations]
+An \textbf{Atlas Map Federation} is an Atlas Federation whose canonical
+forgotten DaTra Set is a Data Transformation Map.  Equivalently, after the
+federation is embedded in stable confederal data and its component tags are
+forgotten, every navigation of the resulting DaTra Set is an expedition.
+\end{definition}
+%%-/
+
+/-- Embed an Atlas Federation in stable confederal data by Yoneda. -/
+def AtlasFederation.toStableConfederalData
+    (F : AtlasFederation) : StaConfDa :=
+  ⟨uliftYoneda.obj F.1, trivial⟩
+
+/-- The canonical DaTra Set obtained by forgetting an Atlas Federation's
+component tags. -/
+noncomputable def AtlasFederation.toDaTra
+    (F : AtlasFederation) : DaTra.{3} :=
+  StaConfDa.forgetToDaTra.obj F.toStableConfederalData
+
+/-- The defining property of an Atlas Map Federation. -/
+def IsAtlasMapFederation (F : AtlasFederation) : Prop :=
+  IsDaTraMap.{3} F.toDaTra
+
+/-- Atlas Federations whose canonical forgotten DaTra Sets are Data
+Transformation Maps. -/
+def AtlasMapFederation :=
+  {F : AtlasFederation // IsAtlasMapFederation F}
 
 theorem staConfDaInc_essImage (F : StaConfDaPresheaf) :
     StaConfDaInc.essImage F :=

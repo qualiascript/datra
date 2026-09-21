@@ -7,7 +7,7 @@ module AtlasMapSubfederation
   ( decideAtlasMapSubfederation
   ) where
 
-import AtlasMapFederation
+import AtlasMapFederationExpression
   ( AtlasMapFederationDecision (AtlasMapFederationUndecidable)
   , AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
   )

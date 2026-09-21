@@ -3,7 +3,7 @@ module Evaluation.Access
   ( accessValues
   ) where
 
-import AtlasMapFederation
+import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton
   )

@@ -5,7 +5,7 @@ module Evaluation.Map
   , concatenateValues
   ) where
 
-import AtlasMapFederation
+import AtlasMapFederationExpression
   ( AtlasMapFederationDecision (..)
   , AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton

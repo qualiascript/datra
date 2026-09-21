@@ -9,7 +9,7 @@ module Evaluation.Construction
   ) where
 
 import Data.Char (ord)
-import AtlasMapFederation
+import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value

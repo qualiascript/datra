@@ -19,7 +19,7 @@ module Evaluation.Range
   ) where
 
 import Data.Kind (Type)
-import AtlasMapFederation
+import AtlasMapFederationExpression
   ( AtlasMapFederationExpression
       ( PrimitiveAtlasMapFederation
       , SingletonAtlasMapFederation
