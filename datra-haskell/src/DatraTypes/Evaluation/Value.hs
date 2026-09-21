@@ -7,6 +7,7 @@ module Evaluation.Value
   ( ExplicitOrigin (..)
   , EvaluatedExplicit (..)
   , EvaluatedRange (..)
+  , EvaluatedNaturalRange (..)
   , ValueForm (..)
   , SomeSuperEllipsisInsertion
   , InsertionCapability (..)
@@ -26,6 +27,7 @@ module Evaluation.Value
   , rangeDescription
   , evaluatedRangeLevel
   , rangeInsertion
+  , naturalRangeAsEvaluatedRange
   , valueRanges
   , emptyInterpretedMap
   , singletonMap
@@ -46,6 +48,7 @@ import MapOperators.OrderedAtlasMap
   , singletonOrdinalOrderedValues
   )
 import Numeric.Natural (Natural)
+import NaturalRange qualified
 import NumericalOperators.NumericalOperand
   ( SomeSuperEllipsis
   , someSuperEllipsisLevel
@@ -77,10 +80,16 @@ data EvaluatedRange where
     -> Range.SuperEllipsisRange target scope
     -> EvaluatedRange
 
+data EvaluatedNaturalRange where
+  EvaluatedNaturalRange
+    :: NaturalRange.NaturalRange rangeScope federationScope
+    -> EvaluatedNaturalRange
+
 data ValueForm
   = ExplicitForm EvaluatedExplicit
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
+  | NaturalRangeForm EvaluatedNaturalRange
   | RangeConcatenationForm [EvaluatedRange]
   | AsciiStringForm String
   | MapForm
@@ -103,10 +112,10 @@ data CanonicalResult
   = CanonicalExplicit Natural Ordinal
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
+  | CanonicalNaturalRange Natural NaturalRange.NaturalRangeTarget
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalAsciiString String
   | CanonicalMap Natural [CanonicalResult]
-  | CanonicalSuperEllipsisInsertion
   deriving (Eq, Show)
 
 data InterpretedValue = InterpretedValue
@@ -123,6 +132,7 @@ interpretedValueKind value =
     ExplicitForm _ -> ExplicitOrdinalValueKind
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
+    NaturalRangeForm _ -> RangeValueKind
     RangeConcatenationForm _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     MapForm -> MapValueKind
@@ -148,6 +158,8 @@ interpretedRangeDescription
 interpretedRangeDescription value =
   case interpretedForm value of
     RangeForm valueRange -> Just (rangeDescription valueRange)
+    NaturalRangeForm valueRange ->
+      Just (rangeDescription (naturalRangeAsEvaluatedRange valueRange))
     _ -> Nothing
 
 interpretedMapFinalOrderType :: InterpretedMap -> Ordinal
@@ -200,10 +212,16 @@ rangeInsertion (EvaluatedRange _ valueRange) =
   eraseSuperEllipsisInsertion
     (Range.superEllipsisRangeInsertion valueRange)
 
+naturalRangeAsEvaluatedRange :: EvaluatedNaturalRange -> EvaluatedRange
+naturalRangeAsEvaluatedRange (EvaluatedNaturalRange valueRange) =
+  EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
+
 valueRanges :: InterpretedValue -> Maybe [EvaluatedRange]
 valueRanges value =
   case interpretedForm value of
     RangeForm valueRange -> Just [valueRange]
+    NaturalRangeForm valueRange ->
+      Just [naturalRangeAsEvaluatedRange valueRange]
     RangeConcatenationForm ranges -> Just ranges
     _ -> Nothing
 

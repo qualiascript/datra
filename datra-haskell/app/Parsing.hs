@@ -36,6 +36,8 @@ import DatraLanguage.AST
       , MapExpansion
       , MapSequence
       , Multiplication
+      , NaturalRange
+      , NaturalRangeUpwards
       , SuperEllipsisRange
       , SuperEllipsisRangeMinus
       , SuperEllipsisRangePlus
@@ -52,6 +54,7 @@ import Text.Megaparsec
   , anySingle
   , between
   , choice
+  , chunk
   , eof
   , errorBundlePretty
   , getOffset
@@ -169,6 +172,7 @@ astForm =
   between (astSymbol "(") (astSymbol ")")
     (choice
       [ astSequence
+      , astNaturalRange
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -189,6 +193,16 @@ astSequence = do
   pure
     (MapSequence
       (firstExpression : secondExpression : remainingExpressions))
+
+astNaturalRange :: Parser Expression
+astNaturalRange = do
+  _ <- astSymbol "from"
+  origin <- astLexeme Lexer.decimal
+  choice
+    [ NaturalRange origin
+        <$> (astSymbol "to" *> astLexeme Lexer.decimal)
+    , NaturalRangeUpwards origin <$ astSymbol "upwards"
+    ]
 
 astUnary
   :: AST.Operator
@@ -313,6 +327,7 @@ term =
   choice
     [ parenthesizedExpression
     , atlasMap
+    , try naturalRangeExpression
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
@@ -328,6 +343,30 @@ rangeEndpointTerm =
     , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
+
+naturalRangeExpression :: Parser Expression
+naturalRangeExpression = do
+  _ <- continuedKeyword "from"
+  origin <- Lexer.decimal <* keywordSeparator
+  choice
+    [ NaturalRange origin
+        <$> (continuedKeyword "to" *> lexeme Lexer.decimal)
+    , NaturalRangeUpwards origin <$ keyword "upwards"
+    ]
+
+keyword :: Text -> Parser Text
+keyword value = lexeme (keywordToken value)
+
+continuedKeyword :: Text -> Parser Text
+continuedKeyword value = keywordToken value <* keywordSeparator
+
+keywordToken :: Text -> Parser Text
+keywordToken value =
+  value <$ chunk value <* notFollowedBy (satisfy isCanonicalCharacter)
+
+keywordSeparator :: Parser ()
+keywordSeparator =
+  void (some (void space1 <|> lineComment))
 
 parenthesizedExpression :: Parser Expression
 parenthesizedExpression =

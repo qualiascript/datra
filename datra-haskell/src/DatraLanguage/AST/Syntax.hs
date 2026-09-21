@@ -11,6 +11,8 @@ module DatraLanguage.AST.Syntax
   , (<..>)
   , (..+)
   , (..-)
+  , fromTo
+  , fromUpwards
   , (+)
   , (*)
   , (^)
@@ -59,6 +61,12 @@ infixl 5 ..+, ..-
 
 (..-) :: Expression -> Expression
 (..-) = SuperEllipsisRangeMinus
+
+fromTo :: Natural -> Natural -> Expression
+fromTo = NaturalRange
+
+fromUpwards :: Natural -> Expression
+fromUpwards = NaturalRangeUpwards
 
 infixl 6 +
 

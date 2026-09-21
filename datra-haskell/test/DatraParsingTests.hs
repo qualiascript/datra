@@ -145,6 +145,22 @@ main = do
     "[..10]"
     "(<..> 0 10)"
   assertAstOutput
+    "inclusive natural range"
+    "from 2 to 5"
+    "(from 2 to 5)"
+  assertAstOutput
+    "open inclusive natural range"
+    "from 2 upwards"
+    "(from 2 upwards)"
+  assertAstOutput
+    "natural range access"
+    "1, 2, 3 @ from 1 upwards"
+    "(<@> (<.> 1 (<.> 2 3)) (from 1 upwards))"
+  assertAstOutput
+    "natural range keywords continue across lines"
+    "from\n2\nto\n5"
+    "(from 2 to 5)"
+  assertAstOutput
     "a prefix range greedily continues across a newline"
     "[..\n10]"
     "(<..> 0 10)"
@@ -366,6 +382,13 @@ main = do
   assertRejected "prefix and postfix ranges cannot be chained" "[..2..]"
   assertRejected "adjacent range markers cannot be chained" "[1....2]"
   assertRejected "the old explicit plus spelling is rejected" "[1..+]"
+  assertRejected
+    "natural range origins must be literal EllipsisNaturals"
+    "from (1 + 2) to 5"
+  assertRejected
+    "natural range targets must be literal EllipsisNaturals"
+    "from 1 to (2 + 3)"
+  assertRejected "natural range keywords require separators" "from1to2"
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "[(1..2)..]"

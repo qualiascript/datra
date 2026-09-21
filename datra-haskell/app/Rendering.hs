@@ -23,6 +23,7 @@ import DatraOrdinal
   , ordinalCoefficients
   )
 import Numeric.Natural (Natural)
+import NaturalRange (NaturalRangeTarget (..))
 import Prettyprinter
   ( Doc
   , concatWith
@@ -51,13 +52,23 @@ prettyCanonicalResult result =
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalFormulation level -> prettyFormulation level
     CanonicalRange description -> prettyRange description
+    CanonicalNaturalRange origin target -> prettyNaturalRange origin target
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalMap cardinality components ->
       prettyMap cardinality components
-    CanonicalSuperEllipsisInsertion -> "<SuperEllipsisInsertion>"
+
+prettyNaturalRange
+  :: Natural
+  -> NaturalRangeTarget
+  -> Doc annotation
+prettyNaturalRange origin target =
+  case target of
+    FiniteNaturalTarget final ->
+      "from " <> pretty origin <> " to " <> pretty final
+    UpwardsTarget -> "from " <> pretty origin <> " upwards"
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "[]"

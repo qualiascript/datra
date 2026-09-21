@@ -162,6 +162,42 @@ testLiteralsAndArithmetic = do
 testRanges :: IO ()
 testRanges = do
   expectValue
+      "inclusive natural range"
+      (NaturalRange 2 5) $ \value ->
+    assert "natural ranges retain their inclusive canonical form"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 2)
+              (GivenTarget (finiteOrdinal 6)))
+        && renderInterpretedValue value == "from 2 to 5"
+      )
+  expectValue
+      "descending inclusive natural range"
+      (NaturalRange 5 0) $ \value ->
+    assert "zero-target natural ranges use the descending open boundary"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 5)
+              MinusSign)
+        && renderInterpretedValue value == "from 5 to 0"
+      )
+  expectValue
+      "upwards natural range"
+      (NaturalRangeUpwards 2) $ \value ->
+    assert "upwards natural ranges retain their canonical keyword"
+      ( interpretedRangeDescription value
+          == Just
+            (SuperEllipsisRangeDescription
+              omega
+              (finiteOrdinal 2)
+              PlusSign)
+        && renderInterpretedValue value == "from 2 upwards"
+      )
+  expectValue
       "bounded range"
       ((<..>) (natural 2) (natural 5)) $ \value ->
     assert "bounded range retains its typed description"
@@ -351,6 +387,184 @@ testMaps = do
 
 testAccess :: IO ()
 testAccess = do
+  let threeValues =
+        (<.>)
+          (natural 1)
+          ((<.>) (natural 2) (natural 3))
+      expectRangeAccess label expectedKind sourceValue selectionValue expected =
+        expectValue label ((<@>) sourceValue selectionValue) $ \value ->
+          assert label
+            ( interpretedValueKind value == expectedKind
+              && renderInterpretedValue value == expected
+            )
+  expectValue
+      "natural upwards range access"
+      ((<@>) threeValues (NaturalRangeUpwards 1)) $ \value ->
+    assert "natural range access clips upwards to the largest fitting range"
+      (renderInterpretedValue value == "[2; 3]")
+  expectValue
+      "bounded natural range access"
+      ((<@>) threeValues (NaturalRange 1 10)) $ \value ->
+    assert "bounded natural range access clips its inclusive target"
+      (renderInterpretedValue value == "[2; 3]")
+  expectValue
+      "descending natural range access"
+      ((<@>) threeValues (NaturalRange 10 0)) $ \value ->
+    assert "descending natural range access clips its inclusive origin"
+      (renderInterpretedValue value == "[3; 2; 1]")
+  expectValue
+      "empty natural range access"
+      ((<@>) threeValues (NaturalRangeUpwards 10)) $ \value ->
+    assert "natural range access always has its empty federation member"
+      (renderInterpretedValue value == "[]")
+  expectRangeAccess
+    "natural upwards access canonicalizes a bounded source range"
+    RangeValueKind
+    ((<..>) (natural 100) (natural 123))
+    (NaturalRangeUpwards 5)
+    "105..123"
+  expectRangeAccess
+    "bounded natural access canonicalizes a source range"
+    RangeValueKind
+    ((<..>) (natural 100) (natural 123))
+    (NaturalRange 5 10)
+    "105..111"
+  expectRangeAccess
+    "descending natural access canonicalizes a source range"
+    RangeValueKind
+    ((<..>) (natural 100) (natural 123))
+    (NaturalRange 10 5)
+    "110..104"
+  expectRangeAccess
+    "natural upwards access preserves source range gaps"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((<..>) (natural 10) (natural 14)))
+    (NaturalRangeUpwards 1)
+    "3..5, 10..14"
+  expectRangeAccess
+    "natural upwards access canonicalizes an open source range"
+    RangeValueKind
+    ((..+) (natural 10))
+    (NaturalRangeUpwards 5)
+    "15.."
+  expectRangeAccess
+    "open range access stays an open range"
+    RangeValueKind
+    ((..+) (natural 10))
+    ((..+) (natural 5))
+    "15.."
+  expectRangeAccess
+    "bounded range access canonicalizes selected runs"
+    RangeConcatenationValueKind
+    ((<..>) (natural 2) (natural 20))
+    ((<.>)
+      ((<..>) (natural 3) (natural 8))
+      ((<..>) (natural 11) (natural 13)))
+    "5..10, 13..15"
+  expectRangeAccess
+    "an open selector crosses a finite source prefix"
+    RangeValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 4))
+      ((..+) (natural 10)))
+    ((..+) (natural 2))
+    "10.."
+  expectRangeAccess
+    "source and selector concatenations stay range concatenations"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 4))
+      ((..+) (natural 10)))
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((..+) (natural 8)))
+    "10..13, 16.."
+  expectRangeAccess
+    "ascending source with descending selection"
+    RangeValueKind
+    ((<..>) (natural 2) (natural 20))
+    ((<..>) (natural 8) (natural 3))
+    "10..5"
+  expectRangeAccess
+    "descending source with ascending selections"
+    RangeConcatenationValueKind
+    ((<..>) (natural 20) (natural 2))
+    ((<.>)
+      ((<..>) (natural 3) (natural 8))
+      ((<..>) (natural 11) (natural 13)))
+    "17..12, 9..7"
+  expectRangeAccess
+    "descending source and selection compose to ascending"
+    RangeValueKind
+    ((<..>) (natural 20) (natural 2))
+    ((<..>) (natural 8) (natural 3))
+    "12..17"
+  expectRangeAccess
+    "descending selection reverses source-component order"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((<..>) (natural 10) (natural 14)))
+    ((<..>) (natural 6) (natural 1))
+    "13..9, 4..3"
+  expectRangeAccess
+    "a descending result ending at zero uses the minus form"
+    RangeValueKind
+    ((<..>) (natural 0) (natural 10))
+    ((..-) (natural 5))
+    "5..-"
+  expectRangeAccess
+    "a selection crossing source ranges splits at the value gap"
+    RangeConcatenationValueKind
+    ((<.>)
+      ((<..>) (natural 2) (natural 5))
+      ((<..>) (natural 10) (natural 14)))
+    ((<..>) (natural 1) (natural 6))
+    "3..5, 10..13"
+  expectRangeAccess
+    "empty range-on-range access stays empty"
+    MapValueKind
+    ((<..>) (natural 2) (natural 20))
+    ((<..>) (natural 5) (natural 5))
+    "[]"
+  expectRangeAccess
+    "bounded transfinite range access remains symbolic"
+    RangeValueKind
+    ((<..>) (natural 2) (...))
+    ((<..>) (natural 3) (...))
+    "5..(...)"
+  expectRangeAccess
+    "open transfinite range access computes its limit boundary"
+    RangeValueKind
+    ((..+) ((AST.+) (...) (natural 2)))
+    ((..+) (natural 3))
+    "(... + 5)..(... * 2 + 0)"
+  expectRangeAccess
+    "selection can begin after an infinite source component"
+    RangeValueKind
+    ((<.>)
+      ((..+) (natural 2))
+      ((..+) ((AST.+) (...) (natural 10))))
+    ((..+) (...))
+    "(... + 10).."
+  expectRangeAccess
+    "descending transfinite selection preserves finite-tail arithmetic"
+    RangeValueKind
+    ((<.>)
+      ((..+) (natural 2))
+      ((..+) ((AST.+) (...) (natural 10))))
+    ((<..>)
+      ((AST.+) (...) (natural 2))
+      ((AST.+) (...) (natural 0)))
+    "(... + 12)..(... + 10)"
+  expectRangeAccess
+    "a computed range result remains reusable as an insertion"
+    RangeValueKind
+    ((..+) (natural 0))
+    ((<@>) ((..+) (natural 10)) ((..+) (natural 5)))
+    "15.."
   expectValue
       "ASCII-string singleton access"
       ((<@>) (AsciiStringLiteral "abcd") (natural 2)) $ \value ->
@@ -404,8 +618,10 @@ testAccess = do
           ((<..>) (natural 5) levelTwoFormulation)
   expectValue "mixed-rank range access"
       ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
-    assert "cross-rank range concatenation retains insertion capability"
-      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
+    assert "a cofinal mixed-rank selection canonicalizes as a formulation"
+      ( interpretedValueKind value == FormulationValueKind
+        && renderInterpretedValue value == "...^2"
+      )
   expectValue
       "empty access"
       ((<@>)
@@ -419,8 +635,52 @@ testAccess = do
   expectValue
       "symbolic access result"
       ((<@>) (...) (...)) $ \value ->
-    assert "non-literal infinite selections use the symbolic fallback"
-      (renderInterpretedValue value == "<SuperEllipsisInsertion>")
+    assert "full formulation access remains the same formulation"
+      ( interpretedValueKind value == FormulationValueKind
+        && renderInterpretedValue value == "..."
+      )
+  expectValue
+      "cofinal formulation range access"
+      ((<@>) (...) ((..+) (natural 5))) $ \value ->
+    assert "a cofinal formulation tail canonicalizes as the formulation"
+      ( interpretedValueKind value == FormulationValueKind
+        && renderInterpretedValue value == "..."
+      )
+  expectRangeAccess
+    "a formulation acts as a full-prefix range selector"
+    RangeValueKind
+    ((..+) (natural 10))
+    (...)
+    "10.."
+  expectRangeAccess
+    "an AtlasMap wrapper preserves its range source"
+    RangeValueKind
+    (AtlasMap [((..+) (natural 2))])
+    ((..+) (natural 5))
+    "7.."
+  expectRangeAccess
+    "an infinite selection skips a finite AtlasMap prefix"
+    RangeValueKind
+    (AtlasMap [natural 42, ((..+) (natural 2))])
+    ((..+) (natural 5))
+    "6.."
+  expectValue
+      "non-injective infinite AtlasMap access"
+      ((<@>)
+        (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
+        ((..+) (natural 0))) $ \value ->
+    assert "overlapping result ranges remain an exact ordinary map"
+      ( interpretedValueKind value == MapValueKind
+        && renderInterpretedValue value == "[1; 1..]"
+      )
+  expectRangeAccess
+    "a canonicalized non-injective result remains accessible"
+    RangeValueKind
+    ((<@>)
+      (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
+      ((..+) (natural 0)))
+    ((..+) (natural 1))
+    "1.."
 
 testTypedRejections :: IO ()
 testTypedRejections = do
@@ -457,6 +717,18 @@ testTypedRejections = do
         ((<@>)
           (AtlasMap (map natural [0 .. 2]))
           (...)) of
+      Left
+          (AccessRejected
+            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
+        insertionLimit == omega && mapOrderType == finiteOrdinal 3
+      _ -> False)
+  assert "ordinary open ranges still fail instead of clipping"
+    (case interpretExpressionReason
+        ((<@>)
+          ((<.>)
+            (natural 1)
+            ((<.>) (natural 2) (natural 3)))
+          ((..+) (natural 1))) of
       Left
           (AccessRejected
             (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->

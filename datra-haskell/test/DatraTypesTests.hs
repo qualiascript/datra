@@ -26,6 +26,11 @@ import AtlasConfederation
   , rightAtlasConfederationInclusion
   , singletonAtlasConfederation
   )
+import AtlasFederation
+  ( AtlasFederationSeparation (SeparatedCorrespondingRegions)
+  , atlasFederationIndexDominion
+  , atlasFederationSeparation
+  )
 import AtlasCoveredPageElement
   ( atlasCoveredPageElement
   , withAtlasCoveredPageElement
@@ -79,6 +84,7 @@ import DatraLanguage.Diagnostics.Localization
 import Ellipsis
 import EllipsisNatural qualified as DatraNatural
 import MapOperators
+import NaturalRange
 import Numeric.Natural (Natural)
 import NumericalOperators.Range
   ( boundedSuperEllipsisRange
@@ -136,6 +142,7 @@ main = do
   testRankOneRangeMerge
   testRankOneRangeAnalysis
   testEllipsisNatural
+  testNaturalRange
   testNumericalOperators
   testTypingAbstractions
 
@@ -226,6 +233,112 @@ assert :: String -> Bool -> IO ()
 assert label condition
   | condition = pure ()
   | otherwise = fail ("test failed: " <> label)
+
+testNaturalRange :: IO ()
+testNaturalRange = do
+  case DatraNatural.ellipsisNatural 0 $ \zero ->
+      DatraNatural.ellipsisNatural 2 $ \two ->
+        naturalRange zero two $ \valueRange -> do
+          let federation = naturalRangeFederation valueRange
+              indices = atlasFederationIndexDominion federation
+              descriptions =
+                fmap naturalSubrangeDescription
+                  <$> traverse (unrank indices) [0 .. 6]
+              first = unrank indices 1
+              lastSingleton = unrank indices 6
+          assert "an inclusive 0..2 range uses the exclusive boundary 3"
+            ( SuperRange.superEllipsisRangeTarget
+                (naturalRangeEllipsisRange valueRange)
+                == SuperRange.GivenTarget (finiteOrdinal 3)
+            )
+          assert "0..2 federates the empty range and all directed subranges"
+            ( descriptions
+                == Just
+                  [ EmptyNaturalSubrange
+                  , FiniteNaturalSubrange 0 0
+                  , FiniteNaturalSubrange 0 1
+                  , FiniteNaturalSubrange 0 2
+                  , FiniteNaturalSubrange 1 1
+                  , FiniteNaturalSubrange 1 2
+                  , FiniteNaturalSubrange 2 2
+                  ]
+              && isNothing (unrank indices 7)
+            )
+          assert "equal-sized distinct subranges have a separation witness"
+            (case (first, lastSingleton) of
+              (Just left, Just right) ->
+                atlasFederationSeparation federation left right
+                  == Just
+                    (SeparatedCorrespondingRegions (finiteOrdinal 0))
+              _ -> False)
+    of
+      Just (Just (Just tests)) -> tests
+      _ -> fail "test setup failed: inclusive NaturalRange"
+
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      DatraNatural.ellipsisNatural 5 $ \five ->
+        naturalRange two five $ \valueRange ->
+          ( naturalRangeDirection valueRange
+              == AscendingNaturalRange
+            && naturalRangeFiniteSubrange valueRange 2 5
+              /= Nothing
+            && isNothing (naturalRangeFiniteSubrange valueRange 5 2)
+          )
+    of
+      Just (Just (Just condition)) ->
+        assert "ascending federations exclude backwards subranges" condition
+      _ -> fail "test setup failed: ascending NaturalRange"
+
+  case DatraNatural.ellipsisNatural 5 $ \five ->
+      DatraNatural.ellipsisNatural 2 $ \two ->
+        naturalRange five two $ \valueRange ->
+          ( naturalRangeDirection valueRange
+              == DescendingNaturalRange
+            && SuperRange.superEllipsisRangeTarget
+                (naturalRangeEllipsisRange valueRange)
+                == SuperRange.GivenTarget (finiteOrdinal 1)
+            && naturalRangeFiniteSubrange valueRange 5 2
+              /= Nothing
+            && isNothing (naturalRangeFiniteSubrange valueRange 2 5)
+          )
+    of
+      Just (Just (Just condition)) ->
+        assert "descending federations contain only descending subranges"
+          condition
+      _ -> fail "test setup failed: descending NaturalRange"
+
+  case DatraNatural.ellipsisNatural 5 $ \five ->
+      DatraNatural.ellipsisNatural 0 $ \zero ->
+        naturalRange five zero $ \valueRange ->
+          SuperRange.superEllipsisRangeTarget
+            (naturalRangeEllipsisRange valueRange)
+            == SuperRange.MinusSign
+    of
+      Just (Just (Just condition)) ->
+        assert "a descending NaturalRange ending at zero uses ..-" condition
+      _ -> fail "test setup failed: zero-target NaturalRange"
+
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      naturalRange two upwards $ \valueRange ->
+        let federation = naturalRangeFederation valueRange
+            indices = atlasFederationIndexDominion federation
+        in ( SuperRange.superEllipsisRangeTarget
+              (naturalRangeEllipsisRange valueRange)
+              == SuperRange.PlusSign
+            && fmap naturalSubrangeDescription (unrank indices 0)
+              == Just EmptyNaturalSubrange
+            && fmap naturalSubrangeDescription (unrank indices 1)
+              == Just (FiniteNaturalSubrange 2 2)
+            && fmap naturalSubrangeDescription (unrank indices 2)
+              == Just (UpwardsNaturalSubrange 2)
+            && naturalRangeUpwardsSubrange valueRange 4 /= Nothing
+            && isNothing (naturalRangeFiniteSubrange valueRange 4 3)
+           )
+    of
+      Just (Just condition) ->
+        assert "upwards creates a.. and federates ascending subranges"
+          condition
+      _ -> fail "test setup failed: upwards NaturalRange"
 
 atlasPageHasExactly
   :: Atlas atlasScope paginationScope cellData origin final

@@ -7,13 +7,16 @@ module Evaluation.Range
   ( boundedRangeValue
   , openPlusRangeValue
   , openMinusRangeValue
+  , naturalRangeValue
+  , naturalRangeUpwardsValue
   , interpretedRangeValue
+  , makeEvaluatedRangeAt
   , canonicalizeRanges
   , concatenateRangeCapability
   ) where
 
 import Data.Kind (Type)
-import DatraOrdinal (Ordinal)
+import DatraOrdinal (Ordinal, finiteOrdinal)
 import DatraLanguage.Diagnostics.Interpreter
   ( InterpretingError (..)
   , OperandSide (..)
@@ -25,6 +28,8 @@ import Evaluation.Numerical
   )
 import Evaluation.Value
 import Numeric.Natural (Natural)
+import EllipsisNatural qualified
+import NaturalRange qualified
 import NumericalOperators.NumericalOperand
   ( someSuperEllipsis
   , withSomeSuperEllipsis
@@ -59,6 +64,71 @@ openMinusRangeValue
 openMinusRangeValue value = do
   endpoint <- requireExplicit LeftOperand value
   makeRange endpoint Range.MinusSign
+
+naturalRangeValue :: Natural -> Natural -> Either InterpretingError InterpretedValue
+naturalRangeValue start target =
+  case EllipsisNatural.ellipsisNatural start $ \origin ->
+      EllipsisNatural.ellipsisNatural target $ \destination ->
+        NaturalRange.naturalRange origin destination interpretedNaturalRangeValue
+    of
+      Just (Just (Just value)) -> Right value
+      _ -> interpretedNaturalRangeFallback
+        start
+        (NaturalRange.FiniteNaturalTarget target)
+
+naturalRangeUpwardsValue
+  :: Natural
+  -> Either InterpretingError InterpretedValue
+naturalRangeUpwardsValue start =
+  case EllipsisNatural.ellipsisNatural start $ \origin ->
+      NaturalRange.naturalRange
+        origin NaturalRange.upwards interpretedNaturalRangeValue
+    of
+      Just (Just value) -> Right value
+      _ -> interpretedNaturalRangeFallback start NaturalRange.UpwardsTarget
+
+interpretedNaturalRangeValue
+  :: NaturalRange.NaturalRange rangeScope federationScope
+  -> InterpretedValue
+interpretedNaturalRangeValue valueRange =
+  InterpretedValue
+    (NaturalRangeForm (EvaluatedNaturalRange valueRange))
+    (ValidInsertion insertion)
+    (mapFromInsertion insertion [canonical])
+    canonical
+  where
+    evaluated =
+      EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
+    insertion = rangeInsertion evaluated
+    canonical =
+      CanonicalNaturalRange
+        (NaturalRange.naturalRangeStart valueRange)
+        (NaturalRange.naturalRangeTarget valueRange)
+
+interpretedNaturalRangeFallback
+  :: Natural
+  -> NaturalRange.NaturalRangeTarget
+  -> Either InterpretingError InterpretedValue
+interpretedNaturalRangeFallback start target = do
+  evaluated <-
+    makeEvaluatedRangeAt
+      1
+      (finiteOrdinal start)
+      (case target of
+        NaturalRange.UpwardsTarget -> Range.PlusSign
+        NaturalRange.FiniteNaturalTarget final
+          | start <= final -> Range.GivenTarget (finiteOrdinal (final + 1))
+          | final == 0 -> Range.MinusSign
+          | otherwise -> Range.GivenTarget (finiteOrdinal (final - 1)))
+  let insertion = rangeInsertion evaluated
+      canonical = CanonicalNaturalRange start target
+  pure
+    InterpretedValue
+      { interpretedForm = RangeForm evaluated
+      , interpretedInsertionCapability = ValidInsertion insertion
+      , interpretedMap = mapFromInsertion insertion [canonical]
+      , interpretedCanonicalResult = canonical
+      }
 
 makeBoundedRange
   :: EvaluatedExplicit
