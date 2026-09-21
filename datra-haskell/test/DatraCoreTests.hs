@@ -24,7 +24,6 @@ import Consolidation
 import qualified Control.Category as Category
 import DataTransformation
 import DataTransformationMap
-import DataTransposal
 import DataTransversal
 import DatraOrdinal
 import DomanialInclusion
@@ -39,7 +38,6 @@ import PageElements
 import Pagination
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
-import OrderedDataTransposal
 import RankedDominionAtlas
 import StableAtlasTransversal
 import StableConfederalData
@@ -700,14 +698,6 @@ newtype TestRestrictedDataValue atlas =
 data TestRestrictedDataValues
 
 type instance
-  DataTransposalValue TestRestrictedDataValues atlas =
-    TestRestrictedDataValue atlas
-
-type instance
-  OrderedDataTransposalValue TestRestrictedDataValues atlas =
-    TestRestrictedDataValue atlas
-
-type instance
   DataTransversalValue TestRestrictedDataValues atlas =
     TestRestrictedDataValue atlas
 
@@ -719,44 +709,6 @@ type instance
   StableConfederalDataValue
     TestRestrictedDataValues confederation =
       TestRestrictedDataValue confederation
-
-testDataTransposal :: DataTransposal TestRestrictedDataValues
-testDataTransposal =
-  dataTransposal
-    (\_ (TestRestrictedDataValue value) ->
-      TestRestrictedDataValue value)
-    (const ())
-    (\_ _ _ -> ())
-
-incrementDataTransposal
-  :: DataTransposalHom TestRestrictedDataValues TestRestrictedDataValues
-incrementDataTransposal =
-  dataTransposalHom
-    testDataTransposal
-    testDataTransposal
-    (\(TestRestrictedDataValue value) ->
-      TestRestrictedDataValue (value + 1))
-    (\_ _ -> ())
-
-testOrderedDataTransposal
-  :: OrderedDataTransposal TestRestrictedDataValues
-testOrderedDataTransposal =
-  orderedDataTransposal
-    (\_ (TestRestrictedDataValue value) ->
-      TestRestrictedDataValue value)
-    (const ())
-    (\_ _ _ -> ())
-
-incrementOrderedDataTransposal
-  :: OrderedDataTransposalHom
-       TestRestrictedDataValues TestRestrictedDataValues
-incrementOrderedDataTransposal =
-  orderedDataTransposalHom
-    testOrderedDataTransposal
-    testOrderedDataTransposal
-    (\(TestRestrictedDataValue value) ->
-      TestRestrictedDataValue (value + 1))
-    (\_ _ -> ())
 
 testDataTransversal :: DataTransversal TestRestrictedDataValues
 testDataTransversal =
@@ -2043,26 +1995,6 @@ testRestrictedDataTransformations = do
             emptyAtlasConfederation
             (IdentityStableConfederalValue (TestRestrictedDataValue 11))
             (IdentityStableConfederalValue (TestRestrictedDataValue 17)))
-  dataTransposalIdentity testDataTransposal input `seq`
-    dataTransposalComposition
-      testDataTransposal
-      identityAtlasTransposal
-      identityAtlasTransposal
-      input `seq`
-        dataTransposalHomNaturality
-          incrementDataTransposal identityAtlasTransposal input `seq`
-            pure ()
-  orderedDataTransposalIdentity testOrderedDataTransposal input `seq`
-    orderedDataTransposalComposition
-      testOrderedDataTransposal
-      identityOrderedAtlasTransposal
-      identityOrderedAtlasTransposal
-      input `seq`
-        orderedDataTransposalHomNaturality
-          incrementOrderedDataTransposal
-          identityOrderedAtlasTransposal
-          input `seq`
-            pure ()
   dataTransversalIdentity testDataTransversal input `seq`
     dataTransversalComposition
       testDataTransversal
@@ -2141,11 +2073,7 @@ testRestrictedDataTransformations = do
                       testStableConfederalData `seq`
                         pure ()
   assert "restricted data presheaves act contravariantly"
-    ( mapDataTransposal
-        testDataTransposal identityAtlasTransposal input == input
-      && mapOrderedDataTransposal
-        testOrderedDataTransposal identityOrderedAtlasTransposal input == input
-      && mapDataTransversal
+    ( mapDataTransversal
         testDataTransversal identityAtlasTransversal input == input
       && mapStableDataTransversal
         testStableDataTransversal identityStableAtlasTransversal input == input
@@ -2160,14 +2088,7 @@ testRestrictedDataTransformations = do
     )
 
   assert "restricted natural transformations compose pointwise"
-    ( mapDataTransposalHom
-        (incrementDataTransposal Category.. incrementDataTransposal)
-        input == TestRestrictedDataValue 31
-      && mapOrderedDataTransposalHom
-        (incrementOrderedDataTransposal
-          Category.. incrementOrderedDataTransposal)
-        input == TestRestrictedDataValue 31
-      && mapDataTransversalHom
+    ( mapDataTransversalHom
         (incrementDataTransversal Category.. incrementDataTransversal)
         input == TestRestrictedDataValue 31
       && mapStableDataTransversalHom

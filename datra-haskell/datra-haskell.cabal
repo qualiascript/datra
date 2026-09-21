@@ -62,6 +62,7 @@ library
         ValuedNaturalRange
         NaturalType
         AtlasMapFederation
+        AtlasMapFederationExpression
         AtlasMapSubfederation
         TotalAtlasMap
         SpecificationOperator
@@ -100,8 +101,6 @@ library
         DomanialInclusion
         StableAtlasTransversal
         DataTransformation
-        DataTransposal
-        OrderedDataTransposal
         DataTransversal
         StableDataTransversal
         StableConfederalData
@@ -126,6 +125,7 @@ library
         AtlasMerge.Internal
         AtlasConfederation.Internal
         AtlasFederation.Internal
+        AtlasMapFederation.Internal
         AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
@@ -144,8 +144,6 @@ library
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
-        DataTransposal.Internal
-        OrderedDataTransposal.Internal
         DataTransversal.Internal
         StableDataTransversal.Internal
         StableConfederalData.Internal
@@ -191,8 +189,6 @@ library
         src/DatraCore/Atlases/Core/Atlas
         src/DatraCore/DataTransformations/DataTransformations
         src/DatraCore/DataTransformations/DataTransformations/DataTransformation
-        src/DatraCore/DataTransformations/DataTransformations/DataTransposal
-        src/DatraCore/DataTransformations/DataTransformations/OrderedDataTransposal
         src/DatraCore/DataTransformations/DataTransformations/DataTransversal
         src/DatraCore/DataTransformations/DataTransformations/StableDataTransversal
         src/DatraCore/DataTransformations/StableConfederalData
@@ -204,6 +200,7 @@ library
         src/DatraCore/DataTransformations/DataTransformationMaps/Navigation
         src/DatraCore/DataTransformations/DataTransformationMaps/Expedition
         src/DatraCore/DataTransformations/DataTransformationMaps/DataTransformationMap
+        src/DatraCore/DataTransformations/DataTransformationMaps/AtlasMapFederation
         src/DatraCore/Atlases/Core/Consolidation
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion

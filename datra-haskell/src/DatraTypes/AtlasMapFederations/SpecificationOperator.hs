@@ -31,9 +31,10 @@ import AtlasFederation (atlasFederationConfederation)
 import AtlasMap (atlasMapAtlas)
 import AtlasMapFederation
   ( AtlasMapFederation
-  , AtlasMapFederationDecision (..)
   , atlasMapFederationAtlasFederation
   )
+import AtlasMapFederationExpression
+  ( AtlasMapFederationDecision (..) )
 import PageElements
   ( PageElement
   , pageElementPage

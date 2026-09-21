@@ -3,7 +3,7 @@ module Evaluation.Specification
   ( specifyValues
   ) where
 
-import AtlasMapFederation
+import AtlasMapFederationExpression
   ( AtlasMapFederationDecision (..)
   , AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
   )

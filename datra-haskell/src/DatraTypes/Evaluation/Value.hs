@@ -44,7 +44,7 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
-import AtlasMapFederation (AtlasMapFederationExpression)
+import AtlasMapFederationExpression (AtlasMapFederationExpression)
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
