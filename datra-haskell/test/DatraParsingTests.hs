@@ -190,6 +190,16 @@ regressionTests = do
         <> "(: d (within 0 to 100)))"
     )
   assertAstOutput
+    "reverse assignment chain accepts unparenthesized multiline operands"
+    ( "d : from 10 to 100 <~\n"
+        <> "    d : from 12 to 85 := 23..66 <~\n"
+        <> "    d := 23..66"
+    )
+    ( "(<~> (<~> (:= d (<..> 23 66)) "
+        <> "(:= d (from 12 to 85) (<..> 23 66))) "
+        <> "(: d (from 10 to 100)))"
+    )
+  assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
     ( "(x : within 1 to 10) <~ "
         <> "(x : within 5 to 20) <~ (x := 8)"

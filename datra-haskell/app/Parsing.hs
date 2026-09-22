@@ -361,8 +361,18 @@ mapSeparator =
   void (semicolon <* lineSpaceConsumer)
     <|> void (some lineBreak)
 
+-- Reverse specification is the outermost expression layer. Keeping it
+-- outside 'mapExpression' lets identifier operations occupy either side of
+-- @<~@ without making bare identifiers valid general-purpose operands.
 expression :: Parser Expression
-expression = try identifierOperation <|> mapExpression
+expression = do
+  target <- try identifierOperation <|> mapExpression
+  maybeSource <-
+    optional (continuedSymbol reverseSpecificationSymbol *> expression)
+  pure
+    (case maybeSource of
+      Nothing -> target
+      Just source -> MapSpecification source target)
 
 mapExpression :: Parser Expression
 mapExpression = makeExprParser rangeExpression mapOperatorTable
@@ -377,7 +387,7 @@ identifierOperation = do
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        givenValue <- expression
+        givenValue <- mapExpression
         pure
           (IdentifierOperation
             operationIdentifierString
@@ -388,7 +398,7 @@ identifierOperation = do
         typeAnnotation <- mapExpression
         givenValue <-
           optional
-            (continuedOperator AST.AssignmentOperator *> expression)
+            (continuedOperator AST.AssignmentOperator *> mapExpression)
         pure
           (IdentifierOperation
             operationIdentifierString typeAnnotation givenValue)
@@ -545,8 +555,8 @@ arithmeticOperatorTable =
 -- left-associative level so their written order determines composition:
 -- @source ~> target @ insertion@ accesses the resulting specification, while
 -- @source @ insertion ~> target@ specifies the accessed value. Reverse
--- specification remains the final, right-associative map operation so a
--- reversed chain builds the same AST as the corresponding @~>@ chain.
+-- specification is parsed by the outer 'expression' layer so identifier
+-- operations can occur on either side of a reversed chain.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
@@ -555,8 +565,6 @@ mapOperatorTable =
     , InfixL
         (MapSpecification <$ continuedOperator AST.SpecificationOperator)
     ]
-  , [InfixR
-      (flip MapSpecification <$ continuedSymbol reverseSpecificationSymbol)]
   ]
 
 reverseSpecificationSymbol :: Text
