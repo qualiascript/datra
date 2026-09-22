@@ -431,15 +431,23 @@ arithmeticOperatorTable =
   ]
 
 -- Concatenation binds after ranges, access follows it, and specification is
--- the final map operation.
+-- the final map operation. Reverse specification uses the same precedence as
+-- ordinary specification, but associates right so a reversed chain builds the
+-- same AST as the corresponding left-associated @~>@ chain.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
   , [InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]
-  , [InfixL
-      (MapSpecification <$ continuedOperator AST.SpecificationOperator)]
+  , [ InfixL
+        (MapSpecification <$ continuedOperator AST.SpecificationOperator)
+    , InfixR
+        (flip MapSpecification <$ continuedSymbol reverseSpecificationSymbol)
+    ]
   ]
+
+reverseSpecificationSymbol :: Text
+reverseSpecificationSymbol = "<~"
 
 finishConcatenation :: Expression -> Expression
 finishConcatenation expressionValue@(MapConcatenation _ _) =
@@ -477,6 +485,7 @@ postfixRangeEnd =
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
         , operatorToken AST.SpecificationOperator
+        , symbol reverseSpecificationSymbol
         ])
 
 ellipsisNatural :: Parser Expression

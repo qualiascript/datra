@@ -113,6 +113,22 @@ regressionTests = do
     "specification chains associate through the intermediate federation"
     "2..3 ~> from 2 to 5 ~> from 2 to 8"
     "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
+  assertAstOutput
+    "reverse specification reverses its operands"
+    "from 2 to 5 <~ 2..3"
+    "(<~> (<..> 2 3) (from 2 to 5))"
+  assertAstOutput
+    "reverse specification chains associate right"
+    "from 2 to 8 <~ from 2 to 5 <~ 2..3"
+    "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
+  assertAstOutput
+    "reverse specification binds after access and concatenation"
+    "from 0 to 10 <~ 1, 2 @ from 0 upwards"
+    "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
+  assertAstOutput
+    "a postfix range can precede reverse specification"
+    "2.. <~ from 2 to 5"
+    "(<~> (from 2 to 5) (..+ 2))"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
