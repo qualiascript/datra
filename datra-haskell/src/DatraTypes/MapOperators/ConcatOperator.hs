@@ -88,15 +88,14 @@ import MapOperators.SequentialOperator
   , withSequentialPresentationAtlas
   , withSequentialAtlasTraversals
   )
+import MapOperators.Internal
+  ( forgetStableConfederalDataWrapper
+  , wrapStableConfederalData
+  )
 import StableConfederalData
   ( StableConfederalData
   , StableConfederalDataHom
   , StableConfederalDataValue
-  , mapStableConfederalData
-  , stableConfederalData
-  , stableConfederalDataComposition
-  , stableConfederalDataHom
-  , stableConfederalDataIdentity
   )
 
 -- | Defunctionalized carrier for a sequential value whose Atlas presentation
@@ -139,16 +138,10 @@ concatOperator
   -> StableConfederalData right
   -> StableConfederalData (ConcatOperatorValues left right)
 concatOperator left right =
-  stableConfederalData
-    (\arrow (ConcatOperatorValue value) ->
-      ConcatOperatorValue
-        (mapStableConfederalData sequenced arrow value))
-    (\(ConcatOperatorValue value) ->
-      stableConfederalDataIdentity sequenced value)
-    (\second first (ConcatOperatorValue value) ->
-      stableConfederalDataComposition sequenced second first value)
+  wrapStableConfederalData sequenced unwrap ConcatOperatorValue
   where
     sequenced = sequentialOperator left right
+    unwrap (ConcatOperatorValue value) = value
 
 -- | Forget the two-page presentation and retain the underlying sequential
 -- value.
@@ -160,22 +153,16 @@ concatToSequential
        (ConcatOperatorValues left right)
        (SequentialOperatorValues left right)
 concatToSequential left right =
-  stableConfederalDataHom
+  forgetStableConfederalDataWrapper
     (concatOperator left right)
     (sequentialOperator left right)
     unwrap
-    (\_ _ -> ())
   where
     unwrap (ConcatOperatorValue value) = value
 
--- The phantom identity of a page element is retained by the collapse.  Only
--- its pagination scope and trace change.
-retypePageElement
-  :: PageElement sourceScope sourceObject
-  -> PageElement targetScope targetObject
-retypePageElement (PageElement page position trace cell) =
-  PageElement page position trace cell
-
+-- The collapse retains each element's position, trace, and cell identity.
+-- Its source page determines which of the two surviving pages it inhabits,
+-- so construction cannot fail through a second lookup.
 sequenceElement
   :: Atlas
        sequenceAtlasScope
@@ -185,17 +172,13 @@ sequenceElement
        AtlasSequencePageCell
   -> PageElement concatScope object
   -> PageElement sequenceScope object
-sequenceElement sequenceAtlas source =
+sequenceElement sequenceAtlas
+    (PageElement sourcePage position trace cell) =
   let sequencePage =
-        if pageElementPage source == 0
+        if sourcePage == 0
           then 0
           else atlasCardinality sequenceAtlas - 1
-  in case pageElementIndex
-      (atlasPageElements sequenceAtlas)
-      sequencePage
-      (pageElementPosition source) of
-        Just index -> withPageElement (pageElement index) retypePageElement
-        Nothing -> error "Concat collapse produced an invalid sequence cell"
+  in PageElement sequencePage position trace cell
 
 concatDataMap
   :: Atlas

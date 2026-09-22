@@ -25,7 +25,7 @@ import AtlasMapFederationExpression
       )
   )
 import DatraOrdinal (Ordinal, finiteOrdinal)
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( InterpretingError (..)
   , OperandSide (..)
   )

@@ -14,6 +14,7 @@ module NumericalOperators.NumericalOperand
   ( NumericalOperand
   , NumericalForm (..)
   , NumericalOperandForm
+  , numericalOperandDenotation
   , numericalOperandOrdinal
   , NumericalOperandLevel
   , NumericalOperandTarget
@@ -47,6 +48,10 @@ import DatraOrdinal (Ordinal)
 import Dot (dot)
 import Numeric.Natural (Natural)
 import MapOperators.SequentialOperator (SequentialPresentation)
+import NumericalOperators.Semantics
+  ( NumericalDenotation (..)
+  , numericalDenotationOrdinal
+  )
 import StableConfederalData (StableConfederalData)
 import SuperEllipsis
   ( KnownSuperEllipsisLevel
@@ -57,9 +62,7 @@ import SuperEllipsis
   , knownSuperEllipsisRank
   , knownSuperEllipsisLevelNatural
   , superEllipsis
-  , superEllipsisRankOrderType
   , superEllipsisTargetLevelNatural
-  , superEllipsisTargetRank
   )
 import SuperEllipsisValue
   ( SuperEllipsisValue
@@ -89,7 +92,11 @@ data NumericalForm
 class NumericalOperand operand where
   type NumericalOperandForm operand :: NumericalForm
   type NumericalOperandLevel operand :: SuperEllipsisLevel
-  numericalOperandOrdinal :: operand -> Ordinal
+  numericalOperandDenotation :: operand -> NumericalDenotation
+
+numericalOperandOrdinal :: NumericalOperand operand => operand -> Ordinal
+numericalOperandOrdinal =
+  numericalDenotationOrdinal . numericalOperandDenotation
 
 -- Explicit singleton values retain their declared carrier rank.
 instance SuperEllipsisTarget target =>
@@ -98,7 +105,8 @@ instance SuperEllipsisTarget target =>
     'ExplicitNumerical
   type NumericalOperandLevel (SuperEllipsisValue target scope) =
     SuperEllipsisTargetLevel target
-  numericalOperandOrdinal = superEllipsisValueOrdinal
+  numericalOperandDenotation =
+    ExplicitDenotation . superEllipsisValueOrdinal
 
 -- A stable datum denotes its order type, embedded in the next rank:
 -- Dot = 1, Ellipsis = omega, and so on.
@@ -108,8 +116,8 @@ instance SuperEllipsisTarget target =>
     'FormulationNumerical
   type NumericalOperandLevel (StableConfederalData target) =
     'NextLevel (SuperEllipsisTargetLevel target)
-  numericalOperandOrdinal _ =
-    superEllipsisRankOrderType (superEllipsisTargetRank @target)
+  numericalOperandDenotation _ =
+    FormulationDenotation (superEllipsisTargetLevelNatural @target)
 
 type family MaximumSuperEllipsisLevel left right where
   MaximumSuperEllipsisLevel 'DotLevel right = right

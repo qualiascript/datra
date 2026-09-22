@@ -4,19 +4,16 @@ module Evaluation.Specification
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (..)
-  , AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
+  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
   )
 import AtlasMapSubfederation (decideAtlasMapSubfederation)
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( AtlasMapFederationOperation
       ( AtlasMapFederationSpecification
       , AtlasMapFederationSubfederation
       )
   , AtlasMapFederationRefutation
-      ( AtlasMapFederationSpecificationHasNoMatchingMember
-      , AtlasMapFederationSubfederationHasMissingMember
-      )
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
   , AtlasMapFederationUncertainty
       (NoAtlasMapFederationDecisionProcedure)
   , InterpretingError (..)
@@ -27,10 +24,16 @@ import DatraOrdinal
   , ordinalLT
   )
 import Evaluation.Value
+import Evaluation.Federation
+  ( decidePrimitiveSubfederation
+  , requireFederationDecision
+  , selectNaturalRangeMember
+  , selectValuedNaturalRangeMember
+  , undecidableFederationOperation
+  )
 import NaturalRange qualified
 import Numeric.Natural (Natural)
 import SuperEllipsisRange qualified as Range
-import ValuedNaturalRange qualified
 
 -- | NaturalRange and ValuedNaturalRange have separate target-specific
 -- decision procedures.  NaturalRange members are range Atlases;
@@ -84,10 +87,7 @@ specifyTotalAtlasMap source target = do
               target
               (EvaluatedValuedNaturalRangeMember member))
     _ ->
-      Left
-        (AtlasMapFederationOperationUndecidable
-          (NoAtlasMapFederationDecisionProcedure
-            AtlasMapFederationSpecification))
+      undecidableFederationOperation AtlasMapFederationSpecification
   where
     noMatchingMember =
       Left
@@ -104,55 +104,19 @@ widenSpecification
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 widenSpecification source specification target =
-  case decideAtlasMapSubfederation
+  requireFederationDecision
+    (decideAtlasMapSubfederation
       (NoAtlasMapFederationDecisionProcedure
         AtlasMapFederationSubfederation)
       decidePrimitiveSubfederation
       (evaluatedSpecificationTarget specification)
-      (interpretedAtlasMapFederation target) of
-    AtlasMapFederationRefuted refutation ->
-      Left (AtlasMapFederationOperationRefuted refutation)
-    AtlasMapFederationUndecidable uncertainty ->
-      Left (AtlasMapFederationOperationUndecidable uncertainty)
-    AtlasMapFederationProved () ->
-      Right
-        (specifiedValue
-          (evaluatedSpecificationSource specification)
-          (originalSpecificationSourceSemantics source)
-          target
-          (evaluatedSpecificationMember specification))
-
-decidePrimitiveSubfederation
-  :: InterpretedAtlasMapFederationPrimitive
-  -> InterpretedAtlasMapFederationPrimitive
-  -> AtlasMapFederationDecision
-       AtlasMapFederationRefutation
-       AtlasMapFederationUncertainty
-       ()
-decidePrimitiveSubfederation
-    (NaturalRangeAtlasMapFederation
-      (EvaluatedNaturalRange sourceRange))
-    (NaturalRangeAtlasMapFederation
-      (EvaluatedNaturalRange targetRange))
-  | NaturalRange.naturalRangeIsSubfederationOf sourceRange targetRange =
-      AtlasMapFederationProved ()
-  | otherwise =
-      AtlasMapFederationRefuted
-        AtlasMapFederationSubfederationHasMissingMember
-decidePrimitiveSubfederation
-    (ValuedNaturalRangeAtlasMapFederation
-      (EvaluatedValuedNaturalRange sourceRange))
-    (ValuedNaturalRangeAtlasMapFederation
-      (EvaluatedValuedNaturalRange targetRange))
-  | ValuedNaturalRange.valuedNaturalRangeIsSubfederationOf
-      sourceRange targetRange =
-      AtlasMapFederationProved ()
-  | otherwise =
-      AtlasMapFederationRefuted
-        AtlasMapFederationSubfederationHasMissingMember
-decidePrimitiveSubfederation _ _ =
-  AtlasMapFederationRefuted
-    AtlasMapFederationSubfederationHasMissingMember
+      (interpretedAtlasMapFederation target))
+    >> Right
+      (specifiedValue
+        (evaluatedSpecificationSource specification)
+        (originalSpecificationSourceSemantics source)
+        target
+        (evaluatedSpecificationMember specification))
 
 specifiedValue
   :: InterpretedTotalAtlasMap
@@ -180,21 +144,6 @@ originalSpecificationSourceSemantics value =
     SpecificationSemantics source _ -> source
     semantics -> semantics
 
-selectNaturalRangeMember
-  :: NaturalRange.NaturalRange rangeScope federationScope
-  -> NaturalRange.NaturalSubrangeDescription
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-selectNaturalRangeMember targetRange candidate =
-  case candidate of
-    NaturalRange.EmptyNaturalSubrange -> Just candidate
-    NaturalRange.FiniteNaturalSubrange start final ->
-      NaturalRange.naturalSubrangeDescription
-        <$> NaturalRange.naturalRangeFiniteSubrange
-              targetRange start final
-    NaturalRange.UpwardsNaturalSubrange start ->
-      NaturalRange.naturalSubrangeDescription
-        <$> NaturalRange.naturalRangeUpwardsSubrange targetRange start
-
 sourceEllipsisNatural :: InterpretedValue -> Maybe Natural
 sourceEllipsisNatural value =
   case interpretedForm value of
@@ -202,14 +151,6 @@ sourceEllipsisNatural value =
       let (level, ordinalValue) = explicitOrdinal explicitValue
       in if level == 1 then naturalAtOrdinal ordinalValue else Nothing
     _ -> Nothing
-
-selectValuedNaturalRangeMember
-  :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
-  -> Natural
-  -> Maybe Natural
-selectValuedNaturalRangeMember targetRange candidate =
-  candidate
-    <$ ValuedNaturalRange.valuedNaturalRangeValue targetRange candidate
 
 sourceNaturalSubrange
   :: InterpretedValue

@@ -172,12 +172,16 @@ library
         Folio.Internal
         Folio.LiquidInternal
         NumericalOperators.Internal
+        NumericalOperators.Semantics
+        MapOperators.Internal
         NaturalRange.Interval
         OrdinalSequence
         SuperEllipsisRange.Description
         Evaluation.Access
         Evaluation.Access.RangeSelection
         Evaluation.Construction
+        Evaluation.Error
+        Evaluation.Federation
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Range

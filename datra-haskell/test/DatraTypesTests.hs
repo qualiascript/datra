@@ -159,6 +159,8 @@ testTree =
         , testCase "natural range" testNaturalRange
         , testCase "valued natural range" testValuedNaturalRange
         , testCase "numerical operators" testNumericalOperators
+        , testCase "typed and evaluated numerical semantics agree"
+            testNumericalSemanticsAgreement
         , testCase "typing abstractions" testTypingAbstractions
         ]
     , testGroup "properties"
@@ -1937,6 +1939,42 @@ testNumericalOperators = do
   assertNumericalOperator "rankOneData-natural zero-to-zero power" Numeric.exponentiationOperator 0 0 1
   testGenericOrdinalOperators
   testStableDatumNumericalOperands
+
+testNumericalSemanticsAgreement :: IO ()
+testNumericalSemanticsAgreement = do
+  let typedProductLevel =
+        Numeric.multiplicationOperator ellipsis ellipsis
+          (\value -> value `seq` (2 :: Natural))
+      evaluatedProduct =
+        Types.interpretedCanonicalResult
+          <$> Types.multiplyValues
+                (Types.formulationValue 1)
+                (Types.formulationValue 1)
+  assert "typed and evaluated formulation multiplication share level policy"
+    ( typedProductLevel == Just 2
+      && evaluatedProduct == Right (Types.CanonicalFormulation 2)
+    )
+  case DatraNatural.ellipsisNatural 3 $ \three ->
+      Numeric.exponentiationOperator
+        ellipsis three Numeric.someSuperEllipsisLevel of
+    Just (Just typedPowerLevel) ->
+      assert "typed and evaluated formulation exponentiation share level policy"
+        ((Types.interpretedCanonicalResult
+          <$> Types.exponentiateValues
+                (Types.formulationValue 1)
+                (Types.naturalValue 3))
+          == Right (Types.CanonicalFormulation typedPowerLevel))
+    _ -> fail "typed formulation exponentiation setup was rejected"
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      Numeric.additionOperator ellipsis two superEllipsisValueOrdinal of
+    Just (Just typedSum) ->
+      assert "typed and evaluated addition share ordinal policy"
+        ((Types.interpretedCanonicalResult
+          <$> Types.addValues
+                (Types.formulationValue 1)
+                (Types.naturalValue 2))
+          == Right (Types.CanonicalExplicit 2 typedSum))
+    _ -> fail "typed addition setup was rejected"
 
 testTypingAbstractions :: IO ()
 testTypingAbstractions = do

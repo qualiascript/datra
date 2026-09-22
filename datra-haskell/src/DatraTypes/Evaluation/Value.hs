@@ -61,7 +61,7 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
-import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
+import Evaluation.Error (InterpretedValueKind (..))
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues

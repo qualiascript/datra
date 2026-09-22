@@ -6,18 +6,14 @@ module Evaluation.Map
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (..)
-  , AtlasMapFederationExpression (..)
+  ( AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton
   )
 import DatraOrdinal (finiteOrdinal)
-import DatraLanguage.Diagnostics.Interpreter
-  ( AtlasMapFederationOperation (AtlasMapFederationConcatenation)
-  , AtlasMapFederationRefutation
-      (AtlasMapFederationConcatenationCollision)
-  , AtlasMapFederationUncertainty
-      (NoAtlasMapFederationDecisionProcedure)
-  , InterpretingError (..)
+import Evaluation.Error (InterpretingError)
+import Evaluation.Federation
+  ( decideFederationConcatenation
+  , requireFederationDecision
   )
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Range
@@ -27,8 +23,6 @@ import Evaluation.Range
   )
 import Evaluation.Value
 import Numeric.Natural (Natural)
-import NaturalRange qualified
-import ValuedNaturalRange qualified
 
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
 makeAtlasMap _ [value]
@@ -87,14 +81,10 @@ concatenateValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 concatenateValues left right = do
-  case decideFederationConcatenation
+  requireFederationDecision
+    (decideFederationConcatenation
       (interpretedAtlasMapFederation left)
-      (interpretedAtlasMapFederation right) of
-    AtlasMapFederationRefuted refutation ->
-      Left (AtlasMapFederationOperationRefuted refutation)
-    AtlasMapFederationUndecidable uncertainty ->
-      Left (AtlasMapFederationOperationUndecidable uncertainty)
-    AtlasMapFederationProved () -> pure ()
+      (interpretedAtlasMapFederation right))
   normalizedRanges <-
     traverse canonicalizeRanges (concatenatedRanges left right)
   let insertionCapability =
@@ -185,76 +175,6 @@ concatenateValues left right = do
     operandsAreTotal =
       isTotal left && isTotal right
     isTotal = interpretedValueHasTotalMap
-
-decideFederationConcatenation
-  :: InterpretedAtlasMapFederation
-  -> InterpretedAtlasMapFederation
-  -> AtlasMapFederationDecision
-       AtlasMapFederationRefutation
-       AtlasMapFederationUncertainty
-       ()
-decideFederationConcatenation left right
-  | atlasMapFederationExpressionIsSingleton left =
-      AtlasMapFederationProved ()
-  | atlasMapFederationExpressionIsSingleton right =
-      AtlasMapFederationProved ()
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange leftRange)))
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange rightRange))) =
-  case NaturalRange.naturalRangeOverlapWitness leftRange rightRange of
-    Nothing -> AtlasMapFederationProved ()
-    Just witness ->
-      AtlasMapFederationRefuted
-        (AtlasMapFederationConcatenationCollision witness)
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange leftRange)))
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange rightRange))) =
-  overlapDecision
-    (ValuedNaturalRange.valuedNaturalRangesOverlapWitness
-      leftRange rightRange)
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange naturalRange)))
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange valuedRange))) =
-  overlapDecision
-    (ValuedNaturalRange.valuedNaturalRangeOverlapNaturalRange
-      valuedRange naturalRange)
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange valuedRange)))
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange naturalRange))) =
-  overlapDecision
-    (ValuedNaturalRange.valuedNaturalRangeOverlapNaturalRange
-      valuedRange naturalRange)
-decideFederationConcatenation _ _ =
-  AtlasMapFederationUndecidable
-    (NoAtlasMapFederationDecisionProcedure
-      AtlasMapFederationConcatenation)
-
-overlapDecision
-  :: Maybe Natural
-  -> AtlasMapFederationDecision
-       AtlasMapFederationRefutation
-       AtlasMapFederationUncertainty
-       ()
-overlapDecision Nothing = AtlasMapFederationProved ()
-overlapDecision (Just witness) =
-  AtlasMapFederationRefuted
-    (AtlasMapFederationConcatenationCollision witness)
 
 semanticsContainsNaturalRange :: ValueSemantics -> Bool
 semanticsContainsNaturalRange (NaturalRangeSemantics _ _) = True

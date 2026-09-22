@@ -15,9 +15,13 @@ module NumericalOperators.ExponentiationOperator
   , exponentiationOperator
   ) where
 
-import DatraOrdinal (naturalAtOrdinal, powerOrdinal)
+import DatraOrdinal (naturalAtOrdinal)
 import EllipsisNatural (EllipsisNatural)
 import NumericalOperators.Internal (applyOrdinalExponentOperator)
+import NumericalOperators.Semantics
+  ( NumericalDenotation (FormulationDenotation)
+  , exponentiateNumericalDenotation
+  )
 import NumericalOperators.NumericalOperand
   ( KnownSuperEllipsisLevel
   , NumericalForm (..)
@@ -27,10 +31,10 @@ import NumericalOperators.NumericalOperand
   , NumericalOperandTarget
   , PreviousSuperEllipsisLevel
   , SomeSuperEllipsis
-  , knownSuperEllipsisLevelNatural
+  , numericalOperandDenotation
   , someSuperEllipsis
   )
-import Prelude (Maybe (..), (*), (>>=))
+import Prelude (Maybe (..), (>>=))
 import SuperEllipsisValue
   ( SuperEllipsisValue
   , superEllipsisValueOrdinal
@@ -69,7 +73,7 @@ instance
     , KnownSuperEllipsisLevel (NumericalOperandLevel base)
     ) =>
     ApplyExponentiation 'ExplicitNumerical base where
-  applyExponentiation = applyOrdinalExponentOperator powerOrdinal
+  applyExponentiation = applyOrdinalExponentOperator
 
 instance
     ( NumericalOperand base
@@ -77,13 +81,14 @@ instance
         (PreviousSuperEllipsisLevel (NumericalOperandLevel base))
     ) =>
     ApplyExponentiation 'FormulationNumerical base where
-  applyExponentiation _ exponentValue useResult =
+  applyExponentiation base exponentValue useResult =
     naturalAtOrdinal (superEllipsisValueOrdinal exponentValue)
       >>= (\power ->
-        Just (useResult (someSuperEllipsis
-          (knownSuperEllipsisLevelNatural
-            @(PreviousSuperEllipsisLevel (NumericalOperandLevel base))
-            * power))))
+        case exponentiateNumericalDenotation
+            (numericalOperandDenotation base) power of
+          FormulationDenotation resultLevel ->
+            Just (useResult (someSuperEllipsis resultLevel))
+          _ -> Nothing)
 
 instance
     ( NumericalOperand base

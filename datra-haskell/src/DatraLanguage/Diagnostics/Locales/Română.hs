@@ -8,7 +8,7 @@ module DatraLanguage.Diagnostics.Locales.Română
   ) where
 
 import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)

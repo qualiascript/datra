@@ -3,10 +3,6 @@ module Evaluation.Access
   ( accessValues
   ) where
 
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (..)
-  , atlasMapFederationExpressionIsSingleton
-  )
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -14,13 +10,12 @@ import DatraOrdinal
   , ordinalLT
   )
 import Data.Bifunctor qualified as Bifunctor
-import DatraLanguage.Diagnostics.Interpreter
-  ( AtlasMapFederationOperation (AtlasMapFederationAccess)
-  , AtlasMapFederationRefutation
-      (AtlasMapFederationAccessHasEmptyCounterexample)
-  , AtlasMapFederationUncertainty
-      (NoAtlasMapFederationDecisionProcedure)
-  , InterpretingError (..)
+import Evaluation.Error
+  ( InterpretingError (..)
+  )
+import Evaluation.Federation
+  ( FederationAccess (..)
+  , decideFederationAccess
   )
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
@@ -51,46 +46,16 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
-  case (naturalRangeFederation mapValue,
-        naturalRangeFederation insertionValue) of
-    (Just sourceRange, Just selectionRange) ->
+  case decideFederationAccess mapValue insertionValue of
+    Left rejection -> Left rejection
+    Right (NaturalRangeFederationAccess sourceRange selectionRange) ->
       accessNaturalRanges mapValue sourceRange selectionRange
-    (Nothing, Just naturalRange)
-      | atlasMapFederationExpressionIsSingleton
-          (interpretedAtlasMapFederation mapValue) ->
-          accessNaturalRange mapValue naturalRange
-      | otherwise -> undecidableFederationAccess
-    (_, Nothing) -> do
-      insertion <- requireInsertion insertionValue
-      if someSuperEllipsisInsertionOrderType insertion == finiteOrdinal 0
-        then finishAccess mapValue emptyInterpretedMap
-        else case naturalRangeFederation mapValue of
-          Just _ ->
-            Left
-              (AtlasMapFederationOperationRefuted
-                AtlasMapFederationAccessHasEmptyCounterexample)
-          Nothing
-            | atlasMapFederationExpressionIsSingleton
-                (interpretedAtlasMapFederation mapValue) ->
-                accessSingleton mapValue insertionValue insertion
-            | otherwise -> undecidableFederationAccess
-
-naturalRangeFederation
-  :: InterpretedValue
-  -> Maybe EvaluatedNaturalRange
-naturalRangeFederation value =
-  case interpretedAtlasMapFederation value of
-    PrimitiveAtlasMapFederation
-        (NaturalRangeAtlasMapFederation naturalRange) ->
-      Just naturalRange
-    _ -> Nothing
-
-undecidableFederationAccess
-  :: Either InterpretingError InterpretedValue
-undecidableFederationAccess =
-  Left
-    (AtlasMapFederationOperationUndecidable
-      (NoAtlasMapFederationDecisionProcedure AtlasMapFederationAccess))
+    Right (NaturalRangeSelectionAccess naturalRange) ->
+      accessNaturalRange mapValue naturalRange
+    Right EmptyFederationAccess ->
+      finishAccess mapValue emptyInterpretedMap
+    Right (SingletonFederationAccess insertion) ->
+      accessSingleton mapValue insertionValue insertion
 
 accessSingleton
   :: InterpretedValue
@@ -301,17 +266,6 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
 
 hasTotalAtlasMap :: InterpretedValue -> Bool
 hasTotalAtlasMap = interpretedValueHasTotalMap
-
-requireInsertion
-  :: InterpretedValue
-  -> Either InterpretingError SomeSuperEllipsisInsertion
-requireInsertion value =
-  case interpretedInsertionCapability value of
-    NoInsertion ->
-      Left (ExpectedInsertionOperand (interpretedValueKind value))
-    RejectedInsertion rejection ->
-      Left (RangeConcatenationRejected rejection)
-    ValidInsertion insertion -> Right insertion
 
 accessMap
   :: InterpretedMap

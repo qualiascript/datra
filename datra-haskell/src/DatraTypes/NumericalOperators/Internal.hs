@@ -5,14 +5,13 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module NumericalOperators.Internal
-  ( applyOrdinalOperator
+  ( applyOrdinalAddition
   , applyOrdinalMultiplication
   , applyOrdinalExponentOperator
   ) where
 
-import DatraOrdinal (Ordinal, naturalAtOrdinal)
+import DatraOrdinal (naturalAtOrdinal)
 import EllipsisNatural (EllipsisNatural)
-import Numeric.Natural (Natural)
 import NumericalOperators.NumericalOperand
   ( BinaryNumericalLevel
   , KnownSuperEllipsisLevel
@@ -23,7 +22,13 @@ import NumericalOperators.NumericalOperand
   , NumericalOperandTarget
   , NumericalResult
   , knownSuperEllipsisRank
-  , numericalOperandOrdinal
+  , numericalOperandDenotation
+  )
+import NumericalOperators.Semantics
+  ( addNumericalDenotations
+  , exponentiateNumericalDenotation
+  , multiplyNumericalDenotations
+  , numericalDenotationOrdinal
   )
 import SuperEllipsisValue
   ( SuperEllipsisValue
@@ -33,24 +38,24 @@ import SuperEllipsisValue
 
 -- | Apply a binary ordinal operation after promoting both operands to their
 -- least common super-ellipsis rank.
-applyOrdinalOperator
+applyOrdinalAddition
   :: forall left right result.
      ( NumericalOperand left
      , NumericalOperand right
      , KnownSuperEllipsisLevel (BinaryNumericalLevel left right)
      )
-  => (Ordinal -> Ordinal -> Ordinal)
-  -> left
+  => left
   -> right
   -> (forall resultScope.
         NumericalResult left right resultScope -> result)
   -> Maybe result
-applyOrdinalOperator operator left right useResult = do
+applyOrdinalAddition left right useResult = do
   superEllipsisValue
     (knownSuperEllipsisRank @(BinaryNumericalLevel left right))
-    (operator
-      (numericalOperandOrdinal left)
-      (numericalOperandOrdinal right))
+    (numericalDenotationOrdinal
+      (addNumericalDenotations
+        (numericalOperandDenotation left)
+        (numericalOperandDenotation right)))
     useResult
 
 -- | Apply ordinal multiplication at the rank guaranteed to contain the
@@ -62,19 +67,19 @@ applyOrdinalMultiplication
      , KnownSuperEllipsisLevel
          (MultiplicationNumericalLevel left right)
      )
-  => (Ordinal -> Ordinal -> Ordinal)
-  -> left
+  => left
   -> right
   -> (forall resultScope.
         MultiplicationResult left right resultScope -> result)
   -> Maybe result
-applyOrdinalMultiplication operator left right useResult = do
+applyOrdinalMultiplication left right useResult = do
   superEllipsisValue
     (knownSuperEllipsisRank
       @(MultiplicationNumericalLevel left right))
-    (operator
-      (numericalOperandOrdinal left)
-      (numericalOperandOrdinal right))
+    (numericalDenotationOrdinal
+      (multiplyNumericalDenotations
+        (numericalOperandDenotation left)
+        (numericalOperandDenotation right)))
     useResult
 
 -- | Apply ordinal exponentiation with a finite Ellipsis-natural exponent.
@@ -83,16 +88,17 @@ applyOrdinalExponentOperator
      ( NumericalOperand base
      , KnownSuperEllipsisLevel (NumericalOperandLevel base)
      )
-  => (Ordinal -> Natural -> Ordinal)
-  -> base
+  => base
   -> EllipsisNatural exponentScope
   -> (forall resultScope.
         SuperEllipsisValue
           (NumericalOperandTarget base) resultScope -> result)
   -> Maybe result
-applyOrdinalExponentOperator operator base exponentValue useResult = do
+applyOrdinalExponentOperator base exponentValue useResult = do
   power <- naturalAtOrdinal (superEllipsisValueOrdinal exponentValue)
   superEllipsisValue
     (knownSuperEllipsisRank @(NumericalOperandLevel base))
-    (operator (numericalOperandOrdinal base) power)
+    (numericalDenotationOrdinal
+      (exponentiateNumericalDenotation
+        (numericalOperandDenotation base) power))
     useResult

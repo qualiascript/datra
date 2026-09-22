@@ -11,7 +11,7 @@ module DatraLanguage.Diagnostics.Locales.English
   ) where
 
 import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)

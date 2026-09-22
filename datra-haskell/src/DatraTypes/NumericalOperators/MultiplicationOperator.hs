@@ -15,7 +15,6 @@ module NumericalOperators.MultiplicationOperator
   , multiplicationOperator
   ) where
 
-import DatraOrdinal (multiplyOrdinals)
 import NumericalOperators.Internal (applyOrdinalMultiplication)
 import NumericalOperators.NumericalOperand
   ( KnownSuperEllipsisData
@@ -75,7 +74,7 @@ instance
     , KnownSuperEllipsisLevel (MultiplicationNumericalLevel left right)
     ) =>
     ApplyMultiplication 'ExplicitNumerical rightForm left right where
-  applyMultiplication = applyOrdinalMultiplication multiplyOrdinals
+  applyMultiplication = applyOrdinalMultiplication
 
 instance
     ( NumericalOperand left
@@ -84,7 +83,7 @@ instance
     ) =>
     ApplyMultiplication
       'FormulationNumerical 'ExplicitNumerical left right where
-  applyMultiplication = applyOrdinalMultiplication multiplyOrdinals
+  applyMultiplication = applyOrdinalMultiplication
 
 instance
     ( NumericalOperand left
