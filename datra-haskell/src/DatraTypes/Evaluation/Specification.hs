@@ -73,7 +73,7 @@ identifierNameMismatch source target = do
 simpleIdentifierName :: ValueSemantics -> Maybe String
 simpleIdentifierName semantics =
   case semantics of
-    IdentifierTypeSemantics (SimpleIdentifierDependency name) _ -> Just name
+    IdentifierTypeSemantics (SimpleIdentifierDependency name) _ _ -> Just name
     AssignmentSemantics name _ _ -> Just name
     SpecificationSemantics source target -> do
       sourceName <- simpleIdentifierName source
@@ -205,4 +205,5 @@ originalSpecificationSourceSemantics value =
       IdentifierTypeSemantics
         (SimpleIdentifierDependency name)
         assignedSemantics
+        True
     semantics -> semantics

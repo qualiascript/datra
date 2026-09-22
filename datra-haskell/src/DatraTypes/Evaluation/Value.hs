@@ -222,7 +222,10 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
-  | IdentifierTypeSemantics IdentifierDependency ValueSemantics
+  | IdentifierTypeSemantics
+      IdentifierDependency
+      ValueSemantics
+      Bool
   | IdentifierNameProjectionSemantics
       IdentifierDependency
       ValueSemantics
@@ -318,12 +321,16 @@ canonicalResult semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
-    IdentifierTypeSemantics dependency underlying ->
-      case dependency of
-        SimpleIdentifierDependency name ->
-          CanonicalIdentifierType name (canonicalResult underlying)
+    IdentifierTypeSemantics dependency underlying isTotal ->
+      let underlyingResult = canonicalResult underlying
+      in case dependency of
+        SimpleIdentifierDependency name
+          | isTotal ->
+              CanonicalAssignment name underlyingResult underlyingResult
+          | otherwise ->
+              CanonicalIdentifierType name underlyingResult
         DependentIdentifierDependency key _ ->
-          CanonicalDependentIdentifierType key (canonicalResult underlying)
+          CanonicalDependentIdentifierType key underlyingResult
     IdentifierNameProjectionSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in if isTotal

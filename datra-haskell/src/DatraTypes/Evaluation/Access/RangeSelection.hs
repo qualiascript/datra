@@ -150,7 +150,7 @@ semanticAccessSource semantics =
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
-    IdentifierTypeSemantics _ _ -> ordinarySource []
+    IdentifierTypeSemantics _ _ _ -> ordinarySource []
     IdentifierNameProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
   where

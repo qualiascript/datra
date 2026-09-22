@@ -91,7 +91,10 @@ makeIdentifierType dependency underlying = value
         (singletonOrdinalOrderedValues nameValue)
         (singletonOrdinalOrderedValues underlying)
     semantics =
-      IdentifierTypeSemantics dependency (interpretedSemantics underlying)
+      IdentifierTypeSemantics
+        dependency
+        (interpretedSemantics underlying)
+        (interpretedValueHasTotalMap underlying)
     valueMap =
       InterpretedMap
         2

@@ -124,6 +124,11 @@ prettyCanonicalResult result =
           )
           | sourceName == targetName ->
               prettyAssignment sourceName typeResult assignedResult
+        ( CanonicalAssignment sourceName sourceType assignedResult
+          , CanonicalIdentifierType targetName typeResult
+          )
+          | sourceName == targetName && sourceType == assignedResult ->
+              prettyAssignment sourceName typeResult assignedResult
         _ ->
           prettyCanonicalResult source
             <+> prettySourceSymbol SpecificationOperator
