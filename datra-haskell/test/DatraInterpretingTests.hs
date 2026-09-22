@@ -2,7 +2,7 @@
 
 module DatraInterpretingTests (main) where
 
-import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST (Expression (..), Identifier (Identifier))
 import DatraLanguage.AST.Syntax
   ( natural
   , (...)
@@ -16,6 +16,7 @@ import DatraLanguage.AST.Syntax
   , (<~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
+import DatraTypes qualified as Types
 import Interpreting
   ( InterpretedValue
   , InterpretedValueKind (..)
@@ -91,6 +92,7 @@ testTree =
         , testCase "atlas-map federations" testAtlasMapFederations
         , testCase "access" testAccess
         , testCase "specification" testSpecification
+        , testCase "identifier types and assignments" testIdentifiers
         , testCase "typed rejections" testTypedRejections
         , testCase "located rejection" testLocatedRejection
         ]
@@ -1138,31 +1140,49 @@ testSpecification = do
         (<.>)
           (AsciiStringLiteral "a")
           (NaturalRangeUpwards 0)
-  expectSpecification
+  let expectIdentity label expressionValue expectedKind expected =
+        expectValue label ((<~>) expressionValue expressionValue) $ \value ->
+          assert label
+            ( interpretedValueKind value == expectedKind
+              && renderInterpretedValue value == expected
+            )
+  expectIdentity
     "ASCII string self-specification"
     (AsciiStringLiteral "a")
-    (AsciiStringLiteral "a")
-    "$a ~> $a"
-  expectSpecification
+    AsciiStringValueKind
+    "$a"
+  expectIdentity
     "natural self-specification"
     (natural 2)
-    (natural 2)
-    "2 ~> 2"
-  expectSpecification
+    NaturalValueKind
+    "2"
+  expectIdentity
     "range self-specification"
     boundedRange
-    boundedRange
-    "2..5 ~> 2..5"
-  expectSpecification
+    RangeValueKind
+    "2..5"
+  expectIdentity
     "range concatenation self-specification"
     rangeConcatenation
-    rangeConcatenation
-    "2..5, 8.. ~> 2..5, 8.."
-  expectSpecification
+    RangeConcatenationValueKind
+    "2..5, 8.."
+  expectIdentity
     "sequence self-specification"
     rangeSequence
-    rangeSequence
-    "(2..5; $a) ~> (2..5; $a)"
+    MapValueKind
+    "(2..5; $a)"
+  expectIdentity
+    "non-total federation identity specification"
+    NaturalType
+    RangeValueKind
+    "Nat"
+  expectValue
+      "specification composed with its target identity"
+      ((<~>) ((<~>) (natural 5) NaturalType) NaturalType) $ \value ->
+    assert "the target identity leaves a general specification unchanged"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "5 ~> Nat"
+      )
   expectNoMember
     "different singleton total maps do not specify each other"
     (AsciiStringLiteral "a")
@@ -1408,6 +1428,160 @@ testSpecification = do
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationSubfederationHasMissingMember) -> True
       _ -> False)
+
+testIdentifiers :: IO ()
+testIdentifiers = do
+  let identifier name typeExpression =
+        IdentifierOperation (Identifier name) typeExpression Nothing
+      assignment name typeExpression assignedExpression =
+        IdentifierOperation
+          (Identifier name)
+          typeExpression
+          (Just assignedExpression)
+      xNatural = identifier "x" NaturalType
+      xAssignment = assignment "x" NaturalType (natural 5)
+  expectValue "simple identifier type" xNatural $ \value ->
+    assert "identifier types retain their two-position map view"
+      ( interpretedValueKind value == IdentifierTypeValueKind
+        && interpretedMapCardinality (interpretedMap value) == 2
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 2
+        && renderInterpretedValue value == "x : Nat"
+      )
+  expectValue
+      "identifier name access"
+      ((<@>) xNatural (natural 0)) $ \value ->
+    assert "position zero projects the identifier string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "$x"
+      )
+  expectValue
+      "identifier value access"
+      ((<@>) xNatural (natural 1)) $ \value ->
+    assert "position one projects the wrapped federation"
+      (renderInterpretedValue value == "Nat")
+  expectValue
+      "whole identifier access"
+      ((<@>)
+        xNatural
+        ((<..>) (natural 0) (natural 2))) $ \value ->
+    assert "selecting both positions preserves identifier provenance"
+      (renderInterpretedValue value == "x : Nat")
+  expectValue "full assignment" xAssignment $ \value ->
+    assert "assignment remains a marked specification"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "x : Nat := 5"
+      )
+  expectValue
+      "identifier specification canonicalizes as assignment"
+      ((<~>) (identifier "x" (natural 5)) xNatural) $ \value ->
+    assert "the equivalent identifier specification uses assignment syntax"
+      (renderInterpretedValue value == "x : Nat := 5")
+  expectValue
+      "assignment specification into its own target"
+      ((<~>)
+        (assignment "a" NaturalType (natural 5))
+        (identifier "a" NaturalType)) $ \value ->
+    assert "composition with the assignment target preserves the assignment"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "a : Nat := 5"
+      )
+  expectValue
+      "assignment widens through identifier subfederations"
+      ((<~>)
+        (assignment "a" (ValuedNaturalRange 0 10) (natural 5))
+        (identifier "a" NaturalType)) $ \value ->
+    assert "identifier composition retains canonical assignment syntax"
+      (renderInterpretedValue value == "a : Nat := 5")
+  expectValue
+      "assignment name access"
+      ((<@>) xAssignment (natural 0)) $ \value ->
+    assert "the name fiber is an identity specification and coerces"
+      (renderInterpretedValue value == "$x")
+  expectValue
+      "assignment value access"
+      ((<@>) xAssignment (natural 1)) $ \value ->
+    assert "the value fiber is the underlying specification"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "5 ~> Nat"
+      )
+  expectValue
+      "binary assignment canonicalization"
+      (assignment "x" (natural 5) (natural 5)) $ \value ->
+    assert "equal type and value use binary assignment syntax"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "x := 5"
+      )
+  expectValue
+      "binary assignment value access"
+      ((<@>)
+        (assignment "x" (natural 5) (natural 5))
+        (natural 1)) $ \value ->
+    assert "an identity value fiber is coerced to its value"
+      (renderInterpretedValue value == "5")
+  let sequenceSource =
+        AtlasMap [identifier "x" (natural 5), identifier "y" (natural 6)]
+      sequenceTarget =
+        AtlasMap [identifier "x" NaturalType, identifier "y" NaturalType]
+  expectValue
+      "identifier sequence access"
+      ((<@>) sequenceTarget (natural 0)) $ \value ->
+    assert "sequence access preserves the selected identifier type"
+      (renderInterpretedValue value == "x : Nat")
+  expectValue
+      "identifier sequence specification"
+      ((<~>) sequenceSource sequenceTarget) $ \value ->
+    assert "identifier selection composes pointwise through sequences"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "(x : 5; y : 6) ~> (x : Nat; y : Nat)"
+      )
+  assert "different identifier names do not specify each other"
+    (case interpretExpressionReason
+        ((<~>)
+          (identifier "x" (natural 5))
+          (identifier "y" NaturalType)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSpecificationHasNoMatchingMember) -> True
+      _ -> False)
+  case ( interpretExpressionReason (natural 5)
+       , interpretExpressionReason NaturalType
+       ) of
+    (Right five, Right naturals) -> do
+      let dependentName canonical =
+            case canonical of
+              Types.CanonicalExplicit _ ordinalValue ->
+                maybe "transfinite" (("n" <>) . show)
+                  (naturalAtOrdinal ordinalValue)
+              _ -> "natural"
+          source = Types.identifierTypeValue "n" dependentName five
+          target = Types.identifierTypeValue "n" dependentName naturals
+      case Types.accessValues source (Types.naturalValue 0) of
+        Left rejection ->
+          fail
+            ("dependent identifier name access was rejected: "
+              <> show rejection)
+        Right value ->
+          assert "dependent name access evaluates the selected value's name"
+            (renderInterpretedValue value == "$n5")
+      case Types.specifyValues source target of
+        Left rejection ->
+          fail
+            ("dependent identifier specification was rejected: "
+              <> show rejection)
+        Right specification -> do
+          assert "dependent identifiers use the root specification rule"
+            (interpretedValueKind specification == SpecificationValueKind)
+          case Types.accessValues specification (Types.naturalValue 0) of
+            Left rejection ->
+              fail
+                ("dependent identifier specification access was rejected: "
+                  <> show rejection)
+            Right nameFiber ->
+              assert "dependent name fibers remain specifications"
+                (interpretedValueKind nameFiber == SpecificationValueKind)
+    _ -> fail "dependent identifier setup failed"
 
 testTypedRejections :: IO ()
 testTypedRejections = do

@@ -1,6 +1,7 @@
 -- | Compile-time decision procedure for the specification operator.
 module Evaluation.Specification
   ( specifyValues
+  , assignIdentifierValues
   ) where
 
 import Evaluation.Error
@@ -17,6 +18,7 @@ import Evaluation.Error
   , InterpretingError (..)
   )
 import Evaluation.Specification.Composition (selectFederationMember)
+import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
@@ -28,10 +30,49 @@ specifyValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyValues source target =
+  if interpretedCanonicalResult source == interpretedCanonicalResult target
+    then Right source
+    else specifyValuesWithoutIdentity source target
+
+specifyValuesWithoutIdentity
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyValuesWithoutIdentity source target =
   case interpretedForm source of
     SpecificationForm specification ->
       widenSpecification source specification target
+    AssignmentForm _ specification ->
+      widenSpecification source specification target
     _ -> specifyTotalAtlasMap source target
+
+-- | Assignment is specification between two constant-name identifier types,
+-- but remains marked for canonical assignment rendering even when its source
+-- and target coincide. Pointwise specifications produced by access still use
+-- 'specifyValues' and therefore obey the general identity coercion.
+assignIdentifierValues
+  :: String
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+assignIdentifierValues name assignedValue typeValue = do
+  let source = simpleIdentifierTypeValue name assignedValue
+      target = simpleIdentifierTypeValue name typeValue
+  specified <- specifyValuesWithoutIdentity source target
+  case interpretedForm specified of
+    SpecificationForm specification ->
+      Right
+        (makeInterpretedValue
+          (AssignmentForm name specification)
+          NoInsertion
+          (interpretedMap specified)
+          (interpretedAtlasMapFederation specified)
+          NonTotalInterpretedMap
+          (AssignmentSemantics
+            name
+            (interpretedSemantics typeValue)
+            (interpretedSemantics assignedValue)))
+    _ -> Right specified
 
 specifyTotalAtlasMap
   :: InterpretedValue
@@ -73,26 +114,31 @@ widenSpecification
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 widenSpecification source specification target =
-  case decideValueSubfederation
+  if interpretedCanonicalResult
       (evaluatedSpecificationTarget specification)
-      target of
-    DecisionProved () ->
-      Right
-        (specifiedValue
-          (evaluatedSpecificationSourceValue specification)
-          (evaluatedSpecificationSource specification)
-          (originalSpecificationSourceSemantics source)
-          target
-          (evaluatedSpecificationMember specification))
-    DecisionRefuted ->
-      Left
-        (AtlasMapFederationOperationRefuted
-          AtlasMapFederationSubfederationHasMissingMember)
-    DecisionUndecidable ->
-      Left
-        (AtlasMapFederationOperationUndecidable
-          (NoAtlasMapFederationDecisionProcedure
-            AtlasMapFederationSubfederation))
+      == interpretedCanonicalResult target
+    then Right source
+    else
+      case decideValueSubfederation
+          (evaluatedSpecificationTarget specification)
+          target of
+        DecisionProved () ->
+          Right
+            (specifiedValue
+              (evaluatedSpecificationSourceValue specification)
+              (evaluatedSpecificationSource specification)
+              (originalSpecificationSourceSemantics source)
+              target
+              (evaluatedSpecificationMember specification))
+        DecisionRefuted ->
+          Left
+            (AtlasMapFederationOperationRefuted
+              AtlasMapFederationSubfederationHasMissingMember)
+        DecisionUndecidable ->
+          Left
+            (AtlasMapFederationOperationUndecidable
+              (NoAtlasMapFederationDecisionProcedure
+                AtlasMapFederationSubfederation))
 
 specifiedValue
   :: InterpretedValue
@@ -120,4 +166,8 @@ originalSpecificationSourceSemantics :: InterpretedValue -> ValueSemantics
 originalSpecificationSourceSemantics value =
   case interpretedSemantics value of
     SpecificationSemantics source _ -> source
+    AssignmentSemantics name _ assignedSemantics ->
+      IdentifierTypeSemantics
+        (SimpleIdentifierDependency name)
+        assignedSemantics
     semantics -> semantics

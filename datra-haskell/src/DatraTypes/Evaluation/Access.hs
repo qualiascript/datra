@@ -22,6 +22,7 @@ import Evaluation.Access.Federation
   ( federationIsCoalition
   )
 import Evaluation.Access.Specification (accessSpecification)
+import Evaluation.Access.Identifier (accessIdentifierType)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
@@ -55,6 +56,10 @@ accessValues mapValue insertionValue =
   case interpretedForm mapValue of
     SpecificationForm specification ->
       accessSpecification accessValues specification insertionValue
+    AssignmentForm _ specification ->
+      accessSpecification accessValues specification insertionValue
+    IdentifierTypeForm identifier ->
+      accessIdentifierType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
 
 accessFederationValues

@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module DatraLanguage.AST
-  ( Expression (..)
+  ( Identifier (..)
+  , Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
   , normalizeExpression
@@ -27,6 +28,14 @@ import Prettyprinter
   )
 import Prettyprinter.Render.String (renderString)
 
+-- | A source identifier used by identifier operations.  It is deliberately
+-- distinct from an expression: the parser is the boundary which validates
+-- its spelling, and an arbitrary expression can never inhabit this field.
+newtype Identifier = Identifier
+  { identifierText :: String
+  }
+  deriving (Eq, Show)
+
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
 data Expression
@@ -50,6 +59,7 @@ data Expression
   | MapConcatenation Expression Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
+  | IdentifierOperation Identifier Expression (Maybe Expression)
   deriving (Eq, Show)
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
@@ -79,6 +89,10 @@ data OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
+  | IdentifierOperationValue
+      Identifier
+      OperatorExpression
+      (Maybe OperatorExpression)
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -127,6 +141,11 @@ normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (IdentifierOperation name typeExpression assignment) =
+  IdentifierOperation
+    name
+    (normalizeExpression typeExpression)
+    (normalizeExpression <$> assignment)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
@@ -180,6 +199,11 @@ lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
+lower (IdentifierOperation name typeExpression assignment) =
+  IdentifierOperationValue
+    name
+    (lower typeExpression)
+    (lower <$> assignment)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -249,6 +273,26 @@ prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
+prettyOperator
+    (IdentifierOperationValue
+      (Identifier name)
+      typeExpression
+      assignment) =
+  case assignment of
+    Nothing ->
+      prettyForm
+        (operatorCanonicalSymbol IdentifierTypeOperator)
+        [pretty name, prettyOperator typeExpression]
+    Just assignedExpression ->
+      prettyForm
+        (operatorCanonicalSymbol AssignmentOperator)
+        (pretty name :
+          if assignedExpression == typeExpression
+            then [prettyOperator assignedExpression]
+            else
+              [ prettyOperator typeExpression
+              , prettyOperator assignedExpression
+              ])
 
 prettyUnary
   :: Operator

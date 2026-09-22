@@ -132,6 +132,7 @@ valueKind FormulationValueKind = "formulare cu super-elipsă"
 valueKind RangeValueKind = "interval"
 valueKind RangeConcatenationValueKind = "concatenare de intervale"
 valueKind AsciiStringValueKind = "șir ASCII"
+valueKind IdentifierTypeValueKind = "tip identificator"
 valueKind MapValueKind = "hartă"
 valueKind SpecificationValueKind = "morfism de specificare"
 

@@ -26,6 +26,7 @@ data InterpretedValueKind
   | RangeValueKind
   | RangeConcatenationValueKind
   | AsciiStringValueKind
+  | IdentifierTypeValueKind
   | MapValueKind
   | SpecificationValueKind
   deriving (Eq, Show)

@@ -27,7 +27,8 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Numeric.Natural (Natural)
 import DatraLanguage.AST
-  ( Expression
+  ( Identifier (Identifier)
+  , Expression
       ( Addition
       , AsciiStringLiteral
       , AtlasMap
@@ -39,6 +40,7 @@ import DatraLanguage.AST
       , MapExpansion
       , MapSequence
       , MapSpecification
+      , IdentifierOperation
       , Multiplication
       , NaturalType
       , NaturalRange
@@ -211,6 +213,8 @@ astForm =
     (choice
       [ astSequence
       , astNaturalRangeExpression
+      , astIdentifierOperation AST.AssignmentOperator (Just ())
+      , astIdentifierOperation AST.IdentifierTypeOperator Nothing
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -222,6 +226,25 @@ astForm =
       , astBinary AST.AccessOperator MapAccess
       , astBinary AST.SpecificationOperator MapSpecification
       ])
+
+astIdentifierOperation
+  :: AST.Operator
+  -> Maybe ()
+  -> Parser Expression
+astIdentifierOperation operator assignmentMarker = do
+  _ <- astOperatorToken operator
+  name <- Identifier <$> astBareIdentifier
+  typeExpression <- astExpression
+  case assignmentMarker of
+    Nothing -> pure (IdentifierOperation name typeExpression Nothing)
+    Just () -> do
+      assignedExpression <- optional astExpression
+      pure
+        (case assignedExpression of
+          Nothing ->
+            IdentifierOperation name typeExpression (Just typeExpression)
+          Just assigned ->
+            IdentifierOperation name typeExpression (Just assigned))
 
 astSequence :: Parser Expression
 astSequence = do
@@ -333,7 +356,36 @@ mapSeparator =
     <|> void (some lineBreak)
 
 expression :: Parser Expression
-expression = makeExprParser rangeExpression mapOperatorTable
+expression = try identifierOperation <|> mapExpression
+
+mapExpression :: Parser Expression
+mapExpression = makeExprParser rangeExpression mapOperatorTable
+
+-- Identifier operations are the only place where an unprefixed identifier is
+-- an operand.  Parsing the name before entering the expression grammar makes
+-- it impossible for a computed expression (or a @$@ string) to occupy the
+-- leftmost position.
+identifierOperation :: Parser Expression
+identifierOperation = do
+  name <- Identifier <$> try bareIdentifier
+  choice
+    [ do
+        _ <- continuedOperator AST.AssignmentOperator
+        assignedExpression <- expression
+        pure
+          (IdentifierOperation
+            name
+            assignedExpression
+            (Just assignedExpression))
+    , do
+        _ <- continuedOperator AST.IdentifierTypeOperator
+        typeExpression <- mapExpression
+        assignmentExpression <-
+          optional
+            (continuedOperator AST.AssignmentOperator *> expression)
+        pure
+          (IdentifierOperation name typeExpression assignmentExpression)
+    ]
 
 -- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
 -- is permitted at this precedence level. Each explicit endpoint is a complete
@@ -539,6 +591,7 @@ postfixRangeEnd =
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
         , operatorToken AST.SpecificationOperator
+        , operatorToken AST.AssignmentOperator
         , symbol reverseSpecificationSymbol
         ])
 
@@ -559,6 +612,18 @@ identifierStringToken =
     *> ((:)
       <$> satisfy isLeadingCanonicalCharacter
       <*> many (satisfy isCanonicalCharacter))
+
+bareIdentifier :: Parser String
+bareIdentifier = lexeme bareIdentifierToken
+
+astBareIdentifier :: Parser String
+astBareIdentifier = astLexeme bareIdentifierToken
+
+bareIdentifierToken :: Parser String
+bareIdentifierToken =
+  (:)
+    <$> satisfy isLeadingCanonicalCharacter
+    <*> many (satisfy isCanonicalCharacter)
 
 -- | The standard quoted spelling. It is multiline by default and retains all
 -- non-comment contents exactly. A hash begins a line comment, while newline,

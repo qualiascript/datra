@@ -17,6 +17,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues)
+import Evaluation.Identifier (identifierDependencyNameFor)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
@@ -33,18 +34,75 @@ selectFederationMember
 selectFederationMember source target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
   | otherwise =
-      case selectAtomicFederationMember source target of
+      case selectIdentifierMember source target of
         Just decision -> decision
         Nothing ->
-          case interpretedAtlasMapFederation target of
-            SequentialAtlasMapFederation _ ->
-              selectSequentialMember source target
-            ConcatenatedAtlasMapFederation _ _ ->
-              selectConcatenatedMember source target
-            ExpansionAtlasMapFederation _ _ ->
-              selectExpansionMember source target
-            SingletonAtlasMapFederation _ -> DecisionUndecidable
-            PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+          case selectAtomicFederationMember source target of
+            Just decision -> decision
+            Nothing ->
+              case interpretedAtlasMapFederation target of
+                SequentialAtlasMapFederation _ ->
+                  selectSequentialMember source target
+                ConcatenatedAtlasMapFederation _ _ ->
+                  selectConcatenatedMember source target
+                ExpansionAtlasMapFederation _ _ ->
+                  selectExpansionMember source target
+                SingletonAtlasMapFederation _ -> DecisionUndecidable
+                PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+
+selectIdentifierMember
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (Decision EvaluatedAtlasMapFederationMember)
+selectIdentifierMember source target =
+  case (interpretedForm source, interpretedForm target) of
+    ( IdentifierTypeForm sourceIdentifier
+      , IdentifierTypeForm targetIdentifier
+      ) ->
+        let sourceUnderlying =
+              evaluatedIdentifierUnderlying sourceIdentifier
+            targetUnderlying =
+              evaluatedIdentifierUnderlying targetIdentifier
+            selectedCanonical = interpretedCanonicalResult sourceUnderlying
+            sourceName =
+              identifierDependencyNameFor
+                (evaluatedIdentifierDependency sourceIdentifier)
+                selectedCanonical
+            targetName =
+              identifierDependencyNameFor
+                (evaluatedIdentifierDependency targetIdentifier)
+                selectedCanonical
+        in Just
+          (if sourceName /= targetName
+            then DecisionRefuted
+            else
+              mapDecision
+                EvaluatedIdentifierTypeMember
+                (selectFederationMember sourceUnderlying targetUnderlying))
+    ( IdentifierNameProjectionForm sourceIdentifier
+      , IdentifierNameProjectionForm targetIdentifier
+      ) ->
+        let sourceUnderlying =
+              evaluatedIdentifierUnderlying sourceIdentifier
+            targetUnderlying =
+              evaluatedIdentifierUnderlying targetIdentifier
+            selectedCanonical = interpretedCanonicalResult sourceUnderlying
+            sourceName =
+              identifierDependencyNameFor
+                (evaluatedIdentifierDependency sourceIdentifier)
+                selectedCanonical
+            targetName =
+              identifierDependencyNameFor
+                (evaluatedIdentifierDependency targetIdentifier)
+                selectedCanonical
+        in Just
+          (if sourceName /= targetName
+            then DecisionRefuted
+            else
+              mapDecision
+                EvaluatedIdentifierTypeMember
+                (selectFederationMember sourceUnderlying targetUnderlying))
+    _ -> Nothing
 
 selectSequentialMember
   :: InterpretedValue

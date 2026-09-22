@@ -85,6 +85,11 @@ atomicFederationAccess value =
           , atomicFederationDecision =
               decideNaturalRangeAccess sourceRange
           }
+    PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
+      Nothing
+    PrimitiveAtlasMapFederation
+        (IdentifierNameProjectionAtlasMapFederation _) ->
+      Nothing
     SequentialAtlasMapFederation _ -> Nothing
     ExpansionAtlasMapFederation _ _ -> Nothing
     ConcatenatedAtlasMapFederation _ _ -> Nothing
@@ -153,6 +158,8 @@ federationIsCoalition federation =
   case federation of
     PrimitiveAtlasMapFederation
         (ValuedNaturalRangeAtlasMapFederation _) -> True
+    PrimitiveAtlasMapFederation
+        (IdentifierTypeAtlasMapFederation _) -> True
     _ -> False
 
 naturalRangeFederation

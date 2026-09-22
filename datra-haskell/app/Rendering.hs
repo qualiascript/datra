@@ -98,12 +98,54 @@ prettyCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyCanonicalResult members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
+    CanonicalIdentifierType name underlying ->
+      pretty name
+        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettyCanonicalResult underlying
+    CanonicalDependentIdentifierType key underlying ->
+      pretty key
+        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettyCanonicalResult underlying
+    CanonicalIdentifierNameProjection key underlying ->
+      parens
+        (pretty key
+          <+> prettySourceSymbol IdentifierTypeOperator
+          <+> prettyCanonicalResult underlying)
+        <+> prettySourceSymbol AccessOperator
+        <+> "0"
+    CanonicalAssignment name typeResult assignedResult ->
+      prettyAssignment name typeResult assignedResult
     CanonicalMap cardinality components ->
       prettyMap cardinality components
     CanonicalSpecification source target ->
-      prettyCanonicalResult source
-        <+> prettySourceSymbol SpecificationOperator
-        <+> prettyCanonicalResult target
+      case (source, target) of
+        ( CanonicalIdentifierType sourceName assignedResult
+          , CanonicalIdentifierType targetName typeResult
+          )
+          | sourceName == targetName ->
+              prettyAssignment sourceName typeResult assignedResult
+        _ ->
+          prettyCanonicalResult source
+            <+> prettySourceSymbol SpecificationOperator
+            <+> prettyCanonicalResult target
+
+prettyAssignment
+  :: String
+  -> CanonicalResult
+  -> CanonicalResult
+  -> Doc annotation
+prettyAssignment name typeResult assignedResult =
+  if typeResult == assignedResult
+    then
+      pretty name
+        <+> prettySourceSymbol AssignmentOperator
+        <+> prettyCanonicalResult assignedResult
+    else
+      pretty name
+        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettyCanonicalResult typeResult
+        <+> prettySourceSymbol AssignmentOperator
+        <+> prettyCanonicalResult assignedResult
 
 prettyNaturalRange
   :: Natural

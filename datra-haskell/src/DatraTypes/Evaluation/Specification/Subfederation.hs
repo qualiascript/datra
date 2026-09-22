@@ -8,6 +8,7 @@ import AtlasMapFederationExpression
   , AtlasMapFederationExpression (..)
   )
 import Evaluation.Federation (decidePrimitiveSubfederation)
+import Evaluation.Identifier (identifierDependenciesCompatible)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
@@ -32,6 +33,30 @@ decideValueSubfederation source target
       case ( interpretedAtlasMapFederation source
            , interpretedAtlasMapFederation target
            ) of
+        ( PrimitiveAtlasMapFederation
+            (IdentifierTypeAtlasMapFederation sourceIdentifier)
+          , PrimitiveAtlasMapFederation
+            (IdentifierTypeAtlasMapFederation targetIdentifier)
+          )
+          | identifierDependenciesCompatible
+              (evaluatedIdentifierDependency sourceIdentifier)
+              (evaluatedIdentifierDependency targetIdentifier) ->
+                decideValueSubfederation
+                  (evaluatedIdentifierUnderlying sourceIdentifier)
+                  (evaluatedIdentifierUnderlying targetIdentifier)
+          | otherwise -> DecisionRefuted
+        ( PrimitiveAtlasMapFederation
+            (IdentifierNameProjectionAtlasMapFederation sourceIdentifier)
+          , PrimitiveAtlasMapFederation
+            (IdentifierNameProjectionAtlasMapFederation targetIdentifier)
+          )
+          | identifierDependenciesCompatible
+              (evaluatedIdentifierDependency sourceIdentifier)
+              (evaluatedIdentifierDependency targetIdentifier) ->
+                decideValueSubfederation
+                  (evaluatedIdentifierUnderlying sourceIdentifier)
+                  (evaluatedIdentifierUnderlying targetIdentifier)
+          | otherwise -> DecisionRefuted
         ( PrimitiveAtlasMapFederation sourcePrimitive
           , PrimitiveAtlasMapFederation targetPrimitive
           ) ->

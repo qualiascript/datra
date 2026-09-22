@@ -24,7 +24,11 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import DatraLanguage.AST (Expression (..), normalizeExpression)
+import DatraLanguage.AST
+  ( Expression (..)
+  , Identifier (Identifier)
+  , normalizeExpression
+  )
 import DatraTypes
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -96,6 +100,13 @@ interpretNormalizedExpression expressionValue =
       interpretBinary accessValues mapOperand insertionOperand
     MapSpecification sourceOperand targetOperand ->
       interpretBinary specifyValues sourceOperand targetOperand
+    IdentifierOperation (Identifier name) typeExpression assignment -> do
+      typeValue <- interpretExpressionReason typeExpression
+      case assignment of
+        Nothing -> Right (simpleIdentifierTypeValue name typeValue)
+        Just assignedExpression -> do
+          assignedValue <- interpretExpressionReason assignedExpression
+          assignIdentifierValues name assignedValue typeValue
 
 interpretBinary
   :: ( InterpretedValue

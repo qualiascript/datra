@@ -132,6 +132,7 @@ valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
 valueKind AsciiStringValueKind = "ASCII string"
+valueKind IdentifierTypeValueKind = "identifier type"
 valueKind MapValueKind = "map"
 valueKind SpecificationValueKind = "specification morphism"
 
