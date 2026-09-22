@@ -92,7 +92,7 @@ accessSource value =
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
     SpecificationForm _ -> ordinarySource []
-    AssignmentForm _ _ -> ordinarySource []
+    AssignmentForm _ -> ordinarySource []
     IdentifierTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
     ExplicitForm explicitValue ->

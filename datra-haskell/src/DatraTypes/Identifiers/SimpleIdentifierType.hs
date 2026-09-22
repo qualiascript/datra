@@ -11,16 +11,14 @@ import IdentifierType (IdentifierType, identifierType)
 
 data SimpleIdentifierType federationScope index = SimpleIdentifierType
   String
-  (IdentifierType federationScope index)
+  (AtlasMapFederation federationScope index)
 
 simpleIdentifierType
   :: String
   -> AtlasMapFederation federationScope index
   -> SimpleIdentifierType federationScope index
 simpleIdentifierType identifierString federation =
-  SimpleIdentifierType
-    identifierString
-    (identifierType federation (const identifierString))
+  SimpleIdentifierType identifierString federation
 
 simpleIdentifierTypeString
   :: SimpleIdentifierType federationScope index
@@ -31,4 +29,6 @@ simpleIdentifierTypeString (SimpleIdentifierType identifierString _) =
 simpleIdentifierTypeAsIdentifierType
   :: SimpleIdentifierType federationScope index
   -> IdentifierType federationScope index
-simpleIdentifierTypeAsIdentifierType (SimpleIdentifierType _ value) = value
+simpleIdentifierTypeAsIdentifierType
+    (SimpleIdentifierType identifierString federation) =
+  identifierType federation (const identifierString)

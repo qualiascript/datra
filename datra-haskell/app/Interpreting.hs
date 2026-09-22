@@ -112,7 +112,7 @@ interpretNormalizedExpression expressionValue =
         Just givenValueExpression -> do
           givenValue <- interpretExpressionReason givenValueExpression
           case assignIdentifierValues
-              identifierString givenValue typeAnnotation of
+              identifierString typeAnnotation givenValue of
             Left
                 (AtlasMapFederationOperationRefuted
                   AtlasMapFederationSpecificationHasNoMatchingMember) ->
@@ -157,26 +157,24 @@ identifierAnnotationMismatch
   :: InterpretedValue
   -> InterpretedValue
   -> Maybe (String, String)
-identifierAnnotationMismatch source target = do
-  (givenString, givenResult) <-
-    identifierGivenValue (interpretedCanonicalResult source)
-  (expectedString, expectedResult) <-
-    identifierExpectedValue (interpretedCanonicalResult target)
-  if givenString == expectedString
-    then
-      Just
-        ( renderCanonicalResult expectedResult
-        , renderCanonicalResult givenResult
-        )
-    else Nothing
+identifierAnnotationMismatch =
+  identifierValueMismatch identifierGivenValue
 
 identifierIntermediateAnnotationMismatch
   :: InterpretedValue
   -> InterpretedValue
   -> Maybe (String, String)
-identifierIntermediateAnnotationMismatch source target = do
+identifierIntermediateAnnotationMismatch =
+  identifierValueMismatch identifierIntermediateValue
+
+identifierValueMismatch
+  :: (CanonicalResult -> Maybe (String, CanonicalResult))
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierValueMismatch givenValueFor source target = do
   (givenString, givenResult) <-
-    identifierIntermediateValue (interpretedCanonicalResult source)
+    givenValueFor (interpretedCanonicalResult source)
   (expectedString, expectedResult) <-
     identifierExpectedValue (interpretedCanonicalResult target)
   if givenString == expectedString

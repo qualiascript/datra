@@ -56,7 +56,7 @@ accessValues mapValue insertionValue =
   case interpretedForm mapValue of
     SpecificationForm specification ->
       accessSpecification accessValues specification insertionValue
-    AssignmentForm _ specification ->
+    AssignmentForm specification ->
       accessSpecification accessValues specification insertionValue
     IdentifierTypeForm identifier ->
       accessIdentifierType mapValue identifier insertionValue

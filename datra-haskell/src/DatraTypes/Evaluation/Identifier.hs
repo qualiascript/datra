@@ -3,8 +3,6 @@ module Evaluation.Identifier
   ( identifierTypeValue
   , simpleIdentifierTypeValue
   , identifierStringProjectionValue
-  , identifierDependencyStringFor
-  , identifierDependenciesCompatible
   ) where
 
 import AtlasMapFederationExpression
@@ -22,7 +20,7 @@ identifierTypeValue
   -> InterpretedValue
   -> InterpretedValue
 identifierTypeValue familyKey identifierStringFor =
-  makeIdentifierType
+  makeIdentifierTypeValue
     (DependentIdentifierDependency familyKey identifierStringFor)
 
 simpleIdentifierTypeValue
@@ -30,7 +28,7 @@ simpleIdentifierTypeValue
   -> InterpretedValue
   -> InterpretedValue
 simpleIdentifierTypeValue identifierString =
-  makeIdentifierType (SimpleIdentifierDependency identifierString)
+  makeIdentifierTypeValue (SimpleIdentifierDependency identifierString)
 
 identifierStringProjectionValue
   :: EvaluatedIdentifierType
@@ -39,53 +37,42 @@ identifierStringProjectionValue evaluated = value
   where
     dependency = evaluatedIdentifierDependency evaluated
     underlying = evaluatedIdentifierUnderlying evaluated
+    underlyingResult = interpretedCanonicalResult underlying
+    isTotal = interpretedValueHasTotalMap underlying
     representativeString =
-      case dependency of
-        SimpleIdentifierDependency identifierString -> identifierString
-        DependentIdentifierDependency familyKey identifierStringFor
-          | interpretedValueHasTotalMap underlying ->
-              identifierStringFor (interpretedCanonicalResult underlying)
-          | otherwise -> familyKey
+      identifierDependencyRepresentativeString
+        dependency
+        (if isTotal then Just underlyingResult else Nothing)
     representative = makeAsciiString representativeString
     semantics =
       IdentifierStringProjectionSemantics
         dependency
         (interpretedSemantics underlying)
-        (interpretedValueHasTotalMap underlying)
+        isTotal
     resultMap =
       (interpretedMap representative)
         { interpretedMapComponents = [semantics] }
-    federation
-      | interpretedValueHasTotalMap underlying =
-          SingletonAtlasMapFederation resultMap
-      | otherwise =
-          PrimitiveAtlasMapFederation
-            (IdentifierStringProjectionAtlasMapFederation evaluated)
     value =
-      makeInterpretedValue
+      makeEvaluatedIdentifierValue
         (IdentifierStringProjectionForm evaluated)
-        NoInsertion
+        (IdentifierStringProjectionAtlasMapFederation evaluated)
+        underlying
         resultMap
-        federation
-        (if interpretedValueHasTotalMap underlying
-          then TotalInterpretedMap
-          else NonTotalInterpretedMap)
         semantics
 
-makeIdentifierType
+makeIdentifierTypeValue
   :: IdentifierDependency
   -> InterpretedValue
   -> InterpretedValue
-makeIdentifierType dependency underlying = value
+makeIdentifierTypeValue dependency underlying = value
   where
     evaluated = EvaluatedIdentifierType dependency underlying
+    underlyingResult = interpretedCanonicalResult underlying
+    isTotal = interpretedValueHasTotalMap underlying
     representativeString =
-      case dependency of
-        SimpleIdentifierDependency identifierString -> identifierString
-        DependentIdentifierDependency familyKey identifierStringFor
-          | interpretedValueHasTotalMap underlying ->
-              identifierStringFor (interpretedCanonicalResult underlying)
-          | otherwise -> familyKey
+      identifierDependencyRepresentativeString
+        dependency
+        (if isTotal then Just underlyingResult else Nothing)
     identifierStringValue = makeAsciiString representativeString
     finalValues =
       appendOrdinalOrderedValues
@@ -95,7 +82,7 @@ makeIdentifierType dependency underlying = value
       IdentifierTypeSemantics
         dependency
         (interpretedSemantics underlying)
-        (interpretedValueHasTotalMap underlying)
+        isTotal
     valueMap =
       InterpretedMap
         2
@@ -103,45 +90,35 @@ makeIdentifierType dependency underlying = value
         [ interpretedSemantics identifierStringValue
         , interpretedSemantics underlying
         ]
-    federation
-      | interpretedValueHasTotalMap underlying =
-          SingletonAtlasMapFederation valueMap
-      | otherwise =
-          PrimitiveAtlasMapFederation
-            (IdentifierTypeAtlasMapFederation evaluated)
     value =
-      makeInterpretedValue
+      makeEvaluatedIdentifierValue
         (IdentifierTypeForm evaluated)
-        NoInsertion
+        (IdentifierTypeAtlasMapFederation evaluated)
+        underlying
         valueMap
-        federation
-        (if interpretedValueHasTotalMap underlying
-          then TotalInterpretedMap
-          else NonTotalInterpretedMap)
         semantics
 
-identifierDependencyStringFor
-  :: IdentifierDependency
-  -> CanonicalResult
-  -> String
-identifierDependencyStringFor dependency value =
-  case dependency of
-    SimpleIdentifierDependency identifierString -> identifierString
-    DependentIdentifierDependency _ identifierStringFor ->
-      identifierStringFor value
-
--- | Constant dependencies agree by identifier string. Dependent dependencies are
--- comparable when they carry the same stable family key.
-identifierDependenciesCompatible
-  :: IdentifierDependency
-  -> IdentifierDependency
-  -> Bool
-identifierDependenciesCompatible left right =
-  case (left, right) of
-    (SimpleIdentifierDependency leftString,
-      SimpleIdentifierDependency rightString) ->
-        leftString == rightString
-    (DependentIdentifierDependency leftKey _,
-      DependentIdentifierDependency rightKey _) ->
-        leftKey == rightKey
-    _ -> False
+-- | Identifier types and their string projections preserve the totality of
+-- the underlying value. This is also the exact boundary between their
+-- singleton and primitive federation representations.
+makeEvaluatedIdentifierValue
+  :: ValueForm
+  -> InterpretedAtlasMapFederationPrimitive
+  -> InterpretedValue
+  -> InterpretedMap
+  -> ValueSemantics
+  -> InterpretedValue
+makeEvaluatedIdentifierValue form primitive underlying valueMap semantics =
+  makeInterpretedValue
+    form
+    NoInsertion
+    valueMap
+    (if isTotal
+      then SingletonAtlasMapFederation valueMap
+      else PrimitiveAtlasMapFederation primitive)
+    (if isTotal
+      then TotalInterpretedMap
+      else NonTotalInterpretedMap)
+    semantics
+  where
+    isTotal = interpretedValueHasTotalMap underlying

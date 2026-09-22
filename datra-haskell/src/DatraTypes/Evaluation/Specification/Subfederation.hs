@@ -8,7 +8,6 @@ import AtlasMapFederationExpression
   , AtlasMapFederationExpression (..)
   )
 import Evaluation.Federation (decidePrimitiveSubfederation)
-import Evaluation.Identifier (identifierDependenciesCompatible)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
@@ -37,26 +36,12 @@ decideValueSubfederation source target
             (IdentifierTypeAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
             (IdentifierTypeAtlasMapFederation targetIdentifier)
-          )
-          | identifierDependenciesCompatible
-              (evaluatedIdentifierDependency sourceIdentifier)
-              (evaluatedIdentifierDependency targetIdentifier) ->
-                decideValueSubfederation
-                  (evaluatedIdentifierUnderlying sourceIdentifier)
-                  (evaluatedIdentifierUnderlying targetIdentifier)
-          | otherwise -> DecisionRefuted
+          ) -> decideIdentifierSubfederation sourceIdentifier targetIdentifier
         ( PrimitiveAtlasMapFederation
             (IdentifierStringProjectionAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
             (IdentifierStringProjectionAtlasMapFederation targetIdentifier)
-          )
-          | identifierDependenciesCompatible
-              (evaluatedIdentifierDependency sourceIdentifier)
-              (evaluatedIdentifierDependency targetIdentifier) ->
-                decideValueSubfederation
-                  (evaluatedIdentifierUnderlying sourceIdentifier)
-                  (evaluatedIdentifierUnderlying targetIdentifier)
-          | otherwise -> DecisionRefuted
+          ) -> decideIdentifierSubfederation sourceIdentifier targetIdentifier
         ( PrimitiveAtlasMapFederation sourcePrimitive
           , PrimitiveAtlasMapFederation targetPrimitive
           ) ->
@@ -76,6 +61,19 @@ decideValueSubfederation source target
               (Just (concatenationOperands source))
               (Just (concatenationOperands target))
         _ -> DecisionUndecidable
+
+decideIdentifierSubfederation
+  :: EvaluatedIdentifierType
+  -> EvaluatedIdentifierType
+  -> Decision ()
+decideIdentifierSubfederation source target
+  | identifierDependenciesCompatible
+      (evaluatedIdentifierDependency source)
+      (evaluatedIdentifierDependency target) =
+        decideValueSubfederation
+          (evaluatedIdentifierUnderlying source)
+          (evaluatedIdentifierUnderlying target)
+  | otherwise = DecisionRefuted
 
 decideExpansionSubfederation
   :: InterpretedValue

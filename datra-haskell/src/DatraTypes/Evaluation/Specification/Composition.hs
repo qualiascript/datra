@@ -17,7 +17,6 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues)
-import Evaluation.Identifier (identifierDependencyStringFor)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
@@ -60,7 +59,7 @@ selectIdentifierMember source target =
       selectIdentifierMember
         source
         (evaluatedSpecificationTarget specification)
-    AssignmentForm _ specification ->
+    AssignmentForm specification ->
       selectIdentifierMember
         source
         (evaluatedSpecificationTarget specification)
@@ -75,50 +74,36 @@ selectDirectIdentifierMember source target =
     ( IdentifierTypeForm sourceIdentifier
       , IdentifierTypeForm targetIdentifier
       ) ->
-        let sourceUnderlying =
-              evaluatedIdentifierUnderlying sourceIdentifier
-            targetUnderlying =
-              evaluatedIdentifierUnderlying targetIdentifier
-            selectedCanonical = interpretedCanonicalResult sourceUnderlying
-            sourceString =
-              identifierDependencyStringFor
-                (evaluatedIdentifierDependency sourceIdentifier)
-                selectedCanonical
-            targetString =
-              identifierDependencyStringFor
-                (evaluatedIdentifierDependency targetIdentifier)
-                selectedCanonical
-        in Just
-          (if sourceString /= targetString
-            then DecisionRefuted
-            else
-              mapDecision
-                EvaluatedIdentifierTypeMember
-                (selectFederationMember sourceUnderlying targetUnderlying))
+        Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
     ( IdentifierStringProjectionForm sourceIdentifier
       , IdentifierStringProjectionForm targetIdentifier
       ) ->
-        let sourceUnderlying =
-              evaluatedIdentifierUnderlying sourceIdentifier
-            targetUnderlying =
-              evaluatedIdentifierUnderlying targetIdentifier
-            selectedCanonical = interpretedCanonicalResult sourceUnderlying
-            sourceString =
-              identifierDependencyStringFor
-                (evaluatedIdentifierDependency sourceIdentifier)
-                selectedCanonical
-            targetString =
-              identifierDependencyStringFor
-                (evaluatedIdentifierDependency targetIdentifier)
-                selectedCanonical
-        in Just
-          (if sourceString /= targetString
-            then DecisionRefuted
-            else
-              mapDecision
-                EvaluatedIdentifierTypeMember
-                (selectFederationMember sourceUnderlying targetUnderlying))
+        Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
     _ -> Nothing
+
+selectMatchingIdentifierMember
+  :: EvaluatedIdentifierType
+  -> EvaluatedIdentifierType
+  -> Decision EvaluatedAtlasMapFederationMember
+selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
+  if sourceString /= targetString
+    then DecisionRefuted
+    else
+      mapDecision
+        EvaluatedIdentifierTypeMember
+        (selectFederationMember sourceUnderlying targetUnderlying)
+  where
+    sourceUnderlying = evaluatedIdentifierUnderlying sourceIdentifier
+    targetUnderlying = evaluatedIdentifierUnderlying targetIdentifier
+    selectedCanonical = interpretedCanonicalResult sourceUnderlying
+    sourceString =
+      identifierDependencyStringFor
+        (evaluatedIdentifierDependency sourceIdentifier)
+        selectedCanonical
+    targetString =
+      identifierDependencyStringFor
+        (evaluatedIdentifierDependency targetIdentifier)
+        selectedCanonical
 
 selectSequentialMember
   :: InterpretedValue

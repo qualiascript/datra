@@ -51,7 +51,7 @@ specifyValuesWithoutIdentity source target =
       case interpretedForm source of
         SpecificationForm specification ->
           widenSpecification source specification target
-        AssignmentForm _ specification ->
+        AssignmentForm specification ->
           widenSpecification source specification target
         _ -> specifyTotalAtlasMap source target
 
@@ -92,7 +92,7 @@ assignIdentifierValues
   -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-assignIdentifierValues identifierString givenValue typeAnnotation = do
+assignIdentifierValues identifierString typeAnnotation givenValue = do
   let source = simpleIdentifierTypeValue identifierString givenValue
       target = simpleIdentifierTypeValue identifierString typeAnnotation
   specified <- specifyValuesWithoutIdentity source target
@@ -100,7 +100,7 @@ assignIdentifierValues identifierString givenValue typeAnnotation = do
     SpecificationForm specification ->
       Right
         (makeInterpretedValue
-          (AssignmentForm identifierString specification)
+          (AssignmentForm specification)
           NoInsertion
           (interpretedMap specified)
           (interpretedAtlasMapFederation specified)

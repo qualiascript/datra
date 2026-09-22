@@ -10,6 +10,9 @@ module Evaluation.Value
   , EvaluatedNaturalRange (..)
   , EvaluatedValuedNaturalRange (..)
   , IdentifierDependency (..)
+  , identifierDependencyStringFor
+  , identifierDependencyRepresentativeString
+  , identifierDependenciesCompatible
   , EvaluatedIdentifierType (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
@@ -126,6 +129,47 @@ data IdentifierDependency
       , dependentIdentifierStringFor :: CanonicalResult -> String
       }
 
+identifierDependencyStringFor
+  :: IdentifierDependency
+  -> CanonicalResult
+  -> String
+identifierDependencyStringFor dependency value =
+  case dependency of
+    SimpleIdentifierDependency identifierString -> identifierString
+    DependentIdentifierDependency _ identifierStringFor ->
+      identifierStringFor value
+
+-- | Choose the string that can represent an identifier before a particular
+-- federation member is known. A total underlying value supplies that member;
+-- otherwise dependent identifiers retain their stable family key.
+identifierDependencyRepresentativeString
+  :: IdentifierDependency
+  -> Maybe CanonicalResult
+  -> String
+identifierDependencyRepresentativeString dependency selectedValue =
+  case dependency of
+    SimpleIdentifierDependency identifierString -> identifierString
+    DependentIdentifierDependency familyKey identifierStringFor ->
+      case selectedValue of
+        Just value -> identifierStringFor value
+        Nothing -> familyKey
+
+-- | Constant dependencies agree by identifier string. Dependent dependencies
+-- are comparable when they carry the same stable family key.
+identifierDependenciesCompatible
+  :: IdentifierDependency
+  -> IdentifierDependency
+  -> Bool
+identifierDependenciesCompatible left right =
+  case (left, right) of
+    (SimpleIdentifierDependency leftString,
+      SimpleIdentifierDependency rightString) ->
+        leftString == rightString
+    (DependentIdentifierDependency leftKey _,
+      DependentIdentifierDependency rightKey _) ->
+        leftKey == rightKey
+    _ -> False
+
 data EvaluatedIdentifierType = EvaluatedIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
@@ -173,10 +217,7 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
-  | AssignmentForm
-      { assignmentFormIdentifierString :: String
-      , assignmentFormSpecification :: EvaluatedSpecification
-      }
+  | AssignmentForm EvaluatedSpecification
   | IdentifierTypeForm EvaluatedIdentifierType
   | IdentifierStringProjectionForm EvaluatedIdentifierType
   | SequentialMapForm
@@ -354,15 +395,12 @@ canonicalResult semantics =
       in if isTotal
         then
           CanonicalAsciiString
-            (case dependency of
-              SimpleIdentifierDependency identifierString -> identifierString
-              DependentIdentifierDependency _ identifierStringFor ->
-                identifierStringFor underlyingResult)
+            (identifierDependencyRepresentativeString
+              dependency (Just underlyingResult))
         else
           CanonicalIdentifierStringProjection
-            (case dependency of
-              SimpleIdentifierDependency identifierString -> identifierString
-              DependentIdentifierDependency familyKey _ -> familyKey)
+            (identifierDependencyRepresentativeString
+              dependency Nothing)
             underlyingResult
     AssignmentSemantics identifierString typeAnnotation givenValue ->
       CanonicalAssignment
@@ -386,7 +424,7 @@ interpretedValueKind value =
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
-    AssignmentForm _ _ -> SpecificationValueKind
+    AssignmentForm _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind
     IdentifierStringProjectionForm _ -> IdentifierTypeValueKind
     SequentialMapForm -> MapValueKind
