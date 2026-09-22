@@ -44,6 +44,9 @@ decideFederationAccess mapValue insertionValue =
     (Just sourceRange, Just selectionRange) ->
       Right (NaturalRangeFederationAccess sourceRange selectionRange)
     (Nothing, Just selectionRange)
+      | federationHasKnownEmptyMap
+          (interpretedAtlasMapFederation mapValue) ->
+          emptyMapAccessCounterexample
       | atlasMapFederationExpressionIsSingleton
           (interpretedAtlasMapFederation mapValue) ->
           Right (NaturalRangeSelectionAccess selectionRange)
@@ -53,17 +56,36 @@ decideFederationAccess mapValue insertionValue =
       insertion <- requireInsertion insertionValue
       if someSuperEllipsisInsertionOrderType insertion == finiteOrdinal 0
         then Right EmptyFederationAccess
-        else case naturalRangeFederation mapValue of
-          Just _ ->
-            Left
-              (AtlasMapFederationOperationRefuted
-                AtlasMapFederationAccessHasEmptyCounterexample)
-          Nothing
-            | atlasMapFederationExpressionIsSingleton
-                (interpretedAtlasMapFederation mapValue) ->
-                Right (SingletonFederationAccess insertion)
-            | otherwise ->
-                undecidableFederationOperation AtlasMapFederationAccess
+        else decideNonemptyInsertionAccess
+          (interpretedAtlasMapFederation mapValue)
+          insertion
+
+decideNonemptyInsertionAccess
+  :: InterpretedAtlasMapFederation
+  -> SomeSuperEllipsisInsertion
+  -> Either InterpretingError FederationAccess
+decideNonemptyInsertionAccess federation insertion
+  | federationHasKnownEmptyMap federation = emptyMapAccessCounterexample
+  | atlasMapFederationExpressionIsSingleton federation =
+      Right (SingletonFederationAccess insertion)
+  | otherwise = undecidableFederationOperation AtlasMapFederationAccess
+
+emptyMapAccessCounterexample :: Either InterpretingError result
+emptyMapAccessCounterexample =
+  Left
+    (AtlasMapFederationOperationRefuted
+      AtlasMapFederationAccessHasEmptyCounterexample)
+
+-- NaturalRange contains the empty map. Concatenating federations that each
+-- contain it also contains the empty map, because concatenating their empty
+-- members is empty. This is enough to refute every nonempty access selection.
+federationHasKnownEmptyMap :: InterpretedAtlasMapFederation -> Bool
+federationHasKnownEmptyMap federation =
+  case federation of
+    PrimitiveAtlasMapFederation (NaturalRangeAtlasMapFederation _) -> True
+    ConcatenatedAtlasMapFederation left right ->
+      federationHasKnownEmptyMap left && federationHasKnownEmptyMap right
+    _ -> False
 
 naturalRangeFederation
   :: InterpretedValue

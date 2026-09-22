@@ -888,6 +888,29 @@ testAccess = do
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationAccessHasEmptyCounterexample) -> True
       _ -> False)
+  let concatenatedNaturalRanges =
+        (<.>) (NaturalRange 1 10) (NaturalRange 20 30)
+  assert "nonempty access into concatenated NaturalRanges is refuted explicitly"
+    (case interpretExpressionReason
+        ((<@>) concatenatedNaturalRanges (natural 5)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationAccessHasEmptyCounterexample) -> True
+      _ -> False)
+  assert "NaturalRange access into concatenated NaturalRanges is refuted explicitly"
+    (case interpretExpressionReason
+        ((<@>) concatenatedNaturalRanges (NaturalRangeUpwards 0)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationAccessHasEmptyCounterexample) -> True
+      _ -> False)
+  expectValue
+      "empty access into concatenated NaturalRanges still succeeds"
+      ((<@>)
+        concatenatedNaturalRanges
+        ((<..>) (natural 0) (natural 0))) $ \value ->
+    assert "empty selection succeeds on every concatenated federation member"
+      (renderInterpretedValue value == "[]")
   assert "structured federation access can remain undecidable"
     (case interpretExpressionReason
         ((<@>)
