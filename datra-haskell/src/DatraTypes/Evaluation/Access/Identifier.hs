@@ -14,7 +14,7 @@ import Evaluation.Access.Federation (requireInsertion)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError (AccessRejected))
 import Evaluation.Identifier
-  ( identifierNameProjectionValue
+  ( identifierStringProjectionValue
   )
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Value
@@ -50,15 +50,16 @@ accessIdentifierType original identifier insertionValue = do
   where
     underlying = evaluatedIdentifierUnderlying identifier
     dependency = evaluatedIdentifierDependency identifier
-    nameValue =
+    identifierStringValue =
       case dependency of
-        SimpleIdentifierDependency name -> makeAsciiString name
+        SimpleIdentifierDependency identifierString ->
+          makeAsciiString identifierString
         DependentIdentifierDependency _ _ ->
-          identifierNameProjectionValue identifier
+          identifierStringProjectionValue identifier
 
     accessPositions [] = Right (makeAtlasMap 0 [])
     accessPositions [position]
-      | position == finiteOrdinal 0 = Right nameValue
+      | position == finiteOrdinal 0 = Right identifierStringValue
       | position == finiteOrdinal 1 = Right underlying
     accessPositions positions
       | positions == [finiteOrdinal 0, finiteOrdinal 1] = Right original
@@ -69,7 +70,7 @@ accessIdentifierType original identifier insertionValue = do
               (map valueAt positions))
 
     valueAt position
-      | position == finiteOrdinal 0 = nameValue
+      | position == finiteOrdinal 0 = identifierStringValue
       | otherwise = underlying
 
 selectedPosition

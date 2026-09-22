@@ -3,7 +3,7 @@
 -- | Dependent identifier types over an existing Atlas-map federation.
 --
 -- Each federation index denotes the two-position map whose first page is the
--- identifier string followed by the selected value.  The name function is
+-- identifier string followed by the selected value. The string function is
 -- intentionally part of the type value: access and specification must retain
 -- the dependency instead of treating the pair as an ordinary map product.
 module IdentifierType
@@ -11,7 +11,7 @@ module IdentifierType
   , IdentifierTypeMember (..)
   , identifierType
   , identifierTypeFederation
-  , identifierTypeNameAt
+  , identifierTypeStringAt
   , identifierTypeMemberAt
   ) where
 
@@ -23,7 +23,7 @@ data IdentifierType federationScope index = IdentifierType
   (index -> String)
 
 data IdentifierTypeMember index = IdentifierTypeMember
-  { identifierMemberName :: String
+  { identifierMemberString :: String
   , identifierMemberValue :: index
   }
 
@@ -38,15 +38,15 @@ identifierTypeFederation
   -> AtlasMapFederation federationScope index
 identifierTypeFederation (IdentifierType federation _) = federation
 
-identifierTypeNameAt
+identifierTypeStringAt
   :: IdentifierType federationScope index
   -> index
   -> String
-identifierTypeNameAt (IdentifierType _ nameAt) = nameAt
+identifierTypeStringAt (IdentifierType _ stringAt) = stringAt
 
 identifierTypeMemberAt
   :: IdentifierType federationScope index
   -> index
   -> IdentifierTypeMember index
 identifierTypeMemberAt value index =
-  IdentifierTypeMember (identifierTypeNameAt value index) index
+  IdentifierTypeMember (identifierTypeStringAt value index) index

@@ -5,7 +5,7 @@ module DatraParsingTests (main) where
 import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
-  , Identifier (Identifier)
+  , IdentifierString (IdentifierString)
   , normalizeExpression
   , renderExpression
   )
@@ -175,7 +175,7 @@ regressionTests = do
     "(a : Nat := 5) ~> (a : Nat)"
     "(<~> (:= a Nat 5) (: a Nat))"
   assertAstOutput
-    "reverse specification between different identifier names"
+    "reverse specification between different identifier strings"
     "(a : Nat) <~ (b := 10)"
     "(<~> (:= b 10) (: a Nat))"
   assertAstOutput
@@ -226,7 +226,7 @@ regressionTests = do
     "x : Nat @ 0"
     "(: x (<@> Nat 0))"
   assertAstOutput
-    "identifier names share canonical continuation characters"
+    "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
     "(: A_0'z Nat)"
   assertRejected
@@ -683,13 +683,13 @@ genExpression =
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
     , IdentifierOperation
-        <$> genIdentifier
+        <$> genIdentifierString
         <*> genExpression
         <*> Gen.maybe genExpression
     ]
 
-genIdentifier :: H.Gen Identifier
-genIdentifier = do
+genIdentifierString :: H.Gen IdentifierString
+genIdentifierString = do
   first <- Gen.element (['_'] <> ['a' .. 'z'] <> ['A' .. 'Z'])
   rest <-
     Gen.list
@@ -699,7 +699,7 @@ genIdentifier = do
           <> ['a' .. 'z']
           <> ['A' .. 'Z']
           <> ['0' .. '9']))
-  pure (Identifier (first : rest))
+  pure (IdentifierString (first : rest))
 
 joinWith :: String -> [String] -> String
 joinWith _ [] = ""

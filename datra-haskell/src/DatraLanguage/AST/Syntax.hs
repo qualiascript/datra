@@ -26,7 +26,10 @@ module DatraLanguage.AST.Syntax
   , (<~>)
   ) where
 
-import DatraLanguage.AST (Expression (..), Identifier (Identifier))
+import DatraLanguage.AST
+  ( Expression (..)
+  , IdentifierString (IdentifierString)
+  )
 import Numeric.Natural (Natural)
 import Prelude hiding ((+), (*), (^))
 
@@ -34,15 +37,18 @@ natural :: Natural -> Expression
 natural = EllipsisNatural
 
 identifierType :: String -> Expression -> Expression
-identifierType name typeExpression =
-  IdentifierOperation (Identifier name) typeExpression Nothing
+identifierType identifierString typeAnnotation =
+  IdentifierOperation
+    (IdentifierString identifierString)
+    typeAnnotation
+    Nothing
 
 assignment :: String -> Expression -> Expression -> Expression
-assignment name typeExpression assignedExpression =
+assignment identifierString typeAnnotation givenValue =
   IdentifierOperation
-    (Identifier name)
-    typeExpression
-    (Just assignedExpression)
+    (IdentifierString identifierString)
+    typeAnnotation
+    (Just givenValue)
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral

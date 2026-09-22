@@ -2,7 +2,10 @@
 
 module DatraInterpretingTests (main) where
 
-import DatraLanguage.AST (Expression (..), Identifier (Identifier))
+import DatraLanguage.AST
+  ( Expression (..)
+  , IdentifierString (IdentifierString)
+  )
 import DatraLanguage.AST.Syntax
   ( natural
   , (...)
@@ -1431,13 +1434,16 @@ testSpecification = do
 
 testIdentifiers :: IO ()
 testIdentifiers = do
-  let identifier name typeExpression =
-        IdentifierOperation (Identifier name) typeExpression Nothing
-      assignment name typeExpression assignedExpression =
+  let identifier identifierString typeAnnotation =
         IdentifierOperation
-          (Identifier name)
-          typeExpression
-          (Just assignedExpression)
+          (IdentifierString identifierString)
+          typeAnnotation
+          Nothing
+      assignment identifierString typeAnnotation givenValue =
+        IdentifierOperation
+          (IdentifierString identifierString)
+          typeAnnotation
+          (Just givenValue)
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
   expectValue "simple identifier type" xNatural $ \value ->
@@ -1466,7 +1472,7 @@ testIdentifiers = do
     assert "identifier-to-assignment identity canonicalizes"
       (renderInterpretedValue value == "x := 5")
   expectValue
-      "identifier name access"
+      "identifier string access"
       ((<@>) xNatural (natural 0)) $ \value ->
     assert "position zero projects the identifier string"
       ( interpretedValueKind value == AsciiStringValueKind
@@ -1520,9 +1526,9 @@ testIdentifiers = do
     assert "nested assignment specifications retain the original value"
       (renderInterpretedValue value == "d : within 0 to 100 := 28")
   expectValue
-      "assignment name access"
+      "assignment identifier-string access"
       ((<@>) xAssignment (natural 0)) $ \value ->
-    assert "the name fiber is an identity specification and coerces"
+    assert "the identifier-string fiber is an identity specification and coerces"
       (renderInterpretedValue value == "$x")
   expectValue
       "assignment value access"
@@ -1562,20 +1568,20 @@ testIdentifiers = do
         && renderInterpretedValue value
           == "(x := 5; y := 6) ~> (x : Nat; y : Nat)"
       )
-  assert "different identifier names do not specify each other"
+  assert "different identifier strings do not specify each other"
     (case interpretExpressionReason
         ((<~>)
           (identifier "x" (natural 5))
           (identifier "y" NaturalType)) of
-      Left (IdentifierNameMismatch expected given) ->
+      Left (IdentifierStringMismatch expected given) ->
         expected == "$y" && given == "$x"
       _ -> False)
-  assert "assignment widening reports a mismatched identifier name"
+  assert "assignment widening reports a mismatched identifier string"
     (case interpretExpressionReason
         ((<~>)
           (assignment "b" (natural 10) (natural 10))
           (identifier "a" NaturalType)) of
-      Left (IdentifierNameMismatch expected given) ->
+      Left (IdentifierStringMismatch expected given) ->
         expected == "$a" && given == "$b"
       _ -> False)
   assert "an identifier value outside its annotation gets a direct type error"
@@ -1583,7 +1589,7 @@ testIdentifiers = do
         ((<~>)
           (identifier "x" (natural 12))
           (identifier "x" (ValuedNaturalRange 1 10))) of
-      Left (AssignedValueOutsideTypeAnnotation expected given) ->
+      Left (GivenValueOutsideTypeAnnotation expected given) ->
         expected == "within 1 to 10" && given == "12"
       _ -> False)
   assert "a failed annotation widening reports the intermediate annotation"
@@ -1603,28 +1609,30 @@ testIdentifiers = do
           "a"
           NaturalType
           (SuperEllipsisRange (natural 1) (natural 3))) of
-      Left (AssignedValueOutsideTypeAnnotation expected given) ->
+      Left (GivenValueOutsideTypeAnnotation expected given) ->
         expected == "Nat" && given == "1..3"
       _ -> False)
   case ( interpretExpressionReason (natural 5)
        , interpretExpressionReason NaturalType
        ) of
     (Right five, Right naturals) -> do
-      let dependentName canonical =
+      let dependentIdentifierString canonical =
             case canonical of
               Types.CanonicalExplicit _ ordinalValue ->
                 maybe "transfinite" (("n" <>) . show)
                   (naturalAtOrdinal ordinalValue)
               _ -> "natural"
-          source = Types.identifierTypeValue "n" dependentName five
-          target = Types.identifierTypeValue "n" dependentName naturals
+          source =
+            Types.identifierTypeValue "n" dependentIdentifierString five
+          target =
+            Types.identifierTypeValue "n" dependentIdentifierString naturals
       case Types.accessValues source (Types.naturalValue 0) of
         Left rejection ->
           fail
-            ("dependent identifier name access was rejected: "
+            ("dependent identifier string access was rejected: "
               <> show rejection)
         Right value ->
-          assert "dependent name access evaluates the selected value's name"
+          assert "dependent string access evaluates the selected identifier string"
             (renderInterpretedValue value == "$n5")
       case Types.specifyValues source target of
         Left rejection ->
@@ -1639,9 +1647,11 @@ testIdentifiers = do
               fail
                 ("dependent identifier specification access was rejected: "
                   <> show rejection)
-            Right nameFiber ->
-              assert "dependent name fibers remain specifications"
-                (interpretedValueKind nameFiber == SpecificationValueKind)
+            Right identifierStringFiber ->
+              assert "dependent identifier-string fibers remain specifications"
+                ( interpretedValueKind identifierStringFiber
+                    == SpecificationValueKind
+                )
     _ -> fail "dependent identifier setup failed"
 
 testTypedRejections :: IO ()
@@ -1745,7 +1755,7 @@ testLocatedRejection = do
       Right _ -> False)
   let invalidAssignment =
         IdentifierOperation
-          (Identifier "a")
+          (IdentifierString "a")
           NaturalType
           (Just (SuperEllipsisRange (natural 1) (natural 3)))
   assert "assignment mismatches have a concise English diagnostic"
@@ -1767,24 +1777,24 @@ testLocatedRejection = do
   let mismatchedIdentifier =
         (<~>)
           (IdentifierOperation
-            (Identifier "b")
+            (IdentifierString "b")
             (natural 10)
             (Just (natural 10)))
-          (IdentifierOperation (Identifier "a") NaturalType Nothing)
+          (IdentifierOperation (IdentifierString "a") NaturalType Nothing)
   assert "identifier mismatches show expected and given identifier strings"
     (case interpretLocatedExpression
         (Located sourceSpan mismatchedIdentifier) of
       Left valueError ->
         renderDatraError English valueError
-          == "<test>:1:5: the identifier name does not match\n"
+          == "<test>:1:5: the identifier string does not match\n"
               <> "  expected: $a\n"
               <> "  given: $b"
       Right _ -> False)
   let valueOutsideIdentifierAnnotation =
         (<~>)
-          (IdentifierOperation (Identifier "x") (natural 12) Nothing)
+          (IdentifierOperation (IdentifierString "x") (natural 12) Nothing)
           (IdentifierOperation
-            (Identifier "x")
+            (IdentifierString "x")
             (ValuedNaturalRange 1 10)
             Nothing)
   assert "identifier membership errors show canonical expected and given values"
@@ -1800,15 +1810,15 @@ testLocatedRejection = do
         (<~>)
           ((<~>)
             (IdentifierOperation
-              (Identifier "x")
+              (IdentifierString "x")
               (natural 8)
               (Just (natural 8)))
             (IdentifierOperation
-              (Identifier "x")
+              (IdentifierString "x")
               (ValuedNaturalRange 5 20)
               Nothing))
           (IdentifierOperation
-            (Identifier "x")
+            (IdentifierString "x")
             (ValuedNaturalRange 1 10)
             Nothing)
   assert "failed annotation widening identifies the intermediate federation"

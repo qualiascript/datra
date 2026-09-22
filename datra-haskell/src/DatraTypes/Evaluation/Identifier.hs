@@ -2,8 +2,8 @@
 module Evaluation.Identifier
   ( identifierTypeValue
   , simpleIdentifierTypeValue
-  , identifierNameProjectionValue
-  , identifierDependencyNameFor
+  , identifierStringProjectionValue
+  , identifierDependencyStringFor
   , identifierDependenciesCompatible
   ) where
 
@@ -21,33 +21,34 @@ identifierTypeValue
   -> (CanonicalResult -> String)
   -> InterpretedValue
   -> InterpretedValue
-identifierTypeValue key nameFor =
-  makeIdentifierType (DependentIdentifierDependency key nameFor)
+identifierTypeValue familyKey identifierStringFor =
+  makeIdentifierType
+    (DependentIdentifierDependency familyKey identifierStringFor)
 
 simpleIdentifierTypeValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
-simpleIdentifierTypeValue name =
-  makeIdentifierType (SimpleIdentifierDependency name)
+simpleIdentifierTypeValue identifierString =
+  makeIdentifierType (SimpleIdentifierDependency identifierString)
 
-identifierNameProjectionValue
+identifierStringProjectionValue
   :: EvaluatedIdentifierType
   -> InterpretedValue
-identifierNameProjectionValue evaluated = value
+identifierStringProjectionValue evaluated = value
   where
     dependency = evaluatedIdentifierDependency evaluated
     underlying = evaluatedIdentifierUnderlying evaluated
-    representativeName =
+    representativeString =
       case dependency of
-        SimpleIdentifierDependency name -> name
-        DependentIdentifierDependency key nameFor
+        SimpleIdentifierDependency identifierString -> identifierString
+        DependentIdentifierDependency familyKey identifierStringFor
           | interpretedValueHasTotalMap underlying ->
-              nameFor (interpretedCanonicalResult underlying)
-          | otherwise -> key
-    representative = makeAsciiString representativeName
+              identifierStringFor (interpretedCanonicalResult underlying)
+          | otherwise -> familyKey
+    representative = makeAsciiString representativeString
     semantics =
-      IdentifierNameProjectionSemantics
+      IdentifierStringProjectionSemantics
         dependency
         (interpretedSemantics underlying)
         (interpretedValueHasTotalMap underlying)
@@ -59,10 +60,10 @@ identifierNameProjectionValue evaluated = value
           SingletonAtlasMapFederation resultMap
       | otherwise =
           PrimitiveAtlasMapFederation
-            (IdentifierNameProjectionAtlasMapFederation evaluated)
+            (IdentifierStringProjectionAtlasMapFederation evaluated)
     value =
       makeInterpretedValue
-        (IdentifierNameProjectionForm evaluated)
+        (IdentifierStringProjectionForm evaluated)
         NoInsertion
         resultMap
         federation
@@ -78,17 +79,17 @@ makeIdentifierType
 makeIdentifierType dependency underlying = value
   where
     evaluated = EvaluatedIdentifierType dependency underlying
-    representativeName =
+    representativeString =
       case dependency of
-        SimpleIdentifierDependency name -> name
-        DependentIdentifierDependency key nameFor
+        SimpleIdentifierDependency identifierString -> identifierString
+        DependentIdentifierDependency familyKey identifierStringFor
           | interpretedValueHasTotalMap underlying ->
-              nameFor (interpretedCanonicalResult underlying)
-          | otherwise -> key
-    nameValue = makeAsciiString representativeName
+              identifierStringFor (interpretedCanonicalResult underlying)
+          | otherwise -> familyKey
+    identifierStringValue = makeAsciiString representativeString
     finalValues =
       appendOrdinalOrderedValues
-        (singletonOrdinalOrderedValues nameValue)
+        (singletonOrdinalOrderedValues identifierStringValue)
         (singletonOrdinalOrderedValues underlying)
     semantics =
       IdentifierTypeSemantics
@@ -99,7 +100,9 @@ makeIdentifierType dependency underlying = value
       InterpretedMap
         2
         finalValues
-        [interpretedSemantics nameValue, interpretedSemantics underlying]
+        [ interpretedSemantics identifierStringValue
+        , interpretedSemantics underlying
+        ]
     federation
       | interpretedValueHasTotalMap underlying =
           SingletonAtlasMapFederation valueMap
@@ -117,16 +120,17 @@ makeIdentifierType dependency underlying = value
           else NonTotalInterpretedMap)
         semantics
 
-identifierDependencyNameFor
+identifierDependencyStringFor
   :: IdentifierDependency
   -> CanonicalResult
   -> String
-identifierDependencyNameFor dependency value =
+identifierDependencyStringFor dependency value =
   case dependency of
-    SimpleIdentifierDependency name -> name
-    DependentIdentifierDependency _ nameFor -> nameFor value
+    SimpleIdentifierDependency identifierString -> identifierString
+    DependentIdentifierDependency _ identifierStringFor ->
+      identifierStringFor value
 
--- | Constant dependencies agree by name. Dependent dependencies are
+-- | Constant dependencies agree by identifier string. Dependent dependencies are
 -- comparable when they carry the same stable family key.
 identifierDependenciesCompatible
   :: IdentifierDependency
@@ -134,9 +138,9 @@ identifierDependenciesCompatible
   -> Bool
 identifierDependenciesCompatible left right =
   case (left, right) of
-    (SimpleIdentifierDependency leftName,
-      SimpleIdentifierDependency rightName) ->
-        leftName == rightName
+    (SimpleIdentifierDependency leftString,
+      SimpleIdentifierDependency rightString) ->
+        leftString == rightString
     (DependentIdentifierDependency leftKey _,
       DependentIdentifierDependency rightKey _) ->
         leftKey == rightKey

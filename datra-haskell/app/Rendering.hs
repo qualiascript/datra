@@ -98,37 +98,37 @@ prettyCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyCanonicalResult members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
-    CanonicalIdentifierType name underlying ->
-      pretty name
+    CanonicalIdentifierType identifierString typeAnnotation ->
+      pretty identifierString
         <+> prettySourceSymbol IdentifierTypeOperator
-        <+> prettyCanonicalResult underlying
-    CanonicalDependentIdentifierType key underlying ->
-      pretty key
+        <+> prettyCanonicalResult typeAnnotation
+    CanonicalDependentIdentifierType familyKey typeAnnotation ->
+      pretty familyKey
         <+> prettySourceSymbol IdentifierTypeOperator
-        <+> prettyCanonicalResult underlying
-    CanonicalIdentifierNameProjection key underlying ->
+        <+> prettyCanonicalResult typeAnnotation
+    CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
-        (pretty key
+        (pretty familyKey
           <+> prettySourceSymbol IdentifierTypeOperator
-          <+> prettyCanonicalResult underlying)
+          <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
         <+> "0"
-    CanonicalAssignment name typeResult assignedResult ->
-      prettyAssignment name typeResult assignedResult
+    CanonicalAssignment identifierString typeAnnotation givenValue ->
+      prettyAssignment identifierString typeAnnotation givenValue
     CanonicalMap cardinality components ->
       prettyMap cardinality components
     CanonicalSpecification source target ->
       case (source, target) of
-        ( CanonicalIdentifierType sourceName assignedResult
-          , CanonicalIdentifierType targetName typeResult
+        ( CanonicalIdentifierType sourceString givenValue
+          , CanonicalIdentifierType targetString typeAnnotation
           )
-          | sourceName == targetName ->
-              prettyAssignment sourceName typeResult assignedResult
-        ( CanonicalAssignment sourceName sourceType assignedResult
-          , CanonicalIdentifierType targetName typeResult
+          | sourceString == targetString ->
+              prettyAssignment sourceString typeAnnotation givenValue
+        ( CanonicalAssignment sourceString sourceType givenValue
+          , CanonicalIdentifierType targetString typeAnnotation
           )
-          | sourceName == targetName && sourceType == assignedResult ->
-              prettyAssignment sourceName typeResult assignedResult
+          | sourceString == targetString && sourceType == givenValue ->
+              prettyAssignment sourceString typeAnnotation givenValue
         _ ->
           prettyCanonicalResult source
             <+> prettySourceSymbol SpecificationOperator
@@ -139,18 +139,18 @@ prettyAssignment
   -> CanonicalResult
   -> CanonicalResult
   -> Doc annotation
-prettyAssignment name typeResult assignedResult =
-  if typeResult == assignedResult
+prettyAssignment identifierString typeAnnotation givenValue =
+  if typeAnnotation == givenValue
     then
-      pretty name
+      pretty identifierString
         <+> prettySourceSymbol AssignmentOperator
-        <+> prettyCanonicalResult assignedResult
+        <+> prettyCanonicalResult givenValue
     else
-      pretty name
+      pretty identifierString
         <+> prettySourceSymbol IdentifierTypeOperator
-        <+> prettyCanonicalResult typeResult
+        <+> prettyCanonicalResult typeAnnotation
         <+> prettySourceSymbol AssignmentOperator
-        <+> prettyCanonicalResult assignedResult
+        <+> prettyCanonicalResult givenValue
 
 prettyNaturalRange
   :: Natural

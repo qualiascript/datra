@@ -57,13 +57,13 @@ data InterpretingError
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | AccessRejected AccessError
-  | AssignedValueOutsideTypeAnnotation
+  | GivenValueOutsideTypeAnnotation
       { expectedTypeAnnotation :: String
-      , givenAssignedValue :: String
+      , givenValue :: String
       }
-  | IdentifierNameMismatch
-      { expectedIdentifier :: String
-      , givenIdentifier :: String
+  | IdentifierStringMismatch
+      { expectedIdentifierString :: String
+      , givenIdentifierString :: String
       }
   | IntermediateTypeAnnotationOutsideTarget
       { expectedTargetTypeAnnotation :: String

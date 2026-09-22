@@ -46,9 +46,9 @@ decideValueSubfederation source target
                   (evaluatedIdentifierUnderlying targetIdentifier)
           | otherwise -> DecisionRefuted
         ( PrimitiveAtlasMapFederation
-            (IdentifierNameProjectionAtlasMapFederation sourceIdentifier)
+            (IdentifierStringProjectionAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
-            (IdentifierNameProjectionAtlasMapFederation targetIdentifier)
+            (IdentifierStringProjectionAtlasMapFederation targetIdentifier)
           )
           | identifierDependenciesCompatible
               (evaluatedIdentifierDependency sourceIdentifier)

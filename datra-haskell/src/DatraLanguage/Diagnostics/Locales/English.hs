@@ -81,15 +81,15 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
-    AssignedValueOutsideTypeAnnotation expected given ->
+    GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage
         "the given value is outside the type annotation"
         [ "expected: " <> expected
         , "given: " <> given
         ]
-    IdentifierNameMismatch expected given ->
+    IdentifierStringMismatch expected given ->
       LocalizedMessage
-        "the identifier name does not match"
+        "the identifier string does not match"
         [ "expected: " <> expected
         , "given: " <> given
         ]

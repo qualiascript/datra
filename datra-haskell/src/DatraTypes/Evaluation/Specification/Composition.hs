@@ -17,7 +17,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues)
-import Evaluation.Identifier (identifierDependencyNameFor)
+import Evaluation.Identifier (identifierDependencyStringFor)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
@@ -80,39 +80,39 @@ selectDirectIdentifierMember source target =
             targetUnderlying =
               evaluatedIdentifierUnderlying targetIdentifier
             selectedCanonical = interpretedCanonicalResult sourceUnderlying
-            sourceName =
-              identifierDependencyNameFor
+            sourceString =
+              identifierDependencyStringFor
                 (evaluatedIdentifierDependency sourceIdentifier)
                 selectedCanonical
-            targetName =
-              identifierDependencyNameFor
+            targetString =
+              identifierDependencyStringFor
                 (evaluatedIdentifierDependency targetIdentifier)
                 selectedCanonical
         in Just
-          (if sourceName /= targetName
+          (if sourceString /= targetString
             then DecisionRefuted
             else
               mapDecision
                 EvaluatedIdentifierTypeMember
                 (selectFederationMember sourceUnderlying targetUnderlying))
-    ( IdentifierNameProjectionForm sourceIdentifier
-      , IdentifierNameProjectionForm targetIdentifier
+    ( IdentifierStringProjectionForm sourceIdentifier
+      , IdentifierStringProjectionForm targetIdentifier
       ) ->
         let sourceUnderlying =
               evaluatedIdentifierUnderlying sourceIdentifier
             targetUnderlying =
               evaluatedIdentifierUnderlying targetIdentifier
             selectedCanonical = interpretedCanonicalResult sourceUnderlying
-            sourceName =
-              identifierDependencyNameFor
+            sourceString =
+              identifierDependencyStringFor
                 (evaluatedIdentifierDependency sourceIdentifier)
                 selectedCanonical
-            targetName =
-              identifierDependencyNameFor
+            targetString =
+              identifierDependencyStringFor
                 (evaluatedIdentifierDependency targetIdentifier)
                 selectedCanonical
         in Just
-          (if sourceName /= targetName
+          (if sourceString /= targetString
             then DecisionRefuted
             else
               mapDecision

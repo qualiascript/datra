@@ -40,12 +40,12 @@ specifyValuesWithoutIdentity
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyValuesWithoutIdentity source target =
-  case identifierNameMismatch source target of
+  case identifierStringMismatch source target of
     Just (expected, given) ->
       Left
-        (IdentifierNameMismatch
-          { expectedIdentifier = expected
-          , givenIdentifier = given
+        (IdentifierStringMismatch
+          { expectedIdentifierString = expected
+          , givenIdentifierString = given
           })
     Nothing ->
       case interpretedForm source of
@@ -55,13 +55,13 @@ specifyValuesWithoutIdentity source target =
           widenSpecification source specification target
         _ -> specifyTotalAtlasMap source target
 
-identifierNameMismatch
+identifierStringMismatch
   :: InterpretedValue
   -> InterpretedValue
   -> Maybe (String, String)
-identifierNameMismatch source target = do
-  given <- simpleIdentifierName (interpretedSemantics source)
-  expected <- simpleIdentifierName (interpretedSemantics target)
+identifierStringMismatch source target = do
+  given <- simpleIdentifierStringFromSemantics (interpretedSemantics source)
+  expected <- simpleIdentifierStringFromSemantics (interpretedSemantics target)
   if given == expected
     then Nothing
     else
@@ -70,18 +70,20 @@ identifierNameMismatch source target = do
         , renderAsciiStringLiteral given
         )
 
-simpleIdentifierName :: ValueSemantics -> Maybe String
-simpleIdentifierName semantics =
+simpleIdentifierStringFromSemantics :: ValueSemantics -> Maybe String
+simpleIdentifierStringFromSemantics semantics =
   case semantics of
-    IdentifierTypeSemantics (SimpleIdentifierDependency name) _ _ -> Just name
-    AssignmentSemantics name _ _ -> Just name
+    IdentifierTypeSemantics
+        (SimpleIdentifierDependency identifierString) _ _ ->
+          Just identifierString
+    AssignmentSemantics identifierString _ _ -> Just identifierString
     SpecificationSemantics source target -> do
-      sourceName <- simpleIdentifierName source
-      targetName <- simpleIdentifierName target
-      if sourceName == targetName then Just sourceName else Nothing
+      sourceString <- simpleIdentifierStringFromSemantics source
+      targetString <- simpleIdentifierStringFromSemantics target
+      if sourceString == targetString then Just sourceString else Nothing
     _ -> Nothing
 
--- | Assignment is specification between two constant-name identifier types,
+-- | Assignment is specification between two constant-string identifier types,
 -- but remains marked for canonical assignment rendering even when its source
 -- and target coincide. Pointwise specifications produced by access still use
 -- 'specifyValues' and therefore obey the general identity coercion.
@@ -90,23 +92,23 @@ assignIdentifierValues
   -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-assignIdentifierValues name assignedValue typeValue = do
-  let source = simpleIdentifierTypeValue name assignedValue
-      target = simpleIdentifierTypeValue name typeValue
+assignIdentifierValues identifierString givenValue typeAnnotation = do
+  let source = simpleIdentifierTypeValue identifierString givenValue
+      target = simpleIdentifierTypeValue identifierString typeAnnotation
   specified <- specifyValuesWithoutIdentity source target
   case interpretedForm specified of
     SpecificationForm specification ->
       Right
         (makeInterpretedValue
-          (AssignmentForm name specification)
+          (AssignmentForm identifierString specification)
           NoInsertion
           (interpretedMap specified)
           (interpretedAtlasMapFederation specified)
           NonTotalInterpretedMap
           (AssignmentSemantics
-            name
-            (interpretedSemantics typeValue)
-            (interpretedSemantics assignedValue)))
+            identifierString
+            (interpretedSemantics typeAnnotation)
+            (interpretedSemantics givenValue)))
     _ -> Right specified
 
 specifyTotalAtlasMap
@@ -201,9 +203,9 @@ originalSpecificationSourceSemantics :: InterpretedValue -> ValueSemantics
 originalSpecificationSourceSemantics value =
   case interpretedSemantics value of
     SpecificationSemantics source _ -> source
-    AssignmentSemantics name _ assignedSemantics ->
+    AssignmentSemantics identifierString _ givenValueSemantics ->
       IdentifierTypeSemantics
-        (SimpleIdentifierDependency name)
-        assignedSemantics
+        (SimpleIdentifierDependency identifierString)
+        givenValueSemantics
         True
     semantics -> semantics

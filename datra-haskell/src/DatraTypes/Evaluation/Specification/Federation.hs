@@ -67,7 +67,7 @@ selectAtomicFederationMember source target =
     PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
-        (IdentifierNameProjectionAtlasMapFederation _) ->
+        (IdentifierStringProjectionAtlasMapFederation _) ->
       Nothing
     SequentialAtlasMapFederation _ -> Nothing
     ConcatenatedAtlasMapFederation _ _ -> Nothing

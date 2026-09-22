@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module DatraLanguage.AST
-  ( Identifier (..)
+  ( IdentifierString (..)
   , Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
@@ -28,11 +28,11 @@ import Prettyprinter
   )
 import Prettyprinter.Render.String (renderString)
 
--- | A source identifier used by identifier operations.  It is deliberately
+-- | The identifier string used by identifier operations. It is deliberately
 -- distinct from an expression: the parser is the boundary which validates
 -- its spelling, and an arbitrary expression can never inhabit this field.
-newtype Identifier = Identifier
-  { identifierText :: String
+newtype IdentifierString = IdentifierString
+  { identifierStringText :: String
   }
   deriving (Eq, Show)
 
@@ -59,7 +59,11 @@ data Expression
   | MapConcatenation Expression Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
-  | IdentifierOperation Identifier Expression (Maybe Expression)
+  | IdentifierOperation
+      { identifierOperationString :: IdentifierString
+      , identifierOperationTypeAnnotation :: Expression
+      , identifierOperationGivenValue :: Maybe Expression
+      }
   deriving (Eq, Show)
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
@@ -90,9 +94,10 @@ data OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | IdentifierOperationValue
-      Identifier
-      OperatorExpression
-      (Maybe OperatorExpression)
+      { operatorIdentifierString :: IdentifierString
+      , operatorTypeAnnotation :: OperatorExpression
+      , operatorGivenValue :: Maybe OperatorExpression
+      }
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -141,11 +146,12 @@ normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
-normalizeExpression (IdentifierOperation name typeExpression assignment) =
+normalizeExpression
+    (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperation
-    name
-    (normalizeExpression typeExpression)
-    (normalizeExpression <$> assignment)
+    identifierString
+    (normalizeExpression typeAnnotation)
+    (normalizeExpression <$> givenValue)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
@@ -199,11 +205,11 @@ lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
-lower (IdentifierOperation name typeExpression assignment) =
+lower (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperationValue
-    name
-    (lower typeExpression)
-    (lower <$> assignment)
+    identifierString
+    (lower typeAnnotation)
+    (lower <$> givenValue)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -275,23 +281,23 @@ prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
 prettyOperator
     (IdentifierOperationValue
-      (Identifier name)
-      typeExpression
-      assignment) =
-  case assignment of
+      (IdentifierString identifierString)
+      typeAnnotation
+      givenValue) =
+  case givenValue of
     Nothing ->
       prettyForm
         (operatorCanonicalSymbol IdentifierTypeOperator)
-        [pretty name, prettyOperator typeExpression]
-    Just assignedExpression ->
+        [pretty identifierString, prettyOperator typeAnnotation]
+    Just givenValueExpression ->
       prettyForm
         (operatorCanonicalSymbol AssignmentOperator)
-        (pretty name :
-          if assignedExpression == typeExpression
-            then [prettyOperator assignedExpression]
+        (pretty identifierString :
+          if givenValueExpression == typeAnnotation
+            then [prettyOperator givenValueExpression]
             else
-              [ prettyOperator typeExpression
-              , prettyOperator assignedExpression
+              [ prettyOperator typeAnnotation
+              , prettyOperator givenValueExpression
               ])
 
 prettyUnary

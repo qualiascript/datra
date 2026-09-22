@@ -114,14 +114,17 @@ data EvaluatedValuedNaturalRange where
     :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
     -> EvaluatedValuedNaturalRange
 
--- | Runtime naming rule for an identifier type.  The stable key makes two
+-- | Runtime string rule for an identifier type. The stable key makes two
 -- dependent rules comparable for subfederation decisions; simple identifiers
--- additionally retain their literal name for source rendering.
+-- additionally retain their literal string for source rendering.
 data IdentifierDependency
-  = SimpleIdentifierDependency String
+  = SimpleIdentifierDependency
+      { simpleIdentifierString :: String
+      }
   | DependentIdentifierDependency
-      String
-      (CanonicalResult -> String)
+      { dependentIdentifierFamilyKey :: String
+      , dependentIdentifierStringFor :: CanonicalResult -> String
+      }
 
 data EvaluatedIdentifierType = EvaluatedIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
@@ -170,9 +173,12 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
-  | AssignmentForm String EvaluatedSpecification
+  | AssignmentForm
+      { assignmentFormIdentifierString :: String
+      , assignmentFormSpecification :: EvaluatedSpecification
+      }
   | IdentifierTypeForm EvaluatedIdentifierType
-  | IdentifierNameProjectionForm EvaluatedIdentifierType
+  | IdentifierStringProjectionForm EvaluatedIdentifierType
   | SequentialMapForm
   | ExpansionMapForm InterpretedValue InterpretedValue
   | ConcatenatedMapForm InterpretedValue InterpretedValue
@@ -202,7 +208,7 @@ data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
-  | IdentifierNameProjectionAtlasMapFederation EvaluatedIdentifierType
+  | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -226,11 +232,15 @@ data ValueSemantics
       IdentifierDependency
       ValueSemantics
       Bool
-  | IdentifierNameProjectionSemantics
+  | IdentifierStringProjectionSemantics
       IdentifierDependency
       ValueSemantics
       Bool
-  | AssignmentSemantics String ValueSemantics ValueSemantics
+  | AssignmentSemantics
+      { assignmentIdentifierString :: String
+      , assignmentTypeAnnotation :: ValueSemantics
+      , assignmentGivenValue :: ValueSemantics
+      }
   | MapSemantics Natural [ValueSemantics]
   | SpecificationSemantics ValueSemantics ValueSemantics
 
@@ -245,10 +255,17 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
-  | CanonicalIdentifierType String CanonicalResult
+  | CanonicalIdentifierType
+      { canonicalIdentifierString :: String
+      , canonicalIdentifierTypeAnnotation :: CanonicalResult
+      }
   | CanonicalDependentIdentifierType String CanonicalResult
-  | CanonicalIdentifierNameProjection String CanonicalResult
-  | CanonicalAssignment String CanonicalResult CanonicalResult
+  | CanonicalIdentifierStringProjection String CanonicalResult
+  | CanonicalAssignment
+      { canonicalAssignmentIdentifierString :: String
+      , canonicalAssignmentTypeAnnotation :: CanonicalResult
+      , canonicalAssignmentGivenValue :: CanonicalResult
+      }
   | CanonicalMap Natural [CanonicalResult]
   | CanonicalSpecification CanonicalResult CanonicalResult
   deriving (Eq, Show)
@@ -324,33 +341,34 @@ canonicalResult semantics =
     IdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of
-        SimpleIdentifierDependency name
+        SimpleIdentifierDependency identifierString
           | isTotal ->
-              CanonicalAssignment name underlyingResult underlyingResult
+              CanonicalAssignment
+                identifierString underlyingResult underlyingResult
           | otherwise ->
-              CanonicalIdentifierType name underlyingResult
-        DependentIdentifierDependency key _ ->
-          CanonicalDependentIdentifierType key underlyingResult
-    IdentifierNameProjectionSemantics dependency underlying isTotal ->
+              CanonicalIdentifierType identifierString underlyingResult
+        DependentIdentifierDependency familyKey _ ->
+          CanonicalDependentIdentifierType familyKey underlyingResult
+    IdentifierStringProjectionSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in if isTotal
         then
           CanonicalAsciiString
             (case dependency of
-              SimpleIdentifierDependency name -> name
-              DependentIdentifierDependency _ nameFor ->
-                nameFor underlyingResult)
+              SimpleIdentifierDependency identifierString -> identifierString
+              DependentIdentifierDependency _ identifierStringFor ->
+                identifierStringFor underlyingResult)
         else
-          CanonicalIdentifierNameProjection
+          CanonicalIdentifierStringProjection
             (case dependency of
-              SimpleIdentifierDependency name -> name
-              DependentIdentifierDependency key _ -> key)
+              SimpleIdentifierDependency identifierString -> identifierString
+              DependentIdentifierDependency familyKey _ -> familyKey)
             underlyingResult
-    AssignmentSemantics name typeSemantics assignedSemantics ->
+    AssignmentSemantics identifierString typeAnnotation givenValue ->
       CanonicalAssignment
-        name
-        (canonicalResult typeSemantics)
-        (canonicalResult assignedSemantics)
+        identifierString
+        (canonicalResult typeAnnotation)
+        (canonicalResult givenValue)
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map canonicalResult components)
     SpecificationSemantics source target ->
@@ -370,7 +388,7 @@ interpretedValueKind value =
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind
-    IdentifierNameProjectionForm _ -> IdentifierTypeValueKind
+    IdentifierStringProjectionForm _ -> IdentifierTypeValueKind
     SequentialMapForm -> MapValueKind
     ExpansionMapForm _ _ -> MapValueKind
     ConcatenatedMapForm _ _ -> MapValueKind

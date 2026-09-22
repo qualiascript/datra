@@ -81,15 +81,15 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
-    AssignedValueOutsideTypeAnnotation expected given ->
+    GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage
         "valoarea dată este în afara adnotării de tip"
         [ "așteptat: " <> expected
         , "dat: " <> given
         ]
-    IdentifierNameMismatch expected given ->
+    IdentifierStringMismatch expected given ->
       LocalizedMessage
-        "numele identificatorului nu corespunde"
+        "șirul identificatorului nu corespunde"
         [ "așteptat: " <> expected
         , "dat: " <> given
         ]

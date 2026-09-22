@@ -1,8 +1,8 @@
--- | Constant-name specialization of 'IdentifierType'.
+-- | Constant-string specialization of 'IdentifierType'.
 module SimpleIdentifierType
   ( SimpleIdentifierType
   , simpleIdentifierType
-  , simpleIdentifierTypeName
+  , simpleIdentifierTypeString
   , simpleIdentifierTypeAsIdentifierType
   ) where
 
@@ -17,13 +17,16 @@ simpleIdentifierType
   :: String
   -> AtlasMapFederation federationScope index
   -> SimpleIdentifierType federationScope index
-simpleIdentifierType name federation =
-  SimpleIdentifierType name (identifierType federation (const name))
+simpleIdentifierType identifierString federation =
+  SimpleIdentifierType
+    identifierString
+    (identifierType federation (const identifierString))
 
-simpleIdentifierTypeName
+simpleIdentifierTypeString
   :: SimpleIdentifierType federationScope index
   -> String
-simpleIdentifierTypeName (SimpleIdentifierType name _) = name
+simpleIdentifierTypeString (SimpleIdentifierType identifierString _) =
+  identifierString
 
 simpleIdentifierTypeAsIdentifierType
   :: SimpleIdentifierType federationScope index

@@ -27,7 +27,7 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import Numeric.Natural (Natural)
 import DatraLanguage.AST
-  ( Identifier (Identifier)
+  ( IdentifierString (IdentifierString)
   , Expression
       ( Addition
       , AsciiStringLiteral
@@ -233,18 +233,24 @@ astIdentifierOperation
   -> Parser Expression
 astIdentifierOperation operator assignmentMarker = do
   _ <- astOperatorToken operator
-  name <- Identifier <$> astBareIdentifier
-  typeExpression <- astExpression
+  operationIdentifierString <- IdentifierString <$> astBareIdentifier
+  typeAnnotation <- astExpression
   case assignmentMarker of
-    Nothing -> pure (IdentifierOperation name typeExpression Nothing)
-    Just () -> do
-      assignedExpression <- optional astExpression
+    Nothing ->
       pure
-        (case assignedExpression of
+        (IdentifierOperation operationIdentifierString typeAnnotation Nothing)
+    Just () -> do
+      givenValue <- optional astExpression
+      pure
+        (case givenValue of
           Nothing ->
-            IdentifierOperation name typeExpression (Just typeExpression)
-          Just assigned ->
-            IdentifierOperation name typeExpression (Just assigned))
+            IdentifierOperation
+              operationIdentifierString
+              typeAnnotation
+              (Just typeAnnotation)
+          Just given ->
+            IdentifierOperation
+              operationIdentifierString typeAnnotation (Just given))
 
 astSequence :: Parser Expression
 astSequence = do
@@ -362,29 +368,30 @@ mapExpression :: Parser Expression
 mapExpression = makeExprParser rangeExpression mapOperatorTable
 
 -- Identifier operations are the only place where an unprefixed identifier is
--- an operand.  Parsing the name before entering the expression grammar makes
+-- an operand. Parsing the identifier string before entering the expression grammar makes
 -- it impossible for a computed expression (or a @$@ string) to occupy the
 -- leftmost position.
 identifierOperation :: Parser Expression
 identifierOperation = do
-  name <- Identifier <$> try bareIdentifier
+  operationIdentifierString <- IdentifierString <$> try bareIdentifier
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        assignedExpression <- expression
+        givenValue <- expression
         pure
           (IdentifierOperation
-            name
-            assignedExpression
-            (Just assignedExpression))
+            operationIdentifierString
+            givenValue
+            (Just givenValue))
     , do
         _ <- continuedOperator AST.IdentifierTypeOperator
-        typeExpression <- mapExpression
-        assignmentExpression <-
+        typeAnnotation <- mapExpression
+        givenValue <-
           optional
             (continuedOperator AST.AssignmentOperator *> expression)
         pure
-          (IdentifierOperation name typeExpression assignmentExpression)
+          (IdentifierOperation
+            operationIdentifierString typeAnnotation givenValue)
     ]
 
 -- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
