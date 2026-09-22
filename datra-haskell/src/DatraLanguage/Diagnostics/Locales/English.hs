@@ -93,6 +93,12 @@ localizeInterpretingError reason =
         [ "expected: " <> expected
         , "given: " <> given
         ]
+    IntermediateTypeAnnotationOutsideTarget expected given ->
+      LocalizedMessage
+        "the intermediate type annotation does not fit in the target type annotation"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->

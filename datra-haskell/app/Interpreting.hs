@@ -126,24 +126,26 @@ interpretSpecification sourceExpression targetExpression = do
   source <- interpretExpressionReason sourceExpression
   target <- interpretExpressionReason targetExpression
   case specifyValues source target of
-    Left rejection
-      | isAnnotationMembershipRefutation rejection
-      , Just (expected, given) <- identifierAnnotationMismatch source target ->
+    Left
+        (AtlasMapFederationOperationRefuted
+          AtlasMapFederationSpecificationHasNoMatchingMember)
+      | Just (expected, given) <- identifierAnnotationMismatch source target ->
           Left
             (AssignedValueOutsideTypeAnnotation
               { expectedTypeAnnotation = expected
               , givenAssignedValue = given
               })
+    Left
+        (AtlasMapFederationOperationRefuted
+          AtlasMapFederationSubfederationHasMissingMember)
+      | Just (expected, given) <-
+          identifierIntermediateAnnotationMismatch source target ->
+          Left
+            (IntermediateTypeAnnotationOutsideTarget
+              { expectedTargetTypeAnnotation = expected
+              , givenIntermediateTypeAnnotation = given
+              })
     result -> result
-
-isAnnotationMembershipRefutation :: InterpretingError -> Bool
-isAnnotationMembershipRefutation rejection =
-  case rejection of
-    AtlasMapFederationOperationRefuted
-        AtlasMapFederationSpecificationHasNoMatchingMember -> True
-    AtlasMapFederationOperationRefuted
-        AtlasMapFederationSubfederationHasMissingMember -> True
-    _ -> False
 
 identifierAnnotationMismatch
   :: InterpretedValue
@@ -152,6 +154,23 @@ identifierAnnotationMismatch
 identifierAnnotationMismatch source target = do
   (givenName, givenResult) <-
     identifierGivenValue (interpretedCanonicalResult source)
+  (expectedName, expectedResult) <-
+    identifierExpectedValue (interpretedCanonicalResult target)
+  if givenName == expectedName
+    then
+      Just
+        ( renderCanonicalResult expectedResult
+        , renderCanonicalResult givenResult
+        )
+    else Nothing
+
+identifierIntermediateAnnotationMismatch
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierIntermediateAnnotationMismatch source target = do
+  (givenName, givenResult) <-
+    identifierIntermediateValue (interpretedCanonicalResult source)
   (expectedName, expectedResult) <-
     identifierExpectedValue (interpretedCanonicalResult target)
   if givenName == expectedName
@@ -180,6 +199,16 @@ identifierExpectedValue result =
     CanonicalIdentifierType name underlying -> Just (name, underlying)
     CanonicalAssignment name expected _ -> Just (name, expected)
     CanonicalSpecification _ target -> identifierExpectedValue target
+    _ -> Nothing
+
+identifierIntermediateValue
+  :: CanonicalResult
+  -> Maybe (String, CanonicalResult)
+identifierIntermediateValue result =
+  case result of
+    CanonicalAssignment name expected _ -> Just (name, expected)
+    CanonicalSpecification _ intermediate ->
+      identifierExpectedValue intermediate
     _ -> Nothing
 
 interpretBinary

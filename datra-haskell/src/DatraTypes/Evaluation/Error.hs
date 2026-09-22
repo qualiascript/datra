@@ -65,6 +65,10 @@ data InterpretingError
       { expectedIdentifier :: String
       , givenIdentifier :: String
       }
+  | IntermediateTypeAnnotationOutsideTarget
+      { expectedTargetTypeAnnotation :: String
+      , givenIntermediateTypeAnnotation :: String
+      }
   | AtlasMapFederationOperationRefuted AtlasMapFederationRefutation
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | InvalidAsciiStringCharacter Char

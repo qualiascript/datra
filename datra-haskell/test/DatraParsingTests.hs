@@ -190,6 +190,14 @@ regressionTests = do
         <> "(: d (within 0 to 100)))"
     )
   assertAstOutput
+    "reverse assignment chain retains an incompatible intermediate annotation"
+    ( "(x : within 1 to 10) <~ "
+        <> "(x : within 5 to 20) <~ (x := 8)"
+    )
+    ( "(<~> (<~> (:= x 8) (: x (within 5 to 20))) "
+        <> "(: x (within 1 to 10)))"
+    )
+  assertAstOutput
     "binary identifier assignment"
     "x := 5"
     "(:= x 5)"

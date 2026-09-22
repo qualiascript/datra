@@ -1448,6 +1448,23 @@ testIdentifiers = do
           == finiteOrdinal 2
         && renderInterpretedValue value == "x : Nat"
       )
+  let xFive = identifier "x" (natural 5)
+      xFiveAssignment = assignment "x" (natural 5) (natural 5)
+  expectValue "total simple identifier type" xFive $ \value ->
+    assert "a simple identifier over a total map is an identity assignment"
+      ( interpretedValueKind value == IdentifierTypeValueKind
+        && renderInterpretedValue value == "x := 5"
+      )
+  expectValue
+      "identity assignment specifies its total identifier"
+      ((<~>) xFiveAssignment xFive) $ \value ->
+    assert "assignment-to-identifier identity canonicalizes"
+      (renderInterpretedValue value == "x := 5")
+  expectValue
+      "total identifier specifies its identity assignment"
+      ((<~>) xFive xFiveAssignment) $ \value ->
+    assert "identifier-to-assignment identity canonicalizes"
+      (renderInterpretedValue value == "x := 5")
   expectValue
       "identifier name access"
       ((<@>) xNatural (natural 0)) $ \value ->
@@ -1543,7 +1560,7 @@ testIdentifiers = do
     assert "identifier selection composes pointwise through sequences"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "(x : 5; y : 6) ~> (x : Nat; y : Nat)"
+          == "(x := 5; y := 6) ~> (x : Nat; y : Nat)"
       )
   assert "different identifier names do not specify each other"
     (case interpretExpressionReason
@@ -1568,6 +1585,17 @@ testIdentifiers = do
           (identifier "x" (ValuedNaturalRange 1 10))) of
       Left (AssignedValueOutsideTypeAnnotation expected given) ->
         expected == "within 1 to 10" && given == "12"
+      _ -> False)
+  assert "a failed annotation widening reports the intermediate annotation"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>)
+            (assignment "x" (natural 8) (natural 8))
+            (identifier "x" (ValuedNaturalRange 5 20)))
+          (identifier "x" (ValuedNaturalRange 1 10))) of
+      Left (IntermediateTypeAnnotationOutsideTarget expected given) ->
+        expected == "within 1 to 10"
+          && given == "within 5 to 20"
       _ -> False)
   assert "an assignment outside its annotation gets a direct type error"
     (case interpretExpressionReason
@@ -1767,6 +1795,30 @@ testLocatedRejection = do
           == "<test>:1:5: the given value is outside the type annotation\n"
               <> "  expected: within 1 to 10\n"
               <> "  given: 12"
+      Right _ -> False)
+  let incompatibleIntermediateAnnotation =
+        (<~>)
+          ((<~>)
+            (IdentifierOperation
+              (Identifier "x")
+              (natural 8)
+              (Just (natural 8)))
+            (IdentifierOperation
+              (Identifier "x")
+              (ValuedNaturalRange 5 20)
+              Nothing))
+          (IdentifierOperation
+            (Identifier "x")
+            (ValuedNaturalRange 1 10)
+            Nothing)
+  assert "failed annotation widening identifies the intermediate federation"
+    (case interpretLocatedExpression
+        (Located sourceSpan incompatibleIntermediateAnnotation) of
+      Left valueError ->
+        renderDatraError English valueError
+          == "<test>:1:5: the intermediate type annotation does not fit in the target type annotation\n"
+              <> "  expected: within 1 to 10\n"
+              <> "  given: within 5 to 20"
       Right _ -> False)
   let overlapExpression =
         (<@>)

@@ -93,6 +93,12 @@ localizeInterpretingError reason =
         [ "așteptat: " <> expected
         , "dat: " <> given
         ]
+    IntermediateTypeAnnotationOutsideTarget expected given ->
+      LocalizedMessage
+        "adnotarea de tip intermediară nu se încadrează în adnotarea de tip țintă"
+        [ "așteptat: " <> expected
+        , "dat: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->
