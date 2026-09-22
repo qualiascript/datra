@@ -8,6 +8,7 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   , normalizeExpression
   , renderExpression
+  , toOperatorExpression
   )
 import DatraLanguage.AST.Syntax
   ( natural
@@ -19,7 +20,7 @@ import DatraLanguage.AST.Syntax
   , (..-)
   , (<.>)
   , (<@>)
-  , (<~>)
+  , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.Diagnostics
@@ -63,63 +64,65 @@ regressionTests = do
   assertAstOutput
     "flat map"
     "(1; 2; 10)"
-    "(<:> 1 2 10)"
+    (natural 1 <:> natural 2 <:> natural 10)
   assertAstOutput
     "nested map"
     "((1; 2);(3;4))"
-    "(<+> (<:> 1 2) (<:> 3 4))"
+    ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
   assertAstOutput
     "unary parentheses do not create map levels"
     "((Nat); (Nat))"
-    "(<:> Nat Nat)"
+    (AST.naturalType <:> AST.naturalType)
   assertAstOutput
     "left-nested map structure remains explicit"
     "((Nat; Nat); Nat)"
-    "(<+> (<:> Nat Nat) Nat)"
+    ((AST.naturalType <:> AST.naturalType) <+> AST.naturalType)
   assertAstOutput
     "right-nested map structure remains explicit"
     "(Nat; (Nat; Nat))"
-    "(<+> Nat (<:> Nat Nat))"
+    (AST.naturalType <+> (AST.naturalType <:> AST.naturalType))
   assertAstOutput
     "comments and whitespace"
     "  (1; # retain the next value\n (2; 3)) # end\n"
-    "(<+> 1 (<:> 2 3))"
+    (natural 1 <+> (natural 2 <:> natural 3))
   assertAstOutput
     "empty nested maps are trimmed recursively"
     "(1; (( )  ); 2)"
-    "(<:> 1 2)"
+    (natural 1 <:> natural 2)
   assertAstOutput
     "expansions are parenthesized at recursive depth"
     "(((1;2);(3;4));(5;6))"
-    "(<+> (<+> (<:> 1 2) (<:> 3 4)) (<:> 5 6))"
+    ( ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
+        <+> (natural 5 <:> natural 6)
+    )
   assertAstOutput
     "the empty map is retained at the root"
     "()"
-    "()"
+    AST.emptyMap
   assertAstOutput
     "ellipsis literal"
     "(...)"
-    "..."
+    (...)
   assertAstOutput
     "specification into a NaturalRange"
     "2..5 ~> from 0 upwards"
-    "(<~> (<..> 2 5) (from 0 upwards))"
+    ((natural 2 <..> natural 5) ~> AST.fromUpwards 0)
   assertAstOutput
     "bounded ValuedNaturalRange"
     "within 2 to 5"
-    "(within 2 to 5)"
+    (AST.withinTo 2 5)
   assertAstOutput
     "upwards ValuedNaturalRange"
     "within 2 upwards"
-    "(within 2 upwards)"
+    (AST.withinUpwards 2)
   assertAstOutput
     "NaturalType literal"
     "Nat"
-    "Nat"
+    AST.naturalType
   assertAstOutput
     "EllipsisNatural specification into NaturalType"
     "2 ~> Nat"
-    "(<~> 2 Nat)"
+    (natural 2 ~> AST.naturalType)
   assertRejected
     "shared bounded range suffix is not an expression"
     "2 to 5"
@@ -129,65 +132,76 @@ regressionTests = do
   assertAstOutput
     "specification binds after access and concatenation"
     "1, 2 @ from 0 upwards ~> from 0 to 10"
-    "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
+    (((natural 1 <.> natural 2) <@> AST.fromUpwards 0) ~> AST.fromTo 0 10)
   assertAstOutput
     "access after a specification projects its fibers"
     "(2; 3) ~> (Nat; Nat) @ 0"
-    "(<@> (<~> (<:> 2 3) (<:> Nat Nat)) 0)"
+    ( ((natural 2 <:> natural 3)
+        ~> (AST.naturalType <:> AST.naturalType))
+        <@> natural 0
+    )
   assertAstOutput
     "specification chains associate through the intermediate federation"
     "2..3 ~> from 2 to 5 ~> from 2 to 8"
-    "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
+    ((natural 2 <..> natural 3) ~> AST.fromTo 2 5 ~> AST.fromTo 2 8)
   assertAstOutput
     "reverse specification reverses its operands"
     "from 2 to 5 <~ 2..3"
-    "(<~> (<..> 2 3) (from 2 to 5))"
+    ((natural 2 <..> natural 3) ~> AST.fromTo 2 5)
   assertAstOutput
     "reverse specification accepts parenthesized composite operands"
     "($a; Nat) <~ ($a; 50)"
-    "(<~> (<:> $a 50) (<:> $a Nat))"
+    ( (AST.asciiString "a" <:> natural 50)
+        ~> (AST.asciiString "a" <:> AST.naturalType)
+    )
   assertAstOutput
     "reverse specification accepts concatenated composite operands"
     "$a, from 1 to 10 <~ $a, 3, 4, 5"
-    "(<~> (<.> $a (<.> 3 (<.> 4 5))) (<.> $a (from 1 to 10)))"
+    ( (AST.asciiString "a" <.> natural 3 <.> natural 4 <.> natural 5)
+        ~> (AST.asciiString "a" <.> AST.fromTo 1 10)
+    )
   assertAstOutput
     "reverse specification chains associate right"
     "from 2 to 8 <~ from 2 to 5 <~ 2..3"
-    "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
+    ((natural 2 <..> natural 3) ~> AST.fromTo 2 5 ~> AST.fromTo 2 8)
   assertAstOutput
     "reverse specification binds after access and concatenation"
     "from 0 to 10 <~ 1, 2 @ from 0 upwards"
-    "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
+    (((natural 1 <.> natural 2) <@> AST.fromUpwards 0) ~> AST.fromTo 0 10)
   assertAstOutput
     "a postfix range can precede reverse specification"
     "2.. <~ from 2 to 5"
-    "(<~> (from 2 to 5) (..+ 2))"
+    (AST.fromTo 2 5 ~> (natural 2 ..+))
   assertAstOutput
     "simple identifier type"
     "x : Nat"
-    "(: x Nat)"
+    (AST.identifierType "x" AST.naturalType)
   assertAstOutput
     "full identifier assignment"
     "x : Nat := 5"
-    "(:= x Nat 5)"
+    (AST.assignment "x" AST.naturalType (natural 5))
   assertAstOutput
     "assignment specified into its identifier target"
     "(a : Nat := 5) ~> (a : Nat)"
-    "(<~> (:= a Nat 5) (: a Nat))"
+    ( AST.assignment "a" AST.naturalType (natural 5)
+        ~> AST.identifierType "a" AST.naturalType
+    )
   assertAstOutput
     "reverse specification between different identifier strings"
     "(a : Nat) <~ (b := 10)"
-    "(<~> (:= b 10) (: a Nat))"
+    ( AST.assignment "b" (natural 10) (natural 10)
+        ~> AST.identifierType "a" AST.naturalType
+    )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
     ( "(d : within 0 to 100) <~ "
         <> "(d : within 20 to 40 := 28) <~ "
         <> "(d : within 25 to 35 := 28) <~ (d := 28)"
     )
-    ( "(<~> (<~> (<~> (:= d 28) "
-        <> "(:= d (within 25 to 35) 28)) "
-        <> "(:= d (within 20 to 40) 28)) "
-        <> "(: d (within 0 to 100)))"
+    ( AST.assignment "d" (natural 28) (natural 28)
+        ~> AST.assignment "d" (AST.withinTo 25 35) (natural 28)
+        ~> AST.assignment "d" (AST.withinTo 20 40) (natural 28)
+        ~> AST.identifierType "d" (AST.withinTo 0 100)
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
@@ -195,50 +209,61 @@ regressionTests = do
         <> "    d : from 12 to 85 := 23..66 <~\n"
         <> "    d := 23..66"
     )
-    ( "(<~> (<~> (:= d (<..> 23 66)) "
-        <> "(:= d (from 12 to 85) (<..> 23 66))) "
-        <> "(: d (from 10 to 100)))"
+    ( AST.assignment
+        "d"
+        (natural 23 <..> natural 66)
+        (natural 23 <..> natural 66)
+        ~> AST.assignment
+          "d"
+          (AST.fromTo 12 85)
+          (natural 23 <..> natural 66)
+        ~> AST.identifierType "d" (AST.fromTo 10 100)
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
     ( "(x : within 1 to 10) <~ "
         <> "(x : within 5 to 20) <~ (x := 8)"
     )
-    ( "(<~> (<~> (:= x 8) (: x (within 5 to 20))) "
-        <> "(: x (within 1 to 10)))"
+    ( AST.assignment "x" (natural 8) (natural 8)
+        ~> AST.identifierType "x" (AST.withinTo 5 20)
+        ~> AST.identifierType "x" (AST.withinTo 1 10)
     )
   assertAstOutput
     "binary identifier assignment"
     "x := 5"
-    "(:= x 5)"
+    (AST.assignment "x" (natural 5) (natural 5))
   assertAstOutput
     "redundant assignment type canonicalizes to binary syntax"
     "x : 5 := 5"
-    "(:= x 5)"
+    (AST.assignment "x" (natural 5) (natural 5))
   assertAstOutput
     "access binds inside the assignment value"
     "x : Nat := (1; 2) @ 0"
-    "(:= x Nat (<@> (<:> 1 2) 0))"
+    ( AST.assignment
+        "x"
+        AST.naturalType
+        ((natural 1 <:> natural 2) <@> natural 0)
+    )
   assertAstOutput
     "accessing an identifier operation requires grouping"
     "(x : Nat) @ 0"
-    "(<@> (: x Nat) 0)"
+    (AST.identifierType "x" AST.naturalType <@> natural 0)
   assertAstOutput
     "bracket access uses the identifier map view"
     "(x : Nat)[0]"
-    "(<@> (: x Nat) 0)"
+    (AST.identifierType "x" AST.naturalType <@> natural 0)
   assertAstOutput
     "bracket access uses the assignment specification view"
     "(x : Nat := 5)[1]"
-    "(<@> (:= x Nat 5) 1)"
+    (AST.assignment "x" AST.naturalType (natural 5) <@> natural 1)
   assertAstOutput
     "unparenthesized access belongs to the identifier type operand"
     "x : Nat @ 0"
-    "(: x (<@> Nat 0))"
+    (AST.identifierType "x" (AST.naturalType <@> natural 0))
   assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
-    "(: A_0'z Nat)"
+    (AST.identifierType "A_0'z" AST.naturalType)
   assertRejected
     "identifier operations reject expression left sides"
     "(2 + 2) : Nat := 4"
@@ -255,27 +280,27 @@ regressionTests = do
   assertAstOutput
     "IdentifierString accepts all canonical continuation characters"
     "$A_0'z"
-    "$A_0'z"
+    (AST.asciiString "A_0'z")
   assertAstOutput
     "StandardString canonicalizes to IdentifierString when possible"
     "\"text\""
-    "$text"
+    (AST.asciiString "text")
   assertAstOutput
     "StandardString supports the empty string"
     "\"\""
-    "\"\""
+    (AST.asciiString "")
   assertAstOutput
     "StandardString escapes quote and backslash"
     "\"say \\\"hi\\\" and \\\\ path\""
-    "\"say \\\"hi\\\" and \\\\ path\""
+    (AST.asciiString "say \"hi\" and \\ path")
   assertAstOutput
     "StandardString decodes and canonicalizes escaped newlines"
     "\"first\\nsecond\""
-    "\"first\\nsecond\""
+    (AST.asciiString "first\nsecond")
   assertAstOutput
     "StandardString accepts and canonicalizes hexadecimal byte escapes"
     "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
-    "\"\\00\\08\\08\\09\\1F\\7F\\FF\""
+    (AST.asciiString ['\0', '\8', '\8', '\9', '\31', '\127', '\255'])
   assertParsed
     "StandardString hexadecimal escapes select ASCII-map characters"
     "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
@@ -283,15 +308,15 @@ regressionTests = do
   assertAstOutput
     "StandardString canonicalizes a hexadecimal newline to its named escape"
     "\"\\0A\""
-    "\"\\n\""
+    (AST.asciiString "\n")
   assertAstOutput
     "StandardString leaves nonsyntactic keyboard-visible characters literal"
     "\" !%&'()*+,-./:;<=>?@^_`{|}~\""
-    "\" !%&'()*+,-./:;<=>?@^_`{|}~\""
+    (AST.asciiString " !%&'()*+,-./:;<=>?@^_`{|}~")
   assertAstOutput
     "StandardString line comments retain their terminating newline"
     "\"Comment test#this is a comment!\n\""
-    "\"Comment test\\n\""
+    (AST.asciiString "Comment test\n")
   assertParsed
     "StandardString comments may terminate at the closing quote"
     "\"Hello#, world!\""
@@ -299,16 +324,16 @@ regressionTests = do
   assertAstOutput
     "StandardString comments ending at a quote retain canonical rendering"
     "\"Hello#, world!\""
-    "$Hello"
+    (AST.asciiString "Hello")
   assertAstOutput
     "StandardString escapes a literal hash"
     "\"literal \\# character\""
-    "\"literal \\# character\""
+    (AST.asciiString "literal # character")
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
     "(\"  first\nsecond  \")"
-    "\"  first\\nsecond  \""
+    (AST.asciiString "  first\nsecond  ")
   assertParsed
     "StandardString treats syntax and comments as literal contents"
     "(\"\\#;(value)\n$still_text\")"
@@ -316,115 +341,118 @@ regressionTests = do
   assertAstOutput
     "strings use the ordinary concatenation operator"
     "$ab, $cd"
-    "(<.> $ab $cd)"
+    (AST.asciiString "ab" <.> AST.asciiString "cd")
   assertAstOutput
     "strings use the ordinary access operator"
     "$abcd @ 1..3"
-    "(<@> $abcd (<..> 1 3))"
+    (AST.asciiString "abcd" <@> (natural 1 <..> natural 3))
   assertAstOutput
     "bounded super-ellipsis range"
     "(2..10)"
-    "(<..> 2 10)"
+    (natural 2 <..> natural 10)
   assertAstOutput
     "open super-ellipsis ranges"
     "(2..; 10..-)"
-    "(<:> (..+ 2) (..- 10))"
+    ((natural 2 ..+) <:> (natural 10 ..-))
   assertAstOutput
     "a prefix range starts at zero"
     "(..10)"
-    "(<..> 0 10)"
+    (natural 0 <..> natural 10)
   assertAstOutput
     "inclusive natural range"
     "from 2 to 5"
-    "(from 2 to 5)"
+    (AST.fromTo 2 5)
   assertAstOutput
     "open inclusive natural range"
     "from 2 upwards"
-    "(from 2 upwards)"
+    (AST.fromUpwards 2)
   assertAstOutput
     "natural range access"
     "1, 2, 3 @ from 1 upwards"
-    "(<@> (<.> 1 (<.> 2 3)) (from 1 upwards))"
+    ((natural 1 <.> natural 2 <.> natural 3) <@> AST.fromUpwards 1)
   assertAstOutput
     "bracket access binds before arithmetic"
     "$a + $b[$c]"
-    "(+ $a (<@> $b $c))"
+    (AST.asciiString "a" AST.+ (AST.asciiString "b" <@> AST.asciiString "c"))
   assertAstOutput
     "grouping moves bracket access outside arithmetic"
     "($a + $b)[$c]"
-    "(<@> (+ $a $b) $c)"
+    ((AST.asciiString "a" AST.+ AST.asciiString "b") <@> AST.asciiString "c")
   assertAstOutput
     "bracket access chains associate left"
     "$a[$b][$c]"
-    "(<@> (<@> $a $b) $c)"
+    ((AST.asciiString "a" <@> AST.asciiString "b") <@> AST.asciiString "c")
   assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"
-    "(<@> $a (<@> $b $c))"
+    (AST.asciiString "a" <@> (AST.asciiString "b" <@> AST.asciiString "c"))
   assertAstOutput
     "bracket insertion accepts ordinary access"
     "$a[$b @ $c]"
-    "(<@> $a (<@> $b $c))"
+    (AST.asciiString "a" <@> (AST.asciiString "b" <@> AST.asciiString "c"))
   assertAstOutput
     "bracket insertion accepts a postfix range"
     "$a[1..]"
-    "(<@> $a (..+ 1))"
+    (AST.asciiString "a" <@> (natural 1 ..+))
   assertAstOutput
     "bracket insertion accepts an explicitly constructed map"
     "$a[(1; 2)]"
-    "(<@> $a (<:> 1 2))"
+    (AST.asciiString "a" <@> (natural 1 <:> natural 2))
   assertAstOutput
     "bracket access accepts an explicitly constructed map on the left"
     "(2; 3)[0]"
-    "(<@> (<:> 2 3) 0)"
+    ((natural 2 <:> natural 3) <@> natural 0)
   assertAstOutput
     "grouping permits bracket access on a whole specification"
     "((2; 3) ~> (Nat; Nat))[0]"
-    "(<@> (<~> (<:> 2 3) (<:> Nat Nat)) 0)"
+    ( ((natural 2 <:> natural 3)
+        ~> (AST.naturalType <:> AST.naturalType))
+        <@> natural 0
+    )
   assertAstOutput
     "natural range keywords continue across lines"
     "from\n2\nto\n5"
-    "(from 2 to 5)"
+    (AST.fromTo 2 5)
   assertAstOutput
     "a prefix range greedily continues across a newline"
     "(..\n10)"
-    "(<..> 0 10)"
+    (natural 0 <..> natural 10)
   assertAstOutput
     "a postfix range can end before a closing delimiter"
     "(2..\n)"
-    "(..+ 2)"
+    (natural 2 ..+)
   assertAstOutput
     "a postfix range ends before lower-precedence access"
     "(...) .. @ 5"
-    "(<@> (..+ ...) 5)"
+    (((...) ..+) <@> natural 5)
   assertAstOutput
     "a postfix range ends before lower-precedence concatenation"
     "2.., 5"
-    "(<.> (..+ 2) 5)"
+    ((natural 2 ..+) <.> natural 5)
   assertAstOutput
     "Haskell arithmetic precedence"
     "(1 + 2 * 3 ^ 4)"
-    "(+ 1 (* 2 (^ 3 4)))"
+    (natural 1 AST.+ natural 2 AST.* natural 3 AST.^ natural 4)
   assertAstOutput
     "parentheses override arithmetic precedence"
     "((1 + 2) * 3)"
-    "(* (+ 1 2) 3)"
+    ((natural 1 AST.+ natural 2) AST.* natural 3)
   assertAstOutput
     "right-nested addition keeps necessary parentheses"
     "(1 + (2 + 3))"
-    "(+ 1 (+ 2 3))"
+    (natural 1 AST.+ (natural 2 AST.+ natural 3))
   assertAstOutput
     "redundant parentheses are omitted"
     "(((1 + (2 * (3 ^ 4)))))"
-    "(+ 1 (* 2 (^ 3 4)))"
+    (natural 1 AST.+ natural 2 AST.* natural 3 AST.^ natural 4)
   assertAstOutput
     "range endpoints accept arithmetic expressions"
     "(1 + 2..3 * 4)"
-    "(<..> (+ 1 2) (* 3 4))"
+    ((natural 1 AST.+ natural 2) <..> (natural 3 AST.* natural 4))
   assertAstOutput
     "range concatenation"
     "(1..3, 5..7)"
-    "(<.> (<..> 1 3) (<..> 5 7))"
+    ((natural 1 <..> natural 3) <.> (natural 5 <..> natural 7))
   assertParsed
     "a trailing comma concatenates an empty map"
     "(1,)"
@@ -434,19 +462,19 @@ regressionTests = do
   assertAstOutput
     "a trailing comma retains its semantic value"
     "(1,)"
-    "(<.> 1 ())"
+    (natural 1 <.> AST.emptyMap)
   assertAstOutput
     "a trailing comma works at the inferred map boundary"
     "1,"
-    "(<.> 1 ())"
+    (natural 1 <.> AST.emptyMap)
   assertAstOutput
     "a trailing comma can precede a newline and closing delimiter"
     "(1, # no right operand\n)"
-    "(<.> 1 ())"
+    (natural 1 <.> AST.emptyMap)
   assertAstOutput
     "a comma followed by an expression across a newline stays infix"
     "(1,\n2)"
-    "(<.> 1 2)"
+    (natural 1 <.> natural 2)
   assertParsed
     "a trailing comma is removed from an existing concatenation"
     "(1, 2,)"
@@ -456,95 +484,95 @@ regressionTests = do
   assertAstOutput
     "an existing concatenation does not gain an empty map"
     "(1, 2,)"
-    "(<.> 1 2)"
+    (natural 1 <.> natural 2)
   assertAstOutput
     "a trailing comma can precede a map separator"
     "(1,; 2)"
-    "(<:> (<.> 1 ()) 2)"
+    ((natural 1 <.> AST.emptyMap) <:> natural 2)
   assertAstOutput
     "access consumes a concatenated range insertion"
     "(... @ 1..3, 5..7)"
-    "(<@> ... (<.> (<..> 1 3) (<..> 5 7)))"
+    ((...) <@> ((natural 1 <..> natural 3) <.> (natural 5 <..> natural 7)))
   assertAstOutput
     "parentheses can concatenate an access result"
     "((... @ 1), 2)"
-    "(<.> (<@> ... 1) 2)"
+    (((...) <@> natural 1) <.> natural 2)
   assertAstOutput
     "map expressions are concatenation operands"
     "((1; 2), (3; 4))"
-    "(<.> (<:> 1 2) (<:> 3 4))"
+    ((natural 1 <:> natural 2) <.> (natural 3 <:> natural 4))
   assertAstOutput
     "unary grouping does not manufacture map expansion"
     "((1 + 2); (3 * 4))"
-    "(<:> (+ 1 2) (* 3 4))"
+    ((natural 1 AST.+ natural 2) <:> (natural 3 AST.* natural 4))
   assertAstOutput
     "outer map parentheses are inferred"
     "2 + 3"
-    "(+ 2 3)"
+    (natural 2 AST.+ natural 3)
   assertAstOutput
     "completed lines become map elements"
     "2\n3"
-    "(<:> 2 3)"
+    (natural 2 <:> natural 3)
   assertAstOutput
     "a newline after an operator continues the expression"
     "2 +\n3\n4"
-    "(<:> (+ 2 3) 4)"
+    ((natural 2 AST.+ natural 3) <:> natural 4)
   assertAstOutput
     "comments do not hide a required continuation"
     "2 + # continue addition\n3\n# blank comment line\n4"
-    "(<:> (+ 2 3) 4)"
+    ((natural 2 AST.+ natural 3) <:> natural 4)
   assertAstOutput
     "blank lines do not create empty map elements"
     "\n# heading\n2\n\n# between values\n3\n"
-    "(<:> 2 3)"
+    (natural 2 <:> natural 3)
   assertAstOutput
     "a semicolon separates a postfix range from the next map line"
     "2..;\n3..-"
-    "(<:> (..+ 2) (..- 3))"
+    ((natural 2 ..+) <:> (natural 3 ..-))
   assertAstOutput
     "ellipsis is complete despite ending in dots"
     "...\n2"
-    "(<:> ... 2)"
+    ((...) <:> natural 2)
   assertAstOutput
     "bounded range and concatenation operators continue across lines"
     "2..\n4,\n5.."
-    "(<.> (<..> 2 4) (..+ 5))"
+    ((natural 2 <..> natural 4) <.> (natural 5 ..+))
   assertAstOutput
     "an ambiguous postfix range greedily consumes a following operand"
     "(2..\n4)"
-    "(<..> 2 4)"
+    (natural 2 <..> natural 4)
   assertAstOutput
     "exponentiation continues and remains right associative"
     "2 ^\n3 ^\n4"
-    "(^ 2 (^ 3 4))"
+    (natural 2 AST.^ natural 3 AST.^ natural 4)
   assertAstOutput
     "newlines separate expressions in an explicit map"
     "(2\n3)"
-    "(<:> 2 3)"
+    (natural 2 <:> natural 3)
   assertAstOutput
     "newline inference applies independently to nested maps"
     "((1\n2)\n(3\n4))"
-    "(<+> (<:> 1 2) (<:> 3 4))"
+    ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
   assertAstOutput
     "separately parenthesized expressions form an implicit outer map"
     "(1)\n2"
-    "(<:> 1 2)"
+    (natural 1 <:> natural 2)
   assertAstOutput
     "parentheses inside comments do not affect outer-map inference"
     "(1)\n2 # ) is only a comment"
-    "(<:> 1 2)"
+    (natural 1 <:> natural 2)
   assertAstOutput
     "operator continuation also applies in explicit maps"
     "(2 +\n3\n4)"
-    "(<:> (+ 2 3) 4)"
+    ((natural 2 AST.+ natural 3) <:> natural 4)
   assertAstOutput
     "newlines inside unfinished expressions are ignored"
     "(2 + \n 3)"
-    "(+ 2 3)"
+    (natural 2 AST.+ natural 3)
   assertAstOutput
     "multiline parenthesized expressions remain one expression"
     "(2 +\n3)\n4"
-    "(<:> (+ 2 3) 4)"
+    ((natural 2 AST.+ natural 3) <:> natural 4)
   assertParsed
     "exponentiation associates right"
     "(2 ^ 3 ^ 4)"
@@ -574,11 +602,11 @@ regressionTests = do
   assertAstOutput
     "a single unparenthesized expression stays itself"
     "10"
-    "10"
+    (natural 10)
   assertAstOutput
     "one trailing semicolon is ignored"
     "(1; 2; # trailing separator\n)"
-    "(<:> 1 2)"
+    (natural 1 <:> natural 2)
   assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
   assertRejected "IdentifierString requires a leading canonical character" "$0bad"
   assertRejected "IdentifierString rejects a missing body" "$"
@@ -607,7 +635,7 @@ regressionTests = do
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "((1..2)..)"
-    "(..+ (<..> 1 2))"
+    ((natural 1 <..> natural 2) ..+)
   assertParsed
     "a parenthesized Ellipsis can be a postfix range argument"
     "((...)..)"
@@ -615,11 +643,11 @@ regressionTests = do
   assertAstOutput
     "a parenthesized Ellipsis can be a prefix range argument"
     "(..(...))"
-    "(<..> 0 ...)"
+    (natural 0 <..> (...))
   assertAstOutput
     "a parenthesized Ellipsis can be a bounded range argument"
     "((...)..2; 1..(...))"
-    "(<:> (<..> ... 2) (<..> 1 ...))"
+    (((...) <..> natural 2) <:> (natural 1 <..> (...)))
   assertRejected
     "a bare Ellipsis cannot be a postfix range argument"
     "(... ..)"
@@ -640,7 +668,7 @@ regressionTests = do
   assertAstOutput
     "separate parenthesized maps form an implicit outer map"
     "(1)\n(2)"
-    "(<:> 1 2)"
+    (natural 1 <:> natural 2)
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -811,8 +839,8 @@ assertAstSyntax = do
     )
   assert "the specification symbol constructs its canonical AST node"
     ( renderExpression
-        (((natural 2 <..> natural 5) <~> AST.fromUpwards 0))
-        == "(<~> (<..> 2 5) (from 0 upwards))"
+        (((natural 2 <..> natural 5) ~> AST.fromUpwards 0))
+        == "(~> (<..> 2 5) (from 0 upwards))"
     )
   assert "valued natural range constructors retain their distinct prefix"
     ( renderExpression (AST.withinTo 2 5) == "(within 2 to 5)"
@@ -821,20 +849,23 @@ assertAstSyntax = do
       && renderExpression AST.naturalType == "Nat"
     )
 
-assertAstOutput :: String -> String -> String -> IO ()
+assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =
-  case renderExpression <$> parseDatra source of
+  case parseDatra source of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right actual
-      | actual == expected -> assertAstRoundTrip label actual
+      | canonicalAst actual == canonicalAst expected ->
+          assertAstRoundTrip label (renderExpression actual)
       | otherwise ->
           fail
             ( label
                 <> ": expected "
-                <> show expected
+                <> show (canonicalAst expected)
                 <> ", got "
-                <> show actual
+                <> show (canonicalAst actual)
             )
+  where
+    canonicalAst = toOperatorExpression . normalizeExpression
 
 assertAstRoundTrip :: String -> String -> IO ()
 assertAstRoundTrip label renderedAst =

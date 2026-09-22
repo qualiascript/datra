@@ -16,7 +16,7 @@ import DatraLanguage.AST.Syntax
   , (..-)
   , (<.>)
   , (<@>)
-  , (<~>)
+  , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraTypes qualified as Types
@@ -653,7 +653,7 @@ testAccess = do
           (natural 1)
           ((<.>) (natural 2) (natural 3))
       sequenceSpecification =
-        (<~>)
+        (~>)
           (AtlasMap [natural 2, natural 3])
           (AtlasMap [NaturalType, NaturalType])
       expectRangeAccess label expectedKind sourceValue selectionValue expected =
@@ -1089,14 +1089,14 @@ testAccess = do
 testSpecification :: IO ()
 testSpecification = do
   let expectSpecification label source target expected =
-        expectValue label ((<~>) source target) $ \value ->
+        expectValue label ((~>) source target) $ \value ->
           assert label
             ( interpretedValueKind value == SpecificationValueKind
               && renderInterpretedValue value == expected
             )
       expectNoMember label source target =
         assert label
-          (case interpretExpressionReason ((<~>) source target) of
+          (case interpretExpressionReason ((~>) source target) of
             Left
                 (AtlasMapFederationOperationRefuted
                   AtlasMapFederationSpecificationHasNoMatchingMember) -> True
@@ -1144,7 +1144,7 @@ testSpecification = do
           (AsciiStringLiteral "a")
           (NaturalRangeUpwards 0)
   let expectIdentity label expressionValue expectedKind expected =
-        expectValue label ((<~>) expressionValue expressionValue) $ \value ->
+        expectValue label ((~>) expressionValue expressionValue) $ \value ->
           assert label
             ( interpretedValueKind value == expectedKind
               && renderInterpretedValue value == expected
@@ -1181,7 +1181,7 @@ testSpecification = do
     "Nat"
   expectValue
       "specification composed with its target identity"
-      ((<~>) ((<~>) (natural 5) NaturalType) NaturalType) $ \value ->
+      ((~>) ((~>) (natural 5) NaturalType) NaturalType) $ \value ->
     assert "the target identity leaves a general specification unchanged"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value == "5 ~> Nat"
@@ -1202,20 +1202,20 @@ testSpecification = do
     "($a; 3; 4; 5) ~> $a, from 1 to 10"
   expectValue
       "expansion federation selects members pointwise"
-      ((<~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
+      ((~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
     assert "expansion specification is defined"
       (interpretedValueKind value == SpecificationValueKind)
   expectValue
       "sequence subfederations compose pointwise"
-      ((<~>)
-        ((<~>) compositeSequenceSource compositeSequenceIntermediate)
+      ((~>)
+        ((~>) compositeSequenceSource compositeSequenceIntermediate)
         compositeSequenceTarget) $ \value ->
     assert "sequence composition retains the final target"
       (renderInterpretedValue value == "($a; 50) ~> ($a; Nat)")
   expectValue
       "concatenated subfederations compose pointwise"
-      ((<~>)
-        ((<~>)
+      ((~>)
+        ((~>)
           compositeConcatenationSource
           compositeConcatenationTarget)
         compositeConcatenationWidenedTarget) $ \value ->
@@ -1224,15 +1224,15 @@ testSpecification = do
         == "($a; 3; 4; 5) ~> $a, from 0 upwards")
   expectValue
       "expansion subfederations compose pointwise"
-      ((<~>)
-        ((<~>) compositeExpansionSource compositeExpansionIntermediate)
+      ((~>)
+        ((~>) compositeExpansionSource compositeExpansionIntermediate)
         compositeExpansionTarget) $ \value ->
     assert "expansion composition retains a specification"
       (interpretedValueKind value == SpecificationValueKind)
   assert "composite subfederations report a missing component"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>) compositeSequenceSource compositeSequenceIntermediate)
+        ((~>)
+          ((~>) compositeSequenceSource compositeSequenceIntermediate)
           (AtlasMap [AsciiStringLiteral "b", NaturalType])) of
       Left
           (AtlasMapFederationOperationRefuted
@@ -1285,22 +1285,22 @@ testSpecification = do
     "2 ~> Nat"
   expectValue
       "ValuedNaturalRange subfederation specification composition"
-      ((<~>)
-        ((<~>) (natural 2) (ValuedNaturalRange 2 5))
+      ((~>)
+        ((~>) (natural 2) (ValuedNaturalRange 2 5))
         NaturalType) $ \value ->
     assert "Nat composition erases the intermediate valued range"
       (renderInterpretedValue value == "2 ~> Nat")
   expectValue
       "ValuedNaturalRange inclusion ignores traversal direction"
-      ((<~>)
-        ((<~>) (natural 2) (ValuedNaturalRange 2 5))
+      ((~>)
+        ((~>) (natural 2) (ValuedNaturalRange 2 5))
         (ValuedNaturalRange 5 0)) $ \value ->
     assert "valued subfederation composition retains the final direction"
       (renderInterpretedValue value == "2 ~> within 5 to 0")
   expectValue
       "NaturalRange subfederation specification composition"
-      ((<~>)
-        ((<~>)
+      ((~>)
+        ((~>)
           ((<..>) (natural 2) (natural 3))
           (NaturalRange 2 5))
         (NaturalRange 2 8)) $ \value ->
@@ -1310,8 +1310,8 @@ testSpecification = do
       )
   expectValue
       "finite NaturalRange subfederation of an upwards NaturalRange"
-      ((<~>)
-        ((<~>)
+      ((~>)
+        ((~>)
           ((<..>) (natural 3) (natural 5))
           (NaturalRange 2 5))
         (NaturalRangeUpwards 0)) $ \value ->
@@ -1319,8 +1319,8 @@ testSpecification = do
       (renderInterpretedValue value == "3..5 ~> from 0 upwards")
   expectValue
       "upwards NaturalRange subfederation composition"
-      ((<~>)
-        ((<~>)
+      ((~>)
+        ((~>)
           ((..+) (natural 3))
           (NaturalRangeUpwards 2))
         (NaturalRangeUpwards 0)) $ \value ->
@@ -1328,8 +1328,8 @@ testSpecification = do
       (renderInterpretedValue value == "3.. ~> from 0 upwards")
   expectValue
       "descending NaturalRange subfederation composition"
-      ((<~>)
-        ((<~>)
+      ((~>)
+        ((~>)
           ((<..>) (natural 5) (natural 2))
           (NaturalRange 6 1))
         (NaturalRange 8 0)) $ \value ->
@@ -1337,8 +1337,8 @@ testSpecification = do
       (renderInterpretedValue value == "5..2 ~> from 8 to 0")
   expectValue
       "singleton NaturalRange subfederation changes direction"
-      ((<~>)
-        ((<~>)
+      ((~>)
+        ((~>)
           ((<..>) (natural 2) (natural 3))
           (NaturalRange 2 2))
         (NaturalRange 5 0)) $ \value ->
@@ -1370,7 +1370,7 @@ testSpecification = do
     (ValuedNaturalRange 0 5)
   assert "a NaturalRange federation is not itself a TotalAtlasMap"
     (case interpretExpressionReason
-        ((<~>) (NaturalRange 2 5) (NaturalRange 0 10)) of
+        ((~>) (NaturalRange 2 5) (NaturalRange 0 10)) of
       Left (ExpectedTotalAtlasMap RangeValueKind) -> True
       _ -> False)
   expectNoMember
@@ -1379,8 +1379,8 @@ testSpecification = do
     ((<..>) (natural 0) (natural 10))
   assert "composition rejects an intermediate federation with a missing member"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>)
+        ((~>)
+          ((~>)
             ((<..>) (natural 2) (natural 4))
             (NaturalRange 2 5))
           (NaturalRange 2 3)) of
@@ -1390,8 +1390,8 @@ testSpecification = do
       _ -> False)
   assert "composition rejects incompatible NaturalRange directions"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>)
+        ((~>)
+          ((~>)
             ((<..>) (natural 2) (natural 3))
             (NaturalRange 2 5))
           (NaturalRange 5 2)) of
@@ -1401,8 +1401,8 @@ testSpecification = do
       _ -> False)
   assert "an upwards intermediate federation is not finite"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>)
+        ((~>)
+          ((~>)
             ((..+) (natural 3))
             (NaturalRangeUpwards 2))
           (NaturalRange 0 10)) of
@@ -1412,8 +1412,8 @@ testSpecification = do
       _ -> False)
   assert "an unknown subfederation relation remains undecided"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>)
+        ((~>)
+          ((~>)
             ((<..>) (natural 2) (natural 3))
             (NaturalRange 2 5))
           ((<..>) (natural 0) (natural 10))) of
@@ -1424,8 +1424,8 @@ testSpecification = do
       _ -> False)
   assert "NaturalRange and ValuedNaturalRange are distinct federation families"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>) (natural 2) (ValuedNaturalRange 0 5))
+        ((~>)
+          ((~>) (natural 2) (ValuedNaturalRange 0 5))
           (NaturalRange 0 5)) of
       Left
           (AtlasMapFederationOperationRefuted
@@ -1463,12 +1463,12 @@ testIdentifiers = do
       )
   expectValue
       "identity assignment specifies its total identifier"
-      ((<~>) xFiveAssignment xFive) $ \value ->
+      ((~>) xFiveAssignment xFive) $ \value ->
     assert "assignment-to-identifier identity canonicalizes"
       (renderInterpretedValue value == "x := 5")
   expectValue
       "total identifier specifies its identity assignment"
-      ((<~>) xFive xFiveAssignment) $ \value ->
+      ((~>) xFive xFiveAssignment) $ \value ->
     assert "identifier-to-assignment identity canonicalizes"
       (renderInterpretedValue value == "x := 5")
   expectValue
@@ -1497,12 +1497,12 @@ testIdentifiers = do
       )
   expectValue
       "identifier specification canonicalizes as assignment"
-      ((<~>) (identifier "x" (natural 5)) xNatural) $ \value ->
+      ((~>) (identifier "x" (natural 5)) xNatural) $ \value ->
     assert "the equivalent identifier specification uses assignment syntax"
       (renderInterpretedValue value == "x : Nat := 5")
   expectValue
       "assignment specification into its own target"
-      ((<~>)
+      ((~>)
         (assignment "a" NaturalType (natural 5))
         (identifier "a" NaturalType)) $ \value ->
     assert "composition with the assignment target preserves the assignment"
@@ -1511,7 +1511,7 @@ testIdentifiers = do
       )
   expectValue
       "assignment widens through identifier subfederations"
-      ((<~>)
+      ((~>)
         (assignment "a" (ValuedNaturalRange 0 10) (natural 5))
         (identifier "a" NaturalType)) $ \value ->
     assert "identifier composition retains canonical assignment syntax"
@@ -1522,7 +1522,7 @@ testIdentifiers = do
       d0To100 = identifier "d" (ValuedNaturalRange 0 100)
   expectValue
       "assignment chain widens through nested valued ranges"
-      ((<~>) ((<~>) ((<~>) d28 d25To35) d20To40) d0To100) $ \value ->
+      ((~>) ((~>) ((~>) d28 d25To35) d20To40) d0To100) $ \value ->
     assert "nested assignment specifications retain the original value"
       (renderInterpretedValue value == "d : within 0 to 100 := 28")
   expectValue
@@ -1562,7 +1562,7 @@ testIdentifiers = do
       (renderInterpretedValue value == "x : Nat")
   expectValue
       "identifier sequence specification"
-      ((<~>) sequenceSource sequenceTarget) $ \value ->
+      ((~>) sequenceSource sequenceTarget) $ \value ->
     assert "identifier selection composes pointwise through sequences"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
@@ -1570,7 +1570,7 @@ testIdentifiers = do
       )
   assert "different identifier strings do not specify each other"
     (case interpretExpressionReason
-        ((<~>)
+        ((~>)
           (identifier "x" (natural 5))
           (identifier "y" NaturalType)) of
       Left (IdentifierStringMismatch expected given) ->
@@ -1578,7 +1578,7 @@ testIdentifiers = do
       _ -> False)
   assert "assignment widening reports a mismatched identifier string"
     (case interpretExpressionReason
-        ((<~>)
+        ((~>)
           (assignment "b" (natural 10) (natural 10))
           (identifier "a" NaturalType)) of
       Left (IdentifierStringMismatch expected given) ->
@@ -1586,7 +1586,7 @@ testIdentifiers = do
       _ -> False)
   assert "an identifier value outside its annotation gets a direct type error"
     (case interpretExpressionReason
-        ((<~>)
+        ((~>)
           (identifier "x" (natural 12))
           (identifier "x" (ValuedNaturalRange 1 10))) of
       Left (GivenValueOutsideTypeAnnotation expected given) ->
@@ -1594,8 +1594,8 @@ testIdentifiers = do
       _ -> False)
   assert "a failed annotation widening reports the intermediate annotation"
     (case interpretExpressionReason
-        ((<~>)
-          ((<~>)
+        ((~>)
+          ((~>)
             (assignment "x" (natural 8) (natural 8))
             (identifier "x" (ValuedNaturalRange 5 20)))
           (identifier "x" (ValuedNaturalRange 1 10))) of
@@ -1775,7 +1775,7 @@ testLocatedRejection = do
               <> "  dat: 1..3"
       Right _ -> False)
   let mismatchedIdentifier =
-        (<~>)
+        (~>)
           (IdentifierOperation
             (IdentifierString "b")
             (natural 10)
@@ -1791,7 +1791,7 @@ testLocatedRejection = do
               <> "  given: $b"
       Right _ -> False)
   let valueOutsideIdentifierAnnotation =
-        (<~>)
+        (~>)
           (IdentifierOperation (IdentifierString "x") (natural 12) Nothing)
           (IdentifierOperation
             (IdentifierString "x")
@@ -1807,8 +1807,8 @@ testLocatedRejection = do
               <> "  given: 12"
       Right _ -> False)
   let incompatibleIntermediateAnnotation =
-        (<~>)
-          ((<~>)
+        (~>)
+          ((~>)
             (IdentifierOperation
               (IdentifierString "x")
               (natural 8)

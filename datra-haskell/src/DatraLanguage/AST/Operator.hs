@@ -34,7 +34,7 @@ operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
 operatorCanonicalSymbol AccessOperator = "<@>"
-operatorCanonicalSymbol SpecificationOperator = "<~>"
+operatorCanonicalSymbol SpecificationOperator = "~>"
 operatorCanonicalSymbol IdentifierTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
