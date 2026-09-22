@@ -378,7 +378,10 @@ rangeEndpoint :: Parser Expression
 rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
-term =
+term = accessedTerm termAtom
+
+termAtom :: Parser Expression
+termAtom =
   choice
     [ parenthesizedExpression
     , try naturalRangeExpression
@@ -390,13 +393,32 @@ term =
     ]
 
 rangeEndpointTerm :: Parser Expression
-rangeEndpointTerm =
+rangeEndpointTerm = accessedTerm rangeEndpointAtom
+
+rangeEndpointAtom :: Parser Expression
+rangeEndpointAtom =
   choice
     [ parenthesizedExpression
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
+
+-- Bracket access is a postfix part of the primary expression, so it binds
+-- before arithmetic and every map-level operator. Repetition associates left:
+-- @source[first][second]@ accesses the first result at @second@.
+accessedTerm :: Parser Expression -> Parser Expression
+accessedTerm atom = do
+  source <- atom
+  insertions <- many bracketedInsertion
+  pure (foldl MapAccess source insertions)
+
+bracketedInsertion :: Parser Expression
+bracketedInsertion =
+  between
+    (symbol "[" <* lineSpaceConsumer)
+    (lineSpaceConsumer *> symbol "]")
+    expression
 
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
@@ -504,7 +526,7 @@ trailingComma =
 
 expressionEnd :: Parser ()
 expressionEnd =
-  void (choice [char ')', char ';']) <|> eof
+  void (choice [char ')', char ']', char ';']) <|> eof
 
 -- A postfix range also ends before an operator from the lower-precedence map
 -- layer. Keeping these boundaries separate from 'expressionEnd' avoids

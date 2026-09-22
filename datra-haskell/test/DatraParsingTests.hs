@@ -259,6 +259,42 @@ regressionTests = do
     "1, 2, 3 @ from 1 upwards"
     "(<@> (<.> 1 (<.> 2 3)) (from 1 upwards))"
   assertAstOutput
+    "bracket access binds before arithmetic"
+    "$a + $b[$c]"
+    "(+ $a (<@> $b $c))"
+  assertAstOutput
+    "grouping moves bracket access outside arithmetic"
+    "($a + $b)[$c]"
+    "(<@> (+ $a $b) $c)"
+  assertAstOutput
+    "bracket access chains associate left"
+    "$a[$b][$c]"
+    "(<@> (<@> $a $b) $c)"
+  assertAstOutput
+    "ordinary access sees a tightly bound insertion"
+    "$a @ $b[$c]"
+    "(<@> $a (<@> $b $c))"
+  assertAstOutput
+    "bracket insertion accepts ordinary access"
+    "$a[$b @ $c]"
+    "(<@> $a (<@> $b $c))"
+  assertAstOutput
+    "bracket insertion accepts a postfix range"
+    "$a[1..]"
+    "(<@> $a (..+ 1))"
+  assertAstOutput
+    "bracket insertion accepts an explicitly constructed map"
+    "$a[(1; 2)]"
+    "(<@> $a (<:> 1 2))"
+  assertAstOutput
+    "bracket access accepts an explicitly constructed map on the left"
+    "(2; 3)[0]"
+    "(<@> (<:> 2 3) 0)"
+  assertAstOutput
+    "grouping permits bracket access on a whole specification"
+    "((2; 3) ~> (Nat; Nat))[0]"
+    "(<@> (<~> (<:> 2 3) (<:> Nat Nat)) 0)"
+  assertAstOutput
     "natural range keywords continue across lines"
     "from\n2\nto\n5"
     "(from 2 to 5)"
@@ -464,6 +500,8 @@ regressionTests = do
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
   assertRejected "multiple trailing commas are rejected" "(1,,)"
+  assertRejected "standalone brackets are not an empty map" "[]"
+  assertRejected "bracket access requires an insertion" "$a[]"
   assertRejected
     "multiple trailing commas after concatenation are rejected"
     "(1, 2,,)"
