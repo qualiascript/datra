@@ -37,7 +37,10 @@ import DatraLanguage.Diagnostics.Interpreter
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
   )
-import Rendering (renderInterpretedValue)
+import Rendering
+  ( renderInterpretedValue
+  , renderInterpretedValueAsNewlineMap
+  )
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -375,6 +378,18 @@ testCanonicalResults = do
 
 testRendering :: IO ()
 testRendering = do
+  expectValue
+      "root map rendering modes"
+      (AtlasMap [natural 1, natural 2]) $ \value ->
+    assert "only newline mode removes the root map brackets"
+      ( renderInterpretedValue value == "[1; 2]"
+        && renderInterpretedValueAsNewlineMap value == "1\n2"
+      )
+  expectValue
+      "newline map rendering disambiguates an open range"
+      (AtlasMap [(..+) (natural 1), natural 10]) $ \value ->
+    assert "an open range keeps a semicolon before the next line"
+      (renderInterpretedValueAsNewlineMap value == "1..;\n10")
   expectValue
       "singleton arithmetic map"
       (AtlasMap [(AST.+) (natural 2) (natural 2)]) $ \value ->

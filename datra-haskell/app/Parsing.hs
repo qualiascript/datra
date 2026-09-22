@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Parsing
-  ( parseDatra
+  ( ResourceEnvelope (..)
+  , parseDatra
   , parseDatraWithSourceName
   , parseDatraLocated
   , parseDatraLocatedWithSourceName
+  , parseDatraLocatedResourceWithSourceName
   , parseDatraAst
   , parseDatraAstWithSourceName
   , parseDatraAstLocated
@@ -82,6 +84,11 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 
 type Parser = Parsec Void Text
 
+data ResourceEnvelope
+  = ExplicitMapEnvelope
+  | ImplicitMapEnvelope
+  deriving (Eq, Show)
+
 -- | Parse an in-memory Datra resource without associating it with a real
 -- filesystem path. This is the entry point used by tests and other callers
 -- that already have the source contents.
@@ -105,6 +112,17 @@ parseDatraLocatedWithSourceName
 parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
     (parse locatedResource resourceName (Text.pack source))
+
+-- | Parse a source resource while retaining whether its outer map brackets
+-- were explicit. This is presentation metadata only; both cases produce the
+-- same located expression and evaluation semantics.
+parseDatraLocatedResourceWithSourceName
+  :: FilePath
+  -> String
+  -> Either String (ResourceEnvelope, Located Expression)
+parseDatraLocatedResourceWithSourceName resourceName source =
+  first errorBundlePretty
+    (parse locatedResourceWithEnvelope resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either String Expression
@@ -132,19 +150,30 @@ parseDatraAstLocatedWithSourceName resourceName source =
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
 
+locatedResourceWithEnvelope
+  :: Parser (ResourceEnvelope, Located Expression)
+locatedResourceWithEnvelope = do
+  (sourceSpan, (envelope, expressionValue)) <-
+    spanned resourceWithEnvelope
+  pure (envelope, Located sourceSpan expressionValue)
+
 locatedAstResource :: Parser (Located Expression)
 locatedAstResource = located astResource
 
 located :: Parser Expression -> Parser (Located Expression)
 located parser = do
+  (sourceSpan, expressionValue) <- spanned parser
+  pure (Located sourceSpan expressionValue)
+
+spanned :: Parser value -> Parser (SourceSpan, value)
+spanned parser = do
   startOffset <- getOffset
   start <- getSourcePos
-  expressionValue <- parser
+  value <- parser
   endOffset <- getOffset
   end <- getSourcePos
   pure
-    (Located
-      (SourceSpan
+    ( SourceSpan
         (sourceName start)
         (SourcePosition
           (fromIntegral startOffset)
@@ -153,8 +182,9 @@ located parser = do
         (SourcePosition
           (fromIntegral endOffset)
           (fromIntegral (unPos (sourceLine end)))
-          (fromIntegral (unPos (sourceColumn end)))))
-      expressionValue)
+          (fromIntegral (unPos (sourceColumn end))))
+    , value
+    )
 
 astResource :: Parser Expression
 astResource = astSpaceConsumer *> astExpression <* eof
@@ -256,14 +286,21 @@ astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
 
 resource :: Parser Expression
-resource = do
+resource = snd <$> resourceWithEnvelope
+
+resourceWithEnvelope :: Parser (ResourceEnvelope, Expression)
+resourceWithEnvelope = do
   fullSpaceConsumer
-  result <-
-    (try (lookAhead outerMapEnvelope) *> atlasMap)
-      <|> implicitOuterMap
+  result <- explicitResource <|> implicitResource
   fullSpaceConsumer
   eof
   pure result
+  where
+    explicitResource = do
+      _ <- try (lookAhead outerMapEnvelope)
+      (,) ExplicitMapEnvelope <$> atlasMap
+    implicitResource =
+      (,) ImplicitMapEnvelope <$> implicitOuterMap
 
 -- Parse the bracketed expression itself in lookahead so the closing bracket
 -- must match the opening bracket. Merely searching for a final @]@ mistakes

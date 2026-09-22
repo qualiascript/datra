@@ -25,7 +25,13 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
-import Parsing (parseDatra, parseDatraAst, parseDatraLocated)
+import Parsing
+  ( ResourceEnvelope (..)
+  , parseDatra
+  , parseDatraAst
+  , parseDatraLocated
+  , parseDatraLocatedResourceWithSourceName
+  )
 import Numeric (showHex)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -50,6 +56,7 @@ testTree =
 regressionTests :: IO ()
 regressionTests = do
   assertLocatedParse
+  assertResourceEnvelopes
   assertAstSyntax
   assertAstOutput
     "flat map"
@@ -610,6 +617,26 @@ assertLocatedParse =
         )
     Right actual ->
       fail ("located parse returned an unexpected value: " <> show actual)
+
+assertResourceEnvelopes :: IO ()
+assertResourceEnvelopes = do
+  assertEnvelope
+    "explicit outer map brackets"
+    "[1; 2]"
+    ExplicitMapEnvelope
+  assertEnvelope
+    "implicit newline map"
+    "1\n2"
+    ImplicitMapEnvelope
+  assertEnvelope
+    "bracketed operands are not an outer envelope"
+    "[1] <~ [2]"
+    ImplicitMapEnvelope
+  where
+    assertEnvelope label source expected =
+      case parseDatraLocatedResourceWithSourceName "<input>" source of
+        Left message -> fail (label <> ": unexpected failure: " <> message)
+        Right (actual, _) -> assert label (actual == expected)
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do
