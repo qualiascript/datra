@@ -81,6 +81,12 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    AssignedValueOutsideTypeAnnotation expected given ->
+      LocalizedMessage
+        "valoarea dată este în afara adnotării de tip"
+        [ "așteptat: " <> expected
+        , "dat: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->

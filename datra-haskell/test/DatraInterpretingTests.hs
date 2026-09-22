@@ -1545,6 +1545,15 @@ testIdentifiers = do
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationSpecificationHasNoMatchingMember) -> True
       _ -> False)
+  assert "an assignment outside its annotation gets a direct type error"
+    (case interpretExpressionReason
+        (assignment
+          "a"
+          NaturalType
+          (SuperEllipsisRange (natural 1) (natural 3))) of
+      Left (AssignedValueOutsideTypeAnnotation expected given) ->
+        expected == "Nat" && given == "1..3"
+      _ -> False)
   case ( interpretExpressionReason (natural 5)
        , interpretExpressionReason NaturalType
        ) of
@@ -1681,6 +1690,27 @@ testLocatedRejection = do
         renderDatraError Romanian valueError
           == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
               <> "  tipul efectiv al valorii: hartă"
+      Right _ -> False)
+  let invalidAssignment =
+        IdentifierOperation
+          (Identifier "a")
+          NaturalType
+          (Just (SuperEllipsisRange (natural 1) (natural 3)))
+  assert "assignment mismatches have a concise English diagnostic"
+    (case interpretLocatedExpression (Located sourceSpan invalidAssignment) of
+      Left valueError ->
+        renderDatraError English valueError
+          == "<test>:1:5: the given value is outside the type annotation\n"
+              <> "  expected: Nat\n"
+              <> "  given: 1..3"
+      Right _ -> False)
+  assert "assignment mismatches have a concise Romanian diagnostic"
+    (case interpretLocatedExpression (Located sourceSpan invalidAssignment) of
+      Left valueError ->
+        renderDatraError Romanian valueError
+          == "<test>:1:5: valoarea dată este în afara adnotării de tip\n"
+              <> "  așteptat: Nat\n"
+              <> "  dat: 1..3"
       Right _ -> False)
   let overlapExpression =
         (<@>)

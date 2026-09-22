@@ -30,6 +30,7 @@ import DatraLanguage.AST
   , normalizeExpression
   )
 import DatraTypes
+import Rendering (renderInterpretedValue)
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located)
@@ -106,7 +107,16 @@ interpretNormalizedExpression expressionValue =
         Nothing -> Right (simpleIdentifierTypeValue name typeValue)
         Just assignedExpression -> do
           assignedValue <- interpretExpressionReason assignedExpression
-          assignIdentifierValues name assignedValue typeValue
+          case assignIdentifierValues name assignedValue typeValue of
+            Left
+                (AtlasMapFederationOperationRefuted
+                  AtlasMapFederationSpecificationHasNoMatchingMember) ->
+              Left
+                (AssignedValueOutsideTypeAnnotation
+                  { expectedTypeAnnotation = renderInterpretedValue typeValue
+                  , givenAssignedValue = renderInterpretedValue assignedValue
+                  })
+            result -> result
 
 interpretBinary
   :: ( InterpretedValue

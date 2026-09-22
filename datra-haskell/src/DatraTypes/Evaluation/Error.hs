@@ -57,6 +57,10 @@ data InterpretingError
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | AccessRejected AccessError
+  | AssignedValueOutsideTypeAnnotation
+      { expectedTypeAnnotation :: String
+      , givenAssignedValue :: String
+      }
   | AtlasMapFederationOperationRefuted AtlasMapFederationRefutation
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | InvalidAsciiStringCharacter Char
