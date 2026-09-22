@@ -5,6 +5,7 @@ module DatraParsingTests (main) where
 import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
+  , normalizeExpression
   , renderExpression
   )
 import DatraLanguage.AST.Syntax
@@ -25,7 +26,13 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
-import Parsing (parseDatra, parseDatraAst, parseDatraLocated)
+import Parsing
+  ( ResourceEnvelope (..)
+  , parseDatra
+  , parseDatraAst
+  , parseDatraLocated
+  , parseDatraLocatedResourceWithSourceName
+  )
 import Numeric (showHex)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -50,34 +57,47 @@ testTree =
 regressionTests :: IO ()
 regressionTests = do
   assertLocatedParse
+  assertResourceEnvelopes
   assertAstSyntax
   assertAstOutput
     "flat map"
-    "[1; 2; 10]"
+    "(1; 2; 10)"
     "(<:> 1 2 10)"
   assertAstOutput
     "nested map"
-    "[[1; 2];[3;4]]"
+    "((1; 2);(3;4))"
     "(<+> (<:> 1 2) (<:> 3 4))"
   assertAstOutput
+    "unary parentheses do not create map levels"
+    "((Nat); (Nat))"
+    "(<:> Nat Nat)"
+  assertAstOutput
+    "left-nested map structure remains explicit"
+    "((Nat; Nat); Nat)"
+    "(<+> (<:> Nat Nat) Nat)"
+  assertAstOutput
+    "right-nested map structure remains explicit"
+    "(Nat; (Nat; Nat))"
+    "(<+> Nat (<:> Nat Nat))"
+  assertAstOutput
     "comments and whitespace"
-    "  [1; # retain the next value\n [2; 3]] # end\n"
+    "  (1; # retain the next value\n (2; 3)) # end\n"
     "(<+> 1 (<:> 2 3))"
   assertAstOutput
     "empty nested maps are trimmed recursively"
-    "[1; [[ ]  ]; 2]"
+    "(1; (( )  ); 2)"
     "(<:> 1 2)"
   assertAstOutput
     "expansions are parenthesized at recursive depth"
-    "[[[1;2];[3;4]];[5;6]]"
+    "(((1;2);(3;4));(5;6))"
     "(<+> (<+> (<:> 1 2) (<:> 3 4)) (<:> 5 6))"
   assertAstOutput
     "the empty map is retained at the root"
-    "[]"
-    "[]"
+    "()"
+    "()"
   assertAstOutput
     "ellipsis literal"
-    "[...]"
+    "(...)"
     "..."
   assertAstOutput
     "specification into a NaturalRange"
@@ -110,13 +130,41 @@ regressionTests = do
     "1, 2 @ from 0 upwards ~> from 0 to 10"
     "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
   assertAstOutput
+    "access after a specification projects its fibers"
+    "(2; 3) ~> (Nat; Nat) @ 0"
+    "(<@> (<~> (<:> 2 3) (<:> Nat Nat)) 0)"
+  assertAstOutput
     "specification chains associate through the intermediate federation"
     "2..3 ~> from 2 to 5 ~> from 2 to 8"
     "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
+  assertAstOutput
+    "reverse specification reverses its operands"
+    "from 2 to 5 <~ 2..3"
+    "(<~> (<..> 2 3) (from 2 to 5))"
+  assertAstOutput
+    "reverse specification accepts parenthesized composite operands"
+    "($a; Nat) <~ ($a; 50)"
+    "(<~> (<:> $a 50) (<:> $a Nat))"
+  assertAstOutput
+    "reverse specification accepts concatenated composite operands"
+    "$a, from 1 to 10 <~ $a, 3, 4, 5"
+    "(<~> (<.> $a (<.> 3 (<.> 4 5))) (<.> $a (from 1 to 10)))"
+  assertAstOutput
+    "reverse specification chains associate right"
+    "from 2 to 8 <~ from 2 to 5 <~ 2..3"
+    "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"
+  assertAstOutput
+    "reverse specification binds after access and concatenation"
+    "from 0 to 10 <~ 1, 2 @ from 0 upwards"
+    "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
+  assertAstOutput
+    "a postfix range can precede reverse specification"
+    "2.. <~ from 2 to 5"
+    "(<~> (from 2 to 5) (..+ 2))"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
-    (AtlasMap [AsciiStringLiteral "text"])
+    (AsciiStringLiteral "text")
   assertAstOutput
     "IdentifierString accepts all canonical continuation characters"
     "$A_0'z"
@@ -144,15 +192,15 @@ regressionTests = do
   assertParsed
     "StandardString hexadecimal escapes select ASCII-map characters"
     "\"\\0\\8\\08\\09\\1f\\7F\\ff\""
-    (AtlasMap [AsciiStringLiteral ['\0', '\8', '\8', '\9', '\31', '\127', '\255']])
+    (AsciiStringLiteral ['\0', '\8', '\8', '\9', '\31', '\127', '\255'])
   assertAstOutput
     "StandardString canonicalizes a hexadecimal newline to its named escape"
     "\"\\0A\""
     "\"\\n\""
   assertAstOutput
     "StandardString leaves nonsyntactic keyboard-visible characters literal"
-    "\" !%&'()*+,-./:;<=>?@[]^_`{|}~\""
-    "\" !%&'()*+,-./:;<=>?@[]^_`{|}~\""
+    "\" !%&'()*+,-./:;<=>?@^_`{|}~\""
+    "\" !%&'()*+,-./:;<=>?@^_`{|}~\""
   assertAstOutput
     "StandardString line comments retain their terminating newline"
     "\"Comment test#this is a comment!\n\""
@@ -160,7 +208,7 @@ regressionTests = do
   assertParsed
     "StandardString comments may terminate at the closing quote"
     "\"Hello#, world!\""
-    (AtlasMap [AsciiStringLiteral "Hello"])
+    (AsciiStringLiteral "Hello")
   assertAstOutput
     "StandardString comments ending at a quote retain canonical rendering"
     "\"Hello#, world!\""
@@ -172,12 +220,12 @@ regressionTests = do
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
-    "[\"  first\nsecond  \"]"
+    "(\"  first\nsecond  \")"
     "\"  first\\nsecond  \""
   assertParsed
     "StandardString treats syntax and comments as literal contents"
-    "[\"\\#;[value]\n$still_text\"]"
-    (AtlasMap [AsciiStringLiteral "#;[value]\n$still_text"])
+    "(\"\\#;(value)\n$still_text\")"
+    (AsciiStringLiteral "#;(value)\n$still_text")
   assertAstOutput
     "strings use the ordinary concatenation operator"
     "$ab, $cd"
@@ -188,15 +236,15 @@ regressionTests = do
     "(<@> $abcd (<..> 1 3))"
   assertAstOutput
     "bounded super-ellipsis range"
-    "[2..10]"
+    "(2..10)"
     "(<..> 2 10)"
   assertAstOutput
     "open super-ellipsis ranges"
-    "[2..; 10..-]"
+    "(2..; 10..-)"
     "(<:> (..+ 2) (..- 10))"
   assertAstOutput
     "a prefix range starts at zero"
-    "[..10]"
+    "(..10)"
     "(<..> 0 10)"
   assertAstOutput
     "inclusive natural range"
@@ -211,16 +259,52 @@ regressionTests = do
     "1, 2, 3 @ from 1 upwards"
     "(<@> (<.> 1 (<.> 2 3)) (from 1 upwards))"
   assertAstOutput
+    "bracket access binds before arithmetic"
+    "$a + $b[$c]"
+    "(+ $a (<@> $b $c))"
+  assertAstOutput
+    "grouping moves bracket access outside arithmetic"
+    "($a + $b)[$c]"
+    "(<@> (+ $a $b) $c)"
+  assertAstOutput
+    "bracket access chains associate left"
+    "$a[$b][$c]"
+    "(<@> (<@> $a $b) $c)"
+  assertAstOutput
+    "ordinary access sees a tightly bound insertion"
+    "$a @ $b[$c]"
+    "(<@> $a (<@> $b $c))"
+  assertAstOutput
+    "bracket insertion accepts ordinary access"
+    "$a[$b @ $c]"
+    "(<@> $a (<@> $b $c))"
+  assertAstOutput
+    "bracket insertion accepts a postfix range"
+    "$a[1..]"
+    "(<@> $a (..+ 1))"
+  assertAstOutput
+    "bracket insertion accepts an explicitly constructed map"
+    "$a[(1; 2)]"
+    "(<@> $a (<:> 1 2))"
+  assertAstOutput
+    "bracket access accepts an explicitly constructed map on the left"
+    "(2; 3)[0]"
+    "(<@> (<:> 2 3) 0)"
+  assertAstOutput
+    "grouping permits bracket access on a whole specification"
+    "((2; 3) ~> (Nat; Nat))[0]"
+    "(<@> (<~> (<:> 2 3) (<:> Nat Nat)) 0)"
+  assertAstOutput
     "natural range keywords continue across lines"
     "from\n2\nto\n5"
     "(from 2 to 5)"
   assertAstOutput
     "a prefix range greedily continues across a newline"
-    "[..\n10]"
+    "(..\n10)"
     "(<..> 0 10)"
   assertAstOutput
     "a postfix range can end before a closing delimiter"
-    "[2..\n]"
+    "(2..\n)"
     "(..+ 2)"
   assertAstOutput
     "a postfix range ends before lower-precedence access"
@@ -232,86 +316,82 @@ regressionTests = do
     "(<.> (..+ 2) 5)"
   assertAstOutput
     "Haskell arithmetic precedence"
-    "[1 + 2 * 3 ^ 4]"
+    "(1 + 2 * 3 ^ 4)"
     "(+ 1 (* 2 (^ 3 4)))"
   assertAstOutput
     "parentheses override arithmetic precedence"
-    "[(1 + 2) * 3]"
+    "((1 + 2) * 3)"
     "(* (+ 1 2) 3)"
   assertAstOutput
     "right-nested addition keeps necessary parentheses"
-    "[1 + (2 + 3)]"
+    "(1 + (2 + 3))"
     "(+ 1 (+ 2 3))"
   assertAstOutput
     "redundant parentheses are omitted"
-    "[((1 + (2 * (3 ^ 4))))]"
+    "(((1 + (2 * (3 ^ 4)))))"
     "(+ 1 (* 2 (^ 3 4)))"
   assertAstOutput
     "range endpoints accept arithmetic expressions"
-    "[1 + 2..3 * 4]"
+    "(1 + 2..3 * 4)"
     "(<..> (+ 1 2) (* 3 4))"
   assertAstOutput
     "range concatenation"
-    "[1..3, 5..7]"
+    "(1..3, 5..7)"
     "(<.> (<..> 1 3) (<..> 5 7))"
   assertParsed
     "a trailing comma concatenates an empty map"
-    "[1,]"
-    (AtlasMap
-      [ (<.>)
-          (natural 1)
-          (AtlasMap [])
-      ])
+    "(1,)"
+    ((<.>)
+      (natural 1)
+      (AtlasMap []))
   assertAstOutput
     "a trailing comma retains its semantic value"
-    "[1,]"
-    "(<.> 1 [])"
+    "(1,)"
+    "(<.> 1 ())"
   assertAstOutput
     "a trailing comma works at the inferred map boundary"
     "1,"
-    "(<.> 1 [])"
+    "(<.> 1 ())"
   assertAstOutput
     "a trailing comma can precede a newline and closing delimiter"
-    "[1, # no right operand\n]"
-    "(<.> 1 [])"
+    "(1, # no right operand\n)"
+    "(<.> 1 ())"
   assertAstOutput
     "a comma followed by an expression across a newline stays infix"
-    "[1,\n2]"
+    "(1,\n2)"
     "(<.> 1 2)"
   assertParsed
     "a trailing comma is removed from an existing concatenation"
-    "[1, 2,]"
-    (AtlasMap
-      [ (<.>)
-          (natural 1)
-          (natural 2)
-      ])
+    "(1, 2,)"
+    ((<.>)
+      (natural 1)
+      (natural 2))
   assertAstOutput
     "an existing concatenation does not gain an empty map"
-    "[1, 2,]"
+    "(1, 2,)"
     "(<.> 1 2)"
   assertAstOutput
     "a trailing comma can precede a map separator"
-    "[1,; 2]"
-    "(<:> (<.> 1 []) 2)"
+    "(1,; 2)"
+    "(<:> (<.> 1 ()) 2)"
   assertAstOutput
     "access consumes a concatenated range insertion"
-    "[... @ 1..3, 5..7]"
+    "(... @ 1..3, 5..7)"
     "(<@> ... (<.> (<..> 1 3) (<..> 5 7)))"
   assertAstOutput
     "parentheses can concatenate an access result"
-    "[(... @ 1), 2]"
+    "((... @ 1), 2)"
     "(<.> (<@> ... 1) 2)"
   assertAstOutput
     "map expressions are concatenation operands"
-    "[[1; 2], [3; 4]]"
+    "((1; 2), (3; 4))"
     "(<.> (<:> 1 2) (<:> 3 4))"
   assertAstOutput
-    "arithmetic and map expansion fixity conflict is parenthesized"
-    "[[1 + 2]; [3 * 4]]"
-    "(<+> (+ 1 2) (* 3 4))"
+    "unary grouping does not manufacture map expansion"
+    "((1 + 2); (3 * 4))"
+    "(<:> (+ 1 2) (* 3 4))"
   assertAstOutput
-    "outer map brackets are inferred"
+    "outer map parentheses are inferred"
     "2 + 3"
     "(+ 2 3)"
   assertAstOutput
@@ -344,7 +424,7 @@ regressionTests = do
     "(<.> (<..> 2 4) (..+ 5))"
   assertAstOutput
     "an ambiguous postfix range greedily consumes a following operand"
-    "[2..\n4]"
+    "(2..\n4)"
     "(<..> 2 4)"
   assertAstOutput
     "exponentiation continues and remains right associative"
@@ -352,27 +432,27 @@ regressionTests = do
     "(^ 2 (^ 3 4))"
   assertAstOutput
     "newlines separate expressions in an explicit map"
-    "[2\n3]"
+    "(2\n3)"
     "(<:> 2 3)"
   assertAstOutput
     "newline inference applies independently to nested maps"
-    "[[1\n2]\n[3\n4]]"
+    "((1\n2)\n(3\n4))"
     "(<+> (<:> 1 2) (<:> 3 4))"
   assertAstOutput
-    "outer brackets are inferred unless both delimiters are present"
-    "[1]\n2"
-    "(<+> 1 2)"
+    "separately parenthesized expressions form an implicit outer map"
+    "(1)\n2"
+    "(<:> 1 2)"
   assertAstOutput
-    "brackets inside comments do not affect outer bracket inference"
-    "[1]\n2 # ] is only a comment"
-    "(<+> 1 2)"
+    "parentheses inside comments do not affect outer-map inference"
+    "(1)\n2 # ) is only a comment"
+    "(<:> 1 2)"
   assertAstOutput
     "operator continuation also applies in explicit maps"
-    "[2 +\n3\n4]"
+    "(2 +\n3\n4)"
     "(<:> (+ 2 3) 4)"
   assertAstOutput
     "newlines inside unfinished expressions are ignored"
-    "[2 + \n 3]"
+    "(2 + \n 3)"
     "(+ 2 3)"
   assertAstOutput
     "multiline parenthesized expressions remain one expression"
@@ -380,62 +460,56 @@ regressionTests = do
     "(<:> (+ 2 3) 4)"
   assertParsed
     "exponentiation associates right"
-    "[2 ^ 3 ^ 4]"
-    (AtlasMap
-      [ (AST.^)
-          (natural 2)
-          ((AST.^) (natural 3) (natural 4))
-      ])
+    "(2 ^ 3 ^ 4)"
+    ((AST.^)
+      (natural 2)
+      ((AST.^) (natural 3) (natural 4)))
   assertParsed
     "addition associates left"
-    "[1 + 2 + 3]"
-    (AtlasMap
-      [ (AST.+)
-          ((AST.+) (natural 1) (natural 2))
-          (natural 3)
-      ])
+    "(1 + 2 + 3)"
+    ((AST.+)
+      ((AST.+) (natural 1) (natural 2))
+      (natural 3))
   assertParsed
     "access associates left"
-    "[... @ 1 @ 2]"
-    (AtlasMap
-      [ (<@>)
-          ((<@>) (...) (natural 1))
-          (natural 2)
-      ])
+    "(... @ 1 @ 2)"
+    ((<@>)
+      ((<@>) (...) (natural 1))
+      (natural 2))
   assertParsed
     "map is itself an expression"
-    "[([1; 2], [3; 4]) @ 0]"
-    (AtlasMap
-      [ (<@>)
-          ((<.>)
-            (AtlasMap [natural 1, natural 2])
-            (AtlasMap [natural 3, natural 4]))
-          (natural 0)
-      ])
+    "(((1; 2), (3; 4)) @ 0)"
+    ((<@>)
+      ((<.>)
+        (AtlasMap [natural 1, natural 2])
+        (AtlasMap [natural 3, natural 4]))
+      (natural 0))
   assertAstOutput
-    "a single unbracketed expression becomes a singleton map"
+    "a single unparenthesized expression stays itself"
     "10"
     "10"
   assertAstOutput
     "one trailing semicolon is ignored"
-    "[1; 2; # trailing separator\n]"
+    "(1; 2; # trailing separator\n)"
     "(<:> 1 2)"
-  assertRejected "multiple trailing semicolons are rejected" "[1; 2;;]"
+  assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
   assertRejected "IdentifierString requires a leading canonical character" "$0bad"
   assertRejected "IdentifierString rejects a missing body" "$"
   assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
-  assertRejected "multiple trailing commas are rejected" "[1,,]"
+  assertRejected "multiple trailing commas are rejected" "(1,,)"
+  assertRejected "standalone brackets are not an empty map" "[]"
+  assertRejected "bracket access requires an insertion" "$a[]"
   assertRejected
     "multiple trailing commas after concatenation are rejected"
-    "[1, 2,,]"
-  assertRejected "empty entries in the middle are rejected" "[1;;2]"
-  assertRejected "bounded ranges are non-associative" "[1..2..3]"
-  assertRejected "prefix and postfix ranges cannot be chained" "[..2..]"
-  assertRejected "adjacent range markers cannot be chained" "[1....2]"
-  assertRejected "the old explicit plus spelling is rejected" "[1..+]"
+    "(1, 2,,)"
+  assertRejected "empty entries in the middle are rejected" "(1;;2)"
+  assertRejected "bounded ranges are non-associative" "(1..2..3)"
+  assertRejected "prefix and postfix ranges cannot be chained" "(..2..)"
+  assertRejected "adjacent range markers cannot be chained" "(1....2)"
+  assertRejected "the old explicit plus spelling is rejected" "(1..+)"
   assertRejected
     "natural range origins must be literal EllipsisNaturals"
     "from (1 + 2) to 5"
@@ -445,41 +519,41 @@ regressionTests = do
   assertRejected "natural range keywords require separators" "from1to2"
   assertAstOutput
     "parentheses permit an explicitly nested range"
-    "[(1..2)..]"
+    "((1..2)..)"
     "(..+ (<..> 1 2))"
   assertParsed
     "a parenthesized Ellipsis can be a postfix range argument"
-    "[(...)..]"
-    (AtlasMap
-      [(..+) (...)])
+    "((...)..)"
+    ((..+) (...))
   assertAstOutput
     "a parenthesized Ellipsis can be a prefix range argument"
-    "[..(...)]"
+    "(..(...))"
     "(<..> 0 ...)"
   assertAstOutput
     "a parenthesized Ellipsis can be a bounded range argument"
-    "[(...)..2; 1..(...)]"
+    "((...)..2; 1..(...))"
     "(<:> (<..> ... 2) (<..> 1 ...))"
   assertRejected
     "a bare Ellipsis cannot be a postfix range argument"
-    "[... ..]"
+    "(... ..)"
   assertRejected
     "a bare Ellipsis cannot be a prefix range argument"
-    "[.. ...]"
+    "(.. ...)"
   assertRejected
     "a bare Ellipsis cannot be a bounded lower argument"
-    "[... .. 2]"
+    "(... .. 2)"
   assertRejected
     "a bare Ellipsis cannot be a bounded upper argument"
-    "[1.. ...]"
-  assertRejected "addition requires a right operand" "[1 +]"
-  assertRejected "parentheses must be balanced" "[(1 + 2]"
+    "(1.. ...)"
+  assertRejected "addition requires a right operand" "(1 +)"
+  assertRejected "parentheses must be balanced" "((1 + 2)"
   assertRejected
     "an operator starting the next line is not retroactive continuation"
     "2\n+ 3"
-  assertRejected
-    "separate maps with both outer delimiter characters are not rewrapped"
-    "[1]\n[2]"
+  assertAstOutput
+    "separate parenthesized maps form an implicit outer map"
+    "(1)\n(2)"
+    "(<:> 1 2)"
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -498,8 +572,8 @@ propNaturalMapParsing :: H.Property
 propNaturalMapParsing = H.property $ do
   values <- H.forAll
     (Gen.list (Range.linear 0 40) (Gen.integral (Range.linear 0 100000)))
-  let source = "[" <> joinWith "; " (map show values) <> "]"
-      expected = AtlasMap (map EllipsisNatural values)
+  let source = "(" <> joinWith "; " (map show values) <> ")"
+      expected = normalizeExpression (AtlasMap (map EllipsisNatural values))
   parseDatra source H.=== Right expected
 
 genExpression :: H.Gen Expression
@@ -560,7 +634,7 @@ assertAllHexadecimalAsciiEscapes = do
       assertParsed
         label
         ("\"\\" <> digits <> "\"")
-        (AtlasMap [AsciiStringLiteral [chr byteValue]])
+        (AsciiStringLiteral [chr byteValue])
 
     hexadecimalByte byteValue =
       case hexadecimalDigit byteValue of
@@ -572,7 +646,7 @@ assertAllHexadecimalAsciiEscapes = do
 
 assertLocatedParse :: IO ()
 assertLocatedParse =
-  case parseDatraLocated "[1; 2]" of
+  case parseDatraLocated "(1; 2)" of
     Left message -> fail ("located parse unexpectedly failed: " <> message)
     Right
         (Located
@@ -587,6 +661,26 @@ assertLocatedParse =
     Right actual ->
       fail ("located parse returned an unexpected value: " <> show actual)
 
+assertResourceEnvelopes :: IO ()
+assertResourceEnvelopes = do
+  assertEnvelope
+    "explicit outer map parentheses"
+    "(1; 2)"
+    ExplicitMapEnvelope
+  assertEnvelope
+    "implicit newline map"
+    "1\n2"
+    ImplicitMapEnvelope
+  assertEnvelope
+    "parenthesized operands are not an outer envelope"
+    "(1) <~ (2)"
+    ImplicitMapEnvelope
+  where
+    assertEnvelope label source expected =
+      case parseDatraLocatedResourceWithSourceName "<input>" source of
+        Left message -> fail (label <> ": unexpected failure: " <> message)
+        Right (actual, _) -> assert label (actual == expected)
+
 assertAstSyntax :: IO ()
 assertAstSyntax = do
   assert "ASCII-string syntax chooses its canonical spelling"
@@ -598,6 +692,11 @@ assertAstSyntax = do
     ( renderExpression
         ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
         == "(<+> (<:> 1 2) (<:> 3 4))"
+    )
+  assert "empty and unary AST products normalize structurally"
+    ( renderExpression (MapSequence [natural 1]) == "1"
+      && renderExpression (MapExpansion (AtlasMap []) (natural 1)) == "1"
+      && renderExpression (MapExpansion (natural 1) (AtlasMap [])) == "1"
     )
   assert "range, arithmetic, concatenation, and access symbols construct ASTs"
     ( renderExpression

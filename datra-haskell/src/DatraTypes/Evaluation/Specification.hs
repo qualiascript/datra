@@ -3,43 +3,26 @@ module Evaluation.Specification
   ( specifyValues
   ) where
 
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
-  )
-import AtlasMapSubfederation (decideAtlasMapSubfederation)
 import Evaluation.Error
   ( AtlasMapFederationOperation
       ( AtlasMapFederationSpecification
       , AtlasMapFederationSubfederation
       )
   , AtlasMapFederationRefutation
-      (AtlasMapFederationSpecificationHasNoMatchingMember)
+      ( AtlasMapFederationSpecificationHasNoMatchingMember
+      , AtlasMapFederationSubfederationHasMissingMember
+      )
   , AtlasMapFederationUncertainty
       (NoAtlasMapFederationDecisionProcedure)
   , InterpretingError (..)
   )
-import DatraOrdinal
-  ( finiteOrdinal
-  , naturalAtOrdinal
-  , ordinalLT
+import Evaluation.Specification.Composition (selectFederationMember)
+import Evaluation.Specification.Decision (Decision (..))
+import Evaluation.Specification.Subfederation
+  ( decideValueSubfederation
   )
 import Evaluation.Value
-import Evaluation.Federation
-  ( decidePrimitiveSubfederation
-  , requireFederationDecision
-  , selectNaturalRangeMember
-  , selectValuedNaturalRangeMember
-  , undecidableFederationOperation
-  )
-import NaturalRange qualified
-import Numeric.Natural (Natural)
-import SuperEllipsisRange qualified as Range
 
--- | NaturalRange and ValuedNaturalRange have separate target-specific
--- decision procedures.  NaturalRange members are range Atlases;
--- ValuedNaturalRange members are individual EllipsisNatural Atlases.  Both
--- families have total members, but that fact is not inferred for arbitrary
--- Atlas-map federations.
 specifyValues
   :: InterpretedValue
   -> InterpretedValue
@@ -59,35 +42,21 @@ specifyTotalAtlasMap source target = do
     case interpretedTotalAtlasMap source of
       Just totalMap -> Right totalMap
       Nothing -> Left (ExpectedTotalAtlasMap (interpretedValueKind source))
-  case interpretedAtlasMapFederation target of
-    PrimitiveAtlasMapFederation
-        (NaturalRangeAtlasMapFederation
-          (EvaluatedNaturalRange targetRange)) ->
-      case sourceNaturalSubrange source
-          >>= selectNaturalRangeMember targetRange of
-        Nothing -> noMatchingMember
-        Just member ->
-          Right
-            (specifiedValue
-              totalSource
-              (interpretedSemantics source)
-              target
-              (EvaluatedNaturalRangeMember member))
-    PrimitiveAtlasMapFederation
-        (ValuedNaturalRangeAtlasMapFederation
-          (EvaluatedValuedNaturalRange targetRange)) ->
-      case sourceEllipsisNatural source
-          >>= selectValuedNaturalRangeMember targetRange of
-        Nothing -> noMatchingMember
-        Just member ->
-          Right
-            (specifiedValue
-              totalSource
-              (interpretedSemantics source)
-              target
-              (EvaluatedValuedNaturalRangeMember member))
-    _ ->
-      undecidableFederationOperation AtlasMapFederationSpecification
+  case selectFederationMember source target of
+    DecisionProved member ->
+      Right
+        (specifiedValue
+          source
+          totalSource
+          (interpretedSemantics source)
+          target
+          member)
+    DecisionRefuted -> noMatchingMember
+    DecisionUndecidable ->
+      Left
+        (AtlasMapFederationOperationUndecidable
+          (NoAtlasMapFederationDecisionProcedure
+            AtlasMapFederationSpecification))
   where
     noMatchingMember =
       Left
@@ -95,7 +64,7 @@ specifyTotalAtlasMap source target = do
           AtlasMapFederationSpecificationHasNoMatchingMember)
 
 -- | Compose a prior specification with inclusion of its whole target
--- federation into a larger target.  Checking only the previously selected
+-- federation into a larger target. Checking only the previously selected
 -- member would be weaker: the intermediate object itself must be an Atlas
 -- subfederation of the final object.
 widenSpecification
@@ -104,32 +73,41 @@ widenSpecification
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 widenSpecification source specification target =
-  requireFederationDecision
-    (decideAtlasMapSubfederation
-      (NoAtlasMapFederationDecisionProcedure
-        AtlasMapFederationSubfederation)
-      decidePrimitiveSubfederation
+  case decideValueSubfederation
       (evaluatedSpecificationTarget specification)
-      (interpretedAtlasMapFederation target))
-    >> Right
-      (specifiedValue
-        (evaluatedSpecificationSource specification)
-        (originalSpecificationSourceSemantics source)
-        target
-        (evaluatedSpecificationMember specification))
+      target of
+    DecisionProved () ->
+      Right
+        (specifiedValue
+          (evaluatedSpecificationSourceValue specification)
+          (evaluatedSpecificationSource specification)
+          (originalSpecificationSourceSemantics source)
+          target
+          (evaluatedSpecificationMember specification))
+    DecisionRefuted ->
+      Left
+        (AtlasMapFederationOperationRefuted
+          AtlasMapFederationSubfederationHasMissingMember)
+    DecisionUndecidable ->
+      Left
+        (AtlasMapFederationOperationUndecidable
+          (NoAtlasMapFederationDecisionProcedure
+            AtlasMapFederationSubfederation))
 
 specifiedValue
-  :: InterpretedTotalAtlasMap
+  :: InterpretedValue
+  -> InterpretedTotalAtlasMap
   -> ValueSemantics
   -> InterpretedValue
   -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
-specifiedValue totalSource sourceCanonical target member =
+specifiedValue sourceValue totalSource sourceCanonical target member =
   makeInterpretedValue
     (SpecificationForm
       EvaluatedSpecification
-        { evaluatedSpecificationSource = totalSource
-        , evaluatedSpecificationTarget = interpretedAtlasMapFederation target
+        { evaluatedSpecificationSourceValue = sourceValue
+        , evaluatedSpecificationSource = totalSource
+        , evaluatedSpecificationTarget = target
         , evaluatedSpecificationMember = member
         })
     NoInsertion
@@ -143,111 +121,3 @@ originalSpecificationSourceSemantics value =
   case interpretedSemantics value of
     SpecificationSemantics source _ -> source
     semantics -> semantics
-
-sourceEllipsisNatural :: InterpretedValue -> Maybe Natural
-sourceEllipsisNatural value =
-  case interpretedForm value of
-    ExplicitForm explicitValue ->
-      let (level, ordinalValue) = explicitOrdinal explicitValue
-      in if level == 1 then naturalAtOrdinal ordinalValue else Nothing
-    _ -> Nothing
-
-sourceNaturalSubrange
-  :: InterpretedValue
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-sourceNaturalSubrange value =
-  case interpretedForm value of
-    RangeForm valueRange -> rangeSubrange valueRange
-    MapForm
-      | interpretedMapPageCardinality (interpretedMap value) == 0 ->
-          Just NaturalRange.EmptyNaturalSubrange
-      | interpretedMapPageCardinality (interpretedMap value) == 2 ->
-          mapSubrange value
-      | otherwise -> Nothing
-    _ -> Nothing
-
-mapSubrange
-  :: InterpretedValue
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-mapSubrange value =
-  case interpretedSemantics value of
-    MapSemantics _ [RangeSemantics description] ->
-      describedRangeSubrange 1 description
-    MapSemantics _ [ExplicitSemantics level ordinalValue] -> do
-      natural <- naturalAtOrdinal ordinalValue
-      if level == 1
-        then Just (NaturalRange.FiniteNaturalSubrange natural natural)
-        else Nothing
-    _ -> do
-      cardinality <-
-        naturalAtOrdinal
-          (interpretedMapFinalOrderType (interpretedMap value))
-      values <- traverse valueAt (finitePositions cardinality)
-      finiteSequenceSubrange values
-  where
-    valueAt position = do
-      member <-
-        interpretedMapValueAt
-          (interpretedMap value)
-          (finiteOrdinal position)
-      (level, ordinalValue) <- interpretedExplicitOrdinal member
-      if level == 1 then naturalAtOrdinal ordinalValue else Nothing
-
-    finitePositions 0 = []
-    finitePositions cardinality = [0 .. cardinality - 1]
-
-rangeSubrange
-  :: EvaluatedRange
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-rangeSubrange valueRange =
-  describedRangeSubrange
-    (evaluatedRangeLevel valueRange)
-    (rangeDescription valueRange)
-
-describedRangeSubrange
-  :: Natural
-  -> Range.SuperEllipsisRangeDescription
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-describedRangeSubrange level description
-  | level /= 1 = Nothing
-  | otherwise = do
-      start <- naturalAtOrdinal (Range.describedRangeStart description)
-      case Range.describedRangeTarget description of
-        Range.PlusSign ->
-          Just (NaturalRange.UpwardsNaturalSubrange start)
-        Range.MinusSign ->
-          Just (NaturalRange.FiniteNaturalSubrange start 0)
-        Range.GivenTarget boundary -> do
-          finalBoundary <- naturalAtOrdinal boundary
-          if boundary == Range.describedRangeStart description
-            then Just NaturalRange.EmptyNaturalSubrange
-            else if ordinalLT (Range.describedRangeStart description) boundary
-              then
-                Just
-                  (NaturalRange.FiniteNaturalSubrange
-                    start (finalBoundary - 1))
-              else
-                Just
-                  (NaturalRange.FiniteNaturalSubrange
-                    start (finalBoundary + 1))
-
-finiteSequenceSubrange
-  :: [Natural]
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-finiteSequenceSubrange [] = Just NaturalRange.EmptyNaturalSubrange
-finiteSequenceSubrange [value] =
-  Just (NaturalRange.FiniteNaturalSubrange value value)
-finiteSequenceSubrange values@(first : second : _)
-  | second == first + 1 && ascending values =
-      Just (NaturalRange.FiniteNaturalSubrange first (last values))
-  | first == second + 1 && descending values =
-      Just (NaturalRange.FiniteNaturalSubrange first (last values))
-  | otherwise = Nothing
-  where
-    ascending (left : right : rest) =
-      right == left + 1 && ascending (right : rest)
-    ascending _ = True
-
-    descending (left : right : rest) =
-      left == right + 1 && descending (right : rest)
-    descending _ = True

@@ -91,7 +91,7 @@ production image, run the whole pipeline and print only the final result:
 
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source '[1; 2 + 3]' \
+  --source '(1; 2 + 3)' \
   --output -
 ```
 
@@ -99,7 +99,7 @@ The `--output -` option
 prints the interpreted result to the terminal:
 
 ```text
-[1; 5]
+(1; 5)
 ```
 
 ### Also display the AST
@@ -108,7 +108,7 @@ Use `--ast-output -` to print the AST before the final result:
 
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source '[1; 2 + 3]' \
+  --source '(1; 2 + 3)' \
   --ast-output - \
   --output -
 ```
@@ -117,7 +117,7 @@ Expected output:
 
 ```text
 (<:> 1 (+ 2 3))
-[1; 5]
+(1; 5)
 ```
 
 ### Read and save files
@@ -133,7 +133,7 @@ saving both outputs to the host:
 
 ```sh
 mkdir -p resources
-printf '%s\n' '[1; 2 + 3]' > resources/input.datra
+printf '%s\n' '(1; 2 + 3)' > resources/input.datra
 
 docker run --rm \
   --user "$(id -u):$(id -g)" \
@@ -147,7 +147,7 @@ cat resources/output.datra.ast
 cat resources/output.datra
 ```
 
-This writes `(<:> 1 (+ 2 3))` to `resources/output.datra.ast` and `[1; 5]`
+This writes `(<:> 1 (+ 2 3))` to `resources/output.datra.ast` and `(1; 5)`
 to `resources/output.datra`. The input creation step replaces
 `resources/input.datra`; skip it to use your own source file.
 
@@ -174,7 +174,7 @@ Generate an AST from inline Datra source:
 
 ```sh
 docker run --rm datra-haskell:prod \
-  ast --source '[1; 2 + 3]' --output -
+  ast --source '(1; 2 + 3)' --output -
 ```
 
 Expected output:
@@ -214,7 +214,7 @@ docker run --rm \
   --output output.datra
 ```
 
-Add `--locale română` or `--locale english` to commands that interpret an AST.
+Add `--locale romanian` or `--locale english` to commands that interpret an AST.
 
 ## Use the development image
 

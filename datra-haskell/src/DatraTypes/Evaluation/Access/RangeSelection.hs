@@ -56,7 +56,7 @@ accessSource value =
         Just description ->
           rangeSource [describedRangeFromDescription description]
         Nothing -> rangeSource []
-    RangeConcatenationForm ranges ->
+    RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
     FormulationForm formulation ->
       let level = someSuperEllipsisLevel formulation
@@ -65,6 +65,23 @@ accessSource value =
           , sourceIsRangeLike = True
           , sourceFormulationLevel = Just level
           }
+    SequentialMapForm ->
+      let combined =
+            combineAccessSources
+              (map semanticAccessSource
+                (interpretedMapComponents (interpretedMap value)))
+      in combined
+          { sourceIsRangeLike = False
+          , sourceFormulationLevel = Nothing
+          }
+    ExpansionMapForm _ _ ->
+      combineAccessSources
+        (map semanticAccessSource
+          (interpretedMapComponents (interpretedMap value)))
+    ConcatenatedMapForm _ _ ->
+      combineAccessSources
+        (map semanticAccessSource
+          (interpretedMapComponents (interpretedMap value)))
     MapForm ->
       combineAccessSources
         (map semanticAccessSource

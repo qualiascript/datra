@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Parsing
-  ( parseDatra
+  ( ResourceEnvelope (..)
+  , parseDatra
   , parseDatraWithSourceName
   , parseDatraLocated
   , parseDatraLocatedWithSourceName
+  , parseDatraLocatedResourceWithSourceName
   , parseDatraAst
   , parseDatraAstWithSourceName
   , parseDatraAstLocated
@@ -82,15 +84,20 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 
 type Parser = Parsec Void Text
 
+data ResourceEnvelope
+  = ExplicitMapEnvelope
+  | ImplicitMapEnvelope
+  deriving (Eq, Show)
+
 -- | Parse an in-memory Datra resource without associating it with a real
 -- filesystem path. This is the entry point used by tests and other callers
 -- that already have the source contents.
 parseDatra :: String -> Either String Expression
 parseDatra = parseDatraWithSourceName "<input>"
 
--- | Parse one top-level map with a source name used only in diagnostics. If
--- the first and last significant characters are not '[' and ']', the
--- top-level brackets are implicit.
+-- | Parse one top-level map with a source name used only in diagnostics. A
+-- parenthesized expression consuming the whole resource is explicit; otherwise
+-- the top-level map is implicit.
 parseDatraWithSourceName :: FilePath -> String -> Either String Expression
 parseDatraWithSourceName sourceName source =
   locatedValue <$> parseDatraLocatedWithSourceName sourceName source
@@ -105,6 +112,17 @@ parseDatraLocatedWithSourceName
 parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
     (parse locatedResource resourceName (Text.pack source))
+
+-- | Parse a source resource while retaining whether its outer map parentheses
+-- were explicit. This is presentation metadata only; both cases produce the
+-- same located expression and evaluation semantics.
+parseDatraLocatedResourceWithSourceName
+  :: FilePath
+  -> String
+  -> Either String (ResourceEnvelope, Located Expression)
+parseDatraLocatedResourceWithSourceName resourceName source =
+  first errorBundlePretty
+    (parse locatedResourceWithEnvelope resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either String Expression
@@ -132,19 +150,30 @@ parseDatraAstLocatedWithSourceName resourceName source =
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
 
+locatedResourceWithEnvelope
+  :: Parser (ResourceEnvelope, Located Expression)
+locatedResourceWithEnvelope = do
+  (sourceSpan, (envelope, expressionValue)) <-
+    spanned resourceWithEnvelope
+  pure (envelope, Located sourceSpan expressionValue)
+
 locatedAstResource :: Parser (Located Expression)
 locatedAstResource = located astResource
 
 located :: Parser Expression -> Parser (Located Expression)
 located parser = do
+  (sourceSpan, expressionValue) <- spanned parser
+  pure (Located sourceSpan expressionValue)
+
+spanned :: Parser value -> Parser (SourceSpan, value)
+spanned parser = do
   startOffset <- getOffset
   start <- getSourcePos
-  expressionValue <- parser
+  value <- parser
   endOffset <- getOffset
   end <- getSourcePos
   pure
-    (Located
-      (SourceSpan
+    ( SourceSpan
         (sourceName start)
         (SourcePosition
           (fromIntegral startOffset)
@@ -153,20 +182,23 @@ located parser = do
         (SourcePosition
           (fromIntegral endOffset)
           (fromIntegral (unPos (sourceLine end)))
-          (fromIntegral (unPos (sourceColumn end)))))
-      expressionValue)
+          (fromIntegral (unPos (sourceColumn end))))
+    , value
+    )
 
 astResource :: Parser Expression
 astResource = astSpaceConsumer *> astExpression <* eof
 
 astExpression :: Parser Expression
-astExpression = astForm <|> astAtom
+astExpression = try astEmptyMap <|> astForm <|> astAtom
+
+astEmptyMap :: Parser Expression
+astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ AtlasMap [] <$ astSymbol "[]"
-    , NaturalType <$ astSymbol "Nat"
+    [ NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
     , AsciiStringLiteral <$> astStandardString
@@ -256,38 +288,38 @@ astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
 
 resource :: Parser Expression
-resource = do
+resource = snd <$> resourceWithEnvelope
+
+resourceWithEnvelope :: Parser (ResourceEnvelope, Expression)
+resourceWithEnvelope = do
   fullSpaceConsumer
-  result <-
-    (try (lookAhead outerMapEnvelope) *> atlasMap)
-      <|> (AtlasMap <$> elements)
+  result <- explicitResource <|> implicitResource
   fullSpaceConsumer
   eof
   pure result
+  where
+    explicitResource = do
+      _ <- try (lookAhead outerMapEnvelope)
+      (,) ExplicitMapEnvelope <$> parenthesizedExpression
+    implicitResource =
+      (,) ImplicitMapEnvelope <$> implicitOuterMap
 
--- This lookahead expresses the outer-bracket rule without rewriting the
--- source. Comments are consumed as a unit so a ']' inside one cannot be
--- mistaken for the final significant character.
+-- Parse the parenthesized expression itself in lookahead so the closing
+-- parenthesis must enclose the whole resource. This distinguishes an explicit
+-- map from an implicit sequence such as @(a); (b)@.
 outerMapEnvelope :: Parser ()
 outerMapEnvelope =
-  void
-    ( char '['
-        *> manyTill envelopeCharacter
-          (try (char ']' *> fullSpaceConsumer <* eof))
-    )
-  where
-    envelopeCharacter =
-      lineComment
-        <|> try (void standardStringToken)
-        <|> void anySingle
+  void (parenthesizedExpression <* fullSpaceConsumer <* eof)
 
-atlasMap :: Parser Expression
-atlasMap =
-  AtlasMap
-    <$> between
-      (symbol "[" <* lineSpaceConsumer)
-      (symbol "]")
-      elements
+implicitOuterMap :: Parser Expression
+implicitOuterMap = do
+  expressions <- elements
+  pure (sequenceExpression expressions)
+
+sequenceExpression :: [Expression] -> Expression
+sequenceExpression [] = AtlasMap []
+sequenceExpression [expressionValue] = expressionValue
+sequenceExpression expressions = AtlasMap expressions
 
 elements :: Parser [Expression]
 elements = expression `sepEndBy` mapSeparator
@@ -346,10 +378,12 @@ rangeEndpoint :: Parser Expression
 rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
-term =
+term = accessedTerm termAtom
+
+termAtom :: Parser Expression
+termAtom =
   choice
     [ parenthesizedExpression
-    , atlasMap
     , try naturalRangeExpression
     , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
@@ -359,14 +393,32 @@ term =
     ]
 
 rangeEndpointTerm :: Parser Expression
-rangeEndpointTerm =
+rangeEndpointTerm = accessedTerm rangeEndpointAtom
+
+rangeEndpointAtom :: Parser Expression
+rangeEndpointAtom =
   choice
     [ parenthesizedExpression
-    , atlasMap
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
+
+-- Bracket access is a postfix part of the primary expression, so it binds
+-- before arithmetic and every map-level operator. Repetition associates left:
+-- @source[first][second]@ accesses the first result at @second@.
+accessedTerm :: Parser Expression -> Parser Expression
+accessedTerm atom = do
+  source <- atom
+  insertions <- many bracketedInsertion
+  pure (foldl MapAccess source insertions)
+
+bracketedInsertion :: Parser Expression
+bracketedInsertion =
+  between
+    (symbol "[" <* lineSpaceConsumer)
+    (lineSpaceConsumer *> symbol "]")
+    expression
 
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
@@ -420,7 +472,7 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    expression
+    (sequenceExpression <$> elements)
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
@@ -430,16 +482,26 @@ arithmeticOperatorTable =
   , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
   ]
 
--- Concatenation binds after ranges, access follows it, and specification is
--- the final map operation.
+-- Concatenation binds after ranges. Access and forward specification share a
+-- left-associative level so their written order determines composition:
+-- @source ~> target @ insertion@ accesses the resulting specification, while
+-- @source @ insertion ~> target@ specifies the accessed value. Reverse
+-- specification remains the final, right-associative map operation so a
+-- reversed chain builds the same AST as the corresponding @~>@ chain.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
-  , [InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]
-  , [InfixL
-      (MapSpecification <$ continuedOperator AST.SpecificationOperator)]
+  , [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
+    , InfixL
+        (MapSpecification <$ continuedOperator AST.SpecificationOperator)
+    ]
+  , [InfixR
+      (flip MapSpecification <$ continuedSymbol reverseSpecificationSymbol)]
   ]
+
+reverseSpecificationSymbol :: Text
+reverseSpecificationSymbol = "<~"
 
 finishConcatenation :: Expression -> Expression
 finishConcatenation expressionValue@(MapConcatenation _ _) =
@@ -464,7 +526,7 @@ trailingComma =
 
 expressionEnd :: Parser ()
 expressionEnd =
-  void (choice [char ']', char ')', char ';']) <|> eof
+  void (choice [char ')', char ']', char ';']) <|> eof
 
 -- A postfix range also ends before an operator from the lower-precedence map
 -- layer. Keeping these boundaries separate from 'expressionEnd' avoids
@@ -477,6 +539,7 @@ postfixRangeEnd =
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
         , operatorToken AST.SpecificationOperator
+        , symbol reverseSpecificationSymbol
         ])
 
 ellipsisNatural :: Parser Expression

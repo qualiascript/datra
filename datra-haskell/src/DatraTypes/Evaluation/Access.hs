@@ -13,10 +13,16 @@ import Data.Bifunctor qualified as Bifunctor
 import Evaluation.Error
   ( InterpretingError (..)
   )
-import Evaluation.Federation
+import Evaluation.Access.Composition
   ( FederationAccess (..)
+  , accessMapFor
   , decideFederationAccess
   )
+import Evaluation.Access.Federation
+  ( federationIsCoalition
+  )
+import Evaluation.Access.Specification (accessSpecification)
+import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
   ( AccessSource (..)
@@ -46,6 +52,16 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
+  case interpretedForm mapValue of
+    SpecificationForm specification ->
+      accessSpecification accessValues specification insertionValue
+    _ -> accessFederationValues mapValue insertionValue
+
+accessFederationValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+accessFederationValues mapValue insertionValue =
   case decideFederationAccess mapValue insertionValue of
     Left rejection -> Left rejection
     Right (NaturalRangeFederationAccess sourceRange selectionRange) ->
@@ -63,13 +79,14 @@ accessSingleton
   -> SomeSuperEllipsisInsertion
   -> Either InterpretingError InterpretedValue
 accessSingleton mapValue insertionValue insertion = do
-  selected <- accessMap (interpretedMap mapValue) insertion
+  selected <- accessMap (accessMapFor mapValue) insertion
   let source = accessSource mapValue
   case accessSelection insertionValue of
     Just selectionRanges
-      | sourceIsRangeLike source
+      | not (valueIsCoalition mapValue)
+          && (sourceIsRangeLike source
           || naturalAtOrdinal
-              (someSuperEllipsisInsertionOrderType insertion) == Nothing ->
+              (someSuperEllipsisInsertionOrderType insertion) == Nothing) ->
         finishStaticAccess mapValue selected source selectionRanges
     _ -> finishAccess mapValue selected
 
@@ -126,7 +143,7 @@ accessNaturalRange mapValue (EvaluatedNaturalRange valueRange) =
     Nothing -> finishAccess mapValue emptyInterpretedMap
   where
     sourceOrderType =
-      interpretedMapFinalOrderType (interpretedMap mapValue)
+      interpretedMapFinalOrderType (accessMapFor mapValue)
     selectedRange =
       case naturalAtOrdinal sourceOrderType of
         Just finiteLimit ->
@@ -141,12 +158,13 @@ accessWithRange
 accessWithRange mapValue selectionRange = do
   selected <-
     accessMap
-      (interpretedMap mapValue)
+      (accessMapFor mapValue)
       (rangeInsertion selectionRange)
   let source = accessSource mapValue
-  if sourceIsRangeLike source
-      || naturalAtOrdinal
-          (interpretedMapFinalOrderType selected) == Nothing
+  if not (valueIsCoalition mapValue)
+      && (sourceIsRangeLike source
+        || naturalAtOrdinal
+            (interpretedMapFinalOrderType selected) == Nothing)
     then
       finishStaticAccess
         mapValue
@@ -205,6 +223,16 @@ finishAccess mapValue selected =
           (interpretedMapPageCardinality selected)
           (interpretedMapComponents selected)
       ordinaryResult =
+        case naturalAtOrdinal (interpretedMapFinalOrderType selected) of
+          Just cardinality ->
+            case selectedValueList cardinality of
+              Just values ->
+                makeAtlasMap
+                  (interpretedMapPageCardinality selected)
+                  values
+              Nothing -> fallbackResult
+          Nothing -> fallbackResult
+      fallbackResult =
         makeSingletonInterpretedValue
           MapForm
           NoInsertion
@@ -219,6 +247,15 @@ finishAccess mapValue selected =
         maybe ordinaryResult makeAsciiString
           (asciiStringFromInterpretedMap selected)
       _ -> ordinaryResult)
+  where
+    selectedValueList 0 = Just []
+    selectedValueList cardinality =
+      traverse
+        (interpretedMapValueAt selected . finiteOrdinal)
+        [0 .. cardinality - 1]
+
+valueIsCoalition :: InterpretedValue -> Bool
+valueIsCoalition = federationIsCoalition . interpretedAtlasMapFederation
 
 rangeAccessResult
   :: Bool
@@ -243,7 +280,7 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
           _ ->
             ( case ranges of
                 [valueRange] -> RangeForm valueRange
-                _ -> RangeConcatenationForm ranges
+                _ -> RangeConcatenationForm ranges Nothing
             , insertionCapability
             , case semanticComponents of
                 [component] -> component

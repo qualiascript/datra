@@ -4,6 +4,7 @@ module DatraLanguage.AST
   ( Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
+  , normalizeExpression
   , renderExpression
   , renderOperatorExpression
   , renderAsciiStringLiteral
@@ -92,13 +93,13 @@ normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression (AtlasMap expressions) =
-  AtlasMap
-    (filter (not . isEmptyMap) (map normalizeExpression expressions))
+  normalizeSequence AtlasMap expressions
 normalizeExpression (MapSequence expressions) =
-  MapSequence
-    (filter (not . isEmptyMap) (map normalizeExpression expressions))
+  normalizeSequence MapSequence expressions
 normalizeExpression (MapExpansion left right) =
-  MapExpansion (normalizeExpression left) (normalizeExpression right)
+  normalizeExpansion
+    (normalizeExpression left)
+    (normalizeExpression right)
 normalizeExpression (SuperEllipsisRange lowerBound upperBound) =
   SuperEllipsisRange
     (normalizeExpression lowerBound)
@@ -126,6 +127,26 @@ normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
+
+-- | Empty maps are neutral sequence members and a one-member sequence adds no
+-- genuine Atlas page: beyond an Atlas's finite presentation its final page is
+-- already repeated. Only a sequence with at least two members introduces a
+-- structural boundary.
+normalizeSequence
+  :: ([Expression] -> Expression)
+  -> [Expression]
+  -> Expression
+normalizeSequence constructor expressions =
+  case filter (not . isEmptyMap) (map normalizeExpression expressions) of
+    [] -> AtlasMap []
+    [expressionValue] -> expressionValue
+    normalized -> constructor normalized
+
+normalizeExpansion :: Expression -> Expression -> Expression
+normalizeExpansion left right
+  | isEmptyMap left = right
+  | isEmptyMap right = left
+  | otherwise = MapExpansion left right
 
 isEmptyMap :: Expression -> Bool
 isEmptyMap (AtlasMap []) = True
@@ -194,8 +215,8 @@ prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
-prettyOperator EmptyMap = "[]"
-prettyOperator (Sequential []) = "[]"
+prettyOperator EmptyMap = "()"
+prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
 prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator expressions)

@@ -4,16 +4,21 @@ import Data.Char (toLower)
 import DatraLanguage.AST (Expression, renderExpression)
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English, Română)
+  ( Locale (English, Romanian)
   , renderDatraError
   )
 import Interpreting (InterpretedValue, interpretLocatedExpression)
 import Options.Applicative
 import Parsing
-  ( parseDatraAstLocatedWithSourceName
+  ( ResourceEnvelope (..)
+  , parseDatraAstLocatedWithSourceName
   , parseDatraLocatedWithSourceName
+  , parseDatraLocatedResourceWithSourceName
   )
-import Rendering (renderInterpretedValue)
+import Rendering
+  ( renderInterpretedValue
+  , renderInterpretedValueAsNewlineMap
+  )
 import System.Exit (die)
 
 data Command
@@ -166,7 +171,7 @@ localeOption =
         <> metavar "LOCALE"
         <> value English
         <> showDefaultWith localeName
-        <> help "Diagnostic locale: english or română"
+        <> help "Diagnostic locale: english or romanian"
     )
 
 localeReader :: ReadM Locale
@@ -174,27 +179,31 @@ localeReader = eitherReader $ \localeText ->
   case map toLower localeText of
     "en" -> Right English
     "english" -> Right English
-    "ro" -> Right Română
-    "română" -> Right Română
-    "romana" -> Right Română
-    "romanian" -> Right Română
-    _ -> Left "expected english, en, română, romana, romanian, or ro"
+    "ro" -> Right Romanian
+    "romana" -> Right Romanian
+    "romanian" -> Right Romanian
+    _ -> Left "expected english, en, romana, romanian, or ro"
 
 localeName :: Locale -> String
 localeName English = "english"
-localeName Română = "română"
+localeName Romanian = "romanian"
 
 runCommand :: Command -> IO ()
 runCommand commandValue =
   case commandValue of
     Build input astPath outputPath locale -> do
       (sourceName, source) <- readInput input
-      locatedExpression <-
-        parseOrFail (parseDatraLocatedWithSourceName sourceName source)
+      (resourceEnvelope, locatedExpression) <-
+        parseOrFail
+          (parseDatraLocatedResourceWithSourceName sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- interpretOrFail locale locatedExpression
-      writeOutput outputPath (renderInterpretedValue interpreted)
+      writeOutput outputPath
+        (case resourceEnvelope of
+          ExplicitMapEnvelope -> renderInterpretedValue interpreted
+          ImplicitMapEnvelope ->
+            renderInterpretedValueAsNewlineMap interpreted)
     GenerateAst input outputPath -> do
       (sourceName, source) <- readInput input
       locatedExpression <-

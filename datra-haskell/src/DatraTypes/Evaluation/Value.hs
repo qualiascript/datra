@@ -119,19 +119,26 @@ newtype InterpretedTotalAtlasMap = InterpretedTotalAtlasMap
   { interpretedTotalAtlasMapUnderlying :: InterpretedMap
   }
 
--- | The selected member stays tagged by primitive federation family.  A
--- singleton range Atlas and an EllipsisNatural value Atlas are deliberately
--- distinct even when they carry the same natural.
+-- | The selected member stays tagged by federation family. Primitive range
+-- members remain distinct even when they carry the same natural; a singleton
+-- federation records the canonical identity of its sole total-map member.
 data EvaluatedAtlasMapFederationMember
   = EvaluatedNaturalRangeMember NaturalRange.NaturalSubrangeDescription
   | EvaluatedValuedNaturalRangeMember Natural
+  | EvaluatedSingletonAtlasMapMember CanonicalResult
+  | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
+  | EvaluatedExpansionAtlasMapMember
+      EvaluatedAtlasMapFederationMember
+      EvaluatedAtlasMapFederationMember
+  | EvaluatedConcatenatedAtlasMapMember [EvaluatedAtlasMapFederationMember]
 
 -- | Erased semantic witness for a successful specification.  The core
 -- 'SpecificationOperator' module carries the non-erased categorical form used
 -- when concrete Atlas witnesses remain available.
 data EvaluatedSpecification = EvaluatedSpecification
-  { evaluatedSpecificationSource :: InterpretedTotalAtlasMap
-  , evaluatedSpecificationTarget :: InterpretedAtlasMapFederation
+  { evaluatedSpecificationSourceValue :: InterpretedValue
+  , evaluatedSpecificationSource :: InterpretedTotalAtlasMap
+  , evaluatedSpecificationTarget :: InterpretedValue
   , evaluatedSpecificationMember :: EvaluatedAtlasMapFederationMember
   }
 
@@ -141,9 +148,14 @@ data ValueForm
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
   | ValuedNaturalRangeForm EvaluatedValuedNaturalRange
-  | RangeConcatenationForm [EvaluatedRange]
+  | RangeConcatenationForm
+      [EvaluatedRange]
+      (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
+  | SequentialMapForm
+  | ExpansionMapForm InterpretedValue InterpretedValue
+  | ConcatenatedMapForm InterpretedValue InterpretedValue
   | MapForm
 
 data InsertionCapability
@@ -288,9 +300,12 @@ interpretedValueKind value =
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind
     ValuedNaturalRangeForm _ -> RangeValueKind
-    RangeConcatenationForm _ -> RangeConcatenationValueKind
+    RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
+    SequentialMapForm -> MapValueKind
+    ExpansionMapForm _ _ -> MapValueKind
+    ConcatenatedMapForm _ _ -> MapValueKind
     MapForm -> MapValueKind
 
 interpretedExplicitOrdinal
@@ -391,7 +406,7 @@ valueRanges value =
       Just [naturalRangeAsEvaluatedRange valueRange]
     ValuedNaturalRangeForm valueRange ->
       Just [valuedNaturalRangeAsEvaluatedRange valueRange]
-    RangeConcatenationForm ranges -> Just ranges
+    RangeConcatenationForm ranges _ -> Just ranges
     _ -> Nothing
 
 emptyInterpretedMap :: InterpretedMap

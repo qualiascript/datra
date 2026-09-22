@@ -77,7 +77,7 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English, Română)
+  ( Locale (English, Romanian)
   , LocalizedDiagnostic (localizeDiagnostic)
   , renderDatraError
   )
@@ -210,9 +210,9 @@ testDiagnostics = do
         (finiteOrdinal 3)
       localized = localizeDiagnostic English reason
       rendered = renderDatraError English (atSourceSpan sourceSpan reason)
-      localizedRomanian = localizeDiagnostic Română reason
+      localizedRomanian = localizeDiagnostic Romanian reason
       renderedRomanian =
-        renderDatraError Română (atSourceSpan sourceSpan reason)
+        renderDatraError Romanian (atSourceSpan sourceSpan reason)
   assert "English access localization has exact structured text"
     (localized
       == LocalizedMessage

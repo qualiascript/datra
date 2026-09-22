@@ -76,7 +76,7 @@ library
         DatraLanguage.Diagnostics
         DatraLanguage.Diagnostics.Interpreter
         DatraLanguage.Diagnostics.Locales.English
-        DatraLanguage.Diagnostics.Locales.Română
+        DatraLanguage.Diagnostics.Locales.Romanian
         DatraLanguage.Diagnostics.Localization
         FixedPoint
         DomanialInsertion
@@ -178,14 +178,22 @@ library
         OrdinalSequence
         SuperEllipsisRange.Description
         Evaluation.Access
+        Evaluation.Access.Composition
+        Evaluation.Access.Federation
         Evaluation.Access.RangeSelection
+        Evaluation.Access.Specification
         Evaluation.Construction
         Evaluation.Error
         Evaluation.Federation
+        Evaluation.Federation.Structure
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Range
         Evaluation.Specification
+        Evaluation.Specification.Composition
+        Evaluation.Specification.Decision
+        Evaluation.Specification.Federation
+        Evaluation.Specification.Subfederation
         Evaluation.Value
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:

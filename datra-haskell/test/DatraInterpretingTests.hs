@@ -37,7 +37,10 @@ import DatraLanguage.Diagnostics.Interpreter
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
   )
-import Rendering (renderInterpretedValue)
+import Rendering
+  ( renderInterpretedValue
+  , renderInterpretedValueAsNewlineMap
+  )
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -51,7 +54,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English, Română)
+  ( Locale (English, Romanian)
   , renderDatraError
   )
 import MapOperators.AccessOperator
@@ -376,6 +379,18 @@ testCanonicalResults = do
 testRendering :: IO ()
 testRendering = do
   expectValue
+      "root map rendering modes"
+      (AtlasMap [natural 1, natural 2]) $ \value ->
+    assert "only newline mode removes the root map parentheses"
+      ( renderInterpretedValue value == "(1; 2)"
+        && renderInterpretedValueAsNewlineMap value == "1\n2"
+      )
+  expectValue
+      "newline map rendering disambiguates an open range"
+      (AtlasMap [(..+) (natural 1), natural 10]) $ \value ->
+    assert "an open range keeps a semicolon before the next line"
+      (renderInterpretedValueAsNewlineMap value == "1..;\n10")
+  expectValue
       "singleton arithmetic map"
       (AtlasMap [(AST.+) (natural 2) (natural 2)]) $ \value ->
     assert "singleton maps render as their sole canonical value"
@@ -412,11 +427,40 @@ testRendering = do
             ((<..>) (natural 2) (natural 5))
             ((..+) (natural 5))
         ]) $ \value ->
-    assert "singleton range maps render without enumeration or brackets"
+    assert "singleton range maps render without enumeration or delimiters"
       (renderInterpretedValue value == "2..")
 
 testMaps :: IO ()
 testMaps = do
+  expectValue
+      "unary maps are structural identities"
+      (AtlasMap [AtlasMap [natural 1]]) $ \value ->
+    assert "repeated unary wrapping adds no genuine page"
+      ( interpretedValueKind value == NaturalValueKind
+        && interpretedMapCardinality (interpretedMap value) == 1
+        && renderInterpretedValue value == "1"
+      )
+  expectValue
+      "unary operands do not raise sequence cardinality"
+      (AtlasMap
+        [ AtlasMap [natural 1]
+        , AtlasMap [natural 2]
+        ]) $ \value ->
+    assert "a sequence of unary operands has one new genuine page"
+      ( interpretedMapCardinality (interpretedMap value) == 2
+        && renderInterpretedValue value == "(1; 2)"
+      )
+  expectValue
+      "empty sequence members normalize away"
+      (AtlasMap
+        [ AtlasMap []
+        , natural 1
+        , AtlasMap []
+        ]) $ \value ->
+    assert "only exact empty maps are sequence identities"
+      ( interpretedValueKind value == NaturalValueKind
+        && renderInterpretedValue value == "1"
+      )
   expectValue
       "ASCII-string concatenation"
       ((<.>) (AsciiStringLiteral "ab") (AsciiStringLiteral "_1")) $ \value ->
@@ -438,8 +482,35 @@ testMaps = do
   expectValue
       "operator sequence"
       (natural 1 <:> natural 2) $ \value ->
-    assert "sequential AST syntax constructs a flat two-page map"
-      (interpretedMapCardinality (interpretedMap value) == 2)
+    assert "sequential AST syntax constructs a two-position map"
+      ( interpretedMapCardinality (interpretedMap value) == 2
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 2
+      )
+  let compoundSequence =
+        MapSequence
+          [ (<..>) (natural 1) (natural 4)
+          , AsciiStringLiteral "ab"
+          ]
+  expectValue "sequence preserves compound operands" compoundSequence $ \value ->
+    assert "each sequence operand occupies exactly one final-page position"
+      ( interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 2
+        && renderInterpretedValue value == "(1..4; $ab)"
+      )
+  expectValue
+      "sequence access returns a compound operand intact"
+      ((<@>) compoundSequence (natural 0)) $ \value ->
+    assert "access does not flatten the selected sequence operand"
+      (renderInterpretedValue value == "1..4")
+  expectValue
+      "concatenation flattens compound operands"
+      ((<.>)
+        ((<..>) (natural 1) (natural 4))
+        (AsciiStringLiteral "ab")) $ \value ->
+    assert "concatenation appends operand final-page contents"
+      (interpretedMapFinalOrderType (interpretedMap value)
+        == finiteOrdinal 5)
   expectValue
       "operator expansion"
       ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4)) $ \value ->
@@ -455,15 +526,33 @@ testMaps = do
         values =
           map
             (\position ->
-              interpretedMapValueAt valueMap (finiteOrdinal position)
-                >>= naturalOrdinal)
-            [0 .. 4]
+              renderInterpretedValue
+                <$> interpretedMapValueAt valueMap (finiteOrdinal position))
+            [0 .. 2]
     assert "nested map has the requested three-page cardinality"
       (interpretedMapCardinality valueMap == 3)
-    assert "nested map final page preserves all four natural values"
-      (values == map Just [1, 2, 3, 4] <> [Nothing])
-    assert "nested maps render with their evaluated cardinality"
-      (renderInterpretedValue value == "[[1; 2; 3; 4]]")
+    assert "nested sequence operands remain distinct final-page values"
+      (values == [Just "(1; 2)", Just "(3; 4)", Nothing])
+    assert "nested maps retain their sequence boundaries when rendered"
+      (renderInterpretedValue value == "((1; 2); (3; 4))")
+  let leftNested =
+        AtlasMap
+          [ AtlasMap [natural 1, natural 2]
+          , natural 3
+          ]
+      rightNested =
+        AtlasMap
+          [ natural 1
+          , AtlasMap [natural 2, natural 3]
+          ]
+  expectValue "left-nested map" leftNested $ \leftValue ->
+    expectValue "right-nested map" rightNested $ \rightValue ->
+      assert "binary map nesting remains non-associative"
+        ( interpretedMapCardinality (interpretedMap leftValue) == 3
+          && interpretedMapCardinality (interpretedMap rightValue) == 3
+          && renderInterpretedValue leftValue == "((1; 2); 3)"
+          && renderInterpretedValue rightValue == "(1; (2; 3))"
+        )
   expectValue
       "map concatenation"
       ((<.>)
@@ -479,7 +568,7 @@ testAtlasMapFederations = do
       "a structured map retains NaturalRange syntax"
       (AtlasMap [natural 2, NaturalRange 2 10]) $ \value ->
     assert "NaturalRange structure survives a sequential product"
-      (renderInterpretedValue value == "[2; from 2 to 10]")
+      (renderInterpretedValue value == "(2; from 2 to 10)")
   expectValue
       "disjoint NaturalRange concatenation"
       ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
@@ -558,6 +647,10 @@ testAccess = do
         (<.>)
           (natural 1)
           ((<.>) (natural 2) (natural 3))
+      sequenceSpecification =
+        (<~>)
+          (AtlasMap [natural 2, natural 3])
+          (AtlasMap [NaturalType, NaturalType])
       expectRangeAccess label expectedKind sourceValue selectionValue expected =
         expectValue label ((<@>) sourceValue selectionValue) $ \value ->
           assert label
@@ -565,25 +658,105 @@ testAccess = do
               && renderInterpretedValue value == expected
             )
   expectValue
+      "access projects one specification fiber"
+      ((<@>) sequenceSpecification (natural 0)) $ \value ->
+    assert "the selected source and target remain related"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "2 ~> Nat"
+      )
+  expectValue
+      "range access projects specification fibers"
+      ((<@>)
+        sequenceSpecification
+        ((<..>) (natural 0) (natural 2))) $ \value ->
+    assert "a specification range retains both selected fibers"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "(2; 3) ~> (Nat; Nat)"
+      )
+  expectValue
       "natural upwards range access"
       ((<@>) threeValues (NaturalRangeUpwards 1)) $ \value ->
     assert "natural range access clips upwards to the largest fitting range"
-      (renderInterpretedValue value == "[2; 3]")
+      (renderInterpretedValue value == "(2; 3)")
   expectValue
       "bounded natural range access"
       ((<@>) threeValues (NaturalRange 1 10)) $ \value ->
     assert "bounded natural range access clips its inclusive target"
-      (renderInterpretedValue value == "[2; 3]")
+      (renderInterpretedValue value == "(2; 3)")
   expectValue
       "descending natural range access"
       ((<@>) threeValues (NaturalRange 10 0)) $ \value ->
     assert "descending natural range access clips its inclusive origin"
-      (renderInterpretedValue value == "[3; 2; 1]")
+      (renderInterpretedValue value == "(3; 2; 1)")
   expectValue
       "empty natural range access"
       ((<@>) threeValues (NaturalRangeUpwards 10)) $ \value ->
     assert "natural range access always has its empty federation member"
-      (renderInterpretedValue value == "[]")
+      (renderInterpretedValue value == "()")
+  let stableConcatenationPrefix =
+        (<.>)
+          (natural 1)
+          ((<.>)
+            (natural 2)
+            ((<.>) (natural 3) (NaturalRange 5 20)))
+  expectValue
+      "access stays within a total concatenation prefix"
+      ((<@>)
+        stableConcatenationPrefix
+        ((<..>) (natural 0) (natural 3))) $ \value ->
+    assert "an uncertain suffix does not obscure a known prefix"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  expectValue
+      "NaturalRange access stays within a total concatenation prefix"
+      ((<@>) stableConcatenationPrefix (NaturalRange 0 2)) $ \value ->
+    assert "federated selections use the same accessible regions"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  expectValue
+      "atomic coalition access lifts through concatenation"
+      ((<@>)
+        ((<.>) (ValuedNaturalRange 1 3) (NaturalRange 5 20))
+        (natural 0)) $ \value ->
+    assert "a fixed-width coalition remains one accessible region"
+      (renderInterpretedValue value == "within 1 to 3")
+  assert "access crossing an uncertain concatenation suffix is undecidable"
+    (case interpretExpressionReason
+        ((<@>)
+          stableConcatenationPrefix
+          ((<..>) (natural 0) (natural 4))) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationAccess)) -> True
+      _ -> False)
+  let valuedCoalitionSequence =
+        AtlasMap
+          [ natural 2
+          , natural 3
+          , ValuedNaturalRange 1 20
+          , natural 5
+          ]
+  expectValue
+      "a sequence containing a valued-range coalition supports open access"
+      ((<@>) valuedCoalitionSequence (NaturalRangeUpwards 0)) $ \value ->
+    assert "open access preserves the valued-range coalition as one position"
+      ( interpretedMapFinalOrderType (interpretedMap value) == finiteOrdinal 4
+        && renderInterpretedValue value == "(2; 3; within 1 to 20; 5)"
+      )
+  expectValue
+      "bounded access slices a sequence of coalitions"
+      ((<@>) valuedCoalitionSequence (NaturalRange 1 2)) $ \value ->
+    assert "bounded access retains the selected valued-range coalition"
+      (renderInterpretedValue value == "(3; within 1 to 20)")
+  expectValue
+      "singleton access selects a valued-range coalition"
+      ((<@>) valuedCoalitionSequence (natural 2)) $ \value ->
+    assert "singleton access returns the selected coalition"
+      (renderInterpretedValue value == "within 1 to 20")
+  expectValue
+      "a valued range is its own coalition"
+      ((<@>) (ValuedNaturalRange 1 20) (NaturalRangeUpwards 0)) $ \value ->
+    assert "access preserves a standalone valued-range coalition"
+      (renderInterpretedValue value == "within 1 to 20")
   expectRangeAccess
     "natural upwards access canonicalizes a bounded source range"
     RangeValueKind
@@ -695,7 +868,7 @@ testAccess = do
     MapValueKind
     ((<..>) (natural 2) (natural 20))
     ((<..>) (natural 5) (natural 5))
-    "[]"
+    "()"
   expectRangeAccess
     "bounded transfinite range access remains symbolic"
     RangeValueKind
@@ -776,7 +949,7 @@ testAccess = do
     assert "access follows concatenated insertion order"
       (selected == map Just [2 .. 7] <> [Nothing])
     assert "finite access renders its selected result values"
-      (renderInterpretedValue value == "[2; 3; 4; 5; 6; 7]")
+      (renderInterpretedValue value == "(2; 3; 4; 5; 6; 7)")
   let levelTwoFormulation =
         (AST.^) (...) (natural 2)
       mixedRankInsertion =
@@ -819,35 +992,23 @@ testAccess = do
     ((..+) (natural 10))
     (...)
     "10.."
-  expectRangeAccess
-    "an AtlasMap wrapper preserves its range source"
-    RangeValueKind
-    (AtlasMap [((..+) (natural 2))])
-    ((..+) (natural 5))
-    "7.."
-  expectRangeAccess
-    "an infinite selection skips a finite AtlasMap prefix"
-    RangeValueKind
-    (AtlasMap [natural 42, ((..+) (natural 2))])
-    ((..+) (natural 5))
-    "6.."
   expectValue
-      "non-injective infinite AtlasMap access"
+      "a sequence wrapper preserves its range operand"
       ((<@>)
-        (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
-        ((..+) (natural 0))) $ \value ->
-    assert "overlapping result ranges remain an exact ordinary map"
-      ( interpretedValueKind value == MapValueKind
-        && renderInterpretedValue value == "[1; 1..]"
-      )
-  expectRangeAccess
-    "a canonicalized non-injective result remains accessible"
-    RangeValueKind
-    ((<@>)
-      (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
-      ((..+) (natural 0)))
-    ((..+) (natural 1))
-    "1.."
+        (AtlasMap [((..+) (natural 2))])
+        (NaturalRangeUpwards 0)) $ \value ->
+    assert "sequence access returns the range operand without flattening it"
+      (renderInterpretedValue value == "2..")
+  assert "an infinite insertion cannot enter a sequence operand"
+    (case interpretExpressionReason
+        ((<@>)
+          (AtlasMap [natural 42, ((..+) (natural 2))])
+          ((..+) (natural 5))) of
+      Left
+          (AccessRejected
+            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
+        insertionLimit == omega && mapOrderType == finiteOrdinal 2
+      _ -> False)
   expectValue
       "NaturalRange accessed by NaturalRange"
       ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
@@ -871,14 +1032,14 @@ testAccess = do
         (NaturalRange 2 4)
         (NaturalRangeUpwards 10)) $ \value ->
     assert "the empty result is the common NaturalRange access member"
-      (renderInterpretedValue value == "[]")
+      (renderInterpretedValue value == "()")
   expectValue
       "NaturalRange accessed by empty ordinary range"
       ((<@>)
         (NaturalRange 2 10)
         ((<..>) (natural 0) (natural 0))) $ \value ->
     assert "empty selection succeeds on every federation member"
-      (renderInterpretedValue value == "[]")
+      (renderInterpretedValue value == "()")
   assert "nonempty ordinary access is refuted by the empty member"
     (case interpretExpressionReason
         ((<@>)
@@ -888,16 +1049,37 @@ testAccess = do
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationAccessHasEmptyCounterexample) -> True
       _ -> False)
-  assert "structured federation access can remain undecidable"
+  let concatenatedNaturalRanges =
+        (<.>) (NaturalRange 1 10) (NaturalRange 20 30)
+  assert "nonempty access into concatenated NaturalRanges is refuted explicitly"
     (case interpretExpressionReason
-        ((<@>)
-          (NaturalRange 2 5 <:> NaturalRange 8 10)
-          ((<..>) (natural 0) (natural 1))) of
+        ((<@>) concatenatedNaturalRanges (natural 5)) of
       Left
-          (AtlasMapFederationOperationUndecidable
-            (NoAtlasMapFederationDecisionProcedure
-              AtlasMapFederationAccess)) -> True
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationAccessHasEmptyCounterexample) -> True
       _ -> False)
+  assert "NaturalRange access into concatenated NaturalRanges is refuted explicitly"
+    (case interpretExpressionReason
+        ((<@>) concatenatedNaturalRanges (NaturalRangeUpwards 0)) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationAccessHasEmptyCounterexample) -> True
+      _ -> False)
+  expectValue
+      "empty access into concatenated NaturalRanges still succeeds"
+      ((<@>)
+        concatenatedNaturalRanges
+        ((<..>) (natural 0) (natural 0))) $ \value ->
+    assert "empty selection succeeds on every concatenated federation member"
+      (renderInterpretedValue value == "()")
+  expectValue
+      "sequence access preserves structured federation operands"
+      ((<@>)
+        (NaturalRange 2 5 <:> NaturalRange 8 10)
+        ((<..>) (natural 0) (natural 2))) $ \value ->
+    assert "sequence access never flattens operand federations"
+      (renderInterpretedValue value
+        == "(from 2 to 5; from 8 to 10)")
 
 testSpecification :: IO ()
 testSpecification = do
@@ -914,9 +1096,128 @@ testSpecification = do
                 (AtlasMapFederationOperationRefuted
                   AtlasMapFederationSpecificationHasNoMatchingMember) -> True
             _ -> False)
+      boundedRange = (<..>) (natural 2) (natural 5)
+      rangeConcatenation =
+        (<.>) boundedRange ((..+) (natural 8))
+      rangeSequence =
+        AtlasMap [boundedRange, AsciiStringLiteral "a"]
+      compositeSequenceSource =
+        AtlasMap [AsciiStringLiteral "a", natural 50]
+      compositeSequenceTarget =
+        AtlasMap [AsciiStringLiteral "a", NaturalType]
+      compositeSequenceIntermediate =
+        AtlasMap
+          [ AsciiStringLiteral "a"
+          , ValuedNaturalRange 1 100
+          ]
+      compositeExpansionSource =
+        MapExpansion
+          (AtlasMap [AsciiStringLiteral "a"])
+          (AtlasMap [natural 50])
+      compositeExpansionTarget =
+        MapExpansion
+          (AtlasMap [AsciiStringLiteral "a"])
+          (AtlasMap [NaturalType])
+      compositeExpansionIntermediate =
+        MapExpansion
+          (AtlasMap [AsciiStringLiteral "a"])
+          (AtlasMap [ValuedNaturalRange 1 100])
+      concatenate = foldr1 (<.>)
+      compositeConcatenationSource =
+        concatenate
+          [ AsciiStringLiteral "a"
+          , natural 3
+          , natural 4
+          , natural 5
+          ]
+      compositeConcatenationTarget =
+        (<.>)
+          (AsciiStringLiteral "a")
+          (NaturalRange 1 10)
+      compositeConcatenationWidenedTarget =
+        (<.>)
+          (AsciiStringLiteral "a")
+          (NaturalRangeUpwards 0)
+  expectSpecification
+    "ASCII string self-specification"
+    (AsciiStringLiteral "a")
+    (AsciiStringLiteral "a")
+    "$a ~> $a"
+  expectSpecification
+    "natural self-specification"
+    (natural 2)
+    (natural 2)
+    "2 ~> 2"
+  expectSpecification
+    "range self-specification"
+    boundedRange
+    boundedRange
+    "2..5 ~> 2..5"
+  expectSpecification
+    "range concatenation self-specification"
+    rangeConcatenation
+    rangeConcatenation
+    "2..5, 8.. ~> 2..5, 8.."
+  expectSpecification
+    "sequence self-specification"
+    rangeSequence
+    rangeSequence
+    "(2..5; $a) ~> (2..5; $a)"
+  expectNoMember
+    "different singleton total maps do not specify each other"
+    (AsciiStringLiteral "a")
+    (AsciiStringLiteral "b")
+  expectSpecification
+    "sequence federation selects members pointwise"
+    compositeSequenceSource
+    compositeSequenceTarget
+    "($a; 50) ~> ($a; Nat)"
+  expectSpecification
+    "concatenated federation partitions and selects members"
+    compositeConcatenationSource
+    compositeConcatenationTarget
+    "($a; 3; 4; 5) ~> $a, from 1 to 10"
+  expectValue
+      "expansion federation selects members pointwise"
+      ((<~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
+    assert "expansion specification is defined"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectValue
+      "sequence subfederations compose pointwise"
+      ((<~>)
+        ((<~>) compositeSequenceSource compositeSequenceIntermediate)
+        compositeSequenceTarget) $ \value ->
+    assert "sequence composition retains the final target"
+      (renderInterpretedValue value == "($a; 50) ~> ($a; Nat)")
+  expectValue
+      "concatenated subfederations compose pointwise"
+      ((<~>)
+        ((<~>)
+          compositeConcatenationSource
+          compositeConcatenationTarget)
+        compositeConcatenationWidenedTarget) $ \value ->
+    assert "concatenation composition retains the final target"
+      (renderInterpretedValue value
+        == "($a; 3; 4; 5) ~> $a, from 0 upwards")
+  expectValue
+      "expansion subfederations compose pointwise"
+      ((<~>)
+        ((<~>) compositeExpansionSource compositeExpansionIntermediate)
+        compositeExpansionTarget) $ \value ->
+    assert "expansion composition retains a specification"
+      (interpretedValueKind value == SpecificationValueKind)
+  assert "composite subfederations report a missing component"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>) compositeSequenceSource compositeSequenceIntermediate)
+          (AtlasMap [AsciiStringLiteral "b", NaturalType])) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSubfederationHasMissingMember) -> True
+      _ -> False)
   expectSpecification
     "bounded ascending range specification"
-    ((<..>) (natural 2) (natural 5))
+    boundedRange
     (NaturalRange 0 10)
     "2..5 ~> from 0 to 10"
   expectSpecification
@@ -938,7 +1239,7 @@ testSpecification = do
     "flat total Atlas map specification"
     (AtlasMap [natural 2, natural 3, natural 4])
     (NaturalRange 0 10)
-    "[2; 3; 4] ~> from 0 to 10"
+    "(2; 3; 4) ~> from 0 to 10"
   expectSpecification
     "EllipsisNatural specification into a ValuedNaturalRange"
     (natural 2)
@@ -1049,16 +1350,10 @@ testSpecification = do
         ((<~>) (NaturalRange 2 5) (NaturalRange 0 10)) of
       Left (ExpectedTotalAtlasMap RangeValueKind) -> True
       _ -> False)
-  assert "an unknown specification target remains undecided"
-    (case interpretExpressionReason
-        ((<~>)
-          ((<..>) (natural 2) (natural 5))
-          ((<..>) (natural 0) (natural 10))) of
-      Left
-          (AtlasMapFederationOperationUndecidable
-            (NoAtlasMapFederationDecisionProcedure
-              AtlasMapFederationSpecification)) -> True
-      _ -> False)
+  expectNoMember
+    "a different singleton total target has no matching member"
+    ((<..>) (natural 2) (natural 5))
+    ((<..>) (natural 0) (natural 10))
   assert "composition rejects an intermediate federation with a missing member"
     (case interpretExpressionReason
         ((<~>)
@@ -1209,7 +1504,7 @@ testLocatedRejection = do
   assert "Romanian interpretation errors are localized only at display time"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left valueError ->
-        renderDatraError Română valueError
+        renderDatraError Romanian valueError
           == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
               <> "  tipul efectiv al valorii: hartă"
       Right _ -> False)
@@ -1235,7 +1530,7 @@ testLocatedRejection = do
   assert "Romanian overlap diagnostics use Datra range notation"
     (case interpretLocatedExpression (Located sourceSpan overlapExpression) of
       Left valueError ->
-        renderDatraError Română valueError
+        renderDatraError Romanian valueError
           == "<test>:1:5: intervalele suprapuse nu pot fi folosite pentru a accesa o hartă\n"
               <> "  primul interval: 2..5\n"
               <> "  al doilea interval: 4..7\n"

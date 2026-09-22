@@ -3,9 +3,11 @@
 module Rendering
   ( renderCanonicalResult
   , renderInterpretedValue
+  , renderInterpretedValueAsNewlineMap
   ) where
 
 import Data.Char (isDigit)
+import Data.List (intercalate, isSuffixOf)
 import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
@@ -39,13 +41,45 @@ import SuperEllipsisRange
   )
 
 -- | Render an evaluated value in Datra source notation. Internal AST
--- operators never appear here; maps use brackets and semicolons, while
+-- operators never appear here; maps use parentheses and semicolons, while
 -- compact ranges retain their range notation.
 renderInterpretedValue :: InterpretedValue -> String
 renderInterpretedValue = renderCanonicalResult . interpretedCanonicalResult
 
+-- | Render only the root map using implicit newline notation. Nested maps
+-- keep their canonical parentheses. A semicolon is retained before a newline
+-- when omitting it would let the range parser consume the next line.
+renderInterpretedValueAsNewlineMap :: InterpretedValue -> String
+renderInterpretedValueAsNewlineMap =
+  renderCanonicalResultAsNewlineMap . interpretedCanonicalResult
+
 renderCanonicalResult :: CanonicalResult -> String
 renderCanonicalResult = renderCompact . prettyCanonicalResult
+
+renderCanonicalResultAsNewlineMap :: CanonicalResult -> String
+renderCanonicalResultAsNewlineMap result =
+  case result of
+    CanonicalMap cardinality components ->
+      renderNewlineMap cardinality components
+    _ -> renderCanonicalResult result
+
+renderNewlineMap :: Natural -> [CanonicalResult] -> String
+renderNewlineMap _ [] = ""
+renderNewlineMap _ [component] = renderCanonicalResult component
+renderNewlineMap _ components =
+  intercalate "\n" (terminateBeforeNewline renderedComponents)
+  where
+    renderedComponents = map renderCanonicalResult components
+
+terminateBeforeNewline :: [String] -> [String]
+terminateBeforeNewline [] = []
+terminateBeforeNewline [lastComponent] = [lastComponent]
+terminateBeforeNewline (component : remaining) =
+  disambiguate component : terminateBeforeNewline remaining
+  where
+    disambiguate rendered
+      | ".." `isSuffixOf` rendered = rendered <> ";"
+      | otherwise = rendered
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result =
@@ -92,15 +126,12 @@ prettyValuedNaturalRange origin target =
     UpwardsTarget -> "within " <> pretty origin <> " upwards"
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
-prettyMap 0 _ = "[]"
+prettyMap 0 _ = "()"
 prettyMap _ [component] = prettyCanonicalResult component
-prettyMap cardinality components =
-  nest (cardinality - 1)
+prettyMap _ components =
+  parens
     (concatWith (\left right -> left <> "; " <> right)
       (map prettyCanonicalResult components))
-  where
-    nest 0 value = value
-    nest depth value = "[" <> nest (depth - 1) value <> "]"
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =

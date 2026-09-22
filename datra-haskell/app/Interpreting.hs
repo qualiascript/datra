@@ -24,7 +24,7 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST (Expression (..), normalizeExpression)
 import DatraTypes
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -50,7 +50,12 @@ interpretLocatedExpression (Located sourceSpan expressionValue) =
 interpretExpressionReason
   :: Expression
   -> Either InterpretingError InterpretedValue
-interpretExpressionReason expressionValue =
+interpretExpressionReason = interpretNormalizedExpression . normalizeExpression
+
+interpretNormalizedExpression
+  :: Expression
+  -> Either InterpretingError InterpretedValue
+interpretNormalizedExpression expressionValue =
   case expressionValue of
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)

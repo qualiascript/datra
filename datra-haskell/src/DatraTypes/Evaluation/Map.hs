@@ -25,37 +25,52 @@ import Evaluation.Value
 import Numeric.Natural (Natural)
 
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
-makeAtlasMap _ [value]
-  | SpecificationForm _ <- interpretedForm value = value
+makeAtlasMap _ [value] = value
 makeAtlasMap cardinality values =
-  makeProductMap cardinality values SequentialAtlasMapFederation
+  makeProductMap
+    SequentialProduct
+    cardinality
+    values
+    SequentialAtlasMapFederation
 
 makeAtlasExpansion
   :: Natural
   -> [InterpretedValue]
   -> InterpretedValue
 makeAtlasExpansion cardinality values =
-  makeProductMap cardinality values expansionFederation
+  makeProductMap
+    ExpansionProduct
+    cardinality
+    values
+    expansionFederation
   where
     expansionFederation [left, right] =
       ExpansionAtlasMapFederation left right
     expansionFederation members = SequentialAtlasMapFederation members
 
+data ProductForm
+  = SequentialProduct
+  | ExpansionProduct
+
 makeProductMap
-  :: Natural
+  :: ProductForm
+  -> Natural
   -> [InterpretedValue]
   -> ([InterpretedAtlasMapFederation]
       -> InterpretedAtlasMapFederation)
   -> InterpretedValue
-makeProductMap cardinality values productFederation = value
+makeProductMap productForm cardinality values productFederation = value
   where
+    -- Both sequence and expansion preserve the value and semantic boundary of
+    -- every operand. Ordinary concatenation is the explicitly flattening
+    -- operation and is implemented separately below.
     finalValues =
       foldl'
         appendOrdinalOrderedValues
         emptyOrdinalOrderedValues
-        (map (interpretedMapFinalValues . interpretedMap) values)
+        (map singletonOrdinalOrderedValues values)
     components =
-      concatMap (interpretedMapComponents . interpretedMap) values
+      map interpretedSemantics values
     semantics = MapSemantics cardinality components
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
@@ -66,7 +81,12 @@ makeProductMap cardinality values productFederation = value
       | otherwise = productFederation memberFederations
     value =
       makeInterpretedValue
-        MapForm
+        (case productForm of
+          SequentialProduct -> SequentialMapForm
+          ExpansionProduct ->
+            case values of
+              [left, right] -> ExpansionMapForm left right
+              _ -> MapForm)
         NoInsertion
         valueMap
         federation
@@ -92,7 +112,7 @@ concatenateValues left right = do
       (form, finalValues, components, semantics) =
         case normalizedRanges of
           Just ranges ->
-            ( canonicalRangeForm ranges
+            ( canonicalRangeForm left right ranges
             , foldl'
                 appendOrdinalOrderedValues
                 emptyOrdinalOrderedValues
@@ -105,7 +125,7 @@ concatenateValues left right = do
             , rangeSemantics ranges
             )
           Nothing ->
-            ( MapForm
+            ( ConcatenatedMapForm left right
             , appendOrdinalOrderedValues
                 (interpretedMapFinalValues (interpretedMap left))
                 (interpretedMapFinalValues (interpretedMap right))
@@ -190,9 +210,19 @@ concatenationMembers :: ValueSemantics -> [ValueSemantics]
 concatenationMembers (ConcatenationSemantics members) = members
 concatenationMembers value = [value]
 
-canonicalRangeForm :: [EvaluatedRange] -> ValueForm
-canonicalRangeForm [valueRange] = RangeForm valueRange
-canonicalRangeForm ranges = RangeConcatenationForm ranges
+canonicalRangeForm
+  :: InterpretedValue
+  -> InterpretedValue
+  -> [EvaluatedRange]
+  -> ValueForm
+canonicalRangeForm left right [valueRange]
+  | atlasMapFederationExpressionIsSingleton
+      (interpretedAtlasMapFederation left)
+      && atlasMapFederationExpressionIsSingleton
+        (interpretedAtlasMapFederation right) =
+      RangeForm valueRange
+canonicalRangeForm left right ranges =
+  RangeConcatenationForm ranges (Just (left, right))
 
 rangeSemantics :: [EvaluatedRange] -> ValueSemantics
 rangeSemantics [valueRange] = RangeSemantics (rangeDescription valueRange)
