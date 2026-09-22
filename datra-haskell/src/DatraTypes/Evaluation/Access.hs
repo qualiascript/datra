@@ -3,8 +3,6 @@ module Evaluation.Access
   ( accessValues
   ) where
 
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -15,10 +13,13 @@ import Data.Bifunctor qualified as Bifunctor
 import Evaluation.Error
   ( InterpretingError (..)
   )
-import Evaluation.Federation
+import Evaluation.Access.Composition
   ( FederationAccess (..)
+  , accessMapFor
   , decideFederationAccess
-  , federationIsCoalition
+  )
+import Evaluation.Access.Federation
+  ( federationIsCoalition
   )
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
@@ -242,20 +243,6 @@ finishAccess mapValue selected =
         (interpretedMapValueAt selected . finiteOrdinal)
         [0 .. cardinality - 1]
 
--- A primitive valued range denotes a coalition of one-value maps. Access is
--- therefore over its single coalition position, not over the representative
--- union of all values in the range.
-accessMapFor :: InterpretedValue -> InterpretedMap
-accessMapFor value =
-  case interpretedAtlasMapFederation value of
-    PrimitiveAtlasMapFederation
-        (ValuedNaturalRangeAtlasMapFederation _) ->
-      InterpretedMap
-        1
-        (singletonOrdinalOrderedValues value)
-        [interpretedSemantics value]
-    _ -> interpretedMap value
-
 valueIsCoalition :: InterpretedValue -> Bool
 valueIsCoalition = federationIsCoalition . interpretedAtlasMapFederation
 
@@ -282,7 +269,7 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
           _ ->
             ( case ranges of
                 [valueRange] -> RangeForm valueRange
-                _ -> RangeConcatenationForm ranges
+                _ -> RangeConcatenationForm ranges Nothing
             , insertionCapability
             , case semanticComponents of
                 [component] -> component

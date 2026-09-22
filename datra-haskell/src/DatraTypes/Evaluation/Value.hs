@@ -147,7 +147,9 @@ data ValueForm
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
   | ValuedNaturalRangeForm EvaluatedValuedNaturalRange
-  | RangeConcatenationForm [EvaluatedRange]
+  | RangeConcatenationForm
+      [EvaluatedRange]
+      (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
   | SequentialMapForm
@@ -297,7 +299,7 @@ interpretedValueKind value =
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind
     ValuedNaturalRangeForm _ -> RangeValueKind
-    RangeConcatenationForm _ -> RangeConcatenationValueKind
+    RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     SequentialMapForm -> MapValueKind
@@ -403,7 +405,7 @@ valueRanges value =
       Just [naturalRangeAsEvaluatedRange valueRange]
     ValuedNaturalRangeForm valueRange ->
       Just [valuedNaturalRangeAsEvaluatedRange valueRange]
-    RangeConcatenationForm ranges -> Just ranges
+    RangeConcatenationForm ranges _ -> Just ranges
     _ -> Nothing
 
 emptyInterpretedMap :: InterpretedMap

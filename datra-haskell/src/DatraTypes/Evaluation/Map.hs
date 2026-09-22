@@ -124,7 +124,7 @@ concatenateValues left right = do
       (form, finalValues, components, semantics) =
         case normalizedRanges of
           Just ranges ->
-            ( canonicalRangeForm ranges
+            ( canonicalRangeForm left right ranges
             , foldl'
                 appendOrdinalOrderedValues
                 emptyOrdinalOrderedValues
@@ -222,9 +222,19 @@ concatenationMembers :: ValueSemantics -> [ValueSemantics]
 concatenationMembers (ConcatenationSemantics members) = members
 concatenationMembers value = [value]
 
-canonicalRangeForm :: [EvaluatedRange] -> ValueForm
-canonicalRangeForm [valueRange] = RangeForm valueRange
-canonicalRangeForm ranges = RangeConcatenationForm ranges
+canonicalRangeForm
+  :: InterpretedValue
+  -> InterpretedValue
+  -> [EvaluatedRange]
+  -> ValueForm
+canonicalRangeForm left right [valueRange]
+  | atlasMapFederationExpressionIsSingleton
+      (interpretedAtlasMapFederation left)
+      && atlasMapFederationExpressionIsSingleton
+        (interpretedAtlasMapFederation right) =
+      RangeForm valueRange
+canonicalRangeForm left right ranges =
+  RangeConcatenationForm ranges (Just (left, right))
 
 rangeSemantics :: [EvaluatedRange] -> ValueSemantics
 rangeSemantics [valueRange] = RangeSemantics (rangeDescription valueRange)

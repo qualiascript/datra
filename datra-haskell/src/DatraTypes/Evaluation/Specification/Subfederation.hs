@@ -8,12 +8,12 @@ import AtlasMapFederationExpression
   , AtlasMapFederationExpression (..)
   )
 import Evaluation.Federation (decidePrimitiveSubfederation)
-import Evaluation.Specification.Composition
+import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
-  , selectFederationMember
   , sequenceOperands
   )
+import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
 import Evaluation.Value
 

@@ -5,16 +5,17 @@
 -- and expansions.
 module Evaluation.Specification.Composition
   ( selectFederationMember
-  , sequenceOperands
-  , expansionOperands
-  , concatenationOperands
   ) where
 
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
 import Control.Monad (foldM)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import Evaluation.Federation.Structure
+  ( concatenationOperands
+  , expansionOperands
+  , sequenceOperands
+  )
 import Evaluation.Map (concatenateValues)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
@@ -103,39 +104,6 @@ selectConcatenationPartitions sourceMembers (target : remainingTargets) =
   where
     maximumPrefixLength =
       length sourceMembers - length remainingTargets
-
-sequenceOperands :: InterpretedValue -> Maybe [InterpretedValue]
-sequenceOperands value =
-  case interpretedForm value of
-    SequentialMapForm -> finiteMapValues value
-    _ -> Nothing
-
-expansionOperands
-  :: InterpretedValue
-  -> Maybe (InterpretedValue, InterpretedValue)
-expansionOperands value =
-  case interpretedForm value of
-    ExpansionMapForm left right -> Just (left, right)
-    _ -> Nothing
-
-finiteMapValues :: InterpretedValue -> Maybe [InterpretedValue]
-finiteMapValues value = do
-  cardinality <-
-    naturalAtOrdinal
-      (interpretedMapFinalOrderType (interpretedMap value))
-  traverse
-    (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
-    (finitePositions cardinality)
-  where
-    finitePositions 0 = []
-    finitePositions cardinality = [0 .. cardinality - 1]
-
-concatenationOperands :: InterpretedValue -> [InterpretedValue]
-concatenationOperands value =
-  case interpretedForm value of
-    ConcatenatedMapForm left right ->
-      concatenationOperands left <> concatenationOperands right
-    _ -> [value]
 
 concatenateGroup :: [InterpretedValue] -> Maybe InterpretedValue
 concatenateGroup [] = Nothing

@@ -611,6 +611,41 @@ testAccess = do
       ((<@>) threeValues (NaturalRangeUpwards 10)) $ \value ->
     assert "natural range access always has its empty federation member"
       (renderInterpretedValue value == "[]")
+  let stableConcatenationPrefix =
+        (<.>)
+          (natural 1)
+          ((<.>)
+            (natural 2)
+            ((<.>) (natural 3) (NaturalRange 5 20)))
+  expectValue
+      "access stays within a total concatenation prefix"
+      ((<@>)
+        stableConcatenationPrefix
+        ((<..>) (natural 0) (natural 3))) $ \value ->
+    assert "an uncertain suffix does not obscure a known prefix"
+      (renderInterpretedValue value == "[1; 2; 3]")
+  expectValue
+      "NaturalRange access stays within a total concatenation prefix"
+      ((<@>) stableConcatenationPrefix (NaturalRange 0 2)) $ \value ->
+    assert "federated selections use the same accessible regions"
+      (renderInterpretedValue value == "[1; 2; 3]")
+  expectValue
+      "atomic coalition access lifts through concatenation"
+      ((<@>)
+        ((<.>) (ValuedNaturalRange 1 3) (NaturalRange 5 20))
+        (natural 0)) $ \value ->
+    assert "a fixed-width coalition remains one accessible region"
+      (renderInterpretedValue value == "within 1 to 3")
+  assert "access crossing an uncertain concatenation suffix is undecidable"
+    (case interpretExpressionReason
+        ((<@>)
+          stableConcatenationPrefix
+          ((<..>) (natural 0) (natural 4))) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationAccess)) -> True
+      _ -> False)
   let valuedCoalitionSequence =
         AtlasMap
           [ natural 2

@@ -56,7 +56,7 @@ accessSource value =
         Just description ->
           rangeSource [describedRangeFromDescription description]
         Nothing -> rangeSource []
-    RangeConcatenationForm ranges ->
+    RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
     FormulationForm formulation ->
       let level = someSuperEllipsisLevel formulation
