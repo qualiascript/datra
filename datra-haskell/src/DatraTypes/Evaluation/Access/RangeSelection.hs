@@ -65,6 +65,15 @@ accessSource value =
           , sourceIsRangeLike = True
           , sourceFormulationLevel = Just level
           }
+    SequentialMapForm ->
+      let combined =
+            combineAccessSources
+              (map semanticAccessSource
+                (interpretedMapComponents (interpretedMap value)))
+      in combined
+          { sourceIsRangeLike = False
+          , sourceFormulationLevel = Nothing
+          }
     MapForm ->
       combineAccessSources
         (map semanticAccessSource

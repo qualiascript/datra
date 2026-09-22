@@ -28,34 +28,50 @@ makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
 makeAtlasMap _ [value]
   | SpecificationForm _ <- interpretedForm value = value
 makeAtlasMap cardinality values =
-  makeProductMap cardinality values SequentialAtlasMapFederation
+  makeProductMap
+    PreserveOperandBoundaries
+    cardinality
+    values
+    SequentialAtlasMapFederation
 
 makeAtlasExpansion
   :: Natural
   -> [InterpretedValue]
   -> InterpretedValue
 makeAtlasExpansion cardinality values =
-  makeProductMap cardinality values expansionFederation
+  makeProductMap
+    MergeOperandContents
+    cardinality
+    values
+    expansionFederation
   where
     expansionFederation [left, right] =
       ExpansionAtlasMapFederation left right
     expansionFederation members = SequentialAtlasMapFederation members
 
+data ProductLayout
+  = PreserveOperandBoundaries
+  | MergeOperandContents
+
 makeProductMap
-  :: Natural
+  :: ProductLayout
+  -> Natural
   -> [InterpretedValue]
   -> ([InterpretedAtlasMapFederation]
       -> InterpretedAtlasMapFederation)
   -> InterpretedValue
-makeProductMap cardinality values productFederation = value
+makeProductMap layout cardinality values productFederation = value
   where
+    -- A sequential product preserves both the value and semantic boundary of
+    -- every operand. Expansion has its own explicitly flattening presentation;
+    -- ordinary concatenation is implemented separately below.
     finalValues =
       foldl'
         appendOrdinalOrderedValues
         emptyOrdinalOrderedValues
-        (map (interpretedMapFinalValues . interpretedMap) values)
+        (map productMemberValues values)
     components =
-      concatMap (interpretedMapComponents . interpretedMap) values
+      concatMap productMemberComponents values
     semantics = MapSemantics cardinality components
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
@@ -66,7 +82,9 @@ makeProductMap cardinality values productFederation = value
       | otherwise = productFederation memberFederations
     value =
       makeInterpretedValue
-        MapForm
+        (case layout of
+          PreserveOperandBoundaries -> SequentialMapForm
+          MergeOperandContents -> MapForm)
         NoInsertion
         valueMap
         federation
@@ -75,6 +93,17 @@ makeProductMap cardinality values productFederation = value
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
         semantics
+
+    productMemberValues member =
+      case layout of
+        PreserveOperandBoundaries -> singletonOrdinalOrderedValues member
+        MergeOperandContents ->
+          interpretedMapFinalValues (interpretedMap member)
+
+    productMemberComponents member =
+      case layout of
+        PreserveOperandBoundaries -> [interpretedSemantics member]
+        MergeOperandContents -> interpretedMapComponents (interpretedMap member)
 
 concatenateValues
   :: InterpretedValue

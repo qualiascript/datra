@@ -144,6 +144,7 @@ data ValueForm
   | RangeConcatenationForm [EvaluatedRange]
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
+  | SequentialMapForm
   | MapForm
 
 data InsertionCapability
@@ -291,6 +292,7 @@ interpretedValueKind value =
     RangeConcatenationForm _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
+    SequentialMapForm -> MapValueKind
     MapForm -> MapValueKind
 
 interpretedExplicitOrdinal

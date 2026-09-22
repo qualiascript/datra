@@ -158,6 +158,12 @@ sourceNaturalSubrange
 sourceNaturalSubrange value =
   case interpretedForm value of
     RangeForm valueRange -> rangeSubrange valueRange
+    SequentialMapForm
+      | interpretedMapPageCardinality (interpretedMap value) == 0 ->
+          Just NaturalRange.EmptyNaturalSubrange
+      | interpretedMapPageCardinality (interpretedMap value) == 2 ->
+          mapSubrange value
+      | otherwise -> Nothing
     MapForm
       | interpretedMapPageCardinality (interpretedMap value) == 0 ->
           Just NaturalRange.EmptyNaturalSubrange

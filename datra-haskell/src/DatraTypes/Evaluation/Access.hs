@@ -3,6 +3,8 @@ module Evaluation.Access
   ( accessValues
   ) where
 
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
@@ -16,7 +18,9 @@ import Evaluation.Error
 import Evaluation.Federation
   ( FederationAccess (..)
   , decideFederationAccess
+  , federationIsCoalition
   )
+import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
   ( AccessSource (..)
@@ -63,13 +67,14 @@ accessSingleton
   -> SomeSuperEllipsisInsertion
   -> Either InterpretingError InterpretedValue
 accessSingleton mapValue insertionValue insertion = do
-  selected <- accessMap (interpretedMap mapValue) insertion
+  selected <- accessMap (accessMapFor mapValue) insertion
   let source = accessSource mapValue
   case accessSelection insertionValue of
     Just selectionRanges
-      | sourceIsRangeLike source
+      | not (valueIsCoalition mapValue)
+          && (sourceIsRangeLike source
           || naturalAtOrdinal
-              (someSuperEllipsisInsertionOrderType insertion) == Nothing ->
+              (someSuperEllipsisInsertionOrderType insertion) == Nothing) ->
         finishStaticAccess mapValue selected source selectionRanges
     _ -> finishAccess mapValue selected
 
@@ -126,7 +131,7 @@ accessNaturalRange mapValue (EvaluatedNaturalRange valueRange) =
     Nothing -> finishAccess mapValue emptyInterpretedMap
   where
     sourceOrderType =
-      interpretedMapFinalOrderType (interpretedMap mapValue)
+      interpretedMapFinalOrderType (accessMapFor mapValue)
     selectedRange =
       case naturalAtOrdinal sourceOrderType of
         Just finiteLimit ->
@@ -141,12 +146,13 @@ accessWithRange
 accessWithRange mapValue selectionRange = do
   selected <-
     accessMap
-      (interpretedMap mapValue)
+      (accessMapFor mapValue)
       (rangeInsertion selectionRange)
   let source = accessSource mapValue
-  if sourceIsRangeLike source
-      || naturalAtOrdinal
-          (interpretedMapFinalOrderType selected) == Nothing
+  if not (valueIsCoalition mapValue)
+      && (sourceIsRangeLike source
+        || naturalAtOrdinal
+            (interpretedMapFinalOrderType selected) == Nothing)
     then
       finishStaticAccess
         mapValue
@@ -205,6 +211,16 @@ finishAccess mapValue selected =
           (interpretedMapPageCardinality selected)
           (interpretedMapComponents selected)
       ordinaryResult =
+        case naturalAtOrdinal (interpretedMapFinalOrderType selected) of
+          Just cardinality ->
+            case selectedValueList cardinality of
+              Just values ->
+                makeAtlasMap
+                  (interpretedMapPageCardinality selected)
+                  values
+              Nothing -> fallbackResult
+          Nothing -> fallbackResult
+      fallbackResult =
         makeSingletonInterpretedValue
           MapForm
           NoInsertion
@@ -219,6 +235,29 @@ finishAccess mapValue selected =
         maybe ordinaryResult makeAsciiString
           (asciiStringFromInterpretedMap selected)
       _ -> ordinaryResult)
+  where
+    selectedValueList 0 = Just []
+    selectedValueList cardinality =
+      traverse
+        (interpretedMapValueAt selected . finiteOrdinal)
+        [0 .. cardinality - 1]
+
+-- A primitive valued range denotes a coalition of one-value maps. Access is
+-- therefore over its single coalition position, not over the representative
+-- union of all values in the range.
+accessMapFor :: InterpretedValue -> InterpretedMap
+accessMapFor value =
+  case interpretedAtlasMapFederation value of
+    PrimitiveAtlasMapFederation
+        (ValuedNaturalRangeAtlasMapFederation _) ->
+      InterpretedMap
+        1
+        (singletonOrdinalOrderedValues value)
+        [interpretedSemantics value]
+    _ -> interpretedMap value
+
+valueIsCoalition :: InterpretedValue -> Bool
+valueIsCoalition = federationIsCoalition . interpretedAtlasMapFederation
 
 rangeAccessResult
   :: Bool

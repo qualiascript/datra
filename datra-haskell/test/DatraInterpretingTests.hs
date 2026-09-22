@@ -438,8 +438,35 @@ testMaps = do
   expectValue
       "operator sequence"
       (natural 1 <:> natural 2) $ \value ->
-    assert "sequential AST syntax constructs a flat two-page map"
-      (interpretedMapCardinality (interpretedMap value) == 2)
+    assert "sequential AST syntax constructs a two-position map"
+      ( interpretedMapCardinality (interpretedMap value) == 2
+        && interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 2
+      )
+  let compoundSequence =
+        MapSequence
+          [ (<..>) (natural 1) (natural 4)
+          , AsciiStringLiteral "ab"
+          ]
+  expectValue "sequence preserves compound operands" compoundSequence $ \value ->
+    assert "each sequence operand occupies exactly one final-page position"
+      ( interpretedMapFinalOrderType (interpretedMap value)
+          == finiteOrdinal 2
+        && renderInterpretedValue value == "[1..4; $ab]"
+      )
+  expectValue
+      "sequence access returns a compound operand intact"
+      ((<@>) compoundSequence (natural 0)) $ \value ->
+    assert "access does not flatten the selected sequence operand"
+      (renderInterpretedValue value == "1..4")
+  expectValue
+      "concatenation flattens compound operands"
+      ((<.>)
+        ((<..>) (natural 1) (natural 4))
+        (AsciiStringLiteral "ab")) $ \value ->
+    assert "concatenation appends operand final-page contents"
+      (interpretedMapFinalOrderType (interpretedMap value)
+        == finiteOrdinal 5)
   expectValue
       "operator expansion"
       ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4)) $ \value ->
@@ -455,15 +482,15 @@ testMaps = do
         values =
           map
             (\position ->
-              interpretedMapValueAt valueMap (finiteOrdinal position)
-                >>= naturalOrdinal)
-            [0 .. 4]
+              renderInterpretedValue
+                <$> interpretedMapValueAt valueMap (finiteOrdinal position))
+            [0 .. 2]
     assert "nested map has the requested three-page cardinality"
       (interpretedMapCardinality valueMap == 3)
-    assert "nested map final page preserves all four natural values"
-      (values == map Just [1, 2, 3, 4] <> [Nothing])
-    assert "nested maps render with their evaluated cardinality"
-      (renderInterpretedValue value == "[[1; 2; 3; 4]]")
+    assert "nested sequence operands remain distinct final-page values"
+      (values == [Just "[1; 2]", Just "[3; 4]", Nothing])
+    assert "nested maps retain their sequence boundaries when rendered"
+      (renderInterpretedValue value == "[[[1; 2]; [3; 4]]]")
   expectValue
       "map concatenation"
       ((<.>)
@@ -584,6 +611,35 @@ testAccess = do
       ((<@>) threeValues (NaturalRangeUpwards 10)) $ \value ->
     assert "natural range access always has its empty federation member"
       (renderInterpretedValue value == "[]")
+  let valuedCoalitionSequence =
+        AtlasMap
+          [ natural 2
+          , natural 3
+          , ValuedNaturalRange 1 20
+          , natural 5
+          ]
+  expectValue
+      "a sequence containing a valued-range coalition supports open access"
+      ((<@>) valuedCoalitionSequence (NaturalRangeUpwards 0)) $ \value ->
+    assert "open access preserves the valued-range coalition as one position"
+      ( interpretedMapFinalOrderType (interpretedMap value) == finiteOrdinal 4
+        && renderInterpretedValue value == "[2; 3; within 1 to 20; 5]"
+      )
+  expectValue
+      "bounded access slices a sequence of coalitions"
+      ((<@>) valuedCoalitionSequence (NaturalRange 1 2)) $ \value ->
+    assert "bounded access retains the selected valued-range coalition"
+      (renderInterpretedValue value == "[3; within 1 to 20]")
+  expectValue
+      "singleton access selects a valued-range coalition"
+      ((<@>) valuedCoalitionSequence (natural 2)) $ \value ->
+    assert "singleton access returns the selected coalition"
+      (renderInterpretedValue value == "within 1 to 20")
+  expectValue
+      "a valued range is its own coalition"
+      ((<@>) (ValuedNaturalRange 1 20) (NaturalRangeUpwards 0)) $ \value ->
+    assert "access preserves a standalone valued-range coalition"
+      (renderInterpretedValue value == "within 1 to 20")
   expectRangeAccess
     "natural upwards access canonicalizes a bounded source range"
     RangeValueKind
@@ -819,35 +875,23 @@ testAccess = do
     ((..+) (natural 10))
     (...)
     "10.."
-  expectRangeAccess
-    "an AtlasMap wrapper preserves its range source"
-    RangeValueKind
-    (AtlasMap [((..+) (natural 2))])
-    ((..+) (natural 5))
-    "7.."
-  expectRangeAccess
-    "an infinite selection skips a finite AtlasMap prefix"
-    RangeValueKind
-    (AtlasMap [natural 42, ((..+) (natural 2))])
-    ((..+) (natural 5))
-    "6.."
   expectValue
-      "non-injective infinite AtlasMap access"
+      "a sequence wrapper preserves its range operand"
       ((<@>)
-        (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
-        ((..+) (natural 0))) $ \value ->
-    assert "overlapping result ranges remain an exact ordinary map"
-      ( interpretedValueKind value == MapValueKind
-        && renderInterpretedValue value == "[1; 1..]"
-      )
-  expectRangeAccess
-    "a canonicalized non-injective result remains accessible"
-    RangeValueKind
-    ((<@>)
-      (AtlasMap [natural 1, natural 1, ((..+) (natural 2))])
-      ((..+) (natural 0)))
-    ((..+) (natural 1))
-    "1.."
+        (AtlasMap [((..+) (natural 2))])
+        (NaturalRangeUpwards 0)) $ \value ->
+    assert "sequence access returns the range operand without flattening it"
+      (renderInterpretedValue value == "2..")
+  assert "an infinite insertion cannot enter a sequence operand"
+    (case interpretExpressionReason
+        ((<@>)
+          (AtlasMap [natural 42, ((..+) (natural 2))])
+          ((..+) (natural 5))) of
+      Left
+          (AccessRejected
+            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
+        insertionLimit == omega && mapOrderType == finiteOrdinal 2
+      _ -> False)
   expectValue
       "NaturalRange accessed by NaturalRange"
       ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
@@ -911,16 +955,14 @@ testAccess = do
         ((<..>) (natural 0) (natural 0))) $ \value ->
     assert "empty selection succeeds on every concatenated federation member"
       (renderInterpretedValue value == "[]")
-  assert "structured federation access can remain undecidable"
-    (case interpretExpressionReason
-        ((<@>)
-          (NaturalRange 2 5 <:> NaturalRange 8 10)
-          ((<..>) (natural 0) (natural 1))) of
-      Left
-          (AtlasMapFederationOperationUndecidable
-            (NoAtlasMapFederationDecisionProcedure
-              AtlasMapFederationAccess)) -> True
-      _ -> False)
+  expectValue
+      "sequence access preserves structured federation operands"
+      ((<@>)
+        (NaturalRange 2 5 <:> NaturalRange 8 10)
+        ((<..>) (natural 0) (natural 2))) $ \value ->
+    assert "sequence access never flattens operand federations"
+      (renderInterpretedValue value
+        == "[from 2 to 5; from 8 to 10]")
 
 testSpecification :: IO ()
 testSpecification = do

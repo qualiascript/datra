@@ -2,6 +2,7 @@
 module Evaluation.Federation
   ( FederationAccess (..)
   , decideFederationAccess
+  , federationIsCoalition
   , naturalRangeFederation
   , decideFederationConcatenation
   , decidePrimitiveSubfederation
@@ -47,7 +48,7 @@ decideFederationAccess mapValue insertionValue =
       | federationHasKnownEmptyMap
           (interpretedAtlasMapFederation mapValue) ->
           emptyMapAccessCounterexample
-      | atlasMapFederationExpressionIsSingleton
+      | federationSupportsDirectAccess
           (interpretedAtlasMapFederation mapValue) ->
           Right (NaturalRangeSelectionAccess selectionRange)
       | otherwise ->
@@ -66,7 +67,7 @@ decideNonemptyInsertionAccess
   -> Either InterpretingError FederationAccess
 decideNonemptyInsertionAccess federation insertion
   | federationHasKnownEmptyMap federation = emptyMapAccessCounterexample
-  | atlasMapFederationExpressionIsSingleton federation =
+  | federationSupportsDirectAccess federation =
       Right (SingletonFederationAccess insertion)
   | otherwise = undecidableFederationOperation AtlasMapFederationAccess
 
@@ -85,6 +86,26 @@ federationHasKnownEmptyMap federation =
     PrimitiveAtlasMapFederation (NaturalRangeAtlasMapFederation _) -> True
     ConcatenatedAtlasMapFederation left right ->
       federationHasKnownEmptyMap left && federationHasKnownEmptyMap right
+    _ -> False
+
+federationSupportsDirectAccess :: InterpretedAtlasMapFederation -> Bool
+federationSupportsDirectAccess federation =
+  atlasMapFederationExpressionIsSingleton federation
+    || federationIsCoalition federation
+    || case federation of
+      -- Sequential construction preserves every operand as one position, so
+      -- access is independent of the shapes of the operand federations.
+      SequentialAtlasMapFederation _ -> True
+      _ -> False
+
+-- ValuedNaturalRange and Nat are federations of one-value Atlases: their
+-- member Atlases form one coalition and occupy one stable position in a
+-- sequential product.
+federationIsCoalition :: InterpretedAtlasMapFederation -> Bool
+federationIsCoalition federation =
+  case federation of
+    PrimitiveAtlasMapFederation
+        (ValuedNaturalRangeAtlasMapFederation _) -> True
     _ -> False
 
 naturalRangeFederation
