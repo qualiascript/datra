@@ -186,6 +186,10 @@ library
         Evaluation.Numerical
         Evaluation.Range
         Evaluation.Specification
+        Evaluation.Specification.Composition
+        Evaluation.Specification.Decision
+        Evaluation.Specification.Federation
+        Evaluation.Specification.Subfederation
         Evaluation.Value
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
