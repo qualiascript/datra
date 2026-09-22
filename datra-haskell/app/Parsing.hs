@@ -95,9 +95,9 @@ data ResourceEnvelope
 parseDatra :: String -> Either String Expression
 parseDatra = parseDatraWithSourceName "<input>"
 
--- | Parse one top-level map with a source name used only in diagnostics. If
--- the first and last significant characters are not '[' and ']', the
--- top-level brackets are implicit.
+-- | Parse one top-level map with a source name used only in diagnostics. A
+-- parenthesized expression consuming the whole resource is explicit; otherwise
+-- the top-level map is implicit.
 parseDatraWithSourceName :: FilePath -> String -> Either String Expression
 parseDatraWithSourceName sourceName source =
   locatedValue <$> parseDatraLocatedWithSourceName sourceName source
@@ -113,7 +113,7 @@ parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
     (parse locatedResource resourceName (Text.pack source))
 
--- | Parse a source resource while retaining whether its outer map brackets
+-- | Parse a source resource while retaining whether its outer map parentheses
 -- were explicit. This is presentation metadata only; both cases produce the
 -- same located expression and evaluation semantics.
 parseDatraLocatedResourceWithSourceName
@@ -190,13 +190,15 @@ astResource :: Parser Expression
 astResource = astSpaceConsumer *> astExpression <* eof
 
 astExpression :: Parser Expression
-astExpression = astForm <|> astAtom
+astExpression = try astEmptyMap <|> astForm <|> astAtom
+
+astEmptyMap :: Parser Expression
+astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ AtlasMap [] <$ astSymbol "[]"
-    , NaturalType <$ astSymbol "Nat"
+    [ NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
     , AsciiStringLiteral <$> astStandardString
@@ -298,49 +300,26 @@ resourceWithEnvelope = do
   where
     explicitResource = do
       _ <- try (lookAhead outerMapEnvelope)
-      (,) ExplicitMapEnvelope <$> atlasMap
+      (,) ExplicitMapEnvelope <$> parenthesizedExpression
     implicitResource =
       (,) ImplicitMapEnvelope <$> implicitOuterMap
 
--- Parse the bracketed expression itself in lookahead so the closing bracket
--- must match the opening bracket. Merely searching for a final @]@ mistakes
--- the right operand of expressions such as @[a] <~ [b]@ for the outer map's
--- closing delimiter.
+-- Parse the parenthesized expression itself in lookahead so the closing
+-- parenthesis must enclose the whole resource. This distinguishes an explicit
+-- map from an implicit sequence such as @(a); (b)@.
 outerMapEnvelope :: Parser ()
-outerMapEnvelope = void (atlasMap <* fullSpaceConsumer <* eof)
+outerMapEnvelope =
+  void (parenthesizedExpression <* fullSpaceConsumer <* eof)
 
 implicitOuterMap :: Parser Expression
 implicitOuterMap = do
-  hasBothDelimiters <-
-    optional (try (lookAhead outerDelimiterEnvelope))
   expressions <- elements
-  case (hasBothDelimiters, expressions) of
-    (Just (), _ : _ : _) -> empty
-    _ -> pure (AtlasMap expressions)
+  pure (sequenceExpression expressions)
 
--- Detect the lexical first/last delimiter case independently of whether the
--- contents form one map. This preserves the rejection of @[a]; [b]@ while
--- allowing a single expression such as @[a] <~ [b]@.
-outerDelimiterEnvelope :: Parser ()
-outerDelimiterEnvelope =
-  void
-    ( char '['
-        *> manyTill envelopeCharacter
-          (try (char ']' *> fullSpaceConsumer <* eof))
-    )
-  where
-    envelopeCharacter =
-      lineComment
-        <|> try (void standardStringToken)
-        <|> void anySingle
-
-atlasMap :: Parser Expression
-atlasMap =
-  AtlasMap
-    <$> between
-      (symbol "[" <* lineSpaceConsumer)
-      (symbol "]")
-      elements
+sequenceExpression :: [Expression] -> Expression
+sequenceExpression [] = AtlasMap []
+sequenceExpression [expressionValue] = expressionValue
+sequenceExpression expressions = AtlasMap expressions
 
 elements :: Parser [Expression]
 elements = expression `sepEndBy` mapSeparator
@@ -402,7 +381,6 @@ term :: Parser Expression
 term =
   choice
     [ parenthesizedExpression
-    , atlasMap
     , try naturalRangeExpression
     , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
@@ -415,7 +393,6 @@ rangeEndpointTerm :: Parser Expression
 rangeEndpointTerm =
   choice
     [ parenthesizedExpression
-    , atlasMap
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
     , ellipsisNatural
@@ -473,7 +450,7 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    expression
+    (sequenceExpression <$> elements)
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
@@ -527,7 +504,7 @@ trailingComma =
 
 expressionEnd :: Parser ()
 expressionEnd =
-  void (choice [char ']', char ')', char ';']) <|> eof
+  void (choice [char ')', char ';']) <|> eof
 
 -- A postfix range also ends before an operator from the lower-precedence map
 -- layer. Keeping these boundaries separate from 'expressionEnd' avoids

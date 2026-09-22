@@ -41,13 +41,13 @@ import SuperEllipsisRange
   )
 
 -- | Render an evaluated value in Datra source notation. Internal AST
--- operators never appear here; maps use brackets and semicolons, while
+-- operators never appear here; maps use parentheses and semicolons, while
 -- compact ranges retain their range notation.
 renderInterpretedValue :: InterpretedValue -> String
 renderInterpretedValue = renderCanonicalResult . interpretedCanonicalResult
 
 -- | Render only the root map using implicit newline notation. Nested maps
--- keep their canonical brackets. A semicolon is retained before a newline
+-- keep their canonical parentheses. A semicolon is retained before a newline
 -- when omitting it would let the range parser consume the next line.
 renderInterpretedValueAsNewlineMap :: InterpretedValue -> String
 renderInterpretedValueAsNewlineMap =
@@ -66,14 +66,10 @@ renderCanonicalResultAsNewlineMap result =
 renderNewlineMap :: Natural -> [CanonicalResult] -> String
 renderNewlineMap _ [] = ""
 renderNewlineMap _ [component] = renderCanonicalResult component
-renderNewlineMap cardinality components =
-  nest (cardinality - 2)
-    (intercalate "\n" (terminateBeforeNewline renderedComponents))
+renderNewlineMap _ components =
+  intercalate "\n" (terminateBeforeNewline renderedComponents)
   where
     renderedComponents = map renderCanonicalResult components
-
-    nest 0 value = value
-    nest depth value = "[" <> nest (depth - 1) value <> "]"
 
 terminateBeforeNewline :: [String] -> [String]
 terminateBeforeNewline [] = []
@@ -130,15 +126,12 @@ prettyValuedNaturalRange origin target =
     UpwardsTarget -> "within " <> pretty origin <> " upwards"
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
-prettyMap 0 _ = "[]"
+prettyMap 0 _ = "()"
 prettyMap _ [component] = prettyCanonicalResult component
-prettyMap cardinality components =
-  nest (cardinality - 1)
+prettyMap _ components =
+  parens
     (concatWith (\left right -> left <> "; " <> right)
       (map prettyCanonicalResult components))
-  where
-    nest 0 value = value
-    nest depth value = "[" <> nest (depth - 1) value <> "]"
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =
