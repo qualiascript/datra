@@ -175,6 +175,17 @@ regressionTests = do
     "(a : Nat := 5) ~> (a : Nat)"
     "(<~> (:= a Nat 5) (: a Nat))"
   assertAstOutput
+    "reverse assignment chain widens nested annotations"
+    ( "(d : within 0 to 100) <~ "
+        <> "(d : within 20 to 40 := 28) <~ "
+        <> "(d : within 25 to 35 := 28) <~ (d := 28)"
+    )
+    ( "(<~> (<~> (<~> (:= d 28) "
+        <> "(:= d (within 25 to 35) 28)) "
+        <> "(:= d (within 20 to 40) 28)) "
+        <> "(: d (within 0 to 100)))"
+    )
+  assertAstOutput
     "binary identifier assignment"
     "x := 5"
     "(:= x 5)"

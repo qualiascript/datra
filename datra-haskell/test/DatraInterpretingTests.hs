@@ -1493,6 +1493,15 @@ testIdentifiers = do
         (identifier "a" NaturalType)) $ \value ->
     assert "identifier composition retains canonical assignment syntax"
       (renderInterpretedValue value == "a : Nat := 5")
+  let d28 = assignment "d" (natural 28) (natural 28)
+      d25To35 = assignment "d" (ValuedNaturalRange 25 35) (natural 28)
+      d20To40 = assignment "d" (ValuedNaturalRange 20 40) (natural 28)
+      d0To100 = identifier "d" (ValuedNaturalRange 0 100)
+  expectValue
+      "assignment chain widens through nested valued ranges"
+      ((<~>) ((<~>) ((<~>) d28 d25To35) d20To40) d0To100) $ \value ->
+    assert "nested assignment specifications retain the original value"
+      (renderInterpretedValue value == "d : within 0 to 100 := 28")
   expectValue
       "assignment name access"
       ((<@>) xAssignment (natural 0)) $ \value ->

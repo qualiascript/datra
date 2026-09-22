@@ -55,6 +55,22 @@ selectIdentifierMember
   -> InterpretedValue
   -> Maybe (Decision EvaluatedAtlasMapFederationMember)
 selectIdentifierMember source target =
+  case interpretedForm target of
+    SpecificationForm specification ->
+      selectIdentifierMember
+        source
+        (evaluatedSpecificationTarget specification)
+    AssignmentForm _ specification ->
+      selectIdentifierMember
+        source
+        (evaluatedSpecificationTarget specification)
+    _ -> selectDirectIdentifierMember source target
+
+selectDirectIdentifierMember
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (Decision EvaluatedAtlasMapFederationMember)
+selectDirectIdentifierMember source target =
   case (interpretedForm source, interpretedForm target) of
     ( IdentifierTypeForm sourceIdentifier
       , IdentifierTypeForm targetIdentifier
