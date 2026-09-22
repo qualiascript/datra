@@ -52,6 +52,16 @@ import NaturalRange
   , NaturalRangeTarget (..)
   )
 import NaturalRange qualified
+import NaturalRange.Interval
+  ( NaturalInterval
+  , naturalInterval
+  , naturalIntervalContainedIn
+  , naturalIntervalContains
+  , naturalIntervalDirection
+  , naturalIntervalOverlapWitness
+  , naturalIntervalStart
+  , naturalIntervalTarget
+  )
 import Numeric.Natural (Natural)
 import SuperEllipsisRange
   ( SuperEllipsisRangeError
@@ -74,10 +84,26 @@ data ValuedNaturalRange rangeScope federationScope = ValuedNaturalRange
   { valuedNaturalRangeEllipsisRange :: EllipsisRange rangeScope
   , valuedNaturalRangeFederation
       :: AtlasFederation federationScope (ValuedNatural rangeScope)
-  , valuedNaturalRangeStart :: Natural
-  , valuedNaturalRangeTarget :: NaturalRangeTarget
-  , valuedNaturalRangeDirection :: NaturalRangeDirection
+  , valuedNaturalRangeInterval :: NaturalInterval
   }
+
+valuedNaturalRangeStart
+  :: ValuedNaturalRange rangeScope federationScope
+  -> Natural
+valuedNaturalRangeStart =
+  naturalIntervalStart . valuedNaturalRangeInterval
+
+valuedNaturalRangeTarget
+  :: ValuedNaturalRange rangeScope federationScope
+  -> NaturalRangeTarget
+valuedNaturalRangeTarget =
+  naturalIntervalTarget . valuedNaturalRangeInterval
+
+valuedNaturalRangeDirection
+  :: ValuedNaturalRange rangeScope federationScope
+  -> NaturalRangeDirection
+valuedNaturalRangeDirection =
+  naturalIntervalDirection . valuedNaturalRangeInterval
 
 valuedNaturalRange
   :: NaturalRangeEndpoint endpoint
@@ -108,11 +134,10 @@ valuedNaturalRangeEither origin endpoint useRange =
           { valuedNaturalRangeEllipsisRange =
               NaturalRange.naturalRangeEllipsisRange outerRange
           , valuedNaturalRangeFederation = federation
-          , valuedNaturalRangeStart = NaturalRange.naturalRangeStart outerRange
-          , valuedNaturalRangeTarget =
-              NaturalRange.naturalRangeTarget outerRange
-          , valuedNaturalRangeDirection =
-              NaturalRange.naturalRangeDirection outerRange
+          , valuedNaturalRangeInterval =
+              naturalInterval
+                (NaturalRange.naturalRangeStart outerRange)
+                (NaturalRange.naturalRangeTarget outerRange)
           }
 
 valuedNaturalRangeValue
@@ -129,26 +154,27 @@ valuedNaturalRangeContains
   -> Natural
   -> Bool
 valuedNaturalRangeContains valueRange value =
-  let (lower, upper) = valuedNaturalRangeBounds valueRange
-  in value >= lower && maybe True (value <=) upper
+  naturalIntervalContains (valuedNaturalRangeInterval valueRange) value
 
 valuedNaturalRangesOverlapWitness
   :: ValuedNaturalRange leftRangeScope leftFederationScope
   -> ValuedNaturalRange rightRangeScope rightFederationScope
   -> Maybe Natural
 valuedNaturalRangesOverlapWitness left right =
-  overlapWitness
-    (valuedNaturalRangeBounds left)
-    (valuedNaturalRangeBounds right)
+  naturalIntervalOverlapWitness
+    (valuedNaturalRangeInterval left)
+    (valuedNaturalRangeInterval right)
 
 valuedNaturalRangeOverlapNaturalRange
   :: ValuedNaturalRange valuedRangeScope valuedFederationScope
   -> NaturalRange naturalRangeScope naturalFederationScope
   -> Maybe Natural
 valuedNaturalRangeOverlapNaturalRange valued natural =
-  overlapWitness
-    (valuedNaturalRangeBounds valued)
-    (naturalRangeBounds natural)
+  naturalIntervalOverlapWitness
+    (valuedNaturalRangeInterval valued)
+    (naturalInterval
+      (NaturalRange.naturalRangeStart natural)
+      (NaturalRange.naturalRangeTarget natural))
 
 -- | Inclusion is inclusion of value sets.  Traversal direction is irrelevant
 -- because each component is an individual natural Atlas.
@@ -157,10 +183,9 @@ valuedNaturalRangeIsSubfederationOf
   -> ValuedNaturalRange targetRangeScope targetFederationScope
   -> Bool
 valuedNaturalRangeIsSubfederationOf source target =
-  let (sourceLower, sourceUpper) = valuedNaturalRangeBounds source
-      (targetLower, targetUpper) = valuedNaturalRangeBounds target
-  in targetLower <= sourceLower
-      && upperBoundContained sourceUpper targetUpper
+  naturalIntervalContainedIn
+    (valuedNaturalRangeInterval source)
+    (valuedNaturalRangeInterval target)
 
 valuedNaturalRangeFederationFor
   :: NaturalRange rangeScope naturalFederationScope
@@ -242,44 +267,3 @@ unrankValuedNatural start (FiniteNaturalTarget target) valueRank
     width
       | start <= target = target - start + 1
       | otherwise = start - target + 1
-
-valuedNaturalRangeBounds
-  :: ValuedNaturalRange rangeScope federationScope
-  -> (Natural, Maybe Natural)
-valuedNaturalRangeBounds valueRange =
-  bounds
-    (valuedNaturalRangeStart valueRange)
-    (valuedNaturalRangeTarget valueRange)
-
-naturalRangeBounds
-  :: NaturalRange rangeScope federationScope
-  -> (Natural, Maybe Natural)
-naturalRangeBounds valueRange =
-  bounds
-    (NaturalRange.naturalRangeStart valueRange)
-    (NaturalRange.naturalRangeTarget valueRange)
-
-bounds :: Natural -> NaturalRangeTarget -> (Natural, Maybe Natural)
-bounds start UpwardsTarget = (start, Nothing)
-bounds start (FiniteNaturalTarget target) =
-  (min start target, Just (max start target))
-
-overlapWitness
-  :: (Natural, Maybe Natural)
-  -> (Natural, Maybe Natural)
-  -> Maybe Natural
-overlapWitness (leftLower, leftUpper) (rightLower, rightUpper) =
-  let lower = max leftLower rightLower
-  in if withinUpper lower leftUpper && withinUpper lower rightUpper
-      then Just lower
-      else Nothing
-
-withinUpper :: Natural -> Maybe Natural -> Bool
-withinUpper _ Nothing = True
-withinUpper value (Just upper) = value <= upper
-
-upperBoundContained :: Maybe Natural -> Maybe Natural -> Bool
-upperBoundContained Nothing Nothing = True
-upperBoundContained Nothing (Just _) = False
-upperBoundContained (Just _) Nothing = True
-upperBoundContained (Just source) (Just target) = source <= target

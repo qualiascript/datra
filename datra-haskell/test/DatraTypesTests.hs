@@ -84,6 +84,7 @@ import DatraLanguage.Diagnostics.Localization
 import Ellipsis
 import EllipsisNatural qualified as DatraNatural
 import MapOperators
+import MapOperators.OrderedAtlasMap qualified as OrderedValues
 import NaturalRange
 import NaturalType qualified
 import Numeric.Natural (Natural)
@@ -163,6 +164,8 @@ testTree =
     , testGroup "properties"
         [ testProperty "ASCII strings preserve every byte" propAsciiStringRoundTrip
         , testProperty "ASCII map lookup agrees with character codes" propAsciiMapLookup
+        , testProperty "ordinal sequence append preserves order and lookup"
+            propOrdinalSequenceAppend
         ]
     ]
 
@@ -267,6 +270,31 @@ propAsciiMapLookup = H.property $ do
   value <- H.forAll (Gen.integral (Range.linear 0 255))
   asciiMap $ \ascii ->
     asciiCharacterAt ascii value H.=== Just (toEnum (fromIntegral value))
+
+propOrdinalSequenceAppend :: H.Property
+propOrdinalSequenceAppend = H.property $ do
+  left <- H.forAll
+    (Gen.list (Range.linear 0 30) (Gen.word8 Range.constantBounded))
+  right <- H.forAll
+    (Gen.list (Range.linear 0 30) (Gen.word8 Range.constantBounded))
+  let makeSequence =
+        foldr
+          ( OrderedValues.appendOrdinalOrderedValues
+              . OrderedValues.singletonOrdinalOrderedValues
+          )
+          OrderedValues.emptyOrdinalOrderedValues
+      combined =
+        OrderedValues.appendOrdinalOrderedValues
+          (makeSequence left)
+          (makeSequence right)
+      expected = left <> right
+      actual =
+        map
+          (OrderedValues.ordinalOrderedValueAt combined . finiteOrdinal)
+          [0 .. fromIntegral (length expected)]
+  OrderedValues.ordinalOrderedValuesOrderType combined
+    H.=== finiteOrdinal (fromIntegral (length expected))
+  actual H.=== map Just expected <> [Nothing]
 
 testNaturalRange :: IO ()
 testNaturalRange = do

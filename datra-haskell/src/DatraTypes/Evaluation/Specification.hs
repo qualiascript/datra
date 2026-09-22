@@ -67,7 +67,7 @@ specifyTotalAtlasMap source target = do
           Right
             (specifiedValue
               totalSource
-              (interpretedCanonicalResult source)
+              (interpretedSemantics source)
               target
               (EvaluatedNaturalRangeMember member))
     PrimitiveAtlasMapFederation
@@ -80,7 +80,7 @@ specifyTotalAtlasMap source target = do
           Right
             (specifiedValue
               totalSource
-              (interpretedCanonicalResult source)
+              (interpretedSemantics source)
               target
               (EvaluatedValuedNaturalRangeMember member))
     _ ->
@@ -118,7 +118,7 @@ widenSpecification source specification target =
       Right
         (specifiedValue
           (evaluatedSpecificationSource specification)
-          (originalSpecificationSource source)
+          (originalSpecificationSourceSemantics source)
           target
           (evaluatedSpecificationMember specification))
 
@@ -156,36 +156,29 @@ decidePrimitiveSubfederation _ _ =
 
 specifiedValue
   :: InterpretedTotalAtlasMap
-  -> CanonicalResult
+  -> ValueSemantics
   -> InterpretedValue
   -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
 specifiedValue totalSource sourceCanonical target member =
-  InterpretedValue
-    { interpretedForm =
-        SpecificationForm
-          EvaluatedSpecification
-            { evaluatedSpecificationSource = totalSource
-            , evaluatedSpecificationTarget =
-                interpretedAtlasMapFederation target
-            , evaluatedSpecificationMember = member
-            }
-    , interpretedInsertionCapability = NoInsertion
-    , interpretedMap = interpretedTotalAtlasMapUnderlying totalSource
-    , interpretedAtlasMapFederation =
-        interpretedAtlasMapFederation target
-    , interpretedTotalAtlasMap = Nothing
-    , interpretedCanonicalResult =
-        CanonicalSpecification
-          sourceCanonical
-          (interpretedCanonicalResult target)
-    }
+  makeInterpretedValue
+    (SpecificationForm
+      EvaluatedSpecification
+        { evaluatedSpecificationSource = totalSource
+        , evaluatedSpecificationTarget = interpretedAtlasMapFederation target
+        , evaluatedSpecificationMember = member
+        })
+    NoInsertion
+    (interpretedTotalAtlasMapUnderlying totalSource)
+    (interpretedAtlasMapFederation target)
+    NonTotalInterpretedMap
+    (SpecificationSemantics sourceCanonical (interpretedSemantics target))
 
-originalSpecificationSource :: InterpretedValue -> CanonicalResult
-originalSpecificationSource value =
-  case interpretedCanonicalResult value of
-    CanonicalSpecification source _ -> source
-    canonical -> canonical
+originalSpecificationSourceSemantics :: InterpretedValue -> ValueSemantics
+originalSpecificationSourceSemantics value =
+  case interpretedSemantics value of
+    SpecificationSemantics source _ -> source
+    semantics -> semantics
 
 selectNaturalRangeMember
   :: NaturalRange.NaturalRange rangeScope federationScope
@@ -225,9 +218,9 @@ sourceNaturalSubrange value =
   case interpretedForm value of
     RangeForm valueRange -> rangeSubrange valueRange
     MapForm
-      | interpretedMapCardinality (interpretedMap value) == 0 ->
+      | interpretedMapPageCardinality (interpretedMap value) == 0 ->
           Just NaturalRange.EmptyNaturalSubrange
-      | interpretedMapCardinality (interpretedMap value) == 2 ->
+      | interpretedMapPageCardinality (interpretedMap value) == 2 ->
           mapSubrange value
       | otherwise -> Nothing
     _ -> Nothing
@@ -236,10 +229,10 @@ mapSubrange
   :: InterpretedValue
   -> Maybe NaturalRange.NaturalSubrangeDescription
 mapSubrange value =
-  case interpretedCanonicalResult value of
-    CanonicalMap _ [CanonicalRange description] ->
+  case interpretedSemantics value of
+    MapSemantics _ [RangeSemantics description] ->
       describedRangeSubrange 1 description
-    CanonicalMap _ [CanonicalExplicit level ordinalValue] -> do
+    MapSemantics _ [ExplicitSemantics level ordinalValue] -> do
       natural <- naturalAtOrdinal ordinalValue
       if level == 1
         then Just (NaturalRange.FiniteNaturalSubrange natural natural)

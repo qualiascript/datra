@@ -130,5 +130,3 @@ multiplicationOperator
         MultiplicationOutput left right resultScope -> result)
   -> Maybe result
 multiplicationOperator = applyMultiplicationOperands
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds #-}

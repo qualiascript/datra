@@ -106,5 +106,3 @@ exponentiationOperator
         ExponentiationOutput base resultScope -> result)
   -> Maybe result
 exponentiationOperator = applyExponentiationOperand
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds #-}

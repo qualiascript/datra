@@ -36,6 +36,7 @@ module DatraTypes
   , interpretedRangeDescription
   , interpretedMap
   , interpretedMapCardinality
+  , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   ) where
@@ -81,6 +82,7 @@ import Evaluation.Value
   , interpretedFormulationLevel
   , interpretedMap
   , interpretedMapCardinality
+  , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , interpretedRangeDescription

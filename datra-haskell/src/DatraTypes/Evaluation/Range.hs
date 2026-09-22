@@ -22,7 +22,6 @@ import Data.Kind (Type)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression
       ( PrimitiveAtlasMapFederation
-      , SingletonAtlasMapFederation
       )
   )
 import DatraOrdinal (Ordinal, finiteOrdinal)
@@ -108,7 +107,7 @@ valuedNaturalRangeValue start target =
       case ValuedNaturalRange.valuedNaturalRangeEither
           origin destination
           (interpretedValuedNaturalRangeValue
-            (CanonicalValuedNaturalRange
+            (ValuedNaturalRangeSemantics
               start (NaturalRange.FiniteNaturalTarget target))) of
         Left rejection -> Left (RangeConstructionRejected rejection)
         Right value -> Right value
@@ -121,14 +120,14 @@ valuedNaturalRangeUpwardsValue start =
     case ValuedNaturalRange.valuedNaturalRangeEither
         origin NaturalRange.upwards
         (interpretedValuedNaturalRangeValue
-          (CanonicalValuedNaturalRange start NaturalRange.UpwardsTarget)) of
+          (ValuedNaturalRangeSemantics start NaturalRange.UpwardsTarget)) of
       Left rejection -> Left (RangeConstructionRejected rejection)
       Right value -> Right value
 
 naturalTypeValue :: Either InterpretingError InterpretedValue
 naturalTypeValue =
   case NaturalType.naturalTypeEither
-      (interpretedValuedNaturalRangeValue CanonicalNaturalType) of
+      (interpretedValuedNaturalRangeValue NaturalTypeSemantics) of
     Left rejection -> Left (RangeConstructionRejected rejection)
     Right value -> Right value
 
@@ -136,44 +135,38 @@ interpretedNaturalRangeValue
   :: NaturalRange.NaturalRange rangeScope federationScope
   -> InterpretedValue
 interpretedNaturalRangeValue valueRange =
-  InterpretedValue
-    { interpretedForm = NaturalRangeForm evaluatedNaturalRange
-    , interpretedInsertionCapability = ValidInsertion insertion
-    , interpretedMap = valueMap
-    , interpretedAtlasMapFederation =
-        PrimitiveAtlasMapFederation
-          (NaturalRangeAtlasMapFederation evaluatedNaturalRange)
-    , interpretedTotalAtlasMap = Nothing
-    , interpretedCanonicalResult = canonical
-    }
+  makeInterpretedValue
+    (NaturalRangeForm evaluatedNaturalRange)
+    (ValidInsertion insertion)
+    valueMap
+    (PrimitiveAtlasMapFederation
+      (NaturalRangeAtlasMapFederation evaluatedNaturalRange))
+    NonTotalInterpretedMap
+    semantics
   where
     evaluatedNaturalRange = EvaluatedNaturalRange valueRange
     evaluated =
       EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
     insertion = rangeInsertion evaluated
-    valueMap = mapFromInsertion insertion [canonical]
-    canonical =
-      CanonicalNaturalRange
+    valueMap = mapFromInsertion insertion [semantics]
+    semantics =
+      NaturalRangeSemantics
         (NaturalRange.naturalRangeStart valueRange)
         (NaturalRange.naturalRangeTarget valueRange)
 
 interpretedValuedNaturalRangeValue
-  :: CanonicalResult
+  :: ValueSemantics
   -> ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
   -> InterpretedValue
-interpretedValuedNaturalRangeValue canonical valueRange =
-  InterpretedValue
-    { interpretedForm =
-        ValuedNaturalRangeForm evaluatedValuedNaturalRange
-    , interpretedInsertionCapability = ValidInsertion insertion
-    , interpretedMap = valueMap
-    , interpretedAtlasMapFederation =
-        PrimitiveAtlasMapFederation
-          (ValuedNaturalRangeAtlasMapFederation
-            evaluatedValuedNaturalRange)
-    , interpretedTotalAtlasMap = Nothing
-    , interpretedCanonicalResult = canonical
-    }
+interpretedValuedNaturalRangeValue semantics valueRange =
+  makeInterpretedValue
+    (ValuedNaturalRangeForm evaluatedValuedNaturalRange)
+    (ValidInsertion insertion)
+    valueMap
+    (PrimitiveAtlasMapFederation
+      (ValuedNaturalRangeAtlasMapFederation evaluatedValuedNaturalRange))
+    NonTotalInterpretedMap
+    semantics
   where
     evaluatedValuedNaturalRange = EvaluatedValuedNaturalRange valueRange
     evaluated =
@@ -181,7 +174,7 @@ interpretedValuedNaturalRangeValue canonical valueRange =
         1
         (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
     insertion = rangeInsertion evaluated
-    valueMap = mapFromInsertion insertion [canonical]
+    valueMap = mapFromInsertion insertion [semantics]
 
 interpretedNaturalRangeFallback
   :: Natural
@@ -199,21 +192,15 @@ interpretedNaturalRangeFallback start target = do
           | final == 0 -> Range.MinusSign
           | otherwise -> Range.GivenTarget (finiteOrdinal (final - 1)))
   let insertion = rangeInsertion evaluated
-      canonical = CanonicalNaturalRange start target
+      semantics = NaturalRangeSemantics start target
+      valueMap = mapFromInsertion insertion [semantics]
   pure
-    InterpretedValue
-      { interpretedForm = RangeForm evaluated
-      , interpretedInsertionCapability = ValidInsertion insertion
-      , interpretedMap = mapFromInsertion insertion [canonical]
-      , interpretedAtlasMapFederation =
-          SingletonAtlasMapFederation
-            (mapFromInsertion insertion [canonical])
-      , interpretedTotalAtlasMap =
-          Just
-            (InterpretedTotalAtlasMap
-              (mapFromInsertion insertion [canonical]))
-      , interpretedCanonicalResult = canonical
-      }
+    (makeSingletonInterpretedValue
+      (RangeForm evaluated)
+      (ValidInsertion insertion)
+      valueMap
+      TotalInterpretedMap
+      semantics)
 
 makeBoundedRange
   :: EvaluatedExplicit
@@ -256,20 +243,16 @@ makeEvaluatedRangeAt level start target =
 
 interpretedRangeValue :: EvaluatedRange -> InterpretedValue
 interpretedRangeValue evaluatedRange =
-  InterpretedValue
-    { interpretedForm = RangeForm evaluatedRange
-    , interpretedInsertionCapability = ValidInsertion insertion
-    , interpretedMap = valueMap
-    , interpretedAtlasMapFederation =
-        SingletonAtlasMapFederation valueMap
-    , interpretedTotalAtlasMap =
-        Just (InterpretedTotalAtlasMap valueMap)
-    , interpretedCanonicalResult = canonical
-    }
+  makeSingletonInterpretedValue
+    (RangeForm evaluatedRange)
+    (ValidInsertion insertion)
+    valueMap
+    TotalInterpretedMap
+    semantics
   where
     insertion = rangeInsertion evaluatedRange
-    canonical = CanonicalRange (rangeDescription evaluatedRange)
-    valueMap = mapFromInsertion insertion [canonical]
+    semantics = RangeSemantics (rangeDescription evaluatedRange)
+    valueMap = mapFromInsertion insertion [semantics]
 
 canonicalizeRanges
   :: [EvaluatedRange]

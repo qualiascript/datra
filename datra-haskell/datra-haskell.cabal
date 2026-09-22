@@ -172,7 +172,11 @@ library
         Folio.Internal
         Folio.LiquidInternal
         NumericalOperators.Internal
+        NaturalRange.Interval
+        OrdinalSequence
+        SuperEllipsisRange.Description
         Evaluation.Access
+        Evaluation.Access.RangeSelection
         Evaluation.Construction
         Evaluation.Map
         Evaluation.Numerical
