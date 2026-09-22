@@ -10,6 +10,9 @@ module DatraTypes
   , InterpretedMap
   , InterpretingError (..)
   , OperandSide (..)
+  , AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
   , naturalValue
   , asciiStringValue
   , formulationValue
@@ -36,12 +39,16 @@ module DatraTypes
   , interpretedRangeDescription
   , interpretedMap
   , interpretedMapCardinality
+  , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   ) where
 
-import DatraLanguage.Diagnostics.Interpreter
-  ( InterpretedValueKind (..)
+import Evaluation.Error
+  ( AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
+  , InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
   )
@@ -81,6 +88,7 @@ import Evaluation.Value
   , interpretedFormulationLevel
   , interpretedMap
   , interpretedMapCardinality
+  , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , interpretedRangeDescription

@@ -13,7 +13,7 @@ import DatraLanguage.Diagnostics
   , LocalizedMessage
   , renderDatraErrorWith
   )
-import DatraLanguage.Diagnostics.Interpreter (InterpretingError)
+import Evaluation.Error (InterpretingError)
 import DatraLanguage.Diagnostics.Locales.English qualified as English
 import DatraLanguage.Diagnostics.Locales.Română qualified as Română
 import MapOperators.AccessOperator (AccessError)

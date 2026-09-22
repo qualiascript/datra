@@ -9,13 +9,10 @@ module Evaluation.Numerical
 
 import DatraOrdinal
   ( Ordinal
-  , addOrdinals
-  , multiplyOrdinals
   , naturalAtOrdinal
   , omegaPower
-  , powerOrdinal
   )
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( InterpretingError (..)
   , OperandSide (..)
   )
@@ -27,10 +24,12 @@ import Evaluation.Construction
 import Evaluation.Value
 import Numeric.Natural (Natural)
 import NumericalOperators.NumericalOperand (someSuperEllipsisLevel)
-
-data NumericalValue
-  = ExplicitNumericalValue Ordinal
-  | FormulationNumericalValue Natural
+import NumericalOperators.Semantics
+  ( NumericalDenotation (..)
+  , addNumericalDenotations
+  , exponentiateNumericalDenotation
+  , multiplyNumericalDenotations
+  )
 
 addValues
   :: InterpretedValue
@@ -39,11 +38,8 @@ addValues
 addValues left right = do
   leftValue <- requireNumerical LeftOperand left
   rightValue <- requireNumerical RightOperand right
-  pure
-    (makeExplicit ComputedOrigin
-      (addOrdinals
-        (numericalOrdinal leftValue)
-        (numericalOrdinal rightValue)))
+  pure (makeNumericalResult
+    (addNumericalDenotations leftValue rightValue))
 
 multiplyValues
   :: InterpretedValue
@@ -52,16 +48,8 @@ multiplyValues
 multiplyValues left right = do
   leftValue <- requireNumerical LeftOperand left
   rightValue <- requireNumerical RightOperand right
-  case (leftValue, rightValue) of
-    ( FormulationNumericalValue leftLevel
-      , FormulationNumericalValue rightLevel
-      ) -> Right (makeFormulation (leftLevel + rightLevel))
-    _ ->
-      Right
-        (makeExplicit ComputedOrigin
-          (multiplyOrdinals
-            (numericalOrdinal leftValue)
-            (numericalOrdinal rightValue)))
+  pure (makeNumericalResult
+    (multiplyNumericalDenotations leftValue rightValue))
 
 exponentiateValues
   :: InterpretedValue
@@ -69,21 +57,9 @@ exponentiateValues
   -> Either InterpretingError InterpretedValue
 exponentiateValues base exponentValue = do
   naturalPower <- requireNaturalExponent exponentValue
-  case interpretedForm base of
-    FormulationForm formulation ->
-      Right
-        (makeFormulation
-          (someSuperEllipsisLevel formulation * naturalPower))
-    ExplicitForm explicitValue ->
-      Right
-        (makeExplicit
-          ComputedOrigin
-          (powerOrdinal (snd (explicitOrdinal explicitValue)) naturalPower))
-    _ ->
-      Left
-        (ExpectedNumericalOperand
-          LeftOperand
-          (interpretedValueKind base))
+  baseValue <- requireNumerical LeftOperand base
+  pure (makeNumericalResult
+    (exponentiateNumericalDenotation baseValue naturalPower))
 
 requireExplicit
   :: OperandSide
@@ -114,14 +90,14 @@ requireRangeUpperBoundary side value =
 requireNumerical
   :: OperandSide
   -> InterpretedValue
-  -> Either InterpretingError NumericalValue
+  -> Either InterpretingError NumericalDenotation
 requireNumerical side value =
   case interpretedForm value of
     ExplicitForm explicitValue ->
-      Right (ExplicitNumericalValue (snd (explicitOrdinal explicitValue)))
+      Right (ExplicitDenotation (snd (explicitOrdinal explicitValue)))
     FormulationForm formulation ->
       Right
-        (FormulationNumericalValue
+        (FormulationDenotation
           (someSuperEllipsisLevel formulation))
     _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
 
@@ -141,6 +117,8 @@ requireNaturalExponent value =
   where
     rejection = Left (ExpectedNaturalExponent (interpretedValueKind value))
 
-numericalOrdinal :: NumericalValue -> Ordinal
-numericalOrdinal (ExplicitNumericalValue value) = value
-numericalOrdinal (FormulationNumericalValue level) = omegaPower level
+makeNumericalResult :: NumericalDenotation -> InterpretedValue
+makeNumericalResult (ExplicitDenotation value) =
+  makeExplicit ComputedOrigin value
+makeNumericalResult (FormulationDenotation level) =
+  makeFormulation level

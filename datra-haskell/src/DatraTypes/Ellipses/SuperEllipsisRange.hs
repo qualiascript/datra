@@ -114,12 +114,17 @@ import SuperEllipsisInsertion
   , superEllipsisInsertion
   , superEllipsisInsertionOrderedMap
   )
-
-data SuperEllipsisRangeTarget
-  = GivenTarget Ordinal
-  | MinusSign
-  | PlusSign
-  deriving (Eq, Show)
+import SuperEllipsisRange.Description
+  ( SuperEllipsisRangeConcatAnalysis (..)
+  , SuperEllipsisRangeConcatError (..)
+  , SuperEllipsisRangeDescription (..)
+  , SuperEllipsisRangeTarget (..)
+  , analyzeSuperEllipsisRangeDescriptions
+  , finiteTailDifference
+  , rangeDescriptionOrderType
+  , sameFiniteBase
+  , validateSuperEllipsisRangeDescriptions
+  )
 
 -- | Reasons a range cannot be constructed at its selected rank.
 data SuperEllipsisRangeError
@@ -130,35 +135,6 @@ data SuperEllipsisRangeError
 
 -- | Scope-free range information suitable for diagnostics and canonical
 -- result presentation.
-data SuperEllipsisRangeDescription = SuperEllipsisRangeDescription
-  { describedRangeRankLimit :: Ordinal
-  , describedRangeStart :: Ordinal
-  , describedRangeTarget :: SuperEllipsisRangeTarget
-  }
-  deriving (Eq, Show)
-
--- | Whether an ordered concatenation can be represented by one range, stays
--- as two disjoint ranges, or repeats positions because its images overlap.
-data SuperEllipsisRangeConcatAnalysis
-  = RangeConcatCanonical SuperEllipsisRangeDescription
-  | RangeConcatDisjoint
-      SuperEllipsisRangeDescription
-      SuperEllipsisRangeDescription
-  | RangeConcatOverlapping
-      SuperEllipsisRangeDescription
-      SuperEllipsisRangeDescription
-      Ordinal
-      Ordinal
-  deriving (Eq, Show)
-
-data SuperEllipsisRangeConcatError
-  = SuperEllipsisRangesOverlap
-      SuperEllipsisRangeDescription
-      SuperEllipsisRangeDescription
-      Ordinal
-      Ordinal
-  deriving (Eq, Show)
-
 type role SuperEllipsisRange nominal nominal
 data SuperEllipsisRange (target :: Type) (scope :: Type) = SuperEllipsisRange
   { superEllipsisRangeRank :: SuperEllipsisRank target
@@ -494,22 +470,7 @@ superEllipsisRangeOrderType
   :: SuperEllipsisRange target scope
   -> Ordinal
 superEllipsisRangeOrderType valueRange =
-  case superEllipsisRangeTarget valueRange of
-    GivenTarget target
-      | ordinalLT target start ->
-          fromMaybe (finiteOrdinal 0) (finiteTailDifference start target)
-      | otherwise -> ordinalDifference start target
-    MinusSign ->
-      let (_, finiteTail) = splitFiniteTail start
-      in finiteOrdinal (finiteTail + 1)
-    PlusSign ->
-      ordinalDifference
-        start
-        (superEllipsisRankOrderType (superEllipsisRangeRank valueRange))
-  where
-    start = superEllipsisRangeStart valueRange
-    ordinalDifference left right =
-      fromMaybe (finiteOrdinal 0) (subtractOrdinal left right)
+  rangeDescriptionOrderType (describeSuperEllipsisRange valueRange)
 
 rangeAtlas
   :: SuperEllipsisRange target scope
@@ -660,81 +621,6 @@ analyzeSuperEllipsisRangeConcat first second =
     (describeSuperEllipsisRange first)
     (describeSuperEllipsisRange second)
 
--- | Analyze validated, scope-free range descriptions. This is the dynamic
--- counterpart of 'analyzeSuperEllipsisRangeConcat' used after existential
--- range scopes have been hidden by the interpreter.
-analyzeSuperEllipsisRangeDescriptions
-  :: SuperEllipsisRangeDescription
-  -> SuperEllipsisRangeDescription
-  -> SuperEllipsisRangeConcatAnalysis
-analyzeSuperEllipsisRangeDescriptions firstDescription secondDescription
-  | descriptionIsEmpty firstDescription =
-      RangeConcatCanonical secondDescription
-  | descriptionIsEmpty secondDescription =
-      RangeConcatCanonical firstDescription
-  | Just (lower, upper) <- descriptionOverlapBounds
-      firstDescription secondDescription =
-      RangeConcatOverlapping
-        firstDescription secondDescription lower upper
-  | descriptionsAreContiguous firstDescription secondDescription =
-      RangeConcatCanonical
-        SuperEllipsisRangeDescription
-          { describedRangeRankLimit =
-              max
-                (describedRangeRankLimit firstDescription)
-                (describedRangeRankLimit secondDescription)
-          , describedRangeStart = describedRangeStart firstDescription
-          , describedRangeTarget = describedRangeTarget secondDescription
-          }
-  | otherwise = RangeConcatDisjoint firstDescription secondDescription
-
--- | Reject the first overlapping pair in a collection of range
--- descriptions. Empty and merely adjacent ranges are accepted.
-validateSuperEllipsisRangeDescriptions
-  :: [SuperEllipsisRangeDescription]
-  -> Either SuperEllipsisRangeConcatError ()
-validateSuperEllipsisRangeDescriptions [] = Right ()
-validateSuperEllipsisRangeDescriptions (first : rest) = do
-  mapM_ (ensureDisjoint first) rest
-  validateSuperEllipsisRangeDescriptions rest
-  where
-    ensureDisjoint left right =
-      case analyzeSuperEllipsisRangeDescriptions left right of
-        RangeConcatOverlapping
-            firstDescription secondDescription lower upper ->
-          Left
-            (SuperEllipsisRangesOverlap
-              firstDescription secondDescription lower upper)
-        _ -> Right ()
-
-data RangeDirection = AscendingRange | DescendingRange
-  deriving (Eq)
-
-descriptionsAreContiguous
-  :: SuperEllipsisRangeDescription
-  -> SuperEllipsisRangeDescription
-  -> Bool
-descriptionsAreContiguous first second =
-  case describedRangeTarget first of
-    GivenTarget boundary ->
-      boundary == describedRangeStart second
-        && descriptionDirection first == descriptionDirection second
-    _ -> False
-
-descriptionOverlapBounds
-  :: SuperEllipsisRangeDescription
-  -> SuperEllipsisRangeDescription
-  -> Maybe (Ordinal, Ordinal)
-descriptionOverlapBounds first second =
-  case (descriptionImageBounds first, descriptionImageBounds second) of
-    (Just (firstLower, firstUpper), Just (secondLower, secondUpper))
-      | ordinalLT overlapLower overlapUpper ->
-          Just (overlapLower, overlapUpper)
-      where
-        overlapLower = max firstLower secondLower
-        overlapUpper = min firstUpper secondUpper
-    _ -> Nothing
-
 positionInRange
   :: SuperEllipsisRange target scope
   -> Ordinal
@@ -758,59 +644,6 @@ positionInRange valueRange position =
                (superEllipsisRangeRank valueRange))
   where
     start = superEllipsisRangeStart valueRange
-
-descriptionImageBounds
-  :: SuperEllipsisRangeDescription
-  -> Maybe (Ordinal, Ordinal)
-descriptionImageBounds description =
-  case describedRangeTarget description of
-    GivenTarget target
-      | ordinalLT start target -> Just (start, target)
-      | ordinalLT target start ->
-          Just (successor target, successor start)
-      | otherwise -> Nothing
-    MinusSign ->
-      let (base, _) = splitFiniteTail start
-      in Just (base, successor start)
-    PlusSign ->
-      Just (start, describedRangeRankLimit description)
-  where
-    start = describedRangeStart description
-    successor value = addOrdinals value (finiteOrdinal 1)
-
-descriptionDirection
-  :: SuperEllipsisRangeDescription
-  -> Maybe RangeDirection
-descriptionDirection description =
-  case describedRangeTarget description of
-    GivenTarget target
-      | ordinalLT start target -> Just AscendingRange
-      | ordinalLT target start -> Just DescendingRange
-      | otherwise -> Nothing
-    PlusSign -> Just AscendingRange
-    MinusSign -> Just DescendingRange
-  where
-    start = describedRangeStart description
-
-descriptionIsEmpty :: SuperEllipsisRangeDescription -> Bool
-descriptionIsEmpty description =
-  case describedRangeTarget description of
-    GivenTarget target -> target == describedRangeStart description
-    _ -> False
-
-sameFiniteBase :: Ordinal -> Ordinal -> Bool
-sameFiniteBase left right =
-  let (leftBase, _) = splitFiniteTail left
-      (rightBase, _) = splitFiniteTail right
-  in leftBase == rightBase
-
-finiteTailDifference :: Ordinal -> Ordinal -> Maybe Ordinal
-finiteTailDifference left right =
-  let (leftBase, leftTail) = splitFiniteTail left
-      (rightBase, rightTail) = splitFiniteTail right
-  in if leftBase == rightBase && rightTail <= leftTail
-      then Just (finiteOrdinal (leftTail - rightTail))
-      else Nothing
 
 instance
     Concat

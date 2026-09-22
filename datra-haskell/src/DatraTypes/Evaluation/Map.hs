@@ -6,18 +6,14 @@ module Evaluation.Map
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (..)
-  , AtlasMapFederationExpression (..)
+  ( AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton
   )
 import DatraOrdinal (finiteOrdinal)
-import DatraLanguage.Diagnostics.Interpreter
-  ( AtlasMapFederationOperation (AtlasMapFederationConcatenation)
-  , AtlasMapFederationRefutation
-      (AtlasMapFederationConcatenationCollision)
-  , AtlasMapFederationUncertainty
-      (NoAtlasMapFederationDecisionProcedure)
-  , InterpretingError (..)
+import Evaluation.Error (InterpretingError)
+import Evaluation.Federation
+  ( decideFederationConcatenation
+  , requireFederationDecision
   )
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Range
@@ -27,8 +23,6 @@ import Evaluation.Range
   )
 import Evaluation.Value
 import Numeric.Natural (Natural)
-import NaturalRange qualified
-import ValuedNaturalRange qualified
 
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
 makeAtlasMap _ [value]
@@ -62,7 +56,7 @@ makeProductMap cardinality values productFederation = value
         (map (interpretedMapFinalValues . interpretedMap) values)
     components =
       concatMap (interpretedMapComponents . interpretedMap) values
-    canonical = CanonicalMap cardinality components
+    semantics = MapSemantics cardinality components
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
     federation
@@ -71,38 +65,31 @@ makeProductMap cardinality values productFederation = value
           SingletonAtlasMapFederation valueMap
       | otherwise = productFederation memberFederations
     value =
-      InterpretedValue
-        { interpretedForm = MapForm
-        , interpretedInsertionCapability = NoInsertion
-        , interpretedMap = valueMap
-        , interpretedAtlasMapFederation = federation
-        , interpretedTotalAtlasMap =
-            if all hasTotalMap values
-                && atlasMapFederationExpressionIsSingleton federation
-              then Just (InterpretedTotalAtlasMap valueMap)
-              else Nothing
-        , interpretedCanonicalResult = canonical
-        }
-    hasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
+      makeInterpretedValue
+        MapForm
+        NoInsertion
+        valueMap
+        federation
+        (if all interpretedValueHasTotalMap values
+              && atlasMapFederationExpressionIsSingleton federation
+          then TotalInterpretedMap
+          else NonTotalInterpretedMap)
+        semantics
 
 concatenateValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 concatenateValues left right = do
-  case decideFederationConcatenation
+  requireFederationDecision
+    (decideFederationConcatenation
       (interpretedAtlasMapFederation left)
-      (interpretedAtlasMapFederation right) of
-    AtlasMapFederationRefuted refutation ->
-      Left (AtlasMapFederationOperationRefuted refutation)
-    AtlasMapFederationUndecidable uncertainty ->
-      Left (AtlasMapFederationOperationUndecidable uncertainty)
-    AtlasMapFederationProved () -> pure ()
+      (interpretedAtlasMapFederation right))
   normalizedRanges <-
     traverse canonicalizeRanges (concatenatedRanges left right)
   let insertionCapability =
         maybe NoInsertion concatenateRangeCapability normalizedRanges
-      (form, finalValues, components, canonical) =
+      (form, finalValues, components, semantics) =
         case normalizedRanges of
           Just ranges ->
             ( canonicalRangeForm ranges
@@ -114,8 +101,8 @@ concatenateValues left right = do
                     . interpretedMap
                     . interpretedRangeValue)
                   ranges)
-            , [canonicalRanges ranges]
-            , canonicalRanges ranges
+            , [rangeSemantics ranges]
+            , rangeSemantics ranges
             )
           Nothing ->
             ( MapForm
@@ -124,7 +111,7 @@ concatenateValues left right = do
                 (interpretedMapFinalValues (interpretedMap right))
             , interpretedMapComponents (interpretedMap left)
                 <> interpretedMapComponents (interpretedMap right)
-            , CanonicalMap
+            , MapSemantics
                 2
                 ( interpretedMapComponents (interpretedMap left)
                     <> interpretedMapComponents (interpretedMap right)
@@ -133,11 +120,11 @@ concatenateValues left right = do
       cardinality
         | ordinalOrderedValuesOrderType finalValues == finiteOrdinal 0 = 0
         | otherwise = 2
-      resultCanonical =
-        case canonical of
-          CanonicalMap _ mapComponents ->
-            CanonicalMap cardinality mapComponents
-          _ -> canonical
+      resultSemantics =
+        case semantics of
+          MapSemantics _ mapComponents ->
+            MapSemantics cardinality mapComponents
+          _ -> semantics
       baseResultMap = InterpretedMap cardinality finalValues components
       resultFederation
         | atlasMapFederationExpressionIsSingleton
@@ -150,37 +137,34 @@ concatenateValues left right = do
               (interpretedAtlasMapFederation left)
               (interpretedAtlasMapFederation right)
       preserveFederationSyntax =
-        canonicalContainsNaturalRange
-          (interpretedCanonicalResult left)
-          || canonicalContainsNaturalRange
-            (interpretedCanonicalResult right)
-      preservedCanonical =
-        CanonicalConcatenation
-          (canonicalConcatenationMembers
-            (interpretedCanonicalResult left)
-            <> canonicalConcatenationMembers
-              (interpretedCanonicalResult right))
-      finalCanonical
-        | preserveFederationSyntax = preservedCanonical
-        | otherwise = resultCanonical
+        semanticsContainsNaturalRange
+          (interpretedSemantics left)
+          || semanticsContainsNaturalRange
+            (interpretedSemantics right)
+      preservedSemantics =
+        ConcatenationSemantics
+          (concatenationMembers
+            (interpretedSemantics left)
+            <> concatenationMembers (interpretedSemantics right))
+      finalSemantics
+        | preserveFederationSyntax = preservedSemantics
+        | otherwise = resultSemantics
       resultMap
         | preserveFederationSyntax =
             baseResultMap
-              { interpretedMapComponents = [preservedCanonical] }
+              { interpretedMapComponents = [preservedSemantics] }
         | otherwise = baseResultMap
       ordinaryResult =
-        InterpretedValue
-          { interpretedForm = form
-          , interpretedInsertionCapability = insertionCapability
-          , interpretedMap = resultMap
-          , interpretedAtlasMapFederation = resultFederation
-          , interpretedTotalAtlasMap =
-              if operandsAreTotal
-                  && atlasMapFederationExpressionIsSingleton resultFederation
-                then Just (InterpretedTotalAtlasMap resultMap)
-                else Nothing
-          , interpretedCanonicalResult = finalCanonical
-          }
+        makeInterpretedValue
+          form
+          insertionCapability
+          resultMap
+          resultFederation
+          (if operandsAreTotal
+                && atlasMapFederationExpressionIsSingleton resultFederation
+            then TotalInterpretedMap
+            else NonTotalInterpretedMap)
+          finalSemantics
   pure
     (case (interpretedForm left, interpretedForm right) of
       (AsciiStringForm _, AsciiStringForm _) ->
@@ -190,100 +174,30 @@ concatenateValues left right = do
   where
     operandsAreTotal =
       isTotal left && isTotal right
-    isTotal = maybe False (const True) . interpretedTotalAtlasMap
+    isTotal = interpretedValueHasTotalMap
 
-decideFederationConcatenation
-  :: InterpretedAtlasMapFederation
-  -> InterpretedAtlasMapFederation
-  -> AtlasMapFederationDecision
-       AtlasMapFederationRefutation
-       AtlasMapFederationUncertainty
-       ()
-decideFederationConcatenation left right
-  | atlasMapFederationExpressionIsSingleton left =
-      AtlasMapFederationProved ()
-  | atlasMapFederationExpressionIsSingleton right =
-      AtlasMapFederationProved ()
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange leftRange)))
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange rightRange))) =
-  case NaturalRange.naturalRangeOverlapWitness leftRange rightRange of
-    Nothing -> AtlasMapFederationProved ()
-    Just witness ->
-      AtlasMapFederationRefuted
-        (AtlasMapFederationConcatenationCollision witness)
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange leftRange)))
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange rightRange))) =
-  overlapDecision
-    (ValuedNaturalRange.valuedNaturalRangesOverlapWitness
-      leftRange rightRange)
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange naturalRange)))
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange valuedRange))) =
-  overlapDecision
-    (ValuedNaturalRange.valuedNaturalRangeOverlapNaturalRange
-      valuedRange naturalRange)
-decideFederationConcatenation
-    (PrimitiveAtlasMapFederation
-      (ValuedNaturalRangeAtlasMapFederation
-        (EvaluatedValuedNaturalRange valuedRange)))
-    (PrimitiveAtlasMapFederation
-      (NaturalRangeAtlasMapFederation
-        (EvaluatedNaturalRange naturalRange))) =
-  overlapDecision
-    (ValuedNaturalRange.valuedNaturalRangeOverlapNaturalRange
-      valuedRange naturalRange)
-decideFederationConcatenation _ _ =
-  AtlasMapFederationUndecidable
-    (NoAtlasMapFederationDecisionProcedure
-      AtlasMapFederationConcatenation)
+semanticsContainsNaturalRange :: ValueSemantics -> Bool
+semanticsContainsNaturalRange (NaturalRangeSemantics _ _) = True
+semanticsContainsNaturalRange (ValuedNaturalRangeSemantics _ _) = True
+semanticsContainsNaturalRange NaturalTypeSemantics = True
+semanticsContainsNaturalRange (ConcatenationSemantics members) =
+  any semanticsContainsNaturalRange members
+semanticsContainsNaturalRange (MapSemantics _ members) =
+  any semanticsContainsNaturalRange members
+semanticsContainsNaturalRange _ = False
 
-overlapDecision
-  :: Maybe Natural
-  -> AtlasMapFederationDecision
-       AtlasMapFederationRefutation
-       AtlasMapFederationUncertainty
-       ()
-overlapDecision Nothing = AtlasMapFederationProved ()
-overlapDecision (Just witness) =
-  AtlasMapFederationRefuted
-    (AtlasMapFederationConcatenationCollision witness)
-
-canonicalContainsNaturalRange :: CanonicalResult -> Bool
-canonicalContainsNaturalRange (CanonicalNaturalRange _ _) = True
-canonicalContainsNaturalRange (CanonicalValuedNaturalRange _ _) = True
-canonicalContainsNaturalRange CanonicalNaturalType = True
-canonicalContainsNaturalRange (CanonicalConcatenation members) =
-  any canonicalContainsNaturalRange members
-canonicalContainsNaturalRange (CanonicalMap _ members) =
-  any canonicalContainsNaturalRange members
-canonicalContainsNaturalRange _ = False
-
-canonicalConcatenationMembers :: CanonicalResult -> [CanonicalResult]
-canonicalConcatenationMembers (CanonicalConcatenation members) = members
-canonicalConcatenationMembers value = [value]
+concatenationMembers :: ValueSemantics -> [ValueSemantics]
+concatenationMembers (ConcatenationSemantics members) = members
+concatenationMembers value = [value]
 
 canonicalRangeForm :: [EvaluatedRange] -> ValueForm
 canonicalRangeForm [valueRange] = RangeForm valueRange
 canonicalRangeForm ranges = RangeConcatenationForm ranges
 
-canonicalRanges :: [EvaluatedRange] -> CanonicalResult
-canonicalRanges [valueRange] = CanonicalRange (rangeDescription valueRange)
-canonicalRanges ranges =
-  CanonicalRangeConcatenation (map rangeDescription ranges)
+rangeSemantics :: [EvaluatedRange] -> ValueSemantics
+rangeSemantics [valueRange] = RangeSemantics (rangeDescription valueRange)
+rangeSemantics ranges =
+  RangeConcatenationSemantics (map rangeDescription ranges)
 
 concatenatedRanges
   :: InterpretedValue

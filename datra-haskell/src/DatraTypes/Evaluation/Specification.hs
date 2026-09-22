@@ -4,19 +4,16 @@ module Evaluation.Specification
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (..)
-  , AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
+  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation)
   )
 import AtlasMapSubfederation (decideAtlasMapSubfederation)
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( AtlasMapFederationOperation
       ( AtlasMapFederationSpecification
       , AtlasMapFederationSubfederation
       )
   , AtlasMapFederationRefutation
-      ( AtlasMapFederationSpecificationHasNoMatchingMember
-      , AtlasMapFederationSubfederationHasMissingMember
-      )
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
   , AtlasMapFederationUncertainty
       (NoAtlasMapFederationDecisionProcedure)
   , InterpretingError (..)
@@ -27,10 +24,16 @@ import DatraOrdinal
   , ordinalLT
   )
 import Evaluation.Value
+import Evaluation.Federation
+  ( decidePrimitiveSubfederation
+  , requireFederationDecision
+  , selectNaturalRangeMember
+  , selectValuedNaturalRangeMember
+  , undecidableFederationOperation
+  )
 import NaturalRange qualified
 import Numeric.Natural (Natural)
 import SuperEllipsisRange qualified as Range
-import ValuedNaturalRange qualified
 
 -- | NaturalRange and ValuedNaturalRange have separate target-specific
 -- decision procedures.  NaturalRange members are range Atlases;
@@ -67,7 +70,7 @@ specifyTotalAtlasMap source target = do
           Right
             (specifiedValue
               totalSource
-              (interpretedCanonicalResult source)
+              (interpretedSemantics source)
               target
               (EvaluatedNaturalRangeMember member))
     PrimitiveAtlasMapFederation
@@ -80,14 +83,11 @@ specifyTotalAtlasMap source target = do
           Right
             (specifiedValue
               totalSource
-              (interpretedCanonicalResult source)
+              (interpretedSemantics source)
               target
               (EvaluatedValuedNaturalRangeMember member))
     _ ->
-      Left
-        (AtlasMapFederationOperationUndecidable
-          (NoAtlasMapFederationDecisionProcedure
-            AtlasMapFederationSpecification))
+      undecidableFederationOperation AtlasMapFederationSpecification
   where
     noMatchingMember =
       Left
@@ -104,103 +104,45 @@ widenSpecification
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 widenSpecification source specification target =
-  case decideAtlasMapSubfederation
+  requireFederationDecision
+    (decideAtlasMapSubfederation
       (NoAtlasMapFederationDecisionProcedure
         AtlasMapFederationSubfederation)
       decidePrimitiveSubfederation
       (evaluatedSpecificationTarget specification)
-      (interpretedAtlasMapFederation target) of
-    AtlasMapFederationRefuted refutation ->
-      Left (AtlasMapFederationOperationRefuted refutation)
-    AtlasMapFederationUndecidable uncertainty ->
-      Left (AtlasMapFederationOperationUndecidable uncertainty)
-    AtlasMapFederationProved () ->
-      Right
-        (specifiedValue
-          (evaluatedSpecificationSource specification)
-          (originalSpecificationSource source)
-          target
-          (evaluatedSpecificationMember specification))
-
-decidePrimitiveSubfederation
-  :: InterpretedAtlasMapFederationPrimitive
-  -> InterpretedAtlasMapFederationPrimitive
-  -> AtlasMapFederationDecision
-       AtlasMapFederationRefutation
-       AtlasMapFederationUncertainty
-       ()
-decidePrimitiveSubfederation
-    (NaturalRangeAtlasMapFederation
-      (EvaluatedNaturalRange sourceRange))
-    (NaturalRangeAtlasMapFederation
-      (EvaluatedNaturalRange targetRange))
-  | NaturalRange.naturalRangeIsSubfederationOf sourceRange targetRange =
-      AtlasMapFederationProved ()
-  | otherwise =
-      AtlasMapFederationRefuted
-        AtlasMapFederationSubfederationHasMissingMember
-decidePrimitiveSubfederation
-    (ValuedNaturalRangeAtlasMapFederation
-      (EvaluatedValuedNaturalRange sourceRange))
-    (ValuedNaturalRangeAtlasMapFederation
-      (EvaluatedValuedNaturalRange targetRange))
-  | ValuedNaturalRange.valuedNaturalRangeIsSubfederationOf
-      sourceRange targetRange =
-      AtlasMapFederationProved ()
-  | otherwise =
-      AtlasMapFederationRefuted
-        AtlasMapFederationSubfederationHasMissingMember
-decidePrimitiveSubfederation _ _ =
-  AtlasMapFederationRefuted
-    AtlasMapFederationSubfederationHasMissingMember
+      (interpretedAtlasMapFederation target))
+    >> Right
+      (specifiedValue
+        (evaluatedSpecificationSource specification)
+        (originalSpecificationSourceSemantics source)
+        target
+        (evaluatedSpecificationMember specification))
 
 specifiedValue
   :: InterpretedTotalAtlasMap
-  -> CanonicalResult
+  -> ValueSemantics
   -> InterpretedValue
   -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
 specifiedValue totalSource sourceCanonical target member =
-  InterpretedValue
-    { interpretedForm =
-        SpecificationForm
-          EvaluatedSpecification
-            { evaluatedSpecificationSource = totalSource
-            , evaluatedSpecificationTarget =
-                interpretedAtlasMapFederation target
-            , evaluatedSpecificationMember = member
-            }
-    , interpretedInsertionCapability = NoInsertion
-    , interpretedMap = interpretedTotalAtlasMapUnderlying totalSource
-    , interpretedAtlasMapFederation =
-        interpretedAtlasMapFederation target
-    , interpretedTotalAtlasMap = Nothing
-    , interpretedCanonicalResult =
-        CanonicalSpecification
-          sourceCanonical
-          (interpretedCanonicalResult target)
-    }
+  makeInterpretedValue
+    (SpecificationForm
+      EvaluatedSpecification
+        { evaluatedSpecificationSource = totalSource
+        , evaluatedSpecificationTarget = interpretedAtlasMapFederation target
+        , evaluatedSpecificationMember = member
+        })
+    NoInsertion
+    (interpretedTotalAtlasMapUnderlying totalSource)
+    (interpretedAtlasMapFederation target)
+    NonTotalInterpretedMap
+    (SpecificationSemantics sourceCanonical (interpretedSemantics target))
 
-originalSpecificationSource :: InterpretedValue -> CanonicalResult
-originalSpecificationSource value =
-  case interpretedCanonicalResult value of
-    CanonicalSpecification source _ -> source
-    canonical -> canonical
-
-selectNaturalRangeMember
-  :: NaturalRange.NaturalRange rangeScope federationScope
-  -> NaturalRange.NaturalSubrangeDescription
-  -> Maybe NaturalRange.NaturalSubrangeDescription
-selectNaturalRangeMember targetRange candidate =
-  case candidate of
-    NaturalRange.EmptyNaturalSubrange -> Just candidate
-    NaturalRange.FiniteNaturalSubrange start final ->
-      NaturalRange.naturalSubrangeDescription
-        <$> NaturalRange.naturalRangeFiniteSubrange
-              targetRange start final
-    NaturalRange.UpwardsNaturalSubrange start ->
-      NaturalRange.naturalSubrangeDescription
-        <$> NaturalRange.naturalRangeUpwardsSubrange targetRange start
+originalSpecificationSourceSemantics :: InterpretedValue -> ValueSemantics
+originalSpecificationSourceSemantics value =
+  case interpretedSemantics value of
+    SpecificationSemantics source _ -> source
+    semantics -> semantics
 
 sourceEllipsisNatural :: InterpretedValue -> Maybe Natural
 sourceEllipsisNatural value =
@@ -210,14 +152,6 @@ sourceEllipsisNatural value =
       in if level == 1 then naturalAtOrdinal ordinalValue else Nothing
     _ -> Nothing
 
-selectValuedNaturalRangeMember
-  :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
-  -> Natural
-  -> Maybe Natural
-selectValuedNaturalRangeMember targetRange candidate =
-  candidate
-    <$ ValuedNaturalRange.valuedNaturalRangeValue targetRange candidate
-
 sourceNaturalSubrange
   :: InterpretedValue
   -> Maybe NaturalRange.NaturalSubrangeDescription
@@ -225,9 +159,9 @@ sourceNaturalSubrange value =
   case interpretedForm value of
     RangeForm valueRange -> rangeSubrange valueRange
     MapForm
-      | interpretedMapCardinality (interpretedMap value) == 0 ->
+      | interpretedMapPageCardinality (interpretedMap value) == 0 ->
           Just NaturalRange.EmptyNaturalSubrange
-      | interpretedMapCardinality (interpretedMap value) == 2 ->
+      | interpretedMapPageCardinality (interpretedMap value) == 2 ->
           mapSubrange value
       | otherwise -> Nothing
     _ -> Nothing
@@ -236,10 +170,10 @@ mapSubrange
   :: InterpretedValue
   -> Maybe NaturalRange.NaturalSubrangeDescription
 mapSubrange value =
-  case interpretedCanonicalResult value of
-    CanonicalMap _ [CanonicalRange description] ->
+  case interpretedSemantics value of
+    MapSemantics _ [RangeSemantics description] ->
       describedRangeSubrange 1 description
-    CanonicalMap _ [CanonicalExplicit level ordinalValue] -> do
+    MapSemantics _ [ExplicitSemantics level ordinalValue] -> do
       natural <- naturalAtOrdinal ordinalValue
       if level == 1
         then Just (NaturalRange.FiniteNaturalSubrange natural natural)

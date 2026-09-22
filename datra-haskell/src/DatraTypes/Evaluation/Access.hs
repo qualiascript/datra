@@ -3,39 +3,37 @@ module Evaluation.Access
   ( accessValues
   ) where
 
-import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (..)
-  , atlasMapFederationExpressionIsSingleton
-  )
 import DatraOrdinal
-  ( Ordinal
-  , addOrdinals
-  , finiteOrdinal
+  ( finiteOrdinal
   , naturalAtOrdinal
-  , ordinalCoefficients
   , omegaPower
   , ordinalLT
-  , splitFiniteTail
-  , subtractOrdinal
   )
 import Data.Bifunctor qualified as Bifunctor
-import Data.Char (ord)
-import DatraLanguage.Diagnostics.Interpreter
-  ( AtlasMapFederationOperation (AtlasMapFederationAccess)
-  , AtlasMapFederationRefutation
-      (AtlasMapFederationAccessHasEmptyCounterexample)
-  , AtlasMapFederationUncertainty
-      (NoAtlasMapFederationDecisionProcedure)
-  , InterpretingError (..)
+import Evaluation.Error
+  ( InterpretingError (..)
+  )
+import Evaluation.Federation
+  ( FederationAccess (..)
+  , decideFederationAccess
   )
 import Evaluation.Construction (makeAsciiString, makeFormulation)
+import Evaluation.Access.RangeSelection
+  ( AccessSource (..)
+  , DescribedRange (..)
+  , accessSelection
+  , accessSource
+  , describedRangeSemantics
+  , evaluatedDescribedRange
+  , pureOmegaPowerLevel
+  , rangeAccessDescriptions
+  )
 import Evaluation.Range qualified as RangeEvaluation
 import Evaluation.Value
 import NaturalRange qualified
 import MapOperators.AccessOperator
   ( validateAccessSelection )
 import Numeric.Natural (Natural)
-import NumericalOperators.NumericalOperand (someSuperEllipsisLevel)
 import SuperEllipsisInsertion
   ( someSuperEllipsisInsertionOrderType
   , someSuperEllipsisInsertionPositionAt
@@ -48,46 +46,16 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
-  case (naturalRangeFederation mapValue,
-        naturalRangeFederation insertionValue) of
-    (Just sourceRange, Just selectionRange) ->
+  case decideFederationAccess mapValue insertionValue of
+    Left rejection -> Left rejection
+    Right (NaturalRangeFederationAccess sourceRange selectionRange) ->
       accessNaturalRanges mapValue sourceRange selectionRange
-    (Nothing, Just naturalRange)
-      | atlasMapFederationExpressionIsSingleton
-          (interpretedAtlasMapFederation mapValue) ->
-          accessNaturalRange mapValue naturalRange
-      | otherwise -> undecidableFederationAccess
-    (_, Nothing) -> do
-      insertion <- requireInsertion insertionValue
-      if someSuperEllipsisInsertionOrderType insertion == finiteOrdinal 0
-        then finishAccess mapValue emptyInterpretedMap
-        else case naturalRangeFederation mapValue of
-          Just _ ->
-            Left
-              (AtlasMapFederationOperationRefuted
-                AtlasMapFederationAccessHasEmptyCounterexample)
-          Nothing
-            | atlasMapFederationExpressionIsSingleton
-                (interpretedAtlasMapFederation mapValue) ->
-                accessSingleton mapValue insertionValue insertion
-            | otherwise -> undecidableFederationAccess
-
-naturalRangeFederation
-  :: InterpretedValue
-  -> Maybe EvaluatedNaturalRange
-naturalRangeFederation value =
-  case interpretedAtlasMapFederation value of
-    PrimitiveAtlasMapFederation
-        (NaturalRangeAtlasMapFederation naturalRange) ->
-      Just naturalRange
-    _ -> Nothing
-
-undecidableFederationAccess
-  :: Either InterpretingError InterpretedValue
-undecidableFederationAccess =
-  Left
-    (AtlasMapFederationOperationUndecidable
-      (NoAtlasMapFederationDecisionProcedure AtlasMapFederationAccess))
+    Right (NaturalRangeSelectionAccess naturalRange) ->
+      accessNaturalRange mapValue naturalRange
+    Right EmptyFederationAccess ->
+      finishAccess mapValue emptyInterpretedMap
+    Right (SingletonFederationAccess insertion) ->
+      accessSingleton mapValue insertionValue insertion
 
 accessSingleton
   :: InterpretedValue
@@ -118,13 +86,13 @@ naturalRangeAccessResult
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 naturalRangeAccessResult selected =
-  case interpretedCanonicalResult selected of
-    CanonicalMap 0 _ -> Right selected
-    CanonicalExplicit _ value ->
+  case interpretedSemantics selected of
+    MapSemantics 0 _ -> Right selected
+    ExplicitSemantics _ value ->
       case naturalAtOrdinal value of
         Just natural -> RangeEvaluation.naturalRangeValue natural natural
         Nothing -> Right selected
-    CanonicalRange description ->
+    RangeSemantics description ->
       case naturalAtOrdinal (Range.describedRangeStart description) of
         Nothing -> Right selected
         Just start ->
@@ -216,46 +184,35 @@ formulationAccessResult
   -> Natural
   -> InterpretedValue
 formulationAccessResult sourceIsTotal selected level =
-  template
-    { interpretedMap =
-        selected { interpretedMapComponents = [canonical] }
-    , interpretedAtlasMapFederation =
-        SingletonAtlasMapFederation
-          (selected { interpretedMapComponents = [canonical] })
-    , interpretedTotalAtlasMap =
-        if sourceIsTotal
-          then
-            Just
-              (InterpretedTotalAtlasMap
-                (selected { interpretedMapComponents = [canonical] }))
-          else Nothing
-    }
+  makeSingletonInterpretedValue
+    (interpretedForm template)
+    (interpretedInsertionCapability template)
+    resultMap
+    (if sourceIsTotal then TotalInterpretedMap else NonTotalInterpretedMap)
+    semantics
   where
     template = makeFormulation level
-    canonical = CanonicalFormulation level
+    semantics = FormulationSemantics level
+    resultMap = selected { interpretedMapComponents = [semantics] }
 
 finishAccess
   :: InterpretedValue
   -> InterpretedMap
   -> Either InterpretingError InterpretedValue
 finishAccess mapValue selected =
-  let canonical =
-        CanonicalMap
-          (interpretedMapCardinality selected)
+  let semantics =
+        MapSemantics
+          (interpretedMapPageCardinality selected)
           (interpretedMapComponents selected)
       ordinaryResult =
-        InterpretedValue
-          { interpretedForm = MapForm
-          , interpretedInsertionCapability = NoInsertion
-          , interpretedMap = selected
-          , interpretedAtlasMapFederation =
-              SingletonAtlasMapFederation selected
-          , interpretedTotalAtlasMap =
-              if hasTotalAtlasMap mapValue
-                then Just (InterpretedTotalAtlasMap selected)
-                else Nothing
-          , interpretedCanonicalResult = canonical
-          }
+        makeSingletonInterpretedValue
+          MapForm
+          NoInsertion
+          selected
+          (if hasTotalAtlasMap mapValue
+            then TotalInterpretedMap
+            else NonTotalInterpretedMap)
+          semantics
   in pure
     (case interpretedForm mapValue of
       AsciiStringForm _ ->
@@ -273,43 +230,32 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
   ranges <- traverse makeRange describedRanges
   let insertionCapability =
         RangeEvaluation.concatenateRangeCapability ranges
-      canonicalComponents = map describedRangeCanonical describedRanges
-      (rangeForm, resultCapability, canonical) =
+      semanticComponents = map describedRangeSemantics describedRanges
+      (rangeForm, resultCapability, semantics) =
         case insertionCapability of
           RejectedInsertion _ ->
             ( MapForm
             , NoInsertion
-            , CanonicalMap
-                (interpretedMapCardinality selected)
-                canonicalComponents
+            , MapSemantics
+                (interpretedMapPageCardinality selected)
+                semanticComponents
             )
           _ ->
             ( case ranges of
                 [valueRange] -> RangeForm valueRange
                 _ -> RangeConcatenationForm ranges
             , insertionCapability
-            , case canonicalComponents of
+            , case semanticComponents of
                 [component] -> component
-                _ -> CanonicalRangeConcatenation descriptions
+                _ -> RangeConcatenationSemantics descriptions
             )
   pure . Just $
-    InterpretedValue
-      { interpretedForm = rangeForm
-      , interpretedInsertionCapability = resultCapability
-      , interpretedMap =
-          selected { interpretedMapComponents = [canonical] }
-      , interpretedAtlasMapFederation =
-          SingletonAtlasMapFederation
-            (selected { interpretedMapComponents = [canonical] })
-      , interpretedTotalAtlasMap =
-          if sourceIsTotal
-            then
-              Just
-                (InterpretedTotalAtlasMap
-                  (selected { interpretedMapComponents = [canonical] }))
-            else Nothing
-      , interpretedCanonicalResult = canonical
-      }
+    makeSingletonInterpretedValue
+      rangeForm
+      resultCapability
+      (selected { interpretedMapComponents = [semantics] })
+      (if sourceIsTotal then TotalInterpretedMap else NonTotalInterpretedMap)
+      semantics
   where
     descriptions = map describedRangeDescription describedRanges
     makeRange described =
@@ -319,444 +265,7 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
         (Range.describedRangeTarget (describedRangeDescription described))
 
 hasTotalAtlasMap :: InterpretedValue -> Bool
-hasTotalAtlasMap = maybe False (const True) . interpretedTotalAtlasMap
-
-describedRangeCanonical :: DescribedRange -> CanonicalResult
-describedRangeCanonical described
-  | rangeOrderType description == finiteOrdinal 1 =
-      CanonicalExplicit
-        (describedRangeLevel described)
-        (Range.describedRangeStart description)
-  | otherwise = CanonicalRange description
-  where
-    description = describedRangeDescription described
-
-data DescribedRange = DescribedRange
-  { describedRangeLevel :: Natural
-  , describedRangeDescription :: Range.SuperEllipsisRangeDescription
-  }
-
-data AccessSource = AccessSource
-  { sourceDescribedRanges :: [DescribedRange]
-  , sourceIsRangeLike :: Bool
-  , sourceFormulationLevel :: Maybe Natural
-  }
-
-accessSource :: InterpretedValue -> AccessSource
-accessSource value =
-  case interpretedForm value of
-    RangeForm valueRange ->
-      rangeSource [evaluatedDescribedRange valueRange]
-    NaturalRangeForm valueRange ->
-      rangeSource
-        [evaluatedDescribedRange
-          (naturalRangeAsEvaluatedRange valueRange)]
-    ValuedNaturalRangeForm _ ->
-      case interpretedRangeDescription value of
-        Just description ->
-          rangeSource [describedRangeFromDescription description]
-        Nothing -> rangeSource []
-    RangeConcatenationForm ranges ->
-      rangeSource (map evaluatedDescribedRange ranges)
-    FormulationForm formulation ->
-      let level = someSuperEllipsisLevel formulation
-      in AccessSource
-          { sourceDescribedRanges = [formulationDescribedRange level]
-          , sourceIsRangeLike = True
-          , sourceFormulationLevel = Just level
-          }
-    MapForm ->
-      combineAccessSources
-        (map canonicalAccessSource
-          (interpretedMapComponents (interpretedMap value)))
-    AsciiStringForm characters ->
-      AccessSource
-        { sourceDescribedRanges =
-            map
-              (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
-              characters
-        , sourceIsRangeLike = False
-        , sourceFormulationLevel = Nothing
-        }
-    SpecificationForm _ ->
-      AccessSource
-        { sourceDescribedRanges = []
-        , sourceIsRangeLike = False
-        , sourceFormulationLevel = Nothing
-        }
-    ExplicitForm explicitValue ->
-      let (level, ordinalValue) = explicitOrdinal explicitValue
-      in AccessSource
-          { sourceDescribedRanges =
-              [singletonDescribedRange level ordinalValue]
-          , sourceIsRangeLike = False
-          , sourceFormulationLevel = Nothing
-          }
-  where
-    rangeSource ranges =
-      AccessSource
-        { sourceDescribedRanges = ranges
-        , sourceIsRangeLike = True
-        , sourceFormulationLevel = Nothing
-        }
-
-accessSelection :: InterpretedValue -> Maybe [DescribedRange]
-accessSelection value =
-  case interpretedForm value of
-    FormulationForm formulation ->
-      Just [formulationDescribedRange (someSuperEllipsisLevel formulation)]
-    _ -> map evaluatedDescribedRange <$> valueRanges value
-
-canonicalAccessSource :: CanonicalResult -> AccessSource
-canonicalAccessSource canonical =
-  case canonical of
-    CanonicalExplicit level value ->
-      ordinarySource [singletonDescribedRange level value]
-    CanonicalFormulation level ->
-      AccessSource
-        { sourceDescribedRanges = [formulationDescribedRange level]
-        , sourceIsRangeLike = True
-        , sourceFormulationLevel = Just level
-        }
-    CanonicalRange description ->
-      rangeSource [describedRangeFromDescription description]
-    CanonicalNaturalRange start target ->
-      rangeSource [naturalDescribedRange start target]
-    CanonicalValuedNaturalRange start target ->
-      rangeSource [naturalDescribedRange start target]
-    CanonicalNaturalType ->
-      rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
-    CanonicalRangeConcatenation descriptions ->
-      rangeSource (map describedRangeFromDescription descriptions)
-    CanonicalConcatenation members ->
-      combineAccessSources (map canonicalAccessSource members)
-    CanonicalAsciiString characters ->
-      ordinarySource
-        (map
-          (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
-          characters)
-    CanonicalMap _ components ->
-      combineAccessSources (map canonicalAccessSource components)
-    CanonicalSpecification _ _ -> ordinarySource []
-  where
-    ordinarySource ranges =
-      AccessSource ranges False Nothing
-    rangeSource ranges =
-      AccessSource ranges True Nothing
-
-combineAccessSources :: [AccessSource] -> AccessSource
-combineAccessSources sources =
-  AccessSource
-    { sourceDescribedRanges = concatMap sourceDescribedRanges sources
-    , sourceIsRangeLike = all sourceIsRangeLike sources
-    , sourceFormulationLevel =
-        case sources of
-          [source] -> sourceFormulationLevel source
-          _ -> Nothing
-    }
-
-evaluatedDescribedRange :: EvaluatedRange -> DescribedRange
-evaluatedDescribedRange valueRange =
-  DescribedRange
-    (evaluatedRangeLevel valueRange)
-    (rangeDescription valueRange)
-
-describedRangeFromDescription
-  :: Range.SuperEllipsisRangeDescription
-  -> DescribedRange
-describedRangeFromDescription description =
-  DescribedRange
-    (maybe 1 id
-      (pureOmegaPowerLevel (Range.describedRangeRankLimit description)))
-    description
-
-formulationDescribedRange :: Natural -> DescribedRange
-formulationDescribedRange level =
-  DescribedRange
-    level
-    (Range.SuperEllipsisRangeDescription
-      rankLimit
-      (finiteOrdinal 0)
-      (Range.GivenTarget rankLimit))
-  where
-    rankLimit = omegaPower level
-
-singletonDescribedRange :: Natural -> Ordinal -> DescribedRange
-singletonDescribedRange level value =
-  DescribedRange
-    level
-    (Range.SuperEllipsisRangeDescription
-      (omegaPower level)
-      value
-      (Range.GivenTarget (successorOrdinal value)))
-
-naturalDescribedRange
-  :: Natural
-  -> NaturalRange.NaturalRangeTarget
-  -> DescribedRange
-naturalDescribedRange start target =
-  DescribedRange
-    1
-    (Range.SuperEllipsisRangeDescription
-      (omegaPower 1)
-      (finiteOrdinal start)
-      (case target of
-        NaturalRange.UpwardsTarget -> Range.PlusSign
-        NaturalRange.FiniteNaturalTarget final
-          | start <= final -> Range.GivenTarget (finiteOrdinal (final + 1))
-          | final == 0 -> Range.MinusSign
-          | otherwise -> Range.GivenTarget (finiteOrdinal (final - 1))))
-
-pureOmegaPowerLevel :: Ordinal -> Maybe Natural
-pureOmegaPowerLevel value =
-  case ordinalCoefficients value of
-    1 : remaining
-      | not (null remaining) && all (== 0) remaining ->
-          Just (fromIntegral (length remaining))
-    _ -> Nothing
-
-data SegmentDirection = SegmentAscending | SegmentDescending
-  deriving (Eq)
-
-data OrdinalRangeSegment = OrdinalRangeSegment
-  { segmentLevel :: Natural
-  , segmentStart :: Ordinal
-  , segmentLowerBound :: Ordinal
-  , segmentUpperBound :: Ordinal
-  , segmentOrderType :: Ordinal
-  , segmentRankLimit :: Ordinal
-  , segmentIsOpen :: Bool
-  , segmentDirection :: SegmentDirection
-  }
-
-data LocatedOrdinalRangeSegment = LocatedOrdinalRangeSegment
-  { locatedSegmentOffset :: Ordinal
-  , locatedSegment :: OrdinalRangeSegment
-  }
-
--- | Compose range descriptions symbolically.  Every range segment is affine
--- with step one or minus one, so intersections with selection segments remain
--- ranges and no element-by-element expansion is needed.
-rangeAccessDescriptions
-  :: [DescribedRange]
-  -> [DescribedRange]
-  -> [DescribedRange]
-rangeAccessDescriptions sourceRanges selectionRanges =
-  let locatedSources = locateSourceSegments sourceSegments
-      selectedDescriptions =
-        concatMap (sliceOrdinalSegment locatedSources) selectionSegments
-  in mergeAdjacentDescriptions selectedDescriptions
-  where
-    sourceSegments = map ordinalSegment sourceRanges
-    selectionSegments = map ordinalSegment selectionRanges
-
-ordinalSegment :: DescribedRange -> OrdinalRangeSegment
-ordinalSegment describedRange =
-  OrdinalRangeSegment
-    { segmentLevel = describedRangeLevel describedRange
-    , segmentStart = start
-    , segmentLowerBound = lowerBound
-    , segmentUpperBound = upperBound
-    , segmentOrderType = rangeOrderType description
-    , segmentRankLimit = Range.describedRangeRankLimit description
-    , segmentIsOpen = target == Range.PlusSign
-    , segmentDirection = direction
-    }
-  where
-    description = describedRangeDescription describedRange
-    start = Range.describedRangeStart description
-    target = Range.describedRangeTarget description
-    (lowerBound, upperBound, direction) =
-      case target of
-        Range.GivenTarget boundary
-          | ordinalLT boundary start ->
-              (successorOrdinal boundary, successorOrdinal start, SegmentDescending)
-          | otherwise -> (start, boundary, SegmentAscending)
-        Range.MinusSign ->
-          let (base, _) = splitFiniteTail start
-          in (base, successorOrdinal start, SegmentDescending)
-        Range.PlusSign ->
-          (start, Range.describedRangeRankLimit description, SegmentAscending)
-
-rangeOrderType :: Range.SuperEllipsisRangeDescription -> Ordinal
-rangeOrderType description =
-  maybe (finiteOrdinal 0) id (subtractOrdinal lowerBound upperBound)
-  where
-    start = Range.describedRangeStart description
-    (lowerBound, upperBound) =
-      case Range.describedRangeTarget description of
-        Range.GivenTarget boundary
-          | ordinalLT boundary start ->
-              (successorOrdinal boundary, successorOrdinal start)
-          | otherwise -> (start, boundary)
-        Range.MinusSign ->
-          let (base, _) = splitFiniteTail start
-          in (base, successorOrdinal start)
-        Range.PlusSign ->
-          (start, Range.describedRangeRankLimit description)
-
-locateSourceSegments
-  :: [OrdinalRangeSegment]
-  -> [LocatedOrdinalRangeSegment]
-locateSourceSegments = go (finiteOrdinal 0)
-  where
-    go _ [] = []
-    go offset (segment : rest) =
-      let orderType = segmentOrderType segment
-      in if orderType == finiteOrdinal 0
-          then go offset rest
-          else LocatedOrdinalRangeSegment offset segment
-            : go (addOrdinals offset orderType) rest
-
-sliceOrdinalSegment
-  :: [LocatedOrdinalRangeSegment]
-  -> OrdinalRangeSegment
-  -> [DescribedRange]
-sliceOrdinalSegment sources selection
-  | segmentOrderType selection == finiteOrdinal 0 = []
-  | otherwise = foldMap slice orderedSources
-  where
-    selectionIsAscending =
-      segmentDirection selection == SegmentAscending
-    orderedSources
-      | selectionIsAscending = sources
-      | otherwise = reverse sources
-    selectionBounds =
-      (segmentLowerBound selection, segmentUpperBound selection)
-
-    slice source =
-      case intersectBounds
-        selectionBounds
-        (sourcePositionBounds source) of
-          Nothing -> []
-          Just (lower, upper) ->
-            [descriptionForSlice source selectionIsAscending lower upper]
-
-sourcePositionBounds
-  :: LocatedOrdinalRangeSegment
-  -> (Ordinal, Ordinal)
-sourcePositionBounds source =
-  ( locatedSegmentOffset source
-  , addOrdinals
-      (locatedSegmentOffset source)
-      (segmentOrderType (locatedSegment source))
-  )
-
-intersectBounds
-  :: (Ordinal, Ordinal)
-  -> (Ordinal, Ordinal)
-  -> Maybe (Ordinal, Ordinal)
-intersectBounds (leftLower, leftUpper) (rightLower, rightUpper)
-  | not (ordinalLT lower upper) = Nothing
-  | otherwise = Just (lower, upper)
-  where
-    lower = max leftLower rightLower
-    upper = min leftUpper rightUpper
-
-descriptionForSlice
-  :: LocatedOrdinalRangeSegment
-  -> Bool
-  -> Ordinal
-  -> Ordinal
-  -> DescribedRange
-descriptionForSlice source selectionAscending lower upper =
-  DescribedRange
-    (segmentLevel segment)
-    (Range.SuperEllipsisRangeDescription
-      (segmentRankLimit segment)
-      firstValue
-      target)
-  where
-    segment = locatedSegment source
-    firstPosition
-      | selectionAscending = lower
-      | otherwise = ordinalPredecessor upper
-    firstValue = sourceValueAt source firstPosition
-    target
-      | outputAscending && selectionAscending =
-          let boundary = sourceValueAt source upper
-          in if segmentIsOpen segment
-                && boundary == segmentRankLimit segment
-              then Range.PlusSign
-              else Range.GivenTarget boundary
-      | outputAscending =
-          Range.GivenTarget (successorOrdinal finalValue)
-      | finiteTail == 0 = Range.MinusSign
-      | otherwise =
-          Range.GivenTarget
-            (addOrdinals finiteBase (finiteOrdinal (finiteTail - 1)))
-    outputAscending =
-      selectionAscending
-        == (segmentDirection segment == SegmentAscending)
-    finalPosition
-      | selectionAscending = ordinalPredecessor upper
-      | otherwise = lower
-    finalValue = sourceValueAt source finalPosition
-    (finiteBase, finiteTail) = splitFiniteTail finalValue
-
-sourceValueAt :: LocatedOrdinalRangeSegment -> Ordinal -> Ordinal
-sourceValueAt source position =
-  case segmentDirection segment of
-    SegmentAscending -> addOrdinals (segmentStart segment) relativePosition
-    SegmentDescending ->
-      case naturalAtOrdinal relativePosition of
-        Just finiteOffset -> subtractFiniteOrdinal (segmentStart segment) finiteOffset
-        Nothing -> segmentStart segment
-  where
-    segment = locatedSegment source
-    relativePosition =
-      case subtractOrdinal (locatedSegmentOffset source) position of
-        Just value -> value
-        Nothing -> finiteOrdinal 0
-
-subtractFiniteOrdinal :: Ordinal -> Natural -> Ordinal
-subtractFiniteOrdinal value amount =
-  let (base, finiteTail) = splitFiniteTail value
-  in addOrdinals base (finiteOrdinal (finiteTail - amount))
-
-ordinalPredecessor :: Ordinal -> Ordinal
-ordinalPredecessor value =
-  let (base, finiteTail) = splitFiniteTail value
-  in if finiteTail == 0
-      then value
-      else addOrdinals base (finiteOrdinal (finiteTail - 1))
-
-successorOrdinal :: Ordinal -> Ordinal
-successorOrdinal value = addOrdinals value (finiteOrdinal 1)
-
-mergeAdjacentDescriptions
-  :: [DescribedRange]
-  -> [DescribedRange]
-mergeAdjacentDescriptions = foldl appendDescription []
-  where
-    appendDescription [] description = [description]
-    appendDescription descriptions description =
-      case reverse descriptions of
-        [] -> [description]
-        previous : reversedPrefix ->
-          case Range.analyzeSuperEllipsisRangeDescriptions
-            (describedRangeDescription previous)
-            (describedRangeDescription description) of
-              Range.RangeConcatCanonical merged ->
-                let level
-                      | Range.describedRangeRankLimit merged
-                          == Range.describedRangeRankLimit
-                            (describedRangeDescription previous) =
-                          describedRangeLevel previous
-                      | otherwise = describedRangeLevel description
-                in reverse reversedPrefix <> [DescribedRange level merged]
-              _ -> descriptions <> [description]
-
-requireInsertion
-  :: InterpretedValue
-  -> Either InterpretingError SomeSuperEllipsisInsertion
-requireInsertion value =
-  case interpretedInsertionCapability value of
-    NoInsertion ->
-      Left (ExpectedInsertionOperand (interpretedValueKind value))
-    RejectedInsertion rejection ->
-      Left (RangeConcatenationRejected rejection)
-    ValidInsertion insertion -> Right insertion
+hasTotalAtlasMap = interpretedValueHasTotalMap
 
 accessMap
   :: InterpretedMap

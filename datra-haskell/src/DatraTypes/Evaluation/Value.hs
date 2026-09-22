@@ -17,10 +17,23 @@ module Evaluation.Value
   , InsertionCapability (..)
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
+  , interpretedMapCardinality
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
+  , ValueSemantics (..)
   , CanonicalResult (..)
-  , InterpretedValue (..)
+  , InterpretedValue
+  , InterpretedValueTotality (..)
+  , makeInterpretedValue
+  , makeSingletonInterpretedValue
+  , interpretedForm
+  , interpretedInsertionCapability
+  , interpretedMap
+  , interpretedAtlasMapFederation
+  , interpretedTotalAtlasMap
+  , interpretedSemantics
+  , interpretedValueHasTotalMap
+  , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
   , interpretedFormulationLevel
@@ -44,10 +57,11 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
-import AtlasMapFederationExpression (AtlasMapFederationExpression)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
-import DatraLanguage.Diagnostics.Interpreter (InterpretedValueKind (..))
+import Evaluation.Error (InterpretedValueKind (..))
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues
@@ -138,10 +152,15 @@ data InsertionCapability
   | RejectedInsertion Range.SuperEllipsisRangeConcatError
 
 data InterpretedMap = InterpretedMap
-  { interpretedMapCardinality :: Natural
+  { interpretedMapPageCardinality :: Natural
   , interpretedMapFinalValues :: OrdinalOrderedValues InterpretedValue
-  , interpretedMapComponents :: [CanonicalResult]
+  , interpretedMapComponents :: [ValueSemantics]
   }
+
+-- | Compatibility name for the number of Atlas pages represented by a map.
+-- This is distinct from the final page's possibly-transfinite order type.
+interpretedMapCardinality :: InterpretedMap -> Natural
+interpretedMapCardinality = interpretedMapPageCardinality
 
 -- | Primitive Atlas-map federation kinds understood by the interpreter.
 -- The generic construction tree lives in 'AtlasMapFederation'; extending the
@@ -156,9 +175,23 @@ type InterpretedAtlasMapFederation =
     InterpretedAtlasMapFederationPrimitive
     InterpretedMap
 
+-- | Semantic provenance retained after existential Atlas witnesses have been
+-- erased. Evaluation modules inspect this structure; presentation is derived
+-- separately as 'CanonicalResult'.
+data ValueSemantics
+  = ExplicitSemantics Natural Ordinal
+  | FormulationSemantics Natural
+  | RangeSemantics Range.SuperEllipsisRangeDescription
+  | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
+  | ValuedNaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
+  | NaturalTypeSemantics
+  | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
+  | ConcatenationSemantics [ValueSemantics]
+  | AsciiStringSemantics String
+  | MapSemantics Natural [ValueSemantics]
+  | SpecificationSemantics ValueSemantics ValueSemantics
+
 -- | A normalized, source-independent presentation of an evaluated value.
--- Maps contain compact final-page components, so an infinite range remains
--- renderable without attempting to enumerate it.
 data CanonicalResult
   = CanonicalExplicit Natural Ordinal
   | CanonicalFormulation Natural
@@ -179,8 +212,72 @@ data InterpretedValue = InterpretedValue
   , interpretedMap :: InterpretedMap
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
   , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
-  , interpretedCanonicalResult :: CanonicalResult
+  , interpretedSemantics :: ValueSemantics
   }
+
+data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
+
+makeInterpretedValue
+  :: ValueForm
+  -> InsertionCapability
+  -> InterpretedMap
+  -> InterpretedAtlasMapFederation
+  -> InterpretedValueTotality
+  -> ValueSemantics
+  -> InterpretedValue
+makeInterpretedValue form capability valueMap federation totality semantics =
+  InterpretedValue
+    { interpretedForm = form
+    , interpretedInsertionCapability = capability
+    , interpretedMap = valueMap
+    , interpretedAtlasMapFederation = federation
+    , interpretedTotalAtlasMap =
+        case totality of
+          TotalInterpretedMap -> Just (InterpretedTotalAtlasMap valueMap)
+          NonTotalInterpretedMap -> Nothing
+    , interpretedSemantics = semantics
+    }
+
+makeSingletonInterpretedValue
+  :: ValueForm
+  -> InsertionCapability
+  -> InterpretedMap
+  -> InterpretedValueTotality
+  -> ValueSemantics
+  -> InterpretedValue
+makeSingletonInterpretedValue form capability valueMap totality =
+  makeInterpretedValue
+    form
+    capability
+    valueMap
+    (SingletonAtlasMapFederation valueMap)
+    totality
+
+interpretedValueHasTotalMap :: InterpretedValue -> Bool
+interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
+
+interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
+interpretedCanonicalResult = canonicalResult . interpretedSemantics
+
+canonicalResult :: ValueSemantics -> CanonicalResult
+canonicalResult semantics =
+  case semantics of
+    ExplicitSemantics level value -> CanonicalExplicit level value
+    FormulationSemantics level -> CanonicalFormulation level
+    RangeSemantics description -> CanonicalRange description
+    NaturalRangeSemantics start target -> CanonicalNaturalRange start target
+    ValuedNaturalRangeSemantics start target ->
+      CanonicalValuedNaturalRange start target
+    NaturalTypeSemantics -> CanonicalNaturalType
+    RangeConcatenationSemantics descriptions ->
+      CanonicalRangeConcatenation descriptions
+    ConcatenationSemantics members ->
+      CanonicalConcatenation (map canonicalResult members)
+    AsciiStringSemantics characters -> CanonicalAsciiString characters
+    MapSemantics cardinality components ->
+      CanonicalMap cardinality (map canonicalResult components)
+    SpecificationSemantics source target ->
+      CanonicalSpecification (canonicalResult source) (canonicalResult target)
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
@@ -300,9 +397,9 @@ valueRanges value =
 emptyInterpretedMap :: InterpretedMap
 emptyInterpretedMap = InterpretedMap 0 emptyOrdinalOrderedValues []
 
-singletonMap :: CanonicalResult -> InterpretedValue -> InterpretedMap
-singletonMap canonical value =
+singletonMap :: ValueSemantics -> InterpretedValue -> InterpretedMap
+singletonMap semantics value =
   InterpretedMap
     1
     (singletonOrdinalOrderedValues value)
-    [canonical]
+    [semantics]

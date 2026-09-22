@@ -17,10 +17,7 @@ module MapOperators.OrderedAtlasMap
 import Data.Kind (Type)
 import DatraOrdinal
   ( Ordinal
-  , addOrdinals
   , finiteOrdinal
-  , ordinalLT
-  , subtractOrdinal
   )
 import MapOperators.IndexedAtlasMap
   ( IndexedAtlasMap
@@ -29,6 +26,12 @@ import MapOperators.IndexedAtlasMap
   , indexedAtlasValueAtOrdinal
   )
 import Numeric.Natural (Natural)
+import OrdinalSequence
+  ( OrdinalSequence (..)
+  , appendOrdinalSequence
+  , emptyOrdinalSequence
+  , singletonOrdinalSequence
+  )
 
 -- | The ordered map presentation shared by ranges, insertions, and their
 -- concatenations.  'IndexedAtlasMap' is intrinsically nonempty, so emptiness
@@ -47,31 +50,33 @@ data OrdinalOrderedValues value = OrdinalOrderedValues
   }
 
 emptyOrdinalOrderedValues :: OrdinalOrderedValues value
-emptyOrdinalOrderedValues =
-  OrdinalOrderedValues (finiteOrdinal 0) (const Nothing)
+emptyOrdinalOrderedValues = fromOrdinalSequence emptyOrdinalSequence
 
 singletonOrdinalOrderedValues :: value -> OrdinalOrderedValues value
-singletonOrdinalOrderedValues value =
-  OrdinalOrderedValues
-    (finiteOrdinal 1)
-    (\position ->
-      if position == finiteOrdinal 0 then Just value else Nothing)
+singletonOrdinalOrderedValues =
+  fromOrdinalSequence . singletonOrdinalSequence
 
 appendOrdinalOrderedValues
   :: OrdinalOrderedValues value
   -> OrdinalOrderedValues value
   -> OrdinalOrderedValues value
 appendOrdinalOrderedValues left right =
-  OrdinalOrderedValues combinedOrderType valueAt
-  where
-    leftOrderType = ordinalOrderedValuesOrderType left
-    combinedOrderType =
-      addOrdinals leftOrderType (ordinalOrderedValuesOrderType right)
-    valueAt position
-      | ordinalLT position leftOrderType = ordinalOrderedValueAt left position
-      | otherwise = do
-          rightPosition <- subtractOrdinal leftOrderType position
-          ordinalOrderedValueAt right rightPosition
+  fromOrdinalSequence
+    (appendOrdinalSequence
+      (toOrdinalSequence left)
+      (toOrdinalSequence right))
+
+toOrdinalSequence :: OrdinalOrderedValues value -> OrdinalSequence value
+toOrdinalSequence values =
+  OrdinalSequence
+    (ordinalOrderedValuesOrderType values)
+    (ordinalOrderedValueAt values)
+
+fromOrdinalSequence :: OrdinalSequence value -> OrdinalOrderedValues value
+fromOrdinalSequence values =
+  OrdinalOrderedValues
+    (ordinalSequenceOrderType values)
+    (ordinalSequenceValueAt values)
 
 orderedAtlasMapIndexed :: OrderedAtlasMap value -> Maybe (IndexedAtlasMap value)
 orderedAtlasMapIndexed EmptyOrderedAtlasMap = Nothing
