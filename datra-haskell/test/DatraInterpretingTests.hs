@@ -1561,6 +1561,14 @@ testIdentifiers = do
       Left (IdentifierNameMismatch expected given) ->
         expected == "$a" && given == "$b"
       _ -> False)
+  assert "an identifier value outside its annotation gets a direct type error"
+    (case interpretExpressionReason
+        ((<~>)
+          (identifier "x" (natural 12))
+          (identifier "x" (ValuedNaturalRange 1 10))) of
+      Left (AssignedValueOutsideTypeAnnotation expected given) ->
+        expected == "within 1 to 10" && given == "12"
+      _ -> False)
   assert "an assignment outside its annotation gets a direct type error"
     (case interpretExpressionReason
         (assignment
@@ -1743,6 +1751,22 @@ testLocatedRejection = do
           == "<test>:1:5: the identifier name does not match\n"
               <> "  expected: $a\n"
               <> "  given: $b"
+      Right _ -> False)
+  let valueOutsideIdentifierAnnotation =
+        (<~>)
+          (IdentifierOperation (Identifier "x") (natural 12) Nothing)
+          (IdentifierOperation
+            (Identifier "x")
+            (ValuedNaturalRange 1 10)
+            Nothing)
+  assert "identifier membership errors show canonical expected and given values"
+    (case interpretLocatedExpression
+        (Located sourceSpan valueOutsideIdentifierAnnotation) of
+      Left valueError ->
+        renderDatraError English valueError
+          == "<test>:1:5: the given value is outside the type annotation\n"
+              <> "  expected: within 1 to 10\n"
+              <> "  given: 12"
       Right _ -> False)
   let overlapExpression =
         (<@>)

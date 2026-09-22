@@ -30,7 +30,7 @@ import DatraLanguage.AST
   , normalizeExpression
   )
 import DatraTypes
-import Rendering (renderInterpretedValue)
+import Rendering (renderCanonicalResult, renderInterpretedValue)
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located)
@@ -100,7 +100,7 @@ interpretNormalizedExpression expressionValue =
     MapAccess mapOperand insertionOperand ->
       interpretBinary accessValues mapOperand insertionOperand
     MapSpecification sourceOperand targetOperand ->
-      interpretBinary specifyValues sourceOperand targetOperand
+      interpretSpecification sourceOperand targetOperand
     IdentifierOperation (Identifier name) typeExpression assignment -> do
       typeValue <- interpretExpressionReason typeExpression
       case assignment of
@@ -117,6 +117,70 @@ interpretNormalizedExpression expressionValue =
                   , givenAssignedValue = renderInterpretedValue assignedValue
                   })
             result -> result
+
+interpretSpecification
+  :: Expression
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretSpecification sourceExpression targetExpression = do
+  source <- interpretExpressionReason sourceExpression
+  target <- interpretExpressionReason targetExpression
+  case specifyValues source target of
+    Left rejection
+      | isAnnotationMembershipRefutation rejection
+      , Just (expected, given) <- identifierAnnotationMismatch source target ->
+          Left
+            (AssignedValueOutsideTypeAnnotation
+              { expectedTypeAnnotation = expected
+              , givenAssignedValue = given
+              })
+    result -> result
+
+isAnnotationMembershipRefutation :: InterpretingError -> Bool
+isAnnotationMembershipRefutation rejection =
+  case rejection of
+    AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+    AtlasMapFederationOperationRefuted
+        AtlasMapFederationSubfederationHasMissingMember -> True
+    _ -> False
+
+identifierAnnotationMismatch
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierAnnotationMismatch source target = do
+  (givenName, givenResult) <-
+    identifierGivenValue (interpretedCanonicalResult source)
+  (expectedName, expectedResult) <-
+    identifierExpectedValue (interpretedCanonicalResult target)
+  if givenName == expectedName
+    then
+      Just
+        ( renderCanonicalResult expectedResult
+        , renderCanonicalResult givenResult
+        )
+    else Nothing
+
+identifierGivenValue
+  :: CanonicalResult
+  -> Maybe (String, CanonicalResult)
+identifierGivenValue result =
+  case result of
+    CanonicalIdentifierType name underlying -> Just (name, underlying)
+    CanonicalAssignment name _ assigned -> Just (name, assigned)
+    CanonicalSpecification source _ -> identifierGivenValue source
+    _ -> Nothing
+
+identifierExpectedValue
+  :: CanonicalResult
+  -> Maybe (String, CanonicalResult)
+identifierExpectedValue result =
+  case result of
+    CanonicalIdentifierType name underlying -> Just (name, underlying)
+    CanonicalAssignment name expected _ -> Just (name, expected)
+    CanonicalSpecification _ target -> identifierExpectedValue target
+    _ -> Nothing
 
 interpretBinary
   :: ( InterpretedValue
