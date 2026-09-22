@@ -76,7 +76,7 @@ library
         DatraLanguage.Diagnostics
         DatraLanguage.Diagnostics.Interpreter
         DatraLanguage.Diagnostics.Locales.English
-        DatraLanguage.Diagnostics.Locales.Română
+        DatraLanguage.Diagnostics.Locales.Romanian
         DatraLanguage.Diagnostics.Localization
         FixedPoint
         DomanialInsertion

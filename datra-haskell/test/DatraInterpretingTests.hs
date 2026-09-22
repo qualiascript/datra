@@ -51,7 +51,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English, Română)
+  ( Locale (English, Romanian)
   , renderDatraError
   )
 import MapOperators.AccessOperator
@@ -1274,7 +1274,7 @@ testLocatedRejection = do
   assert "Romanian interpretation errors are localized only at display time"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left valueError ->
-        renderDatraError Română valueError
+        renderDatraError Romanian valueError
           == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
               <> "  tipul efectiv al valorii: hartă"
       Right _ -> False)
@@ -1300,7 +1300,7 @@ testLocatedRejection = do
   assert "Romanian overlap diagnostics use Datra range notation"
     (case interpretLocatedExpression (Located sourceSpan overlapExpression) of
       Left valueError ->
-        renderDatraError Română valueError
+        renderDatraError Romanian valueError
           == "<test>:1:5: intervalele suprapuse nu pot fi folosite pentru a accesa o hartă\n"
               <> "  primul interval: 2..5\n"
               <> "  al doilea interval: 4..7\n"

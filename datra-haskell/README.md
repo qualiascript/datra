@@ -214,7 +214,7 @@ docker run --rm \
   --output output.datra
 ```
 
-Add `--locale română` or `--locale english` to commands that interpret an AST.
+Add `--locale romanian` or `--locale english` to commands that interpret an AST.
 
 ## Use the development image
 

@@ -86,7 +86,7 @@ COPY LICENSE NOTICE /usr/local/share/doc/datra/
 # Exercise the executable in the final image to catch missing shared libraries
 # and preserve UTF-8 input/locale support without the development toolchain.
 RUN test "$(datra ast --source '[1; 2 + 3]' --output -)" = '(<:> 1 (+ 2 3))' && \
-    datra interpret --ast '(<:> 1 (+ 2 3))' --locale română --output -
+    datra interpret --ast '(<:> 1 (+ 2 3))' --locale romanian --output -
 
 # Datra's default input and output names are relative to this directory. Mount
 # a host directory at /data to retain input.datra and generated output files.

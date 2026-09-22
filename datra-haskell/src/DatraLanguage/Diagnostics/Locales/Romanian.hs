@@ -1,5 +1,5 @@
 -- | Romanian presentation text for typed Datra diagnostics.
-module DatraLanguage.Diagnostics.Locales.Română
+module DatraLanguage.Diagnostics.Locales.Romanian
   ( localizeAccessError
   , localizeInterpretingError
   , localizeSuperEllipsisRangeError
