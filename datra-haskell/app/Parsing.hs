@@ -483,20 +483,22 @@ arithmeticOperatorTable =
   , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
   ]
 
--- Concatenation binds after ranges, access follows it, and specification is
--- the final map operation. Reverse specification uses the same precedence as
--- ordinary specification, but associates right so a reversed chain builds the
--- same AST as the corresponding left-associated @~>@ chain.
+-- Concatenation binds after ranges. Access and forward specification share a
+-- left-associative level so their written order determines composition:
+-- @source ~> target @ insertion@ accesses the resulting specification, while
+-- @source @ insertion ~> target@ specifies the accessed value. Reverse
+-- specification remains the final, right-associative map operation so a
+-- reversed chain builds the same AST as the corresponding @~>@ chain.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
-  , [InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]
-  , [ InfixL
+  , [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
+    , InfixL
         (MapSpecification <$ continuedOperator AST.SpecificationOperator)
-    , InfixR
-        (flip MapSpecification <$ continuedSymbol reverseSpecificationSymbol)
     ]
+  , [InfixR
+      (flip MapSpecification <$ continuedSymbol reverseSpecificationSymbol)]
   ]
 
 reverseSpecificationSymbol :: Text

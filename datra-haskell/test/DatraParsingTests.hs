@@ -117,6 +117,10 @@ regressionTests = do
     "1, 2 @ from 0 upwards ~> from 0 to 10"
     "(<~> (<@> (<.> 1 2) (from 0 upwards)) (from 0 to 10))"
   assertAstOutput
+    "access after a specification projects its fibers"
+    "[2; 3] ~> [Nat; Nat] @ 0"
+    "(<@> (<~> (<:> 2 3) (<:> Nat Nat)) 0)"
+  assertAstOutput
     "specification chains associate through the intermediate federation"
     "2..3 ~> from 2 to 5 ~> from 2 to 8"
     "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"

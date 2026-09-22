@@ -600,12 +600,32 @@ testAccess = do
         (<.>)
           (natural 1)
           ((<.>) (natural 2) (natural 3))
+      sequenceSpecification =
+        (<~>)
+          (AtlasMap [natural 2, natural 3])
+          (AtlasMap [NaturalType, NaturalType])
       expectRangeAccess label expectedKind sourceValue selectionValue expected =
         expectValue label ((<@>) sourceValue selectionValue) $ \value ->
           assert label
             ( interpretedValueKind value == expectedKind
               && renderInterpretedValue value == expected
             )
+  expectValue
+      "access projects one specification fiber"
+      ((<@>) sequenceSpecification (natural 0)) $ \value ->
+    assert "the selected source and target remain related"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "2 ~> Nat"
+      )
+  expectValue
+      "range access projects specification fibers"
+      ((<@>)
+        sequenceSpecification
+        ((<..>) (natural 0) (natural 2))) $ \value ->
+    assert "a specification range retains both selected fibers"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "[2; 3] ~> [Nat; Nat]"
+      )
   expectValue
       "natural upwards range access"
       ((<@>) threeValues (NaturalRangeUpwards 1)) $ \value ->

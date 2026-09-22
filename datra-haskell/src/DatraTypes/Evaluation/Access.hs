@@ -21,6 +21,7 @@ import Evaluation.Access.Composition
 import Evaluation.Access.Federation
   ( federationIsCoalition
   )
+import Evaluation.Access.Specification (accessSpecification)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
@@ -51,6 +52,16 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
+  case interpretedForm mapValue of
+    SpecificationForm specification ->
+      accessSpecification accessValues specification insertionValue
+    _ -> accessFederationValues mapValue insertionValue
+
+accessFederationValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+accessFederationValues mapValue insertionValue =
   case decideFederationAccess mapValue insertionValue of
     Left rejection -> Left rejection
     Right (NaturalRangeFederationAccess sourceRange selectionRange) ->

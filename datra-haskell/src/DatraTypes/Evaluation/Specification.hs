@@ -46,6 +46,7 @@ specifyTotalAtlasMap source target = do
     DecisionProved member ->
       Right
         (specifiedValue
+          source
           totalSource
           (interpretedSemantics source)
           target
@@ -78,6 +79,7 @@ widenSpecification source specification target =
     DecisionProved () ->
       Right
         (specifiedValue
+          (evaluatedSpecificationSourceValue specification)
           (evaluatedSpecificationSource specification)
           (originalSpecificationSourceSemantics source)
           target
@@ -93,16 +95,18 @@ widenSpecification source specification target =
             AtlasMapFederationSubfederation))
 
 specifiedValue
-  :: InterpretedTotalAtlasMap
+  :: InterpretedValue
+  -> InterpretedTotalAtlasMap
   -> ValueSemantics
   -> InterpretedValue
   -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
-specifiedValue totalSource sourceCanonical target member =
+specifiedValue sourceValue totalSource sourceCanonical target member =
   makeInterpretedValue
     (SpecificationForm
       EvaluatedSpecification
-        { evaluatedSpecificationSource = totalSource
+        { evaluatedSpecificationSourceValue = sourceValue
+        , evaluatedSpecificationSource = totalSource
         , evaluatedSpecificationTarget = target
         , evaluatedSpecificationMember = member
         })

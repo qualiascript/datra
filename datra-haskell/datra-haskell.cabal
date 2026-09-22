@@ -181,6 +181,7 @@ library
         Evaluation.Access.Composition
         Evaluation.Access.Federation
         Evaluation.Access.RangeSelection
+        Evaluation.Access.Specification
         Evaluation.Construction
         Evaluation.Error
         Evaluation.Federation

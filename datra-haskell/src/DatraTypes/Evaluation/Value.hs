@@ -136,7 +136,8 @@ data EvaluatedAtlasMapFederationMember
 -- 'SpecificationOperator' module carries the non-erased categorical form used
 -- when concrete Atlas witnesses remain available.
 data EvaluatedSpecification = EvaluatedSpecification
-  { evaluatedSpecificationSource :: InterpretedTotalAtlasMap
+  { evaluatedSpecificationSourceValue :: InterpretedValue
+  , evaluatedSpecificationSource :: InterpretedTotalAtlasMap
   , evaluatedSpecificationTarget :: InterpretedValue
   , evaluatedSpecificationMember :: EvaluatedAtlasMapFederationMember
   }
