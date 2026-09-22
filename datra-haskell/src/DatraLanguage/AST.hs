@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module DatraLanguage.AST
-  ( Expression (..)
+  ( IdentifierString (..)
+  , Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
   , normalizeExpression
@@ -27,6 +28,14 @@ import Prettyprinter
   )
 import Prettyprinter.Render.String (renderString)
 
+-- | The identifier string used by identifier operations. It is deliberately
+-- distinct from an expression: the parser is the boundary which validates
+-- its spelling, and an arbitrary expression can never inhabit this field.
+newtype IdentifierString = IdentifierString
+  { identifierStringText :: String
+  }
+  deriving (Eq, Show)
+
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
 data Expression
@@ -50,6 +59,11 @@ data Expression
   | MapConcatenation Expression Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
+  | IdentifierOperation
+      { identifierOperationString :: IdentifierString
+      , identifierOperationTypeAnnotation :: Expression
+      , identifierOperationGivenValue :: Maybe Expression
+      }
   deriving (Eq, Show)
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
@@ -79,6 +93,11 @@ data OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
+  | IdentifierOperationValue
+      { operatorIdentifierString :: IdentifierString
+      , operatorTypeAnnotation :: OperatorExpression
+      , operatorGivenValue :: Maybe OperatorExpression
+      }
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -127,6 +146,12 @@ normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
+normalizeExpression
+    (IdentifierOperation identifierString typeAnnotation givenValue) =
+  IdentifierOperation
+    identifierString
+    (normalizeExpression typeAnnotation)
+    (normalizeExpression <$> givenValue)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
@@ -180,6 +205,11 @@ lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
+lower (IdentifierOperation identifierString typeAnnotation givenValue) =
+  IdentifierOperationValue
+    identifierString
+    (lower typeAnnotation)
+    (lower <$> givenValue)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -249,6 +279,26 @@ prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
+prettyOperator
+    (IdentifierOperationValue
+      (IdentifierString identifierString)
+      typeAnnotation
+      givenValue) =
+  case givenValue of
+    Nothing ->
+      prettyForm
+        (operatorCanonicalSymbol IdentifierTypeOperator)
+        [pretty identifierString, prettyOperator typeAnnotation]
+    Just givenValueExpression ->
+      prettyForm
+        (operatorCanonicalSymbol AssignmentOperator)
+        (pretty identifierString :
+          if givenValueExpression == typeAnnotation
+            then [prettyOperator givenValueExpression]
+            else
+              [ prettyOperator typeAnnotation
+              , prettyOperator givenValueExpression
+              ])
 
 prettyUnary
   :: Operator

@@ -9,6 +9,11 @@ module Evaluation.Value
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
   , EvaluatedValuedNaturalRange (..)
+  , IdentifierDependency (..)
+  , identifierDependencyStringFor
+  , identifierDependencyRepresentativeString
+  , identifierDependenciesCompatible
+  , EvaluatedIdentifierType (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
@@ -112,6 +117,64 @@ data EvaluatedValuedNaturalRange where
     :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
     -> EvaluatedValuedNaturalRange
 
+-- | Runtime string rule for an identifier type. The stable key makes two
+-- dependent rules comparable for subfederation decisions; simple identifiers
+-- additionally retain their literal string for source rendering.
+data IdentifierDependency
+  = SimpleIdentifierDependency
+      { simpleIdentifierString :: String
+      }
+  | DependentIdentifierDependency
+      { dependentIdentifierFamilyKey :: String
+      , dependentIdentifierStringFor :: CanonicalResult -> String
+      }
+
+identifierDependencyStringFor
+  :: IdentifierDependency
+  -> CanonicalResult
+  -> String
+identifierDependencyStringFor dependency value =
+  case dependency of
+    SimpleIdentifierDependency identifierString -> identifierString
+    DependentIdentifierDependency _ identifierStringFor ->
+      identifierStringFor value
+
+-- | Choose the string that can represent an identifier before a particular
+-- federation member is known. A total underlying value supplies that member;
+-- otherwise dependent identifiers retain their stable family key.
+identifierDependencyRepresentativeString
+  :: IdentifierDependency
+  -> Maybe CanonicalResult
+  -> String
+identifierDependencyRepresentativeString dependency selectedValue =
+  case dependency of
+    SimpleIdentifierDependency identifierString -> identifierString
+    DependentIdentifierDependency familyKey identifierStringFor ->
+      case selectedValue of
+        Just value -> identifierStringFor value
+        Nothing -> familyKey
+
+-- | Constant dependencies agree by identifier string. Dependent dependencies
+-- are comparable when they carry the same stable family key.
+identifierDependenciesCompatible
+  :: IdentifierDependency
+  -> IdentifierDependency
+  -> Bool
+identifierDependenciesCompatible left right =
+  case (left, right) of
+    (SimpleIdentifierDependency leftString,
+      SimpleIdentifierDependency rightString) ->
+        leftString == rightString
+    (DependentIdentifierDependency leftKey _,
+      DependentIdentifierDependency rightKey _) ->
+        leftKey == rightKey
+    _ -> False
+
+data EvaluatedIdentifierType = EvaluatedIdentifierType
+  { evaluatedIdentifierDependency :: IdentifierDependency
+  , evaluatedIdentifierUnderlying :: InterpretedValue
+  }
+
 -- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
 -- is attached only by constructors known to give every final-page region a
 -- singleton value; being a singleton federation is not sufficient by itself.
@@ -125,6 +188,7 @@ newtype InterpretedTotalAtlasMap = InterpretedTotalAtlasMap
 data EvaluatedAtlasMapFederationMember
   = EvaluatedNaturalRangeMember NaturalRange.NaturalSubrangeDescription
   | EvaluatedValuedNaturalRangeMember Natural
+  | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember
@@ -153,6 +217,9 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | SpecificationForm EvaluatedSpecification
+  | AssignmentForm EvaluatedSpecification
+  | IdentifierTypeForm EvaluatedIdentifierType
+  | IdentifierStringProjectionForm EvaluatedIdentifierType
   | SequentialMapForm
   | ExpansionMapForm InterpretedValue InterpretedValue
   | ConcatenatedMapForm InterpretedValue InterpretedValue
@@ -181,6 +248,8 @@ interpretedMapCardinality = interpretedMapPageCardinality
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
+  | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
+  | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -200,6 +269,19 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
+  | IdentifierTypeSemantics
+      IdentifierDependency
+      ValueSemantics
+      Bool
+  | IdentifierStringProjectionSemantics
+      IdentifierDependency
+      ValueSemantics
+      Bool
+  | AssignmentSemantics
+      { assignmentIdentifierString :: String
+      , assignmentTypeAnnotation :: ValueSemantics
+      , assignmentGivenValue :: ValueSemantics
+      }
   | MapSemantics Natural [ValueSemantics]
   | SpecificationSemantics ValueSemantics ValueSemantics
 
@@ -214,6 +296,17 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
+  | CanonicalIdentifierType
+      { canonicalIdentifierString :: String
+      , canonicalIdentifierTypeAnnotation :: CanonicalResult
+      }
+  | CanonicalDependentIdentifierType String CanonicalResult
+  | CanonicalIdentifierStringProjection String CanonicalResult
+  | CanonicalAssignment
+      { canonicalAssignmentIdentifierString :: String
+      , canonicalAssignmentTypeAnnotation :: CanonicalResult
+      , canonicalAssignmentGivenValue :: CanonicalResult
+      }
   | CanonicalMap Natural [CanonicalResult]
   | CanonicalSpecification CanonicalResult CanonicalResult
   deriving (Eq, Show)
@@ -286,6 +379,34 @@ canonicalResult semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
+    IdentifierTypeSemantics dependency underlying isTotal ->
+      let underlyingResult = canonicalResult underlying
+      in case dependency of
+        SimpleIdentifierDependency identifierString
+          | isTotal ->
+              CanonicalAssignment
+                identifierString underlyingResult underlyingResult
+          | otherwise ->
+              CanonicalIdentifierType identifierString underlyingResult
+        DependentIdentifierDependency familyKey _ ->
+          CanonicalDependentIdentifierType familyKey underlyingResult
+    IdentifierStringProjectionSemantics dependency underlying isTotal ->
+      let underlyingResult = canonicalResult underlying
+      in if isTotal
+        then
+          CanonicalAsciiString
+            (identifierDependencyRepresentativeString
+              dependency (Just underlyingResult))
+        else
+          CanonicalIdentifierStringProjection
+            (identifierDependencyRepresentativeString
+              dependency Nothing)
+            underlyingResult
+    AssignmentSemantics identifierString typeAnnotation givenValue ->
+      CanonicalAssignment
+        identifierString
+        (canonicalResult typeAnnotation)
+        (canonicalResult givenValue)
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map canonicalResult components)
     SpecificationSemantics source target ->
@@ -303,6 +424,9 @@ interpretedValueKind value =
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
+    AssignmentForm _ -> SpecificationValueKind
+    IdentifierTypeForm _ -> IdentifierTypeValueKind
+    IdentifierStringProjectionForm _ -> IdentifierTypeValueKind
     SequentialMapForm -> MapValueKind
     ExpansionMapForm _ _ -> MapValueKind
     ConcatenatedMapForm _ _ -> MapValueKind

@@ -92,6 +92,9 @@ accessSource value =
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
     SpecificationForm _ -> ordinarySource []
+    AssignmentForm _ -> ordinarySource []
+    IdentifierTypeForm _ -> ordinarySource []
+    IdentifierStringProjectionForm _ -> ordinarySource []
     ExplicitForm explicitValue ->
       let (level, ordinalValue) = explicitOrdinal explicitValue
       in ordinarySource [singletonDescribedRange level ordinalValue]
@@ -147,6 +150,9 @@ semanticAccessSource semantics =
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
+    IdentifierTypeSemantics _ _ _ -> ordinarySource []
+    IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
+    AssignmentSemantics _ _ _ -> ordinarySource []
   where
     ordinarySource ranges = AccessSource ranges False Nothing
     rangeSource ranges = AccessSource ranges True Nothing

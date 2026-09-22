@@ -5,6 +5,7 @@ module DatraParsingTests (main) where
 import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
+  , IdentifierString (IdentifierString)
   , normalizeExpression
   , renderExpression
   )
@@ -161,6 +162,82 @@ regressionTests = do
     "a postfix range can precede reverse specification"
     "2.. <~ from 2 to 5"
     "(<~> (from 2 to 5) (..+ 2))"
+  assertAstOutput
+    "simple identifier type"
+    "x : Nat"
+    "(: x Nat)"
+  assertAstOutput
+    "full identifier assignment"
+    "x : Nat := 5"
+    "(:= x Nat 5)"
+  assertAstOutput
+    "assignment specified into its identifier target"
+    "(a : Nat := 5) ~> (a : Nat)"
+    "(<~> (:= a Nat 5) (: a Nat))"
+  assertAstOutput
+    "reverse specification between different identifier strings"
+    "(a : Nat) <~ (b := 10)"
+    "(<~> (:= b 10) (: a Nat))"
+  assertAstOutput
+    "reverse assignment chain widens nested annotations"
+    ( "(d : within 0 to 100) <~ "
+        <> "(d : within 20 to 40 := 28) <~ "
+        <> "(d : within 25 to 35 := 28) <~ (d := 28)"
+    )
+    ( "(<~> (<~> (<~> (:= d 28) "
+        <> "(:= d (within 25 to 35) 28)) "
+        <> "(:= d (within 20 to 40) 28)) "
+        <> "(: d (within 0 to 100)))"
+    )
+  assertAstOutput
+    "reverse assignment chain retains an incompatible intermediate annotation"
+    ( "(x : within 1 to 10) <~ "
+        <> "(x : within 5 to 20) <~ (x := 8)"
+    )
+    ( "(<~> (<~> (:= x 8) (: x (within 5 to 20))) "
+        <> "(: x (within 1 to 10)))"
+    )
+  assertAstOutput
+    "binary identifier assignment"
+    "x := 5"
+    "(:= x 5)"
+  assertAstOutput
+    "redundant assignment type canonicalizes to binary syntax"
+    "x : 5 := 5"
+    "(:= x 5)"
+  assertAstOutput
+    "access binds inside the assignment value"
+    "x : Nat := (1; 2) @ 0"
+    "(:= x Nat (<@> (<:> 1 2) 0))"
+  assertAstOutput
+    "accessing an identifier operation requires grouping"
+    "(x : Nat) @ 0"
+    "(<@> (: x Nat) 0)"
+  assertAstOutput
+    "bracket access uses the identifier map view"
+    "(x : Nat)[0]"
+    "(<@> (: x Nat) 0)"
+  assertAstOutput
+    "bracket access uses the assignment specification view"
+    "(x : Nat := 5)[1]"
+    "(<@> (:= x Nat 5) 1)"
+  assertAstOutput
+    "unparenthesized access belongs to the identifier type operand"
+    "x : Nat @ 0"
+    "(: x (<@> Nat 0))"
+  assertAstOutput
+    "identifier strings share canonical continuation characters"
+    "A_0'z : Nat"
+    "(: A_0'z Nat)"
+  assertRejected
+    "identifier operations reject expression left sides"
+    "(2 + 2) : Nat := 4"
+  assertRejected
+    "identifier operations reject dollar-prefixed left sides"
+    "$x : Nat := 4"
+  assertRejected
+    "bare identifiers are not expressions"
+    "x"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -605,7 +682,24 @@ genExpression =
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
+    , IdentifierOperation
+        <$> genIdentifierString
+        <*> genExpression
+        <*> Gen.maybe genExpression
     ]
+
+genIdentifierString :: H.Gen IdentifierString
+genIdentifierString = do
+  first <- Gen.element (['_'] <> ['a' .. 'z'] <> ['A' .. 'Z'])
+  rest <-
+    Gen.list
+      (Range.linear 0 12)
+      (Gen.element
+        (['_', '\'']
+          <> ['a' .. 'z']
+          <> ['A' .. 'Z']
+          <> ['0' .. '9']))
+  pure (IdentifierString (first : rest))
 
 joinWith :: String -> [String] -> String
 joinWith _ [] = ""

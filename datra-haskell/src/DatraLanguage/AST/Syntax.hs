@@ -3,6 +3,8 @@
 -- | Symbolic Haskell constructors for Datra ASTs.
 module DatraLanguage.AST.Syntax
   ( natural
+  , identifierType
+  , assignment
   , asciiString
   , emptyMap
   , (...)
@@ -24,12 +26,29 @@ module DatraLanguage.AST.Syntax
   , (<~>)
   ) where
 
-import DatraLanguage.AST (Expression (..))
+import DatraLanguage.AST
+  ( Expression (..)
+  , IdentifierString (IdentifierString)
+  )
 import Numeric.Natural (Natural)
 import Prelude hiding ((+), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
+
+identifierType :: String -> Expression -> Expression
+identifierType identifierString typeAnnotation =
+  IdentifierOperation
+    (IdentifierString identifierString)
+    typeAnnotation
+    Nothing
+
+assignment :: String -> Expression -> Expression -> Expression
+assignment identifierString typeAnnotation givenValue =
+  IdentifierOperation
+    (IdentifierString identifierString)
+    typeAnnotation
+    (Just givenValue)
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral

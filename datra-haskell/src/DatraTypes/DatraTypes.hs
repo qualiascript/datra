@@ -27,6 +27,9 @@ module DatraTypes
   , valuedNaturalRangeValue
   , valuedNaturalRangeUpwardsValue
   , naturalTypeValue
+  , identifierTypeValue
+  , simpleIdentifierTypeValue
+  , assignIdentifierValues
   , makeAtlasMap
   , makeAtlasExpansion
   , concatenateValues
@@ -78,7 +81,14 @@ import Evaluation.Range
   , valuedNaturalRangeUpwardsValue
   , valuedNaturalRangeValue
   )
-import Evaluation.Specification (specifyValues)
+import Evaluation.Identifier
+  ( identifierTypeValue
+  , simpleIdentifierTypeValue
+  )
+import Evaluation.Specification
+  ( assignIdentifierValues
+  , specifyValues
+  )
 import Evaluation.Value
   ( CanonicalResult (..)
   , InterpretedMap

@@ -32,6 +32,16 @@ decideValueSubfederation source target
       case ( interpretedAtlasMapFederation source
            , interpretedAtlasMapFederation target
            ) of
+        ( PrimitiveAtlasMapFederation
+            (IdentifierTypeAtlasMapFederation sourceIdentifier)
+          , PrimitiveAtlasMapFederation
+            (IdentifierTypeAtlasMapFederation targetIdentifier)
+          ) -> decideIdentifierSubfederation sourceIdentifier targetIdentifier
+        ( PrimitiveAtlasMapFederation
+            (IdentifierStringProjectionAtlasMapFederation sourceIdentifier)
+          , PrimitiveAtlasMapFederation
+            (IdentifierStringProjectionAtlasMapFederation targetIdentifier)
+          ) -> decideIdentifierSubfederation sourceIdentifier targetIdentifier
         ( PrimitiveAtlasMapFederation sourcePrimitive
           , PrimitiveAtlasMapFederation targetPrimitive
           ) ->
@@ -51,6 +61,19 @@ decideValueSubfederation source target
               (Just (concatenationOperands source))
               (Just (concatenationOperands target))
         _ -> DecisionUndecidable
+
+decideIdentifierSubfederation
+  :: EvaluatedIdentifierType
+  -> EvaluatedIdentifierType
+  -> Decision ()
+decideIdentifierSubfederation source target
+  | identifierDependenciesCompatible
+      (evaluatedIdentifierDependency source)
+      (evaluatedIdentifierDependency target) =
+        decideValueSubfederation
+          (evaluatedIdentifierUnderlying source)
+          (evaluatedIdentifierUnderlying target)
+  | otherwise = DecisionRefuted
 
 decideExpansionSubfederation
   :: InterpretedValue

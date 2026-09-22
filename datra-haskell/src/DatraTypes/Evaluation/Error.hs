@@ -26,6 +26,7 @@ data InterpretedValueKind
   | RangeValueKind
   | RangeConcatenationValueKind
   | AsciiStringValueKind
+  | IdentifierTypeValueKind
   | MapValueKind
   | SpecificationValueKind
   deriving (Eq, Show)
@@ -56,6 +57,18 @@ data InterpretingError
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | AccessRejected AccessError
+  | GivenValueOutsideTypeAnnotation
+      { expectedTypeAnnotation :: String
+      , givenValue :: String
+      }
+  | IdentifierStringMismatch
+      { expectedIdentifierString :: String
+      , givenIdentifierString :: String
+      }
+  | IntermediateTypeAnnotationOutsideTarget
+      { expectedTargetTypeAnnotation :: String
+      , givenIntermediateTypeAnnotation :: String
+      }
   | AtlasMapFederationOperationRefuted AtlasMapFederationRefutation
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | InvalidAsciiStringCharacter Char

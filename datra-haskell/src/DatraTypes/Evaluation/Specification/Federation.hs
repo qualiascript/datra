@@ -64,6 +64,11 @@ selectAtomicFederationMember source target =
           (DecisionProved . EvaluatedValuedNaturalRangeMember)
           (sourceEllipsisNatural source
             >>= selectValuedNaturalRangeMember targetRange))
+    PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
+      Nothing
+    PrimitiveAtlasMapFederation
+        (IdentifierStringProjectionAtlasMapFederation _) ->
+      Nothing
     SequentialAtlasMapFederation _ -> Nothing
     ConcatenatedAtlasMapFederation _ _ -> Nothing
     ExpansionAtlasMapFederation _ _ -> Nothing

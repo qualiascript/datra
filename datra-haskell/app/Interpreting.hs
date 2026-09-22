@@ -24,8 +24,13 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import DatraLanguage.AST (Expression (..), normalizeExpression)
+import DatraLanguage.AST
+  ( Expression (..)
+  , IdentifierString (IdentifierString)
+  , normalizeExpression
+  )
 import DatraTypes
+import Rendering (renderCanonicalResult, renderInterpretedValue)
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located)
@@ -95,7 +100,125 @@ interpretNormalizedExpression expressionValue =
     MapAccess mapOperand insertionOperand ->
       interpretBinary accessValues mapOperand insertionOperand
     MapSpecification sourceOperand targetOperand ->
-      interpretBinary specifyValues sourceOperand targetOperand
+      interpretSpecification sourceOperand targetOperand
+    IdentifierOperation
+        (IdentifierString identifierString)
+        typeAnnotationExpression
+        maybeGivenValueExpression -> do
+      typeAnnotation <- interpretExpressionReason typeAnnotationExpression
+      case maybeGivenValueExpression of
+        Nothing ->
+          Right (simpleIdentifierTypeValue identifierString typeAnnotation)
+        Just givenValueExpression -> do
+          givenValue <- interpretExpressionReason givenValueExpression
+          case assignIdentifierValues
+              identifierString typeAnnotation givenValue of
+            Left
+                (AtlasMapFederationOperationRefuted
+                  AtlasMapFederationSpecificationHasNoMatchingMember) ->
+              Left
+                (GivenValueOutsideTypeAnnotation
+                  { expectedTypeAnnotation =
+                      renderInterpretedValue typeAnnotation
+                  , givenValue = renderInterpretedValue givenValue
+                  })
+            result -> result
+
+interpretSpecification
+  :: Expression
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretSpecification sourceExpression targetExpression = do
+  source <- interpretExpressionReason sourceExpression
+  target <- interpretExpressionReason targetExpression
+  case specifyValues source target of
+    Left
+        (AtlasMapFederationOperationRefuted
+          AtlasMapFederationSpecificationHasNoMatchingMember)
+      | Just (expected, given) <- identifierAnnotationMismatch source target ->
+          Left
+            (GivenValueOutsideTypeAnnotation
+              { expectedTypeAnnotation = expected
+              , givenValue = given
+              })
+    Left
+        (AtlasMapFederationOperationRefuted
+          AtlasMapFederationSubfederationHasMissingMember)
+      | Just (expected, given) <-
+          identifierIntermediateAnnotationMismatch source target ->
+          Left
+            (IntermediateTypeAnnotationOutsideTarget
+              { expectedTargetTypeAnnotation = expected
+              , givenIntermediateTypeAnnotation = given
+              })
+    result -> result
+
+identifierAnnotationMismatch
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierAnnotationMismatch =
+  identifierValueMismatch identifierGivenValue
+
+identifierIntermediateAnnotationMismatch
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierIntermediateAnnotationMismatch =
+  identifierValueMismatch identifierIntermediateValue
+
+identifierValueMismatch
+  :: (CanonicalResult -> Maybe (String, CanonicalResult))
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierValueMismatch givenValueFor source target = do
+  (givenString, givenResult) <-
+    givenValueFor (interpretedCanonicalResult source)
+  (expectedString, expectedResult) <-
+    identifierExpectedValue (interpretedCanonicalResult target)
+  if givenString == expectedString
+    then
+      Just
+        ( renderCanonicalResult expectedResult
+        , renderCanonicalResult givenResult
+        )
+    else Nothing
+
+identifierGivenValue
+  :: CanonicalResult
+  -> Maybe (String, CanonicalResult)
+identifierGivenValue result =
+  case result of
+    CanonicalIdentifierType identifierString givenValue ->
+      Just (identifierString, givenValue)
+    CanonicalAssignment identifierString _ givenValue ->
+      Just (identifierString, givenValue)
+    CanonicalSpecification source _ -> identifierGivenValue source
+    _ -> Nothing
+
+identifierExpectedValue
+  :: CanonicalResult
+  -> Maybe (String, CanonicalResult)
+identifierExpectedValue result =
+  case result of
+    CanonicalIdentifierType identifierString typeAnnotation ->
+      Just (identifierString, typeAnnotation)
+    CanonicalAssignment identifierString typeAnnotation _ ->
+      Just (identifierString, typeAnnotation)
+    CanonicalSpecification _ target -> identifierExpectedValue target
+    _ -> Nothing
+
+identifierIntermediateValue
+  :: CanonicalResult
+  -> Maybe (String, CanonicalResult)
+identifierIntermediateValue result =
+  case result of
+    CanonicalAssignment identifierString typeAnnotation _ ->
+      Just (identifierString, typeAnnotation)
+    CanonicalSpecification _ intermediate ->
+      identifierExpectedValue intermediate
+    _ -> Nothing
 
 interpretBinary
   :: ( InterpretedValue

@@ -81,6 +81,24 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    GivenValueOutsideTypeAnnotation expected given ->
+      LocalizedMessage
+        "the given value is outside the type annotation"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
+    IdentifierStringMismatch expected given ->
+      LocalizedMessage
+        "the identifier string does not match"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
+    IntermediateTypeAnnotationOutsideTarget expected given ->
+      LocalizedMessage
+        "the intermediate type annotation does not fit in the target type annotation"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->
@@ -132,6 +150,7 @@ valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
 valueKind AsciiStringValueKind = "ASCII string"
+valueKind IdentifierTypeValueKind = "identifier type"
 valueKind MapValueKind = "map"
 valueKind SpecificationValueKind = "specification morphism"
 

@@ -33,18 +33,77 @@ selectFederationMember
 selectFederationMember source target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
   | otherwise =
-      case selectAtomicFederationMember source target of
+      case selectIdentifierMember source target of
         Just decision -> decision
         Nothing ->
-          case interpretedAtlasMapFederation target of
-            SequentialAtlasMapFederation _ ->
-              selectSequentialMember source target
-            ConcatenatedAtlasMapFederation _ _ ->
-              selectConcatenatedMember source target
-            ExpansionAtlasMapFederation _ _ ->
-              selectExpansionMember source target
-            SingletonAtlasMapFederation _ -> DecisionUndecidable
-            PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+          case selectAtomicFederationMember source target of
+            Just decision -> decision
+            Nothing ->
+              case interpretedAtlasMapFederation target of
+                SequentialAtlasMapFederation _ ->
+                  selectSequentialMember source target
+                ConcatenatedAtlasMapFederation _ _ ->
+                  selectConcatenatedMember source target
+                ExpansionAtlasMapFederation _ _ ->
+                  selectExpansionMember source target
+                SingletonAtlasMapFederation _ -> DecisionUndecidable
+                PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+
+selectIdentifierMember
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (Decision EvaluatedAtlasMapFederationMember)
+selectIdentifierMember source target =
+  case interpretedForm target of
+    SpecificationForm specification ->
+      selectIdentifierMember
+        source
+        (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      selectIdentifierMember
+        source
+        (evaluatedSpecificationTarget specification)
+    _ -> selectDirectIdentifierMember source target
+
+selectDirectIdentifierMember
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (Decision EvaluatedAtlasMapFederationMember)
+selectDirectIdentifierMember source target =
+  case (interpretedForm source, interpretedForm target) of
+    ( IdentifierTypeForm sourceIdentifier
+      , IdentifierTypeForm targetIdentifier
+      ) ->
+        Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
+    ( IdentifierStringProjectionForm sourceIdentifier
+      , IdentifierStringProjectionForm targetIdentifier
+      ) ->
+        Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
+    _ -> Nothing
+
+selectMatchingIdentifierMember
+  :: EvaluatedIdentifierType
+  -> EvaluatedIdentifierType
+  -> Decision EvaluatedAtlasMapFederationMember
+selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
+  if sourceString /= targetString
+    then DecisionRefuted
+    else
+      mapDecision
+        EvaluatedIdentifierTypeMember
+        (selectFederationMember sourceUnderlying targetUnderlying)
+  where
+    sourceUnderlying = evaluatedIdentifierUnderlying sourceIdentifier
+    targetUnderlying = evaluatedIdentifierUnderlying targetIdentifier
+    selectedCanonical = interpretedCanonicalResult sourceUnderlying
+    sourceString =
+      identifierDependencyStringFor
+        (evaluatedIdentifierDependency sourceIdentifier)
+        selectedCanonical
+    targetString =
+      identifierDependencyStringFor
+        (evaluatedIdentifierDependency targetIdentifier)
+        selectedCanonical
 
 selectSequentialMember
   :: InterpretedValue

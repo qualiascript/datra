@@ -81,6 +81,24 @@ localizeInterpretingError reason =
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    GivenValueOutsideTypeAnnotation expected given ->
+      LocalizedMessage
+        "valoarea dată este în afara adnotării de tip"
+        [ "așteptat: " <> expected
+        , "dat: " <> given
+        ]
+    IdentifierStringMismatch expected given ->
+      LocalizedMessage
+        "șirul identificatorului nu corespunde"
+        [ "așteptat: " <> expected
+        , "dat: " <> given
+        ]
+    IntermediateTypeAnnotationOutsideTarget expected given ->
+      LocalizedMessage
+        "adnotarea de tip intermediară nu se încadrează în adnotarea de tip țintă"
+        [ "așteptat: " <> expected
+        , "dat: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->
@@ -132,6 +150,7 @@ valueKind FormulationValueKind = "formulare cu super-elipsă"
 valueKind RangeValueKind = "interval"
 valueKind RangeConcatenationValueKind = "concatenare de intervale"
 valueKind AsciiStringValueKind = "șir ASCII"
+valueKind IdentifierTypeValueKind = "tip identificator"
 valueKind MapValueKind = "hartă"
 valueKind SpecificationValueKind = "morfism de specificare"
 

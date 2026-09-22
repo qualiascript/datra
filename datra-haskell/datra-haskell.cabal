@@ -68,6 +68,8 @@ library
         NaturalRange
         ValuedNaturalRange
         NaturalType
+        IdentifierType
+        SimpleIdentifierType
         AtlasMapFederation
         AtlasMapFederationExpression
         AtlasMapSubfederation
@@ -180,12 +182,14 @@ library
         Evaluation.Access
         Evaluation.Access.Composition
         Evaluation.Access.Federation
+        Evaluation.Access.Identifier
         Evaluation.Access.RangeSelection
         Evaluation.Access.Specification
         Evaluation.Construction
         Evaluation.Error
         Evaluation.Federation
         Evaluation.Federation.Structure
+        Evaluation.Identifier
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Range
@@ -250,6 +254,7 @@ library
         src/DatraTypes/Strings
         src/DatraTypes/Ellipses
         src/DatraTypes/NaturalRanges
+        src/DatraTypes/Identifiers
         src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
@@ -270,6 +275,7 @@ executable datra-haskell
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
+        filepath >= 1.4 && < 1.6,
         megaparsec >= 9.8 && < 10,
         optparse-applicative >= 0.18 && < 0.20,
         parser-combinators >= 1.3 && < 2,

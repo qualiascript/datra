@@ -98,6 +98,12 @@ decidePrimitiveSubfederation
       sourceRange targetRange =
       AtlasMapFederationProved ()
   | otherwise = missingMember
+decidePrimitiveSubfederation
+    (IdentifierTypeAtlasMapFederation _)
+    (IdentifierTypeAtlasMapFederation _) =
+  AtlasMapFederationUndecidable
+    (NoAtlasMapFederationDecisionProcedure
+      AtlasMapFederationSubfederation)
 decidePrimitiveSubfederation _ _ = missingMember
 
 requireFederationDecision
