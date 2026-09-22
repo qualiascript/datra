@@ -87,6 +87,12 @@ localizeInterpretingError reason =
         [ "expected: " <> expected
         , "given: " <> given
         ]
+    IdentifierNameMismatch expected given ->
+      LocalizedMessage
+        "the identifier name does not match"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->

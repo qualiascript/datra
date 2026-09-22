@@ -175,6 +175,10 @@ regressionTests = do
     "(a : Nat := 5) ~> (a : Nat)"
     "(<~> (:= a Nat 5) (: a Nat))"
   assertAstOutput
+    "reverse specification between different identifier names"
+    "(a : Nat) <~ (b := 10)"
+    "(<~> (:= b 10) (: a Nat))"
+  assertAstOutput
     "reverse assignment chain widens nested annotations"
     ( "(d : within 0 to 100) <~ "
         <> "(d : within 20 to 40 := 28) <~ "

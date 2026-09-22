@@ -1550,9 +1550,16 @@ testIdentifiers = do
         ((<~>)
           (identifier "x" (natural 5))
           (identifier "y" NaturalType)) of
-      Left
-          (AtlasMapFederationOperationRefuted
-            AtlasMapFederationSpecificationHasNoMatchingMember) -> True
+      Left (IdentifierNameMismatch expected given) ->
+        expected == "$y" && given == "$x"
+      _ -> False)
+  assert "assignment widening reports a mismatched identifier name"
+    (case interpretExpressionReason
+        ((<~>)
+          (assignment "b" (natural 10) (natural 10))
+          (identifier "a" NaturalType)) of
+      Left (IdentifierNameMismatch expected given) ->
+        expected == "$a" && given == "$b"
       _ -> False)
   assert "an assignment outside its annotation gets a direct type error"
     (case interpretExpressionReason
@@ -1720,6 +1727,22 @@ testLocatedRejection = do
           == "<test>:1:5: valoarea dată este în afara adnotării de tip\n"
               <> "  așteptat: Nat\n"
               <> "  dat: 1..3"
+      Right _ -> False)
+  let mismatchedIdentifier =
+        (<~>)
+          (IdentifierOperation
+            (Identifier "b")
+            (natural 10)
+            (Just (natural 10)))
+          (IdentifierOperation (Identifier "a") NaturalType Nothing)
+  assert "identifier mismatches show expected and given identifier strings"
+    (case interpretLocatedExpression
+        (Located sourceSpan mismatchedIdentifier) of
+      Left valueError ->
+        renderDatraError English valueError
+          == "<test>:1:5: the identifier name does not match\n"
+              <> "  expected: $a\n"
+              <> "  given: $b"
       Right _ -> False)
   let overlapExpression =
         (<@>)

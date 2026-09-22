@@ -61,6 +61,10 @@ data InterpretingError
       { expectedTypeAnnotation :: String
       , givenAssignedValue :: String
       }
+  | IdentifierNameMismatch
+      { expectedIdentifier :: String
+      , givenIdentifier :: String
+      }
   | AtlasMapFederationOperationRefuted AtlasMapFederationRefutation
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | InvalidAsciiStringCharacter Char

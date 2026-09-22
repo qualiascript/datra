@@ -87,6 +87,12 @@ localizeInterpretingError reason =
         [ "așteptat: " <> expected
         , "dat: " <> given
         ]
+    IdentifierNameMismatch expected given ->
+      LocalizedMessage
+        "numele identificatorului nu corespunde"
+        [ "așteptat: " <> expected
+        , "dat: " <> given
+        ]
     AtlasMapFederationOperationRefuted refutation ->
       case refutation of
         AtlasMapFederationConcatenationCollision value ->

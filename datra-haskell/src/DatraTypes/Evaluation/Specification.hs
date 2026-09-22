@@ -4,6 +4,7 @@ module Evaluation.Specification
   , assignIdentifierValues
   ) where
 
+import DatraLanguage.AST (renderAsciiStringLiteral)
 import Evaluation.Error
   ( AtlasMapFederationOperation
       ( AtlasMapFederationSpecification
@@ -39,12 +40,46 @@ specifyValuesWithoutIdentity
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyValuesWithoutIdentity source target =
-  case interpretedForm source of
-    SpecificationForm specification ->
-      widenSpecification source specification target
-    AssignmentForm _ specification ->
-      widenSpecification source specification target
-    _ -> specifyTotalAtlasMap source target
+  case identifierNameMismatch source target of
+    Just (expected, given) ->
+      Left
+        (IdentifierNameMismatch
+          { expectedIdentifier = expected
+          , givenIdentifier = given
+          })
+    Nothing ->
+      case interpretedForm source of
+        SpecificationForm specification ->
+          widenSpecification source specification target
+        AssignmentForm _ specification ->
+          widenSpecification source specification target
+        _ -> specifyTotalAtlasMap source target
+
+identifierNameMismatch
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (String, String)
+identifierNameMismatch source target = do
+  given <- simpleIdentifierName (interpretedSemantics source)
+  expected <- simpleIdentifierName (interpretedSemantics target)
+  if given == expected
+    then Nothing
+    else
+      Just
+        ( renderAsciiStringLiteral expected
+        , renderAsciiStringLiteral given
+        )
+
+simpleIdentifierName :: ValueSemantics -> Maybe String
+simpleIdentifierName semantics =
+  case semantics of
+    IdentifierTypeSemantics (SimpleIdentifierDependency name) _ -> Just name
+    AssignmentSemantics name _ _ -> Just name
+    SpecificationSemantics source target -> do
+      sourceName <- simpleIdentifierName source
+      targetName <- simpleIdentifierName target
+      if sourceName == targetName then Just sourceName else Nothing
+    _ -> Nothing
 
 -- | Assignment is specification between two constant-name identifier types,
 -- but remains marked for canonical assignment rendering even when its source

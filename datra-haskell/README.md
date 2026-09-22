@@ -127,6 +127,7 @@ The production container works in `/data`, so Datra's normal defaults are:
 - `input.datra`
 - `output.datra.ast`
 - `output.datra`
+- `output.datra.error` when parsing or interpretation fails
 
 From this directory, create an example input and run the whole pipeline,
 saving both outputs to the host:
