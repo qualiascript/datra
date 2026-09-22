@@ -118,6 +118,14 @@ regressionTests = do
     "from 2 to 5 <~ 2..3"
     "(<~> (<..> 2 3) (from 2 to 5))"
   assertAstOutput
+    "reverse specification accepts bracketed composite operands"
+    "[$a; Nat] <~ [$a; 50]"
+    "(<~> (<:> $a 50) (<:> $a Nat))"
+  assertAstOutput
+    "reverse specification accepts concatenated composite operands"
+    "$a, from 1 to 10 <~ $a, 3, 4, 5"
+    "(<~> (<.> $a (<.> 3 (<.> 4 5))) (<.> $a (from 1 to 10)))"
+  assertAstOutput
     "reverse specification chains associate right"
     "from 2 to 8 <~ from 2 to 5 <~ 2..3"
     "(<~> (<~> (<..> 2 3) (from 2 to 5)) (from 2 to 8))"

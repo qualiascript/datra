@@ -979,9 +979,128 @@ testSpecification = do
                 (AtlasMapFederationOperationRefuted
                   AtlasMapFederationSpecificationHasNoMatchingMember) -> True
             _ -> False)
+      boundedRange = (<..>) (natural 2) (natural 5)
+      rangeConcatenation =
+        (<.>) boundedRange ((..+) (natural 8))
+      rangeSequence =
+        AtlasMap [boundedRange, AsciiStringLiteral "a"]
+      compositeSequenceSource =
+        AtlasMap [AsciiStringLiteral "a", natural 50]
+      compositeSequenceTarget =
+        AtlasMap [AsciiStringLiteral "a", NaturalType]
+      compositeSequenceIntermediate =
+        AtlasMap
+          [ AsciiStringLiteral "a"
+          , ValuedNaturalRange 1 100
+          ]
+      compositeExpansionSource =
+        MapExpansion
+          (AtlasMap [AsciiStringLiteral "a"])
+          (AtlasMap [natural 50])
+      compositeExpansionTarget =
+        MapExpansion
+          (AtlasMap [AsciiStringLiteral "a"])
+          (AtlasMap [NaturalType])
+      compositeExpansionIntermediate =
+        MapExpansion
+          (AtlasMap [AsciiStringLiteral "a"])
+          (AtlasMap [ValuedNaturalRange 1 100])
+      concatenate = foldr1 (<.>)
+      compositeConcatenationSource =
+        concatenate
+          [ AsciiStringLiteral "a"
+          , natural 3
+          , natural 4
+          , natural 5
+          ]
+      compositeConcatenationTarget =
+        (<.>)
+          (AsciiStringLiteral "a")
+          (NaturalRange 1 10)
+      compositeConcatenationWidenedTarget =
+        (<.>)
+          (AsciiStringLiteral "a")
+          (NaturalRangeUpwards 0)
+  expectSpecification
+    "ASCII string self-specification"
+    (AsciiStringLiteral "a")
+    (AsciiStringLiteral "a")
+    "$a ~> $a"
+  expectSpecification
+    "natural self-specification"
+    (natural 2)
+    (natural 2)
+    "2 ~> 2"
+  expectSpecification
+    "range self-specification"
+    boundedRange
+    boundedRange
+    "2..5 ~> 2..5"
+  expectSpecification
+    "range concatenation self-specification"
+    rangeConcatenation
+    rangeConcatenation
+    "2..5, 8.. ~> 2..5, 8.."
+  expectSpecification
+    "sequence self-specification"
+    rangeSequence
+    rangeSequence
+    "[2..5; $a] ~> [2..5; $a]"
+  expectNoMember
+    "different singleton total maps do not specify each other"
+    (AsciiStringLiteral "a")
+    (AsciiStringLiteral "b")
+  expectSpecification
+    "sequence federation selects members pointwise"
+    compositeSequenceSource
+    compositeSequenceTarget
+    "[$a; 50] ~> [$a; Nat]"
+  expectSpecification
+    "concatenated federation partitions and selects members"
+    compositeConcatenationSource
+    compositeConcatenationTarget
+    "[$a; 3; 4; 5] ~> $a, from 1 to 10"
+  expectValue
+      "expansion federation selects members pointwise"
+      ((<~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
+    assert "expansion specification is defined"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectValue
+      "sequence subfederations compose pointwise"
+      ((<~>)
+        ((<~>) compositeSequenceSource compositeSequenceIntermediate)
+        compositeSequenceTarget) $ \value ->
+    assert "sequence composition retains the final target"
+      (renderInterpretedValue value == "[$a; 50] ~> [$a; Nat]")
+  expectValue
+      "concatenated subfederations compose pointwise"
+      ((<~>)
+        ((<~>)
+          compositeConcatenationSource
+          compositeConcatenationTarget)
+        compositeConcatenationWidenedTarget) $ \value ->
+    assert "concatenation composition retains the final target"
+      (renderInterpretedValue value
+        == "[$a; 3; 4; 5] ~> $a, from 0 upwards")
+  expectValue
+      "expansion subfederations compose pointwise"
+      ((<~>)
+        ((<~>) compositeExpansionSource compositeExpansionIntermediate)
+        compositeExpansionTarget) $ \value ->
+    assert "expansion composition retains a specification"
+      (interpretedValueKind value == SpecificationValueKind)
+  assert "composite subfederations report a missing component"
+    (case interpretExpressionReason
+        ((<~>)
+          ((<~>) compositeSequenceSource compositeSequenceIntermediate)
+          (AtlasMap [AsciiStringLiteral "b", NaturalType])) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSubfederationHasMissingMember) -> True
+      _ -> False)
   expectSpecification
     "bounded ascending range specification"
-    ((<..>) (natural 2) (natural 5))
+    boundedRange
     (NaturalRange 0 10)
     "2..5 ~> from 0 to 10"
   expectSpecification
@@ -1114,16 +1233,10 @@ testSpecification = do
         ((<~>) (NaturalRange 2 5) (NaturalRange 0 10)) of
       Left (ExpectedTotalAtlasMap RangeValueKind) -> True
       _ -> False)
-  assert "an unknown specification target remains undecided"
-    (case interpretExpressionReason
-        ((<~>)
-          ((<..>) (natural 2) (natural 5))
-          ((<..>) (natural 0) (natural 10))) of
-      Left
-          (AtlasMapFederationOperationUndecidable
-            (NoAtlasMapFederationDecisionProcedure
-              AtlasMapFederationSpecification)) -> True
-      _ -> False)
+  expectNoMember
+    "a different singleton total target has no matching member"
+    ((<..>) (natural 2) (natural 5))
+    ((<..>) (natural 0) (natural 10))
   assert "composition rejects an intermediate federation with a missing member"
     (case interpretExpressionReason
         ((<~>)

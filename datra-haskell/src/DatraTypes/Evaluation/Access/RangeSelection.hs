@@ -74,6 +74,14 @@ accessSource value =
           { sourceIsRangeLike = False
           , sourceFormulationLevel = Nothing
           }
+    ExpansionMapForm _ _ ->
+      combineAccessSources
+        (map semanticAccessSource
+          (interpretedMapComponents (interpretedMap value)))
+    ConcatenatedMapForm _ _ ->
+      combineAccessSources
+        (map semanticAccessSource
+          (interpretedMapComponents (interpretedMap value)))
     MapForm ->
       combineAccessSources
         (map semanticAccessSource

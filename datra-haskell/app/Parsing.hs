@@ -260,16 +260,32 @@ resource = do
   fullSpaceConsumer
   result <-
     (try (lookAhead outerMapEnvelope) *> atlasMap)
-      <|> (AtlasMap <$> elements)
+      <|> implicitOuterMap
   fullSpaceConsumer
   eof
   pure result
 
--- This lookahead expresses the outer-bracket rule without rewriting the
--- source. Comments are consumed as a unit so a ']' inside one cannot be
--- mistaken for the final significant character.
+-- Parse the bracketed expression itself in lookahead so the closing bracket
+-- must match the opening bracket. Merely searching for a final @]@ mistakes
+-- the right operand of expressions such as @[a] <~ [b]@ for the outer map's
+-- closing delimiter.
 outerMapEnvelope :: Parser ()
-outerMapEnvelope =
+outerMapEnvelope = void (atlasMap <* fullSpaceConsumer <* eof)
+
+implicitOuterMap :: Parser Expression
+implicitOuterMap = do
+  hasBothDelimiters <-
+    optional (try (lookAhead outerDelimiterEnvelope))
+  expressions <- elements
+  case (hasBothDelimiters, expressions) of
+    (Just (), _ : _ : _) -> empty
+    _ -> pure (AtlasMap expressions)
+
+-- Detect the lexical first/last delimiter case independently of whether the
+-- contents form one map. This preserves the rejection of @[a]; [b]@ while
+-- allowing a single expression such as @[a] <~ [b]@.
+outerDelimiterEnvelope :: Parser ()
+outerDelimiterEnvelope =
   void
     ( char '['
         *> manyTill envelopeCharacter

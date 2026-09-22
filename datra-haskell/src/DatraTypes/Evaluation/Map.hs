@@ -84,7 +84,10 @@ makeProductMap layout cardinality values productFederation = value
       makeInterpretedValue
         (case layout of
           PreserveOperandBoundaries -> SequentialMapForm
-          MergeOperandContents -> MapForm)
+          MergeOperandContents ->
+            case values of
+              [left, right] -> ExpansionMapForm left right
+              _ -> MapForm)
         NoInsertion
         valueMap
         federation
@@ -134,7 +137,7 @@ concatenateValues left right = do
             , rangeSemantics ranges
             )
           Nothing ->
-            ( MapForm
+            ( ConcatenatedMapForm left right
             , appendOrdinalOrderedValues
                 (interpretedMapFinalValues (interpretedMap left))
                 (interpretedMapFinalValues (interpretedMap right))
