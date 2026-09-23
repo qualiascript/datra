@@ -72,6 +72,7 @@ import DatraLanguage.AST
       )
   )
 import DatraLanguage.AST.Operator qualified as AST
+import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -219,15 +220,15 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ BooleanLiteral False <$ astSymbol "false"
-    , BooleanLiteral True <$ astSymbol "true"
-    , AsciiStringLiteral "Nothing" <$ astSymbol "nothing"
-    , BooleanLiteral False <$ astSymbol "False"
-    , BooleanLiteral True <$ astSymbol "True"
-    , BooleanType <$ astSymbol "Bool"
-    , StringType <$ astSymbol "String"
-    , IntegerType <$ astSymbol "Int"
-    , NaturalType <$ astSymbol "Nat"
+    [ BooleanLiteral False <$ astReservedWord Reserved.FalseWord
+    , BooleanLiteral True <$ astReservedWord Reserved.TrueWord
+    , AsciiStringLiteral "Nothing" <$ astReservedWord Reserved.NothingWord
+    , BooleanLiteral False <$ astBuiltInIdentifier Reserved.FalseIdentifier
+    , BooleanLiteral True <$ astBuiltInIdentifier Reserved.TrueIdentifier
+    , BooleanType <$ astReservedWord Reserved.BooleanTypeWord
+    , StringType <$ astReservedWord Reserved.StringTypeWord
+    , IntegerType <$ astReservedWord Reserved.IntegerTypeWord
+    , NaturalType <$ astReservedWord Reserved.NaturalTypeWord
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
     , AsciiStringLiteral <$> astStandardString
@@ -270,7 +271,9 @@ astIdentifierOperation
   -> Parser Expression
 astIdentifierOperation operator assignmentMarker = do
   _ <- astOperatorToken operator
-  operationIdentifierString <- IdentifierString <$> astBareIdentifier
+  identifierSpelling <- astIdentifierExpression
+  operationIdentifierString <-
+    IdentifierString <$> validateIdentifierSpelling identifierSpelling
   typeAnnotation <- astExpression
   case assignmentMarker of
     Nothing ->
@@ -291,7 +294,7 @@ astIdentifierOperation operator assignmentMarker = do
 
 astConditional :: Parser Expression
 astConditional = do
-  _ <- astSymbol "if"
+  _ <- astReservedWord Reserved.IfWord
   condition <- astExpression
   consequent <- astExpression
   alternative <- astExpression
@@ -317,8 +320,8 @@ data NaturalRangeBounds
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
   prefix <- choice
-    [ FromRange <$ astSymbol "from"
-    , WithinRange <$ astSymbol "within"
+    [ FromRange <$ astReservedWord Reserved.FromWord
+    , WithinRange <$ astReservedWord Reserved.WithinWord
     ]
   bounds <- astNaturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
@@ -330,9 +333,9 @@ astNaturalRangeBounds = do
   origin <- astSignedInteger
   choice
     [ NaturalRangeTo origin
-        <$> (astSymbol "to" *> astSignedInteger)
-    , NaturalRangeFromUpwards origin <$ astSymbol "upwards"
-    , IntegerRangeFromDownwards origin <$ astSymbol "downwards"
+        <$> (astReservedWord Reserved.ToWord *> astSignedInteger)
+    , NaturalRangeFromUpwards origin <$ astReservedWord Reserved.UpwardsWord
+    , IntegerRangeFromDownwards origin <$ astReservedWord Reserved.DownwardsWord
     ]
 
 astSignedInteger :: Parser Integer
@@ -365,6 +368,13 @@ astLexeme = Lexer.lexeme astSpaceConsumer
 
 astSymbol :: Text -> Parser Text
 astSymbol = Lexer.symbol astSpaceConsumer
+
+astReservedWord :: Reserved.ReservedWord -> Parser Text
+astReservedWord = astSymbol . Text.pack . Reserved.reservedWordText
+
+astBuiltInIdentifier :: Reserved.BuiltInIdentifier -> Parser Text
+astBuiltInIdentifier =
+  astSymbol . Text.pack . Reserved.builtInIdentifierText
 
 astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
@@ -432,10 +442,11 @@ eitherExpression =
   makeExprParser
     mapExpression
     [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
-    , [InfixL (Subfederation <$ continuedKeyword "of")]
+    , [InfixL
+        (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
     , [InfixL (Equality <$ continuedOperator AST.EqualityOperator)]
-    , [InfixL (BooleanAnd <$ continuedKeyword "and")]
-    , [InfixL (BooleanOr <$ continuedKeyword "or")]
+    , [InfixL (BooleanAnd <$ continuedWordOperator AST.BooleanAndOperator)]
+    , [InfixL (BooleanOr <$ continuedWordOperator AST.BooleanOrOperator)]
     ]
 
 mapExpression :: Parser Expression
@@ -447,13 +458,16 @@ mapExpression =
 -- allowing a complete identifier operation in any map-operand position.
 identifierOperation :: Parser Expression
 identifierOperation = do
-  operationIdentifierString <- IdentifierString <$> try bareIdentifier
+  identifierSpelling <- try identifierExpression
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
+        operationIdentifierString <-
+          IdentifierString
+            <$> validateIdentifierSpelling identifierSpelling
         givenValue <- identifierValueExpression
         let operation =
               IdentifierOperation
@@ -463,6 +477,9 @@ identifierOperation = do
         pure (optionalIdentifier isOptional operation givenValue)
     , do
         _ <- continuedOperator AST.IdentifierTypeOperator
+        operationIdentifierString <-
+          IdentifierString
+            <$> validateIdentifierSpelling identifierSpelling
         typeAnnotation <- identifierValueExpression
         givenValue <-
           optional
@@ -540,15 +557,15 @@ termAtom =
     , parenthesizedExpression
     , try conditionalExpression
     , try naturalRangeExpression
-    , BooleanLiteral False <$ keyword "false"
-    , BooleanLiteral True <$ keyword "true"
-    , AsciiStringLiteral "Nothing" <$ keyword "nothing"
-    , BooleanLiteral False <$ keyword "False"
-    , BooleanLiteral True <$ keyword "True"
-    , BooleanType <$ keyword "Bool"
-    , StringType <$ keyword "String"
-    , IntegerType <$ keyword "Int"
-    , NaturalType <$ keyword "Nat"
+    , BooleanLiteral False <$ reservedWord Reserved.FalseWord
+    , BooleanLiteral True <$ reservedWord Reserved.TrueWord
+    , AsciiStringLiteral "Nothing" <$ reservedWord Reserved.NothingWord
+    , BooleanLiteral False <$ builtInIdentifier Reserved.FalseIdentifier
+    , BooleanLiteral True <$ builtInIdentifier Reserved.TrueIdentifier
+    , BooleanType <$ reservedWord Reserved.BooleanTypeWord
+    , StringType <$ reservedWord Reserved.StringTypeWord
+    , IntegerType <$ reservedWord Reserved.IntegerTypeWord
+    , NaturalType <$ reservedWord Reserved.NaturalTypeWord
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
@@ -569,13 +586,13 @@ parenthesizedReverseSpecification = do
 
 conditionalExpression :: Parser Expression
 conditionalExpression = do
-  _ <- continuedKeyword "if"
+  _ <- continuedReservedWord Reserved.IfWord
   condition <- expression
-  _ <- continuedKeyword "then"
+  _ <- continuedReservedWord Reserved.ThenWord
   consequent <- expression
   alternative <-
     maybe (AtlasMap []) id
-      <$> optional (continuedKeyword "else" *> expression)
+      <$> optional (continuedReservedWord Reserved.ElseWord *> expression)
   pure (Conditional condition consequent alternative)
 
 rangeEndpointTerm :: Parser Expression
@@ -609,8 +626,8 @@ bracketedInsertion =
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
   prefix <- choice
-    [ FromRange <$ continuedKeyword "from"
-    , WithinRange <$ continuedKeyword "within"
+    [ FromRange <$ continuedReservedWord Reserved.FromWord
+    , WithinRange <$ continuedReservedWord Reserved.WithinWord
     ]
   bounds <- naturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
@@ -622,16 +639,18 @@ naturalRangeBounds = do
   origin <- signedIntegerToken <* keywordSeparator
   choice
     [ NaturalRangeTo origin
-        <$> (continuedKeyword "to" *> lexeme signedIntegerToken)
-    , NaturalRangeFromUpwards origin <$ keyword "upwards"
-    , IntegerRangeFromDownwards origin <$ keyword "downwards"
+        <$> (continuedReservedWord Reserved.ToWord *> lexeme signedIntegerToken)
+    , NaturalRangeFromUpwards origin <$ reservedWord Reserved.UpwardsWord
+    , IntegerRangeFromDownwards origin <$ reservedWord Reserved.DownwardsWord
     ]
 
 signedIntegerToken :: Parser Integer
 signedIntegerToken =
   try (char '-' *> (negate <$> Lexer.decimal))
     <|> try
-      (keywordToken "minus" *> keywordSeparator
+      (keywordToken
+        (Text.pack (AST.operatorCanonicalSymbol AST.MinusOperator))
+        *> keywordSeparator
         *> (negate <$> Lexer.decimal))
     <|> Lexer.decimal
 
@@ -663,8 +682,22 @@ naturalRangeExpressionFor WithinRange (IntegerRangeFromDownwards origin) =
 keyword :: Text -> Parser Text
 keyword value = lexeme (keywordToken value)
 
+reservedWord :: Reserved.ReservedWord -> Parser Text
+reservedWord = keyword . Text.pack . Reserved.reservedWordText
+
+builtInIdentifier :: Reserved.BuiltInIdentifier -> Parser Text
+builtInIdentifier = keyword . Text.pack . Reserved.builtInIdentifierText
+
 continuedKeyword :: Text -> Parser Text
 continuedKeyword value = keywordToken value <* keywordSeparator
+
+continuedReservedWord :: Reserved.ReservedWord -> Parser Text
+continuedReservedWord =
+  continuedKeyword . Text.pack . Reserved.reservedWordText
+
+continuedWordOperator :: AST.Operator -> Parser Text
+continuedWordOperator =
+  continuedKeyword . Text.pack . AST.operatorCanonicalSymbol
 
 keywordToken :: Text -> Parser Text
 keywordToken value =
@@ -689,8 +722,8 @@ arithmeticOperatorTable =
   [ [Postfix (OptionalType <$ operatorToken AST.OptionalOperator)]
   , [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
   , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
-    , Prefix (Minus <$ continuedKeyword "minus")
-    , Prefix (BooleanNot <$ continuedKeyword "not")
+    , Prefix (Minus <$ continuedWordOperator AST.MinusOperator)
+    , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
     ]
   , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
   , [ InfixL (Addition <$ continuedOperator AST.AdditionOperator)
@@ -788,6 +821,26 @@ bareIdentifier = lexeme bareIdentifierToken
 
 astBareIdentifier :: Parser String
 astBareIdentifier = astLexeme bareIdentifierToken
+
+data IdentifierSpelling
+  = BareIdentifier String
+  | FullStringIdentifier String
+
+identifierExpression :: Parser IdentifierSpelling
+identifierExpression =
+  FullStringIdentifier <$> standardString
+    <|> BareIdentifier <$> bareIdentifier
+
+astIdentifierExpression :: Parser IdentifierSpelling
+astIdentifierExpression =
+  FullStringIdentifier <$> astStandardString
+    <|> BareIdentifier <$> astBareIdentifier
+
+validateIdentifierSpelling :: IdentifierSpelling -> Parser String
+validateIdentifierSpelling (FullStringIdentifier value) = pure value
+validateIdentifierSpelling (BareIdentifier value)
+  | not (Reserved.isReservedIdentifierString value) = pure value
+  | otherwise = empty
 
 bareIdentifierToken :: Parser String
 bareIdentifierToken =

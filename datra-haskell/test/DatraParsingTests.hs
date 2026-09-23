@@ -201,6 +201,32 @@ regressionTests = do
     (AST.eitherType
       (AST.identifierType "a" AST.naturalType)
       AST.naturalType)
+  assertRejected
+    "reserved names cannot be bare identifier expressions"
+    "String : Nat"
+  assertAstOutput
+    "reserved names can be full-string identifier expressions"
+    "\"String\" : Nat"
+    (AST.identifierType "String" AST.naturalType)
+  assertAstOutput
+    "contextual range words remain bare identifier expressions"
+    "to : Nat"
+    (AST.identifierType "to" AST.naturalType)
+  assertAstOutput
+    "contextual range directions remain bare identifier expressions"
+    "(upwards : Nat; downwards : Nat)"
+    (AST.identifierType "upwards" AST.naturalType
+      <:> AST.identifierType "downwards" AST.naturalType)
+  assertAstOutput
+    "uppercase built-in names remain bare identifier expressions"
+    "False : Nat"
+    (AST.identifierType "False" AST.naturalType)
+  assertAstOutput
+    "full-string identifier expressions compose with optional syntax"
+    "\"Abc\"? : Nat"
+    (AST.eitherType
+      (AST.identifierType "Abc" AST.naturalType)
+      AST.naturalType)
   assertAstOutput
     "optional assigned identifier slot"
     "a? : Nat := 5"

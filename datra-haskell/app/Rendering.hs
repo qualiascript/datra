@@ -14,7 +14,10 @@ import DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   , operatorSourceSymbol
   )
-import DatraLanguage.AST (renderAsciiStringLiteral)
+import DatraLanguage.AST
+  ( renderAsciiStringLiteral
+  , renderIdentifierString
+  )
 import DatraTypes
   ( CanonicalResult (..)
   , InterpretedValue
@@ -117,16 +120,16 @@ prettyNonKeywordCanonicalResult result =
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalStringType -> "String"
     CanonicalIdentifierType identifierString typeAnnotation ->
-      pretty identifierString
+      pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalDependentIdentifierType familyKey typeAnnotation ->
-      pretty familyKey
+      pretty (renderIdentifierString familyKey)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
-        (pretty familyKey
+        (pretty (renderIdentifierString familyKey)
           <+> prettySourceSymbol IdentifierTypeOperator
           <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
@@ -221,14 +224,14 @@ optionalIdentifierParts left right =
     CanonicalIdentifierType identifierString typeAnnotation
       | typeAnnotation == right ->
           Just
-            (pretty identifierString
+            (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
               <+> prettySourceSymbol IdentifierTypeOperator
               <+> prettyCanonicalResult typeAnnotation)
     CanonicalAssignment identifierString typeAnnotation givenValue
       | typeAnnotation == right ->
           Just
-            (pretty identifierString
+            (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
               <+> if typeAnnotation == givenValue
                 then
@@ -277,11 +280,11 @@ prettyAssignment
 prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then
-      pretty identifierString
+      pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult givenValue
     else
-      pretty identifierString
+      pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
         <+> prettySourceSymbol AssignmentOperator

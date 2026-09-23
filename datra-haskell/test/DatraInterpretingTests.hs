@@ -2048,6 +2048,11 @@ testIdentifiers = do
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
       valueUnit = identifier "Value" (AtlasMap [])
+  expectValue
+      "quoted reserved identifier"
+      (identifier "String" NaturalType) $ \value ->
+    assert "reserved identifier names render with their full-string spelling"
+      (renderInterpretedValue value == "\"String\" : Nat")
   expectValue "unit identifier" valueUnit $ \value ->
     assert "a unit identifier canonicalizes to its identifier string"
       ( interpretedValueKind value == AsciiStringValueKind

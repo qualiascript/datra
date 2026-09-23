@@ -38,6 +38,7 @@ library
     exposed-modules:
         DatraLanguage.AST
         DatraLanguage.AST.Operator
+        DatraLanguage.AST.Reserved
         DatraLanguage.AST.Syntax
         DatraTypes
         AsciiMap

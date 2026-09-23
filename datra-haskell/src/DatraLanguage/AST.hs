@@ -9,6 +9,8 @@ module DatraLanguage.AST
   , renderExpression
   , renderOperatorExpression
   , renderAsciiStringLiteral
+  , renderIdentifierString
+  , isReservedIdentifierString
   ) where
 
 import Data.Char (ord, toUpper)
@@ -17,6 +19,7 @@ import DatraLanguage.AST.Operator
   , ellipsisSymbol
   , operatorCanonicalSymbol
   )
+import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -450,11 +453,11 @@ prettyOperator
     Nothing ->
       prettyForm
         (operatorCanonicalSymbol IdentifierTypeOperator)
-        [pretty identifierString, prettyOperator typeAnnotation]
+        [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
     Just givenValueExpression ->
       prettyForm
         (operatorCanonicalSymbol AssignmentOperator)
-        (pretty identifierString :
+        (pretty (renderIdentifierString identifierString) :
           if givenValueExpression == typeAnnotation
             then [prettyOperator givenValueExpression]
             else
@@ -494,7 +497,19 @@ renderAsciiStringLiteral :: String -> String
 renderAsciiStringLiteral value@(first : rest)
   | isLeadingCanonicalCharacter first
       && all isCanonicalCharacter rest = '$' : value
-renderAsciiStringLiteral value = '"' : foldr escape "\"" value
+renderAsciiStringLiteral value = renderStandardStringLiteral value
+
+-- | Render an identifier expression. Canonical non-reserved names use their
+-- compact bare spelling; reserved or noncanonical names use a full string.
+renderIdentifierString :: String -> String
+renderIdentifierString value@(first : rest)
+  | isLeadingCanonicalCharacter first
+      && all isCanonicalCharacter rest
+      && not (isReservedIdentifierString value) = value
+renderIdentifierString value = renderStandardStringLiteral value
+
+renderStandardStringLiteral :: String -> String
+renderStandardStringLiteral value = '"' : foldr escape "\"" value
   where
     escape '\n' rest = '\\' : 'n' : rest
     escape '"' rest = '\\' : '"' : rest
