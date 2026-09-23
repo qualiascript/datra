@@ -389,11 +389,13 @@ rangeEndpoint value
 
 prettyFormulation :: Natural -> Doc annotation
 prettyFormulation 0 =
-  pretty ellipsisSymbol <> prettySourceSymbol ExponentiationOperator <> "0"
+  pretty ellipsisSymbol
+    <> prettySpacedSourceSymbol ExponentiationOperator
+    <> "0"
 prettyFormulation 1 = pretty ellipsisSymbol
 prettyFormulation level =
   pretty ellipsisSymbol
-    <> prettySourceSymbol ExponentiationOperator
+    <> prettySpacedSourceSymbol ExponentiationOperator
     <> pretty level
 
 prettyExplicit :: Ordinal -> Doc annotation
@@ -443,11 +445,11 @@ prettyOrdinal value =
         <> pretty coefficient
     renderTerm power 1 =
       pretty ellipsisSymbol
-        <> prettySourceSymbol ExponentiationOperator
+        <> prettySpacedSourceSymbol ExponentiationOperator
         <> pretty power
     renderTerm power coefficient =
       pretty ellipsisSymbol
-        <> prettySourceSymbol ExponentiationOperator
+        <> prettySpacedSourceSymbol ExponentiationOperator
         <> pretty power
         <> prettySpacedSourceSymbol MultiplicationOperator
         <> pretty coefficient

@@ -259,7 +259,7 @@ testDiagnostics = do
           (finiteOrdinal 256))
       == LocalizedMessage
           "the access insertion has a larger rank than the map"
-          [ "insertion rank limit: (...)^2 * 2 + 3"
+          [ "insertion rank limit: (...) ^ 2 * 2 + 3"
           , "map final-page order type: 256"
           ])
 

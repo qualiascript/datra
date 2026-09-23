@@ -1172,7 +1172,7 @@ testCanonicalResults = do
         ((<..>) (natural 2) (natural 5))
         ((<..>) (natural 5) levelTwoFormulation)) $ \value ->
     assert "contiguous cross-rank ranges widen to the larger range"
-      (renderInterpretedValue value == "2..(...^2)")
+      (renderInterpretedValue value == "2..(... ^ 2)")
   expectValue
       "disjoint ranges"
       ((<.>)
@@ -1226,12 +1226,12 @@ testRendering = do
       "Dot formulation"
       ((AST.^) (...) (natural 0)) $ \value ->
     assert "Dot uses the agreed formulation syntax"
-      (renderInterpretedValue value == "...^0")
+      (renderInterpretedValue value == "... ^ 0")
   expectValue
       "second super-ellipsis formulation"
       ((AST.^) (...) (natural 2)) $ \value ->
     assert "higher formulations render by kind"
-      (renderInterpretedValue value == "...^2")
+      (renderInterpretedValue value == "... ^ 2")
   expectValue
       "zero multiplication"
       ((AST.+)
@@ -1794,7 +1794,7 @@ testAccess = do
       ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
     assert "a cofinal mixed-rank selection canonicalizes as a formulation"
       ( interpretedValueKind value == FormulationValueKind
-        && renderInterpretedValue value == "...^2"
+        && renderInterpretedValue value == "... ^ 2"
       )
   expectValue
       "empty access"
