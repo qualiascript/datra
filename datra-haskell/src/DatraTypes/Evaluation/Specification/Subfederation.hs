@@ -16,6 +16,7 @@ import Evaluation.Federation.Structure
   )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
+import Evaluation.Specification.String (federationProducesStrings)
 import Evaluation.Value
 
 -- | Decide inclusion of evaluated federation constructions. A total-map
@@ -31,16 +32,10 @@ decideValueSubfederation source target
       mapDecision (const ()) (selectFederationMember source target)
   | otherwise =
       case (interpretedForm source, interpretedForm target) of
-        (EitherForm sourceEither, EitherForm targetEither) ->
-          decideEitherSubfederation sourceEither targetEither
-        (EitherForm _, _) -> DecisionRefuted
+        (EitherForm sourceEither, _) ->
+          decideAllEitherAlternatives sourceEither target
         (_, EitherForm targetEither) ->
-          decideAny
-            [ decideValueSubfederation
-                source (evaluatedEitherLeft targetEither)
-            , decideValueSubfederation
-                source (evaluatedEitherRight targetEither)
-            ]
+          decideAnyEitherAlternative source targetEither
         _ -> decideNonEitherSubfederation source target
 
 decideNonEitherSubfederation
@@ -48,9 +43,11 @@ decideNonEitherSubfederation
   -> InterpretedValue
   -> Decision ()
 decideNonEitherSubfederation source target =
-      case ( interpretedAtlasMapFederation source
-           , interpretedAtlasMapFederation target
-           ) of
+  case targetFederation of
+    PrimitiveAtlasMapFederation StringTypeAtlasMapFederation
+      | federationProducesStrings sourceFederation -> DecisionProved ()
+    _ ->
+      case (sourceFederation, targetFederation) of
         ( PrimitiveAtlasMapFederation
             (IdentifierTypeAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
@@ -64,7 +61,13 @@ decideNonEitherSubfederation source target =
         ( PrimitiveAtlasMapFederation sourcePrimitive
           , PrimitiveAtlasMapFederation targetPrimitive
           ) ->
-            primitiveSubfederationDecision sourcePrimitive targetPrimitive
+            case (sourcePrimitive, targetPrimitive) of
+              ( ToStringAtlasMapFederation sourceValue _
+                , ToStringAtlasMapFederation targetValue _
+                ) -> decideValueSubfederation sourceValue targetValue
+              _ ->
+                primitiveSubfederationDecision
+                  sourcePrimitive targetPrimitive
         (SequentialAtlasMapFederation _, SequentialAtlasMapFederation _) ->
           decidePointwiseSubfederation
             (sequenceOperands source)
@@ -92,25 +95,38 @@ decideNonEitherSubfederation source target =
               (Just (concatenationOperands source))
               (Just (concatenationOperands target))
         _ -> DecisionUndecidable
+  where
+    sourceFederation = interpretedAtlasMapFederation source
+    targetFederation = interpretedAtlasMapFederation target
 
--- Tagged alternatives preserve their left/right injection. The right branch
--- may itself be an Either, which permits the canonical right-associated tree
--- to embed a shorter union into a longer one without reordering alternatives.
-decideEitherSubfederation
+-- An Either is a federation union: every source alternative must occur in the
+-- target, but it may occur in any target branch. Branch tags are selection
+-- routes only, so neither association nor order affects inclusion.
+decideAllEitherAlternatives
   :: EvaluatedEither
-  -> EvaluatedEither
+  -> InterpretedValue
   -> Decision ()
-decideEitherSubfederation source target =
+decideAllEitherAlternatives source target =
   mapDecision
     (const ())
     (decideAll
       [ decideValueSubfederation
           (evaluatedEitherLeft source)
-          (evaluatedEitherLeft target)
+          target
       , decideValueSubfederation
           (evaluatedEitherRight source)
-          (evaluatedEitherRight target)
+          target
       ])
+
+decideAnyEitherAlternative
+  :: InterpretedValue
+  -> EvaluatedEither
+  -> Decision ()
+decideAnyEitherAlternative source target =
+  decideAny
+    [ decideValueSubfederation source (evaluatedEitherLeft target)
+    , decideValueSubfederation source (evaluatedEitherRight target)
+    ]
 
 decideIdentifierSubfederation
   :: EvaluatedIdentifierType

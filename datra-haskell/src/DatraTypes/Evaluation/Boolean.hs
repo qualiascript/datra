@@ -11,6 +11,7 @@ module Evaluation.Boolean
   ) where
 
 import BooleanType (DatraBoolean (..), booleanNatural)
+import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
@@ -27,7 +28,14 @@ makeBoolean :: DatraBoolean -> InterpretedValue
 makeBoolean flag = value
   where
     underlying = makeNatural (booleanNatural flag)
-    semantics = BooleanSemantics flag (interpretedSemantics underlying)
+    semantics =
+      IdentifierTypeSemantics
+        (SimpleIdentifierDependency
+          (case flag of
+            DatraFalse -> "False"
+            DatraTrue -> "True"))
+        (interpretedSemantics underlying)
+        True
     value =
       makeSingletonInterpretedValue
         (BooleanForm flag)
@@ -37,7 +45,7 @@ makeBoolean flag = value
         semantics
 
 -- | @Bool@ is definitionally @False := 0 | True := 1@.
-makeBooleanType :: InterpretedValue
+makeBooleanType :: Either InterpretingError InterpretedValue
 makeBooleanType =
   makeEitherValue (makeBoolean DatraFalse) (makeBoolean DatraTrue)
 
@@ -129,6 +137,19 @@ requireBoolean side value =
 booleanFromSemantics :: ValueSemantics -> Maybe DatraBoolean
 booleanFromSemantics semantics =
   case semantics of
-    BooleanSemantics flag _ -> Just flag
+    IdentifierTypeSemantics
+        (SimpleIdentifierDependency identifierString)
+        underlying
+        True ->
+      case underlying of
+        ExplicitSemantics 1 ordinalValue
+          | identifierString == falseIdentifier
+          , naturalAtOrdinal ordinalValue == Just 0 -> Just DatraFalse
+          | identifierString == trueIdentifier
+          , naturalAtOrdinal ordinalValue == Just 1 -> Just DatraTrue
+        _ -> Nothing
     SpecificationSemantics source _ -> booleanFromSemantics source
     _ -> Nothing
+  where
+    falseIdentifier = "False"
+    trueIdentifier = "True"

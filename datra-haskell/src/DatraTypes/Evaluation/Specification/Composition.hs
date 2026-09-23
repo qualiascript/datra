@@ -22,6 +22,9 @@ import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
   )
+import Evaluation.Specification.String
+  ( selectStringFederationMember
+  )
 import Evaluation.Value
 
 -- | Select a total source map from any target federation. Atomic targets are
@@ -45,18 +48,22 @@ selectFederationMember source target
             EitherForm alternatives ->
               selectEitherMember source alternatives
             _ ->
-              case selectAtomicFederationMember source target of
+              case selectStringFederationMember
+                  selectFederationMember source target of
                 Just decision -> decision
                 Nothing ->
-                  case interpretedAtlasMapFederation target of
-                    SequentialAtlasMapFederation _ ->
-                      selectSequentialMember source target
-                    ConcatenatedAtlasMapFederation _ _ ->
-                      selectConcatenatedMember source target
-                    ExpansionAtlasMapFederation _ _ ->
-                      selectExpansionMember source target
-                    SingletonAtlasMapFederation _ -> DecisionUndecidable
-                    PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+                  case selectAtomicFederationMember source target of
+                    Just decision -> decision
+                    Nothing ->
+                      case interpretedAtlasMapFederation target of
+                        SequentialAtlasMapFederation _ ->
+                          selectSequentialMember source target
+                        ConcatenatedAtlasMapFederation _ _ ->
+                          selectConcatenatedMember source target
+                        ExpansionAtlasMapFederation _ _ ->
+                          selectExpansionMember source target
+                        SingletonAtlasMapFederation _ -> DecisionUndecidable
+                        PrimitiveAtlasMapFederation _ -> DecisionUndecidable
 
 selectEitherMember
   :: InterpretedValue

@@ -5,6 +5,7 @@ module Evaluation.Optional
   ) where
 
 import Evaluation.Either (makeEitherValue)
+import Evaluation.Error (InterpretingError)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Value
 
@@ -13,7 +14,11 @@ makeNothing :: InterpretedValue
 makeNothing = value
   where
     unit = makeAtlasMap 0 []
-    semantics = NothingSemantics (interpretedSemantics unit)
+    semantics =
+      IdentifierTypeSemantics
+        (SimpleIdentifierDependency "Nothing")
+        (interpretedSemantics unit)
+        True
     value =
       makeSingletonInterpretedValue
         NothingForm
@@ -23,5 +28,7 @@ makeNothing = value
         semantics
 
 -- | @T?@ is definitionally @T | Nothing := ()@.
-makeOptionalValue :: InterpretedValue -> InterpretedValue
+makeOptionalValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
 makeOptionalValue value = makeEitherValue value makeNothing

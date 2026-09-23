@@ -15,13 +15,14 @@ module Parsing
 
 import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (void)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.State.Strict (State, evalState, get, modify)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
 import Data.Char (chr, digitToInt, isHexDigit, ord)
-import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -30,6 +31,7 @@ import DatraLanguage.AST
   , Expression
       ( Addition
       , AsciiStringLiteral
+      , StringTemplate
       , AtlasMap
       , EllipsisLiteral
       , EllipsisNatural
@@ -43,7 +45,6 @@ import DatraLanguage.AST
       , Multiplication
       , Subtraction
       , Minus
-      , NaturalType
       , NaturalRange
       , NaturalRangeUpwards
       , SuperEllipsisRange
@@ -57,10 +58,8 @@ import DatraLanguage.AST
       , ValuedIntegerRange
       , ValuedIntegerRangeUpwards
       , ValuedIntegerRangeDownwards
-      , IntegerType
-      , BooleanLiteral
-      , BooleanType
       , EitherType
+      , UnsafeEither
       , OptionalType
       , Conditional
       , Subfederation
@@ -69,15 +68,26 @@ import DatraLanguage.AST
       , BooleanOr
       , BooleanNot
       )
+  , StringTemplatePart
+      ( StringTemplateInterpolation
+      , StringTemplateLiteral
+      , StringTemplateWeakInterpolation
+      )
+  , isCompactStringLiteral
   )
 import DatraLanguage.AST.Operator qualified as AST
+import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.AST.Reserved.Bootstrap
+  ( reservedSymbolReplacements
+  )
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
 import Text.Megaparsec
-  ( Parsec
+  ( ParsecT
+  , ParseErrorBundle
   , anySingle
   , between
   , choice
@@ -90,7 +100,7 @@ import Text.Megaparsec
   , many
   , manyTill
   , notFollowedBy
-  , parse
+  , runParserT
   , sepEndBy
   , sourceColumn
   , sourceLine
@@ -102,7 +112,9 @@ import Text.Megaparsec
 import Text.Megaparsec.Char (char, eol, hspace1, space1)
 import Text.Megaparsec.Char.Lexer qualified as Lexer
 
-type Parser = Parsec Void Text
+-- The depth is nonzero only while parsing a parenthesized interpolation. It
+-- lets expression comments stop at @)@ without changing ordinary comments.
+type Parser = ParsecT Void Text (State Int)
 
 data ResourceEnvelope
   = ExplicitMapEnvelope
@@ -131,7 +143,7 @@ parseDatraLocatedWithSourceName
   -> Either String (Located Expression)
 parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
-    (parse locatedResource resourceName (Text.pack source))
+    (runDatraParser locatedResource resourceName (Text.pack source))
 
 -- | Parse a source resource while retaining whether its outer map parentheses
 -- were explicit. This is presentation metadata only; both cases produce the
@@ -142,7 +154,8 @@ parseDatraLocatedResourceWithSourceName
   -> Either String (ResourceEnvelope, Located Expression)
 parseDatraLocatedResourceWithSourceName resourceName source =
   first errorBundlePretty
-    (parse locatedResourceWithEnvelope resourceName (Text.pack source))
+    (runDatraParser
+      locatedResourceWithEnvelope resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either String Expression
@@ -165,7 +178,15 @@ parseDatraAstLocatedWithSourceName
   -> Either String (Located Expression)
 parseDatraAstLocatedWithSourceName resourceName source =
   first errorBundlePretty
-    (parse locatedAstResource resourceName (Text.pack source))
+    (runDatraParser locatedAstResource resourceName (Text.pack source))
+
+runDatraParser
+  :: Parser value
+  -> FilePath
+  -> Text
+  -> Either (ParseErrorBundle Text Void) value
+runDatraParser parser resourceName source =
+  evalState (runParserT parser resourceName source) 0
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -216,21 +237,26 @@ astEmptyMap :: Parser Expression
 astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
-astAtom =
+astAtom = astLexeme (atomicExpressionToken astStringTemplateToken)
+
+atomicExpressionToken :: Parser Expression -> Parser Expression
+atomicExpressionToken nestedStringTemplate =
   choice
-    [ BooleanLiteral False <$ astSymbol "false"
-    , BooleanLiteral True <$ astSymbol "true"
-    , AsciiStringLiteral "Nothing" <$ astSymbol "nothing"
-    , BooleanLiteral False <$ astSymbol "False"
-    , BooleanLiteral True <$ astSymbol "True"
-    , BooleanType <$ astSymbol "Bool"
-    , IntegerType <$ astSymbol "Int"
-    , NaturalType <$ astSymbol "Nat"
-    , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
-    , AsciiStringLiteral <$> astIdentifierString
-    , AsciiStringLiteral <$> astStandardString
-    , EllipsisNatural <$> astLexeme Lexer.decimal
+    [ reservedSymbolReplacementToken
+    , EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> identifierStringToken
+    , nestedStringTemplate
+    , EllipsisNatural <$> Lexer.decimal
     ]
+  where
+    reservedSymbolReplacementToken =
+      choice
+        [ replacement
+            <$ keywordToken
+              (Text.pack
+                (Reserved.reservedSymbolIdentifierString reservedSymbol))
+        | (reservedSymbol, replacement) <- reservedSymbolReplacements
+        ]
 
 astForm :: Parser Expression
 astForm =
@@ -253,6 +279,7 @@ astForm =
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
       , astBinary AST.EitherOperator EitherType
+      , astBinary AST.UnsafeEitherOperator UnsafeEither
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
@@ -268,7 +295,9 @@ astIdentifierOperation
   -> Parser Expression
 astIdentifierOperation operator assignmentMarker = do
   _ <- astOperatorToken operator
-  operationIdentifierString <- IdentifierString <$> astBareIdentifier
+  identifierSpelling <- astIdentifierExpression
+  operationIdentifierString <-
+    IdentifierString <$> validateIdentifierSpelling identifierSpelling
   typeAnnotation <- astExpression
   case assignmentMarker of
     Nothing ->
@@ -289,7 +318,7 @@ astIdentifierOperation operator assignmentMarker = do
 
 astConditional :: Parser Expression
 astConditional = do
-  _ <- astSymbol "if"
+  _ <- astReservedSymbol Reserved.IfSymbol
   condition <- astExpression
   consequent <- astExpression
   alternative <- astExpression
@@ -305,7 +334,7 @@ astSequence = do
     (MapSequence
       (firstExpression : secondExpression : remainingExpressions))
 
-data NaturalRangePrefix = FromRange | WithinRange
+data NaturalRangePrefix = RangePrefix | FromPrefix
 
 data NaturalRangeBounds
   = NaturalRangeTo Integer Integer
@@ -315,22 +344,22 @@ data NaturalRangeBounds
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
   prefix <- choice
-    [ FromRange <$ astSymbol "from"
-    , WithinRange <$ astSymbol "within"
+    [ RangePrefix <$ astReservedSymbol Reserved.RangeSymbol
+    , FromPrefix <$ astReservedSymbol Reserved.FromSymbol
     ]
   bounds <- astNaturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
 
 -- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
--- after a @from@ or @within@ prefix.
+-- after a @range@ or @from@ prefix.
 astNaturalRangeBounds :: Parser NaturalRangeBounds
 astNaturalRangeBounds = do
   origin <- astSignedInteger
   choice
     [ NaturalRangeTo origin
-        <$> (astSymbol "to" *> astSignedInteger)
-    , NaturalRangeFromUpwards origin <$ astSymbol "upwards"
-    , IntegerRangeFromDownwards origin <$ astSymbol "downwards"
+        <$> (astReservedWord Reserved.ToWord *> astSignedInteger)
+    , NaturalRangeFromUpwards origin <$ astReservedWord Reserved.UpwardsWord
+    , IntegerRangeFromDownwards origin <$ astReservedWord Reserved.DownwardsWord
     ]
 
 astSignedInteger :: Parser Integer
@@ -363,6 +392,13 @@ astLexeme = Lexer.lexeme astSpaceConsumer
 
 astSymbol :: Text -> Parser Text
 astSymbol = Lexer.symbol astSpaceConsumer
+
+astReservedWord :: Reserved.ReservedWord -> Parser Text
+astReservedWord = astSymbol . Text.pack . Reserved.reservedWordText
+
+astReservedSymbol :: Reserved.ReservedSymbol -> Parser Text
+astReservedSymbol =
+  astSymbol . Text.pack . Reserved.reservedSymbolIdentifierString
 
 astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
@@ -430,10 +466,11 @@ eitherExpression =
   makeExprParser
     mapExpression
     [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
-    , [InfixL (Subfederation <$ continuedKeyword "of")]
+    , [InfixL
+        (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
     , [InfixL (Equality <$ continuedOperator AST.EqualityOperator)]
-    , [InfixL (BooleanAnd <$ continuedKeyword "and")]
-    , [InfixL (BooleanOr <$ continuedKeyword "or")]
+    , [InfixL (BooleanAnd <$ continuedWordOperator AST.BooleanAndOperator)]
+    , [InfixL (BooleanOr <$ continuedWordOperator AST.BooleanOrOperator)]
     ]
 
 mapExpression :: Parser Expression
@@ -445,13 +482,16 @@ mapExpression =
 -- allowing a complete identifier operation in any map-operand position.
 identifierOperation :: Parser Expression
 identifierOperation = do
-  operationIdentifierString <- IdentifierString <$> try bareIdentifier
+  identifierSpelling <- try identifierExpression
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
+        operationIdentifierString <-
+          IdentifierString
+            <$> validateIdentifierSpelling identifierSpelling
         givenValue <- identifierValueExpression
         let operation =
               IdentifierOperation
@@ -461,6 +501,9 @@ identifierOperation = do
         pure (optionalIdentifier isOptional operation givenValue)
     , do
         _ <- continuedOperator AST.IdentifierTypeOperator
+        operationIdentifierString <-
+          IdentifierString
+            <$> validateIdentifierSpelling identifierSpelling
         typeAnnotation <- identifierValueExpression
         givenValue <-
           optional
@@ -486,6 +529,13 @@ identifierValueExpression :: Parser Expression
 identifierValueExpression =
   makeExprParser rangeExpression identifierValueOperatorTable
 
+-- An arithmetic operator followed by another identifier operation belongs to
+-- the surrounding expression. Otherwise it remains part of this identifier's
+-- annotation or assigned value, preserving forms such as @x : 2 + 3@.
+boundaryAwareArithmeticExpression :: Parser Expression
+boundaryAwareArithmeticExpression =
+  makeExprParser term boundaryAwareArithmeticOperatorTable
+
 -- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
 -- is permitted at this precedence level. Each explicit endpoint is a complete
 -- arithmetic expression; nested ranges therefore require parentheses.
@@ -493,7 +543,7 @@ rangeExpression :: Parser Expression
 rangeExpression =
   try prefixRange
     <|> try explicitRange
-    <|> arithmeticExpression
+    <|> boundaryAwareArithmeticExpression
 
 prefixRange :: Parser Expression
 prefixRange = do
@@ -519,9 +569,6 @@ rangeSuffix lowerBound =
         pure (SuperEllipsisRangePlus lowerBound)
     ]
 
-arithmeticExpression :: Parser Expression
-arithmeticExpression = makeExprParser term arithmeticOperatorTable
-
 -- A bare Ellipsis value cannot be a range endpoint. Parentheses deliberately
 -- return to the complete expression grammar, making forms such as '(...)..'
 -- explicit while keeping grouping out of the AST.
@@ -538,18 +585,7 @@ termAtom =
     , parenthesizedExpression
     , try conditionalExpression
     , try naturalRangeExpression
-    , BooleanLiteral False <$ keyword "false"
-    , BooleanLiteral True <$ keyword "true"
-    , AsciiStringLiteral "Nothing" <$ keyword "nothing"
-    , BooleanLiteral False <$ keyword "False"
-    , BooleanLiteral True <$ keyword "True"
-    , BooleanType <$ keyword "Bool"
-    , IntegerType <$ keyword "Int"
-    , NaturalType <$ keyword "Nat"
-    , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
-    , AsciiStringLiteral <$> identifierString
-    , AsciiStringLiteral <$> standardString
-    , ellipsisNatural
+    , lexeme (atomicExpressionToken sourceStringTemplateToken)
     ]
 
 -- Explicitly parenthesizing both operands makes a reverse specification a
@@ -566,13 +602,13 @@ parenthesizedReverseSpecification = do
 
 conditionalExpression :: Parser Expression
 conditionalExpression = do
-  _ <- continuedKeyword "if"
+  _ <- continuedReservedSymbol Reserved.IfSymbol
   condition <- expression
-  _ <- continuedKeyword "then"
+  _ <- continuedReservedWord Reserved.ThenWord
   consequent <- expression
   alternative <-
     maybe (AtlasMap []) id
-      <$> optional (continuedKeyword "else" *> expression)
+      <$> optional (continuedReservedWord Reserved.ElseWord *> expression)
   pure (Conditional condition consequent alternative)
 
 rangeEndpointTerm :: Parser Expression
@@ -583,7 +619,7 @@ rangeEndpointAtom =
   choice
     [ parenthesizedExpression
     , AsciiStringLiteral <$> identifierString
-    , AsciiStringLiteral <$> standardString
+    , stringExpression
     , ellipsisNatural
     ]
 
@@ -606,29 +642,31 @@ bracketedInsertion =
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
   prefix <- choice
-    [ FromRange <$ continuedKeyword "from"
-    , WithinRange <$ continuedKeyword "within"
+    [ RangePrefix <$ continuedReservedSymbol Reserved.RangeSymbol
+    , FromPrefix <$ continuedReservedSymbol Reserved.FromSymbol
     ]
   bounds <- naturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
 
 -- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
--- after a @from@ or @within@ prefix.
+-- after a @range@ or @from@ prefix.
 naturalRangeBounds :: Parser NaturalRangeBounds
 naturalRangeBounds = do
   origin <- signedIntegerToken <* keywordSeparator
   choice
     [ NaturalRangeTo origin
-        <$> (continuedKeyword "to" *> lexeme signedIntegerToken)
-    , NaturalRangeFromUpwards origin <$ keyword "upwards"
-    , IntegerRangeFromDownwards origin <$ keyword "downwards"
+        <$> (continuedReservedWord Reserved.ToWord *> lexeme signedIntegerToken)
+    , NaturalRangeFromUpwards origin <$ reservedWord Reserved.UpwardsWord
+    , IntegerRangeFromDownwards origin <$ reservedWord Reserved.DownwardsWord
     ]
 
 signedIntegerToken :: Parser Integer
 signedIntegerToken =
   try (char '-' *> (negate <$> Lexer.decimal))
     <|> try
-      (keywordToken "minus" *> keywordSeparator
+      (keywordToken
+        (Text.pack (AST.operatorCanonicalSymbol AST.MinusOperator))
+        *> keywordSeparator
         *> (negate <$> Lexer.decimal))
     <|> Lexer.decimal
 
@@ -636,32 +674,47 @@ naturalRangeExpressionFor
   :: NaturalRangePrefix
   -> NaturalRangeBounds
   -> Expression
-naturalRangeExpressionFor FromRange (NaturalRangeTo origin target) =
+naturalRangeExpressionFor RangePrefix (NaturalRangeTo origin target) =
   if origin >= 0 && target >= 0
     then NaturalRange (fromInteger origin) (fromInteger target)
     else IntegerRange origin target
-naturalRangeExpressionFor FromRange (NaturalRangeFromUpwards origin) =
+naturalRangeExpressionFor RangePrefix (NaturalRangeFromUpwards origin) =
   if origin >= 0
     then NaturalRangeUpwards (fromInteger origin)
     else IntegerRangeUpwards origin
-naturalRangeExpressionFor FromRange (IntegerRangeFromDownwards origin) =
+naturalRangeExpressionFor RangePrefix (IntegerRangeFromDownwards origin) =
   IntegerRangeDownwards origin
-naturalRangeExpressionFor WithinRange (NaturalRangeTo origin target) =
+naturalRangeExpressionFor FromPrefix (NaturalRangeTo origin target) =
   if origin >= 0 && target >= 0
     then ValuedNaturalRange (fromInteger origin) (fromInteger target)
     else ValuedIntegerRange origin target
-naturalRangeExpressionFor WithinRange (NaturalRangeFromUpwards origin) =
+naturalRangeExpressionFor FromPrefix (NaturalRangeFromUpwards origin) =
   if origin >= 0
     then ValuedNaturalRangeUpwards (fromInteger origin)
     else ValuedIntegerRangeUpwards origin
-naturalRangeExpressionFor WithinRange (IntegerRangeFromDownwards origin) =
+naturalRangeExpressionFor FromPrefix (IntegerRangeFromDownwards origin) =
   ValuedIntegerRangeDownwards origin
 
 keyword :: Text -> Parser Text
 keyword value = lexeme (keywordToken value)
 
+reservedWord :: Reserved.ReservedWord -> Parser Text
+reservedWord = keyword . Text.pack . Reserved.reservedWordText
+
 continuedKeyword :: Text -> Parser Text
 continuedKeyword value = keywordToken value <* keywordSeparator
+
+continuedReservedWord :: Reserved.ReservedWord -> Parser Text
+continuedReservedWord =
+  continuedKeyword . Text.pack . Reserved.reservedWordText
+
+continuedReservedSymbol :: Reserved.ReservedSymbol -> Parser Text
+continuedReservedSymbol =
+  continuedKeyword . Text.pack . Reserved.reservedSymbolIdentifierString
+
+continuedWordOperator :: AST.Operator -> Parser Text
+continuedWordOperator =
+  continuedKeyword . Text.pack . AST.operatorCanonicalSymbol
 
 keywordToken :: Text -> Parser Text
 keywordToken value =
@@ -683,17 +736,42 @@ parenthesizedExpression =
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
 arithmeticOperatorTable =
+  arithmeticOperatorTableWith continuedOperator
+
+boundaryAwareArithmeticOperatorTable :: [[Operator Parser Expression]]
+boundaryAwareArithmeticOperatorTable =
+  arithmeticOperatorTableWith operatorBeforeIdentifierBoundary
+
+arithmeticOperatorTableWith
+  :: (AST.Operator -> Parser Text)
+  -> [[Operator Parser Expression]]
+arithmeticOperatorTableWith infixOperator =
   [ [Postfix (OptionalType <$ operatorToken AST.OptionalOperator)]
-  , [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
+  , [InfixR (Exponentiation <$ infixOperator AST.ExponentiationOperator)]
   , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
-    , Prefix (Minus <$ continuedKeyword "minus")
-    , Prefix (BooleanNot <$ continuedKeyword "not")
+    , Prefix (Minus <$ continuedWordOperator AST.MinusOperator)
+    , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
     ]
-  , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
-  , [ InfixL (Addition <$ continuedOperator AST.AdditionOperator)
-    , InfixL (Subtraction <$ continuedOperator AST.SubtractionOperator)
+  , [InfixL (Multiplication <$ infixOperator AST.MultiplicationOperator)]
+  , [ InfixL (Addition <$ infixOperator AST.AdditionOperator)
+    , InfixL (Subtraction <$ infixOperator AST.SubtractionOperator)
     ]
   ]
+
+operatorBeforeIdentifierBoundary :: AST.Operator -> Parser Text
+operatorBeforeIdentifierBoundary operator =
+  try
+    (continuedOperator operator
+      <* notFollowedBy (try identifierOperationStart))
+
+identifierOperationStart :: Parser ()
+identifierOperationStart = do
+  identifierSpelling <- identifierExpression
+  _ <- validateIdentifierSpelling identifierSpelling
+  _ <- optional (operatorToken AST.OptionalOperator)
+  void
+    (operatorToken AST.AssignmentOperator
+      <|> operatorToken AST.IdentifierTypeOperator)
 
 -- Concatenation binds after ranges. Access and forward specification share a
 -- left-associative level so their written order determines composition:
@@ -703,10 +781,11 @@ arithmeticOperatorTable =
 -- operations can occur on either side of a reversed chain.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
-  [ [InfixR (MapConcatenation <$ infixComma)]
-  , [Postfix (finishConcatenation <$ trailingComma)]
-  , mapAccessAndSpecificationOperators
-  ]
+  arithmeticOperatorTable
+    <> [ [InfixR (MapConcatenation <$ infixComma)]
+       , [Postfix (finishConcatenation <$ trailingComma)]
+       , mapAccessAndSpecificationOperators
+       ]
 
 identifierValueOperatorTable :: [[Operator Parser Expression]]
 identifierValueOperatorTable =
@@ -770,21 +849,40 @@ ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 identifierString :: Parser String
 identifierString = lexeme identifierStringToken
 
-astIdentifierString :: Parser String
-astIdentifierString = astLexeme identifierStringToken
-
 identifierStringToken :: Parser String
-identifierStringToken =
-  char '$'
-    *> ((:)
+identifierStringToken = do
+  _ <- char '$'
+  value <-
+    (:)
       <$> satisfy isLeadingCanonicalCharacter
-      <*> many (satisfy isCanonicalCharacter))
+      <*> many (satisfy isCanonicalCharacter)
+  if isCompactStringLiteral value then pure value else empty
 
 bareIdentifier :: Parser String
 bareIdentifier = lexeme bareIdentifierToken
 
 astBareIdentifier :: Parser String
 astBareIdentifier = astLexeme bareIdentifierToken
+
+data IdentifierSpelling
+  = BareIdentifier String
+  | FullStringIdentifier String
+
+identifierExpression :: Parser IdentifierSpelling
+identifierExpression =
+  FullStringIdentifier <$> standardString
+    <|> BareIdentifier <$> bareIdentifier
+
+astIdentifierExpression :: Parser IdentifierSpelling
+astIdentifierExpression =
+  FullStringIdentifier <$> astStandardString
+    <|> BareIdentifier <$> astBareIdentifier
+
+validateIdentifierSpelling :: IdentifierSpelling -> Parser String
+validateIdentifierSpelling (FullStringIdentifier value) = pure value
+validateIdentifierSpelling (BareIdentifier value)
+  | not (Reserved.isReservedIdentifierString value) = pure value
+  | otherwise = empty
 
 bareIdentifierToken :: Parser String
 bareIdentifierToken =
@@ -804,15 +902,119 @@ astStandardString = astLexeme standardStringToken
 
 standardStringToken :: Parser String
 standardStringToken =
-  between (char '"') (char '"')
-    (catMaybes <$> many standardStringPart)
+  parsedLiteralText <$> quotedStringParts Nothing
 
-standardStringPart :: Parser (Maybe Char)
-standardStringPart =
-  choice
-    [ Nothing <$ standardStringComment
-    , Just <$> standardStringCharacter
-    ]
+-- | Every quoted source expression is parsed as a template. The common case
+-- with no interpolation is collapsed back to the existing string literal AST.
+stringExpression :: Parser Expression
+stringExpression = lexeme sourceStringTemplateToken
+
+sourceStringTemplateToken :: Parser Expression
+sourceStringTemplateToken =
+  stringTemplateToken expression sourceSimpleInterpolation
+
+astStringTemplateToken :: Parser Expression
+astStringTemplateToken =
+  stringTemplateToken astExpression astSimpleInterpolation
+
+data ParsedStringTemplatePart
+  = ParsedStringTemplateCharacter Char
+  | ParsedStringTemplateInterpolation (StringTemplatePart Expression)
+
+stringTemplateToken
+  :: Parser Expression
+  -> Parser Expression
+  -> Parser Expression
+stringTemplateToken compoundInterpolation simpleInterpolation =
+  buildStringTemplate
+    <$> quotedStringParts (Just stringInterpolation)
+  where
+    stringInterpolation = do
+      _ <- char '$'
+      interpolationConstructor <-
+        maybe
+          StringTemplateInterpolation
+          (const StringTemplateWeakInterpolation)
+          <$> optional (char '!')
+      ParsedStringTemplateInterpolation . interpolationConstructor
+        <$> (parenthesizedInterpolation <|> simpleInterpolation)
+
+    parenthesizedInterpolation = do
+      _ <- char '('
+      withInterpolationComments
+        (fullSpaceConsumer
+          *> compoundInterpolation
+          <* fullSpaceConsumer
+          <* char ')')
+
+quotedStringParts
+  :: Maybe (Parser ParsedStringTemplatePart)
+  -> Parser [ParsedStringTemplatePart]
+quotedStringParts interpolation =
+  between (char '"') (char '"')
+    (concat <$> many quotedPart)
+  where
+    quotedPart =
+      choice
+        ( maybe
+            []
+            (\parser -> [(: []) <$> parser])
+            interpolation
+          <> [ [] <$ standardStringComment
+             , (: []) . ParsedStringTemplateCharacter
+                <$> standardStringCharacter
+             ]
+        )
+
+withInterpolationComments :: Parser value -> Parser value
+withInterpolationComments parser = do
+  lift (modify (+ 1))
+  value <- parser
+  lift (modify (subtract 1))
+  pure value
+
+sourceSimpleInterpolation :: Parser Expression
+sourceSimpleInterpolation =
+  simpleInterpolationWith sourceStringTemplateToken
+
+astSimpleInterpolation :: Parser Expression
+astSimpleInterpolation =
+  simpleInterpolationWith astStringTemplateToken
+
+simpleInterpolationWith :: Parser Expression -> Parser Expression
+simpleInterpolationWith nestedStringTemplate = do
+  expressionValue <- atomicExpressionToken nestedStringTemplate
+  isOptional <- maybe False (const True) <$> optional (char '?')
+  pure
+    (if isOptional
+      then OptionalType expressionValue
+      else expressionValue)
+
+buildStringTemplate :: [ParsedStringTemplatePart] -> Expression
+buildStringTemplate parsedParts =
+  case foldr collect ([], False) parsedParts of
+    (parts, False) ->
+      AsciiStringLiteral
+        (concat
+          [ value
+          | StringTemplateLiteral value <- parts
+          ])
+    (parts, True) -> StringTemplate parts
+  where
+    collect (ParsedStringTemplateCharacter character) (parts, hasHole) =
+      case parts of
+        StringTemplateLiteral value : remaining ->
+          (StringTemplateLiteral (character : value) : remaining, hasHole)
+        _ -> (StringTemplateLiteral [character] : parts, hasHole)
+    collect (ParsedStringTemplateInterpolation interpolation)
+        (parts, _) =
+      (interpolation : parts, True)
+
+parsedLiteralText :: [ParsedStringTemplatePart] -> String
+parsedLiteralText parts =
+  [ character
+  | ParsedStringTemplateCharacter character <- parts
+  ]
 
 -- Unlike an ordinary line comment, a comment within a string also ends at the
 -- string's closing quote. The terminator is left for the surrounding parser,
@@ -835,6 +1037,8 @@ standardStringCharacter =
       [ '"' <$ char '"'
       , '\\' <$ char '\\'
       , '#' <$ char '#'
+      , '$' <$ char '$'
+      , '?' <$ char '?'
       , '\n' <$ char 'n'
       , hexadecimalAsciiCharacter
       ])
@@ -843,6 +1047,7 @@ standardStringCharacter =
         character /= '"'
           && character /= '\\'
           && character /= '#'
+          && character /= '$'
           && isAsciiCharacter character)
 
 hexadecimalAsciiCharacter :: Parser Char
@@ -886,7 +1091,18 @@ fullSpaceConsumer :: Parser ()
 fullSpaceConsumer = Lexer.space space1 lineComment empty
 
 lineComment :: Parser ()
-lineComment = Lexer.skipLineComment "#"
+lineComment = do
+  interpolationDepth <- lift get
+  _ <- char '#'
+  void
+    (manyTill anySingle
+      (lookAhead
+        ( void eol
+          <|> if interpolationDepth > 0
+                then void (char ')')
+                else empty
+          <|> eof
+        )))
 
 lineSpaceConsumer :: Parser ()
 lineSpaceConsumer = horizontalSpaceConsumer *> void (many lineBreak)

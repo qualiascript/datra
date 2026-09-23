@@ -26,6 +26,8 @@ module Evaluation.Value
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
   , interpretedMapCardinality
+  , ToStringInverseDecision (..)
+  , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
   , ValueSemantics (..)
@@ -41,6 +43,7 @@ module Evaluation.Value
   , interpretedTotalAtlasMap
   , interpretedSemantics
   , interpretedValueHasTotalMap
+  , implicitCoercionSemantics
   , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
@@ -66,7 +69,7 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
-import BooleanType (DatraBoolean (..))
+import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
@@ -134,9 +137,9 @@ data EvaluatedValuedIntegerRange where
     :: ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
     -> EvaluatedValuedIntegerRange
 
--- | A tagged federation union. The left and right alternatives are retained
--- separately; selection records the Datra Boolean injection tag so equal
--- underlying maps remain distinct federation members.
+-- | A proven-disjoint federation union. The alternatives remain separate so
+-- selection can record its route, but that internal route does not make equal
+-- or overlapping Atlas maps distinct.
 data EvaluatedEither = EvaluatedEither
   { evaluatedEitherLeft :: InterpretedValue
   , evaluatedEitherRight :: InterpretedValue
@@ -215,10 +218,12 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedValuedNaturalRangeMember Natural
   | EvaluatedIntegerRangeMember IntegerRange.IntegerSubrangeDescription
   | EvaluatedValuedIntegerRangeMember Integer
+  | EvaluatedAsciiStringMember String
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedToStringMember EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember
@@ -252,6 +257,10 @@ data ValueForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
+  | StringTypeForm
+  | ToStringForm
+  | WeakToStringForm
+  | StringTemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | IdentifierTypeForm EvaluatedIdentifierType
@@ -277,10 +286,21 @@ data InterpretedMap = InterpretedMap
 interpretedMapCardinality :: InterpretedMap -> Natural
 interpretedMapCardinality = interpretedMapPageCardinality
 
+-- | The partial inverse carried by a proven pointwise string conversion.
+data ToStringInverseDecision
+  = ToStringInverseMatched InterpretedValue
+  | ToStringInverseRejected
+  | ToStringInverseUndecidable
+
+data ProvenInjectiveToString = ProvenInjectiveToString
+  { injectiveToStringCharacterAlphabet :: Maybe String
+  , injectiveToStringExactStrings :: Maybe [String]
+  , invertInjectiveToString :: String -> ToStringInverseDecision
+  }
+
 -- | Primitive Atlas-map federation kinds understood by the interpreter.
--- The generic construction tree lives in 'AtlasMapFederation'; extending the
--- language with another primitive family only extends this open semantic
--- boundary and its decision procedures.
+-- The injective string primitive carries the language facts and inverse that
+-- justified its construction; the explicitly weak primitive does not.
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
@@ -289,6 +309,11 @@ data InterpretedAtlasMapFederationPrimitive
   | EitherAtlasMapFederation EvaluatedEither
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
+  | StringTypeAtlasMapFederation
+  | ToStringAtlasMapFederation
+      InterpretedValue
+      ProvenInjectiveToString
+  | WeakToStringAtlasMapFederation InterpretedValue
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -301,8 +326,6 @@ type InterpretedAtlasMapFederation =
 data ValueSemantics
   = ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
-  | BooleanSemantics DatraBoolean ValueSemantics
-  | NothingSemantics ValueSemantics
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
@@ -315,6 +338,10 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
+  | StringTypeSemantics
+  | ToStringSemantics ValueSemantics
+  | WeakToStringSemantics ValueSemantics
+  | StringTemplateSemantics ValueSemantics
   | IdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
@@ -347,6 +374,10 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
+  | CanonicalStringType
+  | CanonicalToString CanonicalResult
+  | CanonicalWeakToString CanonicalResult
+  | CanonicalStringTemplate CanonicalResult
   | CanonicalIdentifierType
       { canonicalIdentifierString :: String
       , canonicalIdentifierTypeAnnotation :: CanonicalResult
@@ -412,6 +443,15 @@ makeSingletonInterpretedValue form capability valueMap totality =
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
+-- | One implicit coercion step through a total identifier binding. Consumers
+-- can follow the chain without knowing whether a binding came from user code,
+-- an interpreter bootstrap, or a future standard-library definition.
+implicitCoercionSemantics :: ValueSemantics -> Maybe ValueSemantics
+implicitCoercionSemantics semantics =
+  case semantics of
+    IdentifierTypeSemantics _ underlying True -> Just underlying
+    _ -> Nothing
+
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
 
@@ -420,17 +460,6 @@ canonicalResult semantics =
   case semantics of
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
-    BooleanSemantics flag underlying ->
-      let underlyingResult = canonicalResult underlying
-          identifierString =
-            case flag of
-              DatraFalse -> "False"
-              DatraTrue -> "True"
-      in CanonicalAssignment
-          identifierString underlyingResult underlyingResult
-    NothingSemantics underlying ->
-      let underlyingResult = canonicalResult underlying
-      in CanonicalAssignment "Nothing" underlyingResult underlyingResult
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target
@@ -448,6 +477,12 @@ canonicalResult semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
+    StringTypeSemantics -> CanonicalStringType
+    ToStringSemantics source -> CanonicalToString (canonicalResult source)
+    WeakToStringSemantics source ->
+      CanonicalWeakToString (canonicalResult source)
+    StringTemplateSemantics source ->
+      CanonicalStringTemplate (canonicalResult source)
     IdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of
@@ -572,6 +607,10 @@ interpretedValueKind value =
     EitherForm _ -> EitherValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
+    StringTypeForm -> AsciiStringValueKind
+    ToStringForm -> AsciiStringValueKind
+    WeakToStringForm -> AsciiStringValueKind
+    StringTemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind

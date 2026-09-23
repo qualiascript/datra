@@ -224,6 +224,10 @@ preservesConcatenationBoundary value =
   case interpretedForm value of
     EitherForm _ -> True
     IdentifierTypeForm _ -> True
+    StringTypeForm -> True
+    ToStringForm -> True
+    WeakToStringForm -> True
+    StringTemplateForm _ -> True
     AssignmentForm _ -> True
     SpecificationForm _ -> True
     _ -> False

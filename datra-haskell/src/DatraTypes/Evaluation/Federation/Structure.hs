@@ -41,6 +41,7 @@ concatenationOperands value =
       concatenationOperands (evaluatedSpecificationTarget specification)
     AssignmentForm specification ->
       concatenationOperands (evaluatedSpecificationTarget specification)
+    StringTemplateForm underlying -> concatenationOperands underlying
     _ -> [value]
 
 finiteMapValues :: InterpretedValue -> Maybe [InterpretedValue]

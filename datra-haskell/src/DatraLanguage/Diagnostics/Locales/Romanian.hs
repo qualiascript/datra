@@ -140,6 +140,24 @@ localizeInterpretingError reason =
       LocalizedMessage
         "compilatorul nu poate decide această operație pe federații"
         ["operația: " <> federationOperation operation]
+    NonInjectiveStringInterpolation ->
+      LocalizedMessage
+        "interpolare de șir neinjectivă"
+        ["valori distincte din interpolare pot avea aceeași formă de șir"]
+    NoCanonicalStringConversion ->
+      LocalizedMessage
+        "valoarea nu are o conversie canonică în șir"
+        [ "weakToString poate reda valoarea, dar specificarea necesită "
+            <> "o conversie canonică injectivă"
+        ]
+    EitherAlternativesNotDistinct ->
+      LocalizedMessage
+        "alternativele Either nu sunt hărți Atlas diferențiabile"
+        ["alternativele nu pot fi membri distincți ai aceleiași federații Atlas"]
+    AmbiguousStringTemplate ->
+      LocalizedMessage
+        "șablon de șir ambiguu"
+        ["șablonul nu mapează fiecare configurație sursă la un șir unic"]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"

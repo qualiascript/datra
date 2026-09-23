@@ -18,9 +18,14 @@ module DatraTypes
   , booleanValue
   , booleanTypeValue
   , eitherValue
+  , unsafeEitherValue
   , optionalValue
   , nothingValue
   , asciiStringValue
+  , stringTypeValue
+  , toStringValue
+  , weakToStringValue
+  , stringTemplateValue
   , formulationValue
   , addValues
   , subtractValues
@@ -57,6 +62,7 @@ module DatraTypes
   , accessValues
   , specifyValues
   , interpretedValueKind
+  , interpretedValueHasTotalMap
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
   , interpretedInteger
@@ -80,6 +86,7 @@ import Evaluation.Error
 import Evaluation.Access (accessValues)
 import Evaluation.Construction
   ( makeAsciiString
+  , makeStringType
   , makeFormulation
   , makeNatural
   , makeInteger
@@ -94,8 +101,13 @@ import Evaluation.Boolean
   , makeBoolean
   , makeBooleanType
   )
-import Evaluation.Either (makeEitherValue)
+import Evaluation.Either (makeEitherValue, makeUnsafeEitherValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
+import Evaluation.ToString
+  ( stringTemplateValue
+  , toStringValue
+  , weakToStringValue
+  )
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
@@ -148,6 +160,7 @@ import Evaluation.Value
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , interpretedRangeDescription
+  , interpretedValueHasTotalMap
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)
@@ -166,13 +179,21 @@ booleanValue value =
   makeBoolean
     (if value then BooleanType.DatraTrue else BooleanType.DatraFalse)
 
-booleanTypeValue :: InterpretedValue
+booleanTypeValue :: Either InterpretingError InterpretedValue
 booleanTypeValue = makeBooleanType
 
-eitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
+eitherValue
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
 eitherValue = makeEitherValue
 
-optionalValue :: InterpretedValue -> InterpretedValue
+unsafeEitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
+unsafeEitherValue = makeUnsafeEitherValue
+
+optionalValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
 optionalValue = makeOptionalValue
 
 nothingValue :: InterpretedValue
@@ -183,6 +204,9 @@ asciiStringValue value =
   case find ((>= 256) . ord) value of
     Just character -> Left (InvalidAsciiStringCharacter character)
     Nothing -> Right (makeAsciiString value)
+
+stringTypeValue :: InterpretedValue
+stringTypeValue = makeStringType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation

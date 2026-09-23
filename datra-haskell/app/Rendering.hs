@@ -14,7 +14,13 @@ import DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   , operatorSourceSymbol
   )
-import DatraLanguage.AST (renderAsciiStringLiteral)
+import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.AST
+  ( StringTemplatePart (..)
+  , renderAsciiStringLiteral
+  , renderIdentifierString
+  , renderStringTemplate
+  )
 import DatraTypes
   ( CanonicalResult (..)
   , InterpretedValue
@@ -85,10 +91,12 @@ terminateBeforeNewline (component : remaining) =
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result
-  | isBooleanValue "False" 0 result = "false"
-  | isBooleanValue "True" 1 result = "true"
-  | isNothingValue result = "nothing"
-  | result == CanonicalAsciiString "Nothing" = "nothing"
+  | isBooleanValue "False" 0 result =
+      pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
+  | isBooleanValue "True" 1 result =
+      pretty (Reserved.reservedSymbolIdentifierString Reserved.TrueSymbol)
+  | isNothingValue result =
+      pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
   | otherwise = prettyNonKeywordCanonicalResult result
 
 prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
@@ -102,11 +110,11 @@ prettyNonKeywordCanonicalResult result =
     CanonicalNaturalRange origin target -> prettyNaturalRange origin target
     CanonicalValuedNaturalRange origin target ->
       prettyValuedNaturalRange origin target
-    CanonicalNaturalType -> "Nat"
+    CanonicalNaturalType -> reservedSymbolDoc Reserved.NaturalTypeSymbol
     CanonicalIntegerRange origin target -> prettyIntegerRange origin target
     CanonicalValuedIntegerRange origin target ->
       prettyValuedIntegerRange origin target
-    CanonicalIntegerType -> "Int"
+    CanonicalIntegerType -> reservedSymbolDoc Reserved.IntegerTypeSymbol
     CanonicalEither left right -> prettyEither result left right
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
@@ -115,17 +123,39 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
+    CanonicalStringType -> reservedSymbolDoc Reserved.StringTypeSymbol
+    CanonicalToString source ->
+      pretty
+        (renderStringTemplate
+          renderCanonicalResult
+          compactCanonicalStringInterpolation
+          [StringTemplateInterpolation source])
+    CanonicalWeakToString source ->
+      pretty
+        (renderStringTemplate
+          renderCanonicalResult
+          compactCanonicalStringInterpolation
+          [StringTemplateWeakInterpolation source])
+    CanonicalStringTemplate template ->
+      case canonicalStringTemplateParts template of
+        Just parts ->
+          pretty
+            (renderStringTemplate
+              renderCanonicalResult
+              compactCanonicalStringInterpolation
+              parts)
+        Nothing -> prettyCanonicalResult template
     CanonicalIdentifierType identifierString typeAnnotation ->
-      pretty identifierString
+      pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalDependentIdentifierType familyKey typeAnnotation ->
-      pretty familyKey
+      pretty (renderIdentifierString familyKey)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
-        (pretty familyKey
+        (pretty (renderIdentifierString familyKey)
           <+> prettySourceSymbol IdentifierTypeOperator
           <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
@@ -155,6 +185,37 @@ prettyConcatenationMember :: CanonicalResult -> Doc annotation
 prettyConcatenationMember member@CanonicalSpecification {} =
   parens (prettyCanonicalResult member)
 prettyConcatenationMember member = prettyCanonicalResult member
+
+canonicalStringTemplateParts
+  :: CanonicalResult
+  -> Maybe [StringTemplatePart CanonicalResult]
+canonicalStringTemplateParts result =
+  case result of
+    CanonicalConcatenation members ->
+      concat <$> traverse canonicalStringTemplateParts members
+    CanonicalAsciiString value -> Just [StringTemplateLiteral value]
+    CanonicalToString source -> Just [StringTemplateInterpolation source]
+    CanonicalWeakToString source ->
+      Just [StringTemplateWeakInterpolation source]
+    CanonicalStringTemplate nested -> canonicalStringTemplateParts nested
+    _ -> Nothing
+
+compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
+compactCanonicalStringInterpolation result
+  | CanonicalEither operand missing <- result
+  , isNothingValue missing =
+      (<> sourceSymbol OptionalOperator)
+        <$> compactCanonicalStringInterpolation operand
+  | result == CanonicalStringType = reserved Reserved.StringTypeSymbol
+  | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
+  | result == CanonicalIntegerType = reserved Reserved.IntegerTypeSymbol
+  | isBooleanValue "False" 0 result = reserved Reserved.FalseSymbol
+  | isBooleanValue "True" 1 result = reserved Reserved.TrueSymbol
+  | isBooleanType result = reserved Reserved.BooleanTypeSymbol
+  | isNothingValue result = reserved Reserved.NothingSymbol
+  | otherwise = Nothing
+  where
+    reserved = Just . Reserved.reservedSymbolIdentifierString
 
 prettySpecificationOperand :: CanonicalResult -> Doc annotation
 prettySpecificationOperand operand =
@@ -188,7 +249,7 @@ prettyEither
   -> CanonicalResult
   -> Doc annotation
 prettyEither whole left right
-  | isBooleanType whole = "Bool"
+  | isBooleanType whole = reservedSymbolDoc Reserved.BooleanTypeSymbol
   | isNothingValue right = prettyOptional left
   | Just optionalIdentifier <- optionalIdentifierParts left right =
       optionalIdentifier
@@ -208,6 +269,7 @@ prettyOptional operand =
 isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
+isAtomicOptionalOperand CanonicalStringType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 
 optionalIdentifierParts
@@ -219,14 +281,14 @@ optionalIdentifierParts left right =
     CanonicalIdentifierType identifierString typeAnnotation
       | typeAnnotation == right ->
           Just
-            (pretty identifierString
+            (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
               <+> prettySourceSymbol IdentifierTypeOperator
               <+> prettyCanonicalResult typeAnnotation)
     CanonicalAssignment identifierString typeAnnotation givenValue
       | typeAnnotation == right ->
           Just
-            (pretty identifierString
+            (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
               <+> if typeAnnotation == givenValue
                 then
@@ -275,11 +337,11 @@ prettyAssignment
 prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then
-      pretty identifierString
+      pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult givenValue
     else
-      pretty identifierString
+      pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
         <+> prettySourceSymbol AssignmentOperator
@@ -292,8 +354,10 @@ prettyNaturalRange
 prettyNaturalRange origin target =
   case target of
     FiniteNaturalTarget final ->
-      "from " <> pretty origin <> " to " <> pretty final
-    UpwardsTarget -> "from " <> pretty origin <> " upwards"
+      rangeWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsTarget ->
+      rangeWord <> " " <> pretty origin <> " " <> upwardsWord
 
 prettyValuedNaturalRange
   :: Natural
@@ -302,8 +366,9 @@ prettyValuedNaturalRange
 prettyValuedNaturalRange origin target =
   case target of
     FiniteNaturalTarget final ->
-      "within " <> pretty origin <> " to " <> pretty final
-    UpwardsTarget -> "within " <> pretty origin <> " upwards"
+      fromWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsTarget -> fromWord <> " " <> pretty origin <> " " <> upwardsWord
 
 prettyIntegerRange
   :: Integer
@@ -312,10 +377,13 @@ prettyIntegerRange
 prettyIntegerRange origin target =
   case target of
     FiniteIntegerTarget final ->
-      "from " <> pretty origin <> " to " <> pretty final
-    UpwardsIntegerTarget -> "from " <> pretty origin <> " upwards"
-    DownwardsIntegerTarget -> "from " <> pretty origin <> " downwards"
-    AllIntegersTarget -> "Int"
+      rangeWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsIntegerTarget ->
+      rangeWord <> " " <> pretty origin <> " " <> upwardsWord
+    DownwardsIntegerTarget ->
+      rangeWord <> " " <> pretty origin <> " " <> downwardsWord
+    AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
 
 prettyValuedIntegerRange
   :: Integer
@@ -324,10 +392,26 @@ prettyValuedIntegerRange
 prettyValuedIntegerRange origin target =
   case target of
     FiniteIntegerTarget final ->
-      "within " <> pretty origin <> " to " <> pretty final
-    UpwardsIntegerTarget -> "within " <> pretty origin <> " upwards"
-    DownwardsIntegerTarget -> "within " <> pretty origin <> " downwards"
-    AllIntegersTarget -> "Int"
+      fromWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsIntegerTarget ->
+      fromWord <> " " <> pretty origin <> " " <> upwardsWord
+    DownwardsIntegerTarget ->
+      fromWord <> " " <> pretty origin <> " " <> downwardsWord
+    AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
+
+rangeWord, fromWord, toWord, upwardsWord, downwardsWord :: Doc annotation
+rangeWord = reservedSymbolDoc Reserved.RangeSymbol
+fromWord = reservedSymbolDoc Reserved.FromSymbol
+toWord = reservedWordDoc Reserved.ToWord
+upwardsWord = reservedWordDoc Reserved.UpwardsWord
+downwardsWord = reservedWordDoc Reserved.DownwardsWord
+
+reservedWordDoc :: Reserved.ReservedWord -> Doc annotation
+reservedWordDoc = pretty . Reserved.reservedWordText
+
+reservedSymbolDoc :: Reserved.ReservedSymbol -> Doc annotation
+reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"
@@ -357,11 +441,13 @@ rangeEndpoint value
 
 prettyFormulation :: Natural -> Doc annotation
 prettyFormulation 0 =
-  pretty ellipsisSymbol <> prettySourceSymbol ExponentiationOperator <> "0"
+  pretty ellipsisSymbol
+    <> prettySpacedSourceSymbol ExponentiationOperator
+    <> "0"
 prettyFormulation 1 = pretty ellipsisSymbol
 prettyFormulation level =
   pretty ellipsisSymbol
-    <> prettySourceSymbol ExponentiationOperator
+    <> prettySpacedSourceSymbol ExponentiationOperator
     <> pretty level
 
 prettyExplicit :: Ordinal -> Doc annotation
@@ -411,11 +497,11 @@ prettyOrdinal value =
         <> pretty coefficient
     renderTerm power 1 =
       pretty ellipsisSymbol
-        <> prettySourceSymbol ExponentiationOperator
+        <> prettySpacedSourceSymbol ExponentiationOperator
         <> pretty power
     renderTerm power coefficient =
       pretty ellipsisSymbol
-        <> prettySourceSymbol ExponentiationOperator
+        <> prettySpacedSourceSymbol ExponentiationOperator
         <> pretty power
         <> prettySpacedSourceSymbol MultiplicationOperator
         <> pretty coefficient

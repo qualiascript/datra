@@ -140,6 +140,24 @@ localizeInterpretingError reason =
       LocalizedMessage
         "the compiler cannot decide this Atlas-map federation operation"
         ["operation: " <> federationOperation operation]
+    NonInjectiveStringInterpolation ->
+      LocalizedMessage
+        "non-injective string interpolation"
+        ["distinct values in the interpolation can have the same string form"]
+    NoCanonicalStringConversion ->
+      LocalizedMessage
+        "value does not have a canonical string conversion"
+        [ "weakToString can render the value, but specification requires "
+            <> "an injective canonical conversion"
+        ]
+    EitherAlternativesNotDistinct ->
+      LocalizedMessage
+        "Either alternatives are not distinguishable Atlas maps"
+        ["the alternatives cannot be distinct members of one Atlas federation"]
+    AmbiguousStringTemplate ->
+      LocalizedMessage
+        "ambiguous string template"
+        ["the template does not map each source configuration to a unique string"]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "string contains a character outside the ASCII map"

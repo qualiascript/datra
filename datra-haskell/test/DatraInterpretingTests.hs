@@ -5,6 +5,7 @@ module DatraInterpretingTests (main) where
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart (..)
   )
 import DatraLanguage.AST.Syntax
   ( natural
@@ -89,6 +90,7 @@ testTree =
   testGroup "Datra interpreter"
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
+        , testCase "string templates" testStringTemplates
         , testCase "integers and integer ranges" testIntegers
         , testCase "booleans and Either" testBooleansAndEither
         , testCase "optionals and conditionals" testOptionalsAndConditionals
@@ -318,12 +320,12 @@ testIntegers = do
       "descending integer range"
       (AST.integerFromDownwards (-1)) $ \value ->
     assert "integer range rendering retains its signed bound and direction"
-      (renderInterpretedValue value == "from -1 downwards")
+      (renderInterpretedValue value == "range -1 downwards")
   expectValue
       "valued integer range"
       (AST.integerWithinTo (-3) 4) $ \value ->
     assert "valued integer ranges retain inclusive signed syntax"
-      (renderInterpretedValue value == "within -3 to 4")
+      (renderInterpretedValue value == "from -3 to 4")
   expectValue "integer type" AST.integerType $ \value ->
     assert "Int is the full Nat-product-with-two federation"
       (renderInterpretedValue value == "Int")
@@ -340,7 +342,7 @@ testIntegers = do
           ~> AST.integerFromTo (-3) 2
       ) $ \value ->
     assert "integer ranges select contiguous signed sequences"
-      (renderInterpretedValue value == "(-2; -1; 0) ~> from -3 to 2")
+      (renderInterpretedValue value == "(-2; -1; 0) ~> range -3 to 2")
   expectValue
       "valued integer subfederation composition"
       ( (AST.minus (natural 2) ~> AST.integerWithinTo (-2) 3)
@@ -389,6 +391,18 @@ testLiteralsAndArithmetic = do
         && interpretedMapCardinality (interpretedMap value) == 0
         && renderInterpretedValue value == "\"\""
       )
+  expectValue "String type" AST.stringType $ \value ->
+    assert "String renders as the ASCII string federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "String"
+      )
+  expectValue
+      "string membership"
+      (AST.equal
+        (AST.subfederation (AST.asciiString "my_string") AST.stringType)
+        (AST.boolean True)) $ \value ->
+    assert "a string literal is a member of String"
+      (renderInterpretedValue value == "true")
   expectValue "natural literal" (natural 10) $ \value ->
     assert "naturals remain typed rank-one explicit values"
       ( interpretedValueKind value == NaturalValueKind
@@ -406,6 +420,18 @@ testLiteralsAndArithmetic = do
     assert "natural arithmetic evaluates through ordinal operators"
       (interpretedExplicitOrdinal value == Just (1, finiteOrdinal 7))
   expectValue
+      "empty-map numerical coercion"
+      (AST.equal ((AST.+) AST.emptyMap (natural 3)) (natural 3)) $ \value ->
+    assert "the total empty map coerces to numerical zero"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "Nothing numerical coercion chain"
+      (AST.equal
+        ((AST.+) AST.nothing (natural 3))
+        (natural 3)) $ \value ->
+    assert "nothing follows its identifier string and unit map to zero"
+      (renderInterpretedValue value == "true")
+  expectValue
       "Ellipsis soft coercion"
       ((AST.+) (...) (natural 0)) $ \value ->
     assert "adding zero coerces Ellipsis to an explicit rank-two omega"
@@ -415,6 +441,307 @@ testLiteralsAndArithmetic = do
       ((AST.*) (...) (...)) $ \value ->
     assert "multiplying two Ellipsis formulations produces level two"
       (interpretedFormulationLevel value == Just 2)
+  testRemainingLiterals
+
+testStringTemplates :: IO ()
+testStringTemplates = do
+  let template = StringTemplate
+        [ StringTemplateLiteral "example"
+        , StringTemplateInterpolation
+            (Addition (natural 2) (natural 2))
+        ]
+  expectValue "arithmetic interpolation" template $ \value ->
+    assert "a fully total template collapses to one ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && Types.interpretedValueHasTotalMap value
+        && renderInterpretedValue value == "$example4"
+      )
+  expectValue
+      "numeric interpolation"
+      (StringTemplate [StringTemplateInterpolation (natural 4)]) $ \value ->
+    assert "numeric interpolation produces a string rather than an integer"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedInteger value == Nothing
+        && renderInterpretedValue value == "\"4\""
+      )
+  expectValue
+      "negative interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation (Minus (natural 10))]) $ \value ->
+    assert "compound signed values retain their canonical minus spelling"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "\"-10\""
+      )
+  expectValue
+      "string interpolation"
+      (StringTemplate
+        [ StringTemplateLiteral "hello, "
+        , StringTemplateInterpolation (AsciiStringLiteral "world")
+        , StringTemplateLiteral "!"
+        ]) $ \value ->
+    assert "toString strips the interpolated string's source delimiter"
+      (renderInterpretedValue value == "\"hello, world!\"")
+  expectValue
+      "empty string interpolation"
+      (StringTemplate
+        [ StringTemplateLiteral "left"
+        , StringTemplateInterpolation (AsciiStringLiteral "")
+        , StringTemplateLiteral "right"
+        ]) $ \value ->
+    assert "empty interpolated strings are concatenation identities"
+      (renderInterpretedValue value == "$leftright")
+  expectValue
+      "map interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation
+          (AtlasMap [natural 1, natural 2])]) $ \value ->
+    assert "total maps use their canonical pretty spelling"
+      (renderInterpretedValue value == "\"(1; 2)\"")
+  expectValue
+      "Boolean interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation (BooleanLiteral True)]) $ \value ->
+    assert "non-string total values use canonical source text"
+      (renderInterpretedValue value == "$true")
+  expectValue
+      "single non-total interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation NaturalType]) $ \value ->
+    assert "a non-total hole remains a non-total string federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+        && renderInterpretedValue value == "\"$Nat\""
+      )
+  expectValue
+      "fixed prefix and suffix around a non-total interpolation"
+      (StringTemplate
+        [ StringTemplateLiteral "n="
+        , StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral "."
+        ]) $ \value ->
+    assert "singletons concatenate with a non-total string federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+      )
+  expectValue
+      "delimiter-separated non-total interpolations"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "a delimiter excluded from Nat establishes a unique boundary"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+      )
+  let separatedNaturals =
+        StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateLiteral ":"
+          , StringTemplateInterpolation NaturalType
+          ]
+  expectValue
+      "\"12:3\" ~> \"$Nat:$Nat\" terminates"
+      (AsciiStringLiteral "12:3" ~> separatedNaturals) $ \value ->
+    assert "a concrete delimited string selects both natural fields"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "\"12:3\" ~> \"$Nat:$Nat\""
+      )
+  assert "an invalid natural field is finitely refuted"
+    (case interpretExpressionReason
+        (AsciiStringLiteral "12:x" ~> separatedNaturals) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSpecificationHasNoMatchingMember) -> True
+      _ -> False)
+  expectValue
+      "matching delimited string-template subfederation"
+      (AST.subfederation separatedNaturals separatedNaturals) $ \value ->
+    assert "string-template inclusion follows the same component structure"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "delimited string template is a String subfederation"
+      (AST.subfederation separatedNaturals StringType) $ \value ->
+    assert "every member produced by the template is a string"
+      (renderInterpretedValue value == "true")
+  let booleanTemplate =
+        StringTemplate [StringTemplateInterpolation BooleanType]
+      adjacentBooleans =
+        StringTemplate
+          [ StringTemplateInterpolation BooleanType
+          , StringTemplateInterpolation BooleanType
+          ]
+      optionalIntegerTemplate =
+        StringTemplate
+          [StringTemplateInterpolation (OptionalType IntegerType)]
+  expectValue
+      "\"true\" ~> \"$Bool\""
+      (AsciiStringLiteral "true" ~> booleanTemplate) $ \value ->
+    assert "a Boolean canonical spelling selects its Boolean member"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "$true ~> \"$Bool\""
+      )
+  expectValue
+      "\"falsetrue\" ~> \"$Bool$Bool\""
+      (AsciiStringLiteral "falsetrue" ~> adjacentBooleans) $ \value ->
+    assert "adjacent fixed Boolean spellings have a unique split"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "$falsetrue ~> \"$Bool$Bool\""
+      )
+  expectValue
+      "\"nothing\" ~> \"$Int?\""
+      (AsciiStringLiteral "nothing" ~> optionalIntegerTemplate) $ \value ->
+    assert "the optional missing constructor selects through toString"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "$nothing ~> \"$Int?\""
+      )
+  expectValue
+      "non-digit delimiter between natural interpolations"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral "-"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "a dash also cannot occur in Nat's rendered members"
+      (not (Types.interpretedValueHasTotalMap value))
+  expectValue
+      "natural then arbitrary string separated by a delimiter"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation StringType
+        ]) $ \value ->
+    assert "a delimiter excluded from the left side fixes the first split"
+      (not (Types.interpretedValueHasTotalMap value))
+  expectValue
+      "arbitrary string then natural separated by a delimiter"
+      (StringTemplate
+        [ StringTemplateInterpolation StringType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "a delimiter excluded from the right side fixes the final split"
+      (not (Types.interpretedValueHasTotalMap value))
+  assert "a possible natural digit is not a safe delimiter"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateLiteral "1"
+          , StringTemplateInterpolation NaturalType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  expectValue
+      "three delimiter-separated non-total interpolations"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "the final-delimiter proof composes for repeated fields"
+      (not (Types.interpretedValueHasTotalMap value))
+  expectValue
+      "nested non-total string template interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation
+          (StringTemplate
+            [ StringTemplateLiteral "n="
+            , StringTemplateInterpolation NaturalType
+            ])]) $ \value ->
+    assert "toString is identity on an already converted template federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+      )
+  assert "adjacent Nat interpolations have a dedicated ambiguity error"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateInterpolation NaturalType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  assert "adjacent String interpolations are ambiguous"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation StringType
+          , StringTemplateInterpolation StringType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  assert "a delimiter cannot disambiguate arbitrary String values"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation StringType
+          , StringTemplateLiteral ":"
+          , StringTemplateInterpolation StringType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  assert "strong interpolation rejects non-injective toString"
+    (case interpretExpressionReason
+        (StringTemplate
+          [StringTemplateInterpolation
+            (UnsafeEither NaturalType NaturalType)]) of
+      Left NonInjectiveStringInterpolation -> True
+      _ -> False)
+  -- TODO: Once Datra functions exist, use a function as the naturally
+  -- non-injective weakToString fixture and remove UnsafeEither from the AST.
+  expectValue
+      "weak interpolation admits a non-injective toString"
+      (StringTemplate
+        [StringTemplateWeakInterpolation
+          (UnsafeEither NaturalType NaturalType)]) $ \value ->
+    assert "the weak form retains its non-invertible canonical marker"
+      ( not (Types.interpretedValueHasTotalMap value)
+        && renderInterpretedValue value == "\"$!(Nat | Nat)\""
+      )
+  expectValue
+      "weak interpolation normalizes when toString is injective"
+      (StringTemplate [StringTemplateWeakInterpolation NaturalType]) $ \value ->
+    assert "the proven strong form is canonical"
+      (renderInterpretedValue value == "\"$Nat\"")
+  expectValue
+      "weak and strong interpolation agree when toString is injective"
+      (AST.equal
+        (StringTemplate [StringTemplateWeakInterpolation NaturalType])
+        (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
+    assert "$!x equals $x when the strong proof exists"
+      (renderInterpretedValue value == "true")
+  assert "weak interpolation is explicitly rejected by specification"
+    (case interpretExpressionReason
+        (AsciiStringLiteral "1" ~>
+          StringTemplate
+            [StringTemplateWeakInterpolation
+              (UnsafeEither NaturalType NaturalType)]) of
+      Left NoCanonicalStringConversion -> True
+      _ -> False)
+  expectValue
+      "interpolated output is not reparsed"
+      (StringTemplate
+        [ StringTemplateInterpolation (AsciiStringLiteral "$4")
+        , StringTemplateInterpolation (AsciiStringLiteral "#text")
+        ]) $ \value ->
+    assert "dollar and hash characters produced by holes remain data"
+      (renderInterpretedValue value == "\"\\$4\\#text\"")
+  expectValue "programmatic empty template" (StringTemplate []) $ \value ->
+    assert "an empty template is the empty total ASCII string"
+      ( Types.interpretedValueHasTotalMap value
+        && renderInterpretedValue value == "\"\""
+      )
+  assert "errors raised inside a hole are not reported as ambiguity"
+    (case interpretExpressionReason
+        (StringTemplate
+          [StringTemplateInterpolation
+            (Addition (AsciiStringLiteral "x") (natural 1))]) of
+      Left (ExpectedNumericalOperand LeftOperand AsciiStringValueKind) -> True
+      _ -> False)
+
+testRemainingLiterals :: IO ()
+testRemainingLiterals = do
   expectValue
       "zero formulation exponent"
       ((AST.^) (...) (natural 0)) $ \value ->
@@ -446,6 +773,13 @@ testBooleansAndEither = do
       ( renderInterpretedValue value == "Bool"
         && interpretedValueKind value == EitherValueKind
       )
+  expectValue
+      "Boolean numerical coercion"
+      (AST.equal
+        ((AST.+) (AST.boolean True) (AST.boolean True))
+        (natural 2)) $ \value ->
+    assert "true + true follows the shared named-value coercion to 2"
+      (renderInterpretedValue value == "true")
   expectValue
       "surface Boolean definition"
       (AST.equal
@@ -489,12 +823,55 @@ testBooleansAndEither = do
     assert "mutual subfederation is true"
       (renderInterpretedValue value == "true")
   expectValue
-      "unequal tagged federations"
+      "Either federation order is irrelevant"
       (AST.equal
         (AST.eitherType (natural 0) (natural 1))
         (AST.eitherType (natural 1) (natural 0))) $ \value ->
-    assert "Either injection order distinguishes equal-shaped maps"
-      (renderInterpretedValue value == "false")
+    assert "the same Atlas maps form the same federation in either order"
+      (renderInterpretedValue value == "true")
+  assert "Either rejects duplicate Atlas-map alternatives"
+    (case interpretExpressionReason
+        (AST.eitherType AST.naturalType AST.naturalType) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  assert "Either rejects a member overlapping a federation"
+    (case interpretExpressionReason
+        (AST.eitherType (natural 0) AST.naturalType) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  assert "Either rejects a nested duplicate alternative"
+    (case interpretExpressionReason
+        (AST.eitherType
+          (AST.eitherType (natural 0) (natural 1))
+          (natural 1)) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  expectValue
+      "identifier alternatives distinguish otherwise equal types"
+      (AST.eitherType
+        (AST.identifierType "x" AST.naturalType)
+        (AST.identifierType "y" AST.naturalType)) $ \value ->
+    assert "identifier Atlas maps remain distinct federation members"
+      (renderInterpretedValue value == "x : Nat | y : Nat")
+  expectValue
+      "disjoint primitive families form an Either federation"
+      (AST.eitherType AST.naturalType StringType) $ \value ->
+    assert "numeric and string Atlas maps are distinguishable"
+      (renderInterpretedValue value == "Nat | String")
+  assert "the same identifier does not distinguish overlapping alternatives"
+    (case interpretExpressionReason
+        (AST.eitherType
+          (AST.identifierType "x" (natural 0))
+          (AST.identifierType "x" AST.naturalType)) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  expectValue
+      "Either source branches are included as federation members"
+      (AST.subfederation
+        (AST.eitherType (natural 0) (natural 1))
+        AST.naturalType) $ \value ->
+    assert "a union is included when each alternative is in the target"
+      (renderInterpretedValue value == "true")
   expectValue
       "associative Either"
       (AST.equal
@@ -768,7 +1145,7 @@ testCombinatorialNumericalSystems = do
           ~> largeRange
       ) $ \value ->
     assert "a selected inner-range member widens through its super-range"
-      (renderInterpretedValue value == "-1 ~> within -5 to 5")
+      (renderInterpretedValue value == "-1 ~> from -5 to 5")
   expectValue
       "descending range through optional Int"
       ( (AST.minus (natural 1)
@@ -790,7 +1167,7 @@ testCombinatorialNumericalSystems = do
       ) $ \value ->
     assert "range equality can guard signed arithmetic and optional subtyping"
       (renderInterpretedValue value
-        == "7 ~> (within -10 to 10)?")
+        == "7 ~> (from -10 to 10)?")
   expectValue
       "optional numerical identifier equality"
       (AST.equal optionalIdentifierRange optionalIdentifierRange) $ \value ->
@@ -809,7 +1186,7 @@ testRanges = do
               omega
               (finiteOrdinal 2)
               (GivenTarget (finiteOrdinal 6)))
-        && renderInterpretedValue value == "from 2 to 5"
+        && renderInterpretedValue value == "range 2 to 5"
       )
   expectValue
       "descending inclusive natural range"
@@ -821,7 +1198,7 @@ testRanges = do
               omega
               (finiteOrdinal 5)
               MinusSign)
-        && renderInterpretedValue value == "from 5 to 0"
+        && renderInterpretedValue value == "range 5 to 0"
       )
   expectValue
       "upwards natural range"
@@ -833,30 +1210,30 @@ testRanges = do
               omega
               (finiteOrdinal 2)
               PlusSign)
-        && renderInterpretedValue value == "from 2 upwards"
+        && renderInterpretedValue value == "range 2 upwards"
       )
   expectValue
       "inclusive valued natural range"
       (ValuedNaturalRange 2 5) $ \value ->
-    assert "valued natural ranges retain within syntax"
+    assert "valued natural ranges retain from syntax"
       ( interpretedRangeDescription value
           == Just
             (SuperEllipsisRangeDescription
               omega
               (finiteOrdinal 2)
               (GivenTarget (finiteOrdinal 6)))
-        && renderInterpretedValue value == "within 2 to 5"
+        && renderInterpretedValue value == "from 2 to 5"
       )
   expectValue
       "descending valued natural range"
       (ValuedNaturalRange 5 2) $ \value ->
-    assert "descending valued ranges retain within syntax"
-      (renderInterpretedValue value == "within 5 to 2")
+    assert "descending valued ranges retain from syntax"
+      (renderInterpretedValue value == "from 5 to 2")
   expectValue
       "upwards valued natural range"
       (ValuedNaturalRangeUpwards 2) $ \value ->
-    assert "upwards valued ranges retain within syntax"
-      (renderInterpretedValue value == "within 2 upwards")
+    assert "upwards valued ranges retain from syntax"
+      (renderInterpretedValue value == "from 2 upwards")
   expectValue "NaturalType" NaturalType $ \value ->
     assert "Nat is canonically distinct from its expanded synonym"
       ( interpretedRangeDescription value
@@ -932,7 +1309,7 @@ testCanonicalResults = do
         ((<..>) (natural 2) (natural 5))
         ((<..>) (natural 5) levelTwoFormulation)) $ \value ->
     assert "contiguous cross-rank ranges widen to the larger range"
-      (renderInterpretedValue value == "2..(...^2)")
+      (renderInterpretedValue value == "2..(... ^ 2)")
   expectValue
       "disjoint ranges"
       ((<.>)
@@ -986,12 +1363,12 @@ testRendering = do
       "Dot formulation"
       ((AST.^) (...) (natural 0)) $ \value ->
     assert "Dot uses the agreed formulation syntax"
-      (renderInterpretedValue value == "...^0")
+      (renderInterpretedValue value == "... ^ 0")
   expectValue
       "second super-ellipsis formulation"
       ((AST.^) (...) (natural 2)) $ \value ->
     assert "higher formulations render by kind"
-      (renderInterpretedValue value == "...^2")
+      (renderInterpretedValue value == "... ^ 2")
   expectValue
       "zero multiplication"
       ((AST.+)
@@ -1147,7 +1524,7 @@ testAtlasMapFederations = do
       "a structured map retains NaturalRange syntax"
       (AtlasMap [natural 2, NaturalRange 2 10]) $ \value ->
     assert "NaturalRange structure survives a sequential product"
-      (renderInterpretedValue value == "(2; from 2 to 10)")
+      (renderInterpretedValue value == "(2; range 2 to 10)")
   let coalitionSequence =
         AtlasMap [ValuedIntegerRange 1 3, ValuedIntegerRange 4 6]
       coalitionConcatenation =
@@ -1157,7 +1534,7 @@ testAtlasMapFederations = do
       coalitionSequence $ \value ->
     assert "coalition components canonicalize with commas"
       (renderInterpretedValue value
-        == "within 1 to 3, within 4 to 6")
+        == "from 1 to 3, from 4 to 6")
   expectValue
       "a coalition sequence equals its concatenation"
       (AST.equal coalitionSequence coalitionConcatenation) $ \value ->
@@ -1168,19 +1545,19 @@ testAtlasMapFederations = do
       ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
     assert "disjoint finite NaturalRanges form a federation"
       (renderInterpretedValue value
-        == "from 2 to 5, from 6 to 9")
+        == "range 2 to 5, range 6 to 9")
   expectValue
       "descending disjoint NaturalRange concatenation"
       ((<.>) (NaturalRange 9 6) (NaturalRange 5 2)) $ \value ->
     assert "NaturalRange disjointness ignores traversal direction"
       (renderInterpretedValue value
-        == "from 9 to 6, from 5 to 2")
+        == "range 9 to 6, range 5 to 2")
   expectValue
       "finite then disjoint upwards NaturalRange"
       ((<.>) (NaturalRange 2 5) (NaturalRangeUpwards 6)) $ \value ->
     assert "a finite domain below an upwards domain is disjoint"
       (renderInterpretedValue value
-        == "from 2 to 5, from 6 upwards")
+        == "range 2 to 5, range 6 upwards")
   assert "overlapping finite NaturalRanges have a collision witness"
     (case interpretExpressionReason
         ((<.>) (NaturalRange 2 5) (NaturalRange 3 6)) of
@@ -1209,7 +1586,7 @@ testAtlasMapFederations = do
       ((<.>) (ValuedNaturalRange 2 5) (ValuedNaturalRange 6 9)) $ \value ->
     assert "disjoint valued ranges form a federation"
       (renderInterpretedValue value
-        == "within 2 to 5, within 6 to 9")
+        == "from 2 to 5, from 6 to 9")
   assert "overlapping ValuedNaturalRanges have a collision witness"
     (case interpretExpressionReason
         ((<.>) (ValuedNaturalRange 2 5) (ValuedNaturalRange 4 8)) of
@@ -1311,7 +1688,7 @@ testAccess = do
         ((<.>) (ValuedNaturalRange 1 3) (NaturalRange 5 20))
         (natural 0)) $ \value ->
     assert "a fixed-width coalition remains one accessible region"
-      (renderInterpretedValue value == "within 1 to 3")
+      (renderInterpretedValue value == "from 1 to 3")
   assert "access crossing an uncertain concatenation suffix is undecidable"
     (case interpretExpressionReason
         ((<@>)
@@ -1334,23 +1711,23 @@ testAccess = do
       ((<@>) valuedCoalitionSequence (NaturalRangeUpwards 0)) $ \value ->
     assert "open access preserves the valued-range coalition as one position"
       ( interpretedMapFinalOrderType (interpretedMap value) == finiteOrdinal 4
-        && renderInterpretedValue value == "(2; 3; within 1 to 20; 5)"
+        && renderInterpretedValue value == "(2; 3; from 1 to 20; 5)"
       )
   expectValue
       "bounded access slices a sequence of coalitions"
       ((<@>) valuedCoalitionSequence (NaturalRange 1 2)) $ \value ->
     assert "bounded access retains the selected valued-range coalition"
-      (renderInterpretedValue value == "(3; within 1 to 20)")
+      (renderInterpretedValue value == "(3; from 1 to 20)")
   expectValue
       "singleton access selects a valued-range coalition"
       ((<@>) valuedCoalitionSequence (natural 2)) $ \value ->
     assert "singleton access returns the selected coalition"
-      (renderInterpretedValue value == "within 1 to 20")
+      (renderInterpretedValue value == "from 1 to 20")
   expectValue
       "a valued range is its own coalition"
       ((<@>) (ValuedNaturalRange 1 20) (NaturalRangeUpwards 0)) $ \value ->
     assert "access preserves a standalone valued-range coalition"
-      (renderInterpretedValue value == "within 1 to 20")
+      (renderInterpretedValue value == "from 1 to 20")
   expectRangeAccess
     "natural upwards access canonicalizes a bounded source range"
     RangeValueKind
@@ -1554,7 +1931,7 @@ testAccess = do
       ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
     assert "a cofinal mixed-rank selection canonicalizes as a formulation"
       ( interpretedValueKind value == FormulationValueKind
-        && renderInterpretedValue value == "...^2"
+        && renderInterpretedValue value == "... ^ 2"
       )
   expectValue
       "empty access"
@@ -1607,19 +1984,19 @@ testAccess = do
       "NaturalRange accessed by NaturalRange"
       ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
     assert "NaturalRange access returns a NaturalRange"
-      (renderInterpretedValue value == "from 3 to 10")
+      (renderInterpretedValue value == "range 3 to 10")
   expectValue
       "upwards NaturalRange accessed by NaturalRange"
       ((<@>)
         (NaturalRangeUpwards 2)
         (NaturalRangeUpwards 5)) $ \value ->
     assert "open NaturalRange access stays open"
-      (renderInterpretedValue value == "from 7 upwards")
+      (renderInterpretedValue value == "range 7 upwards")
   expectValue
       "descending NaturalRange accessed in reverse"
       ((<@>) (NaturalRange 10 2) (NaturalRange 3 1)) $ \value ->
     assert "NaturalRange access composes traversal directions"
-      (renderInterpretedValue value == "from 7 to 9")
+      (renderInterpretedValue value == "range 7 to 9")
   expectValue
       "NaturalRange access with no fitting member"
       ((<@>)
@@ -1673,7 +2050,7 @@ testAccess = do
         ((<..>) (natural 0) (natural 2))) $ \value ->
     assert "sequence access never flattens operand federations"
       (renderInterpretedValue value
-        == "(from 2 to 5; from 8 to 10)")
+        == "(range 2 to 5; range 8 to 10)")
 
 testSpecification :: IO ()
 testSpecification = do
@@ -1788,7 +2165,7 @@ testSpecification = do
     "concatenated federation partitions and selects members"
     compositeConcatenationSource
     compositeConcatenationTarget
-    "($a; 3; 4; 5) ~> $a, from 1 to 10"
+    "($a; 3; 4; 5) ~> $a, range 1 to 10"
   expectValue
       "expansion federation selects members pointwise"
       ((~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
@@ -1810,7 +2187,7 @@ testSpecification = do
         compositeConcatenationWidenedTarget) $ \value ->
     assert "concatenation composition retains the final target"
       (renderInterpretedValue value
-        == "($a; 3; 4; 5) ~> $a, from 0 upwards")
+        == "($a; 3; 4; 5) ~> $a, range 0 upwards")
   expectValue
       "expansion subfederations compose pointwise"
       ((~>)
@@ -1831,42 +2208,42 @@ testSpecification = do
     "bounded ascending range specification"
     boundedRange
     (NaturalRange 0 10)
-    "2..5 ~> from 0 to 10"
+    "2..5 ~> range 0 to 10"
   expectSpecification
     "bounded descending range specification"
     ((<..>) (natural 5) (natural 2))
     (NaturalRange 10 0)
-    "5..2 ~> from 10 to 0"
+    "5..2 ~> range 10 to 0"
   expectSpecification
     "open range specification"
     ((..+) (natural 2))
     (NaturalRangeUpwards 0)
-    "2.. ~> from 0 upwards"
+    "2.. ~> range 0 upwards"
   expectSpecification
     "empty range specification"
     ((<..>) (natural 0) (natural 0))
     (NaturalRange 5 8)
-    "0..0 ~> from 5 to 8"
+    "0..0 ~> range 5 to 8"
   expectSpecification
     "flat total Atlas map specification"
     (AtlasMap [natural 2, natural 3, natural 4])
     (NaturalRange 0 10)
-    "(2; 3; 4) ~> from 0 to 10"
+    "(2; 3; 4) ~> range 0 to 10"
   expectSpecification
     "EllipsisNatural specification into a ValuedNaturalRange"
     (natural 2)
     (ValuedNaturalRange 0 5)
-    "2 ~> within 0 to 5"
+    "2 ~> from 0 to 5"
   expectSpecification
     "computed EllipsisNatural specification into a ValuedNaturalRange"
     ((AST.+) (natural 1) (natural 1))
     (ValuedNaturalRange 0 5)
-    "2 ~> within 0 to 5"
+    "2 ~> from 0 to 5"
   expectSpecification
     "EllipsisNatural specification into a descending ValuedNaturalRange"
     (natural 2)
     (ValuedNaturalRange 5 0)
-    "2 ~> within 5 to 0"
+    "2 ~> from 5 to 0"
   expectSpecification
     "EllipsisNatural specification into Nat"
     (natural 2)
@@ -1885,7 +2262,7 @@ testSpecification = do
         ((~>) (natural 2) (ValuedNaturalRange 2 5))
         (ValuedNaturalRange 5 0)) $ \value ->
     assert "valued subfederation composition retains the final direction"
-      (renderInterpretedValue value == "2 ~> within 5 to 0")
+      (renderInterpretedValue value == "2 ~> from 5 to 0")
   expectValue
       "NaturalRange subfederation specification composition"
       ((~>)
@@ -1895,7 +2272,7 @@ testSpecification = do
         (NaturalRange 2 8)) $ \value ->
     assert "composition erases the intermediate subfederation"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "2..3 ~> from 2 to 8"
+        && renderInterpretedValue value == "2..3 ~> range 2 to 8"
       )
   expectValue
       "finite NaturalRange subfederation of an upwards NaturalRange"
@@ -1905,7 +2282,7 @@ testSpecification = do
           (NaturalRange 2 5))
         (NaturalRangeUpwards 0)) $ \value ->
     assert "finite-to-upwards composition is canonicalized"
-      (renderInterpretedValue value == "3..5 ~> from 0 upwards")
+      (renderInterpretedValue value == "3..5 ~> range 0 upwards")
   expectValue
       "upwards NaturalRange subfederation composition"
       ((~>)
@@ -1914,7 +2291,7 @@ testSpecification = do
           (NaturalRangeUpwards 2))
         (NaturalRangeUpwards 0)) $ \value ->
     assert "upwards-to-upwards composition is canonicalized"
-      (renderInterpretedValue value == "3.. ~> from 0 upwards")
+      (renderInterpretedValue value == "3.. ~> range 0 upwards")
   expectValue
       "descending NaturalRange subfederation composition"
       ((~>)
@@ -1923,7 +2300,7 @@ testSpecification = do
           (NaturalRange 6 1))
         (NaturalRange 8 0)) $ \value ->
     assert "descending composition preserves the original source"
-      (renderInterpretedValue value == "5..2 ~> from 8 to 0")
+      (renderInterpretedValue value == "5..2 ~> range 8 to 0")
   expectValue
       "singleton NaturalRange subfederation changes direction"
       ((~>)
@@ -1932,7 +2309,7 @@ testSpecification = do
           (NaturalRange 2 2))
         (NaturalRange 5 0)) $ \value ->
     assert "a singleton federation belongs to either direction"
-      (renderInterpretedValue value == "2..3 ~> from 5 to 0")
+      (renderInterpretedValue value == "2..3 ~> range 5 to 0")
   expectNoMember
     "range outside the target NaturalRange is a counterexample"
     ((<..>) (natural 2) (natural 5))
@@ -2036,6 +2413,11 @@ testIdentifiers = do
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
       valueUnit = identifier "Value" (AtlasMap [])
+  expectValue
+      "quoted reserved identifier"
+      (identifier "String" NaturalType) $ \value ->
+    assert "reserved identifier names render with their full-string spelling"
+      (renderInterpretedValue value == "\"String\" : Nat")
   expectValue "unit identifier" valueUnit $ \value ->
     assert "a unit identifier canonicalizes to its identifier string"
       ( interpretedValueKind value == AsciiStringValueKind
@@ -2066,6 +2448,44 @@ testIdentifiers = do
       ( interpretedValueKind value == IdentifierTypeValueKind
         && renderInterpretedValue value == "x : 5"
       )
+  expectValue
+      "total identifier addition"
+      (AST.equal
+        ((AST.+) xFive (identifier "y" (natural 10)))
+        (natural 15)) $ \value ->
+    assert "total numerical identifier maps participate in addition"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "total identifiers in finite numerical operators"
+      (AST.equal
+        ((AST.*)
+          ((AST.-) (identifier "y" (natural 10)) xFive)
+          (identifier "z" (natural 2)))
+        (natural 10)) $ \value ->
+    assert "subtraction and multiplication share identifier coercion"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "total identifiers in exponentiation"
+      (AST.equal
+        ((AST.^) xFive (identifier "power" (natural 2)))
+        (natural 25)) $ \value ->
+    assert "exponentiation shares identifier coercion"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "total identifier unary minus"
+      (AST.equal (AST.minus xFive) (AST.minus (natural 5))) $ \value ->
+    assert "unary minus shares identifier coercion"
+      (renderInterpretedValue value == "true")
+  let omegaSquared = (AST.^) (...) (natural 2)
+  expectValue
+      "transfinite identifier addition"
+      (AST.equal
+        ((AST.+)
+          (identifier "x" omegaSquared)
+          (identifier "y" (natural 1)))
+        ((AST.+) omegaSquared (natural 1))) $ \value ->
+    assert "higher-rank numerical identifiers retain ordinal arithmetic"
+      (renderInterpretedValue value == "true")
   expectValue
       "identity assignment specifies its total identifier"
       ((~>) xFiveAssignment xFive) $ \value ->
@@ -2129,7 +2549,7 @@ testIdentifiers = do
       "assignment chain widens through nested valued ranges"
       ((~>) ((~>) ((~>) d28 d25To35) d20To40) d0To100) $ \value ->
     assert "nested assignment specifications retain the original value"
-      (renderInterpretedValue value == "d : within 0 to 100 := 28")
+      (renderInterpretedValue value == "d : from 0 to 100 := 28")
   expectValue
       "assignment identifier-string access"
       ((<@>) xAssignment (natural 0)) $ \value ->
@@ -2195,7 +2615,7 @@ testIdentifiers = do
           (identifier "x" (natural 12))
           (identifier "x" (ValuedNaturalRange 1 10))) of
       Left (GivenValueOutsideTypeAnnotation expected given) ->
-        expected == "within 1 to 10" && given == "12"
+        expected == "from 1 to 10" && given == "12"
       _ -> False)
   assert "a failed annotation widening reports the intermediate annotation"
     (case interpretExpressionReason
@@ -2205,8 +2625,8 @@ testIdentifiers = do
             (identifier "x" (ValuedNaturalRange 5 20)))
           (identifier "x" (ValuedNaturalRange 1 10))) of
       Left (IntermediateTypeAnnotationOutsideTarget expected given) ->
-        expected == "within 1 to 10"
-          && given == "within 5 to 20"
+        expected == "from 1 to 10"
+          && given == "from 5 to 20"
       _ -> False)
   assert "an assignment outside its annotation gets a direct type error"
     (case interpretExpressionReason
@@ -2267,8 +2687,15 @@ testTypedRejections = do
       _ -> False)
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
-        ((AST.+) (AtlasMap []) (natural 1)) of
+        ((AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)) of
       Left (ExpectedNumericalOperand LeftOperand MapValueKind) -> True
+      _ -> False)
+  assert "non-total identifiers are rejected as numerical operands"
+    (case interpretExpressionReason
+        ((AST.+) (AST.identifierType "x" NaturalType) (natural 1)) of
+      Left
+          (ExpectedNumericalOperand
+            LeftOperand IdentifierTypeValueKind) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretExpressionReason
@@ -2335,7 +2762,8 @@ testLocatedRejection = do
           "<test>"
           (SourcePosition 4 1 5)
           (SourcePosition 10 1 11)
-      expressionValue = (AST.+) (AtlasMap []) (natural 1)
+      expressionValue =
+        (AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)
   assert "typed interpretation errors retain their supplied source span"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left
@@ -2357,6 +2785,27 @@ testLocatedRejection = do
         renderDatraError Romanian valueError
           == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
               <> "  tipul efectiv al valorii: hartă"
+      Right _ -> False)
+  let ambiguousTemplate =
+        StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateInterpolation NaturalType
+          ]
+  assert "string-template ambiguity has a specific English diagnostic"
+    (case interpretLocatedExpression
+        (Located sourceSpan ambiguousTemplate) of
+      Left valueError ->
+        renderDatraError English valueError
+          == "<test>:1:5: ambiguous string template\n"
+              <> "  the template does not map each source configuration to a unique string"
+      Right _ -> False)
+  assert "string-template ambiguity has a specific Romanian diagnostic"
+    (case interpretLocatedExpression
+        (Located sourceSpan ambiguousTemplate) of
+      Left valueError ->
+        renderDatraError Romanian valueError
+          == "<test>:1:5: șablon de șir ambiguu\n"
+              <> "  șablonul nu mapează fiecare configurație sursă la un șir unic"
       Right _ -> False)
   let invalidAssignment =
         IdentifierOperation
@@ -2408,7 +2857,7 @@ testLocatedRejection = do
       Left valueError ->
         renderDatraError English valueError
           == "<test>:1:5: the given value is outside the type annotation\n"
-              <> "  expected: within 1 to 10\n"
+              <> "  expected: from 1 to 10\n"
               <> "  given: 12"
       Right _ -> False)
   let incompatibleIntermediateAnnotation =
@@ -2432,8 +2881,8 @@ testLocatedRejection = do
       Left valueError ->
         renderDatraError English valueError
           == "<test>:1:5: the intermediate type annotation does not fit in the target type annotation\n"
-              <> "  expected: within 1 to 10\n"
-              <> "  given: within 5 to 20"
+              <> "  expected: from 1 to 10\n"
+              <> "  given: from 5 to 20"
       Right _ -> False)
   let overlapExpression =
         (<@>)

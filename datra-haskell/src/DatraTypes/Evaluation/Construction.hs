@@ -3,6 +3,7 @@ module Evaluation.Construction
   ( makeNatural
   , makeInteger
   , makeAsciiString
+  , makeStringType
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
@@ -10,6 +11,8 @@ module Evaluation.Construction
   ) where
 
 import Data.Char (ord)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
 import IntegerRange.Encoding (integerSingletonInsertion)
@@ -72,6 +75,17 @@ makeAsciiString characters = value
         valueMap
         TotalInterpretedMap
         semantics
+
+-- | The federation of all finite ASCII strings.
+makeStringType :: InterpretedValue
+makeStringType =
+  makeInterpretedValue
+    StringTypeForm
+    NoInsertion
+    emptyInterpretedMap
+    (PrimitiveAtlasMapFederation StringTypeAtlasMapFederation)
+    NonTotalInterpretedMap
+    StringTypeSemantics
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin

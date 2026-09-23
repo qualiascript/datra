@@ -6,6 +6,7 @@ import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart (..)
   , normalizeExpression
   , renderExpression
   , toOperatorExpression
@@ -23,6 +24,7 @@ import DatraLanguage.AST.Syntax
   , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
+import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Diagnostics
   ( Located (Located)
   , SourcePosition (SourcePosition)
@@ -58,6 +60,22 @@ testTree =
 
 regressionTests :: IO ()
 regressionTests = do
+  assert "reserved symbols have unique identifier strings"
+    Reserved.reservedSymbolIdentifiersAreUnique
+  assert "UnsafeEither is available only in canonical AST syntax"
+    ( parseDatraAst "(UnsafeEither Nat Nat)"
+        == Right (UnsafeEither NaturalType NaturalType)
+    )
+  assertRejected
+    "UnsafeEither is not exposed in the surface language"
+    "(UnsafeEither Nat Nat)"
+  mapM_
+    (\reservedSymbol ->
+      assertRejected
+        ("reserved symbol cannot be a bare identifier expression: "
+          <> Reserved.reservedSymbolIdentifierString reservedSymbol)
+        (Reserved.reservedSymbolIdentifierString reservedSymbol <> " : Nat"))
+    Reserved.reservedSymbols
   assertLocatedParse
   assertResourceEnvelopes
   assertAstSyntax
@@ -105,31 +123,45 @@ regressionTests = do
     (...)
   assertAstOutput
     "specification into a NaturalRange"
-    "2..5 ~> from 0 upwards"
+    "2..5 ~> range 0 upwards"
     ((natural 2 <..> natural 5) ~> AST.fromUpwards 0)
   assertAstOutput
     "bounded ValuedNaturalRange"
-    "within 2 to 5"
+    "from 2 to 5"
     (AST.withinTo 2 5)
   assertAstOutput
     "upwards ValuedNaturalRange"
-    "within 2 upwards"
+    "from 2 upwards"
     (AST.withinUpwards 2)
+  assertRejected
+    "the old valued-range prefix is rejected"
+    "within 2 to 5"
+  assertRejected
+    "the range prefix is reserved as an identifier expression"
+    "range : Nat"
+  assertAstOutput
+    "the former valued-range prefix is available as an identifier"
+    "within : Nat"
+    (AST.identifierType "within" AST.naturalType)
   assertAstOutput
     "NaturalType literal"
     "Nat"
     AST.naturalType
+  assertAstOutput
+    "String type literal"
+    "String"
+    AST.stringType
   assertAstOutput
     "IntegerType literal"
     "Int"
     AST.integerType
   assertAstOutput
     "descending open integer range"
-    "from -1 downwards"
+    "range -1 downwards"
     (AST.integerFromDownwards (-1))
   assertAstOutput
     "bounded valued integer range"
-    "within -3 to 4"
+    "from -3 to 4"
     (AST.integerWithinTo (-3) 4)
   assertAstOutput
     "unary integer negation"
@@ -146,7 +178,7 @@ regressionTests = do
   assertAstOutput
     "Nothing literal"
     "nothing"
-    (AST.asciiString "Nothing")
+    AST.nothing
   assertAstOutput
     "Boolean type"
     "Bool"
@@ -197,6 +229,32 @@ regressionTests = do
     (AST.eitherType
       (AST.identifierType "a" AST.naturalType)
       AST.naturalType)
+  assertRejected
+    "reserved names cannot be bare identifier expressions"
+    "String : Nat"
+  assertAstOutput
+    "reserved names can be full-string identifier expressions"
+    "\"String\" : Nat"
+    (AST.identifierType "String" AST.naturalType)
+  assertAstOutput
+    "contextual range words remain bare identifier expressions"
+    "to : Nat"
+    (AST.identifierType "to" AST.naturalType)
+  assertAstOutput
+    "contextual range directions remain bare identifier expressions"
+    "(upwards : Nat; downwards : Nat)"
+    (AST.identifierType "upwards" AST.naturalType
+      <:> AST.identifierType "downwards" AST.naturalType)
+  assertAstOutput
+    "uppercase built-in names remain bare identifier expressions"
+    "False : Nat"
+    (AST.identifierType "False" AST.naturalType)
+  assertAstOutput
+    "full-string identifier expressions compose with optional syntax"
+    "\"Abc\"? : Nat"
+    (AST.eitherType
+      (AST.identifierType "Abc" AST.naturalType)
+      AST.naturalType)
   assertAstOutput
     "optional assigned identifier slot"
     "a? : Nat := 5"
@@ -234,7 +292,7 @@ regressionTests = do
     )
   assertAstOutput
     "optional identifier range subfederation check"
-    "(2, b := 5) of (a? : Int, b? : within 3 to 8)"
+    "(2, b := 5) of (a? : Int, b? : from 3 to 8)"
     (AST.subfederation
       (MapConcatenation
         (natural 2)
@@ -284,7 +342,7 @@ regressionTests = do
     (AST.conditionalWithoutElse (AST.boolean False) (natural 1))
   assertAstOutput
     "conditional combines optionals, equality, logic, and identifiers"
-    ( "if (Nat? = (Nat | Nothing := ())) and not False "
+    ( "if (Nat? = (Nat | Nothing := ())) and not false "
         <> "then (a? : Nat := 5) else (Nothing := ())"
     )
     (AST.conditional
@@ -311,7 +369,7 @@ regressionTests = do
     "2 upwards"
   assertAstOutput
     "specification binds after access and concatenation"
-    "1, 2 @ from 0 upwards ~> from 0 to 10"
+    "1, 2 @ range 0 upwards ~> range 0 to 10"
     (((natural 1 <.> natural 2) <@> AST.fromUpwards 0) ~> AST.fromTo 0 10)
   assertAstOutput
     "access after a specification projects its fibers"
@@ -322,11 +380,11 @@ regressionTests = do
     )
   assertAstOutput
     "specification chains associate through the intermediate federation"
-    "2..3 ~> from 2 to 5 ~> from 2 to 8"
+    "2..3 ~> range 2 to 5 ~> range 2 to 8"
     ((natural 2 <..> natural 3) ~> AST.fromTo 2 5 ~> AST.fromTo 2 8)
   assertAstOutput
     "reverse specification reverses its operands"
-    "from 2 to 5 <~ 2..3"
+    "range 2 to 5 <~ 2..3"
     ((natural 2 <..> natural 3) ~> AST.fromTo 2 5)
   assertAstOutput
     "reverse specification accepts parenthesized composite operands"
@@ -336,21 +394,21 @@ regressionTests = do
     )
   assertAstOutput
     "reverse specification accepts concatenated composite operands"
-    "$a, from 1 to 10 <~ $a, 3, 4, 5"
+    "$a, range 1 to 10 <~ $a, 3, 4, 5"
     ( (AST.asciiString "a" <.> natural 3 <.> natural 4 <.> natural 5)
         ~> (AST.asciiString "a" <.> AST.fromTo 1 10)
     )
   assertAstOutput
     "reverse specification chains associate right"
-    "from 2 to 8 <~ from 2 to 5 <~ 2..3"
+    "range 2 to 8 <~ range 2 to 5 <~ 2..3"
     ((natural 2 <..> natural 3) ~> AST.fromTo 2 5 ~> AST.fromTo 2 8)
   assertAstOutput
     "reverse specification binds after access and concatenation"
-    "from 0 to 10 <~ 1, 2 @ from 0 upwards"
+    "range 0 to 10 <~ 1, 2 @ range 0 upwards"
     (((natural 1 <.> natural 2) <@> AST.fromUpwards 0) ~> AST.fromTo 0 10)
   assertAstOutput
     "a postfix range can precede reverse specification"
-    "2.. <~ from 2 to 5"
+    "2.. <~ range 2 to 5"
     (AST.fromTo 2 5 ~> (natural 2 ..+))
   assertAstOutput
     "simple identifier type"
@@ -380,9 +438,9 @@ regressionTests = do
     )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
-    ( "(d : within 0 to 100) <~ "
-        <> "(d : within 20 to 40 := 28) <~ "
-        <> "(d : within 25 to 35 := 28) <~ (d := 28)"
+    ( "(d : from 0 to 100) <~ "
+        <> "(d : from 20 to 40 := 28) <~ "
+        <> "(d : from 25 to 35 := 28) <~ (d := 28)"
     )
     ( AST.assignment "d" (natural 28) (natural 28)
         ~> AST.assignment "d" (AST.withinTo 25 35) (natural 28)
@@ -391,8 +449,8 @@ regressionTests = do
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
-    ( "d : from 10 to 100 <~\n"
-        <> "    d : from 12 to 85 := 23..66 <~\n"
+    ( "d : range 10 to 100 <~\n"
+        <> "    d : range 12 to 85 := 23..66 <~\n"
         <> "    d := 23..66"
     )
     ( AST.assignment
@@ -407,8 +465,8 @@ regressionTests = do
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
-    ( "(x : within 1 to 10) <~ "
-        <> "(x : within 5 to 20) <~ (x := 8)"
+    ( "(x : from 1 to 10) <~ "
+        <> "(x : from 5 to 20) <~ (x := 8)"
     )
     ( AST.assignment "x" (natural 8) (natural 8)
         ~> AST.identifierType "x" (AST.withinTo 5 20)
@@ -447,6 +505,22 @@ regressionTests = do
     "x : Nat @ 0"
     (AST.identifierType "x" (AST.naturalType <@> natural 0))
   assertAstOutput
+    "identifier arithmetic operands compose without grouping"
+    "x : 5 + y : 10 = 15"
+    (AST.equal
+      ((AST.+)
+        (AST.identifierType "x" (natural 5))
+        (AST.identifierType "y" (natural 10)))
+      (natural 15))
+  assertAstOutput
+    "transfinite identifier arithmetic preserves precedence"
+    "x : ...^2 + y : 1 = ...^2 + 1"
+    (AST.equal
+      ((AST.+)
+        (AST.identifierType "x" ((AST.^) (...) (natural 2)))
+        (AST.identifierType "y" (natural 1)))
+      ((AST.+) ((AST.^) (...) (natural 2)) (natural 1)))
+  assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
     (AST.identifierType "A_0'z" AST.naturalType)
@@ -467,6 +541,30 @@ regressionTests = do
     "IdentifierString accepts all canonical continuation characters"
     "$A_0'z"
     (AST.asciiString "A_0'z")
+  assertAstOutput
+    "compact strings allow a leading underscore"
+    "$_abc"
+    (AST.asciiString "_abc")
+  assertAstOutput
+    "compact strings allow a single separating underscore"
+    "$abc_def"
+    (AST.asciiString "abc_def")
+  assertRejected
+    "compact strings reject consecutive underscores"
+    "$abc__def"
+  assertRejected
+    "compact strings reject a trailing underscore"
+    "$abc_"
+  assertRejected
+    "compact strings reject doubled leading underscores"
+    "$__abc"
+  assertRejected
+    "a lone compact underscore is trailing and rejected"
+    "$_"
+  assertAstOutput
+    "strings outside compact underscore syntax remain quoted"
+    "\"abc_\""
+    (AST.asciiString "abc_")
   assertAstOutput
     "StandardString canonicalizes to IdentifierString when possible"
     "\"text\""
@@ -515,6 +613,142 @@ regressionTests = do
     "StandardString escapes a literal hash"
     "\"literal \\# character\""
     (AST.asciiString "literal # character")
+  assertAstOutput
+    "StandardString escapes a literal dollar sign"
+    "\"literal \\$ character\""
+    (AST.asciiString "literal $ character")
+  assertAstOutput
+    "string template interpolates a compound expression"
+    "\"example$(2 + 2)\""
+    (StringTemplate
+      [ StringTemplateLiteral "example"
+      , StringTemplateInterpolation
+          (Addition (natural 2) (natural 2))
+      ])
+  assertParsed
+    "simple numeric interpolation has string-template syntax"
+    "\"$4\""
+    (StringTemplate [StringTemplateInterpolation (natural 4)])
+  assertParsed
+    "reserved atomic symbols may be simple interpolations"
+    "\"$String\""
+    (StringTemplate [StringTemplateInterpolation StringType])
+  assertParsed
+    "weak interpolation has explicit compact syntax"
+    "\"$!String\""
+    (StringTemplate [StringTemplateWeakInterpolation StringType])
+  assertParsed
+    "weak interpolation supports compound expressions"
+    "\"$!(Nat | Nat)\""
+    (StringTemplate
+      [StringTemplateWeakInterpolation
+        (EitherType NaturalType NaturalType)])
+  assertParsed
+    "postfix optional composes with a simple interpolation"
+    "\"$Int?\""
+    (StringTemplate
+      [StringTemplateInterpolation (OptionalType IntegerType)])
+  assertParsed
+    "an escaped question mark remains text after a simple interpolation"
+    "\"$Int\\?\""
+    (StringTemplate
+      [ StringTemplateInterpolation IntegerType
+      , StringTemplateLiteral "?"
+      ])
+  assertParsed
+    "an escaped question mark is accepted as ordinary string text"
+    "\"\\?\""
+    (AsciiStringLiteral "?")
+  assertRejected
+    "unreserved alphabetic names are not simple interpolations"
+    "\"$abc\""
+  assertParsed
+    "a compact string can itself be interpolated"
+    "\"$$abc\""
+    (StringTemplate
+      [StringTemplateInterpolation (AsciiStringLiteral "abc")])
+  assertParsed
+    "signed interpolation requires the compound form"
+    "\"$(-10)\""
+    (StringTemplate
+      [StringTemplateInterpolation (Minus (natural 10))])
+  assertRejected
+    "signed interpolation rejects the simple form"
+    "\"$-10\""
+  assertParsed
+    "a nested quoted string is one simple interpolation"
+    "\"hello, $\"world\"!\""
+    (StringTemplate
+      [ StringTemplateLiteral "hello, "
+      , StringTemplateInterpolation (AsciiStringLiteral "world")
+      , StringTemplateLiteral "!"
+      ])
+  assertParsed
+    "operators outside parentheses remain template text"
+    "\"$2 + 2\""
+    (StringTemplate
+      [ StringTemplateInterpolation (natural 2)
+      , StringTemplateLiteral " + 2"
+      ])
+  assertParsed
+    "interpolation comments terminate at the closing parenthesis"
+    "\"a$(2 # ignored)b\""
+    (StringTemplate
+      [ StringTemplateLiteral "a"
+      , StringTemplateInterpolation (natural 2)
+      , StringTemplateLiteral "b"
+      ])
+  assertParsed
+    "interpolation comments terminate at newline without emitting it"
+    "\"a$(2 # ignored\n)b\""
+    (StringTemplate
+      [ StringTemplateLiteral "a"
+      , StringTemplateInterpolation (natural 2)
+      , StringTemplateLiteral "b"
+      ])
+  assertParsed
+    "template comments ignore interpolation and retain their newline"
+    "\"a# ignored $4\nb\""
+    (AsciiStringLiteral "a\nb")
+  assertParsed
+    "escaped hashes and dollars remain literal template text"
+    "\"\\#\\$$4\""
+    (StringTemplate
+      [ StringTemplateLiteral "#$"
+      , StringTemplateInterpolation (natural 4)
+      ])
+  assertAstOutput
+    "parentheses inside nested strings do not close interpolation"
+    "\"x$(\"a)b\")y\""
+    (StringTemplate
+      [ StringTemplateLiteral "x"
+      , StringTemplateInterpolation (AsciiStringLiteral "a)b")
+      , StringTemplateLiteral "y"
+      ])
+  assertAstOutput
+    "nested grouping composes inside interpolation"
+    "\"x$((2 + 3) * 4)y\""
+    (StringTemplate
+      [ StringTemplateLiteral "x"
+      , StringTemplateInterpolation
+          (Multiplication
+            (Addition (natural 2) (natural 3))
+            (natural 4))
+      , StringTemplateLiteral "y"
+      ])
+  assertRejected "an empty interpolation is rejected" "\"$()\""
+  assertRejected
+    "an unterminated interpolation is rejected"
+    "\"$(2 + 2\""
+  assertRejected
+    "an unescaped dollar without an interpolation is rejected"
+    "\"literal $ character\""
+  assertAstOutput
+    "string literals are members of String"
+    "\"my_string\" of String = true"
+    (AST.equal
+      (AST.subfederation (AST.asciiString "my_string") AST.stringType)
+      (AST.boolean True))
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
@@ -522,7 +756,7 @@ regressionTests = do
     (AST.asciiString "  first\nsecond  ")
   assertParsed
     "StandardString treats syntax and comments as literal contents"
-    "(\"\\#;(value)\n$still_text\")"
+    "(\"\\#;(value)\n\\$still_text\")"
     (AsciiStringLiteral "#;(value)\n$still_text")
   assertAstOutput
     "strings use the ordinary concatenation operator"
@@ -546,15 +780,15 @@ regressionTests = do
     (natural 0 <..> natural 10)
   assertAstOutput
     "inclusive natural range"
-    "from 2 to 5"
+    "range 2 to 5"
     (AST.fromTo 2 5)
   assertAstOutput
     "open inclusive natural range"
-    "from 2 upwards"
+    "range 2 upwards"
     (AST.fromUpwards 2)
   assertAstOutput
     "natural range access"
-    "1, 2, 3 @ from 1 upwards"
+    "1, 2, 3 @ range 1 upwards"
     ((natural 1 <.> natural 2 <.> natural 3) <@> AST.fromUpwards 1)
   assertAstOutput
     "bracket access binds before arithmetic"
@@ -597,7 +831,7 @@ regressionTests = do
     )
   assertAstOutput
     "natural range keywords continue across lines"
-    "from\n2\nto\n5"
+    "range\n2\nto\n5"
     (AST.fromTo 2 5)
   assertAstOutput
     "a prefix range greedily continues across a newline"
@@ -798,6 +1032,7 @@ regressionTests = do
   assertRejected "IdentifierString rejects a missing body" "$"
   assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
+  assertRejected "StandardString rejects an unescaped dollar sign" "\"bad$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
   assertRejected "multiple trailing commas are rejected" "(1,,)"
@@ -813,11 +1048,11 @@ regressionTests = do
   assertRejected "the old explicit plus spelling is rejected" "(1..+)"
   assertRejected
     "natural range origins must be literal EllipsisNaturals"
-    "from (1 + 2) to 5"
+    "range (1 + 2) to 5"
   assertRejected
     "natural range targets must be literal EllipsisNaturals"
-    "from 1 to (2 + 3)"
-  assertRejected "natural range keywords require separators" "from1to2"
+    "range 1 to (2 + 3)"
+  assertRejected "natural range keywords require separators" "range1to2"
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "((1..2)..)"
@@ -882,9 +1117,11 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
+    , pure NothingLiteral
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
     , pure NaturalType
+    , pure StringType
     , NaturalRange
         <$> Gen.integral (Range.linear 0 1000)
         <*> Gen.integral (Range.linear 0 1000)
@@ -1008,6 +1245,19 @@ assertAstSyntax = do
       && renderExpression (AST.asciiString "a\"b\\c\n")
         == "\"a\\\"b\\\\c\\n\""
     )
+  assert "template rendering escapes a literal optional suffix"
+    ( renderExpression
+        (StringTemplate
+          [ StringTemplateInterpolation IntegerType
+          , StringTemplateLiteral "?"
+          ])
+        == "\"$Int\\?\""
+    )
+  assert "weak template interpolation retains its marker"
+    ( renderExpression
+        (StringTemplate [StringTemplateWeakInterpolation StringType])
+        == "\"$!String\""
+    )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression
         ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
@@ -1028,12 +1278,12 @@ assertAstSyntax = do
   assert "the specification symbol constructs its canonical AST node"
     ( renderExpression
         (((natural 2 <..> natural 5) ~> AST.fromUpwards 0))
-        == "(~> (<..> 2 5) (from 0 upwards))"
+        == "(~> (<..> 2 5) (range 0 upwards))"
     )
   assert "valued natural range constructors retain their distinct prefix"
-    ( renderExpression (AST.withinTo 2 5) == "(within 2 to 5)"
+    ( renderExpression (AST.withinTo 2 5) == "(from 2 to 5)"
       && renderExpression (AST.withinUpwards 2)
-        == "(within 2 upwards)"
+        == "(from 2 upwards)"
       && renderExpression AST.naturalType == "Nat"
     )
 

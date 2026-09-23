@@ -97,6 +97,10 @@ accessSource value =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
+    StringTypeForm -> ordinarySource []
+    ToStringForm -> ordinarySource []
+    WeakToStringForm -> ordinarySource []
+    StringTemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
     IdentifierTypeForm _ -> ordinarySource []
@@ -131,8 +135,6 @@ semanticAccessSource semantics =
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
-    BooleanSemantics _ _ -> ordinarySource []
-    NothingSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]
@@ -160,6 +162,10 @@ semanticAccessSource semantics =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
+    StringTypeSemantics -> ordinarySource []
+    ToStringSemantics _ -> ordinarySource []
+    WeakToStringSemantics _ -> ordinarySource []
+    StringTemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []

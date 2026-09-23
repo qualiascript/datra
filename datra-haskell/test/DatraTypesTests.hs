@@ -186,9 +186,12 @@ testOrdinalInspection = do
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do
-  let emptyMap = Types.makeAtlasMap 0 []
+  let nonemptyMap =
+        Types.makeAtlasMap
+          2
+          [Types.naturalValue 0, Types.naturalValue 1]
   assert "DatraTypes rejects non-numerical operands without AST interpretation"
-    (case Types.addValues emptyMap (Types.naturalValue 1) of
+    (case Types.addValues nonemptyMap (Types.naturalValue 1) of
       Left
           (Types.ExpectedNumericalOperand
             Types.LeftOperand Types.MapValueKind) -> True
@@ -256,7 +259,7 @@ testDiagnostics = do
           (finiteOrdinal 256))
       == LocalizedMessage
           "the access insertion has a larger rank than the map"
-          [ "insertion rank limit: (...)^2 * 2 + 3"
+          [ "insertion rank limit: (...) ^ 2 * 2 + 3"
           , "map final-page order type: 256"
           ])
 
@@ -463,7 +466,7 @@ testValuedNaturalRange = do
       in fmap valuedNaturalValue
           <$> traverse (unrank indices) [0 .. 4] of
     Just (Just values) ->
-      assert "NaturalType is within 0 upwards"
+      assert "NaturalType is from 0 upwards"
         (values == [0, 1, 2, 3, 4])
     _ -> fail "test setup failed: NaturalType"
 

@@ -2,6 +2,7 @@
 
 module DatraLanguage.AST
   ( IdentifierString (..)
+  , StringTemplatePart (..)
   , Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
@@ -9,6 +10,10 @@ module DatraLanguage.AST
   , renderExpression
   , renderOperatorExpression
   , renderAsciiStringLiteral
+  , renderStringTemplate
+  , renderIdentifierString
+  , isCompactStringLiteral
+  , isReservedIdentifierString
   ) where
 
 import Data.Char (ord, toUpper)
@@ -16,7 +21,10 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
+  , operatorSourceSymbol
   )
+import DatraLanguage.AST.Reserved (isReservedIdentifierString)
+import DatraLanguage.AST.Reserved qualified as Reserved
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -36,12 +44,24 @@ newtype IdentifierString = IdentifierString
   }
   deriving (Eq, Show)
 
+-- | One source-order component of a quoted string template. Literal chunks
+-- are already decoded by the parser; interpolations retain their unevaluated
+-- expressions until the interpreter applies the internal @toString@ map.
+data StringTemplatePart expression
+  = StringTemplateLiteral String
+  | StringTemplateInterpolation expression
+  | StringTemplateWeakInterpolation expression
+  deriving (Eq, Show)
+
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
 data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
   | AsciiStringLiteral String
+  | NothingLiteral
+  | StringTemplate [StringTemplatePart Expression]
+  | StringType
   | AtlasMap [Expression]
   | MapSequence [Expression]
   | MapExpansion Expression Expression
@@ -63,6 +83,7 @@ data Expression
   | BooleanLiteral Bool
   | BooleanType
   | EitherType Expression Expression
+  | UnsafeEither Expression Expression
   | OptionalType Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
@@ -95,6 +116,9 @@ data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
   | AsciiStringValue String
+  | NothingValue
+  | StringTemplateValue [StringTemplatePart OperatorExpression]
+  | StringTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
   | Expansion OperatorExpression OperatorExpression
@@ -116,6 +140,7 @@ data OperatorExpression
   | BooleanValue Bool
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
+  | UnsafeEitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
   | ConditionalValue
       OperatorExpression
@@ -152,6 +177,10 @@ normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
+normalizeExpression NothingLiteral = NothingLiteral
+normalizeExpression (StringTemplate parts) =
+  StringTemplate (map normalizeStringTemplatePart parts)
+normalizeExpression StringType = StringType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (MapSequence expressions) =
@@ -189,6 +218,10 @@ normalizeExpression (BooleanLiteral value) = BooleanLiteral value
 normalizeExpression BooleanType = BooleanType
 normalizeExpression (EitherType left right) =
   normalizeEither
+    (normalizeExpression left)
+    (normalizeExpression right)
+normalizeExpression (UnsafeEither left right) =
+  UnsafeEither
     (normalizeExpression left)
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
@@ -229,6 +262,16 @@ normalizeExpression
     identifierString
     (normalizeExpression typeAnnotation)
     (normalizeExpression <$> givenValue)
+
+normalizeStringTemplatePart
+  :: StringTemplatePart Expression
+  -> StringTemplatePart Expression
+normalizeStringTemplatePart (StringTemplateLiteral value) =
+  StringTemplateLiteral value
+normalizeStringTemplatePart (StringTemplateInterpolation expressionValue) =
+  StringTemplateInterpolation (normalizeExpression expressionValue)
+normalizeStringTemplatePart (StringTemplateWeakInterpolation expressionValue) =
+  StringTemplateWeakInterpolation (normalizeExpression expressionValue)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
@@ -273,6 +316,10 @@ lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
+lower NothingLiteral = NothingValue
+lower (StringTemplate parts) =
+  StringTemplateValue (map lowerStringTemplatePart parts)
+lower StringType = StringTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -302,6 +349,8 @@ lower IntegerType = IntegerTypeValue
 lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
+lower (UnsafeEither left right) =
+  UnsafeEitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
 lower (Conditional condition consequent alternative) =
   ConditionalValue (lower condition) (lower consequent) (lower alternative)
@@ -325,6 +374,16 @@ lower (IdentifierOperation identifierString typeAnnotation givenValue) =
     identifierString
     (lower typeAnnotation)
     (lower <$> givenValue)
+
+lowerStringTemplatePart
+  :: StringTemplatePart Expression
+  -> StringTemplatePart OperatorExpression
+lowerStringTemplatePart (StringTemplateLiteral value) =
+  StringTemplateLiteral value
+lowerStringTemplatePart (StringTemplateInterpolation expressionValue) =
+  StringTemplateInterpolation (lower expressionValue)
+lowerStringTemplatePart (StringTemplateWeakInterpolation expressionValue) =
+  StringTemplateWeakInterpolation (lower expressionValue)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -359,8 +418,12 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
-prettyOperator (AsciiStringValue "Nothing") = "nothing"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
+prettyOperator NothingValue =
+  pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
+prettyOperator (StringTemplateValue parts) =
+  pretty (renderOperatorStringTemplate parts)
+prettyOperator StringTypeValue = reservedSymbolDoc Reserved.StringTypeSymbol
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -375,37 +438,57 @@ prettyOperator (RangePlus lowerBound) =
 prettyOperator (RangeMinus upperBound) =
   prettyUnary RangeMinusOperator upperBound
 prettyOperator (InclusiveNaturalRange origin target) =
-  prettyForm "from" [pretty origin, "to", pretty target]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
+    [pretty origin, reservedWordDoc Reserved.ToWord, pretty target]
 prettyOperator (InclusiveNaturalRangeUpwards origin) =
-  prettyForm "from" [pretty origin, "upwards"]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
+    [pretty origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveValuedNaturalRange origin target) =
-  prettyForm "within" [pretty origin, "to", pretty target]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
+    [pretty origin, reservedWordDoc Reserved.ToWord, pretty target]
 prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
-  prettyForm "within" [pretty origin, "upwards"]
-prettyOperator NaturalTypeValue = "Nat"
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
+    [pretty origin, reservedWordDoc Reserved.UpwardsWord]
+prettyOperator NaturalTypeValue = reservedSymbolDoc Reserved.NaturalTypeSymbol
 prettyOperator (InclusiveIntegerRange origin target) =
-  prettyForm "from" [prettyInteger origin, "to", prettyInteger target]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
+    [ prettyInteger origin
+    , reservedWordDoc Reserved.ToWord
+    , prettyInteger target
+    ]
 prettyOperator (InclusiveIntegerRangeUpwards origin) =
-  prettyForm "from" [prettyInteger origin, "upwards"]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
+    [prettyInteger origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveIntegerRangeDownwards origin) =
-  prettyForm "from" [prettyInteger origin, "downwards"]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
+    [prettyInteger origin, reservedWordDoc Reserved.DownwardsWord]
 prettyOperator (InclusiveValuedIntegerRange origin target) =
-  prettyForm "within" [prettyInteger origin, "to", prettyInteger target]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
+    [ prettyInteger origin
+    , reservedWordDoc Reserved.ToWord
+    , prettyInteger target
+    ]
 prettyOperator (InclusiveValuedIntegerRangeUpwards origin) =
-  prettyForm "within" [prettyInteger origin, "upwards"]
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
+    [prettyInteger origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveValuedIntegerRangeDownwards origin) =
-  prettyForm "within" [prettyInteger origin, "downwards"]
-prettyOperator IntegerTypeValue = "Int"
-prettyOperator (BooleanValue False) = "false"
-prettyOperator (BooleanValue True) = "true"
-prettyOperator BooleanTypeValue = "Bool"
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
+    [prettyInteger origin, reservedWordDoc Reserved.DownwardsWord]
+prettyOperator IntegerTypeValue = reservedSymbolDoc Reserved.IntegerTypeSymbol
+prettyOperator (BooleanValue False) =
+  pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
+prettyOperator (BooleanValue True) =
+  pretty (Reserved.reservedSymbolIdentifierString Reserved.TrueSymbol)
+prettyOperator BooleanTypeValue = reservedSymbolDoc Reserved.BooleanTypeSymbol
 prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
+prettyOperator (UnsafeEitherValue left right) =
+  prettyBinary UnsafeEitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
 prettyOperator (ConditionalValue condition consequent alternative) =
   prettyForm
-    "if"
+    (Reserved.reservedSymbolIdentifierString Reserved.IfSymbol)
     [ prettyOperator condition
     , prettyOperator consequent
     , prettyOperator alternative
@@ -445,11 +528,11 @@ prettyOperator
     Nothing ->
       prettyForm
         (operatorCanonicalSymbol IdentifierTypeOperator)
-        [pretty identifierString, prettyOperator typeAnnotation]
+        [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
     Just givenValueExpression ->
       prettyForm
         (operatorCanonicalSymbol AssignmentOperator)
-        (pretty identifierString :
+        (pretty (renderIdentifierString identifierString) :
           if givenValueExpression == typeAnnotation
             then [prettyOperator givenValueExpression]
             else
@@ -482,19 +565,56 @@ prettyForm headName operands =
 prettyInteger :: Integer -> Doc annotation
 prettyInteger = pretty
 
+reservedWordDoc :: Reserved.ReservedWord -> Doc annotation
+reservedWordDoc = pretty . Reserved.reservedWordText
+
+reservedSymbolDoc :: Reserved.ReservedSymbol -> Doc annotation
+reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
+
 -- | Render an identifier string when possible, otherwise use the standard
 -- quoted spelling. Standard strings leave the keyboard-visible ASCII range
 -- literal and use hexadecimal escapes for every other byte except newline.
 renderAsciiStringLiteral :: String -> String
-renderAsciiStringLiteral value@(first : rest)
+renderAsciiStringLiteral value
+  | isCompactStringLiteral value = '$' : value
+renderAsciiStringLiteral value = renderStandardStringLiteral value
+
+-- | Compact @$name@ strings permit an underscore in the leading position or
+-- as a separator, but never doubled or trailing.
+isCompactStringLiteral :: String -> Bool
+isCompactStringLiteral [] = False
+isCompactStringLiteral value@(first : rest) =
+  isLeadingCanonicalCharacter first
+    && all isCanonicalCharacter rest
+    && last value /= '_'
+    && not (hasDoubledUnderscore value)
+  where
+    hasDoubledUnderscore ('_' : '_' : _) = True
+    hasDoubledUnderscore (_ : remaining) =
+      hasDoubledUnderscore remaining
+    hasDoubledUnderscore [] = False
+
+-- | Render an identifier expression. Canonical non-reserved names use their
+-- compact bare spelling; reserved or noncanonical names use a full string.
+renderIdentifierString :: String -> String
+renderIdentifierString value@(first : rest)
   | isLeadingCanonicalCharacter first
-      && all isCanonicalCharacter rest = '$' : value
-renderAsciiStringLiteral value = '"' : foldr escape "\"" value
+      && all isCanonicalCharacter rest
+      && not (isReservedIdentifierString value) = value
+renderIdentifierString value = renderStandardStringLiteral value
+
+renderStandardStringLiteral :: String -> String
+renderStandardStringLiteral value =
+  '"' : renderStringLiteralContents value <> "\""
+
+renderStringLiteralContents :: String -> String
+renderStringLiteralContents = foldr escape ""
   where
     escape '\n' rest = '\\' : 'n' : rest
     escape '"' rest = '\\' : '"' : rest
     escape '\\' rest = '\\' : '\\' : rest
     escape '#' rest = '\\' : '#' : rest
+    escape '$' rest = '\\' : '$' : rest
     escape character rest
       | isAsciiByte character && not (isKeyboardCharacter character) =
           '\\' : hexadecimalByte character <> rest
@@ -508,6 +628,61 @@ renderAsciiStringLiteral value = '"' : foldr escape "\"" value
     isAsciiByte character = ord character < 256
     isKeyboardCharacter character =
       0x20 <= ord character && ord character <= 0x7e
+
+renderOperatorStringTemplate
+  :: [StringTemplatePart OperatorExpression]
+  -> String
+renderOperatorStringTemplate =
+  renderStringTemplate
+    renderOperatorExpression
+    compactOperatorStringInterpolation
+
+renderStringTemplate
+  :: (expression -> String)
+  -> (expression -> Maybe String)
+  -> [StringTemplatePart expression]
+  -> String
+renderStringTemplate renderExpressionValue compactInterpolation parts =
+  '"' : foldr renderPart "\"" parts
+  where
+    renderPart (StringTemplateLiteral value) rest =
+      renderStringLiteralContents value <> rest
+    renderPart (StringTemplateInterpolation expressionValue) rest =
+      renderInterpolation "$" expressionValue rest
+    renderPart (StringTemplateWeakInterpolation expressionValue) rest =
+      renderInterpolation "$!" expressionValue rest
+
+    renderInterpolation prefix expressionValue rest =
+      case compactInterpolation expressionValue of
+        Just symbol -> prefix <> symbol <> escapeOptionalSuffix rest
+        Nothing ->
+          prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+
+    escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
+    escapeOptionalSuffix rest = rest
+
+compactOperatorStringInterpolation
+  :: OperatorExpression
+  -> Maybe String
+compactOperatorStringInterpolation expressionValue =
+  case expressionValue of
+    NothingValue -> reserved Reserved.NothingSymbol
+    StringTypeValue -> reserved Reserved.StringTypeSymbol
+    NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
+    IntegerTypeValue -> reserved Reserved.IntegerTypeSymbol
+    BooleanValue False -> reserved Reserved.FalseSymbol
+    BooleanValue True -> reserved Reserved.TrueSymbol
+    BooleanTypeValue -> reserved Reserved.BooleanTypeSymbol
+    OptionalValue operand ->
+      (<> optionalSourceSymbol)
+        <$> compactOperatorStringInterpolation operand
+    _ -> Nothing
+  where
+    reserved = Just . Reserved.reservedSymbolIdentifierString
+    optionalSourceSymbol =
+      case operatorSourceSymbol OptionalOperator of
+        Just symbol -> symbol
+        Nothing -> operatorCanonicalSymbol OptionalOperator
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

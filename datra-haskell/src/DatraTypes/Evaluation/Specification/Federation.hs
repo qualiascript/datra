@@ -85,12 +85,20 @@ selectAtomicFederationMember source target =
           (DecisionProved . EvaluatedValuedIntegerRangeMember)
           (interpretedInteger source
             >>= selectValuedIntegerRangeMember targetRange))
+    PrimitiveAtlasMapFederation StringTypeAtlasMapFederation ->
+      Just
+        (case interpretedCanonicalResult source of
+          CanonicalAsciiString characters ->
+            DecisionProved (EvaluatedAsciiStringMember characters)
+          _ -> DecisionRefuted)
     PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
         (IdentifierStringProjectionAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation (EitherAtlasMapFederation _) -> Nothing
+    PrimitiveAtlasMapFederation (ToStringAtlasMapFederation _ _) -> Nothing
+    PrimitiveAtlasMapFederation (WeakToStringAtlasMapFederation _) -> Nothing
     SequentialAtlasMapFederation _ -> Nothing
     ConcatenatedAtlasMapFederation _ _ -> Nothing
     ExpansionAtlasMapFederation _ _ -> Nothing

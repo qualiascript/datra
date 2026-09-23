@@ -26,6 +26,7 @@ import Evaluation.Error
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Specification.Decision (Decision (..))
+import Evaluation.Specification.String (federationUsesWeakToString)
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   )
@@ -35,10 +36,12 @@ specifyValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-specifyValues source target =
-  if interpretedCanonicalResult source == interpretedCanonicalResult target
-    then Right source
-    else specifyValuesWithoutIdentity source target
+specifyValues source target
+  | federationUsesWeakToString (interpretedAtlasMapFederation target) =
+      Left NoCanonicalStringConversion
+  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+      Right source
+  | otherwise = specifyValuesWithoutIdentity source target
 
 specifyValuesWithoutIdentity
   :: InterpretedValue
@@ -178,7 +181,7 @@ specifyTotalAtlasMap source target = do
         (AtlasMapFederationOperationRefuted
           AtlasMapFederationSpecificationHasNoMatchingMember)
 
--- An optional assigned identifier is a tagged federation syntactically, but
+-- An optional assigned identifier is a federation union syntactically, but
 -- its assignment branch retains the concrete total source that supplied the
 -- value. As a specification source, it therefore selects the present branch
 -- rather than being rejected merely because the surrounding Either is

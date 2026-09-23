@@ -16,6 +16,8 @@ import AtlasMapFederationExpression
   , atlasMapFederationExpressionIsSingleton
   )
 import Evaluation.Error
+import Evaluation.ToString
+  ( stringFederationConcatenationIsInjective )
 import Evaluation.Value
 import NaturalRange qualified
 import IntegerRange qualified
@@ -33,6 +35,8 @@ decideFederationConcatenation left right
   | atlasMapFederationExpressionIsSingleton left =
       AtlasMapFederationProved ()
   | atlasMapFederationExpressionIsSingleton right =
+      AtlasMapFederationProved ()
+  | stringFederationConcatenationIsInjective left right =
       AtlasMapFederationProved ()
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) _ =
@@ -130,6 +134,10 @@ decidePrimitiveSubfederation
        AtlasMapFederationRefutation
        AtlasMapFederationUncertainty
        ()
+decidePrimitiveSubfederation
+    StringTypeAtlasMapFederation
+    StringTypeAtlasMapFederation =
+  AtlasMapFederationProved ()
 decidePrimitiveSubfederation
     (NaturalRangeAtlasMapFederation
       (EvaluatedNaturalRange sourceRange))
