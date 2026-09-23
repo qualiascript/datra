@@ -58,6 +58,13 @@ import DatraLanguage.AST
       , ValuedIntegerRangeUpwards
       , ValuedIntegerRangeDownwards
       , IntegerType
+      , BooleanLiteral
+      , BooleanType
+      , EitherType
+      , Equality
+      , BooleanAnd
+      , BooleanOr
+      , BooleanNot
       )
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -208,7 +215,10 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ IntegerType <$ astSymbol "Int"
+    [ BooleanLiteral False <$ astSymbol "False"
+    , BooleanLiteral True <$ astSymbol "True"
+    , BooleanType <$ astSymbol "Bool"
+    , IntegerType <$ astSymbol "Int"
     , NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
@@ -231,6 +241,11 @@ astForm =
       , astBinary AST.AdditionOperator Addition
       , astBinary AST.SubtractionOperator Subtraction
       , astUnary AST.MinusOperator Minus
+      , astBinary AST.EqualityOperator Equality
+      , astBinary AST.BooleanAndOperator BooleanAnd
+      , astBinary AST.BooleanOrOperator BooleanOr
+      , astUnary AST.BooleanNotOperator BooleanNot
+      , astBinary AST.EitherOperator EitherType
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
       , astBinary AST.ConcatenationOperator MapConcatenation
@@ -385,13 +400,23 @@ mapSeparator =
 -- @<~@ without making bare identifiers valid general-purpose operands.
 expression :: Parser Expression
 expression = do
-  target <- try identifierOperation <|> mapExpression
+  target <- eitherExpression
   maybeSource <-
     optional (continuedSymbol reverseSpecificationSymbol *> expression)
   pure
     (case maybeSource of
       Nothing -> target
       Just source -> MapSpecification source target)
+
+eitherExpression :: Parser Expression
+eitherExpression =
+  makeExprParser
+    (try identifierOperation <|> mapExpression)
+    [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
+    , [InfixL (Equality <$ continuedOperator AST.EqualityOperator)]
+    , [InfixL (BooleanAnd <$ continuedKeyword "and")]
+    , [InfixL (BooleanOr <$ continuedKeyword "or")]
+    ]
 
 mapExpression :: Parser Expression
 mapExpression = makeExprParser rangeExpression mapOperatorTable
@@ -473,6 +498,9 @@ termAtom =
   choice
     [ parenthesizedExpression
     , try naturalRangeExpression
+    , BooleanLiteral False <$ keyword "False"
+    , BooleanLiteral True <$ keyword "True"
+    , BooleanType <$ keyword "Bool"
     , IntegerType <$ keyword "Int"
     , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
@@ -590,6 +618,7 @@ arithmeticOperatorTable =
   [ [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
   , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
     , Prefix (Minus <$ continuedKeyword "minus")
+    , Prefix (BooleanNot <$ continuedKeyword "not")
     ]
   , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
   , [ InfixL (Addition <$ continuedOperator AST.AdditionOperator)

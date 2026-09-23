@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 
@@ -9,7 +10,9 @@
 -- assigning the codes @2*n@ and @2*n+1@ respectively.
 module EllipsisInteger
   ( EllipsisInteger
-  , IntegerComplement (..)
+  , IntegerComplement
+  , pattern Direct
+  , pattern Complemented
   , ellipsisInteger
   , ellipsisIntegerFromComplement
   , ellipsisIntegerValue
@@ -22,14 +25,22 @@ module EllipsisInteger
   ) where
 
 import Numeric.Natural (Natural)
+import BooleanType (DatraBoolean (..))
 
-data IntegerComplement = Direct | Complemented
-  deriving (Eq, Show)
+type IntegerComplement = DatraBoolean
+
+pattern Direct :: DatraBoolean
+pattern Direct = DatraFalse
+
+pattern Complemented :: DatraBoolean
+pattern Complemented = DatraTrue
+
+{-# COMPLETE Direct, Complemented #-}
 
 type role EllipsisInteger nominal
 data EllipsisInteger scope = EllipsisInteger
   { ellipsisIntegerNatural :: Natural
-  , ellipsisIntegerComplement :: IntegerComplement
+  , ellipsisIntegerComplement :: DatraBoolean
   }
   deriving (Eq, Show)
 
@@ -47,7 +58,7 @@ ellipsisInteger value useInteger =
 
 ellipsisIntegerFromComplement
   :: Natural
-  -> IntegerComplement
+  -> DatraBoolean
   -> (forall scope. EllipsisInteger scope -> result)
   -> result
 ellipsisIntegerFromComplement natural complement useInteger =
@@ -61,11 +72,11 @@ ellipsisIntegerCode :: EllipsisInteger scope -> Natural
 ellipsisIntegerCode (EllipsisInteger natural complement) =
   integerCode natural complement
 
-integerFromComplement :: Natural -> IntegerComplement -> Integer
+integerFromComplement :: Natural -> DatraBoolean -> Integer
 integerFromComplement natural Direct = toInteger natural
 integerFromComplement natural Complemented = negate (toInteger natural) - 1
 
-integerCode :: Natural -> IntegerComplement -> Natural
+integerCode :: Natural -> DatraBoolean -> Natural
 integerCode natural Direct = 2 * natural
 integerCode natural Complemented = 2 * natural + 1
 

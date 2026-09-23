@@ -100,6 +100,10 @@ interpretNormalizedExpression expressionValue =
     ValuedIntegerRangeDownwards origin ->
       valuedIntegerRangeDownwardsValue origin
     IntegerType -> integerTypeValue
+    BooleanLiteral value -> Right (booleanValue value)
+    BooleanType -> Right booleanTypeValue
+    EitherType left right ->
+      interpretBinaryPure eitherValue left right
     Addition left right ->
       interpretBinary addValues left right
     Subtraction left right ->
@@ -109,6 +113,14 @@ interpretNormalizedExpression expressionValue =
       interpretBinary multiplyValues left right
     Exponentiation base exponentValue ->
       interpretBinary exponentiateValues base exponentValue
+    Equality left right ->
+      interpretBinary equalValues left right
+    BooleanAnd left right ->
+      interpretBinary booleanAndValues left right
+    BooleanOr left right ->
+      interpretBinary booleanOrValues left right
+    BooleanNot operand ->
+      interpretExpressionReason operand >>= booleanNotValue
     MapConcatenation left right ->
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->
@@ -246,6 +258,16 @@ interpretBinary operation left right = do
   leftValue <- interpretExpressionReason left
   rightValue <- interpretExpressionReason right
   operation leftValue rightValue
+
+interpretBinaryPure
+  :: (InterpretedValue -> InterpretedValue -> InterpretedValue)
+  -> Expression
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretBinaryPure operation left right = do
+  leftValue <- interpretExpressionReason left
+  rightValue <- interpretExpressionReason right
+  pure (operation leftValue rightValue)
 
 interpretAtlasMapWith
   :: (Expression -> Either InterpretingError InterpretedValue)

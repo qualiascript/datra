@@ -11,6 +11,7 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
 import Control.Monad (foldM)
+import BooleanType (DatraBoolean (..))
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
@@ -36,18 +37,36 @@ selectFederationMember source target
       case selectIdentifierMember source target of
         Just decision -> decision
         Nothing ->
-          case selectAtomicFederationMember source target of
-            Just decision -> decision
-            Nothing ->
-              case interpretedAtlasMapFederation target of
-                SequentialAtlasMapFederation _ ->
-                  selectSequentialMember source target
-                ConcatenatedAtlasMapFederation _ _ ->
-                  selectConcatenatedMember source target
-                ExpansionAtlasMapFederation _ _ ->
-                  selectExpansionMember source target
-                SingletonAtlasMapFederation _ -> DecisionUndecidable
-                PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+          case interpretedForm target of
+            EitherForm alternatives ->
+              selectEitherMember source alternatives
+            _ ->
+              case selectAtomicFederationMember source target of
+                Just decision -> decision
+                Nothing ->
+                  case interpretedAtlasMapFederation target of
+                    SequentialAtlasMapFederation _ ->
+                      selectSequentialMember source target
+                    ConcatenatedAtlasMapFederation _ _ ->
+                      selectConcatenatedMember source target
+                    ExpansionAtlasMapFederation _ _ ->
+                      selectExpansionMember source target
+                    SingletonAtlasMapFederation _ -> DecisionUndecidable
+                    PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+
+selectEitherMember
+  :: InterpretedValue
+  -> EvaluatedEither
+  -> Decision EvaluatedAtlasMapFederationMember
+selectEitherMember source alternatives =
+  decideAny
+    [ mapDecision
+        (EvaluatedEitherMember DatraFalse)
+        (selectFederationMember source (evaluatedEitherLeft alternatives))
+    , mapDecision
+        (EvaluatedEitherMember DatraTrue)
+        (selectFederationMember source (evaluatedEitherRight alternatives))
+    ]
 
 selectIdentifierMember
   :: InterpretedValue

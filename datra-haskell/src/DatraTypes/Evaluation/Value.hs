@@ -11,6 +11,7 @@ module Evaluation.Value
   , EvaluatedValuedNaturalRange (..)
   , EvaluatedIntegerRange (..)
   , EvaluatedValuedIntegerRange (..)
+  , EvaluatedEither (..)
   , IdentifierDependency (..)
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
@@ -65,6 +66,7 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
+import BooleanType (DatraBoolean (..))
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
@@ -131,6 +133,14 @@ data EvaluatedValuedIntegerRange where
   EvaluatedValuedIntegerRange
     :: ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
     -> EvaluatedValuedIntegerRange
+
+-- | A tagged federation union. The left and right alternatives are retained
+-- separately; selection records the Datra Boolean injection tag so equal
+-- underlying maps remain distinct federation members.
+data EvaluatedEither = EvaluatedEither
+  { evaluatedEitherLeft :: InterpretedValue
+  , evaluatedEitherRight :: InterpretedValue
+  }
 
 -- | Runtime string rule for an identifier type. The stable key makes two
 -- dependent rules comparable for subfederation decisions; simple identifiers
@@ -205,6 +215,9 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedValuedNaturalRangeMember Natural
   | EvaluatedIntegerRangeMember IntegerRange.IntegerSubrangeDescription
   | EvaluatedValuedIntegerRangeMember Integer
+  | EvaluatedEitherMember
+      DatraBoolean
+      EvaluatedAtlasMapFederationMember
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
@@ -226,12 +239,14 @@ data EvaluatedSpecification = EvaluatedSpecification
 data ValueForm
   = ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
+  | BooleanForm DatraBoolean
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
   | ValuedNaturalRangeForm EvaluatedValuedNaturalRange
   | IntegerRangeForm EvaluatedIntegerRange
   | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
+  | EitherForm EvaluatedEither
   | RangeConcatenationForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
@@ -270,6 +285,7 @@ data InterpretedAtlasMapFederationPrimitive
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
   | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
   | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
+  | EitherAtlasMapFederation EvaluatedEither
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
 
@@ -284,6 +300,7 @@ type InterpretedAtlasMapFederation =
 data ValueSemantics
   = ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
+  | BooleanSemantics DatraBoolean ValueSemantics
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
@@ -292,6 +309,7 @@ data ValueSemantics
   | IntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
   | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
   | IntegerTypeSemantics
+  | EitherSemantics ValueSemantics ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
@@ -323,6 +341,7 @@ data CanonicalResult
   | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
   | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
   | CanonicalIntegerType
+  | CanonicalEither CanonicalResult CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
@@ -399,6 +418,14 @@ canonicalResult semantics =
   case semantics of
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
+    BooleanSemantics flag underlying ->
+      let underlyingResult = canonicalResult underlying
+          identifierString =
+            case flag of
+              DatraFalse -> "False"
+              DatraTrue -> "True"
+      in CanonicalAssignment
+          identifierString underlyingResult underlyingResult
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target
@@ -409,6 +436,8 @@ canonicalResult semantics =
     ValuedIntegerRangeSemantics start target ->
       CanonicalValuedIntegerRange start target
     IntegerTypeSemantics -> CanonicalIntegerType
+    EitherSemantics left right ->
+      CanonicalEither (canonicalResult left) (canonicalResult right)
     RangeConcatenationSemantics descriptions ->
       CanonicalRangeConcatenation descriptions
     ConcatenationSemantics members ->
@@ -453,12 +482,14 @@ interpretedValueKind value =
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
     ExplicitForm _ -> ExplicitOrdinalValueKind
     IntegerForm _ -> IntegerValueKind
+    BooleanForm _ -> BooleanValueKind
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind
     ValuedNaturalRangeForm _ -> RangeValueKind
     IntegerRangeForm _ -> RangeValueKind
     ValuedIntegerRangeForm _ -> RangeValueKind
+    EitherForm _ -> EitherValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind

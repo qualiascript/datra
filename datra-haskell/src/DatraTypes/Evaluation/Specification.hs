@@ -5,6 +5,8 @@ module Evaluation.Specification
   ) where
 
 import DatraLanguage.AST (renderAsciiStringLiteral)
+import BooleanType (DatraBoolean (..))
+import Evaluation.Boolean (makeBoolean)
 import Evaluation.Error
   ( AtlasMapFederationOperation
       ( AtlasMapFederationSpecification
@@ -16,6 +18,7 @@ import Evaluation.Error
       )
   , AtlasMapFederationUncertainty
       (NoAtlasMapFederationDecisionProcedure)
+  , InterpretedValueKind (NaturalValueKind)
   , InterpretingError (..)
   )
 import Evaluation.Specification.Composition (selectFederationMember)
@@ -93,23 +96,44 @@ assignIdentifierValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 assignIdentifierValues identifierString typeAnnotation givenValue = do
-  let source = simpleIdentifierTypeValue identifierString givenValue
-      target = simpleIdentifierTypeValue identifierString typeAnnotation
-  specified <- specifyValuesWithoutIdentity source target
-  case interpretedForm specified of
-    SpecificationForm specification ->
-      Right
-        (makeInterpretedValue
-          (AssignmentForm specification)
-          NoInsertion
-          (interpretedMap specified)
-          (interpretedAtlasMapFederation specified)
-          NonTotalInterpretedMap
-          (AssignmentSemantics
-            identifierString
-            (interpretedSemantics typeAnnotation)
-            (interpretedSemantics givenValue)))
-    _ -> Right specified
+  case booleanAssignment identifierString typeAnnotation givenValue of
+    Just value -> Right value
+    Nothing -> do
+      let source = simpleIdentifierTypeValue identifierString givenValue
+          target = simpleIdentifierTypeValue identifierString typeAnnotation
+      specified <- specifyValuesWithoutIdentity source target
+      case interpretedForm specified of
+        SpecificationForm specification ->
+          Right
+            (makeInterpretedValue
+              (AssignmentForm specification)
+              NoInsertion
+              (interpretedMap specified)
+              (interpretedAtlasMapFederation specified)
+              NonTotalInterpretedMap
+              (AssignmentSemantics
+                identifierString
+                (interpretedSemantics typeAnnotation)
+                (interpretedSemantics givenValue)))
+        _ -> Right specified
+
+-- These two assignments are the constructors of Bool, rather than ordinary
+-- identifier specifications. This makes the surface definition
+-- @False := 0 | True := 1@ definitionally equal to the @Bool@ shorthand.
+booleanAssignment
+  :: String
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+booleanAssignment identifierString typeAnnotation givenValue
+  | interpretedCanonicalResult typeAnnotation
+      /= interpretedCanonicalResult givenValue = Nothing
+  | interpretedValueKind givenValue /= NaturalValueKind = Nothing
+  | otherwise =
+      case (identifierString, interpretedInteger givenValue) of
+        ("False", Just 0) -> Just (makeBoolean DatraFalse)
+        ("True", Just 1) -> Just (makeBoolean DatraTrue)
+        _ -> Nothing
 
 specifyTotalAtlasMap
   :: InterpretedValue

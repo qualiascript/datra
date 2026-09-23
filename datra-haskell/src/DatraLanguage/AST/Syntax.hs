@@ -25,6 +25,13 @@ module DatraLanguage.AST.Syntax
   , integerWithinUpwards
   , integerWithinDownwards
   , integerType
+  , boolean
+  , booleanType
+  , eitherType
+  , equal
+  , and
+  , or
+  , not
   , minus
   , (-)
   , (+)
@@ -40,7 +47,7 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   )
 import Numeric.Natural (Natural)
-import Prelude hiding ((+), (-), (*), (^))
+import Prelude hiding (and, not, or, (+), (-), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
@@ -129,6 +136,27 @@ integerWithinDownwards = ValuedIntegerRangeDownwards
 
 integerType :: Expression
 integerType = IntegerType
+
+boolean :: Bool -> Expression
+boolean = BooleanLiteral
+
+booleanType :: Expression
+booleanType = BooleanType
+
+eitherType :: Expression -> Expression -> Expression
+eitherType = EitherType
+
+equal :: Expression -> Expression -> Expression
+equal = Equality
+
+and :: Expression -> Expression -> Expression
+and = BooleanAnd
+
+or :: Expression -> Expression -> Expression
+or = BooleanOr
+
+not :: Expression -> Expression
+not = BooleanNot
 
 minus :: Expression -> Expression
 minus = Minus

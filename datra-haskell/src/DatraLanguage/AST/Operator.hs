@@ -15,6 +15,11 @@ data Operator
   | AdditionOperator
   | SubtractionOperator
   | MinusOperator
+  | EqualityOperator
+  | BooleanAndOperator
+  | BooleanOrOperator
+  | BooleanNotOperator
+  | EitherOperator
   | MultiplicationOperator
   | ExponentiationOperator
   | ConcatenationOperator
@@ -34,6 +39,11 @@ operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
 operatorCanonicalSymbol SubtractionOperator = "-"
 operatorCanonicalSymbol MinusOperator = "minus"
+operatorCanonicalSymbol EqualityOperator = "="
+operatorCanonicalSymbol BooleanAndOperator = "and"
+operatorCanonicalSymbol BooleanOrOperator = "or"
+operatorCanonicalSymbol BooleanNotOperator = "not"
+operatorCanonicalSymbol EitherOperator = "Either"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
@@ -53,6 +63,11 @@ operatorSourceSymbol RangeMinusOperator = Just "..-"
 operatorSourceSymbol AdditionOperator = Just "+"
 operatorSourceSymbol SubtractionOperator = Just "-"
 operatorSourceSymbol MinusOperator = Just "-"
+operatorSourceSymbol EqualityOperator = Just "="
+operatorSourceSymbol BooleanAndOperator = Just "and"
+operatorSourceSymbol BooleanOrOperator = Just "or"
+operatorSourceSymbol BooleanNotOperator = Just "not"
+operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","

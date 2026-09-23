@@ -21,6 +21,8 @@ data OperandSide = LeftOperand | RightOperand
 data InterpretedValueKind
   = NaturalValueKind
   | IntegerValueKind
+  | BooleanValueKind
+  | EitherValueKind
   | ExplicitOrdinalValueKind
   | FormulationValueKind
   | RangeValueKind
@@ -52,6 +54,7 @@ data AtlasMapFederationUncertainty
 data InterpretingError
   = ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
+  | ExpectedBooleanOperand OperandSide InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | ExpectedInsertionOperand InterpretedValueKind
   | ExpectedTotalAtlasMap InterpretedValueKind

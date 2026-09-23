@@ -90,6 +90,7 @@ testTree =
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
         , testCase "integers and integer ranges" testIntegers
+        , testCase "booleans and Either" testBooleansAndEither
         , testCase "ranges" testRanges
         , testCase "canonical results" testCanonicalResults
         , testCase "rendering" testRendering
@@ -361,6 +362,88 @@ testLiteralsAndArithmetic = do
     assert "ordinal multiplication preserves noncommutative order"
       (interpretedExplicitOrdinal value
         == Just (2, ordinal [2, 1]))
+
+testBooleansAndEither :: IO ()
+testBooleansAndEither = do
+  expectValue "False literal" (AST.boolean False) $ \value ->
+    assert "False is the named zero map"
+      ( interpretedValueKind value == BooleanValueKind
+        && renderInterpretedValue value == "False := 0"
+      )
+  expectValue "Boolean type" AST.booleanType $ \value ->
+    assert "Bool expands to its Either federation"
+      ( renderInterpretedValue value
+          == "False := 0 | True := 1"
+        && interpretedValueKind value == EitherValueKind
+      )
+  expectValue
+      "surface Boolean definition"
+      (AST.equal
+        AST.booleanType
+        (AST.eitherType
+          (AST.assignment "False" (natural 0) (natural 0))
+          (AST.assignment "True" (natural 1) (natural 1)))) $ \value ->
+    assert "Bool is definitionally False := 0 | True := 1"
+      (renderInterpretedValue value == "True := 1")
+  expectValue
+      "Boolean specification"
+      (AST.boolean False ~> AST.booleanType) $ \value ->
+    assert "Boolean alternatives use ordinary federation specification"
+      (renderInterpretedValue value
+        == "(False := 0) ~> (False := 0 | True := 1)")
+  expectValue
+      "Boolean conjunction"
+      (AST.and (AST.boolean True) (AST.boolean False)) $ \value ->
+    assert "True and False is False"
+      (renderInterpretedValue value == "False := 0")
+  expectValue
+      "Boolean disjunction"
+      (AST.or (AST.boolean False) (AST.boolean True)) $ \value ->
+    assert "False or True is True"
+      (renderInterpretedValue value == "True := 1")
+  expectValue "Boolean negation" (AST.not (AST.boolean False)) $ \value ->
+    assert "not False is True"
+      (renderInterpretedValue value == "True := 1")
+  expectValue
+      "equal federations"
+      (AST.equal
+        (AST.eitherType (natural 0) (natural 1))
+        (AST.eitherType (natural 0) (natural 1))) $ \value ->
+    assert "mutual subfederation is true"
+      (renderInterpretedValue value == "True := 1")
+  expectValue
+      "unequal tagged federations"
+      (AST.equal
+        (AST.eitherType (natural 0) (natural 1))
+        (AST.eitherType (natural 1) (natural 0))) $ \value ->
+    assert "Either injection order distinguishes equal-shaped maps"
+      (renderInterpretedValue value == "False := 0")
+  expectValue
+      "associative Either"
+      (AST.equal
+        (AST.eitherType
+          (AST.eitherType (natural 0) (natural 1))
+          (natural 2))
+        (AST.eitherType
+          (natural 0)
+          (AST.eitherType (natural 1) (natural 2)))) $ \value ->
+    assert "Either association normalizes before subfederation comparison"
+      (renderInterpretedValue value == "True := 1")
+  expectValue
+      "Either subfederation widening"
+      ( (natural 1
+          ~> AST.eitherType (natural 0) (natural 1))
+          ~> AST.eitherType
+                (natural 0)
+                (AST.eitherType (natural 1) (natural 2))
+      ) $ \value ->
+    assert "specification composes through a larger Either federation"
+      (renderInterpretedValue value == "1 ~> (0 | 1 | 2)")
+  assert "Boolean operators reject non-Booleans"
+    (case interpretExpressionReason
+        (AST.and (natural 1) (AST.boolean True)) of
+      Left (ExpectedBooleanOperand LeftOperand NaturalValueKind) -> True
+      _ -> False)
 
 testRanges :: IO ()
 testRanges = do

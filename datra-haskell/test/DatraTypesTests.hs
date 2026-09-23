@@ -84,6 +84,7 @@ import DatraLanguage.Diagnostics.Localization
 import Ellipsis
 import EllipsisNatural qualified as DatraNatural
 import EllipsisInteger qualified as DatraInteger
+import BooleanType qualified as DatraBoolean
 import IntegerRange qualified
 import IntegerType qualified
 import ValuedIntegerRange qualified
@@ -468,6 +469,13 @@ testValuedNaturalRange = do
 
 testIntegerRanges :: IO ()
 testIntegerRanges = do
+  DatraInteger.ellipsisIntegerFromComplement
+      5 DatraBoolean.DatraTrue $ \negative ->
+    assert "integer complement flags are Datra Booleans"
+      ( DatraInteger.ellipsisIntegerValue negative == -6
+        && DatraBoolean.booleanNatural
+          (DatraInteger.ellipsisIntegerComplement negative) == 1
+      )
   DatraInteger.ellipsisInteger 5 $ \positive ->
     DatraInteger.ellipsisInteger (-6) $ \negative ->
       assert "integers use adjacent Nat x 2 complement codes"

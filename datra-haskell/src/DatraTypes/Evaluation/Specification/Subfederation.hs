@@ -29,6 +29,24 @@ decideValueSubfederation source target
   | interpretedValueHasTotalMap source =
       mapDecision (const ()) (selectFederationMember source target)
   | otherwise =
+      case (interpretedForm source, interpretedForm target) of
+        (EitherForm sourceEither, EitherForm targetEither) ->
+          decideEitherSubfederation sourceEither targetEither
+        (EitherForm _, _) -> DecisionRefuted
+        (_, EitherForm targetEither) ->
+          decideAny
+            [ decideValueSubfederation
+                source (evaluatedEitherLeft targetEither)
+            , decideValueSubfederation
+                source (evaluatedEitherRight targetEither)
+            ]
+        _ -> decideNonEitherSubfederation source target
+
+decideNonEitherSubfederation
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision ()
+decideNonEitherSubfederation source target =
       case ( interpretedAtlasMapFederation source
            , interpretedAtlasMapFederation target
            ) of
@@ -61,6 +79,25 @@ decideValueSubfederation source target
               (Just (concatenationOperands source))
               (Just (concatenationOperands target))
         _ -> DecisionUndecidable
+
+-- Tagged alternatives preserve their left/right injection. The right branch
+-- may itself be an Either, which permits the canonical right-associated tree
+-- to embed a shorter union into a longer one without reordering alternatives.
+decideEitherSubfederation
+  :: EvaluatedEither
+  -> EvaluatedEither
+  -> Decision ()
+decideEitherSubfederation source target =
+  mapDecision
+    (const ())
+    (decideAll
+      [ decideValueSubfederation
+          (evaluatedEitherLeft source)
+          (evaluatedEitherLeft target)
+      , decideValueSubfederation
+          (evaluatedEitherRight source)
+          (evaluatedEitherRight target)
+      ])
 
 decideIdentifierSubfederation
   :: EvaluatedIdentifierType

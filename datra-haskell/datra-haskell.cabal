@@ -66,6 +66,7 @@ library
         EllipsisRange
         EllipsisNatural
         EllipsisInteger
+        BooleanType
         NaturalRange
         ValuedNaturalRange
         NaturalType
@@ -192,6 +193,8 @@ library
         Evaluation.Access.RangeSelection
         Evaluation.Access.Specification
         Evaluation.Construction
+        Evaluation.Boolean
+        Evaluation.Either
         Evaluation.Error
         Evaluation.Federation
         Evaluation.Federation.Structure
@@ -261,6 +264,7 @@ library
         src/DatraTypes/Ellipses
         src/DatraTypes/NaturalRanges
         src/DatraTypes/IntegerRanges
+        src/DatraTypes/Booleans
         src/DatraTypes/Identifiers
         src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals

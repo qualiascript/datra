@@ -140,6 +140,36 @@ regressionTests = do
     "5 - 8"
     ((AST.-) (natural 5) (natural 8))
   assertAstOutput
+    "Boolean literal"
+    "False"
+    (AST.boolean False)
+  assertAstOutput
+    "Boolean type"
+    "Bool"
+    AST.booleanType
+  assertAstOutput
+    "Either surface operator"
+    "False := 0 | True := 1"
+    (AST.eitherType
+      (AST.assignment "False" (natural 0) (natural 0))
+      (AST.assignment "True" (natural 1) (natural 1)))
+  assertAstOutput
+    "Either is associative"
+    "(0 | 1) | 2"
+    (AST.eitherType
+      (natural 0)
+      (AST.eitherType (natural 1) (natural 2)))
+  assertAstOutput
+    "Boolean and, or, and not"
+    "False and not True or True"
+    (AST.or
+      (AST.and (AST.boolean False) (AST.not (AST.boolean True)))
+      (AST.boolean True))
+  assertAstOutput
+    "federation equality"
+    "1 = 1"
+    (AST.equal (natural 1) (natural 1))
+  assertAstOutput
     "EllipsisNatural specification into NaturalType"
     "2 ~> Nat"
     (natural 2 ~> AST.naturalType)

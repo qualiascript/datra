@@ -66,6 +66,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie un întreg finit")
         ["tipul efectiv al valorii: " <> valueKind actual]
+    ExpectedBooleanOperand side actual ->
+      LocalizedMessage
+        ("operandul " <> operandSide side <> " trebuie să fie boolean")
+        ["tipul efectiv al valorii: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponentul trebuie să fie o valoare naturală"
@@ -150,6 +154,8 @@ operandSide RightOperand = "drept"
 valueKind :: InterpretedValueKind -> String
 valueKind NaturalValueKind = "număr natural"
 valueKind IntegerValueKind = "număr întreg"
+valueKind BooleanValueKind = "boolean"
+valueKind EitherValueKind = "federație Either"
 valueKind ExplicitOrdinalValueKind = "ordinal explicit"
 valueKind FormulationValueKind = "formulare cu super-elipsă"
 valueKind RangeValueKind = "interval"

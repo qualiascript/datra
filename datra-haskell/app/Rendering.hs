@@ -98,6 +98,10 @@ prettyCanonicalResult result =
     CanonicalValuedIntegerRange origin target ->
       prettyValuedIntegerRange origin target
     CanonicalIntegerType -> "Int"
+    CanonicalEither left right ->
+      prettyCanonicalResult left
+        <+> prettySourceSymbol EitherOperator
+        <+> prettyCanonicalResult right
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
@@ -137,9 +141,17 @@ prettyCanonicalResult result =
           | sourceString == targetString && sourceType == givenValue ->
               prettyAssignment sourceString typeAnnotation givenValue
         _ ->
-          prettyCanonicalResult source
+          prettySpecificationOperand source
             <+> prettySourceSymbol SpecificationOperator
-            <+> prettyCanonicalResult target
+            <+> prettySpecificationOperand target
+
+prettySpecificationOperand :: CanonicalResult -> Doc annotation
+prettySpecificationOperand operand =
+  case operand of
+    CanonicalAssignment {} -> parens (prettyCanonicalResult operand)
+    CanonicalEither {} -> parens (prettyCanonicalResult operand)
+    CanonicalSpecification {} -> parens (prettyCanonicalResult operand)
+    _ -> prettyCanonicalResult operand
 
 prettyAssignment
   :: String

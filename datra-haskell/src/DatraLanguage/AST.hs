@@ -60,9 +60,16 @@ data Expression
   | ValuedIntegerRangeUpwards Integer
   | ValuedIntegerRangeDownwards Integer
   | IntegerType
+  | BooleanLiteral Bool
+  | BooleanType
+  | EitherType Expression Expression
   | Addition Expression Expression
   | Subtraction Expression Expression
   | Minus Expression
+  | Equality Expression Expression
+  | BooleanAnd Expression Expression
+  | BooleanOr Expression Expression
+  | BooleanNot Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -103,9 +110,16 @@ data OperatorExpression
   | InclusiveValuedIntegerRangeUpwards Integer
   | InclusiveValuedIntegerRangeDownwards Integer
   | IntegerTypeValue
+  | BooleanValue Bool
+  | BooleanTypeValue
+  | EitherValue OperatorExpression OperatorExpression
   | Add OperatorExpression OperatorExpression
   | Subtract OperatorExpression OperatorExpression
   | Negate OperatorExpression
+  | Equal OperatorExpression OperatorExpression
+  | And OperatorExpression OperatorExpression
+  | Or OperatorExpression OperatorExpression
+  | Not OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -162,11 +176,25 @@ normalizeExpression (ValuedIntegerRangeUpwards origin) =
 normalizeExpression (ValuedIntegerRangeDownwards origin) =
   ValuedIntegerRangeDownwards origin
 normalizeExpression IntegerType = IntegerType
+normalizeExpression (BooleanLiteral value) = BooleanLiteral value
+normalizeExpression BooleanType = BooleanType
+normalizeExpression (EitherType left right) =
+  normalizeEither
+    (normalizeExpression left)
+    (normalizeExpression right)
 normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Subtraction left right) =
   Subtraction (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Minus operand) = Minus (normalizeExpression operand)
+normalizeExpression (Equality left right) =
+  Equality (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (BooleanAnd left right) =
+  BooleanAnd (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (BooleanOr left right) =
+  BooleanOr (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (BooleanNot operand) =
+  BooleanNot (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -204,6 +232,20 @@ normalizeExpansion left right
   | isEmptyMap right = left
   | otherwise = MapExpansion left right
 
+-- Either is associative. Flattening and rebuilding to the right gives every
+-- source spelling one injection tree, so its Boolean tag paths are stable.
+normalizeEither :: Expression -> Expression -> Expression
+normalizeEither left right = buildEither (eitherMembers left <> eitherMembers right)
+  where
+    buildEither [member] = member
+    buildEither (member : members) = EitherType member (buildEither members)
+    buildEither [] = EitherType left right
+
+eitherMembers :: Expression -> [Expression]
+eitherMembers (EitherType left right) =
+  eitherMembers left <> eitherMembers right
+eitherMembers expressionValue = [expressionValue]
+
 isEmptyMap :: Expression -> Bool
 isEmptyMap (AtlasMap []) = True
 isEmptyMap (MapSequence []) = True
@@ -239,9 +281,16 @@ lower (ValuedIntegerRangeUpwards origin) =
 lower (ValuedIntegerRangeDownwards origin) =
   InclusiveValuedIntegerRangeDownwards origin
 lower IntegerType = IntegerTypeValue
+lower (BooleanLiteral value) = BooleanValue value
+lower BooleanType = BooleanTypeValue
+lower (EitherType left right) = EitherValue (lower left) (lower right)
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Subtraction left right) = Subtract (lower left) (lower right)
 lower (Minus operand) = Negate (lower operand)
+lower (Equality left right) = Equal (lower left) (lower right)
+lower (BooleanAnd left right) = And (lower left) (lower right)
+lower (BooleanOr left right) = Or (lower left) (lower right)
+lower (BooleanNot operand) = Not (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -323,12 +372,25 @@ prettyOperator (InclusiveValuedIntegerRangeUpwards origin) =
 prettyOperator (InclusiveValuedIntegerRangeDownwards origin) =
   prettyForm "within" [prettyInteger origin, "downwards"]
 prettyOperator IntegerTypeValue = "Int"
+prettyOperator (BooleanValue False) = "False"
+prettyOperator (BooleanValue True) = "True"
+prettyOperator BooleanTypeValue = "Bool"
+prettyOperator (EitherValue left right) =
+  prettyBinary EitherOperator left right
 prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Subtract left right) =
   prettyBinary SubtractionOperator left right
 prettyOperator (Negate operand) =
   prettyUnary MinusOperator operand
+prettyOperator (Equal left right) =
+  prettyBinary EqualityOperator left right
+prettyOperator (And left right) =
+  prettyBinary BooleanAndOperator left right
+prettyOperator (Or left right) =
+  prettyBinary BooleanOrOperator left right
+prettyOperator (Not operand) =
+  prettyUnary BooleanNotOperator operand
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =

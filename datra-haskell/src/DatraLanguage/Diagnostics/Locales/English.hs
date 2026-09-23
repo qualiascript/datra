@@ -68,6 +68,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         (operandSide side <> " operand must be a finite integer")
         ["actual value kind: " <> valueKind actual]
+    ExpectedBooleanOperand side actual ->
+      LocalizedMessage
+        (operandSide side <> " operand must be Boolean")
+        ["actual value kind: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponent must be a natural value"
@@ -150,6 +154,8 @@ operandSide RightOperand = "right"
 valueKind :: InterpretedValueKind -> String
 valueKind NaturalValueKind = "natural"
 valueKind IntegerValueKind = "integer"
+valueKind BooleanValueKind = "Boolean"
+valueKind EitherValueKind = "Either federation"
 valueKind ExplicitOrdinalValueKind = "explicit ordinal"
 valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"

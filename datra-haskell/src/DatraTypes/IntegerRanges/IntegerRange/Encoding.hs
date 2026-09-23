@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
 
@@ -15,7 +16,8 @@ import Chain (chain)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
 import Ellipsis (Ellipsis)
 import EllipsisInteger
-  ( IntegerComplement (..)
+  ( pattern Complemented
+  , pattern Direct
   , integerAtCode
   , integerCode
   )

@@ -15,6 +15,9 @@ module DatraTypes
   , AtlasMapFederationUncertainty (..)
   , naturalValue
   , integerValue
+  , booleanValue
+  , booleanTypeValue
+  , eitherValue
   , asciiStringValue
   , formulationValue
   , addValues
@@ -22,6 +25,10 @@ module DatraTypes
   , minusValue
   , multiplyValues
   , exponentiateValues
+  , equalValues
+  , booleanAndValues
+  , booleanOrValues
+  , booleanNotValue
   , boundedRangeValue
   , openPlusRangeValue
   , openMinusRangeValue
@@ -73,6 +80,16 @@ import Evaluation.Construction
   , makeNatural
   , makeInteger
   )
+import Evaluation.Boolean
+  ( booleanAndValues
+  , booleanNotValue
+  , booleanOrValues
+  , equalValues
+  , makeBoolean
+  , makeBooleanType
+  )
+import Evaluation.Either (makeEitherValue)
+import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
   , makeAtlasExpansion
@@ -136,6 +153,17 @@ naturalValue = makeNatural
 
 integerValue :: Integer -> InterpretedValue
 integerValue = makeInteger
+
+booleanValue :: Bool -> InterpretedValue
+booleanValue value =
+  makeBoolean
+    (if value then BooleanType.DatraTrue else BooleanType.DatraFalse)
+
+booleanTypeValue :: InterpretedValue
+booleanTypeValue = makeBooleanType
+
+eitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
+eitherValue = makeEitherValue
 
 asciiStringValue :: String -> Either InterpretingError InterpretedValue
 asciiStringValue value =
