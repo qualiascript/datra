@@ -7,6 +7,7 @@ module Evaluation.Specification
 import DatraLanguage.AST (renderAsciiStringLiteral)
 import BooleanType (DatraBoolean (..))
 import Evaluation.Boolean (makeBoolean)
+import Evaluation.Construction (makeAsciiString)
 import Evaluation.Optional (makeNothing)
 import Evaluation.Error
   ( AtlasMapFederationOperation
@@ -140,6 +141,8 @@ distinguishedAssignment identifierString typeAnnotation givenValue
         ("True", NaturalValueKind, Just 1, _) ->
           Just (makeBoolean DatraTrue)
         ("Nothing", MapValueKind, _, CanonicalMap 0 []) -> Just makeNothing
+        (_, MapValueKind, _, CanonicalMap 0 []) ->
+          Just (makeAsciiString identifierString)
         _ -> Nothing
 
 specifyTotalAtlasMap

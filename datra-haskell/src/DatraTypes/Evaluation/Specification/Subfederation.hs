@@ -8,6 +8,7 @@ import AtlasMapFederationExpression
   , AtlasMapFederationExpression (..)
   )
 import Evaluation.Federation (decidePrimitiveSubfederation)
+import Evaluation.Access.Federation (federationIsCoalition)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
@@ -68,6 +69,18 @@ decideNonEitherSubfederation source target =
           decidePointwiseSubfederation
             (sequenceOperands source)
             (sequenceOperands target)
+        ( SequentialAtlasMapFederation _
+          , ConcatenatedAtlasMapFederation _ _
+          ) ->
+            decideCoalitionComponents
+              (sequenceOperands source)
+              (Just (concatenationOperands target))
+        ( ConcatenatedAtlasMapFederation _ _
+          , SequentialAtlasMapFederation _
+          ) ->
+            decideCoalitionComponents
+              (Just (concatenationOperands source))
+              (sequenceOperands target)
         ( ExpansionAtlasMapFederation _ _
           , ExpansionAtlasMapFederation _ _
           ) ->
@@ -150,3 +163,21 @@ decidePointwiseSubfederation
         (decideAll
           (zipWith decideValueSubfederation sourceMembers targetMembers))
 decidePointwiseSubfederation _ _ = DecisionRefuted
+
+-- A sequence and its explicit concatenation describe the same ordered
+-- federation exactly when every component is a coalition. Other
+-- sequence/concatenation pairs retain their distinct construction semantics.
+decideCoalitionComponents
+  :: Maybe [InterpretedValue]
+  -> Maybe [InterpretedValue]
+  -> Decision ()
+decideCoalitionComponents sourceMembers targetMembers =
+  case (sourceMembers, targetMembers) of
+    (Just source, Just target)
+      | all valueIsCoalition (source <> target) ->
+          decidePointwiseSubfederation sourceMembers targetMembers
+    _ -> DecisionRefuted
+
+valueIsCoalition :: InterpretedValue -> Bool
+valueIsCoalition =
+  federationIsCoalition . interpretedAtlasMapFederation

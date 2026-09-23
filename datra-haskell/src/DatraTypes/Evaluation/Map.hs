@@ -11,6 +11,7 @@ import AtlasMapFederationExpression
   )
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.Error (InterpretingError)
+import Evaluation.Access.Federation (federationIsCoalition)
 import Evaluation.Federation
   ( decideFederationConcatenation
   , requireFederationDecision
@@ -61,9 +62,9 @@ makeProductMap
   -> InterpretedValue
 makeProductMap productForm cardinality values productFederation = value
   where
-    -- Both sequence and expansion preserve the value and semantic boundary of
-    -- every operand. Ordinary concatenation is the explicitly flattening
-    -- operation and is implemented separately below.
+    -- Both sequence and expansion preserve every operand structurally. A
+    -- nonempty sequence made entirely of coalitions additionally shares the
+    -- canonical semantics of its explicit concatenation.
     finalValues =
       foldl'
         appendOrdinalOrderedValues
@@ -71,7 +72,13 @@ makeProductMap productForm cardinality values productFederation = value
         (map singletonOrdinalOrderedValues values)
     components =
       map interpretedSemantics values
-    semantics = MapSemantics cardinality components
+    semantics =
+      case productForm of
+        SequentialProduct
+          | not (null memberFederations)
+          , all federationIsCoalition memberFederations ->
+              ConcatenationSemantics components
+        _ -> MapSemantics cardinality components
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
     federation

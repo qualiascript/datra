@@ -234,6 +234,16 @@ regressionTests = do
       (optionalAssigned "a" 12)
       (optionalAssigned "b" 23 ~> optionalIdentifier "b"))
   assertAstOutput
+    "optional assignment sequence equals its canonical concatenation"
+    ( "(a? : Int := 12; b? : Int := 23) = "
+        <> "(a? : Int := 12, b? : Int := 23)"
+    )
+    (AST.equal
+      (optionalAssigned "a" 12 <:> optionalAssigned "b" 23)
+      (MapConcatenation
+        (optionalAssigned "a" 12)
+        (optionalAssigned "b" 23)))
+  assertAstOutput
     "ternary conditional"
     "if True then 1 else -2"
     (AST.conditional
@@ -318,6 +328,12 @@ regressionTests = do
     "simple identifier type"
     "x : Nat"
     (AST.identifierType "x" AST.naturalType)
+  assertAstOutput
+    "unit identifier equals its identifier string"
+    "$Value = (Value : ())"
+    (AST.equal
+      (AST.asciiString "Value")
+      (AST.identifierType "Value" AST.emptyMap))
   assertAstOutput
     "full identifier assignment"
     "x : Nat := 5"

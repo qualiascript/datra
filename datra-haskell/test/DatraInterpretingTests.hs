@@ -578,9 +578,9 @@ testOptionalsAndConditionals = do
       ( MapConcatenation (natural 12) (natural 23)
           ~> optionalIntegerSlots
       ) $ \value ->
-    assert "both positional values select the missing-identifier branches"
+    assert "positional values canonicalize as optional assignments"
       (renderInterpretedValue value
-        == "(12; 23) ~> a? : Int, b? : Int")
+        == "a? : Int := 12, b? : Int := 23")
   expectValue
       "named value specifies into its matching optional identifier slot"
       ( MapConcatenation
@@ -588,9 +588,9 @@ testOptionalsAndConditionals = do
           (AST.assignment "b" (natural 23) (natural 23))
           ~> optionalIntegerSlots
       ) $ \value ->
-    assert "the named value selects b while a remains missing"
+    assert "named and positional values share assignment canonicalization"
       (renderInterpretedValue value
-        == "12, b : 23 ~> a? : Int, b? : Int")
+        == "a? : Int := 12, b? : Int := 23")
   expectValue
       "optional assignment reverse-specifies within a concatenation slot"
       (MapConcatenation
@@ -598,7 +598,39 @@ testOptionalsAndConditionals = do
         (optionalAssigned "b" 23 ~> optionalIdentifier "b")) $ \value ->
     assert "the present optional branch supplies a concrete specification source"
       (renderInterpretedValue value
-        == "a? : Int := 12, ((b? : Int := 23) ~> (b? : Int))")
+        == "a? : Int := 12, b? : Int := 23")
+  expectValue
+      "optional-slot specification equals its assigned federation"
+      (AST.equal
+        ( MapConcatenation
+            (natural 12)
+            (AST.identifierType "b" (natural 23))
+            ~> optionalIntegerSlots
+        )
+        (MapConcatenation
+          (optionalAssigned "a" 12)
+          (optionalAssigned "b" 23))) $ \value ->
+    assert "specification wrappers preserve composite federation equality"
+      (renderInterpretedValue value == "True : 1")
+  let optionalAssignmentSequence =
+        AtlasMap [optionalAssigned "a" 12, optionalAssigned "b" 23]
+      optionalAssignmentConcatenation =
+        MapConcatenation
+          (optionalAssigned "a" 12)
+          (optionalAssigned "b" 23)
+  expectValue
+      "optional assignment sequence has comma canonical form"
+      optionalAssignmentSequence $ \value ->
+    assert "ordered optional slots canonicalize as concatenation"
+      (renderInterpretedValue value
+        == "a? : Int := 12, b? : Int := 23")
+  expectValue
+      "optional assignment sequence equals concatenation"
+      (AST.equal
+        optionalAssignmentSequence
+        optionalAssignmentConcatenation) $ \value ->
+    assert "semicolon and comma optional slots are mutual subfederations"
+      (renderInterpretedValue value == "True : 1")
   expectValue
       "ternary true branch"
       (AST.conditional
@@ -671,8 +703,8 @@ testCombinedTypeSystems = do
                 (AST.identifierType "a" AST.naturalType)
                 AST.naturalType
       ) $ \value ->
-    assert "conditional results select the missing-identifier branch"
-      (renderInterpretedValue value == "12 ~> (a? : Nat)")
+    assert "conditional results canonicalize as optional assignments"
+      (renderInterpretedValue value == "a? : Nat := 12")
 
 testCombinatorialNumericalSystems :: IO ()
 testCombinatorialNumericalSystems = do
@@ -1080,6 +1112,21 @@ testAtlasMapFederations = do
       (AtlasMap [natural 2, NaturalRange 2 10]) $ \value ->
     assert "NaturalRange structure survives a sequential product"
       (renderInterpretedValue value == "(2; from 2 to 10)")
+  let coalitionSequence =
+        AtlasMap [ValuedIntegerRange 1 3, ValuedIntegerRange 4 6]
+      coalitionConcatenation =
+        (<.>) (ValuedIntegerRange 1 3) (ValuedIntegerRange 4 6)
+  expectValue
+      "a sequence of coalitions has concatenation canonical form"
+      coalitionSequence $ \value ->
+    assert "coalition components canonicalize with commas"
+      (renderInterpretedValue value
+        == "within 1 to 3, within 4 to 6")
+  expectValue
+      "a coalition sequence equals its concatenation"
+      (AST.equal coalitionSequence coalitionConcatenation) $ \value ->
+    assert "coalition construction is extensionally independent of syntax"
+      (renderInterpretedValue value == "True : 1")
   expectValue
       "disjoint NaturalRange concatenation"
       ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
@@ -1182,7 +1229,7 @@ testAccess = do
         ((<..>) (natural 0) (natural 2))) $ \value ->
     assert "a specification range retains both selected fibers"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "(2; 3) ~> (Nat; Nat)"
+        && renderInterpretedValue value == "(2; 3) ~> Nat, Nat"
       )
   expectValue
       "natural upwards range access"
@@ -1952,6 +1999,22 @@ testIdentifiers = do
           (Just givenValue)
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
+      valueUnit = identifier "Value" (AtlasMap [])
+  expectValue "unit identifier" valueUnit $ \value ->
+    assert "a unit identifier canonicalizes to its identifier string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "$Value"
+      )
+  expectValue
+      "unit identifier string equality"
+      (AST.equal (AsciiStringLiteral "Value") valueUnit) $ \value ->
+    assert "identifier strings and unit identifiers are definitionally equal"
+      (renderInterpretedValue value == "True : 1")
+  expectValue
+      "unit assignment"
+      (assignment "Value" (AtlasMap []) (AtlasMap [])) $ \value ->
+    assert "a unit assignment also canonicalizes to its identifier string"
+      (renderInterpretedValue value == "$Value")
   expectValue "simple identifier type" xNatural $ \value ->
     assert "identifier types retain their two-position map view"
       ( interpretedValueKind value == IdentifierTypeValueKind
@@ -2072,7 +2135,7 @@ testIdentifiers = do
     assert "identifier selection composes pointwise through sequences"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "(x : 5; y : 6) ~> (x : Nat; y : Nat)"
+          == "(x : 5; y : 6) ~> x : Nat, y : Nat"
       )
   assert "different identifier strings do not specify each other"
     (case interpretExpressionReason

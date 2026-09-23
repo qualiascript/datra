@@ -479,7 +479,81 @@ canonicalResult semantics =
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map canonicalResult components)
     SpecificationSemantics source target ->
-      CanonicalSpecification (canonicalResult source) (canonicalResult target)
+      canonicalSpecificationResult
+        (canonicalResult source)
+        (canonicalResult target)
+
+-- Specifications into optional identifier slots have an assignment
+-- presentation that carries the selected source values directly. This is the
+-- canonical value, not merely a renderer shorthand: a pointwise specification
+-- and its @:=@ federation therefore normalize identically.
+canonicalSpecificationResult
+  :: CanonicalResult
+  -> CanonicalResult
+  -> CanonicalResult
+canonicalSpecificationResult source target =
+  case optionalAssignment source target of
+    Just assignment -> assignment
+    Nothing ->
+      case (canonicalComponents source, canonicalComponents target) of
+        (Just sourceMembers, Just targetMembers)
+          | length sourceMembers == length targetMembers ->
+              case sequence
+                  (zipWith optionalAssignment sourceMembers targetMembers) of
+                Just assignments -> CanonicalConcatenation assignments
+                Nothing -> CanonicalSpecification source target
+        _ -> CanonicalSpecification source target
+
+canonicalComponents :: CanonicalResult -> Maybe [CanonicalResult]
+canonicalComponents (CanonicalConcatenation members) = Just members
+canonicalComponents (CanonicalMap _ members) = Just members
+canonicalComponents _ = Nothing
+
+optionalAssignment
+  :: CanonicalResult
+  -> CanonicalResult
+  -> Maybe CanonicalResult
+optionalAssignment source (CanonicalEither present missing) =
+  case present of
+    CanonicalIdentifierType identifierString typeAnnotation
+      | typeAnnotation == missing ->
+          Just
+            (CanonicalEither
+              (CanonicalAssignment
+                identifierString
+                typeAnnotation
+                (optionalAssignmentValue
+                  identifierString typeAnnotation source))
+              missing)
+    CanonicalAssignment identifierString typeAnnotation _
+      | typeAnnotation == missing ->
+          Just
+            (CanonicalEither
+              (CanonicalAssignment
+                identifierString
+                typeAnnotation
+                (optionalAssignmentValue
+                  identifierString typeAnnotation source))
+              missing)
+    _ -> Nothing
+optionalAssignment _ _ = Nothing
+
+optionalAssignmentValue
+  :: String
+  -> CanonicalResult
+  -> CanonicalResult
+  -> CanonicalResult
+optionalAssignmentValue identifierString typeAnnotation source =
+  case source of
+    CanonicalAssignment sourceString _ givenValue
+      | sourceString == identifierString -> givenValue
+    CanonicalEither
+        (CanonicalAssignment sourceString sourceType givenValue)
+        sourceMissing
+      | sourceString == identifierString
+      , sourceType == typeAnnotation
+      , sourceMissing == typeAnnotation -> givenValue
+    _ -> source
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =

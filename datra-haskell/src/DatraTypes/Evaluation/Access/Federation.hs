@@ -161,9 +161,9 @@ emptyMapAccessCounterexample =
     (AtlasMapFederationOperationRefuted
       AtlasMapFederationAccessHasEmptyCounterexample)
 
--- ValuedNaturalRange and Nat are federations of one-value Atlases: their
--- member Atlases form one coalition and occupy one stable position in a
--- sequential product.
+-- Valued ranges and identifier types are federations whose member Atlases form
+-- one coalition and occupy one stable position in a sequential product. A
+-- tagged Either remains a coalition exactly when both alternatives do.
 federationIsCoalition :: InterpretedAtlasMapFederation -> Bool
 federationIsCoalition federation =
   case federation of
@@ -173,7 +173,12 @@ federationIsCoalition federation =
         (ValuedIntegerRangeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
         (IdentifierTypeAtlasMapFederation _) -> True
-    PrimitiveAtlasMapFederation (EitherAtlasMapFederation _) -> False
+    PrimitiveAtlasMapFederation
+        (EitherAtlasMapFederation alternatives) ->
+      federationIsCoalition
+        (interpretedAtlasMapFederation (evaluatedEitherLeft alternatives))
+        && federationIsCoalition
+          (interpretedAtlasMapFederation (evaluatedEitherRight alternatives))
     _ -> False
 
 naturalRangeFederation
