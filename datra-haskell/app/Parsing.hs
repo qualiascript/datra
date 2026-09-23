@@ -66,6 +66,7 @@ import DatraLanguage.AST
       , BooleanAnd
       , BooleanOr
       , BooleanNot
+      , Extract
       )
   , StringTemplatePart
       ( StringTemplateInterpolation
@@ -280,6 +281,7 @@ astForm =
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
+      , astUnary AST.ExtractOperator Extract
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
@@ -577,7 +579,15 @@ rangeEndpoint :: Parser Expression
 rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
-term = accessedTerm termAtom
+term = accessedTerm extractedTermAtom
+
+-- Extract binds to its primary operand before bracket access, so @%a[x]@
+-- means @(%a)[x]@. A larger specification operand remains available through
+-- ordinary parentheses.
+extractedTermAtom :: Parser Expression
+extractedTermAtom =
+  (Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom))
+    <|> termAtom
 
 termAtom :: Parser Expression
 termAtom =

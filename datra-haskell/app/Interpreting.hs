@@ -201,6 +201,8 @@ interpretNormalizedExpression expressionValue =
       interpretBinary booleanOrValues left right
     BooleanNot operand ->
       interpretExpressionReason operand >>= booleanNotValue
+    Extract operand ->
+      interpretExpressionReason operand >>= extractValue
     MapConcatenation left right ->
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->

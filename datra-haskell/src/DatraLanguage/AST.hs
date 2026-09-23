@@ -94,6 +94,7 @@ data Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
+  | Extract Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -154,6 +155,7 @@ data OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
+  | ExtractValue OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -243,6 +245,8 @@ normalizeExpression (BooleanOr left right) =
   BooleanOr (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
+normalizeExpression (Extract operand) =
+  Extract (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -359,6 +363,7 @@ lower (Equality left right) = Equal (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
+lower (Extract operand) = ExtractValue (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -505,6 +510,8 @@ prettyOperator (Or left right) =
   prettyBinary BooleanOrOperator left right
 prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
+prettyOperator (ExtractValue operand) =
+  prettyUnary ExtractOperator operand
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =

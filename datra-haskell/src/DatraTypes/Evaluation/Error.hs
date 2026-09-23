@@ -78,6 +78,7 @@ data InterpretingError
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
+  | ExpectedStringTemplateSpecification InterpretedValueKind
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
   | InvalidAsciiStringCharacter Char

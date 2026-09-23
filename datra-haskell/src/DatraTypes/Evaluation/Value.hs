@@ -223,7 +223,9 @@ data EvaluatedAtlasMapFederationMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
-  | EvaluatedToStringMember EvaluatedAtlasMapFederationMember
+  | EvaluatedToStringMember
+      InterpretedValue
+      EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember

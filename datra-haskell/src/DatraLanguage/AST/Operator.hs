@@ -20,6 +20,7 @@ data Operator
   | BooleanAndOperator
   | BooleanOrOperator
   | BooleanNotOperator
+  | ExtractOperator
   | EitherOperator
   | OptionalOperator
   | MultiplicationOperator
@@ -46,6 +47,7 @@ operatorCanonicalSymbol EqualityOperator = "="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
+operatorCanonicalSymbol ExtractOperator = "extract"
 operatorCanonicalSymbol EitherOperator = "Either"
 operatorCanonicalSymbol OptionalOperator = "optional"
 operatorCanonicalSymbol MultiplicationOperator = "*"
@@ -72,6 +74,7 @@ operatorSourceSymbol EqualityOperator = Just "="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
+operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
 operatorSourceSymbol MultiplicationOperator = Just "*"

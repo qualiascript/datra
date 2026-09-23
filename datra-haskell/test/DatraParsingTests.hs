@@ -62,6 +62,21 @@ regressionTests :: IO ()
 regressionTests = do
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
+  assertAstOutput
+    "extract applies to a parenthesized reverse specification"
+    "%(\"%Iden %Int\" <~ \"alco 100\")"
+    (Extract
+      (MapSpecification
+        (AsciiStringLiteral "alco 100")
+        (StringTemplate
+          [ StringTemplateInterpolation IdentifierValueType
+          , StringTemplateLiteral " "
+          , StringTemplateInterpolation IntegerType
+          ])))
+  assertParsed
+    "extract binds before bracket access"
+    "%String[0]"
+    (MapAccess (Extract StringType) (natural 0))
   mapM_
     (\reservedSymbol ->
       assertRejected
@@ -1161,6 +1176,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Exponentiation
     , Gen.subterm2 genExpression genExpression Subfederation
     , Gen.subterm2 genExpression genExpression Equality
+    , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification

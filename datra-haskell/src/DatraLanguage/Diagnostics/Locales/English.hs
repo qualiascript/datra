@@ -150,6 +150,10 @@ localizeInterpretingError reason =
         [ "weakToString can render the value, but specification requires "
             <> "an injective canonical conversion"
         ]
+    ExpectedStringTemplateSpecification kind ->
+      LocalizedMessage
+        "extract expects a concrete string-template specification"
+        ["given value kind: " <> valueKind kind]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "Either alternatives are not distinguishable Atlas maps"

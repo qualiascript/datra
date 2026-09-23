@@ -570,6 +570,49 @@ testStringTemplates = do
       "\"alco\" of \"%(ie : Nat | Iden)\"" $ \value ->
     assert "the string-valued alternative retains identity conversion"
       (renderInterpretedValue value == "true")
+  expectSourceValue
+      "extract returns the source string and typed template holes"
+      "%(\"%Iden %Int\" <~ \"alco 100\")" $ \value ->
+    assert "extract follows the retained string-template selection witness"
+      ( renderInterpretedValue value
+          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+      )
+  expectSourceValue
+      "extract forgets a simple identifier assignment wrapper"
+      "%(a : \"%Iden %Int\" := \"alco 100\")" $ \value ->
+    assert "identifier extraction matches direct specification extraction"
+      ( renderInterpretedValue value
+          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+      )
+  expectSourceValue
+      "extract index zero selects the original string"
+      "%(my_val : \"%Iden %Int\" := \"alco 100\") [0]" $ \value ->
+    assert "the first extracted component is always the source string"
+      (renderInterpretedValue value == "\"alco 100\"")
+  expectSourceValue
+      "extract index one selects the Iden hole"
+      "%(my_val : \"%Iden %Int\" := \"alco 100\") [1]" $ \value ->
+    assert "the second extracted component is the first typed hole"
+      (renderInterpretedValue value == "$alco ~> Iden")
+  expectSourceValue
+      "extract index two selects the Int hole"
+      "%(my_val : \"%Iden %Int\" := \"alco 100\") [2]" $ \value ->
+    assert "the third extracted component is the second typed hole"
+      (renderInterpretedValue value == "100 ~> Int")
+  expectSourceValue
+      "extract treats a literal template as one String hole"
+      "%(\"hello world\" <~ \"hello world\")" $ \value ->
+    assert "a holeless template retains its source and synthesized hole"
+      ( renderInterpretedValue value
+          == "(\"hello world\"; \"hello world\" ~> String)"
+      )
+  expectSourceValue
+      "extract treats percent String as the whole-string hole"
+      "%(\"%String\" <~ \"hello world\")" $ \value ->
+    assert "String identity extraction matches the holeless case"
+      ( renderInterpretedValue value
+          == "(\"hello world\"; \"hello world\" ~> String)"
+      )
   let template = StringTemplate
         [ StringTemplateLiteral "example"
         , StringTemplateInterpolation

@@ -39,6 +39,7 @@ module DatraLanguage.AST.Syntax
   , and
   , or
   , not
+  , extract
   , minus
   , (-)
   , (+)
@@ -187,6 +188,9 @@ or = BooleanOr
 
 not :: Expression -> Expression
 not = BooleanNot
+
+extract :: Expression -> Expression
+extract = Extract
 
 minus :: Expression -> Expression
 minus = Minus

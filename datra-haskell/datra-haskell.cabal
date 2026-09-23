@@ -215,6 +215,7 @@ library
         Evaluation.ToString
         Evaluation.ToString.Injectivity
         Evaluation.Value
+        Extract
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
         base >= 4.14 && < 5,

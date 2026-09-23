@@ -27,6 +27,7 @@ module DatraTypes
   , toStringValue
   , weakToStringValue
   , stringTemplateValue
+  , extractValue
   , formulationValue
   , addValues
   , subtractValues
@@ -111,6 +112,7 @@ import Evaluation.ToString
   , toStringValue
   , weakToStringValue
   )
+import Extract (extractValue)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
