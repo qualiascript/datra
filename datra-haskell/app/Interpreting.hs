@@ -13,6 +13,7 @@ module Interpreting
   , interpretLocatedExpression
   , interpretExpressionReason
   , interpretedValueKind
+  , interpretedValueHasTotalMap
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
   , interpretedInteger
@@ -25,9 +26,11 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
+import Control.Monad (foldM)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart (..)
   , normalizeExpression
   )
 import DatraTypes
@@ -66,6 +69,7 @@ interpretNormalizedExpression expressionValue =
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
     AsciiStringLiteral value -> asciiStringValue value
+    StringTemplate parts -> interpretStringTemplate parts
     StringType -> Right stringTypeValue
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
@@ -173,6 +177,27 @@ interpretNormalizedExpression expressionValue =
                   , givenValue = renderInterpretedValue givenValue
                   })
             result -> result
+
+interpretStringTemplate
+  :: [StringTemplatePart]
+  -> Either InterpretingError InterpretedValue
+interpretStringTemplate parts = do
+  values <- traverse interpretPart parts
+  case values of
+    [] -> asciiStringValue ""
+    firstValue : remaining -> do
+      result <- foldM concatenateTemplateValues firstValue remaining
+      pure (stringTemplateValue result)
+  where
+    interpretPart (StringTemplateLiteral value) = asciiStringValue value
+    interpretPart (StringTemplateInterpolation expressionValue) = do
+      value <- interpretExpressionReason expressionValue
+      toStringValue renderCanonicalResult value
+
+    concatenateTemplateValues left right =
+      case concatenateValues left right of
+        Right value -> Right value
+        Left _ -> Left AmbiguousStringTemplate
 
 interpretSpecification
   :: Expression

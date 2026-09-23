@@ -17,6 +17,7 @@ import AtlasMapFederationExpression
   )
 import Evaluation.Error
 import Evaluation.Value
+import Data.List (isInfixOf)
 import NaturalRange qualified
 import IntegerRange qualified
 import Numeric.Natural (Natural)
@@ -33,6 +34,16 @@ decideFederationConcatenation left right
   | atlasMapFederationExpressionIsSingleton left =
       AtlasMapFederationProved ()
   | atlasMapFederationExpressionIsSingleton right =
+      AtlasMapFederationProved ()
+  | Just (prefix, delimiter) <- trailingStringDelimiter left
+  , not (null delimiter)
+  , stringFederationExcludes delimiter prefix
+      || stringFederationExcludes delimiter right =
+      AtlasMapFederationProved ()
+  | Just (delimiter, suffix) <- leadingStringDelimiter right
+  , not (null delimiter)
+  , stringFederationExcludes delimiter left
+      || stringFederationExcludes delimiter suffix =
       AtlasMapFederationProved ()
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) _ =
@@ -122,6 +133,80 @@ decideFederationConcatenation _ _ =
   AtlasMapFederationUndecidable
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationConcatenation)
+
+-- A fixed delimiter provides a unique split when it cannot occur in the
+-- adjacent variable string language. A trailing delimiter can select its
+-- first occurrence when excluded from the prefix or its final occurrence when
+-- excluded from the suffix; the latter supports repeated separated fields.
+trailingStringDelimiter
+  :: InterpretedAtlasMapFederation
+  -> Maybe (InterpretedAtlasMapFederation, String)
+trailingStringDelimiter
+    (ConcatenatedAtlasMapFederation left right) =
+      (\delimiter -> (left, delimiter)) <$> singletonAsciiString right
+trailingStringDelimiter _ = Nothing
+
+leadingStringDelimiter
+  :: InterpretedAtlasMapFederation
+  -> Maybe (String, InterpretedAtlasMapFederation)
+leadingStringDelimiter
+    (ConcatenatedAtlasMapFederation left right) =
+      (\delimiter -> (delimiter, right)) <$> singletonAsciiString left
+leadingStringDelimiter _ = Nothing
+
+singletonAsciiString
+  :: InterpretedAtlasMapFederation
+  -> Maybe String
+singletonAsciiString (SingletonAtlasMapFederation valueMap) =
+  case interpretedMapComponents valueMap of
+    [AsciiStringSemantics characters] -> Just characters
+    _ -> Nothing
+singletonAsciiString _ = Nothing
+
+stringFederationExcludes
+  :: String
+  -> InterpretedAtlasMapFederation
+  -> Bool
+stringFederationExcludes delimiter federation =
+  case federation of
+    SingletonAtlasMapFederation valueMap ->
+      case interpretedMapComponents valueMap of
+        [AsciiStringSemantics characters] ->
+          not (delimiter `isInfixOf` characters)
+        _ -> False
+    PrimitiveAtlasMapFederation primitive ->
+      case primitive of
+        ToStringAtlasMapFederation source ->
+          renderedSemanticsExclude
+            delimiter (interpretedSemantics source)
+        StringTypeAtlasMapFederation -> False
+        _ -> False
+    SequentialAtlasMapFederation members ->
+      all (stringFederationExcludes delimiter) members
+    ExpansionAtlasMapFederation left right ->
+      stringFederationExcludes delimiter left
+        && stringFederationExcludes delimiter right
+    ConcatenatedAtlasMapFederation left right ->
+      stringFederationExcludes delimiter left
+        && stringFederationExcludes delimiter right
+
+renderedSemanticsExclude :: String -> ValueSemantics -> Bool
+renderedSemanticsExclude delimiter semantics =
+  case semantics of
+    ExplicitSemantics {} -> excludes "0123456789"
+    IntegerSemantics {} -> excludes "-0123456789"
+    BooleanSemantics {} -> excludes "falsetru"
+    NaturalRangeSemantics {} -> excludes numericRangeCharacters
+    ValuedNaturalRangeSemantics {} -> excludes numericRangeCharacters
+    NaturalTypeSemantics -> excludes "0123456789"
+    IntegerRangeSemantics {} -> excludes numericRangeCharacters
+    ValuedIntegerRangeSemantics {} -> excludes numericRangeCharacters
+    IntegerTypeSemantics -> excludes "-0123456789"
+    ToStringSemantics source -> renderedSemanticsExclude delimiter source
+    _ -> False
+  where
+    excludes alphabet = any (`notElem` alphabet) delimiter
+    numericRangeCharacters = " -0123456789.rangeftoupwds"
 
 decidePrimitiveSubfederation
   :: InterpretedAtlasMapFederationPrimitive

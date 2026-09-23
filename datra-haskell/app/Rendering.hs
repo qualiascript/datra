@@ -120,6 +120,8 @@ prettyNonKeywordCanonicalResult result =
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalStringType -> "String"
+    CanonicalToString source ->
+      pretty ("\"$(" <> renderCanonicalResult source <> ")\"")
     CanonicalIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator

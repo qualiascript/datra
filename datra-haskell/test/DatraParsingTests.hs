@@ -6,6 +6,7 @@ import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart (..)
   , normalizeExpression
   , renderExpression
   , toOperatorExpression
@@ -508,6 +509,30 @@ regressionTests = do
     "$A_0'z"
     (AST.asciiString "A_0'z")
   assertAstOutput
+    "compact strings allow a leading underscore"
+    "$_abc"
+    (AST.asciiString "_abc")
+  assertAstOutput
+    "compact strings allow a single separating underscore"
+    "$abc_def"
+    (AST.asciiString "abc_def")
+  assertRejected
+    "compact strings reject consecutive underscores"
+    "$abc__def"
+  assertRejected
+    "compact strings reject a trailing underscore"
+    "$abc_"
+  assertRejected
+    "compact strings reject doubled leading underscores"
+    "$__abc"
+  assertRejected
+    "a lone compact underscore is trailing and rejected"
+    "$_"
+  assertAstOutput
+    "strings outside compact underscore syntax remain quoted"
+    "\"abc_\""
+    (AST.asciiString "abc_")
+  assertAstOutput
     "StandardString canonicalizes to IdentifierString when possible"
     "\"text\""
     (AST.asciiString "text")
@@ -559,6 +584,106 @@ regressionTests = do
     "StandardString escapes a literal dollar sign"
     "\"literal \\$ character\""
     (AST.asciiString "literal $ character")
+  assertAstOutput
+    "string template interpolates a compound expression"
+    "\"example$(2 + 2)\""
+    (StringTemplate
+      [ StringTemplateLiteral "example"
+      , StringTemplateInterpolation
+          (Addition (natural 2) (natural 2))
+      ])
+  assertParsed
+    "simple numeric interpolation has string-template syntax"
+    "\"$4\""
+    (StringTemplate [StringTemplateInterpolation (natural 4)])
+  assertParsed
+    "reserved atomic symbols may be simple interpolations"
+    "\"$String\""
+    (StringTemplate [StringTemplateInterpolation StringType])
+  assertRejected
+    "unreserved alphabetic names are not simple interpolations"
+    "\"$abc\""
+  assertParsed
+    "a compact string can itself be interpolated"
+    "\"$$abc\""
+    (StringTemplate
+      [StringTemplateInterpolation (AsciiStringLiteral "abc")])
+  assertParsed
+    "signed interpolation requires the compound form"
+    "\"$(-10)\""
+    (StringTemplate
+      [StringTemplateInterpolation (Minus (natural 10))])
+  assertRejected
+    "signed interpolation rejects the simple form"
+    "\"$-10\""
+  assertParsed
+    "a nested quoted string is one simple interpolation"
+    "\"hello, $\"world\"!\""
+    (StringTemplate
+      [ StringTemplateLiteral "hello, "
+      , StringTemplateInterpolation (AsciiStringLiteral "world")
+      , StringTemplateLiteral "!"
+      ])
+  assertParsed
+    "operators outside parentheses remain template text"
+    "\"$2 + 2\""
+    (StringTemplate
+      [ StringTemplateInterpolation (natural 2)
+      , StringTemplateLiteral " + 2"
+      ])
+  assertParsed
+    "interpolation comments terminate at the closing parenthesis"
+    "\"a$(2 # ignored)b\""
+    (StringTemplate
+      [ StringTemplateLiteral "a"
+      , StringTemplateInterpolation (natural 2)
+      , StringTemplateLiteral "b"
+      ])
+  assertParsed
+    "interpolation comments terminate at newline without emitting it"
+    "\"a$(2 # ignored\n)b\""
+    (StringTemplate
+      [ StringTemplateLiteral "a"
+      , StringTemplateInterpolation (natural 2)
+      , StringTemplateLiteral "b"
+      ])
+  assertParsed
+    "template comments ignore interpolation and retain their newline"
+    "\"a# ignored $4\nb\""
+    (AsciiStringLiteral "a\nb")
+  assertParsed
+    "escaped hashes and dollars remain literal template text"
+    "\"\\#\\$$4\""
+    (StringTemplate
+      [ StringTemplateLiteral "#$"
+      , StringTemplateInterpolation (natural 4)
+      ])
+  assertAstOutput
+    "parentheses inside nested strings do not close interpolation"
+    "\"x$(\"a)b\")y\""
+    (StringTemplate
+      [ StringTemplateLiteral "x"
+      , StringTemplateInterpolation (AsciiStringLiteral "a)b")
+      , StringTemplateLiteral "y"
+      ])
+  assertAstOutput
+    "nested grouping composes inside interpolation"
+    "\"x$((2 + 3) * 4)y\""
+    (StringTemplate
+      [ StringTemplateLiteral "x"
+      , StringTemplateInterpolation
+          (Multiplication
+            (Addition (natural 2) (natural 3))
+            (natural 4))
+      , StringTemplateLiteral "y"
+      ])
+  assertRejected "an empty interpolation is rejected" "\"$()\""
+  assertRejected
+    "an unterminated interpolation is rejected"
+    "\"$(2 + 2\""
+  assertRejected
+    "an unescaped dollar without an interpolation is rejected"
+    "\"literal $ character\""
   assertAstOutput
     "string literals are members of String"
     "\"my_string\" of String = true"

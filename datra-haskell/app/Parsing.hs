@@ -15,6 +15,8 @@ module Parsing
 
 import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (void)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.State.Strict (State, evalState, get, modify)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
@@ -30,6 +32,7 @@ import DatraLanguage.AST
   , Expression
       ( Addition
       , AsciiStringLiteral
+      , StringTemplate
       , StringType
       , AtlasMap
       , EllipsisLiteral
@@ -70,6 +73,11 @@ import DatraLanguage.AST
       , BooleanOr
       , BooleanNot
       )
+  , StringTemplatePart
+      ( StringTemplateInterpolation
+      , StringTemplateLiteral
+      )
+  , isCompactStringLiteral
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -79,7 +87,8 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import Text.Megaparsec
-  ( Parsec
+  ( ParsecT
+  , ParseErrorBundle
   , anySingle
   , between
   , choice
@@ -92,7 +101,7 @@ import Text.Megaparsec
   , many
   , manyTill
   , notFollowedBy
-  , parse
+  , runParserT
   , sepEndBy
   , sourceColumn
   , sourceLine
@@ -104,7 +113,9 @@ import Text.Megaparsec
 import Text.Megaparsec.Char (char, eol, hspace1, space1)
 import Text.Megaparsec.Char.Lexer qualified as Lexer
 
-type Parser = Parsec Void Text
+-- The depth is nonzero only while parsing a parenthesized interpolation. It
+-- lets expression comments stop at @)@ without changing ordinary comments.
+type Parser = ParsecT Void Text (State Int)
 
 data ResourceEnvelope
   = ExplicitMapEnvelope
@@ -133,7 +144,7 @@ parseDatraLocatedWithSourceName
   -> Either String (Located Expression)
 parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
-    (parse locatedResource resourceName (Text.pack source))
+    (runDatraParser locatedResource resourceName (Text.pack source))
 
 -- | Parse a source resource while retaining whether its outer map parentheses
 -- were explicit. This is presentation metadata only; both cases produce the
@@ -144,7 +155,8 @@ parseDatraLocatedResourceWithSourceName
   -> Either String (ResourceEnvelope, Located Expression)
 parseDatraLocatedResourceWithSourceName resourceName source =
   first errorBundlePretty
-    (parse locatedResourceWithEnvelope resourceName (Text.pack source))
+    (runDatraParser
+      locatedResourceWithEnvelope resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either String Expression
@@ -167,7 +179,15 @@ parseDatraAstLocatedWithSourceName
   -> Either String (Located Expression)
 parseDatraAstLocatedWithSourceName resourceName source =
   first errorBundlePretty
-    (parse locatedAstResource resourceName (Text.pack source))
+    (runDatraParser locatedAstResource resourceName (Text.pack source))
+
+runDatraParser
+  :: Parser value
+  -> FilePath
+  -> Text
+  -> Either (ParseErrorBundle Text Void) value
+runDatraParser parser resourceName source =
+  evalState (runParserT parser resourceName source) 0
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -231,7 +251,7 @@ astAtom =
     , NaturalType <$ astReservedWord Reserved.NaturalTypeWord
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
-    , AsciiStringLiteral <$> astStandardString
+    , astStringExpression
     , EllipsisNatural <$> astLexeme Lexer.decimal
     ]
 
@@ -568,7 +588,7 @@ termAtom =
     , NaturalType <$ reservedWord Reserved.NaturalTypeWord
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierString
-    , AsciiStringLiteral <$> standardString
+    , stringExpression
     , ellipsisNatural
     ]
 
@@ -603,7 +623,7 @@ rangeEndpointAtom =
   choice
     [ parenthesizedExpression
     , AsciiStringLiteral <$> identifierString
-    , AsciiStringLiteral <$> standardString
+    , stringExpression
     , ellipsisNatural
     ]
 
@@ -810,11 +830,13 @@ astIdentifierString :: Parser String
 astIdentifierString = astLexeme identifierStringToken
 
 identifierStringToken :: Parser String
-identifierStringToken =
-  char '$'
-    *> ((:)
+identifierStringToken = do
+  _ <- char '$'
+  value <-
+    (:)
       <$> satisfy isLeadingCanonicalCharacter
-      <*> many (satisfy isCanonicalCharacter))
+      <*> many (satisfy isCanonicalCharacter)
+  if isCompactStringLiteral value then pure value else empty
 
 bareIdentifier :: Parser String
 bareIdentifier = lexeme bareIdentifierToken
@@ -862,6 +884,119 @@ standardStringToken :: Parser String
 standardStringToken =
   between (char '"') (char '"')
     (catMaybes <$> many standardStringPart)
+
+-- | Every quoted source expression is parsed as a template. The common case
+-- with no interpolation is collapsed back to the existing string literal AST.
+stringExpression :: Parser Expression
+stringExpression = lexeme sourceStringTemplateToken
+
+astStringExpression :: Parser Expression
+astStringExpression = astLexeme astStringTemplateToken
+
+sourceStringTemplateToken :: Parser Expression
+sourceStringTemplateToken =
+  stringTemplateToken expression sourceSimpleInterpolation
+
+astStringTemplateToken :: Parser Expression
+astStringTemplateToken =
+  stringTemplateToken astExpression astSimpleInterpolation
+
+data ParsedStringTemplatePart
+  = ParsedStringTemplateCharacter Char
+  | ParsedStringTemplateComment
+  | ParsedStringTemplateInterpolation Expression
+
+stringTemplateToken
+  :: Parser Expression
+  -> Parser Expression
+  -> Parser Expression
+stringTemplateToken compoundInterpolation simpleInterpolation = do
+  _ <- char '"'
+  parts <- many stringTemplatePart
+  _ <- char '"'
+  pure (buildStringTemplate parts)
+  where
+    stringTemplatePart =
+      choice
+        [ ParsedStringTemplateInterpolation
+            <$> stringInterpolation
+        , ParsedStringTemplateComment <$ standardStringComment
+        , ParsedStringTemplateCharacter <$> standardStringCharacter
+        ]
+
+    stringInterpolation = do
+      _ <- char '$'
+      parenthesizedInterpolation
+        <|> simpleInterpolation
+
+    parenthesizedInterpolation = do
+      _ <- char '('
+      withInterpolationComments
+        (fullSpaceConsumer
+          *> compoundInterpolation
+          <* fullSpaceConsumer
+          <* char ')')
+
+withInterpolationComments :: Parser value -> Parser value
+withInterpolationComments parser = do
+  lift (modify (+ 1))
+  value <- parser
+  lift (modify (subtract 1))
+  pure value
+
+sourceSimpleInterpolation :: Parser Expression
+sourceSimpleInterpolation = simpleInterpolationWith sourceStringTemplateToken
+
+astSimpleInterpolation :: Parser Expression
+astSimpleInterpolation = simpleInterpolationWith astStringTemplateToken
+
+simpleInterpolationWith :: Parser Expression -> Parser Expression
+simpleInterpolationWith nestedStringTemplate =
+  choice
+    [ BooleanLiteral False
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.FalseWord))
+    , BooleanLiteral True
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.TrueWord))
+    , AsciiStringLiteral "Nothing"
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.NothingWord))
+    , BooleanLiteral False
+        <$ keywordToken (Text.pack (Reserved.builtInIdentifierText Reserved.FalseIdentifier))
+    , BooleanLiteral True
+        <$ keywordToken (Text.pack (Reserved.builtInIdentifierText Reserved.TrueIdentifier))
+    , BooleanType
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.BooleanTypeWord))
+    , StringType
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.StringTypeWord))
+    , IntegerType
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.IntegerTypeWord))
+    , NaturalType
+        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.NaturalTypeWord))
+    , EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> identifierStringToken
+    , nestedStringTemplate
+    , EllipsisNatural <$> Lexer.decimal
+    ]
+
+buildStringTemplate :: [ParsedStringTemplatePart] -> Expression
+buildStringTemplate parsedParts =
+  case foldr collect ([], False) parsedParts of
+    (parts, False) ->
+      AsciiStringLiteral
+        (concat
+          [ value
+          | StringTemplateLiteral value <- parts
+          ])
+    (parts, True) -> StringTemplate parts
+  where
+    collect ParsedStringTemplateComment accumulated = accumulated
+    collect (ParsedStringTemplateCharacter character) (parts, hasHole) =
+      case parts of
+        StringTemplateLiteral value : remaining ->
+          (StringTemplateLiteral (character : value) : remaining, hasHole)
+        _ -> (StringTemplateLiteral [character] : parts, hasHole)
+    collect (ParsedStringTemplateInterpolation expressionValue)
+        (parts, _) =
+      (StringTemplateInterpolation expressionValue : parts, True)
 
 standardStringPart :: Parser (Maybe Char)
 standardStringPart =
@@ -944,7 +1079,18 @@ fullSpaceConsumer :: Parser ()
 fullSpaceConsumer = Lexer.space space1 lineComment empty
 
 lineComment :: Parser ()
-lineComment = Lexer.skipLineComment "#"
+lineComment = do
+  interpolationDepth <- lift get
+  _ <- char '#'
+  void
+    (manyTill anySingle
+      (lookAhead
+        ( void eol
+          <|> if interpolationDepth > 0
+                then void (char ')')
+                else empty
+          <|> eof
+        )))
 
 lineSpaceConsumer :: Parser ()
 lineSpaceConsumer = horizontalSpaceConsumer *> void (many lineBreak)

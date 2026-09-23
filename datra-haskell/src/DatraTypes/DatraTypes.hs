@@ -22,6 +22,8 @@ module DatraTypes
   , nothingValue
   , asciiStringValue
   , stringTypeValue
+  , toStringValue
+  , stringTemplateValue
   , formulationValue
   , addValues
   , subtractValues
@@ -58,6 +60,7 @@ module DatraTypes
   , accessValues
   , specifyValues
   , interpretedValueKind
+  , interpretedValueHasTotalMap
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
   , interpretedInteger
@@ -98,6 +101,7 @@ import Evaluation.Boolean
   )
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
+import Evaluation.ToString (stringTemplateValue, toStringValue)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
@@ -150,6 +154,7 @@ import Evaluation.Value
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , interpretedRangeDescription
+  , interpretedValueHasTotalMap
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)

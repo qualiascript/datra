@@ -140,6 +140,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "the compiler cannot decide this Atlas-map federation operation"
         ["operation: " <> federationOperation operation]
+    AmbiguousStringTemplate ->
+      LocalizedMessage
+        "ambiguous string template"
+        ["the template does not map each source configuration to a unique string"]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "string contains a character outside the ASCII map"

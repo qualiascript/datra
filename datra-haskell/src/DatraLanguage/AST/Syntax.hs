@@ -6,6 +6,7 @@ module DatraLanguage.AST.Syntax
   , identifierType
   , assignment
   , asciiString
+  , stringTemplate
   , stringType
   , emptyMap
   , (...)
@@ -50,6 +51,7 @@ module DatraLanguage.AST.Syntax
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart
   )
 import Numeric.Natural (Natural)
 import Prelude hiding (and, not, or, (+), (-), (*), (^))
@@ -73,6 +75,9 @@ assignment identifierString typeAnnotation givenValue =
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral
+
+stringTemplate :: [StringTemplatePart] -> Expression
+stringTemplate = StringTemplate
 
 stringType :: Expression
 stringType = StringType

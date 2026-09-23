@@ -140,6 +140,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "compilatorul nu poate decide această operație pe federații"
         ["operația: " <> federationOperation operation]
+    AmbiguousStringTemplate ->
+      LocalizedMessage
+        "șablon de șir ambiguu"
+        ["șablonul nu mapează fiecare configurație sursă la un șir unic"]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"

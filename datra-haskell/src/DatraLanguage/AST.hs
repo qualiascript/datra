@@ -2,7 +2,9 @@
 
 module DatraLanguage.AST
   ( IdentifierString (..)
+  , StringTemplatePart (..)
   , Expression (..)
+  , OperatorStringTemplatePart (..)
   , OperatorExpression (..)
   , toOperatorExpression
   , normalizeExpression
@@ -10,6 +12,7 @@ module DatraLanguage.AST
   , renderOperatorExpression
   , renderAsciiStringLiteral
   , renderIdentifierString
+  , isCompactStringLiteral
   , isReservedIdentifierString
   ) where
 
@@ -40,12 +43,21 @@ newtype IdentifierString = IdentifierString
   }
   deriving (Eq, Show)
 
+-- | One source-order component of a quoted string template. Literal chunks
+-- are already decoded by the parser; interpolations retain their unevaluated
+-- expressions until the interpreter applies the internal @toString@ map.
+data StringTemplatePart
+  = StringTemplateLiteral String
+  | StringTemplateInterpolation Expression
+  deriving (Eq, Show)
+
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
 data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
   | AsciiStringLiteral String
+  | StringTemplate [StringTemplatePart]
   | StringType
   | AtlasMap [Expression]
   | MapSequence [Expression]
@@ -100,6 +112,7 @@ data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
   | AsciiStringValue String
+  | StringTemplateValue [OperatorStringTemplatePart]
   | StringTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
@@ -147,6 +160,11 @@ data OperatorExpression
       }
   deriving (Eq, Show)
 
+data OperatorStringTemplatePart
+  = OperatorStringTemplateLiteral String
+  | OperatorStringTemplateInterpolation OperatorExpression
+  deriving (Eq, Show)
+
 toOperatorExpression :: Expression -> OperatorExpression
 toOperatorExpression = lower
 
@@ -158,6 +176,8 @@ normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
+normalizeExpression (StringTemplate parts) =
+  StringTemplate (map normalizeStringTemplatePart parts)
 normalizeExpression StringType = StringType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
@@ -237,6 +257,12 @@ normalizeExpression
     (normalizeExpression typeAnnotation)
     (normalizeExpression <$> givenValue)
 
+normalizeStringTemplatePart :: StringTemplatePart -> StringTemplatePart
+normalizeStringTemplatePart (StringTemplateLiteral value) =
+  StringTemplateLiteral value
+normalizeStringTemplatePart (StringTemplateInterpolation expressionValue) =
+  StringTemplateInterpolation (normalizeExpression expressionValue)
+
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
 -- already repeated. Only a sequence with at least two members introduces a
@@ -280,6 +306,8 @@ lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
+lower (StringTemplate parts) =
+  StringTemplateValue (map lowerStringTemplatePart parts)
 lower StringType = StringTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
@@ -334,6 +362,12 @@ lower (IdentifierOperation identifierString typeAnnotation givenValue) =
     (lower typeAnnotation)
     (lower <$> givenValue)
 
+lowerStringTemplatePart :: StringTemplatePart -> OperatorStringTemplatePart
+lowerStringTemplatePart (StringTemplateLiteral value) =
+  OperatorStringTemplateLiteral value
+lowerStringTemplatePart (StringTemplateInterpolation expressionValue) =
+  OperatorStringTemplateInterpolation (lower expressionValue)
+
 data Segment
   = ExpressionSegment [Expression]
   | MapSegment Expression
@@ -369,6 +403,8 @@ prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
 prettyOperator (AsciiStringValue "Nothing") = "nothing"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
+prettyOperator (StringTemplateValue parts) =
+  pretty (renderOperatorStringTemplate parts)
 prettyOperator StringTypeValue = "String"
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
@@ -514,10 +550,24 @@ reservedWordDoc = pretty . Reserved.reservedWordText
 -- quoted spelling. Standard strings leave the keyboard-visible ASCII range
 -- literal and use hexadecimal escapes for every other byte except newline.
 renderAsciiStringLiteral :: String -> String
-renderAsciiStringLiteral value@(first : rest)
-  | isLeadingCanonicalCharacter first
-      && all isCanonicalCharacter rest = '$' : value
+renderAsciiStringLiteral value
+  | isCompactStringLiteral value = '$' : value
 renderAsciiStringLiteral value = renderStandardStringLiteral value
+
+-- | Compact @$name@ strings permit an underscore in the leading position or
+-- as a separator, but never doubled or trailing.
+isCompactStringLiteral :: String -> Bool
+isCompactStringLiteral [] = False
+isCompactStringLiteral value@(first : rest) =
+  isLeadingCanonicalCharacter first
+    && all isCanonicalCharacter rest
+    && last value /= '_'
+    && not (hasDoubledUnderscore value)
+  where
+    hasDoubledUnderscore ('_' : '_' : _) = True
+    hasDoubledUnderscore (_ : remaining) =
+      hasDoubledUnderscore remaining
+    hasDoubledUnderscore [] = False
 
 -- | Render an identifier expression. Canonical non-reserved names use their
 -- compact bare spelling; reserved or noncanonical names use a full string.
@@ -549,6 +599,21 @@ renderStandardStringLiteral value = '"' : foldr escape "\"" value
     isAsciiByte character = ord character < 256
     isKeyboardCharacter character =
       0x20 <= ord character && ord character <= 0x7e
+
+renderOperatorStringTemplate :: [OperatorStringTemplatePart] -> String
+renderOperatorStringTemplate parts =
+  '"' : foldr renderPart "\"" parts
+  where
+    renderPart (OperatorStringTemplateLiteral value) rest =
+      renderTemplateLiteral value <> rest
+    renderPart (OperatorStringTemplateInterpolation expressionValue) rest =
+      "$(" <> renderOperatorExpression expressionValue <> ")" <> rest
+
+renderTemplateLiteral :: String -> String
+renderTemplateLiteral value =
+  case renderStandardStringLiteral value of
+    '"' : rendered -> init rendered
+    _ -> error "standard string rendering must be quoted"
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

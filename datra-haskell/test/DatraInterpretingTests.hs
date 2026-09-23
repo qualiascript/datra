@@ -5,6 +5,7 @@ module DatraInterpretingTests (main) where
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart (..)
   )
 import DatraLanguage.AST.Syntax
   ( natural
@@ -89,6 +90,7 @@ testTree =
   testGroup "Datra interpreter"
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
+        , testCase "string templates" testStringTemplates
         , testCase "integers and integer ranges" testIntegers
         , testCase "booleans and Either" testBooleansAndEither
         , testCase "optionals and conditionals" testOptionalsAndConditionals
@@ -427,6 +429,213 @@ testLiteralsAndArithmetic = do
       ((AST.*) (...) (...)) $ \value ->
     assert "multiplying two Ellipsis formulations produces level two"
       (interpretedFormulationLevel value == Just 2)
+  testRemainingLiterals
+
+testStringTemplates :: IO ()
+testStringTemplates = do
+  let template = StringTemplate
+        [ StringTemplateLiteral "example"
+        , StringTemplateInterpolation
+            (Addition (natural 2) (natural 2))
+        ]
+  expectValue "arithmetic interpolation" template $ \value ->
+    assert "a fully total template collapses to one ASCII string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && Types.interpretedValueHasTotalMap value
+        && renderInterpretedValue value == "$example4"
+      )
+  expectValue
+      "numeric interpolation"
+      (StringTemplate [StringTemplateInterpolation (natural 4)]) $ \value ->
+    assert "numeric interpolation produces a string rather than an integer"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && interpretedInteger value == Nothing
+        && renderInterpretedValue value == "\"4\""
+      )
+  expectValue
+      "negative interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation (Minus (natural 10))]) $ \value ->
+    assert "compound signed values retain their canonical minus spelling"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "\"-10\""
+      )
+  expectValue
+      "string interpolation"
+      (StringTemplate
+        [ StringTemplateLiteral "hello, "
+        , StringTemplateInterpolation (AsciiStringLiteral "world")
+        , StringTemplateLiteral "!"
+        ]) $ \value ->
+    assert "toString strips the interpolated string's source delimiter"
+      (renderInterpretedValue value == "\"hello, world!\"")
+  expectValue
+      "empty string interpolation"
+      (StringTemplate
+        [ StringTemplateLiteral "left"
+        , StringTemplateInterpolation (AsciiStringLiteral "")
+        , StringTemplateLiteral "right"
+        ]) $ \value ->
+    assert "empty interpolated strings are concatenation identities"
+      (renderInterpretedValue value == "$leftright")
+  expectValue
+      "map interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation
+          (AtlasMap [natural 1, natural 2])]) $ \value ->
+    assert "total maps use their canonical pretty spelling"
+      (renderInterpretedValue value == "\"(1; 2)\"")
+  expectValue
+      "Boolean interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation (BooleanLiteral True)]) $ \value ->
+    assert "non-string total values use canonical source text"
+      (renderInterpretedValue value == "$true")
+  expectValue
+      "single non-total interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation NaturalType]) $ \value ->
+    assert "a non-total hole remains a non-total string federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+        && renderInterpretedValue value == "\"$(Nat)\""
+      )
+  expectValue
+      "fixed prefix and suffix around a non-total interpolation"
+      (StringTemplate
+        [ StringTemplateLiteral "n="
+        , StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral "."
+        ]) $ \value ->
+    assert "singletons concatenate with a non-total string federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+      )
+  expectValue
+      "delimiter-separated non-total interpolations"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "a delimiter excluded from Nat establishes a unique boundary"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+      )
+  expectValue
+      "non-digit delimiter between natural interpolations"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral "-"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "a dash also cannot occur in Nat's rendered members"
+      (not (Types.interpretedValueHasTotalMap value))
+  expectValue
+      "natural then arbitrary string separated by a delimiter"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation StringType
+        ]) $ \value ->
+    assert "a delimiter excluded from the left side fixes the first split"
+      (not (Types.interpretedValueHasTotalMap value))
+  expectValue
+      "arbitrary string then natural separated by a delimiter"
+      (StringTemplate
+        [ StringTemplateInterpolation StringType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "a delimiter excluded from the right side fixes the final split"
+      (not (Types.interpretedValueHasTotalMap value))
+  assert "a possible natural digit is not a safe delimiter"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateLiteral "1"
+          , StringTemplateInterpolation NaturalType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  expectValue
+      "three delimiter-separated non-total interpolations"
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral ":"
+        , StringTemplateInterpolation NaturalType
+        ]) $ \value ->
+    assert "the final-delimiter proof composes for repeated fields"
+      (not (Types.interpretedValueHasTotalMap value))
+  expectValue
+      "nested non-total string template interpolation"
+      (StringTemplate
+        [StringTemplateInterpolation
+          (StringTemplate
+            [ StringTemplateLiteral "n="
+            , StringTemplateInterpolation NaturalType
+            ])]) $ \value ->
+    assert "toString is identity on an already converted template federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && not (Types.interpretedValueHasTotalMap value)
+      )
+  assert "adjacent Nat interpolations have a dedicated ambiguity error"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateInterpolation NaturalType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  assert "adjacent String interpolations are ambiguous"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation StringType
+          , StringTemplateInterpolation StringType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  assert "a delimiter cannot disambiguate arbitrary String values"
+    (case interpretExpressionReason
+        (StringTemplate
+          [ StringTemplateInterpolation StringType
+          , StringTemplateLiteral ":"
+          , StringTemplateInterpolation StringType
+          ]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  assert "pointwise toString rejects a federation with colliding renderings"
+    (case interpretExpressionReason
+        (StringTemplate
+          [StringTemplateInterpolation
+            (EitherType NaturalType NaturalType)]) of
+      Left AmbiguousStringTemplate -> True
+      _ -> False)
+  expectValue
+      "interpolated output is not reparsed"
+      (StringTemplate
+        [ StringTemplateInterpolation (AsciiStringLiteral "$4")
+        , StringTemplateInterpolation (AsciiStringLiteral "#text")
+        ]) $ \value ->
+    assert "dollar and hash characters produced by holes remain data"
+      (renderInterpretedValue value == "\"\\$4\\#text\"")
+  expectValue "programmatic empty template" (StringTemplate []) $ \value ->
+    assert "an empty template is the empty total ASCII string"
+      ( Types.interpretedValueHasTotalMap value
+        && renderInterpretedValue value == "\"\""
+      )
+  assert "errors raised inside a hole are not reported as ambiguity"
+    (case interpretExpressionReason
+        (StringTemplate
+          [StringTemplateInterpolation
+            (Addition (AsciiStringLiteral "x") (natural 1))]) of
+      Left (ExpectedNumericalOperand LeftOperand AsciiStringValueKind) -> True
+      _ -> False)
+
+testRemainingLiterals :: IO ()
+testRemainingLiterals = do
   expectValue
       "zero formulation exponent"
       ((AST.^) (...) (natural 0)) $ \value ->
@@ -2374,6 +2583,27 @@ testLocatedRejection = do
         renderDatraError Romanian valueError
           == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
               <> "  tipul efectiv al valorii: hartă"
+      Right _ -> False)
+  let ambiguousTemplate =
+        StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateInterpolation NaturalType
+          ]
+  assert "string-template ambiguity has a specific English diagnostic"
+    (case interpretLocatedExpression
+        (Located sourceSpan ambiguousTemplate) of
+      Left valueError ->
+        renderDatraError English valueError
+          == "<test>:1:5: ambiguous string template\n"
+              <> "  the template does not map each source configuration to a unique string"
+      Right _ -> False)
+  assert "string-template ambiguity has a specific Romanian diagnostic"
+    (case interpretLocatedExpression
+        (Located sourceSpan ambiguousTemplate) of
+      Left valueError ->
+        renderDatraError Romanian valueError
+          == "<test>:1:5: șablon de șir ambiguu\n"
+              <> "  șablonul nu mapează fiecare configurație sursă la un șir unic"
       Right _ -> False)
   let invalidAssignment =
         IdentifierOperation

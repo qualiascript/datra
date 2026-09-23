@@ -254,6 +254,8 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | StringTypeForm
+  | ToStringForm InterpretedValue
+  | StringTemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | IdentifierTypeForm EvaluatedIdentifierType
@@ -292,6 +294,7 @@ data InterpretedAtlasMapFederationPrimitive
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
   | StringTypeAtlasMapFederation
+  | ToStringAtlasMapFederation InterpretedValue
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -319,6 +322,7 @@ data ValueSemantics
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
   | StringTypeSemantics
+  | ToStringSemantics ValueSemantics
   | IdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
@@ -352,6 +356,7 @@ data CanonicalResult
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
   | CanonicalStringType
+  | CanonicalToString CanonicalResult
   | CanonicalIdentifierType
       { canonicalIdentifierString :: String
       , canonicalIdentifierTypeAnnotation :: CanonicalResult
@@ -454,6 +459,7 @@ canonicalResult semantics =
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     StringTypeSemantics -> CanonicalStringType
+    ToStringSemantics source -> CanonicalToString (canonicalResult source)
     IdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of
@@ -579,6 +585,8 @@ interpretedValueKind value =
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind
+    ToStringForm _ -> AsciiStringValueKind
+    StringTemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind
