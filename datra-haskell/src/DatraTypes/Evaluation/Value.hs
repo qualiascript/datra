@@ -289,9 +289,8 @@ interpretedMapCardinality = interpretedMapPageCardinality
 
 -- | The partial inverse carried by a proven pointwise string conversion.
 data ToStringInverseDecision
-  = ToStringInverseMatched InterpretedValue
+  = ToStringInverseMatched [InterpretedValue]
   | ToStringInverseRejected
-  | ToStringInverseUndecidable
 
 data ProvenInjectiveToString = ProvenInjectiveToString
   { injectiveToStringCharacterAlphabet :: Maybe String

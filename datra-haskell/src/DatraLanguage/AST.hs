@@ -84,7 +84,6 @@ data Expression
   | BooleanLiteral Bool
   | BooleanType
   | EitherType Expression Expression
-  | UnsafeEither Expression Expression
   | OptionalType Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
@@ -142,7 +141,6 @@ data OperatorExpression
   | BooleanValue Bool
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
-  | UnsafeEitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
   | ConditionalValue
       OperatorExpression
@@ -221,10 +219,6 @@ normalizeExpression (BooleanLiteral value) = BooleanLiteral value
 normalizeExpression BooleanType = BooleanType
 normalizeExpression (EitherType left right) =
   normalizeEither
-    (normalizeExpression left)
-    (normalizeExpression right)
-normalizeExpression (UnsafeEither left right) =
-  UnsafeEither
     (normalizeExpression left)
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
@@ -353,8 +347,6 @@ lower IntegerType = IntegerTypeValue
 lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
-lower (UnsafeEither left right) =
-  UnsafeEitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
 lower (Conditional condition consequent alternative) =
   ConditionalValue (lower condition) (lower consequent) (lower alternative)
@@ -488,8 +480,6 @@ prettyOperator (BooleanValue True) =
 prettyOperator BooleanTypeValue = reservedSymbolDoc Reserved.BooleanTypeSymbol
 prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
-prettyOperator (UnsafeEitherValue left right) =
-  prettyBinary UnsafeEitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
 prettyOperator (ConditionalValue condition consequent alternative) =

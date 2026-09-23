@@ -29,6 +29,7 @@ import Interpreting
   , OperandSide (..)
   , interpretExpressionReason
   , interpretLocatedExpression
+  , canonicalStringCodec
   , interpretedExplicitOrdinal
   , interpretedInteger
   , interpretedFormulationLevel
@@ -522,6 +523,53 @@ testStringTemplates = do
       "$12' of \"%(Nat)'\"" $ \value ->
     assert "the compact string belongs to the suffixed Nat template"
       (renderInterpretedValue value == "true")
+  expectSourceValue
+      "plain identifier value belongs to an optional identifier template"
+      "\"my name is alco\" of \"my name is %(ie? : Iden)\"" $ \value ->
+    assert "the missing-name branch renders the plain identifier value"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "canonical optional assignment belongs to its string template"
+      ( "\"my name is (ie? : Iden := $alco)\" of "
+          <> "\"my name is %(ie? : Iden)\""
+      ) $ \value ->
+    assert "the present-name branch renders its canonical assignment"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "noncanonical assignment spelling is outside the template"
+      ( "\"my name is (ie := $alco)\" of "
+          <> "\"my name is %(ie? : Iden)\""
+      ) $ \value ->
+    assert "only the optional canonical assignment spelling is accepted"
+      (renderInterpretedValue value == "false")
+  expectSourceValue
+      "simple identifier type has an injective string conversion"
+      "\"ie : 12\" of \"%(ie : Nat)\"" $ \value ->
+    assert "a direct simple identifier member is decoded canonically"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "map containing a simple identifier type is injective"
+      (AST.subfederation
+        (AsciiStringLiteral "(ie : 12; $alco)")
+        (StringTemplate
+          [StringTemplateInterpolation
+            (MapSequence
+              [ IdentifierOperation
+                  (IdentifierString "ie") NaturalType Nothing
+              , IdentifierValueType
+              ])])) $ \value ->
+    assert "the canonical map member is decoded componentwise"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "Either containing a simple identifier type is injective"
+      "\"ie : 12\" of \"%(ie : Nat | Iden)\"" $ \value ->
+    assert "the simple identifier alternative is decoded canonically"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "other branch beside a simple identifier type remains injective"
+      "\"alco\" of \"%(ie : Nat | Iden)\"" $ \value ->
+    assert "the string-valued alternative retains identity conversion"
+      (renderInterpretedValue value == "true")
   let template = StringTemplate
         [ StringTemplateLiteral "example"
         , StringTemplateInterpolation
@@ -758,24 +806,31 @@ testStringTemplates = do
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
-  assert "strong interpolation rejects non-injective toString"
-    (case interpretExpressionReason
-        (StringTemplate
-          [StringTemplateInterpolation
-            (UnsafeEither NaturalType NaturalType)]) of
-      Left NonInjectiveStringInterpolation -> True
-      _ -> False)
-  -- TODO: Once Datra functions exist, use a function as the naturally
-  -- non-injective weakToString fixture and remove UnsafeEither from the AST.
-  expectValue
-      "weak interpolation admits a non-injective toString"
-      (StringTemplate
-        [StringTemplateWeakInterpolation
-          (UnsafeEither NaturalType NaturalType)]) $ \value ->
-    assert "the weak form retains its non-invertible canonical marker"
-      ( not (Types.interpretedValueHasTotalMap value)
-        && renderInterpretedValue value == "\"%!(Nat | Nat)\""
-      )
+  case (Types.naturalTypeValue, Types.asciiStringValue "1") of
+    (Right naturals, Right oneString) -> do
+      let dependentIdentifier =
+            Types.identifierTypeValue "n" (const "same") naturals
+      assert "dependent IdentifierType has no proven injective toString"
+        (case Types.toStringValue
+            canonicalStringCodec dependentIdentifier of
+          Left NonInjectiveStringInterpolation -> True
+          _ -> False)
+      case Types.weakToStringValue
+          canonicalStringCodec dependentIdentifier of
+        Left rejection ->
+          fail
+            ("dependent weakToString was rejected: " <> show rejection)
+        Right weakConversion -> do
+          assert "dependent IdentifierType retains the explicit weak marker"
+            (renderInterpretedValue weakConversion == "\"%!(n : Nat)\"")
+          assert "dependent weakToString is rejected by specification"
+            (case Types.specifyValues oneString weakConversion of
+              Left NoCanonicalStringConversion -> True
+              _ -> False)
+    (Left rejection, _) ->
+      fail ("Nat construction was rejected: " <> show rejection)
+    (_, Left rejection) ->
+      fail ("string construction was rejected: " <> show rejection)
   expectValue
       "weak interpolation normalizes when toString is injective"
       (StringTemplate [StringTemplateWeakInterpolation NaturalType]) $ \value ->
@@ -788,14 +843,6 @@ testStringTemplates = do
         (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
     assert "%!x equals %x when the strong proof exists"
       (renderInterpretedValue value == "true")
-  assert "weak interpolation is explicitly rejected by specification"
-    (case interpretExpressionReason
-        (AsciiStringLiteral "1" ~>
-          StringTemplate
-            [StringTemplateWeakInterpolation
-              (UnsafeEither NaturalType NaturalType)]) of
-      Left NoCanonicalStringConversion -> True
-      _ -> False)
   expectValue
       "interpolated output is not reparsed"
       (StringTemplate
@@ -997,6 +1044,21 @@ testOptionalsAndConditionals = do
         AST.eitherType
           (AST.identifierType identifierString AST.integerType)
           AST.integerType
+  expectSourceValue
+      "inferred assignment belongs to an optional Iden slot"
+      "(ie := $alco) of (ie? : Iden)" $ \value ->
+    assert "the inferred assignment widens through its identifier target"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "canonical optional assignment belongs to its optional Iden slot"
+      "(ie? : Iden := $alco) of (ie? : Iden)" $ \value ->
+    assert "the optional assignment retains the present branch"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "plain identifier value belongs to an optional Iden slot"
+      "$alco of (ie? : Iden)" $ \value ->
+    assert "the plain value selects the unnamed branch"
+      (renderInterpretedValue value == "true")
   expectValue "optional Nat" (AST.optional AST.naturalType) $ \value ->
     assert "the exact optional federation restores its suffix"
       (renderInterpretedValue value == "Nat?")
@@ -1462,6 +1524,41 @@ testRendering = do
         ]) $ \value ->
     assert "singleton range maps render without enumeration or delimiters"
       (renderInterpretedValue value == "2..")
+  mapM_ assertCanonicalMapRoundTrip
+    [ AtlasMap [natural 1, natural 2]
+    , AtlasMap
+        [ AtlasMap [natural 1, natural 2]
+        , AtlasMap [natural 3, natural 4]
+        ]
+    , MapExpansion
+        (AtlasMap [natural 1, natural 2])
+        (AtlasMap [natural 3, natural 4])
+    ]
+  where
+    assertCanonicalMapRoundTrip expressionValue =
+      case interpretExpressionReason expressionValue of
+        Left rejection ->
+          fail ("map construction was rejected: " <> show rejection)
+        Right original ->
+          let rendered = renderInterpretedValue original
+          in case parseDatra rendered of
+              Left message ->
+                fail ("canonical map did not parse: " <> message)
+              Right roundTripExpression ->
+                case interpretExpressionReason roundTripExpression of
+                  Left rejection ->
+                    fail
+                      ("canonical map round trip was rejected: "
+                        <> show rejection)
+                  Right roundTripped ->
+                    assert
+                      "rendered map nesting uniquely determines cardinality"
+                      ( Types.interpretedCanonicalResult original
+                          == Types.interpretedCanonicalResult roundTripped
+                        && interpretedMapCardinality (interpretedMap original)
+                          == interpretedMapCardinality
+                            (interpretedMap roundTripped)
+                      )
 
 testMaps :: IO ()
 testMaps = do
@@ -2490,6 +2587,26 @@ testIdentifiers = do
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
       valueUnit = identifier "Value" (AtlasMap [])
+      equivalentSpecification =
+        (identifier "x" (natural 5)) ~> xNatural
+  case ( interpretExpressionReason xAssignment
+       , interpretExpressionReason equivalentSpecification
+       ) of
+    (Right assignmentValue, Right specificationValue) ->
+      assert "assignment and equivalent specification share one canonical form"
+        ( renderInterpretedValue assignmentValue
+            == renderInterpretedValue specificationValue
+          && renderInterpretedValue assignmentValue == "x : Nat := 5"
+        )
+    (Left rejection, _) ->
+      fail ("assignment construction was rejected: " <> show rejection)
+    (_, Left rejection) ->
+      fail ("equivalent specification was rejected: " <> show rejection)
+  expectValue
+      "assignment equals its equivalent specification"
+      (AST.equal xAssignment equivalentSpecification) $ \value ->
+    assert "shared canonical spelling denotes equal values"
+      (renderInterpretedValue value == "true")
   expectValue
       "quoted reserved identifier"
       (identifier "String" NaturalType) $ \value ->

@@ -62,13 +62,6 @@ regressionTests :: IO ()
 regressionTests = do
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
-  assert "UnsafeEither is available only in canonical AST syntax"
-    ( parseDatraAst "(UnsafeEither Nat Nat)"
-        == Right (UnsafeEither NaturalType NaturalType)
-    )
-  assertRejected
-    "UnsafeEither is not exposed in the surface language"
-    "(UnsafeEither Nat Nat)"
   mapM_
     (\reservedSymbol ->
       assertRejected

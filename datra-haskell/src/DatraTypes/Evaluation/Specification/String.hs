@@ -97,12 +97,12 @@ selectCharacters selectMember characters federation =
         ToStringAtlasMapFederation source proof ->
           Just
             (case invertInjectiveToString proof characters of
-              ToStringInverseMatched candidate ->
+              ToStringInverseMatched candidates ->
                 mapDecision
                   EvaluatedToStringMember
-                  (selectMember candidate source)
-              ToStringInverseRejected -> DecisionRefuted
-              ToStringInverseUndecidable -> DecisionUndecidable)
+                  (decideAny
+                    (map (`selectMember` source) candidates))
+              ToStringInverseRejected -> DecisionRefuted)
         WeakToStringAtlasMapFederation _ -> Just DecisionUndecidable
         _ -> Nothing
     ConcatenatedAtlasMapFederation left right -> do

@@ -18,12 +18,12 @@ module DatraTypes
   , booleanValue
   , booleanTypeValue
   , eitherValue
-  , unsafeEitherValue
   , optionalValue
   , nothingValue
   , asciiStringValue
   , stringTypeValue
   , identifierValueTypeValue
+  , CanonicalStringCodec (..)
   , toStringValue
   , weakToStringValue
   , stringTemplateValue
@@ -103,10 +103,11 @@ import Evaluation.Boolean
   , makeBoolean
   , makeBooleanType
   )
-import Evaluation.Either (makeEitherValue, makeUnsafeEitherValue)
+import Evaluation.Either (makeEitherValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
-  ( stringTemplateValue
+  ( CanonicalStringCodec (..)
+  , stringTemplateValue
   , toStringValue
   , weakToStringValue
   )
@@ -189,9 +190,6 @@ eitherValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 eitherValue = makeEitherValue
-
-unsafeEitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
-unsafeEitherValue = makeUnsafeEitherValue
 
 optionalValue
   :: InterpretedValue
