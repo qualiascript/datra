@@ -10,6 +10,7 @@ module DatraLanguage.AST
   , renderExpression
   , renderOperatorExpression
   , renderAsciiStringLiteral
+  , renderStringTemplate
   , renderIdentifierString
   , isCompactStringLiteral
   , isReservedIdentifierString
@@ -615,13 +616,42 @@ renderStringLiteralContents = foldr escape ""
 renderOperatorStringTemplate
   :: [StringTemplatePart OperatorExpression]
   -> String
-renderOperatorStringTemplate parts =
+renderOperatorStringTemplate =
+  renderStringTemplate
+    renderOperatorExpression
+    compactOperatorStringInterpolation
+
+renderStringTemplate
+  :: (expression -> String)
+  -> (expression -> Maybe String)
+  -> [StringTemplatePart expression]
+  -> String
+renderStringTemplate renderExpressionValue compactInterpolation parts =
   '"' : foldr renderPart "\"" parts
   where
     renderPart (StringTemplateLiteral value) rest =
       renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
-      "$(" <> renderOperatorExpression expressionValue <> ")" <> rest
+      case compactInterpolation expressionValue of
+        Just symbol -> '$' : symbol <> rest
+        Nothing ->
+          "$(" <> renderExpressionValue expressionValue <> ")" <> rest
+
+compactOperatorStringInterpolation
+  :: OperatorExpression
+  -> Maybe String
+compactOperatorStringInterpolation expressionValue =
+  case expressionValue of
+    NothingValue -> reserved Reserved.NothingSymbol
+    StringTypeValue -> reserved Reserved.StringTypeSymbol
+    NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
+    IntegerTypeValue -> reserved Reserved.IntegerTypeSymbol
+    BooleanValue False -> reserved Reserved.FalseSymbol
+    BooleanValue True -> reserved Reserved.TrueSymbol
+    BooleanTypeValue -> reserved Reserved.BooleanTypeSymbol
+    _ -> Nothing
+  where
+    reserved = Just . Reserved.reservedSymbolIdentifierString
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

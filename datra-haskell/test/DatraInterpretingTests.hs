@@ -510,7 +510,7 @@ testStringTemplates = do
     assert "a non-total hole remains a non-total string federation"
       ( interpretedValueKind value == AsciiStringValueKind
         && not (Types.interpretedValueHasTotalMap value)
-        && renderInterpretedValue value == "\"$(Nat)\""
+        && renderInterpretedValue value == "\"$Nat\""
       )
   expectValue
       "fixed prefix and suffix around a non-total interpolation"
@@ -546,7 +546,7 @@ testStringTemplates = do
     assert "a concrete delimited string selects both natural fields"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"12:3\" ~> \"$(Nat)\", \":\", \"$(Nat)\""
+          == "\"12:3\" ~> \"$Nat:$Nat\""
       )
   assert "an invalid natural field is finitely refuted"
     (case interpretExpressionReason

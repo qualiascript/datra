@@ -163,6 +163,7 @@ semanticAccessSource semantics =
           characters)
     StringTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
+    StringTemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []

@@ -323,6 +323,7 @@ data ValueSemantics
   | AsciiStringSemantics String
   | StringTypeSemantics
   | ToStringSemantics ValueSemantics
+  | StringTemplateSemantics ValueSemantics
   | IdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
@@ -357,6 +358,7 @@ data CanonicalResult
   | CanonicalAsciiString String
   | CanonicalStringType
   | CanonicalToString CanonicalResult
+  | CanonicalStringTemplate CanonicalResult
   | CanonicalIdentifierType
       { canonicalIdentifierString :: String
       , canonicalIdentifierTypeAnnotation :: CanonicalResult
@@ -458,6 +460,8 @@ canonicalResult semantics =
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     StringTypeSemantics -> CanonicalStringType
     ToStringSemantics source -> CanonicalToString (canonicalResult source)
+    StringTemplateSemantics source ->
+      CanonicalStringTemplate (canonicalResult source)
     IdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of

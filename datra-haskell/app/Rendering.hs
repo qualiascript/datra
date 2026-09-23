@@ -16,8 +16,10 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
-  ( renderAsciiStringLiteral
+  ( StringTemplatePart (..)
+  , renderAsciiStringLiteral
   , renderIdentifierString
+  , renderStringTemplate
   )
 import DatraTypes
   ( CanonicalResult (..)
@@ -123,7 +125,20 @@ prettyNonKeywordCanonicalResult result =
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalStringType -> reservedSymbolDoc Reserved.StringTypeSymbol
     CanonicalToString source ->
-      pretty ("\"$(" <> renderCanonicalResult source <> ")\"")
+      pretty
+        (renderStringTemplate
+          renderCanonicalResult
+          compactCanonicalStringInterpolation
+          [StringTemplateInterpolation source])
+    CanonicalStringTemplate template ->
+      case canonicalStringTemplateParts template of
+        Just parts ->
+          pretty
+            (renderStringTemplate
+              renderCanonicalResult
+              compactCanonicalStringInterpolation
+              parts)
+        Nothing -> prettyCanonicalResult template
     CanonicalIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol IdentifierTypeOperator
@@ -164,6 +179,31 @@ prettyConcatenationMember :: CanonicalResult -> Doc annotation
 prettyConcatenationMember member@CanonicalSpecification {} =
   parens (prettyCanonicalResult member)
 prettyConcatenationMember member = prettyCanonicalResult member
+
+canonicalStringTemplateParts
+  :: CanonicalResult
+  -> Maybe [StringTemplatePart CanonicalResult]
+canonicalStringTemplateParts result =
+  case result of
+    CanonicalConcatenation members ->
+      concat <$> traverse canonicalStringTemplateParts members
+    CanonicalAsciiString value -> Just [StringTemplateLiteral value]
+    CanonicalToString source -> Just [StringTemplateInterpolation source]
+    CanonicalStringTemplate nested -> canonicalStringTemplateParts nested
+    _ -> Nothing
+
+compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
+compactCanonicalStringInterpolation result
+  | result == CanonicalStringType = reserved Reserved.StringTypeSymbol
+  | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
+  | result == CanonicalIntegerType = reserved Reserved.IntegerTypeSymbol
+  | isBooleanValue "False" 0 result = reserved Reserved.FalseSymbol
+  | isBooleanValue "True" 1 result = reserved Reserved.TrueSymbol
+  | isBooleanType result = reserved Reserved.BooleanTypeSymbol
+  | isNothingValue result = reserved Reserved.NothingSymbol
+  | otherwise = Nothing
+  where
+    reserved = Just . Reserved.reservedSymbolIdentifierString
 
 prettySpecificationOperand :: CanonicalResult -> Doc annotation
 prettySpecificationOperand operand =

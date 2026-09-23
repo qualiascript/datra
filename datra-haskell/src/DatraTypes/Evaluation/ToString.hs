@@ -76,6 +76,7 @@ stringConversionProperties semantics =
       (stringConversionProperties underlying)
         { conversionCharacterAlphabet = Nothing }
     ToStringSemantics source -> stringConversionProperties source
+    StringTemplateSemantics source -> stringConversionProperties source
     _ -> unknownConversion
   where
     isBooleanPair left right =
@@ -129,7 +130,7 @@ stringTemplateValue value =
         (if interpretedValueHasTotalMap value
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
-        (interpretedSemantics value)
+        (StringTemplateSemantics (interpretedSemantics value))
 
 -- | Decide the string-specific case omitted by generic Atlas federation
 -- concatenation: a fixed nonempty delimiter makes the product injective when
