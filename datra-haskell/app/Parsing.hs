@@ -968,10 +968,21 @@ withInterpolationComments parser = do
   pure value
 
 sourceSimpleInterpolation :: Parser Expression
-sourceSimpleInterpolation = atomicExpressionToken sourceStringTemplateToken
+sourceSimpleInterpolation =
+  simpleInterpolationWith sourceStringTemplateToken
 
 astSimpleInterpolation :: Parser Expression
-astSimpleInterpolation = atomicExpressionToken astStringTemplateToken
+astSimpleInterpolation =
+  simpleInterpolationWith astStringTemplateToken
+
+simpleInterpolationWith :: Parser Expression -> Parser Expression
+simpleInterpolationWith nestedStringTemplate = do
+  expressionValue <- atomicExpressionToken nestedStringTemplate
+  isOptional <- maybe False (const True) <$> optional (char '?')
+  pure
+    (if isOptional
+      then OptionalType expressionValue
+      else expressionValue)
 
 buildStringTemplate :: [ParsedStringTemplatePart] -> Expression
 buildStringTemplate parsedParts =
@@ -1021,6 +1032,7 @@ standardStringCharacter =
       , '\\' <$ char '\\'
       , '#' <$ char '#'
       , '$' <$ char '$'
+      , '?' <$ char '?'
       , '\n' <$ char 'n'
       , hexadecimalAsciiCharacter
       ])

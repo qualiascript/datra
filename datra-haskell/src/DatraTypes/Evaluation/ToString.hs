@@ -9,7 +9,8 @@ module Evaluation.ToString
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, nub)
+import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError (AmbiguousStringTemplate))
@@ -50,6 +51,7 @@ toStringValue renderCanonical source =
 data StringConversionProperties = StringConversionProperties
   { conversionIsInjective :: Bool
   , conversionCharacterAlphabet :: Maybe String
+  , conversionExactStrings :: Maybe [String]
   }
 
 stringConversionProperties
@@ -66,47 +68,113 @@ stringConversionProperties semantics =
     ValuedIntegerRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     StringTypeSemantics -> injectiveUnknownAlphabet
-    EitherSemantics left right
-      | isBooleanPair left right ->
-          StringConversionProperties True (Just "falsetru")
+    EitherSemantics left right ->
+      eitherConversionProperties
+        (stringConversionProperties left)
+        (stringConversionProperties right)
+    IdentifierTypeSemantics dependency underlying True
+      | Just rendered <- reservedConstructorString dependency underlying ->
+          exactStrings [rendered]
     IdentifierTypeSemantics _ underlying _ ->
       (stringConversionProperties underlying)
-        { conversionCharacterAlphabet = Nothing }
+        { conversionCharacterAlphabet = Nothing
+        , conversionExactStrings = Nothing
+        }
     IdentifierStringProjectionSemantics _ underlying _ ->
       (stringConversionProperties underlying)
-        { conversionCharacterAlphabet = Nothing }
+        { conversionCharacterAlphabet = Nothing
+        , conversionExactStrings = Nothing
+        }
     ToStringSemantics source -> stringConversionProperties source
     StringTemplateSemantics source -> stringConversionProperties source
     _ -> unknownConversion
   where
-    isBooleanPair left right =
-      case (booleanConstructor left, booleanConstructor right) of
-        (Just False, Just True) -> True
-        (Just True, Just False) -> True
-        _ -> False
-
-    booleanConstructor semanticsValue =
-      case semanticsValue of
-        IdentifierTypeSemantics
-            (SimpleIdentifierDependency identifier)
-            (ExplicitSemantics 1 ordinalValue)
-            True
-          | identifier == "False"
-          , naturalAtOrdinal ordinalValue == Just 0 -> Just False
-          | identifier == "True"
-          , naturalAtOrdinal ordinalValue == Just 1 -> Just True
-        _ -> Nothing
-
     naturalNumber =
-      StringConversionProperties True (Just "0123456789")
+      StringConversionProperties True (Just "0123456789") Nothing
     integerNumber =
-      StringConversionProperties True (Just "-0123456789")
+      StringConversionProperties True (Just "-0123456789") Nothing
     numericRange =
       StringConversionProperties
-        True (Just " -0123456789.rangeftoupwds")
-    injectiveUnknownAlphabet = StringConversionProperties True Nothing
-    knownAlphabet = StringConversionProperties False . Just
-    unknownConversion = StringConversionProperties False Nothing
+        True (Just " -0123456789.rangeftoupwds") Nothing
+    injectiveUnknownAlphabet =
+      StringConversionProperties True Nothing Nothing
+    knownAlphabet alphabet =
+      StringConversionProperties False (Just alphabet) Nothing
+    unknownConversion = StringConversionProperties False Nothing Nothing
+
+reservedConstructorString
+  :: IdentifierDependency
+  -> ValueSemantics
+  -> Maybe String
+reservedConstructorString dependency underlying =
+  case (dependency, underlying) of
+    (SimpleIdentifierDependency "False", ExplicitSemantics 1 ordinalValue)
+      | naturalAtOrdinal ordinalValue == Just 0 ->
+          reserved Reserved.FalseSymbol
+    (SimpleIdentifierDependency "True", ExplicitSemantics 1 ordinalValue)
+      | naturalAtOrdinal ordinalValue == Just 1 ->
+          reserved Reserved.TrueSymbol
+    (SimpleIdentifierDependency "Nothing", MapSemantics 0 []) ->
+      reserved Reserved.NothingSymbol
+    _ -> Nothing
+  where
+    reserved = Just . Reserved.reservedSymbolIdentifierString
+
+eitherConversionProperties
+  :: StringConversionProperties
+  -> StringConversionProperties
+  -> StringConversionProperties
+eitherConversionProperties left right =
+  StringConversionProperties
+    ( conversionIsInjective left
+        && conversionIsInjective right
+        && conversionLanguagesAreDisjoint left right
+    )
+    (unionMaybe unionLists
+      (conversionCharacterAlphabet left)
+      (conversionCharacterAlphabet right))
+    (unionMaybe unionLists
+      (conversionExactStrings left)
+      (conversionExactStrings right))
+
+conversionLanguagesAreDisjoint
+  :: StringConversionProperties
+  -> StringConversionProperties
+  -> Bool
+conversionLanguagesAreDisjoint left right =
+  case (conversionExactStrings left, conversionExactStrings right) of
+    (Just leftStrings, Just rightStrings) ->
+      all (`notElem` rightStrings) leftStrings
+    (Just leftStrings, Nothing) ->
+      case conversionCharacterAlphabet right of
+        Just alphabet -> all (stringExcludedByAlphabet alphabet) leftStrings
+        Nothing -> False
+    (Nothing, Just rightStrings) ->
+      case conversionCharacterAlphabet left of
+        Just alphabet -> all (stringExcludedByAlphabet alphabet) rightStrings
+        Nothing -> False
+    (Nothing, Nothing) -> False
+
+stringExcludedByAlphabet :: String -> String -> Bool
+stringExcludedByAlphabet alphabet = any (`notElem` alphabet)
+
+exactStrings :: [String] -> StringConversionProperties
+exactStrings strings =
+  StringConversionProperties
+    True
+    (Just (nub (concat strings)))
+    (Just strings)
+
+unionMaybe
+  :: (value -> value -> value)
+  -> Maybe value
+  -> Maybe value
+  -> Maybe value
+unionMaybe combine (Just left) (Just right) = Just (combine left right)
+unionMaybe _ _ _ = Nothing
+
+unionLists :: Eq value => [value] -> [value] -> [value]
+unionLists left right = nub (left <> right)
 
 toStringConversionIsInjective :: ValueSemantics -> Bool
 toStringConversionIsInjective =
@@ -140,8 +208,20 @@ stringFederationConcatenationIsInjective
   -> InterpretedAtlasMapFederation
   -> Bool
 stringFederationConcatenationIsInjective left right =
-  trailingBoundaryIsInjective || leadingBoundaryIsInjective
+  finiteLanguagesAreInjective
+    || trailingBoundaryIsInjective
+    || leadingBoundaryIsInjective
   where
+    finiteLanguagesAreInjective =
+      case (federationExactStrings left, federationExactStrings right) of
+        (Just leftStrings, Just rightStrings) ->
+          let concatenations =
+                [leftString <> rightString
+                | leftString <- leftStrings
+                , rightString <- rightStrings
+                ]
+          in length concatenations == length (nub concatenations)
+        _ -> False
     trailingBoundaryIsInjective =
       case trailingStringDelimiter left of
         Just (prefix, delimiter) ->
@@ -158,6 +238,32 @@ stringFederationConcatenationIsInjective left right =
                   || stringFederationExcludes delimiter suffix
                )
         Nothing -> False
+
+federationExactStrings
+  :: InterpretedAtlasMapFederation
+  -> Maybe [String]
+federationExactStrings federation =
+  case federation of
+    SingletonAtlasMapFederation valueMap ->
+      case interpretedMapComponents valueMap of
+        [AsciiStringSemantics characters] -> Just [characters]
+        _ -> Nothing
+    PrimitiveAtlasMapFederation primitive ->
+      case primitive of
+        ToStringAtlasMapFederation source ->
+          conversionExactStrings
+            (stringConversionProperties (interpretedSemantics source))
+        _ -> Nothing
+    ConcatenatedAtlasMapFederation left right -> do
+      leftStrings <- federationExactStrings left
+      rightStrings <- federationExactStrings right
+      pure
+        [leftString <> rightString
+        | leftString <- leftStrings
+        , rightString <- rightStrings
+        ]
+    SequentialAtlasMapFederation _ -> Nothing
+    ExpansionAtlasMapFederation _ _ -> Nothing
 
 trailingStringDelimiter
   :: InterpretedAtlasMapFederation

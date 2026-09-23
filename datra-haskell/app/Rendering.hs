@@ -194,6 +194,10 @@ canonicalStringTemplateParts result =
 
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
 compactCanonicalStringInterpolation result
+  | CanonicalEither operand missing <- result
+  , isNothingValue missing =
+      (<> sourceSymbol OptionalOperator)
+        <$> compactCanonicalStringInterpolation operand
   | result == CanonicalStringType = reserved Reserved.StringTypeSymbol
   | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
   | result == CanonicalIntegerType = reserved Reserved.IntegerTypeSymbol

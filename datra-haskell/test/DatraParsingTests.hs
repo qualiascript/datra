@@ -626,6 +626,22 @@ regressionTests = do
     "reserved atomic symbols may be simple interpolations"
     "\"$String\""
     (StringTemplate [StringTemplateInterpolation StringType])
+  assertParsed
+    "postfix optional composes with a simple interpolation"
+    "\"$Int?\""
+    (StringTemplate
+      [StringTemplateInterpolation (OptionalType IntegerType)])
+  assertParsed
+    "an escaped question mark remains text after a simple interpolation"
+    "\"$Int\\?\""
+    (StringTemplate
+      [ StringTemplateInterpolation IntegerType
+      , StringTemplateLiteral "?"
+      ])
+  assertParsed
+    "an escaped question mark is accepted as ordinary string text"
+    "\"\\?\""
+    (AsciiStringLiteral "?")
   assertRejected
     "unreserved alphabetic names are not simple interpolations"
     "\"$abc\""
@@ -1211,6 +1227,14 @@ assertAstSyntax = do
     ( renderExpression (AST.asciiString "name_1") == "$name_1"
       && renderExpression (AST.asciiString "a\"b\\c\n")
         == "\"a\\\"b\\\\c\\n\""
+    )
+  assert "template rendering escapes a literal optional suffix"
+    ( renderExpression
+        (StringTemplate
+          [ StringTemplateInterpolation IntegerType
+          , StringTemplateLiteral "?"
+          ])
+        == "\"$Int\\?\""
     )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression

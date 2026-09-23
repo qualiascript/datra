@@ -21,6 +21,7 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
+  , operatorSourceSymbol
   )
 import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -633,9 +634,12 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
       renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
       case compactInterpolation expressionValue of
-        Just symbol -> '$' : symbol <> rest
+        Just symbol -> '$' : symbol <> escapeOptionalSuffix rest
         Nothing ->
           "$(" <> renderExpressionValue expressionValue <> ")" <> rest
+
+    escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
+    escapeOptionalSuffix rest = rest
 
 compactOperatorStringInterpolation
   :: OperatorExpression
@@ -649,9 +653,16 @@ compactOperatorStringInterpolation expressionValue =
     BooleanValue False -> reserved Reserved.FalseSymbol
     BooleanValue True -> reserved Reserved.TrueSymbol
     BooleanTypeValue -> reserved Reserved.BooleanTypeSymbol
+    OptionalValue operand ->
+      (<> optionalSourceSymbol)
+        <$> compactOperatorStringInterpolation operand
     _ -> Nothing
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
+    optionalSourceSymbol =
+      case operatorSourceSymbol OptionalOperator of
+        Just symbol -> symbol
+        Nothing -> operatorCanonicalSymbol OptionalOperator
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

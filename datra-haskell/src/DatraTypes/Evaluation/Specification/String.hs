@@ -7,6 +7,8 @@ module Evaluation.Specification.String
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
+import BooleanType (DatraBoolean (..))
+import DatraLanguage.AST.Reserved qualified as Reserved
 import Evaluation.Construction (makeInteger, makeNatural)
 import Evaluation.Specification.Decision
   ( Decision (..)
@@ -143,7 +145,42 @@ parseCanonicalMember source characters =
       maybe RejectedCanonicalMember
         (ParsedCanonicalMember . makeInteger)
         (readCanonical characters :: Maybe Integer)
+    BooleanForm flag ->
+      parseReservedValue
+        (case flag of
+          DatraFalse -> Reserved.FalseSymbol
+          DatraTrue -> Reserved.TrueSymbol)
+    NothingForm -> parseReservedValue Reserved.NothingSymbol
+    EitherForm alternatives ->
+      combineCanonicalParses
+        (parseCanonicalMember
+          (evaluatedEitherLeft alternatives) characters)
+        (parseCanonicalMember
+          (evaluatedEitherRight alternatives) characters)
     _ -> UnsupportedCanonicalMember
+  where
+    parseReservedValue symbol
+      | characters == Reserved.reservedSymbolIdentifierString symbol =
+          ParsedCanonicalMember source
+      | otherwise = RejectedCanonicalMember
+
+combineCanonicalParses
+  :: CanonicalMemberParse
+  -> CanonicalMemberParse
+  -> CanonicalMemberParse
+combineCanonicalParses
+    (ParsedCanonicalMember candidate)
+    RejectedCanonicalMember = ParsedCanonicalMember candidate
+combineCanonicalParses
+    RejectedCanonicalMember
+    (ParsedCanonicalMember candidate) = ParsedCanonicalMember candidate
+combineCanonicalParses RejectedCanonicalMember RejectedCanonicalMember =
+  RejectedCanonicalMember
+combineCanonicalParses (ParsedCanonicalMember candidate) UnsupportedCanonicalMember =
+  ParsedCanonicalMember candidate
+combineCanonicalParses UnsupportedCanonicalMember (ParsedCanonicalMember candidate) =
+  ParsedCanonicalMember candidate
+combineCanonicalParses _ _ = UnsupportedCanonicalMember
 
 readCanonical :: (Read value, Show value) => String -> Maybe value
 readCanonical characters =

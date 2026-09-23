@@ -565,6 +565,38 @@ testStringTemplates = do
       (AST.subfederation separatedNaturals StringType) $ \value ->
     assert "every member produced by the template is a string"
       (renderInterpretedValue value == "true")
+  let booleanTemplate =
+        StringTemplate [StringTemplateInterpolation BooleanType]
+      adjacentBooleans =
+        StringTemplate
+          [ StringTemplateInterpolation BooleanType
+          , StringTemplateInterpolation BooleanType
+          ]
+      optionalIntegerTemplate =
+        StringTemplate
+          [StringTemplateInterpolation (OptionalType IntegerType)]
+  expectValue
+      "\"true\" ~> \"$Bool\""
+      (AsciiStringLiteral "true" ~> booleanTemplate) $ \value ->
+    assert "a Boolean canonical spelling selects its Boolean member"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "$true ~> \"$Bool\""
+      )
+  expectValue
+      "\"falsetrue\" ~> \"$Bool$Bool\""
+      (AsciiStringLiteral "falsetrue" ~> adjacentBooleans) $ \value ->
+    assert "adjacent fixed Boolean spellings have a unique split"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "$falsetrue ~> \"$Bool$Bool\""
+      )
+  expectValue
+      "\"nothing\" ~> \"$Int?\""
+      (AsciiStringLiteral "nothing" ~> optionalIntegerTemplate) $ \value ->
+    assert "the optional missing constructor selects through toString"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value == "$nothing ~> \"$Int?\""
+      )
   expectValue
       "non-digit delimiter between natural interpolations"
       (StringTemplate
