@@ -130,6 +130,12 @@ prettyNonKeywordCanonicalResult result =
           renderCanonicalResult
           compactCanonicalStringInterpolation
           [StringTemplateInterpolation source])
+    CanonicalWeakToString source ->
+      pretty
+        (renderStringTemplate
+          renderCanonicalResult
+          compactCanonicalStringInterpolation
+          [StringTemplateWeakInterpolation source])
     CanonicalStringTemplate template ->
       case canonicalStringTemplateParts template of
         Just parts ->
@@ -189,6 +195,8 @@ canonicalStringTemplateParts result =
       concat <$> traverse canonicalStringTemplateParts members
     CanonicalAsciiString value -> Just [StringTemplateLiteral value]
     CanonicalToString source -> Just [StringTemplateInterpolation source]
+    CanonicalWeakToString source ->
+      Just [StringTemplateWeakInterpolation source]
     CanonicalStringTemplate nested -> canonicalStringTemplateParts nested
     _ -> Nothing
 

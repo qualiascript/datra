@@ -50,6 +50,7 @@ newtype IdentifierString = IdentifierString
 data StringTemplatePart expression
   = StringTemplateLiteral String
   | StringTemplateInterpolation expression
+  | StringTemplateWeakInterpolation expression
   deriving (Eq, Show)
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
@@ -263,6 +264,8 @@ normalizeStringTemplatePart (StringTemplateLiteral value) =
   StringTemplateLiteral value
 normalizeStringTemplatePart (StringTemplateInterpolation expressionValue) =
   StringTemplateInterpolation (normalizeExpression expressionValue)
+normalizeStringTemplatePart (StringTemplateWeakInterpolation expressionValue) =
+  StringTemplateWeakInterpolation (normalizeExpression expressionValue)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
@@ -371,6 +374,8 @@ lowerStringTemplatePart (StringTemplateLiteral value) =
   StringTemplateLiteral value
 lowerStringTemplatePart (StringTemplateInterpolation expressionValue) =
   StringTemplateInterpolation (lower expressionValue)
+lowerStringTemplatePart (StringTemplateWeakInterpolation expressionValue) =
+  StringTemplateWeakInterpolation (lower expressionValue)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -633,10 +638,15 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
     renderPart (StringTemplateLiteral value) rest =
       renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
+      renderInterpolation "$" expressionValue rest
+    renderPart (StringTemplateWeakInterpolation expressionValue) rest =
+      renderInterpolation "$!" expressionValue rest
+
+    renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of
-        Just symbol -> '$' : symbol <> escapeOptionalSuffix rest
+        Just symbol -> prefix <> symbol <> escapeOptionalSuffix rest
         Nothing ->
-          "$(" <> renderExpressionValue expressionValue <> ")" <> rest
+          prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
 
     escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
     escapeOptionalSuffix rest = rest

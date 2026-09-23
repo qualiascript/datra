@@ -627,6 +627,16 @@ regressionTests = do
     "\"$String\""
     (StringTemplate [StringTemplateInterpolation StringType])
   assertParsed
+    "weak interpolation has explicit compact syntax"
+    "\"$!String\""
+    (StringTemplate [StringTemplateWeakInterpolation StringType])
+  assertParsed
+    "weak interpolation supports compound expressions"
+    "\"$!(Nat | Nat)\""
+    (StringTemplate
+      [StringTemplateWeakInterpolation
+        (EitherType NaturalType NaturalType)])
+  assertParsed
     "postfix optional composes with a simple interpolation"
     "\"$Int?\""
     (StringTemplate
@@ -1235,6 +1245,11 @@ assertAstSyntax = do
           , StringTemplateLiteral "?"
           ])
         == "\"$Int\\?\""
+    )
+  assert "weak template interpolation retains its marker"
+    ( renderExpression
+        (StringTemplate [StringTemplateWeakInterpolation StringType])
+        == "\"$!String\""
     )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression

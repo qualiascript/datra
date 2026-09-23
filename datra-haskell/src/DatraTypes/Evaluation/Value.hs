@@ -26,6 +26,8 @@ module Evaluation.Value
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
   , interpretedMapCardinality
+  , ToStringInverseDecision (..)
+  , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
   , ValueSemantics (..)
@@ -257,6 +259,7 @@ data ValueForm
   | AsciiStringForm String
   | StringTypeForm
   | ToStringForm
+  | WeakToStringForm
   | StringTemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
@@ -283,10 +286,21 @@ data InterpretedMap = InterpretedMap
 interpretedMapCardinality :: InterpretedMap -> Natural
 interpretedMapCardinality = interpretedMapPageCardinality
 
+-- | The partial inverse carried by a proven pointwise string conversion.
+data ToStringInverseDecision
+  = ToStringInverseMatched InterpretedValue
+  | ToStringInverseRejected
+  | ToStringInverseUndecidable
+
+data ProvenInjectiveToString = ProvenInjectiveToString
+  { injectiveToStringCharacterAlphabet :: Maybe String
+  , injectiveToStringExactStrings :: Maybe [String]
+  , invertInjectiveToString :: String -> ToStringInverseDecision
+  }
+
 -- | Primitive Atlas-map federation kinds understood by the interpreter.
--- The generic construction tree lives in 'AtlasMapFederation'; extending the
--- language with another primitive family only extends this open semantic
--- boundary and its decision procedures.
+-- The injective string primitive carries the language facts and inverse that
+-- justified its construction; the explicitly weak primitive does not.
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
@@ -296,7 +310,10 @@ data InterpretedAtlasMapFederationPrimitive
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
   | StringTypeAtlasMapFederation
-  | ToStringAtlasMapFederation InterpretedValue
+  | ToStringAtlasMapFederation
+      InterpretedValue
+      ProvenInjectiveToString
+  | WeakToStringAtlasMapFederation InterpretedValue
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -323,6 +340,7 @@ data ValueSemantics
   | AsciiStringSemantics String
   | StringTypeSemantics
   | ToStringSemantics ValueSemantics
+  | WeakToStringSemantics ValueSemantics
   | StringTemplateSemantics ValueSemantics
   | IdentifierTypeSemantics
       IdentifierDependency
@@ -358,6 +376,7 @@ data CanonicalResult
   | CanonicalAsciiString String
   | CanonicalStringType
   | CanonicalToString CanonicalResult
+  | CanonicalWeakToString CanonicalResult
   | CanonicalStringTemplate CanonicalResult
   | CanonicalIdentifierType
       { canonicalIdentifierString :: String
@@ -460,6 +479,8 @@ canonicalResult semantics =
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     StringTypeSemantics -> CanonicalStringType
     ToStringSemantics source -> CanonicalToString (canonicalResult source)
+    WeakToStringSemantics source ->
+      CanonicalWeakToString (canonicalResult source)
     StringTemplateSemantics source ->
       CanonicalStringTemplate (canonicalResult source)
     IdentifierTypeSemantics dependency underlying isTotal ->
@@ -588,6 +609,7 @@ interpretedValueKind value =
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
+    WeakToStringForm -> AsciiStringValueKind
     StringTemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind

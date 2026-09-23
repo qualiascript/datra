@@ -70,6 +70,7 @@ import DatraLanguage.AST
   , StringTemplatePart
       ( StringTemplateInterpolation
       , StringTemplateLiteral
+      , StringTemplateWeakInterpolation
       )
   , isCompactStringLiteral
   )
@@ -916,7 +917,7 @@ astStringTemplateToken =
 
 data ParsedStringTemplatePart
   = ParsedStringTemplateCharacter Char
-  | ParsedStringTemplateInterpolation Expression
+  | ParsedStringTemplateInterpolation (StringTemplatePart Expression)
 
 stringTemplateToken
   :: Parser Expression
@@ -928,8 +929,13 @@ stringTemplateToken compoundInterpolation simpleInterpolation =
   where
     stringInterpolation = do
       _ <- char '$'
-      parenthesizedInterpolation
-        <|> simpleInterpolation
+      interpolationConstructor <-
+        maybe
+          StringTemplateInterpolation
+          (const StringTemplateWeakInterpolation)
+          <$> optional (char '!')
+      ParsedStringTemplateInterpolation . interpolationConstructor
+        <$> (parenthesizedInterpolation <|> simpleInterpolation)
 
     parenthesizedInterpolation = do
       _ <- char '('
@@ -940,7 +946,7 @@ stringTemplateToken compoundInterpolation simpleInterpolation =
           <* char ')')
 
 quotedStringParts
-  :: Maybe (Parser Expression)
+  :: Maybe (Parser ParsedStringTemplatePart)
   -> Parser [ParsedStringTemplatePart]
 quotedStringParts interpolation =
   between (char '"') (char '"')
@@ -950,9 +956,7 @@ quotedStringParts interpolation =
       choice
         ( maybe
             []
-            (\parser ->
-              [ (: []) . ParsedStringTemplateInterpolation <$> parser
-              ])
+            (\parser -> [(: []) <$> parser])
             interpolation
           <> [ [] <$ standardStringComment
              , (: []) . ParsedStringTemplateCharacter
@@ -1000,9 +1004,9 @@ buildStringTemplate parsedParts =
         StringTemplateLiteral value : remaining ->
           (StringTemplateLiteral (character : value) : remaining, hasHole)
         _ -> (StringTemplateLiteral [character] : parts, hasHole)
-    collect (ParsedStringTemplateInterpolation expressionValue)
+    collect (ParsedStringTemplateInterpolation interpolation)
         (parts, _) =
-      (StringTemplateInterpolation expressionValue : parts, True)
+      (interpolation : parts, True)
 
 parsedLiteralText :: [ParsedStringTemplatePart] -> String
 parsedLiteralText parts =

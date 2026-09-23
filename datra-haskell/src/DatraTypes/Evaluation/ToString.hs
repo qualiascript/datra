@@ -2,6 +2,7 @@
 -- There is deliberately no surface-language name for this operation.
 module Evaluation.ToString
   ( toStringValue
+  , weakToStringValue
   , stringTemplateValue
   , stringFederationConcatenationIsInjective
   ) where
@@ -10,10 +11,10 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
 import Data.List (isInfixOf, nub)
-import DatraLanguage.AST.Reserved qualified as Reserved
-import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Construction (makeAsciiString)
-import Evaluation.Error (InterpretingError (AmbiguousStringTemplate))
+import Evaluation.Error
+  ( InterpretingError (NonInjectiveStringInterpolation) )
+import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
 
 -- | Convert a total value to its canonical source spelling, or retain a
@@ -28,157 +29,48 @@ toStringValue renderCanonical source =
     AsciiStringForm _ -> Right source
     StringTypeForm -> Right source
     ToStringForm -> Right source
+    WeakToStringForm -> Right source
     StringTemplateForm _ -> Right source
     _
       | interpretedValueHasTotalMap source ->
           Right
             (makeAsciiString
               (renderCanonical (interpretedCanonicalResult source)))
-      | toStringConversionIsInjective (interpretedSemantics source) ->
-          Right pointwiseFederation
-      | otherwise -> Left AmbiguousStringTemplate
+      | otherwise ->
+          case proveInjectiveToString source of
+            Just proof -> Right (pointwiseFederation proof)
+            Nothing -> Left NonInjectiveStringInterpolation
   where
-    pointwiseFederation =
+    pointwiseFederation proof =
       makeInterpretedValue
         ToStringForm
         NoInsertion
         emptyInterpretedMap
         (PrimitiveAtlasMapFederation
-          (ToStringAtlasMapFederation source))
+          (ToStringAtlasMapFederation source proof))
         NonTotalInterpretedMap
         (ToStringSemantics (interpretedSemantics source))
 
-data StringConversionProperties = StringConversionProperties
-  { conversionIsInjective :: Bool
-  , conversionCharacterAlphabet :: Maybe String
-  , conversionExactStrings :: Maybe [String]
-  }
-
-stringConversionProperties
-  :: ValueSemantics
-  -> StringConversionProperties
-stringConversionProperties semantics =
-  case semantics of
-    ExplicitSemantics {} -> knownAlphabet "0123456789"
-    IntegerSemantics {} -> knownAlphabet "-0123456789"
-    NaturalRangeSemantics {} -> numericRange
-    ValuedNaturalRangeSemantics {} -> numericRange
-    NaturalTypeSemantics -> naturalNumber
-    IntegerRangeSemantics {} -> numericRange
-    ValuedIntegerRangeSemantics {} -> numericRange
-    IntegerTypeSemantics -> integerNumber
-    StringTypeSemantics -> injectiveUnknownAlphabet
-    EitherSemantics left right ->
-      eitherConversionProperties
-        (stringConversionProperties left)
-        (stringConversionProperties right)
-    IdentifierTypeSemantics dependency underlying True
-      | Just rendered <- reservedConstructorString dependency underlying ->
-          exactStrings [rendered]
-    IdentifierTypeSemantics _ underlying _ ->
-      (stringConversionProperties underlying)
-        { conversionCharacterAlphabet = Nothing
-        , conversionExactStrings = Nothing
-        }
-    IdentifierStringProjectionSemantics _ underlying _ ->
-      (stringConversionProperties underlying)
-        { conversionCharacterAlphabet = Nothing
-        , conversionExactStrings = Nothing
-        }
-    ToStringSemantics source -> stringConversionProperties source
-    StringTemplateSemantics source -> stringConversionProperties source
-    _ -> unknownConversion
-  where
-    naturalNumber =
-      StringConversionProperties True (Just "0123456789") Nothing
-    integerNumber =
-      StringConversionProperties True (Just "-0123456789") Nothing
-    numericRange =
-      StringConversionProperties
-        True (Just " -0123456789.rangeftoupwds") Nothing
-    injectiveUnknownAlphabet =
-      StringConversionProperties True Nothing Nothing
-    knownAlphabet alphabet =
-      StringConversionProperties False (Just alphabet) Nothing
-    unknownConversion = StringConversionProperties False Nothing Nothing
-
-reservedConstructorString
-  :: IdentifierDependency
-  -> ValueSemantics
-  -> Maybe String
-reservedConstructorString dependency underlying =
-  case (dependency, underlying) of
-    (SimpleIdentifierDependency "False", ExplicitSemantics 1 ordinalValue)
-      | naturalAtOrdinal ordinalValue == Just 0 ->
-          reserved Reserved.FalseSymbol
-    (SimpleIdentifierDependency "True", ExplicitSemantics 1 ordinalValue)
-      | naturalAtOrdinal ordinalValue == Just 1 ->
-          reserved Reserved.TrueSymbol
-    (SimpleIdentifierDependency "Nothing", MapSemantics 0 []) ->
-      reserved Reserved.NothingSymbol
-    _ -> Nothing
-  where
-    reserved = Just . Reserved.reservedSymbolIdentifierString
-
-eitherConversionProperties
-  :: StringConversionProperties
-  -> StringConversionProperties
-  -> StringConversionProperties
-eitherConversionProperties left right =
-  StringConversionProperties
-    ( conversionIsInjective left
-        && conversionIsInjective right
-        && conversionLanguagesAreDisjoint left right
-    )
-    (unionMaybe unionLists
-      (conversionCharacterAlphabet left)
-      (conversionCharacterAlphabet right))
-    (unionMaybe unionLists
-      (conversionExactStrings left)
-      (conversionExactStrings right))
-
-conversionLanguagesAreDisjoint
-  :: StringConversionProperties
-  -> StringConversionProperties
-  -> Bool
-conversionLanguagesAreDisjoint left right =
-  case (conversionExactStrings left, conversionExactStrings right) of
-    (Just leftStrings, Just rightStrings) ->
-      all (`notElem` rightStrings) leftStrings
-    (Just leftStrings, Nothing) ->
-      case conversionCharacterAlphabet right of
-        Just alphabet -> all (stringExcludedByAlphabet alphabet) leftStrings
-        Nothing -> False
-    (Nothing, Just rightStrings) ->
-      case conversionCharacterAlphabet left of
-        Just alphabet -> all (stringExcludedByAlphabet alphabet) rightStrings
-        Nothing -> False
-    (Nothing, Nothing) -> False
-
-stringExcludedByAlphabet :: String -> String -> Bool
-stringExcludedByAlphabet alphabet = any (`notElem` alphabet)
-
-exactStrings :: [String] -> StringConversionProperties
-exactStrings strings =
-  StringConversionProperties
-    True
-    (Just (nub (concat strings)))
-    (Just strings)
-
-unionMaybe
-  :: (value -> value -> value)
-  -> Maybe value
-  -> Maybe value
-  -> Maybe value
-unionMaybe combine (Just left) (Just right) = Just (combine left right)
-unionMaybe _ _ _ = Nothing
-
-unionLists :: Eq value => [value] -> [value] -> [value]
-unionLists left right = nub (left <> right)
-
-toStringConversionIsInjective :: ValueSemantics -> Bool
-toStringConversionIsInjective =
-  conversionIsInjective . stringConversionProperties
+-- | Use the ordinary injective conversion whenever it is available. Only an
+-- unprovable conversion constructs the explicitly non-invertible weak form.
+weakToStringValue
+  :: (CanonicalResult -> String)
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+weakToStringValue renderCanonical source =
+  case toStringValue renderCanonical source of
+    Right value -> Right value
+    Left NonInjectiveStringInterpolation ->
+      Right
+        (makeInterpretedValue
+          WeakToStringForm
+          NoInsertion
+          emptyInterpretedMap
+          (PrimitiveAtlasMapFederation
+            (WeakToStringAtlasMapFederation source))
+          NonTotalInterpretedMap
+          (WeakToStringSemantics (interpretedSemantics source)))
+    Left err -> Left err
 
 -- | Retain the ordinary concatenation result while recording that its members
 -- are the pointwise outputs of one string template.
@@ -188,6 +80,7 @@ stringTemplateValue value =
     AsciiStringForm _ -> value
     StringTypeForm -> value
     ToStringForm -> value
+    WeakToStringForm -> value
     StringTemplateForm _ -> value
     _ ->
       makeInterpretedValue
@@ -250,9 +143,9 @@ federationExactStrings federation =
         _ -> Nothing
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        ToStringAtlasMapFederation source ->
-          conversionExactStrings
-            (stringConversionProperties (interpretedSemantics source))
+        ToStringAtlasMapFederation _ proof ->
+          injectiveToStringExactStrings proof
+        WeakToStringAtlasMapFederation _ -> Nothing
         _ -> Nothing
     ConcatenatedAtlasMapFederation left right -> do
       leftStrings <- federationExactStrings left
@@ -303,9 +196,11 @@ stringFederationExcludes delimiter federation =
         _ -> False
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        ToStringAtlasMapFederation source ->
-          renderedSemanticsExclude
-            delimiter (interpretedSemantics source)
+        ToStringAtlasMapFederation _ proof ->
+          case injectiveToStringCharacterAlphabet proof of
+            Nothing -> False
+            Just alphabet -> any (`notElem` alphabet) delimiter
+        WeakToStringAtlasMapFederation _ -> False
         StringTypeAtlasMapFederation -> False
         _ -> False
     SequentialAtlasMapFederation members ->
@@ -316,9 +211,3 @@ stringFederationExcludes delimiter federation =
     ConcatenatedAtlasMapFederation leftValue rightValue ->
       stringFederationExcludes delimiter leftValue
         && stringFederationExcludes delimiter rightValue
-
-renderedSemanticsExclude :: String -> ValueSemantics -> Bool
-renderedSemanticsExclude delimiter semantics =
-  case conversionCharacterAlphabet (stringConversionProperties semantics) of
-    Nothing -> False
-    Just alphabet -> any (`notElem` alphabet) delimiter

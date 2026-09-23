@@ -99,6 +99,7 @@ accessSource value =
           characters)
     StringTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
+    WeakToStringForm -> ordinarySource []
     StringTemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
@@ -163,6 +164,7 @@ semanticAccessSource semantics =
           characters)
     StringTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
+    WeakToStringSemantics _ -> ordinarySource []
     StringTemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)

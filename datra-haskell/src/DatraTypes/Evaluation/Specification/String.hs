@@ -7,16 +7,12 @@ module Evaluation.Specification.String
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
-import BooleanType (DatraBoolean (..))
-import DatraLanguage.AST.Reserved qualified as Reserved
-import Evaluation.Construction (makeInteger, makeNatural)
 import Evaluation.Specification.Decision
   ( Decision (..)
   , decideAny
   , mapDecision
   )
 import Evaluation.Value
-import Numeric.Natural (Natural)
 
 -- | Whether every member described by a federation is an ASCII string.
 federationProducesStrings :: InterpretedAtlasMapFederation -> Bool
@@ -29,7 +25,8 @@ federationProducesStrings federation =
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
         StringTypeAtlasMapFederation -> True
-        ToStringAtlasMapFederation _ -> True
+        ToStringAtlasMapFederation _ _ -> True
+        WeakToStringAtlasMapFederation _ -> True
         _ -> False
     ConcatenatedAtlasMapFederation left right ->
       federationProducesStrings left && federationProducesStrings right
@@ -74,15 +71,16 @@ selectCharacters selectMember characters federation =
       case primitive of
         StringTypeAtlasMapFederation ->
           Just (DecisionProved (EvaluatedAsciiStringMember characters))
-        ToStringAtlasMapFederation source ->
+        ToStringAtlasMapFederation source proof ->
           Just
-            (case parseCanonicalMember source characters of
-              ParsedCanonicalMember candidate ->
+            (case invertInjectiveToString proof characters of
+              ToStringInverseMatched candidate ->
                 mapDecision
                   EvaluatedToStringMember
                   (selectMember candidate source)
-              RejectedCanonicalMember -> DecisionRefuted
-              UnsupportedCanonicalMember -> DecisionUndecidable)
+              ToStringInverseRejected -> DecisionRefuted
+              ToStringInverseUndecidable -> DecisionUndecidable)
+        WeakToStringAtlasMapFederation _ -> Just DecisionUndecidable
         _ -> Nothing
     ConcatenatedAtlasMapFederation left right -> do
       decisions <-
@@ -125,66 +123,3 @@ type SelectMember =
 characterSplits :: String -> [(String, String)]
 characterSplits characters =
   [splitAt position characters | position <- [0 .. length characters]]
-
-data CanonicalMemberParse
-  = ParsedCanonicalMember InterpretedValue
-  | RejectedCanonicalMember
-  | UnsupportedCanonicalMember
-
-parseCanonicalMember
-  :: InterpretedValue
-  -> String
-  -> CanonicalMemberParse
-parseCanonicalMember source characters =
-  case interpretedForm source of
-    ValuedNaturalRangeForm _ ->
-      maybe RejectedCanonicalMember
-        (ParsedCanonicalMember . makeNatural)
-        (readCanonical characters :: Maybe Natural)
-    ValuedIntegerRangeForm _ ->
-      maybe RejectedCanonicalMember
-        (ParsedCanonicalMember . makeInteger)
-        (readCanonical characters :: Maybe Integer)
-    BooleanForm flag ->
-      parseReservedValue
-        (case flag of
-          DatraFalse -> Reserved.FalseSymbol
-          DatraTrue -> Reserved.TrueSymbol)
-    NothingForm -> parseReservedValue Reserved.NothingSymbol
-    EitherForm alternatives ->
-      combineCanonicalParses
-        (parseCanonicalMember
-          (evaluatedEitherLeft alternatives) characters)
-        (parseCanonicalMember
-          (evaluatedEitherRight alternatives) characters)
-    _ -> UnsupportedCanonicalMember
-  where
-    parseReservedValue symbol
-      | characters == Reserved.reservedSymbolIdentifierString symbol =
-          ParsedCanonicalMember source
-      | otherwise = RejectedCanonicalMember
-
-combineCanonicalParses
-  :: CanonicalMemberParse
-  -> CanonicalMemberParse
-  -> CanonicalMemberParse
-combineCanonicalParses
-    (ParsedCanonicalMember candidate)
-    RejectedCanonicalMember = ParsedCanonicalMember candidate
-combineCanonicalParses
-    RejectedCanonicalMember
-    (ParsedCanonicalMember candidate) = ParsedCanonicalMember candidate
-combineCanonicalParses RejectedCanonicalMember RejectedCanonicalMember =
-  RejectedCanonicalMember
-combineCanonicalParses (ParsedCanonicalMember candidate) UnsupportedCanonicalMember =
-  ParsedCanonicalMember candidate
-combineCanonicalParses UnsupportedCanonicalMember (ParsedCanonicalMember candidate) =
-  ParsedCanonicalMember candidate
-combineCanonicalParses _ _ = UnsupportedCanonicalMember
-
-readCanonical :: (Read value, Show value) => String -> Maybe value
-readCanonical characters =
-  case reads characters of
-    [(value, "")]
-      | show value == characters -> Just value
-    _ -> Nothing

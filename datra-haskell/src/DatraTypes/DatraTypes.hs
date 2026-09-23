@@ -23,6 +23,7 @@ module DatraTypes
   , asciiStringValue
   , stringTypeValue
   , toStringValue
+  , weakToStringValue
   , stringTemplateValue
   , formulationValue
   , addValues
@@ -101,7 +102,11 @@ import Evaluation.Boolean
   )
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
-import Evaluation.ToString (stringTemplateValue, toStringValue)
+import Evaluation.ToString
+  ( stringTemplateValue
+  , toStringValue
+  , weakToStringValue
+  )
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues

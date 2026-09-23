@@ -681,12 +681,44 @@ testStringTemplates = do
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
-  assert "pointwise toString rejects a federation with colliding renderings"
+  assert "strong interpolation rejects non-injective toString"
     (case interpretExpressionReason
         (StringTemplate
           [StringTemplateInterpolation
             (EitherType NaturalType NaturalType)]) of
-      Left AmbiguousStringTemplate -> True
+      Left NonInjectiveStringInterpolation -> True
+      _ -> False)
+  expectValue
+      "weak interpolation admits a non-injective toString"
+      (StringTemplate
+        [StringTemplateWeakInterpolation
+          (EitherType NaturalType NaturalType)]) $ \value ->
+    assert "the weak form retains its non-invertible canonical marker"
+      ( not (Types.interpretedValueHasTotalMap value)
+        && renderInterpretedValue value == "\"$!(Nat | Nat)\""
+      )
+  expectValue
+      "weak interpolation normalizes when toString is injective"
+      (StringTemplate [StringTemplateWeakInterpolation NaturalType]) $ \value ->
+    assert "the proven strong form is canonical"
+      (renderInterpretedValue value == "\"$Nat\"")
+  expectValue
+      "weak and strong interpolation agree when toString is injective"
+      (AST.equal
+        (StringTemplate [StringTemplateWeakInterpolation NaturalType])
+        (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
+    assert "$!x equals $x when the strong proof exists"
+      (renderInterpretedValue value == "true")
+  assert "weak interpolation cannot be inverted by specification"
+    (case interpretExpressionReason
+        (AsciiStringLiteral "1" ~>
+          StringTemplate
+            [StringTemplateWeakInterpolation
+              (EitherType NaturalType NaturalType)]) of
+      Left
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationSpecification)) -> True
       _ -> False)
   expectValue
       "interpolated output is not reparsed"

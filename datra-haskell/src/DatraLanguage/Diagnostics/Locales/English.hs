@@ -140,6 +140,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "the compiler cannot decide this Atlas-map federation operation"
         ["operation: " <> federationOperation operation]
+    NonInjectiveStringInterpolation ->
+      LocalizedMessage
+        "non-injective string interpolation"
+        ["distinct values in the interpolation can have the same string form"]
     AmbiguousStringTemplate ->
       LocalizedMessage
         "ambiguous string template"

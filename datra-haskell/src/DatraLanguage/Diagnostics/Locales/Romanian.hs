@@ -140,6 +140,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "compilatorul nu poate decide această operație pe federații"
         ["operația: " <> federationOperation operation]
+    NonInjectiveStringInterpolation ->
+      LocalizedMessage
+        "interpolare de șir neinjectivă"
+        ["valori distincte din interpolare pot avea aceeași formă de șir"]
     AmbiguousStringTemplate ->
       LocalizedMessage
         "șablon de șir ambiguu"

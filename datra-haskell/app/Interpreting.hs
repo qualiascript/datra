@@ -194,6 +194,9 @@ interpretStringTemplate parts = do
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpretExpressionReason expressionValue
       toStringValue renderCanonicalResult value
+    interpretPart (StringTemplateWeakInterpolation expressionValue) = do
+      value <- interpretExpressionReason expressionValue
+      weakToStringValue renderCanonicalResult value
 
     concatenateTemplateValues left right =
       case concatenateValues left right of
