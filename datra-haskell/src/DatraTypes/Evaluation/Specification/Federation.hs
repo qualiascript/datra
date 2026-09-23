@@ -91,6 +91,8 @@ selectAtomicFederationMember source target =
           CanonicalAsciiString characters ->
             DecisionProved (EvaluatedAsciiStringMember characters)
           _ -> DecisionRefuted)
+    PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation ->
+      Nothing
     PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation

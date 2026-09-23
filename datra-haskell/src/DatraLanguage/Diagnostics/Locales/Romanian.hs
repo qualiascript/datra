@@ -150,6 +150,10 @@ localizeInterpretingError reason =
         [ "weakToString poate reda valoarea, dar specificarea necesită "
             <> "o conversie canonică injectivă"
         ]
+    ExpectedStringTemplateSpecification kind ->
+      LocalizedMessage
+        "extract necesită o specificație concretă de șablon de șir"
+        ["tipul valorii date: " <> valueKind kind]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "alternativele Either nu sunt hărți Atlas diferențiabile"

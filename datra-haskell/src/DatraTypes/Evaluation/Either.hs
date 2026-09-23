@@ -1,7 +1,6 @@
 -- | Disjoint federation composition for Datra's surface @|@ operator.
 module Evaluation.Either
   ( makeEitherValue
-  , makeUnsafeEitherValue
   ) where
 
 import AtlasMapFederationExpression
@@ -30,15 +29,6 @@ makeEitherValue left right =
     else Left EitherAlternativesNotDistinct
   where
     members = eitherMembers left <> eitherMembers right
-
--- | AST-only escape hatch used to construct deliberately invalid unions in
--- evaluator tests. The surface parser never exposes this operation.
-makeUnsafeEitherValue
-  :: InterpretedValue
-  -> InterpretedValue
-  -> InterpretedValue
-makeUnsafeEitherValue left right =
-  buildEither (eitherMembers left <> eitherMembers right)
 
 alternativesArePairwiseDistinct :: [InterpretedValue] -> Bool
 alternativesArePairwiseDistinct [] = True

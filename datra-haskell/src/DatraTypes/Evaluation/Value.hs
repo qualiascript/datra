@@ -43,7 +43,6 @@ module Evaluation.Value
   , interpretedTotalAtlasMap
   , interpretedSemantics
   , interpretedValueHasTotalMap
-  , implicitCoercionSemantics
   , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
@@ -223,7 +222,9 @@ data EvaluatedAtlasMapFederationMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
-  | EvaluatedToStringMember EvaluatedAtlasMapFederationMember
+  | EvaluatedToStringMember
+      InterpretedValue
+      EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember
@@ -258,6 +259,7 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | StringTypeForm
+  | IdentifierValueTypeForm
   | ToStringForm
   | WeakToStringForm
   | StringTemplateForm InterpretedValue
@@ -288,9 +290,8 @@ interpretedMapCardinality = interpretedMapPageCardinality
 
 -- | The partial inverse carried by a proven pointwise string conversion.
 data ToStringInverseDecision
-  = ToStringInverseMatched InterpretedValue
+  = ToStringInverseMatched [InterpretedValue]
   | ToStringInverseRejected
-  | ToStringInverseUndecidable
 
 data ProvenInjectiveToString = ProvenInjectiveToString
   { injectiveToStringCharacterAlphabet :: Maybe String
@@ -310,6 +311,7 @@ data InterpretedAtlasMapFederationPrimitive
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
   | StringTypeAtlasMapFederation
+  | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
       ProvenInjectiveToString
@@ -339,6 +341,7 @@ data ValueSemantics
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
   | StringTypeSemantics
+  | IdentifierValueTypeSemantics
   | ToStringSemantics ValueSemantics
   | WeakToStringSemantics ValueSemantics
   | StringTemplateSemantics ValueSemantics
@@ -375,6 +378,7 @@ data CanonicalResult
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
   | CanonicalStringType
+  | CanonicalIdentifierValueType
   | CanonicalToString CanonicalResult
   | CanonicalWeakToString CanonicalResult
   | CanonicalStringTemplate CanonicalResult
@@ -443,15 +447,6 @@ makeSingletonInterpretedValue form capability valueMap totality =
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
--- | One implicit coercion step through a total identifier binding. Consumers
--- can follow the chain without knowing whether a binding came from user code,
--- an interpreter bootstrap, or a future standard-library definition.
-implicitCoercionSemantics :: ValueSemantics -> Maybe ValueSemantics
-implicitCoercionSemantics semantics =
-  case semantics of
-    IdentifierTypeSemantics _ underlying True -> Just underlying
-    _ -> Nothing
-
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
 
@@ -478,6 +473,7 @@ canonicalResult semantics =
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     StringTypeSemantics -> CanonicalStringType
+    IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
     ToStringSemantics source -> CanonicalToString (canonicalResult source)
     WeakToStringSemantics source ->
       CanonicalWeakToString (canonicalResult source)
@@ -608,6 +604,7 @@ interpretedValueKind value =
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind
+    IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
     WeakToStringForm -> AsciiStringValueKind
     StringTemplateForm _ -> AsciiStringValueKind

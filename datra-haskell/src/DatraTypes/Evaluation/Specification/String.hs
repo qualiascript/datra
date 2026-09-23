@@ -14,6 +14,7 @@ import Evaluation.Specification.Decision
   , mapDecision
   )
 import Evaluation.Value
+import IdentifierValueType (isIdentifierValue)
 
 -- | Whether every member described by a federation is an ASCII string.
 federationProducesStrings :: InterpretedAtlasMapFederation -> Bool
@@ -26,6 +27,7 @@ federationProducesStrings federation =
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
         StringTypeAtlasMapFederation -> True
+        IdentifierValueTypeAtlasMapFederation -> True
         ToStringAtlasMapFederation _ _ -> True
         WeakToStringAtlasMapFederation _ -> True
         _ -> False
@@ -87,15 +89,22 @@ selectCharacters selectMember characters federation =
       case primitive of
         StringTypeAtlasMapFederation ->
           Just (DecisionProved (EvaluatedAsciiStringMember characters))
+        IdentifierValueTypeAtlasMapFederation ->
+          Just
+            (if isIdentifierValue characters
+              then DecisionProved (EvaluatedAsciiStringMember characters)
+              else DecisionRefuted)
         ToStringAtlasMapFederation source proof ->
           Just
             (case invertInjectiveToString proof characters of
-              ToStringInverseMatched candidate ->
-                mapDecision
-                  EvaluatedToStringMember
-                  (selectMember candidate source)
-              ToStringInverseRejected -> DecisionRefuted
-              ToStringInverseUndecidable -> DecisionUndecidable)
+              ToStringInverseMatched candidates ->
+                decideAny
+                  [ mapDecision
+                      (EvaluatedToStringMember candidate)
+                      (selectMember candidate source)
+                  | candidate <- candidates
+                  ]
+              ToStringInverseRejected -> DecisionRefuted)
         WeakToStringAtlasMapFederation _ -> Just DecisionUndecidable
         _ -> Nothing
     ConcatenatedAtlasMapFederation left right -> do

@@ -59,7 +59,6 @@ import DatraLanguage.AST
       , ValuedIntegerRangeUpwards
       , ValuedIntegerRangeDownwards
       , EitherType
-      , UnsafeEither
       , OptionalType
       , Conditional
       , Subfederation
@@ -67,13 +66,13 @@ import DatraLanguage.AST
       , BooleanAnd
       , BooleanOr
       , BooleanNot
+      , Extract
       )
   , StringTemplatePart
       ( StringTemplateInterpolation
       , StringTemplateLiteral
       , StringTemplateWeakInterpolation
       )
-  , isCompactStringLiteral
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -84,6 +83,10 @@ import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  )
+import IdentifierValueType
+  ( isIdentifierValue
+  , isIdentifierValueCharacter
   )
 import Text.Megaparsec
   ( ParsecT
@@ -278,8 +281,8 @@ astForm =
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
+      , astUnary AST.ExtractOperator Extract
       , astBinary AST.EitherOperator EitherType
-      , astBinary AST.UnsafeEitherOperator UnsafeEither
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
@@ -576,7 +579,15 @@ rangeEndpoint :: Parser Expression
 rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
-term = accessedTerm termAtom
+term = accessedTerm extractedTermAtom
+
+-- Extract binds to its primary operand before bracket access, so @%a[x]@
+-- means @(%a)[x]@. A larger specification operand remains available through
+-- ordinary parentheses.
+extractedTermAtom :: Parser Expression
+extractedTermAtom =
+  (Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom))
+    <|> termAtom
 
 termAtom :: Parser Expression
 termAtom =
@@ -844,19 +855,16 @@ postfixRangeEnd =
 ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 
--- | The compact identifier spelling: a dollar sign, one leading canonical
--- character, then any number of canonical characters.
+-- | The compact identifier spelling. Consume the whole identifier-character
+-- run before validation so @$345abc@ is one token rather than two expressions.
 identifierString :: Parser String
 identifierString = lexeme identifierStringToken
 
 identifierStringToken :: Parser String
 identifierStringToken = do
   _ <- char '$'
-  value <-
-    (:)
-      <$> satisfy isLeadingCanonicalCharacter
-      <*> many (satisfy isCanonicalCharacter)
-  if isCompactStringLiteral value then pure value else empty
+  value <- some (satisfy isIdentifierValueCharacter)
+  if isIdentifierValue value then pure value else empty
 
 bareIdentifier :: Parser String
 bareIdentifier = lexeme bareIdentifierToken
@@ -930,7 +938,7 @@ stringTemplateToken compoundInterpolation simpleInterpolation =
     <$> quotedStringParts (Just stringInterpolation)
   where
     stringInterpolation = do
-      _ <- char '$'
+      _ <- char '%'
       interpolationConstructor <-
         maybe
           StringTemplateInterpolation
@@ -1037,7 +1045,7 @@ standardStringCharacter =
       [ '"' <$ char '"'
       , '\\' <$ char '\\'
       , '#' <$ char '#'
-      , '$' <$ char '$'
+      , '%' <$ char '%'
       , '?' <$ char '?'
       , '\n' <$ char 'n'
       , hexadecimalAsciiCharacter
@@ -1047,7 +1055,7 @@ standardStringCharacter =
         character /= '"'
           && character /= '\\'
           && character /= '#'
-          && character /= '$'
+          && character /= '%'
           && isAsciiCharacter character)
 
 hexadecimalAsciiCharacter :: Parser Char

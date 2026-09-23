@@ -18,14 +18,16 @@ module DatraTypes
   , booleanValue
   , booleanTypeValue
   , eitherValue
-  , unsafeEitherValue
   , optionalValue
   , nothingValue
   , asciiStringValue
   , stringTypeValue
+  , identifierValueTypeValue
+  , CanonicalStringCodec (..)
   , toStringValue
   , weakToStringValue
   , stringTemplateValue
+  , extractValue
   , formulationValue
   , addValues
   , subtractValues
@@ -86,6 +88,7 @@ import Evaluation.Error
 import Evaluation.Access (accessValues)
 import Evaluation.Construction
   ( makeAsciiString
+  , makeIdentifierValueType
   , makeStringType
   , makeFormulation
   , makeNatural
@@ -101,13 +104,15 @@ import Evaluation.Boolean
   , makeBoolean
   , makeBooleanType
   )
-import Evaluation.Either (makeEitherValue, makeUnsafeEitherValue)
+import Evaluation.Either (makeEitherValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
-  ( stringTemplateValue
+  ( CanonicalStringCodec (..)
+  , stringTemplateValue
   , toStringValue
   , weakToStringValue
   )
+import Extract (extractValue)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
@@ -188,9 +193,6 @@ eitherValue
   -> Either InterpretingError InterpretedValue
 eitherValue = makeEitherValue
 
-unsafeEitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
-unsafeEitherValue = makeUnsafeEitherValue
-
 optionalValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
@@ -207,6 +209,9 @@ asciiStringValue value =
 
 stringTypeValue :: InterpretedValue
 stringTypeValue = makeStringType
+
+identifierValueTypeValue :: InterpretedValue
+identifierValueTypeValue = makeIdentifierValueType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation

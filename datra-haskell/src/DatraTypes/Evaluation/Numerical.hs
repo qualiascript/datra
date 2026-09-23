@@ -164,15 +164,12 @@ data NumericalValue
   | IntegerNumerical Integer
   | FormulationNumerical Natural
 
--- | Numerical operators view every total map through its semantics. Named
--- total maps recursively expose their associated value through the same path,
--- so no identifier spelling or distinguished constructor needs a special
--- numerical rule.
+-- | Numerical operators first recognize direct numerical values, then view
+-- specifications through their source when the target is a valued numerical
+-- range. Identifiers expose the same specification shape, which keeps named
+-- numerical values on this one coercion path.
 numericalValue :: InterpretedValue -> Maybe NumericalValue
-numericalValue value
-  | interpretedValueHasTotalMap value =
-      numericalSemantics (interpretedSemantics value)
-  | otherwise = Nothing
+numericalValue = numericalSemantics . interpretedSemantics
 
 numericalSemantics :: ValueSemantics -> Maybe NumericalValue
 numericalSemantics semantics =
@@ -182,7 +179,45 @@ numericalSemantics semantics =
     IntegerSemantics integer -> Just (IntegerNumerical integer)
     FormulationSemantics level -> Just (FormulationNumerical level)
     MapSemantics 0 [] -> Just (ExplicitNumerical 1 (finiteOrdinal 0))
-    _ -> implicitCoercionSemantics semantics >>= numericalSemantics
+    _ -> do
+      (source, target) <- numericalSpecification semantics
+      if isValuedNumericalTarget target
+        then numericalSemantics source
+        else Nothing
+
+-- An identifier is its identity specification. An assignment retains the
+-- non-identity specification supplied by the user, while an ordinary
+-- specification already has the required source and target directly.
+numericalSpecification
+  :: ValueSemantics
+  -> Maybe (ValueSemantics, ValueSemantics)
+numericalSpecification semantics =
+  case semantics of
+    IdentifierTypeSemantics _ underlying True ->
+      Just (underlying, underlying)
+    AssignmentSemantics _ target source -> Just (source, target)
+    SpecificationSemantics source target -> Just (source, target)
+    _ -> Nothing
+
+-- Concrete numerical values are singleton valued ranges. Nat and Int are the
+-- corresponding unbounded valued ranges, and the empty map is their zero-size
+-- case. Index-only ranges deliberately do not appear here.
+isValuedNumericalTarget :: ValueSemantics -> Bool
+isValuedNumericalTarget semantics =
+  case semantics of
+    ExplicitSemantics _ _ -> True
+    IntegerSemantics _ -> True
+    FormulationSemantics _ -> True
+    ValuedNaturalRangeSemantics _ _ -> True
+    NaturalTypeSemantics -> True
+    ValuedIntegerRangeSemantics _ _ -> True
+    IntegerTypeSemantics -> True
+    MapSemantics 0 [] -> True
+    IdentifierTypeSemantics _ underlying True ->
+      isValuedNumericalTarget underlying
+    AssignmentSemantics _ target _ -> isValuedNumericalTarget target
+    SpecificationSemantics _ target -> isValuedNumericalTarget target
+    _ -> False
 
 finiteInteger :: NumericalValue -> Maybe Integer
 finiteInteger (IntegerNumerical integer) = Just integer

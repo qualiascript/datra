@@ -28,6 +28,10 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | AssignmentForm assignment <- interpretedForm source =
+      decideValueSubfederation
+        (evaluatedSpecificationTarget assignment)
+        target
   | interpretedValueHasTotalMap source =
       mapDecision (const ()) (selectFederationMember source target)
   | otherwise =

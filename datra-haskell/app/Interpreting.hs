@@ -23,6 +23,7 @@ module Interpreting
   , interpretedMapCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , canonicalStringCodec
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
@@ -34,6 +35,7 @@ import DatraLanguage.AST
   , normalizeExpression
   )
 import DatraTypes
+import Parsing (parseDatra)
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -61,6 +63,68 @@ interpretExpressionReason
   -> Either InterpretingError InterpretedValue
 interpretExpressionReason = interpretNormalizedExpression . normalizeExpression
 
+canonicalStringCodec :: CanonicalStringCodec
+canonicalStringCodec =
+  CanonicalStringCodec
+    { renderCanonicalString = renderCanonicalResult
+    , decodeCanonicalString = canonicalStringCandidates
+    }
+
+canonicalStringCandidates :: String -> [InterpretedValue]
+canonicalStringCandidates characters =
+  asciiCandidate <> parsedCanonicalCandidate
+  where
+    -- String-valued federations use their contents without source delimiters.
+    asciiCandidate =
+      case asciiStringValue characters of
+        Right value -> [value]
+        Left _ -> []
+    -- Every other value must already use its canonical source spelling.
+    parsedCanonicalCandidate =
+      case parseDatra characters of
+        Left _ -> []
+        Right expressionValue ->
+          case interpretExpressionReason expressionValue of
+            Right value
+              | canonicalSpelling characters
+                  (renderInterpretedValue value) ->
+                    [ candidate
+                    | candidateExpression <-
+                        canonicalExpressionCandidates expressionValue
+                    , Right candidate <-
+                        [interpretExpressionReason candidateExpression]
+                    ]
+            _ -> []
+
+    -- Parentheses are canonical when a rendered value is embedded as one
+    -- component of a larger expression. No other alternate spelling is
+    -- accepted by the inverse.
+    canonicalSpelling actual rendered =
+      actual == rendered || actual == "(" <> rendered <> ")"
+
+-- Canonical Either and map syntax can retain the unselected branches that
+-- explain a value's type. Decode those contexts into their concrete member
+-- expressions before asking the semantic federation to select one.
+canonicalExpressionCandidates :: Expression -> [Expression]
+canonicalExpressionCandidates expressionValue =
+  case expressionValue of
+    EitherType left right ->
+      canonicalExpressionCandidates left
+        <> canonicalExpressionCandidates right
+    AtlasMap members ->
+      AtlasMap <$> traverse canonicalExpressionCandidates members
+    MapSequence members ->
+      MapSequence <$> traverse canonicalExpressionCandidates members
+    MapExpansion left right ->
+      MapExpansion
+        <$> canonicalExpressionCandidates left
+        <*> canonicalExpressionCandidates right
+    MapConcatenation left right ->
+      MapConcatenation
+        <$> canonicalExpressionCandidates left
+        <*> canonicalExpressionCandidates right
+    _ -> [expressionValue]
+
 interpretNormalizedExpression
   :: Expression
   -> Either InterpretingError InterpretedValue
@@ -72,6 +136,7 @@ interpretNormalizedExpression expressionValue =
     NothingLiteral -> Right nothingValue
     StringTemplate parts -> interpretStringTemplate parts
     StringType -> Right stringTypeValue
+    IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
     MapSequence expressions ->
@@ -110,8 +175,6 @@ interpretNormalizedExpression expressionValue =
     BooleanType -> booleanTypeValue
     EitherType left right ->
       interpretBinary eitherValue left right
-    UnsafeEither left right ->
-      interpretBinaryPure unsafeEitherValue left right
     OptionalType operand ->
       interpretExpressionReason operand >>= optionalValue
     Conditional condition consequent alternative -> do
@@ -138,6 +201,8 @@ interpretNormalizedExpression expressionValue =
       interpretBinary booleanOrValues left right
     BooleanNot operand ->
       interpretExpressionReason operand >>= booleanNotValue
+    Extract operand ->
+      interpretExpressionReason operand >>= extractValue
     MapConcatenation left right ->
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->
@@ -195,10 +260,10 @@ interpretStringTemplate parts = do
     interpretPart (StringTemplateLiteral value) = asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpretExpressionReason expressionValue
-      toStringValue renderCanonicalResult value
+      toStringValue canonicalStringCodec value
     interpretPart (StringTemplateWeakInterpolation expressionValue) = do
       value <- interpretExpressionReason expressionValue
-      weakToStringValue renderCanonicalResult value
+      weakToStringValue canonicalStringCodec value
 
     concatenateTemplateValues left right =
       case concatenateValues left right of
@@ -313,16 +378,6 @@ interpretBinary operation left right = do
   leftValue <- interpretExpressionReason left
   rightValue <- interpretExpressionReason right
   operation leftValue rightValue
-
-interpretBinaryPure
-  :: (InterpretedValue -> InterpretedValue -> InterpretedValue)
-  -> Expression
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-interpretBinaryPure operation left right = do
-  leftValue <- interpretExpressionReason left
-  rightValue <- interpretExpressionReason right
-  pure (operation leftValue rightValue)
 
 interpretAtlasMapWith
   :: (Expression -> Either InterpretingError InterpretedValue)

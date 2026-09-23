@@ -4,6 +4,7 @@ module Evaluation.Construction
   , makeInteger
   , makeAsciiString
   , makeStringType
+  , makeIdentifierValueType
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
@@ -86,6 +87,17 @@ makeStringType =
     (PrimitiveAtlasMapFederation StringTypeAtlasMapFederation)
     NonTotalInterpretedMap
     StringTypeSemantics
+
+-- | The federation of strings accepted by compact @$...@ syntax.
+makeIdentifierValueType :: InterpretedValue
+makeIdentifierValueType =
+  makeInterpretedValue
+    IdentifierValueTypeForm
+    NoInsertion
+    emptyInterpretedMap
+    (PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation)
+    NonTotalInterpretedMap
+    IdentifierValueTypeSemantics
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin

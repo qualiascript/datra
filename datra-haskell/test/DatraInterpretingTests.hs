@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PostfixOperators #-}
 
 module DatraInterpretingTests (main) where
@@ -28,6 +29,7 @@ import Interpreting
   , OperandSide (..)
   , interpretExpressionReason
   , interpretLocatedExpression
+  , canonicalStringCodec
   , interpretedExplicitOrdinal
   , interpretedInteger
   , interpretedFormulationLevel
@@ -70,6 +72,7 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
+import Parsing (parseDatra)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -276,6 +279,30 @@ expectValue label expressionValue check =
       fail (label <> ": unexpected rejection: " <> show rejection)
     Right value -> check value
 
+expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
+expectSourceValue label source check =
+  case parseDatra source of
+    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Right expressionValue -> expectValue label expressionValue check
+
+expectSourceRejection
+  :: String
+  -> String
+  -> (InterpretingError -> Bool)
+  -> IO ()
+expectSourceRejection label source matches =
+  case parseDatra source of
+    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Right expressionValue ->
+      case interpretExpressionReason expressionValue of
+        Left rejection
+          | matches rejection -> pure ()
+          | otherwise ->
+              fail (label <> ": unexpected rejection: " <> show rejection)
+        Right value ->
+          fail
+            (label <> ": unexpectedly produced " <> renderInterpretedValue value)
+
 naturalOrdinal :: InterpretedValue -> Maybe Natural
 naturalOrdinal value = do
   (level, ordinalValue) <- interpretedExplicitOrdinal value
@@ -445,6 +472,152 @@ testLiteralsAndArithmetic = do
 
 testStringTemplates :: IO ()
 testStringTemplates = do
+  expectSourceValue
+      "surface arithmetic interpolation equality"
+      "\"2 + 2 = %(2+2)\" = \"2 + 2 = 4\"" $ \value ->
+    assert "the interpolated arithmetic result equals the expected string"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "Iden template accepts a compact-string value"
+      "\"My name is alco\" ~> \"My name is %Iden\"" $ \value ->
+    assert "a compact name matches Iden"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "\"My name is alco\" ~> \"My name is %Iden\""
+      )
+  expectSourceRejection
+    "Iden template rejects whitespace within the captured value"
+    "\"My name is whatever you call me\" ~> \"My name is %Iden\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+  expectSourceValue
+      "Iden accepts a digit-leading alphanumeric value"
+      "\"345abc\" ~> \"%Iden\"" $ \value ->
+    assert "a digit-leading nonnumeric compact string matches Iden"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceRejection
+    "Iden rejects an entirely numeric string"
+    "\"12\" ~> \"%Iden\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+  expectSourceValue
+      "a space separates adjacent Iden interpolations"
+      "\"name alco\" ~> \"%Iden %Iden\"" $ \value ->
+    assert "the separated identifier values are selected uniquely"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "\"name alco\" ~> \"%Iden %Iden\""
+      )
+  expectSourceRejection
+    "adjacent Iden interpolations are ambiguous"
+    "\"%Iden%Iden\""
+    (\case
+      AmbiguousStringTemplate -> True
+      _ -> False)
+  expectSourceValue
+      "numeric template with an apostrophe suffix"
+      "$12' of \"%(Nat)'\"" $ \value ->
+    assert "the compact string belongs to the suffixed Nat template"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "plain identifier value belongs to an optional identifier template"
+      "\"my name is alco\" of \"my name is %(ie? : Iden)\"" $ \value ->
+    assert "the missing-name branch renders the plain identifier value"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "canonical optional assignment belongs to its string template"
+      ( "\"my name is (ie? : Iden := $alco)\" of "
+          <> "\"my name is %(ie? : Iden)\""
+      ) $ \value ->
+    assert "the present-name branch renders its canonical assignment"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "noncanonical assignment spelling is outside the template"
+      ( "\"my name is (ie := $alco)\" of "
+          <> "\"my name is %(ie? : Iden)\""
+      ) $ \value ->
+    assert "only the optional canonical assignment spelling is accepted"
+      (renderInterpretedValue value == "false")
+  expectSourceValue
+      "simple identifier type has an injective string conversion"
+      "\"ie : 12\" of \"%(ie : Nat)\"" $ \value ->
+    assert "a direct simple identifier member is decoded canonically"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "map containing a simple identifier type is injective"
+      (AST.subfederation
+        (AsciiStringLiteral "(ie : 12; $alco)")
+        (StringTemplate
+          [StringTemplateInterpolation
+            (MapSequence
+              [ IdentifierOperation
+                  (IdentifierString "ie") NaturalType Nothing
+              , IdentifierValueType
+              ])])) $ \value ->
+    assert "the canonical map member is decoded componentwise"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "Either containing a simple identifier type is injective"
+      "\"ie : 12\" of \"%(ie : Nat | Iden)\"" $ \value ->
+    assert "the simple identifier alternative is decoded canonically"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "other branch beside a simple identifier type remains injective"
+      "\"alco\" of \"%(ie : Nat | Iden)\"" $ \value ->
+    assert "the string-valued alternative retains identity conversion"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "extract returns the source string and typed template holes"
+      "%(\"%Iden %Int\" <~ \"alco 100\")" $ \value ->
+    assert "extract follows the retained string-template selection witness"
+      ( renderInterpretedValue value
+          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+      )
+  expectSourceValue
+      "extract forgets a simple identifier assignment wrapper"
+      "%(a : \"%Iden %Int\" := \"alco 100\")" $ \value ->
+    assert "identifier extraction matches direct specification extraction"
+      ( renderInterpretedValue value
+          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+      )
+  expectSourceValue
+      "extract index zero selects the original string"
+      "%(my_val : \"%Iden %Int\" := \"alco 100\") [0]" $ \value ->
+    assert "the first extracted component is always the source string"
+      (renderInterpretedValue value == "\"alco 100\"")
+  expectSourceValue
+      "extract index one selects the Iden hole"
+      "%(my_val : \"%Iden %Int\" := \"alco 100\") [1]" $ \value ->
+    assert "the second extracted component is the first typed hole"
+      (renderInterpretedValue value == "$alco ~> Iden")
+  expectSourceValue
+      "extract index two selects the Int hole"
+      "%(my_val : \"%Iden %Int\" := \"alco 100\") [2]" $ \value ->
+    assert "the third extracted component is the second typed hole"
+      (renderInterpretedValue value == "100 ~> Int")
+  expectSourceValue
+      "extracted numerical specifications participate in arithmetic"
+      "%(my_val : \"%Iden %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
+    assert "a specification with a valued-range target coerces to its source"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "extract treats a literal template as one String hole"
+      "%(\"hello world\" <~ \"hello world\")" $ \value ->
+    assert "a holeless template retains its source and synthesized hole"
+      ( renderInterpretedValue value
+          == "(\"hello world\"; \"hello world\" ~> String)"
+      )
+  expectSourceValue
+      "extract treats percent String as the whole-string hole"
+      "%(\"%String\" <~ \"hello world\")" $ \value ->
+    assert "String identity extraction matches the holeless case"
+      ( renderInterpretedValue value
+          == "(\"hello world\"; \"hello world\" ~> String)"
+      )
   let template = StringTemplate
         [ StringTemplateLiteral "example"
         , StringTemplateInterpolation
@@ -510,7 +683,7 @@ testStringTemplates = do
     assert "a non-total hole remains a non-total string federation"
       ( interpretedValueKind value == AsciiStringValueKind
         && not (Types.interpretedValueHasTotalMap value)
-        && renderInterpretedValue value == "\"$Nat\""
+        && renderInterpretedValue value == "\"%Nat\""
       )
   expectValue
       "fixed prefix and suffix around a non-total interpolation"
@@ -541,12 +714,12 @@ testStringTemplates = do
           , StringTemplateInterpolation NaturalType
           ]
   expectValue
-      "\"12:3\" ~> \"$Nat:$Nat\" terminates"
+      "\"12:3\" ~> \"%Nat:%Nat\" terminates"
       (AsciiStringLiteral "12:3" ~> separatedNaturals) $ \value ->
     assert "a concrete delimited string selects both natural fields"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"12:3\" ~> \"$Nat:$Nat\""
+          == "\"12:3\" ~> \"%Nat:%Nat\""
       )
   assert "an invalid natural field is finitely refuted"
     (case interpretExpressionReason
@@ -576,26 +749,26 @@ testStringTemplates = do
         StringTemplate
           [StringTemplateInterpolation (OptionalType IntegerType)]
   expectValue
-      "\"true\" ~> \"$Bool\""
+      "\"true\" ~> \"%Bool\""
       (AsciiStringLiteral "true" ~> booleanTemplate) $ \value ->
     assert "a Boolean canonical spelling selects its Boolean member"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "$true ~> \"$Bool\""
+        && renderInterpretedValue value == "$true ~> \"%Bool\""
       )
   expectValue
-      "\"falsetrue\" ~> \"$Bool$Bool\""
+      "\"falsetrue\" ~> \"%Bool%Bool\""
       (AsciiStringLiteral "falsetrue" ~> adjacentBooleans) $ \value ->
     assert "adjacent fixed Boolean spellings have a unique split"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "$falsetrue ~> \"$Bool$Bool\""
+          == "$falsetrue ~> \"%Bool%Bool\""
       )
   expectValue
-      "\"nothing\" ~> \"$Int?\""
+      "\"nothing\" ~> \"%Int?\""
       (AsciiStringLiteral "nothing" ~> optionalIntegerTemplate) $ \value ->
     assert "the optional missing constructor selects through toString"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "$nothing ~> \"$Int?\""
+        && renderInterpretedValue value == "$nothing ~> \"%Int?\""
       )
   expectValue
       "non-digit delimiter between natural interpolations"
@@ -681,44 +854,43 @@ testStringTemplates = do
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
-  assert "strong interpolation rejects non-injective toString"
-    (case interpretExpressionReason
-        (StringTemplate
-          [StringTemplateInterpolation
-            (UnsafeEither NaturalType NaturalType)]) of
-      Left NonInjectiveStringInterpolation -> True
-      _ -> False)
-  -- TODO: Once Datra functions exist, use a function as the naturally
-  -- non-injective weakToString fixture and remove UnsafeEither from the AST.
-  expectValue
-      "weak interpolation admits a non-injective toString"
-      (StringTemplate
-        [StringTemplateWeakInterpolation
-          (UnsafeEither NaturalType NaturalType)]) $ \value ->
-    assert "the weak form retains its non-invertible canonical marker"
-      ( not (Types.interpretedValueHasTotalMap value)
-        && renderInterpretedValue value == "\"$!(Nat | Nat)\""
-      )
+  case (Types.naturalTypeValue, Types.asciiStringValue "1") of
+    (Right naturals, Right oneString) -> do
+      let dependentIdentifier =
+            Types.identifierTypeValue "n" (const "same") naturals
+      assert "dependent IdentifierType has no proven injective toString"
+        (case Types.toStringValue
+            canonicalStringCodec dependentIdentifier of
+          Left NonInjectiveStringInterpolation -> True
+          _ -> False)
+      case Types.weakToStringValue
+          canonicalStringCodec dependentIdentifier of
+        Left rejection ->
+          fail
+            ("dependent weakToString was rejected: " <> show rejection)
+        Right weakConversion -> do
+          assert "dependent IdentifierType retains the explicit weak marker"
+            (renderInterpretedValue weakConversion == "\"%!(n : Nat)\"")
+          assert "dependent weakToString is rejected by specification"
+            (case Types.specifyValues oneString weakConversion of
+              Left NoCanonicalStringConversion -> True
+              _ -> False)
+    (Left rejection, _) ->
+      fail ("Nat construction was rejected: " <> show rejection)
+    (_, Left rejection) ->
+      fail ("string construction was rejected: " <> show rejection)
   expectValue
       "weak interpolation normalizes when toString is injective"
       (StringTemplate [StringTemplateWeakInterpolation NaturalType]) $ \value ->
     assert "the proven strong form is canonical"
-      (renderInterpretedValue value == "\"$Nat\"")
+      (renderInterpretedValue value == "\"%Nat\"")
   expectValue
       "weak and strong interpolation agree when toString is injective"
       (AST.equal
         (StringTemplate [StringTemplateWeakInterpolation NaturalType])
         (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
-    assert "$!x equals $x when the strong proof exists"
+    assert "%!x equals %x when the strong proof exists"
       (renderInterpretedValue value == "true")
-  assert "weak interpolation is explicitly rejected by specification"
-    (case interpretExpressionReason
-        (AsciiStringLiteral "1" ~>
-          StringTemplate
-            [StringTemplateWeakInterpolation
-              (UnsafeEither NaturalType NaturalType)]) of
-      Left NoCanonicalStringConversion -> True
-      _ -> False)
   expectValue
       "interpolated output is not reparsed"
       (StringTemplate
@@ -726,7 +898,7 @@ testStringTemplates = do
         , StringTemplateInterpolation (AsciiStringLiteral "#text")
         ]) $ \value ->
     assert "dollar and hash characters produced by holes remain data"
-      (renderInterpretedValue value == "\"\\$4\\#text\"")
+      (renderInterpretedValue value == "\"$4\\#text\"")
   expectValue "programmatic empty template" (StringTemplate []) $ \value ->
     assert "an empty template is the empty total ASCII string"
       ( Types.interpretedValueHasTotalMap value
@@ -920,6 +1092,21 @@ testOptionalsAndConditionals = do
         AST.eitherType
           (AST.identifierType identifierString AST.integerType)
           AST.integerType
+  expectSourceValue
+      "inferred assignment belongs to an optional Iden slot"
+      "(ie := $alco) of (ie? : Iden)" $ \value ->
+    assert "the inferred assignment widens through its identifier target"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "canonical optional assignment belongs to its optional Iden slot"
+      "(ie? : Iden := $alco) of (ie? : Iden)" $ \value ->
+    assert "the optional assignment retains the present branch"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "plain identifier value belongs to an optional Iden slot"
+      "$alco of (ie? : Iden)" $ \value ->
+    assert "the plain value selects the unnamed branch"
+      (renderInterpretedValue value == "true")
   expectValue "optional Nat" (AST.optional AST.naturalType) $ \value ->
     assert "the exact optional federation restores its suffix"
       (renderInterpretedValue value == "Nat?")
@@ -1385,6 +1572,41 @@ testRendering = do
         ]) $ \value ->
     assert "singleton range maps render without enumeration or delimiters"
       (renderInterpretedValue value == "2..")
+  mapM_ assertCanonicalMapRoundTrip
+    [ AtlasMap [natural 1, natural 2]
+    , AtlasMap
+        [ AtlasMap [natural 1, natural 2]
+        , AtlasMap [natural 3, natural 4]
+        ]
+    , MapExpansion
+        (AtlasMap [natural 1, natural 2])
+        (AtlasMap [natural 3, natural 4])
+    ]
+  where
+    assertCanonicalMapRoundTrip expressionValue =
+      case interpretExpressionReason expressionValue of
+        Left rejection ->
+          fail ("map construction was rejected: " <> show rejection)
+        Right original ->
+          let rendered = renderInterpretedValue original
+          in case parseDatra rendered of
+              Left message ->
+                fail ("canonical map did not parse: " <> message)
+              Right roundTripExpression ->
+                case interpretExpressionReason roundTripExpression of
+                  Left rejection ->
+                    fail
+                      ("canonical map round trip was rejected: "
+                        <> show rejection)
+                  Right roundTripped ->
+                    assert
+                      "rendered map nesting uniquely determines cardinality"
+                      ( Types.interpretedCanonicalResult original
+                          == Types.interpretedCanonicalResult roundTripped
+                        && interpretedMapCardinality (interpretedMap original)
+                          == interpretedMapCardinality
+                            (interpretedMap roundTripped)
+                      )
 
 testMaps :: IO ()
 testMaps = do
@@ -2413,6 +2635,26 @@ testIdentifiers = do
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
       valueUnit = identifier "Value" (AtlasMap [])
+      equivalentSpecification =
+        (identifier "x" (natural 5)) ~> xNatural
+  case ( interpretExpressionReason xAssignment
+       , interpretExpressionReason equivalentSpecification
+       ) of
+    (Right assignmentValue, Right specificationValue) ->
+      assert "assignment and equivalent specification share one canonical form"
+        ( renderInterpretedValue assignmentValue
+            == renderInterpretedValue specificationValue
+          && renderInterpretedValue assignmentValue == "x : Nat := 5"
+        )
+    (Left rejection, _) ->
+      fail ("assignment construction was rejected: " <> show rejection)
+    (_, Left rejection) ->
+      fail ("equivalent specification was rejected: " <> show rejection)
+  expectValue
+      "assignment equals its equivalent specification"
+      (AST.equal xAssignment equivalentSpecification) $ \value ->
+    assert "shared canonical spelling denotes equal values"
+      (renderInterpretedValue value == "true")
   expectValue
       "quoted reserved identifier"
       (identifier "String" NaturalType) $ \value ->
@@ -2454,6 +2696,11 @@ testIdentifiers = do
         ((AST.+) xFive (identifier "y" (natural 10)))
         (natural 15)) $ \value ->
     assert "total numerical identifier maps participate in addition"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "numerical assignment coercion"
+      "(x : Int := 12) * 5 = 60" $ \value ->
+    assert "an identifier exposes its numerical specification to arithmetic"
       (renderInterpretedValue value == "true")
   expectValue
       "total identifiers in finite numerical operators"

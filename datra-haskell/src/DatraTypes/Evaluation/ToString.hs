@@ -1,7 +1,8 @@
 -- | Internal pointwise conversion used by string-template interpolation.
 -- There is deliberately no surface-language name for this operation.
 module Evaluation.ToString
-  ( toStringValue
+  ( CanonicalStringCodec (..)
+  , toStringValue
   , weakToStringValue
   , stringTemplateValue
   , stringFederationConcatenationIsInjective
@@ -16,28 +17,37 @@ import Evaluation.Error
   ( InterpretingError (NonInjectiveStringInterpolation) )
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
+import IdentifierValueType (identifierValueCharacterAlphabet)
+
+-- | The canonical presentation is a codec, not merely a pretty-printer.
+-- Decoding returns every value interpretation of the text; selection against
+-- the original federation decides which candidate is its member. Keeping the
+-- inverse here makes injectivity structural for maps, Either values, and
+-- identifier wrappers instead of baking their surface shapes into the proof.
+data CanonicalStringCodec = CanonicalStringCodec
+  { renderCanonicalString :: CanonicalResult -> String
+  , decodeCanonicalString :: String -> [InterpretedValue]
+  }
 
 -- | Convert a total value to its canonical source spelling, or retain a
 -- pointwise string-federation map for a non-total value. Strings are identity
 -- values so their source delimiters never become data.
 toStringValue
-  :: (CanonicalResult -> String)
+  :: CanonicalStringCodec
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-toStringValue renderCanonical source =
-  case interpretedForm source of
-    AsciiStringForm _ -> Right source
-    StringTypeForm -> Right source
-    ToStringForm -> Right source
-    WeakToStringForm -> Right source
-    StringTemplateForm _ -> Right source
-    _
-      | interpretedValueHasTotalMap source ->
+toStringValue codec source =
+  if stringConversionIsIdentity (interpretedForm source)
+    then Right source
+    else
+      if interpretedValueHasTotalMap source
+        then
           Right
             (makeAsciiString
-              (renderCanonical (interpretedCanonicalResult source)))
-      | otherwise ->
-          case proveInjectiveToString source of
+              (renderCanonicalString codec
+                (interpretedCanonicalResult source)))
+        else
+          case proveInjectiveToString (decodeCanonicalString codec) source of
             Just proof -> Right (pointwiseFederation proof)
             Nothing -> Left NonInjectiveStringInterpolation
   where
@@ -54,11 +64,11 @@ toStringValue renderCanonical source =
 -- | Use the ordinary injective conversion whenever it is available. Only an
 -- unprovable conversion constructs the explicitly non-invertible weak form.
 weakToStringValue
-  :: (CanonicalResult -> String)
+  :: CanonicalStringCodec
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-weakToStringValue renderCanonical source =
-  case toStringValue renderCanonical source of
+weakToStringValue codec source =
+  case toStringValue codec source of
     Right value -> Right value
     Left NonInjectiveStringInterpolation ->
       Right
@@ -76,13 +86,9 @@ weakToStringValue renderCanonical source =
 -- are the pointwise outputs of one string template.
 stringTemplateValue :: InterpretedValue -> InterpretedValue
 stringTemplateValue value =
-  case interpretedForm value of
-    AsciiStringForm _ -> value
-    StringTypeForm -> value
-    ToStringForm -> value
-    WeakToStringForm -> value
-    StringTemplateForm _ -> value
-    _ ->
+  if stringConversionIsIdentity (interpretedForm value)
+    then value
+    else
       makeInterpretedValue
         (StringTemplateForm value)
         (interpretedInsertionCapability value)
@@ -92,6 +98,17 @@ stringTemplateValue value =
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
         (StringTemplateSemantics (interpretedSemantics value))
+
+stringConversionIsIdentity :: ValueForm -> Bool
+stringConversionIsIdentity form =
+  case form of
+    AsciiStringForm _ -> True
+    StringTypeForm -> True
+    IdentifierValueTypeForm -> True
+    ToStringForm -> True
+    WeakToStringForm -> True
+    StringTemplateForm _ -> True
+    _ -> False
 
 -- | Decide the string-specific case omitted by generic Atlas federation
 -- concatenation: a fixed nonempty delimiter makes the product injective when
@@ -202,6 +219,8 @@ stringFederationExcludes delimiter federation =
             Just alphabet -> any (`notElem` alphabet) delimiter
         WeakToStringAtlasMapFederation _ -> False
         StringTypeAtlasMapFederation -> False
+        IdentifierValueTypeAtlasMapFederation ->
+          any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False
     SequentialAtlasMapFederation members ->
       all (stringFederationExcludes delimiter) members

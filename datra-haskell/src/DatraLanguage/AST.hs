@@ -12,7 +12,6 @@ module DatraLanguage.AST
   , renderAsciiStringLiteral
   , renderStringTemplate
   , renderIdentifierString
-  , isCompactStringLiteral
   , isReservedIdentifierString
   ) where
 
@@ -25,6 +24,7 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
+import IdentifierValueType (isIdentifierValue)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -62,6 +62,7 @@ data Expression
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
   | StringType
+  | IdentifierValueType
   | AtlasMap [Expression]
   | MapSequence [Expression]
   | MapExpansion Expression Expression
@@ -83,7 +84,6 @@ data Expression
   | BooleanLiteral Bool
   | BooleanType
   | EitherType Expression Expression
-  | UnsafeEither Expression Expression
   | OptionalType Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
@@ -94,6 +94,7 @@ data Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
+  | Extract Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -119,6 +120,7 @@ data OperatorExpression
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
   | StringTypeValue
+  | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
   | Expansion OperatorExpression OperatorExpression
@@ -140,7 +142,6 @@ data OperatorExpression
   | BooleanValue Bool
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
-  | UnsafeEitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
   | ConditionalValue
       OperatorExpression
@@ -154,6 +155,7 @@ data OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
+  | ExtractValue OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -181,6 +183,7 @@ normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
 normalizeExpression StringType = StringType
+normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (MapSequence expressions) =
@@ -220,10 +223,6 @@ normalizeExpression (EitherType left right) =
   normalizeEither
     (normalizeExpression left)
     (normalizeExpression right)
-normalizeExpression (UnsafeEither left right) =
-  UnsafeEither
-    (normalizeExpression left)
-    (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
   OptionalType (normalizeExpression operand)
 normalizeExpression (Conditional condition consequent alternative) =
@@ -246,6 +245,8 @@ normalizeExpression (BooleanOr left right) =
   BooleanOr (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
+normalizeExpression (Extract operand) =
+  Extract (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -320,6 +321,7 @@ lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
 lower StringType = StringTypeValue
+lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -349,8 +351,6 @@ lower IntegerType = IntegerTypeValue
 lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
-lower (UnsafeEither left right) =
-  UnsafeEitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
 lower (Conditional condition consequent alternative) =
   ConditionalValue (lower condition) (lower consequent) (lower alternative)
@@ -363,6 +363,7 @@ lower (Equality left right) = Equal (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
+lower (Extract operand) = ExtractValue (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -424,6 +425,8 @@ prettyOperator NothingValue =
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
 prettyOperator StringTypeValue = reservedSymbolDoc Reserved.StringTypeSymbol
+prettyOperator IdentifierValueTypeValue =
+  reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -482,8 +485,6 @@ prettyOperator (BooleanValue True) =
 prettyOperator BooleanTypeValue = reservedSymbolDoc Reserved.BooleanTypeSymbol
 prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
-prettyOperator (UnsafeEitherValue left right) =
-  prettyBinary UnsafeEitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
 prettyOperator (ConditionalValue condition consequent alternative) =
@@ -509,6 +510,8 @@ prettyOperator (Or left right) =
   prettyBinary BooleanOrOperator left right
 prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
+prettyOperator (ExtractValue operand) =
+  prettyUnary ExtractOperator operand
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =
@@ -576,23 +579,8 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 -- literal and use hexadecimal escapes for every other byte except newline.
 renderAsciiStringLiteral :: String -> String
 renderAsciiStringLiteral value
-  | isCompactStringLiteral value = '$' : value
+  | isIdentifierValue value = '$' : value
 renderAsciiStringLiteral value = renderStandardStringLiteral value
-
--- | Compact @$name@ strings permit an underscore in the leading position or
--- as a separator, but never doubled or trailing.
-isCompactStringLiteral :: String -> Bool
-isCompactStringLiteral [] = False
-isCompactStringLiteral value@(first : rest) =
-  isLeadingCanonicalCharacter first
-    && all isCanonicalCharacter rest
-    && last value /= '_'
-    && not (hasDoubledUnderscore value)
-  where
-    hasDoubledUnderscore ('_' : '_' : _) = True
-    hasDoubledUnderscore (_ : remaining) =
-      hasDoubledUnderscore remaining
-    hasDoubledUnderscore [] = False
 
 -- | Render an identifier expression. Canonical non-reserved names use their
 -- compact bare spelling; reserved or noncanonical names use a full string.
@@ -614,7 +602,7 @@ renderStringLiteralContents = foldr escape ""
     escape '"' rest = '\\' : '"' : rest
     escape '\\' rest = '\\' : '\\' : rest
     escape '#' rest = '\\' : '#' : rest
-    escape '$' rest = '\\' : '$' : rest
+    escape '%' rest = '\\' : '%' : rest
     escape character rest
       | isAsciiByte character && not (isKeyboardCharacter character) =
           '\\' : hexadecimalByte character <> rest
@@ -648,15 +636,23 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
     renderPart (StringTemplateLiteral value) rest =
       renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
-      renderInterpolation "$" expressionValue rest
+      renderInterpolation "%" expressionValue rest
     renderPart (StringTemplateWeakInterpolation expressionValue) rest =
-      renderInterpolation "$!" expressionValue rest
+      renderInterpolation "%!" expressionValue rest
 
     renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of
-        Just symbol -> prefix <> symbol <> escapeOptionalSuffix rest
+        Just symbol
+          | compactInterpolationBoundary rest ->
+              prefix <> symbol <> escapeOptionalSuffix rest
         Nothing ->
           prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+        Just _ ->
+          prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+
+    compactInterpolationBoundary [] = True
+    compactInterpolationBoundary (character : _) =
+      not (isCanonicalCharacter character)
 
     escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
     escapeOptionalSuffix rest = rest
@@ -668,6 +664,8 @@ compactOperatorStringInterpolation expressionValue =
   case expressionValue of
     NothingValue -> reserved Reserved.NothingSymbol
     StringTypeValue -> reserved Reserved.StringTypeSymbol
+    IdentifierValueTypeValue ->
+      reserved Reserved.IdentifierValueTypeSymbol
     NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
     IntegerTypeValue -> reserved Reserved.IntegerTypeSymbol
     BooleanValue False -> reserved Reserved.FalseSymbol
