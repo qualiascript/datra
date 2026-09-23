@@ -209,6 +209,7 @@ library
         Evaluation.Specification.Composition
         Evaluation.Specification.Decision
         Evaluation.Specification.Federation
+        Evaluation.Specification.String
         Evaluation.Specification.Subfederation
         Evaluation.ToString
         Evaluation.Value

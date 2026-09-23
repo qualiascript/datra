@@ -226,7 +226,7 @@ preservesConcatenationBoundary value =
     IdentifierTypeForm _ -> True
     StringTypeForm -> True
     ToStringForm -> True
-    StringTemplateForm -> True
+    StringTemplateForm _ -> True
     AssignmentForm _ -> True
     SpecificationForm _ -> True
     _ -> False

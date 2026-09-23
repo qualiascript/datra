@@ -27,7 +27,7 @@ toStringValue renderCanonical source =
     AsciiStringForm _ -> Right source
     StringTypeForm -> Right source
     ToStringForm -> Right source
-    StringTemplateForm -> Right source
+    StringTemplateForm _ -> Right source
     _
       | interpretedValueHasTotalMap source ->
           Right
@@ -119,10 +119,10 @@ stringTemplateValue value =
     AsciiStringForm _ -> value
     StringTypeForm -> value
     ToStringForm -> value
-    StringTemplateForm -> value
+    StringTemplateForm _ -> value
     _ ->
       makeInterpretedValue
-        StringTemplateForm
+        (StringTemplateForm value)
         (interpretedInsertionCapability value)
         (interpretedMap value)
         (interpretedAtlasMapFederation value)

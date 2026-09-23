@@ -16,6 +16,7 @@ import Evaluation.Federation.Structure
   )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
+import Evaluation.Specification.String (federationProducesStrings)
 import Evaluation.Value
 
 -- | Decide inclusion of evaluated federation constructions. A total-map
@@ -48,9 +49,11 @@ decideNonEitherSubfederation
   -> InterpretedValue
   -> Decision ()
 decideNonEitherSubfederation source target =
-      case ( interpretedAtlasMapFederation source
-           , interpretedAtlasMapFederation target
-           ) of
+  case targetFederation of
+    PrimitiveAtlasMapFederation StringTypeAtlasMapFederation
+      | federationProducesStrings sourceFederation -> DecisionProved ()
+    _ ->
+      case (sourceFederation, targetFederation) of
         ( PrimitiveAtlasMapFederation
             (IdentifierTypeAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
@@ -64,7 +67,13 @@ decideNonEitherSubfederation source target =
         ( PrimitiveAtlasMapFederation sourcePrimitive
           , PrimitiveAtlasMapFederation targetPrimitive
           ) ->
-            primitiveSubfederationDecision sourcePrimitive targetPrimitive
+            case (sourcePrimitive, targetPrimitive) of
+              ( ToStringAtlasMapFederation sourceValue
+                , ToStringAtlasMapFederation targetValue
+                ) -> decideValueSubfederation sourceValue targetValue
+              _ ->
+                primitiveSubfederationDecision
+                  sourcePrimitive targetPrimitive
         (SequentialAtlasMapFederation _, SequentialAtlasMapFederation _) ->
           decidePointwiseSubfederation
             (sequenceOperands source)
@@ -92,6 +101,9 @@ decideNonEitherSubfederation source target =
               (Just (concatenationOperands source))
               (Just (concatenationOperands target))
         _ -> DecisionUndecidable
+  where
+    sourceFederation = interpretedAtlasMapFederation source
+    targetFederation = interpretedAtlasMapFederation target
 
 -- Tagged alternatives preserve their left/right injection. The right branch
 -- may itself be an Either, which permits the canonical right-associated tree

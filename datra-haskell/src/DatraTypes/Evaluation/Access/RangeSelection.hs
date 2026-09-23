@@ -99,7 +99,7 @@ accessSource value =
           characters)
     StringTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
-    StringTemplateForm -> ordinarySource []
+    StringTemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
     IdentifierTypeForm _ -> ordinarySource []

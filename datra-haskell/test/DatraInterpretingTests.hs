@@ -534,6 +534,37 @@ testStringTemplates = do
       ( interpretedValueKind value == AsciiStringValueKind
         && not (Types.interpretedValueHasTotalMap value)
       )
+  let separatedNaturals =
+        StringTemplate
+          [ StringTemplateInterpolation NaturalType
+          , StringTemplateLiteral ":"
+          , StringTemplateInterpolation NaturalType
+          ]
+  expectValue
+      "\"12:3\" ~> \"$Nat:$Nat\" terminates"
+      (AsciiStringLiteral "12:3" ~> separatedNaturals) $ \value ->
+    assert "a concrete delimited string selects both natural fields"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "\"12:3\" ~> \"$(Nat)\", \":\", \"$(Nat)\""
+      )
+  assert "an invalid natural field is finitely refuted"
+    (case interpretExpressionReason
+        (AsciiStringLiteral "12:x" ~> separatedNaturals) of
+      Left
+          (AtlasMapFederationOperationRefuted
+            AtlasMapFederationSpecificationHasNoMatchingMember) -> True
+      _ -> False)
+  expectValue
+      "matching delimited string-template subfederation"
+      (AST.subfederation separatedNaturals separatedNaturals) $ \value ->
+    assert "string-template inclusion follows the same component structure"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "delimited string template is a String subfederation"
+      (AST.subfederation separatedNaturals StringType) $ \value ->
+    assert "every member produced by the template is a string"
+      (renderInterpretedValue value == "true")
   expectValue
       "non-digit delimiter between natural interpolations"
       (StringTemplate

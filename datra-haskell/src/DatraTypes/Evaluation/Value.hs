@@ -221,6 +221,7 @@ data EvaluatedAtlasMapFederationMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedToStringMember EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember
@@ -256,7 +257,7 @@ data ValueForm
   | AsciiStringForm String
   | StringTypeForm
   | ToStringForm
-  | StringTemplateForm
+  | StringTemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | IdentifierTypeForm EvaluatedIdentifierType
@@ -583,7 +584,7 @@ interpretedValueKind value =
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
-    StringTemplateForm -> AsciiStringValueKind
+    StringTemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind
