@@ -43,7 +43,6 @@ module Evaluation.Value
   , interpretedTotalAtlasMap
   , interpretedSemantics
   , interpretedValueHasTotalMap
-  , implicitCoercionSemantics
   , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
@@ -447,15 +446,6 @@ makeSingletonInterpretedValue form capability valueMap totality =
 
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
-
--- | One implicit coercion step through a total identifier binding. Consumers
--- can follow the chain without knowing whether a binding came from user code,
--- an interpreter bootstrap, or a future standard-library definition.
-implicitCoercionSemantics :: ValueSemantics -> Maybe ValueSemantics
-implicitCoercionSemantics semantics =
-  case semantics of
-    IdentifierTypeSemantics _ underlying True -> Just underlying
-    _ -> Nothing
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics

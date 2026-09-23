@@ -600,6 +600,11 @@ testStringTemplates = do
     assert "the third extracted component is the second typed hole"
       (renderInterpretedValue value == "100 ~> Int")
   expectSourceValue
+      "extracted numerical specifications participate in arithmetic"
+      "%(my_val : \"%Iden %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
+    assert "a specification with a valued-range target coerces to its source"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
       "extract treats a literal template as one String hole"
       "%(\"hello world\" <~ \"hello world\")" $ \value ->
     assert "a holeless template retains its source and synthesized hole"
@@ -2691,6 +2696,11 @@ testIdentifiers = do
         ((AST.+) xFive (identifier "y" (natural 10)))
         (natural 15)) $ \value ->
     assert "total numerical identifier maps participate in addition"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "numerical assignment coercion"
+      "(x : Int := 12) * 5 = 60" $ \value ->
+    assert "an identifier exposes its numerical specification to arithmetic"
       (renderInterpretedValue value == "true")
   expectValue
       "total identifiers in finite numerical operators"

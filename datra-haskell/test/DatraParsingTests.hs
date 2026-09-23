@@ -1315,6 +1315,8 @@ assertAstSyntax = do
         (((natural 2 <..> natural 5) ~> AST.fromUpwards 0))
         == "(~> (<..> 2 5) (range 0 upwards))"
     )
+  assert "the extract operator retains its percent AST symbol"
+    (renderExpression (Extract StringType) == "(% String)")
   assert "valued natural range constructors retain their distinct prefix"
     ( renderExpression (AST.withinTo 2 5) == "(from 2 to 5)"
       && renderExpression (AST.withinUpwards 2)
