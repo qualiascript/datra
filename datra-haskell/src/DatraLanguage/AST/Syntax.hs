@@ -28,6 +28,9 @@ module DatraLanguage.AST.Syntax
   , boolean
   , booleanType
   , eitherType
+  , optional
+  , conditional
+  , conditionalWithoutElse
   , equal
   , and
   , or
@@ -145,6 +148,16 @@ booleanType = BooleanType
 
 eitherType :: Expression -> Expression -> Expression
 eitherType = EitherType
+
+optional :: Expression -> Expression
+optional = OptionalType
+
+conditional :: Expression -> Expression -> Expression -> Expression
+conditional = Conditional
+
+conditionalWithoutElse :: Expression -> Expression -> Expression
+conditionalWithoutElse condition consequent =
+  Conditional condition consequent (AtlasMap [])
 
 equal :: Expression -> Expression -> Expression
 equal = Equality

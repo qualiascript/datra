@@ -63,6 +63,8 @@ data Expression
   | BooleanLiteral Bool
   | BooleanType
   | EitherType Expression Expression
+  | OptionalType Expression
+  | Conditional Expression Expression Expression
   | Addition Expression Expression
   | Subtraction Expression Expression
   | Minus Expression
@@ -113,6 +115,11 @@ data OperatorExpression
   | BooleanValue Bool
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
+  | OptionalValue OperatorExpression
+  | ConditionalValue
+      OperatorExpression
+      OperatorExpression
+      OperatorExpression
   | Add OperatorExpression OperatorExpression
   | Subtract OperatorExpression OperatorExpression
   | Negate OperatorExpression
@@ -182,6 +189,13 @@ normalizeExpression (EitherType left right) =
   normalizeEither
     (normalizeExpression left)
     (normalizeExpression right)
+normalizeExpression (OptionalType operand) =
+  OptionalType (normalizeExpression operand)
+normalizeExpression (Conditional condition consequent alternative) =
+  Conditional
+    (normalizeExpression condition)
+    (normalizeExpression consequent)
+    (normalizeExpression alternative)
 normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Subtraction left right) =
@@ -284,6 +298,9 @@ lower IntegerType = IntegerTypeValue
 lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
+lower (OptionalType operand) = OptionalValue (lower operand)
+lower (Conditional condition consequent alternative) =
+  ConditionalValue (lower condition) (lower consequent) (lower alternative)
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Subtraction left right) = Subtract (lower left) (lower right)
 lower (Minus operand) = Negate (lower operand)
@@ -377,6 +394,15 @@ prettyOperator (BooleanValue True) = "True"
 prettyOperator BooleanTypeValue = "Bool"
 prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
+prettyOperator (OptionalValue operand) =
+  prettyUnary OptionalOperator operand
+prettyOperator (ConditionalValue condition consequent alternative) =
+  prettyForm
+    "if"
+    [ prettyOperator condition
+    , prettyOperator consequent
+    , prettyOperator alternative
+    ]
 prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Subtract left right) =

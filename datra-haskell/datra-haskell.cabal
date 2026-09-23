@@ -201,6 +201,7 @@ library
         Evaluation.Identifier
         Evaluation.Map
         Evaluation.Numerical
+        Evaluation.Optional
         Evaluation.Range
         Evaluation.Specification
         Evaluation.Specification.Composition

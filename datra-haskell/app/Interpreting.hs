@@ -104,6 +104,13 @@ interpretNormalizedExpression expressionValue =
     BooleanType -> Right booleanTypeValue
     EitherType left right ->
       interpretBinaryPure eitherValue left right
+    OptionalType operand ->
+      optionalValue <$> interpretExpressionReason operand
+    Conditional condition consequent alternative -> do
+      conditionValue <- interpretExpressionReason condition
+      conditionResult <- booleanCondition conditionValue
+      interpretExpressionReason
+        (if conditionResult then consequent else alternative)
     Addition left right ->
       interpretBinary addValues left right
     Subtraction left right ->
@@ -133,6 +140,20 @@ interpretNormalizedExpression expressionValue =
         maybeGivenValueExpression -> do
       typeAnnotation <- interpretExpressionReason typeAnnotationExpression
       case maybeGivenValueExpression of
+        Nothing
+          | identifierString == "False"
+          , interpretedValueKind typeAnnotation == NaturalValueKind
+          , interpretedInteger typeAnnotation == Just 0 ->
+              Right (booleanValue False)
+        Nothing
+          | identifierString == "True"
+          , interpretedValueKind typeAnnotation == NaturalValueKind
+          , interpretedInteger typeAnnotation == Just 1 ->
+              Right (booleanValue True)
+        Nothing
+          | identifierString == "Nothing"
+          , interpretedCanonicalResult typeAnnotation == CanonicalMap 0 [] ->
+              Right nothingValue
         Nothing ->
           Right (simpleIdentifierTypeValue identifierString typeAnnotation)
         Just givenValueExpression -> do

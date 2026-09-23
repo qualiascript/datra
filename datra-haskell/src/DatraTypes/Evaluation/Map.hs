@@ -161,6 +161,8 @@ concatenateValues left right = do
           (interpretedSemantics left)
           || semanticsContainsNaturalRange
             (interpretedSemantics right)
+          || preservesConcatenationBoundary left
+          || preservesConcatenationBoundary right
       preservedSemantics =
         ConcatenationSemantics
           (concatenationMembers
@@ -193,8 +195,31 @@ concatenateValues left right = do
       _ -> ordinaryResult)
   where
     operandsAreTotal =
-      isTotal left && isTotal right
-    isTotal = interpretedValueHasTotalMap
+      hasConcreteSource left && hasConcreteSource right
+
+-- A specification retains the certified total map that originally selected
+-- its target. When it is embedded in a concatenation, that concrete source is
+-- still available as data even though the standalone specification itself is
+-- intentionally non-total.
+hasConcreteSource :: InterpretedValue -> Bool
+hasConcreteSource value
+  | interpretedValueHasTotalMap value = True
+  | otherwise =
+      case interpretedForm value of
+        AssignmentForm _ -> True
+        _ -> False
+
+-- Tagged alternatives and identifier specifications are semantic components,
+-- not merely the final-page entries of their representative maps. Flattening
+-- those entries would erase Either injections or turn @b := 23@ into @$b, 23@.
+preservesConcatenationBoundary :: InterpretedValue -> Bool
+preservesConcatenationBoundary value =
+  case interpretedForm value of
+    EitherForm _ -> True
+    IdentifierTypeForm _ -> True
+    AssignmentForm _ -> True
+    SpecificationForm _ -> True
+    _ -> False
 
 semanticsContainsNaturalRange :: ValueSemantics -> Bool
 semanticsContainsNaturalRange (NaturalRangeSemantics _ _) = True

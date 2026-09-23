@@ -10,3 +10,7 @@ dist/
 .hls/
 .bsp/
 /resources/
+input.datra
+output.datra
+output.datra.ast
+output.datra.error

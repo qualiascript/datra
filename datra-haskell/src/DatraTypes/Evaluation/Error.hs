@@ -55,6 +55,7 @@ data InterpretingError
   = ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind
+  | ExpectedBooleanCondition InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | ExpectedInsertionOperand InterpretedValueKind
   | ExpectedTotalAtlasMap InterpretedValueKind

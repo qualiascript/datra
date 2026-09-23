@@ -7,6 +7,7 @@ module Evaluation.Specification
 import DatraLanguage.AST (renderAsciiStringLiteral)
 import BooleanType (DatraBoolean (..))
 import Evaluation.Boolean (makeBoolean)
+import Evaluation.Optional (makeNothing)
 import Evaluation.Error
   ( AtlasMapFederationOperation
       ( AtlasMapFederationSpecification
@@ -18,7 +19,7 @@ import Evaluation.Error
       )
   , AtlasMapFederationUncertainty
       (NoAtlasMapFederationDecisionProcedure)
-  , InterpretedValueKind (NaturalValueKind)
+  , InterpretedValueKind (MapValueKind, NaturalValueKind)
   , InterpretingError (..)
   )
 import Evaluation.Specification.Composition (selectFederationMember)
@@ -96,7 +97,7 @@ assignIdentifierValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 assignIdentifierValues identifierString typeAnnotation givenValue = do
-  case booleanAssignment identifierString typeAnnotation givenValue of
+  case distinguishedAssignment identifierString typeAnnotation givenValue of
     Just value -> Right value
     Nothing -> do
       let source = simpleIdentifierTypeValue identifierString givenValue
@@ -117,22 +118,28 @@ assignIdentifierValues identifierString typeAnnotation givenValue = do
                 (interpretedSemantics givenValue)))
         _ -> Right specified
 
--- These two assignments are the constructors of Bool, rather than ordinary
--- identifier specifications. This makes the surface definition
--- @False := 0 | True := 1@ definitionally equal to the @Bool@ shorthand.
-booleanAssignment
+-- These assignments are distinguished nullary constructors rather than
+-- ordinary identifier specifications. Thus the expanded spellings of Bool
+-- and optional absence are definitionally equal to their shorthand forms.
+distinguishedAssignment
   :: String
   -> InterpretedValue
   -> InterpretedValue
   -> Maybe InterpretedValue
-booleanAssignment identifierString typeAnnotation givenValue
+distinguishedAssignment identifierString typeAnnotation givenValue
   | interpretedCanonicalResult typeAnnotation
       /= interpretedCanonicalResult givenValue = Nothing
-  | interpretedValueKind givenValue /= NaturalValueKind = Nothing
   | otherwise =
-      case (identifierString, interpretedInteger givenValue) of
-        ("False", Just 0) -> Just (makeBoolean DatraFalse)
-        ("True", Just 1) -> Just (makeBoolean DatraTrue)
+      case ( identifierString
+           , interpretedValueKind givenValue
+           , interpretedInteger givenValue
+           , interpretedCanonicalResult givenValue
+           ) of
+        ("False", NaturalValueKind, Just 0, _) ->
+          Just (makeBoolean DatraFalse)
+        ("True", NaturalValueKind, Just 1, _) ->
+          Just (makeBoolean DatraTrue)
+        ("Nothing", MapValueKind, _, CanonicalMap 0 []) -> Just makeNothing
         _ -> Nothing
 
 specifyTotalAtlasMap
@@ -140,11 +147,14 @@ specifyTotalAtlasMap
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyTotalAtlasMap source target = do
-  totalSource <-
-    case interpretedTotalAtlasMap source of
-      Just totalMap -> Right totalMap
-      Nothing -> Left (ExpectedTotalAtlasMap (interpretedValueKind source))
-  case selectFederationMember source target of
+  (selectionSource, totalSource) <-
+    case concreteOptionalAssignmentSource source of
+      Just concreteSource -> Right concreteSource
+      Nothing ->
+        case interpretedTotalAtlasMap source of
+          Just totalMap -> Right (source, totalMap)
+          Nothing -> Left (ExpectedTotalAtlasMap (interpretedValueKind source))
+  case selectFederationMember selectionSource target of
     DecisionProved member ->
       Right
         (specifiedValue
@@ -164,6 +174,34 @@ specifyTotalAtlasMap source target = do
       Left
         (AtlasMapFederationOperationRefuted
           AtlasMapFederationSpecificationHasNoMatchingMember)
+
+-- An optional assigned identifier is a tagged federation syntactically, but
+-- its assignment branch retains the concrete total source that supplied the
+-- value. As a specification source, it therefore selects the present branch
+-- rather than being rejected merely because the surrounding Either is
+-- non-total.
+concreteOptionalAssignmentSource
+  :: InterpretedValue
+  -> Maybe (InterpretedValue, InterpretedTotalAtlasMap)
+concreteOptionalAssignmentSource source = do
+  alternatives <-
+    case interpretedForm source of
+      EitherForm value -> Just value
+      _ -> Nothing
+  let present = evaluatedEitherLeft alternatives
+      missing = evaluatedEitherRight alternatives
+  assignment <-
+    case interpretedForm present of
+      AssignmentForm value -> Just value
+      _ -> Nothing
+  case interpretedCanonicalResult present of
+    CanonicalAssignment _ typeAnnotation _
+      | typeAnnotation == interpretedCanonicalResult missing ->
+          Just
+            ( evaluatedSpecificationSourceValue assignment
+            , evaluatedSpecificationSource assignment
+            )
+    _ -> Nothing
 
 -- | Compose a prior specification with inclusion of its whole target
 -- federation into a larger target. Checking only the previously selected

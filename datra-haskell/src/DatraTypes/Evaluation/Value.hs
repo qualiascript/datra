@@ -240,6 +240,7 @@ data ValueForm
   = ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
   | BooleanForm DatraBoolean
+  | NothingForm
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
@@ -301,6 +302,7 @@ data ValueSemantics
   = ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
   | BooleanSemantics DatraBoolean ValueSemantics
+  | NothingSemantics ValueSemantics
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
@@ -426,6 +428,9 @@ canonicalResult semantics =
               DatraTrue -> "True"
       in CanonicalAssignment
           identifierString underlyingResult underlyingResult
+    NothingSemantics underlying ->
+      let underlyingResult = canonicalResult underlying
+      in CanonicalAssignment "Nothing" underlyingResult underlyingResult
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target
@@ -483,6 +488,7 @@ interpretedValueKind value =
     ExplicitForm _ -> ExplicitOrdinalValueKind
     IntegerForm _ -> IntegerValueKind
     BooleanForm _ -> BooleanValueKind
+    NothingForm -> MapValueKind
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind

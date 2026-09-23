@@ -72,6 +72,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         (operandSide side <> " operand must be Boolean")
         ["actual value kind: " <> valueKind actual]
+    ExpectedBooleanCondition actual ->
+      LocalizedMessage
+        "if condition must be Boolean"
+        ["actual value kind: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponent must be a natural value"

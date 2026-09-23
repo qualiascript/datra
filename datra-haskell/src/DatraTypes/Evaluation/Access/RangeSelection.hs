@@ -60,6 +60,7 @@ accessSource value =
     IntegerRangeForm _ -> rangeSource []
     ValuedIntegerRangeForm _ -> rangeSource []
     BooleanForm _ -> ordinarySource []
+    NothingForm -> ordinarySource []
     EitherForm _ -> ordinarySource []
     RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
@@ -131,6 +132,7 @@ semanticAccessSource semantics =
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
     BooleanSemantics _ _ -> ordinarySource []
+    NothingSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]

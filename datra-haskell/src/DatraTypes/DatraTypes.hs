@@ -18,6 +18,8 @@ module DatraTypes
   , booleanValue
   , booleanTypeValue
   , eitherValue
+  , optionalValue
+  , nothingValue
   , asciiStringValue
   , formulationValue
   , addValues
@@ -29,6 +31,7 @@ module DatraTypes
   , booleanAndValues
   , booleanOrValues
   , booleanNotValue
+  , booleanCondition
   , boundedRangeValue
   , openPlusRangeValue
   , openMinusRangeValue
@@ -82,6 +85,7 @@ import Evaluation.Construction
   )
 import Evaluation.Boolean
   ( booleanAndValues
+  , booleanCondition
   , booleanNotValue
   , booleanOrValues
   , equalValues
@@ -89,6 +93,7 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
+import Evaluation.Optional (makeNothing, makeOptionalValue)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
@@ -164,6 +169,12 @@ booleanTypeValue = makeBooleanType
 
 eitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
 eitherValue = makeEitherValue
+
+optionalValue :: InterpretedValue -> InterpretedValue
+optionalValue = makeOptionalValue
+
+nothingValue :: InterpretedValue
+nothingValue = makeNothing
 
 asciiStringValue :: String -> Either InterpretingError InterpretedValue
 asciiStringValue value =

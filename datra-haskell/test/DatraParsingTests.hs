@@ -170,6 +170,98 @@ regressionTests = do
     "1 = 1"
     (AST.equal (natural 1) (natural 1))
   assertAstOutput
+    "optional type suffix"
+    "Nat?"
+    (AST.optional AST.naturalType)
+  assertAstOutput
+    "optional suffix applies to a complete type expression"
+    "(Nat | Int)?"
+    (AST.optional (AST.eitherType AST.naturalType AST.integerType))
+  assertAstOutput
+    "optional identifier slot"
+    "a? : Nat"
+    (AST.eitherType
+      (AST.identifierType "a" AST.naturalType)
+      AST.naturalType)
+  assertAstOutput
+    "optional assigned identifier slot"
+    "a? : Nat := 5"
+    (AST.eitherType
+      (AST.assignment "a" AST.naturalType (natural 5))
+      AST.naturalType)
+  let optionalIntegerSlots =
+        MapConcatenation
+          (AST.eitherType
+            (AST.identifierType "a" AST.integerType)
+            AST.integerType)
+          (AST.eitherType
+            (AST.identifierType "b" AST.integerType)
+            AST.integerType)
+      integerPair = MapConcatenation (natural 12) (natural 23)
+  assertAstOutput
+    "optional identifier slots are concatenation operands"
+    "(a? : Int, b? : Int)"
+    optionalIntegerSlots
+  assertAstOutput
+    "parenthesized optional identifier target preserves precedence"
+    "12, 23 ~> (a? : Int, b? : Int)"
+    (integerPair ~> optionalIntegerSlots)
+  assertAstOutput
+    "unparenthesized optional identifier target preserves precedence"
+    "12, 23 ~> a? : Int, b? : Int"
+    (integerPair ~> optionalIntegerSlots)
+  assertAstOutput
+    "named source member precedes an optional identifier target"
+    "12, b := 23 ~> a? : Int, b? : Int"
+    ( MapConcatenation
+        (natural 12)
+        (AST.assignment "b" (natural 23) (natural 23))
+        ~> optionalIntegerSlots
+    )
+  let optionalAssigned identifierString value =
+        AST.eitherType
+          (AST.assignment
+            identifierString AST.integerType (natural value))
+          AST.integerType
+      optionalIdentifier identifierString =
+        AST.eitherType
+          (AST.identifierType identifierString AST.integerType)
+          AST.integerType
+  assertAstOutput
+    "parenthesized reverse specification stays in its concatenation slot"
+    "a? : Int := 12, (b? : Int) <~ (b? : Int := 23)"
+    (MapConcatenation
+      (optionalAssigned "a" 12)
+      (optionalAssigned "b" 23 ~> optionalIdentifier "b"))
+  assertAstOutput
+    "ternary conditional"
+    "if True then 1 else -2"
+    (AST.conditional
+      (AST.boolean True)
+      (natural 1)
+      (AST.minus (natural 2)))
+  assertAstOutput
+    "binary conditional defaults to unit"
+    "if False then 1"
+    (AST.conditionalWithoutElse (AST.boolean False) (natural 1))
+  assertAstOutput
+    "conditional combines optionals, equality, logic, and identifiers"
+    ( "if (Nat? = (Nat | Nothing := ())) and not False "
+        <> "then (a? : Nat := 5) else (Nothing := ())"
+    )
+    (AST.conditional
+      (AST.and
+        (AST.equal
+          (AST.optional AST.naturalType)
+          (AST.eitherType
+            AST.naturalType
+            (AST.assignment "Nothing" AST.emptyMap AST.emptyMap)))
+        (AST.not (AST.boolean False)))
+      (AST.eitherType
+        (AST.assignment "a" AST.naturalType (natural 5))
+        AST.naturalType)
+      (AST.assignment "Nothing" AST.emptyMap AST.emptyMap))
+  assertAstOutput
     "EllipsisNatural specification into NaturalType"
     "2 ~> Nat"
     (natural 2 ~> AST.naturalType)

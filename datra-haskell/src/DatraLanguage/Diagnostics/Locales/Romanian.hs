@@ -70,6 +70,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie boolean")
         ["tipul efectiv al valorii: " <> valueKind actual]
+    ExpectedBooleanCondition actual ->
+      LocalizedMessage
+        "condiția if trebuie să fie booleană"
+        ["tipul efectiv al valorii: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponentul trebuie să fie o valoare naturală"

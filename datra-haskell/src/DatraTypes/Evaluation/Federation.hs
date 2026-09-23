@@ -35,6 +35,12 @@ decideFederationConcatenation left right
   | atlasMapFederationExpressionIsSingleton right =
       AtlasMapFederationProved ()
 decideFederationConcatenation
+    (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) _ =
+  AtlasMapFederationProved ()
+decideFederationConcatenation _
+    (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) =
+  AtlasMapFederationProved ()
+decideFederationConcatenation
     (PrimitiveAtlasMapFederation
       (NaturalRangeAtlasMapFederation
         (EvaluatedNaturalRange leftRange)))

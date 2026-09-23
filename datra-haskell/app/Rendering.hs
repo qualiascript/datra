@@ -22,6 +22,7 @@ import DatraTypes
   )
 import DatraOrdinal
   ( Ordinal
+  , naturalAtOrdinal
   , ordinalCoefficients
   )
 import Numeric.Natural (Natural)
@@ -98,16 +99,13 @@ prettyCanonicalResult result =
     CanonicalValuedIntegerRange origin target ->
       prettyValuedIntegerRange origin target
     CanonicalIntegerType -> "Int"
-    CanonicalEither left right ->
-      prettyCanonicalResult left
-        <+> prettySourceSymbol EitherOperator
-        <+> prettyCanonicalResult right
+    CanonicalEither left right -> prettyEither result left right
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
     CanonicalConcatenation members ->
       concatWith (\left right -> left <> ", " <> right)
-        (map prettyCanonicalResult members)
+        (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalIdentifierType identifierString typeAnnotation ->
       pretty identifierString
@@ -145,13 +143,106 @@ prettyCanonicalResult result =
             <+> prettySourceSymbol SpecificationOperator
             <+> prettySpecificationOperand target
 
+prettyConcatenationMember :: CanonicalResult -> Doc annotation
+prettyConcatenationMember member@CanonicalSpecification {} =
+  parens (prettyCanonicalResult member)
+prettyConcatenationMember member = prettyCanonicalResult member
+
 prettySpecificationOperand :: CanonicalResult -> Doc annotation
 prettySpecificationOperand operand =
   case operand of
     CanonicalAssignment {} -> parens (prettyCanonicalResult operand)
-    CanonicalEither {} -> parens (prettyCanonicalResult operand)
+    CanonicalEither {}
+      | isBooleanType operand || isOptionalType operand ->
+          prettyCanonicalResult operand
+      | otherwise -> parens (prettyCanonicalResult operand)
     CanonicalSpecification {} -> parens (prettyCanonicalResult operand)
     _ -> prettyCanonicalResult operand
+
+prettyEither
+  :: CanonicalResult
+  -> CanonicalResult
+  -> CanonicalResult
+  -> Doc annotation
+prettyEither whole left right
+  | isBooleanType whole = "Bool"
+  | isNothingValue right = prettyOptional left
+  | Just optionalIdentifier <- optionalIdentifierParts left right =
+      optionalIdentifier
+  | otherwise =
+      prettyCanonicalResult left
+        <+> prettySourceSymbol EitherOperator
+        <+> prettyCanonicalResult right
+
+prettyOptional :: CanonicalResult -> Doc annotation
+prettyOptional operand =
+  optionalOperand <> prettySourceSymbol OptionalOperator
+  where
+    optionalOperand
+      | isAtomicOptionalOperand operand = prettyCanonicalResult operand
+      | otherwise = parens (prettyCanonicalResult operand)
+
+isAtomicOptionalOperand :: CanonicalResult -> Bool
+isAtomicOptionalOperand CanonicalNaturalType = True
+isAtomicOptionalOperand CanonicalIntegerType = True
+isAtomicOptionalOperand operand = isBooleanType operand
+
+optionalIdentifierParts
+  :: CanonicalResult
+  -> CanonicalResult
+  -> Maybe (Doc annotation)
+optionalIdentifierParts left right =
+  case left of
+    CanonicalIdentifierType identifierString typeAnnotation
+      | typeAnnotation == right ->
+          Just
+            (pretty identifierString
+              <> prettySourceSymbol OptionalOperator
+              <+> prettySourceSymbol IdentifierTypeOperator
+              <+> prettyCanonicalResult typeAnnotation)
+    CanonicalAssignment identifierString typeAnnotation givenValue
+      | typeAnnotation == right ->
+          Just
+            (pretty identifierString
+              <> prettySourceSymbol OptionalOperator
+              <+> if typeAnnotation == givenValue
+                then
+                  prettySourceSymbol IdentifierTypeOperator
+                    <+> prettyCanonicalResult givenValue
+                else
+                  prettySourceSymbol IdentifierTypeOperator
+                    <+> prettyCanonicalResult typeAnnotation
+                    <+> prettySourceSymbol AssignmentOperator
+                    <+> prettyCanonicalResult givenValue)
+    _ -> Nothing
+
+isOptionalType :: CanonicalResult -> Bool
+isOptionalType (CanonicalEither _ right) = isNothingValue right
+isOptionalType _ = False
+
+isNothingValue :: CanonicalResult -> Bool
+isNothingValue
+    (CanonicalAssignment "Nothing" typeAnnotation givenValue) =
+  typeAnnotation == CanonicalMap 0 [] && givenValue == typeAnnotation
+isNothingValue _ = False
+
+isBooleanType :: CanonicalResult -> Bool
+isBooleanType (CanonicalEither falseValue trueValue) =
+  isBooleanValue "False" 0 falseValue
+    && isBooleanValue "True" 1 trueValue
+isBooleanType _ = False
+
+isBooleanValue :: String -> Natural -> CanonicalResult -> Bool
+isBooleanValue identifierString expected value =
+  case value of
+    CanonicalAssignment actual typeAnnotation givenValue ->
+      actual == identifierString
+        && typeAnnotation == givenValue
+        && case givenValue of
+          CanonicalExplicit 1 ordinalValue ->
+            naturalAtOrdinal ordinalValue == Just expected
+          _ -> False
+    _ -> False
 
 prettyAssignment
   :: String
@@ -162,7 +253,7 @@ prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then
       pretty identifierString
-        <+> prettySourceSymbol AssignmentOperator
+        <+> prettySourceSymbol IdentifierTypeOperator
         <+> prettyCanonicalResult givenValue
     else
       pretty identifierString

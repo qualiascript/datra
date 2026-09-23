@@ -32,6 +32,10 @@ selectFederationMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectFederationMember source target
+  | AssignmentForm assignment <- interpretedForm source =
+      selectFederationMember
+        (evaluatedSpecificationSourceValue assignment)
+        target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
   | otherwise =
       case selectIdentifierMember source target of

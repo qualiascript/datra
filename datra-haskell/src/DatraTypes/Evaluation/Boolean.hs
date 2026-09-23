@@ -6,13 +6,14 @@ module Evaluation.Boolean
   , booleanAndValues
   , booleanOrValues
   , booleanNotValue
+  , booleanCondition
   ) where
 
 import BooleanType (DatraBoolean (..), booleanNatural)
 import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
-  ( InterpretingError (ExpectedBooleanOperand)
+  ( InterpretingError (..)
   , OperandSide (..)
   )
 import Evaluation.Specification.Decision (Decision (DecisionProved))
@@ -92,6 +93,15 @@ booleanNotValue operand = do
       (case flag of
         DatraFalse -> DatraTrue
         DatraTrue -> DatraFalse))
+
+booleanCondition
+  :: InterpretedValue
+  -> Either InterpretingError Bool
+booleanCondition value =
+  case booleanFromSemantics (interpretedSemantics value) of
+    Just DatraFalse -> Right False
+    Just DatraTrue -> Right True
+    Nothing -> Left (ExpectedBooleanCondition (interpretedValueKind value))
 
 requireBoolean
   :: OperandSide
