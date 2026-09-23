@@ -2,6 +2,7 @@
 module Evaluation.Boolean
   ( makeBoolean
   , makeBooleanType
+  , subfederationValues
   , equalValues
   , booleanAndValues
   , booleanOrValues
@@ -40,8 +41,15 @@ makeBooleanType :: InterpretedValue
 makeBooleanType =
   makeEitherValue (makeBoolean DatraFalse) (makeBoolean DatraTrue)
 
--- | Federation extensional equality: both subfederation inclusions must be
--- proved. A refutation or an unavailable proof produces Datra False.
+-- | Boolean existence of the canonical inclusion morphism.
+subfederationValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+subfederationValues source target =
+  Right (makeBoolean (subfederationFlag source target))
+
+-- | Federation extensional equality is defined directly by mutual @of@.
 equalValues
   :: InterpretedValue
   -> InterpretedValue
@@ -49,13 +57,19 @@ equalValues
 equalValues left right =
   Right
     (makeBoolean
-      (if proved (decideValueSubfederation left right)
-            && proved (decideValueSubfederation right left)
-        then DatraTrue
-        else DatraFalse))
-  where
-    proved (DecisionProved ()) = True
-    proved _ = False
+      (datraAnd
+        (subfederationFlag left right)
+        (subfederationFlag right left)))
+
+subfederationFlag :: InterpretedValue -> InterpretedValue -> DatraBoolean
+subfederationFlag source target =
+  case decideValueSubfederation source target of
+    DecisionProved () -> DatraTrue
+    _ -> DatraFalse
+
+datraAnd :: DatraBoolean -> DatraBoolean -> DatraBoolean
+datraAnd DatraTrue DatraTrue = DatraTrue
+datraAnd _ _ = DatraFalse
 
 booleanAndValues
   :: InterpretedValue

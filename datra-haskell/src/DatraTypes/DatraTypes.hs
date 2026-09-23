@@ -27,6 +27,7 @@ module DatraTypes
   , minusValue
   , multiplyValues
   , exponentiateValues
+  , subfederationValues
   , equalValues
   , booleanAndValues
   , booleanOrValues
@@ -89,6 +90,7 @@ import Evaluation.Boolean
   , booleanNotValue
   , booleanOrValues
   , equalValues
+  , subfederationValues
   , makeBoolean
   , makeBooleanType
   )

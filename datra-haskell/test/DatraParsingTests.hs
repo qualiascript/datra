@@ -141,8 +141,12 @@ regressionTests = do
     ((AST.-) (natural 5) (natural 8))
   assertAstOutput
     "Boolean literal"
-    "False"
+    "false"
     (AST.boolean False)
+  assertAstOutput
+    "Nothing literal"
+    "nothing"
+    (AST.asciiString "Nothing")
   assertAstOutput
     "Boolean type"
     "Bool"
@@ -161,7 +165,7 @@ regressionTests = do
       (AST.eitherType (natural 1) (natural 2)))
   assertAstOutput
     "Boolean and, or, and not"
-    "False and not True or True"
+    "false and not true or true"
     (AST.or
       (AST.and (AST.boolean False) (AST.not (AST.boolean True)))
       (AST.boolean True))
@@ -169,6 +173,16 @@ regressionTests = do
     "federation equality"
     "1 = 1"
     (AST.equal (natural 1) (natural 1))
+  assertAstOutput
+    "subfederation morphism check"
+    "1 of Int"
+    (AST.subfederation (natural 1) AST.integerType)
+  assertAstOutput
+    "subfederation check binds inside equality"
+    "1 of Int = true"
+    (AST.equal
+      (AST.subfederation (natural 1) AST.integerType)
+      (AST.boolean True))
   assertAstOutput
     "optional type suffix"
     "Nat?"
@@ -218,6 +232,20 @@ regressionTests = do
         (AST.assignment "b" (natural 23) (natural 23))
         ~> optionalIntegerSlots
     )
+  assertAstOutput
+    "optional identifier range subfederation check"
+    "(2, b := 5) of (a? : Int, b? : within 3 to 8)"
+    (AST.subfederation
+      (MapConcatenation
+        (natural 2)
+        (AST.assignment "b" (natural 5) (natural 5)))
+      (MapConcatenation
+        (AST.eitherType
+          (AST.identifierType "a" AST.integerType)
+          AST.integerType)
+        (AST.eitherType
+          (AST.identifierType "b" (AST.withinTo 3 8))
+          (AST.withinTo 3 8))))
   let optionalAssigned identifierString value =
         AST.eitherType
           (AST.assignment
@@ -245,14 +273,14 @@ regressionTests = do
         (optionalAssigned "b" 23)))
   assertAstOutput
     "ternary conditional"
-    "if True then 1 else -2"
+    "if true then 1 else -2"
     (AST.conditional
       (AST.boolean True)
       (natural 1)
       (AST.minus (natural 2)))
   assertAstOutput
     "binary conditional defaults to unit"
-    "if False then 1"
+    "if false then 1"
     (AST.conditionalWithoutElse (AST.boolean False) (natural 1))
   assertAstOutput
     "conditional combines optionals, equality, logic, and identifiers"
@@ -875,6 +903,8 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Addition
     , Gen.subterm2 genExpression genExpression Multiplication
     , Gen.subterm2 genExpression genExpression Exponentiation
+    , Gen.subterm2 genExpression genExpression Subfederation
+    , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification

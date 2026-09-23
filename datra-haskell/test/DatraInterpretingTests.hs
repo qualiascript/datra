@@ -439,7 +439,7 @@ testBooleansAndEither = do
   expectValue "False literal" (AST.boolean False) $ \value ->
     assert "False is the named zero map"
       ( interpretedValueKind value == BooleanValueKind
-        && renderInterpretedValue value == "False : 0"
+        && renderInterpretedValue value == "false"
       )
   expectValue "Boolean type" AST.booleanType $ \value ->
     assert "the exact Boolean federation restores its shorthand"
@@ -454,47 +454,47 @@ testBooleansAndEither = do
           (AST.assignment "False" (natural 0) (natural 0))
           (AST.assignment "True" (natural 1) (natural 1)))) $ \value ->
     assert "Bool is definitionally False : 0 | True : 1"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "Boolean specification"
       (AST.boolean False ~> AST.booleanType) $ \value ->
     assert "Boolean alternatives use ordinary federation specification"
       (renderInterpretedValue value
-        == "(False : 0) ~> Bool")
+        == "false ~> Bool")
   expectValue
       "Boolean conjunction"
       (AST.and (AST.boolean True) (AST.boolean False)) $ \value ->
     assert "True and False is False"
-      (renderInterpretedValue value == "False : 0")
+      (renderInterpretedValue value == "false")
   expectValue
       "Boolean disjunction"
       (AST.or (AST.boolean False) (AST.boolean True)) $ \value ->
     assert "False or True is True"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue "Boolean negation" (AST.not (AST.boolean False)) $ \value ->
     assert "not False is True"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "canonical Boolean identifier values"
       (AST.and
         (AST.identifierType "True" (natural 1))
         (AST.identifierType "False" (natural 0))) $ \value ->
     assert "True : 1 and False : 0 retain Boolean behavior"
-      (renderInterpretedValue value == "False : 0")
+      (renderInterpretedValue value == "false")
   expectValue
       "equal federations"
       (AST.equal
         (AST.eitherType (natural 0) (natural 1))
         (AST.eitherType (natural 0) (natural 1))) $ \value ->
     assert "mutual subfederation is true"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "unequal tagged federations"
       (AST.equal
         (AST.eitherType (natural 0) (natural 1))
         (AST.eitherType (natural 1) (natural 0))) $ \value ->
     assert "Either injection order distinguishes equal-shaped maps"
-      (renderInterpretedValue value == "False : 0")
+      (renderInterpretedValue value == "false")
   expectValue
       "associative Either"
       (AST.equal
@@ -505,7 +505,7 @@ testBooleansAndEither = do
           (natural 0)
           (AST.eitherType (natural 1) (natural 2)))) $ \value ->
     assert "Either association normalizes before subfederation comparison"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "Either subfederation widening"
       ( (natural 1
@@ -552,20 +552,20 @@ testOptionalsAndConditionals = do
         (AST.optional AST.naturalType)
         (AST.eitherType AST.naturalType nothingValue)) $ \value ->
     assert "optional syntax is definitionally its expanded federation"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "Nothing specification"
       (nothingValue ~> AST.optional AST.naturalType) $ \value ->
     assert "absence selects the tagged optional alternative"
       (renderInterpretedValue value
-        == "(Nothing : ()) ~> Nat?")
+        == "nothing ~> Nat?")
   expectValue
       "canonical Nothing identifier"
       (AST.identifierType "Nothing" AST.emptyMap
         ~> AST.optional AST.naturalType) $ \value ->
     assert "Nothing : () round-trips as the distinguished absence"
       (renderInterpretedValue value
-        == "(Nothing : ()) ~> Nat?")
+        == "nothing ~> Nat?")
   expectValue
       "optional identifier"
       (AST.eitherType
@@ -611,7 +611,7 @@ testOptionalsAndConditionals = do
           (optionalAssigned "a" 12)
           (optionalAssigned "b" 23))) $ \value ->
     assert "specification wrappers preserve composite federation equality"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   let optionalAssignmentSequence =
         AtlasMap [optionalAssigned "a" 12, optionalAssigned "b" 23]
       optionalAssignmentConcatenation =
@@ -630,7 +630,33 @@ testOptionalsAndConditionals = do
         optionalAssignmentSequence
         optionalAssignmentConcatenation) $ \value ->
     assert "semicolon and comma optional slots are mutual subfederations"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
+  expectValue
+      "optional identifier specification morphism exists"
+      (AST.subfederation
+        (MapConcatenation
+          (natural 2)
+          (AST.assignment "b" (natural 5) (natural 5)))
+        (MapConcatenation
+          (optionalAssigned "a" 2)
+          (optionalIdentifier "b"))) $ \value ->
+    assert "of recognizes the pointwise optional-identifier morphism"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "optional identifier range subfederation morphism exists"
+      (AST.subfederation
+        (MapConcatenation
+          (natural 2)
+          (AST.assignment "b" (natural 5) (natural 5)))
+        (MapConcatenation
+          (AST.eitherType
+            (AST.identifierType "a" AST.integerType)
+            AST.integerType)
+          (AST.eitherType
+            (AST.identifierType "b" (AST.withinTo 3 8))
+            (AST.withinTo 3 8)))) $ \value ->
+    assert "2 and b := 5 inhabit their optional integer range slots"
+      (renderInterpretedValue value == "true")
   expectValue
       "ternary true branch"
       (AST.conditional
@@ -690,7 +716,7 @@ testCombinedTypeSystems = do
       ) $ \value ->
     assert "a conditional absence composes through optional specification"
       (renderInterpretedValue value
-        == "(Nothing : ()) ~> Int?")
+        == "nothing ~> Int?")
   expectValue
       "missing optional identifier path"
       ( AST.conditional
@@ -720,12 +746,22 @@ testCombinatorialNumericalSystems = do
       "identical signed range equality"
       (AST.equal smallRange smallRange) $ \value ->
     assert "equal numerical federations are mutual subfederations"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "proper signed range inclusion is not equality"
       (AST.equal smallRange largeRange) $ \value ->
     assert "a proper numerical subtype is not extensionally equal"
-      (renderInterpretedValue value == "False : 0")
+      (renderInterpretedValue value == "false")
+  expectValue
+      "proper signed range subfederation"
+      (AST.subfederation smallRange largeRange) $ \value ->
+    assert "of proves an existing inclusion morphism"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "missing reverse signed range subfederation"
+      (AST.subfederation largeRange smallRange) $ \value ->
+    assert "of is false when the inclusion morphism does not exist"
+      (renderInterpretedValue value == "false")
   expectValue
       "chained signed range subtyping"
       ( (AST.minus (natural 1) ~> smallRange)
@@ -759,7 +795,7 @@ testCombinatorialNumericalSystems = do
       "optional numerical identifier equality"
       (AST.equal optionalIdentifierRange optionalIdentifierRange) $ \value ->
     assert "optional identifier ranges retain reflexive subfederation"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
 
 testRanges :: IO ()
 testRanges = do
@@ -1126,7 +1162,7 @@ testAtlasMapFederations = do
       "a coalition sequence equals its concatenation"
       (AST.equal coalitionSequence coalitionConcatenation) $ \value ->
     assert "coalition construction is extensionally independent of syntax"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "disjoint NaturalRange concatenation"
       ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
@@ -2009,7 +2045,7 @@ testIdentifiers = do
       "unit identifier string equality"
       (AST.equal (AsciiStringLiteral "Value") valueUnit) $ \value ->
     assert "identifier strings and unit identifiers are definitionally equal"
-      (renderInterpretedValue value == "True : 1")
+      (renderInterpretedValue value == "true")
   expectValue
       "unit assignment"
       (assignment "Value" (AtlasMap []) (AtlasMap [])) $ \value ->

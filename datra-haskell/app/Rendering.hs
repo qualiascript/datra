@@ -84,7 +84,15 @@ terminateBeforeNewline (component : remaining) =
       | otherwise = rendered
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
-prettyCanonicalResult result =
+prettyCanonicalResult result
+  | isBooleanValue "False" 0 result = "false"
+  | isBooleanValue "True" 1 result = "true"
+  | isNothingValue result = "nothing"
+  | result == CanonicalAsciiString "Nothing" = "nothing"
+  | otherwise = prettyNonKeywordCanonicalResult result
+
+prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
+prettyNonKeywordCanonicalResult result =
   case result of
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalInteger value ->
@@ -150,6 +158,14 @@ prettyConcatenationMember member = prettyCanonicalResult member
 
 prettySpecificationOperand :: CanonicalResult -> Doc annotation
 prettySpecificationOperand operand =
+  if isKeywordValue operand
+    then prettyCanonicalResult operand
+    else prettyNonKeywordSpecificationOperand operand
+
+prettyNonKeywordSpecificationOperand
+  :: CanonicalResult
+  -> Doc annotation
+prettyNonKeywordSpecificationOperand operand =
   case operand of
     CanonicalAssignment {} -> parens (prettyCanonicalResult operand)
     CanonicalEither {}
@@ -158,6 +174,13 @@ prettySpecificationOperand operand =
       | otherwise -> parens (prettyCanonicalResult operand)
     CanonicalSpecification {} -> parens (prettyCanonicalResult operand)
     _ -> prettyCanonicalResult operand
+
+isKeywordValue :: CanonicalResult -> Bool
+isKeywordValue value =
+  isBooleanValue "False" 0 value
+    || isBooleanValue "True" 1 value
+    || isNothingValue value
+    || value == CanonicalAsciiString "Nothing"
 
 prettyEither
   :: CanonicalResult

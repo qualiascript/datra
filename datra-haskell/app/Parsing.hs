@@ -63,6 +63,7 @@ import DatraLanguage.AST
       , EitherType
       , OptionalType
       , Conditional
+      , Subfederation
       , Equality
       , BooleanAnd
       , BooleanOr
@@ -217,7 +218,10 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ BooleanLiteral False <$ astSymbol "False"
+    [ BooleanLiteral False <$ astSymbol "false"
+    , BooleanLiteral True <$ astSymbol "true"
+    , AsciiStringLiteral "Nothing" <$ astSymbol "nothing"
+    , BooleanLiteral False <$ astSymbol "False"
     , BooleanLiteral True <$ astSymbol "True"
     , BooleanType <$ astSymbol "Bool"
     , IntegerType <$ astSymbol "Int"
@@ -243,6 +247,7 @@ astForm =
       , astBinary AST.AdditionOperator Addition
       , astBinary AST.SubtractionOperator Subtraction
       , astUnary AST.MinusOperator Minus
+      , astBinary AST.SubfederationOperator Subfederation
       , astBinary AST.EqualityOperator Equality
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
@@ -425,6 +430,7 @@ eitherExpression =
   makeExprParser
     mapExpression
     [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
+    , [InfixL (Subfederation <$ continuedKeyword "of")]
     , [InfixL (Equality <$ continuedOperator AST.EqualityOperator)]
     , [InfixL (BooleanAnd <$ continuedKeyword "and")]
     , [InfixL (BooleanOr <$ continuedKeyword "or")]
@@ -532,6 +538,9 @@ termAtom =
     , parenthesizedExpression
     , try conditionalExpression
     , try naturalRangeExpression
+    , BooleanLiteral False <$ keyword "false"
+    , BooleanLiteral True <$ keyword "true"
+    , AsciiStringLiteral "Nothing" <$ keyword "nothing"
     , BooleanLiteral False <$ keyword "False"
     , BooleanLiteral True <$ keyword "True"
     , BooleanType <$ keyword "Bool"
@@ -656,7 +665,9 @@ continuedKeyword value = keywordToken value <* keywordSeparator
 
 keywordToken :: Text -> Parser Text
 keywordToken value =
-  value <$ chunk value <* notFollowedBy (satisfy isCanonicalCharacter)
+  try
+    (value <$ chunk value
+      <* notFollowedBy (satisfy isCanonicalCharacter))
 
 keywordSeparator :: Parser ()
 keywordSeparator =

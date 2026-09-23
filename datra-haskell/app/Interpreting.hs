@@ -120,6 +120,8 @@ interpretNormalizedExpression expressionValue =
       interpretBinary multiplyValues left right
     Exponentiation base exponentValue ->
       interpretBinary exponentiateValues base exponentValue
+    Subfederation source target ->
+      interpretBinary subfederationValues source target
     Equality left right ->
       interpretBinary equalValues left right
     BooleanAnd left right ->

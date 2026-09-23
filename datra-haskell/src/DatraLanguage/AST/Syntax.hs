@@ -31,6 +31,7 @@ module DatraLanguage.AST.Syntax
   , optional
   , conditional
   , conditionalWithoutElse
+  , subfederation
   , equal
   , and
   , or
@@ -161,6 +162,9 @@ conditionalWithoutElse condition consequent =
 
 equal :: Expression -> Expression -> Expression
 equal = Equality
+
+subfederation :: Expression -> Expression -> Expression
+subfederation = Subfederation
 
 and :: Expression -> Expression -> Expression
 and = BooleanAnd

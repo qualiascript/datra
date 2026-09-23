@@ -15,6 +15,7 @@ data Operator
   | AdditionOperator
   | SubtractionOperator
   | MinusOperator
+  | SubfederationOperator
   | EqualityOperator
   | BooleanAndOperator
   | BooleanOrOperator
@@ -40,6 +41,7 @@ operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
 operatorCanonicalSymbol SubtractionOperator = "-"
 operatorCanonicalSymbol MinusOperator = "minus"
+operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
@@ -65,6 +67,7 @@ operatorSourceSymbol RangeMinusOperator = Just "..-"
 operatorSourceSymbol AdditionOperator = Just "+"
 operatorSourceSymbol SubtractionOperator = Just "-"
 operatorSourceSymbol MinusOperator = Just "-"
+operatorSourceSymbol SubfederationOperator = Just "of"
 operatorSourceSymbol EqualityOperator = Just "="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"

@@ -68,6 +68,7 @@ data Expression
   | Addition Expression Expression
   | Subtraction Expression Expression
   | Minus Expression
+  | Subfederation Expression Expression
   | Equality Expression Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
@@ -123,6 +124,7 @@ data OperatorExpression
   | Add OperatorExpression OperatorExpression
   | Subtract OperatorExpression OperatorExpression
   | Negate OperatorExpression
+  | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
@@ -201,6 +203,8 @@ normalizeExpression (Addition left right) =
 normalizeExpression (Subtraction left right) =
   Subtraction (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Minus operand) = Minus (normalizeExpression operand)
+normalizeExpression (Subfederation left right) =
+  Subfederation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Equality left right) =
   Equality (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanAnd left right) =
@@ -304,6 +308,8 @@ lower (Conditional condition consequent alternative) =
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Subtraction left right) = Subtract (lower left) (lower right)
 lower (Minus operand) = Negate (lower operand)
+lower (Subfederation left right) =
+  IsSubfederation (lower left) (lower right)
 lower (Equality left right) = Equal (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
@@ -353,6 +359,7 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
+prettyOperator (AsciiStringValue "Nothing") = "nothing"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
@@ -389,8 +396,8 @@ prettyOperator (InclusiveValuedIntegerRangeUpwards origin) =
 prettyOperator (InclusiveValuedIntegerRangeDownwards origin) =
   prettyForm "within" [prettyInteger origin, "downwards"]
 prettyOperator IntegerTypeValue = "Int"
-prettyOperator (BooleanValue False) = "False"
-prettyOperator (BooleanValue True) = "True"
+prettyOperator (BooleanValue False) = "false"
+prettyOperator (BooleanValue True) = "true"
 prettyOperator BooleanTypeValue = "Bool"
 prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
@@ -409,6 +416,8 @@ prettyOperator (Subtract left right) =
   prettyBinary SubtractionOperator left right
 prettyOperator (Negate operand) =
   prettyUnary MinusOperator operand
+prettyOperator (IsSubfederation left right) =
+  prettyBinary SubfederationOperator left right
 prettyOperator (Equal left right) =
   prettyBinary EqualityOperator left right
 prettyOperator (And left right) =
