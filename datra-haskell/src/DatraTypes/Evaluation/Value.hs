@@ -254,8 +254,8 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | StringTypeForm
-  | ToStringForm InterpretedValue
-  | StringTemplateForm InterpretedValue
+  | ToStringForm
+  | StringTemplateForm
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | IdentifierTypeForm EvaluatedIdentifierType
@@ -585,8 +585,8 @@ interpretedValueKind value =
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind
-    ToStringForm _ -> AsciiStringValueKind
-    StringTemplateForm _ -> AsciiStringValueKind
+    ToStringForm -> AsciiStringValueKind
+    StringTemplateForm -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind

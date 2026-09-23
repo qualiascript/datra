@@ -76,7 +76,7 @@ assignment identifierString typeAnnotation givenValue =
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral
 
-stringTemplate :: [StringTemplatePart] -> Expression
+stringTemplate :: [StringTemplatePart Expression] -> Expression
 stringTemplate = StringTemplate
 
 stringType :: Expression

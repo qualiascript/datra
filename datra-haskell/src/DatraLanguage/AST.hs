@@ -4,7 +4,6 @@ module DatraLanguage.AST
   ( IdentifierString (..)
   , StringTemplatePart (..)
   , Expression (..)
-  , OperatorStringTemplatePart (..)
   , OperatorExpression (..)
   , toOperatorExpression
   , normalizeExpression
@@ -46,9 +45,9 @@ newtype IdentifierString = IdentifierString
 -- | One source-order component of a quoted string template. Literal chunks
 -- are already decoded by the parser; interpolations retain their unevaluated
 -- expressions until the interpreter applies the internal @toString@ map.
-data StringTemplatePart
+data StringTemplatePart expression
   = StringTemplateLiteral String
-  | StringTemplateInterpolation Expression
+  | StringTemplateInterpolation expression
   deriving (Eq, Show)
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
@@ -57,7 +56,7 @@ data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
   | AsciiStringLiteral String
-  | StringTemplate [StringTemplatePart]
+  | StringTemplate [StringTemplatePart Expression]
   | StringType
   | AtlasMap [Expression]
   | MapSequence [Expression]
@@ -112,7 +111,7 @@ data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
   | AsciiStringValue String
-  | StringTemplateValue [OperatorStringTemplatePart]
+  | StringTemplateValue [StringTemplatePart OperatorExpression]
   | StringTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
@@ -158,11 +157,6 @@ data OperatorExpression
       , operatorTypeAnnotation :: OperatorExpression
       , operatorGivenValue :: Maybe OperatorExpression
       }
-  deriving (Eq, Show)
-
-data OperatorStringTemplatePart
-  = OperatorStringTemplateLiteral String
-  | OperatorStringTemplateInterpolation OperatorExpression
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -257,7 +251,9 @@ normalizeExpression
     (normalizeExpression typeAnnotation)
     (normalizeExpression <$> givenValue)
 
-normalizeStringTemplatePart :: StringTemplatePart -> StringTemplatePart
+normalizeStringTemplatePart
+  :: StringTemplatePart Expression
+  -> StringTemplatePart Expression
 normalizeStringTemplatePart (StringTemplateLiteral value) =
   StringTemplateLiteral value
 normalizeStringTemplatePart (StringTemplateInterpolation expressionValue) =
@@ -362,11 +358,13 @@ lower (IdentifierOperation identifierString typeAnnotation givenValue) =
     (lower typeAnnotation)
     (lower <$> givenValue)
 
-lowerStringTemplatePart :: StringTemplatePart -> OperatorStringTemplatePart
+lowerStringTemplatePart
+  :: StringTemplatePart Expression
+  -> StringTemplatePart OperatorExpression
 lowerStringTemplatePart (StringTemplateLiteral value) =
-  OperatorStringTemplateLiteral value
+  StringTemplateLiteral value
 lowerStringTemplatePart (StringTemplateInterpolation expressionValue) =
-  OperatorStringTemplateInterpolation (lower expressionValue)
+  StringTemplateInterpolation (lower expressionValue)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -579,7 +577,11 @@ renderIdentifierString value@(first : rest)
 renderIdentifierString value = renderStandardStringLiteral value
 
 renderStandardStringLiteral :: String -> String
-renderStandardStringLiteral value = '"' : foldr escape "\"" value
+renderStandardStringLiteral value =
+  '"' : renderStringLiteralContents value <> "\""
+
+renderStringLiteralContents :: String -> String
+renderStringLiteralContents = foldr escape ""
   where
     escape '\n' rest = '\\' : 'n' : rest
     escape '"' rest = '\\' : '"' : rest
@@ -600,20 +602,16 @@ renderStandardStringLiteral value = '"' : foldr escape "\"" value
     isKeyboardCharacter character =
       0x20 <= ord character && ord character <= 0x7e
 
-renderOperatorStringTemplate :: [OperatorStringTemplatePart] -> String
+renderOperatorStringTemplate
+  :: [StringTemplatePart OperatorExpression]
+  -> String
 renderOperatorStringTemplate parts =
   '"' : foldr renderPart "\"" parts
   where
-    renderPart (OperatorStringTemplateLiteral value) rest =
-      renderTemplateLiteral value <> rest
-    renderPart (OperatorStringTemplateInterpolation expressionValue) rest =
+    renderPart (StringTemplateLiteral value) rest =
+      renderStringLiteralContents value <> rest
+    renderPart (StringTemplateInterpolation expressionValue) rest =
       "$(" <> renderOperatorExpression expressionValue <> ")" <> rest
-
-renderTemplateLiteral :: String -> String
-renderTemplateLiteral value =
-  case renderStandardStringLiteral value of
-    '"' : rendered -> init rendered
-    _ -> error "standard string rendering must be quoted"
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

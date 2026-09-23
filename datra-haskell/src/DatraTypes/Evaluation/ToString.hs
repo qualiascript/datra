@@ -3,10 +3,13 @@
 module Evaluation.ToString
   ( toStringValue
   , stringTemplateValue
+  , stringFederationConcatenationIsInjective
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
+  ( AtlasMapFederationExpression (..)
+  )
+import Data.List (isInfixOf)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError (AmbiguousStringTemplate))
 import Evaluation.Value
@@ -22,8 +25,8 @@ toStringValue renderCanonical source =
   case interpretedForm source of
     AsciiStringForm _ -> Right source
     StringTypeForm -> Right source
-    ToStringForm _ -> Right source
-    StringTemplateForm _ -> Right source
+    ToStringForm -> Right source
+    StringTemplateForm -> Right source
     _
       | interpretedValueHasTotalMap source ->
           Right
@@ -35,7 +38,7 @@ toStringValue renderCanonical source =
   where
     pointwiseFederation =
       makeInterpretedValue
-        (ToStringForm source)
+        ToStringForm
         NoInsertion
         emptyInterpretedMap
         (PrimitiveAtlasMapFederation
@@ -43,27 +46,56 @@ toStringValue renderCanonical source =
         NonTotalInterpretedMap
         (ToStringSemantics (interpretedSemantics source))
 
-toStringConversionIsInjective :: ValueSemantics -> Bool
-toStringConversionIsInjective semantics =
+data StringConversionProperties = StringConversionProperties
+  { conversionIsInjective :: Bool
+  , conversionCharacterAlphabet :: Maybe String
+  }
+
+stringConversionProperties
+  :: ValueSemantics
+  -> StringConversionProperties
+stringConversionProperties semantics =
   case semantics of
-    NaturalRangeSemantics {} -> True
-    ValuedNaturalRangeSemantics {} -> True
-    NaturalTypeSemantics -> True
-    IntegerRangeSemantics {} -> True
-    ValuedIntegerRangeSemantics {} -> True
-    IntegerTypeSemantics -> True
-    StringTypeSemantics -> True
-    EitherSemantics left right -> isBooleanPair left right
+    ExplicitSemantics {} -> knownAlphabet "0123456789"
+    IntegerSemantics {} -> knownAlphabet "-0123456789"
+    BooleanSemantics {} -> knownAlphabet "falsetru"
+    NaturalRangeSemantics {} -> numericRange
+    ValuedNaturalRangeSemantics {} -> numericRange
+    NaturalTypeSemantics -> naturalNumber
+    IntegerRangeSemantics {} -> numericRange
+    ValuedIntegerRangeSemantics {} -> numericRange
+    IntegerTypeSemantics -> integerNumber
+    StringTypeSemantics -> injectiveUnknownAlphabet
+    EitherSemantics left right
+      | isBooleanPair left right ->
+          StringConversionProperties True (Just "falsetru")
     IdentifierTypeSemantics _ underlying _ ->
-      toStringConversionIsInjective underlying
+      (stringConversionProperties underlying)
+        { conversionCharacterAlphabet = Nothing }
     IdentifierStringProjectionSemantics _ underlying _ ->
-      toStringConversionIsInjective underlying
-    ToStringSemantics source -> toStringConversionIsInjective source
-    _ -> False
+      (stringConversionProperties underlying)
+        { conversionCharacterAlphabet = Nothing }
+    ToStringSemantics source -> stringConversionProperties source
+    _ -> unknownConversion
   where
     isBooleanPair (BooleanSemantics leftFlag _) (BooleanSemantics rightFlag _) =
       leftFlag /= rightFlag
     isBooleanPair _ _ = False
+
+    naturalNumber =
+      StringConversionProperties True (Just "0123456789")
+    integerNumber =
+      StringConversionProperties True (Just "-0123456789")
+    numericRange =
+      StringConversionProperties
+        True (Just " -0123456789.rangeftoupwds")
+    injectiveUnknownAlphabet = StringConversionProperties True Nothing
+    knownAlphabet = StringConversionProperties False . Just
+    unknownConversion = StringConversionProperties False Nothing
+
+toStringConversionIsInjective :: ValueSemantics -> Bool
+toStringConversionIsInjective =
+  conversionIsInjective . stringConversionProperties
 
 -- | Retain the ordinary concatenation result while recording that its members
 -- are the pointwise outputs of one string template.
@@ -72,11 +104,11 @@ stringTemplateValue value =
   case interpretedForm value of
     AsciiStringForm _ -> value
     StringTypeForm -> value
-    ToStringForm _ -> value
-    StringTemplateForm _ -> value
+    ToStringForm -> value
+    StringTemplateForm -> value
     _ ->
       makeInterpretedValue
-        (StringTemplateForm value)
+        StringTemplateForm
         (interpretedInsertionCapability value)
         (interpretedMap value)
         (interpretedAtlasMapFederation value)
@@ -84,3 +116,88 @@ stringTemplateValue value =
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
         (interpretedSemantics value)
+
+-- | Decide the string-specific case omitted by generic Atlas federation
+-- concatenation: a fixed nonempty delimiter makes the product injective when
+-- at least one adjacent variable side excludes it.
+stringFederationConcatenationIsInjective
+  :: InterpretedAtlasMapFederation
+  -> InterpretedAtlasMapFederation
+  -> Bool
+stringFederationConcatenationIsInjective left right =
+  trailingBoundaryIsInjective || leadingBoundaryIsInjective
+  where
+    trailingBoundaryIsInjective =
+      case trailingStringDelimiter left of
+        Just (prefix, delimiter) ->
+          not (null delimiter)
+            && ( stringFederationExcludes delimiter prefix
+                  || stringFederationExcludes delimiter right
+               )
+        Nothing -> False
+    leadingBoundaryIsInjective =
+      case leadingStringDelimiter right of
+        Just (delimiter, suffix) ->
+          not (null delimiter)
+            && ( stringFederationExcludes delimiter left
+                  || stringFederationExcludes delimiter suffix
+               )
+        Nothing -> False
+
+trailingStringDelimiter
+  :: InterpretedAtlasMapFederation
+  -> Maybe (InterpretedAtlasMapFederation, String)
+trailingStringDelimiter
+    (ConcatenatedAtlasMapFederation left right) =
+      (\delimiter -> (left, delimiter)) <$> singletonAsciiString right
+trailingStringDelimiter _ = Nothing
+
+leadingStringDelimiter
+  :: InterpretedAtlasMapFederation
+  -> Maybe (String, InterpretedAtlasMapFederation)
+leadingStringDelimiter
+    (ConcatenatedAtlasMapFederation left right) =
+      (\delimiter -> (delimiter, right)) <$> singletonAsciiString left
+leadingStringDelimiter _ = Nothing
+
+singletonAsciiString
+  :: InterpretedAtlasMapFederation
+  -> Maybe String
+singletonAsciiString (SingletonAtlasMapFederation valueMap) =
+  case interpretedMapComponents valueMap of
+    [AsciiStringSemantics characters] -> Just characters
+    _ -> Nothing
+singletonAsciiString _ = Nothing
+
+stringFederationExcludes
+  :: String
+  -> InterpretedAtlasMapFederation
+  -> Bool
+stringFederationExcludes delimiter federation =
+  case federation of
+    SingletonAtlasMapFederation valueMap ->
+      case interpretedMapComponents valueMap of
+        [AsciiStringSemantics characters] ->
+          not (delimiter `isInfixOf` characters)
+        _ -> False
+    PrimitiveAtlasMapFederation primitive ->
+      case primitive of
+        ToStringAtlasMapFederation source ->
+          renderedSemanticsExclude
+            delimiter (interpretedSemantics source)
+        StringTypeAtlasMapFederation -> False
+        _ -> False
+    SequentialAtlasMapFederation members ->
+      all (stringFederationExcludes delimiter) members
+    ExpansionAtlasMapFederation leftValue rightValue ->
+      stringFederationExcludes delimiter leftValue
+        && stringFederationExcludes delimiter rightValue
+    ConcatenatedAtlasMapFederation leftValue rightValue ->
+      stringFederationExcludes delimiter leftValue
+        && stringFederationExcludes delimiter rightValue
+
+renderedSemanticsExclude :: String -> ValueSemantics -> Bool
+renderedSemanticsExclude delimiter semantics =
+  case conversionCharacterAlphabet (stringConversionProperties semantics) of
+    Nothing -> False
+    Just alphabet -> any (`notElem` alphabet) delimiter

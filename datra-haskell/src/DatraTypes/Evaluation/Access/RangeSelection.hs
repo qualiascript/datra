@@ -98,8 +98,8 @@ accessSource value =
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
     StringTypeForm -> ordinarySource []
-    ToStringForm _ -> ordinarySource []
-    StringTemplateForm _ -> ordinarySource []
+    ToStringForm -> ordinarySource []
+    StringTemplateForm -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
     IdentifierTypeForm _ -> ordinarySource []

@@ -179,7 +179,7 @@ interpretNormalizedExpression expressionValue =
             result -> result
 
 interpretStringTemplate
-  :: [StringTemplatePart]
+  :: [StringTemplatePart Expression]
   -> Either InterpretingError InterpretedValue
 interpretStringTemplate parts = do
   values <- traverse interpretPart parts

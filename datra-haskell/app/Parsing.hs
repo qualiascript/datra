@@ -23,7 +23,6 @@ import Control.Monad.Combinators.Expr
   )
 import Data.Bifunctor (first)
 import Data.Char (chr, digitToInt, isHexDigit, ord)
-import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -238,22 +237,28 @@ astEmptyMap :: Parser Expression
 astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
-astAtom =
+astAtom = astLexeme (atomicExpressionToken astStringTemplateToken)
+
+atomicExpressionToken :: Parser Expression -> Parser Expression
+atomicExpressionToken nestedStringTemplate =
   choice
-    [ BooleanLiteral False <$ astReservedWord Reserved.FalseWord
-    , BooleanLiteral True <$ astReservedWord Reserved.TrueWord
-    , AsciiStringLiteral "Nothing" <$ astReservedWord Reserved.NothingWord
-    , BooleanLiteral False <$ astBuiltInIdentifier Reserved.FalseIdentifier
-    , BooleanLiteral True <$ astBuiltInIdentifier Reserved.TrueIdentifier
-    , BooleanType <$ astReservedWord Reserved.BooleanTypeWord
-    , StringType <$ astReservedWord Reserved.StringTypeWord
-    , IntegerType <$ astReservedWord Reserved.IntegerTypeWord
-    , NaturalType <$ astReservedWord Reserved.NaturalTypeWord
-    , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
-    , AsciiStringLiteral <$> astIdentifierString
-    , astStringExpression
-    , EllipsisNatural <$> astLexeme Lexer.decimal
+    [ BooleanLiteral False <$ reservedToken Reserved.FalseWord
+    , BooleanLiteral True <$ reservedToken Reserved.TrueWord
+    , AsciiStringLiteral "Nothing" <$ reservedToken Reserved.NothingWord
+    , BooleanLiteral False <$ builtInToken Reserved.FalseIdentifier
+    , BooleanLiteral True <$ builtInToken Reserved.TrueIdentifier
+    , BooleanType <$ reservedToken Reserved.BooleanTypeWord
+    , StringType <$ reservedToken Reserved.StringTypeWord
+    , IntegerType <$ reservedToken Reserved.IntegerTypeWord
+    , NaturalType <$ reservedToken Reserved.NaturalTypeWord
+    , EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
+    , AsciiStringLiteral <$> identifierStringToken
+    , nestedStringTemplate
+    , EllipsisNatural <$> Lexer.decimal
     ]
+  where
+    reservedToken = keywordToken . Text.pack . Reserved.reservedWordText
+    builtInToken = keywordToken . Text.pack . Reserved.builtInIdentifierText
 
 astForm :: Parser Expression
 astForm =
@@ -391,10 +396,6 @@ astSymbol = Lexer.symbol astSpaceConsumer
 
 astReservedWord :: Reserved.ReservedWord -> Parser Text
 astReservedWord = astSymbol . Text.pack . Reserved.reservedWordText
-
-astBuiltInIdentifier :: Reserved.BuiltInIdentifier -> Parser Text
-astBuiltInIdentifier =
-  astSymbol . Text.pack . Reserved.builtInIdentifierText
 
 astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
@@ -577,19 +578,7 @@ termAtom =
     , parenthesizedExpression
     , try conditionalExpression
     , try naturalRangeExpression
-    , BooleanLiteral False <$ reservedWord Reserved.FalseWord
-    , BooleanLiteral True <$ reservedWord Reserved.TrueWord
-    , AsciiStringLiteral "Nothing" <$ reservedWord Reserved.NothingWord
-    , BooleanLiteral False <$ builtInIdentifier Reserved.FalseIdentifier
-    , BooleanLiteral True <$ builtInIdentifier Reserved.TrueIdentifier
-    , BooleanType <$ reservedWord Reserved.BooleanTypeWord
-    , StringType <$ reservedWord Reserved.StringTypeWord
-    , IntegerType <$ reservedWord Reserved.IntegerTypeWord
-    , NaturalType <$ reservedWord Reserved.NaturalTypeWord
-    , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
-    , AsciiStringLiteral <$> identifierString
-    , stringExpression
-    , ellipsisNatural
+    , lexeme (atomicExpressionToken sourceStringTemplateToken)
     ]
 
 -- Explicitly parenthesizing both operands makes a reverse specification a
@@ -704,9 +693,6 @@ keyword value = lexeme (keywordToken value)
 
 reservedWord :: Reserved.ReservedWord -> Parser Text
 reservedWord = keyword . Text.pack . Reserved.reservedWordText
-
-builtInIdentifier :: Reserved.BuiltInIdentifier -> Parser Text
-builtInIdentifier = keyword . Text.pack . Reserved.builtInIdentifierText
 
 continuedKeyword :: Text -> Parser Text
 continuedKeyword value = keywordToken value <* keywordSeparator
@@ -826,9 +812,6 @@ ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 identifierString :: Parser String
 identifierString = lexeme identifierStringToken
 
-astIdentifierString :: Parser String
-astIdentifierString = astLexeme identifierStringToken
-
 identifierStringToken :: Parser String
 identifierStringToken = do
   _ <- char '$'
@@ -882,16 +865,12 @@ astStandardString = astLexeme standardStringToken
 
 standardStringToken :: Parser String
 standardStringToken =
-  between (char '"') (char '"')
-    (catMaybes <$> many standardStringPart)
+  parsedLiteralText <$> quotedStringParts Nothing
 
 -- | Every quoted source expression is parsed as a template. The common case
 -- with no interpolation is collapsed back to the existing string literal AST.
 stringExpression :: Parser Expression
 stringExpression = lexeme sourceStringTemplateToken
-
-astStringExpression :: Parser Expression
-astStringExpression = astLexeme astStringTemplateToken
 
 sourceStringTemplateToken :: Parser Expression
 sourceStringTemplateToken =
@@ -903,27 +882,16 @@ astStringTemplateToken =
 
 data ParsedStringTemplatePart
   = ParsedStringTemplateCharacter Char
-  | ParsedStringTemplateComment
   | ParsedStringTemplateInterpolation Expression
 
 stringTemplateToken
   :: Parser Expression
   -> Parser Expression
   -> Parser Expression
-stringTemplateToken compoundInterpolation simpleInterpolation = do
-  _ <- char '"'
-  parts <- many stringTemplatePart
-  _ <- char '"'
-  pure (buildStringTemplate parts)
+stringTemplateToken compoundInterpolation simpleInterpolation =
+  buildStringTemplate
+    <$> quotedStringParts (Just stringInterpolation)
   where
-    stringTemplatePart =
-      choice
-        [ ParsedStringTemplateInterpolation
-            <$> stringInterpolation
-        , ParsedStringTemplateComment <$ standardStringComment
-        , ParsedStringTemplateCharacter <$> standardStringCharacter
-        ]
-
     stringInterpolation = do
       _ <- char '$'
       parenthesizedInterpolation
@@ -937,6 +905,27 @@ stringTemplateToken compoundInterpolation simpleInterpolation = do
           <* fullSpaceConsumer
           <* char ')')
 
+quotedStringParts
+  :: Maybe (Parser Expression)
+  -> Parser [ParsedStringTemplatePart]
+quotedStringParts interpolation =
+  between (char '"') (char '"')
+    (concat <$> many quotedPart)
+  where
+    quotedPart =
+      choice
+        ( maybe
+            []
+            (\parser ->
+              [ (: []) . ParsedStringTemplateInterpolation <$> parser
+              ])
+            interpolation
+          <> [ [] <$ standardStringComment
+             , (: []) . ParsedStringTemplateCharacter
+                <$> standardStringCharacter
+             ]
+        )
+
 withInterpolationComments :: Parser value -> Parser value
 withInterpolationComments parser = do
   lift (modify (+ 1))
@@ -945,37 +934,10 @@ withInterpolationComments parser = do
   pure value
 
 sourceSimpleInterpolation :: Parser Expression
-sourceSimpleInterpolation = simpleInterpolationWith sourceStringTemplateToken
+sourceSimpleInterpolation = atomicExpressionToken sourceStringTemplateToken
 
 astSimpleInterpolation :: Parser Expression
-astSimpleInterpolation = simpleInterpolationWith astStringTemplateToken
-
-simpleInterpolationWith :: Parser Expression -> Parser Expression
-simpleInterpolationWith nestedStringTemplate =
-  choice
-    [ BooleanLiteral False
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.FalseWord))
-    , BooleanLiteral True
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.TrueWord))
-    , AsciiStringLiteral "Nothing"
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.NothingWord))
-    , BooleanLiteral False
-        <$ keywordToken (Text.pack (Reserved.builtInIdentifierText Reserved.FalseIdentifier))
-    , BooleanLiteral True
-        <$ keywordToken (Text.pack (Reserved.builtInIdentifierText Reserved.TrueIdentifier))
-    , BooleanType
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.BooleanTypeWord))
-    , StringType
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.StringTypeWord))
-    , IntegerType
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.IntegerTypeWord))
-    , NaturalType
-        <$ keywordToken (Text.pack (Reserved.reservedWordText Reserved.NaturalTypeWord))
-    , EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
-    , AsciiStringLiteral <$> identifierStringToken
-    , nestedStringTemplate
-    , EllipsisNatural <$> Lexer.decimal
-    ]
+astSimpleInterpolation = atomicExpressionToken astStringTemplateToken
 
 buildStringTemplate :: [ParsedStringTemplatePart] -> Expression
 buildStringTemplate parsedParts =
@@ -988,7 +950,6 @@ buildStringTemplate parsedParts =
           ])
     (parts, True) -> StringTemplate parts
   where
-    collect ParsedStringTemplateComment accumulated = accumulated
     collect (ParsedStringTemplateCharacter character) (parts, hasHole) =
       case parts of
         StringTemplateLiteral value : remaining ->
@@ -998,12 +959,11 @@ buildStringTemplate parsedParts =
         (parts, _) =
       (StringTemplateInterpolation expressionValue : parts, True)
 
-standardStringPart :: Parser (Maybe Char)
-standardStringPart =
-  choice
-    [ Nothing <$ standardStringComment
-    , Just <$> standardStringCharacter
-    ]
+parsedLiteralText :: [ParsedStringTemplatePart] -> String
+parsedLiteralText parts =
+  [ character
+  | ParsedStringTemplateCharacter character <- parts
+  ]
 
 -- Unlike an ordinary line comment, a comment within a string also ends at the
 -- string's closing quote. The terminator is left for the surrounding parser,
