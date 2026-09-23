@@ -83,6 +83,10 @@ import DatraLanguage.Diagnostics.Localization
   )
 import Ellipsis
 import EllipsisNatural qualified as DatraNatural
+import EllipsisInteger qualified as DatraInteger
+import IntegerRange qualified
+import IntegerType qualified
+import ValuedIntegerRange qualified
 import MapOperators
 import MapOperators.OrderedAtlasMap qualified as OrderedValues
 import NaturalRange
@@ -158,6 +162,7 @@ testTree =
         , testCase "ellipsis natural" testEllipsisNatural
         , testCase "natural range" testNaturalRange
         , testCase "valued natural range" testValuedNaturalRange
+        , testCase "integer ranges" testIntegerRanges
         , testCase "numerical operators" testNumericalOperators
         , testCase "typed and evaluated numerical semantics agree"
             testNumericalSemanticsAgreement
@@ -460,6 +465,50 @@ testValuedNaturalRange = do
       assert "NaturalType is within 0 upwards"
         (values == [0, 1, 2, 3, 4])
     _ -> fail "test setup failed: NaturalType"
+
+testIntegerRanges :: IO ()
+testIntegerRanges = do
+  DatraInteger.ellipsisInteger 5 $ \positive ->
+    DatraInteger.ellipsisInteger (-6) $ \negative ->
+      assert "integers use adjacent Nat x 2 complement codes"
+        ( DatraInteger.ellipsisIntegerValue positive == 5
+          && DatraInteger.ellipsisIntegerCode positive == 10
+          && DatraInteger.ellipsisIntegerValue negative == -6
+          && DatraInteger.ellipsisIntegerCode negative == 11
+        )
+  case DatraInteger.ellipsisInteger (-2) $ \origin ->
+      DatraInteger.ellipsisInteger 2 $ \target ->
+        IntegerRange.integerRange origin target $ \valueRange ->
+          ( IntegerRange.integerRangeDirection valueRange
+              == IntegerRange.AscendingIntegerRange
+            && IntegerRange.integerRangeFiniteSubrange valueRange (-2) 2
+              /= Nothing
+            && IntegerRange.integerRangeFiniteSubrange valueRange 2 (-2)
+              == Nothing
+          ) of
+    Just condition ->
+      assert "finite integer ranges retain directed subranges" condition
+    Nothing -> fail "test setup failed: IntegerRange"
+  case DatraInteger.ellipsisInteger (-1) $ \origin ->
+      IntegerRange.integerRange
+        origin IntegerRange.downwards $ \valueRange ->
+          ( IntegerRange.integerRangeDirection valueRange
+              == IntegerRange.DescendingIntegerRange
+            && IntegerRange.integerRangeDownwardsSubrange valueRange (-4)
+              /= Nothing
+          ) of
+    Just condition ->
+      assert "integer ranges support an open downward direction" condition
+    Nothing -> fail "test setup failed: downward IntegerRange"
+  IntegerType.integerType $ \integerValues ->
+    let indices =
+          atlasFederationIndexDominion
+            (ValuedIntegerRange.valuedIntegerRangeFederation integerValues)
+        values =
+          fmap ValuedIntegerRange.valuedIntegerValue
+            <$> traverse (unrank indices) [0 .. 5]
+    in assert "Int enumerates the Nat x 2 product"
+        (values == Just [0, -1, 1, -2, 2, -3])
 
 atlasPageHasExactly
   :: Atlas atlasScope paginationScope cellData origin final

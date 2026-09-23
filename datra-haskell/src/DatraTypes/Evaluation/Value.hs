@@ -9,6 +9,8 @@ module Evaluation.Value
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
   , EvaluatedValuedNaturalRange (..)
+  , EvaluatedIntegerRange (..)
+  , EvaluatedValuedIntegerRange (..)
   , IdentifierDependency (..)
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
@@ -41,6 +43,7 @@ module Evaluation.Value
   , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMapFinalOrderType
@@ -76,6 +79,8 @@ import MapOperators.OrderedAtlasMap
 import Numeric.Natural (Natural)
 import NaturalRange qualified
 import ValuedNaturalRange qualified
+import IntegerRange qualified
+import ValuedIntegerRange qualified
 import NumericalOperators.NumericalOperand
   ( SomeSuperEllipsis
   , someSuperEllipsisLevel
@@ -116,6 +121,16 @@ data EvaluatedValuedNaturalRange where
   EvaluatedValuedNaturalRange
     :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
     -> EvaluatedValuedNaturalRange
+
+data EvaluatedIntegerRange where
+  EvaluatedIntegerRange
+    :: IntegerRange.IntegerRange rangeScope federationScope
+    -> EvaluatedIntegerRange
+
+data EvaluatedValuedIntegerRange where
+  EvaluatedValuedIntegerRange
+    :: ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
+    -> EvaluatedValuedIntegerRange
 
 -- | Runtime string rule for an identifier type. The stable key makes two
 -- dependent rules comparable for subfederation decisions; simple identifiers
@@ -188,6 +203,8 @@ newtype InterpretedTotalAtlasMap = InterpretedTotalAtlasMap
 data EvaluatedAtlasMapFederationMember
   = EvaluatedNaturalRangeMember NaturalRange.NaturalSubrangeDescription
   | EvaluatedValuedNaturalRangeMember Natural
+  | EvaluatedIntegerRangeMember IntegerRange.IntegerSubrangeDescription
+  | EvaluatedValuedIntegerRangeMember Integer
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
@@ -208,10 +225,13 @@ data EvaluatedSpecification = EvaluatedSpecification
 
 data ValueForm
   = ExplicitForm EvaluatedExplicit
+  | IntegerForm Integer
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
   | ValuedNaturalRangeForm EvaluatedValuedNaturalRange
+  | IntegerRangeForm EvaluatedIntegerRange
+  | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
   | RangeConcatenationForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
@@ -248,6 +268,8 @@ interpretedMapCardinality = interpretedMapPageCardinality
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
+  | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
+  | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
 
@@ -261,11 +283,15 @@ type InterpretedAtlasMapFederation =
 -- separately as 'CanonicalResult'.
 data ValueSemantics
   = ExplicitSemantics Natural Ordinal
+  | IntegerSemantics Integer
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
   | ValuedNaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
   | NaturalTypeSemantics
+  | IntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
+  | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
+  | IntegerTypeSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
@@ -288,11 +314,15 @@ data ValueSemantics
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
   = CanonicalExplicit Natural Ordinal
+  | CanonicalInteger Integer
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
   | CanonicalNaturalRange Natural NaturalRange.NaturalRangeTarget
   | CanonicalValuedNaturalRange Natural NaturalRange.NaturalRangeTarget
   | CanonicalNaturalType
+  | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalIntegerType
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
@@ -368,12 +398,17 @@ canonicalResult :: ValueSemantics -> CanonicalResult
 canonicalResult semantics =
   case semantics of
     ExplicitSemantics level value -> CanonicalExplicit level value
+    IntegerSemantics value -> CanonicalInteger value
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target
     ValuedNaturalRangeSemantics start target ->
       CanonicalValuedNaturalRange start target
     NaturalTypeSemantics -> CanonicalNaturalType
+    IntegerRangeSemantics start target -> CanonicalIntegerRange start target
+    ValuedIntegerRangeSemantics start target ->
+      CanonicalValuedIntegerRange start target
+    IntegerTypeSemantics -> CanonicalIntegerType
     RangeConcatenationSemantics descriptions ->
       CanonicalRangeConcatenation descriptions
     ConcatenationSemantics members ->
@@ -417,10 +452,13 @@ interpretedValueKind value =
   case interpretedForm value of
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
     ExplicitForm _ -> ExplicitOrdinalValueKind
+    IntegerForm _ -> IntegerValueKind
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind
     ValuedNaturalRangeForm _ -> RangeValueKind
+    IntegerRangeForm _ -> RangeValueKind
+    ValuedIntegerRangeForm _ -> RangeValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
@@ -438,6 +476,14 @@ interpretedExplicitOrdinal
 interpretedExplicitOrdinal value =
   case interpretedForm value of
     ExplicitForm explicitValue -> Just (explicitOrdinal explicitValue)
+    _ -> Nothing
+
+interpretedInteger :: InterpretedValue -> Maybe Integer
+interpretedInteger value =
+  case interpretedForm value of
+    IntegerForm integer -> Just integer
+    ExplicitForm (EvaluatedExplicit 1 _ explicitValue) ->
+      toInteger <$> naturalAtOrdinal (superEllipsisValueOrdinal explicitValue)
     _ -> Nothing
 
 interpretedFormulationLevel :: InterpretedValue -> Maybe Natural

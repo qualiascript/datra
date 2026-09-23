@@ -13,6 +13,8 @@ data Operator
   | RangePlusOperator
   | RangeMinusOperator
   | AdditionOperator
+  | SubtractionOperator
+  | MinusOperator
   | MultiplicationOperator
   | ExponentiationOperator
   | ConcatenationOperator
@@ -30,6 +32,8 @@ operatorCanonicalSymbol RangeOperator = "<..>"
 operatorCanonicalSymbol RangePlusOperator = "..+"
 operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
+operatorCanonicalSymbol SubtractionOperator = "-"
+operatorCanonicalSymbol MinusOperator = "minus"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
@@ -47,6 +51,8 @@ operatorSourceSymbol RangeOperator = Just ".."
 operatorSourceSymbol RangePlusOperator = Just ".."
 operatorSourceSymbol RangeMinusOperator = Just "..-"
 operatorSourceSymbol AdditionOperator = Just "+"
+operatorSourceSymbol SubtractionOperator = Just "-"
+operatorSourceSymbol MinusOperator = Just "-"
 operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","

@@ -65,9 +65,13 @@ library
         EllipsisInsertion
         EllipsisRange
         EllipsisNatural
+        EllipsisInteger
         NaturalRange
         ValuedNaturalRange
         NaturalType
+        IntegerRange
+        ValuedIntegerRange
+        IntegerType
         IdentifierType
         SimpleIdentifierType
         AtlasMapFederation
@@ -177,6 +181,8 @@ library
         NumericalOperators.Semantics
         MapOperators.Internal
         NaturalRange.Interval
+        IntegerRange.Interval
+        IntegerRange.Encoding
         OrdinalSequence
         SuperEllipsisRange.Description
         Evaluation.Access
@@ -254,6 +260,7 @@ library
         src/DatraTypes/Strings
         src/DatraTypes/Ellipses
         src/DatraTypes/NaturalRanges
+        src/DatraTypes/IntegerRanges
         src/DatraTypes/Identifiers
         src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals

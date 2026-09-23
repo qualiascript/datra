@@ -16,7 +16,7 @@ module Parsing
 import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
-  ( Operator (InfixL, InfixR, Postfix)
+  ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
@@ -25,7 +25,6 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
-import Numeric.Natural (Natural)
 import DatraLanguage.AST
   ( IdentifierString (IdentifierString)
   , Expression
@@ -42,6 +41,8 @@ import DatraLanguage.AST
       , MapSpecification
       , IdentifierOperation
       , Multiplication
+      , Subtraction
+      , Minus
       , NaturalType
       , NaturalRange
       , NaturalRangeUpwards
@@ -50,6 +51,13 @@ import DatraLanguage.AST
       , SuperEllipsisRangePlus
       , ValuedNaturalRange
       , ValuedNaturalRangeUpwards
+      , IntegerRange
+      , IntegerRangeUpwards
+      , IntegerRangeDownwards
+      , ValuedIntegerRange
+      , ValuedIntegerRangeUpwards
+      , ValuedIntegerRangeDownwards
+      , IntegerType
       )
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -200,7 +208,8 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ NaturalType <$ astSymbol "Nat"
+    [ IntegerType <$ astSymbol "Int"
+    , NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
     , AsciiStringLiteral <$> astStandardString
@@ -220,6 +229,8 @@ astForm =
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
       , astUnary AST.RangeMinusOperator SuperEllipsisRangeMinus
       , astBinary AST.AdditionOperator Addition
+      , astBinary AST.SubtractionOperator Subtraction
+      , astUnary AST.MinusOperator Minus
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
       , astBinary AST.ConcatenationOperator MapConcatenation
@@ -265,8 +276,9 @@ astSequence = do
 data NaturalRangePrefix = FromRange | WithinRange
 
 data NaturalRangeBounds
-  = NaturalRangeTo Natural Natural
-  | NaturalRangeFromUpwards Natural
+  = NaturalRangeTo Integer Integer
+  | NaturalRangeFromUpwards Integer
+  | IntegerRangeFromDownwards Integer
 
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
@@ -281,12 +293,19 @@ astNaturalRangeExpression = do
 -- after a @from@ or @within@ prefix.
 astNaturalRangeBounds :: Parser NaturalRangeBounds
 astNaturalRangeBounds = do
-  origin <- astLexeme Lexer.decimal
+  origin <- astSignedInteger
   choice
     [ NaturalRangeTo origin
-        <$> (astSymbol "to" *> astLexeme Lexer.decimal)
+        <$> (astSymbol "to" *> astSignedInteger)
     , NaturalRangeFromUpwards origin <$ astSymbol "upwards"
+    , IntegerRangeFromDownwards origin <$ astSymbol "downwards"
     ]
+
+astSignedInteger :: Parser Integer
+astSignedInteger =
+  astLexeme
+    (try (char '-' *> (negate <$> Lexer.decimal))
+      <|> Lexer.decimal)
 
 astUnary
   :: AST.Operator
@@ -454,6 +473,7 @@ termAtom =
   choice
     [ parenthesizedExpression
     , try naturalRangeExpression
+    , IntegerType <$ keyword "Int"
     , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierString
@@ -502,25 +522,46 @@ naturalRangeExpression = do
 -- after a @from@ or @within@ prefix.
 naturalRangeBounds :: Parser NaturalRangeBounds
 naturalRangeBounds = do
-  origin <- Lexer.decimal <* keywordSeparator
+  origin <- signedIntegerToken <* keywordSeparator
   choice
     [ NaturalRangeTo origin
-        <$> (continuedKeyword "to" *> lexeme Lexer.decimal)
+        <$> (continuedKeyword "to" *> lexeme signedIntegerToken)
     , NaturalRangeFromUpwards origin <$ keyword "upwards"
+    , IntegerRangeFromDownwards origin <$ keyword "downwards"
     ]
+
+signedIntegerToken :: Parser Integer
+signedIntegerToken =
+  try (char '-' *> (negate <$> Lexer.decimal))
+    <|> try
+      (keywordToken "minus" *> keywordSeparator
+        *> (negate <$> Lexer.decimal))
+    <|> Lexer.decimal
 
 naturalRangeExpressionFor
   :: NaturalRangePrefix
   -> NaturalRangeBounds
   -> Expression
 naturalRangeExpressionFor FromRange (NaturalRangeTo origin target) =
-  NaturalRange origin target
+  if origin >= 0 && target >= 0
+    then NaturalRange (fromInteger origin) (fromInteger target)
+    else IntegerRange origin target
 naturalRangeExpressionFor FromRange (NaturalRangeFromUpwards origin) =
-  NaturalRangeUpwards origin
+  if origin >= 0
+    then NaturalRangeUpwards (fromInteger origin)
+    else IntegerRangeUpwards origin
+naturalRangeExpressionFor FromRange (IntegerRangeFromDownwards origin) =
+  IntegerRangeDownwards origin
 naturalRangeExpressionFor WithinRange (NaturalRangeTo origin target) =
-  ValuedNaturalRange origin target
+  if origin >= 0 && target >= 0
+    then ValuedNaturalRange (fromInteger origin) (fromInteger target)
+    else ValuedIntegerRange origin target
 naturalRangeExpressionFor WithinRange (NaturalRangeFromUpwards origin) =
-  ValuedNaturalRangeUpwards origin
+  if origin >= 0
+    then ValuedNaturalRangeUpwards (fromInteger origin)
+    else ValuedIntegerRangeUpwards origin
+naturalRangeExpressionFor WithinRange (IntegerRangeFromDownwards origin) =
+  ValuedIntegerRangeDownwards origin
 
 keyword :: Text -> Parser Text
 keyword value = lexeme (keywordToken value)
@@ -547,8 +588,13 @@ parenthesizedExpression =
 arithmeticOperatorTable :: [[Operator Parser Expression]]
 arithmeticOperatorTable =
   [ [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
+  , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
+    , Prefix (Minus <$ continuedKeyword "minus")
+    ]
   , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
-  , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
+  , [ InfixL (Addition <$ continuedOperator AST.AdditionOperator)
+    , InfixL (Subtraction <$ continuedOperator AST.SubtractionOperator)
+    ]
   ]
 
 -- Concatenation binds after ranges. Access and forward specification share a

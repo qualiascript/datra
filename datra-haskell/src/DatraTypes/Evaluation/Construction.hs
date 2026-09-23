@@ -1,6 +1,7 @@
 -- | Total constructors for primitive evaluated Datra values.
 module Evaluation.Construction
   ( makeNatural
+  , makeInteger
   , makeAsciiString
   , makeExplicit
   , makeExplicitValue
@@ -11,6 +12,7 @@ module Evaluation.Construction
 import Data.Char (ord)
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
+import IntegerRange.Encoding (integerSingletonInsertion)
 import Numeric.Natural (Natural)
 import NumericalOperators.NumericalOperand (someSuperEllipsis)
 import SuperEllipsisValue
@@ -18,13 +20,32 @@ import SuperEllipsisValue
   , minimumSuperEllipsisValueRank
   )
 import SuperEllipsisInsertion
-  ( fullSomeSuperEllipsisInsertion
+  ( eraseSuperEllipsisInsertion
+  , fullSomeSuperEllipsisInsertion
   , someSuperEllipsisInsertionOrderType
   , someSuperEllipsisInsertionPositionAt
   )
 
 makeNatural :: Natural -> InterpretedValue
 makeNatural = makeExplicit NaturalOrigin . finiteOrdinal
+
+-- | Canonical finite signed value. Nonnegative results retain their existing
+-- natural representation; negative results use the complemented @Nat x 2@
+-- insertion.
+makeInteger :: Integer -> InterpretedValue
+makeInteger integer
+  | integer >= 0 = makeNatural (fromInteger integer)
+  | otherwise =
+      integerSingletonInsertion integer $ \valueInsertion ->
+        let semantics = IntegerSemantics integer
+            value =
+              makeSingletonInterpretedValue
+                (IntegerForm integer)
+                (ValidInsertion (eraseSuperEllipsisInsertion valueInsertion))
+                (singletonMap semantics value)
+                TotalInterpretedMap
+                semantics
+        in value
 
 -- | Construct the semantic two-page presentation of a nonempty ASCII string,
 -- or the canonical empty presentation for an empty string.

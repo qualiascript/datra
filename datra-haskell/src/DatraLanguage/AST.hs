@@ -53,7 +53,16 @@ data Expression
   | ValuedNaturalRange Natural Natural
   | ValuedNaturalRangeUpwards Natural
   | NaturalType
+  | IntegerRange Integer Integer
+  | IntegerRangeUpwards Integer
+  | IntegerRangeDownwards Integer
+  | ValuedIntegerRange Integer Integer
+  | ValuedIntegerRangeUpwards Integer
+  | ValuedIntegerRangeDownwards Integer
+  | IntegerType
   | Addition Expression Expression
+  | Subtraction Expression Expression
+  | Minus Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -87,7 +96,16 @@ data OperatorExpression
   | InclusiveValuedNaturalRange Natural Natural
   | InclusiveValuedNaturalRangeUpwards Natural
   | NaturalTypeValue
+  | InclusiveIntegerRange Integer Integer
+  | InclusiveIntegerRangeUpwards Integer
+  | InclusiveIntegerRangeDownwards Integer
+  | InclusiveValuedIntegerRange Integer Integer
+  | InclusiveValuedIntegerRangeUpwards Integer
+  | InclusiveValuedIntegerRangeDownwards Integer
+  | IntegerTypeValue
   | Add OperatorExpression OperatorExpression
+  | Subtract OperatorExpression OperatorExpression
+  | Negate OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -134,8 +152,21 @@ normalizeExpression (ValuedNaturalRange origin target) =
 normalizeExpression (ValuedNaturalRangeUpwards origin) =
   ValuedNaturalRangeUpwards origin
 normalizeExpression NaturalType = NaturalType
+normalizeExpression (IntegerRange origin target) = IntegerRange origin target
+normalizeExpression (IntegerRangeUpwards origin) = IntegerRangeUpwards origin
+normalizeExpression (IntegerRangeDownwards origin) = IntegerRangeDownwards origin
+normalizeExpression (ValuedIntegerRange origin target) =
+  ValuedIntegerRange origin target
+normalizeExpression (ValuedIntegerRangeUpwards origin) =
+  ValuedIntegerRangeUpwards origin
+normalizeExpression (ValuedIntegerRangeDownwards origin) =
+  ValuedIntegerRangeDownwards origin
+normalizeExpression IntegerType = IntegerType
 normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Subtraction left right) =
+  Subtraction (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Minus operand) = Minus (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -198,7 +229,19 @@ lower (ValuedNaturalRange origin target) =
 lower (ValuedNaturalRangeUpwards origin) =
   InclusiveValuedNaturalRangeUpwards origin
 lower NaturalType = NaturalTypeValue
+lower (IntegerRange origin target) = InclusiveIntegerRange origin target
+lower (IntegerRangeUpwards origin) = InclusiveIntegerRangeUpwards origin
+lower (IntegerRangeDownwards origin) = InclusiveIntegerRangeDownwards origin
+lower (ValuedIntegerRange origin target) =
+  InclusiveValuedIntegerRange origin target
+lower (ValuedIntegerRangeUpwards origin) =
+  InclusiveValuedIntegerRangeUpwards origin
+lower (ValuedIntegerRangeDownwards origin) =
+  InclusiveValuedIntegerRangeDownwards origin
+lower IntegerType = IntegerTypeValue
 lower (Addition left right) = Add (lower left) (lower right)
+lower (Subtraction left right) = Subtract (lower left) (lower right)
+lower (Minus operand) = Negate (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -267,8 +310,25 @@ prettyOperator (InclusiveValuedNaturalRange origin target) =
 prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
   prettyForm "within" [pretty origin, "upwards"]
 prettyOperator NaturalTypeValue = "Nat"
+prettyOperator (InclusiveIntegerRange origin target) =
+  prettyForm "from" [prettyInteger origin, "to", prettyInteger target]
+prettyOperator (InclusiveIntegerRangeUpwards origin) =
+  prettyForm "from" [prettyInteger origin, "upwards"]
+prettyOperator (InclusiveIntegerRangeDownwards origin) =
+  prettyForm "from" [prettyInteger origin, "downwards"]
+prettyOperator (InclusiveValuedIntegerRange origin target) =
+  prettyForm "within" [prettyInteger origin, "to", prettyInteger target]
+prettyOperator (InclusiveValuedIntegerRangeUpwards origin) =
+  prettyForm "within" [prettyInteger origin, "upwards"]
+prettyOperator (InclusiveValuedIntegerRangeDownwards origin) =
+  prettyForm "within" [prettyInteger origin, "downwards"]
+prettyOperator IntegerTypeValue = "Int"
 prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
+prettyOperator (Subtract left right) =
+  prettyBinary SubtractionOperator left right
+prettyOperator (Negate operand) =
+  prettyUnary MinusOperator operand
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =
@@ -321,6 +381,9 @@ prettyFormFor operator = prettyForm (operatorCanonicalSymbol operator)
 prettyForm :: String -> [Doc annotation] -> Doc annotation
 prettyForm headName operands =
   parens (hsep (pretty headName : operands))
+
+prettyInteger :: Integer -> Doc annotation
+prettyInteger = pretty
 
 -- | Render an identifier string when possible, otherwise use the standard
 -- quoted spelling. Standard strings leave the keyboard-visible ASCII range

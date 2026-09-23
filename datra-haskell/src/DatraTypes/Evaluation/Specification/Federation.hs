@@ -18,10 +18,13 @@ import DatraOrdinal
 import Evaluation.Federation
   ( selectNaturalRangeMember
   , selectValuedNaturalRangeMember
+  , selectIntegerRangeMember
+  , selectValuedIntegerRangeMember
   )
 import Evaluation.Specification.Decision
 import Evaluation.Value
 import NaturalRange qualified
+import IntegerRange qualified
 import Numeric.Natural (Natural)
 import SuperEllipsisRange qualified as Range
 
@@ -64,6 +67,24 @@ selectAtomicFederationMember source target =
           (DecisionProved . EvaluatedValuedNaturalRangeMember)
           (sourceEllipsisNatural source
             >>= selectValuedNaturalRangeMember targetRange))
+    PrimitiveAtlasMapFederation
+        (IntegerRangeAtlasMapFederation
+          (EvaluatedIntegerRange targetRange)) ->
+      Just
+        (maybe
+          DecisionRefuted
+          (DecisionProved . EvaluatedIntegerRangeMember)
+          (sourceIntegerSubrange source
+            >>= selectIntegerRangeMember targetRange))
+    PrimitiveAtlasMapFederation
+        (ValuedIntegerRangeAtlasMapFederation
+          (EvaluatedValuedIntegerRange targetRange)) ->
+      Just
+        (maybe
+          DecisionRefuted
+          (DecisionProved . EvaluatedValuedIntegerRangeMember)
+          (interpretedInteger source
+            >>= selectValuedIntegerRangeMember targetRange))
     PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
@@ -104,6 +125,64 @@ sourceNaturalSubrange value =
     ExpansionMapForm _ _ -> mapFormSubrange value
     MapForm -> mapFormSubrange value
     _ -> Nothing
+
+sourceIntegerSubrange
+  :: InterpretedValue
+  -> Maybe IntegerRange.IntegerSubrangeDescription
+sourceIntegerSubrange value =
+  case interpretedForm value of
+    IntegerRangeForm (EvaluatedIntegerRange valueRange) ->
+      Just
+        (IntegerRange.integerSubrangeDescription
+          (IntegerRange.integerRangeFullSubrange valueRange))
+    SequentialMapForm -> integerMapFormSubrange value
+    ConcatenatedMapForm _ _ -> integerMapFormSubrange value
+    ExpansionMapForm _ _ -> integerMapFormSubrange value
+    MapForm -> integerMapFormSubrange value
+    _ ->
+      IntegerRange.FiniteIntegerSubrange <$> interpretedInteger value
+        <*> interpretedInteger value
+
+integerMapFormSubrange
+  :: InterpretedValue
+  -> Maybe IntegerRange.IntegerSubrangeDescription
+integerMapFormSubrange value
+  | interpretedMapPageCardinality (interpretedMap value) == 0 =
+      Just IntegerRange.EmptyIntegerSubrange
+  | otherwise = do
+      cardinality <-
+        naturalAtOrdinal
+          (interpretedMapFinalOrderType (interpretedMap value))
+      values <- traverse valueAt (finitePositions cardinality)
+      integerSequenceSubrange values
+  where
+    valueAt position =
+      interpretedMapValueAt
+        (interpretedMap value)
+        (finiteOrdinal position)
+        >>= interpretedInteger
+    finitePositions 0 = []
+    finitePositions cardinality = [0 .. cardinality - 1]
+
+integerSequenceSubrange
+  :: [Integer]
+  -> Maybe IntegerRange.IntegerSubrangeDescription
+integerSequenceSubrange [] = Just IntegerRange.EmptyIntegerSubrange
+integerSequenceSubrange [value] =
+  Just (IntegerRange.FiniteIntegerSubrange value value)
+integerSequenceSubrange values@(first : second : _)
+  | second == first + 1 && ascending values =
+      Just (IntegerRange.FiniteIntegerSubrange first (last values))
+  | first == second + 1 && descending values =
+      Just (IntegerRange.FiniteIntegerSubrange first (last values))
+  | otherwise = Nothing
+  where
+    ascending (left : right : rest) =
+      right == left + 1 && ascending (right : rest)
+    ascending _ = True
+    descending (left : right : rest) =
+      left == right + 1 && descending (right : rest)
+    descending _ = True
 
 mapFormSubrange
   :: InterpretedValue

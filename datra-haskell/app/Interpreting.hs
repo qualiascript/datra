@@ -15,6 +15,7 @@ module Interpreting
   , interpretedValueKind
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMap
@@ -89,8 +90,21 @@ interpretNormalizedExpression expressionValue =
     ValuedNaturalRangeUpwards origin ->
       valuedNaturalRangeUpwardsValue origin
     NaturalType -> naturalTypeValue
+    IntegerRange origin target -> integerRangeValue origin target
+    IntegerRangeUpwards origin -> integerRangeUpwardsValue origin
+    IntegerRangeDownwards origin -> integerRangeDownwardsValue origin
+    ValuedIntegerRange origin target ->
+      valuedIntegerRangeValue origin target
+    ValuedIntegerRangeUpwards origin ->
+      valuedIntegerRangeUpwardsValue origin
+    ValuedIntegerRangeDownwards origin ->
+      valuedIntegerRangeDownwardsValue origin
+    IntegerType -> integerTypeValue
     Addition left right ->
       interpretBinary addValues left right
+    Subtraction left right ->
+      interpretBinary subtractValues left right
+    Minus operand -> interpretExpressionReason operand >>= minusValue
     Multiplication left right ->
       interpretBinary multiplyValues left right
     Exponentiation base exponentValue ->

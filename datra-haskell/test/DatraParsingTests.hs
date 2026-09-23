@@ -120,6 +120,26 @@ regressionTests = do
     "Nat"
     AST.naturalType
   assertAstOutput
+    "IntegerType literal"
+    "Int"
+    AST.integerType
+  assertAstOutput
+    "descending open integer range"
+    "from -1 downwards"
+    (AST.integerFromDownwards (-1))
+  assertAstOutput
+    "bounded valued integer range"
+    "within -3 to 4"
+    (AST.integerWithinTo (-3) 4)
+  assertAstOutput
+    "unary integer negation"
+    "-6"
+    (AST.minus (natural 6))
+  assertAstOutput
+    "integer subtraction"
+    "5 - 8"
+    ((AST.-) (natural 5) (natural 8))
+  assertAstOutput
     "EllipsisNatural specification into NaturalType"
     "2 ~> Nat"
     (natural 2 ~> AST.naturalType)

@@ -18,6 +18,15 @@ module DatraLanguage.AST.Syntax
   , withinTo
   , withinUpwards
   , naturalType
+  , integerFromTo
+  , integerFromUpwards
+  , integerFromDownwards
+  , integerWithinTo
+  , integerWithinUpwards
+  , integerWithinDownwards
+  , integerType
+  , minus
+  , (-)
   , (+)
   , (*)
   , (^)
@@ -31,7 +40,7 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   )
 import Numeric.Natural (Natural)
-import Prelude hiding ((+), (*), (^))
+import Prelude hiding ((+), (-), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
@@ -100,10 +109,39 @@ withinUpwards = ValuedNaturalRangeUpwards
 naturalType :: Expression
 naturalType = NaturalType
 
+integerFromTo :: Integer -> Integer -> Expression
+integerFromTo = IntegerRange
+
+integerFromUpwards :: Integer -> Expression
+integerFromUpwards = IntegerRangeUpwards
+
+integerFromDownwards :: Integer -> Expression
+integerFromDownwards = IntegerRangeDownwards
+
+integerWithinTo :: Integer -> Integer -> Expression
+integerWithinTo = ValuedIntegerRange
+
+integerWithinUpwards :: Integer -> Expression
+integerWithinUpwards = ValuedIntegerRangeUpwards
+
+integerWithinDownwards :: Integer -> Expression
+integerWithinDownwards = ValuedIntegerRangeDownwards
+
+integerType :: Expression
+integerType = IntegerType
+
+minus :: Expression -> Expression
+minus = Minus
+
 infixl 6 +
 
 (+) :: Expression -> Expression -> Expression
 (+) = Addition
+
+infixl 6 -
+
+(-) :: Expression -> Expression -> Expression
+(-) = Subtraction
 
 infixl 7 *
 

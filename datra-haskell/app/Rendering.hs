@@ -26,6 +26,7 @@ import DatraOrdinal
   )
 import Numeric.Natural (Natural)
 import NaturalRange (NaturalRangeTarget (..))
+import IntegerRange (IntegerRangeTarget (..))
 import Prettyprinter
   ( Doc
   , (<+>)
@@ -85,12 +86,18 @@ prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result =
   case result of
     CanonicalExplicit _ value -> prettyExplicit value
+    CanonicalInteger value ->
+      prettySourceSymbol MinusOperator <> pretty (negate value)
     CanonicalFormulation level -> prettyFormulation level
     CanonicalRange description -> prettyRange description
     CanonicalNaturalRange origin target -> prettyNaturalRange origin target
     CanonicalValuedNaturalRange origin target ->
       prettyValuedNaturalRange origin target
     CanonicalNaturalType -> "Nat"
+    CanonicalIntegerRange origin target -> prettyIntegerRange origin target
+    CanonicalValuedIntegerRange origin target ->
+      prettyValuedIntegerRange origin target
+    CanonicalIntegerType -> "Int"
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
         (map prettyRange descriptions)
@@ -171,6 +178,30 @@ prettyValuedNaturalRange origin target =
     FiniteNaturalTarget final ->
       "within " <> pretty origin <> " to " <> pretty final
     UpwardsTarget -> "within " <> pretty origin <> " upwards"
+
+prettyIntegerRange
+  :: Integer
+  -> IntegerRangeTarget
+  -> Doc annotation
+prettyIntegerRange origin target =
+  case target of
+    FiniteIntegerTarget final ->
+      "from " <> pretty origin <> " to " <> pretty final
+    UpwardsIntegerTarget -> "from " <> pretty origin <> " upwards"
+    DownwardsIntegerTarget -> "from " <> pretty origin <> " downwards"
+    AllIntegersTarget -> "Int"
+
+prettyValuedIntegerRange
+  :: Integer
+  -> IntegerRangeTarget
+  -> Doc annotation
+prettyValuedIntegerRange origin target =
+  case target of
+    FiniteIntegerTarget final ->
+      "within " <> pretty origin <> " to " <> pretty final
+    UpwardsIntegerTarget -> "within " <> pretty origin <> " upwards"
+    DownwardsIntegerTarget -> "within " <> pretty origin <> " downwards"
+    AllIntegersTarget -> "Int"
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"

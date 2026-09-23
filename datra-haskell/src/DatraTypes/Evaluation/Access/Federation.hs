@@ -73,6 +73,14 @@ atomicFederationAccess value =
               [interpretedSemantics value]
       in Just (directRule (fixedLayout coalitionMap))
     PrimitiveAtlasMapFederation
+        (ValuedIntegerRangeAtlasMapFederation _) ->
+      let coalitionMap =
+            InterpretedMap
+              1
+              (singletonOrdinalOrderedValues value)
+              [interpretedSemantics value]
+      in Just (directRule (fixedLayout coalitionMap))
+    PrimitiveAtlasMapFederation
         (NaturalRangeAtlasMapFederation sourceRange) ->
       Just
         AtomicFederationAccess
@@ -85,6 +93,8 @@ atomicFederationAccess value =
           , atomicFederationDecision =
               decideNaturalRangeAccess sourceRange
           }
+    PrimitiveAtlasMapFederation (IntegerRangeAtlasMapFederation _) ->
+      Nothing
     PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
@@ -158,6 +168,8 @@ federationIsCoalition federation =
   case federation of
     PrimitiveAtlasMapFederation
         (ValuedNaturalRangeAtlasMapFederation _) -> True
+    PrimitiveAtlasMapFederation
+        (ValuedIntegerRangeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
         (IdentifierTypeAtlasMapFederation _) -> True
     _ -> False

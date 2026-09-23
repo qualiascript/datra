@@ -14,9 +14,12 @@ module DatraTypes
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
   , naturalValue
+  , integerValue
   , asciiStringValue
   , formulationValue
   , addValues
+  , subtractValues
+  , minusValue
   , multiplyValues
   , exponentiateValues
   , boundedRangeValue
@@ -27,6 +30,13 @@ module DatraTypes
   , valuedNaturalRangeValue
   , valuedNaturalRangeUpwardsValue
   , naturalTypeValue
+  , integerRangeValue
+  , integerRangeUpwardsValue
+  , integerRangeDownwardsValue
+  , valuedIntegerRangeValue
+  , valuedIntegerRangeUpwardsValue
+  , valuedIntegerRangeDownwardsValue
+  , integerTypeValue
   , identifierTypeValue
   , simpleIdentifierTypeValue
   , assignIdentifierValues
@@ -38,6 +48,7 @@ module DatraTypes
   , interpretedValueKind
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMap
@@ -60,6 +71,7 @@ import Evaluation.Construction
   ( makeAsciiString
   , makeFormulation
   , makeNatural
+  , makeInteger
   )
 import Evaluation.Map
   ( concatenateValues
@@ -68,12 +80,21 @@ import Evaluation.Map
   )
 import Evaluation.Numerical
   ( addValues
+  , subtractValues
+  , minusValue
   , exponentiateValues
   , multiplyValues
   )
 import Evaluation.Range
   ( boundedRangeValue
   , naturalTypeValue
+  , integerRangeValue
+  , integerRangeUpwardsValue
+  , integerRangeDownwardsValue
+  , valuedIntegerRangeValue
+  , valuedIntegerRangeUpwardsValue
+  , valuedIntegerRangeDownwardsValue
+  , integerTypeValue
   , naturalRangeUpwardsValue
   , naturalRangeValue
   , openMinusRangeValue
@@ -95,6 +116,7 @@ import Evaluation.Value
   , InterpretedValue
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
   , interpretedMapCardinality
@@ -111,6 +133,9 @@ import Data.List (find)
 
 naturalValue :: Natural -> InterpretedValue
 naturalValue = makeNatural
+
+integerValue :: Integer -> InterpretedValue
+integerValue = makeInteger
 
 asciiStringValue :: String -> Either InterpretingError InterpretedValue
 asciiStringValue value =

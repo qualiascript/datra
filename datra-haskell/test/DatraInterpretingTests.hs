@@ -28,6 +28,7 @@ import Interpreting
   , interpretExpressionReason
   , interpretLocatedExpression
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
   , interpretedMapCardinality
@@ -88,6 +89,7 @@ testTree =
   testGroup "Datra interpreter"
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
+        , testCase "integers and integer ranges" testIntegers
         , testCase "ranges" testRanges
         , testCase "canonical results" testCanonicalResults
         , testCase "rendering" testRendering
@@ -103,6 +105,10 @@ testTree =
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
         , testProperty "natural multiplication agrees with Haskell" propNaturalMultiplication
         , testProperty "natural exponentiation agrees with Haskell" propNaturalExponentiation
+        , testProperty "integer addition agrees with Haskell" propIntegerAddition
+        , testProperty "integer subtraction agrees with Haskell" propIntegerSubtraction
+        , testProperty "integer multiplication agrees with Haskell" propIntegerMultiplication
+        , testProperty "integer powers agree with Haskell" propIntegerExponentiation
         ]
     ]
 
@@ -132,8 +138,56 @@ propNaturalExponentiation = H.property $ do
       (Exponentiation (EllipsisNatural base) (EllipsisNatural exponentValue))
     H.=== Just (base ^ exponentValue)
 
+propIntegerAddition :: H.Property
+propIntegerAddition = H.property $ do
+  left <- H.forAll integerGen
+  right <- H.forAll integerGen
+  interpretedSigned
+      (Addition (integerExpression left) (integerExpression right))
+    H.=== Just (left + right)
+
+propIntegerSubtraction :: H.Property
+propIntegerSubtraction = H.property $ do
+  left <- H.forAll integerGen
+  right <- H.forAll integerGen
+  interpretedSigned
+      (Subtraction (integerExpression left) (integerExpression right))
+    H.=== Just (left - right)
+
+propIntegerMultiplication :: H.Property
+propIntegerMultiplication = H.property $ do
+  left <- H.forAll integerGen
+  right <- H.forAll integerGen
+  interpretedSigned
+      (Multiplication (integerExpression left) (integerExpression right))
+    H.=== Just (left * right)
+
+propIntegerExponentiation :: H.Property
+propIntegerExponentiation = H.property $ do
+  base <- H.forAll (Gen.integral (Range.linear (-12) 12))
+  exponentValue <- H.forAll (Gen.integral (Range.linear 0 8))
+  interpretedSigned
+      (Exponentiation
+        (integerExpression base)
+        (EllipsisNatural exponentValue))
+    H.=== Just (base ^ exponentValue)
+
 naturalGen :: H.Gen Natural
 naturalGen = Gen.integral (Range.linear 0 10000)
+
+integerGen :: H.Gen Integer
+integerGen = Gen.integral (Range.linear (-10000) 10000)
+
+integerExpression :: Integer -> Expression
+integerExpression value
+  | value < 0 = Minus (EllipsisNatural (fromInteger (negate value)))
+  | otherwise = EllipsisNatural (fromInteger value)
+
+interpretedSigned :: Expression -> Maybe Integer
+interpretedSigned expressionValue =
+  case interpretExpressionReason expressionValue of
+    Left _ -> Nothing
+    Right value -> interpretedInteger value
 
 interpretedNatural :: Expression -> Maybe Natural
 interpretedNatural expressionValue =
@@ -154,6 +208,91 @@ naturalOrdinal value = do
   if level == 1
     then naturalAtOrdinal ordinalValue
     else Nothing
+
+testIntegers :: IO ()
+testIntegers = do
+  expectValue "integer negation" (AST.minus (natural 6)) $ \value ->
+    assert "minus creates the complemented integer -6"
+      ( interpretedValueKind value == IntegerValueKind
+        && interpretedInteger value == Just (-6)
+        && renderInterpretedValue value == "-6"
+      )
+  expectValue
+      "integer addition"
+      ((AST.+) (AST.minus (natural 6)) (natural 2)) $ \value ->
+    assert "addition extends to finite integers"
+      (interpretedInteger value == Just (-4))
+  expectValue
+      "integer subtraction"
+      ((AST.-) (natural 5) (natural 8)) $ \value ->
+    assert "subtraction produces a complemented integer"
+      (interpretedInteger value == Just (-3))
+  expectValue
+      "integer multiplication"
+      ((AST.*) (AST.minus (natural 2)) (AST.minus (natural 3))) $ \value ->
+    assert "multiplication extends to finite integers"
+      (interpretedInteger value == Just 6)
+  expectValue
+      "odd integer power"
+      ((AST.^) (AST.minus (natural 2)) (natural 3)) $ \value ->
+    assert "negative bases support natural exponents"
+      (interpretedInteger value == Just (-8))
+  expectValue
+      "even integer power"
+      ((AST.^) (AST.minus (natural 2)) (natural 2)) $ \value ->
+    assert "even powers canonicalize back to naturals"
+      (interpretedInteger value == Just 4)
+  expectValue
+      "descending integer range"
+      (AST.integerFromDownwards (-1)) $ \value ->
+    assert "integer range rendering retains its signed bound and direction"
+      (renderInterpretedValue value == "from -1 downwards")
+  expectValue
+      "valued integer range"
+      (AST.integerWithinTo (-3) 4) $ \value ->
+    assert "valued integer ranges retain inclusive signed syntax"
+      (renderInterpretedValue value == "within -3 to 4")
+  expectValue "integer type" AST.integerType $ \value ->
+    assert "Int is the full Nat-product-with-two federation"
+      (renderInterpretedValue value == "Int")
+  expectValue
+      "negative integer specification into Int"
+      (AST.minus (natural 6) ~> AST.integerType) $ \value ->
+    assert "Int specification selects complemented members"
+      (renderInterpretedValue value == "-6 ~> Int")
+  expectValue
+      "directed integer sequence specification"
+      ( (AST.minus (natural 2)
+          <:> AST.minus (natural 1)
+          <:> natural 0)
+          ~> AST.integerFromTo (-3) 2
+      ) $ \value ->
+    assert "integer ranges select contiguous signed sequences"
+      (renderInterpretedValue value == "(-2; -1; 0) ~> from -3 to 2")
+  expectValue
+      "valued integer subfederation composition"
+      ( (AST.minus (natural 2) ~> AST.integerWithinTo (-2) 3)
+          ~> AST.integerType
+      ) $ \value ->
+    assert "valued integer ranges are subfederations of Int"
+      (renderInterpretedValue value == "-2 ~> Int")
+  expectValue
+      "Nat subfederation of Int"
+      ((natural 2 ~> AST.naturalType) ~> AST.integerType) $ \value ->
+    assert "the direct half of Int contains every natural"
+      (renderInterpretedValue value == "2 ~> Int")
+  assert "signed values do not participate in transfinite arithmetic"
+    (case interpretExpressionReason
+        ((AST.+) (AST.minus (natural 1)) (...)) of
+      Left
+          (ExpectedFiniteIntegerOperand
+            RightOperand FormulationValueKind) -> True
+      _ -> False)
+  assert "negative exponents remain unsupported"
+    (case interpretExpressionReason
+        ((AST.^) (natural 2) (AST.minus (natural 1))) of
+      Left (ExpectedNaturalExponent IntegerValueKind) -> True
+      _ -> False)
 
 testLiteralsAndArithmetic :: IO ()
 testLiteralsAndArithmetic = do
