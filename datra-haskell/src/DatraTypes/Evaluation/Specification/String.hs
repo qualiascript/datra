@@ -1,6 +1,7 @@
 -- | Finite membership decisions for total strings against string federations.
 module Evaluation.Specification.String
   ( federationProducesStrings
+  , federationUsesWeakToString
   , selectStringFederationMember
   ) where
 
@@ -32,6 +33,21 @@ federationProducesStrings federation =
       federationProducesStrings left && federationProducesStrings right
     SequentialAtlasMapFederation _ -> False
     ExpansionAtlasMapFederation _ _ -> False
+
+federationUsesWeakToString :: InterpretedAtlasMapFederation -> Bool
+federationUsesWeakToString federation =
+  case federation of
+    SingletonAtlasMapFederation _ -> False
+    PrimitiveAtlasMapFederation primitive ->
+      case primitive of
+        WeakToStringAtlasMapFederation _ -> True
+        _ -> False
+    ConcatenatedAtlasMapFederation left right ->
+      federationUsesWeakToString left || federationUsesWeakToString right
+    SequentialAtlasMapFederation members ->
+      any federationUsesWeakToString members
+    ExpansionAtlasMapFederation left right ->
+      federationUsesWeakToString left || federationUsesWeakToString right
 
 -- | Select a concrete string by traversing the retained string-federation
 -- expression. Concatenations are split only at the finitely many character

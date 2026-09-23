@@ -26,6 +26,7 @@ import Evaluation.Error
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Specification.Decision (Decision (..))
+import Evaluation.Specification.String (federationUsesWeakToString)
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   )
@@ -35,10 +36,12 @@ specifyValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-specifyValues source target =
-  if interpretedCanonicalResult source == interpretedCanonicalResult target
-    then Right source
-    else specifyValuesWithoutIdentity source target
+specifyValues source target
+  | federationUsesWeakToString (interpretedAtlasMapFederation target) =
+      Left NoCanonicalStringConversion
+  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+      Right source
+  | otherwise = specifyValuesWithoutIdentity source target
 
 specifyValuesWithoutIdentity
   :: InterpretedValue

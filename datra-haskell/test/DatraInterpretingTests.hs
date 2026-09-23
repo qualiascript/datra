@@ -709,16 +709,13 @@ testStringTemplates = do
         (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
     assert "$!x equals $x when the strong proof exists"
       (renderInterpretedValue value == "true")
-  assert "weak interpolation cannot be inverted by specification"
+  assert "weak interpolation is explicitly rejected by specification"
     (case interpretExpressionReason
         (AsciiStringLiteral "1" ~>
           StringTemplate
             [StringTemplateWeakInterpolation
               (EitherType NaturalType NaturalType)]) of
-      Left
-          (AtlasMapFederationOperationUndecidable
-            (NoAtlasMapFederationDecisionProcedure
-              AtlasMapFederationSpecification)) -> True
+      Left NoCanonicalStringConversion -> True
       _ -> False)
   expectValue
       "interpolated output is not reparsed"

@@ -144,6 +144,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "non-injective string interpolation"
         ["distinct values in the interpolation can have the same string form"]
+    NoCanonicalStringConversion ->
+      LocalizedMessage
+        "value does not have a canonical string conversion"
+        [ "weakToString can render the value, but specification requires "
+            <> "an injective canonical conversion"
+        ]
     AmbiguousStringTemplate ->
       LocalizedMessage
         "ambiguous string template"

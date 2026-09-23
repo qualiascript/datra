@@ -144,6 +144,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "interpolare de șir neinjectivă"
         ["valori distincte din interpolare pot avea aceeași formă de șir"]
+    NoCanonicalStringConversion ->
+      LocalizedMessage
+        "valoarea nu are o conversie canonică în șir"
+        [ "weakToString poate reda valoarea, dar specificarea necesită "
+            <> "o conversie canonică injectivă"
+        ]
     AmbiguousStringTemplate ->
       LocalizedMessage
         "șablon de șir ambiguu"
