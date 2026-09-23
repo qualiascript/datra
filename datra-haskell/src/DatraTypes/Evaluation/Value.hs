@@ -9,6 +9,9 @@ module Evaluation.Value
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
   , EvaluatedValuedNaturalRange (..)
+  , EvaluatedIntegerRange (..)
+  , EvaluatedValuedIntegerRange (..)
+  , EvaluatedEither (..)
   , IdentifierDependency (..)
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
@@ -41,6 +44,7 @@ module Evaluation.Value
   , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMapFinalOrderType
@@ -62,6 +66,7 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
+import BooleanType (DatraBoolean (..))
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
@@ -76,6 +81,8 @@ import MapOperators.OrderedAtlasMap
 import Numeric.Natural (Natural)
 import NaturalRange qualified
 import ValuedNaturalRange qualified
+import IntegerRange qualified
+import ValuedIntegerRange qualified
 import NumericalOperators.NumericalOperand
   ( SomeSuperEllipsis
   , someSuperEllipsisLevel
@@ -116,6 +123,24 @@ data EvaluatedValuedNaturalRange where
   EvaluatedValuedNaturalRange
     :: ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
     -> EvaluatedValuedNaturalRange
+
+data EvaluatedIntegerRange where
+  EvaluatedIntegerRange
+    :: IntegerRange.IntegerRange rangeScope federationScope
+    -> EvaluatedIntegerRange
+
+data EvaluatedValuedIntegerRange where
+  EvaluatedValuedIntegerRange
+    :: ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
+    -> EvaluatedValuedIntegerRange
+
+-- | A tagged federation union. The left and right alternatives are retained
+-- separately; selection records the Datra Boolean injection tag so equal
+-- underlying maps remain distinct federation members.
+data EvaluatedEither = EvaluatedEither
+  { evaluatedEitherLeft :: InterpretedValue
+  , evaluatedEitherRight :: InterpretedValue
+  }
 
 -- | Runtime string rule for an identifier type. The stable key makes two
 -- dependent rules comparable for subfederation decisions; simple identifiers
@@ -188,6 +213,11 @@ newtype InterpretedTotalAtlasMap = InterpretedTotalAtlasMap
 data EvaluatedAtlasMapFederationMember
   = EvaluatedNaturalRangeMember NaturalRange.NaturalSubrangeDescription
   | EvaluatedValuedNaturalRangeMember Natural
+  | EvaluatedIntegerRangeMember IntegerRange.IntegerSubrangeDescription
+  | EvaluatedValuedIntegerRangeMember Integer
+  | EvaluatedEitherMember
+      DatraBoolean
+      EvaluatedAtlasMapFederationMember
   | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
@@ -208,10 +238,16 @@ data EvaluatedSpecification = EvaluatedSpecification
 
 data ValueForm
   = ExplicitForm EvaluatedExplicit
+  | IntegerForm Integer
+  | BooleanForm DatraBoolean
+  | NothingForm
   | FormulationForm SomeSuperEllipsis
   | RangeForm EvaluatedRange
   | NaturalRangeForm EvaluatedNaturalRange
   | ValuedNaturalRangeForm EvaluatedValuedNaturalRange
+  | IntegerRangeForm EvaluatedIntegerRange
+  | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
+  | EitherForm EvaluatedEither
   | RangeConcatenationForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
@@ -248,6 +284,9 @@ interpretedMapCardinality = interpretedMapPageCardinality
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
+  | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
+  | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
+  | EitherAtlasMapFederation EvaluatedEither
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
 
@@ -261,11 +300,18 @@ type InterpretedAtlasMapFederation =
 -- separately as 'CanonicalResult'.
 data ValueSemantics
   = ExplicitSemantics Natural Ordinal
+  | IntegerSemantics Integer
+  | BooleanSemantics DatraBoolean ValueSemantics
+  | NothingSemantics ValueSemantics
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
   | ValuedNaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
   | NaturalTypeSemantics
+  | IntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
+  | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
+  | IntegerTypeSemantics
+  | EitherSemantics ValueSemantics ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
@@ -288,11 +334,16 @@ data ValueSemantics
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
   = CanonicalExplicit Natural Ordinal
+  | CanonicalInteger Integer
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
   | CanonicalNaturalRange Natural NaturalRange.NaturalRangeTarget
   | CanonicalValuedNaturalRange Natural NaturalRange.NaturalRangeTarget
   | CanonicalNaturalType
+  | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalIntegerType
+  | CanonicalEither CanonicalResult CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
@@ -368,12 +419,30 @@ canonicalResult :: ValueSemantics -> CanonicalResult
 canonicalResult semantics =
   case semantics of
     ExplicitSemantics level value -> CanonicalExplicit level value
+    IntegerSemantics value -> CanonicalInteger value
+    BooleanSemantics flag underlying ->
+      let underlyingResult = canonicalResult underlying
+          identifierString =
+            case flag of
+              DatraFalse -> "False"
+              DatraTrue -> "True"
+      in CanonicalAssignment
+          identifierString underlyingResult underlyingResult
+    NothingSemantics underlying ->
+      let underlyingResult = canonicalResult underlying
+      in CanonicalAssignment "Nothing" underlyingResult underlyingResult
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target
     ValuedNaturalRangeSemantics start target ->
       CanonicalValuedNaturalRange start target
     NaturalTypeSemantics -> CanonicalNaturalType
+    IntegerRangeSemantics start target -> CanonicalIntegerRange start target
+    ValuedIntegerRangeSemantics start target ->
+      CanonicalValuedIntegerRange start target
+    IntegerTypeSemantics -> CanonicalIntegerType
+    EitherSemantics left right ->
+      CanonicalEither (canonicalResult left) (canonicalResult right)
     RangeConcatenationSemantics descriptions ->
       CanonicalRangeConcatenation descriptions
     ConcatenationSemantics members ->
@@ -410,17 +479,97 @@ canonicalResult semantics =
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map canonicalResult components)
     SpecificationSemantics source target ->
-      CanonicalSpecification (canonicalResult source) (canonicalResult target)
+      canonicalSpecificationResult
+        (canonicalResult source)
+        (canonicalResult target)
+
+-- Specifications into optional identifier slots have an assignment
+-- presentation that carries the selected source values directly. This is the
+-- canonical value, not merely a renderer shorthand: a pointwise specification
+-- and its @:=@ federation therefore normalize identically.
+canonicalSpecificationResult
+  :: CanonicalResult
+  -> CanonicalResult
+  -> CanonicalResult
+canonicalSpecificationResult source target =
+  case optionalAssignment source target of
+    Just assignment -> assignment
+    Nothing ->
+      case (canonicalComponents source, canonicalComponents target) of
+        (Just sourceMembers, Just targetMembers)
+          | length sourceMembers == length targetMembers ->
+              case sequence
+                  (zipWith optionalAssignment sourceMembers targetMembers) of
+                Just assignments -> CanonicalConcatenation assignments
+                Nothing -> CanonicalSpecification source target
+        _ -> CanonicalSpecification source target
+
+canonicalComponents :: CanonicalResult -> Maybe [CanonicalResult]
+canonicalComponents (CanonicalConcatenation members) = Just members
+canonicalComponents (CanonicalMap _ members) = Just members
+canonicalComponents _ = Nothing
+
+optionalAssignment
+  :: CanonicalResult
+  -> CanonicalResult
+  -> Maybe CanonicalResult
+optionalAssignment source (CanonicalEither present missing) =
+  case present of
+    CanonicalIdentifierType identifierString typeAnnotation
+      | typeAnnotation == missing ->
+          Just
+            (CanonicalEither
+              (CanonicalAssignment
+                identifierString
+                typeAnnotation
+                (optionalAssignmentValue
+                  identifierString typeAnnotation source))
+              missing)
+    CanonicalAssignment identifierString typeAnnotation _
+      | typeAnnotation == missing ->
+          Just
+            (CanonicalEither
+              (CanonicalAssignment
+                identifierString
+                typeAnnotation
+                (optionalAssignmentValue
+                  identifierString typeAnnotation source))
+              missing)
+    _ -> Nothing
+optionalAssignment _ _ = Nothing
+
+optionalAssignmentValue
+  :: String
+  -> CanonicalResult
+  -> CanonicalResult
+  -> CanonicalResult
+optionalAssignmentValue identifierString typeAnnotation source =
+  case source of
+    CanonicalAssignment sourceString _ givenValue
+      | sourceString == identifierString -> givenValue
+    CanonicalEither
+        (CanonicalAssignment sourceString sourceType givenValue)
+        sourceMissing
+      | sourceString == identifierString
+      , sourceType == typeAnnotation
+      , sourceMissing == typeAnnotation -> givenValue
+    _ -> source
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
     ExplicitForm _ -> ExplicitOrdinalValueKind
+    IntegerForm _ -> IntegerValueKind
+    BooleanForm _ -> BooleanValueKind
+    NothingForm -> MapValueKind
     FormulationForm _ -> FormulationValueKind
     RangeForm _ -> RangeValueKind
     NaturalRangeForm _ -> RangeValueKind
     ValuedNaturalRangeForm _ -> RangeValueKind
+    IntegerRangeForm _ -> RangeValueKind
+    ValuedIntegerRangeForm _ -> RangeValueKind
+    EitherForm _ -> EitherValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
@@ -438,6 +587,14 @@ interpretedExplicitOrdinal
 interpretedExplicitOrdinal value =
   case interpretedForm value of
     ExplicitForm explicitValue -> Just (explicitOrdinal explicitValue)
+    _ -> Nothing
+
+interpretedInteger :: InterpretedValue -> Maybe Integer
+interpretedInteger value =
+  case interpretedForm value of
+    IntegerForm integer -> Just integer
+    ExplicitForm (EvaluatedExplicit 1 _ explicitValue) ->
+      toInteger <$> naturalAtOrdinal (superEllipsisValueOrdinal explicitValue)
     _ -> Nothing
 
 interpretedFormulationLevel :: InterpretedValue -> Maybe Natural

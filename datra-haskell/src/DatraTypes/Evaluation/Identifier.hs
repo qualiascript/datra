@@ -27,8 +27,13 @@ simpleIdentifierTypeValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
-simpleIdentifierTypeValue identifierString =
-  makeIdentifierTypeValue (SimpleIdentifierDependency identifierString)
+simpleIdentifierTypeValue identifierString underlying
+  | interpretedCanonicalResult underlying == CanonicalMap 0 [] =
+      makeAsciiString identifierString
+  | otherwise =
+      makeIdentifierTypeValue
+        (SimpleIdentifierDependency identifierString)
+        underlying
 
 identifierStringProjectionValue
   :: EvaluatedIdentifierType

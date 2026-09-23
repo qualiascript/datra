@@ -12,6 +12,10 @@ sequenceOperands :: InterpretedValue -> Maybe [InterpretedValue]
 sequenceOperands value =
   case interpretedForm value of
     SequentialMapForm -> finiteMapValues value
+    SpecificationForm specification ->
+      sequenceOperands (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      sequenceOperands (evaluatedSpecificationTarget specification)
     _ -> Nothing
 
 expansionOperands
@@ -20,6 +24,10 @@ expansionOperands
 expansionOperands value =
   case interpretedForm value of
     ExpansionMapForm left right -> Just (left, right)
+    SpecificationForm specification ->
+      expansionOperands (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      expansionOperands (evaluatedSpecificationTarget specification)
     _ -> Nothing
 
 concatenationOperands :: InterpretedValue -> [InterpretedValue]
@@ -29,6 +37,10 @@ concatenationOperands value =
       concatenationOperands left <> concatenationOperands right
     RangeConcatenationForm _ (Just (left, right)) ->
       concatenationOperands left <> concatenationOperands right
+    SpecificationForm specification ->
+      concatenationOperands (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      concatenationOperands (evaluatedSpecificationTarget specification)
     _ -> [value]
 
 finiteMapValues :: InterpretedValue -> Maybe [InterpretedValue]

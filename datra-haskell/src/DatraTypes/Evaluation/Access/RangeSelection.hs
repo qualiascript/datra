@@ -56,6 +56,12 @@ accessSource value =
         Just description ->
           rangeSource [describedRangeFromDescription description]
         Nothing -> rangeSource []
+    IntegerForm _ -> ordinarySource []
+    IntegerRangeForm _ -> rangeSource []
+    ValuedIntegerRangeForm _ -> rangeSource []
+    BooleanForm _ -> ordinarySource []
+    NothingForm -> ordinarySource []
+    EitherForm _ -> ordinarySource []
     RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
     FormulationForm formulation ->
@@ -124,6 +130,9 @@ semanticAccessSource semantics =
   case semantics of
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
+    IntegerSemantics _ -> ordinarySource []
+    BooleanSemantics _ _ -> ordinarySource []
+    NothingSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]
@@ -138,6 +147,10 @@ semanticAccessSource semantics =
       rangeSource [naturalDescribedRange start target]
     NaturalTypeSemantics ->
       rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
+    IntegerRangeSemantics _ _ -> rangeSource []
+    ValuedIntegerRangeSemantics _ _ -> rangeSource []
+    IntegerTypeSemantics -> rangeSource []
+    EitherSemantics _ _ -> ordinarySource []
     RangeConcatenationSemantics descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
     ConcatenationSemantics members ->

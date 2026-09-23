@@ -1,6 +1,8 @@
 -- | Checked numerical coercions and ordinal arithmetic for evaluated values.
 module Evaluation.Numerical
   ( addValues
+  , subtractValues
+  , minusValue
   , multiplyValues
   , exponentiateValues
   , requireExplicit
@@ -20,6 +22,7 @@ import Evaluation.Construction
   ( makeExplicit
   , makeExplicitValue
   , makeFormulation
+  , makeInteger
   )
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -36,20 +39,40 @@ addValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 addValues left right = do
-  leftValue <- requireNumerical LeftOperand left
-  rightValue <- requireNumerical RightOperand right
-  pure (makeNumericalResult
-    (addNumericalDenotations leftValue rightValue))
+  case (interpretedForm left, interpretedForm right) of
+    (IntegerForm _, _) -> integerBinary (+) left right
+    (_, IntegerForm _) -> integerBinary (+) left right
+    _ -> do
+      leftValue <- requireNumerical LeftOperand left
+      rightValue <- requireNumerical RightOperand right
+      pure (makeNumericalResult
+        (addNumericalDenotations leftValue rightValue))
+
+subtractValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+subtractValues = integerBinary (-)
+
+minusValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
+minusValue value =
+  makeInteger . negate <$> requireFiniteInteger LeftOperand value
 
 multiplyValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 multiplyValues left right = do
-  leftValue <- requireNumerical LeftOperand left
-  rightValue <- requireNumerical RightOperand right
-  pure (makeNumericalResult
-    (multiplyNumericalDenotations leftValue rightValue))
+  case (interpretedForm left, interpretedForm right) of
+    (IntegerForm _, _) -> integerBinary (*) left right
+    (_, IntegerForm _) -> integerBinary (*) left right
+    _ -> do
+      leftValue <- requireNumerical LeftOperand left
+      rightValue <- requireNumerical RightOperand right
+      pure (makeNumericalResult
+        (multiplyNumericalDenotations leftValue rightValue))
 
 exponentiateValues
   :: InterpretedValue
@@ -57,9 +80,33 @@ exponentiateValues
   -> Either InterpretingError InterpretedValue
 exponentiateValues base exponentValue = do
   naturalPower <- requireNaturalExponent exponentValue
-  baseValue <- requireNumerical LeftOperand base
-  pure (makeNumericalResult
-    (exponentiateNumericalDenotation baseValue naturalPower))
+  case interpretedForm base of
+    IntegerForm integer ->
+      pure (makeInteger (integer ^ naturalPower))
+    _ -> do
+      baseValue <- requireNumerical LeftOperand base
+      pure (makeNumericalResult
+        (exponentiateNumericalDenotation baseValue naturalPower))
+
+integerBinary
+  :: (Integer -> Integer -> Integer)
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+integerBinary operation left right = do
+  leftValue <- requireFiniteInteger LeftOperand left
+  rightValue <- requireFiniteInteger RightOperand right
+  pure (makeInteger (operation leftValue rightValue))
+
+requireFiniteInteger
+  :: OperandSide
+  -> InterpretedValue
+  -> Either InterpretingError Integer
+requireFiniteInteger side value =
+  case interpretedInteger value of
+    Just integer -> Right integer
+    Nothing ->
+      Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
 
 requireExplicit
   :: OperandSide

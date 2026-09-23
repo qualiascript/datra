@@ -14,11 +14,25 @@ module DatraTypes
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
   , naturalValue
+  , integerValue
+  , booleanValue
+  , booleanTypeValue
+  , eitherValue
+  , optionalValue
+  , nothingValue
   , asciiStringValue
   , formulationValue
   , addValues
+  , subtractValues
+  , minusValue
   , multiplyValues
   , exponentiateValues
+  , subfederationValues
+  , equalValues
+  , booleanAndValues
+  , booleanOrValues
+  , booleanNotValue
+  , booleanCondition
   , boundedRangeValue
   , openPlusRangeValue
   , openMinusRangeValue
@@ -27,6 +41,13 @@ module DatraTypes
   , valuedNaturalRangeValue
   , valuedNaturalRangeUpwardsValue
   , naturalTypeValue
+  , integerRangeValue
+  , integerRangeUpwardsValue
+  , integerRangeDownwardsValue
+  , valuedIntegerRangeValue
+  , valuedIntegerRangeUpwardsValue
+  , valuedIntegerRangeDownwardsValue
+  , integerTypeValue
   , identifierTypeValue
   , simpleIdentifierTypeValue
   , assignIdentifierValues
@@ -38,6 +59,7 @@ module DatraTypes
   , interpretedValueKind
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMap
@@ -60,7 +82,21 @@ import Evaluation.Construction
   ( makeAsciiString
   , makeFormulation
   , makeNatural
+  , makeInteger
   )
+import Evaluation.Boolean
+  ( booleanAndValues
+  , booleanCondition
+  , booleanNotValue
+  , booleanOrValues
+  , equalValues
+  , subfederationValues
+  , makeBoolean
+  , makeBooleanType
+  )
+import Evaluation.Either (makeEitherValue)
+import Evaluation.Optional (makeNothing, makeOptionalValue)
+import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
   , makeAtlasExpansion
@@ -68,12 +104,21 @@ import Evaluation.Map
   )
 import Evaluation.Numerical
   ( addValues
+  , subtractValues
+  , minusValue
   , exponentiateValues
   , multiplyValues
   )
 import Evaluation.Range
   ( boundedRangeValue
   , naturalTypeValue
+  , integerRangeValue
+  , integerRangeUpwardsValue
+  , integerRangeDownwardsValue
+  , valuedIntegerRangeValue
+  , valuedIntegerRangeUpwardsValue
+  , valuedIntegerRangeDownwardsValue
+  , integerTypeValue
   , naturalRangeUpwardsValue
   , naturalRangeValue
   , openMinusRangeValue
@@ -95,6 +140,7 @@ import Evaluation.Value
   , InterpretedValue
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
   , interpretedMapCardinality
@@ -111,6 +157,26 @@ import Data.List (find)
 
 naturalValue :: Natural -> InterpretedValue
 naturalValue = makeNatural
+
+integerValue :: Integer -> InterpretedValue
+integerValue = makeInteger
+
+booleanValue :: Bool -> InterpretedValue
+booleanValue value =
+  makeBoolean
+    (if value then BooleanType.DatraTrue else BooleanType.DatraFalse)
+
+booleanTypeValue :: InterpretedValue
+booleanTypeValue = makeBooleanType
+
+eitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
+eitherValue = makeEitherValue
+
+optionalValue :: InterpretedValue -> InterpretedValue
+optionalValue = makeOptionalValue
+
+nothingValue :: InterpretedValue
+nothingValue = makeNothing
 
 asciiStringValue :: String -> Either InterpretingError InterpretedValue
 asciiStringValue value =

@@ -28,6 +28,7 @@ import Interpreting
   , interpretExpressionReason
   , interpretLocatedExpression
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
   , interpretedMapCardinality
@@ -88,6 +89,11 @@ testTree =
   testGroup "Datra interpreter"
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
+        , testCase "integers and integer ranges" testIntegers
+        , testCase "booleans and Either" testBooleansAndEither
+        , testCase "optionals and conditionals" testOptionalsAndConditionals
+        , testCase "combined type systems" testCombinedTypeSystems
+        , testCase "combinatorial numerical systems" testCombinatorialNumericalSystems
         , testCase "ranges" testRanges
         , testCase "canonical results" testCanonicalResults
         , testCase "rendering" testRendering
@@ -103,6 +109,19 @@ testTree =
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
         , testProperty "natural multiplication agrees with Haskell" propNaturalMultiplication
         , testProperty "natural exponentiation agrees with Haskell" propNaturalExponentiation
+        , testProperty "integer addition agrees with Haskell" propIntegerAddition
+        , testProperty "integer subtraction agrees with Haskell" propIntegerSubtraction
+        , testProperty "integer multiplication agrees with Haskell" propIntegerMultiplication
+        , testProperty "integer powers agree with Haskell" propIntegerExponentiation
+        , testProperty
+            "nested integer ranges compose by subtyping"
+            propNestedIntegerRangeSubtyping
+        , testProperty
+            "conditional arithmetic specifies into integer ranges"
+            propConditionalArithmeticRange
+        , testProperty
+            "optional integer ranges accept both branches"
+            propOptionalIntegerRangeBranches
         ]
     ]
 
@@ -132,8 +151,115 @@ propNaturalExponentiation = H.property $ do
       (Exponentiation (EllipsisNatural base) (EllipsisNatural exponentValue))
     H.=== Just (base ^ exponentValue)
 
+propIntegerAddition :: H.Property
+propIntegerAddition = H.property $ do
+  left <- H.forAll integerGen
+  right <- H.forAll integerGen
+  interpretedSigned
+      (Addition (integerExpression left) (integerExpression right))
+    H.=== Just (left + right)
+
+propIntegerSubtraction :: H.Property
+propIntegerSubtraction = H.property $ do
+  left <- H.forAll integerGen
+  right <- H.forAll integerGen
+  interpretedSigned
+      (Subtraction (integerExpression left) (integerExpression right))
+    H.=== Just (left - right)
+
+propIntegerMultiplication :: H.Property
+propIntegerMultiplication = H.property $ do
+  left <- H.forAll integerGen
+  right <- H.forAll integerGen
+  interpretedSigned
+      (Multiplication (integerExpression left) (integerExpression right))
+    H.=== Just (left * right)
+
+propIntegerExponentiation :: H.Property
+propIntegerExponentiation = H.property $ do
+  base <- H.forAll (Gen.integral (Range.linear (-12) 12))
+  exponentValue <- H.forAll (Gen.integral (Range.linear 0 8))
+  interpretedSigned
+      (Exponentiation
+        (integerExpression base)
+        (EllipsisNatural exponentValue))
+    H.=== Just (base ^ exponentValue)
+
+propNestedIntegerRangeSubtyping :: H.Property
+propNestedIntegerRangeSubtyping = H.property $ do
+  outerLower <- H.forAll (Gen.integral (Range.linear (-30) 10))
+  outerWidth <- H.forAll (Gen.integral (Range.linear 0 30))
+  let outerUpper = outerLower + outerWidth
+  innerLowerOffset <-
+    H.forAll (Gen.integral (Range.linear 0 outerWidth))
+  innerUpperOffset <-
+    H.forAll
+      (Gen.integral (Range.linear innerLowerOffset outerWidth))
+  let innerLower = outerLower + innerLowerOffset
+      innerUpper = outerLower + innerUpperOffset
+  selected <- H.forAll (Gen.integral (Range.linear innerLower innerUpper))
+  let expressionValue =
+        ( integerExpression selected
+            ~> AST.integerWithinTo innerLower innerUpper
+        ) ~> AST.integerWithinTo outerLower outerUpper
+  case interpretExpressionReason expressionValue of
+    Right _ -> H.success
+    Left rejection -> H.annotateShow rejection >> H.failure
+
+propConditionalArithmeticRange :: H.Property
+propConditionalArithmeticRange = H.property $ do
+  left <- H.forAll (Gen.integral (Range.linear (-20) 20))
+  right <- H.forAll (Gen.integral (Range.linear (-20) 20))
+  let commutativeCondition =
+        AST.equal
+          ((AST.+) (integerExpression left) (integerExpression right))
+          ((AST.+) (integerExpression right) (integerExpression left))
+      selectedResult =
+        (AST.-) (integerExpression left) (integerExpression right)
+      rejectedDeadBranch =
+        AST.and (natural 1) (AST.boolean True)
+      expressionValue =
+        AST.conditional
+          commutativeCondition
+          selectedResult
+          rejectedDeadBranch
+          ~> AST.integerWithinTo (-40) 40
+  case interpretExpressionReason expressionValue of
+    Right _ -> H.success
+    Left rejection -> H.annotateShow rejection >> H.failure
+
+propOptionalIntegerRangeBranches :: H.Property
+propOptionalIntegerRangeBranches = H.property $ do
+  selectValue <- H.forAll Gen.bool
+  selected <- H.forAll (Gen.integral (Range.linear (-25) 25))
+  let nothingValue =
+        AST.assignment "Nothing" AST.emptyMap AST.emptyMap
+      expressionValue =
+        AST.conditional
+          (AST.boolean selectValue)
+          (integerExpression selected)
+          nothingValue
+          ~> AST.optional (AST.integerWithinTo (-25) 25)
+  case interpretExpressionReason expressionValue of
+    Right _ -> H.success
+    Left rejection -> H.annotateShow rejection >> H.failure
+
 naturalGen :: H.Gen Natural
 naturalGen = Gen.integral (Range.linear 0 10000)
+
+integerGen :: H.Gen Integer
+integerGen = Gen.integral (Range.linear (-10000) 10000)
+
+integerExpression :: Integer -> Expression
+integerExpression value
+  | value < 0 = Minus (EllipsisNatural (fromInteger (negate value)))
+  | otherwise = EllipsisNatural (fromInteger value)
+
+interpretedSigned :: Expression -> Maybe Integer
+interpretedSigned expressionValue =
+  case interpretExpressionReason expressionValue of
+    Left _ -> Nothing
+    Right value -> interpretedInteger value
 
 interpretedNatural :: Expression -> Maybe Natural
 interpretedNatural expressionValue =
@@ -154,6 +280,91 @@ naturalOrdinal value = do
   if level == 1
     then naturalAtOrdinal ordinalValue
     else Nothing
+
+testIntegers :: IO ()
+testIntegers = do
+  expectValue "integer negation" (AST.minus (natural 6)) $ \value ->
+    assert "minus creates the complemented integer -6"
+      ( interpretedValueKind value == IntegerValueKind
+        && interpretedInteger value == Just (-6)
+        && renderInterpretedValue value == "-6"
+      )
+  expectValue
+      "integer addition"
+      ((AST.+) (AST.minus (natural 6)) (natural 2)) $ \value ->
+    assert "addition extends to finite integers"
+      (interpretedInteger value == Just (-4))
+  expectValue
+      "integer subtraction"
+      ((AST.-) (natural 5) (natural 8)) $ \value ->
+    assert "subtraction produces a complemented integer"
+      (interpretedInteger value == Just (-3))
+  expectValue
+      "integer multiplication"
+      ((AST.*) (AST.minus (natural 2)) (AST.minus (natural 3))) $ \value ->
+    assert "multiplication extends to finite integers"
+      (interpretedInteger value == Just 6)
+  expectValue
+      "odd integer power"
+      ((AST.^) (AST.minus (natural 2)) (natural 3)) $ \value ->
+    assert "negative bases support natural exponents"
+      (interpretedInteger value == Just (-8))
+  expectValue
+      "even integer power"
+      ((AST.^) (AST.minus (natural 2)) (natural 2)) $ \value ->
+    assert "even powers canonicalize back to naturals"
+      (interpretedInteger value == Just 4)
+  expectValue
+      "descending integer range"
+      (AST.integerFromDownwards (-1)) $ \value ->
+    assert "integer range rendering retains its signed bound and direction"
+      (renderInterpretedValue value == "from -1 downwards")
+  expectValue
+      "valued integer range"
+      (AST.integerWithinTo (-3) 4) $ \value ->
+    assert "valued integer ranges retain inclusive signed syntax"
+      (renderInterpretedValue value == "within -3 to 4")
+  expectValue "integer type" AST.integerType $ \value ->
+    assert "Int is the full Nat-product-with-two federation"
+      (renderInterpretedValue value == "Int")
+  expectValue
+      "negative integer specification into Int"
+      (AST.minus (natural 6) ~> AST.integerType) $ \value ->
+    assert "Int specification selects complemented members"
+      (renderInterpretedValue value == "-6 ~> Int")
+  expectValue
+      "directed integer sequence specification"
+      ( (AST.minus (natural 2)
+          <:> AST.minus (natural 1)
+          <:> natural 0)
+          ~> AST.integerFromTo (-3) 2
+      ) $ \value ->
+    assert "integer ranges select contiguous signed sequences"
+      (renderInterpretedValue value == "(-2; -1; 0) ~> from -3 to 2")
+  expectValue
+      "valued integer subfederation composition"
+      ( (AST.minus (natural 2) ~> AST.integerWithinTo (-2) 3)
+          ~> AST.integerType
+      ) $ \value ->
+    assert "valued integer ranges are subfederations of Int"
+      (renderInterpretedValue value == "-2 ~> Int")
+  expectValue
+      "Nat subfederation of Int"
+      ((natural 2 ~> AST.naturalType) ~> AST.integerType) $ \value ->
+    assert "the direct half of Int contains every natural"
+      (renderInterpretedValue value == "2 ~> Int")
+  assert "signed values do not participate in transfinite arithmetic"
+    (case interpretExpressionReason
+        ((AST.+) (AST.minus (natural 1)) (...)) of
+      Left
+          (ExpectedFiniteIntegerOperand
+            RightOperand FormulationValueKind) -> True
+      _ -> False)
+  assert "negative exponents remain unsupported"
+    (case interpretExpressionReason
+        ((AST.^) (natural 2) (AST.minus (natural 1))) of
+      Left (ExpectedNaturalExponent IntegerValueKind) -> True
+      _ -> False)
 
 testLiteralsAndArithmetic :: IO ()
 testLiteralsAndArithmetic = do
@@ -222,6 +433,369 @@ testLiteralsAndArithmetic = do
     assert "ordinal multiplication preserves noncommutative order"
       (interpretedExplicitOrdinal value
         == Just (2, ordinal [2, 1]))
+
+testBooleansAndEither :: IO ()
+testBooleansAndEither = do
+  expectValue "False literal" (AST.boolean False) $ \value ->
+    assert "False is the named zero map"
+      ( interpretedValueKind value == BooleanValueKind
+        && renderInterpretedValue value == "false"
+      )
+  expectValue "Boolean type" AST.booleanType $ \value ->
+    assert "the exact Boolean federation restores its shorthand"
+      ( renderInterpretedValue value == "Bool"
+        && interpretedValueKind value == EitherValueKind
+      )
+  expectValue
+      "surface Boolean definition"
+      (AST.equal
+        AST.booleanType
+        (AST.eitherType
+          (AST.assignment "False" (natural 0) (natural 0))
+          (AST.assignment "True" (natural 1) (natural 1)))) $ \value ->
+    assert "Bool is definitionally False : 0 | True : 1"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "Boolean specification"
+      (AST.boolean False ~> AST.booleanType) $ \value ->
+    assert "Boolean alternatives use ordinary federation specification"
+      (renderInterpretedValue value
+        == "false ~> Bool")
+  expectValue
+      "Boolean conjunction"
+      (AST.and (AST.boolean True) (AST.boolean False)) $ \value ->
+    assert "True and False is False"
+      (renderInterpretedValue value == "false")
+  expectValue
+      "Boolean disjunction"
+      (AST.or (AST.boolean False) (AST.boolean True)) $ \value ->
+    assert "False or True is True"
+      (renderInterpretedValue value == "true")
+  expectValue "Boolean negation" (AST.not (AST.boolean False)) $ \value ->
+    assert "not False is True"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "canonical Boolean identifier values"
+      (AST.and
+        (AST.identifierType "True" (natural 1))
+        (AST.identifierType "False" (natural 0))) $ \value ->
+    assert "True : 1 and False : 0 retain Boolean behavior"
+      (renderInterpretedValue value == "false")
+  expectValue
+      "equal federations"
+      (AST.equal
+        (AST.eitherType (natural 0) (natural 1))
+        (AST.eitherType (natural 0) (natural 1))) $ \value ->
+    assert "mutual subfederation is true"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "unequal tagged federations"
+      (AST.equal
+        (AST.eitherType (natural 0) (natural 1))
+        (AST.eitherType (natural 1) (natural 0))) $ \value ->
+    assert "Either injection order distinguishes equal-shaped maps"
+      (renderInterpretedValue value == "false")
+  expectValue
+      "associative Either"
+      (AST.equal
+        (AST.eitherType
+          (AST.eitherType (natural 0) (natural 1))
+          (natural 2))
+        (AST.eitherType
+          (natural 0)
+          (AST.eitherType (natural 1) (natural 2)))) $ \value ->
+    assert "Either association normalizes before subfederation comparison"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "Either subfederation widening"
+      ( (natural 1
+          ~> AST.eitherType (natural 0) (natural 1))
+          ~> AST.eitherType
+                (natural 0)
+                (AST.eitherType (natural 1) (natural 2))
+      ) $ \value ->
+    assert "specification composes through a larger Either federation"
+      (renderInterpretedValue value == "1 ~> (0 | 1 | 2)")
+  assert "Boolean operators reject non-Booleans"
+    (case interpretExpressionReason
+        (AST.and (natural 1) (AST.boolean True)) of
+      Left (ExpectedBooleanOperand LeftOperand NaturalValueKind) -> True
+      _ -> False)
+
+testOptionalsAndConditionals :: IO ()
+testOptionalsAndConditionals = do
+  let nothingValue =
+        AST.assignment "Nothing" AST.emptyMap AST.emptyMap
+      optionalIntegerSlots =
+        MapConcatenation
+          (AST.eitherType
+            (AST.identifierType "a" AST.integerType)
+            AST.integerType)
+          (AST.eitherType
+            (AST.identifierType "b" AST.integerType)
+            AST.integerType)
+      optionalAssigned identifierString value =
+        AST.eitherType
+          (AST.assignment
+            identifierString AST.integerType (natural value))
+          AST.integerType
+      optionalIdentifier identifierString =
+        AST.eitherType
+          (AST.identifierType identifierString AST.integerType)
+          AST.integerType
+  expectValue "optional Nat" (AST.optional AST.naturalType) $ \value ->
+    assert "the exact optional federation restores its suffix"
+      (renderInterpretedValue value == "Nat?")
+  expectValue
+      "expanded optional equality"
+      (AST.equal
+        (AST.optional AST.naturalType)
+        (AST.eitherType AST.naturalType nothingValue)) $ \value ->
+    assert "optional syntax is definitionally its expanded federation"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "Nothing specification"
+      (nothingValue ~> AST.optional AST.naturalType) $ \value ->
+    assert "absence selects the tagged optional alternative"
+      (renderInterpretedValue value
+        == "nothing ~> Nat?")
+  expectValue
+      "canonical Nothing identifier"
+      (AST.identifierType "Nothing" AST.emptyMap
+        ~> AST.optional AST.naturalType) $ \value ->
+    assert "Nothing : () round-trips as the distinguished absence"
+      (renderInterpretedValue value
+        == "nothing ~> Nat?")
+  expectValue
+      "optional identifier"
+      (AST.eitherType
+        (AST.identifierType "a" AST.naturalType)
+        AST.naturalType) $ \value ->
+    assert "a? : Nat includes the missing-identifier Nat branch"
+      (renderInterpretedValue value == "a? : Nat")
+  expectValue
+      "positional values specify into optional identifier slots"
+      ( MapConcatenation (natural 12) (natural 23)
+          ~> optionalIntegerSlots
+      ) $ \value ->
+    assert "positional values canonicalize as optional assignments"
+      (renderInterpretedValue value
+        == "a? : Int := 12, b? : Int := 23")
+  expectValue
+      "named value specifies into its matching optional identifier slot"
+      ( MapConcatenation
+          (natural 12)
+          (AST.assignment "b" (natural 23) (natural 23))
+          ~> optionalIntegerSlots
+      ) $ \value ->
+    assert "named and positional values share assignment canonicalization"
+      (renderInterpretedValue value
+        == "a? : Int := 12, b? : Int := 23")
+  expectValue
+      "optional assignment reverse-specifies within a concatenation slot"
+      (MapConcatenation
+        (optionalAssigned "a" 12)
+        (optionalAssigned "b" 23 ~> optionalIdentifier "b")) $ \value ->
+    assert "the present optional branch supplies a concrete specification source"
+      (renderInterpretedValue value
+        == "a? : Int := 12, b? : Int := 23")
+  expectValue
+      "optional-slot specification equals its assigned federation"
+      (AST.equal
+        ( MapConcatenation
+            (natural 12)
+            (AST.identifierType "b" (natural 23))
+            ~> optionalIntegerSlots
+        )
+        (MapConcatenation
+          (optionalAssigned "a" 12)
+          (optionalAssigned "b" 23))) $ \value ->
+    assert "specification wrappers preserve composite federation equality"
+      (renderInterpretedValue value == "true")
+  let optionalAssignmentSequence =
+        AtlasMap [optionalAssigned "a" 12, optionalAssigned "b" 23]
+      optionalAssignmentConcatenation =
+        MapConcatenation
+          (optionalAssigned "a" 12)
+          (optionalAssigned "b" 23)
+  expectValue
+      "optional assignment sequence has comma canonical form"
+      optionalAssignmentSequence $ \value ->
+    assert "ordered optional slots canonicalize as concatenation"
+      (renderInterpretedValue value
+        == "a? : Int := 12, b? : Int := 23")
+  expectValue
+      "optional assignment sequence equals concatenation"
+      (AST.equal
+        optionalAssignmentSequence
+        optionalAssignmentConcatenation) $ \value ->
+    assert "semicolon and comma optional slots are mutual subfederations"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "optional identifier specification morphism exists"
+      (AST.subfederation
+        (MapConcatenation
+          (natural 2)
+          (AST.assignment "b" (natural 5) (natural 5)))
+        (MapConcatenation
+          (optionalAssigned "a" 2)
+          (optionalIdentifier "b"))) $ \value ->
+    assert "of recognizes the pointwise optional-identifier morphism"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "optional identifier range subfederation morphism exists"
+      (AST.subfederation
+        (MapConcatenation
+          (natural 2)
+          (AST.assignment "b" (natural 5) (natural 5)))
+        (MapConcatenation
+          (AST.eitherType
+            (AST.identifierType "a" AST.integerType)
+            AST.integerType)
+          (AST.eitherType
+            (AST.identifierType "b" (AST.withinTo 3 8))
+            (AST.withinTo 3 8)))) $ \value ->
+    assert "2 and b := 5 inhabit their optional integer range slots"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "ternary true branch"
+      (AST.conditional
+        (AST.boolean True)
+        (natural 3)
+        (AST.minus (natural 8))) $ \value ->
+    assert "if selects its consequent"
+      (renderInterpretedValue value == "3")
+  expectValue
+      "binary false branch"
+      (AST.conditionalWithoutElse (AST.boolean False) (natural 3)) $ \value ->
+    assert "binary if defaults its alternative to unit"
+      (renderInterpretedValue value == "()")
+  expectValue
+      "lazy dead conditional branch"
+      (AST.conditional
+        (AST.boolean True)
+        (natural 7)
+        (AST.and (natural 1) (AST.boolean False))) $ \value ->
+    assert "an unselected ill-typed branch is not evaluated"
+      (renderInterpretedValue value == "7")
+  assert "if rejects a non-Boolean condition"
+    (case interpretExpressionReason
+        (AST.conditional (natural 1) (natural 2) (natural 3)) of
+      Left (ExpectedBooleanCondition NaturalValueKind) -> True
+      _ -> False)
+
+testCombinedTypeSystems :: IO ()
+testCombinedTypeSystems = do
+  let nothingValue =
+        AST.assignment "Nothing" AST.emptyMap AST.emptyMap
+      expandedBool =
+        AST.eitherType
+          (AST.assignment "False" (natural 0) (natural 0))
+          (AST.assignment "True" (natural 1) (natural 1))
+      condition =
+        AST.and
+          (AST.equal AST.booleanType expandedBool)
+          (AST.not (AST.boolean False))
+      computedInteger =
+        (AST.+) (AST.minus (natural 6)) (natural 2)
+  expectValue
+      "equality-driven optional integer specification"
+      ( AST.conditional condition computedInteger nothingValue
+          ~> AST.optional AST.integerType
+      ) $ \value ->
+    assert "Boolean equality and arithmetic compose into Int?"
+      (renderInterpretedValue value
+        == "-4 ~> Int?")
+  expectValue
+      "false branch optional specification"
+      ( AST.conditional
+          (AST.and (AST.boolean True) (AST.boolean False))
+          computedInteger
+          nothingValue
+          ~> AST.optional AST.integerType
+      ) $ \value ->
+    assert "a conditional absence composes through optional specification"
+      (renderInterpretedValue value
+        == "nothing ~> Int?")
+  expectValue
+      "missing optional identifier path"
+      ( AST.conditional
+          (AST.equal
+            (AST.optional AST.naturalType)
+            (AST.eitherType AST.naturalType nothingValue))
+          (natural 12)
+          (natural 99)
+          ~> AST.eitherType
+                (AST.identifierType "a" AST.naturalType)
+                AST.naturalType
+      ) $ \value ->
+    assert "conditional results canonicalize as optional assignments"
+      (renderInterpretedValue value == "a? : Nat := 12")
+
+testCombinatorialNumericalSystems :: IO ()
+testCombinatorialNumericalSystems = do
+  let smallRange = AST.integerWithinTo (-2) 2
+      largeRange = AST.integerWithinTo (-5) 5
+      nothingValue =
+        AST.assignment "Nothing" AST.emptyMap AST.emptyMap
+      optionalIdentifierRange =
+        AST.eitherType
+          (AST.assignment "x" largeRange (AST.minus (natural 3)))
+          largeRange
+  expectValue
+      "identical signed range equality"
+      (AST.equal smallRange smallRange) $ \value ->
+    assert "equal numerical federations are mutual subfederations"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "proper signed range inclusion is not equality"
+      (AST.equal smallRange largeRange) $ \value ->
+    assert "a proper numerical subtype is not extensionally equal"
+      (renderInterpretedValue value == "false")
+  expectValue
+      "proper signed range subfederation"
+      (AST.subfederation smallRange largeRange) $ \value ->
+    assert "of proves an existing inclusion morphism"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "missing reverse signed range subfederation"
+      (AST.subfederation largeRange smallRange) $ \value ->
+    assert "of is false when the inclusion morphism does not exist"
+      (renderInterpretedValue value == "false")
+  expectValue
+      "chained signed range subtyping"
+      ( (AST.minus (natural 1) ~> smallRange)
+          ~> largeRange
+      ) $ \value ->
+    assert "a selected inner-range member widens through its super-range"
+      (renderInterpretedValue value == "-1 ~> within -5 to 5")
+  expectValue
+      "descending range through optional Int"
+      ( (AST.minus (natural 1)
+          ~> AST.integerWithinTo 2 (-2))
+          ~> AST.optional AST.integerType
+      ) $ \value ->
+    assert "descending numerical subtypes compose into optional Int"
+      (renderInterpretedValue value
+        == "-1 ~> Int?")
+  expectValue
+      "conditional power and subtraction range check"
+      ( AST.conditional
+          (AST.equal smallRange smallRange)
+          ((AST.-)
+            ((AST.^) (AST.minus (natural 2)) (natural 4))
+            (natural 9))
+          nothingValue
+          ~> AST.optional (AST.integerWithinTo (-10) 10)
+      ) $ \value ->
+    assert "range equality can guard signed arithmetic and optional subtyping"
+      (renderInterpretedValue value
+        == "7 ~> (within -10 to 10)?")
+  expectValue
+      "optional numerical identifier equality"
+      (AST.equal optionalIdentifierRange optionalIdentifierRange) $ \value ->
+    assert "optional identifier ranges retain reflexive subfederation"
+      (renderInterpretedValue value == "true")
 
 testRanges :: IO ()
 testRanges = do
@@ -574,6 +1148,21 @@ testAtlasMapFederations = do
       (AtlasMap [natural 2, NaturalRange 2 10]) $ \value ->
     assert "NaturalRange structure survives a sequential product"
       (renderInterpretedValue value == "(2; from 2 to 10)")
+  let coalitionSequence =
+        AtlasMap [ValuedIntegerRange 1 3, ValuedIntegerRange 4 6]
+      coalitionConcatenation =
+        (<.>) (ValuedIntegerRange 1 3) (ValuedIntegerRange 4 6)
+  expectValue
+      "a sequence of coalitions has concatenation canonical form"
+      coalitionSequence $ \value ->
+    assert "coalition components canonicalize with commas"
+      (renderInterpretedValue value
+        == "within 1 to 3, within 4 to 6")
+  expectValue
+      "a coalition sequence equals its concatenation"
+      (AST.equal coalitionSequence coalitionConcatenation) $ \value ->
+    assert "coalition construction is extensionally independent of syntax"
+      (renderInterpretedValue value == "true")
   expectValue
       "disjoint NaturalRange concatenation"
       ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
@@ -676,7 +1265,7 @@ testAccess = do
         ((<..>) (natural 0) (natural 2))) $ \value ->
     assert "a specification range retains both selected fibers"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "(2; 3) ~> (Nat; Nat)"
+        && renderInterpretedValue value == "(2; 3) ~> Nat, Nat"
       )
   expectValue
       "natural upwards range access"
@@ -1446,6 +2035,22 @@ testIdentifiers = do
           (Just givenValue)
       xNatural = identifier "x" NaturalType
       xAssignment = assignment "x" NaturalType (natural 5)
+      valueUnit = identifier "Value" (AtlasMap [])
+  expectValue "unit identifier" valueUnit $ \value ->
+    assert "a unit identifier canonicalizes to its identifier string"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "$Value"
+      )
+  expectValue
+      "unit identifier string equality"
+      (AST.equal (AsciiStringLiteral "Value") valueUnit) $ \value ->
+    assert "identifier strings and unit identifiers are definitionally equal"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "unit assignment"
+      (assignment "Value" (AtlasMap []) (AtlasMap [])) $ \value ->
+    assert "a unit assignment also canonicalizes to its identifier string"
+      (renderInterpretedValue value == "$Value")
   expectValue "simple identifier type" xNatural $ \value ->
     assert "identifier types retain their two-position map view"
       ( interpretedValueKind value == IdentifierTypeValueKind
@@ -1457,20 +2062,20 @@ testIdentifiers = do
   let xFive = identifier "x" (natural 5)
       xFiveAssignment = assignment "x" (natural 5) (natural 5)
   expectValue "total simple identifier type" xFive $ \value ->
-    assert "a simple identifier over a total map is an identity assignment"
+    assert "a simple identifier over a total map keeps canonical type syntax"
       ( interpretedValueKind value == IdentifierTypeValueKind
-        && renderInterpretedValue value == "x := 5"
+        && renderInterpretedValue value == "x : 5"
       )
   expectValue
       "identity assignment specifies its total identifier"
       ((~>) xFiveAssignment xFive) $ \value ->
     assert "assignment-to-identifier identity canonicalizes"
-      (renderInterpretedValue value == "x := 5")
+      (renderInterpretedValue value == "x : 5")
   expectValue
       "total identifier specifies its identity assignment"
       ((~>) xFive xFiveAssignment) $ \value ->
     assert "identifier-to-assignment identity canonicalizes"
-      (renderInterpretedValue value == "x := 5")
+      (renderInterpretedValue value == "x : 5")
   expectValue
       "identifier string access"
       ((<@>) xNatural (natural 0)) $ \value ->
@@ -1540,9 +2145,9 @@ testIdentifiers = do
   expectValue
       "binary assignment canonicalization"
       (assignment "x" (natural 5) (natural 5)) $ \value ->
-    assert "equal type and value use binary assignment syntax"
+    assert "equal total type and value use canonical identifier syntax"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "x := 5"
+        && renderInterpretedValue value == "x : 5"
       )
   expectValue
       "binary assignment value access"
@@ -1566,7 +2171,7 @@ testIdentifiers = do
     assert "identifier selection composes pointwise through sequences"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "(x := 5; y := 6) ~> (x : Nat; y : Nat)"
+          == "(x : 5; y : 6) ~> x : Nat, y : Nat"
       )
   assert "different identifier strings do not specify each other"
     (case interpretExpressionReason

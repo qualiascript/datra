@@ -16,7 +16,7 @@ module Parsing
 import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr
-  ( Operator (InfixL, InfixR, Postfix)
+  ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
   )
 import Data.Bifunctor (first)
@@ -25,7 +25,6 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
-import Numeric.Natural (Natural)
 import DatraLanguage.AST
   ( IdentifierString (IdentifierString)
   , Expression
@@ -42,6 +41,8 @@ import DatraLanguage.AST
       , MapSpecification
       , IdentifierOperation
       , Multiplication
+      , Subtraction
+      , Minus
       , NaturalType
       , NaturalRange
       , NaturalRangeUpwards
@@ -50,6 +51,23 @@ import DatraLanguage.AST
       , SuperEllipsisRangePlus
       , ValuedNaturalRange
       , ValuedNaturalRangeUpwards
+      , IntegerRange
+      , IntegerRangeUpwards
+      , IntegerRangeDownwards
+      , ValuedIntegerRange
+      , ValuedIntegerRangeUpwards
+      , ValuedIntegerRangeDownwards
+      , IntegerType
+      , BooleanLiteral
+      , BooleanType
+      , EitherType
+      , OptionalType
+      , Conditional
+      , Subfederation
+      , Equality
+      , BooleanAnd
+      , BooleanOr
+      , BooleanNot
       )
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -200,7 +218,14 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 astAtom :: Parser Expression
 astAtom =
   choice
-    [ NaturalType <$ astSymbol "Nat"
+    [ BooleanLiteral False <$ astSymbol "false"
+    , BooleanLiteral True <$ astSymbol "true"
+    , AsciiStringLiteral "Nothing" <$ astSymbol "nothing"
+    , BooleanLiteral False <$ astSymbol "False"
+    , BooleanLiteral True <$ astSymbol "True"
+    , BooleanType <$ astSymbol "Bool"
+    , IntegerType <$ astSymbol "Int"
+    , NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> astIdentifierString
     , AsciiStringLiteral <$> astStandardString
@@ -220,6 +245,16 @@ astForm =
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
       , astUnary AST.RangeMinusOperator SuperEllipsisRangeMinus
       , astBinary AST.AdditionOperator Addition
+      , astBinary AST.SubtractionOperator Subtraction
+      , astUnary AST.MinusOperator Minus
+      , astBinary AST.SubfederationOperator Subfederation
+      , astBinary AST.EqualityOperator Equality
+      , astBinary AST.BooleanAndOperator BooleanAnd
+      , astBinary AST.BooleanOrOperator BooleanOr
+      , astUnary AST.BooleanNotOperator BooleanNot
+      , astBinary AST.EitherOperator EitherType
+      , astUnary AST.OptionalOperator OptionalType
+      , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
       , astBinary AST.ConcatenationOperator MapConcatenation
@@ -252,6 +287,14 @@ astIdentifierOperation operator assignmentMarker = do
             IdentifierOperation
               operationIdentifierString typeAnnotation (Just given))
 
+astConditional :: Parser Expression
+astConditional = do
+  _ <- astSymbol "if"
+  condition <- astExpression
+  consequent <- astExpression
+  alternative <- astExpression
+  pure (Conditional condition consequent alternative)
+
 astSequence :: Parser Expression
 astSequence = do
   _ <- astOperatorToken AST.SequentialOperator
@@ -265,8 +308,9 @@ astSequence = do
 data NaturalRangePrefix = FromRange | WithinRange
 
 data NaturalRangeBounds
-  = NaturalRangeTo Natural Natural
-  | NaturalRangeFromUpwards Natural
+  = NaturalRangeTo Integer Integer
+  | NaturalRangeFromUpwards Integer
+  | IntegerRangeFromDownwards Integer
 
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
@@ -281,12 +325,19 @@ astNaturalRangeExpression = do
 -- after a @from@ or @within@ prefix.
 astNaturalRangeBounds :: Parser NaturalRangeBounds
 astNaturalRangeBounds = do
-  origin <- astLexeme Lexer.decimal
+  origin <- astSignedInteger
   choice
     [ NaturalRangeTo origin
-        <$> (astSymbol "to" *> astLexeme Lexer.decimal)
+        <$> (astSymbol "to" *> astSignedInteger)
     , NaturalRangeFromUpwards origin <$ astSymbol "upwards"
+    , IntegerRangeFromDownwards origin <$ astSymbol "downwards"
     ]
+
+astSignedInteger :: Parser Integer
+astSignedInteger =
+  astLexeme
+    (try (char '-' *> (negate <$> Lexer.decimal))
+      <|> Lexer.decimal)
 
 astUnary
   :: AST.Operator
@@ -366,7 +417,7 @@ mapSeparator =
 -- @<~@ without making bare identifiers valid general-purpose operands.
 expression :: Parser Expression
 expression = do
-  target <- try identifierOperation <|> mapExpression
+  target <- eitherExpression
   maybeSource <-
     optional (continuedSymbol reverseSpecificationSymbol *> expression)
   pure
@@ -374,35 +425,66 @@ expression = do
       Nothing -> target
       Just source -> MapSpecification source target)
 
-mapExpression :: Parser Expression
-mapExpression = makeExprParser rangeExpression mapOperatorTable
+eitherExpression :: Parser Expression
+eitherExpression =
+  makeExprParser
+    mapExpression
+    [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
+    , [InfixL (Subfederation <$ continuedKeyword "of")]
+    , [InfixL (Equality <$ continuedOperator AST.EqualityOperator)]
+    , [InfixL (BooleanAnd <$ continuedKeyword "and")]
+    , [InfixL (BooleanOr <$ continuedKeyword "or")]
+    ]
 
--- Identifier operations are the only place where an unprefixed identifier is
--- an operand. Parsing the identifier string before entering the expression grammar makes
--- it impossible for a computed expression (or a @$@ string) to occupy the
--- leftmost position.
+mapExpression :: Parser Expression
+mapExpression =
+  makeExprParser (try identifierOperation <|> rangeExpression) mapOperatorTable
+
+-- Identifier operations are the only operands that begin with an unprefixed
+-- identifier. Requiring @:@ or @:=@ here keeps bare identifiers invalid while
+-- allowing a complete identifier operation in any map-operand position.
 identifierOperation :: Parser Expression
 identifierOperation = do
   operationIdentifierString <- IdentifierString <$> try bareIdentifier
+  isOptional <-
+    maybe False (const True)
+      <$> optional (operatorToken AST.OptionalOperator)
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        givenValue <- mapExpression
-        pure
-          (IdentifierOperation
-            operationIdentifierString
-            givenValue
-            (Just givenValue))
+        givenValue <- identifierValueExpression
+        let operation =
+              IdentifierOperation
+                operationIdentifierString
+                givenValue
+                (Just givenValue)
+        pure (optionalIdentifier isOptional operation givenValue)
     , do
         _ <- continuedOperator AST.IdentifierTypeOperator
-        typeAnnotation <- mapExpression
+        typeAnnotation <- identifierValueExpression
         givenValue <-
           optional
-            (continuedOperator AST.AssignmentOperator *> mapExpression)
-        pure
-          (IdentifierOperation
-            operationIdentifierString typeAnnotation givenValue)
+            (continuedOperator AST.AssignmentOperator *>
+              identifierValueExpression)
+        let operation =
+              IdentifierOperation
+                operationIdentifierString typeAnnotation givenValue
+        pure (optionalIdentifier isOptional operation typeAnnotation)
     ]
+
+optionalIdentifier :: Bool -> Expression -> Expression -> Expression
+optionalIdentifier False operation _ = operation
+optionalIdentifier True operation missingValue =
+  EitherType operation missingValue
+
+-- Identifier annotations and assigned values may use range, arithmetic, and
+-- access operators directly. Concatenation and specification are deliberately
+-- excluded at this level so @,@ and @~>@ terminate the identifier operand;
+-- explicit parentheses remain available when either belongs to the
+-- identifier's own value.
+identifierValueExpression :: Parser Expression
+identifierValueExpression =
+  makeExprParser rangeExpression identifierValueOperatorTable
 
 -- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
 -- is permitted at this precedence level. Each explicit endpoint is a complete
@@ -452,14 +534,46 @@ term = accessedTerm termAtom
 termAtom :: Parser Expression
 termAtom =
   choice
-    [ parenthesizedExpression
+    [ try parenthesizedReverseSpecification
+    , parenthesizedExpression
+    , try conditionalExpression
     , try naturalRangeExpression
+    , BooleanLiteral False <$ keyword "false"
+    , BooleanLiteral True <$ keyword "true"
+    , AsciiStringLiteral "Nothing" <$ keyword "nothing"
+    , BooleanLiteral False <$ keyword "False"
+    , BooleanLiteral True <$ keyword "True"
+    , BooleanType <$ keyword "Bool"
+    , IntegerType <$ keyword "Int"
     , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierString
     , AsciiStringLiteral <$> standardString
     , ellipsisNatural
     ]
+
+-- Explicitly parenthesizing both operands makes a reverse specification a
+-- self-contained map operand. This lets @x, (target) <~ (source)@ retain the
+-- specification in the second concatenation slot, while unparenthesized
+-- reverse specification remains the outermost expression layer.
+parenthesizedReverseSpecification :: Parser Expression
+parenthesizedReverseSpecification = do
+  target <- parenthesizedExpression
+  _ <- continuedSymbol reverseSpecificationSymbol
+  source <- parenthesizedExpression
+  _ <- notFollowedBy (try (continuedSymbol reverseSpecificationSymbol))
+  pure (MapSpecification source target)
+
+conditionalExpression :: Parser Expression
+conditionalExpression = do
+  _ <- continuedKeyword "if"
+  condition <- expression
+  _ <- continuedKeyword "then"
+  consequent <- expression
+  alternative <-
+    maybe (AtlasMap []) id
+      <$> optional (continuedKeyword "else" *> expression)
+  pure (Conditional condition consequent alternative)
 
 rangeEndpointTerm :: Parser Expression
 rangeEndpointTerm = accessedTerm rangeEndpointAtom
@@ -502,25 +616,46 @@ naturalRangeExpression = do
 -- after a @from@ or @within@ prefix.
 naturalRangeBounds :: Parser NaturalRangeBounds
 naturalRangeBounds = do
-  origin <- Lexer.decimal <* keywordSeparator
+  origin <- signedIntegerToken <* keywordSeparator
   choice
     [ NaturalRangeTo origin
-        <$> (continuedKeyword "to" *> lexeme Lexer.decimal)
+        <$> (continuedKeyword "to" *> lexeme signedIntegerToken)
     , NaturalRangeFromUpwards origin <$ keyword "upwards"
+    , IntegerRangeFromDownwards origin <$ keyword "downwards"
     ]
+
+signedIntegerToken :: Parser Integer
+signedIntegerToken =
+  try (char '-' *> (negate <$> Lexer.decimal))
+    <|> try
+      (keywordToken "minus" *> keywordSeparator
+        *> (negate <$> Lexer.decimal))
+    <|> Lexer.decimal
 
 naturalRangeExpressionFor
   :: NaturalRangePrefix
   -> NaturalRangeBounds
   -> Expression
 naturalRangeExpressionFor FromRange (NaturalRangeTo origin target) =
-  NaturalRange origin target
+  if origin >= 0 && target >= 0
+    then NaturalRange (fromInteger origin) (fromInteger target)
+    else IntegerRange origin target
 naturalRangeExpressionFor FromRange (NaturalRangeFromUpwards origin) =
-  NaturalRangeUpwards origin
+  if origin >= 0
+    then NaturalRangeUpwards (fromInteger origin)
+    else IntegerRangeUpwards origin
+naturalRangeExpressionFor FromRange (IntegerRangeFromDownwards origin) =
+  IntegerRangeDownwards origin
 naturalRangeExpressionFor WithinRange (NaturalRangeTo origin target) =
-  ValuedNaturalRange origin target
+  if origin >= 0 && target >= 0
+    then ValuedNaturalRange (fromInteger origin) (fromInteger target)
+    else ValuedIntegerRange origin target
 naturalRangeExpressionFor WithinRange (NaturalRangeFromUpwards origin) =
-  ValuedNaturalRangeUpwards origin
+  if origin >= 0
+    then ValuedNaturalRangeUpwards (fromInteger origin)
+    else ValuedIntegerRangeUpwards origin
+naturalRangeExpressionFor WithinRange (IntegerRangeFromDownwards origin) =
+  ValuedIntegerRangeDownwards origin
 
 keyword :: Text -> Parser Text
 keyword value = lexeme (keywordToken value)
@@ -530,7 +665,9 @@ continuedKeyword value = keywordToken value <* keywordSeparator
 
 keywordToken :: Text -> Parser Text
 keywordToken value =
-  value <$ chunk value <* notFollowedBy (satisfy isCanonicalCharacter)
+  try
+    (value <$ chunk value
+      <* notFollowedBy (satisfy isCanonicalCharacter))
 
 keywordSeparator :: Parser ()
 keywordSeparator =
@@ -546,9 +683,16 @@ parenthesizedExpression =
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
 arithmeticOperatorTable =
-  [ [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
+  [ [Postfix (OptionalType <$ operatorToken AST.OptionalOperator)]
+  , [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
+  , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
+    , Prefix (Minus <$ continuedKeyword "minus")
+    , Prefix (BooleanNot <$ continuedKeyword "not")
+    ]
   , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
-  , [InfixL (Addition <$ continuedOperator AST.AdditionOperator)]
+  , [ InfixL (Addition <$ continuedOperator AST.AdditionOperator)
+    , InfixL (Subtraction <$ continuedOperator AST.SubtractionOperator)
+    ]
   ]
 
 -- Concatenation binds after ranges. Access and forward specification share a
@@ -561,10 +705,18 @@ mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   [ [InfixR (MapConcatenation <$ infixComma)]
   , [Postfix (finishConcatenation <$ trailingComma)]
-  , [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
-    , InfixL
-        (MapSpecification <$ continuedOperator AST.SpecificationOperator)
-    ]
+  , mapAccessAndSpecificationOperators
+  ]
+
+identifierValueOperatorTable :: [[Operator Parser Expression]]
+identifierValueOperatorTable =
+  [[InfixL (MapAccess <$ continuedOperator AST.AccessOperator)]]
+
+mapAccessAndSpecificationOperators :: [Operator Parser Expression]
+mapAccessAndSpecificationOperators =
+  [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
+  , InfixL
+      (MapSpecification <$ continuedOperator AST.SpecificationOperator)
   ]
 
 reverseSpecificationSymbol :: Text

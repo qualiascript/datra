@@ -18,6 +18,26 @@ module DatraLanguage.AST.Syntax
   , withinTo
   , withinUpwards
   , naturalType
+  , integerFromTo
+  , integerFromUpwards
+  , integerFromDownwards
+  , integerWithinTo
+  , integerWithinUpwards
+  , integerWithinDownwards
+  , integerType
+  , boolean
+  , booleanType
+  , eitherType
+  , optional
+  , conditional
+  , conditionalWithoutElse
+  , subfederation
+  , equal
+  , and
+  , or
+  , not
+  , minus
+  , (-)
   , (+)
   , (*)
   , (^)
@@ -31,7 +51,7 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   )
 import Numeric.Natural (Natural)
-import Prelude hiding ((+), (*), (^))
+import Prelude hiding (and, not, or, (+), (-), (*), (^))
 
 natural :: Natural -> Expression
 natural = EllipsisNatural
@@ -100,10 +120,73 @@ withinUpwards = ValuedNaturalRangeUpwards
 naturalType :: Expression
 naturalType = NaturalType
 
+integerFromTo :: Integer -> Integer -> Expression
+integerFromTo = IntegerRange
+
+integerFromUpwards :: Integer -> Expression
+integerFromUpwards = IntegerRangeUpwards
+
+integerFromDownwards :: Integer -> Expression
+integerFromDownwards = IntegerRangeDownwards
+
+integerWithinTo :: Integer -> Integer -> Expression
+integerWithinTo = ValuedIntegerRange
+
+integerWithinUpwards :: Integer -> Expression
+integerWithinUpwards = ValuedIntegerRangeUpwards
+
+integerWithinDownwards :: Integer -> Expression
+integerWithinDownwards = ValuedIntegerRangeDownwards
+
+integerType :: Expression
+integerType = IntegerType
+
+boolean :: Bool -> Expression
+boolean = BooleanLiteral
+
+booleanType :: Expression
+booleanType = BooleanType
+
+eitherType :: Expression -> Expression -> Expression
+eitherType = EitherType
+
+optional :: Expression -> Expression
+optional = OptionalType
+
+conditional :: Expression -> Expression -> Expression -> Expression
+conditional = Conditional
+
+conditionalWithoutElse :: Expression -> Expression -> Expression
+conditionalWithoutElse condition consequent =
+  Conditional condition consequent (AtlasMap [])
+
+equal :: Expression -> Expression -> Expression
+equal = Equality
+
+subfederation :: Expression -> Expression -> Expression
+subfederation = Subfederation
+
+and :: Expression -> Expression -> Expression
+and = BooleanAnd
+
+or :: Expression -> Expression -> Expression
+or = BooleanOr
+
+not :: Expression -> Expression
+not = BooleanNot
+
+minus :: Expression -> Expression
+minus = Minus
+
 infixl 6 +
 
 (+) :: Expression -> Expression -> Expression
 (+) = Addition
+
+infixl 6 -
+
+(-) :: Expression -> Expression -> Expression
+(-) = Subtraction
 
 infixl 7 *
 

@@ -6,6 +6,8 @@ module Evaluation.Federation
   , undecidableFederationOperation
   , selectNaturalRangeMember
   , selectValuedNaturalRangeMember
+  , selectIntegerRangeMember
+  , selectValuedIntegerRangeMember
   ) where
 
 import AtlasMapFederationExpression
@@ -16,8 +18,10 @@ import AtlasMapFederationExpression
 import Evaluation.Error
 import Evaluation.Value
 import NaturalRange qualified
+import IntegerRange qualified
 import Numeric.Natural (Natural)
 import ValuedNaturalRange qualified
+import ValuedIntegerRange qualified
 decideFederationConcatenation
   :: InterpretedAtlasMapFederation
   -> InterpretedAtlasMapFederation
@@ -30,6 +34,12 @@ decideFederationConcatenation left right
       AtlasMapFederationProved ()
   | atlasMapFederationExpressionIsSingleton right =
       AtlasMapFederationProved ()
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) _ =
+  AtlasMapFederationProved ()
+decideFederationConcatenation _
+    (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) =
+  AtlasMapFederationProved ()
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation
       (NaturalRangeAtlasMapFederation
@@ -61,6 +71,45 @@ decideFederationConcatenation
       valuedRange naturalRange)
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation
+      (IntegerRangeAtlasMapFederation
+        (EvaluatedIntegerRange leftRange)))
+    (PrimitiveAtlasMapFederation
+      (IntegerRangeAtlasMapFederation
+        (EvaluatedIntegerRange rightRange))) =
+  integerOverlapDecision
+    (IntegerRange.integerRangeOverlapWitness leftRange rightRange)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
+      (ValuedIntegerRangeAtlasMapFederation
+        (EvaluatedValuedIntegerRange leftRange)))
+    (PrimitiveAtlasMapFederation
+      (ValuedIntegerRangeAtlasMapFederation
+        (EvaluatedValuedIntegerRange rightRange))) =
+  integerOverlapDecision
+    (ValuedIntegerRange.valuedIntegerRangesOverlapWitness
+      leftRange rightRange)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
+      (IntegerRangeAtlasMapFederation
+        (EvaluatedIntegerRange integerRange)))
+    (PrimitiveAtlasMapFederation
+      (ValuedIntegerRangeAtlasMapFederation
+        (EvaluatedValuedIntegerRange valuedRange))) =
+  integerOverlapDecision
+    (ValuedIntegerRange.valuedIntegerRangeOverlapIntegerRange
+      valuedRange integerRange)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
+      (ValuedIntegerRangeAtlasMapFederation
+        (EvaluatedValuedIntegerRange valuedRange)))
+    (PrimitiveAtlasMapFederation
+      (IntegerRangeAtlasMapFederation
+        (EvaluatedIntegerRange integerRange))) =
+  integerOverlapDecision
+    (ValuedIntegerRange.valuedIntegerRangeOverlapIntegerRange
+      valuedRange integerRange)
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation
       (ValuedNaturalRangeAtlasMapFederation
         (EvaluatedValuedNaturalRange valuedRange)))
     (PrimitiveAtlasMapFederation
@@ -87,6 +136,38 @@ decidePrimitiveSubfederation
     (NaturalRangeAtlasMapFederation
       (EvaluatedNaturalRange targetRange))
   | NaturalRange.naturalRangeIsSubfederationOf sourceRange targetRange =
+      AtlasMapFederationProved ()
+  | otherwise = missingMember
+decidePrimitiveSubfederation
+    (IntegerRangeAtlasMapFederation
+      (EvaluatedIntegerRange sourceRange))
+    (IntegerRangeAtlasMapFederation
+      (EvaluatedIntegerRange targetRange))
+  | IntegerRange.integerRangeIsSubfederationOf sourceRange targetRange =
+      AtlasMapFederationProved ()
+  | otherwise = missingMember
+decidePrimitiveSubfederation
+    (ValuedIntegerRangeAtlasMapFederation
+      (EvaluatedValuedIntegerRange sourceRange))
+    (ValuedIntegerRangeAtlasMapFederation
+      (EvaluatedValuedIntegerRange targetRange))
+  | ValuedIntegerRange.valuedIntegerRangeIsSubfederationOf
+      sourceRange targetRange = AtlasMapFederationProved ()
+  | otherwise = missingMember
+decidePrimitiveSubfederation
+    (ValuedNaturalRangeAtlasMapFederation
+      (EvaluatedValuedNaturalRange sourceRange))
+    (ValuedIntegerRangeAtlasMapFederation
+      (EvaluatedValuedIntegerRange targetRange))
+  | valuedNaturalContainedInInteger sourceRange targetRange =
+      AtlasMapFederationProved ()
+  | otherwise = missingMember
+decidePrimitiveSubfederation
+    (ValuedIntegerRangeAtlasMapFederation
+      (EvaluatedValuedIntegerRange sourceRange))
+    (ValuedNaturalRangeAtlasMapFederation
+      (EvaluatedValuedNaturalRange targetRange))
+  | valuedIntegerContainedInNatural sourceRange targetRange =
       AtlasMapFederationProved ()
   | otherwise = missingMember
 decidePrimitiveSubfederation
@@ -151,6 +232,31 @@ selectValuedNaturalRangeMember targetRange candidate =
   candidate
     <$ ValuedNaturalRange.valuedNaturalRangeValue targetRange candidate
 
+selectIntegerRangeMember
+  :: IntegerRange.IntegerRange rangeScope federationScope
+  -> IntegerRange.IntegerSubrangeDescription
+  -> Maybe IntegerRange.IntegerSubrangeDescription
+selectIntegerRangeMember targetRange candidate =
+  case candidate of
+    IntegerRange.EmptyIntegerSubrange -> Just candidate
+    IntegerRange.FiniteIntegerSubrange start final ->
+      IntegerRange.integerSubrangeDescription
+        <$> IntegerRange.integerRangeFiniteSubrange targetRange start final
+    IntegerRange.UpwardsIntegerSubrange start ->
+      IntegerRange.integerSubrangeDescription
+        <$> IntegerRange.integerRangeUpwardsSubrange targetRange start
+    IntegerRange.DownwardsIntegerSubrange start ->
+      IntegerRange.integerSubrangeDescription
+        <$> IntegerRange.integerRangeDownwardsSubrange targetRange start
+
+selectValuedIntegerRangeMember
+  :: ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
+  -> Integer
+  -> Maybe Integer
+selectValuedIntegerRangeMember targetRange candidate =
+  candidate
+    <$ ValuedIntegerRange.valuedIntegerRangeValue targetRange candidate
+
 overlapDecision
   :: Maybe Natural
   -> AtlasMapFederationDecision
@@ -160,7 +266,58 @@ overlapDecision
 overlapDecision Nothing = AtlasMapFederationProved ()
 overlapDecision (Just witness) =
   AtlasMapFederationRefuted
+    (AtlasMapFederationConcatenationCollision (toInteger witness))
+
+integerOverlapDecision
+  :: Maybe Integer
+  -> AtlasMapFederationDecision
+       AtlasMapFederationRefutation
+       AtlasMapFederationUncertainty
+       ()
+integerOverlapDecision Nothing = AtlasMapFederationProved ()
+integerOverlapDecision (Just witness) =
+  AtlasMapFederationRefuted
     (AtlasMapFederationConcatenationCollision witness)
+
+valuedNaturalContainedInInteger
+  :: ValuedNaturalRange.ValuedNaturalRange sourceRange sourceFederation
+  -> ValuedIntegerRange.ValuedIntegerRange targetRange targetFederation
+  -> Bool
+valuedNaturalContainedInInteger source target =
+  case ValuedNaturalRange.valuedNaturalRangeTarget source of
+    NaturalRange.FiniteNaturalTarget final ->
+      contains (toInteger (ValuedNaturalRange.valuedNaturalRangeStart source))
+        && contains (toInteger final)
+    NaturalRange.UpwardsTarget ->
+      contains (toInteger (ValuedNaturalRange.valuedNaturalRangeStart source))
+        && ValuedIntegerRange.valuedIntegerRangeTarget target
+          `elem` [ IntegerRange.UpwardsIntegerTarget
+                 , IntegerRange.AllIntegersTarget
+                 ]
+  where
+    contains = ValuedIntegerRange.valuedIntegerRangeContains target
+
+valuedIntegerContainedInNatural
+  :: ValuedIntegerRange.ValuedIntegerRange sourceRange sourceFederation
+  -> ValuedNaturalRange.ValuedNaturalRange targetRange targetFederation
+  -> Bool
+valuedIntegerContainedInNatural source target =
+  case ValuedIntegerRange.valuedIntegerRangeTarget source of
+    IntegerRange.FiniteIntegerTarget final ->
+      contains (ValuedIntegerRange.valuedIntegerRangeStart source)
+        && contains final
+    IntegerRange.UpwardsIntegerTarget ->
+      contains (ValuedIntegerRange.valuedIntegerRangeStart source)
+        && ValuedNaturalRange.valuedNaturalRangeTarget target
+          == NaturalRange.UpwardsTarget
+    IntegerRange.DownwardsIntegerTarget -> False
+    IntegerRange.AllIntegersTarget -> False
+  where
+    contains value
+      | value < 0 = False
+      | otherwise =
+          ValuedNaturalRange.valuedNaturalRangeContains
+            target (fromInteger value)
 
 missingMember
   :: AtlasMapFederationDecision

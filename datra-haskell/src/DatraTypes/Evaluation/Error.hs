@@ -10,7 +10,6 @@ module Evaluation.Error
   ) where
 
 import MapOperators.AccessOperator (AccessError)
-import Numeric.Natural (Natural)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError
   , SuperEllipsisRangeError
@@ -21,6 +20,9 @@ data OperandSide = LeftOperand | RightOperand
 
 data InterpretedValueKind
   = NaturalValueKind
+  | IntegerValueKind
+  | BooleanValueKind
+  | EitherValueKind
   | ExplicitOrdinalValueKind
   | FormulationValueKind
   | RangeValueKind
@@ -39,7 +41,7 @@ data AtlasMapFederationOperation
   deriving (Eq, Show)
 
 data AtlasMapFederationRefutation
-  = AtlasMapFederationConcatenationCollision Natural
+  = AtlasMapFederationConcatenationCollision Integer
   | AtlasMapFederationAccessHasEmptyCounterexample
   | AtlasMapFederationSpecificationHasNoMatchingMember
   | AtlasMapFederationSubfederationHasMissingMember
@@ -51,6 +53,9 @@ data AtlasMapFederationUncertainty
 
 data InterpretingError
   = ExpectedNumericalOperand OperandSide InterpretedValueKind
+  | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
+  | ExpectedBooleanOperand OperandSide InterpretedValueKind
+  | ExpectedBooleanCondition InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
   | ExpectedInsertionOperand InterpretedValueKind
   | ExpectedTotalAtlasMap InterpretedValueKind

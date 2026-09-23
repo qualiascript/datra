@@ -15,6 +15,7 @@ module Interpreting
   , interpretedValueKind
   , interpretedCanonicalResult
   , interpretedExplicitOrdinal
+  , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMap
@@ -89,12 +90,46 @@ interpretNormalizedExpression expressionValue =
     ValuedNaturalRangeUpwards origin ->
       valuedNaturalRangeUpwardsValue origin
     NaturalType -> naturalTypeValue
+    IntegerRange origin target -> integerRangeValue origin target
+    IntegerRangeUpwards origin -> integerRangeUpwardsValue origin
+    IntegerRangeDownwards origin -> integerRangeDownwardsValue origin
+    ValuedIntegerRange origin target ->
+      valuedIntegerRangeValue origin target
+    ValuedIntegerRangeUpwards origin ->
+      valuedIntegerRangeUpwardsValue origin
+    ValuedIntegerRangeDownwards origin ->
+      valuedIntegerRangeDownwardsValue origin
+    IntegerType -> integerTypeValue
+    BooleanLiteral value -> Right (booleanValue value)
+    BooleanType -> Right booleanTypeValue
+    EitherType left right ->
+      interpretBinaryPure eitherValue left right
+    OptionalType operand ->
+      optionalValue <$> interpretExpressionReason operand
+    Conditional condition consequent alternative -> do
+      conditionValue <- interpretExpressionReason condition
+      conditionResult <- booleanCondition conditionValue
+      interpretExpressionReason
+        (if conditionResult then consequent else alternative)
     Addition left right ->
       interpretBinary addValues left right
+    Subtraction left right ->
+      interpretBinary subtractValues left right
+    Minus operand -> interpretExpressionReason operand >>= minusValue
     Multiplication left right ->
       interpretBinary multiplyValues left right
     Exponentiation base exponentValue ->
       interpretBinary exponentiateValues base exponentValue
+    Subfederation source target ->
+      interpretBinary subfederationValues source target
+    Equality left right ->
+      interpretBinary equalValues left right
+    BooleanAnd left right ->
+      interpretBinary booleanAndValues left right
+    BooleanOr left right ->
+      interpretBinary booleanOrValues left right
+    BooleanNot operand ->
+      interpretExpressionReason operand >>= booleanNotValue
     MapConcatenation left right ->
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->
@@ -107,6 +142,20 @@ interpretNormalizedExpression expressionValue =
         maybeGivenValueExpression -> do
       typeAnnotation <- interpretExpressionReason typeAnnotationExpression
       case maybeGivenValueExpression of
+        Nothing
+          | identifierString == "False"
+          , interpretedValueKind typeAnnotation == NaturalValueKind
+          , interpretedInteger typeAnnotation == Just 0 ->
+              Right (booleanValue False)
+        Nothing
+          | identifierString == "True"
+          , interpretedValueKind typeAnnotation == NaturalValueKind
+          , interpretedInteger typeAnnotation == Just 1 ->
+              Right (booleanValue True)
+        Nothing
+          | identifierString == "Nothing"
+          , interpretedCanonicalResult typeAnnotation == CanonicalMap 0 [] ->
+              Right nothingValue
         Nothing ->
           Right (simpleIdentifierTypeValue identifierString typeAnnotation)
         Just givenValueExpression -> do
@@ -232,6 +281,16 @@ interpretBinary operation left right = do
   leftValue <- interpretExpressionReason left
   rightValue <- interpretExpressionReason right
   operation leftValue rightValue
+
+interpretBinaryPure
+  :: (InterpretedValue -> InterpretedValue -> InterpretedValue)
+  -> Expression
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretBinaryPure operation left right = do
+  leftValue <- interpretExpressionReason left
+  rightValue <- interpretExpressionReason right
+  pure (operation leftValue rightValue)
 
 interpretAtlasMapWith
   :: (Expression -> Either InterpretingError InterpretedValue)
