@@ -46,15 +46,14 @@ import HorizontalSum
 import HorizontalSum.Syntax ((|+|))
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal (OrderedAtlasTransposal)
+import MapOperators.Internal
+  ( forgetStableConfederalDataWrapper
+  , wrapStableConfederalData
+  )
 import StableConfederalData
   ( StableConfederalData
   , StableConfederalDataHom
   , StableConfederalDataValue
-  , mapStableConfederalData
-  , stableConfederalData
-  , stableConfederalDataComposition
-  , stableConfederalDataHom
-  , stableConfederalDataIdentity
   )
 
 -- | Defunctionalized binary carrier. Nested occurrences are flattened by
@@ -174,16 +173,10 @@ sequentialOperator
   -> StableConfederalData right
   -> StableConfederalData (SequentialOperatorValues left right)
 sequentialOperator left right =
-  stableConfederalData
-    (\arrow (SequentialOperatorValue value) ->
-      SequentialOperatorValue
-        (mapStableConfederalData summed arrow value))
-    (\(SequentialOperatorValue value) ->
-      stableConfederalDataIdentity summed value)
-    (\second first (SequentialOperatorValue value) ->
-      stableConfederalDataComposition summed second first value)
+  wrapStableConfederalData summed unwrap SequentialOperatorValue
   where
     summed = left |+| right
+    unwrap (SequentialOperatorValue value) = value
 
 -- | Forget the flattened geometric presentation, retaining the universal
 -- morphism to the binary horizontal sum of the two parsed operands.
@@ -195,11 +188,10 @@ sequentialToHorizontalSum
        (SequentialOperatorValues left right)
        (HorizontalSumValues left right)
 sequentialToHorizontalSum left right =
-  stableConfederalDataHom
+  forgetStableConfederalDataWrapper
     (sequentialOperator left right)
     (left |+| right)
     unwrap
-    (\_ _ -> ())
   where
     unwrap (SequentialOperatorValue value) = value
 

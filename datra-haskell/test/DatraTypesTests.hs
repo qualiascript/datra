@@ -7,6 +7,7 @@
 module Main (main) where
 
 import AsciiMap
+import qualified AsciiString
 import Atlas
   ( Atlas
   , atlasCardinality
@@ -25,6 +26,11 @@ import AtlasConfederation
   , rightAtlasConfederationInclusion
   , singletonAtlasConfederation
   )
+import AtlasFederation
+  ( AtlasFederationSeparation (SeparatedCorrespondingPageElements)
+  , atlasFederationIndexDominion
+  , atlasFederationSeparation
+  )
 import AtlasCoveredPageElement
   ( atlasCoveredPageElement
   , withAtlasCoveredPageElement
@@ -35,7 +41,6 @@ import AtlasTransposal
   , withAtlasTransposalElement
   )
 import AtlasSequence (atlasSequenceDatumMember)
-import CanonicalCharsMap
 import ChainedDominionAtlas (ChainedDominionAtlas)
 import Control.Monad (join)
 import Dominion
@@ -72,13 +77,21 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   )
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English, Română)
+  ( Locale (English, Romanian)
   , LocalizedDiagnostic (localizeDiagnostic)
   , renderDatraError
   )
 import Ellipsis
 import EllipsisNatural qualified as DatraNatural
+import EllipsisInteger qualified as DatraInteger
+import BooleanType qualified as DatraBoolean
+import IntegerRange qualified
+import IntegerType qualified
+import ValuedIntegerRange qualified
 import MapOperators
+import MapOperators.OrderedAtlasMap qualified as OrderedValues
+import NaturalRange
+import NaturalType qualified
 import Numeric.Natural (Natural)
 import NumericalOperators.Range
   ( boundedSuperEllipsisRange
@@ -110,34 +123,59 @@ import SuperEllipsis
 import SuperEllipsisInsertion
 import qualified SuperEllipsisRange as SuperRange
 import SuperEllipsisValue
+import ValuedNaturalRange
 
 import Data.Maybe (fromMaybe, isNothing)
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import qualified NumericalOperators as Numeric
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Hedgehog (testProperty)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 main :: IO ()
-main = do
-  testOrdinalInspection
-  testDiagnostics
-  testEvaluationBoundary
-  testAsciiMap
-  testCanonicalCharsMap
-  testAccessOperator
-  testDot
-  testSequentialOperator
-  testConcatOperator
-  testGroupedSequentialExpansion
-  testComplexOperatorStructure
-  testEllipsis
-  testSuperEllipsis
-  testSuperEllipsisRange
-  testSuperEllipsisInsertion
-  testSuperEllipsisInsertionDominion
-  testRankOneRange
-  testRankOneRangeMerge
-  testRankOneRangeAnalysis
-  testEllipsisNatural
-  testNumericalOperators
-  testTypingAbstractions
+main = defaultMain testTree
+
+testTree :: TestTree
+testTree =
+  testGroup "Datra types"
+    [ testGroup "examples"
+        [ testCase "ordinal inspection" testOrdinalInspection
+        , testCase "diagnostics" testDiagnostics
+        , testCase "evaluation boundary" testEvaluationBoundary
+        , testCase "ASCII map" testAsciiMap
+        , testCase "ASCII string" testAsciiString
+        , testCase "access operator" testAccessOperator
+        , testCase "dot" testDot
+        , testCase "sequential operator" testSequentialOperator
+        , testCase "concatenation operator" testConcatOperator
+        , testCase "grouped sequential expansion" testGroupedSequentialExpansion
+        , testCase "complex operator structure" testComplexOperatorStructure
+        , testCase "ellipsis" testEllipsis
+        , testCase "super ellipsis" testSuperEllipsis
+        , testCase "super ellipsis range" testSuperEllipsisRange
+        , testCase "super ellipsis insertion" testSuperEllipsisInsertion
+        , testCase "super ellipsis insertion dominion" testSuperEllipsisInsertionDominion
+        , testCase "rank-one range" testRankOneRange
+        , testCase "rank-one range merge" testRankOneRangeMerge
+        , testCase "rank-one range analysis" testRankOneRangeAnalysis
+        , testCase "ellipsis natural" testEllipsisNatural
+        , testCase "natural range" testNaturalRange
+        , testCase "valued natural range" testValuedNaturalRange
+        , testCase "integer ranges" testIntegerRanges
+        , testCase "numerical operators" testNumericalOperators
+        , testCase "typed and evaluated numerical semantics agree"
+            testNumericalSemanticsAgreement
+        , testCase "typing abstractions" testTypingAbstractions
+        ]
+    , testGroup "properties"
+        [ testProperty "ASCII strings preserve every byte" propAsciiStringRoundTrip
+        , testProperty "ASCII map lookup agrees with character codes" propAsciiMapLookup
+        , testProperty "ordinal sequence append preserves order and lookup"
+            propOrdinalSequenceAppend
+        ]
+    ]
 
 testOrdinalInspection :: IO ()
 testOrdinalInspection = do
@@ -148,9 +186,12 @@ testOrdinalInspection = do
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do
-  let emptyMap = Types.makeAtlasMap 0 []
+  let nonemptyMap =
+        Types.makeAtlasMap
+          2
+          [Types.naturalValue 0, Types.naturalValue 1]
   assert "DatraTypes rejects non-numerical operands without AST interpretation"
-    (case Types.addValues emptyMap (Types.naturalValue 1) of
+    (case Types.addValues nonemptyMap (Types.naturalValue 1) of
       Left
           (Types.ExpectedNumericalOperand
             Types.LeftOperand Types.MapValueKind) -> True
@@ -178,9 +219,9 @@ testDiagnostics = do
         (finiteOrdinal 3)
       localized = localizeDiagnostic English reason
       rendered = renderDatraError English (atSourceSpan sourceSpan reason)
-      localizedRomanian = localizeDiagnostic Română reason
+      localizedRomanian = localizeDiagnostic Romanian reason
       renderedRomanian =
-        renderDatraError Română (atSourceSpan sourceSpan reason)
+        renderDatraError Romanian (atSourceSpan sourceSpan reason)
   assert "English access localization has exact structured text"
     (localized
       == LocalizedMessage
@@ -218,14 +259,267 @@ testDiagnostics = do
           (finiteOrdinal 256))
       == LocalizedMessage
           "the access insertion has a larger rank than the map"
-          [ "insertion rank limit: (...)^2 * 2 + 3"
+          [ "insertion rank limit: (...) ^ 2 * 2 + 3"
           , "map final-page order type: 256"
           ])
 
 assert :: String -> Bool -> IO ()
-assert label condition
-  | condition = pure ()
-  | otherwise = fail ("test failed: " <> label)
+assert = assertBool
+
+propAsciiStringRoundTrip :: H.Property
+propAsciiStringRoundTrip = H.property $ do
+  characters <- H.forAll
+    (Gen.list (Range.linear 0 64) (Gen.enum '\0' '\255'))
+  case AsciiString.asciiString characters AsciiString.asciiStringValue of
+    Nothing -> do
+      H.footnote "asciiString rejected generated byte characters"
+      H.failure
+    Just actual -> actual H.=== characters
+
+propAsciiMapLookup :: H.Property
+propAsciiMapLookup = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 255))
+  asciiMap $ \ascii ->
+    asciiCharacterAt ascii value H.=== Just (toEnum (fromIntegral value))
+
+propOrdinalSequenceAppend :: H.Property
+propOrdinalSequenceAppend = H.property $ do
+  left <- H.forAll
+    (Gen.list (Range.linear 0 30) (Gen.word8 Range.constantBounded))
+  right <- H.forAll
+    (Gen.list (Range.linear 0 30) (Gen.word8 Range.constantBounded))
+  let makeSequence =
+        foldr
+          ( OrderedValues.appendOrdinalOrderedValues
+              . OrderedValues.singletonOrdinalOrderedValues
+          )
+          OrderedValues.emptyOrdinalOrderedValues
+      combined =
+        OrderedValues.appendOrdinalOrderedValues
+          (makeSequence left)
+          (makeSequence right)
+      expected = left <> right
+      actual =
+        map
+          (OrderedValues.ordinalOrderedValueAt combined . finiteOrdinal)
+          [0 .. fromIntegral (length expected)]
+  OrderedValues.ordinalOrderedValuesOrderType combined
+    H.=== finiteOrdinal (fromIntegral (length expected))
+  actual H.=== map Just expected <> [Nothing]
+
+testNaturalRange :: IO ()
+testNaturalRange = do
+  case DatraNatural.ellipsisNatural 0 $ \zero ->
+      DatraNatural.ellipsisNatural 2 $ \two ->
+        naturalRange zero two $ \valueRange -> do
+          let federation = naturalRangeFederation valueRange
+              indices = atlasFederationIndexDominion federation
+              descriptions =
+                fmap naturalSubrangeDescription
+                  <$> traverse (unrank indices) [0 .. 6]
+              first = unrank indices 1
+              lastSingleton = unrank indices 6
+          assert "an inclusive 0..2 range uses the exclusive boundary 3"
+            ( SuperRange.superEllipsisRangeTarget
+                (naturalRangeEllipsisRange valueRange)
+                == SuperRange.GivenTarget (finiteOrdinal 3)
+            )
+          assert "0..2 federates the empty range and all directed subranges"
+            ( descriptions
+                == Just
+                  [ EmptyNaturalSubrange
+                  , FiniteNaturalSubrange 0 0
+                  , FiniteNaturalSubrange 0 1
+                  , FiniteNaturalSubrange 0 2
+                  , FiniteNaturalSubrange 1 1
+                  , FiniteNaturalSubrange 1 2
+                  , FiniteNaturalSubrange 2 2
+                  ]
+              && isNothing (unrank indices 7)
+            )
+          assert "equal-sized distinct subranges have a separation witness"
+            (case (first, lastSingleton) of
+              (Just left, Just right) ->
+                atlasFederationSeparation federation left right
+                  == Just
+                    (SeparatedCorrespondingPageElements
+                      1 (finiteOrdinal 0))
+              _ -> False)
+    of
+      Just (Just (Just tests)) -> tests
+      _ -> fail "test setup failed: inclusive NaturalRange"
+
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      DatraNatural.ellipsisNatural 5 $ \five ->
+        naturalRange two five $ \valueRange ->
+          ( naturalRangeDirection valueRange
+              == AscendingNaturalRange
+            && naturalRangeFiniteSubrange valueRange 2 5
+              /= Nothing
+            && isNothing (naturalRangeFiniteSubrange valueRange 5 2)
+          )
+    of
+      Just (Just (Just condition)) ->
+        assert "ascending federations exclude backwards subranges" condition
+      _ -> fail "test setup failed: ascending NaturalRange"
+
+  case DatraNatural.ellipsisNatural 5 $ \five ->
+      DatraNatural.ellipsisNatural 2 $ \two ->
+        naturalRange five two $ \valueRange ->
+          ( naturalRangeDirection valueRange
+              == DescendingNaturalRange
+            && SuperRange.superEllipsisRangeTarget
+                (naturalRangeEllipsisRange valueRange)
+                == SuperRange.GivenTarget (finiteOrdinal 1)
+            && naturalRangeFiniteSubrange valueRange 5 2
+              /= Nothing
+            && isNothing (naturalRangeFiniteSubrange valueRange 2 5)
+          )
+    of
+      Just (Just (Just condition)) ->
+        assert "descending federations contain only descending subranges"
+          condition
+      _ -> fail "test setup failed: descending NaturalRange"
+
+  case DatraNatural.ellipsisNatural 5 $ \five ->
+      DatraNatural.ellipsisNatural 0 $ \zero ->
+        naturalRange five zero $ \valueRange ->
+          SuperRange.superEllipsisRangeTarget
+            (naturalRangeEllipsisRange valueRange)
+            == SuperRange.MinusSign
+    of
+      Just (Just (Just condition)) ->
+        assert "a descending NaturalRange ending at zero uses ..-" condition
+      _ -> fail "test setup failed: zero-target NaturalRange"
+
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      naturalRange two upwards $ \valueRange ->
+        let federation = naturalRangeFederation valueRange
+            indices = atlasFederationIndexDominion federation
+        in ( SuperRange.superEllipsisRangeTarget
+              (naturalRangeEllipsisRange valueRange)
+              == SuperRange.PlusSign
+            && fmap naturalSubrangeDescription (unrank indices 0)
+              == Just EmptyNaturalSubrange
+            && fmap naturalSubrangeDescription (unrank indices 1)
+              == Just (FiniteNaturalSubrange 2 2)
+            && fmap naturalSubrangeDescription (unrank indices 2)
+              == Just (UpwardsNaturalSubrange 2)
+            && naturalRangeUpwardsSubrange valueRange 4 /= Nothing
+            && isNothing (naturalRangeFiniteSubrange valueRange 4 3)
+           )
+    of
+      Just (Just condition) ->
+        assert "upwards creates a.. and federates ascending subranges"
+          condition
+      _ -> fail "test setup failed: upwards NaturalRange"
+
+testValuedNaturalRange :: IO ()
+testValuedNaturalRange = do
+  case DatraNatural.ellipsisNaturalTotal 2 $ \two ->
+      DatraNatural.ellipsisNaturalTotal 5 $ \five ->
+        valuedNaturalRange two five $ \valueRange ->
+          let federation = valuedNaturalRangeFederation valueRange
+              indices = atlasFederationIndexDominion federation
+              values =
+                fmap valuedNaturalValue
+                  <$> traverse (unrank indices) [0 .. 3]
+              first = unrank indices 0
+              second = unrank indices 1
+          in ( values == Just [2, 3, 4, 5]
+              && isNothing (unrank indices 4)
+              && valuedNaturalRangeContains valueRange 2
+              && valuedNaturalRangeContains valueRange 5
+              && not (valuedNaturalRangeContains valueRange 6)
+              && case (first, second) of
+                  (Just left, Just right) ->
+                    atlasFederationSeparation federation left right
+                      == Just
+                        (SeparatedCorrespondingPageElements
+                          1 (finiteOrdinal 0))
+                  _ -> False
+             ) of
+    Just condition ->
+      assert
+        "ValuedNaturalRange federates exactly its EllipsisNatural values"
+        condition
+    Nothing -> fail "test setup failed: finite ValuedNaturalRange"
+
+  case DatraNatural.ellipsisNaturalTotal 5 $ \five ->
+      DatraNatural.ellipsisNaturalTotal 2 $ \two ->
+        valuedNaturalRange five two $ \valueRange ->
+          let indices =
+                atlasFederationIndexDominion
+                  (valuedNaturalRangeFederation valueRange)
+          in fmap valuedNaturalValue
+              <$> traverse (unrank indices) [0 .. 3] of
+    Just (Just values) ->
+      assert
+        "descending ValuedNaturalRange indices follow its traversal"
+        (values == [5, 4, 3, 2])
+    _ -> fail "test setup failed: descending ValuedNaturalRange"
+
+  case NaturalType.naturalType $ \valueRange ->
+      let indices =
+            atlasFederationIndexDominion
+              (valuedNaturalRangeFederation valueRange)
+      in fmap valuedNaturalValue
+          <$> traverse (unrank indices) [0 .. 4] of
+    Just (Just values) ->
+      assert "NaturalType is from 0 upwards"
+        (values == [0, 1, 2, 3, 4])
+    _ -> fail "test setup failed: NaturalType"
+
+testIntegerRanges :: IO ()
+testIntegerRanges = do
+  DatraInteger.ellipsisIntegerFromComplement
+      5 DatraBoolean.DatraTrue $ \negative ->
+    assert "integer complement flags are Datra Booleans"
+      ( DatraInteger.ellipsisIntegerValue negative == -6
+        && DatraBoolean.booleanNatural
+          (DatraInteger.ellipsisIntegerComplement negative) == 1
+      )
+  DatraInteger.ellipsisInteger 5 $ \positive ->
+    DatraInteger.ellipsisInteger (-6) $ \negative ->
+      assert "integers use adjacent Nat x 2 complement codes"
+        ( DatraInteger.ellipsisIntegerValue positive == 5
+          && DatraInteger.ellipsisIntegerCode positive == 10
+          && DatraInteger.ellipsisIntegerValue negative == -6
+          && DatraInteger.ellipsisIntegerCode negative == 11
+        )
+  case DatraInteger.ellipsisInteger (-2) $ \origin ->
+      DatraInteger.ellipsisInteger 2 $ \target ->
+        IntegerRange.integerRange origin target $ \valueRange ->
+          ( IntegerRange.integerRangeDirection valueRange
+              == IntegerRange.AscendingIntegerRange
+            && IntegerRange.integerRangeFiniteSubrange valueRange (-2) 2
+              /= Nothing
+            && IntegerRange.integerRangeFiniteSubrange valueRange 2 (-2)
+              == Nothing
+          ) of
+    Just condition ->
+      assert "finite integer ranges retain directed subranges" condition
+    Nothing -> fail "test setup failed: IntegerRange"
+  case DatraInteger.ellipsisInteger (-1) $ \origin ->
+      IntegerRange.integerRange
+        origin IntegerRange.downwards $ \valueRange ->
+          ( IntegerRange.integerRangeDirection valueRange
+              == IntegerRange.DescendingIntegerRange
+            && IntegerRange.integerRangeDownwardsSubrange valueRange (-4)
+              /= Nothing
+          ) of
+    Just condition ->
+      assert "integer ranges support an open downward direction" condition
+    Nothing -> fail "test setup failed: downward IntegerRange"
+  IntegerType.integerType $ \integerValues ->
+    let indices =
+          atlasFederationIndexDominion
+            (ValuedIntegerRange.valuedIntegerRangeFederation integerValues)
+        values =
+          fmap ValuedIntegerRange.valuedIntegerValue
+            <$> traverse (unrank indices) [0 .. 5]
+    in assert "Int enumerates the Nat x 2 product"
+        (values == Just [0, -1, 1, -2, 2, -3])
 
 atlasPageHasExactly
   :: Atlas atlasScope paginationScope cellData origin final
@@ -821,24 +1115,82 @@ testAsciiMap =
       (map (asciiCharacterAt ascii) [0, 65, 97, 255, 256]
         == [Just '\0', Just 'A', Just 'a', Just '\255', Nothing])
 
-testCanonicalCharsMap :: IO ()
-testCanonicalCharsMap =
-  case canonicalCharsMap (\canonical -> do
-      let valueAtlas = indexedAtlasAtlas canonical
-          positions = [0, 1, 10, 11, 36, 37, 38, 63, 64]
-          expected =
-            [ Just '\'', Just '0', Just '9', Just 'A', Just 'Z'
-            , Just '_', Just 'a', Just 'z', Nothing
-            ]
-      assert "canonical characters retain their ASCII order under access"
-        (map (canonicalCharacterAt canonical) positions == expected)
-      assert "canonical character access produces a two-page 64-cell map"
-        ( indexedAtlasCardinality canonical
-            == finiteOrdinal canonicalCharsCardinality
-          && atlasCardinality valueAtlas == 2
-          && atlasPageHasExactly valueAtlas 1 canonicalCharsCardinality
-        )) of
-    Nothing -> fail "canonical character insertion did not fit ASCII"
+testAsciiString :: IO ()
+testAsciiString = do
+  case AsciiString.asciiString "" $ \emptyString ->
+      assert "an empty ASCII string has the canonical empty presentation"
+        ( AsciiString.asciiStringLength emptyString == 0
+          && AsciiString.asciiStringValue emptyString == ""
+          && isNothing (AsciiString.asciiStringCharacterAt emptyString 0)
+          && case orderedAtlasMap emptyString of
+            EmptyOrderedAtlasMap -> True
+            NonEmptyOrderedAtlasMap _ -> False
+        ) of
+    Nothing -> fail "an empty ASCII string was rejected"
+    Just checks -> checks
+  case AsciiString.asciiString "aA_0'a\255" $ \value ->
+      case orderedAtlasMap value of
+        EmptyOrderedAtlasMap -> fail "a nonempty ASCII string produced an empty map"
+        NonEmptyOrderedAtlasMap valueMap -> do
+          let valueAtlas = indexedAtlasAtlas valueMap
+          assert "an ASCII string retains arbitrary and repeated characters"
+            ( AsciiString.asciiStringLength value == 7
+              && AsciiString.asciiStringValue value == "aA_0'a\255"
+              && map (AsciiString.asciiStringCharacterAt value) [0 .. 7]
+                == map Just "aA_0'a\255" <> [Nothing]
+            )
+          assert "a nonempty ASCII string is a finite two-page map"
+            ( indexedAtlasCardinality valueMap == finiteOrdinal 7
+              && atlasCardinality valueAtlas == 2
+              && atlasPageHasExactly valueAtlas 1 7
+            ) of
+    Nothing -> fail "a valid ASCII string was rejected"
+    Just checks -> checks
+  assert "an out-of-map character is rejected"
+    (isNothing (AsciiString.asciiString "\x100" (const ())))
+  case AsciiString.asciiString "left" $ \left ->
+      AsciiString.asciiString "" $ \emptyString ->
+        AsciiString.asciiString "right" $ \right ->
+          let unchanged = left `concatOperands` emptyString
+              combined = unchanged `concatOperands` right
+          in
+            ( AsciiString.asciiStringValue unchanged
+            , AsciiString.asciiStringValue combined
+            , orderedAtlasMapCardinality (orderedAtlasMap combined)
+            ) of
+    Just (Just (Just (unchanged, combined, cardinality))) ->
+      assert "ordinary concatenation retains ASCII-string behavior"
+        ( unchanged == "left"
+          && combined == "leftright"
+          && cardinality == finiteOrdinal 9
+        )
+    _ -> fail "valid ASCII-string concatenation was rejected"
+  case AsciiString.asciiString "abcd" $ \value -> do
+      withEllipsisNatural 2 $ \two ->
+        case AsciiString.accessAsciiString value two of
+          Nothing -> fail "valid ASCII-string access was rejected"
+          Just selected ->
+            assert "ordinary access retains ASCII-string behavior"
+              (AsciiString.asciiStringValue selected == "c")
+      withEllipsisNatural 1 $ \one ->
+        withEllipsisNatural 3 $ \three ->
+          do
+            case boundedSuperEllipsisRange one three $ \selection ->
+                AsciiString.asciiStringValue
+                  <$> AsciiString.accessAsciiString value selection of
+              Nothing -> fail "ASCII-string access range was rejected"
+              Just selected ->
+                assert "range access retains ASCII-string behavior"
+                  (selected == Just "bc")
+            case boundedSuperEllipsisRange one one $ \selection ->
+                AsciiString.asciiStringValue
+                  <$> AsciiString.accessAsciiString value selection of
+              Nothing -> fail "empty ASCII-string access was rejected"
+              Just selected ->
+                assert "empty access remains an empty ASCII string"
+                  (selected == Just "")
+    of
+    Nothing -> fail "ASCII-string access setup was rejected"
     Just checks -> checks
 
 testAccessOperator :: IO ()
@@ -1647,6 +1999,42 @@ testNumericalOperators = do
   assertNumericalOperator "rankOneData-natural zero-to-zero power" Numeric.exponentiationOperator 0 0 1
   testGenericOrdinalOperators
   testStableDatumNumericalOperands
+
+testNumericalSemanticsAgreement :: IO ()
+testNumericalSemanticsAgreement = do
+  let typedProductLevel =
+        Numeric.multiplicationOperator ellipsis ellipsis
+          (\value -> value `seq` (2 :: Natural))
+      evaluatedProduct =
+        Types.interpretedCanonicalResult
+          <$> Types.multiplyValues
+                (Types.formulationValue 1)
+                (Types.formulationValue 1)
+  assert "typed and evaluated formulation multiplication share level policy"
+    ( typedProductLevel == Just 2
+      && evaluatedProduct == Right (Types.CanonicalFormulation 2)
+    )
+  case DatraNatural.ellipsisNatural 3 $ \three ->
+      Numeric.exponentiationOperator
+        ellipsis three Numeric.someSuperEllipsisLevel of
+    Just (Just typedPowerLevel) ->
+      assert "typed and evaluated formulation exponentiation share level policy"
+        ((Types.interpretedCanonicalResult
+          <$> Types.exponentiateValues
+                (Types.formulationValue 1)
+                (Types.naturalValue 3))
+          == Right (Types.CanonicalFormulation typedPowerLevel))
+    _ -> fail "typed formulation exponentiation setup was rejected"
+  case DatraNatural.ellipsisNatural 2 $ \two ->
+      Numeric.additionOperator ellipsis two superEllipsisValueOrdinal of
+    Just (Just typedSum) ->
+      assert "typed and evaluated addition share ordinal policy"
+        ((Types.interpretedCanonicalResult
+          <$> Types.addValues
+                (Types.formulationValue 1)
+                (Types.naturalValue 2))
+          == Right (Types.CanonicalExplicit 2 typedSum))
+    _ -> fail "typed addition setup was rejected"
 
 testTypingAbstractions :: IO ()
 testTypingAbstractions = do

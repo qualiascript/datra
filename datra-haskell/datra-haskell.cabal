@@ -21,6 +21,13 @@ extra-source-files:
 common warnings
     ghc-options: -Wall
 
+common test-dependencies
+    build-depends:
+        hedgehog >= 1.4 && < 1.8,
+        tasty >= 1.5 && < 1.6,
+        tasty-hedgehog >= 1.4 && < 1.5,
+        tasty-hunit >= 0.10 && < 0.11
+
 flag liquid
     description: Enable LiquidHaskell verification during ordinary builds
     default:     True
@@ -31,9 +38,12 @@ library
     exposed-modules:
         DatraLanguage.AST
         DatraLanguage.AST.Operator
+        DatraLanguage.AST.Reserved
+        DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
         DatraTypes
         AsciiMap
+        AsciiString
         MapOperators
         MapOperators.AccessOperator
         MapOperators.IndexedAtlasMap
@@ -47,7 +57,6 @@ library
         NumericalOperators.MultiplicationOperator
         NumericalOperators.NumericalOperand
         NumericalOperators.Range
-        CanonicalCharsMap
         Dominion
         Dot
         SuperEllipsis
@@ -58,10 +67,26 @@ library
         EllipsisInsertion
         EllipsisRange
         EllipsisNatural
+        EllipsisInteger
+        BooleanType
+        NaturalRange
+        ValuedNaturalRange
+        NaturalType
+        IntegerRange
+        ValuedIntegerRange
+        IntegerType
+        IdentifierValueType
+        IdentifierType
+        SimpleIdentifierType
+        AtlasMapFederation
+        AtlasMapFederationExpression
+        AtlasMapSubfederation
+        TotalAtlasMap
+        SpecificationOperator
         DatraLanguage.Diagnostics
         DatraLanguage.Diagnostics.Interpreter
         DatraLanguage.Diagnostics.Locales.English
-        DatraLanguage.Diagnostics.Locales.Română
+        DatraLanguage.Diagnostics.Locales.Romanian
         DatraLanguage.Diagnostics.Localization
         FixedPoint
         DomanialInsertion
@@ -93,8 +118,6 @@ library
         DomanialInclusion
         StableAtlasTransversal
         DataTransformation
-        DataTransposal
-        OrderedDataTransposal
         DataTransversal
         StableDataTransversal
         StableConfederalData
@@ -119,11 +142,13 @@ library
         AtlasMerge.Internal
         AtlasConfederation.Internal
         AtlasFederation.Internal
+        AtlasMapFederation.Internal
         AtlasHorizontalSum.Internal
         Atlas.Morphism.Internal
         Atlas.Morphism.LiquidInternal
         AtlasCoveredPageElement.Internal
         AtlasMap.Internal
+        TotalAtlasMap.Internal
         AtlasTransposal.Internal
         OrderedAtlasTransposal.Internal
         AtlasTransversal.Internal
@@ -136,8 +161,6 @@ library
         StableAtlasTransversal.Internal
         DataTransformation.Internal
         DataTransformation.LiquidInternal
-        DataTransposal.Internal
-        OrderedDataTransposal.Internal
         DataTransversal.Internal
         StableDataTransversal.Internal
         StableConfederalData.Internal
@@ -159,12 +182,40 @@ library
         Folio.Internal
         Folio.LiquidInternal
         NumericalOperators.Internal
+        NumericalOperators.Semantics
+        MapOperators.Internal
+        NaturalRange.Interval
+        IntegerRange.Interval
+        IntegerRange.Encoding
+        OrdinalSequence
+        SuperEllipsisRange.Description
         Evaluation.Access
+        Evaluation.Access.Composition
+        Evaluation.Access.Federation
+        Evaluation.Access.Identifier
+        Evaluation.Access.RangeSelection
+        Evaluation.Access.Specification
         Evaluation.Construction
+        Evaluation.Boolean
+        Evaluation.Either
+        Evaluation.Error
+        Evaluation.Federation
+        Evaluation.Federation.Structure
+        Evaluation.Identifier
         Evaluation.Map
         Evaluation.Numerical
+        Evaluation.Optional
         Evaluation.Range
+        Evaluation.Specification
+        Evaluation.Specification.Composition
+        Evaluation.Specification.Decision
+        Evaluation.Specification.Federation
+        Evaluation.Specification.String
+        Evaluation.Specification.Subfederation
+        Evaluation.ToString
+        Evaluation.ToString.Injectivity
         Evaluation.Value
+        Extract
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
         base >= 4.14 && < 5,
@@ -182,8 +233,6 @@ library
         src/DatraCore/Atlases/Core/Atlas
         src/DatraCore/DataTransformations/DataTransformations
         src/DatraCore/DataTransformations/DataTransformations/DataTransformation
-        src/DatraCore/DataTransformations/DataTransformations/DataTransposal
-        src/DatraCore/DataTransformations/DataTransformations/OrderedDataTransposal
         src/DatraCore/DataTransformations/DataTransformations/DataTransversal
         src/DatraCore/DataTransformations/DataTransformations/StableDataTransversal
         src/DatraCore/DataTransformations/StableConfederalData
@@ -195,6 +244,7 @@ library
         src/DatraCore/DataTransformations/DataTransformationMaps/Navigation
         src/DatraCore/DataTransformations/DataTransformationMaps/Expedition
         src/DatraCore/DataTransformations/DataTransformationMaps/DataTransformationMap
+        src/DatraCore/DataTransformations/DataTransformationMaps/AtlasMapFederation
         src/DatraCore/Atlases/Core/Consolidation
         src/DatraCore/Atlases/Core/DatraOrdinal
         src/DatraCore/Atlases/Core/Dominion
@@ -211,14 +261,20 @@ library
         src/DatraCore/Atlases/Derived/AtlasConfederations/AtlasHorizontalSum
         src/DatraCore/Atlases/Derived/Cartography
         src/DatraCore/Atlases/Derived/Cartography/AtlasMap
+        src/DatraCore/Atlases/Derived/Cartography/TotalAtlasMap
         src/DatraCore/Atlases/Derived/Cartography/AtlasTransversalMap
         src/DatraCore/Atlases/Derived/Cartography/Charter
         src/DatraCore/Atlases/Derived/Coalitions
         src/DatraCore/Atlases/Derived/Coalitions/Coalition
         src/DatraCore/Atlases/Derived/Coalitions/DomanialInclusion
         src/DatraTypes
-        src/DatraTypes/CharacterMaps
+        src/DatraTypes/Strings
         src/DatraTypes/Ellipses
+        src/DatraTypes/NaturalRanges
+        src/DatraTypes/IntegerRanges
+        src/DatraTypes/Booleans
+        src/DatraTypes/Identifiers
+        src/DatraTypes/AtlasMapFederations
         src/DatraCore/Atlases/Derived/AtlasTransposals
         src/DatraCore/Atlases/Derived/AtlasTransposals/AtlasTransposal
         src/DatraCore/Atlases/Derived/AtlasTransposals/OrderedAtlasTransposal
@@ -238,16 +294,18 @@ executable datra-haskell
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
+        filepath >= 1.4 && < 1.6,
         megaparsec >= 9.8 && < 10,
         optparse-applicative >= 0.18 && < 0.20,
         parser-combinators >= 1.3 && < 2,
         prettyprinter >= 1.7 && < 1.8,
-        text >= 2.0 && < 2.2
+        text >= 2.0 && < 2.2,
+        transformers >= 0.5 && < 0.7
     hs-source-dirs:   app
     default-language: GHC2021
 
 test-suite datra-core-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
@@ -257,7 +315,7 @@ test-suite datra-core-test
         datra-haskell
 
 test-suite datra-types-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
@@ -268,7 +326,7 @@ test-suite datra-types-test
         datra-haskell
 
 test-suite datra-parsing-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:
@@ -283,10 +341,11 @@ test-suite datra-parsing-test
         datra-haskell,
         megaparsec >= 9.8 && < 10,
         parser-combinators >= 1.3 && < 2,
-        text >= 2.0 && < 2.2
+        text >= 2.0 && < 2.2,
+        transformers >= 0.5 && < 0.7
 
 test-suite datra-interpreting-test
-    import:           warnings
+    import:           warnings, test-dependencies
     default-language: GHC2021
     type:             exitcode-stdio-1.0
     hs-source-dirs:
@@ -295,9 +354,14 @@ test-suite datra-interpreting-test
     main-is:          DatraInterpretingTests.hs
     other-modules:
         Interpreting
+        Parsing
         Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
-        prettyprinter >= 1.7 && < 1.8
+        megaparsec >= 9.8 && < 10,
+        parser-combinators >= 1.3 && < 2,
+        prettyprinter >= 1.7 && < 1.8,
+        text >= 2.0 && < 2.2,
+        transformers >= 0.5 && < 0.7

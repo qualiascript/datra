@@ -1,14 +1,22 @@
 -- | Total constructors for primitive evaluated Datra values.
 module Evaluation.Construction
   ( makeNatural
+  , makeInteger
+  , makeAsciiString
+  , makeStringType
+  , makeIdentifierValueType
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
   , mapFromInsertion
   ) where
 
+import Data.Char (ord)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Value
+import IntegerRange.Encoding (integerSingletonInsertion)
 import Numeric.Natural (Natural)
 import NumericalOperators.NumericalOperand (someSuperEllipsis)
 import SuperEllipsisValue
@@ -16,13 +24,80 @@ import SuperEllipsisValue
   , minimumSuperEllipsisValueRank
   )
 import SuperEllipsisInsertion
-  ( fullSomeSuperEllipsisInsertion
+  ( eraseSuperEllipsisInsertion
+  , fullSomeSuperEllipsisInsertion
   , someSuperEllipsisInsertionOrderType
   , someSuperEllipsisInsertionPositionAt
   )
 
 makeNatural :: Natural -> InterpretedValue
 makeNatural = makeExplicit NaturalOrigin . finiteOrdinal
+
+-- | Canonical finite signed value. Nonnegative results retain their existing
+-- natural representation; negative results use the complemented @Nat x 2@
+-- insertion.
+makeInteger :: Integer -> InterpretedValue
+makeInteger integer
+  | integer >= 0 = makeNatural (fromInteger integer)
+  | otherwise =
+      integerSingletonInsertion integer $ \valueInsertion ->
+        let semantics = IntegerSemantics integer
+            value =
+              makeSingletonInterpretedValue
+                (IntegerForm integer)
+                (ValidInsertion (eraseSuperEllipsisInsertion valueInsertion))
+                (singletonMap semantics value)
+                TotalInterpretedMap
+                semantics
+        in value
+
+-- | Construct the semantic two-page presentation of a nonempty ASCII string,
+-- or the canonical empty presentation for an empty string.
+makeAsciiString :: String -> InterpretedValue
+makeAsciiString characters = value
+  where
+    characterValues =
+      map (makeNatural . fromIntegral . ord) characters
+    finalValues =
+      foldl'
+        appendOrdinalOrderedValues
+        emptyOrdinalOrderedValues
+        (map singletonOrdinalOrderedValues characterValues)
+    semantics = AsciiStringSemantics characters
+    valueMap =
+      InterpretedMap
+        (if null characters then 0 else 2)
+        finalValues
+        [semantics]
+    value =
+      makeSingletonInterpretedValue
+        (AsciiStringForm characters)
+        NoInsertion
+        valueMap
+        TotalInterpretedMap
+        semantics
+
+-- | The federation of all finite ASCII strings.
+makeStringType :: InterpretedValue
+makeStringType =
+  makeInterpretedValue
+    StringTypeForm
+    NoInsertion
+    emptyInterpretedMap
+    (PrimitiveAtlasMapFederation StringTypeAtlasMapFederation)
+    NonTotalInterpretedMap
+    StringTypeSemantics
+
+-- | The federation of strings accepted by compact @$...@ syntax.
+makeIdentifierValueType :: InterpretedValue
+makeIdentifierValueType =
+  makeInterpretedValue
+    IdentifierValueTypeForm
+    NoInsertion
+    emptyInterpretedMap
+    (PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation)
+    NonTotalInterpretedMap
+    IdentifierValueTypeSemantics
 
 makeExplicit :: ExplicitOrigin -> Ordinal -> InterpretedValue
 makeExplicit origin = explicitInterpretedValue . makeExplicitValue origin
@@ -39,13 +114,15 @@ explicitInterpretedValue explicitValue = value
   where
     (level, ordinalValue) = explicitOrdinal explicitValue
     insertion = explicitInsertion explicitValue
-    canonical = CanonicalExplicit level ordinalValue
+    semantics = ExplicitSemantics level ordinalValue
+    valueMap = singletonMap semantics value
     value =
-      InterpretedValue
+      makeSingletonInterpretedValue
         (ExplicitForm explicitValue)
         (ValidInsertion insertion)
-        (singletonMap canonical value)
-        canonical
+        valueMap
+        TotalInterpretedMap
+        semantics
 
 makeFormulation :: Natural -> InterpretedValue
 makeFormulation level = value
@@ -58,17 +135,19 @@ makeFormulation level = value
         (\position -> do
           absolute <- someSuperEllipsisInsertionPositionAt insertion position
           pure (makeExplicit ComputedOrigin absolute))
+    valueMap = InterpretedMap 1 values [semantics]
     value =
-      InterpretedValue
+      makeSingletonInterpretedValue
         (FormulationForm formulation)
         (ValidInsertion insertion)
-        (InterpretedMap 1 values [canonical])
-        canonical
-    canonical = CanonicalFormulation level
+        valueMap
+        TotalInterpretedMap
+        semantics
+    semantics = FormulationSemantics level
 
 mapFromInsertion
   :: SomeSuperEllipsisInsertion
-  -> [CanonicalResult]
+  -> [ValueSemantics]
   -> InterpretedMap
 mapFromInsertion insertion components =
   InterpretedMap

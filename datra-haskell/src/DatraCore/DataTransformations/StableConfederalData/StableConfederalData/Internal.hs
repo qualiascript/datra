@@ -2,6 +2,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 -- | Hidden representation of presheaves on Atlas confederations.
@@ -20,6 +21,24 @@ module StableConfederalData.Internal
   , emptyMap
   , EmbeddedAtlasMap
   , embedAtlasMap
+  , RestrictedStableConfederalData
+  , RestrictedStableConfederalDataValue
+  , restrictedStableConfederalDataValue
+  , withRestrictedStableConfederalDataValue
+  , restrictStableConfederalDataToStableAtlases
+  , restrictStableConfederalDataHomToStableAtlases
+  , ForgottenStableConfederalData
+  , forgetStableConfederalDataToDataTransformation
+  , forgetStableConfederalDataHomToDataTransformation
+  , StableConfederalDataForgetfulFunctor (..)
+  , stableConfederalDataForgetfulFunctor
+  , EmbeddedAtlasFederation
+  , EmbeddedAtlasFederationValue
+  , embeddedAtlasFederationValue
+  , withEmbeddedAtlasFederationValue
+  , embedAtlasFederation
+  , ForgottenAtlasFederation
+  , forgetAtlasFederationToDataTransformation
   ) where
 
 import AtlasConfederation
@@ -29,13 +48,36 @@ import AtlasConfederation
   , SingletonAtlasConfederationScope
   , composeAtlasConfederationHoms
   , singletonAtlasConfederation
+  , singletonAtlasConfederationHom
   )
 import Atlas.Morphism.Internal (AtlasWitness (..))
+import AtlasFederation
+  ( AtlasFederation
+  , atlasFederationConfederation
+  )
 import AtlasMap (AtlasMap, atlasMapAtlas)
 import Control.Category (Category (..))
 import Data.Kind (Type)
+import DataTransformation
+  ( DataTransformation
+  , DataTransformationHom
+  )
 import Data.Void (Void)
 import Prelude hiding ((.), id)
+import StableAtlasTransversal
+  ( StableAtlasTransversal
+  , stableAtlasTransversalSourceWitness
+  )
+import StableDataTransversal
+  ( ExtendedStableDataTransversal
+  , StableDataTransversal
+  , StableDataTransversalHom
+  , StableDataTransversalValue
+  , extendStableDataTransversalHomToDataTransformation
+  , extendStableDataTransversalToDataTransformation
+  , stableDataTransversal
+  , stableDataTransversalHom
+  )
 
 -- | Interpret a defunctionalized stable-confederal carrier at an Atlas
 -- confederation.
@@ -232,3 +274,236 @@ embedAtlasMap valueMap =
           (flip composeAtlasConfederationHoms)
           (const ())
           (\_ _ _ -> ())
+
+-- | Carrier obtained by restricting stable confederal data to singleton
+-- Atlas confederations.
+data RestrictedStableConfederalData confederalValues
+
+type role RestrictedStableConfederalDataValue nominal nominal
+data RestrictedStableConfederalDataValue confederalValues atlas where
+  RestrictedStableConfederalDataValue
+    :: AtlasWitness atlas
+    -> StableConfederalDataValue
+         confederalValues
+         (AtlasConfederationObject
+           (SingletonAtlasConfederationScope atlas)
+           ())
+    -> RestrictedStableConfederalDataValue confederalValues atlas
+
+type instance
+  StableDataTransversalValue
+    (RestrictedStableConfederalData confederalValues)
+    atlas =
+      RestrictedStableConfederalDataValue confederalValues atlas
+
+restrictedStableConfederalDataValue
+  :: AtlasWitness atlas
+  -> StableConfederalDataValue
+       confederalValues
+       (AtlasConfederationObject
+         (SingletonAtlasConfederationScope atlas)
+         ())
+  -> RestrictedStableConfederalDataValue confederalValues atlas
+restrictedStableConfederalDataValue = RestrictedStableConfederalDataValue
+
+withRestrictedStableConfederalDataValue
+  :: RestrictedStableConfederalDataValue confederalValues atlas
+  -> ( AtlasWitness atlas
+       -> StableConfederalDataValue
+            confederalValues
+            (AtlasConfederationObject
+              (SingletonAtlasConfederationScope atlas)
+              ())
+       -> result
+     )
+  -> result
+withRestrictedStableConfederalDataValue
+    (RestrictedStableConfederalDataValue witness value) useValue =
+  useValue witness value
+
+-- | Restrict stable confederal data along the singleton-confederation
+-- embedding.  This is the first half of @StaConfDa.forgetToDaTra@.
+restrictStableConfederalDataToStableAtlases
+  :: forall confederalValues.
+     StableConfederalData confederalValues
+  -> StableDataTransversal
+       (RestrictedStableConfederalData confederalValues)
+restrictStableConfederalDataToStableAtlases stableData =
+  stableDataTransversal action (const ()) (\_ _ _ -> ())
+  where
+    action
+      :: StableAtlasTransversal source target
+      -> RestrictedStableConfederalDataValue confederalValues target
+      -> RestrictedStableConfederalDataValue confederalValues source
+    action transversal
+        (RestrictedStableConfederalDataValue targetWitness value) =
+      let sourceWitness =
+            stableAtlasTransversalSourceWitness transversal targetWitness
+      in case (sourceWitness, targetWitness) of
+          (AtlasWitness sourceAtlas, AtlasWitness targetAtlas) ->
+            RestrictedStableConfederalDataValue
+              sourceWitness
+              (mapStableConfederalData
+                stableData
+                (singletonAtlasConfederationHom
+                  sourceAtlas targetAtlas transversal)
+                value)
+
+-- | Restrict a stable-confederal natural transformation along the
+-- singleton-confederation embedding.
+restrictStableConfederalDataHomToStableAtlases
+  :: forall source target.
+     StableConfederalDataHom source target
+  -> StableDataTransversalHom
+       (RestrictedStableConfederalData source)
+       (RestrictedStableConfederalData target)
+restrictStableConfederalDataHomToStableAtlases
+    (PrimitiveStableConfederalDataHom
+      source target component naturality) =
+  stableDataTransversalHom
+    (restrictStableConfederalDataToStableAtlases source)
+    (restrictStableConfederalDataToStableAtlases target)
+    (\(RestrictedStableConfederalDataValue witness value) ->
+      RestrictedStableConfederalDataValue witness (component value))
+    restrictedNaturality
+  where
+    restrictedNaturality
+      :: StableAtlasTransversal sourceAtlas targetAtlas
+      -> RestrictedStableConfederalDataValue source targetAtlas
+      -> ()
+    restrictedNaturality transversal
+        (RestrictedStableConfederalDataValue targetWitness value) =
+      let sourceWitness =
+            stableAtlasTransversalSourceWitness transversal targetWitness
+      in case (sourceWitness, targetWitness) of
+          (AtlasWitness sourceAtlas, AtlasWitness targetAtlas) ->
+            naturality
+              (singletonAtlasConfederationHom
+                sourceAtlas targetAtlas transversal)
+              value
+restrictStableConfederalDataHomToStableAtlases
+    IdentityStableConfederalDataHom = id
+restrictStableConfederalDataHomToStableAtlases
+    (CompositeStableConfederalDataHom second first) =
+  restrictStableConfederalDataHomToStableAtlases second
+    . restrictStableConfederalDataHomToStableAtlases first
+
+-- | The defunctionalized carrier of the canonical forgotten DaTra set.
+type ForgottenStableConfederalData confederalValues =
+  ExtendedStableDataTransversal
+    (RestrictedStableConfederalData confederalValues)
+
+-- | Forget stable confederal data to a DaTra presheaf by restriction to
+-- singleton confederations followed by left Kan extension.
+forgetStableConfederalDataToDataTransformation
+  :: StableConfederalData confederalValues
+  -> DataTransformation (ForgottenStableConfederalData confederalValues)
+forgetStableConfederalDataToDataTransformation =
+  extendStableDataTransversalToDataTransformation
+    . restrictStableConfederalDataToStableAtlases
+
+-- | The arrow action of stable-confederal forgetting.
+forgetStableConfederalDataHomToDataTransformation
+  :: StableConfederalDataHom source target
+  -> DataTransformationHom
+       (ForgottenStableConfederalData source)
+       (ForgottenStableConfederalData target)
+forgetStableConfederalDataHomToDataTransformation =
+  extendStableDataTransversalHomToDataTransformation
+    . restrictStableConfederalDataHomToStableAtlases
+
+-- | The Haskell port of @StaConfDa.forgetToDaTra@: singleton restriction
+-- followed by left Kan extension, on both objects and arrows.
+data StableConfederalDataForgetfulFunctor =
+  StableConfederalDataForgetfulFunctor
+    { stableConfederalDataForgetfulObject
+        :: forall values.
+           StableConfederalData values
+        -> DataTransformation (ForgottenStableConfederalData values)
+    , stableConfederalDataForgetfulHom
+        :: forall source target.
+           StableConfederalDataHom source target
+        -> DataTransformationHom
+             (ForgottenStableConfederalData source)
+             (ForgottenStableConfederalData target)
+    }
+
+stableConfederalDataForgetfulFunctor
+  :: StableConfederalDataForgetfulFunctor
+stableConfederalDataForgetfulFunctor =
+  StableConfederalDataForgetfulFunctor
+    { stableConfederalDataForgetfulObject =
+        forgetStableConfederalDataToDataTransformation
+    , stableConfederalDataForgetfulHom =
+        forgetStableConfederalDataHomToDataTransformation
+    }
+
+-- | Defunctionalized carrier of the stable-confederal Yoneda embedding of an
+-- Atlas federation.  'embedAtlasFederation' checks the federation refinement
+-- at the boundary; presheaf values are morphisms into its underlying
+-- confederation.
+data EmbeddedAtlasFederation federationScope index
+
+type role EmbeddedAtlasFederationValue nominal nominal nominal
+newtype EmbeddedAtlasFederationValue federationScope index confederation =
+  EmbeddedAtlasFederationValue
+    (AtlasConfederationHom
+      confederation
+      (AtlasConfederationObject federationScope index))
+
+type instance
+  StableConfederalDataValue
+    (EmbeddedAtlasFederation federationScope index)
+    confederation =
+      EmbeddedAtlasFederationValue
+        federationScope index confederation
+
+embeddedAtlasFederationValue
+  :: AtlasConfederationHom
+       confederation
+       (AtlasConfederationObject federationScope index)
+  -> EmbeddedAtlasFederationValue
+       federationScope index confederation
+embeddedAtlasFederationValue = EmbeddedAtlasFederationValue
+
+withEmbeddedAtlasFederationValue
+  :: EmbeddedAtlasFederationValue
+       federationScope index confederation
+  -> ( AtlasConfederationHom
+         confederation
+         (AtlasConfederationObject federationScope index)
+       -> result
+     )
+  -> result
+withEmbeddedAtlasFederationValue
+    (EmbeddedAtlasFederationValue value) useValue =
+  useValue value
+
+-- | Embed an Atlas federation in stable confederal data by Yoneda.
+embedAtlasFederation
+  :: AtlasFederation federationScope index
+  -> StableConfederalData
+       (EmbeddedAtlasFederation federationScope index)
+embedAtlasFederation federation =
+  atlasFederationConfederation federation `seq`
+    stableConfederalData
+      (\arrow (EmbeddedAtlasFederationValue value) ->
+        EmbeddedAtlasFederationValue
+          (composeAtlasConfederationHoms value arrow))
+      (const ())
+      (\_ _ _ -> ())
+
+-- | Carrier of the DaTra presheaf obtained by forgetting an Atlas federation.
+type ForgottenAtlasFederation federationScope index =
+  ForgottenStableConfederalData
+    (EmbeddedAtlasFederation federationScope index)
+
+-- | Forget an Atlas federation to DaTra.  This is Yoneda into stable
+-- confederal data followed by singleton restriction and left Kan extension.
+forgetAtlasFederationToDataTransformation
+  :: AtlasFederation federationScope index
+  -> DataTransformation
+       (ForgottenAtlasFederation federationScope index)
+forgetAtlasFederationToDataTransformation =
+  forgetStableConfederalDataToDataTransformation
+    . embedAtlasFederation

@@ -7,8 +7,7 @@ module NumericalOperators.AdditionOperator
   ( additionOperator
   ) where
 
-import DatraOrdinal (addOrdinals)
-import NumericalOperators.Internal (applyOrdinalOperator)
+import NumericalOperators.Internal (applyOrdinalAddition)
 import NumericalOperators.NumericalOperand
   ( BinaryNumericalLevel
   , KnownSuperEllipsisLevel
@@ -29,4 +28,4 @@ additionOperator
   -> (forall resultScope.
         NumericalResult left right resultScope -> result)
   -> Maybe result
-additionOperator = applyOrdinalOperator addOrdinals
+additionOperator = applyOrdinalAddition

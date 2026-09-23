@@ -4,17 +4,23 @@ import Data.Char (toLower)
 import DatraLanguage.AST (Expression, renderExpression)
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Localization
-  ( Locale (English, Română)
+  ( Locale (English, Romanian)
   , renderDatraError
   )
 import Interpreting (InterpretedValue, interpretLocatedExpression)
 import Options.Applicative
 import Parsing
-  ( parseDatraAstLocatedWithSourceName
+  ( ResourceEnvelope (..)
+  , parseDatraAstLocatedWithSourceName
   , parseDatraLocatedWithSourceName
+  , parseDatraLocatedResourceWithSourceName
   )
-import Rendering (renderInterpretedValue)
+import Rendering
+  ( renderInterpretedValue
+  , renderInterpretedValueAsNewlineMap
+  )
 import System.Exit (die)
+import System.FilePath ((</>), takeDirectory)
 
 data Command
   = Build Input FilePath FilePath Locale
@@ -33,6 +39,9 @@ defaultAstPath = "output.datra.ast"
 
 defaultOutputPath :: FilePath
 defaultOutputPath = "output.datra"
+
+defaultErrorFileName :: FilePath
+defaultErrorFileName = "output.datra.error"
 
 main :: IO ()
 main = runCommand =<< customExecParser parserPreferences commandInfo
@@ -166,7 +175,7 @@ localeOption =
         <> metavar "LOCALE"
         <> value English
         <> showDefaultWith localeName
-        <> help "Diagnostic locale: english or română"
+        <> help "Diagnostic locale: english or romanian"
     )
 
 localeReader :: ReadM Locale
@@ -174,50 +183,77 @@ localeReader = eitherReader $ \localeText ->
   case map toLower localeText of
     "en" -> Right English
     "english" -> Right English
-    "ro" -> Right Română
-    "română" -> Right Română
-    "romana" -> Right Română
-    "romanian" -> Right Română
-    _ -> Left "expected english, en, română, romana, romanian, or ro"
+    "ro" -> Right Romanian
+    "romana" -> Right Romanian
+    "romanian" -> Right Romanian
+    _ -> Left "expected english, en, romana, romanian, or ro"
 
 localeName :: Locale -> String
 localeName English = "english"
-localeName Română = "română"
+localeName Romanian = "romanian"
 
 runCommand :: Command -> IO ()
 runCommand commandValue =
   case commandValue of
     Build input astPath outputPath locale -> do
+      let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
-      locatedExpression <-
-        parseOrFail (parseDatraLocatedWithSourceName sourceName source)
+      (resourceEnvelope, locatedExpression) <-
+        parseOrFail errorPath
+          (parseDatraLocatedResourceWithSourceName sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
-      interpreted <- interpretOrFail locale locatedExpression
-      writeOutput outputPath (renderInterpretedValue interpreted)
+      interpreted <- interpretOrFail errorPath locale locatedExpression
+      writeOutput outputPath
+        (case resourceEnvelope of
+          ExplicitMapEnvelope -> renderInterpretedValue interpreted
+          ImplicitMapEnvelope ->
+            renderInterpretedValueAsNewlineMap interpreted)
     GenerateAst input outputPath -> do
+      let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       locatedExpression <-
-        parseOrFail (parseDatraLocatedWithSourceName sourceName source)
+        parseOrFail errorPath
+          (parseDatraLocatedWithSourceName sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
     InterpretAst input outputPath locale -> do
+      let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       locatedExpression <-
-        parseOrFail (parseDatraAstLocatedWithSourceName sourceName source)
-      interpreted <- interpretOrFail locale locatedExpression
+        parseOrFail errorPath
+          (parseDatraAstLocatedWithSourceName sourceName source)
+      interpreted <- interpretOrFail errorPath locale locatedExpression
       writeOutput outputPath (renderInterpretedValue interpreted)
 
-parseOrFail :: Either String value -> IO value
-parseOrFail = either die pure
+errorPathFor :: Input -> [FilePath] -> FilePath
+errorPathFor input outputPaths =
+  takeDirectory companionPath </> defaultErrorFileName
+  where
+    companionPath =
+      case filter (/= "-") outputPaths of
+        outputPath : _ -> outputPath
+        [] ->
+          case input of
+            InputFile path | path /= "-" -> path
+            _ -> defaultOutputPath
+
+parseOrFail :: FilePath -> Either String value -> IO value
+parseOrFail errorPath = either (failWithOutput errorPath) pure
 
 interpretOrFail
-  :: Locale
+  :: FilePath
+  -> Locale
   -> Located Expression
   -> IO InterpretedValue
-interpretOrFail locale =
-  either (die . renderDatraError locale) pure
+interpretOrFail errorPath locale =
+  either (failWithOutput errorPath . renderDatraError locale) pure
     . interpretLocatedExpression
+
+failWithOutput :: FilePath -> String -> IO value
+failWithOutput errorPath rendered = do
+  writeOutput errorPath rendered
+  die rendered
 
 readInput :: Input -> IO (FilePath, String)
 readInput (InlineInput source) = pure ("<command-line>", source)

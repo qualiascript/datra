@@ -40,15 +40,14 @@ import MapOperators.SequentialOperator
   ( SequentialPresentation
   , withSequentialPresentationAtlas
   )
+import MapOperators.Internal
+  ( forgetStableConfederalDataWrapper
+  , wrapStableConfederalData
+  )
 import StableConfederalData
   ( StableConfederalData
   , StableConfederalDataHom
   , StableConfederalDataValue
-  , mapStableConfederalData
-  , stableConfederalData
-  , stableConfederalDataComposition
-  , stableConfederalDataHom
-  , stableConfederalDataIdentity
   )
 
 -- | Defunctionalized carrier for one deliberately unflattened binary node.
@@ -91,16 +90,10 @@ expansionOperator
   -> StableConfederalData right
   -> StableConfederalData (ExpansionOperatorValues left right)
 expansionOperator left right =
-  stableConfederalData
-    (\arrow (ExpansionOperatorValue value) ->
-      ExpansionOperatorValue
-        (mapStableConfederalData summed arrow value))
-    (\(ExpansionOperatorValue value) ->
-      stableConfederalDataIdentity summed value)
-    (\second first (ExpansionOperatorValue value) ->
-      stableConfederalDataComposition summed second first value)
+  wrapStableConfederalData summed unwrap ExpansionOperatorValue
   where
     summed = left |+| right
+    unwrap (ExpansionOperatorValue value) = value
 
 -- | Forget the explicit grouping presentation to its horizontal sum.
 expansionToHorizontalSum
@@ -110,11 +103,10 @@ expansionToHorizontalSum
        (ExpansionOperatorValues left right)
        (HorizontalSumValues left right)
 expansionToHorizontalSum left right =
-  stableConfederalDataHom
+  forgetStableConfederalDataWrapper
     (expansionOperator left right)
     (left |+| right)
     unwrap
-    (\_ _ -> ())
   where
     unwrap (ExpansionOperatorValue value) = value
 

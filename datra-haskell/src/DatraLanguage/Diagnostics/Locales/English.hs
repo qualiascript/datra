@@ -11,10 +11,13 @@ module DatraLanguage.Diagnostics.Locales.English
   ) where
 
 import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
-import DatraLanguage.Diagnostics.Interpreter
+import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
+  , AtlasMapFederationOperation (..)
+  , AtlasMapFederationRefutation (..)
+  , AtlasMapFederationUncertainty (..)
   )
 import DatraLanguage.Diagnostics.Locales.Rendering
   ( renderOrdinal
@@ -61,6 +64,18 @@ localizeInterpretingError reason =
       LocalizedMessage
         (operandSide side <> " operand must be numerical")
         ["actual value kind: " <> valueKind actual]
+    ExpectedFiniteIntegerOperand side actual ->
+      LocalizedMessage
+        (operandSide side <> " operand must be a finite integer")
+        ["actual value kind: " <> valueKind actual]
+    ExpectedBooleanOperand side actual ->
+      LocalizedMessage
+        (operandSide side <> " operand must be Boolean")
+        ["actual value kind: " <> valueKind actual]
+    ExpectedBooleanCondition actual ->
+      LocalizedMessage
+        "if condition must be Boolean"
+        ["actual value kind: " <> valueKind actual]
     ExpectedNaturalExponent actual ->
       LocalizedMessage
         "exponent must be a natural value"
@@ -69,11 +84,94 @@ localizeInterpretingError reason =
       LocalizedMessage
         "right operand of map access must define a super-ellipsis insertion"
         ["actual value kind: " <> valueKind actual]
+    ExpectedTotalAtlasMap actual ->
+      LocalizedMessage
+        "left operand of specification must be a total Atlas map"
+        ["actual value kind: " <> valueKind actual]
     RangeConstructionRejected rejection ->
       localizeSuperEllipsisRangeError rejection
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
     AccessRejected rejection -> localizeAccessError rejection
+    GivenValueOutsideTypeAnnotation expected given ->
+      LocalizedMessage
+        "the given value is outside the type annotation"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
+    IdentifierStringMismatch expected given ->
+      LocalizedMessage
+        "the identifier string does not match"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
+    IntermediateTypeAnnotationOutsideTarget expected given ->
+      LocalizedMessage
+        "the intermediate type annotation does not fit in the target type annotation"
+        [ "expected: " <> expected
+        , "given: " <> given
+        ]
+    AtlasMapFederationOperationRefuted refutation ->
+      case refutation of
+        AtlasMapFederationConcatenationCollision value ->
+          LocalizedMessage
+            "concatenation does not produce an Atlas-map federation"
+            [ "the value " <> show value
+                <> " occurs on both sides and has two configurations"
+            ]
+        AtlasMapFederationAccessHasEmptyCounterexample ->
+          LocalizedMessage
+            "access fails for a member of the left Atlas-map federation"
+            ["the empty map is a counterexample for the nonempty selection"]
+        AtlasMapFederationSpecificationHasNoMatchingMember ->
+          LocalizedMessage
+            "specification has no matching Atlas map in the target federation"
+            [ "the source total Atlas map is a counterexample: no target "
+                <> "member admits the required identity-pagination morphism"
+            ]
+        AtlasMapFederationSubfederationHasMissingMember ->
+          LocalizedMessage
+            "the intermediate federation is not an Atlas subfederation of the target"
+            [ "an Atlas map in the intermediate federation is absent from "
+                <> "the final federation"
+            ]
+    AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure operation) ->
+      LocalizedMessage
+        "the compiler cannot decide this Atlas-map federation operation"
+        ["operation: " <> federationOperation operation]
+    NonInjectiveStringInterpolation ->
+      LocalizedMessage
+        "non-injective string interpolation"
+        ["distinct values in the interpolation can have the same string form"]
+    NoCanonicalStringConversion ->
+      LocalizedMessage
+        "value does not have a canonical string conversion"
+        [ "weakToString can render the value, but specification requires "
+            <> "an injective canonical conversion"
+        ]
+    ExpectedStringTemplateSpecification kind ->
+      LocalizedMessage
+        "extract expects a concrete string-template specification"
+        ["given value kind: " <> valueKind kind]
+    EitherAlternativesNotDistinct ->
+      LocalizedMessage
+        "Either alternatives are not distinguishable Atlas maps"
+        ["the alternatives cannot be distinct members of one Atlas federation"]
+    AmbiguousStringTemplate ->
+      LocalizedMessage
+        "ambiguous string template"
+        ["the template does not map each source configuration to a unique string"]
+    InvalidAsciiStringCharacter character ->
+      LocalizedMessage
+        "string contains a character outside the ASCII map"
+        ["character: " <> show character]
+
+federationOperation :: AtlasMapFederationOperation -> String
+federationOperation AtlasMapFederationConcatenation = "concatenation"
+federationOperation AtlasMapFederationAccess = "access"
+federationOperation AtlasMapFederationSpecification = "specification"
+federationOperation AtlasMapFederationSubfederation = "subfederation"
 
 operandSide :: OperandSide -> String
 operandSide LeftOperand = "left"
@@ -81,11 +179,17 @@ operandSide RightOperand = "right"
 
 valueKind :: InterpretedValueKind -> String
 valueKind NaturalValueKind = "natural"
+valueKind IntegerValueKind = "integer"
+valueKind BooleanValueKind = "Boolean"
+valueKind EitherValueKind = "Either federation"
 valueKind ExplicitOrdinalValueKind = "explicit ordinal"
 valueKind FormulationValueKind = "super-ellipsis formulation"
 valueKind RangeValueKind = "range"
 valueKind RangeConcatenationValueKind = "range concatenation"
+valueKind AsciiStringValueKind = "ASCII string"
+valueKind IdentifierTypeValueKind = "identifier type"
 valueKind MapValueKind = "map"
+valueKind SpecificationValueKind = "specification morphism"
 
 localizeSuperEllipsisRangeError
   :: SuperEllipsisRangeError

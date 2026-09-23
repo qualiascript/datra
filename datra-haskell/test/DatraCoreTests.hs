@@ -24,7 +24,6 @@ import Consolidation
 import qualified Control.Category as Category
 import DataTransformation
 import DataTransformationMap
-import DataTransposal
 import DataTransversal
 import DatraOrdinal
 import DomanialInclusion
@@ -39,7 +38,6 @@ import PageElements
 import Pagination
 import Numeric.Natural (Natural)
 import OrderedAtlasTransposal
-import OrderedDataTransposal
 import RankedDominionAtlas
 import StableAtlasTransversal
 import StableConfederalData
@@ -50,45 +48,104 @@ import StableDataTransversal
 
 import Data.Maybe (isJust, isNothing)
 import Data.Void (Void, absurd)
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Hedgehog (testProperty)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 main :: IO ()
-main = do
-  testIdentityInsertion
-  testDatraOrdinalEnumeration
-  testChainedDominionAtlas
-  testRankedDominionAtlas
-  testSpine
-  testChainSum
-  testConsolidation
-  testConsolidationSum
-  testConsolidationTransport
-  testFolio
-  testPageElements
-  testPagination
-  testAtlas
-  testEmptyAtlas
-  testAtlasMerge
-  testAtlasConfederation
-  testAtlasFederation
-  testAtlasMap
-  testNavigationAndExpedition
-  testDataTransformationMap
-  testRestrictedDataTransformations
-  testStableConfederalKleisliSyntax
-  testCharter
-  testOrderedAtlasTransposal
-  testAtlasTransversal
-  testStableAtlasTransversal
-  testCoalition
-  testDomanialInclusion
+main = defaultMain testTree
+
+testTree :: TestTree
+testTree =
+  testGroup "Datra core"
+    [ testGroup "examples"
+        [ testCase "identity insertion" testIdentityInsertion
+        , testCase "ordinal enumeration" testDatraOrdinalEnumeration
+        , testCase "chained dominion atlas" testChainedDominionAtlas
+        , testCase "ranked dominion atlas" testRankedDominionAtlas
+        , testCase "spine" testSpine
+        , testCase "chain sum" testChainSum
+        , testCase "consolidation" testConsolidation
+        , testCase "consolidation sum" testConsolidationSum
+        , testCase "consolidation transport" testConsolidationTransport
+        , testCase "folio" testFolio
+        , testCase "page elements" testPageElements
+        , testCase "pagination" testPagination
+        , testCase "atlas" testAtlas
+        , testCase "empty atlas" testEmptyAtlas
+        , testCase "atlas merge" testAtlasMerge
+        , testCase "atlas confederation" testAtlasConfederation
+        , testCase "atlas federation" testAtlasFederation
+        , testCase "atlas map" testAtlasMap
+        , testCase "navigation and expedition" testNavigationAndExpedition
+        , testCase "data transformation map" testDataTransformationMap
+        , testCase "restricted data transformations" testRestrictedDataTransformations
+        , testCase "forget stable confederal data" testForgetStableConfederalData
+        , testCase "stable confederal Kleisli syntax" testStableConfederalKleisliSyntax
+        , testCase "charter" testCharter
+        , testCase "ordered atlas transposal" testOrderedAtlasTransposal
+        , testCase "atlas transversal" testAtlasTransversal
+        , testCase "stable atlas transversal" testStableAtlasTransversal
+        , testCase "coalition" testCoalition
+        , testCase "domanial inclusion" testDomanialInclusion
+        ]
+    , testGroup "properties"
+        [ testProperty "finite ordinals round-trip naturals" propFiniteOrdinalRoundTrip
+        , testProperty "ordinal construction is canonical" propOrdinalCanonical
+        , testProperty "ordinal ranks round-trip" propOrdinalRankRoundTrip
+        , testProperty "finite-tail splitting reconstructs ordinals" propSplitFiniteTail
+        , testProperty "spine positions round-trip" propSpineRoundTrip
+        , testProperty "identity insertions round-trip" propIdentityInsertion
+        ]
+    ]
 
 checkedIdentity :: DomanialInsertion Bool Bool
 checkedIdentity = domanialInsertion id Just (const ())
 
 assert :: String -> Bool -> IO ()
-assert label condition
-  | condition = pure ()
-  | otherwise = fail ("test failed: " <> label)
+assert = assertBool
+
+propFiniteOrdinalRoundTrip :: H.Property
+propFiniteOrdinalRoundTrip = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 1000000))
+  naturalAtOrdinal (finiteOrdinal value) H.=== Just value
+
+propOrdinalCanonical :: H.Property
+propOrdinalCanonical = H.property $ do
+  coefficients <- H.forAll
+    (Gen.list (Range.linear 0 8) (Gen.integral (Range.linear 0 1000)))
+  ordinalCoefficients (ordinal coefficients)
+    H.=== dropWhile (== 0) coefficients
+
+propOrdinalRankRoundTrip :: H.Property
+propOrdinalRankRoundTrip = H.property $ do
+  width <- H.forAll (Gen.integral (Range.linear 1 6))
+  code <- H.forAll (Gen.integral (Range.linear 0 100000))
+  (ordinalAtNaturalRank width code >>= naturalRankOfOrdinal width)
+    H.=== Just code
+
+propSplitFiniteTail :: H.Property
+propSplitFiniteTail = H.property $ do
+  coefficients <- H.forAll
+    (Gen.list (Range.linear 0 8) (Gen.integral (Range.linear 0 1000)))
+  let value = ordinal coefficients
+      (prefix, finiteTail) = splitFiniteTail value
+  addOrdinals prefix (finiteOrdinal finiteTail) H.=== value
+
+propSpineRoundTrip :: H.Property
+propSpineRoundTrip = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 1000000))
+  chainObjectAt (chainIndexOf spine value) H.=== value
+
+propIdentityInsertion :: H.Property
+propIdentityInsertion = H.property $ do
+  value <- H.forAll (Gen.integral (Range.linear 0 1000000))
+  let insertion = identityInsertion :: DomanialInsertion Natural Natural
+  applyInsertion insertion value H.=== value
+  preimage insertion value H.=== Just value
 
 testDatraOrdinalEnumeration :: IO ()
 testDatraOrdinalEnumeration = do
@@ -699,14 +756,6 @@ newtype TestRestrictedDataValue atlas =
 data TestRestrictedDataValues
 
 type instance
-  DataTransposalValue TestRestrictedDataValues atlas =
-    TestRestrictedDataValue atlas
-
-type instance
-  OrderedDataTransposalValue TestRestrictedDataValues atlas =
-    TestRestrictedDataValue atlas
-
-type instance
   DataTransversalValue TestRestrictedDataValues atlas =
     TestRestrictedDataValue atlas
 
@@ -718,44 +767,6 @@ type instance
   StableConfederalDataValue
     TestRestrictedDataValues confederation =
       TestRestrictedDataValue confederation
-
-testDataTransposal :: DataTransposal TestRestrictedDataValues
-testDataTransposal =
-  dataTransposal
-    (\_ (TestRestrictedDataValue value) ->
-      TestRestrictedDataValue value)
-    (const ())
-    (\_ _ _ -> ())
-
-incrementDataTransposal
-  :: DataTransposalHom TestRestrictedDataValues TestRestrictedDataValues
-incrementDataTransposal =
-  dataTransposalHom
-    testDataTransposal
-    testDataTransposal
-    (\(TestRestrictedDataValue value) ->
-      TestRestrictedDataValue (value + 1))
-    (\_ _ -> ())
-
-testOrderedDataTransposal
-  :: OrderedDataTransposal TestRestrictedDataValues
-testOrderedDataTransposal =
-  orderedDataTransposal
-    (\_ (TestRestrictedDataValue value) ->
-      TestRestrictedDataValue value)
-    (const ())
-    (\_ _ _ -> ())
-
-incrementOrderedDataTransposal
-  :: OrderedDataTransposalHom
-       TestRestrictedDataValues TestRestrictedDataValues
-incrementOrderedDataTransposal =
-  orderedDataTransposalHom
-    testOrderedDataTransposal
-    testOrderedDataTransposal
-    (\(TestRestrictedDataValue value) ->
-      TestRestrictedDataValue (value + 1))
-    (\_ _ -> ())
 
 testDataTransversal :: DataTransversal TestRestrictedDataValues
 testDataTransversal =
@@ -1778,13 +1789,15 @@ testAtlasFederation = do
         (AtlasMergeNode atom atom) $ \confederation -> do
           let federation =
                 atlasFederation confederation $ \_ _ ->
-                  SeparatedCorrespondingRegions correspondingPosition
+                  SeparatedCorrespondingPageElements
+                    0 correspondingPosition
           assert "a federation does not separate a tag from itself"
             (isNothing (atlasFederationSeparation federation False False))
           assert "a federation retains separation evidence for distinct tags"
             ( atlasFederationSeparation federation False True
                 == Just
-                  (SeparatedCorrespondingRegions correspondingPosition)
+                  (SeparatedCorrespondingPageElements
+                    0 correspondingPosition)
             )
 
 testAtlasMap :: IO ()
@@ -2040,26 +2053,6 @@ testRestrictedDataTransformations = do
             emptyAtlasConfederation
             (IdentityStableConfederalValue (TestRestrictedDataValue 11))
             (IdentityStableConfederalValue (TestRestrictedDataValue 17)))
-  dataTransposalIdentity testDataTransposal input `seq`
-    dataTransposalComposition
-      testDataTransposal
-      identityAtlasTransposal
-      identityAtlasTransposal
-      input `seq`
-        dataTransposalHomNaturality
-          incrementDataTransposal identityAtlasTransposal input `seq`
-            pure ()
-  orderedDataTransposalIdentity testOrderedDataTransposal input `seq`
-    orderedDataTransposalComposition
-      testOrderedDataTransposal
-      identityOrderedAtlasTransposal
-      identityOrderedAtlasTransposal
-      input `seq`
-        orderedDataTransposalHomNaturality
-          incrementOrderedDataTransposal
-          identityOrderedAtlasTransposal
-          input `seq`
-            pure ()
   dataTransversalIdentity testDataTransversal input `seq`
     dataTransversalComposition
       testDataTransversal
@@ -2138,11 +2131,7 @@ testRestrictedDataTransformations = do
                       testStableConfederalData `seq`
                         pure ()
   assert "restricted data presheaves act contravariantly"
-    ( mapDataTransposal
-        testDataTransposal identityAtlasTransposal input == input
-      && mapOrderedDataTransposal
-        testOrderedDataTransposal identityOrderedAtlasTransposal input == input
-      && mapDataTransversal
+    ( mapDataTransversal
         testDataTransversal identityAtlasTransversal input == input
       && mapStableDataTransversal
         testStableDataTransversal identityStableAtlasTransversal input == input
@@ -2155,15 +2144,9 @@ testRestrictedDataTransformations = do
       && identityStableConfederalNatural joinedIdentityValue == 29
       && identityHorizontalSumComponents identityFubiniValue == (11, 17)
     )
+
   assert "restricted natural transformations compose pointwise"
-    ( mapDataTransposalHom
-        (incrementDataTransposal Category.. incrementDataTransposal)
-        input == TestRestrictedDataValue 31
-      && mapOrderedDataTransposalHom
-        (incrementOrderedDataTransposal
-          Category.. incrementOrderedDataTransposal)
-        input == TestRestrictedDataValue 31
-      && mapDataTransversalHom
+    ( mapDataTransversalHom
         (incrementDataTransversal Category.. incrementDataTransversal)
         input == TestRestrictedDataValue 31
       && mapStableDataTransversalHom
@@ -2182,6 +2165,77 @@ testRestrictedDataTransformations = do
       && identityStableConfederalNatural
         (mapStableConfederalKleisliHom boundIdentityKleisli input) == 31
     )
+
+testForgetStableConfederalData :: IO ()
+testForgetStableConfederalData =
+  emptyAtlas $ \valueAtlas -> do
+    let witness = atlasWitness valueAtlas
+        restricted =
+          restrictStableConfederalDataToStableAtlases
+            testStableConfederalData
+        restrictedValue =
+          restrictedStableConfederalDataValue
+            witness
+            (TestRestrictedDataValue 41)
+        reindexedRestricted =
+          mapStableDataTransversal
+            restricted
+            identityStableAtlasTransversal
+            restrictedValue
+        forgotten =
+          forgetStableConfederalDataToDataTransformation
+            testStableConfederalData
+        extendedValue =
+          leftKanExtensionValue witness Category.id restrictedValue
+        reindexedExtended =
+          mapDataTransformation forgotten Category.id extendedValue
+        forgottenIncrement =
+          stableConfederalDataForgetfulHom
+            stableConfederalDataForgetfulFunctor
+            incrementStableConfederalData
+        mappedExtended =
+          mapDataTransformationHom forgottenIncrement extendedValue
+        singletonConfederation = singletonAtlasConfederation valueAtlas
+        singletonFederation =
+          atlasFederation singletonConfederation $ \_ _ ->
+            DifferentPageOrderTypes 0
+        embeddedFederationValue =
+          embeddedAtlasFederationValue
+            identityAtlasConfederationHom
+        restrictedFederationValue =
+          restrictedStableConfederalDataValue
+            witness embeddedFederationValue
+        forgottenFederation =
+          forgetAtlasFederationToDataTransformation singletonFederation
+        extendedFederationValue =
+          leftKanExtensionValue
+            witness Category.id restrictedFederationValue
+        reindexedFederationValue =
+          mapDataTransformation
+            forgottenFederation Category.id extendedFederationValue
+    withRestrictedStableConfederalDataValue reindexedRestricted $ \_
+        (TestRestrictedDataValue value) ->
+      assert
+        "stable confederal restriction acts through singleton confederations"
+        (value == 41)
+    withLeftKanExtensionValue reindexedExtended $ \_ _ restrictedResult ->
+      withRestrictedStableConfederalDataValue restrictedResult $ \_
+          (TestRestrictedDataValue value) ->
+        assert
+          "stable confederal forgetting left-Kan-extends to all Atlas arrows"
+          (value == 41)
+    withLeftKanExtensionValue mappedExtended $ \_ _ restrictedResult ->
+      withRestrictedStableConfederalDataValue restrictedResult $ \_
+          (TestRestrictedDataValue value) ->
+        assert
+          "stable confederal forgetting maps natural transformations"
+          (value == 42)
+    withLeftKanExtensionValue reindexedFederationValue $ \_ _ federationRestricted ->
+      withRestrictedStableConfederalDataValue federationRestricted $ \_ embedded ->
+        withEmbeddedAtlasFederationValue embedded $ \federationArrow ->
+          assert
+            "Atlas federation forgetting composes Yoneda, restriction, and Lan"
+            (federationArrow `seq` True)
 
 testCharter :: IO ()
 testCharter =

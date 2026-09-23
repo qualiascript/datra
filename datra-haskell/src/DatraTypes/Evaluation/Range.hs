@@ -7,15 +7,34 @@ module Evaluation.Range
   ( boundedRangeValue
   , openPlusRangeValue
   , openMinusRangeValue
+  , naturalRangeValue
+  , naturalRangeUpwardsValue
+  , valuedNaturalRangeValue
+  , valuedNaturalRangeUpwardsValue
+  , naturalTypeValue
+  , integerRangeValue
+  , integerRangeUpwardsValue
+  , integerRangeDownwardsValue
+  , valuedIntegerRangeValue
+  , valuedIntegerRangeUpwardsValue
+  , valuedIntegerRangeDownwardsValue
+  , integerTypeValue
   , interpretedRangeValue
+  , makeEvaluatedRangeAt
   , canonicalizeRanges
   , concatenateRangeCapability
   ) where
 
 import Data.Kind (Type)
-import DatraOrdinal (Ordinal)
-import DatraLanguage.Diagnostics.Interpreter
-  ( InterpretingError (..)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression
+      ( PrimitiveAtlasMapFederation
+      )
+  )
+import DatraOrdinal (Ordinal, finiteOrdinal)
+import Evaluation.Error
+  ( InterpretedValueKind (..)
+  , InterpretingError (..)
   , OperandSide (..)
   )
 import Evaluation.Construction (mapFromInsertion)
@@ -25,6 +44,14 @@ import Evaluation.Numerical
   )
 import Evaluation.Value
 import Numeric.Natural (Natural)
+import EllipsisNatural qualified
+import EllipsisInteger qualified
+import NaturalRange qualified
+import NaturalType qualified
+import ValuedNaturalRange qualified
+import IntegerRange qualified
+import IntegerType qualified
+import ValuedIntegerRange qualified
 import NumericalOperators.NumericalOperand
   ( someSuperEllipsis
   , withSomeSuperEllipsis
@@ -36,6 +63,7 @@ import SuperEllipsis
   , superEllipsisTargetRank
   )
 import SuperEllipsisRange qualified as Range
+import SuperEllipsisInsertion (eraseSuperEllipsisInsertion)
 
 boundedRangeValue
   :: InterpretedValue
@@ -59,6 +87,252 @@ openMinusRangeValue
 openMinusRangeValue value = do
   endpoint <- requireExplicit LeftOperand value
   makeRange endpoint Range.MinusSign
+
+naturalRangeValue :: Natural -> Natural -> Either InterpretingError InterpretedValue
+naturalRangeValue start target =
+  case EllipsisNatural.ellipsisNatural start $ \origin ->
+      EllipsisNatural.ellipsisNatural target $ \destination ->
+        NaturalRange.naturalRange origin destination interpretedNaturalRangeValue
+    of
+      Just (Just (Just value)) -> Right value
+      _ -> interpretedNaturalRangeFallback
+        start
+        (NaturalRange.FiniteNaturalTarget target)
+
+naturalRangeUpwardsValue
+  :: Natural
+  -> Either InterpretingError InterpretedValue
+naturalRangeUpwardsValue start =
+  case EllipsisNatural.ellipsisNatural start $ \origin ->
+      NaturalRange.naturalRange
+        origin NaturalRange.upwards interpretedNaturalRangeValue
+    of
+      Just (Just value) -> Right value
+      _ -> interpretedNaturalRangeFallback start NaturalRange.UpwardsTarget
+
+valuedNaturalRangeValue
+  :: Natural
+  -> Natural
+  -> Either InterpretingError InterpretedValue
+valuedNaturalRangeValue start target =
+  EllipsisNatural.ellipsisNaturalTotal start $ \origin ->
+    EllipsisNatural.ellipsisNaturalTotal target $ \destination ->
+      case ValuedNaturalRange.valuedNaturalRangeEither
+          origin destination
+          (interpretedValuedNaturalRangeValue
+            (ValuedNaturalRangeSemantics
+              start (NaturalRange.FiniteNaturalTarget target))) of
+        Left rejection -> Left (RangeConstructionRejected rejection)
+        Right value -> Right value
+
+valuedNaturalRangeUpwardsValue
+  :: Natural
+  -> Either InterpretingError InterpretedValue
+valuedNaturalRangeUpwardsValue start =
+  EllipsisNatural.ellipsisNaturalTotal start $ \origin ->
+    case ValuedNaturalRange.valuedNaturalRangeEither
+        origin NaturalRange.upwards
+        (interpretedValuedNaturalRangeValue
+          (ValuedNaturalRangeSemantics start NaturalRange.UpwardsTarget)) of
+      Left rejection -> Left (RangeConstructionRejected rejection)
+      Right value -> Right value
+
+naturalTypeValue :: Either InterpretingError InterpretedValue
+naturalTypeValue =
+  case NaturalType.naturalTypeEither
+      (interpretedValuedNaturalRangeValue NaturalTypeSemantics) of
+    Left rejection -> Left (RangeConstructionRejected rejection)
+    Right value -> Right value
+
+integerRangeValue
+  :: Integer -> Integer -> Either InterpretingError InterpretedValue
+integerRangeValue start target =
+  EllipsisInteger.ellipsisInteger start $ \origin ->
+    EllipsisInteger.ellipsisInteger target $ \destination ->
+      case IntegerRange.integerRange
+          origin destination interpretedIntegerRangeValue of
+        Just value -> Right value
+        Nothing -> Left (ExpectedFiniteIntegerOperand
+          LeftOperand IntegerValueKind)
+
+integerRangeUpwardsValue
+  :: Integer -> Either InterpretingError InterpretedValue
+integerRangeUpwardsValue start =
+  EllipsisInteger.ellipsisInteger start $ \origin ->
+    case IntegerRange.integerRange
+        origin IntegerRange.upwards interpretedIntegerRangeValue of
+      Just value -> Right value
+      Nothing -> Left (ExpectedFiniteIntegerOperand
+        LeftOperand IntegerValueKind)
+
+integerRangeDownwardsValue
+  :: Integer -> Either InterpretingError InterpretedValue
+integerRangeDownwardsValue start =
+  EllipsisInteger.ellipsisInteger start $ \origin ->
+    case IntegerRange.integerRange
+        origin IntegerRange.downwards interpretedIntegerRangeValue of
+      Just value -> Right value
+      Nothing -> Left (ExpectedFiniteIntegerOperand
+        LeftOperand IntegerValueKind)
+
+valuedIntegerRangeValue
+  :: Integer -> Integer -> Either InterpretingError InterpretedValue
+valuedIntegerRangeValue start target =
+  EllipsisInteger.ellipsisInteger start $ \origin ->
+    EllipsisInteger.ellipsisInteger target $ \destination ->
+      case ValuedIntegerRange.valuedIntegerRange
+          origin destination
+          (interpretedValuedIntegerRangeValue
+            (ValuedIntegerRangeSemantics
+              start (IntegerRange.FiniteIntegerTarget target))) of
+        Just value -> Right value
+        Nothing -> Left (ExpectedFiniteIntegerOperand
+          LeftOperand IntegerValueKind)
+
+valuedIntegerRangeUpwardsValue
+  :: Integer -> Either InterpretingError InterpretedValue
+valuedIntegerRangeUpwardsValue start =
+  EllipsisInteger.ellipsisInteger start $ \origin ->
+    case ValuedIntegerRange.valuedIntegerRange
+        origin IntegerRange.upwards
+        (interpretedValuedIntegerRangeValue
+          (ValuedIntegerRangeSemantics
+            start IntegerRange.UpwardsIntegerTarget)) of
+      Just value -> Right value
+      Nothing -> Left (ExpectedFiniteIntegerOperand
+        LeftOperand IntegerValueKind)
+
+valuedIntegerRangeDownwardsValue
+  :: Integer -> Either InterpretingError InterpretedValue
+valuedIntegerRangeDownwardsValue start =
+  EllipsisInteger.ellipsisInteger start $ \origin ->
+    case ValuedIntegerRange.valuedIntegerRange
+        origin IntegerRange.downwards
+        (interpretedValuedIntegerRangeValue
+          (ValuedIntegerRangeSemantics
+            start IntegerRange.DownwardsIntegerTarget)) of
+      Just value -> Right value
+      Nothing -> Left (ExpectedFiniteIntegerOperand
+        LeftOperand IntegerValueKind)
+
+integerTypeValue :: Either InterpretingError InterpretedValue
+integerTypeValue =
+  Right
+    (IntegerType.integerType
+      (interpretedValuedIntegerRangeValue IntegerTypeSemantics))
+
+interpretedNaturalRangeValue
+  :: NaturalRange.NaturalRange rangeScope federationScope
+  -> InterpretedValue
+interpretedNaturalRangeValue valueRange =
+  makeInterpretedValue
+    (NaturalRangeForm evaluatedNaturalRange)
+    (ValidInsertion insertion)
+    valueMap
+    (PrimitiveAtlasMapFederation
+      (NaturalRangeAtlasMapFederation evaluatedNaturalRange))
+    NonTotalInterpretedMap
+    semantics
+  where
+    evaluatedNaturalRange = EvaluatedNaturalRange valueRange
+    evaluated =
+      EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
+    insertion = rangeInsertion evaluated
+    valueMap = mapFromInsertion insertion [semantics]
+    semantics =
+      NaturalRangeSemantics
+        (NaturalRange.naturalRangeStart valueRange)
+        (NaturalRange.naturalRangeTarget valueRange)
+
+interpretedValuedNaturalRangeValue
+  :: ValueSemantics
+  -> ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
+  -> InterpretedValue
+interpretedValuedNaturalRangeValue semantics valueRange =
+  makeInterpretedValue
+    (ValuedNaturalRangeForm evaluatedValuedNaturalRange)
+    (ValidInsertion insertion)
+    valueMap
+    (PrimitiveAtlasMapFederation
+      (ValuedNaturalRangeAtlasMapFederation evaluatedValuedNaturalRange))
+    NonTotalInterpretedMap
+    semantics
+  where
+    evaluatedValuedNaturalRange = EvaluatedValuedNaturalRange valueRange
+    evaluated =
+      EvaluatedRange
+        1
+        (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
+    insertion = rangeInsertion evaluated
+    valueMap = mapFromInsertion insertion [semantics]
+
+interpretedIntegerRangeValue
+  :: IntegerRange.IntegerRange rangeScope federationScope
+  -> InterpretedValue
+interpretedIntegerRangeValue valueRange =
+  makeInterpretedValue
+    (IntegerRangeForm evaluatedIntegerRange)
+    (ValidInsertion insertion)
+    valueMap
+    (PrimitiveAtlasMapFederation
+      (IntegerRangeAtlasMapFederation evaluatedIntegerRange))
+    NonTotalInterpretedMap
+    semantics
+  where
+    evaluatedIntegerRange = EvaluatedIntegerRange valueRange
+    insertion = eraseSuperEllipsisInsertion
+      (IntegerRange.integerRangeInsertion valueRange)
+    valueMap = mapFromInsertion insertion [semantics]
+    semantics =
+      IntegerRangeSemantics
+        (IntegerRange.integerRangeStart valueRange)
+        (IntegerRange.integerRangeTarget valueRange)
+
+interpretedValuedIntegerRangeValue
+  :: ValueSemantics
+  -> ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
+  -> InterpretedValue
+interpretedValuedIntegerRangeValue semantics valueRange =
+  makeInterpretedValue
+    (ValuedIntegerRangeForm evaluatedValuedIntegerRange)
+    (ValidInsertion insertion)
+    valueMap
+    (PrimitiveAtlasMapFederation
+      (ValuedIntegerRangeAtlasMapFederation
+        evaluatedValuedIntegerRange))
+    NonTotalInterpretedMap
+    semantics
+  where
+    evaluatedValuedIntegerRange = EvaluatedValuedIntegerRange valueRange
+    insertion = eraseSuperEllipsisInsertion
+      (ValuedIntegerRange.valuedIntegerRangeInsertion valueRange)
+    valueMap = mapFromInsertion insertion [semantics]
+
+interpretedNaturalRangeFallback
+  :: Natural
+  -> NaturalRange.NaturalRangeTarget
+  -> Either InterpretingError InterpretedValue
+interpretedNaturalRangeFallback start target = do
+  evaluated <-
+    makeEvaluatedRangeAt
+      1
+      (finiteOrdinal start)
+      (case target of
+        NaturalRange.UpwardsTarget -> Range.PlusSign
+        NaturalRange.FiniteNaturalTarget final
+          | start <= final -> Range.GivenTarget (finiteOrdinal (final + 1))
+          | final == 0 -> Range.MinusSign
+          | otherwise -> Range.GivenTarget (finiteOrdinal (final - 1)))
+  let insertion = rangeInsertion evaluated
+      semantics = NaturalRangeSemantics start target
+      valueMap = mapFromInsertion insertion [semantics]
+  pure
+    (makeSingletonInterpretedValue
+      (RangeForm evaluated)
+      (ValidInsertion insertion)
+      valueMap
+      TotalInterpretedMap
+      semantics)
 
 makeBoundedRange
   :: EvaluatedExplicit
@@ -101,14 +375,16 @@ makeEvaluatedRangeAt level start target =
 
 interpretedRangeValue :: EvaluatedRange -> InterpretedValue
 interpretedRangeValue evaluatedRange =
-  InterpretedValue
+  makeSingletonInterpretedValue
     (RangeForm evaluatedRange)
     (ValidInsertion insertion)
-    (mapFromInsertion insertion [canonical])
-    canonical
+    valueMap
+    TotalInterpretedMap
+    semantics
   where
     insertion = rangeInsertion evaluatedRange
-    canonical = CanonicalRange (rangeDescription evaluatedRange)
+    semantics = RangeSemantics (rangeDescription evaluatedRange)
+    valueMap = mapFromInsertion insertion [semantics]
 
 canonicalizeRanges
   :: [EvaluatedRange]

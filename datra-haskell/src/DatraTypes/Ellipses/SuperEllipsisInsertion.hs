@@ -46,10 +46,7 @@ import Chain
 import ChainedDominionAtlas (chainedDominionInsertionTraversal)
 import DatraOrdinal
   ( Ordinal
-  , addOrdinals
   , finiteOrdinal
-  , ordinalLT
-  , subtractOrdinal
   )
 import Data.Kind (Type)
 import DomanialInclusion (DominionAtlasObject)
@@ -67,6 +64,10 @@ import MapOperators.OrderedAtlasMap
   , OrderedAtlasMap (..)
   )
 import Numeric.Natural (Natural)
+import OrdinalSequence
+  ( OrdinalSequence (..)
+  , appendOrdinalSequence
+  )
 import StableAtlasTransversal (StableAtlasTransversal)
 import StableConfederalData (StableConfederalData)
 import SuperEllipsis
@@ -138,20 +139,18 @@ appendSomeSuperEllipsisInsertion left right =
     (max
       (someSuperEllipsisInsertionRank left)
       (someSuperEllipsisInsertionRank right))
-    combinedOrderType
-    positionAt
+    (ordinalSequenceOrderType combined)
+    (ordinalSequenceValueAt combined)
   where
-    leftOrderType = someSuperEllipsisInsertionOrderType left
-    combinedOrderType =
-      addOrdinals
-        leftOrderType
-        (someSuperEllipsisInsertionOrderType right)
-    positionAt position
-      | ordinalLT position leftOrderType =
-          someSuperEllipsisInsertionPositionAt left position
-      | otherwise = do
-          rightPosition <- subtractOrdinal leftOrderType position
-          someSuperEllipsisInsertionPositionAt right rightPosition
+    combined =
+      appendOrdinalSequence
+        (insertionSequence left)
+        (insertionSequence right)
+
+    insertionSequence insertion =
+      OrdinalSequence
+        (someSuperEllipsisInsertionOrderType insertion)
+        (someSuperEllipsisInsertionPositionAt insertion)
 
 -- | A source chain is either empty or has a first element and a total lookup
 -- for its in-bounds ordinal positions. The constructors stay private so an

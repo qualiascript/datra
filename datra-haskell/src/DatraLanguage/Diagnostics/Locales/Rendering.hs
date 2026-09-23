@@ -73,11 +73,11 @@ prettyOrdinal value =
             <> pretty coefficient
         renderTerm power 1 =
           parenthesizedEllipsis
-            <> prettySourceSymbol ExponentiationOperator
+            <> prettySpacedSourceSymbol ExponentiationOperator
             <> pretty power
         renderTerm power coefficient =
           parenthesizedEllipsis
-            <> prettySourceSymbol ExponentiationOperator
+            <> prettySpacedSourceSymbol ExponentiationOperator
             <> pretty power
             <> prettySpacedSourceSymbol MultiplicationOperator
             <> pretty coefficient

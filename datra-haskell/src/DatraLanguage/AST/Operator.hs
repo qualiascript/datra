@@ -13,10 +13,23 @@ data Operator
   | RangePlusOperator
   | RangeMinusOperator
   | AdditionOperator
+  | SubtractionOperator
+  | MinusOperator
+  | SubfederationOperator
+  | EqualityOperator
+  | BooleanAndOperator
+  | BooleanOrOperator
+  | BooleanNotOperator
+  | ExtractOperator
+  | EitherOperator
+  | OptionalOperator
   | MultiplicationOperator
   | ExponentiationOperator
   | ConcatenationOperator
   | AccessOperator
+  | SpecificationOperator
+  | IdentifierTypeOperator
+  | AssignmentOperator
   deriving (Eq, Show)
 
 -- | Canonical notation used when rendering an AST.
@@ -27,10 +40,23 @@ operatorCanonicalSymbol RangeOperator = "<..>"
 operatorCanonicalSymbol RangePlusOperator = "..+"
 operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
+operatorCanonicalSymbol SubtractionOperator = "-"
+operatorCanonicalSymbol MinusOperator = "minus"
+operatorCanonicalSymbol SubfederationOperator = "of"
+operatorCanonicalSymbol EqualityOperator = "="
+operatorCanonicalSymbol BooleanAndOperator = "and"
+operatorCanonicalSymbol BooleanOrOperator = "or"
+operatorCanonicalSymbol BooleanNotOperator = "not"
+operatorCanonicalSymbol ExtractOperator = "%"
+operatorCanonicalSymbol EitherOperator = "Either"
+operatorCanonicalSymbol OptionalOperator = "optional"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
 operatorCanonicalSymbol AccessOperator = "<@>"
+operatorCanonicalSymbol SpecificationOperator = "~>"
+operatorCanonicalSymbol IdentifierTypeOperator = ":"
+operatorCanonicalSymbol AssignmentOperator = ":="
 
 -- | Concrete source spelling, when an operator is represented by one token.
 -- Sequential and expansion structure comes from map separators and nesting.
@@ -41,10 +67,23 @@ operatorSourceSymbol RangeOperator = Just ".."
 operatorSourceSymbol RangePlusOperator = Just ".."
 operatorSourceSymbol RangeMinusOperator = Just "..-"
 operatorSourceSymbol AdditionOperator = Just "+"
+operatorSourceSymbol SubtractionOperator = Just "-"
+operatorSourceSymbol MinusOperator = Just "-"
+operatorSourceSymbol SubfederationOperator = Just "of"
+operatorSourceSymbol EqualityOperator = Just "="
+operatorSourceSymbol BooleanAndOperator = Just "and"
+operatorSourceSymbol BooleanOrOperator = Just "or"
+operatorSourceSymbol BooleanNotOperator = Just "not"
+operatorSourceSymbol ExtractOperator = Just "%"
+operatorSourceSymbol EitherOperator = Just "|"
+operatorSourceSymbol OptionalOperator = Just "?"
 operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","
 operatorSourceSymbol AccessOperator = Just "@"
+operatorSourceSymbol SpecificationOperator = Just "~>"
+operatorSourceSymbol IdentifierTypeOperator = Just ":"
+operatorSourceSymbol AssignmentOperator = Just ":="
 
 ellipsisSymbol :: String
 ellipsisSymbol = "..."
