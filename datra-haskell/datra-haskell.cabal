@@ -39,6 +39,7 @@ library
         DatraLanguage.AST
         DatraLanguage.AST.Operator
         DatraLanguage.AST.Reserved
+        DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
         DatraTypes
         AsciiMap

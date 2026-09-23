@@ -13,7 +13,11 @@ makeNothing :: InterpretedValue
 makeNothing = value
   where
     unit = makeAtlasMap 0 []
-    semantics = NothingSemantics (interpretedSemantics unit)
+    semantics =
+      IdentifierTypeSemantics
+        (SimpleIdentifierDependency "Nothing")
+        (interpretedSemantics unit)
+        True
     value =
       makeSingletonInterpretedValue
         NothingForm

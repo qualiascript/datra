@@ -89,10 +89,12 @@ terminateBeforeNewline (component : remaining) =
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result
-  | isBooleanValue "False" 0 result = "false"
-  | isBooleanValue "True" 1 result = "true"
-  | isNothingValue result = "nothing"
-  | result == CanonicalAsciiString "Nothing" = "nothing"
+  | isBooleanValue "False" 0 result =
+      pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
+  | isBooleanValue "True" 1 result =
+      pretty (Reserved.reservedSymbolIdentifierString Reserved.TrueSymbol)
+  | isNothingValue result =
+      pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
   | otherwise = prettyNonKeywordCanonicalResult result
 
 prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
@@ -106,11 +108,11 @@ prettyNonKeywordCanonicalResult result =
     CanonicalNaturalRange origin target -> prettyNaturalRange origin target
     CanonicalValuedNaturalRange origin target ->
       prettyValuedNaturalRange origin target
-    CanonicalNaturalType -> "Nat"
+    CanonicalNaturalType -> reservedSymbolDoc Reserved.NaturalTypeSymbol
     CanonicalIntegerRange origin target -> prettyIntegerRange origin target
     CanonicalValuedIntegerRange origin target ->
       prettyValuedIntegerRange origin target
-    CanonicalIntegerType -> "Int"
+    CanonicalIntegerType -> reservedSymbolDoc Reserved.IntegerTypeSymbol
     CanonicalEither left right -> prettyEither result left right
     CanonicalRangeConcatenation descriptions ->
       concatWith (\left right -> left <> ", " <> right)
@@ -119,7 +121,7 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
-    CanonicalStringType -> "String"
+    CanonicalStringType -> reservedSymbolDoc Reserved.StringTypeSymbol
     CanonicalToString source ->
       pretty ("\"$(" <> renderCanonicalResult source <> ")\"")
     CanonicalIdentifierType identifierString typeAnnotation ->
@@ -195,7 +197,7 @@ prettyEither
   -> CanonicalResult
   -> Doc annotation
 prettyEither whole left right
-  | isBooleanType whole = "Bool"
+  | isBooleanType whole = reservedSymbolDoc Reserved.BooleanTypeSymbol
   | isNothingValue right = prettyOptional left
   | Just optionalIdentifier <- optionalIdentifierParts left right =
       optionalIdentifier
@@ -329,7 +331,7 @@ prettyIntegerRange origin target =
       rangeWord <> " " <> pretty origin <> " " <> upwardsWord
     DownwardsIntegerTarget ->
       rangeWord <> " " <> pretty origin <> " " <> downwardsWord
-    AllIntegersTarget -> "Int"
+    AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
 
 prettyValuedIntegerRange
   :: Integer
@@ -344,17 +346,20 @@ prettyValuedIntegerRange origin target =
       fromWord <> " " <> pretty origin <> " " <> upwardsWord
     DownwardsIntegerTarget ->
       fromWord <> " " <> pretty origin <> " " <> downwardsWord
-    AllIntegersTarget -> "Int"
+    AllIntegersTarget -> reservedSymbolDoc Reserved.IntegerTypeSymbol
 
 rangeWord, fromWord, toWord, upwardsWord, downwardsWord :: Doc annotation
-rangeWord = reservedWordDoc Reserved.RangeWord
-fromWord = reservedWordDoc Reserved.FromWord
+rangeWord = reservedSymbolDoc Reserved.RangeSymbol
+fromWord = reservedSymbolDoc Reserved.FromSymbol
 toWord = reservedWordDoc Reserved.ToWord
 upwardsWord = reservedWordDoc Reserved.UpwardsWord
 downwardsWord = reservedWordDoc Reserved.DownwardsWord
 
 reservedWordDoc :: Reserved.ReservedWord -> Doc annotation
 reservedWordDoc = pretty . Reserved.reservedWordText
+
+reservedSymbolDoc :: Reserved.ReservedSymbol -> Doc annotation
+reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"

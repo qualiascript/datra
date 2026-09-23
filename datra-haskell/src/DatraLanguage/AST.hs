@@ -56,6 +56,7 @@ data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
   | AsciiStringLiteral String
+  | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
   | StringType
   | AtlasMap [Expression]
@@ -111,6 +112,7 @@ data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
   | AsciiStringValue String
+  | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
   | StringTypeValue
   | EmptyMap
@@ -170,6 +172,7 @@ normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
+normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
 normalizeExpression StringType = StringType
@@ -302,6 +305,7 @@ lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
+lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
 lower StringType = StringTypeValue
@@ -399,11 +403,12 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
-prettyOperator (AsciiStringValue "Nothing") = "nothing"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
+prettyOperator NothingValue =
+  pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
-prettyOperator StringTypeValue = "String"
+prettyOperator StringTypeValue = reservedSymbolDoc Reserved.StringTypeSymbol
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -418,53 +423,55 @@ prettyOperator (RangePlus lowerBound) =
 prettyOperator (RangeMinus upperBound) =
   prettyUnary RangeMinusOperator upperBound
 prettyOperator (InclusiveNaturalRange origin target) =
-  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
     [pretty origin, reservedWordDoc Reserved.ToWord, pretty target]
 prettyOperator (InclusiveNaturalRangeUpwards origin) =
-  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
     [pretty origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveValuedNaturalRange origin target) =
-  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
     [pretty origin, reservedWordDoc Reserved.ToWord, pretty target]
 prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
-  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
     [pretty origin, reservedWordDoc Reserved.UpwardsWord]
-prettyOperator NaturalTypeValue = "Nat"
+prettyOperator NaturalTypeValue = reservedSymbolDoc Reserved.NaturalTypeSymbol
 prettyOperator (InclusiveIntegerRange origin target) =
-  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
     [ prettyInteger origin
     , reservedWordDoc Reserved.ToWord
     , prettyInteger target
     ]
 prettyOperator (InclusiveIntegerRangeUpwards origin) =
-  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
     [prettyInteger origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveIntegerRangeDownwards origin) =
-  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.RangeSymbol)
     [prettyInteger origin, reservedWordDoc Reserved.DownwardsWord]
 prettyOperator (InclusiveValuedIntegerRange origin target) =
-  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
     [ prettyInteger origin
     , reservedWordDoc Reserved.ToWord
     , prettyInteger target
     ]
 prettyOperator (InclusiveValuedIntegerRangeUpwards origin) =
-  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
     [prettyInteger origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveValuedIntegerRangeDownwards origin) =
-  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+  prettyForm (Reserved.reservedSymbolIdentifierString Reserved.FromSymbol)
     [prettyInteger origin, reservedWordDoc Reserved.DownwardsWord]
-prettyOperator IntegerTypeValue = "Int"
-prettyOperator (BooleanValue False) = "false"
-prettyOperator (BooleanValue True) = "true"
-prettyOperator BooleanTypeValue = "Bool"
+prettyOperator IntegerTypeValue = reservedSymbolDoc Reserved.IntegerTypeSymbol
+prettyOperator (BooleanValue False) =
+  pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
+prettyOperator (BooleanValue True) =
+  pretty (Reserved.reservedSymbolIdentifierString Reserved.TrueSymbol)
+prettyOperator BooleanTypeValue = reservedSymbolDoc Reserved.BooleanTypeSymbol
 prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
 prettyOperator (ConditionalValue condition consequent alternative) =
   prettyForm
-    "if"
+    (Reserved.reservedSymbolIdentifierString Reserved.IfSymbol)
     [ prettyOperator condition
     , prettyOperator consequent
     , prettyOperator alternative
@@ -543,6 +550,9 @@ prettyInteger = pretty
 
 reservedWordDoc :: Reserved.ReservedWord -> Doc annotation
 reservedWordDoc = pretty . Reserved.reservedWordText
+
+reservedSymbolDoc :: Reserved.ReservedSymbol -> Doc annotation
+reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 
 -- | Render an identifier string when possible, otherwise use the standard
 -- quoted spelling. Standard strings leave the keyboard-visible ASCII range

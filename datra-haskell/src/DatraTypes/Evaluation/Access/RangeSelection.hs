@@ -134,8 +134,6 @@ semanticAccessSource semantics =
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
-    BooleanSemantics _ _ -> ordinarySource []
-    NothingSemantics _ -> ordinarySource []
     FormulationSemantics level ->
       AccessSource
         { sourceDescribedRanges = [formulationDescribedRange level]

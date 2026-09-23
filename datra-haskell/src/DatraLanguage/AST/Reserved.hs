@@ -1,9 +1,11 @@
--- | The word-like symbols reserved by Datra syntax.
+-- | Reserved context-binding identifiers and syntax-only words.
 module DatraLanguage.AST.Reserved
   ( ReservedWord (..)
   , reservedWordText
-  , BuiltInIdentifier (..)
-  , builtInIdentifierText
+  , ReservedSymbol (..)
+  , reservedSymbols
+  , reservedSymbolIdentifierString
+  , reservedSymbolIdentifiersAreUnique
   , reservedIdentifierStrings
   , isReservedIdentifierString
   ) where
@@ -14,54 +16,68 @@ import DatraLanguage.AST.Operator
   )
 
 data ReservedWord
-  = FalseWord
-  | TrueWord
-  | NothingWord
-  | BooleanTypeWord
-  | StringTypeWord
-  | IntegerTypeWord
-  | NaturalTypeWord
-  | IfWord
-  | ThenWord
+  = ThenWord
   | ElseWord
-  | RangeWord
-  | FromWord
   | ToWord
   | UpwardsWord
   | DownwardsWord
   deriving (Bounded, Enum, Eq, Show)
 
 reservedWordText :: ReservedWord -> String
-reservedWordText FalseWord = "false"
-reservedWordText TrueWord = "true"
-reservedWordText NothingWord = "nothing"
-reservedWordText BooleanTypeWord = "Bool"
-reservedWordText StringTypeWord = "String"
-reservedWordText IntegerTypeWord = "Int"
-reservedWordText NaturalTypeWord = "Nat"
-reservedWordText IfWord = "if"
 reservedWordText ThenWord = "then"
 reservedWordText ElseWord = "else"
-reservedWordText RangeWord = "range"
-reservedWordText FromWord = "from"
 reservedWordText ToWord = "to"
 reservedWordText UpwardsWord = "upwards"
 reservedWordText DownwardsWord = "downwards"
 
-data BuiltInIdentifier
-  = FalseIdentifier
-  | TrueIdentifier
-  | NothingIdentifier
+-- | A reserved identifier whose value is supplied by the language context.
+-- Some are currently parser forms or interpreter/FFI bootstraps; a future
+-- Datra standard library can provide ordinary definitions for the same names.
+data ReservedSymbol
+  = BooleanTypeSymbol
+  | StringTypeSymbol
+  | IntegerTypeSymbol
+  | NaturalTypeSymbol
+  | IfSymbol
+  | RangeSymbol
+  | FromSymbol
+  | FalseSymbol
+  | TrueSymbol
+  | NothingSymbol
   deriving (Bounded, Enum, Eq, Show)
 
-builtInIdentifierText :: BuiltInIdentifier -> String
-builtInIdentifierText FalseIdentifier = "False"
-builtInIdentifierText TrueIdentifier = "True"
-builtInIdentifierText NothingIdentifier = "Nothing"
+reservedSymbols :: [ReservedSymbol]
+reservedSymbols
+  | reservedSymbolIdentifiersAreUnique = [minBound .. maxBound]
+  | otherwise = error "reserved symbols must have unique identifier strings"
+
+-- | The unique simple-identifier spelling reserved for a context binding.
+reservedSymbolIdentifierString :: ReservedSymbol -> String
+reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
+reservedSymbolIdentifierString StringTypeSymbol = "String"
+reservedSymbolIdentifierString IntegerTypeSymbol = "Int"
+reservedSymbolIdentifierString NaturalTypeSymbol = "Nat"
+reservedSymbolIdentifierString IfSymbol = "if"
+reservedSymbolIdentifierString RangeSymbol = "range"
+reservedSymbolIdentifierString FromSymbol = "from"
+reservedSymbolIdentifierString FalseSymbol = "false"
+reservedSymbolIdentifierString TrueSymbol = "true"
+reservedSymbolIdentifierString NothingSymbol = "nothing"
+
+reservedSymbolIdentifiersAreUnique :: Bool
+reservedSymbolIdentifiersAreUnique =
+  allDifferent
+    (map reservedSymbolIdentifierString
+      ([minBound .. maxBound] :: [ReservedSymbol]))
+  where
+    allDifferent [] = True
+    allDifferent (value : remaining) =
+      value `notElem` remaining && allDifferent remaining
 
 reservedIdentifierStrings :: [String]
 reservedIdentifierStrings =
-  map reservedWordText identifierReservedWords
+  map reservedSymbolIdentifierString reservedSymbols
+    <> map reservedWordText identifierReservedWords
     <> map operatorCanonicalSymbol
       [ MinusOperator
       , SubfederationOperator
@@ -76,19 +92,12 @@ reservedIdentifierStrings =
     -- could begin. Range continuations (to/upwards/downwards) are contextual
     -- and deliberately remain valid bare identifier names.
     identifierReservedWords =
-      [ FalseWord
-      , TrueWord
-      , NothingWord
-      , BooleanTypeWord
-      , StringTypeWord
-      , IntegerTypeWord
-      , NaturalTypeWord
-      , IfWord
-      , ThenWord
-      , ElseWord
-      , RangeWord
-      , FromWord
-      ]
+      filter reservesIdentifier
+        ([minBound .. maxBound] :: [ReservedWord])
+    reservesIdentifier ToWord = False
+    reservesIdentifier UpwardsWord = False
+    reservesIdentifier DownwardsWord = False
+    reservesIdentifier _ = True
 
 isReservedIdentifierString :: String -> Bool
 isReservedIdentifierString value = value `elem` reservedIdentifierStrings

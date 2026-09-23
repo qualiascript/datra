@@ -420,6 +420,18 @@ testLiteralsAndArithmetic = do
     assert "natural arithmetic evaluates through ordinal operators"
       (interpretedExplicitOrdinal value == Just (1, finiteOrdinal 7))
   expectValue
+      "empty-map numerical coercion"
+      (AST.equal ((AST.+) AST.emptyMap (natural 3)) (natural 3)) $ \value ->
+    assert "the total empty map coerces to numerical zero"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "Nothing numerical coercion chain"
+      (AST.equal
+        ((AST.+) AST.nothing (natural 3))
+        (natural 3)) $ \value ->
+    assert "nothing follows its identifier string and unit map to zero"
+      (renderInterpretedValue value == "true")
+  expectValue
       "Ellipsis soft coercion"
       ((AST.+) (...) (natural 0)) $ \value ->
     assert "adding zero coerces Ellipsis to an explicit rank-two omega"
@@ -667,6 +679,13 @@ testBooleansAndEither = do
       ( renderInterpretedValue value == "Bool"
         && interpretedValueKind value == EitherValueKind
       )
+  expectValue
+      "Boolean numerical coercion"
+      (AST.equal
+        ((AST.+) (AST.boolean True) (AST.boolean True))
+        (natural 2)) $ \value ->
+    assert "true + true follows the shared named-value coercion to 2"
+      (renderInterpretedValue value == "true")
   expectValue
       "surface Boolean definition"
       (AST.equal
@@ -2293,6 +2312,44 @@ testIdentifiers = do
         && renderInterpretedValue value == "x : 5"
       )
   expectValue
+      "total identifier addition"
+      (AST.equal
+        ((AST.+) xFive (identifier "y" (natural 10)))
+        (natural 15)) $ \value ->
+    assert "total numerical identifier maps participate in addition"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "total identifiers in finite numerical operators"
+      (AST.equal
+        ((AST.*)
+          ((AST.-) (identifier "y" (natural 10)) xFive)
+          (identifier "z" (natural 2)))
+        (natural 10)) $ \value ->
+    assert "subtraction and multiplication share identifier coercion"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "total identifiers in exponentiation"
+      (AST.equal
+        ((AST.^) xFive (identifier "power" (natural 2)))
+        (natural 25)) $ \value ->
+    assert "exponentiation shares identifier coercion"
+      (renderInterpretedValue value == "true")
+  expectValue
+      "total identifier unary minus"
+      (AST.equal (AST.minus xFive) (AST.minus (natural 5))) $ \value ->
+    assert "unary minus shares identifier coercion"
+      (renderInterpretedValue value == "true")
+  let omegaSquared = (AST.^) (...) (natural 2)
+  expectValue
+      "transfinite identifier addition"
+      (AST.equal
+        ((AST.+)
+          (identifier "x" omegaSquared)
+          (identifier "y" (natural 1)))
+        ((AST.+) omegaSquared (natural 1))) $ \value ->
+    assert "higher-rank numerical identifiers retain ordinal arithmetic"
+      (renderInterpretedValue value == "true")
+  expectValue
       "identity assignment specifies its total identifier"
       ((~>) xFiveAssignment xFive) $ \value ->
     assert "assignment-to-identifier identity canonicalizes"
@@ -2493,8 +2550,15 @@ testTypedRejections = do
       _ -> False)
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
-        ((AST.+) (AtlasMap []) (natural 1)) of
+        ((AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)) of
       Left (ExpectedNumericalOperand LeftOperand MapValueKind) -> True
+      _ -> False)
+  assert "non-total identifiers are rejected as numerical operands"
+    (case interpretExpressionReason
+        ((AST.+) (AST.identifierType "x" NaturalType) (natural 1)) of
+      Left
+          (ExpectedNumericalOperand
+            LeftOperand IdentifierTypeValueKind) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretExpressionReason
@@ -2561,7 +2625,8 @@ testLocatedRejection = do
           "<test>"
           (SourcePosition 4 1 5)
           (SourcePosition 10 1 11)
-      expressionValue = (AST.+) (AtlasMap []) (natural 1)
+      expressionValue =
+        (AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)
   assert "typed interpretation errors retain their supplied source span"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left

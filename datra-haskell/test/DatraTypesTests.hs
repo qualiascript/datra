@@ -186,9 +186,12 @@ testOrdinalInspection = do
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do
-  let emptyMap = Types.makeAtlasMap 0 []
+  let nonemptyMap =
+        Types.makeAtlasMap
+          2
+          [Types.naturalValue 0, Types.naturalValue 1]
   assert "DatraTypes rejects non-numerical operands without AST interpretation"
-    (case Types.addValues emptyMap (Types.naturalValue 1) of
+    (case Types.addValues nonemptyMap (Types.naturalValue 1) of
       Left
           (Types.ExpectedNumericalOperand
             Types.LeftOperand Types.MapValueKind) -> True

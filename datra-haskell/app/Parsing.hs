@@ -32,7 +32,6 @@ import DatraLanguage.AST
       ( Addition
       , AsciiStringLiteral
       , StringTemplate
-      , StringType
       , AtlasMap
       , EllipsisLiteral
       , EllipsisNatural
@@ -46,7 +45,6 @@ import DatraLanguage.AST
       , Multiplication
       , Subtraction
       , Minus
-      , NaturalType
       , NaturalRange
       , NaturalRangeUpwards
       , SuperEllipsisRange
@@ -60,9 +58,6 @@ import DatraLanguage.AST
       , ValuedIntegerRange
       , ValuedIntegerRangeUpwards
       , ValuedIntegerRangeDownwards
-      , IntegerType
-      , BooleanLiteral
-      , BooleanType
       , EitherType
       , OptionalType
       , Conditional
@@ -80,6 +75,9 @@ import DatraLanguage.AST
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.AST.Reserved.Bootstrap
+  ( reservedSymbolReplacements
+  )
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -242,23 +240,21 @@ astAtom = astLexeme (atomicExpressionToken astStringTemplateToken)
 atomicExpressionToken :: Parser Expression -> Parser Expression
 atomicExpressionToken nestedStringTemplate =
   choice
-    [ BooleanLiteral False <$ reservedToken Reserved.FalseWord
-    , BooleanLiteral True <$ reservedToken Reserved.TrueWord
-    , AsciiStringLiteral "Nothing" <$ reservedToken Reserved.NothingWord
-    , BooleanLiteral False <$ builtInToken Reserved.FalseIdentifier
-    , BooleanLiteral True <$ builtInToken Reserved.TrueIdentifier
-    , BooleanType <$ reservedToken Reserved.BooleanTypeWord
-    , StringType <$ reservedToken Reserved.StringTypeWord
-    , IntegerType <$ reservedToken Reserved.IntegerTypeWord
-    , NaturalType <$ reservedToken Reserved.NaturalTypeWord
+    [ reservedSymbolReplacementToken
     , EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierStringToken
     , nestedStringTemplate
     , EllipsisNatural <$> Lexer.decimal
     ]
   where
-    reservedToken = keywordToken . Text.pack . Reserved.reservedWordText
-    builtInToken = keywordToken . Text.pack . Reserved.builtInIdentifierText
+    reservedSymbolReplacementToken =
+      choice
+        [ replacement
+            <$ keywordToken
+              (Text.pack
+                (Reserved.reservedSymbolIdentifierString reservedSymbol))
+        | (reservedSymbol, replacement) <- reservedSymbolReplacements
+        ]
 
 astForm :: Parser Expression
 astForm =
@@ -319,7 +315,7 @@ astIdentifierOperation operator assignmentMarker = do
 
 astConditional :: Parser Expression
 astConditional = do
-  _ <- astReservedWord Reserved.IfWord
+  _ <- astReservedSymbol Reserved.IfSymbol
   condition <- astExpression
   consequent <- astExpression
   alternative <- astExpression
@@ -345,8 +341,8 @@ data NaturalRangeBounds
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
   prefix <- choice
-    [ RangePrefix <$ astReservedWord Reserved.RangeWord
-    , FromPrefix <$ astReservedWord Reserved.FromWord
+    [ RangePrefix <$ astReservedSymbol Reserved.RangeSymbol
+    , FromPrefix <$ astReservedSymbol Reserved.FromSymbol
     ]
   bounds <- astNaturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
@@ -396,6 +392,10 @@ astSymbol = Lexer.symbol astSpaceConsumer
 
 astReservedWord :: Reserved.ReservedWord -> Parser Text
 astReservedWord = astSymbol . Text.pack . Reserved.reservedWordText
+
+astReservedSymbol :: Reserved.ReservedSymbol -> Parser Text
+astReservedSymbol =
+  astSymbol . Text.pack . Reserved.reservedSymbolIdentifierString
 
 astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
@@ -526,6 +526,13 @@ identifierValueExpression :: Parser Expression
 identifierValueExpression =
   makeExprParser rangeExpression identifierValueOperatorTable
 
+-- An arithmetic operator followed by another identifier operation belongs to
+-- the surrounding expression. Otherwise it remains part of this identifier's
+-- annotation or assigned value, preserving forms such as @x : 2 + 3@.
+boundaryAwareArithmeticExpression :: Parser Expression
+boundaryAwareArithmeticExpression =
+  makeExprParser term boundaryAwareArithmeticOperatorTable
+
 -- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
 -- is permitted at this precedence level. Each explicit endpoint is a complete
 -- arithmetic expression; nested ranges therefore require parentheses.
@@ -533,7 +540,7 @@ rangeExpression :: Parser Expression
 rangeExpression =
   try prefixRange
     <|> try explicitRange
-    <|> arithmeticExpression
+    <|> boundaryAwareArithmeticExpression
 
 prefixRange :: Parser Expression
 prefixRange = do
@@ -558,9 +565,6 @@ rangeSuffix lowerBound =
         _ <- lookAhead postfixRangeEnd
         pure (SuperEllipsisRangePlus lowerBound)
     ]
-
-arithmeticExpression :: Parser Expression
-arithmeticExpression = makeExprParser term arithmeticOperatorTable
 
 -- A bare Ellipsis value cannot be a range endpoint. Parentheses deliberately
 -- return to the complete expression grammar, making forms such as '(...)..'
@@ -595,7 +599,7 @@ parenthesizedReverseSpecification = do
 
 conditionalExpression :: Parser Expression
 conditionalExpression = do
-  _ <- continuedReservedWord Reserved.IfWord
+  _ <- continuedReservedSymbol Reserved.IfSymbol
   condition <- expression
   _ <- continuedReservedWord Reserved.ThenWord
   consequent <- expression
@@ -635,8 +639,8 @@ bracketedInsertion =
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
   prefix <- choice
-    [ RangePrefix <$ continuedReservedWord Reserved.RangeWord
-    , FromPrefix <$ continuedReservedWord Reserved.FromWord
+    [ RangePrefix <$ continuedReservedSymbol Reserved.RangeSymbol
+    , FromPrefix <$ continuedReservedSymbol Reserved.FromSymbol
     ]
   bounds <- naturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
@@ -701,6 +705,10 @@ continuedReservedWord :: Reserved.ReservedWord -> Parser Text
 continuedReservedWord =
   continuedKeyword . Text.pack . Reserved.reservedWordText
 
+continuedReservedSymbol :: Reserved.ReservedSymbol -> Parser Text
+continuedReservedSymbol =
+  continuedKeyword . Text.pack . Reserved.reservedSymbolIdentifierString
+
 continuedWordOperator :: AST.Operator -> Parser Text
 continuedWordOperator =
   continuedKeyword . Text.pack . AST.operatorCanonicalSymbol
@@ -725,17 +733,42 @@ parenthesizedExpression =
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
 arithmeticOperatorTable =
+  arithmeticOperatorTableWith continuedOperator
+
+boundaryAwareArithmeticOperatorTable :: [[Operator Parser Expression]]
+boundaryAwareArithmeticOperatorTable =
+  arithmeticOperatorTableWith operatorBeforeIdentifierBoundary
+
+arithmeticOperatorTableWith
+  :: (AST.Operator -> Parser Text)
+  -> [[Operator Parser Expression]]
+arithmeticOperatorTableWith infixOperator =
   [ [Postfix (OptionalType <$ operatorToken AST.OptionalOperator)]
-  , [InfixR (Exponentiation <$ continuedOperator AST.ExponentiationOperator)]
+  , [InfixR (Exponentiation <$ infixOperator AST.ExponentiationOperator)]
   , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
     , Prefix (Minus <$ continuedWordOperator AST.MinusOperator)
     , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
     ]
-  , [InfixL (Multiplication <$ continuedOperator AST.MultiplicationOperator)]
-  , [ InfixL (Addition <$ continuedOperator AST.AdditionOperator)
-    , InfixL (Subtraction <$ continuedOperator AST.SubtractionOperator)
+  , [InfixL (Multiplication <$ infixOperator AST.MultiplicationOperator)]
+  , [ InfixL (Addition <$ infixOperator AST.AdditionOperator)
+    , InfixL (Subtraction <$ infixOperator AST.SubtractionOperator)
     ]
   ]
+
+operatorBeforeIdentifierBoundary :: AST.Operator -> Parser Text
+operatorBeforeIdentifierBoundary operator =
+  try
+    (continuedOperator operator
+      <* notFollowedBy (try identifierOperationStart))
+
+identifierOperationStart :: Parser ()
+identifierOperationStart = do
+  identifierSpelling <- identifierExpression
+  _ <- validateIdentifierSpelling identifierSpelling
+  _ <- optional (operatorToken AST.OptionalOperator)
+  void
+    (operatorToken AST.AssignmentOperator
+      <|> operatorToken AST.IdentifierTypeOperator)
 
 -- Concatenation binds after ranges. Access and forward specification share a
 -- left-associative level so their written order determines composition:
@@ -745,10 +778,11 @@ arithmeticOperatorTable =
 -- operations can occur on either side of a reversed chain.
 mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
-  [ [InfixR (MapConcatenation <$ infixComma)]
-  , [Postfix (finishConcatenation <$ trailingComma)]
-  , mapAccessAndSpecificationOperators
-  ]
+  arithmeticOperatorTable
+    <> [ [InfixR (MapConcatenation <$ infixComma)]
+       , [Postfix (finishConcatenation <$ trailingComma)]
+       , mapAccessAndSpecificationOperators
+       ]
 
 identifierValueOperatorTable :: [[Operator Parser Expression]]
 identifierValueOperatorTable =

@@ -11,6 +11,7 @@ module Evaluation.Numerical
 
 import DatraOrdinal
   ( Ordinal
+  , finiteOrdinal
   , naturalAtOrdinal
   , omegaPower
   )
@@ -26,7 +27,6 @@ import Evaluation.Construction
   )
 import Evaluation.Value
 import Numeric.Natural (Natural)
-import NumericalOperators.NumericalOperand (someSuperEllipsisLevel)
 import NumericalOperators.Semantics
   ( NumericalDenotation (..)
   , addNumericalDenotations
@@ -39,9 +39,9 @@ addValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 addValues left right = do
-  case (interpretedForm left, interpretedForm right) of
-    (IntegerForm _, _) -> integerBinary (+) left right
-    (_, IntegerForm _) -> integerBinary (+) left right
+  case (numericalValue left, numericalValue right) of
+    (Just (IntegerNumerical _), _) -> integerBinary (+) left right
+    (_, Just (IntegerNumerical _)) -> integerBinary (+) left right
     _ -> do
       leftValue <- requireNumerical LeftOperand left
       rightValue <- requireNumerical RightOperand right
@@ -65,9 +65,9 @@ multiplyValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 multiplyValues left right = do
-  case (interpretedForm left, interpretedForm right) of
-    (IntegerForm _, _) -> integerBinary (*) left right
-    (_, IntegerForm _) -> integerBinary (*) left right
+  case (numericalValue left, numericalValue right) of
+    (Just (IntegerNumerical _), _) -> integerBinary (*) left right
+    (_, Just (IntegerNumerical _)) -> integerBinary (*) left right
     _ -> do
       leftValue <- requireNumerical LeftOperand left
       rightValue <- requireNumerical RightOperand right
@@ -80,8 +80,8 @@ exponentiateValues
   -> Either InterpretingError InterpretedValue
 exponentiateValues base exponentValue = do
   naturalPower <- requireNaturalExponent exponentValue
-  case interpretedForm base of
-    IntegerForm integer ->
+  case numericalValue base of
+    Just (IntegerNumerical integer) ->
       pure (makeInteger (integer ^ naturalPower))
     _ -> do
       baseValue <- requireNumerical LeftOperand base
@@ -103,7 +103,7 @@ requireFiniteInteger
   -> InterpretedValue
   -> Either InterpretingError Integer
 requireFiniteInteger side value =
-  case interpretedInteger value of
+  case numericalValue value >>= finiteInteger of
     Just integer -> Right integer
     Nothing ->
       Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
@@ -113,13 +113,14 @@ requireExplicit
   -> InterpretedValue
   -> Either InterpretingError EvaluatedExplicit
 requireExplicit side value =
-  case interpretedForm value of
-    ExplicitForm explicitValue -> Right explicitValue
-    FormulationForm formulation ->
+  case numericalValue value of
+    Just (ExplicitNumerical _ ordinalValue) ->
+      Right (makeExplicitValue ComputedOrigin ordinalValue)
+    Just (FormulationNumerical level) ->
       Right
         (makeExplicitValue
           ComputedOrigin
-          (omegaPower (someSuperEllipsisLevel formulation)))
+          (omegaPower level))
     _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
 
 requireRangeUpperBoundary
@@ -127,11 +128,10 @@ requireRangeUpperBoundary
   -> InterpretedValue
   -> Either InterpretingError (Natural, Ordinal)
 requireRangeUpperBoundary side value =
-  case interpretedForm value of
-    ExplicitForm explicitValue -> Right (explicitOrdinal explicitValue)
-    FormulationForm formulation ->
-      let level = someSuperEllipsisLevel formulation
-      in Right (level, omegaPower level)
+  case numericalValue value of
+    Just (ExplicitNumerical level ordinalValue) ->
+      Right (level, ordinalValue)
+    Just (FormulationNumerical level) -> Right (level, omegaPower level)
     _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
 
 requireNumerical
@@ -139,30 +139,56 @@ requireNumerical
   -> InterpretedValue
   -> Either InterpretingError NumericalDenotation
 requireNumerical side value =
-  case interpretedForm value of
-    ExplicitForm explicitValue ->
-      Right (ExplicitDenotation (snd (explicitOrdinal explicitValue)))
-    FormulationForm formulation ->
-      Right
-        (FormulationDenotation
-          (someSuperEllipsisLevel formulation))
+  case numericalValue value of
+    Just (ExplicitNumerical _ ordinalValue) ->
+      Right (ExplicitDenotation ordinalValue)
+    Just (FormulationNumerical level) ->
+      Right (FormulationDenotation level)
     _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
 
 requireNaturalExponent
   :: InterpretedValue
   -> Either InterpretingError Natural
 requireNaturalExponent value =
-  case interpretedForm value of
-    ExplicitForm explicitValue ->
-      case explicitOrdinal explicitValue of
-        (1, ordinalValue) ->
-          case naturalAtOrdinal ordinalValue of
-            Just natural -> Right natural
-            Nothing -> rejection
-        _ -> rejection
+  case numericalValue value of
+    Just (ExplicitNumerical 1 ordinalValue) ->
+      case naturalAtOrdinal ordinalValue of
+        Just natural -> Right natural
+        Nothing -> rejection
     _ -> rejection
   where
     rejection = Left (ExpectedNaturalExponent (interpretedValueKind value))
+
+data NumericalValue
+  = ExplicitNumerical Natural Ordinal
+  | IntegerNumerical Integer
+  | FormulationNumerical Natural
+
+-- | Numerical operators view every total map through its semantics. Named
+-- total maps recursively expose their associated value through the same path,
+-- so no identifier spelling or distinguished constructor needs a special
+-- numerical rule.
+numericalValue :: InterpretedValue -> Maybe NumericalValue
+numericalValue value
+  | interpretedValueHasTotalMap value =
+      numericalSemantics (interpretedSemantics value)
+  | otherwise = Nothing
+
+numericalSemantics :: ValueSemantics -> Maybe NumericalValue
+numericalSemantics semantics =
+  case semantics of
+    ExplicitSemantics level ordinalValue ->
+      Just (ExplicitNumerical level ordinalValue)
+    IntegerSemantics integer -> Just (IntegerNumerical integer)
+    FormulationSemantics level -> Just (FormulationNumerical level)
+    MapSemantics 0 [] -> Just (ExplicitNumerical 1 (finiteOrdinal 0))
+    _ -> implicitCoercionSemantics semantics >>= numericalSemantics
+
+finiteInteger :: NumericalValue -> Maybe Integer
+finiteInteger (IntegerNumerical integer) = Just integer
+finiteInteger (ExplicitNumerical 1 ordinalValue) =
+  toInteger <$> naturalAtOrdinal ordinalValue
+finiteInteger _ = Nothing
 
 makeNumericalResult :: NumericalDenotation -> InterpretedValue
 makeNumericalResult (ExplicitDenotation value) =

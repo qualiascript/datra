@@ -41,6 +41,7 @@ module Evaluation.Value
   , interpretedTotalAtlasMap
   , interpretedSemantics
   , interpretedValueHasTotalMap
+  , implicitCoercionSemantics
   , interpretedCanonicalResult
   , interpretedValueKind
   , interpretedExplicitOrdinal
@@ -66,7 +67,7 @@ module Evaluation.Value
   ) where
 
 import Control.Monad (guard)
-import BooleanType (DatraBoolean (..))
+import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
@@ -307,8 +308,6 @@ type InterpretedAtlasMapFederation =
 data ValueSemantics
   = ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
-  | BooleanSemantics DatraBoolean ValueSemantics
-  | NothingSemantics ValueSemantics
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
   | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
@@ -422,6 +421,15 @@ makeSingletonInterpretedValue form capability valueMap totality =
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
+-- | One implicit coercion step through a total identifier binding. Consumers
+-- can follow the chain without knowing whether a binding came from user code,
+-- an interpreter bootstrap, or a future standard-library definition.
+implicitCoercionSemantics :: ValueSemantics -> Maybe ValueSemantics
+implicitCoercionSemantics semantics =
+  case semantics of
+    IdentifierTypeSemantics _ underlying True -> Just underlying
+    _ -> Nothing
+
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
 
@@ -430,17 +438,6 @@ canonicalResult semantics =
   case semantics of
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
-    BooleanSemantics flag underlying ->
-      let underlyingResult = canonicalResult underlying
-          identifierString =
-            case flag of
-              DatraFalse -> "False"
-              DatraTrue -> "True"
-      in CanonicalAssignment
-          identifierString underlyingResult underlyingResult
-    NothingSemantics underlying ->
-      let underlyingResult = canonicalResult underlying
-      in CanonicalAssignment "Nothing" underlyingResult underlyingResult
     FormulationSemantics level -> CanonicalFormulation level
     RangeSemantics description -> CanonicalRange description
     NaturalRangeSemantics start target -> CanonicalNaturalRange start target

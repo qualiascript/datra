@@ -10,6 +10,7 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
 import Data.List (isInfixOf)
+import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError (AmbiguousStringTemplate))
 import Evaluation.Value
@@ -58,7 +59,6 @@ stringConversionProperties semantics =
   case semantics of
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
-    BooleanSemantics {} -> knownAlphabet "falsetru"
     NaturalRangeSemantics {} -> numericRange
     ValuedNaturalRangeSemantics {} -> numericRange
     NaturalTypeSemantics -> naturalNumber
@@ -78,9 +78,23 @@ stringConversionProperties semantics =
     ToStringSemantics source -> stringConversionProperties source
     _ -> unknownConversion
   where
-    isBooleanPair (BooleanSemantics leftFlag _) (BooleanSemantics rightFlag _) =
-      leftFlag /= rightFlag
-    isBooleanPair _ _ = False
+    isBooleanPair left right =
+      case (booleanConstructor left, booleanConstructor right) of
+        (Just False, Just True) -> True
+        (Just True, Just False) -> True
+        _ -> False
+
+    booleanConstructor semanticsValue =
+      case semanticsValue of
+        IdentifierTypeSemantics
+            (SimpleIdentifierDependency identifier)
+            (ExplicitSemantics 1 ordinalValue)
+            True
+          | identifier == "False"
+          , naturalAtOrdinal ordinalValue == Just 0 -> Just False
+          | identifier == "True"
+          , naturalAtOrdinal ordinalValue == Just 1 -> Just True
+        _ -> Nothing
 
     naturalNumber =
       StringConversionProperties True (Just "0123456789")

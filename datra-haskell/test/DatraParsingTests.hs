@@ -24,6 +24,7 @@ import DatraLanguage.AST.Syntax
   , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
+import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Diagnostics
   ( Located (Located)
   , SourcePosition (SourcePosition)
@@ -59,6 +60,15 @@ testTree =
 
 regressionTests :: IO ()
 regressionTests = do
+  assert "reserved symbols have unique identifier strings"
+    Reserved.reservedSymbolIdentifiersAreUnique
+  mapM_
+    (\reservedSymbol ->
+      assertRejected
+        ("reserved symbol cannot be a bare identifier expression: "
+          <> Reserved.reservedSymbolIdentifierString reservedSymbol)
+        (Reserved.reservedSymbolIdentifierString reservedSymbol <> " : Nat"))
+    Reserved.reservedSymbols
   assertLocatedParse
   assertResourceEnvelopes
   assertAstSyntax
@@ -161,7 +171,7 @@ regressionTests = do
   assertAstOutput
     "Nothing literal"
     "nothing"
-    (AST.asciiString "Nothing")
+    AST.nothing
   assertAstOutput
     "Boolean type"
     "Bool"
@@ -325,7 +335,7 @@ regressionTests = do
     (AST.conditionalWithoutElse (AST.boolean False) (natural 1))
   assertAstOutput
     "conditional combines optionals, equality, logic, and identifiers"
-    ( "if (Nat? = (Nat | Nothing := ())) and not False "
+    ( "if (Nat? = (Nat | Nothing := ())) and not false "
         <> "then (a? : Nat := 5) else (Nothing := ())"
     )
     (AST.conditional
@@ -487,6 +497,22 @@ regressionTests = do
     "unparenthesized access belongs to the identifier type operand"
     "x : Nat @ 0"
     (AST.identifierType "x" (AST.naturalType <@> natural 0))
+  assertAstOutput
+    "identifier arithmetic operands compose without grouping"
+    "x : 5 + y : 10 = 15"
+    (AST.equal
+      ((AST.+)
+        (AST.identifierType "x" (natural 5))
+        (AST.identifierType "y" (natural 10)))
+      (natural 15))
+  assertAstOutput
+    "transfinite identifier arithmetic preserves precedence"
+    "x : ...^2 + y : 1 = ...^2 + 1"
+    (AST.equal
+      ((AST.+)
+        (AST.identifierType "x" ((AST.^) (...) (natural 2)))
+        (AST.identifierType "y" (natural 1)))
+      ((AST.+) ((AST.^) (...) (natural 2)) (natural 1)))
   assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
@@ -1058,6 +1084,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
+    , pure NothingLiteral
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
     , pure NaturalType

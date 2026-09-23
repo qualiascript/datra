@@ -6,6 +6,7 @@ module DatraLanguage.AST.Syntax
   , identifierType
   , assignment
   , asciiString
+  , nothing
   , stringTemplate
   , stringType
   , emptyMap
@@ -75,6 +76,9 @@ assignment identifierString typeAnnotation givenValue =
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral
+
+nothing :: Expression
+nothing = NothingLiteral
 
 stringTemplate :: [StringTemplatePart Expression] -> Expression
 stringTemplate = StringTemplate
