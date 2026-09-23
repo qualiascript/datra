@@ -614,7 +614,7 @@ renderStringLiteralContents = foldr escape ""
     escape '"' rest = '\\' : '"' : rest
     escape '\\' rest = '\\' : '\\' : rest
     escape '#' rest = '\\' : '#' : rest
-    escape '$' rest = '\\' : '$' : rest
+    escape '%' rest = '\\' : '%' : rest
     escape character rest
       | isAsciiByte character && not (isKeyboardCharacter character) =
           '\\' : hexadecimalByte character <> rest
@@ -648,9 +648,9 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
     renderPart (StringTemplateLiteral value) rest =
       renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
-      renderInterpolation "$" expressionValue rest
+      renderInterpolation "%" expressionValue rest
     renderPart (StringTemplateWeakInterpolation expressionValue) rest =
-      renderInterpolation "$!" expressionValue rest
+      renderInterpolation "%!" expressionValue rest
 
     renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of

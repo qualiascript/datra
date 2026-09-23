@@ -70,6 +70,7 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
+import Parsing (parseDatra)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -276,6 +277,12 @@ expectValue label expressionValue check =
       fail (label <> ": unexpected rejection: " <> show rejection)
     Right value -> check value
 
+expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
+expectSourceValue label source check =
+  case parseDatra source of
+    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Right expressionValue -> expectValue label expressionValue check
+
 naturalOrdinal :: InterpretedValue -> Maybe Natural
 naturalOrdinal value = do
   (level, ordinalValue) <- interpretedExplicitOrdinal value
@@ -445,6 +452,11 @@ testLiteralsAndArithmetic = do
 
 testStringTemplates :: IO ()
 testStringTemplates = do
+  expectSourceValue
+      "surface arithmetic interpolation equality"
+      "\"2 + 2 = %(2+2)\" = \"2 + 2 = 4\"" $ \value ->
+    assert "the interpolated arithmetic result equals the expected string"
+      (renderInterpretedValue value == "true")
   let template = StringTemplate
         [ StringTemplateLiteral "example"
         , StringTemplateInterpolation
@@ -510,7 +522,7 @@ testStringTemplates = do
     assert "a non-total hole remains a non-total string federation"
       ( interpretedValueKind value == AsciiStringValueKind
         && not (Types.interpretedValueHasTotalMap value)
-        && renderInterpretedValue value == "\"$Nat\""
+        && renderInterpretedValue value == "\"%Nat\""
       )
   expectValue
       "fixed prefix and suffix around a non-total interpolation"
@@ -541,12 +553,12 @@ testStringTemplates = do
           , StringTemplateInterpolation NaturalType
           ]
   expectValue
-      "\"12:3\" ~> \"$Nat:$Nat\" terminates"
+      "\"12:3\" ~> \"%Nat:%Nat\" terminates"
       (AsciiStringLiteral "12:3" ~> separatedNaturals) $ \value ->
     assert "a concrete delimited string selects both natural fields"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"12:3\" ~> \"$Nat:$Nat\""
+          == "\"12:3\" ~> \"%Nat:%Nat\""
       )
   assert "an invalid natural field is finitely refuted"
     (case interpretExpressionReason
@@ -576,26 +588,26 @@ testStringTemplates = do
         StringTemplate
           [StringTemplateInterpolation (OptionalType IntegerType)]
   expectValue
-      "\"true\" ~> \"$Bool\""
+      "\"true\" ~> \"%Bool\""
       (AsciiStringLiteral "true" ~> booleanTemplate) $ \value ->
     assert "a Boolean canonical spelling selects its Boolean member"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "$true ~> \"$Bool\""
+        && renderInterpretedValue value == "$true ~> \"%Bool\""
       )
   expectValue
-      "\"falsetrue\" ~> \"$Bool$Bool\""
+      "\"falsetrue\" ~> \"%Bool%Bool\""
       (AsciiStringLiteral "falsetrue" ~> adjacentBooleans) $ \value ->
     assert "adjacent fixed Boolean spellings have a unique split"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "$falsetrue ~> \"$Bool$Bool\""
+          == "$falsetrue ~> \"%Bool%Bool\""
       )
   expectValue
-      "\"nothing\" ~> \"$Int?\""
+      "\"nothing\" ~> \"%Int?\""
       (AsciiStringLiteral "nothing" ~> optionalIntegerTemplate) $ \value ->
     assert "the optional missing constructor selects through toString"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "$nothing ~> \"$Int?\""
+        && renderInterpretedValue value == "$nothing ~> \"%Int?\""
       )
   expectValue
       "non-digit delimiter between natural interpolations"
@@ -697,19 +709,19 @@ testStringTemplates = do
           (UnsafeEither NaturalType NaturalType)]) $ \value ->
     assert "the weak form retains its non-invertible canonical marker"
       ( not (Types.interpretedValueHasTotalMap value)
-        && renderInterpretedValue value == "\"$!(Nat | Nat)\""
+        && renderInterpretedValue value == "\"%!(Nat | Nat)\""
       )
   expectValue
       "weak interpolation normalizes when toString is injective"
       (StringTemplate [StringTemplateWeakInterpolation NaturalType]) $ \value ->
     assert "the proven strong form is canonical"
-      (renderInterpretedValue value == "\"$Nat\"")
+      (renderInterpretedValue value == "\"%Nat\"")
   expectValue
       "weak and strong interpolation agree when toString is injective"
       (AST.equal
         (StringTemplate [StringTemplateWeakInterpolation NaturalType])
         (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
-    assert "$!x equals $x when the strong proof exists"
+    assert "%!x equals %x when the strong proof exists"
       (renderInterpretedValue value == "true")
   assert "weak interpolation is explicitly rejected by specification"
     (case interpretExpressionReason
@@ -726,7 +738,7 @@ testStringTemplates = do
         , StringTemplateInterpolation (AsciiStringLiteral "#text")
         ]) $ \value ->
     assert "dollar and hash characters produced by holes remain data"
-      (renderInterpretedValue value == "\"\\$4\\#text\"")
+      (renderInterpretedValue value == "\"$4\\#text\"")
   expectValue "programmatic empty template" (StringTemplate []) $ \value ->
     assert "an empty template is the empty total ASCII string"
       ( Types.interpretedValueHasTotalMap value

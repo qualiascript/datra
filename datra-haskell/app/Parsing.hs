@@ -930,7 +930,7 @@ stringTemplateToken compoundInterpolation simpleInterpolation =
     <$> quotedStringParts (Just stringInterpolation)
   where
     stringInterpolation = do
-      _ <- char '$'
+      _ <- char '%'
       interpolationConstructor <-
         maybe
           StringTemplateInterpolation
@@ -1037,7 +1037,7 @@ standardStringCharacter =
       [ '"' <$ char '"'
       , '\\' <$ char '\\'
       , '#' <$ char '#'
-      , '$' <$ char '$'
+      , '%' <$ char '%'
       , '?' <$ char '?'
       , '\n' <$ char 'n'
       , hexadecimalAsciiCharacter
@@ -1047,7 +1047,7 @@ standardStringCharacter =
         character /= '"'
           && character /= '\\'
           && character /= '#'
-          && character /= '$'
+          && character /= '%'
           && isAsciiCharacter character)
 
 hexadecimalAsciiCharacter :: Parser Char

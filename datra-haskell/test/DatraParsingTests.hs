@@ -595,7 +595,7 @@ regressionTests = do
     (AST.asciiString "\n")
   assertAstOutput
     "StandardString leaves nonsyntactic keyboard-visible characters literal"
-    "\" !%&'()*+,-./:;<=>?@^_`{|}~\""
+    "\" !\\%&'()*+,-./:;<=>?@^_`{|}~\""
     (AST.asciiString " !%&'()*+,-./:;<=>?@^_`{|}~")
   assertAstOutput
     "StandardString line comments retain their terminating newline"
@@ -614,12 +614,16 @@ regressionTests = do
     "\"literal \\# character\""
     (AST.asciiString "literal # character")
   assertAstOutput
-    "StandardString escapes a literal dollar sign"
-    "\"literal \\$ character\""
+    "StandardString leaves a literal dollar sign unescaped"
+    "\"literal $ character\""
     (AST.asciiString "literal $ character")
   assertAstOutput
+    "StandardString escapes a literal percent sign"
+    "\"literal \\% character\""
+    (AST.asciiString "literal % character")
+  assertAstOutput
     "string template interpolates a compound expression"
-    "\"example$(2 + 2)\""
+    "\"example%(2 + 2)\""
     (StringTemplate
       [ StringTemplateLiteral "example"
       , StringTemplateInterpolation
@@ -627,30 +631,30 @@ regressionTests = do
       ])
   assertParsed
     "simple numeric interpolation has string-template syntax"
-    "\"$4\""
+    "\"%4\""
     (StringTemplate [StringTemplateInterpolation (natural 4)])
   assertParsed
     "reserved atomic symbols may be simple interpolations"
-    "\"$String\""
+    "\"%String\""
     (StringTemplate [StringTemplateInterpolation StringType])
   assertParsed
     "weak interpolation has explicit compact syntax"
-    "\"$!String\""
+    "\"%!String\""
     (StringTemplate [StringTemplateWeakInterpolation StringType])
   assertParsed
     "weak interpolation supports compound expressions"
-    "\"$!(Nat | Nat)\""
+    "\"%!(Nat | Nat)\""
     (StringTemplate
       [StringTemplateWeakInterpolation
         (EitherType NaturalType NaturalType)])
   assertParsed
     "postfix optional composes with a simple interpolation"
-    "\"$Int?\""
+    "\"%Int?\""
     (StringTemplate
       [StringTemplateInterpolation (OptionalType IntegerType)])
   assertParsed
     "an escaped question mark remains text after a simple interpolation"
-    "\"$Int\\?\""
+    "\"%Int\\?\""
     (StringTemplate
       [ StringTemplateInterpolation IntegerType
       , StringTemplateLiteral "?"
@@ -661,23 +665,23 @@ regressionTests = do
     (AsciiStringLiteral "?")
   assertRejected
     "unreserved alphabetic names are not simple interpolations"
-    "\"$abc\""
+    "\"%abc\""
   assertParsed
     "a compact string can itself be interpolated"
-    "\"$$abc\""
+    "\"%$abc\""
     (StringTemplate
       [StringTemplateInterpolation (AsciiStringLiteral "abc")])
   assertParsed
     "signed interpolation requires the compound form"
-    "\"$(-10)\""
+    "\"%(-10)\""
     (StringTemplate
       [StringTemplateInterpolation (Minus (natural 10))])
   assertRejected
     "signed interpolation rejects the simple form"
-    "\"$-10\""
+    "\"%-10\""
   assertParsed
     "a nested quoted string is one simple interpolation"
-    "\"hello, $\"world\"!\""
+    "\"hello, %\"world\"!\""
     (StringTemplate
       [ StringTemplateLiteral "hello, "
       , StringTemplateInterpolation (AsciiStringLiteral "world")
@@ -685,14 +689,14 @@ regressionTests = do
       ])
   assertParsed
     "operators outside parentheses remain template text"
-    "\"$2 + 2\""
+    "\"%2 + 2\""
     (StringTemplate
       [ StringTemplateInterpolation (natural 2)
       , StringTemplateLiteral " + 2"
       ])
   assertParsed
     "interpolation comments terminate at the closing parenthesis"
-    "\"a$(2 # ignored)b\""
+    "\"a%(2 # ignored)b\""
     (StringTemplate
       [ StringTemplateLiteral "a"
       , StringTemplateInterpolation (natural 2)
@@ -700,7 +704,7 @@ regressionTests = do
       ])
   assertParsed
     "interpolation comments terminate at newline without emitting it"
-    "\"a$(2 # ignored\n)b\""
+    "\"a%(2 # ignored\n)b\""
     (StringTemplate
       [ StringTemplateLiteral "a"
       , StringTemplateInterpolation (natural 2)
@@ -708,18 +712,18 @@ regressionTests = do
       ])
   assertParsed
     "template comments ignore interpolation and retain their newline"
-    "\"a# ignored $4\nb\""
+    "\"a# ignored %4\nb\""
     (AsciiStringLiteral "a\nb")
   assertParsed
-    "escaped hashes and dollars remain literal template text"
-    "\"\\#\\$$4\""
+    "escaped hashes and percents remain literal template text"
+    "\"\\#\\%%4\""
     (StringTemplate
-      [ StringTemplateLiteral "#$"
+      [ StringTemplateLiteral "#%"
       , StringTemplateInterpolation (natural 4)
       ])
   assertAstOutput
     "parentheses inside nested strings do not close interpolation"
-    "\"x$(\"a)b\")y\""
+    "\"x%(\"a)b\")y\""
     (StringTemplate
       [ StringTemplateLiteral "x"
       , StringTemplateInterpolation (AsciiStringLiteral "a)b")
@@ -727,7 +731,7 @@ regressionTests = do
       ])
   assertAstOutput
     "nested grouping composes inside interpolation"
-    "\"x$((2 + 3) * 4)y\""
+    "\"x%((2 + 3) * 4)y\""
     (StringTemplate
       [ StringTemplateLiteral "x"
       , StringTemplateInterpolation
@@ -736,13 +740,13 @@ regressionTests = do
             (natural 4))
       , StringTemplateLiteral "y"
       ])
-  assertRejected "an empty interpolation is rejected" "\"$()\""
+  assertRejected "an empty interpolation is rejected" "\"%()\""
   assertRejected
     "an unterminated interpolation is rejected"
-    "\"$(2 + 2\""
+    "\"%(2 + 2\""
   assertRejected
-    "an unescaped dollar without an interpolation is rejected"
-    "\"literal $ character\""
+    "an unescaped percent without an interpolation is rejected"
+    "\"literal % character\""
   assertAstOutput
     "string literals are members of String"
     "\"my_string\" of String = true"
@@ -756,7 +760,7 @@ regressionTests = do
     (AST.asciiString "  first\nsecond  ")
   assertParsed
     "StandardString treats syntax and comments as literal contents"
-    "(\"\\#;(value)\n\\$still_text\")"
+    "(\"\\#;(value)\n$still_text\")"
     (AsciiStringLiteral "#;(value)\n$still_text")
   assertAstOutput
     "strings use the ordinary concatenation operator"
@@ -1032,7 +1036,8 @@ regressionTests = do
   assertRejected "IdentifierString rejects a missing body" "$"
   assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
-  assertRejected "StandardString rejects an unescaped dollar sign" "\"bad$value\""
+  assertRejected "StandardString rejects an unescaped percent sign" "\"bad%value\""
+  assertRejected "StandardString rejects the obsolete dollar escape" "\"bad\\$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
   assertRejected "multiple trailing commas are rejected" "(1,,)"
@@ -1251,12 +1256,12 @@ assertAstSyntax = do
           [ StringTemplateInterpolation IntegerType
           , StringTemplateLiteral "?"
           ])
-        == "\"$Int\\?\""
+        == "\"%Int\\?\""
     )
   assert "weak template interpolation retains its marker"
     ( renderExpression
         (StringTemplate [StringTemplateWeakInterpolation StringType])
-        == "\"$!String\""
+        == "\"%!String\""
     )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression
