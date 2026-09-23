@@ -59,6 +59,7 @@ import DatraLanguage.AST
       , ValuedIntegerRangeUpwards
       , ValuedIntegerRangeDownwards
       , EitherType
+      , UnsafeEither
       , OptionalType
       , Conditional
       , Subfederation
@@ -278,6 +279,7 @@ astForm =
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
       , astBinary AST.EitherOperator EitherType
+      , astBinary AST.UnsafeEitherOperator UnsafeEither
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication

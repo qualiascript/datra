@@ -5,6 +5,7 @@ module Evaluation.Optional
   ) where
 
 import Evaluation.Either (makeEitherValue)
+import Evaluation.Error (InterpretingError)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Value
 
@@ -27,5 +28,7 @@ makeNothing = value
         semantics
 
 -- | @T?@ is definitionally @T | Nothing := ()@.
-makeOptionalValue :: InterpretedValue -> InterpretedValue
+makeOptionalValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
 makeOptionalValue value = makeEitherValue value makeNothing

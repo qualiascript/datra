@@ -45,7 +45,7 @@ makeBoolean flag = value
         semantics
 
 -- | @Bool@ is definitionally @False := 0 | True := 1@.
-makeBooleanType :: InterpretedValue
+makeBooleanType :: Either InterpretingError InterpretedValue
 makeBooleanType =
   makeEitherValue (makeBoolean DatraFalse) (makeBoolean DatraTrue)
 

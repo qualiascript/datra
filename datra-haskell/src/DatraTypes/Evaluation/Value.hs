@@ -137,9 +137,9 @@ data EvaluatedValuedIntegerRange where
     :: ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
     -> EvaluatedValuedIntegerRange
 
--- | A tagged federation union. The left and right alternatives are retained
--- separately; selection records the Datra Boolean injection tag so equal
--- underlying maps remain distinct federation members.
+-- | A proven-disjoint federation union. The alternatives remain separate so
+-- selection can record its route, but that internal route does not make equal
+-- or overlapping Atlas maps distinct.
 data EvaluatedEither = EvaluatedEither
   { evaluatedEitherLeft :: InterpretedValue
   , evaluatedEitherRight :: InterpretedValue

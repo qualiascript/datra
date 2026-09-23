@@ -31,6 +31,7 @@ module DatraLanguage.AST.Syntax
   , boolean
   , booleanType
   , eitherType
+  , unsafeEither
   , optional
   , conditional
   , conditionalWithoutElse
@@ -162,6 +163,9 @@ booleanType = BooleanType
 
 eitherType :: Expression -> Expression -> Expression
 eitherType = EitherType
+
+unsafeEither :: Expression -> Expression -> Expression
+unsafeEither = UnsafeEither
 
 optional :: Expression -> Expression
 optional = OptionalType

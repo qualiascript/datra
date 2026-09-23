@@ -181,7 +181,7 @@ specifyTotalAtlasMap source target = do
         (AtlasMapFederationOperationRefuted
           AtlasMapFederationSpecificationHasNoMatchingMember)
 
--- An optional assigned identifier is a tagged federation syntactically, but
+-- An optional assigned identifier is a federation union syntactically, but
 -- its assignment branch retains the concrete total source that supplied the
 -- value. As a specification source, it therefore selects the present branch
 -- rather than being rejected merely because the surrounding Either is

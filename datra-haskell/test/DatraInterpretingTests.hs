@@ -685,14 +685,16 @@ testStringTemplates = do
     (case interpretExpressionReason
         (StringTemplate
           [StringTemplateInterpolation
-            (EitherType NaturalType NaturalType)]) of
+            (UnsafeEither NaturalType NaturalType)]) of
       Left NonInjectiveStringInterpolation -> True
       _ -> False)
+  -- TODO: Once Datra functions exist, use a function as the naturally
+  -- non-injective weakToString fixture and remove UnsafeEither from the AST.
   expectValue
       "weak interpolation admits a non-injective toString"
       (StringTemplate
         [StringTemplateWeakInterpolation
-          (EitherType NaturalType NaturalType)]) $ \value ->
+          (UnsafeEither NaturalType NaturalType)]) $ \value ->
     assert "the weak form retains its non-invertible canonical marker"
       ( not (Types.interpretedValueHasTotalMap value)
         && renderInterpretedValue value == "\"$!(Nat | Nat)\""
@@ -714,7 +716,7 @@ testStringTemplates = do
         (AsciiStringLiteral "1" ~>
           StringTemplate
             [StringTemplateWeakInterpolation
-              (EitherType NaturalType NaturalType)]) of
+              (UnsafeEither NaturalType NaturalType)]) of
       Left NoCanonicalStringConversion -> True
       _ -> False)
   expectValue
@@ -821,12 +823,55 @@ testBooleansAndEither = do
     assert "mutual subfederation is true"
       (renderInterpretedValue value == "true")
   expectValue
-      "unequal tagged federations"
+      "Either federation order is irrelevant"
       (AST.equal
         (AST.eitherType (natural 0) (natural 1))
         (AST.eitherType (natural 1) (natural 0))) $ \value ->
-    assert "Either injection order distinguishes equal-shaped maps"
-      (renderInterpretedValue value == "false")
+    assert "the same Atlas maps form the same federation in either order"
+      (renderInterpretedValue value == "true")
+  assert "Either rejects duplicate Atlas-map alternatives"
+    (case interpretExpressionReason
+        (AST.eitherType AST.naturalType AST.naturalType) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  assert "Either rejects a member overlapping a federation"
+    (case interpretExpressionReason
+        (AST.eitherType (natural 0) AST.naturalType) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  assert "Either rejects a nested duplicate alternative"
+    (case interpretExpressionReason
+        (AST.eitherType
+          (AST.eitherType (natural 0) (natural 1))
+          (natural 1)) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  expectValue
+      "identifier alternatives distinguish otherwise equal types"
+      (AST.eitherType
+        (AST.identifierType "x" AST.naturalType)
+        (AST.identifierType "y" AST.naturalType)) $ \value ->
+    assert "identifier Atlas maps remain distinct federation members"
+      (renderInterpretedValue value == "x : Nat | y : Nat")
+  expectValue
+      "disjoint primitive families form an Either federation"
+      (AST.eitherType AST.naturalType StringType) $ \value ->
+    assert "numeric and string Atlas maps are distinguishable"
+      (renderInterpretedValue value == "Nat | String")
+  assert "the same identifier does not distinguish overlapping alternatives"
+    (case interpretExpressionReason
+        (AST.eitherType
+          (AST.identifierType "x" (natural 0))
+          (AST.identifierType "x" AST.naturalType)) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
+  expectValue
+      "Either source branches are included as federation members"
+      (AST.subfederation
+        (AST.eitherType (natural 0) (natural 1))
+        AST.naturalType) $ \value ->
+    assert "a union is included when each alternative is in the target"
+      (renderInterpretedValue value == "true")
   expectValue
       "associative Either"
       (AST.equal

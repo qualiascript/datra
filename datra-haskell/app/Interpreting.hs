@@ -107,11 +107,13 @@ interpretNormalizedExpression expressionValue =
       valuedIntegerRangeDownwardsValue origin
     IntegerType -> integerTypeValue
     BooleanLiteral value -> Right (booleanValue value)
-    BooleanType -> Right booleanTypeValue
+    BooleanType -> booleanTypeValue
     EitherType left right ->
-      interpretBinaryPure eitherValue left right
+      interpretBinary eitherValue left right
+    UnsafeEither left right ->
+      interpretBinaryPure unsafeEitherValue left right
     OptionalType operand ->
-      optionalValue <$> interpretExpressionReason operand
+      interpretExpressionReason operand >>= optionalValue
     Conditional condition consequent alternative -> do
       conditionValue <- interpretExpressionReason condition
       conditionResult <- booleanCondition conditionValue

@@ -150,6 +150,10 @@ localizeInterpretingError reason =
         [ "weakToString can render the value, but specification requires "
             <> "an injective canonical conversion"
         ]
+    EitherAlternativesNotDistinct ->
+      LocalizedMessage
+        "Either alternatives are not distinguishable Atlas maps"
+        ["the alternatives cannot be distinct members of one Atlas federation"]
     AmbiguousStringTemplate ->
       LocalizedMessage
         "ambiguous string template"

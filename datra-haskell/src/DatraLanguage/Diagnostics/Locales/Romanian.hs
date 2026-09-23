@@ -150,6 +150,10 @@ localizeInterpretingError reason =
         [ "weakToString poate reda valoarea, dar specificarea necesită "
             <> "o conversie canonică injectivă"
         ]
+    EitherAlternativesNotDistinct ->
+      LocalizedMessage
+        "alternativele Either nu sunt hărți Atlas diferențiabile"
+        ["alternativele nu pot fi membri distincți ai aceleiași federații Atlas"]
     AmbiguousStringTemplate ->
       LocalizedMessage
         "șablon de șir ambiguu"

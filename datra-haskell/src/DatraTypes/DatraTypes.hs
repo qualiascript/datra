@@ -18,6 +18,7 @@ module DatraTypes
   , booleanValue
   , booleanTypeValue
   , eitherValue
+  , unsafeEitherValue
   , optionalValue
   , nothingValue
   , asciiStringValue
@@ -100,7 +101,7 @@ import Evaluation.Boolean
   , makeBoolean
   , makeBooleanType
   )
-import Evaluation.Either (makeEitherValue)
+import Evaluation.Either (makeEitherValue, makeUnsafeEitherValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
   ( stringTemplateValue
@@ -178,13 +179,21 @@ booleanValue value =
   makeBoolean
     (if value then BooleanType.DatraTrue else BooleanType.DatraFalse)
 
-booleanTypeValue :: InterpretedValue
+booleanTypeValue :: Either InterpretingError InterpretedValue
 booleanTypeValue = makeBooleanType
 
-eitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
+eitherValue
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
 eitherValue = makeEitherValue
 
-optionalValue :: InterpretedValue -> InterpretedValue
+unsafeEitherValue :: InterpretedValue -> InterpretedValue -> InterpretedValue
+unsafeEitherValue = makeUnsafeEitherValue
+
+optionalValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
 optionalValue = makeOptionalValue
 
 nothingValue :: InterpretedValue
