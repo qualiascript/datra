@@ -389,6 +389,18 @@ testLiteralsAndArithmetic = do
         && interpretedMapCardinality (interpretedMap value) == 0
         && renderInterpretedValue value == "\"\""
       )
+  expectValue "String type" AST.stringType $ \value ->
+    assert "String renders as the ASCII string federation"
+      ( interpretedValueKind value == AsciiStringValueKind
+        && renderInterpretedValue value == "String"
+      )
+  expectValue
+      "string membership"
+      (AST.equal
+        (AST.subfederation (AST.asciiString "my_string") AST.stringType)
+        (AST.boolean True)) $ \value ->
+    assert "a string literal is a member of String"
+      (renderInterpretedValue value == "true")
   expectValue "natural literal" (natural 10) $ \value ->
     assert "naturals remain typed rank-one explicit values"
       ( interpretedValueKind value == NaturalValueKind

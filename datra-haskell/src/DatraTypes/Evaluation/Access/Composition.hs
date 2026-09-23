@@ -238,6 +238,7 @@ federationHasKnownEmptyMap :: InterpretedAtlasMapFederation -> Bool
 federationHasKnownEmptyMap federation =
   case federation of
     PrimitiveAtlasMapFederation (NaturalRangeAtlasMapFederation _) -> True
+    PrimitiveAtlasMapFederation StringTypeAtlasMapFederation -> True
     ConcatenatedAtlasMapFederation left right ->
       federationHasKnownEmptyMap left && federationHasKnownEmptyMap right
     ExpansionAtlasMapFederation left right ->

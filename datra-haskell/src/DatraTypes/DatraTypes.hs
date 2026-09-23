@@ -21,6 +21,7 @@ module DatraTypes
   , optionalValue
   , nothingValue
   , asciiStringValue
+  , stringTypeValue
   , formulationValue
   , addValues
   , subtractValues
@@ -80,6 +81,7 @@ import Evaluation.Error
 import Evaluation.Access (accessValues)
 import Evaluation.Construction
   ( makeAsciiString
+  , makeStringType
   , makeFormulation
   , makeNatural
   , makeInteger
@@ -183,6 +185,9 @@ asciiStringValue value =
   case find ((>= 256) . ord) value of
     Just character -> Left (InvalidAsciiStringCharacter character)
     Nothing -> Right (makeAsciiString value)
+
+stringTypeValue :: InterpretedValue
+stringTypeValue = makeStringType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation

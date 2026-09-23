@@ -131,6 +131,10 @@ decidePrimitiveSubfederation
        AtlasMapFederationUncertainty
        ()
 decidePrimitiveSubfederation
+    StringTypeAtlasMapFederation
+    StringTypeAtlasMapFederation =
+  AtlasMapFederationProved ()
+decidePrimitiveSubfederation
     (NaturalRangeAtlasMapFederation
       (EvaluatedNaturalRange sourceRange))
     (NaturalRangeAtlasMapFederation

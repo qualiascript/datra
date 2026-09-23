@@ -115,6 +115,7 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
+    CanonicalStringType -> "String"
     CanonicalIdentifierType identifierString typeAnnotation ->
       pretty identifierString
         <+> prettySourceSymbol IdentifierTypeOperator
@@ -208,6 +209,7 @@ prettyOptional operand =
 isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
+isAtomicOptionalOperand CanonicalStringType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 
 optionalIdentifierParts

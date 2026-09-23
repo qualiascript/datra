@@ -42,6 +42,7 @@ data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
   | AsciiStringLiteral String
+  | StringType
   | AtlasMap [Expression]
   | MapSequence [Expression]
   | MapExpansion Expression Expression
@@ -95,6 +96,7 @@ data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
   | AsciiStringValue String
+  | StringTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
   | Expansion OperatorExpression OperatorExpression
@@ -152,6 +154,7 @@ normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
+normalizeExpression StringType = StringType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (MapSequence expressions) =
@@ -273,6 +276,7 @@ lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
+lower StringType = StringTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -361,6 +365,7 @@ prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
 prettyOperator (AsciiStringValue "Nothing") = "nothing"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
+prettyOperator StringTypeValue = "String"
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -495,6 +500,7 @@ renderAsciiStringLiteral value = '"' : foldr escape "\"" value
     escape '"' rest = '\\' : '"' : rest
     escape '\\' rest = '\\' : '\\' : rest
     escape '#' rest = '\\' : '#' : rest
+    escape '$' rest = '\\' : '$' : rest
     escape character rest
       | isAsciiByte character && not (isKeyboardCharacter character) =
           '\\' : hexadecimalByte character <> rest

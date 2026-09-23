@@ -30,6 +30,7 @@ import DatraLanguage.AST
   , Expression
       ( Addition
       , AsciiStringLiteral
+      , StringType
       , AtlasMap
       , EllipsisLiteral
       , EllipsisNatural
@@ -224,6 +225,7 @@ astAtom =
     , BooleanLiteral False <$ astSymbol "False"
     , BooleanLiteral True <$ astSymbol "True"
     , BooleanType <$ astSymbol "Bool"
+    , StringType <$ astSymbol "String"
     , IntegerType <$ astSymbol "Int"
     , NaturalType <$ astSymbol "Nat"
     , EllipsisLiteral <$ astSymbol (Text.pack AST.ellipsisSymbol)
@@ -544,6 +546,7 @@ termAtom =
     , BooleanLiteral False <$ keyword "False"
     , BooleanLiteral True <$ keyword "True"
     , BooleanType <$ keyword "Bool"
+    , StringType <$ keyword "String"
     , IntegerType <$ keyword "Int"
     , NaturalType <$ keyword "Nat"
     , EllipsisLiteral <$ symbol (Text.pack AST.ellipsisSymbol)
@@ -835,6 +838,7 @@ standardStringCharacter =
       [ '"' <$ char '"'
       , '\\' <$ char '\\'
       , '#' <$ char '#'
+      , '$' <$ char '$'
       , '\n' <$ char 'n'
       , hexadecimalAsciiCharacter
       ])
@@ -843,6 +847,7 @@ standardStringCharacter =
         character /= '"'
           && character /= '\\'
           && character /= '#'
+          && character /= '$'
           && isAsciiCharacter character)
 
 hexadecimalAsciiCharacter :: Parser Char

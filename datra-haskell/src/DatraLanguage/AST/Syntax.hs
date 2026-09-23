@@ -6,6 +6,7 @@ module DatraLanguage.AST.Syntax
   , identifierType
   , assignment
   , asciiString
+  , stringType
   , emptyMap
   , (...)
   , (<:>)
@@ -72,6 +73,9 @@ assignment identifierString typeAnnotation givenValue =
 
 asciiString :: String -> Expression
 asciiString = AsciiStringLiteral
+
+stringType :: Expression
+stringType = StringType
 
 emptyMap :: Expression
 emptyMap = AtlasMap []

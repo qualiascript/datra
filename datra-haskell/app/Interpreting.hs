@@ -66,6 +66,7 @@ interpretNormalizedExpression expressionValue =
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
     AsciiStringLiteral value -> asciiStringValue value
+    StringType -> Right stringTypeValue
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
     MapSequence expressions ->

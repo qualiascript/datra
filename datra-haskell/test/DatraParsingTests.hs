@@ -120,6 +120,10 @@ regressionTests = do
     "Nat"
     AST.naturalType
   assertAstOutput
+    "String type literal"
+    "String"
+    AST.stringType
+  assertAstOutput
     "IntegerType literal"
     "Int"
     AST.integerType
@@ -515,6 +519,16 @@ regressionTests = do
     "StandardString escapes a literal hash"
     "\"literal \\# character\""
     (AST.asciiString "literal # character")
+  assertAstOutput
+    "StandardString escapes a literal dollar sign"
+    "\"literal \\$ character\""
+    (AST.asciiString "literal $ character")
+  assertAstOutput
+    "string literals are members of String"
+    "\"my_string\" of String = true"
+    (AST.equal
+      (AST.subfederation (AST.asciiString "my_string") AST.stringType)
+      (AST.boolean True))
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
     "StandardString preserves multiline leading and trailing characters"
@@ -522,7 +536,7 @@ regressionTests = do
     (AST.asciiString "  first\nsecond  ")
   assertParsed
     "StandardString treats syntax and comments as literal contents"
-    "(\"\\#;(value)\n$still_text\")"
+    "(\"\\#;(value)\n\\$still_text\")"
     (AsciiStringLiteral "#;(value)\n$still_text")
   assertAstOutput
     "strings use the ordinary concatenation operator"
@@ -798,6 +812,7 @@ regressionTests = do
   assertRejected "IdentifierString rejects a missing body" "$"
   assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
+  assertRejected "StandardString rejects an unescaped dollar sign" "\"bad$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
   assertRejected "multiple trailing commas are rejected" "(1,,)"
@@ -885,6 +900,7 @@ genExpression =
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
     , pure NaturalType
+    , pure StringType
     , NaturalRange
         <$> Gen.integral (Range.linear 0 1000)
         <*> Gen.integral (Range.linear 0 1000)

@@ -215,6 +215,7 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedValuedNaturalRangeMember Natural
   | EvaluatedIntegerRangeMember IntegerRange.IntegerSubrangeDescription
   | EvaluatedValuedIntegerRangeMember Integer
+  | EvaluatedAsciiStringMember String
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
@@ -252,6 +253,7 @@ data ValueForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
+  | StringTypeForm
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | IdentifierTypeForm EvaluatedIdentifierType
@@ -289,6 +291,7 @@ data InterpretedAtlasMapFederationPrimitive
   | EitherAtlasMapFederation EvaluatedEither
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
+  | StringTypeAtlasMapFederation
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -315,6 +318,7 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
+  | StringTypeSemantics
   | IdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
@@ -347,6 +351,7 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
+  | CanonicalStringType
   | CanonicalIdentifierType
       { canonicalIdentifierString :: String
       , canonicalIdentifierTypeAnnotation :: CanonicalResult
@@ -448,6 +453,7 @@ canonicalResult semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
+    StringTypeSemantics -> CanonicalStringType
     IdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of
@@ -572,6 +578,7 @@ interpretedValueKind value =
     EitherForm _ -> EitherValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
+    StringTypeForm -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     IdentifierTypeForm _ -> IdentifierTypeValueKind
