@@ -463,7 +463,7 @@ testValuedNaturalRange = do
       in fmap valuedNaturalValue
           <$> traverse (unrank indices) [0 .. 4] of
     Just (Just values) ->
-      assert "NaturalType is within 0 upwards"
+      assert "NaturalType is from 0 upwards"
         (values == [0, 1, 2, 3, 4])
     _ -> fail "test setup failed: NaturalType"
 

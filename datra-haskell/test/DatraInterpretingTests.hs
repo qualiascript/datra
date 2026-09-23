@@ -318,12 +318,12 @@ testIntegers = do
       "descending integer range"
       (AST.integerFromDownwards (-1)) $ \value ->
     assert "integer range rendering retains its signed bound and direction"
-      (renderInterpretedValue value == "from -1 downwards")
+      (renderInterpretedValue value == "range -1 downwards")
   expectValue
       "valued integer range"
       (AST.integerWithinTo (-3) 4) $ \value ->
     assert "valued integer ranges retain inclusive signed syntax"
-      (renderInterpretedValue value == "within -3 to 4")
+      (renderInterpretedValue value == "from -3 to 4")
   expectValue "integer type" AST.integerType $ \value ->
     assert "Int is the full Nat-product-with-two federation"
       (renderInterpretedValue value == "Int")
@@ -340,7 +340,7 @@ testIntegers = do
           ~> AST.integerFromTo (-3) 2
       ) $ \value ->
     assert "integer ranges select contiguous signed sequences"
-      (renderInterpretedValue value == "(-2; -1; 0) ~> from -3 to 2")
+      (renderInterpretedValue value == "(-2; -1; 0) ~> range -3 to 2")
   expectValue
       "valued integer subfederation composition"
       ( (AST.minus (natural 2) ~> AST.integerWithinTo (-2) 3)
@@ -780,7 +780,7 @@ testCombinatorialNumericalSystems = do
           ~> largeRange
       ) $ \value ->
     assert "a selected inner-range member widens through its super-range"
-      (renderInterpretedValue value == "-1 ~> within -5 to 5")
+      (renderInterpretedValue value == "-1 ~> from -5 to 5")
   expectValue
       "descending range through optional Int"
       ( (AST.minus (natural 1)
@@ -802,7 +802,7 @@ testCombinatorialNumericalSystems = do
       ) $ \value ->
     assert "range equality can guard signed arithmetic and optional subtyping"
       (renderInterpretedValue value
-        == "7 ~> (within -10 to 10)?")
+        == "7 ~> (from -10 to 10)?")
   expectValue
       "optional numerical identifier equality"
       (AST.equal optionalIdentifierRange optionalIdentifierRange) $ \value ->
@@ -821,7 +821,7 @@ testRanges = do
               omega
               (finiteOrdinal 2)
               (GivenTarget (finiteOrdinal 6)))
-        && renderInterpretedValue value == "from 2 to 5"
+        && renderInterpretedValue value == "range 2 to 5"
       )
   expectValue
       "descending inclusive natural range"
@@ -833,7 +833,7 @@ testRanges = do
               omega
               (finiteOrdinal 5)
               MinusSign)
-        && renderInterpretedValue value == "from 5 to 0"
+        && renderInterpretedValue value == "range 5 to 0"
       )
   expectValue
       "upwards natural range"
@@ -845,30 +845,30 @@ testRanges = do
               omega
               (finiteOrdinal 2)
               PlusSign)
-        && renderInterpretedValue value == "from 2 upwards"
+        && renderInterpretedValue value == "range 2 upwards"
       )
   expectValue
       "inclusive valued natural range"
       (ValuedNaturalRange 2 5) $ \value ->
-    assert "valued natural ranges retain within syntax"
+    assert "valued natural ranges retain from syntax"
       ( interpretedRangeDescription value
           == Just
             (SuperEllipsisRangeDescription
               omega
               (finiteOrdinal 2)
               (GivenTarget (finiteOrdinal 6)))
-        && renderInterpretedValue value == "within 2 to 5"
+        && renderInterpretedValue value == "from 2 to 5"
       )
   expectValue
       "descending valued natural range"
       (ValuedNaturalRange 5 2) $ \value ->
-    assert "descending valued ranges retain within syntax"
-      (renderInterpretedValue value == "within 5 to 2")
+    assert "descending valued ranges retain from syntax"
+      (renderInterpretedValue value == "from 5 to 2")
   expectValue
       "upwards valued natural range"
       (ValuedNaturalRangeUpwards 2) $ \value ->
-    assert "upwards valued ranges retain within syntax"
-      (renderInterpretedValue value == "within 2 upwards")
+    assert "upwards valued ranges retain from syntax"
+      (renderInterpretedValue value == "from 2 upwards")
   expectValue "NaturalType" NaturalType $ \value ->
     assert "Nat is canonically distinct from its expanded synonym"
       ( interpretedRangeDescription value
@@ -1159,7 +1159,7 @@ testAtlasMapFederations = do
       "a structured map retains NaturalRange syntax"
       (AtlasMap [natural 2, NaturalRange 2 10]) $ \value ->
     assert "NaturalRange structure survives a sequential product"
-      (renderInterpretedValue value == "(2; from 2 to 10)")
+      (renderInterpretedValue value == "(2; range 2 to 10)")
   let coalitionSequence =
         AtlasMap [ValuedIntegerRange 1 3, ValuedIntegerRange 4 6]
       coalitionConcatenation =
@@ -1169,7 +1169,7 @@ testAtlasMapFederations = do
       coalitionSequence $ \value ->
     assert "coalition components canonicalize with commas"
       (renderInterpretedValue value
-        == "within 1 to 3, within 4 to 6")
+        == "from 1 to 3, from 4 to 6")
   expectValue
       "a coalition sequence equals its concatenation"
       (AST.equal coalitionSequence coalitionConcatenation) $ \value ->
@@ -1180,19 +1180,19 @@ testAtlasMapFederations = do
       ((<.>) (NaturalRange 2 5) (NaturalRange 6 9)) $ \value ->
     assert "disjoint finite NaturalRanges form a federation"
       (renderInterpretedValue value
-        == "from 2 to 5, from 6 to 9")
+        == "range 2 to 5, range 6 to 9")
   expectValue
       "descending disjoint NaturalRange concatenation"
       ((<.>) (NaturalRange 9 6) (NaturalRange 5 2)) $ \value ->
     assert "NaturalRange disjointness ignores traversal direction"
       (renderInterpretedValue value
-        == "from 9 to 6, from 5 to 2")
+        == "range 9 to 6, range 5 to 2")
   expectValue
       "finite then disjoint upwards NaturalRange"
       ((<.>) (NaturalRange 2 5) (NaturalRangeUpwards 6)) $ \value ->
     assert "a finite domain below an upwards domain is disjoint"
       (renderInterpretedValue value
-        == "from 2 to 5, from 6 upwards")
+        == "range 2 to 5, range 6 upwards")
   assert "overlapping finite NaturalRanges have a collision witness"
     (case interpretExpressionReason
         ((<.>) (NaturalRange 2 5) (NaturalRange 3 6)) of
@@ -1221,7 +1221,7 @@ testAtlasMapFederations = do
       ((<.>) (ValuedNaturalRange 2 5) (ValuedNaturalRange 6 9)) $ \value ->
     assert "disjoint valued ranges form a federation"
       (renderInterpretedValue value
-        == "within 2 to 5, within 6 to 9")
+        == "from 2 to 5, from 6 to 9")
   assert "overlapping ValuedNaturalRanges have a collision witness"
     (case interpretExpressionReason
         ((<.>) (ValuedNaturalRange 2 5) (ValuedNaturalRange 4 8)) of
@@ -1323,7 +1323,7 @@ testAccess = do
         ((<.>) (ValuedNaturalRange 1 3) (NaturalRange 5 20))
         (natural 0)) $ \value ->
     assert "a fixed-width coalition remains one accessible region"
-      (renderInterpretedValue value == "within 1 to 3")
+      (renderInterpretedValue value == "from 1 to 3")
   assert "access crossing an uncertain concatenation suffix is undecidable"
     (case interpretExpressionReason
         ((<@>)
@@ -1346,23 +1346,23 @@ testAccess = do
       ((<@>) valuedCoalitionSequence (NaturalRangeUpwards 0)) $ \value ->
     assert "open access preserves the valued-range coalition as one position"
       ( interpretedMapFinalOrderType (interpretedMap value) == finiteOrdinal 4
-        && renderInterpretedValue value == "(2; 3; within 1 to 20; 5)"
+        && renderInterpretedValue value == "(2; 3; from 1 to 20; 5)"
       )
   expectValue
       "bounded access slices a sequence of coalitions"
       ((<@>) valuedCoalitionSequence (NaturalRange 1 2)) $ \value ->
     assert "bounded access retains the selected valued-range coalition"
-      (renderInterpretedValue value == "(3; within 1 to 20)")
+      (renderInterpretedValue value == "(3; from 1 to 20)")
   expectValue
       "singleton access selects a valued-range coalition"
       ((<@>) valuedCoalitionSequence (natural 2)) $ \value ->
     assert "singleton access returns the selected coalition"
-      (renderInterpretedValue value == "within 1 to 20")
+      (renderInterpretedValue value == "from 1 to 20")
   expectValue
       "a valued range is its own coalition"
       ((<@>) (ValuedNaturalRange 1 20) (NaturalRangeUpwards 0)) $ \value ->
     assert "access preserves a standalone valued-range coalition"
-      (renderInterpretedValue value == "within 1 to 20")
+      (renderInterpretedValue value == "from 1 to 20")
   expectRangeAccess
     "natural upwards access canonicalizes a bounded source range"
     RangeValueKind
@@ -1619,19 +1619,19 @@ testAccess = do
       "NaturalRange accessed by NaturalRange"
       ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
     assert "NaturalRange access returns a NaturalRange"
-      (renderInterpretedValue value == "from 3 to 10")
+      (renderInterpretedValue value == "range 3 to 10")
   expectValue
       "upwards NaturalRange accessed by NaturalRange"
       ((<@>)
         (NaturalRangeUpwards 2)
         (NaturalRangeUpwards 5)) $ \value ->
     assert "open NaturalRange access stays open"
-      (renderInterpretedValue value == "from 7 upwards")
+      (renderInterpretedValue value == "range 7 upwards")
   expectValue
       "descending NaturalRange accessed in reverse"
       ((<@>) (NaturalRange 10 2) (NaturalRange 3 1)) $ \value ->
     assert "NaturalRange access composes traversal directions"
-      (renderInterpretedValue value == "from 7 to 9")
+      (renderInterpretedValue value == "range 7 to 9")
   expectValue
       "NaturalRange access with no fitting member"
       ((<@>)
@@ -1685,7 +1685,7 @@ testAccess = do
         ((<..>) (natural 0) (natural 2))) $ \value ->
     assert "sequence access never flattens operand federations"
       (renderInterpretedValue value
-        == "(from 2 to 5; from 8 to 10)")
+        == "(range 2 to 5; range 8 to 10)")
 
 testSpecification :: IO ()
 testSpecification = do
@@ -1800,7 +1800,7 @@ testSpecification = do
     "concatenated federation partitions and selects members"
     compositeConcatenationSource
     compositeConcatenationTarget
-    "($a; 3; 4; 5) ~> $a, from 1 to 10"
+    "($a; 3; 4; 5) ~> $a, range 1 to 10"
   expectValue
       "expansion federation selects members pointwise"
       ((~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
@@ -1822,7 +1822,7 @@ testSpecification = do
         compositeConcatenationWidenedTarget) $ \value ->
     assert "concatenation composition retains the final target"
       (renderInterpretedValue value
-        == "($a; 3; 4; 5) ~> $a, from 0 upwards")
+        == "($a; 3; 4; 5) ~> $a, range 0 upwards")
   expectValue
       "expansion subfederations compose pointwise"
       ((~>)
@@ -1843,42 +1843,42 @@ testSpecification = do
     "bounded ascending range specification"
     boundedRange
     (NaturalRange 0 10)
-    "2..5 ~> from 0 to 10"
+    "2..5 ~> range 0 to 10"
   expectSpecification
     "bounded descending range specification"
     ((<..>) (natural 5) (natural 2))
     (NaturalRange 10 0)
-    "5..2 ~> from 10 to 0"
+    "5..2 ~> range 10 to 0"
   expectSpecification
     "open range specification"
     ((..+) (natural 2))
     (NaturalRangeUpwards 0)
-    "2.. ~> from 0 upwards"
+    "2.. ~> range 0 upwards"
   expectSpecification
     "empty range specification"
     ((<..>) (natural 0) (natural 0))
     (NaturalRange 5 8)
-    "0..0 ~> from 5 to 8"
+    "0..0 ~> range 5 to 8"
   expectSpecification
     "flat total Atlas map specification"
     (AtlasMap [natural 2, natural 3, natural 4])
     (NaturalRange 0 10)
-    "(2; 3; 4) ~> from 0 to 10"
+    "(2; 3; 4) ~> range 0 to 10"
   expectSpecification
     "EllipsisNatural specification into a ValuedNaturalRange"
     (natural 2)
     (ValuedNaturalRange 0 5)
-    "2 ~> within 0 to 5"
+    "2 ~> from 0 to 5"
   expectSpecification
     "computed EllipsisNatural specification into a ValuedNaturalRange"
     ((AST.+) (natural 1) (natural 1))
     (ValuedNaturalRange 0 5)
-    "2 ~> within 0 to 5"
+    "2 ~> from 0 to 5"
   expectSpecification
     "EllipsisNatural specification into a descending ValuedNaturalRange"
     (natural 2)
     (ValuedNaturalRange 5 0)
-    "2 ~> within 5 to 0"
+    "2 ~> from 5 to 0"
   expectSpecification
     "EllipsisNatural specification into Nat"
     (natural 2)
@@ -1897,7 +1897,7 @@ testSpecification = do
         ((~>) (natural 2) (ValuedNaturalRange 2 5))
         (ValuedNaturalRange 5 0)) $ \value ->
     assert "valued subfederation composition retains the final direction"
-      (renderInterpretedValue value == "2 ~> within 5 to 0")
+      (renderInterpretedValue value == "2 ~> from 5 to 0")
   expectValue
       "NaturalRange subfederation specification composition"
       ((~>)
@@ -1907,7 +1907,7 @@ testSpecification = do
         (NaturalRange 2 8)) $ \value ->
     assert "composition erases the intermediate subfederation"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "2..3 ~> from 2 to 8"
+        && renderInterpretedValue value == "2..3 ~> range 2 to 8"
       )
   expectValue
       "finite NaturalRange subfederation of an upwards NaturalRange"
@@ -1917,7 +1917,7 @@ testSpecification = do
           (NaturalRange 2 5))
         (NaturalRangeUpwards 0)) $ \value ->
     assert "finite-to-upwards composition is canonicalized"
-      (renderInterpretedValue value == "3..5 ~> from 0 upwards")
+      (renderInterpretedValue value == "3..5 ~> range 0 upwards")
   expectValue
       "upwards NaturalRange subfederation composition"
       ((~>)
@@ -1926,7 +1926,7 @@ testSpecification = do
           (NaturalRangeUpwards 2))
         (NaturalRangeUpwards 0)) $ \value ->
     assert "upwards-to-upwards composition is canonicalized"
-      (renderInterpretedValue value == "3.. ~> from 0 upwards")
+      (renderInterpretedValue value == "3.. ~> range 0 upwards")
   expectValue
       "descending NaturalRange subfederation composition"
       ((~>)
@@ -1935,7 +1935,7 @@ testSpecification = do
           (NaturalRange 6 1))
         (NaturalRange 8 0)) $ \value ->
     assert "descending composition preserves the original source"
-      (renderInterpretedValue value == "5..2 ~> from 8 to 0")
+      (renderInterpretedValue value == "5..2 ~> range 8 to 0")
   expectValue
       "singleton NaturalRange subfederation changes direction"
       ((~>)
@@ -1944,7 +1944,7 @@ testSpecification = do
           (NaturalRange 2 2))
         (NaturalRange 5 0)) $ \value ->
     assert "a singleton federation belongs to either direction"
-      (renderInterpretedValue value == "2..3 ~> from 5 to 0")
+      (renderInterpretedValue value == "2..3 ~> range 5 to 0")
   expectNoMember
     "range outside the target NaturalRange is a counterexample"
     ((<..>) (natural 2) (natural 5))
@@ -2146,7 +2146,7 @@ testIdentifiers = do
       "assignment chain widens through nested valued ranges"
       ((~>) ((~>) ((~>) d28 d25To35) d20To40) d0To100) $ \value ->
     assert "nested assignment specifications retain the original value"
-      (renderInterpretedValue value == "d : within 0 to 100 := 28")
+      (renderInterpretedValue value == "d : from 0 to 100 := 28")
   expectValue
       "assignment identifier-string access"
       ((<@>) xAssignment (natural 0)) $ \value ->
@@ -2212,7 +2212,7 @@ testIdentifiers = do
           (identifier "x" (natural 12))
           (identifier "x" (ValuedNaturalRange 1 10))) of
       Left (GivenValueOutsideTypeAnnotation expected given) ->
-        expected == "within 1 to 10" && given == "12"
+        expected == "from 1 to 10" && given == "12"
       _ -> False)
   assert "a failed annotation widening reports the intermediate annotation"
     (case interpretExpressionReason
@@ -2222,8 +2222,8 @@ testIdentifiers = do
             (identifier "x" (ValuedNaturalRange 5 20)))
           (identifier "x" (ValuedNaturalRange 1 10))) of
       Left (IntermediateTypeAnnotationOutsideTarget expected given) ->
-        expected == "within 1 to 10"
-          && given == "within 5 to 20"
+        expected == "from 1 to 10"
+          && given == "from 5 to 20"
       _ -> False)
   assert "an assignment outside its annotation gets a direct type error"
     (case interpretExpressionReason
@@ -2425,7 +2425,7 @@ testLocatedRejection = do
       Left valueError ->
         renderDatraError English valueError
           == "<test>:1:5: the given value is outside the type annotation\n"
-              <> "  expected: within 1 to 10\n"
+              <> "  expected: from 1 to 10\n"
               <> "  given: 12"
       Right _ -> False)
   let incompatibleIntermediateAnnotation =
@@ -2449,8 +2449,8 @@ testLocatedRejection = do
       Left valueError ->
         renderDatraError English valueError
           == "<test>:1:5: the intermediate type annotation does not fit in the target type annotation\n"
-              <> "  expected: within 1 to 10\n"
-              <> "  given: within 5 to 20"
+              <> "  expected: from 1 to 10\n"
+              <> "  given: from 5 to 20"
       Right _ -> False)
   let overlapExpression =
         (<@>)

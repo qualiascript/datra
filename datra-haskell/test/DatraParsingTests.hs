@@ -105,16 +105,26 @@ regressionTests = do
     (...)
   assertAstOutput
     "specification into a NaturalRange"
-    "2..5 ~> from 0 upwards"
+    "2..5 ~> range 0 upwards"
     ((natural 2 <..> natural 5) ~> AST.fromUpwards 0)
   assertAstOutput
     "bounded ValuedNaturalRange"
-    "within 2 to 5"
+    "from 2 to 5"
     (AST.withinTo 2 5)
   assertAstOutput
     "upwards ValuedNaturalRange"
-    "within 2 upwards"
+    "from 2 upwards"
     (AST.withinUpwards 2)
+  assertRejected
+    "the old valued-range prefix is rejected"
+    "within 2 to 5"
+  assertRejected
+    "the range prefix is reserved as an identifier expression"
+    "range : Nat"
+  assertAstOutput
+    "the former valued-range prefix is available as an identifier"
+    "within : Nat"
+    (AST.identifierType "within" AST.naturalType)
   assertAstOutput
     "NaturalType literal"
     "Nat"
@@ -129,11 +139,11 @@ regressionTests = do
     AST.integerType
   assertAstOutput
     "descending open integer range"
-    "from -1 downwards"
+    "range -1 downwards"
     (AST.integerFromDownwards (-1))
   assertAstOutput
     "bounded valued integer range"
-    "within -3 to 4"
+    "from -3 to 4"
     (AST.integerWithinTo (-3) 4)
   assertAstOutput
     "unary integer negation"
@@ -264,7 +274,7 @@ regressionTests = do
     )
   assertAstOutput
     "optional identifier range subfederation check"
-    "(2, b := 5) of (a? : Int, b? : within 3 to 8)"
+    "(2, b := 5) of (a? : Int, b? : from 3 to 8)"
     (AST.subfederation
       (MapConcatenation
         (natural 2)
@@ -341,7 +351,7 @@ regressionTests = do
     "2 upwards"
   assertAstOutput
     "specification binds after access and concatenation"
-    "1, 2 @ from 0 upwards ~> from 0 to 10"
+    "1, 2 @ range 0 upwards ~> range 0 to 10"
     (((natural 1 <.> natural 2) <@> AST.fromUpwards 0) ~> AST.fromTo 0 10)
   assertAstOutput
     "access after a specification projects its fibers"
@@ -352,11 +362,11 @@ regressionTests = do
     )
   assertAstOutput
     "specification chains associate through the intermediate federation"
-    "2..3 ~> from 2 to 5 ~> from 2 to 8"
+    "2..3 ~> range 2 to 5 ~> range 2 to 8"
     ((natural 2 <..> natural 3) ~> AST.fromTo 2 5 ~> AST.fromTo 2 8)
   assertAstOutput
     "reverse specification reverses its operands"
-    "from 2 to 5 <~ 2..3"
+    "range 2 to 5 <~ 2..3"
     ((natural 2 <..> natural 3) ~> AST.fromTo 2 5)
   assertAstOutput
     "reverse specification accepts parenthesized composite operands"
@@ -366,21 +376,21 @@ regressionTests = do
     )
   assertAstOutput
     "reverse specification accepts concatenated composite operands"
-    "$a, from 1 to 10 <~ $a, 3, 4, 5"
+    "$a, range 1 to 10 <~ $a, 3, 4, 5"
     ( (AST.asciiString "a" <.> natural 3 <.> natural 4 <.> natural 5)
         ~> (AST.asciiString "a" <.> AST.fromTo 1 10)
     )
   assertAstOutput
     "reverse specification chains associate right"
-    "from 2 to 8 <~ from 2 to 5 <~ 2..3"
+    "range 2 to 8 <~ range 2 to 5 <~ 2..3"
     ((natural 2 <..> natural 3) ~> AST.fromTo 2 5 ~> AST.fromTo 2 8)
   assertAstOutput
     "reverse specification binds after access and concatenation"
-    "from 0 to 10 <~ 1, 2 @ from 0 upwards"
+    "range 0 to 10 <~ 1, 2 @ range 0 upwards"
     (((natural 1 <.> natural 2) <@> AST.fromUpwards 0) ~> AST.fromTo 0 10)
   assertAstOutput
     "a postfix range can precede reverse specification"
-    "2.. <~ from 2 to 5"
+    "2.. <~ range 2 to 5"
     (AST.fromTo 2 5 ~> (natural 2 ..+))
   assertAstOutput
     "simple identifier type"
@@ -410,9 +420,9 @@ regressionTests = do
     )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
-    ( "(d : within 0 to 100) <~ "
-        <> "(d : within 20 to 40 := 28) <~ "
-        <> "(d : within 25 to 35 := 28) <~ (d := 28)"
+    ( "(d : from 0 to 100) <~ "
+        <> "(d : from 20 to 40 := 28) <~ "
+        <> "(d : from 25 to 35 := 28) <~ (d := 28)"
     )
     ( AST.assignment "d" (natural 28) (natural 28)
         ~> AST.assignment "d" (AST.withinTo 25 35) (natural 28)
@@ -421,8 +431,8 @@ regressionTests = do
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
-    ( "d : from 10 to 100 <~\n"
-        <> "    d : from 12 to 85 := 23..66 <~\n"
+    ( "d : range 10 to 100 <~\n"
+        <> "    d : range 12 to 85 := 23..66 <~\n"
         <> "    d := 23..66"
     )
     ( AST.assignment
@@ -437,8 +447,8 @@ regressionTests = do
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
-    ( "(x : within 1 to 10) <~ "
-        <> "(x : within 5 to 20) <~ (x := 8)"
+    ( "(x : from 1 to 10) <~ "
+        <> "(x : from 5 to 20) <~ (x := 8)"
     )
     ( AST.assignment "x" (natural 8) (natural 8)
         ~> AST.identifierType "x" (AST.withinTo 5 20)
@@ -586,15 +596,15 @@ regressionTests = do
     (natural 0 <..> natural 10)
   assertAstOutput
     "inclusive natural range"
-    "from 2 to 5"
+    "range 2 to 5"
     (AST.fromTo 2 5)
   assertAstOutput
     "open inclusive natural range"
-    "from 2 upwards"
+    "range 2 upwards"
     (AST.fromUpwards 2)
   assertAstOutput
     "natural range access"
-    "1, 2, 3 @ from 1 upwards"
+    "1, 2, 3 @ range 1 upwards"
     ((natural 1 <.> natural 2 <.> natural 3) <@> AST.fromUpwards 1)
   assertAstOutput
     "bracket access binds before arithmetic"
@@ -637,7 +647,7 @@ regressionTests = do
     )
   assertAstOutput
     "natural range keywords continue across lines"
-    "from\n2\nto\n5"
+    "range\n2\nto\n5"
     (AST.fromTo 2 5)
   assertAstOutput
     "a prefix range greedily continues across a newline"
@@ -854,11 +864,11 @@ regressionTests = do
   assertRejected "the old explicit plus spelling is rejected" "(1..+)"
   assertRejected
     "natural range origins must be literal EllipsisNaturals"
-    "from (1 + 2) to 5"
+    "range (1 + 2) to 5"
   assertRejected
     "natural range targets must be literal EllipsisNaturals"
-    "from 1 to (2 + 3)"
-  assertRejected "natural range keywords require separators" "from1to2"
+    "range 1 to (2 + 3)"
+  assertRejected "natural range keywords require separators" "range1to2"
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "((1..2)..)"
@@ -1070,12 +1080,12 @@ assertAstSyntax = do
   assert "the specification symbol constructs its canonical AST node"
     ( renderExpression
         (((natural 2 <..> natural 5) ~> AST.fromUpwards 0))
-        == "(~> (<..> 2 5) (from 0 upwards))"
+        == "(~> (<..> 2 5) (range 0 upwards))"
     )
   assert "valued natural range constructors retain their distinct prefix"
-    ( renderExpression (AST.withinTo 2 5) == "(within 2 to 5)"
+    ( renderExpression (AST.withinTo 2 5) == "(from 2 to 5)"
       && renderExpression (AST.withinUpwards 2)
-        == "(within 2 upwards)"
+        == "(from 2 upwards)"
       && renderExpression AST.naturalType == "Nat"
     )
 

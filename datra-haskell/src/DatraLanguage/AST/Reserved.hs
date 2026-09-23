@@ -24,8 +24,8 @@ data ReservedWord
   | IfWord
   | ThenWord
   | ElseWord
+  | RangeWord
   | FromWord
-  | WithinWord
   | ToWord
   | UpwardsWord
   | DownwardsWord
@@ -42,8 +42,8 @@ reservedWordText NaturalTypeWord = "Nat"
 reservedWordText IfWord = "if"
 reservedWordText ThenWord = "then"
 reservedWordText ElseWord = "else"
+reservedWordText RangeWord = "range"
 reservedWordText FromWord = "from"
-reservedWordText WithinWord = "within"
 reservedWordText ToWord = "to"
 reservedWordText UpwardsWord = "upwards"
 reservedWordText DownwardsWord = "downwards"
@@ -86,8 +86,8 @@ reservedIdentifierStrings =
       , IfWord
       , ThenWord
       , ElseWord
+      , RangeWord
       , FromWord
-      , WithinWord
       ]
 
 isReservedIdentifierString :: String -> Bool

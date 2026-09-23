@@ -15,7 +15,7 @@ import ValuedNaturalRange
   )
 import SuperEllipsisRange (SuperEllipsisRangeError)
 
--- | @Nat@ is the valued natural range @within 0 upwards@.
+-- | @Nat@ is the valued natural range @from 0 upwards@.
 type NaturalType = ValuedNaturalRange
 
 naturalType

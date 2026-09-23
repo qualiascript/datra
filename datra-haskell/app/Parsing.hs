@@ -310,7 +310,7 @@ astSequence = do
     (MapSequence
       (firstExpression : secondExpression : remainingExpressions))
 
-data NaturalRangePrefix = FromRange | WithinRange
+data NaturalRangePrefix = RangePrefix | FromPrefix
 
 data NaturalRangeBounds
   = NaturalRangeTo Integer Integer
@@ -320,14 +320,14 @@ data NaturalRangeBounds
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
   prefix <- choice
-    [ FromRange <$ astReservedWord Reserved.FromWord
-    , WithinRange <$ astReservedWord Reserved.WithinWord
+    [ RangePrefix <$ astReservedWord Reserved.RangeWord
+    , FromPrefix <$ astReservedWord Reserved.FromWord
     ]
   bounds <- astNaturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
 
 -- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
--- after a @from@ or @within@ prefix.
+-- after a @range@ or @from@ prefix.
 astNaturalRangeBounds :: Parser NaturalRangeBounds
 astNaturalRangeBounds = do
   origin <- astSignedInteger
@@ -626,14 +626,14 @@ bracketedInsertion =
 naturalRangeExpression :: Parser Expression
 naturalRangeExpression = do
   prefix <- choice
-    [ FromRange <$ continuedReservedWord Reserved.FromWord
-    , WithinRange <$ continuedReservedWord Reserved.WithinWord
+    [ RangePrefix <$ continuedReservedWord Reserved.RangeWord
+    , FromPrefix <$ continuedReservedWord Reserved.FromWord
     ]
   bounds <- naturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
 
 -- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
--- after a @from@ or @within@ prefix.
+-- after a @range@ or @from@ prefix.
 naturalRangeBounds :: Parser NaturalRangeBounds
 naturalRangeBounds = do
   origin <- signedIntegerToken <* keywordSeparator
@@ -658,25 +658,25 @@ naturalRangeExpressionFor
   :: NaturalRangePrefix
   -> NaturalRangeBounds
   -> Expression
-naturalRangeExpressionFor FromRange (NaturalRangeTo origin target) =
+naturalRangeExpressionFor RangePrefix (NaturalRangeTo origin target) =
   if origin >= 0 && target >= 0
     then NaturalRange (fromInteger origin) (fromInteger target)
     else IntegerRange origin target
-naturalRangeExpressionFor FromRange (NaturalRangeFromUpwards origin) =
+naturalRangeExpressionFor RangePrefix (NaturalRangeFromUpwards origin) =
   if origin >= 0
     then NaturalRangeUpwards (fromInteger origin)
     else IntegerRangeUpwards origin
-naturalRangeExpressionFor FromRange (IntegerRangeFromDownwards origin) =
+naturalRangeExpressionFor RangePrefix (IntegerRangeFromDownwards origin) =
   IntegerRangeDownwards origin
-naturalRangeExpressionFor WithinRange (NaturalRangeTo origin target) =
+naturalRangeExpressionFor FromPrefix (NaturalRangeTo origin target) =
   if origin >= 0 && target >= 0
     then ValuedNaturalRange (fromInteger origin) (fromInteger target)
     else ValuedIntegerRange origin target
-naturalRangeExpressionFor WithinRange (NaturalRangeFromUpwards origin) =
+naturalRangeExpressionFor FromPrefix (NaturalRangeFromUpwards origin) =
   if origin >= 0
     then ValuedNaturalRangeUpwards (fromInteger origin)
     else ValuedIntegerRangeUpwards origin
-naturalRangeExpressionFor WithinRange (IntegerRangeFromDownwards origin) =
+naturalRangeExpressionFor FromPrefix (IntegerRangeFromDownwards origin) =
   ValuedIntegerRangeDownwards origin
 
 keyword :: Text -> Parser Text

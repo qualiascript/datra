@@ -14,6 +14,7 @@ import DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   , operatorSourceSymbol
   )
+import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
   ( renderAsciiStringLiteral
   , renderIdentifierString
@@ -297,8 +298,10 @@ prettyNaturalRange
 prettyNaturalRange origin target =
   case target of
     FiniteNaturalTarget final ->
-      "from " <> pretty origin <> " to " <> pretty final
-    UpwardsTarget -> "from " <> pretty origin <> " upwards"
+      rangeWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsTarget ->
+      rangeWord <> " " <> pretty origin <> " " <> upwardsWord
 
 prettyValuedNaturalRange
   :: Natural
@@ -307,8 +310,9 @@ prettyValuedNaturalRange
 prettyValuedNaturalRange origin target =
   case target of
     FiniteNaturalTarget final ->
-      "within " <> pretty origin <> " to " <> pretty final
-    UpwardsTarget -> "within " <> pretty origin <> " upwards"
+      fromWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsTarget -> fromWord <> " " <> pretty origin <> " " <> upwardsWord
 
 prettyIntegerRange
   :: Integer
@@ -317,9 +321,12 @@ prettyIntegerRange
 prettyIntegerRange origin target =
   case target of
     FiniteIntegerTarget final ->
-      "from " <> pretty origin <> " to " <> pretty final
-    UpwardsIntegerTarget -> "from " <> pretty origin <> " upwards"
-    DownwardsIntegerTarget -> "from " <> pretty origin <> " downwards"
+      rangeWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsIntegerTarget ->
+      rangeWord <> " " <> pretty origin <> " " <> upwardsWord
+    DownwardsIntegerTarget ->
+      rangeWord <> " " <> pretty origin <> " " <> downwardsWord
     AllIntegersTarget -> "Int"
 
 prettyValuedIntegerRange
@@ -329,10 +336,23 @@ prettyValuedIntegerRange
 prettyValuedIntegerRange origin target =
   case target of
     FiniteIntegerTarget final ->
-      "within " <> pretty origin <> " to " <> pretty final
-    UpwardsIntegerTarget -> "within " <> pretty origin <> " upwards"
-    DownwardsIntegerTarget -> "within " <> pretty origin <> " downwards"
+      fromWord <> " " <> pretty origin
+        <> " " <> toWord <> " " <> pretty final
+    UpwardsIntegerTarget ->
+      fromWord <> " " <> pretty origin <> " " <> upwardsWord
+    DownwardsIntegerTarget ->
+      fromWord <> " " <> pretty origin <> " " <> downwardsWord
     AllIntegersTarget -> "Int"
+
+rangeWord, fromWord, toWord, upwardsWord, downwardsWord :: Doc annotation
+rangeWord = reservedWordDoc Reserved.RangeWord
+fromWord = reservedWordDoc Reserved.FromWord
+toWord = reservedWordDoc Reserved.ToWord
+upwardsWord = reservedWordDoc Reserved.UpwardsWord
+downwardsWord = reservedWordDoc Reserved.DownwardsWord
+
+reservedWordDoc :: Reserved.ReservedWord -> Doc annotation
+reservedWordDoc = pretty . Reserved.reservedWordText
 
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"

@@ -20,6 +20,7 @@ import DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   )
 import DatraLanguage.AST.Reserved (isReservedIdentifierString)
+import DatraLanguage.AST.Reserved qualified as Reserved
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -383,26 +384,42 @@ prettyOperator (RangePlus lowerBound) =
 prettyOperator (RangeMinus upperBound) =
   prettyUnary RangeMinusOperator upperBound
 prettyOperator (InclusiveNaturalRange origin target) =
-  prettyForm "from" [pretty origin, "to", pretty target]
+  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+    [pretty origin, reservedWordDoc Reserved.ToWord, pretty target]
 prettyOperator (InclusiveNaturalRangeUpwards origin) =
-  prettyForm "from" [pretty origin, "upwards"]
+  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+    [pretty origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveValuedNaturalRange origin target) =
-  prettyForm "within" [pretty origin, "to", pretty target]
+  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+    [pretty origin, reservedWordDoc Reserved.ToWord, pretty target]
 prettyOperator (InclusiveValuedNaturalRangeUpwards origin) =
-  prettyForm "within" [pretty origin, "upwards"]
+  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+    [pretty origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator NaturalTypeValue = "Nat"
 prettyOperator (InclusiveIntegerRange origin target) =
-  prettyForm "from" [prettyInteger origin, "to", prettyInteger target]
+  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+    [ prettyInteger origin
+    , reservedWordDoc Reserved.ToWord
+    , prettyInteger target
+    ]
 prettyOperator (InclusiveIntegerRangeUpwards origin) =
-  prettyForm "from" [prettyInteger origin, "upwards"]
+  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+    [prettyInteger origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveIntegerRangeDownwards origin) =
-  prettyForm "from" [prettyInteger origin, "downwards"]
+  prettyForm (Reserved.reservedWordText Reserved.RangeWord)
+    [prettyInteger origin, reservedWordDoc Reserved.DownwardsWord]
 prettyOperator (InclusiveValuedIntegerRange origin target) =
-  prettyForm "within" [prettyInteger origin, "to", prettyInteger target]
+  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+    [ prettyInteger origin
+    , reservedWordDoc Reserved.ToWord
+    , prettyInteger target
+    ]
 prettyOperator (InclusiveValuedIntegerRangeUpwards origin) =
-  prettyForm "within" [prettyInteger origin, "upwards"]
+  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+    [prettyInteger origin, reservedWordDoc Reserved.UpwardsWord]
 prettyOperator (InclusiveValuedIntegerRangeDownwards origin) =
-  prettyForm "within" [prettyInteger origin, "downwards"]
+  prettyForm (Reserved.reservedWordText Reserved.FromWord)
+    [prettyInteger origin, reservedWordDoc Reserved.DownwardsWord]
 prettyOperator IntegerTypeValue = "Int"
 prettyOperator (BooleanValue False) = "false"
 prettyOperator (BooleanValue True) = "true"
@@ -489,6 +506,9 @@ prettyForm headName operands =
 
 prettyInteger :: Integer -> Doc annotation
 prettyInteger = pretty
+
+reservedWordDoc :: Reserved.ReservedWord -> Doc annotation
+reservedWordDoc = pretty . Reserved.reservedWordText
 
 -- | Render an identifier string when possible, otherwise use the standard
 -- quoted spelling. Standard strings leave the keyboard-visible ASCII range
