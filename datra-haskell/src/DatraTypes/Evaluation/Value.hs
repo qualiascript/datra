@@ -258,6 +258,7 @@ data ValueForm
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
   | StringTypeForm
+  | IdentifierValueTypeForm
   | ToStringForm
   | WeakToStringForm
   | StringTemplateForm InterpretedValue
@@ -310,6 +311,7 @@ data InterpretedAtlasMapFederationPrimitive
   | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
   | StringTypeAtlasMapFederation
+  | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
       ProvenInjectiveToString
@@ -339,6 +341,7 @@ data ValueSemantics
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
   | StringTypeSemantics
+  | IdentifierValueTypeSemantics
   | ToStringSemantics ValueSemantics
   | WeakToStringSemantics ValueSemantics
   | StringTemplateSemantics ValueSemantics
@@ -375,6 +378,7 @@ data CanonicalResult
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
   | CanonicalStringType
+  | CanonicalIdentifierValueType
   | CanonicalToString CanonicalResult
   | CanonicalWeakToString CanonicalResult
   | CanonicalStringTemplate CanonicalResult
@@ -478,6 +482,7 @@ canonicalResult semantics =
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     StringTypeSemantics -> CanonicalStringType
+    IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
     ToStringSemantics source -> CanonicalToString (canonicalResult source)
     WeakToStringSemantics source ->
       CanonicalWeakToString (canonicalResult source)
@@ -608,6 +613,7 @@ interpretedValueKind value =
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind
+    IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
     WeakToStringForm -> AsciiStringValueKind
     StringTemplateForm _ -> AsciiStringValueKind

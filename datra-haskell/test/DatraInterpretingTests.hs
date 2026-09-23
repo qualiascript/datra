@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PostfixOperators #-}
 
 module DatraInterpretingTests (main) where
@@ -283,6 +284,24 @@ expectSourceValue label source check =
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right expressionValue -> expectValue label expressionValue check
 
+expectSourceRejection
+  :: String
+  -> String
+  -> (InterpretingError -> Bool)
+  -> IO ()
+expectSourceRejection label source matches =
+  case parseDatra source of
+    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Right expressionValue ->
+      case interpretExpressionReason expressionValue of
+        Left rejection
+          | matches rejection -> pure ()
+          | otherwise ->
+              fail (label <> ": unexpected rejection: " <> show rejection)
+        Right value ->
+          fail
+            (label <> ": unexpectedly produced " <> renderInterpretedValue value)
+
 naturalOrdinal :: InterpretedValue -> Maybe Natural
 naturalOrdinal value = do
   (level, ordinalValue) <- interpretedExplicitOrdinal value
@@ -456,6 +475,52 @@ testStringTemplates = do
       "surface arithmetic interpolation equality"
       "\"2 + 2 = %(2+2)\" = \"2 + 2 = 4\"" $ \value ->
     assert "the interpolated arithmetic result equals the expected string"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "Iden template accepts a compact-string value"
+      "\"My name is alco\" ~> \"My name is %Iden\"" $ \value ->
+    assert "a compact name matches Iden"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "\"My name is alco\" ~> \"My name is %Iden\""
+      )
+  expectSourceRejection
+    "Iden template rejects whitespace within the captured value"
+    "\"My name is whatever you call me\" ~> \"My name is %Iden\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+  expectSourceValue
+      "Iden accepts a digit-leading alphanumeric value"
+      "\"345abc\" ~> \"%Iden\"" $ \value ->
+    assert "a digit-leading nonnumeric compact string matches Iden"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceRejection
+    "Iden rejects an entirely numeric string"
+    "\"12\" ~> \"%Iden\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+  expectSourceValue
+      "a space separates adjacent Iden interpolations"
+      "\"name alco\" ~> \"%Iden %Iden\"" $ \value ->
+    assert "the separated identifier values are selected uniquely"
+      ( interpretedValueKind value == SpecificationValueKind
+        && renderInterpretedValue value
+          == "\"name alco\" ~> \"%Iden %Iden\""
+      )
+  expectSourceRejection
+    "adjacent Iden interpolations are ambiguous"
+    "\"%Iden%Iden\""
+    (\case
+      AmbiguousStringTemplate -> True
+      _ -> False)
+  expectSourceValue
+      "numeric template with an apostrophe suffix"
+      "$12' of \"%(Nat)'\"" $ \value ->
+    assert "the compact string belongs to the suffixed Nat template"
       (renderInterpretedValue value == "true")
   let template = StringTemplate
         [ StringTemplateLiteral "example"

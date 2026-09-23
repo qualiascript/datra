@@ -12,7 +12,6 @@ module DatraLanguage.AST
   , renderAsciiStringLiteral
   , renderStringTemplate
   , renderIdentifierString
-  , isCompactStringLiteral
   , isReservedIdentifierString
   ) where
 
@@ -25,6 +24,7 @@ import DatraLanguage.AST.Operator
   )
 import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
+import IdentifierValueType (isIdentifierValue)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
 import Prettyprinter
@@ -62,6 +62,7 @@ data Expression
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
   | StringType
+  | IdentifierValueType
   | AtlasMap [Expression]
   | MapSequence [Expression]
   | MapExpansion Expression Expression
@@ -119,6 +120,7 @@ data OperatorExpression
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
   | StringTypeValue
+  | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
   | Expansion OperatorExpression OperatorExpression
@@ -181,6 +183,7 @@ normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
 normalizeExpression StringType = StringType
+normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (MapSequence expressions) =
@@ -320,6 +323,7 @@ lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
 lower StringType = StringTypeValue
+lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
@@ -424,6 +428,8 @@ prettyOperator NothingValue =
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
 prettyOperator StringTypeValue = reservedSymbolDoc Reserved.StringTypeSymbol
+prettyOperator IdentifierValueTypeValue =
+  reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
 prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
@@ -576,23 +582,8 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 -- literal and use hexadecimal escapes for every other byte except newline.
 renderAsciiStringLiteral :: String -> String
 renderAsciiStringLiteral value
-  | isCompactStringLiteral value = '$' : value
+  | isIdentifierValue value = '$' : value
 renderAsciiStringLiteral value = renderStandardStringLiteral value
-
--- | Compact @$name@ strings permit an underscore in the leading position or
--- as a separator, but never doubled or trailing.
-isCompactStringLiteral :: String -> Bool
-isCompactStringLiteral [] = False
-isCompactStringLiteral value@(first : rest) =
-  isLeadingCanonicalCharacter first
-    && all isCanonicalCharacter rest
-    && last value /= '_'
-    && not (hasDoubledUnderscore value)
-  where
-    hasDoubledUnderscore ('_' : '_' : _) = True
-    hasDoubledUnderscore (_ : remaining) =
-      hasDoubledUnderscore remaining
-    hasDoubledUnderscore [] = False
 
 -- | Render an identifier expression. Canonical non-reserved names use their
 -- compact bare spelling; reserved or noncanonical names use a full string.
@@ -654,9 +645,17 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
 
     renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of
-        Just symbol -> prefix <> symbol <> escapeOptionalSuffix rest
+        Just symbol
+          | compactInterpolationBoundary rest ->
+              prefix <> symbol <> escapeOptionalSuffix rest
         Nothing ->
           prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+        Just _ ->
+          prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
+
+    compactInterpolationBoundary [] = True
+    compactInterpolationBoundary (character : _) =
+      not (isCanonicalCharacter character)
 
     escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
     escapeOptionalSuffix rest = rest
@@ -668,6 +667,8 @@ compactOperatorStringInterpolation expressionValue =
   case expressionValue of
     NothingValue -> reserved Reserved.NothingSymbol
     StringTypeValue -> reserved Reserved.StringTypeSymbol
+    IdentifierValueTypeValue ->
+      reserved Reserved.IdentifierValueTypeSymbol
     NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
     IntegerTypeValue -> reserved Reserved.IntegerTypeSymbol
     BooleanValue False -> reserved Reserved.FalseSymbol

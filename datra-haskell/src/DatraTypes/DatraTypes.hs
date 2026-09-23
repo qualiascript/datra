@@ -23,6 +23,7 @@ module DatraTypes
   , nothingValue
   , asciiStringValue
   , stringTypeValue
+  , identifierValueTypeValue
   , toStringValue
   , weakToStringValue
   , stringTemplateValue
@@ -86,6 +87,7 @@ import Evaluation.Error
 import Evaluation.Access (accessValues)
 import Evaluation.Construction
   ( makeAsciiString
+  , makeIdentifierValueType
   , makeStringType
   , makeFormulation
   , makeNatural
@@ -207,6 +209,9 @@ asciiStringValue value =
 
 stringTypeValue :: InterpretedValue
 stringTypeValue = makeStringType
+
+identifierValueTypeValue :: InterpretedValue
+identifierValueTypeValue = makeIdentifierValueType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation

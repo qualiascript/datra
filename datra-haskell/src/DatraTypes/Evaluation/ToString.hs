@@ -16,6 +16,7 @@ import Evaluation.Error
   ( InterpretingError (NonInjectiveStringInterpolation) )
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
+import IdentifierValueType (identifierValueCharacterAlphabet)
 
 -- | Convert a total value to its canonical source spelling, or retain a
 -- pointwise string-federation map for a non-total value. Strings are identity
@@ -28,6 +29,7 @@ toStringValue renderCanonical source =
   case interpretedForm source of
     AsciiStringForm _ -> Right source
     StringTypeForm -> Right source
+    IdentifierValueTypeForm -> Right source
     ToStringForm -> Right source
     WeakToStringForm -> Right source
     StringTemplateForm _ -> Right source
@@ -79,6 +81,7 @@ stringTemplateValue value =
   case interpretedForm value of
     AsciiStringForm _ -> value
     StringTypeForm -> value
+    IdentifierValueTypeForm -> value
     ToStringForm -> value
     WeakToStringForm -> value
     StringTemplateForm _ -> value
@@ -202,6 +205,8 @@ stringFederationExcludes delimiter federation =
             Just alphabet -> any (`notElem` alphabet) delimiter
         WeakToStringAtlasMapFederation _ -> False
         StringTypeAtlasMapFederation -> False
+        IdentifierValueTypeAtlasMapFederation ->
+          any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False
     SequentialAtlasMapFederation members ->
       all (stringFederationExcludes delimiter) members

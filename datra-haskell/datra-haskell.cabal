@@ -75,6 +75,7 @@ library
         IntegerRange
         ValuedIntegerRange
         IntegerType
+        IdentifierValueType
         IdentifierType
         SimpleIdentifierType
         AtlasMapFederation

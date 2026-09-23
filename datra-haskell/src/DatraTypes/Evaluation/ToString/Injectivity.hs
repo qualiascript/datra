@@ -13,6 +13,7 @@ import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Construction (makeInteger, makeNatural)
 import Evaluation.Value
+import IdentifierValueType (identifierValueCharacterAlphabet)
 import Numeric.Natural (Natural)
 
 data StringConversionProperties = StringConversionProperties
@@ -52,6 +53,9 @@ stringConversionProperties semantics =
     ValuedIntegerRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     StringTypeSemantics -> injectiveUnknownAlphabet
+    IdentifierValueTypeSemantics ->
+      StringConversionProperties
+        True (Just identifierValueCharacterAlphabet) Nothing
     EitherSemantics left right ->
       eitherConversionProperties
         (stringConversionProperties left)

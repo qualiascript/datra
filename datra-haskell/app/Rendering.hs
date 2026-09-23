@@ -124,6 +124,8 @@ prettyNonKeywordCanonicalResult result =
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
     CanonicalStringType -> reservedSymbolDoc Reserved.StringTypeSymbol
+    CanonicalIdentifierValueType ->
+      reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
     CanonicalToString source ->
       pretty
         (renderStringTemplate
@@ -194,6 +196,9 @@ canonicalStringTemplateParts result =
     CanonicalConcatenation members ->
       concat <$> traverse canonicalStringTemplateParts members
     CanonicalAsciiString value -> Just [StringTemplateLiteral value]
+    CanonicalStringType -> Just [StringTemplateInterpolation result]
+    CanonicalIdentifierValueType ->
+      Just [StringTemplateInterpolation result]
     CanonicalToString source -> Just [StringTemplateInterpolation source]
     CanonicalWeakToString source ->
       Just [StringTemplateWeakInterpolation source]
@@ -207,6 +212,8 @@ compactCanonicalStringInterpolation result
       (<> sourceSymbol OptionalOperator)
         <$> compactCanonicalStringInterpolation operand
   | result == CanonicalStringType = reserved Reserved.StringTypeSymbol
+  | result == CanonicalIdentifierValueType =
+      reserved Reserved.IdentifierValueTypeSymbol
   | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
   | result == CanonicalIntegerType = reserved Reserved.IntegerTypeSymbol
   | isBooleanValue "False" 0 result = reserved Reserved.FalseSymbol
@@ -270,6 +277,7 @@ isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
 isAtomicOptionalOperand CanonicalStringType = True
+isAtomicOptionalOperand CanonicalIdentifierValueType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 
 optionalIdentifierParts

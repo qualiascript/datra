@@ -537,6 +537,13 @@ regressionTests = do
     "IdentifierString produces an ASCII string literal"
     "$text"
     (AsciiStringLiteral "text")
+  assertRejected
+    "compact strings cannot be entirely numeric"
+    "$12"
+  assertAstOutput
+    "compact strings consume a digit-leading alphanumeric token whole"
+    "$345abc"
+    (AsciiStringLiteral "345abc")
   assertAstOutput
     "IdentifierString accepts all canonical continuation characters"
     "$A_0'z"
@@ -637,6 +644,19 @@ regressionTests = do
     "reserved atomic symbols may be simple interpolations"
     "\"%String\""
     (StringTemplate [StringTemplateInterpolation StringType])
+  assertParsed
+    "Iden is available to string templates"
+    "\"%Iden\""
+    (StringTemplate [StringTemplateInterpolation IdentifierValueType])
+  assertAstOutput
+    "digit-leading compact strings retain an apostrophe before an operator"
+    "$12' of \"%(Nat)'\""
+    (AST.subfederation
+      (AsciiStringLiteral "12'")
+      (StringTemplate
+        [ StringTemplateInterpolation NaturalType
+        , StringTemplateLiteral "'"
+        ]))
   assertParsed
     "weak interpolation has explicit compact syntax"
     "\"%!String\""
@@ -1032,8 +1052,8 @@ regressionTests = do
     "(1; 2; # trailing separator\n)"
     (natural 1 <:> natural 2)
   assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
-  assertRejected "IdentifierString requires a leading canonical character" "$0bad"
   assertRejected "IdentifierString rejects a missing body" "$"
+  assertRejected "IdentifierString rejects a leading apostrophe" "$'bad"
   assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
   assertRejected "StandardString rejects an unescaped percent sign" "\"bad%value\""
@@ -1127,6 +1147,7 @@ genExpression =
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
     , pure NaturalType
     , pure StringType
+    , pure IdentifierValueType
     , NaturalRange
         <$> Gen.integral (Range.linear 0 1000)
         <*> Gen.integral (Range.linear 0 1000)

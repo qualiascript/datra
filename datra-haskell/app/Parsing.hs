@@ -73,7 +73,6 @@ import DatraLanguage.AST
       , StringTemplateLiteral
       , StringTemplateWeakInterpolation
       )
-  , isCompactStringLiteral
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -84,6 +83,10 @@ import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  )
+import IdentifierValueType
+  ( isIdentifierValue
+  , isIdentifierValueCharacter
   )
 import Text.Megaparsec
   ( ParsecT
@@ -844,19 +847,16 @@ postfixRangeEnd =
 ellipsisNatural :: Parser Expression
 ellipsisNatural = EllipsisNatural <$> lexeme Lexer.decimal
 
--- | The compact identifier spelling: a dollar sign, one leading canonical
--- character, then any number of canonical characters.
+-- | The compact identifier spelling. Consume the whole identifier-character
+-- run before validation so @$345abc@ is one token rather than two expressions.
 identifierString :: Parser String
 identifierString = lexeme identifierStringToken
 
 identifierStringToken :: Parser String
 identifierStringToken = do
   _ <- char '$'
-  value <-
-    (:)
-      <$> satisfy isLeadingCanonicalCharacter
-      <*> many (satisfy isCanonicalCharacter)
-  if isCompactStringLiteral value then pure value else empty
+  value <- some (satisfy isIdentifierValueCharacter)
+  if isIdentifierValue value then pure value else empty
 
 bareIdentifier :: Parser String
 bareIdentifier = lexeme bareIdentifierToken

@@ -72,6 +72,7 @@ interpretNormalizedExpression expressionValue =
     NothingLiteral -> Right nothingValue
     StringTemplate parts -> interpretStringTemplate parts
     StringType -> Right stringTypeValue
+    IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
     MapSequence expressions ->

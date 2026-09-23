@@ -98,6 +98,7 @@ accessSource value =
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
     StringTypeForm -> ordinarySource []
+    IdentifierValueTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
     WeakToStringForm -> ordinarySource []
     StringTemplateForm _ -> ordinarySource []
@@ -163,6 +164,7 @@ semanticAccessSource semantics =
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
     StringTypeSemantics -> ordinarySource []
+    IdentifierValueTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
     WeakToStringSemantics _ -> ordinarySource []
     StringTemplateSemantics _ -> ordinarySource []
