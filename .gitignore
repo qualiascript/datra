@@ -8,6 +8,7 @@ datra.iml
 !.hie/bios
 !.hie/ghc
 dist-newstyle/
+dist/
 __pycache__/
 tmp/
 preprint.log
