@@ -115,6 +115,8 @@ canonicalExpressionCandidates expressionValue =
       AtlasMap <$> traverse canonicalExpressionCandidates members
     MapSequence members ->
       MapSequence <$> traverse canonicalExpressionCandidates members
+    ArgumentMap members ->
+      ArgumentMap <$> traverse canonicalExpressionCandidates members
     MapExpansion left right ->
       MapExpansion
         <$> canonicalExpressionCandidates left
@@ -139,6 +141,8 @@ interpretNormalizedExpression expressionValue =
     IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
+    ArgumentMap expressions ->
+      traverse interpretExpressionReason expressions >>= makeArgumentMap
     MapSequence expressions ->
       interpretAtlasMapWith interpretExpressionReason expressions
     MapExpansion left right ->
@@ -203,6 +207,16 @@ interpretNormalizedExpression expressionValue =
       interpretExpressionReason operand >>= booleanNotValue
     Extract operand ->
       interpretExpressionReason operand >>= extractValue
+    Eval source target ->
+      -- Typed eval is a single template interpolation followed by extraction
+      -- of its captured value. It shares canonical decoding, membership
+      -- checks, and the retained specification witness with explicit templates.
+      interpretExpressionReason
+        (MapAccess
+          (Extract
+            (MapSpecification source
+              (StringTemplate [StringTemplateInterpolation target])))
+          (EllipsisNatural 1))
     MapConcatenation left right ->
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->

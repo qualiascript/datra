@@ -120,6 +120,72 @@ Expected output:
 (1; 5)
 ```
 
+### Argument maps
+
+Braces admit every ordering of their arguments. For example, `{b := 8, 2}`
+expands to the alternatives `(b := 8; 2) | (2; b := 8)`. Optional identifiers
+such as `a? : Nat` accept either a named or an unnamed value; they do not make
+the value itself optional.
+
+```sh
+docker run --rm datra-haskell:prod build \
+  --source '{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}' \
+  --ast-output - \
+  --output -
+```
+
+Specification checks every source ordering against the target, preserving
+the supplied order and naming in the result:
+
+```datra
+{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}
+```
+
+`b := 8` canonically renders as `b : 8`. Use `of` instead of `~>` to ask
+whether the source is a subfederation of the target. Unknown names, incompatible
+types, and missing required arguments are rejected. Both `;` and newlines
+also separate arguments; canonical output uses commas when the pages are
+total. Parentheses retain a nested map as one argument, as in `{(1, 2), 3}`.
+Empty and unary braces reduce to `()` and their sole argument respectively.
+
+Argument maps also compose with ordered concatenation. In
+`x : 3, {b : 8, 2} ~> x : 3, {a? : Nat := 2, b? : Nat}`, the `x` component
+stays in place while the brace-enclosed arguments may change order and omit
+names. Specification checks every permitted source ordering and preserves
+the written presentation. Reverse specification (`<~`) and subfederation
+(`of`) use the same local argument-order boundaries.
+
+Argument maps currently enumerate the finite permutations and distribute
+optional-name alternatives, removing identical branches. Large argument
+lists can therefore be expensive.
+
+### Typed evaluation
+
+`eval source, target` decodes canonical text against a target federation and
+returns the captured value with its specification. It uses the same matching
+and extraction machinery as `%(source ~> "%(target)")[1]` (where `source`
+and `target` stand for expressions).
+
+```sh
+./dist/datra-haskell build \
+  --source 'eval "x : 3, (b : 8; 2)", x : 3; {a? : Nat := 2, b? : Nat}' \
+  --ast-output - \
+  --output -
+```
+
+The first comma separates the input expression from the target. Semicolons
+and newlines after that comma belong to the target map, through the end of
+the enclosing expression. Parenthesize `eval` when applying another operator
+to its result:
+
+```datra
+(eval "(b : 8; 2)", {a? : Nat, b? : Nat})[1] * 5
+```
+
+This produces `10`. Optional identifiers, specification, and subfederation
+retain their ordinary semantics. Input must use canonical data spelling:
+`eval "12", Int` succeeds, while `eval "1 + 2", Nat` is rejected.
+
 ### Read and save files
 
 The production container works in `/data`, so Datra's normal defaults are:

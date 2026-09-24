@@ -59,6 +59,7 @@ module DatraTypes
   , simpleIdentifierTypeValue
   , assignIdentifierValues
   , makeAtlasMap
+  , makeArgumentMap
   , makeAtlasExpansion
   , concatenateValues
   , accessValues
@@ -105,6 +106,7 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
+import Evaluation.Arguments (makeArgumentMap)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
   ( CanonicalStringCodec (..)

@@ -62,6 +62,8 @@ accessSource value =
     BooleanForm _ -> ordinarySource []
     NothingForm -> ordinarySource []
     EitherForm _ -> ordinarySource []
+    ArgumentMapForm _ _ -> ordinarySource []
+    FederationSpecificationForm _ _ _ -> ordinarySource []
     RangeConcatenationForm ranges _ ->
       rangeSource (map evaluatedDescribedRange ranges)
     FormulationForm formulation ->
@@ -154,6 +156,7 @@ semanticAccessSource semantics =
     ValuedIntegerRangeSemantics _ _ -> rangeSource []
     IntegerTypeSemantics -> rangeSource []
     EitherSemantics _ _ -> ordinarySource []
+    ArgumentMapSemantics _ _ -> ordinarySource []
     RangeConcatenationSemantics descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
     ConcatenationSemantics members ->

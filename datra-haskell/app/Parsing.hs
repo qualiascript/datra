@@ -33,6 +33,7 @@ import DatraLanguage.AST
       , AsciiStringLiteral
       , StringTemplate
       , AtlasMap
+      , ArgumentMap
       , EllipsisLiteral
       , EllipsisNatural
       , Exponentiation
@@ -67,6 +68,7 @@ import DatraLanguage.AST
       , BooleanOr
       , BooleanNot
       , Extract
+      , Eval
       )
   , StringTemplatePart
       ( StringTemplateInterpolation
@@ -105,6 +107,7 @@ import Text.Megaparsec
   , notFollowedBy
   , runParserT
   , sepEndBy
+  , sepEndBy1
   , sourceColumn
   , sourceLine
   , sourceName
@@ -266,6 +269,7 @@ astForm =
   between (astSymbol "(") (astSymbol ")")
     (choice
       [ astSequence
+      , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
       , astNaturalRangeExpression
       , astIdentifierOperation AST.AssignmentOperator (Just ())
       , astIdentifierOperation AST.IdentifierTypeOperator Nothing
@@ -282,6 +286,7 @@ astForm =
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.ExtractOperator Extract
+      , astBinary AST.EvalOperator Eval
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
@@ -455,19 +460,22 @@ mapSeparator =
 -- outside 'mapExpression' lets identifier operations occupy either side of
 -- @<~@ without making bare identifiers valid general-purpose operands.
 expression :: Parser Expression
-expression = do
-  target <- eitherExpression
+expression = expressionWith mapExpression
+
+expressionWith :: Parser Expression -> Parser Expression
+expressionWith operand = do
+  target <- eitherExpressionWith operand
   maybeSource <-
-    optional (continuedSymbol reverseSpecificationSymbol *> expression)
+    optional (continuedSymbol reverseSpecificationSymbol *> expressionWith operand)
   pure
     (case maybeSource of
       Nothing -> target
       Just source -> MapSpecification source target)
 
-eitherExpression :: Parser Expression
-eitherExpression =
+eitherExpressionWith :: Parser Expression -> Parser Expression
+eitherExpressionWith operand =
   makeExprParser
-    mapExpression
+    operand
     [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
     , [InfixL
         (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
@@ -592,12 +600,45 @@ extractedTermAtom =
 termAtom :: Parser Expression
 termAtom =
   choice
-    [ try parenthesizedReverseSpecification
+    [ evalExpression
+    , argumentMap
+    , try parenthesizedReverseSpecification
     , parenthesizedExpression
     , try conditionalExpression
     , try naturalRangeExpression
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     ]
+
+-- The first unparenthesized comma separates the source from the target.
+-- The target consumes the rest of the enclosing map, including semicolon
+-- and newline components. Parenthesize eval to use its result in an operation.
+evalExpression :: Parser Expression
+evalExpression = do
+  _ <- continuedWordOperator AST.EvalOperator
+  source <- expressionWith
+    (makeExprParser (try identifierOperation <|> rangeExpression)
+      (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators]))
+  _ <- continuedOperator AST.ConcatenationOperator
+  target <- sequenceExpression <$> (expression `sepEndBy1` mapSeparator)
+  pure (Eval source target)
+
+-- Argument maps have the same member separators and empty/unary arity as
+-- parenthesized maps, but admit every permutation of their members.
+argumentMap :: Parser Expression
+argumentMap =
+  ArgumentMap <$>
+    between (symbol "{" <* lineSpaceConsumer)
+      (lineSpaceConsumer *> symbol "}")
+      (argumentExpression `sepEndBy` argumentSeparator)
+  where
+    -- At the brace level commas separate arguments. Parsing a parenthesized
+    -- expression restores ordinary concatenation, preserving nested maps.
+    argumentExpression = expressionWith
+      (makeExprParser (try identifierOperation <|> rangeExpression)
+        (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators]))
+    argumentSeparator =
+      void (continuedOperator AST.ConcatenationOperator)
+        <|> mapSeparator
 
 -- Explicitly parenthesizing both operands makes a reverse specification a
 -- self-contained map operand. This lets @x, (target) <~ (source)@ retain the
@@ -835,7 +876,7 @@ trailingComma =
 
 expressionEnd :: Parser ()
 expressionEnd =
-  void (choice [char ')', char ']', char ';']) <|> eof
+  void (choice [char ')', char ']', char '}', char ';']) <|> eof
 
 -- A postfix range also ends before an operator from the lower-precedence map
 -- layer. Keeping these boundaries separate from 'expressionEnd' avoids

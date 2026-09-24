@@ -64,6 +64,7 @@ data Expression
   | StringType
   | IdentifierValueType
   | AtlasMap [Expression]
+  | ArgumentMap [Expression]
   | MapSequence [Expression]
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
@@ -95,6 +96,7 @@ data Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Extract Expression
+  | Eval Expression Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -123,6 +125,7 @@ data OperatorExpression
   | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
+  | Arguments [OperatorExpression]
   | Expansion OperatorExpression OperatorExpression
   | Range OperatorExpression OperatorExpression
   | RangePlus OperatorExpression
@@ -156,6 +159,7 @@ data OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | ExtractValue OperatorExpression
+  | EvalValue OperatorExpression OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -186,6 +190,8 @@ normalizeExpression StringType = StringType
 normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
+normalizeExpression (ArgumentMap expressions) =
+  normalizeSequence ArgumentMap expressions
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (MapExpansion left right) =
@@ -247,6 +253,8 @@ normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
 normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
+normalizeExpression (Eval source target) =
+  Eval (normalizeExpression source) (normalizeExpression target)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -325,6 +333,7 @@ lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
+lower (ArgumentMap expressions) = Arguments (map lower expressions)
 lower (MapSequence expressions) = Sequential (map lower expressions)
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
@@ -364,6 +373,7 @@ lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
+lower (Eval source target) = EvalValue (lower source) (lower target)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -432,6 +442,8 @@ prettyOperator (Sequential []) = "()"
 prettyOperator (Sequential [expressionValue]) = prettyOperator expressionValue
 prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator expressions)
+prettyOperator (Arguments expressions) =
+  prettyForm "{}" (map prettyOperator expressions)
 prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
 prettyOperator (Range lowerBound upperBound) =
@@ -512,6 +524,8 @@ prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
 prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
+prettyOperator (EvalValue source target) =
+  prettyBinary EvalOperator source target
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =

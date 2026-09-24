@@ -44,6 +44,27 @@ decideFederationConcatenation
 decideFederationConcatenation _
     (PrimitiveAtlasMapFederation (EitherAtlasMapFederation _)) =
   AtlasMapFederationProved ()
+-- Reassociation preserves already checked concatenations. Check the new
+-- operand against both components instead of treating the retained tree as
+-- an unknown primitive federation.
+decideFederationConcatenation left
+    (ConcatenatedAtlasMapFederation first second) =
+  case decideFederationConcatenation left first of
+    AtlasMapFederationProved () -> decideFederationConcatenation left second
+    rejection -> rejection
+decideFederationConcatenation
+    (ConcatenatedAtlasMapFederation first second) right =
+  case decideFederationConcatenation first right of
+    AtlasMapFederationProved () -> decideFederationConcatenation second right
+    rejection -> rejection
+-- Distinct identifier families occupy disjoint named positions. This also
+-- makes a sequence's canonical comma spelling interpretable when nested.
+decideFederationConcatenation
+    (PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation left))
+    (PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation right))
+  | not (identifierDependenciesCompatible
+      (evaluatedIdentifierDependency left)
+      (evaluatedIdentifierDependency right)) = AtlasMapFederationProved ()
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation
       (NaturalRangeAtlasMapFederation

@@ -166,6 +166,10 @@ prettyNonKeywordCanonicalResult result =
       prettyAssignment identifierString typeAnnotation givenValue
     CanonicalMap cardinality components ->
       prettyMap cardinality components
+    CanonicalArgumentMap totalPages components ->
+      let separator = if totalPages then ", " else "; "
+      in "{" <> concatWith (\left right -> left <> separator <> right)
+        (map prettyArgumentMember components) <> "}"
     CanonicalSpecification source target ->
       case (source, target) of
         ( CanonicalIdentifierType sourceString givenValue
@@ -187,6 +191,15 @@ prettyConcatenationMember :: CanonicalResult -> Doc annotation
 prettyConcatenationMember member@CanonicalSpecification {} =
   parens (prettyCanonicalResult member)
 prettyConcatenationMember member = prettyCanonicalResult member
+
+-- A nested concatenation is one argument, rather than additional arguments
+-- at the enclosing brace level. Specifications also need their own boundary.
+prettyArgumentMember :: CanonicalResult -> Doc annotation
+prettyArgumentMember member@CanonicalConcatenation {} =
+  parens (prettyCanonicalResult member)
+prettyArgumentMember member@CanonicalRangeConcatenation {} =
+  parens (prettyCanonicalResult member)
+prettyArgumentMember member = prettyConcatenationMember member
 
 canonicalStringTemplateParts
   :: CanonicalResult

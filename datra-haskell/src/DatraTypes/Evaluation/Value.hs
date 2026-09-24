@@ -254,6 +254,9 @@ data ValueForm
   | IntegerRangeForm EvaluatedIntegerRange
   | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
   | EitherForm EvaluatedEither
+  | ArgumentMapForm [InterpretedValue] InterpretedValue
+  | FederationSpecificationForm
+      InterpretedValue InterpretedValue [InterpretedValue]
   | RangeConcatenationForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
@@ -359,6 +362,7 @@ data ValueSemantics
       , assignmentGivenValue :: ValueSemantics
       }
   | MapSemantics Natural [ValueSemantics]
+  | ArgumentMapSemantics Bool [ValueSemantics]
   | SpecificationSemantics ValueSemantics ValueSemantics
 
 -- | A normalized, source-independent presentation of an evaluated value.
@@ -394,6 +398,7 @@ data CanonicalResult
       , canonicalAssignmentGivenValue :: CanonicalResult
       }
   | CanonicalMap Natural [CanonicalResult]
+  | CanonicalArgumentMap Bool [CanonicalResult]
   | CanonicalSpecification CanonicalResult CanonicalResult
   deriving (Eq, Show)
 
@@ -509,6 +514,8 @@ canonicalResult semantics =
         (canonicalResult givenValue)
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map canonicalResult components)
+    ArgumentMapSemantics totalPages members ->
+      CanonicalArgumentMap totalPages (map canonicalResult members)
     SpecificationSemantics source target ->
       canonicalSpecificationResult
         (canonicalResult source)
@@ -601,6 +608,8 @@ interpretedValueKind value =
     IntegerRangeForm _ -> RangeValueKind
     ValuedIntegerRangeForm _ -> RangeValueKind
     EitherForm _ -> EitherValueKind
+    ArgumentMapForm _ _ -> MapValueKind
+    FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
     StringTypeForm -> AsciiStringValueKind

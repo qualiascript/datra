@@ -25,12 +25,14 @@ import Evaluation.Error
   )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Identifier (simpleIdentifierTypeValue)
+import Evaluation.Map (concatenateValues)
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.String (federationUsesWeakToString)
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   )
 import Evaluation.Value
+import Evaluation.Arguments (argumentAlternatives)
 
 specifyValues
   :: InterpretedValue
@@ -57,11 +59,78 @@ specifyValuesWithoutIdentity source target =
           })
     Nothing ->
       case interpretedForm source of
+        ArgumentMapForm _ underlying ->
+          specifyFamily source (argumentAlternatives underlying) target
+        EitherForm _
+          | Nothing <- concreteOptionalAssignmentSource source ->
+              specifyFamily source (argumentAlternatives source) target
+        FederationSpecificationForm originalSource previousTarget branches ->
+          case decideValueSubfederation previousTarget target of
+            DecisionProved () -> specifyFamily originalSource branches target
+            DecisionRefuted ->
+              Left (AtlasMapFederationOperationRefuted
+                AtlasMapFederationSubfederationHasMissingMember)
+            DecisionUndecidable ->
+              Left (AtlasMapFederationOperationUndecidable
+                (NoAtlasMapFederationDecisionProcedure
+                  AtlasMapFederationSubfederation))
         SpecificationForm specification ->
           widenSpecification source specification target
         AssignmentForm specification ->
           widenSpecification source specification target
+        ConcatenatedMapForm _ _ -> do
+          presentations <- concatenatedSourcePresentations source
+          case presentations of
+            Just branches -> specifyFamily source branches target
+            Nothing -> specifyTotalAtlasMap source target
         _ -> specifyTotalAtlasMap source target
+
+-- Concatenation preserves each operand's family of presentations. Distribute
+-- finite alternatives through its retained tree before requiring a total
+-- source, then certify every resulting concatenation against the target.
+-- Nothing means no distribution is needed, so ordinary non-total operands
+-- still follow the existing total-source check rather than recurring here.
+concatenatedSourcePresentations
+  :: InterpretedValue
+  -> Either InterpretingError (Maybe [InterpretedValue])
+concatenatedSourcePresentations value =
+  case interpretedForm value of
+    ArgumentMapForm _ underlying ->
+      Right (Just (argumentAlternatives underlying))
+    EitherForm _
+      | Nothing <- concreteOptionalAssignmentSource value ->
+          Right (Just (argumentAlternatives value))
+    ConcatenatedMapForm left right -> do
+      leftPresentations <- concatenatedSourcePresentations left
+      rightPresentations <- concatenatedSourcePresentations right
+      case (leftPresentations, rightPresentations) of
+        (Nothing, Nothing) -> Right Nothing
+        _ -> Just <$> sequence
+          [ concatenateValues leftSource rightSource
+          | leftSource <- maybe [left] id leftPresentations
+          , rightSource <- maybe [right] id rightPresentations
+          ]
+    _ -> Right Nothing
+
+-- Lift specification over a finite family of concrete presentations. Every
+-- source branch must select a target member; no order is silently discarded.
+-- The displayed source stays intact, including its names and original order.
+specifyFamily
+  :: InterpretedValue
+  -> [InterpretedValue]
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyFamily source branches target = do
+  specified <- traverse (`specifyValues` target) branches
+  pure
+    (makeInterpretedValue
+      (FederationSpecificationForm source target specified)
+      NoInsertion
+      emptyInterpretedMap
+      (interpretedAtlasMapFederation target)
+      NonTotalInterpretedMap
+      (SpecificationSemantics
+        (interpretedSemantics source) (interpretedSemantics target)))
 
 identifierStringMismatch
   :: InterpretedValue
@@ -228,13 +297,22 @@ widenSpecification source specification target =
           (evaluatedSpecificationTarget specification)
           target of
         DecisionProved () ->
-          Right
-            (specifiedValue
-              (evaluatedSpecificationSourceValue specification)
-              (evaluatedSpecificationSource specification)
-              (originalSpecificationSourceSemantics source)
-              target
-              (evaluatedSpecificationMember specification))
+          -- Inclusion certifies widening, but the selection route can change
+          -- when the new target lists argument permutations differently.
+          case selectFederationMember
+              (evaluatedSpecificationSourceValue specification) target of
+            DecisionProved member ->
+              Right
+                (specifiedValue
+                  (evaluatedSpecificationSourceValue specification)
+                  (evaluatedSpecificationSource specification)
+                  (originalSpecificationSourceSemantics source)
+                  target
+                  member)
+            _ ->
+              Left (AtlasMapFederationOperationUndecidable
+                (NoAtlasMapFederationDecisionProcedure
+                  AtlasMapFederationSpecification))
         DecisionRefuted ->
           Left
             (AtlasMapFederationOperationRefuted
