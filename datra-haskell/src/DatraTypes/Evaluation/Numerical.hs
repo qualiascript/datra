@@ -194,7 +194,7 @@ numericalSpecification
   -> Maybe (ValueSemantics, ValueSemantics)
 numericalSpecification semantics =
   case semantics of
-    IdentifierTypeSemantics _ underlying True ->
+    DependentIdentifierTypeSemantics _ underlying True ->
       Just (underlying, underlying)
     AssignmentSemantics _ target source -> Just (source, target)
     SpecificationSemantics source target -> Just (source, target)
@@ -214,7 +214,7 @@ isValuedNumericalTarget semantics =
     ValuedIntegerRangeSemantics _ _ -> True
     IntegerTypeSemantics -> True
     MapSemantics 0 [] -> True
-    IdentifierTypeSemantics _ underlying True ->
+    DependentIdentifierTypeSemantics _ underlying True ->
       isValuedNumericalTarget underlying
     AssignmentSemantics _ target _ -> isValuedNumericalTarget target
     SpecificationSemantics _ target -> isValuedNumericalTarget target

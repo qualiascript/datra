@@ -108,7 +108,7 @@ accessSource value =
     StringTemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
-    IdentifierTypeForm _ -> ordinarySource []
+    DependentIdentifierTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
     ExplicitForm explicitValue ->
       let (level, ordinalValue) = explicitOrdinal explicitValue
@@ -178,7 +178,7 @@ semanticAccessSource semantics =
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
-    IdentifierTypeSemantics _ _ _ -> ordinarySource []
+    DependentIdentifierTypeSemantics _ _ _ -> ordinarySource []
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
   where

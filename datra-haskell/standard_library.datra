@@ -38,6 +38,6 @@ do := (
   ("begin $Block yield $Expr" as (AST, AST -> AST) external "datra.syntax.do")
 )
 let : "$Expr" as (AST -> AST) := external "datra.syntax.let"
-eval : "$Expr at $Pages" as (AST, AST -> AST) := external "datra.syntax.eval"
+_eval : "$Expr at $Pages" as (AST, AST -> AST) := external "datra.syntax.eval"
 
 yield this

@@ -91,7 +91,6 @@ reservedIdentifierStrings =
       , BooleanAndOperator
       , BooleanOrOperator
       , BooleanNotOperator
-      , EvalOperator
       , AssertOperator
       , BeginOperator
       , LetOperator

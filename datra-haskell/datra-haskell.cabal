@@ -86,7 +86,7 @@ library
         ValuedIntegerRange
         IntegerType
         IdentifierValueType
-        IdentifierType
+        DependentIdentifierType
         SimpleIdentifierType
         AtlasMapFederation
         AtlasMapFederationExpression
@@ -216,6 +216,7 @@ library
         Evaluation.Numerical
         Evaluation.Optional
         Evaluation.Overload
+        Evaluation.CanonicalType
         Evaluation.Range
         Evaluation.Specification
         Evaluation.Specification.Composition

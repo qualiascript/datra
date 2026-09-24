@@ -91,37 +91,25 @@ regressionTests = do
     , Overload (natural 1) (natural 2)
     , External (AsciiStringLiteral "datra.add")
     ]
-  assertAstOutput "eval consumes a semicolon-separated target"
-    "eval \"x : 3, (b : 8; 2)\" at x : 3; {a? : Nat := 2, b? : Nat}"
-    (Eval (AsciiStringLiteral "x : 3, (b : 8; 2)")
-      (AtlasMap
-        [ AST.identifierType "x" (natural 3)
-        , ArgumentMap
-            [ EitherType (AST.assignment "a" (ref "Nat") (natural 2)) (ref "Nat")
-            , EitherType (AST.identifierType "b" (ref "Nat")) (ref "Nat")
-            ]
-        ]))
-  assertAstOutput "eval consumes newline-separated target components"
-    "eval \"(1; 2)\" at Nat\nNat"
-    (Eval (AsciiStringLiteral "(1; 2)") (AtlasMap [ref "Nat", ref "Nat"]))
-  assertAstOutput "parentheses delimit eval before access and arithmetic"
-    "(eval \"(b : 8; 2)\" at {a? : Nat, b? : Nat})[1] * 5"
-    (Multiplication
-      (MapAccess
-        (Eval (AsciiStringLiteral "(b : 8; 2)")
-          (ArgumentMap
-            [ EitherType (AST.identifierType "a" (ref "Nat")) (ref "Nat")
-            , EitherType (AST.identifierType "b" (ref "Nat")) (ref "Nat")]))
-        (natural 1)) (natural 5))
-  assertAstOutput "eval accepts a computed parenthesized source"
-    "eval (\"1\", \"2\") at Int"
-    (Eval (MapConcatenation (AsciiStringLiteral "1") (AsciiStringLiteral "2")) (ref "Int"))
-  assertRejected "eval requires its source-target at keyword" "eval \"2\" Nat"
-  assertRejected "eval requires a target" "eval \"2\" at"
-  assertRejected "eval requires a source" "eval at Nat"
-  assertRejected "eval is reserved as a bare identifier" "eval : Nat"
-  assertAstOutput "eval keyword respects identifier boundaries"
-    "evaluate : Nat" (AST.identifierType "evaluate" (ref "Nat"))
+  assertAstRoundTrip "internal eval AST remains serializable"
+    (renderExpression
+      (Eval
+        (AsciiStringLiteral "x : 3, (b : 8; 2)")
+        (AtlasMap
+          [ AST.dependentIdentifierType "x" (natural 3)
+          , ArgumentMap
+              [ EitherType
+                  (AST.assignment "a" (ref "Nat") (natural 2))
+                  (ref "Nat")
+              , EitherType
+                  (AST.dependentIdentifierType "b" (ref "Nat"))
+                  (ref "Nat")
+              ]
+          ])))
+  assertAstOutput "eval is available as an ordinary user identifier"
+    "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
+  assertAstOutput "eval identifier respects identifier boundaries"
+    "evaluate : Nat" (AST.dependentIdentifierType "evaluate" (ref "Nat"))
   assertAstOutput "argument map uses existing map arity"
     "{b := 8; 2}"
     (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
@@ -140,18 +128,18 @@ regressionTests = do
   assertParsed "argument map AST round trip"
     "{a? : Nat; b? : String}"
     (ArgumentMap
-      [EitherType (AST.identifierType "a" (ref "Nat")) (ref "Nat")
-      ,EitherType (AST.identifierType "b" (ref "String")) (ref "String")])
+      [EitherType (AST.dependentIdentifierType "a" (ref "Nat")) (ref "Nat")
+      ,EitherType (AST.dependentIdentifierType "b" (ref "String")) (ref "String")])
   let block = Begin
-        [AST.identifierType "a" (Multiplication (natural 2) (natural 3)), AST.identifierType "b" (natural 5)]
+        [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x : 10 yield x"
-    (Begin [Let (AST.identifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
+    (Begin [Let (AST.dependentIdentifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
-    (MapConcatenation (Begin [AST.identifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
+    (MapConcatenation (Begin [AST.dependentIdentifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
   assertRejected "let requires a block" "let x : 1"
   assertRejected "begin requires yield" "begin x : 1"
@@ -177,7 +165,7 @@ regressionTests = do
     "%String[0]"
     (MapAccess (Extract (ref "String")) (natural 0))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
-    (name <> " : Nat") (AST.identifierType name (ref "Nat")))
+    (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
     ["Nat", "Int", "String", "Iden", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
@@ -240,11 +228,11 @@ regressionTests = do
     (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
       [natural 2, IdentifierReference (IdentifierString "to"), natural 5])
   assertParsed "the range library binding is an ordinary name" "range : Nat"
-    (AST.identifierType "range" (ref "Nat"))
+    (AST.dependentIdentifierType "range" (ref "Nat"))
   assertAstOutput
     "the former valued-range prefix is available as an identifier"
     "within : Nat"
-    (AST.identifierType "within" (ref "Nat"))
+    (AST.dependentIdentifierType "within" (ref "Nat"))
   assertAstOutput
     "Nat library reference"
     "Nat"
@@ -329,32 +317,32 @@ regressionTests = do
     "optional identifier slot"
     "a? : Nat"
     (AST.eitherType
-      (AST.identifierType "a" (ref "Nat"))
+      (AST.dependentIdentifierType "a" (ref "Nat"))
       (ref "Nat"))
   assertParsed "ordinary library names can name fields" "String : Nat"
-    (AST.identifierType "String" (ref "Nat"))
+    (AST.dependentIdentifierType "String" (ref "Nat"))
   assertAstOutput
     "reserved names can be full-string identifier expressions"
     "\"String\" : Nat"
-    (AST.identifierType "String" (ref "Nat"))
+    (AST.dependentIdentifierType "String" (ref "Nat"))
   assertAstOutput
     "contextual range words remain bare identifier expressions"
     "to : Nat"
-    (AST.identifierType "to" (ref "Nat"))
+    (AST.dependentIdentifierType "to" (ref "Nat"))
   assertAstOutput
     "contextual range directions remain bare identifier expressions"
     "(upwards : Nat; downwards : Nat)"
-    (AST.identifierType "upwards" (ref "Nat")
-      <:> AST.identifierType "downwards" (ref "Nat"))
+    (AST.dependentIdentifierType "upwards" (ref "Nat")
+      <:> AST.dependentIdentifierType "downwards" (ref "Nat"))
   assertAstOutput
     "uppercase built-in names remain bare identifier expressions"
     "False : Nat"
-    (AST.identifierType "False" (ref "Nat"))
+    (AST.dependentIdentifierType "False" (ref "Nat"))
   assertAstOutput
     "full-string identifier expressions compose with optional syntax"
     "\"Abc\"? : Nat"
     (AST.eitherType
-      (AST.identifierType "Abc" (ref "Nat"))
+      (AST.dependentIdentifierType "Abc" (ref "Nat"))
       (ref "Nat"))
   assertAstOutput
     "optional assigned identifier slot"
@@ -365,10 +353,10 @@ regressionTests = do
   let optionalIntegerSlots =
         MapConcatenation
           (AST.eitherType
-            (AST.identifierType "a" (ref "Int"))
+            (AST.dependentIdentifierType "a" (ref "Int"))
             (ref "Int"))
           (AST.eitherType
-            (AST.identifierType "b" (ref "Int"))
+            (AST.dependentIdentifierType "b" (ref "Int"))
             (ref "Int"))
       integerPair = MapConcatenation (natural 12) (natural 23)
   assertAstOutput
@@ -400,10 +388,10 @@ regressionTests = do
         (AST.assignment "b" (natural 5) (natural 5)))
       (MapConcatenation
         (AST.eitherType
-          (AST.identifierType "a" (ref "Int"))
+          (AST.dependentIdentifierType "a" (ref "Int"))
           (ref "Int"))
         (AST.eitherType
-          (AST.identifierType "b" (fromTo 3 8))
+          (AST.dependentIdentifierType "b" (fromTo 3 8))
           (fromTo 3 8))))
   let optionalAssigned identifierString value =
         AST.eitherType
@@ -412,7 +400,7 @@ regressionTests = do
           (ref "Int")
       optionalIdentifier identifierString =
         AST.eitherType
-          (AST.identifierType identifierString (ref "Int"))
+          (AST.dependentIdentifierType identifierString (ref "Int"))
           (ref "Int")
   assertAstOutput
     "parenthesized reverse specification stays in its concatenation slot"
@@ -512,13 +500,13 @@ regressionTests = do
   assertAstOutput
     "simple identifier type"
     "x : Nat"
-    (AST.identifierType "x" (ref "Nat"))
+    (AST.dependentIdentifierType "x" (ref "Nat"))
   assertAstOutput
     "unit identifier equals its identifier string"
     "$Value = (Value : ())"
     (AST.equal
       (AST.asciiString "Value")
-      (AST.identifierType "Value" AST.emptyMap))
+      (AST.dependentIdentifierType "Value" AST.emptyMap))
   assertAstOutput
     "full identifier assignment"
     "x : Nat := 5"
@@ -527,13 +515,13 @@ regressionTests = do
     "assignment specified into its identifier target"
     "(a : Nat := 5) ~> (a : Nat)"
     ( AST.assignment "a" (ref "Nat") (natural 5)
-        ~> AST.identifierType "a" (ref "Nat")
+        ~> AST.dependentIdentifierType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse specification between different identifier strings"
     "(a : Nat) <~ (b := 10)"
     ( AST.assignment "b" (natural 10) (natural 10)
-        ~> AST.identifierType "a" (ref "Nat")
+        ~> AST.dependentIdentifierType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
@@ -544,7 +532,7 @@ regressionTests = do
     ( AST.assignment "d" (natural 28) (natural 28)
         ~> AST.assignment "d" (fromTo 25 35) (natural 28)
         ~> AST.assignment "d" (fromTo 20 40) (natural 28)
-        ~> AST.identifierType "d" (fromTo 0 100)
+        ~> AST.dependentIdentifierType "d" (fromTo 0 100)
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
@@ -560,7 +548,7 @@ regressionTests = do
           "d"
           (rangeTo 12 85)
           (natural 23 <..> natural 66)
-        ~> AST.identifierType "d" (rangeTo 10 100)
+        ~> AST.dependentIdentifierType "d" (rangeTo 10 100)
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
@@ -568,8 +556,8 @@ regressionTests = do
         <> "(x : from 5 to 20) <~ (x := 8)"
     )
     ( AST.assignment "x" (natural 8) (natural 8)
-        ~> AST.identifierType "x" (fromTo 5 20)
-        ~> AST.identifierType "x" (fromTo 1 10)
+        ~> AST.dependentIdentifierType "x" (fromTo 5 20)
+        ~> AST.dependentIdentifierType "x" (fromTo 1 10)
     )
   assertAstOutput
     "binary identifier assignment"
@@ -590,11 +578,11 @@ regressionTests = do
   assertAstOutput
     "accessing an identifier operation requires grouping"
     "(x : Nat) @ 0"
-    (AST.identifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the identifier map view"
     "(x : Nat)[0]"
-    (AST.identifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the assignment specification view"
     "(x : Nat := 5)[1]"
@@ -602,27 +590,27 @@ regressionTests = do
   assertAstOutput
     "unparenthesized access belongs to the identifier type operand"
     "x : Nat @ 0"
-    (AST.identifierType "x" (ref "Nat" <@> natural 0))
+    (AST.dependentIdentifierType "x" (ref "Nat" <@> natural 0))
   assertAstOutput
     "identifier arithmetic operands compose without grouping"
     "x : 5 + y : 10 = 15"
     (AST.equal
       ((AST.+)
-        (AST.identifierType "x" (natural 5))
-        (AST.identifierType "y" (natural 10)))
+        (AST.dependentIdentifierType "x" (natural 5))
+        (AST.dependentIdentifierType "y" (natural 10)))
       (natural 15))
   assertAstOutput
     "transfinite identifier arithmetic preserves precedence"
     "x : ...^2 + y : 1 = ...^2 + 1"
     (AST.equal
       ((AST.+)
-        (AST.identifierType "x" ((AST.^) (...) (natural 2)))
-        (AST.identifierType "y" (natural 1)))
+        (AST.dependentIdentifierType "x" ((AST.^) (...) (natural 2)))
+        (AST.dependentIdentifierType "y" (natural 1)))
       ((AST.+) ((AST.^) (...) (natural 2)) (natural 1)))
   assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
-    (AST.identifierType "A_0'z" (ref "Nat"))
+    (AST.dependentIdentifierType "A_0'z" (ref "Nat"))
   assertRejected
     "identifier operations reject expression left sides"
     "(2 + 2) : Nat := 4"
@@ -1379,8 +1367,8 @@ assertResourceEnvelopes = do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail message)
-    [ ("a : 6\nyield a", Program [AST.identifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
-    , ("begin a : 6", Program [AST.identifierType "a" (natural 6)] (AtlasMap []))
+    [ ("a : 6\nyield a", Program [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    , ("begin a : 6", Program [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
     , ("", Program [] (AtlasMap []))
     ]
   where

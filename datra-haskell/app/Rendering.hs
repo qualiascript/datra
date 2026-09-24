@@ -169,18 +169,18 @@ prettyNonKeywordCanonicalResult result =
               compactCanonicalStringInterpolation
               parts)
         Nothing -> prettyCanonicalResult template
-    CanonicalIdentifierType identifierString typeAnnotation ->
+    CanonicalSimpleIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettySourceSymbol DependentIdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalDependentIdentifierType familyKey typeAnnotation ->
       pretty (renderIdentifierString familyKey)
-        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettySourceSymbol DependentIdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
         (pretty (renderIdentifierString familyKey)
-          <+> prettySourceSymbol IdentifierTypeOperator
+          <+> prettySourceSymbol DependentIdentifierTypeOperator
           <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
         <+> "0"
@@ -194,13 +194,13 @@ prettyNonKeywordCanonicalResult result =
         (map prettyArgumentMember components) <> "}"
     CanonicalSpecification source target ->
       case (source, target) of
-        ( CanonicalIdentifierType sourceString givenValue
-          , CanonicalIdentifierType targetString typeAnnotation
+        ( CanonicalSimpleIdentifierType sourceString givenValue
+          , CanonicalSimpleIdentifierType targetString typeAnnotation
           )
           | sourceString == targetString ->
               prettyAssignment sourceString typeAnnotation givenValue
         ( CanonicalAssignment sourceString sourceType givenValue
-          , CanonicalIdentifierType targetString typeAnnotation
+          , CanonicalSimpleIdentifierType targetString typeAnnotation
           )
           | sourceString == targetString && sourceType == givenValue ->
               prettyAssignment sourceString typeAnnotation givenValue
@@ -321,12 +321,12 @@ optionalIdentifierParts
   -> Maybe (Doc annotation)
 optionalIdentifierParts left right =
   case left of
-    CanonicalIdentifierType identifierString typeAnnotation
+    CanonicalSimpleIdentifierType identifierString typeAnnotation
       | typeAnnotation == right ->
           Just
             (pretty (renderIdentifierString identifierString)
               <> prettySourceSymbol OptionalOperator
-              <+> prettySourceSymbol IdentifierTypeOperator
+              <+> prettySourceSymbol DependentIdentifierTypeOperator
               <+> prettyCanonicalResult typeAnnotation)
     CanonicalAssignment identifierString typeAnnotation givenValue
       | typeAnnotation == right ->
@@ -335,10 +335,10 @@ optionalIdentifierParts left right =
               <> prettySourceSymbol OptionalOperator
               <+> if typeAnnotation == givenValue
                 then
-                  prettySourceSymbol IdentifierTypeOperator
+                  prettySourceSymbol DependentIdentifierTypeOperator
                     <+> prettyCanonicalResult givenValue
                 else
-                  prettySourceSymbol IdentifierTypeOperator
+                  prettySourceSymbol DependentIdentifierTypeOperator
                     <+> prettyCanonicalResult typeAnnotation
                     <+> prettySourceSymbol AssignmentOperator
                     <+> prettyCanonicalResult givenValue)
@@ -381,11 +381,11 @@ prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettySourceSymbol DependentIdentifierTypeOperator
         <+> prettyCanonicalResult givenValue
     else
       pretty (renderIdentifierString identifierString)
-        <+> prettySourceSymbol IdentifierTypeOperator
+        <+> prettySourceSymbol DependentIdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
         <+> prettySourceSymbol AssignmentOperator
         <+> prettyCanonicalResult givenValue

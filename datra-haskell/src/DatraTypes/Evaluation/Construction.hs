@@ -45,6 +45,7 @@ makeInteger integer
         let semantics = IntegerSemantics integer
             value =
               makeSingletonInterpretedValue
+                structuralCanonicalType
                 (IntegerForm integer)
                 (ValidInsertion (eraseSuperEllipsisInsertion valueInsertion))
                 (singletonMap semantics value)
@@ -73,6 +74,7 @@ makeAsciiString characters = value
         [semantics]
     value =
       makeSingletonInterpretedValue
+        structuralCanonicalType
         (AsciiStringForm characters)
         NoInsertion
         valueMap
@@ -83,6 +85,7 @@ makeAsciiString characters = value
 makeStringType :: InterpretedValue
 makeStringType =
   makeInterpretedValue
+    structuralCanonicalType
     StringTypeForm
     NoInsertion
     emptyInterpretedMap
@@ -94,6 +97,7 @@ makeStringType =
 makeIdentifierValueType :: InterpretedValue
 makeIdentifierValueType =
   makeInterpretedValue
+    structuralCanonicalType
     IdentifierValueTypeForm
     NoInsertion
     emptyInterpretedMap
@@ -120,6 +124,7 @@ explicitInterpretedValue explicitValue = value
     valueMap = singletonMap semantics value
     value =
       makeSingletonInterpretedValue
+        structuralCanonicalType
         (ExplicitForm explicitValue)
         (ValidInsertion insertion)
         valueMap
@@ -140,6 +145,7 @@ makeFormulation level = value
     valueMap = InterpretedMap 1 values [semantics]
     value =
       makeSingletonInterpretedValue
+        structuralCanonicalType
         (FormulationForm formulation)
         (ValidInsertion insertion)
         valueMap
@@ -170,12 +176,13 @@ makeNothing = value
   where
     unitSemantics = MapSemantics 0 []
     semantics =
-      IdentifierTypeSemantics
+      DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency "Nothing")
         unitSemantics
         True
     value =
       makeSingletonInterpretedValue
+        structuralCanonicalType
         NothingForm
         NoInsertion
         emptyInterpretedMap

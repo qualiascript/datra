@@ -38,7 +38,7 @@ data Operator
   | SpecificationOperator
   | OverloadOperator
   | ReverseOverloadOperator
-  | IdentifierTypeOperator
+  | DependentIdentifierTypeOperator
   | AssignmentOperator
   deriving (Eq, Show)
 
@@ -75,7 +75,7 @@ operatorCanonicalSymbol AccessOperator = "<@>"
 operatorCanonicalSymbol SpecificationOperator = "~>"
 operatorCanonicalSymbol OverloadOperator = "<<"
 operatorCanonicalSymbol ReverseOverloadOperator = ">>"
-operatorCanonicalSymbol IdentifierTypeOperator = ":"
+operatorCanonicalSymbol DependentIdentifierTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
 -- | Concrete source spelling, when an operator is represented by one token.
@@ -112,7 +112,7 @@ operatorSourceSymbol AccessOperator = Just "@"
 operatorSourceSymbol SpecificationOperator = Just "~>"
 operatorSourceSymbol OverloadOperator = Just "<<"
 operatorSourceSymbol ReverseOverloadOperator = Just ">>"
-operatorSourceSymbol IdentifierTypeOperator = Just ":"
+operatorSourceSymbol DependentIdentifierTypeOperator = Just ":"
 operatorSourceSymbol AssignmentOperator = Just ":="
 
 ellipsisSymbol :: String

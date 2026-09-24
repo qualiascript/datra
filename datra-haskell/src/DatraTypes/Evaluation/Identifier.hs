@@ -1,6 +1,6 @@
 -- | Evaluated dependent and constant identifier types.
 module Evaluation.Identifier
-  ( identifierTypeValue
+  ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
   , identifierStringProjectionValue
   ) where
@@ -14,13 +14,13 @@ import AtlasMapFederationExpression
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Value
 
-identifierTypeValue
+dependentIdentifierTypeValue
   :: String
   -> (CanonicalResult -> String)
   -> InterpretedValue
   -> InterpretedValue
-identifierTypeValue familyKey identifierStringFor =
-  makeIdentifierTypeValue
+dependentIdentifierTypeValue familyKey identifierStringFor =
+  makeDependentIdentifierTypeValue
     (DependentIdentifierDependency familyKey identifierStringFor)
 
 simpleIdentifierTypeValue
@@ -31,12 +31,12 @@ simpleIdentifierTypeValue identifierString underlying
   | interpretedCanonicalResult underlying == CanonicalMap 0 [] =
       makeAsciiString identifierString
   | otherwise =
-      makeIdentifierTypeValue
+      makeDependentIdentifierTypeValue
         (SimpleIdentifierDependency identifierString)
         underlying
 
 identifierStringProjectionValue
-  :: EvaluatedIdentifierType
+  :: EvaluatedDependentIdentifierType
   -> InterpretedValue
 identifierStringProjectionValue evaluated = value
   where
@@ -59,19 +59,22 @@ identifierStringProjectionValue evaluated = value
         { interpretedMapComponents = [semantics] }
     value =
       makeEvaluatedIdentifierValue
+        (if isTotal
+          then structuralCanonicalType
+          else weakStructuralCanonicalType)
         (IdentifierStringProjectionForm evaluated)
         (IdentifierStringProjectionAtlasMapFederation evaluated)
         underlying
         resultMap
         semantics
 
-makeIdentifierTypeValue
+makeDependentIdentifierTypeValue
   :: IdentifierDependency
   -> InterpretedValue
   -> InterpretedValue
-makeIdentifierTypeValue dependency underlying = value
+makeDependentIdentifierTypeValue dependency underlying = value
   where
-    evaluated = EvaluatedIdentifierType dependency underlying
+    evaluated = EvaluatedDependentIdentifierType dependency underlying
     underlyingResult = interpretedCanonicalResult underlying
     isTotal = interpretedValueHasTotalMap underlying
     representativeString =
@@ -84,7 +87,7 @@ makeIdentifierTypeValue dependency underlying = value
         (singletonOrdinalOrderedValues identifierStringValue)
         (singletonOrdinalOrderedValues underlying)
     semantics =
-      IdentifierTypeSemantics
+      DependentIdentifierTypeSemantics
         dependency
         (interpretedSemantics underlying)
         isTotal
@@ -97,24 +100,37 @@ makeIdentifierTypeValue dependency underlying = value
         ]
     value =
       makeEvaluatedIdentifierValue
-        (IdentifierTypeForm evaluated)
-        (IdentifierTypeAtlasMapFederation evaluated)
+        canonicalType
+        (DependentIdentifierTypeForm evaluated)
+        (DependentIdentifierTypeAtlasMapFederation evaluated)
         underlying
         valueMap
         semantics
+    canonicalType
+      | isTotal = structuralCanonicalType
+      | otherwise =
+          case dependency of
+            SimpleIdentifierDependency _ ->
+              structuralCanonicalTypeWith
+                (canonicalStringRepresentation
+                  (interpretedCanonicalType underlying))
+            DependentIdentifierDependency {} ->
+              weakStructuralCanonicalType
 
 -- | Identifier types and their string projections preserve the totality of
 -- the underlying value. This is also the exact boundary between their
 -- singleton and primitive federation representations.
 makeEvaluatedIdentifierValue
-  :: ValueForm
+  :: CanonicalType
+  -> ValueForm
   -> InterpretedAtlasMapFederationPrimitive
   -> InterpretedValue
   -> InterpretedMap
   -> ValueSemantics
   -> InterpretedValue
-makeEvaluatedIdentifierValue form primitive underlying valueMap semantics =
+makeEvaluatedIdentifierValue canonicalType form primitive underlying valueMap semantics =
   makeInterpretedValue
+    canonicalType
     form
     NoInsertion
     valueMap

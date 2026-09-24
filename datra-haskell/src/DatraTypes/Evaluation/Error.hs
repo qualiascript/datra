@@ -29,7 +29,7 @@ data InterpretedValueKind
   | RangeValueKind
   | RangeConcatenationValueKind
   | AsciiStringValueKind
-  | IdentifierTypeValueKind
+  | DependentIdentifierTypeValueKind
   | MapValueKind
   | SpecificationValueKind
   deriving (Eq, Show)

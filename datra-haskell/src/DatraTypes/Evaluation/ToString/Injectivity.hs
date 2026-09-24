@@ -63,13 +63,13 @@ stringConversionProperties semantics =
         (stringConversionProperties right)
     RangeConcatenationSemantics {} -> injectiveUnknownAlphabet
     ConcatenationSemantics members -> compositeProperties members
-    IdentifierTypeSemantics dependency underlying True
+    DependentIdentifierTypeSemantics dependency underlying True
       | Just rendered <- reservedConstructorString dependency underlying ->
           exactStrings [rendered]
-    IdentifierTypeSemantics
+    DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency _) underlying _ ->
       structuralWrapperProperties underlying
-    IdentifierTypeSemantics (DependentIdentifierDependency {}) _ _ ->
+    DependentIdentifierTypeSemantics (DependentIdentifierDependency {}) _ _ ->
       unknownConversion
     -- A projection may erase the underlying member entirely: a constant
     -- identifier family maps every member to the same string, and a dependent

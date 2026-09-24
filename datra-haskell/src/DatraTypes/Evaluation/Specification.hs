@@ -56,11 +56,45 @@ specifyValues source target
         [signature] -> specifyValues source (makeFunctionValue signature)
         [] -> Left (FunctionError "no matching alternative in function specification")
         _ -> Left (FunctionError "ambiguous function specification")
-  | BuiltinMetaTypeForm kind <- interpretedForm target = case decideValueSubfederation source target of
-      DecisionProved () -> Right source
-      _ -> Left (FunctionError ("expected " <> builtinMetaTypeName kind))
-  | Just original <- interpretedFunction source
-  , Just signature <- interpretedFunction target =
+  | otherwise =
+      case canonicalSpecificationImplementation
+          (interpretedCanonicalType target) of
+        BuiltinMetaSpecification kind ->
+          specifyBuiltinMetaType kind source target
+        FunctionSpecification -> specifyFunction source target
+        StructuralSpecification -> specifyStructural source target
+        TotalBlockSpecification -> specifyTotalBlock source target
+
+specifyTotalBlock
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyTotalBlock source target
+  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+      -- Prefer the block presentation so its canonical rendering continues
+      -- to retain both the block and its yielded value.
+      Right target
+  | otherwise = Left
+      (AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember)
+
+specifyBuiltinMetaType
+  :: BuiltinMetaType
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyBuiltinMetaType kind source target =
+  case decideValueSubfederation source target of
+    DecisionProved () -> Right source
+    _ -> Left (FunctionError ("expected " <> builtinMetaTypeName kind))
+
+specifyFunction
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyFunction source target =
+  case (interpretedFunction source, interpretedFunction target) of
+    (Just original, Just signature) ->
       case decideValueSubfederation source target of
         DecisionProved () -> Right (makeFunctionValue signature
           { functionSource = functionSource original
@@ -76,8 +110,15 @@ specifyValues source target
           })
         DecisionRefuted -> Left (FunctionError "function signature violates input contravariance or output covariance")
         DecisionUndecidable -> Left (FunctionError ("cannot decide function specification: " <> show (interpretedCanonicalResult source) <> " to " <> show (interpretedCanonicalResult target)))
-  | Just _ <- interpretedFunction source = Left (FunctionError "expected a function type")
-  | Just _ <- interpretedFunction target = Left (FunctionError "expected a function value")
+    _ -> Left (FunctionError "expected a function value")
+
+specifyStructural
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+specifyStructural source target
+  | Just _ <- interpretedFunction source =
+      Left (FunctionError "expected a function type")
   | federationUsesWeakToString (interpretedAtlasMapFederation target) =
       Left NoCanonicalStringConversion
   | interpretedCanonicalResult source == interpretedCanonicalResult target =
@@ -163,6 +204,8 @@ specifyFamily source branches target = do
   specified <- traverse (`specifyValues` target) branches
   pure
     (makeInterpretedValue
+      (composedStructuralCanonicalType
+        (map interpretedCanonicalType [source, target]))
       (FederationSpecificationForm source target specified)
       NoInsertion
       emptyInterpretedMap
@@ -189,7 +232,7 @@ identifierStringMismatch source target = do
 simpleIdentifierStringFromSemantics :: ValueSemantics -> Maybe String
 simpleIdentifierStringFromSemantics semantics =
   case semantics of
-    IdentifierTypeSemantics
+    DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency identifierString) _ _ ->
           Just identifierString
     AssignmentSemantics identifierString _ _ -> Just identifierString
@@ -219,6 +262,9 @@ assignIdentifierValues identifierString typeAnnotation givenValue = do
         SpecificationForm specification ->
           Right
             (makeInterpretedValue
+              (composedStructuralCanonicalType
+                (map interpretedCanonicalType
+                  [typeAnnotation, givenValue]))
               (AssignmentForm specification)
               NoInsertion
               (interpretedMap specified)
@@ -371,6 +417,8 @@ specifiedValue
   -> InterpretedValue
 specifiedValue sourceValue totalSource sourceCanonical target member =
   makeInterpretedValue
+    (composedStructuralCanonicalType
+      (map interpretedCanonicalType [sourceValue, target]))
     (SpecificationForm
       EvaluatedSpecification
         { evaluatedSpecificationSourceValue = sourceValue
@@ -389,7 +437,7 @@ originalSpecificationSourceSemantics value =
   case interpretedSemantics value of
     SpecificationSemantics source _ -> source
     AssignmentSemantics identifierString _ givenValueSemantics ->
-      IdentifierTypeSemantics
+      DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency identifierString)
         givenValueSemantics
         True

@@ -32,7 +32,30 @@ decideValueSubfederation source target
       decideAllEitherAlternatives alternatives target
   | EitherForm alternatives <- interpretedForm target, not (null (functionAlternatives target)) =
       decideAnyEitherAlternative source alternatives
-  | BuiltinMetaTypeForm kind <- interpretedForm target = decideMetaType source kind
+  | otherwise =
+      case canonicalSubfederationImplementation
+          (interpretedCanonicalType target) of
+        BuiltinMetaSubfederation kind -> decideMetaType source kind
+        FunctionSubfederation -> decideFunctionSubfederation source target
+        StructuralSubfederation ->
+          decideStructuralSubfederation source target
+        TotalBlockSubfederation ->
+          decideTotalBlockSubfederation source target
+
+decideTotalBlockSubfederation
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision ()
+decideTotalBlockSubfederation source target
+  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+      DecisionProved ()
+  | otherwise = DecisionRefuted
+
+decideFunctionSubfederation
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision ()
+decideFunctionSubfederation source target
   | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just sourceFunction <- interpretedFunction source
   , Just targetFunction <- interpretedFunction target =
@@ -43,8 +66,15 @@ decideValueSubfederation source target
           [ decideValueSubfederation (functionDomain targetFunction) (functionDomain sourceFunction)
           , decideValueSubfederation (functionCodomain sourceFunction) (functionCodomain targetFunction)
           ])
+  | otherwise = DecisionRefuted
+
+decideStructuralSubfederation
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision ()
+decideStructuralSubfederation source target
+  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just _ <- interpretedFunction source = DecisionRefuted
-  | Just _ <- interpretedFunction target = DecisionRefuted
   | ArgumentMapForm _ underlying <- interpretedForm source =
       decideValueSubfederation underlying target
   | ArgumentMapForm _ underlying <- interpretedForm target =
@@ -83,9 +113,9 @@ decideNonEitherSubfederation source target =
     _ ->
       case (sourceFederation, targetFederation) of
         ( PrimitiveAtlasMapFederation
-            (IdentifierTypeAtlasMapFederation sourceIdentifier)
+            (DependentIdentifierTypeAtlasMapFederation sourceIdentifier)
           , PrimitiveAtlasMapFederation
-            (IdentifierTypeAtlasMapFederation targetIdentifier)
+            (DependentIdentifierTypeAtlasMapFederation targetIdentifier)
           ) -> decideIdentifierSubfederation sourceIdentifier targetIdentifier
         ( PrimitiveAtlasMapFederation
             (IdentifierStringProjectionAtlasMapFederation sourceIdentifier)
@@ -163,8 +193,8 @@ decideAnyEitherAlternative source target =
     ]
 
 decideIdentifierSubfederation
-  :: EvaluatedIdentifierType
-  -> EvaluatedIdentifierType
+  :: EvaluatedDependentIdentifierType
+  -> EvaluatedDependentIdentifierType
   -> Decision ()
 decideIdentifierSubfederation source target
   | identifierDependenciesCompatible

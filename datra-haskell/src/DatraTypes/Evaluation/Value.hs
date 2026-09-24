@@ -5,6 +5,20 @@
 -- observations and checked operations needed by the AST interpreter.
 module Evaluation.Value
   ( BuiltinMetaType (..)
+  , CanonicalType
+  , SpecificationImplementation (..)
+  , SubfederationImplementation (..)
+  , StringRepresentation (..)
+  , structuralCanonicalType
+  , weakStructuralCanonicalType
+  , structuralCanonicalTypeWith
+  , composedStructuralCanonicalType
+  , functionCanonicalType
+  , builtinMetaCanonicalType
+  , totalBlockCanonicalType
+  , canonicalSpecificationImplementation
+  , canonicalSubfederationImplementation
+  , canonicalStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
@@ -29,7 +43,7 @@ module Evaluation.Value
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
-  , EvaluatedIdentifierType (..)
+  , EvaluatedDependentIdentifierType (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
@@ -55,7 +69,9 @@ module Evaluation.Value
   , interpretedAtlasMapFederation
   , interpretedTotalAtlasMap
   , interpretedSemantics
+  , interpretedCanonicalType
   , interpretedValueHasTotalMap
+  , interpretedTypeIsTotal
   , interpretedCanonicalResult
   , interpretedEvaluationSource
   , withEvaluationSource
@@ -89,6 +105,7 @@ import AtlasMapFederationExpression
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
+import Evaluation.CanonicalType
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues
@@ -212,7 +229,7 @@ identifierDependenciesCompatible left right =
         leftKey == rightKey
     _ -> False
 
-data EvaluatedIdentifierType = EvaluatedIdentifierType
+data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
   }
@@ -236,7 +253,7 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
-  | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedToStringMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
@@ -268,7 +285,7 @@ data EvaluatedFunction = EvaluatedFunction
   }
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
-makeFunctionValue function = makeInterpretedValue
+makeFunctionValue function = makeInterpretedValue functionCanonicalType
   (FunctionForm function) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
@@ -281,7 +298,7 @@ interpretedFunction value = case interpretedForm value of
 
 callableFunction :: InterpretedValue -> Maybe EvaluatedFunction
 callableFunction value = case interpretedForm value of
-  IdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
+  DependentIdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   _ -> interpretedFunction value
@@ -292,16 +309,11 @@ functionSignature value = (\function -> (functionDomain function, functionCodoma
 functionAlternatives :: InterpretedValue -> [EvaluatedFunction]
 functionAlternatives value = case interpretedForm value of
   EitherForm alternatives -> functionAlternatives (evaluatedEitherLeft alternatives) <> functionAlternatives (evaluatedEitherRight alternatives)
-  IdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
+  DependentIdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   FunctionForm function -> [function]
   _ -> []
-
--- Shared representation for host-provided type families. These are types of
--- runtime values, not empty maps; their membership is checked explicitly.
-data BuiltinMetaType = ASTMetaType (Maybe String) | NatRangeMetaType | IntRangeMetaType | StringTemplateMetaType
-  deriving (Eq, Show)
 
 builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
@@ -310,7 +322,9 @@ builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName StringTemplateMetaType = "StringTemplate"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
-builtinMetaTypeValue kind = makeInterpretedValue (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
+builtinMetaTypeValue kind = makeInterpretedValue
+  (builtinMetaCanonicalType kind)
+  (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
 astTypeValue, naturalRangeTypeValue, integerRangeTypeValue, stringTemplateTypeValue :: InterpretedValue
@@ -350,8 +364,8 @@ data ValueForm
   | StringTemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
-  | IdentifierTypeForm EvaluatedIdentifierType
-  | IdentifierStringProjectionForm EvaluatedIdentifierType
+  | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
+  | IdentifierStringProjectionForm EvaluatedDependentIdentifierType
   | SequentialMapForm
   | ExpansionMapForm InterpretedValue InterpretedValue
   | ConcatenatedMapForm InterpretedValue InterpretedValue
@@ -393,8 +407,8 @@ data InterpretedAtlasMapFederationPrimitive
   | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
   | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
   | EitherAtlasMapFederation EvaluatedEither
-  | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
-  | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
+  | DependentIdentifierTypeAtlasMapFederation EvaluatedDependentIdentifierType
+  | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentIdentifierType
   | StringTypeAtlasMapFederation
   | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
@@ -432,7 +446,7 @@ data ValueSemantics
   | ToStringSemantics ValueSemantics
   | WeakToStringSemantics ValueSemantics
   | StringTemplateSemantics ValueSemantics
-  | IdentifierTypeSemantics
+  | DependentIdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
       Bool
@@ -472,9 +486,9 @@ data CanonicalResult
   | CanonicalToString CanonicalResult
   | CanonicalWeakToString CanonicalResult
   | CanonicalStringTemplate CanonicalResult
-  | CanonicalIdentifierType
+  | CanonicalSimpleIdentifierType
       { canonicalIdentifierString :: String
-      , canonicalIdentifierTypeAnnotation :: CanonicalResult
+      , canonicalSimpleIdentifierTypeAnnotation :: CanonicalResult
       }
   | CanonicalDependentIdentifierType String CanonicalResult
   | CanonicalIdentifierStringProjection String CanonicalResult
@@ -489,7 +503,8 @@ data CanonicalResult
   deriving (Eq, Show)
 
 data InterpretedValue = InterpretedValue
-  { interpretedForm :: ValueForm
+  { interpretedCanonicalType :: CanonicalType
+  , interpretedForm :: ValueForm
   , interpretedInsertionCapability :: InsertionCapability
   , interpretedMap :: InterpretedMap
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
@@ -501,16 +516,18 @@ data InterpretedValue = InterpretedValue
 data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
 
 makeInterpretedValue
-  :: ValueForm
+  :: CanonicalType
+  -> ValueForm
   -> InsertionCapability
   -> InterpretedMap
   -> InterpretedAtlasMapFederation
   -> InterpretedValueTotality
   -> ValueSemantics
   -> InterpretedValue
-makeInterpretedValue form capability valueMap federation totality semantics =
+makeInterpretedValue canonicalType form capability valueMap federation totality semantics =
   InterpretedValue
-    { interpretedForm = form
+    { interpretedCanonicalType = canonicalType
+    , interpretedForm = form
     , interpretedInsertionCapability = capability
     , interpretedMap = valueMap
     , interpretedAtlasMapFederation = federation
@@ -523,14 +540,16 @@ makeInterpretedValue form capability valueMap federation totality semantics =
     }
 
 makeSingletonInterpretedValue
-  :: ValueForm
+  :: CanonicalType
+  -> ValueForm
   -> InsertionCapability
   -> InterpretedMap
   -> InterpretedValueTotality
   -> ValueSemantics
   -> InterpretedValue
-makeSingletonInterpretedValue form capability valueMap totality =
+makeSingletonInterpretedValue canonicalType form capability valueMap totality =
   makeInterpretedValue
+    canonicalType
     form
     capability
     valueMap
@@ -540,9 +559,27 @@ makeSingletonInterpretedValue form capability valueMap totality =
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
+-- | Totality at the Datra type level. Begin/yield blocks are singleton types
+-- even when the yielded value denotes a wider federation.
+interpretedTypeIsTotal :: InterpretedValue -> Bool
+interpretedTypeIsTotal value =
+  interpretedValueHasTotalMap value
+    || case canonicalSpecificationImplementation
+        (interpretedCanonicalType value) of
+      TotalBlockSpecification -> True
+      _ -> False
+
 -- | Retain evaluation provenance without changing the semantic map or codec.
 withEvaluationSource :: Maybe String -> InterpretedValue -> InterpretedValue
-withEvaluationSource source value = value { interpretedEvaluationSource = source }
+withEvaluationSource source value =
+  value
+    { interpretedCanonicalType =
+        maybe
+          (interpretedCanonicalType value)
+          (const totalBlockCanonicalType)
+          source
+    , interpretedEvaluationSource = source
+    }
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
@@ -578,7 +615,7 @@ canonicalResult semantics =
       CanonicalWeakToString (canonicalResult source)
     StringTemplateSemantics source ->
       CanonicalStringTemplate (canonicalResult source)
-    IdentifierTypeSemantics dependency underlying isTotal ->
+    DependentIdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of
         SimpleIdentifierDependency identifierString
@@ -586,7 +623,7 @@ canonicalResult semantics =
               CanonicalAssignment
                 identifierString underlyingResult underlyingResult
           | otherwise ->
-              CanonicalIdentifierType identifierString underlyingResult
+              CanonicalSimpleIdentifierType identifierString underlyingResult
         DependentIdentifierDependency familyKey _ ->
           CanonicalDependentIdentifierType familyKey underlyingResult
     IdentifierStringProjectionSemantics dependency underlying isTotal ->
@@ -647,7 +684,7 @@ optionalAssignment
   -> Maybe CanonicalResult
 optionalAssignment source (CanonicalEither present missing) =
   case present of
-    CanonicalIdentifierType identifierString typeAnnotation
+    CanonicalSimpleIdentifierType identifierString typeAnnotation
       | typeAnnotation == missing ->
           Just
             (CanonicalEither
@@ -716,8 +753,8 @@ interpretedValueKind value =
     StringTemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
-    IdentifierTypeForm _ -> IdentifierTypeValueKind
-    IdentifierStringProjectionForm _ -> IdentifierTypeValueKind
+    DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind
+    IdentifierStringProjectionForm _ -> DependentIdentifierTypeValueKind
     SequentialMapForm -> MapValueKind
     ExpansionMapForm _ _ -> MapValueKind
     ConcatenatedMapForm _ _ -> MapValueKind

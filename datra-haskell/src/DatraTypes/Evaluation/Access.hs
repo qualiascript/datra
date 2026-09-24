@@ -23,7 +23,7 @@ import Evaluation.Access.Federation
   ( federationIsCoalition
   )
 import Evaluation.Access.Specification (accessSpecification)
-import Evaluation.Access.Identifier (accessIdentifierType)
+import Evaluation.Access.Identifier (accessDependentIdentifierType)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
@@ -69,8 +69,8 @@ accessValues mapValue insertionValue =
       accessSpecification accessValues specification insertionValue
     AssignmentForm specification ->
       accessSpecification accessValues specification insertionValue
-    IdentifierTypeForm identifier ->
-      accessIdentifierType mapValue identifier insertionValue
+    DependentIdentifierTypeForm identifier ->
+      accessDependentIdentifierType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
 
 specificationSource :: InterpretedValue -> InterpretedValue
@@ -233,6 +233,7 @@ formulationAccessResult
   -> InterpretedValue
 formulationAccessResult sourceIsTotal selected level =
   makeSingletonInterpretedValue
+    (interpretedCanonicalType template)
     (interpretedForm template)
     (interpretedInsertionCapability template)
     resultMap
@@ -264,6 +265,7 @@ finishAccess mapValue selected =
           Nothing -> fallbackResult
       fallbackResult =
         makeSingletonInterpretedValue
+          structuralCanonicalType
           MapForm
           NoInsertion
           selected
@@ -318,6 +320,7 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
             )
   pure . Just $
     makeSingletonInterpretedValue
+      structuralCanonicalType
       rangeForm
       resultCapability
       (selected { interpretedMapComponents = [semantics] })
@@ -387,7 +390,7 @@ namedAccessValue source name = do
     candidates value
       | matchesName (interpretedCanonicalResult value) = Right [value]
       | otherwise = case interpretedForm value of
-          IdentifierTypeForm _ -> Right []
+          DependentIdentifierTypeForm _ -> Right []
           AssignmentForm _ -> Right []
           ArgumentMapForm members _ -> concat <$> traverse candidates members
           EitherForm alternatives -> do
@@ -418,7 +421,7 @@ namedAccessValue source name = do
           Just field -> candidates field) (if count == 0 then [] else [0 .. count - 1])
       Nothing -> Left (NamedAccessError "named access requires a finite map")
     matchesName canonical = case canonical of
-      CanonicalIdentifierType actual _ -> actual == name
+      CanonicalSimpleIdentifierType actual _ -> actual == name
       CanonicalAssignment actual _ _ -> actual == name
       CanonicalSpecification original _ -> matchesName original
       _ -> False

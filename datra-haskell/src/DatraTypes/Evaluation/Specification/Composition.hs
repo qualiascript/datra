@@ -105,8 +105,8 @@ selectDirectIdentifierMember
   -> Maybe (Decision EvaluatedAtlasMapFederationMember)
 selectDirectIdentifierMember source target =
   case (interpretedForm source, interpretedForm target) of
-    ( IdentifierTypeForm sourceIdentifier
-      , IdentifierTypeForm targetIdentifier
+    ( DependentIdentifierTypeForm sourceIdentifier
+      , DependentIdentifierTypeForm targetIdentifier
       ) ->
         Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
     ( IdentifierStringProjectionForm sourceIdentifier
@@ -116,15 +116,15 @@ selectDirectIdentifierMember source target =
     _ -> Nothing
 
 selectMatchingIdentifierMember
-  :: EvaluatedIdentifierType
-  -> EvaluatedIdentifierType
+  :: EvaluatedDependentIdentifierType
+  -> EvaluatedDependentIdentifierType
   -> Decision EvaluatedAtlasMapFederationMember
 selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
   if sourceString /= targetString
     then DecisionRefuted
     else
       mapDecision
-        EvaluatedIdentifierTypeMember
+        EvaluatedDependentIdentifierTypeMember
         (selectFederationMember sourceUnderlying targetUnderlying)
   where
     sourceUnderlying = evaluatedIdentifierUnderlying sourceIdentifier

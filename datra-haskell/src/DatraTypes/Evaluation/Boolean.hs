@@ -29,7 +29,7 @@ makeBoolean flag = value
   where
     underlying = makeNatural (booleanNatural flag)
     semantics =
-      IdentifierTypeSemantics
+      DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency
           (case flag of
             DatraFalse -> "False"
@@ -38,6 +38,7 @@ makeBoolean flag = value
         True
     value =
       makeSingletonInterpretedValue
+        structuralCanonicalType
         (BooleanForm flag)
         NoInsertion
         (interpretedMap underlying)
@@ -137,7 +138,7 @@ requireBoolean side value =
 booleanFromSemantics :: ValueSemantics -> Maybe DatraBoolean
 booleanFromSemantics semantics =
   case semantics of
-    IdentifierTypeSemantics
+    DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency identifierString)
         underlying
         True ->

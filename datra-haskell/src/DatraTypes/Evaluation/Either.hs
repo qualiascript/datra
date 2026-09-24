@@ -64,11 +64,11 @@ alternativesAreDistinct left right
       alternativesAreDistinct
         left
         (evaluatedSpecificationTarget rightSpecification)
-  | IdentifierTypeForm leftIdentifier <- interpretedForm left
-  , IdentifierTypeForm rightIdentifier <- interpretedForm right =
+  | DependentIdentifierTypeForm leftIdentifier <- interpretedForm left
+  , DependentIdentifierTypeForm rightIdentifier <- interpretedForm right =
       identifierAlternativesAreDistinct leftIdentifier rightIdentifier
-  | IdentifierTypeForm _ <- interpretedForm left = True
-  | IdentifierTypeForm _ <- interpretedForm right = True
+  | DependentIdentifierTypeForm _ <- interpretedForm left = True
+  | DependentIdentifierTypeForm _ <- interpretedForm right = True
   | EitherForm leftEither <- interpretedForm left =
       alternativesAreDistinct (evaluatedEitherLeft leftEither) right
         && alternativesAreDistinct (evaluatedEitherRight leftEither) right
@@ -99,8 +99,8 @@ isNumericalRange value =
     _ -> False
 
 identifierAlternativesAreDistinct
-  :: EvaluatedIdentifierType
-  -> EvaluatedIdentifierType
+  :: EvaluatedDependentIdentifierType
+  -> EvaluatedDependentIdentifierType
   -> Bool
 identifierAlternativesAreDistinct left right
   | not
@@ -185,6 +185,8 @@ buildEither (member :| next : remaining) =
 rawEither :: InterpretedValue -> InterpretedValue -> InterpretedValue
 rawEither left right =
   makeInterpretedValue
+    (composedStructuralCanonicalType
+      (map interpretedCanonicalType [left, right]))
     (EitherForm alternatives)
     NoInsertion
     emptyInterpretedMap

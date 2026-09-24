@@ -19,7 +19,6 @@ standardLibraryTests =
             [ ("StandardLibrary.if false then (1 + \"bad\") else 11", "11")
             , ("StandardLibrary.from (1 + 1) to 5", "from 2 to 5")
             , ("StandardLibrary.range 2 downwards", "range 2 downwards")
-            , ("StandardLibrary.eval \"12\" at Int", "12 ~> Int")
             , ("StandardLibrary.true", "true : true")
             ]
         ]
@@ -44,6 +43,10 @@ standardLibraryTests =
             "_private:=3\na:=5\nyield this._private"
             (SourceEvaluationFailure
               (NamedAccessError "no field named _private"))
+        , programFailureCase "private standard-library eval"
+            "yield StandardLibrary._eval"
+            (SourceEvaluationFailure
+              (UnknownIdentifier "_eval"))
         , programFailureCase "duplicate scope member"
             "a:=5\na:=8\nyield this"
             (SourceEvaluationFailure (IdentifierStringOverlap "a"))
@@ -80,7 +83,37 @@ standardLibraryTests =
             , "String of StringTemplate"
             ]
         ]
+    , canonicalTypeContractTests
     , declaredPatternTests
+    ]
+
+-- The source library, rather than a parallel Haskell export table, declares
+-- which host capabilities become language types. Every declared type must
+-- support both fundamental typing operations.
+canonicalTypeContractTests :: TestTree
+canonicalTypeContractTests =
+  testGroup "canonical Datra type contract"
+    [ programCase typeName
+        (unlines
+          [ "assert " <> typeName <> " of " <> typeName
+          , "assert (" <> typeName <> " ~> " <> typeName
+              <> ") of " <> typeName
+          ])
+        "()"
+    | typeName <-
+        [ "Nat"
+        , "Int"
+        , "String"
+        , "Iden"
+        , "Bool"
+        , "AST"
+        , "Expr"
+        , "Block"
+        , "Pages"
+        , "NatRange"
+        , "IntRange"
+        , "StringTemplate"
+        ]
     ]
 
 declaredPatternTests :: TestTree

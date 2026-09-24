@@ -246,7 +246,7 @@ namedParts
   -> Maybe (String, InterpretedValue, Maybe InterpretedValue)
 namedParts value =
   case interpretedForm value of
-    IdentifierTypeForm identifier -> do
+    DependentIdentifierTypeForm identifier -> do
       name <- simpleName (evaluatedIdentifierDependency identifier)
       pure (name, evaluatedIdentifierUnderlying identifier, Nothing)
     AssignmentForm specification -> specificationParts specification
@@ -275,7 +275,7 @@ completeSlot replacements slot =
       <|> slotDefault slot of
     Just value -> Right (slotName slot, value)
     Nothing
-      | interpretedValueHasTotalMap (slotAnnotation slot) ->
+      | interpretedTypeIsTotal (slotAnnotation slot) ->
           Right (slotName slot, slotAnnotation slot)
       | otherwise -> Left (OverloadError
           "overload leaves a required slot without a value")

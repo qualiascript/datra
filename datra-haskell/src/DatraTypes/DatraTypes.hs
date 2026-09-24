@@ -4,7 +4,10 @@
 -- checked construction, canonicalization, access validation, and their
 -- strongly typed failures belong here.
 module DatraTypes
-  ( EvaluatedFunction (..)
+  ( CanonicalType
+  , StringRepresentation (..)
+  , canonicalStringRepresentation
+  , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
@@ -69,7 +72,7 @@ module DatraTypes
   , valuedIntegerRangeUpwardsValue
   , valuedIntegerRangeDownwardsValue
   , integerTypeValue
-  , identifierTypeValue
+  , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
   , assignIdentifierValues
   , makeAtlasMap
@@ -86,7 +89,9 @@ module DatraTypes
   , validateFunctionInput
   , specifyValues
   , interpretedValueKind
+  , interpretedCanonicalType
   , interpretedValueHasTotalMap
+  , interpretedTypeIsTotal
   , interpretedCanonicalResult
   , interpretedEvaluationSource
   , withEvaluationSource
@@ -175,7 +180,7 @@ import Evaluation.Range
   , valuedNaturalRangeValue
   )
 import Evaluation.Identifier
-  ( identifierTypeValue
+  ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
   )
 import Evaluation.Specification
@@ -184,7 +189,10 @@ import Evaluation.Specification
   , specifyValues
   )
 import Evaluation.Value
-  ( EvaluatedFunction (..)
+  ( CanonicalType
+  , StringRepresentation (..)
+  , canonicalStringRepresentation
+  , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
@@ -200,6 +208,7 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult
+  , interpretedCanonicalType
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
@@ -212,6 +221,7 @@ import Evaluation.Value
   , interpretedMapValueAt
   , interpretedRangeDescription
   , interpretedValueHasTotalMap
+  , interpretedTypeIsTotal
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)

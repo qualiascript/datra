@@ -96,7 +96,7 @@ import DatraLanguage.AST
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
-import ModuleNames (moduleIdentifier)
+import ModuleNames (isPrivateIdentifier, moduleIdentifier)
 import StandardLibrary (standardLibrarySource)
 import SyntaxDefinitions
 import DatraLanguage.AST.Reserved.Bootstrap
@@ -231,7 +231,12 @@ libraryDeclarations = case runParser (runReaderT resource (ParserContext 0 False
 
 libraryRules :: [SyntaxRule]
 libraryRules = rules <> [rule { syntaxName = "StandardLibrary." <> syntaxName rule } | rule <- rules]
-  where rules = [rule { syntaxModule = Just "standard_library" } | rule <- concatMap declarationRules libraryDeclarations]
+  where
+    rules =
+      [ rule { syntaxModule = Just "standard_library" }
+      | rule <- concatMap declarationRules libraryDeclarations
+      , not (isPrivateIdentifier (syntaxName rule))
+      ]
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -315,7 +320,7 @@ astForm =
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
       , astNaturalRangeExpression
       , astIdentifierOperation AST.AssignmentOperator (Just ())
-      , astIdentifierOperation AST.IdentifierTypeOperator Nothing
+      , astIdentifierOperation AST.DependentIdentifierTypeOperator Nothing
       , astBinary AST.ExpansionOperator MapExpansion
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
@@ -640,7 +645,7 @@ identifierOperation = do
                 (Just givenValue)
         pure (optionalIdentifier isOptional operation givenValue)
     , do
-        _ <- continuedOperator AST.IdentifierTypeOperator
+        _ <- continuedOperator AST.DependentIdentifierTypeOperator
         operationIdentifierString <-
           IdentifierString
             <$> pure (case identifierSpelling of BareIdentifier name -> name; FullStringIdentifier name -> name)
@@ -1034,7 +1039,7 @@ identifierOperationStart = do
   _ <- optional (operatorToken AST.OptionalOperator)
   void
     (operatorToken AST.AssignmentOperator
-      <|> operatorToken AST.IdentifierTypeOperator)
+      <|> operatorToken AST.DependentIdentifierTypeOperator)
 
 -- Concatenation binds after ranges. Access and forward specification share a
 -- left-associative level so their written order determines composition:

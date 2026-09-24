@@ -60,8 +60,8 @@ decideFederationConcatenation
 -- Distinct identifier families occupy disjoint named positions. This also
 -- makes a sequence's canonical comma spelling interpretable when nested.
 decideFederationConcatenation
-    (PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation left))
-    (PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation right))
+    (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation left))
+    (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation right))
   | not (identifierDependenciesCompatible
       (evaluatedIdentifierDependency left)
       (evaluatedIdentifierDependency right)) = AtlasMapFederationProved ()
@@ -213,8 +213,8 @@ decidePrimitiveSubfederation
       AtlasMapFederationProved ()
   | otherwise = missingMember
 decidePrimitiveSubfederation
-    (IdentifierTypeAtlasMapFederation _)
-    (IdentifierTypeAtlasMapFederation _) =
+    (DependentIdentifierTypeAtlasMapFederation _)
+    (DependentIdentifierTypeAtlasMapFederation _) =
   AtlasMapFederationUndecidable
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationSubfederation)

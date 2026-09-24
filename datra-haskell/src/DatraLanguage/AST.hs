@@ -636,7 +636,7 @@ prettyOperator
   case givenValue of
     Nothing ->
       prettyForm
-        (operatorCanonicalSymbol IdentifierTypeOperator)
+        (operatorCanonicalSymbol DependentIdentifierTypeOperator)
         [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
     Just givenValueExpression ->
       prettyForm

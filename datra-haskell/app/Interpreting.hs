@@ -154,7 +154,7 @@ standardLibraryInternalScope = case parseDatra standardLibrarySource of
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
   CanonicalStringCodec
-    { renderCanonicalString = renderCanonicalResult
+    { renderCanonicalString = renderInterpretedValue
     , decodeCanonicalString = canonicalStringCandidates
     }
 
@@ -175,7 +175,7 @@ canonicalStringCandidates characters =
           case interpretExpressionReason expressionValue of
             Right value
               | canonicalSpelling characters
-                  (renderCanonicalResult (interpretedCanonicalResult value)) ->
+                  (renderInterpretedValue value) ->
                     [ candidate
                     | candidateExpression <-
                         canonicalExpressionCandidates expressionValue
@@ -553,7 +553,7 @@ identifierGivenValue
   -> Maybe (String, CanonicalResult)
 identifierGivenValue result =
   case result of
-    CanonicalIdentifierType identifierString givenValue ->
+    CanonicalSimpleIdentifierType identifierString givenValue ->
       Just (identifierString, givenValue)
     CanonicalAssignment identifierString _ givenValue ->
       Just (identifierString, givenValue)
@@ -565,7 +565,7 @@ identifierExpectedValue
   -> Maybe (String, CanonicalResult)
 identifierExpectedValue result =
   case result of
-    CanonicalIdentifierType identifierString typeAnnotation ->
+    CanonicalSimpleIdentifierType identifierString typeAnnotation ->
       Just (identifierString, typeAnnotation)
     CanonicalAssignment identifierString typeAnnotation _ ->
       Just (identifierString, typeAnnotation)
@@ -732,7 +732,7 @@ externalValue descriptor = do
     required name fields = maybe (Left (FunctionError ("missing external field: " <> name))) Right (lookup name fields)
     fieldsOf (CanonicalMap _ members) = concat <$> traverse fieldsOf members
     fieldsOf (CanonicalConcatenation members) = concat <$> traverse fieldsOf members
-    fieldsOf (CanonicalIdentifierType name (CanonicalAsciiString value)) = Right [(name,value)]
+    fieldsOf (CanonicalSimpleIdentifierType name (CanonicalAsciiString value)) = Right [(name,value)]
     fieldsOf (CanonicalAssignment name _ (CanonicalAsciiString value)) = Right [(name,value)]
     fieldsOf _ = Left (FunctionError "external requires a map of string fields")
 
@@ -864,10 +864,10 @@ namedBindings :: InterpretedValue -> Either InterpretingError Scope
 namedBindings value = case interpretedCanonicalResult value of
   CanonicalMap _ members -> traverse field members
   member@CanonicalAssignment {} -> (:[]) <$> field member
-  member@CanonicalIdentifierType {} -> (:[]) <$> field member
+  member@CanonicalSimpleIdentifierType {} -> (:[]) <$> field member
   _ -> Left (FunctionError "an imported module must yield a scope or named map; use yield this")
   where
-    field (CanonicalIdentifierType name _) = do
+    field (CanonicalSimpleIdentifierType name _) = do
       selected <- namedAccessValue value name
       payload <- accessValues selected (naturalValue 1)
       pure (name, EvaluatedBinding payload)
