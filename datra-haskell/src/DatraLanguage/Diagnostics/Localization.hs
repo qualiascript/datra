@@ -13,6 +13,12 @@ import DatraLanguage.Diagnostics
   , LocalizedMessage
   , renderDatraErrorWith
   )
+import DatraLanguage.Diagnostics.Application
+  ( CommandLineOptionFailure
+  , ModuleLoadFailure
+  , ParseFailure
+  , SyntaxExpansionFailure
+  )
 import Evaluation.Error (InterpretingError)
 import DatraLanguage.Diagnostics.Locales.English qualified as English
 import DatraLanguage.Diagnostics.Locales.Romanian qualified as Romanian
@@ -31,6 +37,22 @@ class LocalizedDiagnostic reason where
 instance LocalizedDiagnostic AccessError where
   localizeDiagnostic English = English.localizeAccessError
   localizeDiagnostic Romanian = Romanian.localizeAccessError
+
+instance LocalizedDiagnostic ParseFailure where
+  localizeDiagnostic English = English.localizeParseFailure
+  localizeDiagnostic Romanian = Romanian.localizeParseFailure
+
+instance LocalizedDiagnostic ModuleLoadFailure where
+  localizeDiagnostic English = English.localizeModuleLoadFailure
+  localizeDiagnostic Romanian = Romanian.localizeModuleLoadFailure
+
+instance LocalizedDiagnostic SyntaxExpansionFailure where
+  localizeDiagnostic English = English.localizeSyntaxExpansionFailure
+  localizeDiagnostic Romanian = Romanian.localizeSyntaxExpansionFailure
+
+instance LocalizedDiagnostic CommandLineOptionFailure where
+  localizeDiagnostic English = English.localizeCommandLineOptionFailure
+  localizeDiagnostic Romanian = Romanian.localizeCommandLineOptionFailure
 
 instance LocalizedDiagnostic InterpretingError where
   localizeDiagnostic English = English.localizeInterpretingError

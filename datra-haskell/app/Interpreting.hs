@@ -66,6 +66,8 @@ import DatraLanguage.Diagnostics
   , atSourceSpan
   , withoutSourceSpan
   )
+import DatraLanguage.Diagnostics.Application
+  ( ParseFailure (parseFailureMessage) )
 import Numeric.Natural (Natural)
 
 interpretExpression
@@ -135,7 +137,9 @@ standardLibraryInternalScope =
 parsedStandardLibrary :: Either InterpretingError Expression
 parsedStandardLibrary =
   either
-    (Left . FunctionError . ((standardLibraryFileName <> ": ") <>))
+    (Left . ModuleEvaluationFailed
+      . StandardLibraryParseFailure standardLibraryFileName
+      . parseFailureMessage)
     Right
     standardLibraryExpression
 
@@ -145,8 +149,8 @@ standardLibraryInternalScopeFor
 standardLibraryInternalScopeFor expression =
   case expression of
     Program bindings _ -> importScope [] [] bindings
-    _ -> Left (FunctionError
-      (standardLibraryFileName <> " must contain declarations"))
+    _ -> Left (ModuleEvaluationFailed
+      (StandardLibraryRequiresDeclarationBlock standardLibraryFileName))
 
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
@@ -217,7 +221,7 @@ type Interpreter = Expression -> Either InterpretingError InterpretedValue
 type Scope = [(String, Binding)]
 
 data Binding
-  = DeferredBinding Scope Expression
+  = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
   | NamespaceBinding FilePath Scope
   | ModuleCatalog [(String, ModuleSource)]
@@ -307,12 +311,13 @@ interpretNormalizedExpression scope resolving expressionValue =
       moduleSource <- lookupModule scope path
       imported <- moduleScope moduleSource
       evalInScope imported resolving body
-    Import _ _ -> Left (FunctionError "import must be a scope entry")
+    Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
     SyntaxType text ordinary signature -> do
       value <- interpret signature
       case interpretedFunction value of
         Just function -> pure (makeFunctionValue function { functionPattern = Just (text, ordinary) })
-        Nothing -> Left (FunctionError "an AST pattern requires a function signature")
+        Nothing -> Left (FunctionEvaluationFailed
+          AstPatternRequiresFunctionSignature)
     FunctionType domain codomain -> do
       input <- compileParameters interpret domain >>= parameterDomain
       output <- interpret codomain
@@ -353,7 +358,8 @@ interpretNormalizedExpression scope resolving expressionValue =
       value <- interpret (MapSpecification implementation signature)
       case interpretedFunction value of
         Just function -> pure (makeFunctionValue function { functionPattern = Just (text, ordinary) })
-        Nothing -> Left (FunctionError "an AST pattern requires a function implementation")
+        Nothing -> Left (FunctionEvaluationFailed
+          AstPatternRequiresFunctionImplementation)
     MapSpecification (FunctionBody bindings result) (FunctionType domain codomain) ->
       createFunction scope resolving (Just (domain, codomain)) bindings result
     MapSpecification sourceOperand targetOperand ->
@@ -363,6 +369,7 @@ interpretNormalizedExpression scope resolving expressionValue =
         typeAnnotationExpression
         maybeGivenValueExpression -> do
       typeAnnotation <- interpret typeAnnotationExpression
+      requireCanonicalTypeAnnotation typeAnnotation
       case maybeGivenValueExpression of
         Nothing
           | identifierString == "False"
@@ -409,7 +416,12 @@ resolveIdentifier scope resolving name =
       pure (makeAtlasMap 2 values)
     Just ScopeMembers {} -> Left (UnknownIdentifier name)
     Just ModuleCatalog {} -> Left (UnknownIdentifier name)
-    Just (DeferredBinding captured expressionValue) ->
+    Just (DeferredBinding captured annotation expressionValue) -> do
+      case annotation of
+        Nothing -> pure ()
+        Just typeExpression ->
+          evalInScope captured resolving typeExpression
+            >>= requireCanonicalTypeAnnotation
       evalInScope captured resolving expressionValue
 
 -- A block imports declarations from left to right. Ordinary definitions capture
@@ -421,23 +433,25 @@ importScope enclosing resolving entries = do
   outer <- foldM importModule enclosing [(allNames,path) | Import allNames path <- entries]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
   _ <- foldM checkName (map fst outer) definitions
-  let names = [name | (name, _, _) <- definitions]
+  let names = [name | (name, _, _, _) <- definitions]
       initial = ("\0this", ScopeMembers names) : predeclaredLets <> outer
       predeclaredLets =
-        [ (name, DeferredBinding (scopeBefore position) expressionValue)
-        | (position, (name, strict, expressionValue)) <- zip [0..] definitions
+        [ (name, DeferredBinding
+            (scopeBefore position) annotation expressionValue)
+        | (position, (name, strict, annotation, expressionValue)) <-
+            zip [0..] definitions
         , strict
         ]
       scopeBefore position =
         foldl importOrdinary initial (take position definitions)
-      importOrdinary scope (name, strict, expressionValue)
+      importOrdinary scope (name, strict, annotation, expressionValue)
         | strict = scope
         | otherwise =
-            (name, DeferredBinding scope expressionValue) : scope
+            (name, DeferredBinding scope annotation expressionValue) : scope
       deferred = foldl importOrdinary initial definitions
   evaluated <- traverse
-    (\(name, _, _) -> (name,) <$> resolveIdentifier deferred resolving name)
-    (filter (\(_, strict, _) -> strict) definitions)
+    (\(name, _, _, _) -> (name,) <$> resolveIdentifier deferred resolving name)
+    (filter (\(_, strict, _, _) -> strict) definitions)
   let imported = map replaceEvaluated deferred
       replaceEvaluated entry@(name, _) =
         maybe entry ((name,) . EvaluatedBinding) (lookup name evaluated)
@@ -445,7 +459,7 @@ importScope enclosing resolving entries = do
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
   where
-    checkName names (name, _, _)
+    checkName names (name, _, _, _)
       | name `elem` names =
           Left (IdentifierStringOverlap name)
       | otherwise = Right (name : names)
@@ -453,12 +467,30 @@ importScope enclosing resolving entries = do
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
 -- the surrounding scope nor become visible to sibling members.
-bindingImports :: Bool -> Expression -> ([(String, Bool, Expression)], [Expression])
+bindingImports
+  :: Bool
+  -> Expression
+  -> ([(String, Bool, Maybe Expression, Expression)], [Expression])
 bindingImports strict expressionValue =
   case expressionValue of
     Let binding -> bindingImports True binding
     IdentifierOperation (IdentifierString name) annotation given ->
-      ([(name, strict, maybe annotation (\value -> if value == annotation then value else MapSpecification value annotation) given)], [])
+      ([(name, strict, annotationToCheck annotation given, bindingValue)], [])
+      where
+        bindingValue = maybe annotation
+          (\value -> if value == annotation
+            then value
+            else MapSpecification value annotation)
+          given
+        annotationToCheck typeAnnotation maybeImplementation =
+          case maybeImplementation of
+            Just implementation
+              | implementation == typeAnnotation -> Nothing
+            Just FunctionBody {}
+              | FunctionType {} <- typeAnnotation -> Nothing
+            Just _
+              | SyntaxType {} <- typeAnnotation -> Nothing
+            _ -> Just typeAnnotation
     EitherType named@(IdentifierOperation _ annotation _) missing
       | annotation == missing -> bindingImports strict named
     Assert {} -> ([], [expressionValue])
@@ -681,7 +713,8 @@ createFunction captured resolving explicit bindings result = do
     Just annotation -> do
       target <- evaluate annotation
       included <- subfederationValues inferredOutput target >>= booleanCondition
-      if included then pure target else Left (FunctionError "function body does not satisfy its declared output type")
+      if included then pure target else Left (FunctionEvaluationFailed
+        FunctionBodyOutsideDeclaredResult)
   let invoke argument = do
         argumentValues <- parameterValues schema argument
         imported <- matchArguments schema argument
@@ -702,7 +735,9 @@ createFunction captured resolving explicit bindings result = do
     -- the body here would demand the closure while it is still being checked.
     -- Ordinary cyclic values still go through resolveIdentifier's cycle check.
     evaluateForInference (IdentifierReference (IdentifierString name))
-      | Just (DeferredBinding lexical (MapSpecification (FunctionBody _ _) signature@FunctionType {})) <- lookup name captured =
+      | Just (DeferredBinding lexical _
+          (MapSpecification (FunctionBody _ _) signature@FunctionType {})) <-
+            lookup name captured =
           evalInScope lexical resolving signature
     evaluateForInference expression = evaluate expression
 
@@ -713,8 +748,8 @@ applyFunction callable input =
       value <- invoke input
       _ <- specifyValues value (functionCodomain function)
       pure value
-    Right _ -> Left (FunctionError
-      "this external adapter requires unevaluated AST captures")
+    Right _ -> Left (FunctionEvaluationFailed
+      ExternalAdapterRequiresAstCaptures)
     Left failure -> Left failure
   where
     preparations = [(function, prepare function)
@@ -730,24 +765,35 @@ externalValue descriptor | CanonicalAsciiString symbol <- interpretedCanonicalRe
 externalValue descriptor = do
   fields <- fieldsOf (interpretedCanonicalResult descriptor)
   if length (map fst fields) /= length (nub (map fst fields))
-    then Left (FunctionError "duplicate external descriptor field") else pure ()
-  if map fst fields `containsOnly` ["backend", "symbol"]
-    then pure () else Left (FunctionError "unknown external descriptor field")
+    then Left (ExternalEvaluationFailed DuplicateExternalDescriptorField)
+    else pure ()
+  let unknownFields =
+        filter (`notElem` ["backend", "symbol"]) (map fst fields)
+  if null unknownFields
+    then pure ()
+    else Left (ExternalEvaluationFailed
+      (UnknownExternalDescriptorFields unknownFields))
   backend <- required "backend" fields
   symbol <- required "symbol" fields
-  if backend /= "haskell" then Left (FunctionError ("unknown external backend: " <> backend))
+  if backend /= "haskell" then Left (ExternalEvaluationFailed
+    (UnsupportedExternalBackend backend))
     else registeredExternal symbol
   where
-    containsOnly actual expected = all (`elem` expected) actual
-    required name fields = maybe (Left (FunctionError ("missing external field: " <> name))) Right (lookup name fields)
+    required name fields = maybe
+      (Left (ExternalEvaluationFailed
+        (MissingExternalDescriptorField name)))
+      Right
+      (lookup name fields)
     fieldsOf (CanonicalMap _ members) = concat <$> traverse fieldsOf members
     fieldsOf (CanonicalConcatenation members) = concat <$> traverse fieldsOf members
     fieldsOf (CanonicalSimpleIdentifierType name (CanonicalAsciiString value)) = Right [(name,value)]
     fieldsOf (CanonicalAssignment name _ (CanonicalAsciiString value)) = Right [(name,value)]
-    fieldsOf _ = Left (FunctionError "external requires a map of string fields")
+    fieldsOf _ = Left (ExternalEvaluationFailed
+      ExternalDescriptorRequiresStringMap)
 
 registeredExternal :: String -> Either InterpretingError InterpretedValue
 registeredExternal symbol = case symbol of
+  "datra.Any" -> Right anyTypeValue
   "datra.Nat" -> naturalTypeValue
   "datra.Int" -> integerTypeValue
   "datra.String" -> Right stringTypeValue
@@ -778,7 +824,7 @@ registeredExternal symbol = case symbol of
     value <- lookupArgument "value" arguments
     integer <- requireFiniteInteger LeftOperand value
     pure (integerValue (abs integer))
-  _ -> Left (FunctionError ("unknown registered external: " <> symbol))
+  _ -> Left (ExternalEvaluationFailed (UnknownExternalSymbol symbol))
   where
     concreteCanonical (CanonicalSpecification source _) = concreteCanonical source
     concreteCanonical value = value
@@ -815,7 +861,10 @@ registeredExternal symbol = case symbol of
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
         (Just invoke)))
     optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
-    lookupArgument name values = maybe (Left (FunctionError ("missing native argument " <> name))) Right (lookup name values)
+    lookupArgument name values = maybe
+      (Left (ExternalEvaluationFailed (MissingNativeArgument name)))
+      Right
+      (lookup name values)
     nativeFunction domain codomain implementation = do
       let evaluate = evalInScope [] []
       schema <- compileParameters evaluate domain
@@ -864,7 +913,8 @@ moduleExportNames source = map fst . snd <$> moduleExports source
 moduleResult :: Scope -> Expression -> Either InterpretingError InterpretedValue
 moduleResult scope (Program _ result) = evalInScope scope [] result
 moduleResult scope (Begin _ result) = evalInScope scope [] result
-moduleResult _ _ = Left (FunctionError "an imported module must be a declaration block")
+moduleResult _ _ = Left (ModuleEvaluationFailed
+  ImportedModuleRequiresDeclarationBlock)
 
 scopeValue :: Scope -> [String] -> Either InterpretingError InterpretedValue
 scopeValue scope resolving = do
@@ -881,7 +931,7 @@ namedBindings value = case interpretedCanonicalResult value of
   CanonicalMap _ members -> traverse field members
   member@CanonicalAssignment {} -> (:[]) <$> field member
   member@CanonicalSimpleIdentifierType {} -> (:[]) <$> field member
-  _ -> Left (FunctionError "an imported module must yield a scope or named map; use yield this")
+  _ -> Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports)
   where
     field (CanonicalSimpleIdentifierType name _) = do
       selected <- namedAccessValue value name
@@ -891,14 +941,14 @@ namedBindings value = case interpretedCanonicalResult value of
       selected <- namedAccessValue value name
       payload <- accessValues selected (naturalValue 1)
       pure (name, EvaluatedBinding payload)
-    field _ = Left (FunctionError "a module export must have an identifier")
+    field _ = Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path
   | isStandardLibraryRequest path = Right StdLibModule
   | Just (ModuleCatalog modules) <- lookup "\0imports" scope
   , Just value <- lookup path modules = Right value
-  | otherwise = Left (FunctionError ("module was not loaded: " <> path))
+  | otherwise = Left (ModuleEvaluationFailed (ModuleNotLoaded path))
 
 moduleScope :: ModuleSource -> Either InterpretingError Scope
 moduleScope StdLibModule = standardLibraryInternalScope
@@ -907,5 +957,6 @@ moduleScope (ModuleSource _ expression dependencies) = do
   entries <- case expression of
     Program declarations _ -> Right declarations
     Begin declarations _ -> Right declarations
-    _ -> Left (FunctionError "an imported module must contain a declaration block")
+    _ -> Left (ModuleEvaluationFailed
+      ImportedModuleRequiresDeclarationBlock)
   importScope (("\0imports", ModuleCatalog dependencies) : base) [] entries

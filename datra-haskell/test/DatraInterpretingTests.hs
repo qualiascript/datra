@@ -68,6 +68,8 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
+import DatraLanguage.Diagnostics.Application
+  ( ParseFailure (parseFailureMessage) )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , renderDatraError
@@ -306,7 +308,8 @@ expectValue label expressionValue check =
 expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Left message -> fail
+      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right expressionValue -> expectValue label expressionValue check
 
 expectSourceRejection
@@ -316,7 +319,8 @@ expectSourceRejection
   -> IO ()
 expectSourceRejection label source matches =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Left message -> fail
+      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right expressionValue ->
       case interpretExpressionReason expressionValue of
         Left rejection
@@ -726,7 +730,8 @@ expectInternalEvalRejection source target matches = do
 parseTestExpression :: String -> IO Expression
 parseTestExpression source =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail ("test expression failed to parse: " <> message)
+    Left message -> fail
+      ("test expression failed to parse: " <> parseFailureMessage message)
     Right expressionValue -> pure expressionValue
 
 testBegin :: IO ()
@@ -795,7 +800,8 @@ testBegin = do
 testCanonicalTypes :: IO ()
 testCanonicalTypes = do
   mapM_ expectCanonicalType
-    [ "Nat"
+    [ "Any"
+    , "Nat"
     , "Int"
     , "String"
     , "IdenStr"
@@ -854,7 +860,7 @@ testPrograms :: IO ()
 testPrograms = do
   mapM_ (\(source, expected) ->
     case parseDatra source of
-      Left message -> fail message
+      Left message -> fail (parseFailureMessage message)
       Right expression -> expectValue source expression $ \value ->
         assert (source <> ": " <> renderInterpretedValue value)
           (renderInterpretedValue value == expected))
@@ -2084,7 +2090,9 @@ testRendering = do
           let rendered = renderInterpretedValue original
           in case parseDatra ("(" <> rendered <> "\n)") of
               Left message ->
-                fail ("canonical map did not parse: " <> message)
+                fail
+                  ("canonical map did not parse: "
+                    <> parseFailureMessage message)
               Right roundTripExpression ->
                 case interpretExpressionReason roundTripExpression of
                   Left rejection ->
@@ -3682,5 +3690,9 @@ testNamedAccess = do
     , ("(x:3, {a:5,b:8}).b", "b : 8")
     , ("{a:5,b:8}.a[1] * 2", "10")
     ]
-  mapM_ (\source -> expectSourceRejection source source (\case NamedAccessError _ -> True; _ -> False))
-    ["{a:2,b:3}.missing", "{a:2,a:3}.a", "{}.a"]
+  mapM_ (\(source, expected) ->
+      expectSourceRejection source source (== NamedAccessFailed expected))
+    [ ("{a:2,b:3}.missing", Types.NamedFieldNotFound "missing")
+    , ("{a:2,a:3}.a", Types.NamedFieldAmbiguous "a")
+    , ("{}.a", Types.NamedFieldNotFound "a")
+    ]

@@ -51,6 +51,11 @@ selectFederationMember source target
         (evaluatedSpecificationSourceValue assignment)
         target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
+  | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
+      case datraCanonicalType (interpretedDatraType source) of
+        Just _ -> DecisionProved
+          (EvaluatedCanonicalTypeMember (interpretedCanonicalResult source))
+        Nothing -> DecisionRefuted
   | otherwise =
       case selectIdentifierMember source target of
         Just decision -> decision

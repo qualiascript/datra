@@ -3,6 +3,7 @@ module Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
   , identifierStringProjectionValue
+  , requireCanonicalTypeAnnotation
   ) where
 
 import AtlasMapFederationExpression
@@ -12,7 +13,20 @@ import AtlasMapFederationExpression
       )
   )
 import Evaluation.Construction (makeAsciiString)
+import Evaluation.Error
+  ( InterpretingError (NonCanonicalIdentifierTypeAnnotation) )
 import Evaluation.Value
+
+-- | Identifier annotations participate in canonical source syntax. A weak
+-- Datra type can still be named as a value, but cannot define the annotated
+-- member family of an identifier.
+requireCanonicalTypeAnnotation
+  :: InterpretedValue
+  -> Either InterpretingError ()
+requireCanonicalTypeAnnotation annotation =
+  case datraCanonicalType (interpretedDatraType annotation) of
+    Just _ -> Right ()
+    Nothing -> Left NonCanonicalIdentifierTypeAnnotation
 
 dependentIdentifierTypeValue
   :: String

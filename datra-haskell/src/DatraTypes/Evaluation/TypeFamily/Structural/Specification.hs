@@ -21,6 +21,7 @@ import Evaluation.Error
       (NoAtlasMapFederationDecisionProcedure)
   , InterpretedValueKind (MapValueKind, NaturalValueKind)
   , InterpretingError (..)
+  , FunctionFailure (ExpectedFunctionType)
   )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues)
@@ -46,7 +47,7 @@ specifyStructural
   -> Either InterpretingError InterpretedValue
 specifyStructural specify decideSubfederation source target
   | Just _ <- interpretedFunction source =
-      Left (FunctionError "expected a function type")
+      Left (FunctionEvaluationFailed ExpectedFunctionType)
   | federationUsesWeakToString (interpretedAtlasMapFederation target) =
       Left NoCanonicalStringConversion
   | interpretedCanonicalResult source == interpretedCanonicalResult target =
@@ -367,4 +368,3 @@ originalSpecificationSourceSemantics value =
         givenValueSemantics
         True
     semantics -> semantics
-

@@ -55,7 +55,8 @@ datraTypeLawTests =
 -- explicit decision about whether its string representation is canonical.
 standardLibraryTypeExamples :: [DatraTypeExample]
 standardLibraryTypeExamples =
-  [ canonical "Nat" "Nat"
+  [ canonical "Any" "Any"
+  , canonical "Nat" "Nat"
   , canonical "Int" "Int"
   , canonical "String" "String"
   , canonical "IdenStr" "IdenStr"

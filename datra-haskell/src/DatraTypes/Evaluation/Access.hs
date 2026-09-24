@@ -13,6 +13,7 @@ import DatraOrdinal
 import Data.Bifunctor qualified as Bifunctor
 import Evaluation.Error
   ( InterpretingError (..)
+  , NamedAccessFailure (..)
   )
 import Evaluation.Access.Composition
   ( FederationAccess (..)
@@ -383,9 +384,9 @@ namedAccessValue :: InterpretedValue -> String -> Either InterpretingError Inter
 namedAccessValue source name = do
   selected <- candidates source
   case selected of
-    [] -> Left (NamedAccessError ("no field named " <> name))
+    [] -> Left (NamedAccessFailed (NamedFieldNotFound name))
     [value] -> Right value
-    _ -> Left (NamedAccessError ("ambiguous field named " <> name))
+    _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
       | matchesName (interpretedCanonicalResult value) = Right [value]
@@ -410,16 +411,16 @@ namedAccessValue source name = do
             case targetFields of
               [] -> pure [originalField]
               [targetField] -> (:[]) <$> specifyValues originalField targetField
-              _ -> Left (NamedAccessError ("ambiguous field named " <> name))
+              _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
           ConcatenatedMapForm left right -> (<>) <$> candidates left <*> candidates right
           SequentialMapForm -> pages value
           MapForm -> pages value
           _ -> Right []
     pages value = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
       Just count -> concat <$> traverse (\index -> case interpretedMapValueAt (interpretedMap value) (finiteOrdinal index) of
-          Nothing -> Left (NamedAccessError "field map is not inspectable")
+          Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)
           Just field -> candidates field) (if count == 0 then [] else [0 .. count - 1])
-      Nothing -> Left (NamedAccessError "named access requires a finite map")
+      Nothing -> Left (NamedAccessFailed NamedAccessRequiresFiniteMap)
     matchesName canonical = case canonical of
       CanonicalSimpleIdentifierType actual _ -> actual == name
       CanonicalAssignment actual _ _ -> actual == name

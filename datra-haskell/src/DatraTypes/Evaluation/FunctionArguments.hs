@@ -14,10 +14,12 @@ module Evaluation.FunctionArguments
 import DatraLanguage.AST
 import DatraLanguage.Identifier (isPrivateIdentifier)
 import Evaluation.Error
-  ( InterpretingError (..)
+  ( FunctionFailure (..)
+  , InterpretingError (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   )
+import Evaluation.Identifier (requireCanonicalTypeAnnotation)
 import Evaluation.Overload
 import Evaluation.Value (InterpretedValue)
 
@@ -28,9 +30,7 @@ compileParameters
 compileParameters evaluate expression =
   case expression of
     IdentifierOperation (IdentifierString name) annotation given ->
-      argumentSlotSchema (Just name) False
-        <$> evaluate annotation
-        <*> traverse evaluate given
+      parameterSlot (Just name) False annotation given
     EitherType
         (IdentifierOperation (IdentifierString name) annotation given)
         missing
@@ -38,9 +38,7 @@ compileParameters evaluate expression =
           if isPrivateIdentifier name
             then Left (PrivateParameterCannotBeOptional name)
             else pure ()
-          argumentSlotSchema (Just name) True
-            <$> evaluate annotation
-            <*> traverse evaluate given
+          parameterSlot (Just name) True annotation given
     AtlasMap members -> orderedArgumentSchema 2 <$> traverse recur members
     MapSequence members -> orderedArgumentSchema 2 <$> traverse recur members
     ArgumentMap members -> unorderedArgumentSchema <$> traverse recur members
@@ -56,6 +54,11 @@ compileParameters evaluate expression =
         <*> pure Nothing
   where
     recur = compileParameters evaluate
+    parameterSlot name optional annotation given = do
+      annotationValue <- evaluate annotation
+      requireCanonicalTypeAnnotation annotationValue
+      argumentSlotSchema name optional annotationValue
+        <$> traverse evaluate given
 
 parameterBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 parameterBindings = argumentSchemaBindings
@@ -104,14 +107,14 @@ selectFunctionCandidate preparations =
       ] of
     [candidate] -> Right candidate
     [] -> Left (normalizedFailure preparations)
-    _ -> Left (FunctionError "ambiguous function sum application")
+    _ -> Left (FunctionEvaluationFailed AmbiguousFunctionSumApplication)
   where
     normalizedFailure attempts
-      | any isAmbiguous attempts = FunctionError
-          "ambiguous argument bindings; supply identifiers to select the intended slots"
+      | any isAmbiguous attempts = FunctionEvaluationFailed
+          AmbiguousFunctionArgumentBindings
       | Just failure <- firstCompletionFailure attempts = failure
-      | otherwise = FunctionError
-          "no applicable function alternative; syntax-only alternatives require their AST pattern"
+      | otherwise = FunctionEvaluationFailed
+          NoApplicableFunctionAlternative
 
     isAmbiguous (_, Left (OverloadError failure)) =
       overloadFailureIsAmbiguous failure

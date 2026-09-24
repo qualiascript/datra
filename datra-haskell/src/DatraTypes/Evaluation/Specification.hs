@@ -12,7 +12,10 @@ import Control.Monad (foldM)
 import Evaluation.Arguments (argumentAlternatives)
 import Evaluation.Boolean (makeBoolean)
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Error (InterpretingError (FunctionError))
+import Evaluation.Error
+  ( FunctionFailure (..)
+  , InterpretingError (FunctionEvaluationFailed)
+  )
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
@@ -35,7 +38,7 @@ specifyValues source target
       specified <- traverse (`specifyValues` target) (argumentAlternatives source)
       case specified of
         first:rest -> foldM makeEitherValue first rest
-        [] -> Left (FunctionError "empty function sum")
+        [] -> Left (FunctionEvaluationFailed EmptyFunctionSum)
   | Just _ <- interpretedFunction source
   , EitherForm _ <- interpretedForm target =
       case [ signature
@@ -46,9 +49,9 @@ specifyValues source target
            ] of
         [signature] -> specifyValues source (makeFunctionValue signature)
         [] ->
-          Left (FunctionError
-            "no matching alternative in function specification")
-        _ -> Left (FunctionError "ambiguous function specification")
+          Left (FunctionEvaluationFailed
+            NoMatchingFunctionSpecificationAlternative)
+        _ -> Left (FunctionEvaluationFailed AmbiguousFunctionSpecification)
   | otherwise =
       specifyTypeFamily
         (typeFamilyOperations

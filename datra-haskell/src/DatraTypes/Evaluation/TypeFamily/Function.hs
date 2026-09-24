@@ -5,7 +5,10 @@ module Evaluation.TypeFamily.Function
   , decideFunctionSubfederation
   ) where
 
-import Evaluation.Error (InterpretingError (FunctionError))
+import Evaluation.Error
+  ( FunctionFailure (..)
+  , InterpretingError (FunctionEvaluationFailed)
+  )
 import Evaluation.Specification.Decision
   ( Decision (..)
   , decideAll
@@ -41,13 +44,13 @@ specifyFunction decideSubfederation specify source target =
               pure prepared)
           , functionInvoke = functionInvoke original
           })
-        DecisionRefuted -> Left (FunctionError
-          "function signature violates input contravariance or output covariance")
-        DecisionUndecidable -> Left (FunctionError
-          ("cannot decide function specification: "
-            <> show (interpretedCanonicalResult source)
-            <> " to " <> show (interpretedCanonicalResult target)))
-    _ -> Left (FunctionError "expected a function value")
+        DecisionRefuted -> Left (FunctionEvaluationFailed
+          FunctionSignatureVarianceViolation)
+        DecisionUndecidable -> Left (FunctionEvaluationFailed
+          (FunctionSpecificationUndecidable
+            (show (interpretedCanonicalResult source))
+            (show (interpretedCanonicalResult target))))
+    _ -> Left (FunctionEvaluationFailed ExpectedFunctionValue)
 
 validateFunctionInput
   :: (InterpretedValue -> InterpretedValue -> Decision ())

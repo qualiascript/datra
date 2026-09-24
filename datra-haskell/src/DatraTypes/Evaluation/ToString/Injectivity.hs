@@ -42,6 +42,7 @@ stringConversionProperties
   -> StringConversionProperties
 stringConversionProperties semantics =
   case semantics of
+    BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> unknownConversion
     ExplicitSemantics {} -> knownAlphabet "0123456789"

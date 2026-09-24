@@ -3,7 +3,11 @@ module Datra.Interpreter.OverloadAssertionTests
   ) where
 
 import Datra.TestSupport
-import DatraTypes (InterpretingError (..), OverloadFailure (..))
+import DatraTypes
+  ( FunctionFailure (NoApplicableFunctionAlternative)
+  , InterpretingError (..)
+  , OverloadFailure (..)
+  )
 import Interpreting
   ( EvaluationMode (DevelopmentMode, ProductionMode) )
 import Test.Tasty (TestTree, testGroup)
@@ -156,8 +160,7 @@ defaultedFunctionTests =
           , "yield my_pow ((...) ^ 0, 3)"
           ])
         (SourceEvaluationFailure
-          (FunctionError
-            "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+          (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programCase "empty argument uses the default"
         (unlines
           [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"

@@ -29,6 +29,7 @@ module Evaluation.Value
   , functionAlternatives
   , isFunctionFamily
   , stringTemplateTypeValue
+  , anyTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
@@ -211,6 +212,7 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedToStringMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
+  | EvaluatedCanonicalTypeMember CanonicalResult
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember
@@ -288,6 +290,7 @@ isFunctionFamily value =
     _ -> False
 
 builtinMetaTypeName :: BuiltinMetaType -> String
+builtinMetaTypeName AnyMetaType = "Any"
 builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
@@ -301,9 +304,10 @@ builtinMetaTypeValue kind = makeInterpretedValue
   (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
-astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
+anyTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
   naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
   stringTemplateTypeValue :: InterpretedValue
+anyTypeValue = builtinMetaTypeValue AnyMetaType
 astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType

@@ -16,6 +16,10 @@ module Datra.TestSupport
   ) where
 
 import DatraLanguage.Diagnostics (Located (locatedValue))
+import DatraLanguage.Diagnostics.Application
+  ( ModuleLoadFailure
+  , ParseFailure
+  )
 import DatraTypes (InterpretedValue, InterpretingError)
 import Interpreting
   ( EvaluationMode
@@ -38,13 +42,13 @@ import Test.Tasty.HUnit
   )
 
 data SourceFailure
-  = SourceParseFailure String
+  = SourceParseFailure ParseFailure
   | SourceEvaluationFailure InterpretingError
   deriving (Eq, Show)
 
 data ModuleFailure
-  = ModuleLoadingFailure String
-  | ModuleParseFailure String
+  = ModuleLoadingFailure ModuleLoadFailure
+  | ModuleParseFailure ParseFailure
   | ModuleEvaluationFailure InterpretingError
   deriving (Eq, Show)
 

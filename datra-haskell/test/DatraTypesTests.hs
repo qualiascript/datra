@@ -77,6 +77,12 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   , atSourceSpan
   )
+import DatraLanguage.Diagnostics.Application
+  ( CommandLineOptionFailure (UnsupportedEvaluationMode)
+  , ModuleLoadFailure (CyclicModuleImport)
+  , ParseFailure (ParseFailure)
+  , SyntaxExpansionFailure (InvalidSyntaxControlCaptures)
+  )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , LocalizedDiagnostic (localizeDiagnostic)
@@ -278,6 +284,104 @@ testDiagnostics = do
           "parametrul privat al funcției nu poate fi opțional"
           ["identificator: _value"]
     )
+  assert "function failures are localized from semantic fields"
+    ( localizeDiagnostic English
+        (Types.FunctionEvaluationFailed
+          (Types.UnconstrainedInferredParameter "value"))
+        == LocalizedMessage
+          "cannot infer an unconstrained function parameter"
+          ["parameter: value", "provide an explicit input type"]
+      && localizeDiagnostic Romanian
+        (Types.FunctionEvaluationFailed
+          (Types.UnconstrainedInferredParameter "value"))
+        == LocalizedMessage
+          "nu se poate deduce un parametru de funcție fără constrângeri"
+          ["parametru: value", "furnizați un tip de intrare explicit"]
+    )
+  assert "external failures are localized from semantic fields"
+    ( localizeDiagnostic English
+        (Types.ExternalEvaluationFailed
+          (Types.UnsupportedExternalBackend "native"))
+        == LocalizedMessage
+          "external backend is not supported"
+          ["backend: native"]
+      && localizeDiagnostic Romanian
+        (Types.ExternalEvaluationFailed
+          (Types.UnsupportedExternalBackend "native"))
+        == LocalizedMessage
+          "backendul extern nu este acceptat"
+          ["backend: native"]
+    )
+  assert "module failures are localized from semantic fields"
+    ( localizeDiagnostic English
+        (Types.ModuleEvaluationFailed (Types.ModuleNotLoaded "missing"))
+        == LocalizedMessage "module was not loaded" ["module: missing"]
+      && localizeDiagnostic Romanian
+        (Types.ModuleEvaluationFailed (Types.ModuleNotLoaded "missing"))
+        == LocalizedMessage "modulul nu a fost încărcat" ["modul: missing"]
+    )
+  assert "named-access failures are localized from semantic fields"
+    ( localizeDiagnostic English
+        (Types.NamedAccessFailed (Types.NamedFieldNotFound "field"))
+        == LocalizedMessage "named field does not exist" ["field: field"]
+      && localizeDiagnostic Romanian
+        (Types.NamedAccessFailed (Types.NamedFieldNotFound "field"))
+        == LocalizedMessage "câmpul denumit nu există" ["câmp: field"]
+    )
+  assert "noncanonical identifier annotations are localized structurally"
+    ( localizeDiagnostic English Types.NonCanonicalIdentifierTypeAnnotation
+        == LocalizedMessage
+          "identifier type annotation is not canonical"
+          ["identifier type annotations must implement canonical toString"]
+      && localizeDiagnostic Romanian Types.NonCanonicalIdentifierTypeAnnotation
+        == LocalizedMessage
+          "adnotarea de tip a identificatorului nu este canonică"
+          ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
+    )
+  assert "parser failures have exact bilingual localization"
+    ( localizeDiagnostic English (ParseFailure "bad token")
+        == LocalizedMessage "source could not be parsed" ["bad token"]
+      && localizeDiagnostic Romanian (ParseFailure "bad token")
+        == LocalizedMessage "sursa nu a putut fi analizată" ["bad token"]
+    )
+  assert "module-loading failures have exact bilingual localization"
+    ( localizeDiagnostic English (CyclicModuleImport "cycle.datra")
+        == LocalizedMessage "cyclic module import" ["module: cycle.datra"]
+      && localizeDiagnostic Romanian (CyclicModuleImport "cycle.datra")
+        == LocalizedMessage "import ciclic de modul" ["modul: cycle.datra"]
+    )
+  assert "syntax-expansion failures have exact bilingual localization"
+    ( localizeDiagnostic English
+        (InvalidSyntaxControlCaptures "datra.syntax.if" 3 2)
+        == LocalizedMessage
+          "syntax control adapter received invalid captures"
+          [ "adapter: datra.syntax.if"
+          , "expected captures: 3"
+          , "given captures: 2"
+          ]
+      && localizeDiagnostic Romanian
+        (InvalidSyntaxControlCaptures "datra.syntax.if" 3 2)
+        == LocalizedMessage
+          "adaptorul de control sintactic a primit capturi nevalide"
+          [ "adaptor: datra.syntax.if"
+          , "capturi așteptate: 3"
+          , "capturi primite: 2"
+          ]
+    )
+  assert "CLI-option failures have exact bilingual localization"
+    ( localizeDiagnostic English (UnsupportedEvaluationMode "fast")
+        == LocalizedMessage
+          "evaluation mode is not supported"
+          [ "given mode: fast"
+          , "expected dev, development, prod, or production"
+          ]
+      && localizeDiagnostic Romanian (UnsupportedEvaluationMode "fast")
+        == LocalizedMessage
+          "modul de evaluare nu este acceptat"
+          [ "mod furnizat: fast"
+          , "se așteaptă dev, development, prod sau production"
+          ]
+    )
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -290,7 +394,7 @@ testArgumentSchemas = do
         AST.IdentifierReference (AST.IdentifierString "Nat")
       evaluateNatural expression
         | expression == naturalExpression = Right naturalType
-        | otherwise = Left (Types.FunctionError "unexpected test expression")
+        | otherwise = Left (Types.UnknownIdentifier "unexpected test expression")
       privateOptional = AST.EitherType
         (AST.IdentifierOperation
           (AST.IdentifierString "_value") naturalExpression Nothing)

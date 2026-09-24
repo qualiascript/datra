@@ -2,10 +2,12 @@
 
 module Datra.Interpreter.ModuleTests (moduleTests) where
 
-import Data.List (isInfixOf)
 import Datra.TestSupport
+import DatraLanguage.Diagnostics.Application
+  ( ModuleLoadFailure (..))
 import DatraTypes (InterpretingError (..))
 import ModuleNames (moduleIdentifier)
+import System.FilePath (takeFileName)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertEqual, testCase)
 
@@ -69,12 +71,16 @@ moduleTests =
     , moduleFailureCase origin "cyclic imports report the cycle"
         "import \"cycle_a\""
         (\case
-          ModuleLoadingFailure message -> "cyclic import:" `isInfixOf` message
+          ModuleLoadingFailure (CyclicModuleImport path) ->
+            takeFileName path == "cycle_a.datra"
           _ -> False)
     , moduleFailureCase origin "missing imports name the requested module"
         "import \"missing\""
         (\case
-          ModuleLoadingFailure message -> "cannot import missing" `isInfixOf` message
+          ModuleLoadingFailure (ImportPathResolutionFailed requested _ _) ->
+            requested == "missing"
+          ModuleLoadingFailure (ModuleReadFailed requested _ _) ->
+            requested == "missing"
           _ -> False)
     ]
   where

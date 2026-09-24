@@ -96,6 +96,7 @@ library
         TotalAtlasMap
         SpecificationOperator
         DatraLanguage.Diagnostics
+        DatraLanguage.Diagnostics.Application
         DatraLanguage.Diagnostics.Interpreter
         DatraLanguage.Diagnostics.Locales.English
         DatraLanguage.Diagnostics.Locales.Romanian

@@ -121,6 +121,13 @@ import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
+  , withoutSourceSpan
+  )
+import DatraLanguage.Diagnostics.Application
+  ( ParseFailure (ParseFailure) )
+import DatraLanguage.Diagnostics.Localization
+  ( Locale (English)
+  , renderDatraError
   )
 import IdentifierValueType
   ( isIdentifierValue
@@ -173,27 +180,34 @@ data ResourceEnvelope
 -- | Parse an in-memory Datra resource without associating it with a real
 -- filesystem path. This is the entry point used by tests and other callers
 -- that already have the source contents.
-parseDatra :: String -> Either String Expression
+parseDatra :: String -> Either ParseFailure Expression
 parseDatra = parseDatraWithSourceName "<input>"
 
 -- | Outer parentheses select expression mode; every other resource is an
 -- implicit begin/yield program, with an optional begin and default yield ().
-parseDatraWithSourceName :: FilePath -> String -> Either String Expression
+parseDatraWithSourceName
+  :: FilePath
+  -> String
+  -> Either ParseFailure Expression
 parseDatraWithSourceName sourceName source =
   locatedValue <$> parseDatraLocatedWithSourceName sourceName source
 
-parseDatraLocated :: String -> Either String (Located Expression)
+parseDatraLocated :: String -> Either ParseFailure (Located Expression)
 parseDatraLocated = parseDatraLocatedWithSourceName "<input>"
 
 parseDatraLocatedWithSourceName
   :: FilePath
   -> String
-  -> Either String (Located Expression)
+  -> Either ParseFailure (Located Expression)
 parseDatraLocatedWithSourceName = parseDatraLocatedWithSyntaxImports []
 
-parseDatraLocatedWithSyntaxImports :: [(String, [SyntaxRule])] -> FilePath -> String -> Either String (Located Expression)
+parseDatraLocatedWithSyntaxImports
+  :: [(String, [SyntaxRule])]
+  -> FilePath
+  -> String
+  -> Either ParseFailure (Located Expression)
 parseDatraLocatedWithSyntaxImports imports resourceName source =
-  Bifunctor.first errorBundlePretty (runParser
+  Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
     (runReaderT locatedResource (ParserContext 0 False libraryRules [] imports))
     resourceName (Text.pack source))
 
@@ -201,33 +215,33 @@ parseDatraLocatedWithSyntaxImports imports resourceName source =
 parseDatraLocatedResourceWithSourceName
   :: FilePath
   -> String
-  -> Either String (ResourceEnvelope, Located Expression)
+  -> Either ParseFailure (ResourceEnvelope, Located Expression)
 parseDatraLocatedResourceWithSourceName resourceName source =
-  Bifunctor.first errorBundlePretty
+  Bifunctor.first (ParseFailure . errorBundlePretty)
     (runDatraParser
       locatedResourceWithEnvelope resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
-parseDatraAst :: String -> Either String Expression
+parseDatraAst :: String -> Either ParseFailure Expression
 parseDatraAst = parseDatraAstWithSourceName "<ast-input>"
 
 parseDatraAstWithSourceName
   :: FilePath
   -> String
-  -> Either String Expression
+  -> Either ParseFailure Expression
 parseDatraAstWithSourceName sourceName source =
   locatedValue <$> parseDatraAstLocatedWithSourceName sourceName source
 
-parseDatraAstLocated :: String -> Either String (Located Expression)
+parseDatraAstLocated :: String -> Either ParseFailure (Located Expression)
 parseDatraAstLocated =
   parseDatraAstLocatedWithSourceName "<ast-input>"
 
 parseDatraAstLocatedWithSourceName
   :: FilePath
   -> String
-  -> Either String (Located Expression)
+  -> Either ParseFailure (Located Expression)
 parseDatraAstLocatedWithSourceName resourceName source =
-  Bifunctor.first errorBundlePretty
+  Bifunctor.first (ParseFailure . errorBundlePretty)
     (runDatraParser locatedAstResource resourceName (Text.pack source))
 
 runDatraParser
@@ -240,9 +254,9 @@ runDatraParser parser resourceName source =
 
 -- | The bootstrap parse is a shared CAF: syntax discovery and evaluation use
 -- the exact same standard-library AST rather than parsing the source twice.
-standardLibraryExpression :: Either String Expression
+standardLibraryExpression :: Either ParseFailure Expression
 standardLibraryExpression =
-  Bifunctor.first errorBundlePretty
+  Bifunctor.first (ParseFailure . errorBundlePretty)
     (runParser
       (runReaderT resource (ParserContext 0 False [] [] []))
       standardLibraryFileName
@@ -820,8 +834,8 @@ importExpression = do
 
 -- Scan import literals without interpreting strings as syntax. This allows the
 -- loader to resolve dependencies before parsing expressions using their names.
-sourceImports :: String -> Either String [String]
-sourceImports source = Bifunctor.first errorBundlePretty $
+sourceImports :: String -> Either ParseFailure [String]
+sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan (ParserContext 0 False libraryRules [] [])) "<imports>" (Text.pack source)
   where
     paths (Import _ path) = [path]
@@ -856,7 +870,10 @@ syntaxApplication = do
     parseRule rule = do
       _ <- continuedKeyword (Text.pack (syntaxName rule))
       captures <- parsePieces (syntaxPieces rule)
-      expanded <- either fail pure (expandSyntax rule captures)
+      expanded <- either
+        (fail . renderDatraError English . withoutSourceSpan)
+        pure
+        (expandSyntax rule captures)
       case expanded of
         Let _ -> ask >>= guard . referencesAllowed
         _ -> pure ()
@@ -1418,15 +1435,13 @@ symbol = Lexer.symbol horizontalSpaceConsumer
 continuedSymbol :: Text -> Parser Text
 continuedSymbol value = symbol value <* lineSpaceConsumer
 
-operatorSourceText :: AST.Operator -> Text
-operatorSourceText operator =
-  case AST.operatorSourceSymbol operator of
-    Just value -> Text.pack value
-    Nothing -> error "operator has no concrete source token"
-
 operatorToken :: AST.Operator -> Parser Text
 operatorToken operator = lexeme $ try $ do
-  token <- chunk (operatorSourceText operator)
+  sourceText <-
+    case AST.operatorSourceSymbol operator of
+      Just value -> pure (Text.pack value)
+      Nothing -> empty
+  token <- chunk sourceText
   if operator `elem` [AST.MinusOperator, AST.SubtractionOperator]
     then notFollowedBy (char '>') else pure ()
   pure token

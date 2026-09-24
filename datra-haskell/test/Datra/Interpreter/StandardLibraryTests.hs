@@ -6,7 +6,10 @@ import Datra.TestSupport
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , ExternalFailure (..)
+  , FunctionFailure (..)
   , InterpretingError (..)
+  , NamedAccessFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
@@ -42,7 +45,7 @@ standardLibraryTests =
         [ programFailureCase "private member access"
             "_private:=3\na:=5\nyield this._private"
             (SourceEvaluationFailure
-              (NamedAccessError "no field named _private"))
+              (NamedAccessFailed (NamedFieldNotFound "_private")))
         , programFailureCase "private standard-library eval"
             "yield StdLib._eval"
             (SourceEvaluationFailure
@@ -54,12 +57,12 @@ standardLibraryTests =
             ("f := ({x?:Int} -> Int do yield x+1)\n"
               <> "g := (f ~> ({x?:Nat} -> Int))\nyield g (-1)")
             (SourceEvaluationFailure
-              (FunctionError
-                "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "unknown external shorthand"
             "yield external \"missing.symbol\""
             (SourceEvaluationFailure
-              (FunctionError "unknown registered external: missing.symbol"))
+              (ExternalEvaluationFailed
+                (UnknownExternalSymbol "missing.symbol")))
         , programFailureCase "the former Iden spelling is no longer exported"
             "yield Iden"
             (SourceEvaluationFailure (UnknownIdentifier "Iden"))
@@ -67,7 +70,17 @@ standardLibraryTests =
     , testGroup "library types"
         [ expressionCase source source "true"
         | source <-
-            [ "$Nothing = (Nothing : ())"
+            [ "Any of Any"
+            , "Nat of Any"
+            , "5 of Any"
+            , "(Nat; String) of Any"
+            , "(begin yield (Nat -> Nat)) of Any"
+            , "not ((Nat -> Nat) of Any)"
+            , "not (AST of Any)"
+            , "not ((Nat; AST) of Any)"
+            , "(5 ~> Any) = 5"
+            , "(value : Any := 5) of (value : Any)"
+            , "$Nothing = (Nothing : ())"
             , "nothing = $Nothing"
             , "NatRange of IntRange"
             , "not (IntRange of NatRange)"
@@ -85,6 +98,7 @@ standardLibraryTests =
             , "Pages of AST"
             , "not (Block of Expr)"
             , "(Expr ~> AST) of AST"
+            , "\"%Any\" of StringTemplate"
             , "\"%Int %IdenStr\" of StringTemplate"
             , "(\"%Int %IdenStr\" ~> StringTemplate) of StringTemplate"
             , "not (2 of StringTemplate)"
@@ -115,8 +129,7 @@ declaredPatternTests =
     , programFailureCase "syntax-only function rejects ordinary calls"
         (declaration <> "yield step 2")
         (SourceEvaluationFailure
-          (FunctionError
-            "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+          (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))

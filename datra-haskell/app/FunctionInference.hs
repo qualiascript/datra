@@ -56,9 +56,11 @@ inferParameters :: [String] -> Expression -> Either InterpretingError [(String, 
 inferParameters names body = traverse infer names
   where
     infer name = case nub (constraints name body) of
-      [] -> Left (FunctionError ("cannot infer unconstrained parameter " <> name <> "; provide an input type"))
+      [] -> Left (FunctionEvaluationFailed
+        (UnconstrainedInferredParameter name))
       [target] -> Right (name, target)
-      _ -> Left (FunctionError ("incompatible constraints for parameter " <> name))
+      _ -> Left (FunctionEvaluationFailed
+        (IncompatibleInferredParameterConstraints name))
     constraints name expression = case expression of
       Addition a b -> numerical a b
       Subtraction a b -> numerical a b
@@ -68,6 +70,7 @@ inferParameters names body = traverse infer names
       BooleanAnd a b -> require BooleanType a <> require BooleanType b
       BooleanOr a b -> require BooleanType a <> require BooleanType b
       BooleanNot a -> require BooleanType a
+      Assert _ condition -> require BooleanType condition
       Conditional condition yes no -> require BooleanType condition <> recur yes <> recur no
       _ -> concatMap recur (children expression)
       where
@@ -156,13 +159,15 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
       FunctionApplication function argument -> do
         callable <- recur function
         case functionSignature callable of
-          Nothing -> Left (FunctionError "application requires a function")
+          Nothing -> Left (FunctionEvaluationFailed
+            InferredApplicationRequiresFunction)
           Just (domain,codomain) -> do
             actual <- recur argument
             check actual domain
             pure codomain
       IdentifierOperation (IdentifierString name) annotation given -> do
         target <- recur annotation
+        requireCanonicalTypeAnnotation target
         case given of
           Nothing -> pure (simpleIdentifierTypeValue name target)
           Just value -> do actual <- recur value; check actual target; pure (simpleIdentifierTypeValue name target)
@@ -177,7 +182,8 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
       Program entries value -> inferBlock scope entries value
       -- Literals, primitive types and closed expressions have exact known types.
       _ | all (`notElem` map fst parameters) (freeIdentifiers expression) -> evaluate expression
-        | otherwise -> Left (FunctionError "cannot infer this expression; add a supported explicit specification")
+        | otherwise -> Left (FunctionEvaluationFailed
+            UnsupportedInferredExpression)
       where
         recur = infer scope members
         numeric operation signed a b = do
@@ -209,9 +215,10 @@ lookupInferenceBinding name = go
 check :: InterpretedValue -> InterpretedValue -> Either InterpretingError ()
 check actual expected = do
   accepted <- isSubtype actual expected
-  if accepted then Right () else Left (FunctionError
-    ("inferred type is outside the required type: " <> show (interpretedCanonicalResult actual)
-      <> " of " <> show (interpretedCanonicalResult expected)))
+  if accepted then Right () else Left (FunctionEvaluationFailed
+    (InferredTypeOutsideRequirement
+      (show (interpretedCanonicalResult actual))
+      (show (interpretedCanonicalResult expected))))
 
 isSubtype :: InterpretedValue -> InterpretedValue -> Either InterpretingError Bool
 isSubtype source target = subfederationValues source target >>= booleanCondition

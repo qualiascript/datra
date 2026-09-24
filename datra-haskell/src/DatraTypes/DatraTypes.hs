@@ -15,6 +15,7 @@ module DatraTypes
   , astTypeValue
   , functionAlternatives
   , stringTemplateTypeValue
+  , anyTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
@@ -28,6 +29,10 @@ module DatraTypes
   , InterpretedValueKind (..)
   , InterpretedMap
   , InterpretingError (..)
+  , FunctionFailure (..)
+  , ExternalFailure (..)
+  , ModuleEvaluationFailure (..)
+  , NamedAccessFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   , OperandSide (..)
@@ -81,6 +86,7 @@ module DatraTypes
   , integerTypeValue
   , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
   , makeArgumentMap
@@ -137,8 +143,12 @@ import Evaluation.Error
   ( AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
+  , ExternalFailure (..)
+  , FunctionFailure (..)
   , InterpretedValueKind (..)
   , InterpretingError (..)
+  , ModuleEvaluationFailure (..)
+  , NamedAccessFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   , OperandSide (..)
@@ -239,6 +249,7 @@ import Evaluation.Range
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , requireCanonicalTypeAnnotation
   )
 import Evaluation.Specification
   ( assignIdentifierValues
@@ -257,6 +268,7 @@ import Evaluation.Value
   , astTypeValue
   , functionAlternatives
   , stringTemplateTypeValue
+  , anyTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue

@@ -4,7 +4,7 @@ module Evaluation.TypeFamily.BuiltinMeta
   , decideBuiltinMetaSubfederation
   ) where
 
-import Evaluation.Error (InterpretingError (FunctionError))
+import Evaluation.Error (InterpretingError (ExpectedBuiltinType))
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.String (federationProducesStrings)
 import Evaluation.Value
@@ -18,7 +18,7 @@ specifyBuiltinMetaType
 specifyBuiltinMetaType decideSubfederation kind source target =
   case decideSubfederation source target of
     DecisionProved () -> Right source
-    _ -> Left (FunctionError ("expected " <> builtinMetaTypeName kind))
+    _ -> Left (ExpectedBuiltinType (builtinMetaTypeName kind))
 
 decideBuiltinMetaSubfederation
   :: InterpretedValue
@@ -28,6 +28,10 @@ decideBuiltinMetaSubfederation source target =
   if accepted then DecisionProved () else DecisionRefuted
   where
     accepted = case (interpretedForm source, target) of
+      (_, AnyMetaType) ->
+        case datraCanonicalType (interpretedDatraType source) of
+          Just _ -> True
+          Nothing -> False
       (BuiltinMetaTypeForm actual, expected) | actual == expected -> True
       (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType Nothing) -> True
       (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True

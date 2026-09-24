@@ -1,7 +1,11 @@
 module Datra.Interpreter.FunctionTests (functionTests) where
 
 import Datra.TestSupport
-import DatraTypes (InterpretingError (..))
+import DatraTypes
+  ( ExternalFailure (..)
+  , FunctionFailure (..)
+  , InterpretingError (..)
+  )
 import Test.Tasty (TestTree, testGroup)
 
 functionTests :: TestTree
@@ -44,11 +48,24 @@ functionTests =
             "11"
         , programCase "higher-order parameter"
             (unlines
-              [ "apply := ({f?:(Int -> Int), x?:Int} -> Int do yield f x)"
+              [ "apply := (((Int -> Int), Int) -> Int do yield it[0] it[1])"
               , "increment := ({n?:Int} -> Int do yield n+1)"
-              , "yield apply (f:increment,x:4)"
+              , "yield apply (increment,4)"
               ])
             "5"
+        , programCase "Any accepts a canonical argument value"
+            (unlines
+              [ "identity := ({value?:Any} -> Any yield value)"
+              , "yield identity 5"
+              ])
+            "5"
+        , programFailureCase "Any rejects a weak-only function argument value"
+            (unlines
+              [ "identity := ({value?:Any} -> Any yield value)"
+              , "yield identity (Nat -> Nat)"
+              ])
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "function sum selects the numerical alternative"
             (unlines
               [ "f := (({x?:Nat} -> Int do yield x+1) | ({x?:String} -> String do yield x))"
@@ -73,11 +90,30 @@ functionTests =
         , expressionFailureCase "unknown external backend"
             "external (backend:\"missing\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
-              (FunctionError "unknown external backend: missing"))
+              (ExternalEvaluationFailed
+                (UnsupportedExternalBackend "missing")))
         , expressionFailureCase "unknown external symbol"
             "external (backend:\"haskell\";symbol:\"missing\")"
             (SourceEvaluationFailure
-              (FunctionError "unknown registered external: missing"))
+              (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
+        , expressionFailureCase "duplicate external descriptor field"
+            "external (backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
+            (SourceEvaluationFailure
+              (ExternalEvaluationFailed DuplicateExternalDescriptorField))
+        , expressionFailureCase "unknown external descriptor field"
+            "external (backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
+            (SourceEvaluationFailure
+              (ExternalEvaluationFailed
+                (UnknownExternalDescriptorFields ["extra"])))
+        , expressionFailureCase "missing external descriptor field"
+            "external (backend:\"haskell\")"
+            (SourceEvaluationFailure
+              (ExternalEvaluationFailed
+                (MissingExternalDescriptorField "symbol")))
+        , expressionFailureCase "external descriptor requires string fields"
+            "external (1; 2)"
+            (SourceEvaluationFailure
+              (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
         ]
     , testGroup "typing"
         [ expressionCase "contravariant input and covariant output"
@@ -98,23 +134,48 @@ functionTests =
         , programFailureCase "private parameter slots reject named input"
             "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (_x:1,_y:2)"
             (SourceEvaluationFailure
-              (FunctionError
-                "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "ambiguous reorder is reported structurally"
             ( "f := ({a:Int,b:String,c:String} -> Int yield a)\n"
                 <> "yield f ($x,$y,5)"
             )
             (SourceEvaluationFailure
-              (FunctionError
-                "ambiguous argument bindings; supply identifiers to select the intended slots"))
+              (FunctionEvaluationFailed
+                AmbiguousFunctionArgumentBindings))
         , programFailureCase "declared result rejects inferred body"
             "f := ({a?:Int} -> String do yield a+1)\nyield f 5"
             (SourceEvaluationFailure
-              (FunctionError
-                "function body does not satisfy its declared output type"))
+              (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
         , programCase "positional absence can acquire a required name"
             "f := ({x:Int?} -> Int? do yield x)\nyield f nothing"
             "nothing"
+        , programFailureCase "unconstrained inferred parameter is structured"
+            "f := (do yield value)\nyield f"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed
+                (UnconstrainedInferredParameter "value")))
+        , programFailureCase "incompatible inferred constraints are structured"
+            (unlines
+              [ "f := (do begin"
+              , "  assert value"
+              , "  yield value + 1)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed
+                (IncompatibleInferredParameterConstraints "value")))
+        , expressionFailureCase "function type cannot annotate an identifier"
+            "callback : (Nat -> Nat)"
+            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
+        , programFailureCase "block binding cannot bypass canonical annotation"
+            "callback : (Nat -> Nat)\nyield callback"
+            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
+        , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
+            "node : AST"
+            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
+        , expressionFailureCase "function parameter annotation must be canonical"
+            "({callback?:(Nat -> Nat)} -> Nat yield 0)"
+            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         ]
     , recursionTests
     ]
@@ -186,8 +247,7 @@ recursionTests =
          , programFailureCase "recursive argument type mismatch"
             (factorialDeclaration <> "yield factorial true")
             (SourceEvaluationFailure
-              (FunctionError
-                "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
          , programFailureCase "recursive result type mismatch"
             (unlines
               [ "let factorial := ({n? : Int} -> String do"
@@ -195,8 +255,7 @@ recursionTests =
               , "yield factorial 0"
               ])
             (SourceEvaluationFailure
-              (FunctionError
-                "function body does not satisfy its declared output type"))
+              (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
          , programFailureCase "ordinary declarations cannot see later names"
             "a := b\nb := a\nyield a"
             (SourceEvaluationFailure

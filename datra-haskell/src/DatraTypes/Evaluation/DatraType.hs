@@ -30,7 +30,8 @@ module Evaluation.DatraType
 -- @std_lib.datra@.  These names are capabilities, not language-level
 -- bindings; the standard library remains responsible for publishing them.
 data BuiltinMetaType
-  = ASTMetaType (Maybe String)
+  = AnyMetaType
+  | ASTMetaType (Maybe String)
   | NatRangeMetaType
   | IntRangeMetaType
   | NatValRangeMetaType
@@ -104,7 +105,10 @@ functionDatraType = makeNonCanonicalDatraType FunctionTypeFamily
 
 builtinMetaDatraType :: BuiltinMetaType -> DatraType
 builtinMetaDatraType kind =
-  makeNonCanonicalDatraType (BuiltinMetaTypeFamily kind)
+  case kind of
+    AnyMetaType -> canonicalTypeAsDatraType
+      (makeCanonicalType (BuiltinMetaTypeFamily kind))
+    _ -> makeNonCanonicalDatraType (BuiltinMetaTypeFamily kind)
 
 -- | An evaluated begin/yield block is a total singleton type.  Its sole
 -- member is the yielded value; block source is retained separately as

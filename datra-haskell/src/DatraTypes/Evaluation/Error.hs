@@ -3,6 +3,10 @@
 module Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
+  , FunctionFailure (..)
+  , ExternalFailure (..)
+  , ModuleEvaluationFailure (..)
+  , NamedAccessFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   , OperandSide (..)
@@ -12,6 +16,7 @@ module Evaluation.Error
   ) where
 
 import MapOperators.AccessOperator (AccessError)
+import Numeric.Natural (Natural)
 import SuperEllipsisRange
   ( SuperEllipsisRangeConcatError
   , SuperEllipsisRangeError
@@ -72,9 +77,64 @@ overloadFailureIsAmbiguous failure =
     OverloadAmbiguousWrittenOrder -> True
     _ -> False
 
+data FunctionFailure
+  = UnconstrainedInferredParameter String
+  | IncompatibleInferredParameterConstraints String
+  | InferredApplicationRequiresFunction
+  | UnsupportedInferredExpression
+  | InferredTypeOutsideRequirement String String
+  | AstPatternRequiresFunctionSignature
+  | AstPatternRequiresFunctionImplementation
+  | FunctionBodyOutsideDeclaredResult
+  | ExternalAdapterRequiresAstCaptures
+  | AmbiguousFunctionSumApplication
+  | AmbiguousFunctionArgumentBindings
+  | NoApplicableFunctionAlternative
+  | FunctionSignatureVarianceViolation
+  | FunctionSpecificationUndecidable String String
+  | ExpectedFunctionValue
+  | EmptyFunctionSum
+  | NoMatchingFunctionSpecificationAlternative
+  | AmbiguousFunctionSpecification
+  | FunctionArgumentsRequireFinitePages
+  | FunctionArgumentPageUnavailable Natural
+  | ExpectedFunctionType
+  deriving (Eq, Show)
+
+data ExternalFailure
+  = DuplicateExternalDescriptorField
+  | UnknownExternalDescriptorFields [String]
+  | UnsupportedExternalBackend String
+  | MissingExternalDescriptorField String
+  | ExternalDescriptorRequiresStringMap
+  | UnknownExternalSymbol String
+  | MissingNativeArgument String
+  deriving (Eq, Show)
+
+data ModuleEvaluationFailure
+  = StandardLibraryParseFailure FilePath String
+  | StandardLibraryRequiresDeclarationBlock FilePath
+  | ImportOutsideScope
+  | ImportedModuleRequiresDeclarationBlock
+  | ImportedModuleRequiresNamedExports
+  | ModuleExportRequiresIdentifier
+  | ModuleNotLoaded String
+  deriving (Eq, Show)
+
+data NamedAccessFailure
+  = NamedFieldNotFound String
+  | NamedFieldAmbiguous String
+  | NamedFieldMapNotInspectable
+  | NamedAccessRequiresFiniteMap
+  deriving (Eq, Show)
+
 data InterpretingError
-  = NamedAccessError String
-  | FunctionError String
+  = NamedAccessFailed NamedAccessFailure
+  | FunctionEvaluationFailed FunctionFailure
+  | ExternalEvaluationFailed ExternalFailure
+  | ModuleEvaluationFailed ModuleEvaluationFailure
+  | ExpectedBuiltinType String
+  | NonCanonicalIdentifierTypeAnnotation
   | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String

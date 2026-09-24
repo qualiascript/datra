@@ -14,7 +14,10 @@ module Evaluation.Arguments
 import Control.Monad (foldM)
 import Data.List (nubBy, permutations)
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Error (InterpretingError (FunctionError))
+import Evaluation.Error
+  ( FunctionFailure (..)
+  , InterpretingError (FunctionEvaluationFailed)
+  )
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Map (makeAtlasMap, hasConcreteSource, concatenateValues)
 import Evaluation.Access.Federation (federationIsCoalition)
@@ -121,8 +124,12 @@ argumentRows value = case interpretedForm value of
   _ -> pure [[value]]
   where
     pages = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
-      Nothing -> Left (FunctionError "function arguments require finitely many pages")
-      Just count -> traverse (\position -> maybe (Left (FunctionError "unavailable argument page")) Right
+      Nothing -> Left (FunctionEvaluationFailed
+        FunctionArgumentsRequireFinitePages)
+      Just count -> traverse (\position -> maybe
+          (Left (FunctionEvaluationFailed
+            (FunctionArgumentPageUnavailable position)))
+          Right
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
         (if count == 0 then [] else [0 .. count - 1])
 

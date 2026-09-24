@@ -1,4 +1,5 @@
 # Ordinary context bindings; only primitive values cross the external boundary.
+let Any := external "datra.Any"
 let Nat := external "datra.Nat"
 let Int := external "datra.Int"
 let String := external "datra.String"

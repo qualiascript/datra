@@ -34,6 +34,8 @@ main = defaultMain $ testGroup "Datra CLI"
   , testCase "build reports a forward-reference error" testBuildFailure
   , testCase "production mode omits soft assertions" testProductionAssertions
   , testCase "production mode keeps hard assertions" testHardProductionAssertion
+  , testCase "invalid mode uses a structured diagnostic" testInvalidMode
+  , testCase "invalid locale uses a structured diagnostic" testInvalidLocale
   ]
 
 fixtureBase :: FilePath
@@ -117,6 +119,38 @@ testHardProductionAssertion =
       ExitFailure _ ->
         assertBool ("unexpected diagnostic: " <> errors)
           ("assertion failed" `isInfixOf` errors)
+
+testInvalidMode :: Assertion
+testInvalidMode = do
+  (status, _, errors) <- runDatra
+    [ "build"
+    , "--source", "yield 1"
+    , "--mode", "fast"
+    , "--ast-output", "-"
+    , "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "invalid evaluation mode unexpectedly succeeded"
+    ExitFailure _ ->
+      assertBool ("unexpected diagnostic: " <> errors)
+        ("evaluation mode is not supported" `isInfixOf` errors
+          && "given mode: fast" `isInfixOf` errors)
+
+testInvalidLocale :: Assertion
+testInvalidLocale = do
+  (status, _, errors) <- runDatra
+    [ "build"
+    , "--source", "yield 1"
+    , "--locale", "klingon"
+    , "--ast-output", "-"
+    , "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "invalid diagnostic locale unexpectedly succeeded"
+    ExitFailure _ ->
+      assertBool ("unexpected diagnostic: " <> errors)
+        ("diagnostic locale is not supported" `isInfixOf` errors
+          && "given locale: klingon" `isInfixOf` errors)
 
 runDatra :: [String] -> IO (ExitCode, String, String)
 runDatra arguments = do
