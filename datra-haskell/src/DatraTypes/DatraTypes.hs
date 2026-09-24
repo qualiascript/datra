@@ -28,6 +28,8 @@ module DatraTypes
   , weakToStringValue
   , stringTemplateValue
   , extractValue
+  , evalValues
+  , requireFiniteInteger
   , formulationValue
   , addValues
   , subtractValues
@@ -115,6 +117,7 @@ import Evaluation.ToString
   , weakToStringValue
   )
 import Extract (extractValue)
+import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
@@ -123,6 +126,7 @@ import Evaluation.Map
   )
 import Evaluation.Numerical
   ( addValues
+  , requireFiniteInteger
   , subtractValues
   , minusValue
   , exponentiateValues

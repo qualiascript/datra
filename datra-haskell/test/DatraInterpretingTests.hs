@@ -98,6 +98,7 @@ testTree =
         , testCase "argument maps in concatenation" testArgumentMapConcatenation
         , testCase "argument maps in string templates" testArgumentMapTemplates
         , testCase "typed eval" testEval
+        , testCase "eval-backed keyword forms" testEvalBackedKeywords
         , testCase "integers and integer ranges" testIntegers
         , testCase "booleans and Either" testBooleansAndEither
         , testCase "optionals and conditionals" testOptionalsAndConditionals
@@ -663,6 +664,60 @@ testEval = do
     , "eval \"(2; 8)\", {a : Nat, b : Nat}"
     , "eval 12, Nat"
     ]
+
+testEvalBackedKeywords :: IO ()
+testEvalBackedKeywords = do
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
+    assert (source <> " rendered as " <> renderInterpretedValue value)
+      (renderInterpretedValue value == expected))
+    [ ("from 2 to 5", "from 2 to 5")
+    , ("from -3 to 4", "from -3 to 4")
+    , ("from 5 to 2", "from 5 to 2")
+    , ("from 2 upwards", "from 2 upwards")
+    , ("from -2 upwards", "from -2 upwards")
+    , ("from 2 downwards", "from 2 downwards")
+    , ("range 2 to 5", "range 2 to 5")
+    , ("range -3 to 4", "range -3 to 4")
+    , ("range 5 to 2", "range 5 to 2")
+    , ("range -2 upwards", "range -2 upwards")
+    , ("range 2 downwards", "range 2 downwards")
+    , ("from # normalized source trivia\n -3 to\n4", "from -3 to 4")
+    , ("if (true ~> Bool) then 7 else (1 and false)", "7")
+    , ("if false then (1 and false) else 9", "9")
+    , ("if false then (1 and false)", "()")
+    , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
+    , ("%(eval \"from 2 to 5\", \"from %Int to %Int\")[1]", "2 ~> Int")
+    , ("%(eval \"from 2 to 5\", \"from %Int to %Int\")[2]", "5 ~> Int")
+    , ("%(eval \"range -3 downwards\", \"range %Int downwards\")[1]", "-3 ~> Int")
+    , ("%(eval \"if true then\", \"if %Bool then\")[1]", "true ~> Bool")
+    ]
+  mapM_ (\source -> expectSourceValue source source $ \value ->
+    assert ("keyword forms compose with identifiers, specification, and inclusion: " <> source)
+      (renderInterpretedValue value == "true"))
+    [ "(eval \"from 2 to 5\", \"from %Int to %Int\") = (\"from 2 to 5\" ~> \"from %Int to %Int\")"
+    , "(2 ~> from 0 to 5) of from -1 to 8"
+    , "(from 0 to 5 <~ 2) = (2 ~> from 0 to 5)"
+    , "(2..3 ~> range 0 to 5) of range 0 to 8"
+    , "(range 0 to 5 <~ 2..3) = (2..3 ~> range 0 to 5)"
+    , "(2, b : 5) of (a? : from 0 to 8, b? : from 0 to 8)"
+    , "(eval \"(b : 5; 2)\", {a? : from 0 to 8, b? : from 0 to 8}) of {b? : Int, a? : Int}"
+    , "(if true then 2 else (1 and false)) of from 0 to 5"
+    , "((if false then (1 and false) else 2) ~> from 0 to 5) of Int"
+    , "(from 0 to 5 <~ (if true then 2 else (1 and false))) = (2 ~> from 0 to 5)"
+    , "(if true then (b? : from 0 to 5 := 2) else (1 and false)) of (b? : Int)"
+    ]
+  expectSourceRejection "keyword schema rejects an invalid bound"
+    "eval \"from nope to 5\", \"from %Int to %Int\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+  expectSourceRejection "keyword schema rejects an invalid condition"
+    "eval \"if 1 then\", \"if %Bool then\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
 
 testStringTemplates :: IO ()
 testStringTemplates = do

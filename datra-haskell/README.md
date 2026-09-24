@@ -162,9 +162,11 @@ lists can therefore be expensive.
 ### Typed evaluation
 
 `eval source, target` decodes canonical text against a target federation and
-returns the captured value with its specification. It uses the same matching
-and extraction machinery as `%(source ~> "%(target)")[1]` (where `source`
-and `target` stand for expressions).
+returns the captured value with its specification. Non-string targets use
+the matching and extraction machinery of `%(source ~> "%(target)")[1]`
+(where `source` and `target` stand for expressions). A string-template target
+retains the whole matched string specification, so `%` can subsequently
+extract all its captures.
 
 ```sh
 ./dist/datra-haskell build \
@@ -185,6 +187,23 @@ to its result:
 This produces `10`. Optional identifiers, specification, and subfederation
 retain their ordinary semantics. Input must use canonical data spelling:
 `eval "12", Int` succeeds, while `eval "1 + 2", Nat` is rejected.
+
+`from` and `range` use this same evaluator internally: their normalized
+keyword text is matched against typed templates such as `"from %Int to %Int"`
+and `"range %Int downwards"`. The extracted bounds feed the existing range
+constructors. Natural-only forms use `%Nat`. `if` matches its evaluated
+condition against `"if %Bool then"`; its branch expressions remain deferred,
+and only the selected branch is evaluated. The parser still handles syntax
+boundaries, comments, and literal normalization.
+
+You can inspect the same template captures explicitly:
+
+```datra
+%(eval "from 2 to 5", "from %Int to %Int")[1]
+%(eval "from 2 to 5", "from %Int to %Int")[2]
+```
+
+These produce `2 ~> Int` and `5 ~> Int` respectively.
 
 ### Read and save files
 

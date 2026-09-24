@@ -158,22 +158,31 @@ interpretNormalizedExpression expressionValue =
       interpretExpressionReason lower >>= openPlusRangeValue
     SuperEllipsisRangeMinus upper ->
       interpretExpressionReason upper >>= openMinusRangeValue
-    NaturalRange origin target -> naturalRangeValue origin target
-    NaturalRangeUpwards origin -> naturalRangeUpwardsValue origin
+    NaturalRange origin target ->
+      interpretBoundedKeyword "range" NaturalType (toInteger origin) (toInteger target)
+        (\start end -> naturalRangeValue (fromInteger start) (fromInteger end))
+    NaturalRangeUpwards origin ->
+      interpretOpenKeyword "range" NaturalType (toInteger origin) "upwards"
+        (naturalRangeUpwardsValue . fromInteger)
     ValuedNaturalRange origin target ->
-      valuedNaturalRangeValue origin target
+      interpretBoundedKeyword "from" NaturalType (toInteger origin) (toInteger target)
+        (\start end -> valuedNaturalRangeValue (fromInteger start) (fromInteger end))
     ValuedNaturalRangeUpwards origin ->
-      valuedNaturalRangeUpwardsValue origin
+      interpretOpenKeyword "from" NaturalType (toInteger origin) "upwards"
+        (valuedNaturalRangeUpwardsValue . fromInteger)
     NaturalType -> naturalTypeValue
-    IntegerRange origin target -> integerRangeValue origin target
-    IntegerRangeUpwards origin -> integerRangeUpwardsValue origin
-    IntegerRangeDownwards origin -> integerRangeDownwardsValue origin
+    IntegerRange origin target ->
+      interpretBoundedKeyword "range" IntegerType origin target integerRangeValue
+    IntegerRangeUpwards origin ->
+      interpretOpenKeyword "range" IntegerType origin "upwards" integerRangeUpwardsValue
+    IntegerRangeDownwards origin ->
+      interpretOpenKeyword "range" IntegerType origin "downwards" integerRangeDownwardsValue
     ValuedIntegerRange origin target ->
-      valuedIntegerRangeValue origin target
+      interpretBoundedKeyword "from" IntegerType origin target valuedIntegerRangeValue
     ValuedIntegerRangeUpwards origin ->
-      valuedIntegerRangeUpwardsValue origin
+      interpretOpenKeyword "from" IntegerType origin "upwards" valuedIntegerRangeUpwardsValue
     ValuedIntegerRangeDownwards origin ->
-      valuedIntegerRangeDownwardsValue origin
+      interpretOpenKeyword "from" IntegerType origin "downwards" valuedIntegerRangeDownwardsValue
     IntegerType -> integerTypeValue
     BooleanLiteral value -> Right (booleanValue value)
     BooleanType -> booleanTypeValue
@@ -183,7 +192,16 @@ interpretNormalizedExpression expressionValue =
       interpretExpressionReason operand >>= optionalValue
     Conditional condition consequent alternative -> do
       conditionValue <- interpretExpressionReason condition
-      conditionResult <- booleanCondition conditionValue
+      conditionFlag <- booleanCondition conditionValue
+      captured <- interpretKeywordTemplate
+        ("if " <> renderInterpretedValue (booleanValue conditionFlag) <> " then")
+        [ StringTemplateLiteral "if "
+        , StringTemplateInterpolation BooleanType
+        , StringTemplateLiteral " then"
+        ]
+      conditionResult <- accessValues captured (naturalValue 1) >>= booleanCondition
+      -- Branch ASTs remain deferred: only the decoded condition selects which
+      -- expression to interpret, including the implicit () alternative.
       interpretExpressionReason
         (if conditionResult then consequent else alternative)
     Addition left right ->
@@ -208,15 +226,7 @@ interpretNormalizedExpression expressionValue =
     Extract operand ->
       interpretExpressionReason operand >>= extractValue
     Eval source target ->
-      -- Typed eval is a single template interpolation followed by extraction
-      -- of its captured value. It shares canonical decoding, membership
-      -- checks, and the retained specification witness with explicit templates.
-      interpretExpressionReason
-        (MapAccess
-          (Extract
-            (MapSpecification source
-              (StringTemplate [StringTemplateInterpolation target])))
-          (EllipsisNatural 1))
+      interpretBinary (evalValues canonicalStringCodec) source target
     MapConcatenation left right ->
       interpretBinary concatenateValues left right
     MapAccess mapOperand insertionOperand ->
@@ -259,6 +269,56 @@ interpretNormalizedExpression expressionValue =
                   , givenValue = renderInterpretedValue givenValue
                   })
             result -> result
+
+-- The parser retains structural boundaries and canonicalizes literal tokens;
+-- eval matches the normalized keyword text and provides typed captures. The
+-- range constructors below receive only those decoded bounds.
+interpretKeywordTemplate
+  :: String
+  -> [StringTemplatePart Expression]
+  -> Either InterpretingError InterpretedValue
+interpretKeywordTemplate source parts =
+  interpretExpressionReason
+    (Eval (AsciiStringLiteral source) (StringTemplate parts)) >>= extractValue
+
+interpretBoundedKeyword
+  :: String
+  -> Expression
+  -> Integer
+  -> Integer
+  -> (Integer -> Integer -> Either InterpretingError InterpretedValue)
+  -> Either InterpretingError InterpretedValue
+interpretBoundedKeyword keyword boundType origin target construct = do
+  captured <- interpretKeywordTemplate
+    (keyword <> " " <> canonicalInteger origin <> " to " <> canonicalInteger target)
+    [ StringTemplateLiteral (keyword <> " ")
+    , StringTemplateInterpolation boundType
+    , StringTemplateLiteral " to "
+    , StringTemplateInterpolation boundType
+    ]
+  start <- accessValues captured (naturalValue 1) >>= requireFiniteInteger LeftOperand
+  end <- accessValues captured (naturalValue 2) >>= requireFiniteInteger RightOperand
+  construct start end
+
+interpretOpenKeyword
+  :: String
+  -> Expression
+  -> Integer
+  -> String
+  -> (Integer -> Either InterpretingError InterpretedValue)
+  -> Either InterpretingError InterpretedValue
+interpretOpenKeyword keyword boundType origin direction construct = do
+  captured <- interpretKeywordTemplate
+    (keyword <> " " <> canonicalInteger origin <> " " <> direction)
+    [ StringTemplateLiteral (keyword <> " ")
+    , StringTemplateInterpolation boundType
+    , StringTemplateLiteral (" " <> direction)
+    ]
+  start <- accessValues captured (naturalValue 1) >>= requireFiniteInteger LeftOperand
+  construct start
+
+canonicalInteger :: Integer -> String
+canonicalInteger = renderInterpretedValue . integerValue
 
 interpretStringTemplate
   :: [StringTemplatePart Expression]
