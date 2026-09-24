@@ -22,6 +22,7 @@ import Control.Monad (foldM)
 import Data.Foldable (traverse_)
 import Data.List (nubBy, permutations, sortOn)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraLanguage.Identifier (isPrivateIdentifier)
 import Evaluation.Arguments
   ( argumentRows
   , makeArgumentMap
@@ -182,7 +183,7 @@ matchSlot slot input = do
   let (inputName, inputValue) = suppliedValue input
   case (slotName slot, inputName) of
     (Just expected, Just actual)
-      | isPrivateName expected -> Nothing
+      | isPrivateIdentifier expected -> Nothing
       | expected == actual -> pure ()
       | otherwise -> Nothing
     -- A missing source name is positional. Required and optional target names
@@ -527,7 +528,7 @@ buildSlot (Just name) optional annotation supplied = do
     case supplied of
       Nothing -> Right (simpleIdentifierTypeValue name annotation)
       Just value
-        | isPrivateName name -> do
+        | isPrivateIdentifier name -> do
             _ <- specifyValues value annotation
             Right (simpleIdentifierTypeValue name value)
       Just value ->
@@ -543,7 +544,3 @@ buildSlot (Just name) optional annotation supplied = do
   if optional
     then makeEitherValue present annotation
     else Right present
-
-isPrivateName :: String -> Bool
-isPrivateName ('_':_) = True
-isPrivateName _ = False

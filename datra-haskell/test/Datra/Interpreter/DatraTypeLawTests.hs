@@ -66,6 +66,8 @@ standardLibraryTypeExamples =
   , weak "Pages" "Pages"
   , weak "NatRange" "NatRange"
   , weak "IntRange" "IntRange"
+  , weak "NatValRange" "NatValRange"
+  , weak "IntValRange" "IntValRange"
   , weak "StringTemplate" "StringTemplate"
   ]
 

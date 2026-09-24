@@ -1270,7 +1270,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "StringTemplate"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "StringTemplate"]
     , IdentifierReference <$> genIdentifierString
     , pure This
     , Import <$> Gen.bool <*> Gen.element ["std_lib", "library_one", "path/library_two"]
@@ -1471,14 +1471,14 @@ assertAstSyntax = do
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
         == "(apply (in-module $std_lib (~> (external \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntRange)))) "
+          <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntValRange)))) "
           <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
           <> "(~> 5 (in-module $std_lib (ref $Int)))))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
         == "(apply (in-module $std_lib (~> (external \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntRange)))) "
+          <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntValRange)))) "
           <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
           <> "(~> $upwards (in-module $std_lib (ref $_Wards)))))"
     )
@@ -1565,7 +1565,8 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
   (scoped (MapSpecification (External (AsciiStringLiteral ("datra." <> name)))
-    (FunctionType (MapConcatenation (ref "Int") (ref endpointType)) (ref "IntRange"))))
+    (FunctionType (MapConcatenation (ref "Int") (ref endpointType))
+      (ref (if name == "from" then "IntValRange" else "IntRange")))))
   (AtlasMap [checked "Int" start, checked endpointType endpoint])
   where
     scoped = InModule "std_lib"

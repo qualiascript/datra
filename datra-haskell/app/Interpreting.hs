@@ -35,9 +35,14 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub)
-import FunctionArguments
 import FunctionInference
 import ModuleNames (moduleIdentifier, isPrivateIdentifier)
+import RuntimeModules
+  ( EvaluationMode (..)
+  , ModuleSource (..)
+  , expressionForMode
+  , modulesForMode
+  )
 import StdLib
   ( isStandardLibraryRequest
   , standardLibraryFileName
@@ -51,7 +56,6 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , normalizeExpression
-  , mapExpressionChildren
   )
 import DatraTypes
 import Parsing (parseDatra, standardLibraryExpression)
@@ -107,36 +111,8 @@ interpretWithImportsInMode
   -> Either InterpretingError InterpretedValue
 interpretWithImportsInMode mode modules expression =
   interpretWithImports
-    (map (fmapModule mode) modules)
+    (modulesForMode mode modules)
     (expressionForMode mode expression)
-
-data ModuleSource = StdLibModule | ModuleSource FilePath Expression [(String, ModuleSource)]
-
-data EvaluationMode
-  = DevelopmentMode
-  | ProductionMode
-  deriving (Eq, Show)
-
-expressionForMode :: EvaluationMode -> Expression -> Expression
-expressionForMode DevelopmentMode = id
-expressionForMode ProductionMode = removeSoftAssertions
-  where
-    removeSoftAssertions (Assert False _) = AtlasMap []
-    removeSoftAssertions expressionValue =
-      mapExpressionChildren removeSoftAssertions expressionValue
-
-fmapModule
-  :: EvaluationMode
-  -> (String, ModuleSource)
-  -> (String, ModuleSource)
-fmapModule mode (name, source) = (name, transform source)
-  where
-    transform StdLibModule = StdLibModule
-    transform (ModuleSource path expression dependencies) =
-      ModuleSource
-        path
-        (expressionForMode mode expression)
-        (map (fmapModule mode) dependencies)
 
 
 standardScope :: Either InterpretingError Scope
@@ -731,33 +707,19 @@ createFunction captured resolving explicit bindings result = do
     evaluateForInference expression = evaluate expression
 
 applyFunction :: InterpretedValue -> InterpretedValue -> Either InterpretingError InterpretedValue
-applyFunction callable input = case candidates of
-  [function] | Just invoke <- functionInvoke function -> do
-    value <- invoke input
-    _ <- specifyValues value (functionCodomain function)
-    pure value
-  []
-    | any ambiguous preparations ->
-        Left (FunctionError
-          "ambiguous argument bindings; supply identifiers to select the intended slots")
-    | Just failure <- firstSkippedRequired preparations -> Left failure
-    | otherwise -> Left (FunctionError
-        "no applicable function alternative; syntax-only alternatives require their AST pattern")
-  [_] -> Left (FunctionError "this external adapter requires unevaluated AST captures")
-  _ -> Left (FunctionError "ambiguous function sum application")
+applyFunction callable input =
+  case selectFunctionCandidate preparations of
+    Right (function, _) | Just invoke <- functionInvoke function -> do
+      value <- invoke input
+      _ <- specifyValues value (functionCodomain function)
+      pure value
+    Right _ -> Left (FunctionError
+      "this external adapter requires unevaluated AST captures")
+    Left failure -> Left failure
   where
     preparations = [(function, prepare function)
       | function <- functionAlternatives callable
       , maybe True snd (functionPattern function)]
-    candidates = [function | (function, Right _) <- preparations]
-    ambiguous (_, Left (OverloadError failure)) =
-      overloadFailureIsAmbiguous failure
-    ambiguous _ = False
-    firstSkippedRequired [] = Nothing
-    firstSkippedRequired
-        ((_, Left failure@(OverloadError OverloadSkippedRequiredSlot)) : _) =
-      Just failure
-    firstSkippedRequired (_ : remaining) = firstSkippedRequired remaining
     prepare function =
       case functionPrepare function of
         Just operation -> operation input
@@ -803,6 +765,8 @@ registeredExternal symbol = case symbol of
   "datra.StringTemplate" -> Right stringTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
   "datra.IntRange" -> Right integerRangeTypeValue
+  "datra.NatValRange" -> Right naturalValuedRangeTypeValue
+  "datra.IntValRange" -> Right integerValuedRangeTypeValue
   "datra.from" -> nativeRange True
   "datra.range" -> nativeRange False
   "datra.add" -> nativeFunction
@@ -844,7 +808,9 @@ registeredExternal symbol = case symbol of
                 if start >= 0 && end >= 0
                   then (if valued then valuedNaturalRangeValue else naturalRangeValue) (fromInteger start) (fromInteger end)
                   else (if valued then valuedIntegerRangeValue else integerRangeValue) start end
-      pure (makeFunctionValue (EvaluatedFunction domain integerRangeTypeValue Nothing
+      let codomain =
+            if valued then integerValuedRangeTypeValue else integerRangeTypeValue
+      pure (makeFunctionValue (EvaluatedFunction domain codomain Nothing
         (Just ("external " <> show symbol))
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
         (Just invoke)))

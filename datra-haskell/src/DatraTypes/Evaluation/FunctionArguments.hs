@@ -1,7 +1,6 @@
--- | Compile function parameter syntax into a default-bearing overload
--- template. Calls and the public overload operators therefore share exactly
--- the same matching rules.
-module FunctionArguments
+-- | Compile function parameter syntax into the shared, default-bearing
+-- argument schema used by both function calls and overload operators.
+module Evaluation.FunctionArguments
   ( compileParameters
   , parameterBindings
   , parameterDomain
@@ -9,11 +8,18 @@ module FunctionArguments
   , parameterValues
   , prepareArguments
   , matchArguments
+  , selectFunctionCandidate
   ) where
 
 import DatraLanguage.AST
-import DatraTypes
-import ModuleNames (isPrivateIdentifier)
+import DatraLanguage.Identifier (isPrivateIdentifier)
+import Evaluation.Error
+  ( InterpretingError (..)
+  , OverloadFailure (..)
+  , overloadFailureIsAmbiguous
+  )
+import Evaluation.Overload
+import Evaluation.Value (InterpretedValue)
 
 compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -30,8 +36,7 @@ compileParameters evaluate expression =
         missing
       | annotation == missing -> do
           if isPrivateIdentifier name
-            then Left (FunctionError
-              "private parameter names cannot be optional")
+            then Left (PrivateParameterCannotBeOptional name)
             else pure ()
           argumentSlotSchema (Just name) True
             <$> evaluate annotation
@@ -45,7 +50,10 @@ compileParameters evaluate expression =
         flatten (MapConcatenation left right) =
           flatten left <> flatten right
         flatten value = [value]
-    _ -> argumentSlotSchema Nothing False <$> evaluate expression <*> pure Nothing
+    _ ->
+      argumentSlotSchema Nothing False
+        <$> evaluate expression
+        <*> pure Nothing
   where
     recur = compileParameters evaluate
 
@@ -72,12 +80,49 @@ prepareArguments
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-prepareArguments schema input = do
+prepareArguments schema input =
   fst <$> overloadArgumentSchemaComplete schema input
 
 matchArguments
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
-matchArguments schema input = do
+matchArguments schema input =
   snd <$> overloadArgumentSchemaComplete schema input
+
+-- | Select one successfully prepared function alternative and normalize the
+-- overload failures that are meaningful at the call boundary. Ordinary type
+-- mismatches remain a single function-applicability error; ambiguity and an
+-- explicit skip of a required argument retain their stronger diagnostics.
+selectFunctionCandidate
+  :: [(candidate, Either InterpretingError prepared)]
+  -> Either InterpretingError (candidate, prepared)
+selectFunctionCandidate preparations =
+  case
+      [ (candidate, prepared)
+      | (candidate, Right prepared) <- preparations
+      ] of
+    [candidate] -> Right candidate
+    [] -> Left (normalizedFailure preparations)
+    _ -> Left (FunctionError "ambiguous function sum application")
+  where
+    normalizedFailure attempts
+      | any isAmbiguous attempts = FunctionError
+          "ambiguous argument bindings; supply identifiers to select the intended slots"
+      | Just failure <- firstCompletionFailure attempts = failure
+      | otherwise = FunctionError
+          "no applicable function alternative; syntax-only alternatives require their AST pattern"
+
+    isAmbiguous (_, Left (OverloadError failure)) =
+      overloadFailureIsAmbiguous failure
+    isAmbiguous _ = False
+
+    firstCompletionFailure [] = Nothing
+    firstCompletionFailure
+        ((_, Left failure@(OverloadError overloadFailure)) : remaining) =
+      case overloadFailure of
+        OverloadSkippedRequiredSlot -> Just failure
+        OverloadMissingRequiredSlot -> Just failure
+        _ -> firstCompletionFailure remaining
+    firstCompletionFailure (_ : remaining) =
+      firstCompletionFailure remaining

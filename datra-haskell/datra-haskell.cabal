@@ -24,6 +24,7 @@ extra-source-files:
     test/fixtures/cli/*.ast
     test/fixtures/cli/*.datra
     test/fixtures/cli/*.out
+    test/fixtures/integration/*.datra
     test/fixtures/modules/*.datra
     src/DatraCore/LiquidPlugin.h
 
@@ -51,6 +52,7 @@ library
         DatraLanguage.AST.Reserved
         DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
+        DatraLanguage.Identifier
         DatraTypes
         AsciiMap
         AsciiString
@@ -211,6 +213,7 @@ library
         Evaluation.Error
         Evaluation.Federation
         Evaluation.Federation.Structure
+        Evaluation.FunctionArguments
         Evaluation.Identifier
         Evaluation.Map
         Evaluation.Numerical
@@ -312,7 +315,7 @@ executable datra-haskell
     main-is:          Main.hs
     other-modules:
         Interpreting
-        FunctionArguments
+        RuntimeModules
         ModuleNames
         ModuleLoading
         FunctionInference
@@ -398,7 +401,7 @@ test-suite datra-interpreting-test
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport
         Interpreting
-        FunctionArguments
+        RuntimeModules
         ModuleNames
         ModuleLoading
         FunctionInference

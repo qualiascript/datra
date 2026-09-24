@@ -6,6 +6,7 @@ module Datra.TestSupport
   , moduleCase
   , moduleFailureCase
   , programCase
+  , programFileCase
   , programFailureCase
   , programCaseInMode
   , programFailureCaseInMode
@@ -87,6 +88,20 @@ expressionCase name source expected =
 programCase :: TestName -> String -> String -> TestTree
 programCase name source expected =
   testCase name (assertRendered expected (runProgram source))
+
+programFileCase
+  :: Int
+  -> TestName
+  -> FilePath
+  -> String
+  -> TestTree
+programFileCase expectedLineCount name path expected = testCase name $ do
+  source <- readFile path
+  assertEqual
+    (name <> " line count")
+    expectedLineCount
+    (length (lines source))
+  assertRendered expected (runProgram source)
 
 programCaseInMode
   :: EvaluationMode

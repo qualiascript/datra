@@ -4,7 +4,8 @@ module ModuleLoading (loadImports, loadExpressionImports, importSyntax) where
 import Control.Exception (IOException, try)
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>), takeDirectory, takeExtension)
-import Interpreting (ModuleSource (..), moduleExportNames)
+import Interpreting (moduleExportNames)
+import RuntimeModules (ModuleSource (..))
 import Parsing (sourceImports, parseDatraLocatedWithSyntaxImports)
 import DatraLanguage.AST
 import DatraLanguage.Diagnostics (Located (locatedValue))

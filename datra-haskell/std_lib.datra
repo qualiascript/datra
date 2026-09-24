@@ -17,10 +17,12 @@ let Block := external "datra.Block"
 let Pages := external "datra.Pages"
 let NatRange := external "datra.NatRange"
 let IntRange := external "datra.IntRange"
+let NatValRange := external "datra.NatValRange"
+let IntValRange := external "datra.IntValRange"
 
 from := (
-  ("$Int to $Int" as? (Int, Int -> IntRange) external "datra.from") |
-  ("$Int $_Wards" as? (Int, _Wards -> IntRange) external "datra.from")
+  ("$Int to $Int" as? (Int, Int -> IntValRange) external "datra.from") |
+  ("$Int $_Wards" as? (Int, _Wards -> IntValRange) external "datra.from")
 )
 range := (
   ("$Int to $Int" as? (Int, Int -> IntRange) external "datra.range") |

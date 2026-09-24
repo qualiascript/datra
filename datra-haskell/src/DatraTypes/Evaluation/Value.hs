@@ -32,6 +32,8 @@ module Evaluation.Value
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
+  , naturalValuedRangeTypeValue
+  , integerValuedRangeTypeValue
   , functionSignature
   , callableFunction
   , interpretedFunction
@@ -289,6 +291,8 @@ builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
+builtinMetaTypeName NatValRangeMetaType = "NatValRange"
+builtinMetaTypeName IntValRangeMetaType = "IntValRange"
 builtinMetaTypeName StringTemplateMetaType = "StringTemplate"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
@@ -297,10 +301,14 @@ builtinMetaTypeValue kind = makeInterpretedValue
   (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
-astTypeValue, naturalRangeTypeValue, integerRangeTypeValue, stringTemplateTypeValue :: InterpretedValue
+astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
+  naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
+  stringTemplateTypeValue :: InterpretedValue
 astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
+naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
+integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
 stringTemplateTypeValue = builtinMetaTypeValue StringTemplateMetaType
 
 syntaxCategoryTypeValue :: String -> InterpretedValue

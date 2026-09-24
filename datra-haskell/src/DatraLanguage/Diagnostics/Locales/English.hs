@@ -70,6 +70,10 @@ localizeInterpretingError reason =
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identifier is not imported in this scope" ["identifier: " <> name]
+    PrivateParameterCannotBeOptional name ->
+      LocalizedMessage
+        "private function parameter cannot be optional"
+        ["identifier: " <> name]
     CyclicIdentifierReference names ->
       LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->

@@ -31,12 +31,13 @@ decideBuiltinMetaSubfederation source target =
       (BuiltinMetaTypeForm actual, expected) | actual == expected -> True
       (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType Nothing) -> True
       (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True
+      (BuiltinMetaTypeForm NatValRangeMetaType, IntValRangeMetaType) -> True
       (NaturalRangeForm _, NatRangeMetaType) -> True
-      (ValuedNaturalRangeForm _, NatRangeMetaType) -> True
       (NaturalRangeForm _, IntRangeMetaType) -> True
-      (ValuedNaturalRangeForm _, IntRangeMetaType) -> True
       (IntegerRangeForm _, IntRangeMetaType) -> True
-      (ValuedIntegerRangeForm _, IntRangeMetaType) -> True
+      (ValuedNaturalRangeForm _, NatValRangeMetaType) -> True
+      (ValuedNaturalRangeForm _, IntValRangeMetaType) -> True
+      (ValuedIntegerRangeForm _, IntValRangeMetaType) -> True
       (_, StringTemplateMetaType) ->
         federationProducesStrings (interpretedAtlasMapFederation source)
       _ -> False

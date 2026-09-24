@@ -33,6 +33,8 @@ data BuiltinMetaType
   = ASTMetaType (Maybe String)
   | NatRangeMetaType
   | IntRangeMetaType
+  | NatValRangeMetaType
+  | IntValRangeMetaType
   | StringTemplateMetaType
   deriving (Eq, Show)
 

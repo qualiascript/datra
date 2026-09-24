@@ -60,6 +60,7 @@ import DatraOrdinal
   , ordinalCoefficients
   )
 import qualified DatraTypes as Types
+import DatraLanguage.AST qualified as AST
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
   ( Dot
@@ -168,12 +169,15 @@ testTree =
         , testCase "typed and evaluated numerical semantics agree"
             testNumericalSemanticsAgreement
         , testCase "typing abstractions" testTypingAbstractions
+        , testCase "argument schemas" testArgumentSchemas
         ]
     , testGroup "properties"
         [ testProperty "ASCII strings preserve every byte" propAsciiStringRoundTrip
         , testProperty "ASCII map lookup agrees with character codes" propAsciiMapLookup
         , testProperty "ordinal sequence append preserves order and lookup"
             propOrdinalSequenceAppend
+        , testProperty "argument schema skip preserves a default"
+            propArgumentSchemaSkipDefault
         ]
     ]
 
@@ -262,9 +266,113 @@ testDiagnostics = do
           [ "insertion rank limit: (...) ^ 2 * 2 + 3"
           , "map final-page order type: 256"
           ])
+  assert "private optional parameters are localized from a structured error"
+    ( localizeDiagnostic English
+        (Types.PrivateParameterCannotBeOptional "_value")
+        == LocalizedMessage
+          "private function parameter cannot be optional"
+          ["identifier: _value"]
+      && localizeDiagnostic Romanian
+        (Types.PrivateParameterCannotBeOptional "_value")
+        == LocalizedMessage
+          "parametrul privat al funcției nu poate fi opțional"
+          ["identificator: _value"]
+    )
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
+
+testArgumentSchemas :: IO ()
+testArgumentSchemas = do
+  naturalType <- expectRight "construct Nat" Types.naturalTypeValue
+  integerType <- expectRight "construct Int" Types.integerTypeValue
+  let naturalExpression =
+        AST.IdentifierReference (AST.IdentifierString "Nat")
+      evaluateNatural expression
+        | expression == naturalExpression = Right naturalType
+        | otherwise = Left (Types.FunctionError "unexpected test expression")
+      privateOptional = AST.EitherType
+        (AST.IdentifierOperation
+          (AST.IdentifierString "_value") naturalExpression Nothing)
+        naturalExpression
+  assert "private optional parameters use a structured boundary error"
+    (case Types.compileParameters evaluateNatural privateOptional of
+      Left (Types.PrivateParameterCannotBeOptional "_value") -> True
+      _ -> False)
+  let defaultBase = Types.naturalValue 2
+      exponentValue = Types.naturalValue 3
+      positionalSchema = Types.orderedArgumentSchema 2
+        [ Types.argumentSlotSchema
+            (Just "_base") False naturalType (Just defaultBase)
+        , Types.argumentSlotSchema
+            (Just "_exponent") False naturalType Nothing
+        ]
+  skipped <- expectRight "construct skipped arguments"
+    (Types.makeArgumentMap [Types.skipValue, exponentValue])
+  completed <- expectRight "complete skipped default"
+    (Types.argumentSchemaValuesComplete positionalSchema skipped)
+  assert "a skip consumes its slot and retains that slot's default"
+    (Types.interpretedCanonicalResult completed
+      == Types.interpretedCanonicalResult
+          (Types.makeAtlasMap 2 [defaultBase, exponentValue]))
+  (_, bindings) <- expectRight "bind skipped positional arguments"
+    (Types.overloadArgumentSchemaComplete positionalSchema skipped)
+  assert "private positional parameters still produce body bindings"
+    (map (\(name, value) -> (name, Types.interpretedCanonicalResult value)) bindings
+      == [ ("_base", Types.interpretedCanonicalResult defaultBase)
+         , ("_exponent", Types.interpretedCanonicalResult exponentValue)
+         ])
+
+  let requiredSchema = Types.orderedArgumentSchema 2
+        [ Types.argumentSlotSchema Nothing False naturalType Nothing
+        , Types.argumentSlotSchema Nothing False naturalType Nothing
+        ]
+  assert "a complete call rejects an explicitly skipped required slot"
+    (case Types.argumentSchemaValuesComplete requiredSchema skipped of
+      Left (Types.OverloadError Types.OverloadSkippedRequiredSlot) -> True
+      _ -> False)
+
+  text <- expectRight "construct ASCII string" (Types.asciiStringValue "value")
+  reordered <- expectRight "construct uniquely reorderable arguments"
+    (Types.makeArgumentMap [text, Types.naturalValue 7])
+  let reorderSchema = Types.unorderedArgumentSchema
+        [ Types.argumentSlotSchema (Just "x") False integerType Nothing
+        , Types.argumentSlotSchema
+            (Just "label") False Types.stringTypeValue Nothing
+        ]
+  (_, reorderedBindings) <- expectRight "uniquely reorder arguments"
+    (Types.overloadArgumentSchemaComplete reorderSchema reordered)
+  assert "an argument map uses its sole type-correct reordering"
+    (map (\(name, value) -> (name, Types.interpretedCanonicalResult value))
+        reorderedBindings
+      == [ ("x", Types.interpretedCanonicalResult (Types.naturalValue 7))
+         , ("label", Types.interpretedCanonicalResult text)
+         ])
+
+expectRight :: Show error => String -> Either error value -> IO value
+expectRight label result =
+  case result of
+    Right value -> pure value
+    Left failure -> fail (label <> ": " <> show failure)
+
+propArgumentSchemaSkipDefault :: H.Property
+propArgumentSchemaSkipDefault = H.property $ do
+  defaultValue <- H.forAll (Gen.integral (Range.linear 0 10000))
+  suppliedValue <- H.forAll (Gen.integral (Range.linear 0 10000))
+  naturalType <- H.evalEither Types.naturalTypeValue
+  let expectedDefault = Types.naturalValue defaultValue
+      expectedSupplied = Types.naturalValue suppliedValue
+      schema = Types.orderedArgumentSchema 2
+        [ Types.argumentSlotSchema Nothing False naturalType
+            (Just expectedDefault)
+        , Types.argumentSlotSchema Nothing False naturalType Nothing
+        ]
+      supplied = Types.makeAtlasMap 2 [Types.skipValue, expectedSupplied]
+  completed <- H.evalEither
+    (Types.argumentSchemaValuesComplete schema supplied)
+  Types.interpretedCanonicalResult completed H.===
+    Types.interpretedCanonicalResult
+      (Types.makeAtlasMap 2 [expectedDefault, expectedSupplied])
 
 propAsciiStringRoundTrip :: H.Property
 propAsciiStringRoundTrip = H.property $ do

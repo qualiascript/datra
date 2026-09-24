@@ -18,6 +18,8 @@ module DatraTypes
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
+  , naturalValuedRangeTypeValue
+  , integerValuedRangeTypeValue
   , functionSignature
   , callableFunction
   , interpretedFunction
@@ -97,6 +99,14 @@ module DatraTypes
   , argumentSchemaDomain
   , argumentSchemaPositionalDomain
   , argumentSchemaValuesComplete
+  , compileParameters
+  , parameterBindings
+  , parameterDomain
+  , parameterPositionalDomain
+  , parameterValues
+  , prepareArguments
+  , matchArguments
+  , selectFunctionCandidate
   , overloadArgumentSchemaComplete
   , overloadValues
   , safeOverloadValues
@@ -154,6 +164,16 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
+import Evaluation.FunctionArguments
+  ( compileParameters
+  , matchArguments
+  , parameterBindings
+  , parameterDomain
+  , parameterPositionalDomain
+  , parameterValues
+  , prepareArguments
+  , selectFunctionCandidate
+  )
 import Evaluation.Arguments
   ( argumentPresentations
   , argumentRows
@@ -240,6 +260,8 @@ import Evaluation.Value
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
+  , naturalValuedRangeTypeValue
+  , integerValuedRangeTypeValue
   , functionSignature
   , callableFunction
   , interpretedFunction

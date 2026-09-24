@@ -26,7 +26,7 @@ import Control.Monad.Combinators.Expr
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nubBy)
 import Data.Maybe (catMaybes)
-import Data.Char (chr, digitToInt, isHexDigit, ord)
+import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
@@ -100,6 +100,13 @@ import DatraLanguage.AST
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.Identifier
+  ( IdentifierSpelling (..)
+  , identifierSpellingValue
+  , isAsciiCharacter
+  , isIdentifierCharacter
+  , isLeadingIdentifierCharacter
+  )
 import ModuleNames (isPrivateIdentifier, moduleIdentifier)
 import StdLib
   ( standardLibraryFileName
@@ -1026,7 +1033,7 @@ keywordToken :: Text -> Parser Text
 keywordToken value =
   try
     (value <$ chunk value
-      <* notFollowedBy (satisfy isCanonicalCharacter))
+      <* notFollowedBy (satisfy isIdentifierCharacter))
 
 keywordSeparator :: Parser ()
 keywordSeparator =
@@ -1184,10 +1191,6 @@ bareIdentifier = lexeme bareIdentifierToken
 astBareIdentifier :: Parser String
 astBareIdentifier = astLexeme bareIdentifierToken
 
-data IdentifierSpelling
-  = BareIdentifier String
-  | FullStringIdentifier String
-
 identifierExpression :: Parser IdentifierSpelling
 identifierExpression =
   FullStringIdentifier <$> standardString
@@ -1199,15 +1202,12 @@ astIdentifierExpression =
     <|> BareIdentifier <$> astBareIdentifier
 
 validateIdentifierSpelling :: IdentifierSpelling -> Parser String
-validateIdentifierSpelling (FullStringIdentifier value) = pure value
-validateIdentifierSpelling (BareIdentifier value)
-  | not (Reserved.isReservedIdentifierString value) = pure value
-  | otherwise = empty
+validateIdentifierSpelling = maybe empty pure . identifierSpellingValue
 
 bareIdentifierToken :: Parser String
 bareIdentifierToken = do
-  first <- satisfy isLeadingCanonicalCharacter
-  rest <- many (satisfy isCanonicalCharacter)
+  first <- satisfy isLeadingIdentifierCharacter
+  rest <- many (satisfy isIdentifierCharacter)
   let value = first : rest
   if isIdentifierValue value then pure value else empty
 
@@ -1379,27 +1379,6 @@ hexadecimalAsciiCharacter = do
           Nothing -> digitToInt firstDigit
           Just digit -> 16 * digitToInt firstDigit + digitToInt digit
   pure (chr byteValue)
-
-isLeadingCanonicalCharacter :: Char -> Bool
-isLeadingCanonicalCharacter character =
-  isAsciiLetter character || character == '_'
-
-isCanonicalCharacter :: Char -> Bool
-isCanonicalCharacter character =
-  isLeadingCanonicalCharacter character
-    || isAsciiDigit character
-    || character == '\''
-
-isAsciiLetter :: Char -> Bool
-isAsciiLetter character =
-  ('a' <= character && character <= 'z')
-    || ('A' <= character && character <= 'Z')
-
-isAsciiDigit :: Char -> Bool
-isAsciiDigit character = '0' <= character && character <= '9'
-
-isAsciiCharacter :: Char -> Bool
-isAsciiCharacter character = ord character < 256
 
 -- Horizontal trivia belongs to the preceding token. Keeping line breaks out
 -- of the ordinary lexeme consumer lets the grammar decide whether each one

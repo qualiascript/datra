@@ -79,6 +79,7 @@ data InterpretingError
   | AssertionFailed
   | IdentifierStringOverlap String
   | UnknownIdentifier String
+  | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
   | ExpectedNumericalOperand OperandSide InterpretedValueKind

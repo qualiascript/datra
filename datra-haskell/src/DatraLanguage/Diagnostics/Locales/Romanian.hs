@@ -68,6 +68,10 @@ localizeInterpretingError reason =
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identificatorul nu este importat în acest domeniu" ["identificator: " <> name]
+    PrivateParameterCannotBeOptional name ->
+      LocalizedMessage
+        "parametrul privat al funcției nu poate fi opțional"
+        ["identificator: " <> name]
     CyclicIdentifierReference names ->
       LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
     LetOutsideBegin ->

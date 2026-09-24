@@ -810,6 +810,8 @@ testCanonicalTypes = do
     , "Pages"
     , "NatRange"
     , "IntRange"
+    , "NatValRange"
+    , "IntValRange"
     , "StringTemplate"
     , "Nat -> Nat"
     , "(Nat; AST)"
