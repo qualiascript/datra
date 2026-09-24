@@ -3,6 +3,7 @@
 -- identified instead of being assigned artificial distinguishing tags.
 module Evaluation.Arguments
   ( argumentRows
+  , overloadArgumentRows
   , functionArgumentValue
   , argumentPresentations
   , makeArgumentMap
@@ -124,6 +125,20 @@ argumentRows value = case interpretedForm value of
       Just count -> traverse (\position -> maybe (Left (FunctionError "unavailable argument page")) Right
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
         (if count == 0 then [] else [0 .. count - 1])
+
+-- | Overload matching preserves ordinary argument rows but turns the tagged
+-- skip sentinel into an explicit positional hole. Its rank-zero payload is
+-- never inspected here, so a literal @(...) ^ 0@ remains a supplied value.
+overloadArgumentRows
+  :: InterpretedValue
+  -> Either InterpretingError [[Maybe InterpretedValue]]
+overloadArgumentRows value =
+  map (map supplied) <$> argumentRows value
+  where
+    supplied member =
+      case interpretedForm member of
+        SkipForm _ -> Nothing
+        _ -> Just member
 
 functionArgumentValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 functionArgumentValue value = case interpretedForm value of

@@ -61,6 +61,7 @@ stringConversionProperties semantics =
       eitherConversionProperties
         (stringConversionProperties left)
         (stringConversionProperties right)
+    SkipSemantics _ -> exactStrings ["*"]
     RangeConcatenationSemantics {} -> injectiveUnknownAlphabet
     ConcatenationSemantics members -> compositeProperties members
     DependentIdentifierTypeSemantics dependency underlying True

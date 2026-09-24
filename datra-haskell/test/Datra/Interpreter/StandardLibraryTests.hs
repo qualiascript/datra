@@ -16,10 +16,10 @@ standardLibraryTests =
     [ testGroup "qualified syntax"
         [ expressionCase source source expected
         | (source, expected) <-
-            [ ("StandardLibrary.if false then (1 + \"bad\") else 11", "11")
-            , ("StandardLibrary.from (1 + 1) to 5", "from 2 to 5")
-            , ("StandardLibrary.range 2 downwards", "range 2 downwards")
-            , ("StandardLibrary.true", "true : true")
+            [ ("StdLib.if false then (1 + \"bad\") else 11", "11")
+            , ("StdLib.from (1 + 1) to 5", "from 2 to 5")
+            , ("StdLib.range 2 downwards", "range 2 downwards")
+            , ("StdLib.true", "true : true")
             ]
         ]
     , testGroup "scope values"
@@ -44,7 +44,7 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (NamedAccessError "no field named _private"))
         , programFailureCase "private standard-library eval"
-            "yield StandardLibrary._eval"
+            "yield StdLib._eval"
             (SourceEvaluationFailure
               (UnknownIdentifier "_eval"))
         , programFailureCase "duplicate scope member"

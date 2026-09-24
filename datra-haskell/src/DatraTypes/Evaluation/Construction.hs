@@ -9,6 +9,7 @@ module Evaluation.Construction
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
+  , makeSkip
   , mapFromInsertion
   ) where
 
@@ -152,6 +153,25 @@ makeFormulation level = value
         TotalInterpretedMap
         semantics
     semantics = FormulationSemantics level
+
+-- | The positional skip marker stores Datra's rank-zero formulation while
+-- retaining a distinct tag. Typing can therefore require @*@ to match only
+-- @*@, while overload resolution can interpret it as an omitted slot.
+makeSkip :: InterpretedValue
+makeSkip =
+  makeInterpretedValue
+    (interpretedDatraType payload)
+    (SkipForm payload)
+    (interpretedInsertionCapability payload)
+    ((interpretedMap payload)
+      { interpretedMapComponents = [semantics]
+      })
+    (interpretedAtlasMapFederation payload)
+    TotalInterpretedMap
+    semantics
+  where
+    payload = makeFormulation 0
+    semantics = SkipSemantics (interpretedSemantics payload)
 
 mapFromInsertion
   :: SomeSuperEllipsisInsertion

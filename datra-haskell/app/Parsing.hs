@@ -37,6 +37,7 @@ import DatraLanguage.AST
       , StringTemplate
       , AtlasMap
       , ArgumentMap
+      , Skip
       , EllipsisLiteral
       , EllipsisNatural
       , Exponentiation
@@ -99,7 +100,7 @@ import DatraLanguage.AST
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import ModuleNames (isPrivateIdentifier, moduleIdentifier)
-import StandardLibrary (standardLibrarySource)
+import StdLib (standardLibrarySource)
 import SyntaxDefinitions
 import DatraLanguage.AST.Reserved.Bootstrap
   ( reservedSymbolReplacements
@@ -227,15 +228,15 @@ runDatraParser parser resourceName source =
 
 libraryDeclarations :: [Expression]
 libraryDeclarations = case runParser (runReaderT resource (ParserContext 0 False [] [] []))
-    "standard_library.datra" (Text.pack standardLibrarySource) of
+    "std_lib.datra" (Text.pack standardLibrarySource) of
   Right (Program declarations _) -> declarations
   _ -> []
 
 libraryRules :: [SyntaxRule]
-libraryRules = rules <> [rule { syntaxName = "StandardLibrary." <> syntaxName rule } | rule <- rules]
+libraryRules = rules <> [rule { syntaxName = "StdLib." <> syntaxName rule } | rule <- rules]
   where
     rules =
-      [ rule { syntaxModule = Just "standard_library" }
+      [ rule { syntaxModule = Just "std_lib" }
       | rule <- concatMap declarationRules libraryDeclarations
       , not (isPrivateIdentifier (syntaxName rule))
       ]
@@ -289,7 +290,7 @@ astEmptyMap :: Parser Expression
 astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
-astAtom = astLexeme (This <$ keywordToken "this" <|> choice
+astAtom = astLexeme (Skip <$ chunk "*" <|> This <$ keywordToken "this" <|> choice
   [ replacement <$ keywordToken (Text.pack (Reserved.reservedSymbolIdentifierString reserved))
   | (reserved, replacement) <- reservedSymbolReplacements
   ] <|> atomicExpressionToken astStringTemplateToken)
@@ -768,7 +769,8 @@ extractedTermAtom =
 termAtom :: Parser Expression
 termAtom =
   choice
-    [ This <$ keyword "this"
+    [ bareSkip
+    , This <$ keyword "this"
     , importExpression
     , syntaxApplication
     , bootstrapLet
@@ -779,6 +781,15 @@ termAtom =
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
+
+-- The skip atom and multiplication share @*@. A bare skip can participate in
+-- every unambiguous expression position, but multiplication requires explicit
+-- grouping on each skip side: @(*) * 7@ and @7 * (*)@.
+bareSkip :: Parser Expression
+bareSkip = do
+  _ <- symbol "*"
+  notFollowedBy (operatorToken AST.MultiplicationOperator)
+  pure Skip
 
 importExpression :: Parser Expression
 importExpression = do
@@ -1033,11 +1044,19 @@ arithmeticOperatorTableWith infixOperator =
     , Prefix (Minus <$ continuedWordOperator AST.MinusOperator)
     , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
     ]
-  , [InfixL (Multiplication <$ infixOperator AST.MultiplicationOperator)]
+  , [InfixL (Multiplication <$ multiplicationOperator infixOperator)]
   , [ InfixL (Addition <$ infixOperator AST.AdditionOperator)
     , InfixL (Subtraction <$ infixOperator AST.SubtractionOperator)
     ]
   ]
+
+multiplicationOperator
+  :: (AST.Operator -> Parser Text)
+  -> Parser Text
+multiplicationOperator infixOperator = try $ do
+  token <- infixOperator AST.MultiplicationOperator
+  notFollowedBy (char '*')
+  pure token
 
 operatorBeforeIdentifierBoundary :: AST.Operator -> Parser Text
 operatorBeforeIdentifierBoundary operator =
@@ -1172,10 +1191,11 @@ validateIdentifierSpelling (BareIdentifier value)
   | otherwise = empty
 
 bareIdentifierToken :: Parser String
-bareIdentifierToken =
-  (:)
-    <$> satisfy isLeadingCanonicalCharacter
-    <*> many (satisfy isCanonicalCharacter)
+bareIdentifierToken = do
+  first <- satisfy isLeadingCanonicalCharacter
+  rest <- many (satisfy isCanonicalCharacter)
+  let value = first : rest
+  if isIdentifierValue value then pure value else empty
 
 -- | The standard quoted spelling. It is multiline by default and retains all
 -- non-comment contents exactly. A hash begins a line comment, while newline,

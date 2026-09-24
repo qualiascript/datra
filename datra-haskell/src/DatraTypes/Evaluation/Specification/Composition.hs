@@ -36,6 +36,11 @@ selectFederationMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectFederationMember source target
+  | SkipForm sourcePayload <- interpretedForm source
+  , SkipForm targetPayload <- interpretedForm target =
+      selectFederationMember sourcePayload targetPayload
+  | SkipForm _ <- interpretedForm source = DecisionRefuted
+  | SkipForm _ <- interpretedForm target = DecisionRefuted
   | ArgumentMapForm members underlying <- interpretedForm target =
       ArgumentMap.selectArgumentMapMember
         selectFederationMember source members underlying

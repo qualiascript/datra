@@ -54,6 +54,16 @@ overloadTests =
     , programCase "overload does not skip a compatible defaulted slot"
         "yield {x : Nat := 2, Nat} << 4"
         "{x : Nat := 4, Nat}"
+    , programCase "skip advances one positional overload slot"
+        "yield {x : Nat, y : Nat} << (*, 3)"
+        "{x : Nat, y : Nat := 3}"
+    , programCase "skip composes through argument-map overload input"
+        "yield {x : Nat, y : Nat} << {*, 3}"
+        "{x : Nat, y : Nat := 3}"
+    , programFailureCase "rank-zero formulation is not a skip"
+        "yield {x : Nat, y : Nat} << ((...) ^ 0, 3)"
+        (SourceEvaluationFailure
+          (OverloadError OverloadNoMatch))
     , programCase "safe overload fills a later compatible slot"
         "yield {x : Nat := 2, String} <<< \"a\""
         "{x : Nat := 2, $a}"
@@ -73,12 +83,69 @@ overloadTests =
     , programCase "safe overload result supports specification"
         "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"
         "x? : Int := 2"
+    , programCase "safe overload can leave a default skipped"
+        "yield {x : Nat := 2, y : Nat} <<< (*, 3)"
+        "{x : Nat := 2, y : Nat := 3}"
+    , programCase "skip specifications match only skip positions"
+        (unlines
+          [ "assert (*, 3) of (*, Nat)"
+          , "assert {*, 3} of {*, Nat}"
+          , "assert ((*, 3) ~> (*, Nat)) of (*, Nat)"
+          , "assert ({*, 3} ~> {*, Nat}) of {*, Nat}"
+          , "assert not (((...) ^ 0, 3) of (*, Nat))"
+          , "assert not ((*, 3) of ((...) ^ 0, Nat))"
+          ])
+        "()"
+    , programCase "skip coerces to one in numerical operators"
+        (unlines
+          [ "assert * + 2 = 3"
+          , "assert 4 - * = 3"
+          , "assert (*) * 7 = 7"
+          , "assert 7 * (*) = 7"
+          , "assert (*) * (*) = 1"
+          , "assert 2 ^ * = 2"
+          , "assert -* = -1"
+          , "assert ...^() = *"
+          ])
+        "()"
     ]
 
 defaultedFunctionTests :: TestTree
 defaultedFunctionTests =
   testGroup "defaulted function arguments"
-    [ programCase "empty argument uses the default"
+    [ programCase "positional-only my_pow skips its defaulted first argument"
+        (unlines
+          [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
+          , "yield my_pow (*, 3)"
+          ])
+        "8"
+    , programCase "positional-only my_pow accepts a skip in an argument map"
+        (unlines
+          [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
+          , "yield my_pow {*, 3}"
+          ])
+        "8"
+    , programCase "function call can skip a later default"
+        (unlines
+          [ "add := ({x : Nat, y? : Nat := 4} -> Nat yield x + y)"
+          , "yield add (3, *)"
+          ])
+        "7"
+    , programCase "a grouped singleton skip preserves a positional default"
+        (unlines
+          [ "f := ({_value : Nat := 4} -> Nat yield _value)"
+          , "yield f (*)"
+          ])
+        "4"
+    , programFailureCase "function call does not treat rank-zero as skip"
+        (unlines
+          [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
+          , "yield my_pow ((...) ^ 0, 3)"
+          ])
+        (SourceEvaluationFailure
+          (FunctionError
+            "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+    , programCase "empty argument uses the default"
         (unlines
           [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
           , "yield f ()"

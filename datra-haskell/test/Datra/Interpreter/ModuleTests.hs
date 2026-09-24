@@ -13,8 +13,8 @@ moduleTests :: TestTree
 moduleTests =
   testGroup "modules"
     [ testCase "snake-case path becomes a namespace" $
-        assertEqual "module namespace" "StandardLibrary"
-          (moduleIdentifier "path/standard_library.datra")
+        assertEqual "module namespace" "StdLib"
+          (moduleIdentifier "path/std_lib.datra")
     , moduleCase origin "qualified value"
         "import \"library_one\"\nyield LibraryOne.x"
         "x : 7"
@@ -44,8 +44,8 @@ moduleTests =
         "import all \"explicit_exports\"\nyield public"
         "7"
     , moduleCase origin "explicit standard-library import is idempotent"
-        ("import all \"standard_library\"\n"
-          <> "yield StandardLibrary.if true then 11 else (1+\"bad\")")
+        ("import all \"std_lib\"\n"
+          <> "yield StdLib.if true then 11 else (1+\"bad\")")
         "11"
     , moduleFailureCase origin "qualified import does not leak names"
         "import \"library_one\"\nyield x"

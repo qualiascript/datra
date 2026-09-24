@@ -31,8 +31,8 @@ loadPaths ancestors origin = fmap sequence . traverse (load ancestors origin)
       Left message -> pure (Left message)
       Right paths -> loadPaths visiting parent paths
     load visiting parent requested
-      | requested `elem` ["standard_library", "standard_library.datra"] =
-          pure (Right (requested, StandardLibraryModule))
+      | requested `elem` ["std_lib", "std_lib.datra"] =
+          pure (Right (requested, StdLibModule))
       | otherwise = do
           let filename = if null (takeExtension requested) then requested <> ".datra" else requested
               location = takeDirectory parent </> filename

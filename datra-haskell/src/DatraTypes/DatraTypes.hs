@@ -50,6 +50,7 @@ module DatraTypes
   , evalValues
   , requireFiniteInteger
   , formulationValue
+  , skipValue
   , addValues
   , subtractValues
   , minusValue
@@ -82,6 +83,7 @@ module DatraTypes
   , makeAtlasMap
   , makeArgumentMap
   , argumentRows
+  , overloadArgumentRows
   , functionArgumentValue
   , argumentPresentations
   , makeAtlasExpansion
@@ -127,6 +129,7 @@ import Evaluation.Construction
   , makeIdentifierValueType
   , makeStringType
   , makeFormulation
+  , makeSkip
   , makeNatural
   , makeInteger
   )
@@ -141,7 +144,13 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Arguments (makeArgumentMap, argumentPresentations, argumentRows, functionArgumentValue)
+import Evaluation.Arguments
+  ( argumentPresentations
+  , argumentRows
+  , functionArgumentValue
+  , makeArgumentMap
+  , overloadArgumentRows
+  )
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
@@ -281,3 +290,6 @@ identifierValueTypeValue = makeIdentifierValueType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation
+
+skipValue :: InterpretedValue
+skipValue = makeSkip

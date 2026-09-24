@@ -63,6 +63,7 @@ data StringTemplatePart expression
 data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
+  | Skip
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
@@ -140,6 +141,7 @@ renderExpression =
 data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
+  | SkipValue
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
@@ -221,6 +223,7 @@ renderOperatorExpression =
 normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
+normalizeExpression Skip = Skip
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
@@ -386,6 +389,7 @@ isEmptyMap _ = False
 lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
+lower Skip = SkipValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
@@ -508,6 +512,7 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
+prettyOperator SkipValue = "*"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
 prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
@@ -705,9 +710,9 @@ renderAsciiStringLiteral value = renderStandardStringLiteral value
 -- | Render an identifier expression. Canonical non-reserved names use their
 -- compact bare spelling; reserved or noncanonical names use a full string.
 renderIdentifierString :: String -> String
-renderIdentifierString value@(first : rest)
+renderIdentifierString value@(first : _)
   | isLeadingCanonicalCharacter first
-      && all isCanonicalCharacter rest
+      && isIdentifierValue value
       && not (isReservedIdentifierString value) = value
 renderIdentifierString value = renderStandardStringLiteral value
 

@@ -11,7 +11,7 @@ import Control.Applicative ((<|>))
 import Data.Foldable (traverse_)
 import Data.List (nubBy, permutations, sortOn)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
-import Evaluation.Arguments (argumentRows, makeArgumentMap)
+import Evaluation.Arguments (makeArgumentMap, overloadArgumentRows)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
   ( InterpretingError (..)
@@ -107,10 +107,11 @@ resolveReplacements
   -> InterpretedValue
   -> Either InterpretingError Replacements
 resolveReplacements template supplied = do
-  rows <- argumentRows supplied
+  rows <- overloadArgumentRows supplied
   writtenRows <-
     case interpretedForm supplied of
-      ArgumentMapForm members _ -> argumentRows (makeAtlasMap 2 members)
+      ArgumentMapForm members _ ->
+        overloadArgumentRows (makeAtlasMap 2 members)
       _ -> pure rows
   let writtenOrder = templateSlots template
       slotOrders = templateSlotOrders template
@@ -142,10 +143,13 @@ resolveReplacements template supplied = do
     canonical = sortOn fst . map
       (\(index, value) -> (index, interpretedCanonicalResult value))
 
-matchInputs :: [Slot] -> [InterpretedValue] -> [Replacements]
+matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
 matchInputs _ [] = [[]]
 matchInputs [] _ = []
-matchInputs (slot : remainingSlots) inputs@(input : remainingInputs) =
+matchInputs (_ : remainingSlots) (Nothing : remainingInputs) =
+  matchInputs remainingSlots remainingInputs
+matchInputs (slot : remainingSlots)
+    inputs@(Just input : remainingInputs) =
   case matchSlot slot input of
     Just value ->
       [ (slotIndex slot, value) : later

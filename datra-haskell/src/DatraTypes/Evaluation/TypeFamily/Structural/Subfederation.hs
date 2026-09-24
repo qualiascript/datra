@@ -30,6 +30,11 @@ decideStructuralSubfederation
   -> InterpretedValue
   -> Decision ()
 decideStructuralSubfederation decideSubfederation source target
+  | SkipForm sourcePayload <- interpretedForm source
+  , SkipForm targetPayload <- interpretedForm target =
+      decideSubfederation sourcePayload targetPayload
+  | SkipForm _ <- interpretedForm source = DecisionRefuted
+  | SkipForm _ <- interpretedForm target = DecisionRefuted
   | Just _ <- interpretedFunction source
   , EitherForm targetEither <- interpretedForm target =
       decideAnyEitherAlternative decideSubfederation source targetEither
@@ -246,4 +251,3 @@ isNonAlternativeMember member =
   case interpretedForm member of
     EitherForm _ -> False
     _ -> True
-

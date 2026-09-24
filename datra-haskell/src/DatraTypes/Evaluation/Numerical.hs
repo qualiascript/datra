@@ -8,6 +8,7 @@ module Evaluation.Numerical
   , requireExplicit
   , requireFiniteInteger
   , requireRangeUpperBoundary
+  , numericallyEqualsOne
   ) where
 
 import DatraOrdinal
@@ -160,6 +161,18 @@ requireNaturalExponent value =
   where
     rejection = Left (ExpectedNaturalExponent (interpretedValueKind value))
 
+-- | Whether a value's ordinary numerical coercion denotes one. This keeps
+-- consumers from reimplementing the coercion chain through assignments,
+-- identifiers, and specifications.
+numericallyEqualsOne :: InterpretedValue -> Bool
+numericallyEqualsOne value =
+  case numericalValue value of
+    Just (ExplicitNumerical _ ordinalValue) ->
+      ordinalValue == finiteOrdinal 1
+    Just (IntegerNumerical integer) -> integer == 1
+    Just (FormulationNumerical level) -> level == 0
+    Nothing -> False
+
 data NumericalValue
   = ExplicitNumerical Natural Ordinal
   | IntegerNumerical Integer
@@ -179,6 +192,7 @@ numericalSemantics semantics =
       Just (ExplicitNumerical level ordinalValue)
     IntegerSemantics integer -> Just (IntegerNumerical integer)
     FormulationSemantics level -> Just (FormulationNumerical level)
+    SkipSemantics _ -> Just (ExplicitNumerical 1 (finiteOrdinal 1))
     MapSemantics 0 [] -> Just (ExplicitNumerical 1 (finiteOrdinal 0))
     _ -> do
       (source, target) <- numericalSpecification semantics

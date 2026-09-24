@@ -1,4 +1,4 @@
-# Ordinary context bindings. Only primitive values cross the external boundary.
+# Ordinary context bindings; only primitive values cross the external boundary.
 let Nat := external "datra.Nat"
 let Int := external "datra.Int"
 let String := external "datra.String"
@@ -9,8 +9,8 @@ let false := (False : 0)
 let true := (True : 1)
 let nothing := $Nothing
 let Bool := (false | true)
-
 let _Wards := ($upwards | $downwards)
+
 let AST := external "datra.AST"
 let Expr := external "datra.Expr"
 let Block := external "datra.Block"

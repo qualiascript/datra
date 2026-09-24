@@ -90,9 +90,35 @@ regressionTests = do
   assertAstOutput "not equals"
     "a =/= b"
     (Inequality (ref "a") (ref "b"))
+  assertAstOutput "skip is a distinct positional symbol"
+    "*"
+    Skip
+  assertAstOutput "a parenthesized skip remains the skip atom"
+    "(*)"
+    Skip
+  assertAstOutput "a parenthesized skip is an explicit function argument"
+    "f (*)"
+    (FunctionApplication (ref "f") Skip)
+  assertRejected "a bare skip is ambiguous after a function" "f *"
+  assertAstOutput "parenthesized skips multiply without application ambiguity"
+    "(*) * (*)"
+    (Multiplication Skip Skip)
+  assertRejected "bare left skip is ambiguous with multiplication" "* * 7"
+  assertRejected "bare right skip is ambiguous with multiplication" "7 * *"
+  assertAstOutput "skip composes in an ordered map"
+    "(*, 3)"
+    (MapConcatenation Skip (natural 3))
+  assertAstOutput "skip composes in an argument map"
+    "{*, 3}"
+    (ArgumentMap [Skip, natural 3])
+  assertAstOutput "rank-zero formulation remains an ordinary value"
+    "((...) ^ 0, 3)"
+    (MapConcatenation
+      (Exponentiation EllipsisLiteral (natural 0))
+      (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
-    [ Import False "library_one", Import True "standard_library"
-    , InModule "standard_library" This
+    [ Import False "library_one", Import True "std_lib"
+    , InModule "std_lib" This
     , NamedAccess This (IdentifierString "abc")
     , SyntaxType "$Int next" True (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
@@ -629,6 +655,12 @@ regressionTests = do
     "identifier operations reject dollar-prefixed left sides"
     "$x : Nat := 4"
   assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
+  assertParsed "bare identifiers allow separated underscores"
+    "my_pow" (IdentifierReference (IdentifierString "my_pow"))
+  assertAstOutput "separated-underscore identifiers can be declared"
+    "my_pow := 4" (AST.assignment "my_pow" (natural 4) (natural 4))
+  assertRejected "bare identifiers reject consecutive underscores" "my__pow"
+  assertRejected "bare identifiers reject a trailing underscore" "my_pow_"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -1241,7 +1273,7 @@ genExpression =
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "Iden", "Bool", "AST", "IntRange", "NatRange", "StringTemplate"]
     , IdentifierReference <$> genIdentifierString
     , pure This
-    , Import <$> Gen.bool <*> Gen.element ["standard_library", "library_one", "path/library_two"]
+    , Import <$> Gen.bool <*> Gen.element ["std_lib", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
@@ -1249,11 +1281,12 @@ genExpression =
     ]
     [ AtlasMap <$> Gen.list (Range.linear 0 6) genExpression
     , ArgumentMap <$> Gen.list (Range.linear 0 6) genExpression
+    , pure Skip
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
-    , Gen.subterm genExpression (InModule "standard_library")
+    , Gen.subterm genExpression (InModule "std_lib")
     , Gen.subterm genExpression (SyntaxType "$Int next" True)
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
@@ -1437,17 +1470,17 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "String")) == "(% (ref $String))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply (in-module $standard_library (~> (external \"datra.from\") "
+        == "(apply (in-module $std_lib (~> (external \"datra.from\") "
           <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntRange)))) "
-          <> "(<:> (~> 2 (in-module $standard_library (ref $Int))) "
-          <> "(~> 5 (in-module $standard_library (ref $Int)))))"
+          <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
+          <> "(~> 5 (in-module $std_lib (ref $Int)))))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply (in-module $standard_library (~> (external \"datra.from\") "
+        == "(apply (in-module $std_lib (~> (external \"datra.from\") "
           <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntRange)))) "
-          <> "(<:> (~> 2 (in-module $standard_library (ref $Int))) "
-          <> "(~> $upwards (in-module $standard_library (ref $_Wards)))))"
+          <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
+          <> "(~> $upwards (in-module $std_lib (ref $_Wards)))))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -1535,7 +1568,7 @@ rangeCall name start end = FunctionApplication
     (FunctionType (MapConcatenation (ref "Int") (ref endpointType)) (ref "IntRange"))))
   (AtlasMap [checked "Int" start, checked endpointType endpoint])
   where
-    scoped = InModule "standard_library"
+    scoped = InModule "std_lib"
     checked target value = MapSpecification value (scoped (ref target))
     (endpointType, endpoint) = case end of
       UpperBound value -> ("Int", value)

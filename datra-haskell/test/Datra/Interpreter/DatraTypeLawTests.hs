@@ -46,6 +46,7 @@ datraTypeLawTests =
     , testGroup "composite capability propagation"
         (map datraTypeExampleTests compositeTypeExamples)
     , extensionalEqualityTests
+    , skipCoercionTests
     , totalBlockTests
     ]
 
@@ -71,6 +72,7 @@ standardLibraryTypeExamples =
 compositeTypeExamples :: [DatraTypeExample]
 compositeTypeExamples =
   [ canonical "ordered canonical map" "(Nat; Int)"
+  , canonical "positional skip sentinel" "*"
   , canonical "overlapping coalition sequence"
       "(from 2 to 5; from 4 to 8)"
   , canonical "canonical federation" "Nat | String"
@@ -154,7 +156,7 @@ assertCanonicalRoundTrip original = do
 
 extensionalEqualityTests :: TestTree
 extensionalEqualityTests =
-  testGroup "equality is mutual subfederation"
+  testGroup "ordinary equality is mutual subfederation"
     [ testCase name (assertEqualityLaw left right expectedLeft expectedRight)
     | (name, left, right, expectedLeft, expectedRight) <-
         [ ("reordered federation", "0 | 1", "1 | 0", True, True)
@@ -165,6 +167,17 @@ extensionalEqualityTests =
         , ("function signature", "Nat -> Nat", "Nat -> Nat", True, True)
         , ("block and yielded value", "begin yield 5", "5", True, True)
         ]
+    ]
+
+skipCoercionTests :: TestTree
+skipCoercionTests =
+  testGroup "skip numerical coercion"
+    [ expressionCase "rank-zero formulation equals the numerical skip value"
+        "...^() = *"
+        "true"
+    , expressionCase "coercion does not erase skip typing identity"
+        "not (...^() of *) and not (* of ...^())"
+        "true"
     ]
 
 assertEqualityLaw

@@ -17,7 +17,8 @@ source context expression =
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
-    FunctionApplicationValue function input -> wrapped 11 (source 11 function <> " " <> source 12 input)
+    FunctionApplicationValue function input -> wrapped 11
+      (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 ("do\n" <> concatMap (indent . source 0) bindings <> "yield " <> source 0 result)
     ExternalValue descriptor -> wrapped 0 ("external " <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
@@ -49,7 +50,8 @@ source context expression =
     IsSubfederation left right -> binary 6 "of" left right
     Add left right -> binary 7 "+" left right
     Subtract left right -> binary 7 "-" left right
-    Multiply left right -> binary 8 "*" left right
+    Multiply left right -> wrapped 8
+      (multiplicand left <> " * " <> multiplicand right)
     Power left right -> binary 9 "^" left right
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
@@ -74,6 +76,7 @@ source context expression =
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom
+    SkipValue -> atom
     AsciiStringValue _ -> atom
     NothingValue -> atom
     StringTypeValue -> atom
@@ -91,6 +94,10 @@ source context expression =
     binary precedence operator left right = wrapped precedence
       (source (precedence + 1) left <> " " <> operator <> " " <> source (precedence + 1) right)
     unary operator operand = wrapped 10 (operator <> source 11 operand)
+    multiplicand SkipValue = "(*)"
+    multiplicand operand = source 9 operand
+    applicationInput SkipValue = "(*)"
+    applicationInput operand = source 12 operand
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     indent = unlines . map (" " <>) . lines

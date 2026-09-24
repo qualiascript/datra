@@ -373,6 +373,7 @@ data ValueForm
   | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
   | EitherForm EvaluatedEither
   | ArgumentMapForm [InterpretedValue] InterpretedValue
+  | SkipForm InterpretedValue
   | FederationSpecificationForm
       InterpretedValue InterpretedValue [InterpretedValue]
   | RangeConcatenationForm
@@ -460,6 +461,7 @@ data ValueSemantics
   | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
   | IntegerTypeSemantics
   | EitherSemantics ValueSemantics ValueSemantics
+  | SkipSemantics ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
@@ -500,6 +502,7 @@ data CanonicalResult
   | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
   | CanonicalIntegerType
   | CanonicalEither CanonicalResult CanonicalResult
+  | CanonicalSkip CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
@@ -625,6 +628,7 @@ canonicalResult semantics =
     IntegerTypeSemantics -> CanonicalIntegerType
     EitherSemantics left right ->
       CanonicalEither (canonicalResult left) (canonicalResult right)
+    SkipSemantics payload -> CanonicalSkip (canonicalResult payload)
     RangeConcatenationSemantics descriptions ->
       CanonicalRangeConcatenation descriptions
     ConcatenationSemantics members ->
@@ -765,6 +769,7 @@ interpretedValueKind value =
     ValuedIntegerRangeForm _ -> RangeValueKind
     EitherForm _ -> EitherValueKind
     ArgumentMapForm _ _ -> MapValueKind
+    SkipForm _ -> FormulationValueKind
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind

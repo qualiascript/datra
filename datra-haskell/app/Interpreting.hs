@@ -38,7 +38,7 @@ import Data.List (nub)
 import FunctionArguments
 import FunctionInference
 import ModuleNames (moduleIdentifier, isPrivateIdentifier)
-import StandardLibrary (standardLibrarySource)
+import StdLib (standardLibrarySource)
 import Control.Monad (foldM)
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.AST
@@ -105,7 +105,7 @@ interpretWithImportsInMode mode modules expression =
     (map (fmapModule mode) modules)
     (expressionForMode mode expression)
 
-data ModuleSource = StandardLibraryModule | ModuleSource FilePath Expression [(String, ModuleSource)]
+data ModuleSource = StdLibModule | ModuleSource FilePath Expression [(String, ModuleSource)]
 
 data EvaluationMode
   = DevelopmentMode
@@ -126,7 +126,7 @@ fmapModule
   -> (String, ModuleSource)
 fmapModule mode (name, source) = (name, transform source)
   where
-    transform StandardLibraryModule = StandardLibraryModule
+    transform StdLibModule = StdLibModule
     transform (ModuleSource path expression dependencies) =
       ModuleSource
         path
@@ -137,7 +137,7 @@ fmapModule mode (name, source) = (name, transform source)
 standardScope :: Either InterpretingError Scope
 standardScope = do
   exported <- filter (not . isPrivateIdentifier . fst) <$> standardLibraryScope
-  pure (("StandardLibrary", NamespaceBinding "standard_library" exported) : exported)
+  pure (("StdLib", NamespaceBinding "std_lib" exported) : exported)
 
 standardLibraryScope :: Either InterpretingError Scope
 standardLibraryScope = do
@@ -147,9 +147,9 @@ standardLibraryScope = do
 
 standardLibraryInternalScope :: Either InterpretingError Scope
 standardLibraryInternalScope = case parseDatra standardLibrarySource of
-  Left message -> Left (FunctionError ("standard_library.datra: " <> message))
+  Left message -> Left (FunctionError ("std_lib.datra: " <> message))
   Right (Program bindings _) -> importScope [] [] bindings
-  Right _ -> Left (FunctionError "standard_library.datra must contain declarations")
+  Right _ -> Left (FunctionError "std_lib.datra must contain declarations")
 
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
@@ -234,6 +234,7 @@ interpretNormalizedExpression scope resolving expressionValue =
   case expressionValue of
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
+    Skip -> Right skipValue
     AsciiStringLiteral value -> asciiStringValue value
     NothingLiteral -> Right nothingValue
     StringTemplate parts -> interpretStringTemplateWith interpret parts
@@ -835,13 +836,13 @@ importModule scope (allNames, requested) = do
     insertExport identity values entry@(name,_) = case lookup name values of
       Nothing -> Right (entry:values)
       -- Every file already has this exact implicit import.
-      Just _ | identity == "standard_library" -> Right values
+      Just _ | identity == "std_lib" -> Right values
       _ -> Left (IdentifierStringOverlap name)
 
 moduleExports :: ModuleSource -> Either InterpretingError (FilePath, Scope)
-moduleExports StandardLibraryModule = do
+moduleExports StdLibModule = do
   values <- standardLibraryScope
-  pure ("standard_library", filter (not . isPrivateIdentifier . fst) values)
+  pure ("std_lib", filter (not . isPrivateIdentifier . fst) values)
 moduleExports moduleSource@(ModuleSource path expression _) = do
   scope <- moduleScope moduleSource
   exports <- moduleResult scope expression >>= exportedBindings
@@ -884,13 +885,13 @@ namedBindings value = case interpretedCanonicalResult value of
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path
-  | path `elem` ["standard_library", "standard_library.datra"] = Right StandardLibraryModule
+  | path `elem` ["std_lib", "std_lib.datra"] = Right StdLibModule
   | Just (ModuleCatalog modules) <- lookup "\0imports" scope
   , Just value <- lookup path modules = Right value
   | otherwise = Left (FunctionError ("module was not loaded: " <> path))
 
 moduleScope :: ModuleSource -> Either InterpretingError Scope
-moduleScope StandardLibraryModule = standardLibraryInternalScope
+moduleScope StdLibModule = standardLibraryInternalScope
 moduleScope (ModuleSource _ expression dependencies) = do
   base <- standardScope
   entries <- case expression of

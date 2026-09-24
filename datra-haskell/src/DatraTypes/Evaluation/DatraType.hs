@@ -27,7 +27,7 @@ module Evaluation.DatraType
   ) where
 
 -- | Host-provided primitive families exposed through declarations in
--- @standard_library.datra@.  These names are capabilities, not language-level
+-- @std_lib.datra@.  These names are capabilities, not language-level
 -- bindings; the standard library remains responsible for publishing them.
 data BuiltinMetaType
   = ASTMetaType (Maybe String)

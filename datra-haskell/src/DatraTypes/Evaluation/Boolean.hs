@@ -18,6 +18,7 @@ import Evaluation.Error
   ( InterpretingError (..)
   , OperandSide (..)
   )
+import Evaluation.Numerical (numericallyEqualsOne)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
@@ -58,7 +59,9 @@ subfederationValues
 subfederationValues source target =
   Right (makeBoolean (subfederationFlag source target))
 
--- | Federation extensional equality is defined directly by mutual @of@.
+-- | Federation extensional equality is normally mutual @of@. The positional
+-- skip sentinel remains type-distinct, but equality observes its documented
+-- numerical coercion to one.
 equalValues
   :: InterpretedValue
   -> InterpretedValue
@@ -66,9 +69,19 @@ equalValues
 equalValues left right =
   Right
     (makeBoolean
-      (datraAnd
-        (subfederationFlag left right)
-        (subfederationFlag right left)))
+      (if hasSkipOperand
+        then if numericallyEqualsOne left && numericallyEqualsOne right
+          then DatraTrue
+          else DatraFalse
+        else datraAnd
+          (subfederationFlag left right)
+          (subfederationFlag right left)))
+  where
+    hasSkipOperand = isSkip left || isSkip right
+    isSkip value =
+      case interpretedForm value of
+        SkipForm _ -> True
+        _ -> False
 
 subfederationFlag :: InterpretedValue -> InterpretedValue -> DatraBoolean
 subfederationFlag source target =
