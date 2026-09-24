@@ -3,6 +3,10 @@
 
 module DatraInterpretingTests (main) where
 
+import Datra.Interpreter.FunctionTests (functionTests)
+import Datra.Interpreter.ModuleTests (moduleTests)
+import Datra.Interpreter.ScopeTests (scopeTests)
+import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -27,7 +31,6 @@ import Interpreting
   , InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
-  , interpretWithImports
   , interpretExpressionReason
   , interpretLocatedExpression
   , canonicalStringCodec
@@ -73,9 +76,7 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
-import Parsing (parseDatra, parseDatraLocatedWithSyntaxImports)
-import ModuleLoading (loadImports, importSyntax)
-import ModuleNames (moduleIdentifier)
+import Parsing (parseDatra)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -98,13 +99,6 @@ testTree =
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
         , testCase "string templates" testStringTemplates
         , testCase "named field access" testNamedAccess
-        , testCase "qualified library syntax" testQualifiedSyntax
-        , testCase "functions and externals" testFunctions
-        , testCase "recursive factorial" testRecursiveFactorial
-        , testCase "module imports and private helpers" testModules
-        , testCase "scope values and explicit syntax sums" testScopeSums
-        , testCase "declared AST patterns" testDeclaredPatterns
-        , testCase "library syntax and range types" testLibraryTypes
         , testCase "argument maps" testArgumentMaps
         , testCase "argument maps in concatenation" testArgumentMapConcatenation
         , testCase "argument maps in string templates" testArgumentMapTemplates
@@ -129,6 +123,10 @@ testTree =
         , testCase "typed rejections" testTypedRejections
         , testCase "located rejection" testLocatedRejection
         ]
+    , functionTests
+    , scopeTests
+    , moduleTests
+    , standardLibraryTests
     , testGroup "properties"
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
         , testProperty "natural multiplication agrees with Haskell" propNaturalMultiplication
@@ -693,10 +691,8 @@ testBegin = do
     assert (source <> ": " <> renderInterpretedValue value)
       (interpretedInteger value == Just expected))
     [ ("begin a : 2 * 3; b : 5 yield a + b", 11)
-    , ("begin a : b + 1; b : 5 yield a", 6)
     , ("begin bad : 1 + \"bad\" yield 11", 11)
     , ("begin a : x + 1; let x : 10 yield a", 11)
-    , ("begin let x : y + 1; y : 9 yield x", 10)
     , ("begin let x : 10 yield begin y : 1 yield x + y", 11)
     , ("begin a : Nat := 6; b : 5 yield a + b", 11)
     , ("begin a? : Nat := 6; b : 5 yield a + b", 11)
@@ -752,14 +748,16 @@ testBeginRejections = do
   mapM_ (\source -> expectSourceRejection source source
     (\case UnknownIdentifier _ -> True; _ -> False))
     [ "begin yield missing"
+    , "begin a : b + 1; b : 5 yield a"
+    , "begin let x : y + 1; y : 9 yield x"
+    , "begin a : a yield a"
+    , "begin a : b; b : a yield a"
+    , "begin (a : 1; b : 2) yield a"
+    , "begin {a : 1, b : 2} yield a"
+    , "begin let (a : 1; b : a) yield 0"
+    , "begin let {a : 1, b : a} yield 0"
     , "begin a : b yield begin b : 2 yield a"
     , "(begin a : 2 yield a), (begin yield a)"
-    ]
-  mapM_ (\source -> expectSourceRejection source source
-    (\case CyclicIdentifierReference _ -> True; _ -> False))
-    [ "begin a : a yield a"
-    , "begin a : b; b : a yield a"
-    , "begin let a : a yield 1"
     ]
   expectSourceRejection "unused let must be evaluated"
     "begin let bad : 1 + \"bad\" yield 11" (const True)
@@ -3535,171 +3533,3 @@ testNamedAccess = do
     ]
   mapM_ (\source -> expectSourceRejection source source (\case NamedAccessError _ -> True; _ -> False))
     ["{a:2,b:3}.missing", "{a:2,a:3}.a", "{}.a"]
-
-testQualifiedSyntax :: IO ()
-testQualifiedSyntax = mapM_ (\(source, expected) ->
-  expectSourceValue source source $ \value -> assert source (renderInterpretedValue value == expected))
-  [ ("StandardLibrary.if false then (1 + \"bad\") else 11", "11")
-  , ("StandardLibrary.from (1 + 1) to 5", "from 2 to 5")
-  , ("StandardLibrary.range 2 downwards", "range 2 downwards")
-  , ("StandardLibrary.eval \"12\" at Int", "12 ~> Int")
-  , ("StandardLibrary.true", "true : true")
-  ]
-
-testFunctions :: IO ()
-testFunctions = do
-  mapM_ (\(source, expected) -> expectSourceValue source source $ \value -> assert source (takeWhile (/= '<') (renderInterpretedValue value) == expected <> " " || renderInterpretedValue value == expected))
-    [ ("begin f := ({a?:Int,b?:Int} -> Int do yield a+b) yield f (b:5;6)", "11")
-    , ("begin f := (do yield a+b) yield f (6;5)", "11")
-    , ("begin offset:=3; f := (do yield a+offset) yield f 8", "11")
-    , ("begin f := external (backend:\"haskell\";symbol:\"datra.add\") yield f (b:5;6)", "11")
-    , ("(Int -> Nat) of (Nat -> Int)", "true")
-    , ("(Nat -> Int) of (Int -> Nat)", "false")
-    ]
-  mapM_ (\source -> expectSourceRejection source source (const True))
-    [ "begin f := ({a?:Int,b?:Int} -> Int do yield a+b) yield f (5;6)"
-    , "begin f := ({a?:Int} -> String do yield a+1) yield f 5"
-    , "external (backend:\"missing\";symbol:\"datra.add\")"
-    , "external (backend:\"haskell\";symbol:\"missing\")"
-    ]
-
-
-testRecursiveFactorial :: IO ()
-testRecursiveFactorial = do
-  let declaration = unlines
-        [ "factorial := ({n? : Int} -> Int do"
-        , "  yield if n = 0 then 1 else n * factorial (n - 1))"
-        ]
-      run source = parseDatra source >>= either (Left . show) Right . interpretExpressionReason
-  mapM_ (\(body, expected) -> case run (declaration <> body) of
-      Left failure -> fail (body <> ": " <> failure)
-      Right value -> assert body (renderInterpretedValue value == expected))
-    [ ("yield factorial 0", "1")
-    , ("yield factorial 1", "1")
-    , ("yield factorial 5", "120")
-    , ("yield factorial 8", "40320")
-    , ("yield factorial (n : 6)", "720")
-    , ("f := (factorial ~> ({n? : Nat} -> Int))\nyield f 5", "120")
-    , ("yield factorial of ({n? : Nat} -> Int)", "true")
-    ]
-  mapM_ (\source -> case run source of
-      Left _ -> pure ()
-      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
-    [ declaration <> "yield factorial true"
-    , "factorial := ({n? : Int} -> String do yield if n = 0 then 1 else factorial (n - 1))\nyield factorial 0"
-    , "a := b\nb := a\nyield a"
-    ]
-
-testModules :: IO ()
-testModules = do
-  assert "snake-case module namespace" (moduleIdentifier "path/standard_library.datra" == "StandardLibrary")
-  mapM_ (\(source,expected) -> do
-      actual <- run source
-      case actual of
-        Right value -> assert source (renderInterpretedValue value == expected)
-        Left message -> fail (source <> ": " <> message))
-    [ ("import \"library_one\"\nyield LibraryOne.x", "x : 7")
-    , ("import all \"library_one\"\nyield x", "7")
-    , ("import \"library_one\"\nimport \"library_two\"\nyield LibraryOne.x[1] + LibraryTwo.x[1]", "16")
-    , ("import \"library_one\"\nyield LibraryOne.increment 7", "11")
-    , ("import \"library_one\"\nyield LibraryOne.shift 7", "11")
-    , ("import all \"library_one\"\nyield shift 7", "11")
-    , ("import \"nested\"\nyield Nested.x", "x : 8")
-    , ("import all \"explicit_exports\"\nyield public", "7")
-    , ("import all \"standard_library\"\nyield StandardLibrary.if true then 11 else (1+\"bad\")", "11")
-    ]
-  mapM_ (\source -> run source >>= \actual -> case actual of
-      Left _ -> pure ()
-      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
-    [ "import \"library_one\"\nyield x"
-    , "import all \"library_one\"\nimport all \"library_two\"\nyield x"
-    , "import \"library_one\"\nyield LibraryOne._offset"
-    , "import all \"library_one\"\nyield _offset"
-    , "import \"explicit_exports\"\nyield ExplicitExports._hidden"
-    , "import \"explicit_exports\"\nyield ExplicitExports.hidden 1 plus"
-    , "import \"cycle_a\""
-    , "import \"missing\""
-    ]
-  where
-    run source = do
-      loaded <- loadImports "test/fixtures/modules/main.datra" source
-      pure $ do
-        imports <- loaded
-        located <- parseDatraLocatedWithSyntaxImports (importSyntax imports) "main.datra" source
-        let Located _ expression = located
-        either (Left . show) Right (interpretWithImports imports expression)
-
-
-testScopeSums :: IO ()
-testScopeSums = do
-  mapM_ (\(source,expected) -> program source $ \value -> assert source (renderInterpretedValue value == expected))
-    [ ("a:=5\nb:=8\nyield this.a", "a : 5")
-    , ("_private:=3\na:=5\nyield this", "a : 5")
-    , ("a:=5\nyield this.a of (a?:Nat)", "true")
-    , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
-    , ("yield from (2,5)", "from 2 to 5")
-    , ("yield from (2,$upwards)", "from 2 upwards")
-    , ("f := external \"datra.add\"\nyield f (b:5;6)", "11")
-    , ("f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\nyield f (x:3,b:5,6)", "14")
-    ]
-  program "yield StandardLibrary.if" $ \value ->
-    assert "qualified if is one field with two sum alternatives" (length (Types.functionAlternatives value) == 2)
-  program "yield if" $ \value ->
-    assert "bare if resolves the same function sum" (length (Types.functionAlternatives value) == 2)
-  mapM_ (\source -> case parseDatra source of
-      Left failure -> fail failure
-      Right expression -> case interpretExpressionReason expression of
-        Left _ -> pure ()
-        Right _ -> fail ("expected rejection: " <> source))
-    [ "_private:=3\na:=5\nyield this._private"
-    , "a:=5\na:=8\nyield this"
-    , "f := ({x?:Int} -> Int do yield x+1)\ng := (f ~> ({x?:Nat} -> Int))\nyield g (-1)"
-    , "yield external \"missing.symbol\""
-    ]
-  where
-    program source check = case parseDatra source of
-      Left failure -> fail failure
-      Right expression -> expectValue source expression check
-
-testLibraryTypes :: IO ()
-testLibraryTypes = mapM_ (\source -> expectSourceValue source source $ \value -> assert source (renderInterpretedValue value == "true"))
-  [ "$Nothing = (Nothing : ())"
-  , "nothing = $Nothing"
-  , "NatRange of IntRange"
-  , "not (IntRange of NatRange)"
-  , "from 2 to 5 of NatRange"
-  , "range 2 upwards of NatRange"
-  , "not (from (-2) to 5 of NatRange)"
-  , "(from 2 to 5 ~> NatRange) of IntRange"
-  , "Expr of AST"
-  , "Block of AST"
-  , "Pages of AST"
-  , "not (Block of Expr)"
-  , "(Expr ~> AST) of AST"
-  , "\"%Int %Iden\" of StringTemplate"
-  , "(\"%Int %Iden\" ~> StringTemplate) of StringTemplate"
-  , "not (2 of StringTemplate)"
-  , "String of StringTemplate"
-  ]
-
-testDeclaredPatterns :: IO ()
-testDeclaredPatterns = do
-  let declaration = "step : \"$Nat next\" as ({value?:Int} -> Int) := (do yield value+1)\n"
-      ordinaryDeclaration = "step : \"$Nat next\" as? ({value?:Int} -> Int) := (do yield value+1)\n"
-      run source = parseDatra source >>= either (Left . show) Right . interpretExpressionReason
-  mapM_ (\(source, expected) -> case run source of
-      Left failure -> fail (source <> ": " <> failure)
-      Right value -> assert source (renderInterpretedValue value == expected))
-    [ (declaration <> "yield step (1+1) next", "3")
-    , (ordinaryDeclaration <> "yield step (value:2)", "3")
-    , (declaration <> "yield step of ({value?:Nat} -> Int)", "true")
-    , (ordinaryDeclaration <> "f := (step ~> ({value?:Nat} -> Int))\nyield f 2", "3")
-    ]
-  mapM_ (\source -> case run source of
-      Left _ -> pure ()
-      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
-    [ declaration <> "yield step (-1) next"
-    , declaration <> "yield step 2"
-    , declaration <> declaration <> "yield this"
-    , "step := ((\"$Int next\" as (Int -> Int) external \"datra.abs\") | (\"$Int next\" as (Int -> Int) do yield 2))\nyield step 3 next"
-    ]

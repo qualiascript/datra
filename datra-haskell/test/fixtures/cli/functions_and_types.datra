@@ -1,0 +1,5 @@
+let factorial := ({n? : Int} -> Int do
+  yield if n = 0 then 1 else n * factorial (n - 1))
+sum := ({a? : Int, b? : Int} -> Int do yield a + b)
+decoded := eval "(b : 8; 2)" at {a? : Int, b? : Int}
+yield (factorial (n : 6); sum decoded; factorial of ({n? : Nat} -> Int); "sum=%(sum decoded)")

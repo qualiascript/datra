@@ -340,39 +340,47 @@ interpretNormalizedExpression scope resolving expressionValue =
 
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
-resolveIdentifier scope resolving name
-  | name `elem` resolving = Left (CyclicIdentifierReference (reverse (name : resolving)))
-  | otherwise =
-      case lookup name scope of
-        Nothing -> Left (UnknownIdentifier name)
-        Just (EvaluatedBinding value) -> Right value
-        Just (NamespaceBinding _ exported) -> do
-          values <- traverse (\(key, _) -> simpleIdentifierTypeValue key <$> resolveIdentifier exported resolving key) exported
-          pure (makeAtlasMap 2 values)
-        Just ScopeMembers {} -> Left (UnknownIdentifier name)
-        Just ModuleCatalog {} -> Left (UnknownIdentifier name)
-        Just (DeferredBinding captured expressionValue) ->
-          evalInScope captured (name : resolving) expressionValue
+resolveIdentifier scope resolving name =
+  case lookup name scope of
+    Nothing -> Left (UnknownIdentifier name)
+    Just (EvaluatedBinding value) -> Right value
+    Just (NamespaceBinding _ exported) -> do
+      values <- traverse (\(key, _) -> simpleIdentifierTypeValue key <$> resolveIdentifier exported resolving key) exported
+      pure (makeAtlasMap 2 values)
+    Just ScopeMembers {} -> Left (UnknownIdentifier name)
+    Just ModuleCatalog {} -> Left (UnknownIdentifier name)
+    Just (DeferredBinding captured expressionValue) ->
+      evalInScope captured resolving expressionValue
 
--- A begin imports a rank-two list of entries. Definitions retain the lexical
--- scope of that import; lets are forced before yield and their results replace
+-- A block imports declarations from left to right. Ordinary definitions capture
+-- only earlier ordinary definitions, while every let definition is predeclared
+-- throughout the block. Lets are forced before yield and their results replace
 -- the deferred definitions. Names are checked before evaluating any binding.
 importScope :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
 importScope enclosing resolving entries = do
   outer <- foldM importModule enclosing [(allNames,path) | Import allNames path <- entries]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
   _ <- foldM checkName (map fst outer) definitions
-  let initial = [(name, DeferredBinding initial expressionValue)
-                | (name, _, expressionValue) <- definitions] <> outer
+  let names = [name | (name, _, _) <- definitions]
+      initial = ("\0this", ScopeMembers names) : predeclaredLets <> outer
+      predeclaredLets =
+        [ (name, DeferredBinding (scopeBefore position) expressionValue)
+        | (position, (name, strict, expressionValue)) <- zip [0..] definitions
+        , strict
+        ]
+      scopeBefore position =
+        foldl importOrdinary initial (take position definitions)
+      importOrdinary scope (name, strict, expressionValue)
+        | strict = scope
+        | otherwise =
+            (name, DeferredBinding scope expressionValue) : scope
+      deferred = foldl importOrdinary initial definitions
   evaluated <- traverse
-    (\(name, _, _) -> (name,) <$> resolveIdentifier initial resolving name)
+    (\(name, _, _) -> (name,) <$> resolveIdentifier deferred resolving name)
     (filter (\(_, strict, _) -> strict) definitions)
-  let imported =
-        ("\0this", ScopeMembers [name | (name,_,_) <- definitions]) :
-        [ (name, maybe (DeferredBinding imported expressionValue) EvaluatedBinding
-            (lookup name evaluated))
-        | (name, _, expressionValue) <- definitions
-        ] <> outer
+  let imported = map replaceEvaluated deferred
+      replaceEvaluated entry@(name, _) =
+        maybe entry ((name,) . EvaluatedBinding) (lookup name evaluated)
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
@@ -382,26 +390,18 @@ importScope enclosing resolving entries = do
           Left (IdentifierStringOverlap name)
       | otherwise = Right (name : names)
 
--- Collect named imports and eager anonymous entries together. This keeps let
--- semantics consistent through nested maps, concatenations, and optional names.
+-- Only declaration-shaped block entries create lexical bindings. Maps and map
+-- operators remain values: identifier-shaped members inside them neither enter
+-- the surrounding scope nor become visible to sibling members.
 bindingImports :: Bool -> Expression -> ([(String, Bool, Expression)], [Expression])
 bindingImports strict expressionValue =
   case expressionValue of
     Let binding -> bindingImports True binding
     IdentifierOperation (IdentifierString name) annotation given ->
       ([(name, strict, maybe annotation (\value -> if value == annotation then value else MapSpecification value annotation) given)], [])
-    AtlasMap members -> foldMap collect members
-    MapSequence members -> foldMap collect members
-    ArgumentMap members -> foldMap collect members
-    MapConcatenation left right -> collect left <> collect right
-    MapExpansion left right -> collect left <> collect right
-    EitherType left right -> collect left <> collect right
-    MapSpecification source _
-      | ([(name, _, _)], _) <- collect source ->
-          ([(name, strict, MapAccess expressionValue (EllipsisNatural 1))], [])
+    EitherType named@(IdentifierOperation _ annotation _) missing
+      | annotation == missing -> bindingImports strict named
     _ -> ([], [expressionValue | strict])
-  where
-    collect = bindingImports strict
 
 interpretStringTemplateWith
   :: Interpreter

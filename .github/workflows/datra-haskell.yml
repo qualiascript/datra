@@ -1,0 +1,43 @@
+name: datra-haskell
+
+on:
+  push:
+    paths:
+      - ".github/workflows/datra-haskell.yml"
+      - "datra-haskell/**"
+  pull_request:
+    paths:
+      - ".github/workflows/datra-haskell.yml"
+      - "datra-haskell/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: datra-haskell
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install GHC and Cabal
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.14.1"
+          cabal-version: "3.18.1.0"
+
+      - name: Install Z3
+        run: sudo apt-get update && sudo apt-get install --yes z3
+
+      - name: Update package index
+        run: cabal update
+
+      - name: Check package metadata
+        run: cabal check
+
+      - name: Build and test with coverage
+        run: make coverage CABAL_PROJECT=cabal.docker.project
