@@ -4,6 +4,8 @@ module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxPiece (..), declarationRules, expandSyntax, declarationLiterals ) where
 import Data.List (isPrefixOf)
 import DatraLanguage.AST
+import DatraLanguage.Diagnostics.Application
+  ( SyntaxExpansionFailure (..))
 
 data SyntaxPiece = SyntaxLiteral String | SyntaxHole String deriving (Eq,Show)
 data SyntaxRule = SyntaxRule
@@ -26,7 +28,10 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
     piece literal = SyntaxLiteral literal
 declarationRules _ = []
 
-expandSyntax :: SyntaxRule -> [Expression] -> Either String Expression
+expandSyntax
+  :: SyntaxRule
+  -> [Expression]
+  -> Either SyntaxExpansionFailure Expression
 expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
   Just name | "datra.syntax." `isPrefixOf` name -> control name captures
   _ -> Right (FunctionApplication
@@ -40,13 +45,34 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
       | otherwise = MapSpecification value (scoped (IdentifierReference (IdentifierString kind)))
     block (AtlasMap entries) = entries
     block value = [value]
-    control "datra.syntax.if" [condition, yes, no] = Right (Conditional condition yes no)
-    control "datra.syntax.ifThen" [condition, yes] = Right (Conditional condition yes (AtlasMap []))
-    control "datra.syntax.begin" [entries,result] = Right (Begin (block entries) result)
-    control "datra.syntax.do" [entries,result] = Right (FunctionBody (block entries) result)
-    control "datra.syntax.let" [entry] = Right (Let entry)
-    control "datra.syntax.eval" [source,target] = Right (Eval source target)
-    control name _ = Left ("invalid AST captures for " <> name)
+    control name values =
+      case controlArity name of
+        Nothing -> Left (UnknownSyntaxControlAdapter name)
+        Just expected
+          | length values /= expected ->
+              Left
+                (InvalidSyntaxControlCaptures
+                  name expected (length values))
+          | otherwise -> controlWithValidCaptures name values
+    controlArity "datra.syntax.if" = Just 3
+    controlArity "datra.syntax.ifThen" = Just 2
+    controlArity "datra.syntax.begin" = Just 2
+    controlArity "datra.syntax.do" = Just 2
+    controlArity "datra.syntax.let" = Just 1
+    controlArity "datra.syntax.eval" = Just 2
+    controlArity _ = Nothing
+    controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
+      Right (Conditional condition yes no)
+    controlWithValidCaptures "datra.syntax.ifThen" [condition, yes] =
+      Right (Conditional condition yes (AtlasMap []))
+    controlWithValidCaptures "datra.syntax.begin" [entries,result] =
+      Right (Begin (block entries) result)
+    controlWithValidCaptures "datra.syntax.do" [entries,result] =
+      Right (FunctionBody (block entries) result)
+    controlWithValidCaptures "datra.syntax.let" [entry] = Right (Let entry)
+    controlWithValidCaptures "datra.syntax.eval" [source,target] =
+      Right (Eval source target)
+    controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
 
 externalSymbol :: Expression -> Maybe String
 externalSymbol (External (AsciiStringLiteral symbol)) = Just symbol

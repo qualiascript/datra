@@ -5,15 +5,36 @@
 -- observations and checked operations needed by the AST interpreter.
 module Evaluation.Value
   ( BuiltinMetaType (..)
+  , CanonicalType
+  , DatraType
+  , DatraTypeFamily (..)
+  , StringRepresentation (..)
+  , makeCanonicalType
+  , canonicalTypeAsDatraType
+  , makeNonCanonicalDatraType
+  , structuralDatraType
+  , weakStructuralDatraType
+  , structuralDatraTypeWith
+  , composedStructuralDatraType
+  , functionDatraType
+  , builtinMetaDatraType
+  , totalBlockDatraType
+  , datraTypeFamily
+  , datraCanonicalType
+  , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
+  , isFunctionFamily
   , stringTemplateTypeValue
+  , anyTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
+  , naturalValuedRangeTypeValue
+  , integerValuedRangeTypeValue
   , functionSignature
   , callableFunction
   , interpretedFunction
@@ -29,7 +50,7 @@ module Evaluation.Value
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
-  , EvaluatedIdentifierType (..)
+  , EvaluatedDependentIdentifierType (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
@@ -55,7 +76,9 @@ module Evaluation.Value
   , interpretedAtlasMapFederation
   , interpretedTotalAtlasMap
   , interpretedSemantics
+  , interpretedDatraType
   , interpretedValueHasTotalMap
+  , interpretedTypeIsTotal
   , interpretedCanonicalResult
   , interpretedEvaluationSource
   , withEvaluationSource
@@ -89,6 +112,8 @@ import AtlasMapFederationExpression
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
+import Evaluation.DatraType
+import Evaluation.Value.Semantics
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues
@@ -159,60 +184,7 @@ data EvaluatedEither = EvaluatedEither
   , evaluatedEitherRight :: InterpretedValue
   }
 
--- | Runtime string rule for an identifier type. The stable key makes two
--- dependent rules comparable for subfederation decisions; simple identifiers
--- additionally retain their literal string for source rendering.
-data IdentifierDependency
-  = SimpleIdentifierDependency
-      { simpleIdentifierString :: String
-      }
-  | DependentIdentifierDependency
-      { dependentIdentifierFamilyKey :: String
-      , dependentIdentifierStringFor :: CanonicalResult -> String
-      }
-
-identifierDependencyStringFor
-  :: IdentifierDependency
-  -> CanonicalResult
-  -> String
-identifierDependencyStringFor dependency value =
-  case dependency of
-    SimpleIdentifierDependency identifierString -> identifierString
-    DependentIdentifierDependency _ identifierStringFor ->
-      identifierStringFor value
-
--- | Choose the string that can represent an identifier before a particular
--- federation member is known. A total underlying value supplies that member;
--- otherwise dependent identifiers retain their stable family key.
-identifierDependencyRepresentativeString
-  :: IdentifierDependency
-  -> Maybe CanonicalResult
-  -> String
-identifierDependencyRepresentativeString dependency selectedValue =
-  case dependency of
-    SimpleIdentifierDependency identifierString -> identifierString
-    DependentIdentifierDependency familyKey identifierStringFor ->
-      case selectedValue of
-        Just value -> identifierStringFor value
-        Nothing -> familyKey
-
--- | Constant dependencies agree by identifier string. Dependent dependencies
--- are comparable when they carry the same stable family key.
-identifierDependenciesCompatible
-  :: IdentifierDependency
-  -> IdentifierDependency
-  -> Bool
-identifierDependenciesCompatible left right =
-  case (left, right) of
-    (SimpleIdentifierDependency leftString,
-      SimpleIdentifierDependency rightString) ->
-        leftString == rightString
-    (DependentIdentifierDependency leftKey _,
-      DependentIdentifierDependency rightKey _) ->
-        leftKey == rightKey
-    _ -> False
-
-data EvaluatedIdentifierType = EvaluatedIdentifierType
+data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
   }
@@ -236,10 +208,11 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
-  | EvaluatedIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedToStringMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
+  | EvaluatedCanonicalTypeMember CanonicalResult
   | EvaluatedSingletonAtlasMapMember CanonicalResult
   | EvaluatedSequentialAtlasMapMember [EvaluatedAtlasMapFederationMember]
   | EvaluatedExpansionAtlasMapMember
@@ -262,11 +235,13 @@ data EvaluatedFunction = EvaluatedFunction
   , functionCodomain :: InterpretedValue
   , functionPattern :: Maybe (String, Bool)
   , functionSource :: Maybe String
+  , functionPrepare :: Maybe
+      (InterpretedValue -> Either InterpretingError InterpretedValue)
   , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
   }
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
-makeFunctionValue function = makeInterpretedValue
+makeFunctionValue function = makeInterpretedValue functionDatraType
   (FunctionForm function) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
@@ -279,7 +254,7 @@ interpretedFunction value = case interpretedForm value of
 
 callableFunction :: InterpretedValue -> Maybe EvaluatedFunction
 callableFunction value = case interpretedForm value of
-  IdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
+  DependentIdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
   _ -> interpretedFunction value
@@ -290,31 +265,54 @@ functionSignature value = (\function -> (functionDomain function, functionCodoma
 functionAlternatives :: InterpretedValue -> [EvaluatedFunction]
 functionAlternatives value = case interpretedForm value of
   EitherForm alternatives -> functionAlternatives (evaluatedEitherLeft alternatives) <> functionAlternatives (evaluatedEitherRight alternatives)
-  IdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
+  DependentIdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   SpecificationForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
   FunctionForm function -> [function]
   _ -> []
 
--- Shared representation for host-provided type families. These are types of
--- runtime values, not empty maps; their membership is checked explicitly.
-data BuiltinMetaType = ASTMetaType (Maybe String) | NatRangeMetaType | IntRangeMetaType | StringTemplateMetaType
-  deriving (Eq, Show)
+-- | True only when every branch of the value is callable.  Merely finding a
+-- function somewhere inside an Either is not enough: mixed federations still
+-- use ordinary structural specification and subfederation rules.
+isFunctionFamily :: InterpretedValue -> Bool
+isFunctionFamily value =
+  case interpretedForm value of
+    EitherForm alternatives ->
+      isFunctionFamily (evaluatedEitherLeft alternatives)
+        && isFunctionFamily (evaluatedEitherRight alternatives)
+    DependentIdentifierTypeForm identifier ->
+      isFunctionFamily (evaluatedIdentifierUnderlying identifier)
+    AssignmentForm specification ->
+      isFunctionFamily (evaluatedSpecificationSourceValue specification)
+    SpecificationForm specification ->
+      isFunctionFamily (evaluatedSpecificationSourceValue specification)
+    FunctionForm _ -> True
+    _ -> False
 
 builtinMetaTypeName :: BuiltinMetaType -> String
+builtinMetaTypeName AnyMetaType = "Any"
 builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
+builtinMetaTypeName NatValRangeMetaType = "NatValRange"
+builtinMetaTypeName IntValRangeMetaType = "IntValRange"
 builtinMetaTypeName StringTemplateMetaType = "StringTemplate"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
-builtinMetaTypeValue kind = makeInterpretedValue (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
+builtinMetaTypeValue kind = makeInterpretedValue
+  (builtinMetaDatraType kind)
+  (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
-astTypeValue, naturalRangeTypeValue, integerRangeTypeValue, stringTemplateTypeValue :: InterpretedValue
+anyTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
+  naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
+  stringTemplateTypeValue :: InterpretedValue
+anyTypeValue = builtinMetaTypeValue AnyMetaType
 astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
+naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
+integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
 stringTemplateTypeValue = builtinMetaTypeValue StringTemplateMetaType
 
 syntaxCategoryTypeValue :: String -> InterpretedValue
@@ -335,6 +333,7 @@ data ValueForm
   | ValuedIntegerRangeForm EvaluatedValuedIntegerRange
   | EitherForm EvaluatedEither
   | ArgumentMapForm [InterpretedValue] InterpretedValue
+  | SkipForm InterpretedValue
   | FederationSpecificationForm
       InterpretedValue InterpretedValue [InterpretedValue]
   | RangeConcatenationForm
@@ -348,8 +347,8 @@ data ValueForm
   | StringTemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
-  | IdentifierTypeForm EvaluatedIdentifierType
-  | IdentifierStringProjectionForm EvaluatedIdentifierType
+  | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
+  | IdentifierStringProjectionForm EvaluatedDependentIdentifierType
   | SequentialMapForm
   | ExpansionMapForm InterpretedValue InterpretedValue
   | ConcatenatedMapForm InterpretedValue InterpretedValue
@@ -391,8 +390,8 @@ data InterpretedAtlasMapFederationPrimitive
   | IntegerRangeAtlasMapFederation EvaluatedIntegerRange
   | ValuedIntegerRangeAtlasMapFederation EvaluatedValuedIntegerRange
   | EitherAtlasMapFederation EvaluatedEither
-  | IdentifierTypeAtlasMapFederation EvaluatedIdentifierType
-  | IdentifierStringProjectionAtlasMapFederation EvaluatedIdentifierType
+  | DependentIdentifierTypeAtlasMapFederation EvaluatedDependentIdentifierType
+  | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentIdentifierType
   | StringTypeAtlasMapFederation
   | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
@@ -405,89 +404,9 @@ type InterpretedAtlasMapFederation =
     InterpretedAtlasMapFederationPrimitive
     InterpretedMap
 
--- | Semantic provenance retained after existential Atlas witnesses have been
--- erased. Evaluation modules inspect this structure; presentation is derived
--- separately as 'CanonicalResult'.
-data ValueSemantics
-  = BuiltinMetaTypeSemantics BuiltinMetaType
-  | FunctionSemantics ValueSemantics ValueSemantics (Maybe (String, Bool)) (Maybe String)
-  | ExplicitSemantics Natural Ordinal
-  | IntegerSemantics Integer
-  | FormulationSemantics Natural
-  | RangeSemantics Range.SuperEllipsisRangeDescription
-  | NaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
-  | ValuedNaturalRangeSemantics Natural NaturalRange.NaturalRangeTarget
-  | NaturalTypeSemantics
-  | IntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
-  | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
-  | IntegerTypeSemantics
-  | EitherSemantics ValueSemantics ValueSemantics
-  | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
-  | ConcatenationSemantics [ValueSemantics]
-  | AsciiStringSemantics String
-  | StringTypeSemantics
-  | IdentifierValueTypeSemantics
-  | ToStringSemantics ValueSemantics
-  | WeakToStringSemantics ValueSemantics
-  | StringTemplateSemantics ValueSemantics
-  | IdentifierTypeSemantics
-      IdentifierDependency
-      ValueSemantics
-      Bool
-  | IdentifierStringProjectionSemantics
-      IdentifierDependency
-      ValueSemantics
-      Bool
-  | AssignmentSemantics
-      { assignmentIdentifierString :: String
-      , assignmentTypeAnnotation :: ValueSemantics
-      , assignmentGivenValue :: ValueSemantics
-      }
-  | MapSemantics Natural [ValueSemantics]
-  | ArgumentMapSemantics Bool [ValueSemantics]
-  | SpecificationSemantics ValueSemantics ValueSemantics
-
--- | A normalized, source-independent presentation of an evaluated value.
-data CanonicalResult
-  = CanonicalBuiltinMetaType BuiltinMetaType
-  | CanonicalFunction CanonicalResult CanonicalResult (Maybe (String, Bool)) (Maybe String)
-  | CanonicalExplicit Natural Ordinal
-  | CanonicalInteger Integer
-  | CanonicalFormulation Natural
-  | CanonicalRange Range.SuperEllipsisRangeDescription
-  | CanonicalNaturalRange Natural NaturalRange.NaturalRangeTarget
-  | CanonicalValuedNaturalRange Natural NaturalRange.NaturalRangeTarget
-  | CanonicalNaturalType
-  | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
-  | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
-  | CanonicalIntegerType
-  | CanonicalEither CanonicalResult CanonicalResult
-  | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
-  | CanonicalConcatenation [CanonicalResult]
-  | CanonicalAsciiString String
-  | CanonicalStringType
-  | CanonicalIdentifierValueType
-  | CanonicalToString CanonicalResult
-  | CanonicalWeakToString CanonicalResult
-  | CanonicalStringTemplate CanonicalResult
-  | CanonicalIdentifierType
-      { canonicalIdentifierString :: String
-      , canonicalIdentifierTypeAnnotation :: CanonicalResult
-      }
-  | CanonicalDependentIdentifierType String CanonicalResult
-  | CanonicalIdentifierStringProjection String CanonicalResult
-  | CanonicalAssignment
-      { canonicalAssignmentIdentifierString :: String
-      , canonicalAssignmentTypeAnnotation :: CanonicalResult
-      , canonicalAssignmentGivenValue :: CanonicalResult
-      }
-  | CanonicalMap Natural [CanonicalResult]
-  | CanonicalArgumentMap Bool [CanonicalResult]
-  | CanonicalSpecification CanonicalResult CanonicalResult
-  deriving (Eq, Show)
-
 data InterpretedValue = InterpretedValue
-  { interpretedForm :: ValueForm
+  { interpretedDatraType :: DatraType
+  , interpretedForm :: ValueForm
   , interpretedInsertionCapability :: InsertionCapability
   , interpretedMap :: InterpretedMap
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
@@ -499,16 +418,18 @@ data InterpretedValue = InterpretedValue
 data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
 
 makeInterpretedValue
-  :: ValueForm
+  :: DatraType
+  -> ValueForm
   -> InsertionCapability
   -> InterpretedMap
   -> InterpretedAtlasMapFederation
   -> InterpretedValueTotality
   -> ValueSemantics
   -> InterpretedValue
-makeInterpretedValue form capability valueMap federation totality semantics =
+makeInterpretedValue datraType form capability valueMap federation totality semantics =
   InterpretedValue
-    { interpretedForm = form
+    { interpretedDatraType = datraType
+    , interpretedForm = form
     , interpretedInsertionCapability = capability
     , interpretedMap = valueMap
     , interpretedAtlasMapFederation = federation
@@ -521,14 +442,16 @@ makeInterpretedValue form capability valueMap federation totality semantics =
     }
 
 makeSingletonInterpretedValue
-  :: ValueForm
+  :: DatraType
+  -> ValueForm
   -> InsertionCapability
   -> InterpretedMap
   -> InterpretedValueTotality
   -> ValueSemantics
   -> InterpretedValue
-makeSingletonInterpretedValue form capability valueMap totality =
+makeSingletonInterpretedValue datraType form capability valueMap totality =
   makeInterpretedValue
+    datraType
     form
     capability
     valueMap
@@ -538,152 +461,30 @@ makeSingletonInterpretedValue form capability valueMap totality =
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
+-- | Totality at the Datra type level. Begin/yield blocks are singleton types
+-- even when the yielded value denotes a wider federation.
+interpretedTypeIsTotal :: InterpretedValue -> Bool
+interpretedTypeIsTotal value =
+  interpretedValueHasTotalMap value
+    || case datraTypeFamily
+        (interpretedDatraType value) of
+      TotalBlockTypeFamily -> True
+      _ -> False
+
 -- | Retain evaluation provenance without changing the semantic map or codec.
 withEvaluationSource :: Maybe String -> InterpretedValue -> InterpretedValue
-withEvaluationSource source value = value { interpretedEvaluationSource = source }
+withEvaluationSource source value =
+  value
+    { interpretedDatraType =
+        maybe
+          (interpretedDatraType value)
+          (const totalBlockDatraType)
+          source
+    , interpretedEvaluationSource = source
+    }
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
-
-canonicalResult :: ValueSemantics -> CanonicalResult
-canonicalResult semantics =
-  case semantics of
-    BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
-    FunctionSemantics input output patternInfo body -> CanonicalFunction (canonicalResult input) (canonicalResult output) patternInfo body
-    ExplicitSemantics level value -> CanonicalExplicit level value
-    IntegerSemantics value -> CanonicalInteger value
-    FormulationSemantics level -> CanonicalFormulation level
-    RangeSemantics description -> CanonicalRange description
-    NaturalRangeSemantics start target -> CanonicalNaturalRange start target
-    ValuedNaturalRangeSemantics start target ->
-      CanonicalValuedNaturalRange start target
-    NaturalTypeSemantics -> CanonicalNaturalType
-    IntegerRangeSemantics start target -> CanonicalIntegerRange start target
-    ValuedIntegerRangeSemantics start target ->
-      CanonicalValuedIntegerRange start target
-    IntegerTypeSemantics -> CanonicalIntegerType
-    EitherSemantics left right ->
-      CanonicalEither (canonicalResult left) (canonicalResult right)
-    RangeConcatenationSemantics descriptions ->
-      CanonicalRangeConcatenation descriptions
-    ConcatenationSemantics members ->
-      CanonicalConcatenation (map canonicalResult members)
-    AsciiStringSemantics characters -> CanonicalAsciiString characters
-    StringTypeSemantics -> CanonicalStringType
-    IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
-    ToStringSemantics source -> CanonicalToString (canonicalResult source)
-    WeakToStringSemantics source ->
-      CanonicalWeakToString (canonicalResult source)
-    StringTemplateSemantics source ->
-      CanonicalStringTemplate (canonicalResult source)
-    IdentifierTypeSemantics dependency underlying isTotal ->
-      let underlyingResult = canonicalResult underlying
-      in case dependency of
-        SimpleIdentifierDependency identifierString
-          | isTotal ->
-              CanonicalAssignment
-                identifierString underlyingResult underlyingResult
-          | otherwise ->
-              CanonicalIdentifierType identifierString underlyingResult
-        DependentIdentifierDependency familyKey _ ->
-          CanonicalDependentIdentifierType familyKey underlyingResult
-    IdentifierStringProjectionSemantics dependency underlying isTotal ->
-      let underlyingResult = canonicalResult underlying
-      in if isTotal
-        then
-          CanonicalAsciiString
-            (identifierDependencyRepresentativeString
-              dependency (Just underlyingResult))
-        else
-          CanonicalIdentifierStringProjection
-            (identifierDependencyRepresentativeString
-              dependency Nothing)
-            underlyingResult
-    AssignmentSemantics identifierString typeAnnotation givenValue ->
-      CanonicalAssignment
-        identifierString
-        (canonicalResult typeAnnotation)
-        (canonicalResult givenValue)
-    MapSemantics cardinality components ->
-      CanonicalMap cardinality (map canonicalResult components)
-    ArgumentMapSemantics totalPages members ->
-      CanonicalArgumentMap totalPages (map canonicalResult members)
-    SpecificationSemantics source target ->
-      canonicalSpecificationResult
-        (canonicalResult source)
-        (canonicalResult target)
-
--- Specifications into optional identifier slots have an assignment
--- presentation that carries the selected source values directly. This is the
--- canonical value, not merely a renderer shorthand: a pointwise specification
--- and its @:=@ federation therefore normalize identically.
-canonicalSpecificationResult
-  :: CanonicalResult
-  -> CanonicalResult
-  -> CanonicalResult
-canonicalSpecificationResult source target =
-  case optionalAssignment source target of
-    Just assignment -> assignment
-    Nothing ->
-      case (canonicalComponents source, canonicalComponents target) of
-        (Just sourceMembers, Just targetMembers)
-          | length sourceMembers == length targetMembers ->
-              case sequence
-                  (zipWith optionalAssignment sourceMembers targetMembers) of
-                Just assignments -> CanonicalConcatenation assignments
-                Nothing -> CanonicalSpecification source target
-        _ -> CanonicalSpecification source target
-
-canonicalComponents :: CanonicalResult -> Maybe [CanonicalResult]
-canonicalComponents (CanonicalConcatenation members) = Just members
-canonicalComponents (CanonicalMap _ members) = Just members
-canonicalComponents _ = Nothing
-
-optionalAssignment
-  :: CanonicalResult
-  -> CanonicalResult
-  -> Maybe CanonicalResult
-optionalAssignment source (CanonicalEither present missing) =
-  case present of
-    CanonicalIdentifierType identifierString typeAnnotation
-      | typeAnnotation == missing ->
-          Just
-            (CanonicalEither
-              (CanonicalAssignment
-                identifierString
-                typeAnnotation
-                (optionalAssignmentValue
-                  identifierString typeAnnotation source))
-              missing)
-    CanonicalAssignment identifierString typeAnnotation _
-      | typeAnnotation == missing ->
-          Just
-            (CanonicalEither
-              (CanonicalAssignment
-                identifierString
-                typeAnnotation
-                (optionalAssignmentValue
-                  identifierString typeAnnotation source))
-              missing)
-    _ -> Nothing
-optionalAssignment _ _ = Nothing
-
-optionalAssignmentValue
-  :: String
-  -> CanonicalResult
-  -> CanonicalResult
-  -> CanonicalResult
-optionalAssignmentValue identifierString typeAnnotation source =
-  case source of
-    CanonicalAssignment sourceString _ givenValue
-      | sourceString == identifierString -> givenValue
-    CanonicalEither
-        (CanonicalAssignment sourceString sourceType givenValue)
-        sourceMissing
-      | sourceString == identifierString
-      , sourceType == typeAnnotation
-      , sourceMissing == typeAnnotation -> givenValue
-    _ -> source
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
@@ -705,6 +506,7 @@ interpretedValueKind value =
     ValuedIntegerRangeForm _ -> RangeValueKind
     EitherForm _ -> EitherValueKind
     ArgumentMapForm _ _ -> MapValueKind
+    SkipForm _ -> FormulationValueKind
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
@@ -715,8 +517,8 @@ interpretedValueKind value =
     StringTemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
-    IdentifierTypeForm _ -> IdentifierTypeValueKind
-    IdentifierStringProjectionForm _ -> IdentifierTypeValueKind
+    DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind
+    IdentifierStringProjectionForm _ -> DependentIdentifierTypeValueKind
     SequentialMapForm -> MapValueKind
     ExpansionMapForm _ _ -> MapValueKind
     ConcatenatedMapForm _ _ -> MapValueKind

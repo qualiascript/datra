@@ -1,7 +1,7 @@
 -- | Strings which have Datra's compact @$identifier@ spelling.
 --
 -- This module is the single definition of the compact-string language. Both
--- source parsing and evaluated @Iden@ membership delegate to it.
+-- source parsing and evaluated @IdenStr@ membership delegate to it.
 module IdentifierValueType
   ( IdentifierValueType
   , identifierValue
@@ -40,7 +40,7 @@ isIdentifierValue value@(first : rest) =
 
 -- | Every character which can occur somewhere in an identifier value. This
 -- language fact lets template concatenation prove that delimiters such as a
--- space cannot occur inside an @Iden@ interpolation.
+-- space cannot occur inside an @IdenStr@ interpolation.
 identifierValueCharacterAlphabet :: String
 identifierValueCharacterAlphabet =
   ['a' .. 'z'] <> ['A' .. 'Z'] <> ['0' .. '9'] <> "_'"

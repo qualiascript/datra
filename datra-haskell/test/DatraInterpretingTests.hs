@@ -3,6 +3,13 @@
 
 module DatraInterpretingTests (main) where
 
+import Datra.Interpreter.FunctionTests (functionTests)
+import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
+import Datra.Interpreter.IntegrationTests (integrationTests)
+import Datra.Interpreter.ModuleTests (moduleTests)
+import Datra.Interpreter.OverloadAssertionTests (overloadAssertionTests)
+import Datra.Interpreter.ScopeTests (scopeTests)
+import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -27,7 +34,6 @@ import Interpreting
   , InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
-  , interpretWithImports
   , interpretExpressionReason
   , interpretLocatedExpression
   , canonicalStringCodec
@@ -62,6 +68,8 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
+import DatraLanguage.Diagnostics.Application
+  ( ParseFailure (parseFailureMessage) )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , renderDatraError
@@ -73,9 +81,7 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
-import Parsing (parseDatra, parseDatraLocatedWithSyntaxImports)
-import ModuleLoading (loadImports, importSyntax)
-import ModuleNames (moduleIdentifier)
+import Parsing (parseDatra)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -98,18 +104,11 @@ testTree =
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
         , testCase "string templates" testStringTemplates
         , testCase "named field access" testNamedAccess
-        , testCase "qualified library syntax" testQualifiedSyntax
-        , testCase "functions and externals" testFunctions
-        , testCase "recursive factorial" testRecursiveFactorial
-        , testCase "module imports and private helpers" testModules
-        , testCase "scope values and explicit syntax sums" testScopeSums
-        , testCase "declared AST patterns" testDeclaredPatterns
-        , testCase "library syntax and range types" testLibraryTypes
         , testCase "argument maps" testArgumentMaps
         , testCase "argument maps in concatenation" testArgumentMapConcatenation
         , testCase "argument maps in string templates" testArgumentMapTemplates
-        , testCase "typed eval" testEval
-        , testCase "eval-backed keyword forms" testEvalBackedKeywords
+        , testCase "internal typed decoding" testEval
+        , testCase "template-backed keyword forms" testEvalBackedKeywords
         , testCase "begin/yield scope and provenance" testBegin
         , testCase "begin/yield scope rejections" testBeginRejections
         , testCase "implicit programs" testPrograms
@@ -126,9 +125,17 @@ testTree =
         , testCase "access" testAccess
         , testCase "specification" testSpecification
         , testCase "identifier types and assignments" testIdentifiers
+        , testCase "Datra and canonical type capabilities" testCanonicalTypes
         , testCase "typed rejections" testTypedRejections
         , testCase "located rejection" testLocatedRejection
         ]
+    , functionTests
+    , datraTypeLawTests
+    , integrationTests
+    , scopeTests
+    , moduleTests
+    , overloadAssertionTests
+    , standardLibraryTests
     , testGroup "properties"
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
         , testProperty "natural multiplication agrees with Haskell" propNaturalMultiplication
@@ -301,7 +308,8 @@ expectValue label expressionValue check =
 expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Left message -> fail
+      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right expressionValue -> expectValue label expressionValue check
 
 expectSourceRejection
@@ -311,7 +319,8 @@ expectSourceRejection
   -> IO ()
 expectSourceRejection label source matches =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Left message -> fail
+      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right expressionValue ->
       case interpretExpressionReason expressionValue of
         Left rejection
@@ -506,6 +515,7 @@ testArgumentMaps = do
     , "{2; b := 8} of {b? : Nat; a? : Nat}"
     , "{2; 8} of {a? : Nat; b? : Nat}"
     , "{a := 2; b := 8} of {a : Nat; b : Nat}"
+    , "(2; 8) of {a : Nat; b : Nat}"
     , "{a? : Nat; b? : Nat} of {b? : Int; a? : Int}"
     , "{1; 2}[0] = (1 | 2)"
     , "\"(b : 8; 2)\" of \"%({a? : Nat; b? : Nat})\""
@@ -518,7 +528,16 @@ testArgumentMaps = do
     , "{2; 8} of {a : Nat; b : Nat}"
     , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
+    , "($a, $b, 5) of {Int, String, String}"
     ]
+  expectSourceValue "written order wins over other valid permutations"
+      "(1, 2) ~> {x : Int, y : Int}" $ \value ->
+    assert "required names accept positional values in written order"
+      (renderInterpretedValue value == "(1; 2) ~> {x : Int, y : Int}")
+  expectSourceValue "a unique valid argument reorder is selected"
+      "($a, 5) ~> {x : Int, y : IdenStr}" $ \value ->
+    assert "the unique reordered presentation is retained"
+      (renderInterpretedValue value == "($a; 5) ~> {x : Int, y : IdenStr}")
   let example = "{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}"
   expectSourceValue "argument specification preserves written source" example $ \value ->
     assert "argument-map source order and partial names survive"
@@ -605,7 +624,6 @@ testArgumentMapConcatenation = do
     [ "x : 4, {b : 8, 2} ~> " <> target
     , "x : 3, {c : 8, 2} ~> " <> target
     , "x : 3, {b : $wrong, 2} ~> " <> target
-    , source <> " ~> x : 3, {a : Nat, b : Nat}"
     , source <> " ~> x : 3, (b : Nat; Nat)"
     ]
 
@@ -642,42 +660,79 @@ testArgumentMapTemplates = do
     "\"args=(2; b : 8)!\" of \"args=%({a? : Nat, b? : Nat})!\"" $ \value ->
       assert "template literals surround the whole argument-map capture"
         (renderInterpretedValue value == "true")
-  expectSourceValue "argument template still enforces required names"
+  expectSourceValue "argument template assigns required names positionally"
     "\"(2; 8)\" of \"%({a : Nat, b : Nat})\"" $ \value ->
-      assert "optional names do not weaken required-name templates"
-        (renderInterpretedValue value == "false")
+      assert "written order determines required-name template slots"
+        (renderInterpretedValue value == "true")
 
 testEval :: IO ()
 testEval = do
-  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
-    assert (source <> ": eval result: " <> renderInterpretedValue value)
-      (renderInterpretedValue value == expected))
-    [ ("eval \"12\" at Int", "12 ~> Int")
-    , ("eval \"alco\" at Iden", "$alco ~> Iden")
-    , ("eval \"hello world\" at String", "\"hello world\" ~> String")
-    , ("eval (\"1\", \"2\") at Int", "12 ~> Int")
-    , ("eval \"x : 3, (b : 8; 2)\" at x : 3; {a? : Nat := 2, b? : Nat}",
-       "x : 3, (b : 8; 2) ~> (x : 3; {a? : Nat := 2, b? : Nat})")
-    , ("(eval \"(b : 8; 2)\" at {a? : Nat, b? : Nat})[1] * 5", "10")
-    , ("(eval \"2\" at Nat) ~> Int", "2 ~> Int")
-    , ("Int <~ (eval \"2\" at Nat)", "2 ~> Int")
-    , ("(eval \"2\" at Nat) of Int", "true")
-    , ("(eval \"(2; b : 8)\" at {a? : Nat, b? : Nat}) of {b? : Int, a? : Int}", "true")
-    , ("(eval \"12\" at Int) = %(\"12\" ~> \"%Int\")[1]", "true")
+  mapM_ (\(source, target, expected) ->
+    expectInternalEvalValue source target $ \value ->
+      assert (source <> " decoded at " <> target)
+        (renderInterpretedValue value == expected))
+    [ ("\"12\"", "Int", "12 ~> Int")
+    , ("\"alco\"", "IdenStr", "$alco ~> IdenStr")
+    , ("\"hello world\"", "String", "\"hello world\" ~> String")
+    , ("(\"1\", \"2\")", "Int", "12 ~> Int")
+    , ( "\"x : 3, (b : 8; 2)\""
+      , "x : 3; {a? : Nat := 2, b? : Nat}"
+      , "x : 3, (b : 8; 2) ~> (x : 3; {a? : Nat := 2, b? : Nat})"
+      )
+    , ( "\"(2; 8)\""
+      , "{a : Nat, b : Nat}"
+      , "(2; 8) ~> {a : Nat, b : Nat}"
+      )
     ]
-  mapM_ (\source -> expectSourceRejection source source
-    (\case
-      AtlasMapFederationOperationRefuted
-        AtlasMapFederationSpecificationHasNoMatchingMember -> True
-      AtlasMapFederationOperationUndecidable
-        (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
-      _ -> False))
-    [ "eval \"nope\" at Nat"
-    , "eval \"1 + 2\" at Nat"
-    , "eval \"(c : 8; 2)\" at {a? : Nat, b? : Nat}"
-    , "eval \"(2; 8)\" at {a : Nat, b : Nat}"
-    , "eval 12 at Nat"
+  mapM_ (\(source, target) ->
+    expectInternalEvalRejection source target
+      (\case
+        AtlasMapFederationOperationRefuted
+          AtlasMapFederationSpecificationHasNoMatchingMember -> True
+        AtlasMapFederationOperationUndecidable
+          (NoAtlasMapFederationDecisionProcedure
+            AtlasMapFederationSpecification) -> True
+        _ -> False))
+    [ ("\"nope\"", "Nat")
+    , ("\"1 + 2\"", "Nat")
+    , ("\"(c : 8; 2)\"", "{a? : Nat, b? : Nat}")
+    , ("12", "Nat")
     ]
+
+expectInternalEvalValue
+  :: String
+  -> String
+  -> (InterpretedValue -> IO ())
+  -> IO ()
+expectInternalEvalValue source target check = do
+  sourceExpression <- parseTestExpression source
+  targetExpression <- parseTestExpression target
+  expectValue
+    (source <> " decoded at " <> target)
+    (Eval sourceExpression targetExpression)
+    check
+
+expectInternalEvalRejection
+  :: String
+  -> String
+  -> (InterpretingError -> Bool)
+  -> IO ()
+expectInternalEvalRejection source target matches = do
+  sourceExpression <- parseTestExpression source
+  targetExpression <- parseTestExpression target
+  case interpretExpressionReason (Eval sourceExpression targetExpression) of
+    Left rejection
+      | matches rejection -> pure ()
+      | otherwise -> fail ("unexpected internal decode rejection: " <> show rejection)
+    Right value ->
+      fail ("internal decode unexpectedly produced " <> renderInterpretedValue value)
+
+parseTestExpression :: String -> IO Expression
+parseTestExpression source =
+  case parseDatra ("(" <> source <> "\n)") of
+    Left message -> fail
+      ("test expression failed to parse: " <> parseFailureMessage message)
+    Right expressionValue -> pure expressionValue
 
 testBegin :: IO ()
 testBegin = do
@@ -689,14 +744,39 @@ testBegin = do
     expectSourceValue "retained block output can be read again"
       (renderInterpretedValue value) $ \decoded ->
         assert "output preserves its value" (interpretedInteger decoded == Just 11)
+  expectSourceValue "begin block is a total canonical type" "begin yield Nat" $ \value ->
+    assert "block totality does not depend on the yielded federation"
+      (Types.interpretedTypeIsTotal value)
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
+    assert (source <> ": " <> renderInterpretedValue value)
+      (Types.interpretedCanonicalResult value
+        == Types.interpretedCanonicalResult (Types.booleanValue expected)))
+    [ ("(begin yield 11) of (begin yield 11)", True)
+    , ("11 of (begin yield 11)", True)
+    , ("(begin yield 11) of 11", True)
+    , ("(begin yield 11) = 11", True)
+    , ("(begin x := 11 yield x) = (begin yield 11)", True)
+    , ("12 of (begin yield 11)", False)
+    , ("((begin yield 11) ~> (begin yield 11)) of (begin yield 11)", True)
+    ]
+  expectSourceValue "equal value specifies a begin block"
+    "11 ~> (begin yield 11)" $ \value ->
+      assert
+        ("specification retains the block and yielded value: "
+          <> renderInterpretedValue value)
+        (renderInterpretedValue value == "11 <~ begin\nyield 11")
+  expectSourceRejection "a different value cannot specify a begin block"
+    "12 ~> (begin yield 11)"
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
     assert (source <> ": " <> renderInterpretedValue value)
       (interpretedInteger value == Just expected))
     [ ("begin a : 2 * 3; b : 5 yield a + b", 11)
-    , ("begin a : b + 1; b : 5 yield a", 6)
     , ("begin bad : 1 + \"bad\" yield 11", 11)
     , ("begin a : x + 1; let x : 10 yield a", 11)
-    , ("begin let x : y + 1; y : 9 yield x", 10)
     , ("begin let x : 10 yield begin y : 1 yield x + y", 11)
     , ("begin a : Nat := 6; b : 5 yield a + b", 11)
     , ("begin a? : Nat := 6; b : 5 yield a + b", 11)
@@ -704,7 +784,7 @@ testBegin = do
     , ("begin a : (begin b : 2 yield b + 1) yield a * 2", 6)
     , ("begin yield 11", 11)
     , ("(begin a : 6 yield a) + 5", 11)
-    , ("begin T : Int yield (eval \"12\" at T) + 0", 12)
+    , ("begin T : Int yield %(\"12\" ~> \"%(T)\")[1] + 0", 12)
     , ("begin a : 6 yield %(\"%Nat\" <~ \"6\")[1] + a", 12)
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
@@ -717,11 +797,70 @@ testBegin = do
     , "(begin T : Nat yield {b : 8, 2} ~> {a? : T := 2, b? : T}) of {b? : Int, a? : Int}"
     ]
 
+testCanonicalTypes :: IO ()
+testCanonicalTypes = do
+  mapM_ expectCanonicalType
+    [ "Any"
+    , "Nat"
+    , "Int"
+    , "String"
+    , "IdenStr"
+    , "Bool"
+    , "(Nat; Int)"
+    , "begin yield 11"
+    ]
+  mapM_ expectNonCanonicalDatraType
+    [ "AST"
+    , "Expr"
+    , "Block"
+    , "Pages"
+    , "NatRange"
+    , "IntRange"
+    , "NatValRange"
+    , "IntValRange"
+    , "StringTemplate"
+    , "Nat -> Nat"
+    , "(Nat; AST)"
+    , "Nat | (Nat -> Nat)"
+    ]
+  expectSourceValue "weak function string capability" "Nat -> Nat" $ \value ->
+    assert "functions are DatraType values without a CanonicalType"
+      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
+        Nothing -> True
+        Just _ -> False)
+  expectSourceValue "canonical begin block capability" "begin yield 11" $ \value -> do
+    assert "a retained total block embeds a CanonicalType"
+      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
+        Just _ -> True
+        Nothing -> False)
+    case Types.toStringValue canonicalStringCodec value of
+      Left rejection ->
+        fail ("canonical block conversion was rejected: " <> show rejection)
+      Right rendered ->
+        assert "canonical block conversion retains block and yielded value"
+          (renderInterpretedValue rendered
+            == "\"11 <~ begin\\nyield 11\"")
+  where
+    expectCanonicalType source =
+      expectSourceValue (source <> " is canonical") source $ \value ->
+        assert (source <> " embeds the narrower CanonicalType")
+          (case Types.datraCanonicalType
+              (Types.interpretedDatraType value) of
+            Just _ -> True
+            Nothing -> False)
+    expectNonCanonicalDatraType source =
+      expectSourceValue (source <> " is noncanonical") source $ \value ->
+        assert (source <> " is a DatraType without a CanonicalType")
+          (case Types.datraCanonicalType
+              (Types.interpretedDatraType value) of
+            Nothing -> True
+            Just _ -> False)
+
 testPrograms :: IO ()
 testPrograms = do
   mapM_ (\(source, expected) ->
     case parseDatra source of
-      Left message -> fail message
+      Left message -> fail (parseFailureMessage message)
       Right expression -> expectValue source expression $ \value ->
         assert (source <> ": " <> renderInterpretedValue value)
           (renderInterpretedValue value == expected))
@@ -729,10 +868,10 @@ testPrograms = do
     , ("a : 2 * 3\nb : 8\nyield a + b", "14")
     , ("begin\na : 2 * 3\nb : 8\nyield a + b", "14")
     , ("begin\na : 2 * 3\nb : 5\nyield a + b", "11")
-    , ("a : 2 * 3\nb : 5", "0")
-    , ("begin a : 6; b : 5", "0")
-    , ("", "0")
-    , ("2 + 3", "0")
+    , ("a : 2 * 3\nb : 5", "()")
+    , ("begin a : 6; b : 5", "()")
+    , ("", "()")
+    , ("2 + 3", "()")
     , ("# comment\n(2 + 3) # trailing comment", "5")
     , ("yield (1; 2)", "(1; 2)")
     , ("(2 + 3)", "5")
@@ -752,14 +891,16 @@ testBeginRejections = do
   mapM_ (\source -> expectSourceRejection source source
     (\case UnknownIdentifier _ -> True; _ -> False))
     [ "begin yield missing"
+    , "begin a : b + 1; b : 5 yield a"
+    , "begin let x : y + 1; y : 9 yield x"
+    , "begin a : a yield a"
+    , "begin a : b; b : a yield a"
+    , "begin (a : 1; b : 2) yield a"
+    , "begin {a : 1, b : 2} yield a"
+    , "begin let (a : 1; b : a) yield 0"
+    , "begin let {a : 1, b : a} yield 0"
     , "begin a : b yield begin b : 2 yield a"
     , "(begin a : 2 yield a), (begin yield a)"
-    ]
-  mapM_ (\source -> expectSourceRejection source source
-    (\case CyclicIdentifierReference _ -> True; _ -> False))
-    [ "begin a : a yield a"
-    , "begin a : b; b : a yield a"
-    , "begin let a : a yield 1"
     ]
   expectSourceRejection "unused let must be evaluated"
     "begin let bad : 1 + \"bad\" yield 11" (const True)
@@ -787,34 +928,33 @@ testEvalBackedKeywords = do
     , ("if false then (1 and false) else 9", "9")
     , ("if false then (1 and false)", "()")
     , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
-    , ("%(eval \"from 2 to 5\" at \"from %Int to %Int\")[1]", "2 ~> Int")
-    , ("%(eval \"from 2 to 5\" at \"from %Int to %Int\")[2]", "5 ~> Int")
-    , ("%(eval \"range -3 downwards\" at \"range %Int downwards\")[1]", "-3 ~> Int")
-    , ("%(eval \"if true then\" at \"if %Bool then\")[1]", "true ~> Bool")
+    , ("%(\"from 2 to 5\" ~> \"from %Int to %Int\")[1]", "2 ~> Int")
+    , ("%(\"from 2 to 5\" ~> \"from %Int to %Int\")[2]", "5 ~> Int")
+    , ("%(\"range -3 downwards\" ~> \"range %Int downwards\")[1]", "-3 ~> Int")
+    , ("%(\"if true then\" ~> \"if %Bool then\")[1]", "true ~> Bool")
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
     assert ("keyword forms compose with identifiers, specification, and inclusion: " <> source)
       (renderInterpretedValue value == "true"))
-    [ "(eval \"from 2 to 5\" at \"from %Int to %Int\") = (\"from 2 to 5\" ~> \"from %Int to %Int\")"
-    , "(2 ~> from 0 to 5) of from -1 to 8"
+    [ "(2 ~> from 0 to 5) of from -1 to 8"
     , "(from 0 to 5 <~ 2) = (2 ~> from 0 to 5)"
     , "(2..3 ~> range 0 to 5) of range 0 to 8"
     , "(range 0 to 5 <~ 2..3) = (2..3 ~> range 0 to 5)"
     , "(2, b : 5) of (a? : from 0 to 8, b? : from 0 to 8)"
-    , "(eval \"(b : 5; 2)\" at {a? : from 0 to 8, b? : from 0 to 8}) of {b? : Int, a? : Int}"
+    , "%(\"(b : 5; 2)\" ~> \"%({a? : from 0 to 8, b? : from 0 to 8})\")[1] of {b? : Int, a? : Int}"
     , "(if true then 2 else (1 and false)) of from 0 to 5"
     , "((if false then (1 and false) else 2) ~> from 0 to 5) of Int"
     , "(from 0 to 5 <~ (if true then 2 else (1 and false))) = (2 ~> from 0 to 5)"
     , "(if true then (b? : from 0 to 5 := 2) else (1 and false)) of (b? : Int)"
     ]
   expectSourceRejection "keyword schema rejects an invalid bound"
-    "eval \"from nope to 5\" at \"from %Int to %Int\""
+    "\"from nope to 5\" ~> \"from %Int to %Int\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
   expectSourceRejection "keyword schema rejects an invalid condition"
-    "eval \"if 1 then\" at \"if %Bool then\""
+    "\"if 1 then\" ~> \"if %Bool then\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
@@ -828,43 +968,43 @@ testStringTemplates = do
     assert "the interpolated arithmetic result equals the expected string"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "Iden template accepts a compact-string value"
-      "\"My name is alco\" ~> \"My name is %Iden\"" $ \value ->
-    assert "a compact name matches Iden"
+      "IdenStr template accepts a compact-string value"
+      "\"My name is alco\" ~> \"My name is %IdenStr\"" $ \value ->
+    assert "a compact name matches IdenStr"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"My name is alco\" ~> \"My name is %Iden\""
+          == "\"My name is alco\" ~> \"My name is %IdenStr\""
       )
   expectSourceRejection
-    "Iden template rejects whitespace within the captured value"
-    "\"My name is whatever you call me\" ~> \"My name is %Iden\""
+    "IdenStr template rejects whitespace within the captured value"
+    "\"My name is whatever you call me\" ~> \"My name is %IdenStr\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
   expectSourceValue
-      "Iden accepts a digit-leading alphanumeric value"
-      "\"345abc\" ~> \"%Iden\"" $ \value ->
-    assert "a digit-leading nonnumeric compact string matches Iden"
+      "IdenStr accepts a digit-leading alphanumeric value"
+      "\"345abc\" ~> \"%IdenStr\"" $ \value ->
+    assert "a digit-leading nonnumeric compact string matches IdenStr"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceRejection
-    "Iden rejects an entirely numeric string"
-    "\"12\" ~> \"%Iden\""
+    "IdenStr rejects an entirely numeric string"
+    "\"12\" ~> \"%IdenStr\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
   expectSourceValue
-      "a space separates adjacent Iden interpolations"
-      "\"name alco\" ~> \"%Iden %Iden\"" $ \value ->
+      "a space separates adjacent IdenStr interpolations"
+      "\"name alco\" ~> \"%IdenStr %IdenStr\"" $ \value ->
     assert "the separated identifier values are selected uniquely"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"name alco\" ~> \"%Iden %Iden\""
+          == "\"name alco\" ~> \"%IdenStr %IdenStr\""
       )
   expectSourceRejection
-    "adjacent Iden interpolations are ambiguous"
-    "\"%Iden%Iden\""
+    "adjacent IdenStr interpolations are ambiguous"
+    "\"%IdenStr%IdenStr\""
     (\case
       AmbiguousStringTemplate -> True
       _ -> False)
@@ -875,20 +1015,20 @@ testStringTemplates = do
       (renderInterpretedValue value == "true")
   expectSourceValue
       "plain identifier value belongs to an optional identifier template"
-      "\"my name is alco\" of \"my name is %(ie? : Iden)\"" $ \value ->
+      "\"my name is alco\" of \"my name is %(ie? : IdenStr)\"" $ \value ->
     assert "the missing-name branch renders the plain identifier value"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "canonical optional assignment belongs to its string template"
-      ( "\"my name is (ie? : Iden := $alco)\" of "
-          <> "\"my name is %(ie? : Iden)\""
+      ( "\"my name is (ie? : IdenStr := $alco)\" of "
+          <> "\"my name is %(ie? : IdenStr)\""
       ) $ \value ->
     assert "the present-name branch renders its canonical assignment"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "noncanonical assignment spelling is outside the template"
       ( "\"my name is (ie := $alco)\" of "
-          <> "\"my name is %(ie? : Iden)\""
+          <> "\"my name is %(ie? : IdenStr)\""
       ) $ \value ->
     assert "only the optional canonical assignment spelling is accepted"
       (renderInterpretedValue value == "false")
@@ -912,46 +1052,46 @@ testStringTemplates = do
       (renderInterpretedValue value == "true")
   expectSourceValue
       "Either containing a simple identifier type is injective"
-      "\"ie : 12\" of \"%(ie : Nat | Iden)\"" $ \value ->
+      "\"ie : 12\" of \"%(ie : Nat | IdenStr)\"" $ \value ->
     assert "the simple identifier alternative is decoded canonically"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "other branch beside a simple identifier type remains injective"
-      "\"alco\" of \"%(ie : Nat | Iden)\"" $ \value ->
+      "\"alco\" of \"%(ie : Nat | IdenStr)\"" $ \value ->
     assert "the string-valued alternative retains identity conversion"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "extract returns the source string and typed template holes"
-      "%(\"%Iden %Int\" <~ \"alco 100\")" $ \value ->
+      "%(\"%IdenStr %Int\" <~ \"alco 100\")" $ \value ->
     assert "extract follows the retained string-template selection witness"
       ( renderInterpretedValue value
-          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+          == "(\"alco 100\"; $alco ~> IdenStr; 100 ~> Int)"
       )
   expectSourceValue
       "extract forgets a simple identifier assignment wrapper"
-      "%(a : \"%Iden %Int\" := \"alco 100\")" $ \value ->
+      "%(a : \"%IdenStr %Int\" := \"alco 100\")" $ \value ->
     assert "identifier extraction matches direct specification extraction"
       ( renderInterpretedValue value
-          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+          == "(\"alco 100\"; $alco ~> IdenStr; 100 ~> Int)"
       )
   expectSourceValue
       "extract index zero selects the original string"
-      "%(my_val : \"%Iden %Int\" := \"alco 100\") [0]" $ \value ->
+      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [0]" $ \value ->
     assert "the first extracted component is always the source string"
       (renderInterpretedValue value == "\"alco 100\"")
   expectSourceValue
-      "extract index one selects the Iden hole"
-      "%(my_val : \"%Iden %Int\" := \"alco 100\") [1]" $ \value ->
+      "extract index one selects the IdenStr hole"
+      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [1]" $ \value ->
     assert "the second extracted component is the first typed hole"
-      (renderInterpretedValue value == "$alco ~> Iden")
+      (renderInterpretedValue value == "$alco ~> IdenStr")
   expectSourceValue
       "extract index two selects the Int hole"
-      "%(my_val : \"%Iden %Int\" := \"alco 100\") [2]" $ \value ->
+      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [2]" $ \value ->
     assert "the third extracted component is the second typed hole"
       (renderInterpretedValue value == "100 ~> Int")
   expectSourceValue
       "extracted numerical specifications participate in arithmetic"
-      "%(my_val : \"%Iden %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
+      "%(my_val : \"%IdenStr %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
     assert "a specification with a valued-range target coerces to its source"
       (renderInterpretedValue value == "true")
   expectSourceValue
@@ -1207,8 +1347,17 @@ testStringTemplates = do
   case (Types.naturalTypeValue, Types.asciiStringValue "1") of
     (Right naturals, Right oneString) -> do
       let dependentIdentifier =
-            Types.identifierTypeValue "n" (const "same") naturals
-      assert "dependent IdentifierType has no proven injective toString"
+            Types.dependentIdentifierTypeValue "n" (const "same") naturals
+      assert "widest dependent identifier type is weakToString-only"
+        (Types.datraStringRepresentation
+          (Types.interpretedDatraType dependentIdentifier)
+            == Types.WeakStringRepresentation)
+      assert "widest dependent identifier is not a CanonicalType"
+        (case Types.datraCanonicalType
+            (Types.interpretedDatraType dependentIdentifier) of
+          Nothing -> True
+          Just _ -> False)
+      assert "dependent identifier type has no proven injective toString"
         (case Types.toStringValue
             canonicalStringCodec dependentIdentifier of
           Left NonInjectiveStringInterpolation -> True
@@ -1219,7 +1368,7 @@ testStringTemplates = do
           fail
             ("dependent weakToString was rejected: " <> show rejection)
         Right weakConversion -> do
-          assert "dependent IdentifierType retains the explicit weak marker"
+          assert "dependent identifier type retains the explicit weak marker"
             (renderInterpretedValue weakConversion == "\"%!(n : Nat)\"")
           assert "dependent weakToString is rejected by specification"
             (case Types.specifyValues oneString weakConversion of
@@ -1333,8 +1482,8 @@ testBooleansAndEither = do
   expectValue
       "canonical Boolean identifier values"
       (AST.and
-        (AST.identifierType "True" (natural 1))
-        (AST.identifierType "False" (natural 0))) $ \value ->
+        (AST.dependentIdentifierType "True" (natural 1))
+        (AST.dependentIdentifierType "False" (natural 0))) $ \value ->
     assert "True : 1 and False : 0 retain Boolean behavior"
       (renderInterpretedValue value == "false")
   expectValue
@@ -1371,8 +1520,8 @@ testBooleansAndEither = do
   expectValue
       "identifier alternatives distinguish otherwise equal types"
       (AST.eitherType
-        (AST.identifierType "x" AST.naturalType)
-        (AST.identifierType "y" AST.naturalType)) $ \value ->
+        (AST.dependentIdentifierType "x" AST.naturalType)
+        (AST.dependentIdentifierType "y" AST.naturalType)) $ \value ->
     assert "identifier Atlas maps remain distinct federation members"
       (renderInterpretedValue value == "x : Nat | y : Nat")
   expectValue
@@ -1383,8 +1532,8 @@ testBooleansAndEither = do
   assert "the same identifier does not distinguish overlapping alternatives"
     (case interpretExpressionReason
         (AST.eitherType
-          (AST.identifierType "x" (natural 0))
-          (AST.identifierType "x" AST.naturalType)) of
+          (AST.dependentIdentifierType "x" (natural 0))
+          (AST.dependentIdentifierType "x" AST.naturalType)) of
       Left EitherAlternativesNotDistinct -> True
       _ -> False)
   expectValue
@@ -1428,10 +1577,10 @@ testOptionalsAndConditionals = do
       optionalIntegerSlots =
         MapConcatenation
           (AST.eitherType
-            (AST.identifierType "a" AST.integerType)
+            (AST.dependentIdentifierType "a" AST.integerType)
             AST.integerType)
           (AST.eitherType
-            (AST.identifierType "b" AST.integerType)
+            (AST.dependentIdentifierType "b" AST.integerType)
             AST.integerType)
       optionalAssigned identifierString value =
         AST.eitherType
@@ -1440,21 +1589,21 @@ testOptionalsAndConditionals = do
           AST.integerType
       optionalIdentifier identifierString =
         AST.eitherType
-          (AST.identifierType identifierString AST.integerType)
+          (AST.dependentIdentifierType identifierString AST.integerType)
           AST.integerType
   expectSourceValue
-      "inferred assignment belongs to an optional Iden slot"
-      "(ie := $alco) of (ie? : Iden)" $ \value ->
+      "inferred assignment belongs to an optional IdenStr slot"
+      "(ie := $alco) of (ie? : IdenStr)" $ \value ->
     assert "the inferred assignment widens through its identifier target"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "canonical optional assignment belongs to its optional Iden slot"
-      "(ie? : Iden := $alco) of (ie? : Iden)" $ \value ->
+      "canonical optional assignment belongs to its optional IdenStr slot"
+      "(ie? : IdenStr := $alco) of (ie? : IdenStr)" $ \value ->
     assert "the optional assignment retains the present branch"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "plain identifier value belongs to an optional Iden slot"
-      "$alco of (ie? : Iden)" $ \value ->
+      "plain identifier value belongs to an optional IdenStr slot"
+      "$alco of (ie? : IdenStr)" $ \value ->
     assert "the plain value selects the unnamed branch"
       (renderInterpretedValue value == "true")
   expectValue "optional Nat" (AST.optional AST.naturalType) $ \value ->
@@ -1475,7 +1624,7 @@ testOptionalsAndConditionals = do
         == "nothing ~> Nat?")
   expectValue
       "canonical Nothing identifier"
-      (AST.identifierType "Nothing" AST.emptyMap
+      (AST.dependentIdentifierType "Nothing" AST.emptyMap
         ~> AST.optional AST.naturalType) $ \value ->
     assert "Nothing : () round-trips as the distinguished absence"
       (renderInterpretedValue value
@@ -1483,7 +1632,7 @@ testOptionalsAndConditionals = do
   expectValue
       "optional identifier"
       (AST.eitherType
-        (AST.identifierType "a" AST.naturalType)
+        (AST.dependentIdentifierType "a" AST.naturalType)
         AST.naturalType) $ \value ->
     assert "a? : Nat includes the missing-identifier Nat branch"
       (renderInterpretedValue value == "a? : Nat")
@@ -1518,7 +1667,7 @@ testOptionalsAndConditionals = do
       (AST.equal
         ( MapConcatenation
             (natural 12)
-            (AST.identifierType "b" (natural 23))
+            (AST.dependentIdentifierType "b" (natural 23))
             ~> optionalIntegerSlots
         )
         (MapConcatenation
@@ -1564,10 +1713,10 @@ testOptionalsAndConditionals = do
           (AST.assignment "b" (natural 5) (natural 5)))
         (MapConcatenation
           (AST.eitherType
-            (AST.identifierType "a" AST.integerType)
+            (AST.dependentIdentifierType "a" AST.integerType)
             AST.integerType)
           (AST.eitherType
-            (AST.identifierType "b" (AST.withinTo 3 8))
+            (AST.dependentIdentifierType "b" (AST.withinTo 3 8))
             (AST.withinTo 3 8)))) $ \value ->
     assert "2 and b := 5 inhabit their optional integer range slots"
       (renderInterpretedValue value == "true")
@@ -1640,7 +1789,7 @@ testCombinedTypeSystems = do
           (natural 12)
           (natural 99)
           ~> AST.eitherType
-                (AST.identifierType "a" AST.naturalType)
+                (AST.dependentIdentifierType "a" AST.naturalType)
                 AST.naturalType
       ) $ \value ->
     assert "conditional results canonicalize as optional assignments"
@@ -1941,7 +2090,9 @@ testRendering = do
           let rendered = renderInterpretedValue original
           in case parseDatra ("(" <> rendered <> "\n)") of
               Left message ->
-                fail ("canonical map did not parse: " <> message)
+                fail
+                  ("canonical map did not parse: "
+                    <> parseFailureMessage message)
               Right roundTripExpression ->
                 case interpretExpressionReason roundTripExpression of
                   Left rejection ->
@@ -2979,8 +3130,14 @@ testIdentifiers = do
       , "$" <> name <> " of (" <> name <> " : ())"
       , "(" <> name <> " : ()) of $" <> name
       , "($" <> name <> " ~> (" <> name <> " : ())) = $" <> name
-      , "($" <> name <> " ~> (" <> name <> "? : ())) of (" <> name <> "? : ())"
       ]) ["abc", "Value", "_private", "Nothing"]
+  mapM_ (\name ->
+      let source =
+            "($" <> name <> " ~> (" <> name <> "? : ())) of ("
+              <> name <> "? : ())"
+      in expectSourceValue source source $ \value ->
+        assert source (renderInterpretedValue value == "true"))
+    ["abc", "Value", "Nothing"]
   let identifier identifierString typeAnnotation =
         IdentifierOperation
           (IdentifierString identifierString)
@@ -3036,7 +3193,7 @@ testIdentifiers = do
       (renderInterpretedValue value == "$Value")
   expectValue "simple identifier type" xNatural $ \value ->
     assert "identifier types retain their two-position map view"
-      ( interpretedValueKind value == IdentifierTypeValueKind
+      ( interpretedValueKind value == DependentIdentifierTypeValueKind
         && interpretedMapCardinality (interpretedMap value) == 2
         && interpretedMapFinalOrderType (interpretedMap value)
           == finiteOrdinal 2
@@ -3046,7 +3203,7 @@ testIdentifiers = do
       xFiveAssignment = assignment "x" (natural 5) (natural 5)
   expectValue "total simple identifier type" xFive $ \value ->
     assert "a simple identifier over a total map keeps canonical type syntax"
-      ( interpretedValueKind value == IdentifierTypeValueKind
+      ( interpretedValueKind value == DependentIdentifierTypeValueKind
         && renderInterpretedValue value == "x : 5"
       )
   expectValue
@@ -3254,9 +3411,9 @@ testIdentifiers = do
                   (naturalAtOrdinal ordinalValue)
               _ -> "natural"
           source =
-            Types.identifierTypeValue "n" dependentIdentifierString five
+            Types.dependentIdentifierTypeValue "n" dependentIdentifierString five
           target =
-            Types.identifierTypeValue "n" dependentIdentifierString naturals
+            Types.dependentIdentifierTypeValue "n" dependentIdentifierString naturals
       case Types.accessValues source (Types.naturalValue 0) of
         Left rejection ->
           fail
@@ -3298,10 +3455,10 @@ testTypedRejections = do
       _ -> False)
   assert "non-total identifiers are rejected as numerical operands"
     (case interpretExpressionReason
-        ((AST.+) (AST.identifierType "x" NaturalType) (natural 1)) of
+        ((AST.+) (AST.dependentIdentifierType "x" NaturalType) (natural 1)) of
       Left
           (ExpectedNumericalOperand
-            LeftOperand IdentifierTypeValueKind) -> True
+            LeftOperand DependentIdentifierTypeValueKind) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretExpressionReason
@@ -3533,173 +3690,9 @@ testNamedAccess = do
     , ("(x:3, {a:5,b:8}).b", "b : 8")
     , ("{a:5,b:8}.a[1] * 2", "10")
     ]
-  mapM_ (\source -> expectSourceRejection source source (\case NamedAccessError _ -> True; _ -> False))
-    ["{a:2,b:3}.missing", "{a:2,a:3}.a", "{}.a"]
-
-testQualifiedSyntax :: IO ()
-testQualifiedSyntax = mapM_ (\(source, expected) ->
-  expectSourceValue source source $ \value -> assert source (renderInterpretedValue value == expected))
-  [ ("StandardLibrary.if false then (1 + \"bad\") else 11", "11")
-  , ("StandardLibrary.from (1 + 1) to 5", "from 2 to 5")
-  , ("StandardLibrary.range 2 downwards", "range 2 downwards")
-  , ("StandardLibrary.eval \"12\" at Int", "12 ~> Int")
-  , ("StandardLibrary.true", "true : true")
-  ]
-
-testFunctions :: IO ()
-testFunctions = do
-  mapM_ (\(source, expected) -> expectSourceValue source source $ \value -> assert source (takeWhile (/= '<') (renderInterpretedValue value) == expected <> " " || renderInterpretedValue value == expected))
-    [ ("begin f := ({a?:Int,b?:Int} -> Int do yield a+b) yield f (b:5;6)", "11")
-    , ("begin f := (do yield a+b) yield f (6;5)", "11")
-    , ("begin offset:=3; f := (do yield a+offset) yield f 8", "11")
-    , ("begin f := external (backend:\"haskell\";symbol:\"datra.add\") yield f (b:5;6)", "11")
-    , ("(Int -> Nat) of (Nat -> Int)", "true")
-    , ("(Nat -> Int) of (Int -> Nat)", "false")
-    ]
-  mapM_ (\source -> expectSourceRejection source source (const True))
-    [ "begin f := ({a?:Int,b?:Int} -> Int do yield a+b) yield f (5;6)"
-    , "begin f := ({a?:Int} -> String do yield a+1) yield f 5"
-    , "external (backend:\"missing\";symbol:\"datra.add\")"
-    , "external (backend:\"haskell\";symbol:\"missing\")"
-    ]
-
-
-testRecursiveFactorial :: IO ()
-testRecursiveFactorial = do
-  let declaration = unlines
-        [ "factorial := ({n? : Int} -> Int do"
-        , "  yield if n = 0 then 1 else n * factorial (n - 1))"
-        ]
-      run source = parseDatra source >>= either (Left . show) Right . interpretExpressionReason
-  mapM_ (\(body, expected) -> case run (declaration <> body) of
-      Left failure -> fail (body <> ": " <> failure)
-      Right value -> assert body (renderInterpretedValue value == expected))
-    [ ("yield factorial 0", "1")
-    , ("yield factorial 1", "1")
-    , ("yield factorial 5", "120")
-    , ("yield factorial 8", "40320")
-    , ("yield factorial (n : 6)", "720")
-    , ("f := (factorial ~> ({n? : Nat} -> Int))\nyield f 5", "120")
-    , ("yield factorial of ({n? : Nat} -> Int)", "true")
-    ]
-  mapM_ (\source -> case run source of
-      Left _ -> pure ()
-      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
-    [ declaration <> "yield factorial true"
-    , "factorial := ({n? : Int} -> String do yield if n = 0 then 1 else factorial (n - 1))\nyield factorial 0"
-    , "a := b\nb := a\nyield a"
-    ]
-
-testModules :: IO ()
-testModules = do
-  assert "snake-case module namespace" (moduleIdentifier "path/standard_library.datra" == "StandardLibrary")
-  mapM_ (\(source,expected) -> do
-      actual <- run source
-      case actual of
-        Right value -> assert source (renderInterpretedValue value == expected)
-        Left message -> fail (source <> ": " <> message))
-    [ ("import \"library_one\"\nyield LibraryOne.x", "x : 7")
-    , ("import all \"library_one\"\nyield x", "7")
-    , ("import \"library_one\"\nimport \"library_two\"\nyield LibraryOne.x[1] + LibraryTwo.x[1]", "16")
-    , ("import \"library_one\"\nyield LibraryOne.increment 7", "11")
-    , ("import \"library_one\"\nyield LibraryOne.shift 7", "11")
-    , ("import all \"library_one\"\nyield shift 7", "11")
-    , ("import \"nested\"\nyield Nested.x", "x : 8")
-    , ("import all \"explicit_exports\"\nyield public", "7")
-    , ("import all \"standard_library\"\nyield StandardLibrary.if true then 11 else (1+\"bad\")", "11")
-    ]
-  mapM_ (\source -> run source >>= \actual -> case actual of
-      Left _ -> pure ()
-      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
-    [ "import \"library_one\"\nyield x"
-    , "import all \"library_one\"\nimport all \"library_two\"\nyield x"
-    , "import \"library_one\"\nyield LibraryOne._offset"
-    , "import all \"library_one\"\nyield _offset"
-    , "import \"explicit_exports\"\nyield ExplicitExports._hidden"
-    , "import \"explicit_exports\"\nyield ExplicitExports.hidden 1 plus"
-    , "import \"cycle_a\""
-    , "import \"missing\""
-    ]
-  where
-    run source = do
-      loaded <- loadImports "test/fixtures/modules/main.datra" source
-      pure $ do
-        imports <- loaded
-        located <- parseDatraLocatedWithSyntaxImports (importSyntax imports) "main.datra" source
-        let Located _ expression = located
-        either (Left . show) Right (interpretWithImports imports expression)
-
-
-testScopeSums :: IO ()
-testScopeSums = do
-  mapM_ (\(source,expected) -> program source $ \value -> assert source (renderInterpretedValue value == expected))
-    [ ("a:=5\nb:=8\nyield this.a", "a : 5")
-    , ("_private:=3\na:=5\nyield this", "a : 5")
-    , ("a:=5\nyield this.a of (a?:Nat)", "true")
-    , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
-    , ("yield from (2,5)", "from 2 to 5")
-    , ("yield from (2,$upwards)", "from 2 upwards")
-    , ("f := external \"datra.add\"\nyield f (b:5;6)", "11")
-    , ("f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\nyield f (x:3,b:5,6)", "14")
-    ]
-  program "yield StandardLibrary.if" $ \value ->
-    assert "qualified if is one field with two sum alternatives" (length (Types.functionAlternatives value) == 2)
-  program "yield if" $ \value ->
-    assert "bare if resolves the same function sum" (length (Types.functionAlternatives value) == 2)
-  mapM_ (\source -> case parseDatra source of
-      Left failure -> fail failure
-      Right expression -> case interpretExpressionReason expression of
-        Left _ -> pure ()
-        Right _ -> fail ("expected rejection: " <> source))
-    [ "_private:=3\na:=5\nyield this._private"
-    , "a:=5\na:=8\nyield this"
-    , "f := ({x?:Int} -> Int do yield x+1)\ng := (f ~> ({x?:Nat} -> Int))\nyield g (-1)"
-    , "yield external \"missing.symbol\""
-    ]
-  where
-    program source check = case parseDatra source of
-      Left failure -> fail failure
-      Right expression -> expectValue source expression check
-
-testLibraryTypes :: IO ()
-testLibraryTypes = mapM_ (\source -> expectSourceValue source source $ \value -> assert source (renderInterpretedValue value == "true"))
-  [ "$Nothing = (Nothing : ())"
-  , "nothing = $Nothing"
-  , "NatRange of IntRange"
-  , "not (IntRange of NatRange)"
-  , "from 2 to 5 of NatRange"
-  , "range 2 upwards of NatRange"
-  , "not (from (-2) to 5 of NatRange)"
-  , "(from 2 to 5 ~> NatRange) of IntRange"
-  , "Expr of AST"
-  , "Block of AST"
-  , "Pages of AST"
-  , "not (Block of Expr)"
-  , "(Expr ~> AST) of AST"
-  , "\"%Int %Iden\" of StringTemplate"
-  , "(\"%Int %Iden\" ~> StringTemplate) of StringTemplate"
-  , "not (2 of StringTemplate)"
-  , "String of StringTemplate"
-  ]
-
-testDeclaredPatterns :: IO ()
-testDeclaredPatterns = do
-  let declaration = "step : \"$Nat next\" as ({value?:Int} -> Int) := (do yield value+1)\n"
-      ordinaryDeclaration = "step : \"$Nat next\" as? ({value?:Int} -> Int) := (do yield value+1)\n"
-      run source = parseDatra source >>= either (Left . show) Right . interpretExpressionReason
-  mapM_ (\(source, expected) -> case run source of
-      Left failure -> fail (source <> ": " <> failure)
-      Right value -> assert source (renderInterpretedValue value == expected))
-    [ (declaration <> "yield step (1+1) next", "3")
-    , (ordinaryDeclaration <> "yield step (value:2)", "3")
-    , (declaration <> "yield step of ({value?:Nat} -> Int)", "true")
-    , (ordinaryDeclaration <> "f := (step ~> ({value?:Nat} -> Int))\nyield f 2", "3")
-    ]
-  mapM_ (\source -> case run source of
-      Left _ -> pure ()
-      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
-    [ declaration <> "yield step (-1) next"
-    , declaration <> "yield step 2"
-    , declaration <> declaration <> "yield this"
-    , "step := ((\"$Int next\" as (Int -> Int) external \"datra.abs\") | (\"$Int next\" as (Int -> Int) do yield 2))\nyield step 3 next"
+  mapM_ (\(source, expected) ->
+      expectSourceRejection source source (== NamedAccessFailed expected))
+    [ ("{a:2,b:3}.missing", Types.NamedFieldNotFound "missing")
+    , ("{a:2,a:3}.a", Types.NamedFieldAmbiguous "a")
+    , ("{}.a", Types.NamedFieldNotFound "a")
     ]

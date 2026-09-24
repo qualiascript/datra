@@ -63,6 +63,7 @@ data StringTemplatePart expression
 data Expression
   = EllipsisNatural Natural
   | EllipsisLiteral
+  | Skip
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
@@ -97,11 +98,13 @@ data Expression
   | Minus Expression
   | Subfederation Expression Expression
   | Equality Expression Expression
+  | Inequality Expression Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Extract Expression
   | Eval Expression Expression
+  | Assert Bool Expression
   | This
   | InModule String Expression
   | Import Bool String
@@ -120,6 +123,8 @@ data Expression
   | NamedAccess Expression IdentifierString
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
+  | Overload Expression Expression
+  | SafeOverload Expression Expression
   | IdentifierOperation
       { identifierOperationString :: IdentifierString
       , identifierOperationTypeAnnotation :: Expression
@@ -136,6 +141,7 @@ renderExpression =
 data OperatorExpression
   = NaturalValue Natural
   | EllipsisValue
+  | SkipValue
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
@@ -173,11 +179,13 @@ data OperatorExpression
   | Negate OperatorExpression
   | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
+  | NotEqual OperatorExpression OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
+  | AssertValue Bool OperatorExpression
   | ThisValue
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
@@ -196,6 +204,8 @@ data OperatorExpression
   | NamedAccessValue OperatorExpression IdentifierString
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
+  | OverloadValue OperatorExpression OperatorExpression
+  | SafeOverloadValue OperatorExpression OperatorExpression
   | IdentifierOperationValue
       { operatorIdentifierString :: IdentifierString
       , operatorTypeAnnotation :: OperatorExpression
@@ -213,6 +223,7 @@ renderOperatorExpression =
 normalizeExpression :: Expression -> Expression
 normalizeExpression (EllipsisNatural value) = EllipsisNatural value
 normalizeExpression EllipsisLiteral = EllipsisLiteral
+normalizeExpression Skip = Skip
 normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
@@ -276,6 +287,8 @@ normalizeExpression (Subfederation left right) =
   Subfederation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Equality left right) =
   Equality (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Inequality left right) =
+  Inequality (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanAnd left right) =
   BooleanAnd (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanOr left right) =
@@ -286,6 +299,8 @@ normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
 normalizeExpression (Eval source target) =
   Eval (normalizeExpression source) (normalizeExpression target)
+normalizeExpression (Assert hard condition) =
+  Assert hard (normalizeExpression condition)
 normalizeExpression This = This
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
@@ -311,6 +326,10 @@ normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Overload left right) =
+  Overload (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (SafeOverload left right) =
+  SafeOverload (normalizeExpression left) (normalizeExpression right)
 normalizeExpression
     (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperation
@@ -370,6 +389,7 @@ isEmptyMap _ = False
 lower :: Expression -> OperatorExpression
 lower (EllipsisNatural value) = NaturalValue value
 lower EllipsisLiteral = EllipsisValue
+lower Skip = SkipValue
 lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
@@ -415,11 +435,13 @@ lower (Minus operand) = Negate (lower operand)
 lower (Subfederation left right) =
   IsSubfederation (lower left) (lower right)
 lower (Equality left right) = Equal (lower left) (lower right)
+lower (Inequality left right) = NotEqual (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
+lower (Assert hard condition) = AssertValue hard (lower condition)
 lower This = ThisValue
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
@@ -439,6 +461,8 @@ lower (MapConcatenation left right) =
 lower (NamedAccess value name) = NamedAccessValue (lower value) name
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
+lower (Overload left right) = OverloadValue (lower left) (lower right)
+lower (SafeOverload left right) = SafeOverloadValue (lower left) (lower right)
 lower (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperationValue
     identifierString
@@ -488,6 +512,7 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
+prettyOperator SkipValue = "*"
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
 prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
@@ -575,6 +600,8 @@ prettyOperator (IsSubfederation left right) =
   prettyBinary SubfederationOperator left right
 prettyOperator (Equal left right) =
   prettyBinary EqualityOperator left right
+prettyOperator (NotEqual left right) =
+  prettyBinary InequalityOperator left right
 prettyOperator (And left right) =
   prettyBinary BooleanAndOperator left right
 prettyOperator (Or left right) =
@@ -585,6 +612,9 @@ prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
 prettyOperator (EvalValue source target) =
   prettyBinary EvalOperator source target
+prettyOperator (AssertValue hard condition) =
+  prettyForm (if hard then "assert-hard" else "assert")
+    [prettyOperator condition]
 prettyOperator ThisValue = "this"
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
@@ -613,6 +643,10 @@ prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
+prettyOperator (OverloadValue left right) =
+  prettyBinary OverloadOperator left right
+prettyOperator (SafeOverloadValue left right) =
+  prettyBinary SafeOverloadOperator left right
 prettyOperator
     (IdentifierOperationValue
       (IdentifierString identifierString)
@@ -621,7 +655,7 @@ prettyOperator
   case givenValue of
     Nothing ->
       prettyForm
-        (operatorCanonicalSymbol IdentifierTypeOperator)
+        (operatorCanonicalSymbol DependentIdentifierTypeOperator)
         [pretty (renderIdentifierString identifierString), prettyOperator typeAnnotation]
     Just givenValueExpression ->
       prettyForm
@@ -676,9 +710,9 @@ renderAsciiStringLiteral value = renderStandardStringLiteral value
 -- | Render an identifier expression. Canonical non-reserved names use their
 -- compact bare spelling; reserved or noncanonical names use a full string.
 renderIdentifierString :: String -> String
-renderIdentifierString value@(first : rest)
+renderIdentifierString value@(first : _)
   | isLeadingCanonicalCharacter first
-      && all isCanonicalCharacter rest
+      && isIdentifierValue value
       && not (isReservedIdentifierString value) = value
 renderIdentifierString value = renderStandardStringLiteral value
 
@@ -810,9 +844,11 @@ traverseExpressionChildren visit expression = case expression of
   Subtraction a b -> Subtraction <$> visit a <*> visit b
   Subfederation a b -> Subfederation <$> visit a <*> visit b
   Equality a b -> Equality <$> visit a <*> visit b
+  Inequality a b -> Inequality <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Eval a b -> Eval <$> visit a <*> visit b
+  Assert hard x -> Assert hard <$> visit x
   FunctionType a b -> FunctionType <$> visit a <*> visit b
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b
@@ -820,6 +856,8 @@ traverseExpressionChildren visit expression = case expression of
   MapConcatenation a b -> MapConcatenation <$> visit a <*> visit b
   MapAccess a b -> MapAccess <$> visit a <*> visit b
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
+  Overload a b -> Overload <$> visit a <*> visit b
+  SafeOverload a b -> SafeOverload <$> visit a <*> visit b
   Program xs y -> Program <$> traverse visit xs <*> visit y
   Begin xs y -> Begin <$> traverse visit xs <*> visit y
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y

@@ -8,6 +8,7 @@ module Evaluation.Numerical
   , requireExplicit
   , requireFiniteInteger
   , requireRangeUpperBoundary
+  , numericallyEquivalent
   ) where
 
 import DatraOrdinal
@@ -33,6 +34,7 @@ import NumericalOperators.Semantics
   , addNumericalDenotations
   , exponentiateNumericalDenotation
   , multiplyNumericalDenotations
+  , numericalDenotationOrdinal
   )
 
 addValues
@@ -40,7 +42,7 @@ addValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 addValues left right = do
-  case (numericalValue left, numericalValue right) of
+  case (numericalProjection left, numericalProjection right) of
     (Just (IntegerNumerical _), _) -> integerBinary (+) left right
     (_, Just (IntegerNumerical _)) -> integerBinary (+) left right
     _ -> do
@@ -66,7 +68,7 @@ multiplyValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 multiplyValues left right = do
-  case (numericalValue left, numericalValue right) of
+  case (numericalProjection left, numericalProjection right) of
     (Just (IntegerNumerical _), _) -> integerBinary (*) left right
     (_, Just (IntegerNumerical _)) -> integerBinary (*) left right
     _ -> do
@@ -81,7 +83,7 @@ exponentiateValues
   -> Either InterpretingError InterpretedValue
 exponentiateValues base exponentValue = do
   naturalPower <- requireNaturalExponent exponentValue
-  case numericalValue base of
+  case numericalProjection base of
     Just (IntegerNumerical integer) ->
       pure (makeInteger (integer ^ naturalPower))
     _ -> do
@@ -104,7 +106,7 @@ requireFiniteInteger
   -> InterpretedValue
   -> Either InterpretingError Integer
 requireFiniteInteger side value =
-  case numericalValue value >>= finiteInteger of
+  case numericalProjection value >>= finiteInteger of
     Just integer -> Right integer
     Nothing ->
       Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
@@ -114,7 +116,7 @@ requireExplicit
   -> InterpretedValue
   -> Either InterpretingError EvaluatedExplicit
 requireExplicit side value =
-  case numericalValue value of
+  case numericalProjection value of
     Just (ExplicitNumerical _ ordinalValue) ->
       Right (makeExplicitValue ComputedOrigin ordinalValue)
     Just (FormulationNumerical level) ->
@@ -129,7 +131,7 @@ requireRangeUpperBoundary
   -> InterpretedValue
   -> Either InterpretingError (Natural, Ordinal)
 requireRangeUpperBoundary side value =
-  case numericalValue value of
+  case numericalProjection value of
     Just (ExplicitNumerical level ordinalValue) ->
       Right (level, ordinalValue)
     Just (FormulationNumerical level) -> Right (level, omegaPower level)
@@ -140,7 +142,7 @@ requireNumerical
   -> InterpretedValue
   -> Either InterpretingError NumericalDenotation
 requireNumerical side value =
-  case numericalValue value of
+  case numericalProjection value of
     Just (ExplicitNumerical _ ordinalValue) ->
       Right (ExplicitDenotation ordinalValue)
     Just (FormulationNumerical level) ->
@@ -151,7 +153,7 @@ requireNaturalExponent
   :: InterpretedValue
   -> Either InterpretingError Natural
 requireNaturalExponent value =
-  case numericalValue value of
+  case numericalProjection value of
     Just (ExplicitNumerical 1 ordinalValue) ->
       case naturalAtOrdinal ordinalValue of
         Just natural -> Right natural
@@ -160,7 +162,19 @@ requireNaturalExponent value =
   where
     rejection = Left (ExpectedNaturalExponent (interpretedValueKind value))
 
-data NumericalValue
+-- | Compare the shared numerical projections of two values.  'Nothing'
+-- means at least one operand does not participate in numerical coercion.
+-- This is intentionally the same projection used by arithmetic, including
+-- the positional skip sentinel's rank-zero formulation payload.
+numericallyEquivalent
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe Bool
+numericallyEquivalent left right =
+  (==) <$> (projectionOrdinal =<< numericalProjection left)
+       <*> (projectionOrdinal =<< numericalProjection right)
+
+data NumericalProjection
   = ExplicitNumerical Natural Ordinal
   | IntegerNumerical Integer
   | FormulationNumerical Natural
@@ -169,16 +183,17 @@ data NumericalValue
 -- specifications through their source when the target is a valued numerical
 -- range. Identifiers expose the same specification shape, which keeps named
 -- numerical values on this one coercion path.
-numericalValue :: InterpretedValue -> Maybe NumericalValue
-numericalValue = numericalSemantics . interpretedSemantics
+numericalProjection :: InterpretedValue -> Maybe NumericalProjection
+numericalProjection = numericalSemantics . interpretedSemantics
 
-numericalSemantics :: ValueSemantics -> Maybe NumericalValue
+numericalSemantics :: ValueSemantics -> Maybe NumericalProjection
 numericalSemantics semantics =
   case semantics of
     ExplicitSemantics level ordinalValue ->
       Just (ExplicitNumerical level ordinalValue)
     IntegerSemantics integer -> Just (IntegerNumerical integer)
     FormulationSemantics level -> Just (FormulationNumerical level)
+    SkipSemantics _ -> Just (ExplicitNumerical 1 (finiteOrdinal 1))
     MapSemantics 0 [] -> Just (ExplicitNumerical 1 (finiteOrdinal 0))
     _ -> do
       (source, target) <- numericalSpecification semantics
@@ -194,7 +209,7 @@ numericalSpecification
   -> Maybe (ValueSemantics, ValueSemantics)
 numericalSpecification semantics =
   case semantics of
-    IdentifierTypeSemantics _ underlying True ->
+    DependentIdentifierTypeSemantics _ underlying True ->
       Just (underlying, underlying)
     AssignmentSemantics _ target source -> Just (source, target)
     SpecificationSemantics source target -> Just (source, target)
@@ -214,17 +229,27 @@ isValuedNumericalTarget semantics =
     ValuedIntegerRangeSemantics _ _ -> True
     IntegerTypeSemantics -> True
     MapSemantics 0 [] -> True
-    IdentifierTypeSemantics _ underlying True ->
+    DependentIdentifierTypeSemantics _ underlying True ->
       isValuedNumericalTarget underlying
     AssignmentSemantics _ target _ -> isValuedNumericalTarget target
     SpecificationSemantics _ target -> isValuedNumericalTarget target
     _ -> False
 
-finiteInteger :: NumericalValue -> Maybe Integer
+finiteInteger :: NumericalProjection -> Maybe Integer
 finiteInteger (IntegerNumerical integer) = Just integer
 finiteInteger (ExplicitNumerical 1 ordinalValue) =
   toInteger <$> naturalAtOrdinal ordinalValue
 finiteInteger _ = Nothing
+
+projectionOrdinal :: NumericalProjection -> Maybe Ordinal
+projectionOrdinal projection =
+  case projection of
+    ExplicitNumerical _ ordinalValue -> Just ordinalValue
+    FormulationNumerical level ->
+      Just (numericalDenotationOrdinal (FormulationDenotation level))
+    IntegerNumerical integer
+      | integer >= 0 -> Just (finiteOrdinal (fromInteger integer))
+      | otherwise -> Nothing
 
 makeNumericalResult :: NumericalDenotation -> InterpretedValue
 makeNumericalResult (ExplicitDenotation value) =

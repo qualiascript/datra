@@ -64,6 +64,7 @@ accessSource value =
     BooleanForm _ -> ordinarySource []
     NothingForm -> ordinarySource []
     EitherForm _ -> ordinarySource []
+    SkipForm _ -> ordinarySource []
     ArgumentMapForm _ _ -> ordinarySource []
     FederationSpecificationForm _ _ _ -> ordinarySource []
     RangeConcatenationForm ranges _ ->
@@ -108,7 +109,7 @@ accessSource value =
     StringTemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
-    IdentifierTypeForm _ -> ordinarySource []
+    DependentIdentifierTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
     ExplicitForm explicitValue ->
       let (level, ordinalValue) = explicitOrdinal explicitValue
@@ -160,6 +161,7 @@ semanticAccessSource semantics =
     ValuedIntegerRangeSemantics _ _ -> rangeSource []
     IntegerTypeSemantics -> rangeSource []
     EitherSemantics _ _ -> ordinarySource []
+    SkipSemantics _ -> ordinarySource []
     ArgumentMapSemantics _ _ -> ordinarySource []
     RangeConcatenationSemantics descriptions ->
       rangeSource (map describedRangeFromDescription descriptions)
@@ -178,7 +180,7 @@ semanticAccessSource semantics =
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
-    IdentifierTypeSemantics _ _ _ -> ordinarySource []
+    DependentIdentifierTypeSemantics _ _ _ -> ordinarySource []
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
   where

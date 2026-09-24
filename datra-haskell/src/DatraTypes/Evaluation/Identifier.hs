@@ -1,8 +1,9 @@
 -- | Evaluated dependent and constant identifier types.
 module Evaluation.Identifier
-  ( identifierTypeValue
+  ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
   , identifierStringProjectionValue
+  , requireCanonicalTypeAnnotation
   ) where
 
 import AtlasMapFederationExpression
@@ -12,15 +13,28 @@ import AtlasMapFederationExpression
       )
   )
 import Evaluation.Construction (makeAsciiString)
+import Evaluation.Error
+  ( InterpretingError (NonCanonicalIdentifierTypeAnnotation) )
 import Evaluation.Value
 
-identifierTypeValue
+-- | Identifier annotations participate in canonical source syntax. A weak
+-- Datra type can still be named as a value, but cannot define the annotated
+-- member family of an identifier.
+requireCanonicalTypeAnnotation
+  :: InterpretedValue
+  -> Either InterpretingError ()
+requireCanonicalTypeAnnotation annotation =
+  case datraCanonicalType (interpretedDatraType annotation) of
+    Just _ -> Right ()
+    Nothing -> Left NonCanonicalIdentifierTypeAnnotation
+
+dependentIdentifierTypeValue
   :: String
   -> (CanonicalResult -> String)
   -> InterpretedValue
   -> InterpretedValue
-identifierTypeValue familyKey identifierStringFor =
-  makeIdentifierTypeValue
+dependentIdentifierTypeValue familyKey identifierStringFor =
+  makeDependentIdentifierTypeValue
     (DependentIdentifierDependency familyKey identifierStringFor)
 
 simpleIdentifierTypeValue
@@ -31,12 +45,12 @@ simpleIdentifierTypeValue identifierString underlying
   | interpretedCanonicalResult underlying == CanonicalMap 0 [] =
       makeAsciiString identifierString
   | otherwise =
-      makeIdentifierTypeValue
+      makeDependentIdentifierTypeValue
         (SimpleIdentifierDependency identifierString)
         underlying
 
 identifierStringProjectionValue
-  :: EvaluatedIdentifierType
+  :: EvaluatedDependentIdentifierType
   -> InterpretedValue
 identifierStringProjectionValue evaluated = value
   where
@@ -59,19 +73,22 @@ identifierStringProjectionValue evaluated = value
         { interpretedMapComponents = [semantics] }
     value =
       makeEvaluatedIdentifierValue
+        (if isTotal
+          then structuralDatraType
+          else weakStructuralDatraType)
         (IdentifierStringProjectionForm evaluated)
         (IdentifierStringProjectionAtlasMapFederation evaluated)
         underlying
         resultMap
         semantics
 
-makeIdentifierTypeValue
+makeDependentIdentifierTypeValue
   :: IdentifierDependency
   -> InterpretedValue
   -> InterpretedValue
-makeIdentifierTypeValue dependency underlying = value
+makeDependentIdentifierTypeValue dependency underlying = value
   where
-    evaluated = EvaluatedIdentifierType dependency underlying
+    evaluated = EvaluatedDependentIdentifierType dependency underlying
     underlyingResult = interpretedCanonicalResult underlying
     isTotal = interpretedValueHasTotalMap underlying
     representativeString =
@@ -84,7 +101,7 @@ makeIdentifierTypeValue dependency underlying = value
         (singletonOrdinalOrderedValues identifierStringValue)
         (singletonOrdinalOrderedValues underlying)
     semantics =
-      IdentifierTypeSemantics
+      DependentIdentifierTypeSemantics
         dependency
         (interpretedSemantics underlying)
         isTotal
@@ -97,24 +114,37 @@ makeIdentifierTypeValue dependency underlying = value
         ]
     value =
       makeEvaluatedIdentifierValue
-        (IdentifierTypeForm evaluated)
-        (IdentifierTypeAtlasMapFederation evaluated)
+        canonicalType
+        (DependentIdentifierTypeForm evaluated)
+        (DependentIdentifierTypeAtlasMapFederation evaluated)
         underlying
         valueMap
         semantics
+    canonicalType
+      | isTotal = structuralDatraType
+      | otherwise =
+          case dependency of
+            SimpleIdentifierDependency _ ->
+              structuralDatraTypeWith
+                (datraStringRepresentation
+                  (interpretedDatraType underlying))
+            DependentIdentifierDependency {} ->
+              weakStructuralDatraType
 
 -- | Identifier types and their string projections preserve the totality of
 -- the underlying value. This is also the exact boundary between their
 -- singleton and primitive federation representations.
 makeEvaluatedIdentifierValue
-  :: ValueForm
+  :: DatraType
+  -> ValueForm
   -> InterpretedAtlasMapFederationPrimitive
   -> InterpretedValue
   -> InterpretedMap
   -> ValueSemantics
   -> InterpretedValue
-makeEvaluatedIdentifierValue form primitive underlying valueMap semantics =
+makeEvaluatedIdentifierValue canonicalType form primitive underlying valueMap semantics =
   makeInterpretedValue
+    canonicalType
     form
     NoInsertion
     valueMap

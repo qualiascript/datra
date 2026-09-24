@@ -42,9 +42,9 @@ extractContext
   -> Either InterpretingError InterpretedValue
 extractContext source target member =
   case (interpretedForm source, interpretedForm target, member) of
-    ( IdentifierTypeForm sourceIdentifier
-      , IdentifierTypeForm targetIdentifier
-      , EvaluatedIdentifierTypeMember underlyingMember
+    ( DependentIdentifierTypeForm sourceIdentifier
+      , DependentIdentifierTypeForm targetIdentifier
+      , EvaluatedDependentIdentifierTypeMember underlyingMember
       ) ->
         extractContext
           (evaluatedIdentifierUnderlying sourceIdentifier)
@@ -67,7 +67,7 @@ requireConcreteString value =
     AssignmentForm specification ->
       requireConcreteString
         (evaluatedSpecificationSourceValue specification)
-    IdentifierTypeForm identifier ->
+    DependentIdentifierTypeForm identifier ->
       requireConcreteString (evaluatedIdentifierUnderlying identifier)
     _ -> extractionExpected value
 

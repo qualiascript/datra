@@ -21,11 +21,13 @@ data Operator
   | MinusOperator
   | SubfederationOperator
   | EqualityOperator
+  | InequalityOperator
   | BooleanAndOperator
   | BooleanOrOperator
   | BooleanNotOperator
   | ExtractOperator
   | EvalOperator
+  | AssertOperator
   | BeginOperator
   | LetOperator
   | EitherOperator
@@ -35,7 +37,11 @@ data Operator
   | ConcatenationOperator
   | AccessOperator
   | SpecificationOperator
-  | IdentifierTypeOperator
+  | OverloadOperator
+  | ReverseOverloadOperator
+  | SafeOverloadOperator
+  | ReverseSafeOverloadOperator
+  | DependentIdentifierTypeOperator
   | AssignmentOperator
   deriving (Eq, Show)
 
@@ -55,11 +61,13 @@ operatorCanonicalSymbol SubtractionOperator = "-"
 operatorCanonicalSymbol MinusOperator = "minus"
 operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
+operatorCanonicalSymbol InequalityOperator = "=/="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol EvalOperator = "eval"
+operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol EitherOperator = "Either"
@@ -69,7 +77,11 @@ operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
 operatorCanonicalSymbol AccessOperator = "<@>"
 operatorCanonicalSymbol SpecificationOperator = "~>"
-operatorCanonicalSymbol IdentifierTypeOperator = ":"
+operatorCanonicalSymbol OverloadOperator = "<<"
+operatorCanonicalSymbol ReverseOverloadOperator = ">>"
+operatorCanonicalSymbol SafeOverloadOperator = "<<<"
+operatorCanonicalSymbol ReverseSafeOverloadOperator = ">>>"
+operatorCanonicalSymbol DependentIdentifierTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
 -- | Concrete source spelling, when an operator is represented by one token.
@@ -89,11 +101,13 @@ operatorSourceSymbol SubtractionOperator = Just "-"
 operatorSourceSymbol MinusOperator = Just "-"
 operatorSourceSymbol SubfederationOperator = Just "of"
 operatorSourceSymbol EqualityOperator = Just "="
+operatorSourceSymbol InequalityOperator = Just "=/="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol EvalOperator = Just "eval"
+operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol EitherOperator = Just "|"
@@ -103,7 +117,11 @@ operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","
 operatorSourceSymbol AccessOperator = Just "@"
 operatorSourceSymbol SpecificationOperator = Just "~>"
-operatorSourceSymbol IdentifierTypeOperator = Just ":"
+operatorSourceSymbol OverloadOperator = Just "<<"
+operatorSourceSymbol ReverseOverloadOperator = Just ">>"
+operatorSourceSymbol SafeOverloadOperator = Just "<<<"
+operatorSourceSymbol ReverseSafeOverloadOperator = Just ">>>"
+operatorSourceSymbol DependentIdentifierTypeOperator = Just ":"
 operatorSourceSymbol AssignmentOperator = Just ":="
 
 ellipsisSymbol :: String

@@ -9,6 +9,7 @@ module Evaluation.Construction
   , makeExplicit
   , makeExplicitValue
   , makeFormulation
+  , makeSkip
   , mapFromInsertion
   ) where
 
@@ -45,6 +46,7 @@ makeInteger integer
         let semantics = IntegerSemantics integer
             value =
               makeSingletonInterpretedValue
+                structuralDatraType
                 (IntegerForm integer)
                 (ValidInsertion (eraseSuperEllipsisInsertion valueInsertion))
                 (singletonMap semantics value)
@@ -73,6 +75,7 @@ makeAsciiString characters = value
         [semantics]
     value =
       makeSingletonInterpretedValue
+        structuralDatraType
         (AsciiStringForm characters)
         NoInsertion
         valueMap
@@ -83,6 +86,7 @@ makeAsciiString characters = value
 makeStringType :: InterpretedValue
 makeStringType =
   makeInterpretedValue
+    structuralDatraType
     StringTypeForm
     NoInsertion
     emptyInterpretedMap
@@ -94,6 +98,7 @@ makeStringType =
 makeIdentifierValueType :: InterpretedValue
 makeIdentifierValueType =
   makeInterpretedValue
+    structuralDatraType
     IdentifierValueTypeForm
     NoInsertion
     emptyInterpretedMap
@@ -120,6 +125,7 @@ explicitInterpretedValue explicitValue = value
     valueMap = singletonMap semantics value
     value =
       makeSingletonInterpretedValue
+        structuralDatraType
         (ExplicitForm explicitValue)
         (ValidInsertion insertion)
         valueMap
@@ -140,12 +146,32 @@ makeFormulation level = value
     valueMap = InterpretedMap 1 values [semantics]
     value =
       makeSingletonInterpretedValue
+        structuralDatraType
         (FormulationForm formulation)
         (ValidInsertion insertion)
         valueMap
         TotalInterpretedMap
         semantics
     semantics = FormulationSemantics level
+
+-- | The positional skip marker stores Datra's rank-zero formulation while
+-- retaining a distinct tag. Typing can therefore require @*@ to match only
+-- @*@, while overload resolution can interpret it as an omitted slot.
+makeSkip :: InterpretedValue
+makeSkip =
+  makeInterpretedValue
+    (interpretedDatraType payload)
+    (SkipForm payload)
+    (interpretedInsertionCapability payload)
+    ((interpretedMap payload)
+      { interpretedMapComponents = [semantics]
+      })
+    (interpretedAtlasMapFederation payload)
+    TotalInterpretedMap
+    semantics
+  where
+    payload = makeFormulation 0
+    semantics = SkipSemantics (interpretedSemantics payload)
 
 mapFromInsertion
   :: SomeSuperEllipsisInsertion
@@ -170,12 +196,13 @@ makeNothing = value
   where
     unitSemantics = MapSemantics 0 []
     semantics =
-      IdentifierTypeSemantics
+      DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency "Nothing")
         unitSemantics
         True
     value =
       makeSingletonInterpretedValue
+        structuralDatraType
         NothingForm
         NoInsertion
         emptyInterpretedMap

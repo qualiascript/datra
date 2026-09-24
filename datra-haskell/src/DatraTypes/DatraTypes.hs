@@ -4,15 +4,23 @@
 -- checked construction, canonicalization, access validation, and their
 -- strongly typed failures belong here.
 module DatraTypes
-  ( EvaluatedFunction (..)
+  ( CanonicalType
+  , DatraType
+  , StringRepresentation (..)
+  , datraCanonicalType
+  , datraStringRepresentation
+  , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
   , stringTemplateTypeValue
+  , anyTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
+  , naturalValuedRangeTypeValue
+  , integerValuedRangeTypeValue
   , functionSignature
   , callableFunction
   , interpretedFunction
@@ -21,6 +29,12 @@ module DatraTypes
   , InterpretedValueKind (..)
   , InterpretedMap
   , InterpretingError (..)
+  , FunctionFailure (..)
+  , ExternalFailure (..)
+  , ModuleEvaluationFailure (..)
+  , NamedAccessFailure (..)
+  , OverloadFailure (..)
+  , overloadFailureIsAmbiguous
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
@@ -43,6 +57,7 @@ module DatraTypes
   , evalValues
   , requireFiniteInteger
   , formulationValue
+  , skipValue
   , addValues
   , subtractValues
   , minusValue
@@ -69,22 +84,47 @@ module DatraTypes
   , valuedIntegerRangeUpwardsValue
   , valuedIntegerRangeDownwardsValue
   , integerTypeValue
-  , identifierTypeValue
+  , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
   , makeArgumentMap
   , argumentRows
+  , overloadArgumentRows
   , functionArgumentValue
   , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , ArgumentSchema
+  , argumentSlotSchema
+  , orderedArgumentSchema
+  , unorderedArgumentSchema
+  , concatenatedArgumentSchema
+  , argumentSchemaBindings
+  , argumentSchemaDomain
+  , argumentSchemaPositionalDomain
+  , argumentSchemaValuesComplete
+  , compileParameters
+  , parameterBindings
+  , parameterDomain
+  , parameterPositionalDomain
+  , parameterValues
+  , prepareArguments
+  , matchArguments
+  , selectFunctionCandidate
+  , overloadArgumentSchemaComplete
+  , overloadValues
+  , safeOverloadValues
+  , overloadValuesComplete
   , namedAccessValue
   , accessValues
   , validateFunctionInput
   , specifyValues
   , interpretedValueKind
+  , interpretedDatraType
   , interpretedValueHasTotalMap
+  , interpretedTypeIsTotal
   , interpretedCanonicalResult
   , interpretedEvaluationSource
   , withEvaluationSource
@@ -103,8 +143,14 @@ import Evaluation.Error
   ( AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
+  , ExternalFailure (..)
+  , FunctionFailure (..)
   , InterpretedValueKind (..)
   , InterpretingError (..)
+  , ModuleEvaluationFailure (..)
+  , NamedAccessFailure (..)
+  , OverloadFailure (..)
+  , overloadFailureIsAmbiguous
   , OperandSide (..)
   )
 import Evaluation.Access (accessValues, namedAccessValue)
@@ -113,6 +159,7 @@ import Evaluation.Construction
   , makeIdentifierValueType
   , makeStringType
   , makeFormulation
+  , makeSkip
   , makeNatural
   , makeInteger
   )
@@ -127,7 +174,23 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Arguments (makeArgumentMap, argumentPresentations, argumentRows, functionArgumentValue)
+import Evaluation.FunctionArguments
+  ( compileParameters
+  , matchArguments
+  , parameterBindings
+  , parameterDomain
+  , parameterPositionalDomain
+  , parameterValues
+  , prepareArguments
+  , selectFunctionCandidate
+  )
+import Evaluation.Arguments
+  ( argumentPresentations
+  , argumentRows
+  , functionArgumentValue
+  , makeArgumentMap
+  , overloadArgumentRows
+  )
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
@@ -142,6 +205,21 @@ import Evaluation.Map
   ( concatenateValues
   , makeAtlasExpansion
   , makeAtlasMap
+  )
+import Evaluation.Overload
+  ( ArgumentSchema
+  , argumentSchemaBindings
+  , argumentSchemaDomain
+  , argumentSchemaPositionalDomain
+  , argumentSchemaValuesComplete
+  , argumentSlotSchema
+  , concatenatedArgumentSchema
+  , orderedArgumentSchema
+  , overloadArgumentSchemaComplete
+  , overloadValues
+  , safeOverloadValues
+  , overloadValuesComplete
+  , unorderedArgumentSchema
   )
 import Evaluation.Numerical
   ( addValues
@@ -169,8 +247,9 @@ import Evaluation.Range
   , valuedNaturalRangeValue
   )
 import Evaluation.Identifier
-  ( identifierTypeValue
+  ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , requireCanonicalTypeAnnotation
   )
 import Evaluation.Specification
   ( assignIdentifierValues
@@ -178,15 +257,23 @@ import Evaluation.Specification
   , specifyValues
   )
 import Evaluation.Value
-  ( EvaluatedFunction (..)
+  ( CanonicalType
+  , DatraType
+  , StringRepresentation (..)
+  , datraCanonicalType
+  , datraStringRepresentation
+  , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
   , stringTemplateTypeValue
+  , anyTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
+  , naturalValuedRangeTypeValue
+  , integerValuedRangeTypeValue
   , functionSignature
   , callableFunction
   , interpretedFunction
@@ -194,6 +281,7 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult
+  , interpretedDatraType
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
@@ -206,6 +294,7 @@ import Evaluation.Value
   , interpretedMapValueAt
   , interpretedRangeDescription
   , interpretedValueHasTotalMap
+  , interpretedTypeIsTotal
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)
@@ -255,3 +344,6 @@ identifierValueTypeValue = makeIdentifierValueType
 
 formulationValue :: Natural -> InterpretedValue
 formulationValue = makeFormulation
+
+skipValue :: InterpretedValue
+skipValue = makeSkip

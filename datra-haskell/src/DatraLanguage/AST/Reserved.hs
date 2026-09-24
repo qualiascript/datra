@@ -58,7 +58,7 @@ reservedSymbols
 reservedSymbolIdentifierString :: ReservedSymbol -> String
 reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
 reservedSymbolIdentifierString StringTypeSymbol = "String"
-reservedSymbolIdentifierString IdentifierValueTypeSymbol = "Iden"
+reservedSymbolIdentifierString IdentifierValueTypeSymbol = "IdenStr"
 reservedSymbolIdentifierString IntegerTypeSymbol = "Int"
 reservedSymbolIdentifierString NaturalTypeSymbol = "Nat"
 reservedSymbolIdentifierString IfSymbol = "if"
@@ -81,7 +81,7 @@ reservedSymbolIdentifiersAreUnique =
 reservedIdentifierStrings :: [String]
 reservedIdentifierStrings =
   []
-    <> ["as", "import", "this"]
+    <> ["as", "hard", "import", "this"]
     <> map reservedWordText identifierReservedWords
     <> map operatorCanonicalSymbol
       [ DoOperator
@@ -91,7 +91,7 @@ reservedIdentifierStrings =
       , BooleanAndOperator
       , BooleanOrOperator
       , BooleanNotOperator
-      , EvalOperator
+      , AssertOperator
       , BeginOperator
       , LetOperator
       , EitherOperator

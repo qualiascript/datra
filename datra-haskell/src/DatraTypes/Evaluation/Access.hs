@@ -13,6 +13,7 @@ import DatraOrdinal
 import Data.Bifunctor qualified as Bifunctor
 import Evaluation.Error
   ( InterpretingError (..)
+  , NamedAccessFailure (..)
   )
 import Evaluation.Access.Composition
   ( FederationAccess (..)
@@ -23,7 +24,7 @@ import Evaluation.Access.Federation
   ( federationIsCoalition
   )
 import Evaluation.Access.Specification (accessSpecification)
-import Evaluation.Access.Identifier (accessIdentifierType)
+import Evaluation.Access.Identifier (accessDependentIdentifierType)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
@@ -69,8 +70,8 @@ accessValues mapValue insertionValue =
       accessSpecification accessValues specification insertionValue
     AssignmentForm specification ->
       accessSpecification accessValues specification insertionValue
-    IdentifierTypeForm identifier ->
-      accessIdentifierType mapValue identifier insertionValue
+    DependentIdentifierTypeForm identifier ->
+      accessDependentIdentifierType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
 
 specificationSource :: InterpretedValue -> InterpretedValue
@@ -233,6 +234,7 @@ formulationAccessResult
   -> InterpretedValue
 formulationAccessResult sourceIsTotal selected level =
   makeSingletonInterpretedValue
+    (interpretedDatraType template)
     (interpretedForm template)
     (interpretedInsertionCapability template)
     resultMap
@@ -264,6 +266,7 @@ finishAccess mapValue selected =
           Nothing -> fallbackResult
       fallbackResult =
         makeSingletonInterpretedValue
+          structuralDatraType
           MapForm
           NoInsertion
           selected
@@ -318,6 +321,7 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
             )
   pure . Just $
     makeSingletonInterpretedValue
+      structuralDatraType
       rangeForm
       resultCapability
       (selected { interpretedMapComponents = [semantics] })
@@ -380,14 +384,14 @@ namedAccessValue :: InterpretedValue -> String -> Either InterpretingError Inter
 namedAccessValue source name = do
   selected <- candidates source
   case selected of
-    [] -> Left (NamedAccessError ("no field named " <> name))
+    [] -> Left (NamedAccessFailed (NamedFieldNotFound name))
     [value] -> Right value
-    _ -> Left (NamedAccessError ("ambiguous field named " <> name))
+    _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
       | matchesName (interpretedCanonicalResult value) = Right [value]
       | otherwise = case interpretedForm value of
-          IdentifierTypeForm _ -> Right []
+          DependentIdentifierTypeForm _ -> Right []
           AssignmentForm _ -> Right []
           ArgumentMapForm members _ -> concat <$> traverse candidates members
           EitherForm alternatives -> do
@@ -407,18 +411,18 @@ namedAccessValue source name = do
             case targetFields of
               [] -> pure [originalField]
               [targetField] -> (:[]) <$> specifyValues originalField targetField
-              _ -> Left (NamedAccessError ("ambiguous field named " <> name))
+              _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
           ConcatenatedMapForm left right -> (<>) <$> candidates left <*> candidates right
           SequentialMapForm -> pages value
           MapForm -> pages value
           _ -> Right []
     pages value = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
       Just count -> concat <$> traverse (\index -> case interpretedMapValueAt (interpretedMap value) (finiteOrdinal index) of
-          Nothing -> Left (NamedAccessError "field map is not inspectable")
+          Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)
           Just field -> candidates field) (if count == 0 then [] else [0 .. count - 1])
-      Nothing -> Left (NamedAccessError "named access requires a finite map")
+      Nothing -> Left (NamedAccessFailed NamedAccessRequiresFiniteMap)
     matchesName canonical = case canonical of
-      CanonicalIdentifierType actual _ -> actual == name
+      CanonicalSimpleIdentifierType actual _ -> actual == name
       CanonicalAssignment actual _ _ -> actual == name
       CanonicalSpecification original _ -> matchesName original
       _ -> False

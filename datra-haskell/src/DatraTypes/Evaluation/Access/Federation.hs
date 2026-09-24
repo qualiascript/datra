@@ -96,7 +96,7 @@ atomicFederationAccess value =
     PrimitiveAtlasMapFederation (IntegerRangeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation (EitherAtlasMapFederation _) -> Nothing
-    PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
+    PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
         (IdentifierStringProjectionAtlasMapFederation _) ->
@@ -177,7 +177,7 @@ federationIsCoalition federation =
     PrimitiveAtlasMapFederation
         (ValuedIntegerRangeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
-        (IdentifierTypeAtlasMapFederation _) -> True
+        (DependentIdentifierTypeAtlasMapFederation _) -> True
     PrimitiveAtlasMapFederation
         (EitherAtlasMapFederation alternatives) ->
       federationIsCoalition

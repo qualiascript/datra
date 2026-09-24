@@ -18,6 +18,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues)
+import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
@@ -35,8 +36,14 @@ selectFederationMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectFederationMember source target
-  | ArgumentMapForm _ underlying <- interpretedForm target =
-      selectFederationMember source underlying
+  | SkipForm sourcePayload <- interpretedForm source
+  , SkipForm targetPayload <- interpretedForm target =
+      selectFederationMember sourcePayload targetPayload
+  | SkipForm _ <- interpretedForm source = DecisionRefuted
+  | SkipForm _ <- interpretedForm target = DecisionRefuted
+  | ArgumentMapForm members underlying <- interpretedForm target =
+      ArgumentMap.selectArgumentMapMember
+        selectFederationMember source members underlying
   | ArgumentMapForm _ underlying <- interpretedForm source =
       selectFederationMember underlying target
   | AssignmentForm assignment <- interpretedForm source =
@@ -44,6 +51,11 @@ selectFederationMember source target
         (evaluatedSpecificationSourceValue assignment)
         target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
+  | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
+      case datraCanonicalType (interpretedDatraType source) of
+        Just _ -> DecisionProved
+          (EvaluatedCanonicalTypeMember (interpretedCanonicalResult source))
+        Nothing -> DecisionRefuted
   | otherwise =
       case selectIdentifierMember source target of
         Just decision -> decision
@@ -105,8 +117,8 @@ selectDirectIdentifierMember
   -> Maybe (Decision EvaluatedAtlasMapFederationMember)
 selectDirectIdentifierMember source target =
   case (interpretedForm source, interpretedForm target) of
-    ( IdentifierTypeForm sourceIdentifier
-      , IdentifierTypeForm targetIdentifier
+    ( DependentIdentifierTypeForm sourceIdentifier
+      , DependentIdentifierTypeForm targetIdentifier
       ) ->
         Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
     ( IdentifierStringProjectionForm sourceIdentifier
@@ -116,15 +128,15 @@ selectDirectIdentifierMember source target =
     _ -> Nothing
 
 selectMatchingIdentifierMember
-  :: EvaluatedIdentifierType
-  -> EvaluatedIdentifierType
+  :: EvaluatedDependentIdentifierType
+  -> EvaluatedDependentIdentifierType
   -> Decision EvaluatedAtlasMapFederationMember
 selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
   if sourceString /= targetString
     then DecisionRefuted
     else
       mapDecision
-        EvaluatedIdentifierTypeMember
+        EvaluatedDependentIdentifierTypeMember
         (selectFederationMember sourceUnderlying targetUnderlying)
   where
     sourceUnderlying = evaluatedIdentifierUnderlying sourceIdentifier

@@ -30,6 +30,10 @@ import DatraLanguage.Diagnostics
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
+import DatraLanguage.Diagnostics.Application
+  ( ParseFailure (parseFailureMessage)
+  , SyntaxExpansionFailure (..)
+  )
 import Parsing
   ( ResourceEnvelope (..)
   , parseDatra
@@ -37,6 +41,7 @@ import Parsing
   , parseDatraLocated
   , parseDatraLocatedResourceWithSourceName
   )
+import SyntaxDefinitions (SyntaxRule (..), expandSyntax)
 import Numeric (showHex)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -60,51 +65,105 @@ testTree =
 
 regressionTests :: IO ()
 regressionTests = do
+  let syntaxControl implementation = SyntaxRule
+        { syntaxName = "test-control"
+        , syntaxPieces = []
+        , syntaxOrdinary = False
+        , syntaxSignature = ref "Any"
+        , syntaxModule = Nothing
+        , syntaxImplementation = External (AsciiStringLiteral implementation)
+        }
+  assert "syntax controls report capture arity structurally"
+    (expandSyntax (syntaxControl "datra.syntax.if") []
+      == Left (InvalidSyntaxControlCaptures "datra.syntax.if" 3 0))
+  assert "unknown syntax controls report their adapter structurally"
+    (expandSyntax (syntaxControl "datra.syntax.unknown") []
+      == Left (UnknownSyntaxControlAdapter "datra.syntax.unknown"))
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
     "f 2 3 + 4" (Addition
       (FunctionApplication (FunctionApplication (IdentifierReference (IdentifierString "f")) (natural 2)) (natural 3))
       (natural 4))
+  assertAstOutput "left overload"
+    "a << b"
+    (Overload (ref "a") (ref "b"))
+  assertAstOutput "right overload reverses operands"
+    "a >> b"
+    (Overload (ref "b") (ref "a"))
+  assertAstOutput "safe overload"
+    "a <<< b"
+    (SafeOverload (ref "a") (ref "b"))
+  assertAstOutput "reverse safe overload reverses operands"
+    "a >>> b"
+    (SafeOverload (ref "b") (ref "a"))
+  assertAstOutput "assert captures a complete Boolean expression"
+    "assert f 5 = 120"
+    (Assert False
+      (Equality
+        (FunctionApplication (ref "f") (natural 5))
+        (natural 120)))
+  assertAstOutput "hard assert"
+    "assert hard false"
+    (Assert True (ref "false"))
+  assertAstOutput "not equals"
+    "a =/= b"
+    (Inequality (ref "a") (ref "b"))
+  assertAstOutput "skip is a distinct positional symbol"
+    "*"
+    Skip
+  assertAstOutput "a parenthesized skip remains the skip atom"
+    "(*)"
+    Skip
+  assertAstOutput "a parenthesized skip is an explicit function argument"
+    "f (*)"
+    (FunctionApplication (ref "f") Skip)
+  assertRejected "a bare skip is ambiguous after a function" "f *"
+  assertAstOutput "parenthesized skips multiply without application ambiguity"
+    "(*) * (*)"
+    (Multiplication Skip Skip)
+  assertRejected "bare left skip is ambiguous with multiplication" "* * 7"
+  assertRejected "bare right skip is ambiguous with multiplication" "7 * *"
+  assertAstOutput "skip composes in an ordered map"
+    "(*, 3)"
+    (MapConcatenation Skip (natural 3))
+  assertAstOutput "skip composes in an argument map"
+    "{*, 3}"
+    (ArgumentMap [Skip, natural 3])
+  assertAstOutput "rank-zero formulation remains an ordinary value"
+    "((...) ^ 0, 3)"
+    (MapConcatenation
+      (Exponentiation EllipsisLiteral (natural 0))
+      (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
-    [ Import False "library_one", Import True "standard_library"
-    , InModule "standard_library" This
+    [ Import False "library_one", Import True "std_lib"
+    , InModule "std_lib" This
     , NamedAccess This (IdentifierString "abc")
     , SyntaxType "$Int next" True (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
+    , Assert True (BooleanLiteral True)
+    , Overload (natural 1) (natural 2)
     , External (AsciiStringLiteral "datra.add")
     ]
-  assertAstOutput "eval consumes a semicolon-separated target"
-    "eval \"x : 3, (b : 8; 2)\" at x : 3; {a? : Nat := 2, b? : Nat}"
-    (Eval (AsciiStringLiteral "x : 3, (b : 8; 2)")
-      (AtlasMap
-        [ AST.identifierType "x" (natural 3)
-        , ArgumentMap
-            [ EitherType (AST.assignment "a" (ref "Nat") (natural 2)) (ref "Nat")
-            , EitherType (AST.identifierType "b" (ref "Nat")) (ref "Nat")
-            ]
-        ]))
-  assertAstOutput "eval consumes newline-separated target components"
-    "eval \"(1; 2)\" at Nat\nNat"
-    (Eval (AsciiStringLiteral "(1; 2)") (AtlasMap [ref "Nat", ref "Nat"]))
-  assertAstOutput "parentheses delimit eval before access and arithmetic"
-    "(eval \"(b : 8; 2)\" at {a? : Nat, b? : Nat})[1] * 5"
-    (Multiplication
-      (MapAccess
-        (Eval (AsciiStringLiteral "(b : 8; 2)")
-          (ArgumentMap
-            [ EitherType (AST.identifierType "a" (ref "Nat")) (ref "Nat")
-            , EitherType (AST.identifierType "b" (ref "Nat")) (ref "Nat")]))
-        (natural 1)) (natural 5))
-  assertAstOutput "eval accepts a computed parenthesized source"
-    "eval (\"1\", \"2\") at Int"
-    (Eval (MapConcatenation (AsciiStringLiteral "1") (AsciiStringLiteral "2")) (ref "Int"))
-  assertRejected "eval requires its source-target at keyword" "eval \"2\" Nat"
-  assertRejected "eval requires a target" "eval \"2\" at"
-  assertRejected "eval requires a source" "eval at Nat"
-  assertRejected "eval is reserved as a bare identifier" "eval : Nat"
-  assertAstOutput "eval keyword respects identifier boundaries"
-    "evaluate : Nat" (AST.identifierType "evaluate" (ref "Nat"))
+  assertAstRoundTrip "internal eval AST remains serializable"
+    (renderExpression
+      (Eval
+        (AsciiStringLiteral "x : 3, (b : 8; 2)")
+        (AtlasMap
+          [ AST.dependentIdentifierType "x" (natural 3)
+          , ArgumentMap
+              [ EitherType
+                  (AST.assignment "a" (ref "Nat") (natural 2))
+                  (ref "Nat")
+              , EitherType
+                  (AST.dependentIdentifierType "b" (ref "Nat"))
+                  (ref "Nat")
+              ]
+          ])))
+  assertAstOutput "eval is available as an ordinary user identifier"
+    "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
+  assertAstOutput "eval identifier respects identifier boundaries"
+    "evaluate : Nat" (AST.dependentIdentifierType "evaluate" (ref "Nat"))
   assertAstOutput "argument map uses existing map arity"
     "{b := 8; 2}"
     (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
@@ -123,31 +182,37 @@ regressionTests = do
   assertParsed "argument map AST round trip"
     "{a? : Nat; b? : String}"
     (ArgumentMap
-      [EitherType (AST.identifierType "a" (ref "Nat")) (ref "Nat")
-      ,EitherType (AST.identifierType "b" (ref "String")) (ref "String")])
+      [EitherType (AST.dependentIdentifierType "a" (ref "Nat")) (ref "Nat")
+      ,EitherType (AST.dependentIdentifierType "b" (ref "String")) (ref "String")])
+  assertRejected "private argument names cannot be optional"
+    "{_x? : Nat; y : Nat}"
   let block = Begin
-        [AST.identifierType "a" (Multiplication (natural 2) (natural 3)), AST.identifierType "b" (natural 5)]
+        [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x : 10 yield x"
-    (Begin [Let (AST.identifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
+    (Begin [Let (AST.dependentIdentifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
-    (MapConcatenation (Begin [AST.identifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
+    (MapConcatenation (Begin [AST.dependentIdentifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
   assertRejected "let requires a block" "let x : 1"
   assertRejected "begin requires yield" "begin x : 1"
+  assertRejected "function bodies require an explicit yield"
+    "f := ({n? : Nat} -> () do assert n of Nat)"
+  assertRejected "compact function yield stays on the signature line"
+    "f := ({n? : Nat} -> Nat\nyield n + 1)"
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
     "extract applies to a parenthesized reverse specification"
-    "%(\"%Iden %Int\" <~ \"alco 100\")"
+    "%(\"%IdenStr %Int\" <~ \"alco 100\")"
     (Extract
       (MapSpecification
         (AsciiStringLiteral "alco 100")
         (StringTemplate
-          [ StringTemplateInterpolation (ref "Iden")
+          [ StringTemplateInterpolation (ref "IdenStr")
           , StringTemplateLiteral " "
           , StringTemplateInterpolation (ref "Int")
           ])))
@@ -156,8 +221,8 @@ regressionTests = do
     "%String[0]"
     (MapAccess (Extract (ref "String")) (natural 0))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
-    (name <> " : Nat") (AST.identifierType name (ref "Nat")))
-    ["Nat", "Int", "String", "Iden", "Bool", "true", "false", "nothing"]
+    (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
+    ["Nat", "Int", "String", "IdenStr", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
   assertAstSyntax
@@ -219,11 +284,11 @@ regressionTests = do
     (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
       [natural 2, IdentifierReference (IdentifierString "to"), natural 5])
   assertParsed "the range library binding is an ordinary name" "range : Nat"
-    (AST.identifierType "range" (ref "Nat"))
+    (AST.dependentIdentifierType "range" (ref "Nat"))
   assertAstOutput
     "the former valued-range prefix is available as an identifier"
     "within : Nat"
-    (AST.identifierType "within" (ref "Nat"))
+    (AST.dependentIdentifierType "within" (ref "Nat"))
   assertAstOutput
     "Nat library reference"
     "Nat"
@@ -308,32 +373,32 @@ regressionTests = do
     "optional identifier slot"
     "a? : Nat"
     (AST.eitherType
-      (AST.identifierType "a" (ref "Nat"))
+      (AST.dependentIdentifierType "a" (ref "Nat"))
       (ref "Nat"))
   assertParsed "ordinary library names can name fields" "String : Nat"
-    (AST.identifierType "String" (ref "Nat"))
+    (AST.dependentIdentifierType "String" (ref "Nat"))
   assertAstOutput
     "reserved names can be full-string identifier expressions"
     "\"String\" : Nat"
-    (AST.identifierType "String" (ref "Nat"))
+    (AST.dependentIdentifierType "String" (ref "Nat"))
   assertAstOutput
     "contextual range words remain bare identifier expressions"
     "to : Nat"
-    (AST.identifierType "to" (ref "Nat"))
+    (AST.dependentIdentifierType "to" (ref "Nat"))
   assertAstOutput
     "contextual range directions remain bare identifier expressions"
     "(upwards : Nat; downwards : Nat)"
-    (AST.identifierType "upwards" (ref "Nat")
-      <:> AST.identifierType "downwards" (ref "Nat"))
+    (AST.dependentIdentifierType "upwards" (ref "Nat")
+      <:> AST.dependentIdentifierType "downwards" (ref "Nat"))
   assertAstOutput
     "uppercase built-in names remain bare identifier expressions"
     "False : Nat"
-    (AST.identifierType "False" (ref "Nat"))
+    (AST.dependentIdentifierType "False" (ref "Nat"))
   assertAstOutput
     "full-string identifier expressions compose with optional syntax"
     "\"Abc\"? : Nat"
     (AST.eitherType
-      (AST.identifierType "Abc" (ref "Nat"))
+      (AST.dependentIdentifierType "Abc" (ref "Nat"))
       (ref "Nat"))
   assertAstOutput
     "optional assigned identifier slot"
@@ -344,10 +409,10 @@ regressionTests = do
   let optionalIntegerSlots =
         MapConcatenation
           (AST.eitherType
-            (AST.identifierType "a" (ref "Int"))
+            (AST.dependentIdentifierType "a" (ref "Int"))
             (ref "Int"))
           (AST.eitherType
-            (AST.identifierType "b" (ref "Int"))
+            (AST.dependentIdentifierType "b" (ref "Int"))
             (ref "Int"))
       integerPair = MapConcatenation (natural 12) (natural 23)
   assertAstOutput
@@ -379,10 +444,10 @@ regressionTests = do
         (AST.assignment "b" (natural 5) (natural 5)))
       (MapConcatenation
         (AST.eitherType
-          (AST.identifierType "a" (ref "Int"))
+          (AST.dependentIdentifierType "a" (ref "Int"))
           (ref "Int"))
         (AST.eitherType
-          (AST.identifierType "b" (fromTo 3 8))
+          (AST.dependentIdentifierType "b" (fromTo 3 8))
           (fromTo 3 8))))
   let optionalAssigned identifierString value =
         AST.eitherType
@@ -391,7 +456,7 @@ regressionTests = do
           (ref "Int")
       optionalIdentifier identifierString =
         AST.eitherType
-          (AST.identifierType identifierString (ref "Int"))
+          (AST.dependentIdentifierType identifierString (ref "Int"))
           (ref "Int")
   assertAstOutput
     "parenthesized reverse specification stays in its concatenation slot"
@@ -491,13 +556,13 @@ regressionTests = do
   assertAstOutput
     "simple identifier type"
     "x : Nat"
-    (AST.identifierType "x" (ref "Nat"))
+    (AST.dependentIdentifierType "x" (ref "Nat"))
   assertAstOutput
     "unit identifier equals its identifier string"
     "$Value = (Value : ())"
     (AST.equal
       (AST.asciiString "Value")
-      (AST.identifierType "Value" AST.emptyMap))
+      (AST.dependentIdentifierType "Value" AST.emptyMap))
   assertAstOutput
     "full identifier assignment"
     "x : Nat := 5"
@@ -506,13 +571,13 @@ regressionTests = do
     "assignment specified into its identifier target"
     "(a : Nat := 5) ~> (a : Nat)"
     ( AST.assignment "a" (ref "Nat") (natural 5)
-        ~> AST.identifierType "a" (ref "Nat")
+        ~> AST.dependentIdentifierType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse specification between different identifier strings"
     "(a : Nat) <~ (b := 10)"
     ( AST.assignment "b" (natural 10) (natural 10)
-        ~> AST.identifierType "a" (ref "Nat")
+        ~> AST.dependentIdentifierType "a" (ref "Nat")
     )
   assertAstOutput
     "reverse assignment chain widens nested annotations"
@@ -523,7 +588,7 @@ regressionTests = do
     ( AST.assignment "d" (natural 28) (natural 28)
         ~> AST.assignment "d" (fromTo 25 35) (natural 28)
         ~> AST.assignment "d" (fromTo 20 40) (natural 28)
-        ~> AST.identifierType "d" (fromTo 0 100)
+        ~> AST.dependentIdentifierType "d" (fromTo 0 100)
     )
   assertAstOutput
     "reverse assignment chain accepts unparenthesized multiline operands"
@@ -539,7 +604,7 @@ regressionTests = do
           "d"
           (rangeTo 12 85)
           (natural 23 <..> natural 66)
-        ~> AST.identifierType "d" (rangeTo 10 100)
+        ~> AST.dependentIdentifierType "d" (rangeTo 10 100)
     )
   assertAstOutput
     "reverse assignment chain retains an incompatible intermediate annotation"
@@ -547,8 +612,8 @@ regressionTests = do
         <> "(x : from 5 to 20) <~ (x := 8)"
     )
     ( AST.assignment "x" (natural 8) (natural 8)
-        ~> AST.identifierType "x" (fromTo 5 20)
-        ~> AST.identifierType "x" (fromTo 1 10)
+        ~> AST.dependentIdentifierType "x" (fromTo 5 20)
+        ~> AST.dependentIdentifierType "x" (fromTo 1 10)
     )
   assertAstOutput
     "binary identifier assignment"
@@ -569,11 +634,11 @@ regressionTests = do
   assertAstOutput
     "accessing an identifier operation requires grouping"
     "(x : Nat) @ 0"
-    (AST.identifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the identifier map view"
     "(x : Nat)[0]"
-    (AST.identifierType "x" (ref "Nat") <@> natural 0)
+    (AST.dependentIdentifierType "x" (ref "Nat") <@> natural 0)
   assertAstOutput
     "bracket access uses the assignment specification view"
     "(x : Nat := 5)[1]"
@@ -581,27 +646,27 @@ regressionTests = do
   assertAstOutput
     "unparenthesized access belongs to the identifier type operand"
     "x : Nat @ 0"
-    (AST.identifierType "x" (ref "Nat" <@> natural 0))
+    (AST.dependentIdentifierType "x" (ref "Nat" <@> natural 0))
   assertAstOutput
     "identifier arithmetic operands compose without grouping"
     "x : 5 + y : 10 = 15"
     (AST.equal
       ((AST.+)
-        (AST.identifierType "x" (natural 5))
-        (AST.identifierType "y" (natural 10)))
+        (AST.dependentIdentifierType "x" (natural 5))
+        (AST.dependentIdentifierType "y" (natural 10)))
       (natural 15))
   assertAstOutput
     "transfinite identifier arithmetic preserves precedence"
     "x : ...^2 + y : 1 = ...^2 + 1"
     (AST.equal
       ((AST.+)
-        (AST.identifierType "x" ((AST.^) (...) (natural 2)))
-        (AST.identifierType "y" (natural 1)))
+        (AST.dependentIdentifierType "x" ((AST.^) (...) (natural 2)))
+        (AST.dependentIdentifierType "y" (natural 1)))
       ((AST.+) ((AST.^) (...) (natural 2)) (natural 1)))
   assertAstOutput
     "identifier strings share canonical continuation characters"
     "A_0'z : Nat"
-    (AST.identifierType "A_0'z" (ref "Nat"))
+    (AST.dependentIdentifierType "A_0'z" (ref "Nat"))
   assertRejected
     "identifier operations reject expression left sides"
     "(2 + 2) : Nat := 4"
@@ -609,6 +674,12 @@ regressionTests = do
     "identifier operations reject dollar-prefixed left sides"
     "$x : Nat := 4"
   assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
+  assertParsed "bare identifiers allow separated underscores"
+    "my_pow" (IdentifierReference (IdentifierString "my_pow"))
+  assertAstOutput "separated-underscore identifiers can be declared"
+    "my_pow := 4" (AST.assignment "my_pow" (natural 4) (natural 4))
+  assertRejected "bare identifiers reject consecutive underscores" "my__pow"
+  assertRejected "bare identifiers reject a trailing underscore" "my_pow_"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -721,9 +792,9 @@ regressionTests = do
     "\"%String\""
     (StringTemplate [StringTemplateInterpolation (ref "String")])
   assertParsed
-    "Iden is available to string templates"
-    "\"%Iden\""
-    (StringTemplate [StringTemplateInterpolation (ref "Iden")])
+    "IdenStr is available to string templates"
+    "\"%IdenStr\""
+    (StringTemplate [StringTemplateInterpolation (ref "IdenStr")])
   assertAstOutput
     "digit-leading compact strings retain an apostrophe before an operator"
     "$12' of \"%(Nat)'\""
@@ -1201,7 +1272,7 @@ propAstRoundTrip = H.property $ do
   let rendered = renderExpression expressionValue
   case parseDatraAst rendered of
     Left message -> do
-      H.footnote message
+      H.footnote (parseFailureMessage message)
       H.failure
     Right roundTripped -> renderExpression roundTripped H.=== rendered
 
@@ -1218,10 +1289,10 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "Iden", "Bool", "AST", "IntRange", "NatRange", "StringTemplate"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "StringTemplate"]
     , IdentifierReference <$> genIdentifierString
     , pure This
-    , Import <$> Gen.bool <*> Gen.element ["standard_library", "library_one", "path/library_two"]
+    , Import <$> Gen.bool <*> Gen.element ["std_lib", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
@@ -1229,11 +1300,12 @@ genExpression =
     ]
     [ AtlasMap <$> Gen.list (Range.linear 0 6) genExpression
     , ArgumentMap <$> Gen.list (Range.linear 0 6) genExpression
+    , pure Skip
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
-    , Gen.subterm genExpression (InModule "standard_library")
+    , Gen.subterm genExpression (InModule "std_lib")
     , Gen.subterm genExpression (SyntaxType "$Int next" True)
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
@@ -1250,6 +1322,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Exponentiation
     , Gen.subterm2 genExpression genExpression Subfederation
     , Gen.subterm2 genExpression genExpression Equality
+    , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
     , Gen.subterm genExpression OptionalType
     , Gen.subterm genExpression Extract
@@ -1257,6 +1330,8 @@ genExpression =
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
+    , Gen.subterm2 genExpression genExpression Overload
+    , Gen.subterm2 genExpression genExpression SafeOverload
     , IdentifierOperation
         <$> genIdentifierString
         <*> genExpression
@@ -1324,7 +1399,8 @@ assertAllHexadecimalAsciiEscapes = do
 assertLocatedParse :: IO ()
 assertLocatedParse =
   case parseDatraLocated "(1; 2)" of
-    Left message -> fail ("located parse unexpectedly failed: " <> message)
+    Left message -> fail
+      ("located parse unexpectedly failed: " <> parseFailureMessage message)
     Right
         (Located
           (SourceSpan source start end)
@@ -1357,15 +1433,16 @@ assertResourceEnvelopes = do
       Right actual -> do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
-      Left message -> fail message)
-    [ ("a : 6\nyield a", Program [AST.identifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
-    , ("begin a : 6", Program [AST.identifierType "a" (natural 6)] (natural 0))
-    , ("", Program [] (natural 0))
+      Left message -> fail (parseFailureMessage message))
+    [ ("a : 6\nyield a", Program [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    , ("begin a : 6", Program [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
+    , ("", Program [] (AtlasMap []))
     ]
   where
     assertEnvelope label source expected =
       case parseDatraLocatedResourceWithSourceName "<input>" source of
-        Left message -> fail (label <> ": unexpected failure: " <> message)
+        Left message -> fail
+          (label <> ": unexpected failure: " <> parseFailureMessage message)
         Right (actual, _) -> assert label (actual == expected)
 
 assertAstSyntax :: IO ()
@@ -1414,17 +1491,17 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "String")) == "(% (ref $String))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply (in-module $standard_library (~> (external \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntRange)))) "
-          <> "(<:> (~> 2 (in-module $standard_library (ref $Int))) "
-          <> "(~> 5 (in-module $standard_library (ref $Int)))))"
+        == "(apply (in-module $std_lib (~> (external \"datra.from\") "
+          <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntValRange)))) "
+          <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
+          <> "(~> 5 (in-module $std_lib (ref $Int)))))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply (in-module $standard_library (~> (external \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntRange)))) "
-          <> "(<:> (~> 2 (in-module $standard_library (ref $Int))) "
-          <> "(~> $upwards (in-module $standard_library (ref $_Wards)))))"
+        == "(apply (in-module $std_lib (~> (external \"datra.from\") "
+          <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntValRange)))) "
+          <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
+          <> "(~> $upwards (in-module $std_lib (ref $_Wards)))))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -1432,7 +1509,8 @@ assertAstSyntax = do
 assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Left message -> fail
+      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right actual
       | canonicalAst actual == canonicalAst expected ->
           assertAstRoundTrip label (renderExpression actual)
@@ -1451,7 +1529,9 @@ assertAstRoundTrip :: String -> String -> IO ()
 assertAstRoundTrip label renderedAst =
   case renderExpression <$> parseDatraAst renderedAst of
     Left message ->
-      fail (label <> ": emitted AST could not be parsed: " <> message)
+      fail
+        (label <> ": emitted AST could not be parsed: "
+          <> parseFailureMessage message)
     Right roundTripped
       | roundTripped == renderedAst -> pure ()
       | otherwise ->
@@ -1473,7 +1553,8 @@ assertRejected label source =
 assertParsed :: String -> String -> Expression -> IO ()
 assertParsed label source expected =
   case parseDatra ("(" <> source <> "\n)") of
-    Left message -> fail (label <> ": unexpected parse failure: " <> message)
+    Left message -> fail
+      (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right actual
       | actual == expected -> pure ()
       | otherwise ->
@@ -1509,10 +1590,11 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
   (scoped (MapSpecification (External (AsciiStringLiteral ("datra." <> name)))
-    (FunctionType (MapConcatenation (ref "Int") (ref endpointType)) (ref "IntRange"))))
+    (FunctionType (MapConcatenation (ref "Int") (ref endpointType))
+      (ref (if name == "from" then "IntValRange" else "IntRange")))))
   (AtlasMap [checked "Int" start, checked endpointType endpoint])
   where
-    scoped = InModule "standard_library"
+    scoped = InModule "std_lib"
     checked target value = MapSpecification value (scoped (ref target))
     (endpointType, endpoint) = case end of
       UpperBound value -> ("Int", value)

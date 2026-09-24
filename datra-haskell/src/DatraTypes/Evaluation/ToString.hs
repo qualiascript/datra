@@ -26,7 +26,7 @@ import IdentifierValueType (identifierValueCharacterAlphabet)
 -- inverse here makes injectivity structural for maps, Either values, and
 -- identifier wrappers instead of baking their surface shapes into the proof.
 data CanonicalStringCodec = CanonicalStringCodec
-  { renderCanonicalString :: CanonicalResult -> String
+  { renderCanonicalString :: InterpretedValue -> String
   , decodeCanonicalString :: String -> [InterpretedValue]
   }
 
@@ -40,13 +40,15 @@ toStringValue
 toStringValue codec source =
   if stringConversionIsIdentity (interpretedForm source)
     then Right source
-    else
-      if interpretedValueHasTotalMap source
+    else case datraStringRepresentation
+        (interpretedDatraType source) of
+      WeakStringRepresentation -> Left NonInjectiveStringInterpolation
+      CanonicalStringRepresentation ->
+        if interpretedTypeIsTotal source
         then
           Right
             (makeAsciiString
-              (renderCanonicalString codec
-                (interpretedCanonicalResult source)))
+              (renderCanonicalString codec source))
         else
           case proveInjectiveToString (decodeCanonicalString codec) source of
             Just proof -> Right (pointwiseFederation proof)
@@ -54,6 +56,7 @@ toStringValue codec source =
   where
     pointwiseFederation proof =
       makeInterpretedValue
+        structuralDatraType
         ToStringForm
         NoInsertion
         emptyInterpretedMap
@@ -74,6 +77,7 @@ weakToStringValue codec source =
     Left NonInjectiveStringInterpolation ->
       Right
         (makeInterpretedValue
+          weakStructuralDatraType
           WeakToStringForm
           NoInsertion
           emptyInterpretedMap
@@ -91,6 +95,7 @@ stringTemplateValue value =
     then value
     else
       makeInterpretedValue
+        (interpretedDatraType value)
         (StringTemplateForm value)
         (interpretedInsertionCapability value)
         (interpretedMap value)

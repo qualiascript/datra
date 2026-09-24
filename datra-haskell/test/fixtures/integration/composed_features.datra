@@ -1,0 +1,20 @@
+let factorial := ({n? : Int := 5} -> Int do
+begin
+  assert n of Int
+  yield if n = 0 then 1 else n * factorial (n - 1))
+my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield it[0] ^ it[1])
+sum := (Nat, Nat -> Nat yield it[0] + it[1])
+parsed := %("from 2 to 5" ~> "from %Int to %Int")
+overloaded := ({x : Nat := 2, Nat} << 4)
+safe := ({x : Nat := 2, Nat} <<< (*, 7))
+transfinite := (...) ^ 2 + (...) * 3 + 4
+sequence := (10; 20; 30; 40)
+slice := sequence[1..3]
+assert factorial () = 120
+assert factorial 6 = 720
+assert my_pow (*, 5) = 32
+assert sum (parsed[1], parsed[2]) = 7
+assert overloaded of {x : Nat, Nat}
+assert safe = ({x : Nat := 2, Nat} << (*, 7))
+assert transfinite = (...) ^ 2 + (...) * 3 + 4
+assert slice = (20; 30)

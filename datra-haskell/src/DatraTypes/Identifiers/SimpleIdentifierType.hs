@@ -1,13 +1,13 @@
--- | Constant-string specialization of 'IdentifierType'.
+-- | Constant-string specialization of 'DependentIdentifierType'.
 module SimpleIdentifierType
   ( SimpleIdentifierType
   , simpleIdentifierType
   , simpleIdentifierTypeString
-  , simpleIdentifierTypeAsIdentifierType
+  , simpleIdentifierTypeAsDependentIdentifierType
   ) where
 
 import AtlasMapFederation (AtlasMapFederation)
-import IdentifierType (IdentifierType, identifierType)
+import DependentIdentifierType (DependentIdentifierType, dependentIdentifierType)
 
 data SimpleIdentifierType federationScope index = SimpleIdentifierType
   String
@@ -26,9 +26,9 @@ simpleIdentifierTypeString
 simpleIdentifierTypeString (SimpleIdentifierType identifierString _) =
   identifierString
 
-simpleIdentifierTypeAsIdentifierType
+simpleIdentifierTypeAsDependentIdentifierType
   :: SimpleIdentifierType federationScope index
-  -> IdentifierType federationScope index
-simpleIdentifierTypeAsIdentifierType
+  -> DependentIdentifierType federationScope index
+simpleIdentifierTypeAsDependentIdentifierType
     (SimpleIdentifierType identifierString federation) =
-  identifierType federation (const identifierString)
+  dependentIdentifierType federation (const identifierString)

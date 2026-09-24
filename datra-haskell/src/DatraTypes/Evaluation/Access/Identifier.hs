@@ -1,6 +1,6 @@
 -- | Access through the two-position map view of an identifier type.
 module Evaluation.Access.Identifier
-  ( accessIdentifierType
+  ( accessDependentIdentifierType
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
@@ -26,12 +26,12 @@ import SuperEllipsisInsertion
   , someSuperEllipsisInsertionRank
   )
 
-accessIdentifierType
+accessDependentIdentifierType
   :: InterpretedValue
-  -> EvaluatedIdentifierType
+  -> EvaluatedDependentIdentifierType
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-accessIdentifierType original identifier insertionValue = do
+accessDependentIdentifierType original identifier insertionValue = do
   insertion <- requireInsertion insertionValue
   let insertionOrderType = someSuperEllipsisInsertionOrderType insertion
   Bifunctor.first AccessRejected

@@ -3,6 +3,7 @@
 -- identified instead of being assigned artificial distinguishing tags.
 module Evaluation.Arguments
   ( argumentRows
+  , overloadArgumentRows
   , functionArgumentValue
   , argumentPresentations
   , makeArgumentMap
@@ -13,7 +14,10 @@ module Evaluation.Arguments
 import Control.Monad (foldM)
 import Data.List (nubBy, permutations)
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Error (InterpretingError (FunctionError))
+import Evaluation.Error
+  ( FunctionFailure (..)
+  , InterpretingError (FunctionEvaluationFailed)
+  )
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Map (makeAtlasMap, hasConcreteSource, concatenateValues)
 import Evaluation.Access.Federation (federationIsCoalition)
@@ -30,6 +34,8 @@ makeArgumentMap members = do
     ]
   pure
     (makeInterpretedValue
+      (composedStructuralDatraType
+        (map interpretedDatraType members))
       (ArgumentMapForm members union)
       NoInsertion
       (interpretedMap union)
@@ -63,6 +69,33 @@ argumentAlternatives value =
         <> argumentAlternatives (evaluatedEitherRight alternatives)
     _ -> [value]
 
+-- An assigned optional has already selected its present branch. Treating its
+-- missing annotation as another supplied argument makes a value produced by
+-- @<<@ ambiguous when passed straight into the corresponding function.
+concreteOptionalArgument :: InterpretedValue -> Maybe InterpretedValue
+concreteOptionalArgument value = do
+  alternatives <-
+    case interpretedForm value of
+      EitherForm evaluated -> Just evaluated
+      _ -> Nothing
+  let present = evaluatedEitherLeft alternatives
+      missing = evaluatedEitherRight alternatives
+  case interpretedCanonicalResult present of
+    CanonicalAssignment _ annotation _
+      | annotation == interpretedCanonicalResult missing -> Just present
+    _ -> Nothing
+
+argumentInputAlternatives :: InterpretedValue -> [InterpretedValue]
+argumentInputAlternatives value =
+  case concreteOptionalArgument value of
+    Just present -> [present]
+    Nothing ->
+      case interpretedForm value of
+        EitherForm alternatives ->
+          argumentInputAlternatives (evaluatedEitherLeft alternatives)
+            <> argumentInputAlternatives (evaluatedEitherRight alternatives)
+        _ -> [value]
+
 argumentPresentations :: InterpretedValue -> Either InterpretingError [InterpretedValue]
 argumentPresentations value = case interpretedForm value of
   ArgumentMapForm _ underlying -> pure (argumentAlternatives underlying)
@@ -81,17 +114,38 @@ argumentRows value = case interpretedForm value of
     lefts <- argumentRows left
     rights <- argumentRows right
     pure [a <> b | a <- lefts, b <- rights]
-  ArgumentMapForm _ underlying -> concat <$> traverse argumentRows (argumentAlternatives underlying)
-  EitherForm _ -> concat <$> traverse argumentRows (argumentAlternatives value)
+  ArgumentMapForm _ underlying ->
+    concat <$> traverse argumentRows (argumentInputAlternatives underlying)
+  EitherForm _ ->
+    concat <$> traverse argumentRows (argumentInputAlternatives value)
   SequentialMapForm -> (:[]) <$> pages
   MapForm -> (:[]) <$> pages
+  SpecificationForm _ -> (:[]) <$> pages
   _ -> pure [[value]]
   where
     pages = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
-      Nothing -> Left (FunctionError "function arguments require finitely many pages")
-      Just count -> traverse (\position -> maybe (Left (FunctionError "unavailable argument page")) Right
+      Nothing -> Left (FunctionEvaluationFailed
+        FunctionArgumentsRequireFinitePages)
+      Just count -> traverse (\position -> maybe
+          (Left (FunctionEvaluationFailed
+            (FunctionArgumentPageUnavailable position)))
+          Right
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
         (if count == 0 then [] else [0 .. count - 1])
+
+-- | Overload matching preserves ordinary argument rows but turns the tagged
+-- skip sentinel into an explicit positional hole. Its rank-zero payload is
+-- never inspected here, so a literal @(...) ^ 0@ remains a supplied value.
+overloadArgumentRows
+  :: InterpretedValue
+  -> Either InterpretingError [[Maybe InterpretedValue]]
+overloadArgumentRows value =
+  map (map supplied) <$> argumentRows value
+  where
+    supplied member =
+      case interpretedForm member of
+        SkipForm _ -> Nothing
+        _ -> Just member
 
 functionArgumentValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 functionArgumentValue value = case interpretedForm value of

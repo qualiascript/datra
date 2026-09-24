@@ -93,7 +93,7 @@ selectAtomicFederationMember source target =
           _ -> DecisionRefuted)
     PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation ->
       Nothing
-    PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation _) ->
+    PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation _) ->
       Nothing
     PrimitiveAtlasMapFederation
         (IdentifierStringProjectionAtlasMapFederation _) ->

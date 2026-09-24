@@ -1,13 +1,23 @@
 module Main (main) where
 
 import Data.Char (toLower)
+import Data.Bifunctor qualified as Bifunctor
 import DatraLanguage.AST (renderExpression)
-import DatraLanguage.Diagnostics (Located (locatedValue))
+import DatraLanguage.Diagnostics
+  ( Located (locatedValue)
+  , withoutSourceSpan
+  )
+import DatraLanguage.Diagnostics.Application
+  ( CommandLineOptionFailure (..))
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
+  , LocalizedDiagnostic
   , renderDatraError
   )
-import Interpreting (interpretLocatedWithImports)
+import Interpreting
+  ( EvaluationMode (DevelopmentMode, ProductionMode)
+  , interpretLocatedWithImportsInMode
+  )
 import ModuleLoading (loadImports, loadExpressionImports, importSyntax)
 import Options.Applicative
 import Parsing
@@ -21,9 +31,9 @@ import System.Exit (die)
 import System.FilePath ((</>), takeDirectory)
 
 data Command
-  = Build Input FilePath FilePath Locale
+  = Build Input FilePath FilePath Locale EvaluationMode
   | GenerateAst Input FilePath
-  | InterpretAst Input FilePath Locale
+  | InterpretAst Input FilePath Locale EvaluationMode
 
 data Input
   = InputFile FilePath
@@ -93,6 +103,7 @@ buildParser =
       "FILE"
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
+    <*> modeOption
 
 generateAstParser :: Parser Command
 generateAstParser =
@@ -116,6 +127,7 @@ interpretAstParser =
       "FILE"
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
+    <*> modeOption
 
 sourceInputParser :: FilePath -> Parser Input
 sourceInputParser defaultPath =
@@ -178,51 +190,95 @@ localeOption =
 
 localeReader :: ReadM Locale
 localeReader = eitherReader $ \localeText ->
+  Bifunctor.first renderCommandLineOptionFailure
+    (parseLocaleOption localeText)
+
+parseLocaleOption
+  :: String
+  -> Either CommandLineOptionFailure Locale
+parseLocaleOption localeText =
   case map toLower localeText of
     "en" -> Right English
     "english" -> Right English
     "ro" -> Right Romanian
     "romana" -> Right Romanian
     "romanian" -> Right Romanian
-    _ -> Left "expected english, en, romana, romanian, or ro"
+    _ -> Left (UnsupportedDiagnosticLocale localeText)
 
 localeName :: Locale -> String
 localeName English = "english"
 localeName Romanian = "romanian"
 
+modeOption :: Parser EvaluationMode
+modeOption =
+  option modeReader
+    ( long "mode"
+        <> metavar "MODE"
+        <> value DevelopmentMode
+        <> showDefaultWith modeName
+        <> help "Assertion mode: dev or prod"
+    )
+
+modeReader :: ReadM EvaluationMode
+modeReader = eitherReader $ \modeText ->
+  Bifunctor.first renderCommandLineOptionFailure
+    (parseModeOption modeText)
+
+parseModeOption
+  :: String
+  -> Either CommandLineOptionFailure EvaluationMode
+parseModeOption modeText =
+  case map toLower modeText of
+    "dev" -> Right DevelopmentMode
+    "development" -> Right DevelopmentMode
+    "prod" -> Right ProductionMode
+    "production" -> Right ProductionMode
+    _ -> Left (UnsupportedEvaluationMode modeText)
+
+renderCommandLineOptionFailure :: CommandLineOptionFailure -> String
+renderCommandLineOptionFailure =
+  renderDatraError English . withoutSourceSpan
+
+modeName :: EvaluationMode -> String
+modeName DevelopmentMode = "dev"
+modeName ProductionMode = "prod"
+
 runCommand :: Command -> IO ()
 runCommand commandValue =
   case commandValue of
-    Build input astPath outputPath locale -> do
+    Build input astPath outputPath locale mode -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
-      imports <- loadImports sourceName source >>= parseOrFail errorPath
+      imports <- loadImports sourceName source
+        >>= diagnosticOrFail locale errorPath
       locatedExpression <-
-        parseOrFail errorPath
+        diagnosticOrFail locale errorPath
           (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImports imports locatedExpression)
+        (interpretLocatedWithImportsInMode mode imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
     GenerateAst input outputPath -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
-      imports <- loadImports sourceName source >>= parseOrFail errorPath
+      imports <- loadImports sourceName source
+        >>= diagnosticOrFail English errorPath
       locatedExpression <-
-        parseOrFail errorPath
+        diagnosticOrFail English errorPath
           (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
-    InterpretAst input outputPath locale -> do
+    InterpretAst input outputPath locale mode -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       locatedExpression <-
-        parseOrFail errorPath
+        diagnosticOrFail locale errorPath
           (parseDatraAstLocatedWithSourceName sourceName source)
-      imports <- loadExpressionImports sourceName (locatedValue locatedExpression) >>= parseOrFail errorPath
+      imports <- loadExpressionImports sourceName (locatedValue locatedExpression)
+        >>= diagnosticOrFail locale errorPath
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImports imports locatedExpression)
+        (interpretLocatedWithImportsInMode mode imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
 
 errorPathFor :: Input -> [FilePath] -> FilePath
@@ -237,8 +293,18 @@ errorPathFor input outputPaths =
             InputFile path | path /= "-" -> path
             _ -> defaultOutputPath
 
-parseOrFail :: FilePath -> Either String value -> IO value
-parseOrFail errorPath = either (failWithOutput errorPath) pure
+diagnosticOrFail
+  :: LocalizedDiagnostic failure
+  => Locale
+  -> FilePath
+  -> Either failure value
+  -> IO value
+diagnosticOrFail locale errorPath =
+  either
+    (failWithOutput errorPath
+      . renderDatraError locale
+      . withoutSourceSpan)
+    pure
 
 failWithOutput :: FilePath -> String -> IO value
 failWithOutput errorPath rendered = do

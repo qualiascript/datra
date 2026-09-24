@@ -36,6 +36,9 @@ decideFederationConcatenation left right
       AtlasMapFederationProved ()
   | atlasMapFederationExpressionIsSingleton right =
       AtlasMapFederationProved ()
+  | universalNumericalTypeCoalition left
+      && universalNumericalTypeCoalition right =
+      AtlasMapFederationProved ()
   | stringFederationConcatenationIsInjective left right =
       AtlasMapFederationProved ()
 decideFederationConcatenation
@@ -60,8 +63,8 @@ decideFederationConcatenation
 -- Distinct identifier families occupy disjoint named positions. This also
 -- makes a sequence's canonical comma spelling interpretable when nested.
 decideFederationConcatenation
-    (PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation left))
-    (PrimitiveAtlasMapFederation (IdentifierTypeAtlasMapFederation right))
+    (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation left))
+    (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation right))
   | not (identifierDependenciesCompatible
       (evaluatedIdentifierDependency left)
       (evaluatedIdentifierDependency right)) = AtlasMapFederationProved ()
@@ -148,6 +151,28 @@ decideFederationConcatenation _ _ =
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationConcatenation)
 
+-- Nat and Int are universal one-position numerical coalitions. Their product
+-- is positional even though their member sets overlap, so its sequential and
+-- comma spellings denote the same map. Bounded valued ranges retain the usual
+-- collision check below.
+universalNumericalTypeCoalition
+  :: InterpretedAtlasMapFederation
+  -> Bool
+universalNumericalTypeCoalition federation =
+  case federation of
+    PrimitiveAtlasMapFederation
+        (ValuedNaturalRangeAtlasMapFederation
+          (EvaluatedValuedNaturalRange valueRange)) ->
+      ValuedNaturalRange.valuedNaturalRangeStart valueRange == 0
+        && ValuedNaturalRange.valuedNaturalRangeTarget valueRange
+          == NaturalRange.UpwardsTarget
+    PrimitiveAtlasMapFederation
+        (ValuedIntegerRangeAtlasMapFederation
+          (EvaluatedValuedIntegerRange valueRange)) ->
+      ValuedIntegerRange.valuedIntegerRangeTarget valueRange
+        == IntegerRange.AllIntegersTarget
+    _ -> False
+
 decidePrimitiveSubfederation
   :: InterpretedAtlasMapFederationPrimitive
   -> InterpretedAtlasMapFederationPrimitive
@@ -213,8 +238,8 @@ decidePrimitiveSubfederation
       AtlasMapFederationProved ()
   | otherwise = missingMember
 decidePrimitiveSubfederation
-    (IdentifierTypeAtlasMapFederation _)
-    (IdentifierTypeAtlasMapFederation _) =
+    (DependentIdentifierTypeAtlasMapFederation _)
+    (DependentIdentifierTypeAtlasMapFederation _) =
   AtlasMapFederationUndecidable
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationSubfederation)
