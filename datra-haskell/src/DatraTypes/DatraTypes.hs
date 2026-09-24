@@ -4,7 +4,19 @@
 -- checked construction, canonicalization, access validation, and their
 -- strongly typed failures belong here.
 module DatraTypes
-  ( InterpretedValue
+  ( EvaluatedFunction (..)
+  , makeFunctionValue
+  , syntaxCategoryTypeValue
+  , astTypeValue
+  , functionAlternatives
+  , stringTemplateTypeValue
+  , builtinMetaTypeName
+  , naturalRangeTypeValue
+  , integerRangeTypeValue
+  , functionSignature
+  , callableFunction
+  , interpretedFunction
+  , InterpretedValue
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
@@ -62,9 +74,14 @@ module DatraTypes
   , assignIdentifierValues
   , makeAtlasMap
   , makeArgumentMap
+  , argumentRows
+  , functionArgumentValue
+  , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , namedAccessValue
   , accessValues
+  , validateFunctionInput
   , specifyValues
   , interpretedValueKind
   , interpretedValueHasTotalMap
@@ -90,7 +107,7 @@ import Evaluation.Error
   , InterpretingError (..)
   , OperandSide (..)
   )
-import Evaluation.Access (accessValues)
+import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction
   ( makeAsciiString
   , makeIdentifierValueType
@@ -110,7 +127,7 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Arguments (makeArgumentMap)
+import Evaluation.Arguments (makeArgumentMap, argumentPresentations, argumentRows, functionArgumentValue)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
@@ -157,10 +174,23 @@ import Evaluation.Identifier
   )
 import Evaluation.Specification
   ( assignIdentifierValues
+  , validateFunctionInput
   , specifyValues
   )
 import Evaluation.Value
-  ( CanonicalResult (..)
+  ( EvaluatedFunction (..)
+  , makeFunctionValue
+  , syntaxCategoryTypeValue
+  , astTypeValue
+  , functionAlternatives
+  , stringTemplateTypeValue
+  , builtinMetaTypeName
+  , naturalRangeTypeValue
+  , integerRangeTypeValue
+  , functionSignature
+  , callableFunction
+  , interpretedFunction
+  , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult

@@ -45,6 +45,8 @@ data AccessSource = AccessSource
 accessSource :: InterpretedValue -> AccessSource
 accessSource value =
   case interpretedForm value of
+    BuiltinMetaTypeForm _ -> ordinarySource []
+    FunctionForm _ -> ordinarySource []
     RangeForm valueRange ->
       rangeSource [evaluatedDescribedRange valueRange]
     NaturalRangeForm valueRange ->
@@ -135,6 +137,8 @@ describedRangeSemantics described
 semanticAccessSource :: ValueSemantics -> AccessSource
 semanticAccessSource semantics =
   case semantics of
+    BuiltinMetaTypeSemantics _ -> ordinarySource []
+    FunctionSemantics {} -> ordinarySource []
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []

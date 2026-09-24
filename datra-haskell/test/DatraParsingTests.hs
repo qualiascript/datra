@@ -7,6 +7,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , mapExpressionChildren
   , normalizeExpression
   , renderExpression
   , toOperatorExpression
@@ -60,8 +61,22 @@ testTree =
 
 regressionTests :: IO ()
 regressionTests = do
+  assertAstOutput "function arrows associate right"
+    "Int -> Int -> Int" (FunctionType IntegerType (FunctionType IntegerType IntegerType))
+  assertAstOutput "application associates left before arithmetic"
+    "f 2 3 + 4" (Addition
+      (FunctionApplication (FunctionApplication (IdentifierReference (IdentifierString "f")) (natural 2)) (natural 3))
+      (natural 4))
+  mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
+    [ Import False "library_one", Import True "standard_library"
+    , InModule "standard_library" This
+    , NamedAccess This (IdentifierString "abc")
+    , SyntaxType "$Int next" True (FunctionType IntegerType IntegerType)
+    , FunctionBody [] (IdentifierReference (IdentifierString "x"))
+    , External (AsciiStringLiteral "datra.add")
+    ]
   assertAstOutput "eval consumes a semicolon-separated target"
-    "eval \"x : 3, (b : 8; 2)\", x : 3; {a? : Nat := 2, b? : Nat}"
+    "eval \"x : 3, (b : 8; 2)\" at x : 3; {a? : Nat := 2, b? : Nat}"
     (Eval (AsciiStringLiteral "x : 3, (b : 8; 2)")
       (AtlasMap
         [ AST.identifierType "x" (natural 3)
@@ -71,10 +86,10 @@ regressionTests = do
             ]
         ]))
   assertAstOutput "eval consumes newline-separated target components"
-    "eval \"(1; 2)\", Nat\nNat"
+    "eval \"(1; 2)\" at Nat\nNat"
     (Eval (AsciiStringLiteral "(1; 2)") (AtlasMap [NaturalType, NaturalType]))
   assertAstOutput "parentheses delimit eval before access and arithmetic"
-    "(eval \"(b : 8; 2)\", {a? : Nat, b? : Nat})[1] * 5"
+    "(eval \"(b : 8; 2)\" at {a? : Nat, b? : Nat})[1] * 5"
     (Multiplication
       (MapAccess
         (Eval (AsciiStringLiteral "(b : 8; 2)")
@@ -83,11 +98,11 @@ regressionTests = do
             , EitherType (AST.identifierType "b" NaturalType) NaturalType]))
         (natural 1)) (natural 5))
   assertAstOutput "eval accepts a computed parenthesized source"
-    "eval (\"1\", \"2\"), Int"
+    "eval (\"1\", \"2\") at Int"
     (Eval (MapConcatenation (AsciiStringLiteral "1") (AsciiStringLiteral "2")) IntegerType)
-  assertRejected "eval requires its source-target comma" "eval \"2\" Nat"
-  assertRejected "eval requires a target" "eval \"2\","
-  assertRejected "eval requires a source" "eval , Nat"
+  assertRejected "eval requires its source-target at keyword" "eval \"2\" Nat"
+  assertRejected "eval requires a target" "eval \"2\" at"
+  assertRejected "eval requires a source" "eval at Nat"
   assertRejected "eval is reserved as a bare identifier" "eval : Nat"
   assertAstOutput "eval keyword respects identifier boundaries"
     "evaluate : Nat" (AST.identifierType "evaluate" NaturalType)
@@ -119,7 +134,9 @@ regressionTests = do
   assertParsed "let in begin"
     "begin let x : 10 yield x"
     (Begin [Let (AST.identifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
-  assertRejected "references do not leak out of blocks" "(begin x : 1 yield x), x"
+  assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
+    (MapConcatenation (Begin [AST.identifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
+      (IdentifierReference (IdentifierString "x")))
   assertRejected "let requires a block" "let x : 1"
   assertRejected "begin requires yield" "begin x : 1"
   assert "reserved symbols have unique identifier strings"
@@ -139,13 +156,9 @@ regressionTests = do
     "extract binds before bracket access"
     "%String[0]"
     (MapAccess (Extract StringType) (natural 0))
-  mapM_
-    (\reservedSymbol ->
-      assertRejected
-        ("reserved symbol cannot be a bare identifier expression: "
-          <> Reserved.reservedSymbolIdentifierString reservedSymbol)
-        (Reserved.reservedSymbolIdentifierString reservedSymbol <> " : Nat"))
-    Reserved.reservedSymbols
+  mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
+    (name <> " : Nat") (AST.identifierType name NaturalType))
+    ["Nat", "Int", "String", "Iden", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
   assertAstSyntax
@@ -203,12 +216,11 @@ regressionTests = do
     "upwards ValuedNaturalRange"
     "from 2 upwards"
     (AST.withinUpwards 2)
-  assertRejected
-    "the old valued-range prefix is rejected"
-    "within 2 to 5"
-  assertRejected
-    "the range prefix is reserved as an identifier expression"
-    "range : Nat"
+  assertParsed "unregistered keyword names parse as applications" "within 2 to 5"
+    (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
+      [natural 2, IdentifierReference (IdentifierString "to"), natural 5])
+  assertParsed "the range library binding is an ordinary name" "range : Nat"
+    (AST.identifierType "range" NaturalType)
   assertAstOutput
     "the former valued-range prefix is available as an identifier"
     "within : Nat"
@@ -299,9 +311,8 @@ regressionTests = do
     (AST.eitherType
       (AST.identifierType "a" AST.naturalType)
       AST.naturalType)
-  assertRejected
-    "reserved names cannot be bare identifier expressions"
-    "String : Nat"
+  assertParsed "ordinary library names can name fields" "String : Nat"
+    (AST.identifierType "String" NaturalType)
   assertAstOutput
     "reserved names can be full-string identifier expressions"
     "\"String\" : Nat"
@@ -431,12 +442,10 @@ regressionTests = do
     "EllipsisNatural specification into NaturalType"
     "2 ~> Nat"
     (natural 2 ~> AST.naturalType)
-  assertRejected
-    "shared bounded range suffix is not an expression"
-    "2 to 5"
-  assertRejected
-    "shared upwards range suffix is not an expression"
-    "2 upwards"
+  assertParsed "unprefixed range words have ordinary application syntax" "2 to 5"
+    (FunctionApplication (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "to"))) (natural 5))
+  assertParsed "unprefixed direction is an ordinary reference" "2 upwards"
+    (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "upwards")))
   assertAstOutput
     "specification binds after access and concatenation"
     "1, 2 @ range 0 upwards ~> range 0 to 10"
@@ -600,9 +609,7 @@ regressionTests = do
   assertRejected
     "identifier operations reject dollar-prefixed left sides"
     "$x : Nat := 4"
-  assertRejected
-    "bare identifiers are not expressions"
-    "x"
+  assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -753,9 +760,8 @@ regressionTests = do
     "an escaped question mark is accepted as ordinary string text"
     "\"\\?\""
     (AsciiStringLiteral "?")
-  assertRejected
-    "unreserved alphabetic names are not simple interpolations"
-    "\"%abc\""
+  assertParsed "simple interpolation can reference the lexical scope" "\"%abc\""
+    (StringTemplate [StringTemplateInterpolation (IdentifierReference (IdentifierString "abc"))])
   assertParsed
     "a compact string can itself be interpolated"
     "\"%$abc\""
@@ -1124,9 +1130,11 @@ regressionTests = do
   assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
   assertRejected "IdentifierString rejects a missing body" "$"
   assertRejected "IdentifierString rejects a leading apostrophe" "$'bad"
-  assertRejected "IdentifierString rejects noncanonical continuation" "$bad-name"
+  assertParsed "a hyphen terminates a compact string and starts subtraction" "$bad-name"
+    (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (IdentifierString "name")))
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
-  assertRejected "StandardString rejects an unescaped percent sign" "\"bad%value\""
+  assertParsed "percent introduces a lexical interpolation" "\"bad%value\""
+    (StringTemplate [StringTemplateLiteral "bad", StringTemplateInterpolation (IdentifierReference (IdentifierString "value"))])
   assertRejected "StandardString rejects the obsolete dollar escape" "\"bad\\$value\""
   assertRejected "StandardString rejects an unterminated literal" "\"bad"
   assertRejected "ASCII strings reject characters outside the ASCII map" "\"λ\""
@@ -1141,13 +1149,12 @@ regressionTests = do
   assertRejected "prefix and postfix ranges cannot be chained" "(..2..)"
   assertRejected "adjacent range markers cannot be chained" "(1....2)"
   assertRejected "the old explicit plus spelling is rejected" "(1..+)"
-  assertRejected
-    "natural range origins must be literal EllipsisNaturals"
-    "range (1 + 2) to 5"
-  assertRejected
-    "natural range targets must be literal EllipsisNaturals"
-    "range 1 to (2 + 3)"
-  assertRejected "natural range keywords require separators" "range1to2"
+  assertParsed "AST range pattern captures an origin expression" "range (1 + 2) to 5"
+    (rangeCall "range" (Addition (natural 1) (natural 2)) (natural 5))
+  assertParsed "AST range pattern captures a target expression" "range 1 to (2 + 3)"
+    (rangeCall "range" (natural 1) (Addition (natural 2) (natural 3)))
+  assertParsed "range-like names remain whole references" "range1to2"
+    (IdentifierReference (IdentifierString "range1to2"))
   assertAstOutput
     "parentheses permit an explicitly nested range"
     "((1..2)..)"
@@ -1402,13 +1409,13 @@ assertAstOutput label source expected =
   case parseDatra ("(" <> source <> "\n)") of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right actual
-      | canonicalAst actual == canonicalAst expected ->
+      | canonicalAst actual == canonicalAst (sourceExpectation expected) ->
           assertAstRoundTrip label (renderExpression actual)
       | otherwise ->
           fail
             ( label
                 <> ": expected "
-                <> show (canonicalAst expected)
+                <> show (canonicalAst (sourceExpectation expected))
                 <> ", got "
                 <> show (canonicalAst actual)
             )
@@ -1443,7 +1450,7 @@ assertParsed label source expected =
   case parseDatra ("(" <> source <> "\n)") of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right actual
-      | actual == expected -> pure ()
+      | actual == sourceExpectation expected -> pure ()
       | otherwise ->
           fail
             ( label
@@ -1452,3 +1459,41 @@ assertParsed label source expected =
                 <> ", got "
                 <> show actual
             )
+
+-- Source names now resolve through standard_library.datra. Legacy canonical
+-- AST constructors remain supported by the AST reader independently.
+sourceExpectation :: Expression -> Expression
+sourceExpectation = migrate . mapExpressionChildren sourceExpectation
+  where
+    reference = IdentifierReference . IdentifierString
+    migrate NaturalType = reference "Nat"
+    migrate IntegerType = reference "Int"
+    migrate StringType = reference "String"
+    migrate IdentifierValueType = reference "Iden"
+    migrate BooleanType = reference "Bool"
+    migrate NothingLiteral = reference "nothing"
+    migrate (BooleanLiteral value) = reference (if value then "true" else "false")
+    migrate (NaturalRange a b) = ranged "range" (toInteger a) (integer (toInteger b))
+    migrate (NaturalRangeUpwards a) = ranged "range" (toInteger a) (AsciiStringLiteral "upwards")
+    migrate (ValuedNaturalRange a b) = ranged "from" (toInteger a) (integer (toInteger b))
+    migrate (ValuedNaturalRangeUpwards a) = ranged "from" (toInteger a) (AsciiStringLiteral "upwards")
+    migrate (IntegerRange a b) = ranged "range" a (integer b)
+    migrate (IntegerRangeUpwards a) = ranged "range" a (AsciiStringLiteral "upwards")
+    migrate (IntegerRangeDownwards a) = ranged "range" a (AsciiStringLiteral "downwards")
+    migrate (ValuedIntegerRange a b) = ranged "from" a (integer b)
+    migrate (ValuedIntegerRangeUpwards a) = ranged "from" a (AsciiStringLiteral "upwards")
+    migrate (ValuedIntegerRangeDownwards a) = ranged "from" a (AsciiStringLiteral "downwards")
+    migrate value = value
+    integer n | n < 0 = Minus (EllipsisNatural (fromInteger (negate n)))
+              | otherwise = EllipsisNatural (fromInteger n)
+    ranged name start end = rangeCall name (integer start) end
+
+rangeCall :: String -> Expression -> Expression -> Expression
+rangeCall name start end = FunctionApplication
+  (scoped (MapSpecification (External (AsciiStringLiteral ("datra." <> name)))
+    (FunctionType (MapConcatenation (ref "Int") (ref endpointType)) (ref "IntRange"))))
+  (AtlasMap [MapSpecification start (scoped (ref "Int")), MapSpecification end (scoped (ref endpointType))])
+  where
+    ref = IdentifierReference . IdentifierString
+    scoped = InModule "standard_library"
+    endpointType = case end of AsciiStringLiteral _ -> "_Wards"; _ -> "Int"

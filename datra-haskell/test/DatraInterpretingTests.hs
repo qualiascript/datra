@@ -27,6 +27,7 @@ import Interpreting
   , InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
+  , interpretWithImports
   , interpretExpressionReason
   , interpretLocatedExpression
   , canonicalStringCodec
@@ -72,7 +73,9 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
-import Parsing (parseDatra)
+import Parsing (parseDatra, parseDatraLocatedWithSyntaxImports)
+import ModuleLoading (loadImports, importSyntax)
+import ModuleNames (moduleIdentifier)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -94,6 +97,13 @@ testTree =
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
         , testCase "string templates" testStringTemplates
+        , testCase "named field access" testNamedAccess
+        , testCase "qualified library syntax" testQualifiedSyntax
+        , testCase "functions and externals" testFunctions
+        , testCase "module imports and private helpers" testModules
+        , testCase "scope values and explicit syntax sums" testScopeSums
+        , testCase "declared AST patterns" testDeclaredPatterns
+        , testCase "library syntax and range types" testLibraryTypes
         , testCase "argument maps" testArgumentMaps
         , testCase "argument maps in concatenation" testArgumentMapConcatenation
         , testCase "argument maps in string templates" testArgumentMapTemplates
@@ -641,18 +651,18 @@ testEval = do
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
     assert (source <> ": eval result: " <> renderInterpretedValue value)
       (renderInterpretedValue value == expected))
-    [ ("eval \"12\", Int", "12 ~> Int")
-    , ("eval \"alco\", Iden", "$alco ~> Iden")
-    , ("eval \"hello world\", String", "\"hello world\" ~> String")
-    , ("eval (\"1\", \"2\"), Int", "12 ~> Int")
-    , ("eval \"x : 3, (b : 8; 2)\", x : 3; {a? : Nat := 2, b? : Nat}",
+    [ ("eval \"12\" at Int", "12 ~> Int")
+    , ("eval \"alco\" at Iden", "$alco ~> Iden")
+    , ("eval \"hello world\" at String", "\"hello world\" ~> String")
+    , ("eval (\"1\", \"2\") at Int", "12 ~> Int")
+    , ("eval \"x : 3, (b : 8; 2)\" at x : 3; {a? : Nat := 2, b? : Nat}",
        "x : 3, (b : 8; 2) ~> (x : 3; {a? : Nat := 2, b? : Nat})")
-    , ("(eval \"(b : 8; 2)\", {a? : Nat, b? : Nat})[1] * 5", "10")
-    , ("(eval \"2\", Nat) ~> Int", "2 ~> Int")
-    , ("Int <~ (eval \"2\", Nat)", "2 ~> Int")
-    , ("(eval \"2\", Nat) of Int", "true")
-    , ("(eval \"(2; b : 8)\", {a? : Nat, b? : Nat}) of {b? : Int, a? : Int}", "true")
-    , ("(eval \"12\", Int) = %(\"12\" ~> \"%Int\")[1]", "true")
+    , ("(eval \"(b : 8; 2)\" at {a? : Nat, b? : Nat})[1] * 5", "10")
+    , ("(eval \"2\" at Nat) ~> Int", "2 ~> Int")
+    , ("Int <~ (eval \"2\" at Nat)", "2 ~> Int")
+    , ("(eval \"2\" at Nat) of Int", "true")
+    , ("(eval \"(2; b : 8)\" at {a? : Nat, b? : Nat}) of {b? : Int, a? : Int}", "true")
+    , ("(eval \"12\" at Int) = %(\"12\" ~> \"%Int\")[1]", "true")
     ]
   mapM_ (\source -> expectSourceRejection source source
     (\case
@@ -661,11 +671,11 @@ testEval = do
       AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
       _ -> False))
-    [ "eval \"nope\", Nat"
-    , "eval \"1 + 2\", Nat"
-    , "eval \"(c : 8; 2)\", {a? : Nat, b? : Nat}"
-    , "eval \"(2; 8)\", {a : Nat, b : Nat}"
-    , "eval 12, Nat"
+    [ "eval \"nope\" at Nat"
+    , "eval \"1 + 2\" at Nat"
+    , "eval \"(c : 8; 2)\" at {a? : Nat, b? : Nat}"
+    , "eval \"(2; 8)\" at {a : Nat, b : Nat}"
+    , "eval 12 at Nat"
     ]
 
 testBegin :: IO ()
@@ -693,7 +703,7 @@ testBegin = do
     , ("begin a : (begin b : 2 yield b + 1) yield a * 2", 6)
     , ("begin yield 11", 11)
     , ("(begin a : 6 yield a) + 5", 11)
-    , ("begin T : Int yield (eval \"12\", T) + 0", 12)
+    , ("begin T : Int yield (eval \"12\" at T) + 0", 12)
     , ("begin a : 6 yield %(\"%Nat\" <~ \"6\")[1] + a", 12)
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
@@ -776,34 +786,34 @@ testEvalBackedKeywords = do
     , ("if false then (1 and false) else 9", "9")
     , ("if false then (1 and false)", "()")
     , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
-    , ("%(eval \"from 2 to 5\", \"from %Int to %Int\")[1]", "2 ~> Int")
-    , ("%(eval \"from 2 to 5\", \"from %Int to %Int\")[2]", "5 ~> Int")
-    , ("%(eval \"range -3 downwards\", \"range %Int downwards\")[1]", "-3 ~> Int")
-    , ("%(eval \"if true then\", \"if %Bool then\")[1]", "true ~> Bool")
+    , ("%(eval \"from 2 to 5\" at \"from %Int to %Int\")[1]", "2 ~> Int")
+    , ("%(eval \"from 2 to 5\" at \"from %Int to %Int\")[2]", "5 ~> Int")
+    , ("%(eval \"range -3 downwards\" at \"range %Int downwards\")[1]", "-3 ~> Int")
+    , ("%(eval \"if true then\" at \"if %Bool then\")[1]", "true ~> Bool")
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
     assert ("keyword forms compose with identifiers, specification, and inclusion: " <> source)
       (renderInterpretedValue value == "true"))
-    [ "(eval \"from 2 to 5\", \"from %Int to %Int\") = (\"from 2 to 5\" ~> \"from %Int to %Int\")"
+    [ "(eval \"from 2 to 5\" at \"from %Int to %Int\") = (\"from 2 to 5\" ~> \"from %Int to %Int\")"
     , "(2 ~> from 0 to 5) of from -1 to 8"
     , "(from 0 to 5 <~ 2) = (2 ~> from 0 to 5)"
     , "(2..3 ~> range 0 to 5) of range 0 to 8"
     , "(range 0 to 5 <~ 2..3) = (2..3 ~> range 0 to 5)"
     , "(2, b : 5) of (a? : from 0 to 8, b? : from 0 to 8)"
-    , "(eval \"(b : 5; 2)\", {a? : from 0 to 8, b? : from 0 to 8}) of {b? : Int, a? : Int}"
+    , "(eval \"(b : 5; 2)\" at {a? : from 0 to 8, b? : from 0 to 8}) of {b? : Int, a? : Int}"
     , "(if true then 2 else (1 and false)) of from 0 to 5"
     , "((if false then (1 and false) else 2) ~> from 0 to 5) of Int"
     , "(from 0 to 5 <~ (if true then 2 else (1 and false))) = (2 ~> from 0 to 5)"
     , "(if true then (b? : from 0 to 5 := 2) else (1 and false)) of (b? : Int)"
     ]
   expectSourceRejection "keyword schema rejects an invalid bound"
-    "eval \"from nope to 5\", \"from %Int to %Int\""
+    "eval \"from nope to 5\" at \"from %Int to %Int\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
   expectSourceRejection "keyword schema rejects an invalid condition"
-    "eval \"if 1 then\", \"if %Bool then\""
+    "eval \"if 1 then\" at \"if %Bool then\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
@@ -2961,6 +2971,15 @@ testSpecification = do
 
 testIdentifiers :: IO ()
 testIdentifiers = do
+  mapM_ (\name -> mapM_ (\source ->
+      expectSourceValue source source $ \value ->
+        assert source (renderInterpretedValue value == "true"))
+      [ "$" <> name <> " = (" <> name <> " : ())"
+      , "$" <> name <> " of (" <> name <> " : ())"
+      , "(" <> name <> " : ()) of $" <> name
+      , "($" <> name <> " ~> (" <> name <> " : ())) = $" <> name
+      , "($" <> name <> " ~> (" <> name <> "? : ())) of (" <> name <> "? : ())"
+      ]) ["abc", "Value", "_private", "Nothing"]
   let identifier identifierString typeAnnotation =
         IdentifierOperation
           (IdentifierString identifierString)
@@ -2998,7 +3017,7 @@ testIdentifiers = do
       "quoted reserved identifier"
       (identifier "String" NaturalType) $ \value ->
     assert "reserved identifier names render with their full-string spelling"
-      (renderInterpretedValue value == "\"String\" : Nat")
+      (renderInterpretedValue value == "String : Nat")
   expectValue "unit identifier" valueUnit $ \value ->
     assert "a unit identifier canonicalizes to its identifier string"
       ( interpretedValueKind value == AsciiStringValueKind
@@ -3498,3 +3517,162 @@ testLocatedRejection = do
               <> "  al doilea interval: 4..7\n"
               <> "  suprapunere: 4..5 (limita superioară este exclusă)"
       Right _ -> False)
+
+
+testNamedAccess :: IO ()
+testNamedAccess = do
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
+      assert (source <> " preserves the selected field") (renderInterpretedValue value == expected))
+    [ ("{a : Nat := 5, b : String}.a", "a : Nat := 5")
+    , ("{b : String, a : Nat := 5}.a", "a : Nat := 5")
+    , ("{a? : Nat := 5, b : String}.a", "a : Nat := 5")
+    , ("({b:8,2} ~> {a?:Nat:=2,b?:Nat}).b", "b : Nat := 8")
+    , ("{a:Nat:=5,b:String}.a of (a:Nat)", "true")
+    , ("{a:Nat:=5,b:String}.a ~> (a:Int)", "a : Int := 5")
+    , ("(x:3, {a:5,b:8}).b", "b : 8")
+    , ("{a:5,b:8}.a[1] * 2", "10")
+    ]
+  mapM_ (\source -> expectSourceRejection source source (\case NamedAccessError _ -> True; _ -> False))
+    ["{a:2,b:3}.missing", "{a:2,a:3}.a", "{}.a"]
+
+testQualifiedSyntax :: IO ()
+testQualifiedSyntax = mapM_ (\(source, expected) ->
+  expectSourceValue source source $ \value -> assert source (renderInterpretedValue value == expected))
+  [ ("StandardLibrary.if false then (1 + \"bad\") else 11", "11")
+  , ("StandardLibrary.from (1 + 1) to 5", "from 2 to 5")
+  , ("StandardLibrary.range 2 downwards", "range 2 downwards")
+  , ("StandardLibrary.eval \"12\" at Int", "12 ~> Int")
+  , ("StandardLibrary.true", "true : true")
+  ]
+
+testFunctions :: IO ()
+testFunctions = do
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value -> assert source (takeWhile (/= '<') (renderInterpretedValue value) == expected <> " " || renderInterpretedValue value == expected))
+    [ ("begin f := ({a?:Int,b?:Int} -> Int do yield a+b) yield f (b:5;6)", "11")
+    , ("begin f := (do yield a+b) yield f (6;5)", "11")
+    , ("begin offset:=3; f := (do yield a+offset) yield f 8", "11")
+    , ("begin f := external (backend:\"haskell\";symbol:\"datra.add\") yield f (b:5;6)", "11")
+    , ("(Int -> Nat) of (Nat -> Int)", "true")
+    , ("(Nat -> Int) of (Int -> Nat)", "false")
+    ]
+  mapM_ (\source -> expectSourceRejection source source (const True))
+    [ "begin f := ({a?:Int,b?:Int} -> Int do yield a+b) yield f (5;6)"
+    , "begin f := ({a?:Int} -> String do yield a+1) yield f 5"
+    , "external (backend:\"missing\";symbol:\"datra.add\")"
+    , "external (backend:\"haskell\";symbol:\"missing\")"
+    ]
+
+
+testModules :: IO ()
+testModules = do
+  assert "snake-case module namespace" (moduleIdentifier "path/standard_library.datra" == "StandardLibrary")
+  mapM_ (\(source,expected) -> do
+      actual <- run source
+      case actual of
+        Right value -> assert source (renderInterpretedValue value == expected)
+        Left message -> fail (source <> ": " <> message))
+    [ ("import \"library_one\"\nyield LibraryOne.x", "x : 7")
+    , ("import all \"library_one\"\nyield x", "7")
+    , ("import \"library_one\"\nimport \"library_two\"\nyield LibraryOne.x[1] + LibraryTwo.x[1]", "16")
+    , ("import \"library_one\"\nyield LibraryOne.increment 7", "11")
+    , ("import \"library_one\"\nyield LibraryOne.shift 7", "11")
+    , ("import all \"library_one\"\nyield shift 7", "11")
+    , ("import \"nested\"\nyield Nested.x", "x : 8")
+    , ("import all \"explicit_exports\"\nyield public", "7")
+    , ("import all \"standard_library\"\nyield StandardLibrary.if true then 11 else (1+\"bad\")", "11")
+    ]
+  mapM_ (\source -> run source >>= \actual -> case actual of
+      Left _ -> pure ()
+      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
+    [ "import \"library_one\"\nyield x"
+    , "import all \"library_one\"\nimport all \"library_two\"\nyield x"
+    , "import \"library_one\"\nyield LibraryOne._offset"
+    , "import all \"library_one\"\nyield _offset"
+    , "import \"explicit_exports\"\nyield ExplicitExports._hidden"
+    , "import \"explicit_exports\"\nyield ExplicitExports.hidden 1 plus"
+    , "import \"cycle_a\""
+    , "import \"missing\""
+    ]
+  where
+    run source = do
+      loaded <- loadImports "test/fixtures/modules/main.datra" source
+      pure $ do
+        imports <- loaded
+        located <- parseDatraLocatedWithSyntaxImports (importSyntax imports) "main.datra" source
+        let Located _ expression = located
+        either (Left . show) Right (interpretWithImports imports expression)
+
+
+testScopeSums :: IO ()
+testScopeSums = do
+  mapM_ (\(source,expected) -> program source $ \value -> assert source (renderInterpretedValue value == expected))
+    [ ("a:=5\nb:=8\nyield this.a", "a : 5")
+    , ("_private:=3\na:=5\nyield this", "a : 5")
+    , ("a:=5\nyield this.a of (a?:Nat)", "true")
+    , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
+    , ("yield from (2,5)", "from 2 to 5")
+    , ("yield from (2,$upwards)", "from 2 upwards")
+    , ("f := external \"datra.add\"\nyield f (b:5;6)", "11")
+    , ("f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\nyield f (x:3,b:5,6)", "14")
+    ]
+  program "yield StandardLibrary.if" $ \value ->
+    assert "qualified if is one field with two sum alternatives" (length (Types.functionAlternatives value) == 2)
+  program "yield if" $ \value ->
+    assert "bare if resolves the same function sum" (length (Types.functionAlternatives value) == 2)
+  mapM_ (\source -> case parseDatra source of
+      Left failure -> fail failure
+      Right expression -> case interpretExpressionReason expression of
+        Left _ -> pure ()
+        Right _ -> fail ("expected rejection: " <> source))
+    [ "_private:=3\na:=5\nyield this._private"
+    , "a:=5\na:=8\nyield this"
+    , "f := ({x?:Int} -> Int do yield x+1)\ng := (f ~> ({x?:Nat} -> Int))\nyield g (-1)"
+    , "yield external \"missing.symbol\""
+    ]
+  where
+    program source check = case parseDatra source of
+      Left failure -> fail failure
+      Right expression -> expectValue source expression check
+
+testLibraryTypes :: IO ()
+testLibraryTypes = mapM_ (\source -> expectSourceValue source source $ \value -> assert source (renderInterpretedValue value == "true"))
+  [ "$Nothing = (Nothing : ())"
+  , "nothing = $Nothing"
+  , "NatRange of IntRange"
+  , "not (IntRange of NatRange)"
+  , "from 2 to 5 of NatRange"
+  , "range 2 upwards of NatRange"
+  , "not (from (-2) to 5 of NatRange)"
+  , "(from 2 to 5 ~> NatRange) of IntRange"
+  , "Expr of AST"
+  , "Block of AST"
+  , "Pages of AST"
+  , "not (Block of Expr)"
+  , "(Expr ~> AST) of AST"
+  , "\"%Int %Iden\" of StringTemplate"
+  , "(\"%Int %Iden\" ~> StringTemplate) of StringTemplate"
+  , "not (2 of StringTemplate)"
+  , "String of StringTemplate"
+  ]
+
+testDeclaredPatterns :: IO ()
+testDeclaredPatterns = do
+  let declaration = "step : \"$Nat next\" as ({value?:Int} -> Int) := (do yield value+1)\n"
+      ordinaryDeclaration = "step : \"$Nat next\" as? ({value?:Int} -> Int) := (do yield value+1)\n"
+      run source = parseDatra source >>= either (Left . show) Right . interpretExpressionReason
+  mapM_ (\(source, expected) -> case run source of
+      Left failure -> fail (source <> ": " <> failure)
+      Right value -> assert source (renderInterpretedValue value == expected))
+    [ (declaration <> "yield step (1+1) next", "3")
+    , (ordinaryDeclaration <> "yield step (value:2)", "3")
+    , (declaration <> "yield step of ({value?:Nat} -> Int)", "true")
+    , (ordinaryDeclaration <> "f := (step ~> ({value?:Nat} -> Int))\nyield f 2", "3")
+    ]
+  mapM_ (\source -> case run source of
+      Left _ -> pure ()
+      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
+    [ declaration <> "yield step (-1) next"
+    , declaration <> "yield step 2"
+    , declaration <> declaration <> "yield this"
+    , "step := ((\"$Int next\" as (Int -> Int) external \"datra.abs\") | (\"$Int next\" as (Int -> Int) do yield 2))\nyield step 3 next"
+    ]

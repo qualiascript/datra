@@ -16,6 +16,8 @@ extra-doc-files:
     README.md
     NOTICE
 extra-source-files:
+    standard_library.datra
+    test/fixtures/modules/*.datra
     src/DatraCore/LiquidPlugin.h
 
 common warnings
@@ -292,13 +294,21 @@ executable datra-haskell
     main-is:          Main.hs
     other-modules:
         Interpreting
+        FunctionArguments
+        ModuleNames
+        ModuleLoading
+        FunctionInference
+        StandardLibrary
+        SyntaxDefinitions
         Parsing
         Rendering
     build-depends:
         base >= 4.14 && < 5,
         datra-haskell,
         filepath >= 1.4 && < 1.6,
+        directory >= 1.3 && < 1.4,
         megaparsec >= 9.8 && < 10,
+        template-haskell,
         optparse-applicative >= 0.18 && < 0.20,
         parser-combinators >= 1.3 && < 2,
         prettyprinter >= 1.7 && < 1.8,
@@ -338,8 +348,13 @@ test-suite datra-parsing-test
     main-is:          DatraParsingTests.hs
     other-modules:
         Parsing
+        StandardLibrary
+        SyntaxDefinitions
+        ModuleNames
     ghc-options:      -main-is DatraParsingTests.main
     build-depends:
+        template-haskell,
+        filepath,
         base >= 4.14 && < 5,
         datra-haskell,
         megaparsec >= 9.8 && < 10,
@@ -357,10 +372,19 @@ test-suite datra-interpreting-test
     main-is:          DatraInterpretingTests.hs
     other-modules:
         Interpreting
+        FunctionArguments
+        ModuleNames
+        ModuleLoading
+        FunctionInference
+        StandardLibrary
+        SyntaxDefinitions
         Parsing
         Rendering
     ghc-options:      -main-is DatraInterpretingTests.main
     build-depends:
+        filepath,
+        directory,
+        template-haskell,
         base >= 4.14 && < 5,
         datra-haskell,
         megaparsec >= 9.8 && < 10,

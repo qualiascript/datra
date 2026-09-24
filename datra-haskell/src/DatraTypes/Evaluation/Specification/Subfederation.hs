@@ -28,6 +28,23 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | EitherForm alternatives <- interpretedForm source, not (null (functionAlternatives source)) =
+      decideAllEitherAlternatives alternatives target
+  | EitherForm alternatives <- interpretedForm target, not (null (functionAlternatives target)) =
+      decideAnyEitherAlternative source alternatives
+  | BuiltinMetaTypeForm kind <- interpretedForm target = decideMetaType source kind
+  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
+  | Just sourceFunction <- interpretedFunction source
+  , Just targetFunction <- interpretedFunction target =
+      if not (patternCompatible (functionPattern sourceFunction) (functionPattern targetFunction))
+        then DecisionRefuted else case functionSource targetFunction of
+        Just _ -> DecisionUndecidable
+        Nothing -> mapDecision (const ()) (decideAll
+          [ decideValueSubfederation (functionDomain targetFunction) (functionDomain sourceFunction)
+          , decideValueSubfederation (functionCodomain sourceFunction) (functionCodomain targetFunction)
+          ])
+  | Just _ <- interpretedFunction source = DecisionRefuted
+  | Just _ <- interpretedFunction target = DecisionRefuted
   | ArgumentMapForm _ underlying <- interpretedForm source =
       decideValueSubfederation underlying target
   | ArgumentMapForm _ underlying <- interpretedForm target =
@@ -42,6 +59,9 @@ decideValueSubfederation source target
       decideValueSubfederation
         (evaluatedSpecificationTarget assignment)
         target
+  | Just sourceMembers <- sequenceOperands source
+  , Just targetMembers <- sequenceOperands target =
+      decidePointwiseSubfederation (Just sourceMembers) (Just targetMembers)
   | interpretedValueHasTotalMap source =
       mapDecision (const ()) (selectFederationMember source target)
   | otherwise =
@@ -211,3 +231,26 @@ decideCoalitionComponents sourceMembers targetMembers =
 valueIsCoalition :: InterpretedValue -> Bool
 valueIsCoalition =
   federationIsCoalition . interpretedAtlasMapFederation
+
+patternCompatible :: Maybe (String, Bool) -> Maybe (String, Bool) -> Bool
+patternCompatible _ Nothing = True
+patternCompatible (Just source) (Just target) = source == target
+patternCompatible Nothing (Just _) = False
+
+
+decideMetaType :: InterpretedValue -> BuiltinMetaType -> Decision ()
+decideMetaType source target =
+  if accepted then DecisionProved () else DecisionRefuted
+  where
+    accepted = case (interpretedForm source, target) of
+      (BuiltinMetaTypeForm actual, expected) | actual == expected -> True
+      (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType Nothing) -> True
+      (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True
+      (NaturalRangeForm _, NatRangeMetaType) -> True
+      (ValuedNaturalRangeForm _, NatRangeMetaType) -> True
+      (NaturalRangeForm _, IntRangeMetaType) -> True
+      (ValuedNaturalRangeForm _, IntRangeMetaType) -> True
+      (IntegerRangeForm _, IntRangeMetaType) -> True
+      (ValuedIntegerRangeForm _, IntRangeMetaType) -> True
+      (_, StringTemplateMetaType) -> federationProducesStrings (interpretedAtlasMapFederation source)
+      _ -> False

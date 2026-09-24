@@ -4,7 +4,20 @@
 -- Constructors stay internal; the public 'DatraTypes' module exposes only the
 -- observations and checked operations needed by the AST interpreter.
 module Evaluation.Value
-  ( ExplicitOrigin (..)
+  ( BuiltinMetaType (..)
+  , EvaluatedFunction (..)
+  , makeFunctionValue
+  , syntaxCategoryTypeValue
+  , astTypeValue
+  , functionAlternatives
+  , stringTemplateTypeValue
+  , builtinMetaTypeName
+  , naturalRangeTypeValue
+  , integerRangeTypeValue
+  , functionSignature
+  , callableFunction
+  , interpretedFunction
+  , ExplicitOrigin (..)
   , EvaluatedExplicit (..)
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
@@ -75,7 +88,7 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
-import Evaluation.Error (InterpretedValueKind (..))
+import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues
@@ -244,8 +257,73 @@ data EvaluatedSpecification = EvaluatedSpecification
   , evaluatedSpecificationMember :: EvaluatedAtlasMapFederationMember
   }
 
+data EvaluatedFunction = EvaluatedFunction
+  { functionDomain :: InterpretedValue
+  , functionCodomain :: InterpretedValue
+  , functionPattern :: Maybe (String, Bool)
+  , functionSource :: Maybe String
+  , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
+  }
+
+makeFunctionValue :: EvaluatedFunction -> InterpretedValue
+makeFunctionValue function = makeInterpretedValue
+  (FunctionForm function) NoInsertion emptyInterpretedMap
+  (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
+  (FunctionSemantics (interpretedSemantics (functionDomain function))
+    (interpretedSemantics (functionCodomain function)) (functionPattern function) (functionSource function))
+
+interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
+interpretedFunction value = case interpretedForm value of
+  FunctionForm function -> Just function
+  _ -> Nothing
+
+callableFunction :: InterpretedValue -> Maybe EvaluatedFunction
+callableFunction value = case interpretedForm value of
+  IdentifierTypeForm identifier -> callableFunction (evaluatedIdentifierUnderlying identifier)
+  AssignmentForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
+  SpecificationForm specification -> callableFunction (evaluatedSpecificationSourceValue specification)
+  _ -> interpretedFunction value
+
+functionSignature :: InterpretedValue -> Maybe (InterpretedValue, InterpretedValue)
+functionSignature value = (\function -> (functionDomain function, functionCodomain function)) <$> callableFunction value
+
+functionAlternatives :: InterpretedValue -> [EvaluatedFunction]
+functionAlternatives value = case interpretedForm value of
+  EitherForm alternatives -> functionAlternatives (evaluatedEitherLeft alternatives) <> functionAlternatives (evaluatedEitherRight alternatives)
+  IdentifierTypeForm identifier -> functionAlternatives (evaluatedIdentifierUnderlying identifier)
+  AssignmentForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
+  SpecificationForm specification -> functionAlternatives (evaluatedSpecificationSourceValue specification)
+  FunctionForm function -> [function]
+  _ -> []
+
+-- Shared representation for host-provided type families. These are types of
+-- runtime values, not empty maps; their membership is checked explicitly.
+data BuiltinMetaType = ASTMetaType (Maybe String) | NatRangeMetaType | IntRangeMetaType | StringTemplateMetaType
+  deriving (Eq, Show)
+
+builtinMetaTypeName :: BuiltinMetaType -> String
+builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
+builtinMetaTypeName NatRangeMetaType = "NatRange"
+builtinMetaTypeName IntRangeMetaType = "IntRange"
+builtinMetaTypeName StringTemplateMetaType = "StringTemplate"
+
+builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
+builtinMetaTypeValue kind = makeInterpretedValue (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
+  (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
+
+astTypeValue, naturalRangeTypeValue, integerRangeTypeValue, stringTemplateTypeValue :: InterpretedValue
+astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
+naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
+integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
+stringTemplateTypeValue = builtinMetaTypeValue StringTemplateMetaType
+
+syntaxCategoryTypeValue :: String -> InterpretedValue
+syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType . Just
+
 data ValueForm
-  = ExplicitForm EvaluatedExplicit
+  = BuiltinMetaTypeForm BuiltinMetaType
+  | FunctionForm EvaluatedFunction
+  | ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
   | BooleanForm DatraBoolean
   | NothingForm
@@ -331,7 +409,9 @@ type InterpretedAtlasMapFederation =
 -- erased. Evaluation modules inspect this structure; presentation is derived
 -- separately as 'CanonicalResult'.
 data ValueSemantics
-  = ExplicitSemantics Natural Ordinal
+  = BuiltinMetaTypeSemantics BuiltinMetaType
+  | FunctionSemantics ValueSemantics ValueSemantics (Maybe (String, Bool)) (Maybe String)
+  | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
   | FormulationSemantics Natural
   | RangeSemantics Range.SuperEllipsisRangeDescription
@@ -369,7 +449,9 @@ data ValueSemantics
 
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
-  = CanonicalExplicit Natural Ordinal
+  = CanonicalBuiltinMetaType BuiltinMetaType
+  | CanonicalFunction CanonicalResult CanonicalResult (Maybe (String, Bool)) (Maybe String)
+  | CanonicalExplicit Natural Ordinal
   | CanonicalInteger Integer
   | CanonicalFormulation Natural
   | CanonicalRange Range.SuperEllipsisRangeDescription
@@ -466,6 +548,8 @@ interpretedCanonicalResult = canonicalResult . interpretedSemantics
 canonicalResult :: ValueSemantics -> CanonicalResult
 canonicalResult semantics =
   case semantics of
+    BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
+    FunctionSemantics input output patternInfo body -> CanonicalFunction (canonicalResult input) (canonicalResult output) patternInfo body
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
     FormulationSemantics level -> CanonicalFormulation level
@@ -604,6 +688,10 @@ optionalAssignmentValue identifierString typeAnnotation source =
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
+    BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
+    BuiltinMetaTypeForm StringTemplateMetaType -> AsciiStringValueKind
+    BuiltinMetaTypeForm _ -> RangeValueKind
+    FunctionForm _ -> FunctionValueKind
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
     ExplicitForm _ -> ExplicitOrdinalValueKind
     IntegerForm _ -> IntegerValueKind

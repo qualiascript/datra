@@ -40,6 +40,10 @@ alternativesArePairwiseDistinct (member : remaining) =
 alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
   | interpretedCanonicalResult left == interpretedCanonicalResult right = False
+  | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
+      case (functionPattern a, functionPattern b) of
+        (Just (p,_), Just (q,_)) | p /= q -> True
+        _ -> alternativesAreDistinct (functionDomain a) (functionDomain b)
   | ArgumentMapForm _ underlying <- interpretedForm left =
       alternativesAreDistinct underlying right
   | ArgumentMapForm _ underlying <- interpretedForm right =
@@ -71,6 +75,8 @@ alternativesAreDistinct left right
   | EitherForm rightEither <- interpretedForm right =
       alternativesAreDistinct left (evaluatedEitherLeft rightEither)
         && alternativesAreDistinct left (evaluatedEitherRight rightEither)
+  | Just _ <- interpretedFunction left = True
+  | Just _ <- interpretedFunction right = True
   | Just leftMembers <- sequenceOperands left
   , Just rightMembers <- sequenceOperands right =
       length leftMembers /= length rightMembers

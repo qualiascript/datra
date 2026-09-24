@@ -1,6 +1,7 @@
 -- | Checked access through an evaluated insertion capability.
 module Evaluation.Access
-  ( accessValues
+  ( namedAccessValue
+  , accessValues
   ) where
 
 import DatraOrdinal
@@ -371,3 +372,53 @@ accessMap sourceMap insertion
               . ordinalOrderedValueAt selectedValues
               . finiteOrdinal)
             [0 .. cardinality - 1]
+
+-- | Select a named page without discarding its identifier or specification.
+-- Inspect argument-map slots directly: permutation expansion is unnecessary
+-- when selection is by name, and optional names retain their named branch.
+namedAccessValue :: InterpretedValue -> String -> Either InterpretingError InterpretedValue
+namedAccessValue source name = do
+  selected <- candidates source
+  case selected of
+    [] -> Left (NamedAccessError ("no field named " <> name))
+    [value] -> Right value
+    _ -> Left (NamedAccessError ("ambiguous field named " <> name))
+  where
+    candidates value
+      | matchesName (interpretedCanonicalResult value) = Right [value]
+      | otherwise = case interpretedForm value of
+          IdentifierTypeForm _ -> Right []
+          AssignmentForm _ -> Right []
+          ArgumentMapForm members _ -> concat <$> traverse candidates members
+          EitherForm alternatives -> do
+            values <- concat <$> traverse candidates
+              [evaluatedEitherLeft alternatives, evaluatedEitherRight alternatives]
+            case values of
+              [] -> Right []
+              _ -> (:[]) <$> makeDistinctUnion values
+          FederationSpecificationForm _ _ branches -> do
+            values <- traverse (`namedAccessValue` name) branches
+            (:[]) <$> makeDistinctUnion values
+          SpecificationForm specification -> do
+            let original = evaluatedSpecificationSourceValue specification
+                target = evaluatedSpecificationTarget specification
+            originalField <- namedAccessValue original name
+            targetFields <- candidates target
+            case targetFields of
+              [] -> pure [originalField]
+              [targetField] -> (:[]) <$> specifyValues originalField targetField
+              _ -> Left (NamedAccessError ("ambiguous field named " <> name))
+          ConcatenatedMapForm left right -> (<>) <$> candidates left <*> candidates right
+          SequentialMapForm -> pages value
+          MapForm -> pages value
+          _ -> Right []
+    pages value = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
+      Just count -> concat <$> traverse (\index -> case interpretedMapValueAt (interpretedMap value) (finiteOrdinal index) of
+          Nothing -> Left (NamedAccessError "field map is not inspectable")
+          Just field -> candidates field) (if count == 0 then [] else [0 .. count - 1])
+      Nothing -> Left (NamedAccessError "named access requires a finite map")
+    matchesName canonical = case canonical of
+      CanonicalIdentifierType actual _ -> actual == name
+      CanonicalAssignment actual _ _ -> actual == name
+      CanonicalSpecification original _ -> matchesName original
+      _ -> False

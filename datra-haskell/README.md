@@ -233,7 +233,7 @@ lists can therefore be expensive.
 
 ### Typed evaluation
 
-`eval source, target` decodes canonical text against a target federation and
+`eval source at target` decodes canonical text against a target federation and
 returns the captured value with its specification. Non-string targets use
 the matching and extraction machinery of `%(source ~> "%(target)")[1]`
 (where `source` and `target` stand for expressions). A string-template target
@@ -242,40 +242,139 @@ extract all its captures.
 
 ```sh
 ./dist/datra-haskell build \
-  --source '(eval "x : 3, (b : 8; 2)", x : 3; {a? : Nat := 2, b? : Nat})' \
+  --source '(eval "x : 3, (b : 8; 2)" at x : 3; {a? : Nat := 2, b? : Nat})' \
   --ast-output - \
   --output -
 ```
 
-The first comma separates the input expression from the target. Semicolons
-and newlines after that comma belong to the target map, through the end of
+The `at` keyword separates the input expression from the target. Semicolons
+and newlines after `at` belong to the target map, through the end of
 the enclosing expression. Parenthesize `eval` when applying another operator
 to its result:
 
 ```datra
-(eval "(b : 8; 2)", {a? : Nat, b? : Nat})[1] * 5
+(eval "(b : 8; 2)" at {a? : Nat, b? : Nat})[1] * 5
 ```
 
 This produces `10`. Optional identifiers, specification, and subfederation
 retain their ordinary semantics. Input must use canonical data spelling:
-`eval "12", Int` succeeds, while `eval "1 + 2", Nat` is rejected.
+`eval "12" at Int` succeeds, while `eval "1 + 2" at Nat` is rejected.
 
-`from` and `range` use this same evaluator internally: their normalized
-keyword text is matched against typed templates such as `"from %Int to %Int"`
-and `"range %Int downwards"`. The extracted bounds feed the existing range
-constructors. Natural-only forms use `%Nat`. `if` matches its evaluated
-condition against `"if %Bool then"`; its branch expressions remain deferred,
-and only the selected branch is evaluated. The parser still handles syntax
-boundaries, comments, and literal normalization.
+`from`, `range`, and control forms are declared with AST patterns in
+`standard_library.datra`. `$Int` captures an expression whose value is checked
+when called; `%Int` remains string-template interpolation. These are separate
+operations: AST patterns do not format and reparse an expression as text.
+`if` retains its unevaluated branches and evaluates only the selected branch.
 
 You can inspect the same template captures explicitly:
 
 ```datra
-%(eval "from 2 to 5", "from %Int to %Int")[1]
-%(eval "from 2 to 5", "from %Int to %Int")[2]
+%(eval "from 2 to 5" at "from %Int to %Int")[1]
+%(eval "from 2 to 5" at "from %Int to %Int")[2]
 ```
 
 These produce `2 ~> Int` and `5 ~> Int` respectively.
+
+### Functions, syntax patterns, and external symbols
+
+`A -> B` is a function type. A typed `do` block supplies its implementation:
+
+```datra
+add := ({a? : Int, b? : Int} -> Int do yield a + b)
+yield add (b : 5; 6)
+```
+
+The result is `11`. Application is written `f input` and binds before arithmetic.
+Parenthesize a named domain, or use braces, to distinguish it from an identifier
+whose annotation is itself a function type. Ordered pages retain their order;
+argument-map segments admit permutations. Optional names are imported into the
+body even when omitted by the caller. Ambiguous assignments are rejected.
+
+An untyped block such as `add := (do yield a + b)` infers its unresolved numeric
+parameters and captures existing lexical bindings. Inference is conservative:
+unconstrained parameters and unsupported constraints require an explicit type.
+Function specification checks input contravariance and output covariance;
+`of` uses the same relation. Implementations are not tested on sample inputs to
+establish their type.
+
+Registered Haskell implementations and primitive types use a symbol string:
+
+```datra
+add := external "datra.add"
+yield add (b : 5; 6)
+```
+
+Unknown symbols are errors. External implementations are registered in the
+executable; this syntax does not load arbitrary host code or shared libraries.
+
+AST patterns attach surface syntax to a function. `as` accepts its pattern;
+`as?` additionally permits ordinary application. Alternatives are explicit sum
+values joined with `|`, in one declaration. Repeating a declaration is an error.
+For example, `from` has a bounded alternative and a directional alternative:
+
+```datra
+_Wards := ($upwards | $downwards)
+from := (
+  ("$Int to $Int" as? (Int, Int -> IntRange) external "datra.from") |
+  ("$Int $_Wards" as? (Int, _Wards -> IntRange) external "datra.from")
+)
+```
+
+This is the library declaration; each source already imports it. Calls include
+`from (1 + 1) to 5`, `from 2 upwards`, and `from (2, 5)`. Pattern matching selects
+the longest complete match and rejects equally long, conflicting matches.
+`AST`, `Expr`, `Block`, and `Pages` are library types for syntax captures;
+`Block` allows an empty binding sequence, while `Pages` requires a target page.
+`NatRange` and `IntRange` describe natural and integer ranges, respectively;
+`StringTemplate` describes string templates, including constant strings.
+Pattern captures such as `$Int` accept expressions and check their values
+against the named type when called. `%Int` remains string-template interpolation.
+
+Unit identifiers obey `$abc = (abc : ())`. The library consequently defines
+`nothing` as `let nothing := $Nothing`; `false` and `true` are the ordinary
+values `(False : 0)` and `(True : 1)`.
+
+### Named access, scopes, and imports
+
+`.` selects a named field and retains its name and specification:
+
+```datra
+{a : Nat := 5, b : String}.a
+# a : Nat := 5
+```
+
+Use `[1]` on that field to access its payload. Optional names, `~>` / `<~`, and
+`of` retain their usual meaning. Missing and ambiguous fields are errors.
+
+`this` returns the current block's declared public fields. A leading `_` makes
+a binding private; closures can retain it, but it is absent from `this` and
+module exports. A module exports its result; use `yield this` to export its
+scope, as `standard_library.datra` does:
+
+```datra
+# library_one.datra
+_privateOffset := 4
+increment := ({value? : Int} -> Int do yield value + _privateOffset)
+yield this
+```
+
+```datra
+import "library_one"
+yield LibraryOne.increment 7
+```
+
+`import "library_one"` exposes its namespace only. `import all "library_one"`
+adds its public bare names as well; collisions are rejected. Relative paths are
+resolved from the importing file; `.datra` may be omitted. Filename components
+become PascalCase namespaces, so `standard_library.datra` becomes
+`StandardLibrary`. Import cycles and missing files are errors.
+
+Every source implicitly imports `all "standard_library"`. Its actual Datra
+source is embedded when building the executable, so rebuilding picks up edits
+and the executable works from other directories. Qualified syntax such as
+`StandardLibrary.if false then (1 + "bad") else 11` retains lazy evaluation.
+Bare `StandardLibrary.if` selects the named field containing its explicit sum
+of syntax functions.
 
 ### Read and save files
 
