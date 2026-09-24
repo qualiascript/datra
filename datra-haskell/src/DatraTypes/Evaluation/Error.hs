@@ -3,6 +3,8 @@
 module Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
+  , OverloadFailure (..)
+  , overloadFailureIsAmbiguous
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
@@ -52,10 +54,27 @@ data AtlasMapFederationUncertainty
   = NoAtlasMapFederationDecisionProcedure AtlasMapFederationOperation
   deriving (Eq, Show)
 
+-- | Semantic overload failures. These constructors are used for evaluator
+-- control flow; localized prose belongs exclusively to diagnostics modules.
+data OverloadFailure
+  = OverloadNoMatch
+  | OverloadAmbiguousWithoutWrittenOrder
+  | OverloadAmbiguousWrittenOrder
+  | OverloadMissingRequiredSlot
+  | OverloadChangedDefault
+  deriving (Eq, Show)
+
+overloadFailureIsAmbiguous :: OverloadFailure -> Bool
+overloadFailureIsAmbiguous failure =
+  case failure of
+    OverloadAmbiguousWithoutWrittenOrder -> True
+    OverloadAmbiguousWrittenOrder -> True
+    _ -> False
+
 data InterpretingError
   = NamedAccessError String
   | FunctionError String
-  | OverloadError String
+  | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String
   | UnknownIdentifier String

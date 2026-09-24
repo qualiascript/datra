@@ -35,6 +35,7 @@ source context expression =
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
+    SafeOverloadValue left right -> binary 1 "<<<" left right
     EvalValue text target -> wrapped 0 ("eval " <> source 3 text <> " at " <> source 0 target)
     AssertValue hard condition -> wrapped 0
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
@@ -44,6 +45,7 @@ source context expression =
     Or left right -> binary 4 "or" left right
     And left right -> binary 5 "and" left right
     Equal left right -> binary 6 "=" left right
+    NotEqual left right -> binary 6 "=/=" left right
     IsSubfederation left right -> binary 6 "of" left right
     Add left right -> binary 7 "+" left right
     Subtract left right -> binary 7 "-" left right

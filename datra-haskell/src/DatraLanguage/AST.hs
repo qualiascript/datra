@@ -97,6 +97,7 @@ data Expression
   | Minus Expression
   | Subfederation Expression Expression
   | Equality Expression Expression
+  | Inequality Expression Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
@@ -122,6 +123,7 @@ data Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
   | Overload Expression Expression
+  | SafeOverload Expression Expression
   | IdentifierOperation
       { identifierOperationString :: IdentifierString
       , identifierOperationTypeAnnotation :: Expression
@@ -175,6 +177,7 @@ data OperatorExpression
   | Negate OperatorExpression
   | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
+  | NotEqual OperatorExpression OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
@@ -200,6 +203,7 @@ data OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
+  | SafeOverloadValue OperatorExpression OperatorExpression
   | IdentifierOperationValue
       { operatorIdentifierString :: IdentifierString
       , operatorTypeAnnotation :: OperatorExpression
@@ -280,6 +284,8 @@ normalizeExpression (Subfederation left right) =
   Subfederation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Equality left right) =
   Equality (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Inequality left right) =
+  Inequality (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanAnd left right) =
   BooleanAnd (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanOr left right) =
@@ -319,6 +325,8 @@ normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Overload left right) =
   Overload (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (SafeOverload left right) =
+  SafeOverload (normalizeExpression left) (normalizeExpression right)
 normalizeExpression
     (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperation
@@ -423,6 +431,7 @@ lower (Minus operand) = Negate (lower operand)
 lower (Subfederation left right) =
   IsSubfederation (lower left) (lower right)
 lower (Equality left right) = Equal (lower left) (lower right)
+lower (Inequality left right) = NotEqual (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
@@ -449,6 +458,7 @@ lower (NamedAccess value name) = NamedAccessValue (lower value) name
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (Overload left right) = OverloadValue (lower left) (lower right)
+lower (SafeOverload left right) = SafeOverloadValue (lower left) (lower right)
 lower (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperationValue
     identifierString
@@ -585,6 +595,8 @@ prettyOperator (IsSubfederation left right) =
   prettyBinary SubfederationOperator left right
 prettyOperator (Equal left right) =
   prettyBinary EqualityOperator left right
+prettyOperator (NotEqual left right) =
+  prettyBinary InequalityOperator left right
 prettyOperator (And left right) =
   prettyBinary BooleanAndOperator left right
 prettyOperator (Or left right) =
@@ -628,6 +640,8 @@ prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
 prettyOperator (OverloadValue left right) =
   prettyBinary OverloadOperator left right
+prettyOperator (SafeOverloadValue left right) =
+  prettyBinary SafeOverloadOperator left right
 prettyOperator
     (IdentifierOperationValue
       (IdentifierString identifierString)
@@ -825,6 +839,7 @@ traverseExpressionChildren visit expression = case expression of
   Subtraction a b -> Subtraction <$> visit a <*> visit b
   Subfederation a b -> Subfederation <$> visit a <*> visit b
   Equality a b -> Equality <$> visit a <*> visit b
+  Inequality a b -> Inequality <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Eval a b -> Eval <$> visit a <*> visit b
@@ -837,6 +852,7 @@ traverseExpressionChildren visit expression = case expression of
   MapAccess a b -> MapAccess <$> visit a <*> visit b
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
   Overload a b -> Overload <$> visit a <*> visit b
+  SafeOverload a b -> SafeOverload <$> visit a <*> visit b
   Program xs y -> Program <$> traverse visit xs <*> visit y
   Begin xs y -> Begin <$> traverse visit xs <*> visit y
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y

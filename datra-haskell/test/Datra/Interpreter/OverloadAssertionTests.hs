@@ -3,7 +3,7 @@ module Datra.Interpreter.OverloadAssertionTests
   ) where
 
 import Datra.TestSupport
-import DatraTypes (InterpretingError (..))
+import DatraTypes (InterpretingError (..), OverloadFailure (..))
 import Interpreting
   ( EvaluationMode (DevelopmentMode, ProductionMode) )
 import Test.Tasty (TestTree, testGroup)
@@ -47,11 +47,32 @@ overloadTests =
     , programFailureCase "overload rejects an incompatible value"
         "yield {a? : Nat := 3} << true"
         (SourceEvaluationFailure
-          (OverloadError
-            "the right operand does not match the left operand without its defaults"))
+          (OverloadError OverloadNoMatch))
     , programCase "written order resolves a partial unnamed overload"
         "yield {a? : Nat := 3, b? : Nat := 4} << 5"
         "{a? : Nat := 5, b? : Nat := 4}"
+    , programCase "overload does not skip a compatible defaulted slot"
+        "yield {x : Nat := 2, Nat} << 4"
+        "{x : Nat := 4, Nat}"
+    , programCase "safe overload fills a later compatible slot"
+        "yield {x : Nat := 2, String} <<< \"a\""
+        "{x : Nat := 2, $a}"
+    , programCase "reverse safe overload reverses the operands"
+        "yield \"a\" >>> {x : Nat := 2, String}"
+        "{x : Nat := 2, $a}"
+    , programCase "safe overload accepts the existing default"
+        "yield {x : Nat := 2} <<< 2"
+        "x : Nat := 2"
+    , programFailureCase "safe overload rejects a changed default"
+        "yield {x : Nat := 2, Nat} <<< 4"
+        (SourceEvaluationFailure
+          (OverloadError OverloadChangedDefault))
+    , programCase "safe overload result supports subfederation"
+        "yield ({x? : Nat := 2, String} <<< \"a\") of {x? : Nat, String}"
+        "true"
+    , programCase "safe overload result supports specification"
+        "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"
+        "x? : Int := 2"
     ]
 
 defaultedFunctionTests :: TestTree

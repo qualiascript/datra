@@ -3,15 +3,20 @@
 -- defaults erased, then replaces only the slots it supplies.
 module Evaluation.Overload
   ( overloadValues
+  , safeOverloadValues
   , overloadValuesComplete
   ) where
 
 import Control.Applicative ((<|>))
+import Data.Foldable (traverse_)
 import Data.List (nubBy, permutations, sortOn)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Arguments (argumentRows, makeArgumentMap)
 import Evaluation.Either (makeEitherValue)
-import Evaluation.Error (InterpretingError (..))
+import Evaluation.Error
+  ( InterpretingError (..)
+  , OverloadFailure (..)
+  )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues, makeAtlasMap)
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
@@ -51,6 +56,37 @@ overloadValues templateValue supplied = do
   replacements <- resolveReplacements template supplied
   buildTemplate replacements template
 
+-- | Overload only slots without defaults, or slots whose supplied value is
+-- canonically equal to their existing default. This preserves the partial
+-- update behavior of 'overloadValues' while making defaults immutable.
+safeOverloadValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+safeOverloadValues templateValue supplied = do
+  let template = fst (templateFromValue 0 templateValue)
+      slots = templateSlots template
+  replacements <- resolveReplacements template supplied
+  traverse_ (preserveDefault slots) replacements
+  buildTemplate replacements template
+
+preserveDefault
+  :: [Slot]
+  -> (Int, InterpretedValue)
+  -> Either InterpretingError ()
+preserveDefault slots (index, replacement) =
+  case slotDefault =<< findSlot index slots of
+    Nothing -> Right ()
+    Just defaultValue
+      | interpretedCanonicalResult replacement
+          == interpretedCanonicalResult defaultValue -> Right ()
+      | otherwise -> Left (OverloadError OverloadChangedDefault)
+  where
+    findSlot _ [] = Nothing
+    findSlot target (slot : remaining)
+      | slotIndex slot == target = Just slot
+      | otherwise = findSlot target remaining
+
 -- | Function application uses the same operation, but additionally requires
 -- every slot to have a supplied value, an explicit default, or a total type
 -- annotation. The returned bindings contain the unwrapped values seen by the
@@ -89,21 +125,18 @@ resolveReplacements template supplied = do
         | row <- rows
         ]
   if any null routes
-    then Left (OverloadError
-      "the right operand does not match the left operand without its defaults")
+    then Left (OverloadError OverloadNoMatch)
     else case writtenRoutes of
       -- Written order is the canonical positional interpretation. Prefer it
       -- even when equal annotations also admit other permutations.
       [replacements] -> Right replacements
       [] ->
         case nubBy sameReplacements (concat routes) of
-          [] -> Left (OverloadError
-            "the right operand does not match the left operand without its defaults")
+          [] -> Left (OverloadError OverloadNoMatch)
           [replacements] -> Right replacements
           _ -> Left (OverloadError
-            "ambiguous overload; no order-preserving match exists")
-      _ -> Left (OverloadError
-        "ambiguous overload; multiple order-preserving matches exist")
+            OverloadAmbiguousWithoutWrittenOrder)
+      _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
   where
     sameReplacements left right = canonical left == canonical right
     canonical = sortOn fst . map
@@ -295,8 +328,7 @@ completeSlot replacements slot =
     Nothing
       | interpretedTypeIsTotal (slotAnnotation slot) ->
           Right (slotName slot, slotAnnotation slot)
-      | otherwise -> Left (OverloadError
-          "overload leaves a required slot without a value")
+      | otherwise -> Left (OverloadError OverloadMissingRequiredSlot)
 
 buildTemplate
   :: Replacements

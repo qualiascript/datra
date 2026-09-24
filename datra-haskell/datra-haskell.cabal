@@ -219,6 +219,7 @@ library
         Evaluation.DatraType
         Evaluation.Range
         Evaluation.Specification
+        Evaluation.Specification.ArgumentMap
         Evaluation.Specification.Composition
         Evaluation.Specification.Decision
         Evaluation.Specification.Federation
@@ -229,6 +230,8 @@ library
         Evaluation.TypeFamily.BuiltinMeta
         Evaluation.TypeFamily.Function
         Evaluation.TypeFamily.Structural
+        Evaluation.TypeFamily.Structural.Specification
+        Evaluation.TypeFamily.Structural.Subfederation
         Evaluation.TypeFamily.TotalBlock
         Evaluation.Value
         Evaluation.Arguments

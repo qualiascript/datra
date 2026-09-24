@@ -26,6 +26,8 @@ module DatraTypes
   , InterpretedValueKind (..)
   , InterpretedMap
   , InterpretingError (..)
+  , OverloadFailure (..)
+  , overloadFailureIsAmbiguous
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
@@ -85,6 +87,7 @@ module DatraTypes
   , makeAtlasExpansion
   , concatenateValues
   , overloadValues
+  , safeOverloadValues
   , overloadValuesComplete
   , namedAccessValue
   , accessValues
@@ -114,6 +117,8 @@ import Evaluation.Error
   , AtlasMapFederationUncertainty (..)
   , InterpretedValueKind (..)
   , InterpretingError (..)
+  , OverloadFailure (..)
+  , overloadFailureIsAmbiguous
   , OperandSide (..)
   )
 import Evaluation.Access (accessValues, namedAccessValue)
@@ -154,6 +159,7 @@ import Evaluation.Map
   )
 import Evaluation.Overload
   ( overloadValues
+  , safeOverloadValues
   , overloadValuesComplete
   )
 import Evaluation.Numerical

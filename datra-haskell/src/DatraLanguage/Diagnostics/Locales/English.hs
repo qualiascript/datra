@@ -14,6 +14,7 @@ import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
+  , OverloadFailure (..)
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
@@ -62,7 +63,8 @@ localizeInterpretingError reason =
   case reason of
     NamedAccessError message -> LocalizedMessage "named access failed" [message]
     FunctionError message -> LocalizedMessage "function evaluation failed" [message]
-    OverloadError message -> LocalizedMessage "overloading failed" [message]
+    OverloadError failure ->
+      LocalizedMessage "overloading failed" [overloadFailure failure]
     AssertionFailed -> LocalizedMessage "assertion failed" []
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
@@ -178,6 +180,20 @@ localizeInterpretingError reason =
       LocalizedMessage
         "string contains a character outside the ASCII map"
         ["character: " <> show character]
+
+overloadFailure :: OverloadFailure -> String
+overloadFailure failure =
+  case failure of
+    OverloadNoMatch ->
+      "the right operand does not match the left operand without its defaults"
+    OverloadAmbiguousWithoutWrittenOrder ->
+      "ambiguous overload; no order-preserving match exists"
+    OverloadAmbiguousWrittenOrder ->
+      "ambiguous overload; multiple order-preserving matches exist"
+    OverloadMissingRequiredSlot ->
+      "overload leaves a required slot without a value"
+    OverloadChangedDefault ->
+      "safe overload cannot change an existing default value"
 
 federationOperation :: AtlasMapFederationOperation -> String
 federationOperation AtlasMapFederationConcatenation = "concatenation"

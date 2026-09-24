@@ -131,6 +131,7 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         right <- recur no
         joinTypes left right
       Equality a b -> recur a >> recur b >> booleanTypeValue
+      Inequality a b -> recur a >> recur b >> booleanTypeValue
       Subfederation a b -> recur a >> recur b >> booleanTypeValue
       Assert _ condition -> do
         value <- recur condition
@@ -166,6 +167,7 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
       ArgumentMap values -> traverse recur values >>= makeArgumentMap
       MapConcatenation a b -> do left <- recur a; right <- recur b; concatenateValues left right
       Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
+      SafeOverload a b -> do left <- recur a; right <- recur b; safeOverloadValues left right
       EitherType a b -> do left <- recur a; right <- recur b; joinTypes left right
       Begin entries value -> inferBlock scope entries value
       Program entries value -> inferBlock scope entries value

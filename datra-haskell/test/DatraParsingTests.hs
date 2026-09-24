@@ -72,6 +72,12 @@ regressionTests = do
   assertAstOutput "right overload reverses operands"
     "a >> b"
     (Overload (ref "b") (ref "a"))
+  assertAstOutput "safe overload"
+    "a <<< b"
+    (SafeOverload (ref "a") (ref "b"))
+  assertAstOutput "reverse safe overload reverses operands"
+    "a >>> b"
+    (SafeOverload (ref "b") (ref "a"))
   assertAstOutput "assert captures a complete Boolean expression"
     "assert f 5 = 120"
     (Assert False
@@ -81,6 +87,9 @@ regressionTests = do
   assertAstOutput "hard assert"
     "assert hard false"
     (Assert True (ref "false"))
+  assertAstOutput "not equals"
+    "a =/= b"
+    (Inequality (ref "a") (ref "b"))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import False "library_one", Import True "standard_library"
     , InModule "standard_library" This
@@ -1261,6 +1270,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Exponentiation
     , Gen.subterm2 genExpression genExpression Subfederation
     , Gen.subterm2 genExpression genExpression Equality
+    , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
     , Gen.subterm genExpression OptionalType
     , Gen.subterm genExpression Extract
@@ -1268,6 +1278,8 @@ genExpression =
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
+    , Gen.subterm2 genExpression genExpression Overload
+    , Gen.subterm2 genExpression genExpression SafeOverload
     , IdentifierOperation
         <$> genIdentifierString
         <*> genExpression

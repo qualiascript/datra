@@ -21,6 +21,7 @@ data Operator
   | MinusOperator
   | SubfederationOperator
   | EqualityOperator
+  | InequalityOperator
   | BooleanAndOperator
   | BooleanOrOperator
   | BooleanNotOperator
@@ -38,6 +39,8 @@ data Operator
   | SpecificationOperator
   | OverloadOperator
   | ReverseOverloadOperator
+  | SafeOverloadOperator
+  | ReverseSafeOverloadOperator
   | DependentIdentifierTypeOperator
   | AssignmentOperator
   deriving (Eq, Show)
@@ -58,6 +61,7 @@ operatorCanonicalSymbol SubtractionOperator = "-"
 operatorCanonicalSymbol MinusOperator = "minus"
 operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
+operatorCanonicalSymbol InequalityOperator = "=/="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
@@ -75,6 +79,8 @@ operatorCanonicalSymbol AccessOperator = "<@>"
 operatorCanonicalSymbol SpecificationOperator = "~>"
 operatorCanonicalSymbol OverloadOperator = "<<"
 operatorCanonicalSymbol ReverseOverloadOperator = ">>"
+operatorCanonicalSymbol SafeOverloadOperator = "<<<"
+operatorCanonicalSymbol ReverseSafeOverloadOperator = ">>>"
 operatorCanonicalSymbol DependentIdentifierTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
@@ -95,6 +101,7 @@ operatorSourceSymbol SubtractionOperator = Just "-"
 operatorSourceSymbol MinusOperator = Just "-"
 operatorSourceSymbol SubfederationOperator = Just "of"
 operatorSourceSymbol EqualityOperator = Just "="
+operatorSourceSymbol InequalityOperator = Just "=/="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
@@ -112,6 +119,8 @@ operatorSourceSymbol AccessOperator = Just "@"
 operatorSourceSymbol SpecificationOperator = Just "~>"
 operatorSourceSymbol OverloadOperator = Just "<<"
 operatorSourceSymbol ReverseOverloadOperator = Just ">>"
+operatorSourceSymbol SafeOverloadOperator = Just "<<<"
+operatorSourceSymbol ReverseSafeOverloadOperator = Just ">>>"
 operatorSourceSymbol DependentIdentifierTypeOperator = Just ":"
 operatorSourceSymbol AssignmentOperator = Just ":="
 

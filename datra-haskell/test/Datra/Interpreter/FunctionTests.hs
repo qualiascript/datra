@@ -87,6 +87,13 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionError
                 "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+        , programFailureCase "ambiguous reorder is reported structurally"
+            ( "f := ({a:Int,b:String,c:String} -> Int yield a)\n"
+                <> "yield f ($x,$y,5)"
+            )
+            (SourceEvaluationFailure
+              (FunctionError
+                "ambiguous argument bindings; supply identifiers to select the intended slots"))
         , programFailureCase "declared result rejects inferred body"
             "f := ({a?:Int} -> String do yield a+1)\nyield f 5"
             (SourceEvaluationFailure

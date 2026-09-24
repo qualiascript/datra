@@ -11,6 +11,7 @@ import DatraLanguage.Diagnostics (LocalizedMessage (LocalizedMessage))
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
+  , OverloadFailure (..)
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
@@ -60,7 +61,8 @@ localizeInterpretingError reason =
   case reason of
     NamedAccessError message -> LocalizedMessage "accesul prin nume a eșuat" [message]
     FunctionError message -> LocalizedMessage "evaluarea funcției a eșuat" [message]
-    OverloadError message -> LocalizedMessage "supraîncărcarea a eșuat" [message]
+    OverloadError failure ->
+      LocalizedMessage "supraîncărcarea a eșuat" [overloadFailure failure]
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
@@ -178,6 +180,20 @@ localizeInterpretingError reason =
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"
         ["caracter: " <> show character]
+
+overloadFailure :: OverloadFailure -> String
+overloadFailure failure =
+  case failure of
+    OverloadNoMatch ->
+      "operandul drept nu corespunde operandului stâng fără valorile implicite"
+    OverloadAmbiguousWithoutWrittenOrder ->
+      "supraîncărcare ambiguă; nu există o potrivire care păstrează ordinea"
+    OverloadAmbiguousWrittenOrder ->
+      "supraîncărcare ambiguă; există mai multe potriviri care păstrează ordinea"
+    OverloadMissingRequiredSlot ->
+      "supraîncărcarea lasă necompletată o poziție obligatorie"
+    OverloadChangedDefault ->
+      "supraîncărcarea sigură nu poate schimba o valoare implicită existentă"
 
 federationOperation :: AtlasMapFederationOperation -> String
 federationOperation AtlasMapFederationConcatenation = "concatenare"

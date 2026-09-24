@@ -45,6 +45,8 @@ recursiveDefaultProgram = unlines
   , "assert factorial arguments = 720"
   , "result := begin yield factorial 6"
   , "assert result = 720"
+  , "assert result =/= 719"
+  , "assert not (result =/= 720)"
   , "assert 720 of result"
   , "assert (720 ~> result) = result"
   ]

@@ -47,6 +47,7 @@ import DatraLanguage.AST
       , MapSequence
       , MapSpecification
       , Overload
+      , SafeOverload
       , IdentifierOperation
       , Multiplication
       , Subtraction
@@ -69,6 +70,7 @@ import DatraLanguage.AST
       , Conditional
       , Subfederation
       , Equality
+      , Inequality
       , BooleanAnd
       , BooleanOr
       , BooleanNot
@@ -329,6 +331,7 @@ astForm =
       , astBinary AST.SubtractionOperator Subtraction
       , astUnary AST.MinusOperator Minus
       , astBinary AST.SubfederationOperator Subfederation
+      , astBinary AST.InequalityOperator Inequality
       , astBinary AST.EqualityOperator Equality
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
@@ -349,6 +352,7 @@ astForm =
       , NamedAccess <$> (astSymbol "." *> astExpression) <*> (IdentifierString <$> astString)
       , astBinary AST.AccessOperator MapAccess
       , astBinary AST.SpecificationOperator MapSpecification
+      , astBinary AST.SafeOverloadOperator SafeOverload
       , astBinary AST.OverloadOperator Overload
       ])
 
@@ -614,7 +618,9 @@ eitherExpressionWith operand =
     [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
     , [InfixL
         (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
-    , [InfixL (Equality <$ continuedOperator AST.EqualityOperator)]
+    , [ InfixL (Inequality <$ continuedOperator AST.InequalityOperator)
+      , InfixL (Equality <$ continuedOperator AST.EqualityOperator)
+      ]
     , [InfixL (BooleanAnd <$ continuedWordOperator AST.BooleanAndOperator)]
     , [InfixL (BooleanOr <$ continuedWordOperator AST.BooleanOrOperator)]
     ]
@@ -1069,6 +1075,9 @@ identifierValueOperatorTable =
 mapAccessAndSpecificationOperators :: [Operator Parser Expression]
 mapAccessAndSpecificationOperators =
   [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
+  , InfixL (SafeOverload <$ continuedOperator AST.SafeOverloadOperator)
+  , InfixL
+      (flip SafeOverload <$ continuedOperator AST.ReverseSafeOverloadOperator)
   , InfixL (Overload <$ continuedOperator AST.OverloadOperator)
   , InfixL (flip Overload <$ continuedOperator AST.ReverseOverloadOperator)
   , InfixL
@@ -1114,6 +1123,8 @@ postfixRangeEnd =
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
         , operatorToken AST.SpecificationOperator
+        , operatorToken AST.SafeOverloadOperator
+        , operatorToken AST.ReverseSafeOverloadOperator
         , operatorToken AST.OverloadOperator
         , operatorToken AST.ReverseOverloadOperator
         , operatorToken AST.AssignmentOperator

@@ -293,6 +293,9 @@ interpretNormalizedExpression scope resolving expressionValue =
       binary subfederationValues source target
     Equality left right ->
       binary equalValues left right
+    Inequality left right -> do
+      equal <- binary equalValues left right
+      booleanNotValue equal
     BooleanAnd left right ->
       binary booleanAndValues left right
     BooleanOr left right ->
@@ -339,6 +342,8 @@ interpretNormalizedExpression scope resolving expressionValue =
       binary concatenateValues left right
     Overload defaults supplied ->
       binary overloadValues defaults supplied
+    SafeOverload defaults supplied ->
+      binary safeOverloadValues defaults supplied
     NamedAccess (IdentifierReference (IdentifierString namespace)) (IdentifierString name)
       | Just (NamespaceBinding _ exported) <- lookup namespace scope -> do
           member <- resolveIdentifier exported [] name
@@ -707,8 +712,8 @@ applyFunction callable input = case candidates of
       | function <- functionAlternatives callable
       , maybe True snd (functionPattern function)]
     candidates = [function | (function, Right _) <- preparations]
-    ambiguous (_, Left (OverloadError message)) =
-      message == "ambiguous overload; supply identifiers to select the intended slots"
+    ambiguous (_, Left (OverloadError failure)) =
+      overloadFailureIsAmbiguous failure
     ambiguous _ = False
     prepare function =
       case functionPrepare function of
