@@ -111,6 +111,17 @@ regressionTests = do
     (ArgumentMap
       [EitherType (AST.identifierType "a" NaturalType) NaturalType
       ,EitherType (AST.identifierType "b" StringType) StringType])
+  let block = Begin
+        [AST.identifierType "a" (Multiplication (natural 2) (natural 3)), AST.identifierType "b" (natural 5)]
+        (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
+  assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
+  assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
+  assertParsed "let in begin"
+    "begin let x : 10 yield x"
+    (Begin [Let (AST.identifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
+  assertRejected "references do not leak out of blocks" "(begin x : 1 yield x), x"
+  assertRejected "let requires a block" "let x : 1"
+  assertRejected "begin requires yield" "begin x : 1"
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1194,7 +1205,7 @@ propNaturalMapParsing = H.property $ do
     (Gen.list (Range.linear 0 40) (Gen.integral (Range.linear 0 100000)))
   let source = "(" <> joinWith "; " (map show values) <> ")"
       expected = normalizeExpression (AtlasMap (map EllipsisNatural values))
-  parseDatra source H.=== Right expected
+  parseDatra ("(" <> source <> "\n)") H.=== Right expected
 
 genExpression :: H.Gen Expression
 genExpression =
@@ -1312,13 +1323,23 @@ assertResourceEnvelopes = do
     "(1; 2)"
     ExplicitMapEnvelope
   assertEnvelope
-    "implicit newline map"
+    "implicit program"
     "1\n2"
-    ImplicitMapEnvelope
+    ImplicitBlockEnvelope
   assertEnvelope
     "parenthesized operands are not an outer envelope"
     "(1) <~ (2)"
-    ImplicitMapEnvelope
+    ImplicitBlockEnvelope
+  mapM_ (\(source, expected) ->
+    case parseDatra source of
+      Right actual -> do
+        assert ("program AST: " <> source) (actual == expected)
+        assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
+      Left message -> fail message)
+    [ ("a : 6\nyield a", Program [AST.identifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    , ("begin a : 6", Program [AST.identifierType "a" (natural 6)] (natural 0))
+    , ("", Program [] (natural 0))
+    ]
   where
     assertEnvelope label source expected =
       case parseDatraLocatedResourceWithSourceName "<input>" source of
@@ -1378,7 +1399,7 @@ assertAstSyntax = do
 
 assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =
-  case parseDatra source of
+  case parseDatra ("(" <> source <> "\n)") of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right actual
       | canonicalAst actual == canonicalAst expected ->
@@ -1412,14 +1433,14 @@ assertAstRoundTrip label renderedAst =
 
 assertRejected :: String -> String -> IO ()
 assertRejected label source =
-  case parseDatra source of
+  case parseDatra ("(" <> source <> "\n)") of
     Left _ -> pure ()
     Right actual ->
       fail (label <> ": unexpectedly parsed as " <> show actual)
 
 assertParsed :: String -> String -> Expression -> IO ()
 assertParsed label source expected =
-  case parseDatra source of
+  case parseDatra ("(" <> source <> "\n)") of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right actual
       | actual == expected -> pure ()

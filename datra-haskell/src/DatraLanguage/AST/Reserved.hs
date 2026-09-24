@@ -17,6 +17,7 @@ import DatraLanguage.AST.Operator
 
 data ReservedWord
   = ThenWord
+  | YieldWord
   | ElseWord
   | ToWord
   | UpwardsWord
@@ -25,6 +26,7 @@ data ReservedWord
 
 reservedWordText :: ReservedWord -> String
 reservedWordText ThenWord = "then"
+reservedWordText YieldWord = "yield"
 reservedWordText ElseWord = "else"
 reservedWordText ToWord = "to"
 reservedWordText UpwardsWord = "upwards"
@@ -87,6 +89,8 @@ reservedIdentifierStrings =
       , BooleanOrOperator
       , BooleanNotOperator
       , EvalOperator
+      , BeginOperator
+      , LetOperator
       , EitherOperator
       , OptionalOperator
       ]

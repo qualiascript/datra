@@ -14,9 +14,8 @@ module Parsing
   ) where
 
 import Control.Applicative (empty, optional, some, (<|>))
-import Control.Monad (void)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.State.Strict (State, evalState, get, modify)
+import Control.Monad (guard, void)
+import Control.Monad.Trans.Reader (ReaderT, ask, local, runReaderT)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
@@ -69,6 +68,10 @@ import DatraLanguage.AST
       , BooleanNot
       , Extract
       , Eval
+      , Begin
+      , Program
+      , Let
+      , IdentifierReference
       )
   , StringTemplatePart
       ( StringTemplateInterpolation
@@ -91,7 +94,7 @@ import IdentifierValueType
   , isIdentifierValueCharacter
   )
 import Text.Megaparsec
-  ( ParsecT
+  ( Parsec
   , ParseErrorBundle
   , anySingle
   , between
@@ -105,7 +108,7 @@ import Text.Megaparsec
   , many
   , manyTill
   , notFollowedBy
-  , runParserT
+  , runParser
   , sepEndBy
   , sepEndBy1
   , sourceColumn
@@ -118,13 +121,18 @@ import Text.Megaparsec
 import Text.Megaparsec.Char (char, eol, hspace1, space1)
 import Text.Megaparsec.Char.Lexer qualified as Lexer
 
--- The depth is nonzero only while parsing a parenthesized interpolation. It
--- lets expression comments stop at @)@ without changing ordinary comments.
-type Parser = ParsecT Void Text (State Int)
+-- Lexical parser context is scoped with ReaderT, so backtracking cannot leak
+-- block references or interpolation comment boundaries into surrounding code.
+data ParserContext = ParserContext
+  { interpolationDepth :: Int
+  , referencesAllowed :: Bool
+  }
+
+type Parser = ReaderT ParserContext (Parsec Void Text)
 
 data ResourceEnvelope
   = ExplicitMapEnvelope
-  | ImplicitMapEnvelope
+  | ImplicitBlockEnvelope
   deriving (Eq, Show)
 
 -- | Parse an in-memory Datra resource without associating it with a real
@@ -133,9 +141,8 @@ data ResourceEnvelope
 parseDatra :: String -> Either String Expression
 parseDatra = parseDatraWithSourceName "<input>"
 
--- | Parse one top-level map with a source name used only in diagnostics. A
--- parenthesized expression consuming the whole resource is explicit; otherwise
--- the top-level map is implicit.
+-- | Outer parentheses select expression mode; every other resource is an
+-- implicit begin/yield program, with an optional begin and default yield 0.
 parseDatraWithSourceName :: FilePath -> String -> Either String Expression
 parseDatraWithSourceName sourceName source =
   locatedValue <$> parseDatraLocatedWithSourceName sourceName source
@@ -151,9 +158,7 @@ parseDatraLocatedWithSourceName resourceName source =
   first errorBundlePretty
     (runDatraParser locatedResource resourceName (Text.pack source))
 
--- | Parse a source resource while retaining whether its outer map parentheses
--- were explicit. This is presentation metadata only; both cases produce the
--- same located expression and evaluation semantics.
+-- | Parse a source resource and retain its expression/program envelope.
 parseDatraLocatedResourceWithSourceName
   :: FilePath
   -> String
@@ -192,7 +197,7 @@ runDatraParser
   -> Text
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
-  evalState (runParserT parser resourceName source) 0
+  runParser (runReaderT parser (ParserContext 0 False)) resourceName source
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -287,6 +292,11 @@ astForm =
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.ExtractOperator Extract
       , astBinary AST.EvalOperator Eval
+      , astBlock "begin" Begin
+      , astBlock "program" Program
+      , astUnary AST.LetOperator Let
+      , IdentifierReference . IdentifierString <$>
+          (astSymbol "ref" *> (astLexeme identifierStringToken <|> astStandardString))
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
@@ -331,6 +341,13 @@ astConditional = do
   consequent <- astExpression
   alternative <- astExpression
   pure (Conditional condition consequent alternative)
+
+astBlock :: Text -> ([Expression] -> Expression -> Expression) -> Parser Expression
+astBlock blockKeyword construct = do
+  _ <- astSymbol blockKeyword
+  bindings <- between (astSymbol "(") (astSymbol ")")
+    (astSymbol "bindings" *> many astExpression)
+  construct bindings <$> astExpression
 
 astSequence :: Parser Expression
 astSequence = do
@@ -426,19 +443,24 @@ resourceWithEnvelope = do
       _ <- try (lookAhead outerMapEnvelope)
       (,) ExplicitMapEnvelope <$> parenthesizedExpression
     implicitResource =
-      (,) ImplicitMapEnvelope <$> implicitOuterMap
+      (,) ImplicitBlockEnvelope <$> implicitProgram
 
 -- Parse the parenthesized expression itself in lookahead so the closing
 -- parenthesis must enclose the whole resource. This distinguishes an explicit
 -- map from an implicit sequence such as @(a); (b)@.
 outerMapEnvelope :: Parser ()
 outerMapEnvelope =
-  void (parenthesizedExpression <* fullSpaceConsumer <* eof)
+  void (withReferences parenthesizedExpression <* fullSpaceConsumer <* eof)
 
-implicitOuterMap :: Parser Expression
-implicitOuterMap = do
-  expressions <- elements
-  pure (sequenceExpression expressions)
+implicitProgram :: Parser Expression
+implicitProgram = withReferences $ do
+  _ <- optional (continuedWordOperator AST.BeginOperator)
+  bindings <- elements
+  result <- optional (continuedReservedWord Reserved.YieldWord *> expression)
+  pure (Program bindings (maybe (EllipsisNatural 0) id result))
+
+withReferences :: Parser value -> Parser value
+withReferences = local (\context -> context { referencesAllowed = True })
 
 sequenceExpression :: [Expression] -> Expression
 sequenceExpression [] = AtlasMap []
@@ -600,14 +622,39 @@ extractedTermAtom =
 termAtom :: Parser Expression
 termAtom =
   choice
-    [ evalExpression
+    [ beginExpression
+    , letExpression
+    , evalExpression
     , argumentMap
     , try parenthesizedReverseSpecification
     , parenthesizedExpression
     , try conditionalExpression
     , try naturalRangeExpression
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
+    , identifierReference
     ]
+
+beginExpression :: Parser Expression
+beginExpression = do
+  _ <- continuedWordOperator AST.BeginOperator
+  withReferences $ do
+    bindings <- expression `sepEndBy` mapSeparator
+    _ <- continuedReservedWord Reserved.YieldWord
+    Begin bindings <$> expression
+
+letExpression :: Parser Expression
+letExpression = do
+  context <- ask
+  guard (referencesAllowed context)
+  _ <- continuedWordOperator AST.LetOperator
+  Let <$> expression
+
+identifierReference :: Parser Expression
+identifierReference = try $ do
+  context <- ask
+  guard (referencesAllowed context)
+  spelling <- BareIdentifier <$> bareIdentifier
+  IdentifierReference . IdentifierString <$> validateIdentifierSpelling spelling
 
 -- The first unparenthesized comma separates the source from the target.
 -- The target consumes the rest of the enclosing map, including semicolon
@@ -615,9 +662,7 @@ termAtom =
 evalExpression :: Parser Expression
 evalExpression = do
   _ <- continuedWordOperator AST.EvalOperator
-  source <- expressionWith
-    (makeExprParser (try identifierOperation <|> rangeExpression)
-      (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators]))
+  source <- nonConcatenatedExpression
   _ <- continuedOperator AST.ConcatenationOperator
   target <- sequenceExpression <$> (expression `sepEndBy1` mapSeparator)
   pure (Eval source target)
@@ -633,12 +678,16 @@ argumentMap =
   where
     -- At the brace level commas separate arguments. Parsing a parenthesized
     -- expression restores ordinary concatenation, preserving nested maps.
-    argumentExpression = expressionWith
-      (makeExprParser (try identifierOperation <|> rangeExpression)
-        (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators]))
+    argumentExpression = nonConcatenatedExpression
     argumentSeparator =
       void (continuedOperator AST.ConcatenationOperator)
         <|> mapSeparator
+
+-- Shared operand grammar where an unparenthesized comma is a delimiter.
+nonConcatenatedExpression :: Parser Expression
+nonConcatenatedExpression = expressionWith
+  (makeExprParser (try identifierOperation <|> rangeExpression)
+    (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators]))
 
 -- Explicitly parenthesizing both operands makes a reverse specification a
 -- self-contained map operand. This lets @x, (target) <~ (source)@ retain the
@@ -1017,10 +1066,7 @@ quotedStringParts interpolation =
 
 withInterpolationComments :: Parser value -> Parser value
 withInterpolationComments parser = do
-  lift (modify (+ 1))
-  value <- parser
-  lift (modify (subtract 1))
-  pure value
+  local (\context -> context { interpolationDepth = interpolationDepth context + 1 }) parser
 
 sourceSimpleInterpolation :: Parser Expression
 sourceSimpleInterpolation =
@@ -1141,13 +1187,13 @@ fullSpaceConsumer = Lexer.space space1 lineComment empty
 
 lineComment :: Parser ()
 lineComment = do
-  interpolationDepth <- lift get
+  depth <- interpolationDepth <$> ask
   _ <- char '#'
   void
     (manyTill anySingle
       (lookAhead
         ( void eol
-          <|> if interpolationDepth > 0
+          <|> if depth > 0
                 then void (char ')')
                 else empty
           <|> eof

@@ -60,6 +60,14 @@ localizeAccessError reason =
 localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
+    IdentifierStringOverlap name ->
+      LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
+    UnknownIdentifier name ->
+      LocalizedMessage "identifier is not imported in this scope" ["identifier: " <> name]
+    CyclicIdentifierReference names ->
+      LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
+    LetOutsideBegin ->
+      LocalizedMessage "let requires an enclosing begin block" []
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         (operandSide side <> " operand must be numerical")

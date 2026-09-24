@@ -58,6 +58,14 @@ localizeAccessError reason =
 localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
+    IdentifierStringOverlap name ->
+      LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
+    UnknownIdentifier name ->
+      LocalizedMessage "identificatorul nu este importat în acest domeniu" ["identificator: " <> name]
+    CyclicIdentifierReference names ->
+      LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
+    LetOutsideBegin ->
+      LocalizedMessage "let necesită un bloc begin" []
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie numeric")

@@ -52,7 +52,11 @@ data AtlasMapFederationUncertainty
   deriving (Eq, Show)
 
 data InterpretingError
-  = ExpectedNumericalOperand OperandSide InterpretedValueKind
+  = IdentifierStringOverlap String
+  | UnknownIdentifier String
+  | CyclicIdentifierReference [String]
+  | LetOutsideBegin
+  | ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind
   | ExpectedBooleanCondition InterpretedValueKind

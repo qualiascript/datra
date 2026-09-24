@@ -10,14 +10,11 @@ import DatraLanguage.Diagnostics.Localization
 import Interpreting (InterpretedValue, interpretLocatedExpression)
 import Options.Applicative
 import Parsing
-  ( ResourceEnvelope (..)
-  , parseDatraAstLocatedWithSourceName
+  ( parseDatraAstLocatedWithSourceName
   , parseDatraLocatedWithSourceName
-  , parseDatraLocatedResourceWithSourceName
   )
 import Rendering
   ( renderInterpretedValue
-  , renderInterpretedValueAsNewlineMap
   )
 import System.Exit (die)
 import System.FilePath ((</>), takeDirectory)
@@ -198,17 +195,13 @@ runCommand commandValue =
     Build input astPath outputPath locale -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
-      (resourceEnvelope, locatedExpression) <-
+      locatedExpression <-
         parseOrFail errorPath
-          (parseDatraLocatedResourceWithSourceName sourceName source)
+          (parseDatraLocatedWithSourceName sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- interpretOrFail errorPath locale locatedExpression
-      writeOutput outputPath
-        (case resourceEnvelope of
-          ExplicitMapEnvelope -> renderInterpretedValue interpreted
-          ImplicitMapEnvelope ->
-            renderInterpretedValueAsNewlineMap interpreted)
+      writeOutput outputPath (renderInterpretedValue interpreted)
     GenerateAst input outputPath -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input

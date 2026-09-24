@@ -97,6 +97,10 @@ data Expression
   | BooleanNot Expression
   | Extract Expression
   | Eval Expression Expression
+  | Program [Expression] Expression
+  | Begin [Expression] Expression
+  | Let Expression
+  | IdentifierReference IdentifierString
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -160,6 +164,10 @@ data OperatorExpression
   | Not OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
+  | ProgramValue [OperatorExpression] OperatorExpression
+  | BeginValue [OperatorExpression] OperatorExpression
+  | LetValue OperatorExpression
+  | IdentifierReferenceValue IdentifierString
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -255,6 +263,12 @@ normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
 normalizeExpression (Eval source target) =
   Eval (normalizeExpression source) (normalizeExpression target)
+normalizeExpression (Program bindings result) =
+  Program (map normalizeExpression bindings) (normalizeExpression result)
+normalizeExpression (Begin bindings result) =
+  Begin (map normalizeExpression bindings) (normalizeExpression result)
+normalizeExpression (Let binding) = Let (normalizeExpression binding)
+normalizeExpression (IdentifierReference name) = IdentifierReference name
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -374,6 +388,10 @@ lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
+lower (Program bindings result) = ProgramValue (map lower bindings) (lower result)
+lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
+lower (Let binding) = LetValue (lower binding)
+lower (IdentifierReference name) = IdentifierReferenceValue name
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -526,6 +544,15 @@ prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
 prettyOperator (EvalValue source target) =
   prettyBinary EvalOperator source target
+prettyOperator (ProgramValue bindings result) =
+  prettyForm "program"
+    [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+prettyOperator (BeginValue bindings result) =
+  prettyForm "begin"
+    [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+prettyOperator (LetValue binding) = prettyUnary LetOperator binding
+prettyOperator (IdentifierReferenceValue (IdentifierString name)) =
+  prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =

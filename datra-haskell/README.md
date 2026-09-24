@@ -120,6 +120,76 @@ Expected output:
 (1; 5)
 ```
 
+### Programs and begin/yield
+
+Outer parentheses select expression mode: `(2 + 3)` produces `5`. Without
+parentheses enclosing the entire resource, the file (or `--source` input) is
+an implicit `begin`/`yield` block. A leading `begin` is optional. If `yield` is
+omitted, the block uses `yield 0`; a bare `2 + 3` therefore produces `0`.
+Comments and whitespace outside the enclosing parentheses do not change modes.
+
+In a block, semicolons or newlines separate imported bindings:
+
+```datra
+a : 2 * 3
+b : 8
+yield a + b
+```
+
+This prints just `14`. Adding `begin` before `a` produces the same result.
+From this directory, run it without Docker using a built executable:
+
+```sh
+./dist/datra-haskell build \
+  --source 'a := 2 * 3; b := 5; yield a + b' \
+  --ast-output /dev/null --output -
+```
+
+This command prints `11`. The `:=` spelling supplies a value directly.
+
+Ordinary bindings remain unevaluated until referenced. `let` bindings are
+evaluated before the block yields, even when unused. Both are visible throughout
+the block and nested blocks, including before their declaration:
+
+```datra
+a : x + 1
+let x : 10
+yield a
+```
+
+This prints `11`. Names are local to the block, and nested blocks inherit the
+outer scope. Reusing an identifier string already in that scope is an error;
+unknown identifiers and cyclic references are errors too. Optional names,
+`~>` / `<~` specification, and `of` subfederation work within blocks.
+
+To retain an explicit block as the result's specification, enclose the entire
+expression in parentheses:
+
+```sh
+./dist/datra-haskell build \
+  --source '(begin
+ a : 2 * 3
+ b : 5
+yield a + b)' \
+  --ast-output /dev/null --output -
+```
+
+Output:
+
+```datra
+11 <~ begin
+ a : 2 * 3
+ b : 5
+yield a + b
+```
+
+The retained block records how the result was evaluated; arithmetic and type
+operations still use the resulting value. An implicit program prints only its
+result, even when that result comes from a nested explicit block. Wrap expression
+examples below in outer parentheses when running them as a whole file, or put
+them after `yield` in a program. Typed `eval` continues to decode canonical data;
+its input string is not treated as an implicit program.
+
 ### Argument maps
 
 Braces admit every ordering of their arguments. For example, `{b := 8, 2}`
@@ -129,7 +199,7 @@ the value itself optional.
 
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source '{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}' \
+  --source '({b : 8, 2} ~> {a? : Nat := 2, b? : Nat})' \
   --ast-output - \
   --output -
 ```
@@ -170,7 +240,7 @@ extract all its captures.
 
 ```sh
 ./dist/datra-haskell build \
-  --source 'eval "x : 3, (b : 8; 2)", x : 3; {a? : Nat := 2, b? : Nat}' \
+  --source '(eval "x : 3, (b : 8; 2)", x : 3; {a? : Nat := 2, b? : Nat})' \
   --ast-output - \
   --output -
 ```

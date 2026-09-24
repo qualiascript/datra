@@ -99,6 +99,9 @@ testTree =
         , testCase "argument maps in string templates" testArgumentMapTemplates
         , testCase "typed eval" testEval
         , testCase "eval-backed keyword forms" testEvalBackedKeywords
+        , testCase "begin/yield scope and provenance" testBegin
+        , testCase "begin/yield scope rejections" testBeginRejections
+        , testCase "implicit programs" testPrograms
         , testCase "integers and integer ranges" testIntegers
         , testCase "booleans and Either" testBooleansAndEither
         , testCase "optionals and conditionals" testOptionalsAndConditionals
@@ -286,7 +289,7 @@ expectValue label expressionValue check =
 
 expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
-  case parseDatra source of
+  case parseDatra ("(" <> source <> "\n)") of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right expressionValue -> expectValue label expressionValue check
 
@@ -296,7 +299,7 @@ expectSourceRejection
   -> (InterpretingError -> Bool)
   -> IO ()
 expectSourceRejection label source matches =
-  case parseDatra source of
+  case parseDatra ("(" <> source <> "\n)") of
     Left message -> fail (label <> ": unexpected parse failure: " <> message)
     Right expressionValue ->
       case interpretExpressionReason expressionValue of
@@ -664,6 +667,93 @@ testEval = do
     , "eval \"(2; 8)\", {a : Nat, b : Nat}"
     , "eval 12, Nat"
     ]
+
+testBegin :: IO ()
+testBegin = do
+  let example = "begin\n a : 2 * 3\n b : 5\nyield a + b"
+  expectSourceValue "retained block" example $ \value -> do
+    assert "the arithmetic result is eleven" (interpretedInteger value == Just 11)
+    assert "the block remains in reverse-specification output"
+      (renderInterpretedValue value == "11 <~ " <> example)
+    expectSourceValue "retained block output can be read again"
+      (renderInterpretedValue value) $ \decoded ->
+        assert "output preserves its value" (interpretedInteger decoded == Just 11)
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
+    assert (source <> ": " <> renderInterpretedValue value)
+      (interpretedInteger value == Just expected))
+    [ ("begin a : 2 * 3; b : 5 yield a + b", 11)
+    , ("begin a : b + 1; b : 5 yield a", 6)
+    , ("begin bad : 1 + \"bad\" yield 11", 11)
+    , ("begin a : x + 1; let x : 10 yield a", 11)
+    , ("begin let x : y + 1; y : 9 yield x", 10)
+    , ("begin let x : 10 yield begin y : 1 yield x + y", 11)
+    , ("begin a : Nat := 6; b : 5 yield a + b", 11)
+    , ("begin a? : Nat := 6; b : 5 yield a + b", 11)
+    , ("begin T : Nat; a : T := 6 yield a + 0", 6)
+    , ("begin a : (begin b : 2 yield b + 1) yield a * 2", 6)
+    , ("begin yield 11", 11)
+    , ("(begin a : 6 yield a) + 5", 11)
+    , ("begin T : Int yield (eval \"12\", T) + 0", 12)
+    , ("begin a : 6 yield %(\"%Nat\" <~ \"6\")[1] + a", 12)
+    ]
+  mapM_ (\source -> expectSourceValue source source $ \value ->
+    assert (source <> ": " <> renderInterpretedValue value)
+      (Types.interpretedCanonicalResult value == Types.interpretedCanonicalResult (Types.booleanValue True)))
+    [ "(begin a : 6 yield a) of Nat"
+    , "((begin a : 6 yield a) ~> Int) = (6 ~> Int)"
+    , "(Int <~ (begin a : 6 yield a)) = (6 ~> Int)"
+    , "(begin a? : Nat := 6 yield a) of Int"
+    , "(begin T : Nat yield {b : 8, 2} ~> {a? : T := 2, b? : T}) of {b? : Int, a? : Int}"
+    ]
+
+testPrograms :: IO ()
+testPrograms = do
+  mapM_ (\(source, expected) ->
+    case parseDatra source of
+      Left message -> fail message
+      Right expression -> expectValue source expression $ \value ->
+        assert (source <> ": " <> renderInterpretedValue value)
+          (renderInterpretedValue value == expected))
+    [ ("a := 2 * 3\nb := 5\nyield a + b", "11")
+    , ("a : 2 * 3\nb : 8\nyield a + b", "14")
+    , ("begin\na : 2 * 3\nb : 8\nyield a + b", "14")
+    , ("begin\na : 2 * 3\nb : 5\nyield a + b", "11")
+    , ("a : 2 * 3\nb : 5", "0")
+    , ("begin a : 6; b : 5", "0")
+    , ("", "0")
+    , ("2 + 3", "0")
+    , ("# comment\n(2 + 3) # trailing comment", "5")
+    , ("yield (1; 2)", "(1; 2)")
+    , ("(2 + 3)", "5")
+    , ("yield begin a : 6 yield a + 5", "11")
+    , ("a : x + 1\nlet x : 10\nyield a", "11")
+    ]
+
+testBeginRejections :: IO ()
+testBeginRejections = do
+  mapM_ (\source -> expectSourceRejection source source
+    (\case IdentifierStringOverlap "a" -> True; _ -> False))
+    [ "begin a : 1; a : 2 yield a"
+    , "begin a : 1; let a : 2 yield a"
+    , "begin a : 1 yield begin a : 2 yield a"
+    , "begin a? : Nat := 1; a : 2 yield a"
+    ]
+  mapM_ (\source -> expectSourceRejection source source
+    (\case UnknownIdentifier _ -> True; _ -> False))
+    [ "begin yield missing"
+    , "begin a : b yield begin b : 2 yield a"
+    , "(begin a : 2 yield a), (begin yield a)"
+    ]
+  mapM_ (\source -> expectSourceRejection source source
+    (\case CyclicIdentifierReference _ -> True; _ -> False))
+    [ "begin a : a yield a"
+    , "begin a : b; b : a yield a"
+    , "begin let a : a yield 1"
+    ]
+  expectSourceRejection "unused let must be evaluated"
+    "begin let bad : 1 + \"bad\" yield 11" (const True)
+  expectSourceRejection "let annotation checked before yield"
+    "begin let a : Nat := \"bad\" yield 11" (const True)
 
 testEvalBackedKeywords :: IO ()
 testEvalBackedKeywords = do
@@ -1838,7 +1928,7 @@ testRendering = do
           fail ("map construction was rejected: " <> show rejection)
         Right original ->
           let rendered = renderInterpretedValue original
-          in case parseDatra rendered of
+          in case parseDatra ("(" <> rendered <> "\n)") of
               Left message ->
                 fail ("canonical map did not parse: " <> message)
               Right roundTripExpression ->

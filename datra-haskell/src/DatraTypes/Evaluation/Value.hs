@@ -44,6 +44,8 @@ module Evaluation.Value
   , interpretedSemantics
   , interpretedValueHasTotalMap
   , interpretedCanonicalResult
+  , interpretedEvaluationSource
+  , withEvaluationSource
   , interpretedValueKind
   , interpretedExplicitOrdinal
   , interpretedInteger
@@ -409,6 +411,7 @@ data InterpretedValue = InterpretedValue
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
   , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
   , interpretedSemantics :: ValueSemantics
+  , interpretedEvaluationSource :: Maybe String
   }
 
 data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
@@ -432,6 +435,7 @@ makeInterpretedValue form capability valueMap federation totality semantics =
           TotalInterpretedMap -> Just (InterpretedTotalAtlasMap valueMap)
           NonTotalInterpretedMap -> Nothing
     , interpretedSemantics = semantics
+    , interpretedEvaluationSource = Nothing
     }
 
 makeSingletonInterpretedValue
@@ -451,6 +455,10 @@ makeSingletonInterpretedValue form capability valueMap totality =
 
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
+
+-- | Retain evaluation provenance without changing the semantic map or codec.
+withEvaluationSource :: Maybe String -> InterpretedValue -> InterpretedValue
+withEvaluationSource source value = value { interpretedEvaluationSource = source }
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics

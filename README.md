@@ -5,6 +5,45 @@ A language for data transformations. Read the [preprint](preprint.pdf), [primer]
 
 The LaTeX sources and PDF build instructions live in [datra-docs](datra-docs/README.md).
 
+## Programs and expressions
+
+A file without enclosing `( … )` runs as an implicit `begin`/`yield` block.
+The opening `begin` is optional; omitting `yield` means `yield 0`.
+Semicolons or newlines separate bindings:
+
+```datra
+a : 2 * 3
+b : 8
+yield a + b
+```
+
+This prints `14`. Ordinary bindings are evaluated when referenced; `let x : 10`
+evaluates before yielding. Bindings are visible throughout their block and nested
+blocks, including before declaration. Duplicate identifier strings in the active
+scope, unknown names, and cyclic references are errors.
+
+Outer parentheses select expression mode: `(2 + 3)` prints `5`. An explicit
+parenthesized block retains its specification:
+
+```datra
+(begin
+ a : 2 * 3
+ b : 5
+yield a + b)
+```
+
+prints `11 <~ begin … yield a + b`, with the block expanded in the output.
+For a local executable, run from the repository root:
+
+```sh
+./datra-haskell/dist/datra-haskell build \
+  --source 'a : 2 * 3; b : 8; yield a + b' \
+  --ast-output /dev/null --output -
+```
+
+See [programs and begin/yield](datra-haskell/README.md#programs-and-beginyield)
+for explicit-block output and more examples.
+
 ## Docker
 
 Datra has separate development and production images:
@@ -53,7 +92,7 @@ After downloading or building the production image, print only the final result:
 
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source '[1; 2 + 3]' \
+  --source '(1; 2 + 3)' \
   --ast-output /dev/null \
   --output -
 ```
@@ -61,8 +100,10 @@ docker run --rm datra-haskell:prod build \
 Expected output:
 
 ```text
-[1; 5]
+(1; 5)
 ```
+
+Maps use parentheses: `(1; 2 + 3)` evaluates to `(1; 5)`.
 
 The source is still parsed and interpreted; `--ast-output /dev/null` discards
 the AST output. Use `--ast-output -` to print the AST before the result.

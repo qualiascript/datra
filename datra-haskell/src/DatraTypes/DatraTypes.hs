@@ -69,6 +69,8 @@ module DatraTypes
   , interpretedValueKind
   , interpretedValueHasTotalMap
   , interpretedCanonicalResult
+  , interpretedEvaluationSource
+  , withEvaluationSource
   , interpretedExplicitOrdinal
   , interpretedInteger
   , interpretedFormulationLevel
@@ -162,6 +164,8 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult
+  , interpretedEvaluationSource
+  , withEvaluationSource
   , interpretedExplicitOrdinal
   , interpretedInteger
   , interpretedFormulationLevel

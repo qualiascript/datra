@@ -28,6 +28,8 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Control.Monad (foldM)
+import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -61,7 +63,7 @@ interpretLocatedExpression (Located sourceSpan expressionValue) =
 interpretExpressionReason
   :: Expression
   -> Either InterpretingError InterpretedValue
-interpretExpressionReason = interpretNormalizedExpression . normalizeExpression
+interpretExpressionReason = evalInScope [] []
 
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
@@ -81,13 +83,13 @@ canonicalStringCandidates characters =
         Left _ -> []
     -- Every other value must already use its canonical source spelling.
     parsedCanonicalCandidate =
-      case parseDatra characters of
+      case parseDatra ("(" <> characters <> "\n)") of
         Left _ -> []
         Right expressionValue ->
           case interpretExpressionReason expressionValue of
             Right value
               | canonicalSpelling characters
-                  (renderInterpretedValue value) ->
+                  (renderCanonicalResult (interpretedCanonicalResult value)) ->
                     [ candidate
                     | candidateExpression <-
                         canonicalExpressionCandidates expressionValue
@@ -127,37 +129,46 @@ canonicalExpressionCandidates expressionValue =
         <*> canonicalExpressionCandidates right
     _ -> [expressionValue]
 
-interpretNormalizedExpression
-  :: Expression
-  -> Either InterpretingError InterpretedValue
-interpretNormalizedExpression expressionValue =
+type Interpreter = Expression -> Either InterpretingError InterpretedValue
+
+type Scope = [(String, Binding)]
+
+data Binding
+  = DeferredBinding Scope Expression
+  | EvaluatedBinding InterpretedValue
+
+evalInScope :: Scope -> [String] -> Interpreter
+evalInScope scope resolving = interpretNormalizedExpression scope resolving . normalizeExpression
+
+interpretNormalizedExpression :: Scope -> [String] -> Interpreter
+interpretNormalizedExpression scope resolving expressionValue =
   case expressionValue of
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
     AsciiStringLiteral value -> asciiStringValue value
     NothingLiteral -> Right nothingValue
-    StringTemplate parts -> interpretStringTemplate parts
+    StringTemplate parts -> interpretStringTemplateWith interpret parts
     StringType -> Right stringTypeValue
     IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions ->
-      interpretAtlasMapWith interpretExpressionReason expressions
+      interpretAtlasMapWith interpret expressions
     ArgumentMap expressions ->
-      traverse interpretExpressionReason expressions >>= makeArgumentMap
+      traverse interpret expressions >>= makeArgumentMap
     MapSequence expressions ->
-      interpretAtlasMapWith interpretExpressionReason expressions
+      interpretAtlasMapWith interpret expressions
     MapExpansion left right ->
       interpretAtlasMapWithBuilder
         makeAtlasExpansion
-        interpretExpressionReason
+        interpret
         [ensureMapLevel left, ensureMapLevel right]
     SuperEllipsisRange lower upper -> do
-      lowerValue <- interpretExpressionReason lower
-      upperValue <- interpretExpressionReason upper
+      lowerValue <- interpret lower
+      upperValue <- interpret upper
       boundedRangeValue lowerValue upperValue
     SuperEllipsisRangePlus lower ->
-      interpretExpressionReason lower >>= openPlusRangeValue
+      interpret lower >>= openPlusRangeValue
     SuperEllipsisRangeMinus upper ->
-      interpretExpressionReason upper >>= openMinusRangeValue
+      interpret upper >>= openMinusRangeValue
     NaturalRange origin target ->
       interpretBoundedKeyword "range" NaturalType (toInteger origin) (toInteger target)
         (\start end -> naturalRangeValue (fromInteger start) (fromInteger end))
@@ -187,11 +198,11 @@ interpretNormalizedExpression expressionValue =
     BooleanLiteral value -> Right (booleanValue value)
     BooleanType -> booleanTypeValue
     EitherType left right ->
-      interpretBinary eitherValue left right
+      binary eitherValue left right
     OptionalType operand ->
-      interpretExpressionReason operand >>= optionalValue
+      interpret operand >>= optionalValue
     Conditional condition consequent alternative -> do
-      conditionValue <- interpretExpressionReason condition
+      conditionValue <- interpret condition
       conditionFlag <- booleanCondition conditionValue
       captured <- interpretKeywordTemplate
         ("if " <> renderInterpretedValue (booleanValue conditionFlag) <> " then")
@@ -202,42 +213,47 @@ interpretNormalizedExpression expressionValue =
       conditionResult <- accessValues captured (naturalValue 1) >>= booleanCondition
       -- Branch ASTs remain deferred: only the decoded condition selects which
       -- expression to interpret, including the implicit () alternative.
-      interpretExpressionReason
+      interpret
         (if conditionResult then consequent else alternative)
     Addition left right ->
-      interpretBinary addValues left right
+      binary addValues left right
     Subtraction left right ->
-      interpretBinary subtractValues left right
-    Minus operand -> interpretExpressionReason operand >>= minusValue
+      binary subtractValues left right
+    Minus operand -> interpret operand >>= minusValue
     Multiplication left right ->
-      interpretBinary multiplyValues left right
+      binary multiplyValues left right
     Exponentiation base exponentValue ->
-      interpretBinary exponentiateValues base exponentValue
+      binary exponentiateValues base exponentValue
     Subfederation source target ->
-      interpretBinary subfederationValues source target
+      binary subfederationValues source target
     Equality left right ->
-      interpretBinary equalValues left right
+      binary equalValues left right
     BooleanAnd left right ->
-      interpretBinary booleanAndValues left right
+      binary booleanAndValues left right
     BooleanOr left right ->
-      interpretBinary booleanOrValues left right
+      binary booleanOrValues left right
     BooleanNot operand ->
-      interpretExpressionReason operand >>= booleanNotValue
+      interpret operand >>= booleanNotValue
     Extract operand ->
-      interpretExpressionReason operand >>= extractValue
+      interpret operand >>= extractValue
+    Program bindings result -> evaluateBlock Nothing bindings result
+    Begin bindings result ->
+      evaluateBlock (Just (renderSourceExpression expressionValue)) bindings result
+    Let _ -> Left LetOutsideBegin
+    IdentifierReference (IdentifierString name) -> resolveIdentifier scope resolving name
     Eval source target ->
-      interpretBinary (evalValues canonicalStringCodec) source target
+      binary (evalValues canonicalStringCodec) source target
     MapConcatenation left right ->
-      interpretBinary concatenateValues left right
+      binary concatenateValues left right
     MapAccess mapOperand insertionOperand ->
-      interpretBinary accessValues mapOperand insertionOperand
+      binary accessValues mapOperand insertionOperand
     MapSpecification sourceOperand targetOperand ->
-      interpretSpecification sourceOperand targetOperand
+      interpretSpecificationWith interpret sourceOperand targetOperand
     IdentifierOperation
         (IdentifierString identifierString)
         typeAnnotationExpression
         maybeGivenValueExpression -> do
-      typeAnnotation <- interpretExpressionReason typeAnnotationExpression
+      typeAnnotation <- interpret typeAnnotationExpression
       case maybeGivenValueExpression of
         Nothing
           | identifierString == "False"
@@ -256,7 +272,7 @@ interpretNormalizedExpression expressionValue =
         Nothing ->
           Right (simpleIdentifierTypeValue identifierString typeAnnotation)
         Just givenValueExpression -> do
-          givenValue <- interpretExpressionReason givenValueExpression
+          givenValue <- interpret givenValueExpression
           case assignIdentifierValues
               identifierString typeAnnotation givenValue of
             Left
@@ -269,6 +285,71 @@ interpretNormalizedExpression expressionValue =
                   , givenValue = renderInterpretedValue givenValue
                   })
             result -> result
+
+  where
+    interpret = evalInScope scope resolving
+    binary = interpretBinaryWith interpret
+    evaluateBlock source bindings result = do
+      imported <- importScope scope resolving bindings
+      withEvaluationSource source <$> evalInScope imported resolving result
+
+resolveIdentifier
+  :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
+resolveIdentifier scope resolving name
+  | name `elem` resolving = Left (CyclicIdentifierReference (reverse (name : resolving)))
+  | otherwise =
+      case lookup name scope of
+        Nothing -> Left (UnknownIdentifier name)
+        Just (EvaluatedBinding value) -> Right value
+        Just (DeferredBinding captured expressionValue) ->
+          evalInScope captured (name : resolving) expressionValue
+
+-- A begin imports a rank-two list of entries. Definitions retain the lexical
+-- scope of that import; lets are forced before yield and their results replace
+-- the deferred definitions. Names are checked before evaluating any binding.
+importScope :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
+importScope outer resolving entries = do
+  let (definitions, eagerEntries) = foldMap (bindingImports False) entries
+  _ <- foldM checkName (map fst outer) definitions
+  let initial = [(name, DeferredBinding initial expressionValue)
+                | (name, _, expressionValue) <- definitions] <> outer
+  evaluated <- traverse
+    (\(name, _, _) -> (name,) <$> resolveIdentifier initial resolving name)
+    (filter (\(_, strict, _) -> strict) definitions)
+  let imported =
+        [ (name, maybe (DeferredBinding imported expressionValue) EvaluatedBinding
+            (lookup name evaluated))
+        | (name, _, expressionValue) <- definitions
+        ] <> outer
+  -- Anonymous let entries still have eager evaluation semantics.
+  mapM_ (evalInScope imported resolving) eagerEntries
+  pure imported
+  where
+    checkName names (name, _, _)
+      | name `elem` names || isReservedIdentifierString name =
+          Left (IdentifierStringOverlap name)
+      | otherwise = Right (name : names)
+
+-- Collect named imports and eager anonymous entries together. This keeps let
+-- semantics consistent through nested maps, concatenations, and optional names.
+bindingImports :: Bool -> Expression -> ([(String, Bool, Expression)], [Expression])
+bindingImports strict expressionValue =
+  case expressionValue of
+    Let binding -> bindingImports True binding
+    IdentifierOperation (IdentifierString name) annotation given ->
+      ([(name, strict, maybe annotation (`MapSpecification` annotation) given)], [])
+    AtlasMap members -> foldMap collect members
+    MapSequence members -> foldMap collect members
+    ArgumentMap members -> foldMap collect members
+    MapConcatenation left right -> collect left <> collect right
+    MapExpansion left right -> collect left <> collect right
+    EitherType left right -> collect left <> collect right
+    MapSpecification source _
+      | ([(name, _, _)], _) <- collect source ->
+          ([(name, strict, MapAccess expressionValue (EllipsisNatural 1))], [])
+    _ -> ([], [expressionValue | strict])
+  where
+    collect = bindingImports strict
 
 -- The parser retains structural boundaries and canonicalizes literal tokens;
 -- eval matches the normalized keyword text and provides typed captures. The
@@ -320,10 +401,11 @@ interpretOpenKeyword keyword boundType origin direction construct = do
 canonicalInteger :: Integer -> String
 canonicalInteger = renderInterpretedValue . integerValue
 
-interpretStringTemplate
-  :: [StringTemplatePart Expression]
+interpretStringTemplateWith
+  :: Interpreter
+  -> [StringTemplatePart Expression]
   -> Either InterpretingError InterpretedValue
-interpretStringTemplate parts = do
+interpretStringTemplateWith interpret parts = do
   values <- traverse interpretPart parts
   case values of
     [] -> asciiStringValue ""
@@ -333,10 +415,10 @@ interpretStringTemplate parts = do
   where
     interpretPart (StringTemplateLiteral value) = asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
-      value <- interpretExpressionReason expressionValue
+      value <- interpret expressionValue
       toStringValue canonicalStringCodec value
     interpretPart (StringTemplateWeakInterpolation expressionValue) = do
-      value <- interpretExpressionReason expressionValue
+      value <- interpret expressionValue
       weakToStringValue canonicalStringCodec value
 
     concatenateTemplateValues left right =
@@ -344,13 +426,14 @@ interpretStringTemplate parts = do
         Right value -> Right value
         Left _ -> Left AmbiguousStringTemplate
 
-interpretSpecification
-  :: Expression
+interpretSpecificationWith
+  :: Interpreter
+  -> Expression
   -> Expression
   -> Either InterpretingError InterpretedValue
-interpretSpecification sourceExpression targetExpression = do
-  source <- interpretExpressionReason sourceExpression
-  target <- interpretExpressionReason targetExpression
+interpretSpecificationWith interpret sourceExpression targetExpression = do
+  source <- interpret sourceExpression
+  target <- interpret targetExpression
   case specifyValues source target of
     Left
         (AtlasMapFederationOperationRefuted
@@ -440,17 +523,18 @@ identifierIntermediateValue result =
       identifierExpectedValue intermediate
     _ -> Nothing
 
-interpretBinary
-  :: ( InterpretedValue
+interpretBinaryWith
+  :: Interpreter
+  -> ( InterpretedValue
        -> InterpretedValue
        -> Either InterpretingError InterpretedValue
      )
   -> Expression
   -> Expression
   -> Either InterpretingError InterpretedValue
-interpretBinary operation left right = do
-  leftValue <- interpretExpressionReason left
-  rightValue <- interpretExpressionReason right
+interpretBinaryWith interpret operation left right = do
+  leftValue <- interpret left
+  rightValue <- interpret right
   operation leftValue rightValue
 
 interpretAtlasMapWith

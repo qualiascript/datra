@@ -25,6 +25,7 @@ import DatraTypes
   ( CanonicalResult (..)
   , InterpretedValue
   , interpretedCanonicalResult
+  , interpretedEvaluationSource
   )
 import DatraOrdinal
   ( Ordinal
@@ -52,14 +53,27 @@ import SuperEllipsisRange
 -- operators never appear here; maps use parentheses and semicolons, while
 -- compact ranges retain their range notation.
 renderInterpretedValue :: InterpretedValue -> String
-renderInterpretedValue = renderCanonicalResult . interpretedCanonicalResult
+renderInterpretedValue value =
+  retainSource value (renderCanonicalResult (interpretedCanonicalResult value))
+
+retainSource :: InterpretedValue -> String -> String
+retainSource value result =
+  case interpretedEvaluationSource value of
+    Nothing -> result
+    Just block -> operand <> " <~ " <> block
+      where
+        operand = case interpretedCanonicalResult value of
+          CanonicalExplicit {} -> result
+          _ -> "(" <> result <> ")"
 
 -- | Render only the root map using implicit newline notation. Nested maps
 -- keep their canonical parentheses. A semicolon is retained before a newline
 -- when omitting it would let the range parser consume the next line.
 renderInterpretedValueAsNewlineMap :: InterpretedValue -> String
-renderInterpretedValueAsNewlineMap =
-  renderCanonicalResultAsNewlineMap . interpretedCanonicalResult
+renderInterpretedValueAsNewlineMap value =
+  case interpretedEvaluationSource value of
+    Just _ -> renderInterpretedValue value
+    Nothing -> renderCanonicalResultAsNewlineMap (interpretedCanonicalResult value)
 
 renderCanonicalResult :: CanonicalResult -> String
 renderCanonicalResult = renderCompact . prettyCanonicalResult
