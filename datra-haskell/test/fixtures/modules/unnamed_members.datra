@@ -1,0 +1,2 @@
+yield BadMap := begin
+yield (1; 2)

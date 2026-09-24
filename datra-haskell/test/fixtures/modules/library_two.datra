@@ -1,4 +1,3 @@
-module LibraryTwo
-begin
-x := 9
+yield LibraryTwo := begin
+  x := 9
 yield public this

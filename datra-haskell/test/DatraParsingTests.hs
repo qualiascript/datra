@@ -144,9 +144,14 @@ regressionTests = do
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
     , External (AsciiStringLiteral "datra.add")
-    , Module (IdentifierString "Example")
-        [AST.assignment "x" (natural 1) (natural 1)]
-        (FunctionApplication (ref "public") This)
+    , Program []
+        (AST.assignment "Example"
+          (Begin
+            [AST.assignment "x" (natural 1) (natural 1)]
+            (FunctionApplication (ref "public") This))
+          (Begin
+            [AST.assignment "x" (natural 1) (natural 1)]
+            (FunctionApplication (ref "public") This)))
     ]
   assertAstRoundTrip "internal eval AST remains serializable"
     (renderExpression
@@ -193,11 +198,24 @@ regressionTests = do
         [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
-  assertParsed "module declarations carry their namespace"
-    "module Example\nbegin\n x := 1\nyield public this"
-    (Module (IdentifierString "Example")
-      [AST.assignment "x" (natural 1) (natural 1)]
-      (FunctionApplication (ref "public") This))
+  let assignedBlock = Begin
+        [ AST.assignment "a" (natural 2) (natural 2)
+        , AST.assignment "b" (natural 3) (natural 3)
+        ]
+        (Addition (ref "a") (ref "b"))
+  assertParsed "assignment directly infers a begin block"
+    "my_val := begin\n a := 2\n b := 3\nyield a + b"
+    (AST.assignment "my_val" assignedBlock assignedBlock)
+  assertParsed "assignment specifies a begin block after its annotation"
+    "my_val := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
+    (AST.assignment "my_val" (natural 5) assignedBlock)
+  assertParsed "optional assignment specifies a begin block"
+    "my_val? := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
+    (EitherType
+      (AST.assignment "my_val" (natural 5) assignedBlock)
+      (natural 5))
+  assertRejected "a multiline assignment block requires begin"
+    "my_val := 5 ~>\n a := 2\nyield a"
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
     (AST.dependentIdentifierType "module" (ref "Nat"))

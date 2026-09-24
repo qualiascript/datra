@@ -1,4 +1,3 @@
-module CycleB
-begin
-import "cycle_a"
+yield CycleB := begin
+  import "cycle_a"
 yield public this

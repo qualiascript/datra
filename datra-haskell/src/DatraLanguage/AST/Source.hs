@@ -21,10 +21,6 @@ source context expression =
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 ("do\n" <> concatMap (indent . source 0) bindings <> "yield " <> source 0 result)
     ExternalValue descriptor -> wrapped 0 ("external " <> source 12 descriptor)
-    ModuleValue (IdentifierString name) bindings result ->
-      "module " <> renderIdentifierString name <> "\nbegin\n"
-        <> concatMap (indent . source 0) bindings
-        <> "yield " <> source 0 result
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0
       ("begin\n" <> concatMap (indent . source 0) bindings

@@ -89,7 +89,6 @@ import DatraLanguage.AST
       , FunctionBody
       , FunctionApplication
       , External
-      , Module
       , Let
       , IdentifierReference
       )
@@ -98,6 +97,7 @@ import DatraLanguage.AST
       , StringTemplateLiteral
       , StringTemplateWeakInterpolation
       )
+  , namedBeginBlock
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -265,7 +265,9 @@ standardLibraryExpression =
 
 libraryDeclarations :: [Expression]
 libraryDeclarations = case standardLibraryExpression of
-  Right (Module _ declarations _) -> declarations
+  Right expressionValue
+    | Just (_, declarations, _) <- namedBeginBlock expressionValue ->
+        declarations
   Right (Program declarations _) -> declarations
   _ -> []
 
@@ -285,7 +287,9 @@ libraryRules =
 
 libraryNamespace :: String
 libraryNamespace = case standardLibraryExpression of
-  Right (Module (IdentifierString name) _ _) -> name
+  Right expressionValue
+    | Just (IdentifierString name, _, _) <- namedBeginBlock expressionValue ->
+        name
   _ -> ""
 
 locatedResource :: Parser (Located Expression)
@@ -365,7 +369,6 @@ astForm =
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
       , astUnary AST.ExternalOperator External
-      , astModule
       , astBlock "do" FunctionBody
       , astSequence
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
@@ -431,16 +434,6 @@ astIdentifierOperation operator assignmentMarker = do
           Just given ->
             IdentifierOperation
               operationIdentifierString typeAnnotation (Just given))
-
-astModule :: Parser Expression
-astModule = do
-  _ <- astSymbol "module"
-  name <-
-    IdentifierString
-      <$> (astIdentifierExpression >>= validateIdentifierSpelling)
-  bindings <- between (astSymbol "(") (astSymbol ")")
-    (astSymbol "bindings" *> many astExpression)
-  Module name bindings <$> astExpression
 
 astConditional :: Parser Expression
 astConditional = do
@@ -542,7 +535,7 @@ resource = snd <$> resourceWithEnvelope
 resourceWithEnvelope :: Parser (ResourceEnvelope, Expression)
 resourceWithEnvelope = do
   fullSpaceConsumer
-  result <- moduleResource <|> explicitResource <|> implicitResource
+  result <- standardLibraryResource <|> explicitResource <|> implicitResource
   fullSpaceConsumer
   eof
   pure result
@@ -553,27 +546,31 @@ resourceWithEnvelope = do
     implicitResource =
       (,) ImplicitBlockEnvelope <$> implicitProgram
 
-moduleResource :: Parser (ResourceEnvelope, Expression)
-moduleResource = withReferences $ do
+standardLibraryResource :: Parser (ResourceEnvelope, Expression)
+standardLibraryResource = withReferences $ do
   rules <- syntaxRules <$> ask
-  value <- if null rules
-    then bootstrapModule
-    else lookAhead (keywordToken "module") *> syntaxApplication
-  case value of
-    moduleValue@Module {} -> pure (ImplicitBlockEnvelope, moduleValue)
-    _ -> empty
+  guard (null rules)
+  value <- bootstrapNamedBlock
+  case namedBeginBlock value of
+    Just _ -> pure (ImplicitBlockEnvelope, value)
+    Nothing -> empty
   where
-    -- The standard library defines the ordinary module form, but its own
-    -- outer declaration needs this one bootstrap production.
-    bootstrapModule = do
-      _ <- continuedKeyword "module"
-      name <- IdentifierString <$> bareIdentifierToken
+    -- The standard library defines the ordinary module and begin forms, but
+    -- its own outer named block must be readable before those rules exist.
+    bootstrapNamedBlock = do
+      _ <- continuedReservedWord Reserved.YieldWord
+      name <- IdentifierString
+        <$> (identifierExpression >>= validateIdentifierSpelling)
+      _ <- continuedOperator AST.AssignmentOperator
       lineSpaceConsumer
       _ <- continuedWordOperator AST.BeginOperator
       bindings <- elements
       result <- withDeclarations bindings
         (continuedReservedWord Reserved.YieldWord *> expression)
-      pure (Module name bindings result)
+      let block = Begin bindings result
+      pure
+        (Program []
+          (IdentifierOperation name block (Just block)))
 
 -- Parse the parenthesized expression itself in lookahead so the closing
 -- parenthesis must enclose the whole resource. This distinguishes an explicit
@@ -738,15 +735,17 @@ identifierOperation = do
         _ <- continuedOperator AST.AssignmentOperator
         let name = case identifierSpelling of BareIdentifier value -> value; FullStringIdentifier value -> value
             operationIdentifierString = IdentifierString name
-        givenValue <- identifierValueExpression
-        let proposed = IdentifierOperation operationIdentifierString givenValue (Just givenValue)
+        (typeAnnotation, givenValue) <- assignedIdentifierValue
+        let proposed =
+              IdentifierOperation
+                operationIdentifierString typeAnnotation (Just givenValue)
         if null (declarationRules proposed) then void (validateIdentifierSpelling identifierSpelling) else pure ()
         let operation =
               IdentifierOperation
                 operationIdentifierString
-                givenValue
+                typeAnnotation
                 (Just givenValue)
-        pure (optionalIdentifier isOptional operation givenValue)
+        pure (optionalIdentifier isOptional operation typeAnnotation)
     , do
         _ <- continuedOperator AST.DependentIdentifierTypeOperator
         operationIdentifierString <-
@@ -770,6 +769,22 @@ optionalIdentifier :: Bool -> Expression -> Expression -> Expression
 optionalIdentifier False operation _ = operation
 optionalIdentifier True operation missingValue =
   EitherType operation missingValue
+
+-- A named value may bind a begin block directly. When a specification is
+-- supplied before @~>@, keep it as the identifier annotation and the block as
+-- the implementation; without one, the block's evaluated singleton type is
+-- inferred in the same way as every ordinary @:=@ binding.
+assignedIdentifierValue :: Parser (Expression, Expression)
+assignedIdentifierValue = do
+  inferred <- identifierValueExpression
+  explicitBlock <- optional . try $ do
+    _ <- continuedOperator AST.SpecificationOperator
+    _ <- lookAhead (keywordToken "begin")
+    block <- identifierValueExpression
+    case block of
+      Begin {} -> pure block
+      _ -> empty
+  pure (inferred, maybe inferred id explicitBlock)
 
 -- Identifier annotations and assigned values may use range, arithmetic, and
 -- access operators directly. Concatenation and specification are deliberately

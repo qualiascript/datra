@@ -1,5 +1,4 @@
-module SelectedExports
-begin
+yield SelectedExports := begin
   a := 1
   b := 2
   c := 3

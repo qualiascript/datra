@@ -5,7 +5,10 @@ module Datra.Interpreter.ModuleTests (moduleTests) where
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
-import DatraTypes (InterpretingError (..))
+import DatraTypes
+  ( InterpretingError (..)
+  , ModuleEvaluationFailure (..)
+  )
 import System.FilePath (takeFileName)
 import Test.Tasty (TestTree, testGroup)
 
@@ -46,6 +49,15 @@ moduleTests =
     , moduleCase origin "dotted module exports select named bindings"
         "import all \"selected_exports\"\nyield a + b"
         "3"
+    , moduleCase origin "outer yielded block supplies the module namespace"
+        "import \"selected_exports\"\nyield SelectedExports.a + SelectedExports.b"
+        "3"
+    , moduleCase origin "qualified import accepts any total named value"
+        "import \"total_value\"\nyield Answer"
+        "42"
+    , moduleCase origin "qualified import evaluates preceding file bindings"
+        "import \"total_value_with_binding\"\nyield AnswerWithBinding"
+        "42"
     , moduleCase origin "explicit standard-library import is idempotent"
         ("import all \"std\"\n"
           <> "yield Std.if true then 11 else (1+\"bad\")")
@@ -89,6 +101,24 @@ moduleTests =
           ModuleLoadingFailure (ModuleReadFailed requested _ _) ->
             requested == "missing"
           _ -> False)
+    , moduleFailureCase origin "imported file must yield a simple identifier type"
+        "import \"unnamed\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed ImportedModuleRequiresSimpleIdentifierType))
+    , moduleFailureCase origin "qualified import requires a total value"
+        "import \"non_total_value\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed ImportedModuleRequiresTotalValue))
+    , moduleFailureCase origin "import all rejects a scalar total value"
+        "import all \"total_value\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed
+            ImportAllRequiresTotalMapOfSimpleIdentifierTypes))
+    , moduleFailureCase origin "import all rejects unnamed map members"
+        "import all \"unnamed_members\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed
+            ImportAllRequiresTotalMapOfSimpleIdentifierTypes))
     ]
   where
     isEvaluationFailure (ModuleEvaluationFailure _) = True

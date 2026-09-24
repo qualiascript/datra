@@ -55,7 +55,9 @@ import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , namedBeginBlock
   , normalizeExpression
+  , yieldedIdentifier
   )
 import DatraTypes
 import Parsing (parseDatra, standardLibraryExpression)
@@ -121,16 +123,20 @@ standardScope :: Either InterpretingError Scope
 standardScope = do
   expression <- parsedStandardLibrary
   namespace <- declaredModuleName expression
-  exported <- standardLibraryScope
+  value <- standardLibraryValue
+  exported <- exportedBindings value
   pure
     ((namespace,
-      NamespaceBinding standardLibraryIdentity exported) : exported)
+      ImportedBinding standardLibraryIdentity value) : exported)
 
-standardLibraryScope :: Either InterpretingError Scope
-standardLibraryScope = do
+standardLibraryValue :: Either InterpretingError InterpretedValue
+standardLibraryValue = do
   expression <- parsedStandardLibrary
-  scope <- standardLibraryInternalScopeFor expression
-  moduleResult scope expression >>= exportedBindings
+  case namedBeginBlock expression of
+    Just (_, bindings, result) ->
+      evalInScope [] [] (Begin bindings result)
+    Nothing -> Left (ModuleEvaluationFailed
+      (StandardLibraryRequiresDeclarationBlock standardLibraryFileName))
 
 standardLibraryInternalScope :: Either InterpretingError Scope
 standardLibraryInternalScope =
@@ -149,9 +155,9 @@ standardLibraryInternalScopeFor
   :: Expression
   -> Either InterpretingError Scope
 standardLibraryInternalScopeFor expression =
-  case expression of
-    Module _ bindings _ -> importScope [] [] bindings
-    _ -> Left (ModuleEvaluationFailed
+  case namedBeginBlock expression of
+    Just (_, bindings, _) -> importScope [] [] bindings
+    Nothing -> Left (ModuleEvaluationFailed
       (StandardLibraryRequiresDeclarationBlock standardLibraryFileName))
 
 canonicalStringCodec :: CanonicalStringCodec
@@ -225,7 +231,7 @@ type Scope = [(String, Binding)]
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
-  | NamespaceBinding FilePath Scope
+  | ImportedBinding FilePath InterpretedValue
   | ModuleCatalog [(String, ModuleSource)]
   | ScopeMembers [String]
 
@@ -331,7 +337,6 @@ interpretNormalizedExpression scope resolving expressionValue =
       input <- interpret argument >>= functionArgumentValue
       applyFunction callable input
     External descriptor -> interpret descriptor >>= externalValue
-    Module _ bindings result -> evaluateBlock Nothing bindings result
     Program bindings result -> evaluateBlock Nothing bindings result
     Begin bindings result ->
       evaluateBlock (Just (renderSourceExpression expressionValue)) bindings result
@@ -350,10 +355,14 @@ interpretNormalizedExpression scope resolving expressionValue =
       binary overloadValues defaults supplied
     SafeOverload defaults supplied ->
       binary safeOverloadValues defaults supplied
-    NamedAccess (IdentifierReference (IdentifierString namespace)) (IdentifierString name)
-      | Just (NamespaceBinding _ exported) <- lookup namespace scope -> do
-          member <- resolveIdentifier exported [] name
-          namedAccessValue (simpleIdentifierTypeValue name member) name
+    NamedAccess
+        (IdentifierReference (IdentifierString namespace))
+        (IdentifierString name)
+      | Just (ImportedBinding _ value) <- lookup namespace scope ->
+          case namedAccessValue value name of
+            Left (NamedAccessFailed (NamedFieldNotFound _)) ->
+              Left (UnknownIdentifier name)
+            result -> result
     NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
     MapAccess mapOperand insertionOperand ->
       binary accessValues mapOperand insertionOperand
@@ -414,9 +423,7 @@ resolveIdentifier scope resolving name =
   case lookup name scope of
     Nothing -> Left (UnknownIdentifier name)
     Just (EvaluatedBinding value) -> Right value
-    Just (NamespaceBinding _ exported) -> do
-      values <- traverse (\(key, _) -> simpleIdentifierTypeValue key <$> resolveIdentifier exported resolving key) exported
-      pure (makeAtlasMap 2 values)
+    Just (ImportedBinding _ value) -> Right value
     Just ScopeMembers {} -> Left (UnknownIdentifier name)
     Just ModuleCatalog {} -> Left (UnknownIdentifier name)
     Just (DeferredBinding captured annotation expressionValue) -> do
@@ -812,7 +819,6 @@ registeredExternal symbol = case symbol of
   "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
   "datra.Pages" -> Right (syntaxCategoryTypeValue "Pages")
   "datra.syntax.if" -> syntaxAdapter 3
-  "datra.syntax.module" -> syntaxAdapter 3
   "datra.syntax.ifThen" -> syntaxAdapter 2
   "datra.syntax.begin" -> syntaxAdapter 2
   "datra.syntax.do" -> syntaxAdapter 2
@@ -892,11 +898,14 @@ registeredExternal symbol = case symbol of
 
 importModule :: Scope -> (Bool, String) -> Either InterpretingError Scope
 importModule scope (allNames, requested) = do
-  (identity, namespace, exported) <-
-    lookupModule scope requested >>= moduleExports
+  (identity, namespace, value) <-
+    lookupModule scope requested >>= loadedModuleValue
+  exported <- if allNames
+    then importAllBindings value
+    else requireTotalModuleValue value >> pure []
   namespaceScope <- case lookup namespace scope of
-    Nothing -> pure ((namespace, NamespaceBinding identity exported) : scope)
-    Just (NamespaceBinding previous _) | previous == identity -> pure scope
+    Nothing -> pure ((namespace, ImportedBinding identity value) : scope)
+    Just (ImportedBinding previous _) | previous == identity -> pure scope
     _ -> Left (IdentifierStringOverlap namespace)
   if allNames then foldM (insertExport identity) namespaceScope exported else pure namespaceScope
   where
@@ -906,22 +915,36 @@ importModule scope (allNames, requested) = do
       Just _ | identity == standardLibraryIdentity -> Right values
       _ -> Left (IdentifierStringOverlap name)
 
-moduleExports
+loadedModuleValue
   :: ModuleSource
-  -> Either InterpretingError (FilePath, String, Scope)
-moduleExports StdLibModule = do
+  -> Either InterpretingError (FilePath, String, InterpretedValue)
+loadedModuleValue StdLibModule = do
   name <- moduleName StdLibModule
-  values <- standardLibraryScope
-  pure (standardLibraryIdentity, name, values)
-moduleExports moduleSource@(ModuleSource path expression _) = do
+  value <- standardLibraryValue
+  pure (standardLibraryIdentity, name, value)
+loadedModuleValue moduleSource@(ModuleSource path expression dependencies) = do
   name <- moduleName moduleSource
-  scope <- moduleScope moduleSource
-  exports <- moduleResult scope expression >>= exportedBindings
-  pure (path, name, exports)
+  (_, annotation, given) <- case yieldedIdentifier expression of
+    Just binding -> Right binding
+    Nothing -> Left (ModuleEvaluationFailed
+      ImportedModuleRequiresSimpleIdentifierType)
+  base <- standardScope
+  scope <- importScope
+    (("\0imports", ModuleCatalog dependencies) : base)
+    []
+    (resourceBindings expression)
+  let valueExpression = case given of
+        Nothing -> annotation
+        Just value
+          | value == annotation -> value
+          | otherwise -> MapSpecification value annotation
+  value <- evalInScope scope [] valueExpression
+  pure (path, name, value)
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
 moduleExportNames source = do
-  (_, _, exported) <- moduleExports source
+  (_, _, value) <- loadedModuleValue source
+  exported <- importAllBindings value
   pure (map fst exported)
 
 moduleName :: ModuleSource -> Either InterpretingError String
@@ -929,14 +952,40 @@ moduleName StdLibModule = parsedStandardLibrary >>= declaredModuleName
 moduleName (ModuleSource _ expression _) = declaredModuleName expression
 
 declaredModuleName :: Expression -> Either InterpretingError String
-declaredModuleName (Module (IdentifierString name) _ _) = Right name
-declaredModuleName _ = Left (ModuleEvaluationFailed
-  ImportedModuleRequiresDeclarationBlock)
+declaredModuleName expression =
+  case yieldedIdentifier expression of
+    Just (IdentifierString name, _, _) -> Right name
+    Nothing -> Left (ModuleEvaluationFailed
+      ImportedModuleRequiresSimpleIdentifierType)
 
-moduleResult :: Scope -> Expression -> Either InterpretingError InterpretedValue
-moduleResult scope (Module _ _ result) = evalInScope scope [] result
-moduleResult _ _ = Left (ModuleEvaluationFailed
-  ImportedModuleRequiresDeclarationBlock)
+requireTotalModuleValue
+  :: InterpretedValue
+  -> Either InterpretingError ()
+requireTotalModuleValue value
+  | interpretedTypeIsTotal value = Right ()
+  | otherwise = Left (ModuleEvaluationFailed
+      ImportedModuleRequiresTotalValue)
+
+importAllBindings
+  :: InterpretedValue
+  -> Either InterpretingError Scope
+importAllBindings value
+  | not (interpretedTypeIsTotal value) = invalid
+  | not (all isSimpleIdentifier members) = invalid
+  | otherwise =
+      case namedBindings value of
+        Right bindings -> Right bindings
+        Left _ -> invalid
+  where
+    members = case interpretedCanonicalResult value of
+      CanonicalMap _ values -> values
+      CanonicalConcatenation values -> values
+      _ -> []
+    isSimpleIdentifier CanonicalSimpleIdentifierType {} = True
+    isSimpleIdentifier CanonicalAssignment {} = True
+    isSimpleIdentifier _ = False
+    invalid = Left (ModuleEvaluationFailed
+      ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
 
 scopeValue :: Scope -> [String] -> Either InterpretingError InterpretedValue
 scopeValue scope resolving = do
@@ -987,8 +1036,15 @@ moduleScope :: ModuleSource -> Either InterpretingError Scope
 moduleScope StdLibModule = standardLibraryInternalScope
 moduleScope (ModuleSource _ expression dependencies) = do
   base <- standardScope
-  entries <- case expression of
-    Module _ declarations _ -> Right declarations
-    _ -> Left (ModuleEvaluationFailed
-      ImportedModuleRequiresDeclarationBlock)
-  importScope (("\0imports", ModuleCatalog dependencies) : base) [] entries
+  _ <- declaredModuleName expression
+  outer <- importScope
+    (("\0imports", ModuleCatalog dependencies) : base)
+    []
+    (resourceBindings expression)
+  case namedBeginBlock expression of
+    Just (_, declarations, _) -> importScope outer [] declarations
+    Nothing -> Right outer
+
+resourceBindings :: Expression -> [Expression]
+resourceBindings (Program bindings _) = bindings
+resourceBindings _ = []

@@ -1,5 +1,4 @@
-module Std
-begin
+yield Std := begin
 
   # Ordinary context bindings; only primitive values cross the external boundary.
   let Any := external "datra.Any"
@@ -35,7 +34,6 @@ begin
   )
 
   # Syntax adapters receive ASTs. The sum is one value bound to one identifier.
-  module : "$IdenStr begin $Block yield $Expr" as (AST, AST, AST -> AST) := external "datra.syntax.module"
   if := (
     ("$Expr then $Expr else $Expr" as (AST, AST, AST -> AST) external "datra.syntax.if") |
     ("$Expr then $Expr" as (AST, AST -> AST) external "datra.syntax.ifThen")

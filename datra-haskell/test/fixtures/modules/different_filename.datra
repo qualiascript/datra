@@ -1,4 +1,3 @@
-module DeclaredName
-begin
-x := 12
+yield DeclaredName := begin
+  x := 12
 yield public this

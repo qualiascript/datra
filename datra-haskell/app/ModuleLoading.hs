@@ -87,5 +87,11 @@ importSyntax = concatMap (\(path, source) ->
   | Right namespace <- [moduleName source]
   ])
   where
-    declarations (ModuleSource _ (Module _ entries _) _) = entries
+    declarations (ModuleSource _ expression _) =
+      outer expression <> inner expression
     declarations _ = []
+    outer (Program entries _) = entries
+    outer _ = []
+    inner expression = case namedBeginBlock expression of
+      Just (_, entries, _) -> entries
+      Nothing -> []
