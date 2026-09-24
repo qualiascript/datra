@@ -15,6 +15,7 @@ import Control.Monad (foldM)
 import Data.List (nubBy)
 import DatraLanguage.AST
 import DatraTypes
+import ModuleNames (isPrivateIdentifier)
 
 data ParameterSchema
   = Parameter
@@ -40,6 +41,10 @@ compileParameters evaluate expression =
         named@(IdentifierOperation (IdentifierString name) annotation _)
         missing
       | annotation == missing -> do
+          if isPrivateIdentifier name
+            then Left (FunctionError
+              "private parameter names cannot be optional")
+            else pure ()
           schema <- compileParameters evaluate named
           case schema of
             Parameter _ _ target defaultValue ->

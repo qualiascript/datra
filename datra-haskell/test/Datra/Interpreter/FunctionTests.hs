@@ -73,26 +73,28 @@ functionTests =
         , expressionCase "invalid function variance"
             "(Nat -> Int) of (Int -> Nat)"
             "false"
-        , programFailureCase "required names reject positional input"
+        , programCase "required names accept deterministic positional input"
             "f := ({x:Int} -> Int do yield x+1)\nyield f 2"
+            "3"
+        , programCase "written order resolves otherwise ambiguous arguments"
+            "f := ({x?:Int,y?:Int} -> Int do yield x+y)\nyield f {2,3}"
+            "5"
+        , programCase "private parameter names expose positional slots"
+            "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (1,2)"
+            "3"
+        , programFailureCase "private parameter slots reject named input"
+            "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (_x:1,_y:2)"
             (SourceEvaluationFailure
               (FunctionError
                 "no applicable function alternative; syntax-only alternatives require their AST pattern"))
-        , programFailureCase "ambiguous unnamed arguments"
-            "f := ({x?:Int,y?:Int} -> Int do yield x+y)\nyield f {2,3}"
-            (SourceEvaluationFailure
-              (FunctionError
-                "ambiguous argument bindings; supply identifiers to select the intended slots"))
         , programFailureCase "declared result rejects inferred body"
             "f := ({a?:Int} -> String do yield a+1)\nyield f 5"
             (SourceEvaluationFailure
               (FunctionError
                 "function body does not satisfy its declared output type"))
-        , programFailureCase "optional values do not make names optional"
+        , programCase "positional absence can acquire a required name"
             "f := ({x:Int?} -> Int? do yield x)\nyield f nothing"
-            (SourceEvaluationFailure
-              (FunctionError
-                "no applicable function alternative; syntax-only alternatives require their AST pattern"))
+            "nothing"
         ]
     , recursionTests
     ]

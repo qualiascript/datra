@@ -49,11 +49,9 @@ overloadTests =
         (SourceEvaluationFailure
           (OverloadError
             "the right operand does not match the left operand without its defaults"))
-    , programFailureCase "unnamed unordered overload is ambiguous"
+    , programCase "written order resolves a partial unnamed overload"
         "yield {a? : Nat := 3, b? : Nat := 4} << 5"
-        (SourceEvaluationFailure
-          (OverloadError
-            "ambiguous overload; supply identifiers to select the intended slots"))
+        "{a? : Nat := 5, b? : Nat := 4}"
     ]
 
 defaultedFunctionTests :: TestTree
@@ -77,6 +75,13 @@ defaultedFunctionTests =
           , "yield f (b : 8)"
           ])
         "11"
+    , programCase "overload result can be passed directly"
+        (unlines
+          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          , "arguments := ({n? : Nat := 5} << 8)"
+          , "yield f arguments"
+          ])
+        "9"
     , programCase "total annotation needs no explicit default"
         (unlines
           [ "f := ({n? : 5} -> Nat yield n + 1)"

@@ -11,13 +11,14 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
 import Control.Monad (foldM)
+import Data.List (permutations)
 import BooleanType (DatraBoolean (..))
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
   , sequenceOperands
   )
-import Evaluation.Map (concatenateValues)
+import Evaluation.Map (concatenateValues, makeAtlasMap)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
   ( selectAtomicFederationMember
@@ -35,8 +36,8 @@ selectFederationMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectFederationMember source target
-  | ArgumentMapForm _ underlying <- interpretedForm target =
-      selectFederationMember source underlying
+  | ArgumentMapForm members underlying <- interpretedForm target =
+      selectArgumentMapMember source members underlying
   | ArgumentMapForm _ underlying <- interpretedForm source =
       selectFederationMember underlying target
   | AssignmentForm assignment <- interpretedForm source =
@@ -68,6 +69,142 @@ selectFederationMember source target
                           selectExpansionMember source target
                         SingletonAtlasMapFederation _ -> DecisionUndecidable
                         PrimitiveAtlasMapFederation _ -> DecisionUndecidable
+
+-- An argument map admits permutations, but its written member order is the
+-- canonical positional interpretation. If that presentation matches, retain
+-- it regardless of other possible permutations. Otherwise exactly one valid
+-- reordered presentation is accepted; multiple reordered matches are
+-- ambiguous and therefore refuted.
+selectArgumentMapMember
+  :: InterpretedValue
+  -> [InterpretedValue]
+  -> InterpretedValue
+  -> Decision EvaluatedAtlasMapFederationMember
+selectArgumentMapMember source writtenMembers alternatives =
+  if any isAlternativeMember writtenMembers
+    then selectFederationMember source alternatives
+    else
+      case argumentPermutationDecision source writtenMembers of
+        DecisionProved () -> selectPositionalAlternative source alternatives
+        DecisionRefuted -> DecisionRefuted
+        DecisionUndecidable -> DecisionUndecidable
+  where
+    -- Optional slots expand into several internal federation branches. Their
+    -- branch count is not an argument-order ambiguity; the established
+    -- selection procedure already preserves their chosen presentation.
+    isAlternativeMember member =
+      case interpretedForm member of
+        EitherForm _ -> True
+        _ -> False
+
+-- Required identifier slots accept unnamed values only while an argument map
+-- is resolving positions. Keeping that rule local avoids changing ordinary
+-- identifier specification or the branch selected for optional identifiers.
+selectPositionalAlternative
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision EvaluatedAtlasMapFederationMember
+selectPositionalAlternative source target =
+  case interpretedForm target of
+    EitherForm alternatives ->
+      decideAny
+        [ mapDecision
+            (EvaluatedEitherMember DatraFalse)
+            (selectPositionalAlternative
+              source (evaluatedEitherLeft alternatives))
+        , mapDecision
+            (EvaluatedEitherMember DatraTrue)
+            (selectPositionalAlternative
+              source (evaluatedEitherRight alternatives))
+        ]
+    _ ->
+      case (sourceComponents, sequenceOperands target) of
+        (Just sourceMembers, Just targetMembers)
+          | length sourceMembers == length targetMembers ->
+              mapDecision
+                EvaluatedSequentialAtlasMapMember
+                (decideAll
+                  (zipWith
+                    selectPositionalSlot sourceMembers targetMembers))
+        _ -> selectPositionalSlot source target
+  where
+    sourceComponents =
+      case sequenceOperands source of
+        Just members -> Just members
+        Nothing ->
+          case interpretedForm source of
+            ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
+            _ -> Nothing
+
+selectPositionalSlot
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision EvaluatedAtlasMapFederationMember
+selectPositionalSlot source target =
+  case (interpretedForm source, interpretedForm target) of
+    ( DependentIdentifierTypeForm _
+      , DependentIdentifierTypeForm targetIdentifier
+      )
+      | privateSimpleIdentifier targetIdentifier -> DecisionRefuted
+    (DependentIdentifierTypeForm _, _) ->
+      selectFederationMember source target
+    (_, DependentIdentifierTypeForm targetIdentifier) ->
+      case evaluatedIdentifierDependency targetIdentifier of
+        SimpleIdentifierDependency _ ->
+          mapDecision
+            EvaluatedDependentIdentifierTypeMember
+            (selectFederationMember
+              source (evaluatedIdentifierUnderlying targetIdentifier))
+        DependentIdentifierDependency {} ->
+          selectFederationMember source target
+    _ -> selectFederationMember source target
+  where
+    privateSimpleIdentifier identifier =
+      case evaluatedIdentifierDependency identifier of
+        SimpleIdentifierDependency ('_':_) -> True
+        _ -> False
+
+argumentPermutationDecision
+  :: InterpretedValue
+  -> [InterpretedValue]
+  -> Decision ()
+argumentPermutationDecision source writtenMembers =
+  case sourceMembers of
+    Nothing ->
+      mapDecision
+        (const ())
+        (selectFederationMember source (makeAtlasMap 2 writtenMembers))
+    Just members
+      | length members /= length writtenMembers -> DecisionRefuted
+      | otherwise ->
+          case match members writtenMembers of
+            DecisionProved _ -> DecisionProved ()
+            _ -> uniqueReorder members
+  where
+    sourceMembers =
+      case sequenceOperands source of
+        Just members -> Just members
+        Nothing ->
+          case interpretedForm source of
+            ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
+            _ -> Nothing
+    match members targets =
+      decideAll (zipWith selectPositionalSlot members targets)
+    uniqueReorder members =
+      case [ ()
+           | reordered <- drop 1 (permutations writtenMembers)
+           , DecisionProved _ <- [match members reordered]
+           ] of
+        [()] -> DecisionProved ()
+        []
+          | any isUndecidable
+              [ match members reordered
+              | reordered <- permutations writtenMembers
+              ] -> DecisionUndecidable
+          | otherwise -> DecisionRefuted
+        _ -> DecisionRefuted
+    isUndecidable DecisionUndecidable = True
+    isUndecidable _ = False
 
 selectEitherMember
   :: InterpretedValue

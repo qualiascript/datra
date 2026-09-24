@@ -36,6 +36,9 @@ decideFederationConcatenation left right
       AtlasMapFederationProved ()
   | atlasMapFederationExpressionIsSingleton right =
       AtlasMapFederationProved ()
+  | universalNumericalTypeCoalition left
+      && universalNumericalTypeCoalition right =
+      AtlasMapFederationProved ()
   | stringFederationConcatenationIsInjective left right =
       AtlasMapFederationProved ()
 decideFederationConcatenation
@@ -147,6 +150,28 @@ decideFederationConcatenation _ _ =
   AtlasMapFederationUndecidable
     (NoAtlasMapFederationDecisionProcedure
       AtlasMapFederationConcatenation)
+
+-- Nat and Int are universal one-position numerical coalitions. Their product
+-- is positional even though their member sets overlap, so its sequential and
+-- comma spellings denote the same map. Bounded valued ranges retain the usual
+-- collision check below.
+universalNumericalTypeCoalition
+  :: InterpretedAtlasMapFederation
+  -> Bool
+universalNumericalTypeCoalition federation =
+  case federation of
+    PrimitiveAtlasMapFederation
+        (ValuedNaturalRangeAtlasMapFederation
+          (EvaluatedValuedNaturalRange valueRange)) ->
+      ValuedNaturalRange.valuedNaturalRangeStart valueRange == 0
+        && ValuedNaturalRange.valuedNaturalRangeTarget valueRange
+          == NaturalRange.UpwardsTarget
+    PrimitiveAtlasMapFederation
+        (ValuedIntegerRangeAtlasMapFederation
+          (EvaluatedValuedIntegerRange valueRange)) ->
+      ValuedIntegerRange.valuedIntegerRangeTarget valueRange
+        == IntegerRange.AllIntegersTarget
+    _ -> False
 
 decidePrimitiveSubfederation
   :: InterpretedAtlasMapFederationPrimitive

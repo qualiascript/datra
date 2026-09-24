@@ -4,6 +4,8 @@
 module DatraInterpretingTests (main) where
 
 import Datra.Interpreter.FunctionTests (functionTests)
+import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
+import Datra.Interpreter.IntegrationTests (integrationTests)
 import Datra.Interpreter.ModuleTests (moduleTests)
 import Datra.Interpreter.OverloadAssertionTests (overloadAssertionTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
@@ -126,6 +128,8 @@ testTree =
         , testCase "located rejection" testLocatedRejection
         ]
     , functionTests
+    , datraTypeLawTests
+    , integrationTests
     , scopeTests
     , moduleTests
     , overloadAssertionTests
@@ -507,6 +511,7 @@ testArgumentMaps = do
     , "{2; b := 8} of {b? : Nat; a? : Nat}"
     , "{2; 8} of {a? : Nat; b? : Nat}"
     , "{a := 2; b := 8} of {a : Nat; b : Nat}"
+    , "(2; 8) of {a : Nat; b : Nat}"
     , "{a? : Nat; b? : Nat} of {b? : Int; a? : Int}"
     , "{1; 2}[0] = (1 | 2)"
     , "\"(b : 8; 2)\" of \"%({a? : Nat; b? : Nat})\""
@@ -519,7 +524,16 @@ testArgumentMaps = do
     , "{2; 8} of {a : Nat; b : Nat}"
     , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
+    , "($a, $b, 5) of {Int, String, String}"
     ]
+  expectSourceValue "written order wins over other valid permutations"
+      "(1, 2) ~> {x : Int, y : Int}" $ \value ->
+    assert "required names accept positional values in written order"
+      (renderInterpretedValue value == "(1; 2) ~> {x : Int, y : Int}")
+  expectSourceValue "a unique valid argument reorder is selected"
+      "($a, 5) ~> {x : Int, y : Iden}" $ \value ->
+    assert "the unique reordered presentation is retained"
+      (renderInterpretedValue value == "($a; 5) ~> {x : Int, y : Iden}")
   let example = "{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}"
   expectSourceValue "argument specification preserves written source" example $ \value ->
     assert "argument-map source order and partial names survive"
@@ -606,7 +620,6 @@ testArgumentMapConcatenation = do
     [ "x : 4, {b : 8, 2} ~> " <> target
     , "x : 3, {c : 8, 2} ~> " <> target
     , "x : 3, {b : $wrong, 2} ~> " <> target
-    , source <> " ~> x : 3, {a : Nat, b : Nat}"
     , source <> " ~> x : 3, (b : Nat; Nat)"
     ]
 
@@ -643,10 +656,10 @@ testArgumentMapTemplates = do
     "\"args=(2; b : 8)!\" of \"args=%({a? : Nat, b? : Nat})!\"" $ \value ->
       assert "template literals surround the whole argument-map capture"
         (renderInterpretedValue value == "true")
-  expectSourceValue "argument template still enforces required names"
+  expectSourceValue "argument template assigns required names positionally"
     "\"(2; 8)\" of \"%({a : Nat, b : Nat})\"" $ \value ->
-      assert "optional names do not weaken required-name templates"
-        (renderInterpretedValue value == "false")
+      assert "written order determines required-name template slots"
+        (renderInterpretedValue value == "true")
 
 testEval :: IO ()
 testEval = do
@@ -662,6 +675,10 @@ testEval = do
       , "x : 3; {a? : Nat := 2, b? : Nat}"
       , "x : 3, (b : 8; 2) ~> (x : 3; {a? : Nat := 2, b? : Nat})"
       )
+    , ( "\"(2; 8)\""
+      , "{a : Nat, b : Nat}"
+      , "(2; 8) ~> {a : Nat, b : Nat}"
+      )
     ]
   mapM_ (\(source, target) ->
     expectInternalEvalRejection source target
@@ -675,7 +692,6 @@ testEval = do
     [ ("\"nope\"", "Nat")
     , ("\"1 + 2\"", "Nat")
     , ("\"(c : 8; 2)\"", "{a? : Nat, b? : Nat}")
-    , ("\"(2; 8)\"", "{a : Nat, b : Nat}")
     , ("12", "Nat")
     ]
 
@@ -3104,8 +3120,14 @@ testIdentifiers = do
       , "$" <> name <> " of (" <> name <> " : ())"
       , "(" <> name <> " : ()) of $" <> name
       , "($" <> name <> " ~> (" <> name <> " : ())) = $" <> name
-      , "($" <> name <> " ~> (" <> name <> "? : ())) of (" <> name <> "? : ())"
       ]) ["abc", "Value", "_private", "Nothing"]
+  mapM_ (\name ->
+      let source =
+            "($" <> name <> " ~> (" <> name <> "? : ())) of ("
+              <> name <> "? : ())"
+      in expectSourceValue source source $ \value ->
+        assert source (renderInterpretedValue value == "true"))
+    ["abc", "Value", "Nothing"]
   let identifier identifierString typeAnnotation =
         IdentifierOperation
           (IdentifierString identifierString)

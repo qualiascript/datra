@@ -83,37 +83,7 @@ standardLibraryTests =
             , "String of StringTemplate"
             ]
         ]
-    , datraTypeContractTests
     , declaredPatternTests
-    ]
-
--- The source library, rather than a parallel Haskell export table, declares
--- which host capabilities become language types. Every declared type must
--- support both fundamental typing operations.
-datraTypeContractTests :: TestTree
-datraTypeContractTests =
-  testGroup "Datra type contract"
-    [ programCase typeName
-        (unlines
-          [ "assert " <> typeName <> " of " <> typeName
-          , "assert (" <> typeName <> " ~> " <> typeName
-              <> ") of " <> typeName
-          ])
-        "()"
-    | typeName <-
-        [ "Nat"
-        , "Int"
-        , "String"
-        , "Iden"
-        , "Bool"
-        , "AST"
-        , "Expr"
-        , "Block"
-        , "Pages"
-        , "NatRange"
-        , "IntRange"
-        , "StringTemplate"
-        ]
     ]
 
 declaredPatternTests :: TestTree

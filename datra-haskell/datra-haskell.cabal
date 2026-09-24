@@ -226,6 +226,10 @@ library
         Evaluation.Specification.Subfederation
         Evaluation.ToString
         Evaluation.ToString.Injectivity
+        Evaluation.TypeFamily.BuiltinMeta
+        Evaluation.TypeFamily.Function
+        Evaluation.TypeFamily.Structural
+        Evaluation.TypeFamily.TotalBlock
         Evaluation.Value
         Evaluation.Arguments
         Evaluation.Eval
@@ -380,7 +384,9 @@ test-suite datra-interpreting-test
         app
     main-is:          DatraInterpretingTests.hs
     other-modules:
+        Datra.Interpreter.DatraTypeLawTests
         Datra.Interpreter.FunctionTests
+        Datra.Interpreter.IntegrationTests
         Datra.Interpreter.ModuleTests
         Datra.Interpreter.OverloadAssertionTests
         Datra.Interpreter.ScopeTests

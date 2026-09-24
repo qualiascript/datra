@@ -33,7 +33,6 @@ data OverloadTemplate
 data Slot = Slot
   { slotIndex :: Int
   , slotName :: Maybe String
-  , slotNameOptional :: Bool
   , slotAnnotation :: InterpretedValue
   , slotDefault :: Maybe InterpretedValue
   }
@@ -73,7 +72,18 @@ resolveReplacements
   -> Either InterpretingError Replacements
 resolveReplacements template supplied = do
   rows <- argumentRows supplied
-  let slotOrders = templateSlotOrders template
+  writtenRows <-
+    case interpretedForm supplied of
+      ArgumentMapForm members _ -> argumentRows (makeAtlasMap 2 members)
+      _ -> pure rows
+  let writtenOrder = templateSlots template
+      slotOrders = templateSlotOrders template
+      writtenRoutes =
+        nubBy sameReplacements
+          [ replacements
+          | row <- writtenRows
+          , replacements <- matchInputs writtenOrder row
+          ]
       routes =
         [ concatMap (`matchInputs` row) slotOrders
         | row <- rows
@@ -81,13 +91,19 @@ resolveReplacements template supplied = do
   if any null routes
     then Left (OverloadError
       "the right operand does not match the left operand without its defaults")
-    else
-      case nubBy sameReplacements (concat routes) of
-        [] -> Left (OverloadError
-          "the right operand does not match the left operand without its defaults")
-        [replacements] -> Right replacements
-        _ -> Left (OverloadError
-          "ambiguous overload; supply identifiers to select the intended slots")
+    else case writtenRoutes of
+      -- Written order is the canonical positional interpretation. Prefer it
+      -- even when equal annotations also admit other permutations.
+      [replacements] -> Right replacements
+      [] ->
+        case nubBy sameReplacements (concat routes) of
+          [] -> Left (OverloadError
+            "the right operand does not match the left operand without its defaults")
+          [replacements] -> Right replacements
+          _ -> Left (OverloadError
+            "ambiguous overload; no order-preserving match exists")
+      _ -> Left (OverloadError
+        "ambiguous overload; multiple order-preserving matches exist")
   where
     sameReplacements left right = canonical left == canonical right
     canonical = sortOn fst . map
@@ -109,11 +125,13 @@ matchSlot slot input = do
   let (inputName, inputValue) = suppliedValue input
   case (slotName slot, inputName) of
     (Just expected, Just actual)
+      | isPrivateName expected -> Nothing
       | expected == actual -> pure ()
       | otherwise -> Nothing
-    (Just _, Nothing)
-      | slotNameOptional slot -> pure ()
-      | otherwise -> Nothing
+    -- A missing source name is positional. Required and optional target names
+    -- differ in whether omission is allowed, not in whether a supplied value
+    -- may acquire that name through deterministic argument matching.
+    (Just _, Nothing) -> pure ()
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
   case specifyValues inputValue (slotAnnotation slot) of
@@ -133,8 +151,8 @@ suppliedValue value =
 templateSlots :: OverloadTemplate -> [Slot]
 templateSlots template =
   case template of
-    OverloadSlot index name optional annotation defaultValue ->
-      [Slot index name optional annotation defaultValue]
+    OverloadSlot index name _ annotation defaultValue ->
+      [Slot index name annotation defaultValue]
     OverloadOrdered _ children -> concatMap templateSlots children
     OverloadUnordered children -> concatMap templateSlots children
     OverloadConcatenated left right ->
@@ -147,8 +165,8 @@ templateSlots template =
 templateSlotOrders :: OverloadTemplate -> [[Slot]]
 templateSlotOrders template =
   case template of
-    OverloadSlot index name optional annotation defaultValue ->
-      [[Slot index name optional annotation defaultValue]]
+    OverloadSlot index name _ annotation defaultValue ->
+      [[Slot index name annotation defaultValue]]
     OverloadOrdered _ children -> combine children
     OverloadUnordered children ->
       concatMap combine (permutations children)
@@ -312,6 +330,10 @@ buildSlot (Just name) optional annotation supplied = do
   present <-
     case supplied of
       Nothing -> Right (simpleIdentifierTypeValue name annotation)
+      Just value
+        | isPrivateName name -> do
+            _ <- specifyValues value annotation
+            Right (simpleIdentifierTypeValue name value)
       Just value ->
         case assignIdentifierValues name annotation value of
           Right assigned -> Right assigned
@@ -325,3 +347,7 @@ buildSlot (Just name) optional annotation supplied = do
   if optional
     then makeEitherValue present annotation
     else Right present
+
+isPrivateName :: String -> Bool
+isPrivateName ('_':_) = True
+isPrivateName _ = False

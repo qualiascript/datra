@@ -630,6 +630,13 @@ identifierOperation = do
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
+  guard
+    (not
+      (isOptional
+        && isPrivateIdentifier
+          (case identifierSpelling of
+            BareIdentifier name -> name
+            FullStringIdentifier name -> name)))
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator

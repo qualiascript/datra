@@ -7,8 +7,7 @@ module Evaluation.Value
   ( BuiltinMetaType (..)
   , CanonicalType
   , DatraType
-  , SpecificationImplementation (..)
-  , SubfederationImplementation (..)
+  , DatraTypeFamily (..)
   , StringRepresentation (..)
   , makeCanonicalType
   , canonicalTypeAsDatraType
@@ -20,8 +19,7 @@ module Evaluation.Value
   , functionDatraType
   , builtinMetaDatraType
   , totalBlockDatraType
-  , datraSpecificationImplementation
-  , datraSubfederationImplementation
+  , datraTypeFamily
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
@@ -29,6 +27,7 @@ module Evaluation.Value
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
+  , isFunctionFamily
   , stringTemplateTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
@@ -320,6 +319,24 @@ functionAlternatives value = case interpretedForm value of
   FunctionForm function -> [function]
   _ -> []
 
+-- | True only when every branch of the value is callable.  Merely finding a
+-- function somewhere inside an Either is not enough: mixed federations still
+-- use ordinary structural specification and subfederation rules.
+isFunctionFamily :: InterpretedValue -> Bool
+isFunctionFamily value =
+  case interpretedForm value of
+    EitherForm alternatives ->
+      isFunctionFamily (evaluatedEitherLeft alternatives)
+        && isFunctionFamily (evaluatedEitherRight alternatives)
+    DependentIdentifierTypeForm identifier ->
+      isFunctionFamily (evaluatedIdentifierUnderlying identifier)
+    AssignmentForm specification ->
+      isFunctionFamily (evaluatedSpecificationSourceValue specification)
+    SpecificationForm specification ->
+      isFunctionFamily (evaluatedSpecificationSourceValue specification)
+    FunctionForm _ -> True
+    _ -> False
+
 builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
 builtinMetaTypeName NatRangeMetaType = "NatRange"
@@ -569,9 +586,9 @@ interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMa
 interpretedTypeIsTotal :: InterpretedValue -> Bool
 interpretedTypeIsTotal value =
   interpretedValueHasTotalMap value
-    || case datraSpecificationImplementation
+    || case datraTypeFamily
         (interpretedDatraType value) of
-      TotalBlockSpecification -> True
+      TotalBlockTypeFamily -> True
       _ -> False
 
 -- | Retain evaluation provenance without changing the semantic map or codec.

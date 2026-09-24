@@ -9,8 +9,7 @@ module Evaluation.DatraType
   ( BuiltinMetaType (..)
   , CanonicalType
   , DatraType
-  , SpecificationImplementation (..)
-  , SubfederationImplementation (..)
+  , DatraTypeFamily (..)
   , StringRepresentation (..)
   , makeCanonicalType
   , canonicalTypeAsDatraType
@@ -22,8 +21,7 @@ module Evaluation.DatraType
   , totalBlockDatraType
   , structuralDatraTypeWith
   , composedStructuralDatraType
-  , datraSpecificationImplementation
-  , datraSubfederationImplementation
+  , datraTypeFamily
   , datraCanonicalType
   , datraStringRepresentation
   ) where
@@ -38,18 +36,14 @@ data BuiltinMetaType
   | StringTemplateMetaType
   deriving (Eq, Show)
 
-data SpecificationImplementation
-  = StructuralSpecification
-  | FunctionSpecification
-  | BuiltinMetaSpecification BuiltinMetaType
-  | TotalBlockSpecification
-  deriving (Eq, Show)
-
-data SubfederationImplementation
-  = StructuralSubfederation
-  | FunctionSubfederation
-  | BuiltinMetaSubfederation BuiltinMetaType
-  | TotalBlockSubfederation
+-- | One family owns both fundamental typing operations. Keeping this as one
+-- capability key makes it impossible to construct a type whose specification
+-- and subfederation implementations come from different families.
+data DatraTypeFamily
+  = StructuralTypeFamily
+  | FunctionTypeFamily
+  | BuiltinMetaTypeFamily BuiltinMetaType
+  | TotalBlockTypeFamily
   deriving (Eq, Show)
 
 -- | Canonical string conversion is injective and can participate in
@@ -61,10 +55,8 @@ data StringRepresentation
   | WeakStringRepresentation
   deriving (Eq, Show)
 
-data TypeImplementations = TypeImplementations
-  { implementationSpecification :: SpecificationImplementation
-  , implementationSubfederation :: SubfederationImplementation
-  }
+newtype TypeImplementations = TypeImplementations
+  { implementationFamily :: DatraTypeFamily }
   deriving (Eq, Show)
 
 -- | The narrower class of Datra types with an injective, round-trippable
@@ -82,11 +74,10 @@ data DatraType
 
 structuralDatraType :: DatraType
 structuralDatraType = canonicalTypeAsDatraType
-  (makeCanonicalType StructuralSpecification StructuralSubfederation)
+  (makeCanonicalType StructuralTypeFamily)
 
 weakStructuralDatraType :: DatraType
-weakStructuralDatraType = makeNonCanonicalDatraType
-  StructuralSpecification StructuralSubfederation
+weakStructuralDatraType = makeNonCanonicalDatraType StructuralTypeFamily
 
 structuralDatraTypeWith
   :: StringRepresentation
@@ -107,52 +98,41 @@ composedStructuralDatraType components =
       else WeakStringRepresentation)
 
 functionDatraType :: DatraType
-functionDatraType = makeNonCanonicalDatraType
-  FunctionSpecification
-  FunctionSubfederation
+functionDatraType = makeNonCanonicalDatraType FunctionTypeFamily
 
 builtinMetaDatraType :: BuiltinMetaType -> DatraType
-builtinMetaDatraType kind = makeNonCanonicalDatraType
-  (BuiltinMetaSpecification kind)
-  (BuiltinMetaSubfederation kind)
+builtinMetaDatraType kind =
+  makeNonCanonicalDatraType (BuiltinMetaTypeFamily kind)
 
 -- | An evaluated begin/yield block is a total singleton type.  Its sole
 -- member is the yielded value; block source is retained separately as
 -- canonical presentation provenance rather than becoming nominal identity.
 totalBlockDatraType :: DatraType
 totalBlockDatraType = canonicalTypeAsDatraType
-  (makeCanonicalType TotalBlockSpecification TotalBlockSubfederation)
+  (makeCanonicalType TotalBlockTypeFamily)
 
 -- | Constructing either layer requires both fundamental typing operations.
 -- There is deliberately no constructor for a partial Datra type.
 makeCanonicalType
-  :: SpecificationImplementation
-  -> SubfederationImplementation
+  :: DatraTypeFamily
   -> CanonicalType
-makeCanonicalType specification subfederation =
-  CanonicalType (TypeImplementations specification subfederation)
+makeCanonicalType family =
+  CanonicalType (TypeImplementations family)
 
 canonicalTypeAsDatraType :: CanonicalType -> DatraType
 canonicalTypeAsDatraType = CanonicalDatraType
 
 makeNonCanonicalDatraType
-  :: SpecificationImplementation
-  -> SubfederationImplementation
+  :: DatraTypeFamily
   -> DatraType
-makeNonCanonicalDatraType specification subfederation =
-  NonCanonicalDatraType (TypeImplementations specification subfederation)
+makeNonCanonicalDatraType family =
+  NonCanonicalDatraType (TypeImplementations family)
 
-datraSpecificationImplementation
+datraTypeFamily
   :: DatraType
-  -> SpecificationImplementation
-datraSpecificationImplementation =
-  implementationSpecification . datraTypeImplementations
-
-datraSubfederationImplementation
-  :: DatraType
-  -> SubfederationImplementation
-datraSubfederationImplementation =
-  implementationSubfederation . datraTypeImplementations
+  -> DatraTypeFamily
+datraTypeFamily =
+  implementationFamily . datraTypeImplementations
 
 datraCanonicalType :: DatraType -> Maybe CanonicalType
 datraCanonicalType datraType =

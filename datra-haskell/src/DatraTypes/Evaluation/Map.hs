@@ -7,7 +7,8 @@ module Evaluation.Map
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (..)
+  ( AtlasMapFederationDecision (AtlasMapFederationProved)
+  , AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton
   )
 import DatraOrdinal (finiteOrdinal)
@@ -64,8 +65,8 @@ makeProductMap
 makeProductMap productForm cardinality values productFederation = value
   where
     -- Both sequence and expansion preserve every operand structurally. A
-    -- nonempty sequence made entirely of coalitions additionally shares the
-    -- canonical semantics of its explicit concatenation.
+    -- nonempty sequence of coalitions shares the canonical semantics of its
+    -- explicit concatenation only when that concatenation is itself proved.
     finalValues =
       foldl'
         appendOrdinalOrderedValues
@@ -78,7 +79,9 @@ makeProductMap productForm cardinality values productFederation = value
         SequentialProduct
           | not (null memberFederations)
           , all federationIsCoalition memberFederations ->
-              ConcatenationSemantics components
+              if federationConcatenationIsValid memberFederations
+                then ConcatenationSemantics components
+                else MapSemantics cardinality components
         _ -> MapSemantics cardinality components
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
@@ -105,6 +108,24 @@ makeProductMap productForm cardinality values productFederation = value
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
         semantics
+
+-- A sequence may use comma-form canonical syntax only when evaluating that
+-- spelling would pass the same concatenation proof as an explicit comma.
+-- Coalition shape alone is insufficient: overlapping coalitions such as Nat
+-- and Int still need their semicolon sequence boundary retained.
+federationConcatenationIsValid
+  :: [InterpretedAtlasMapFederation]
+  -> Bool
+federationConcatenationIsValid [] = False
+federationConcatenationIsValid (first : remaining) =
+  go first remaining
+  where
+    go _ [] = True
+    go accumulated (next : rest) =
+      case decideFederationConcatenation accumulated next of
+        AtlasMapFederationProved () ->
+          go (ConcatenatedAtlasMapFederation accumulated next) rest
+        _ -> False
 
 concatenateValues
   :: InterpretedValue

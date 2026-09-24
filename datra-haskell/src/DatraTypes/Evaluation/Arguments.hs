@@ -65,6 +65,33 @@ argumentAlternatives value =
         <> argumentAlternatives (evaluatedEitherRight alternatives)
     _ -> [value]
 
+-- An assigned optional has already selected its present branch. Treating its
+-- missing annotation as another supplied argument makes a value produced by
+-- @<<@ ambiguous when passed straight into the corresponding function.
+concreteOptionalArgument :: InterpretedValue -> Maybe InterpretedValue
+concreteOptionalArgument value = do
+  alternatives <-
+    case interpretedForm value of
+      EitherForm evaluated -> Just evaluated
+      _ -> Nothing
+  let present = evaluatedEitherLeft alternatives
+      missing = evaluatedEitherRight alternatives
+  case interpretedCanonicalResult present of
+    CanonicalAssignment _ annotation _
+      | annotation == interpretedCanonicalResult missing -> Just present
+    _ -> Nothing
+
+argumentInputAlternatives :: InterpretedValue -> [InterpretedValue]
+argumentInputAlternatives value =
+  case concreteOptionalArgument value of
+    Just present -> [present]
+    Nothing ->
+      case interpretedForm value of
+        EitherForm alternatives ->
+          argumentInputAlternatives (evaluatedEitherLeft alternatives)
+            <> argumentInputAlternatives (evaluatedEitherRight alternatives)
+        _ -> [value]
+
 argumentPresentations :: InterpretedValue -> Either InterpretingError [InterpretedValue]
 argumentPresentations value = case interpretedForm value of
   ArgumentMapForm _ underlying -> pure (argumentAlternatives underlying)
@@ -83,8 +110,10 @@ argumentRows value = case interpretedForm value of
     lefts <- argumentRows left
     rights <- argumentRows right
     pure [a <> b | a <- lefts, b <- rights]
-  ArgumentMapForm _ underlying -> concat <$> traverse argumentRows (argumentAlternatives underlying)
-  EitherForm _ -> concat <$> traverse argumentRows (argumentAlternatives value)
+  ArgumentMapForm _ underlying ->
+    concat <$> traverse argumentRows (argumentInputAlternatives underlying)
+  EitherForm _ ->
+    concat <$> traverse argumentRows (argumentInputAlternatives value)
   SequentialMapForm -> (:[]) <$> pages
   MapForm -> (:[]) <$> pages
   SpecificationForm _ -> (:[]) <$> pages

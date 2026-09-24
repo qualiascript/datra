@@ -130,6 +130,8 @@ regressionTests = do
     (ArgumentMap
       [EitherType (AST.dependentIdentifierType "a" (ref "Nat")) (ref "Nat")
       ,EitherType (AST.dependentIdentifierType "b" (ref "String")) (ref "String")])
+  assertRejected "private argument names cannot be optional"
+    "{_x? : Nat; y : Nat}"
   let block = Begin
         [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
