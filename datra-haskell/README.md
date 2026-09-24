@@ -131,17 +131,19 @@ Comments and whitespace outside the enclosing parentheses do not change modes.
 In a block, semicolons or newlines separate imported bindings:
 
 ```datra
-a : 2 * 3
-b : 8
+a := 2 * 3
+b := 5
 yield a + b
 ```
 
-This prints just `14`. Adding `begin` before `a` produces the same result.
+This prints just `11`. Adding `begin` before `a` produces the same result.
 From this directory, run it without Docker using a built executable:
 
 ```sh
 ./dist/datra-haskell build \
-  --source 'a := 2 * 3; b := 5; yield a + b' \
+  --source 'a := 2 * 3
+b := 5
+yield a + b' \
   --ast-output /dev/null --output -
 ```
 

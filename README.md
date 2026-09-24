@@ -12,12 +12,12 @@ The opening `begin` is optional; omitting `yield` means `yield 0`.
 Semicolons or newlines separate bindings:
 
 ```datra
-a : 2 * 3
-b : 8
+a := 2 * 3
+b := 5
 yield a + b
 ```
 
-This prints `14`. Ordinary bindings are evaluated when referenced; `let x : 10`
+This prints `11`. Ordinary bindings are evaluated when referenced; `let x : 10`
 evaluates before yielding. Bindings are visible throughout their block and nested
 blocks, including before declaration. Duplicate identifier strings in the active
 scope, unknown names, and cyclic references are errors.
@@ -37,7 +37,9 @@ For a local executable, run from the repository root:
 
 ```sh
 ./datra-haskell/dist/datra-haskell build \
-  --source 'a : 2 * 3; b : 8; yield a + b' \
+  --source 'a := 2 * 3
+b := 5
+yield a + b' \
   --ast-output /dev/null --output -
 ```
 
@@ -92,7 +94,9 @@ After downloading or building the production image, print only the final result:
 
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source '(1; 2 + 3)' \
+  --source 'a := 2 * 3
+b := 5
+yield a + b' \
   --ast-output /dev/null \
   --output -
 ```
@@ -100,10 +104,10 @@ docker run --rm datra-haskell:prod build \
 Expected output:
 
 ```text
-(1; 5)
+11
 ```
 
-Maps use parentheses: `(1; 2 + 3)` evaluates to `(1; 5)`.
+The program runs as an implicit `begin`/`yield` block and prints its result.
 
 The source is still parsed and interpreted; `--ast-output /dev/null` discards
 the AST output. Use `--ast-output -` to print the AST before the result.
