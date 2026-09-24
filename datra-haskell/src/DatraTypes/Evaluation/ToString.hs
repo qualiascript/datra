@@ -5,6 +5,7 @@ module Evaluation.ToString
   , toStringValue
   , weakToStringValue
   , stringTemplateValue
+  , stringConversionIsIdentity
   , stringFederationConcatenationIsInjective
   ) where
 

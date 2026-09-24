@@ -94,6 +94,11 @@ testTree =
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
         , testCase "string templates" testStringTemplates
+        , testCase "argument maps" testArgumentMaps
+        , testCase "argument maps in concatenation" testArgumentMapConcatenation
+        , testCase "argument maps in string templates" testArgumentMapTemplates
+        , testCase "typed eval" testEval
+        , testCase "eval-backed keyword forms" testEvalBackedKeywords
         , testCase "integers and integer ranges" testIntegers
         , testCase "booleans and Either" testBooleansAndEither
         , testCase "optionals and conditionals" testOptionalsAndConditionals
@@ -469,6 +474,250 @@ testLiteralsAndArithmetic = do
     assert "multiplying two Ellipsis formulations produces level two"
       (interpretedFormulationLevel value == Just 2)
   testRemainingLiterals
+
+testArgumentMaps :: IO ()
+testArgumentMaps = do
+  mapM_ (\source -> expectSourceValue source source $ \value ->
+    assert "argument-map relation holds" (renderInterpretedValue value == "true"))
+    [ "{} = ()"
+    , "{2} = 2"
+    , "{1; 2} = ((1; 2) | (2; 1))"
+    , "{b := 8, 2} = {2; b := 8}"
+    , "{b := 8, 2} of {a? : Nat := 2, b? : Nat}"
+    , "{(1, 2), 3} = {3; (1, 2)}"
+    , "{2; 2} = (2; 2)"
+    , "{1; 2; 3} = {3; 1; 2}"
+    , "{(1; 2); 3} = {3; (1; 2)}"
+    , "{b := 8; 2} of {a? : Nat := 2; b? : Nat}"
+    , "{2; b := 8} of {b? : Nat; a? : Nat}"
+    , "{2; 8} of {a? : Nat; b? : Nat}"
+    , "{a := 2; b := 8} of {a : Nat; b : Nat}"
+    , "{a? : Nat; b? : Nat} of {b? : Int; a? : Int}"
+    , "{1; 2}[0] = (1 | 2)"
+    , "\"(b : 8; 2)\" of \"%({a? : Nat; b? : Nat})\""
+    ]
+  mapM_ (\source -> expectSourceValue source source $ \value ->
+    assert "invalid argument-map relation is rejected"
+      (renderInterpretedValue value == "false"))
+    [ "{c := 8; 2} of {a? : Nat; b? : Nat}"
+    , "{b := $wrong; 2} of {a? : Nat; b? : Nat}"
+    , "{2; 8} of {a : Nat; b : Nat}"
+    , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
+    , "{1; 2; 3} of {a? : Nat; b? : Nat}"
+    ]
+  let example = "{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}"
+  expectSourceValue "argument specification preserves written source" example $ \value ->
+    assert "argument-map source order and partial names survive"
+      (renderInterpretedValue value == "{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}")
+  expectSourceValue "argument specification source order reverses independently"
+      "{2; b := 8} ~> {a? : Nat; b? : Nat}" $ \value ->
+    assert "source order is not rewritten to match the target"
+      (renderInterpretedValue value == "{2, b : 8} ~> {a? : Nat, b? : Nat}")
+  expectSourceValue "ordered source can select an argument-map presentation"
+      "((b := 8; 2) ~> {a? : Nat; b? : Nat})[1] * 5" $ \value ->
+    assert "access follows the selected target permutation"
+      (renderInterpretedValue value == "10")
+  expectSourceValue "argument-map reverse specification"
+      "{a? : Nat; b? : Nat} <~ {b := 8; 2}" $ \value ->
+    assert "reverse specification preserves the same source"
+      (renderInterpretedValue value == "{b : 8, 2} ~> {a? : Nat, b? : Nat}")
+  expectSourceValue "widening reselects a reordered argument target"
+      "(((b := 8; 2) ~> {a? : Nat, b? : Nat}) ~> {b? : Int, a? : Int})[1] * 5" $ \value ->
+    assert "the widened witness still follows source order"
+      (renderInterpretedValue value == "10")
+  expectSourceValue "argument-family specification widens"
+      "({b := 8, 2} ~> {a? : Nat, b? : Nat}) ~> {b? : Int, a? : Int}" $ \value ->
+    assert "family widening retains the original source"
+      (renderInterpretedValue value == "{b : 8, 2} ~> {b? : Int, a? : Int}")
+  mapM_ (\source -> expectSourceValue "argument rendering round trip" source $ \value ->
+    let rendered = renderInterpretedValue value
+    in expectSourceValue ("rendered arguments remain equivalent: " <> rendered) rendered $ \roundTrip ->
+      assert ("argument rendering is stable: " <> rendered
+        <> " became " <> renderInterpretedValue roundTrip)
+        (renderInterpretedValue roundTrip == rendered))
+    [ example
+    , "{b := 8; 2} ~> {a? : Nat := 2; b? : Nat}"
+    , "{(1, 2), 3}"
+    , "{(a : Nat; b : Nat); 3}"
+    , "{(1 ~> Nat); b := 8}"
+    ]
+  expectSourceRejection "argument specification checks every supplied name"
+    "{c := 8; 2} ~> {a? : Nat; b? : Nat}"
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+
+testArgumentMapConcatenation :: IO ()
+testArgumentMapConcatenation = do
+  let source = "x : 3, {b : 8, 2}"
+      target = "x : 3, {a? : Nat := 2, b? : Nat}"
+      example = source <> " ~> " <> target
+  mapM_ (\expression -> expectSourceValue expression expression $ \value -> do
+    assert "concatenated specification preserves the supplied presentation"
+      (renderInterpretedValue value == example)
+    expectSourceValue "concatenated specification rendering round trip"
+      (renderInterpretedValue value) $ \roundTrip ->
+        assert "concatenated canonical output is stable"
+          (renderInterpretedValue roundTrip == example))
+    [ example, target <> " <~ " <> source ]
+  mapM_ (\expression -> expectSourceValue expression expression $ \value ->
+    assert "concatenated argument-map inclusion holds"
+      (renderInterpretedValue value == "true"))
+    [ source <> " of " <> target
+    , "({b : 8, 2}, x : 3) of ({a? : Nat, b? : Nat}, x : 3)"
+    , "x : 3, {a? : Nat, b? : Nat} of x : Int, {b? : Int, a? : Int}"
+    ]
+  mapM_ (\expression -> expectSourceValue expression expression $ \value ->
+    let rendered = renderInterpretedValue value
+    in expectSourceValue "distributed concatenation round trip" rendered $ \roundTrip ->
+      assert "both sides and nested concatenations preserve their source"
+        (renderInterpretedValue roundTrip == rendered))
+    [ "{b : 8, 2}, x : 3 ~> {a? : Nat, b? : Nat}, x : Nat"
+    , "x : 3, {b : 8, 2}, y : 4 ~> x : Nat, {a? : Nat, b? : Nat}, y : Nat"
+    , "{b : 8, 2}, {d : 6, 4} ~> {a? : Nat, b? : Nat}, {c? : Nat, d? : Nat}"
+    , "(" <> example <> ") ~> x : Int, {b? : Int, a? : Int}"
+    ]
+  expectSourceValue "one ordered presentation matches the ordered target"
+    "x : 3, (b : 8; 2) ~> x : 3, (b : Nat; Nat)" $ \_ -> pure ()
+  mapM_ (\expression -> expectSourceRejection
+    ("every concatenated presentation must match: " <> expression) expression
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
+      _ -> False))
+    [ "x : 4, {b : 8, 2} ~> " <> target
+    , "x : 3, {c : 8, 2} ~> " <> target
+    , "x : 3, {b : $wrong, 2} ~> " <> target
+    , source <> " ~> x : 3, {a : Nat, b : Nat}"
+    , source <> " ~> x : 3, (b : Nat; Nat)"
+    ]
+
+testArgumentMapTemplates :: IO ()
+testArgumentMapTemplates = do
+  let template = "\"%({a? : Nat, b? : Nat})\""
+  mapM_ (\member -> expectSourceValue "template accepts an argument ordering"
+    (show member <> " of " <> template) $ \value ->
+      assert "canonical argument presentation belongs to the template"
+        (renderInterpretedValue value == "true"))
+    [ "(b : 8; 2)", "(2; b : 8)", "(2; 8)" ]
+  mapM_ (\member -> expectSourceValue "template rejects incompatible arguments"
+    (show member <> " of " <> template) $ \value ->
+      assert "wrong names, types, and arities are outside the template"
+        (renderInterpretedValue value == "false"))
+    [ "(c : 8; 2)", "(b : $wrong; 2)", "(b : 8; 2; 3)" ]
+  let member = "\"(b : 8; 2)\""
+      specification = member <> " ~> " <> template
+  mapM_ (\expression -> expectSourceValue "template argument specification"
+    expression $ \value ->
+      assert "forward and reverse template specifications agree"
+        (renderInterpretedValue value == specification))
+    [ specification, template <> " <~ " <> member ]
+  expectSourceValue "template captures the typed argument map"
+    ("%(" <> specification <> ")[1]") $ \value ->
+      assert "capture retains the source ordering and target argument map"
+        (renderInterpretedValue value
+          == "(b : 8; 2) ~> {a? : Nat, b? : Nat}")
+  expectSourceValue "argument template capture supports access and arithmetic"
+    ("%(" <> specification <> ")[1][1] * 5") $ \value ->
+      assert "captured unnamed argument remains numeric"
+        (renderInterpretedValue value == "10")
+  expectSourceValue "literal-delimited argument template"
+    "\"args=(2; b : 8)!\" of \"args=%({a? : Nat, b? : Nat})!\"" $ \value ->
+      assert "template literals surround the whole argument-map capture"
+        (renderInterpretedValue value == "true")
+  expectSourceValue "argument template still enforces required names"
+    "\"(2; 8)\" of \"%({a : Nat, b : Nat})\"" $ \value ->
+      assert "optional names do not weaken required-name templates"
+        (renderInterpretedValue value == "false")
+
+testEval :: IO ()
+testEval = do
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
+    assert (source <> ": eval result: " <> renderInterpretedValue value)
+      (renderInterpretedValue value == expected))
+    [ ("eval \"12\", Int", "12 ~> Int")
+    , ("eval \"alco\", Iden", "$alco ~> Iden")
+    , ("eval \"hello world\", String", "\"hello world\" ~> String")
+    , ("eval (\"1\", \"2\"), Int", "12 ~> Int")
+    , ("eval \"x : 3, (b : 8; 2)\", x : 3; {a? : Nat := 2, b? : Nat}",
+       "x : 3, (b : 8; 2) ~> (x : 3; {a? : Nat := 2, b? : Nat})")
+    , ("(eval \"(b : 8; 2)\", {a? : Nat, b? : Nat})[1] * 5", "10")
+    , ("(eval \"2\", Nat) ~> Int", "2 ~> Int")
+    , ("Int <~ (eval \"2\", Nat)", "2 ~> Int")
+    , ("(eval \"2\", Nat) of Int", "true")
+    , ("(eval \"(2; b : 8)\", {a? : Nat, b? : Nat}) of {b? : Int, a? : Int}", "true")
+    , ("(eval \"12\", Int) = %(\"12\" ~> \"%Int\")[1]", "true")
+    ]
+  mapM_ (\source -> expectSourceRejection source source
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
+      _ -> False))
+    [ "eval \"nope\", Nat"
+    , "eval \"1 + 2\", Nat"
+    , "eval \"(c : 8; 2)\", {a? : Nat, b? : Nat}"
+    , "eval \"(2; 8)\", {a : Nat, b : Nat}"
+    , "eval 12, Nat"
+    ]
+
+testEvalBackedKeywords :: IO ()
+testEvalBackedKeywords = do
+  mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
+    assert (source <> " rendered as " <> renderInterpretedValue value)
+      (renderInterpretedValue value == expected))
+    [ ("from 2 to 5", "from 2 to 5")
+    , ("from -3 to 4", "from -3 to 4")
+    , ("from 5 to 2", "from 5 to 2")
+    , ("from 2 upwards", "from 2 upwards")
+    , ("from -2 upwards", "from -2 upwards")
+    , ("from 2 downwards", "from 2 downwards")
+    , ("range 2 to 5", "range 2 to 5")
+    , ("range -3 to 4", "range -3 to 4")
+    , ("range 5 to 2", "range 5 to 2")
+    , ("range -2 upwards", "range -2 upwards")
+    , ("range 2 downwards", "range 2 downwards")
+    , ("from # normalized source trivia\n -3 to\n4", "from -3 to 4")
+    , ("if (true ~> Bool) then 7 else (1 and false)", "7")
+    , ("if false then (1 and false) else 9", "9")
+    , ("if false then (1 and false)", "()")
+    , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
+    , ("%(eval \"from 2 to 5\", \"from %Int to %Int\")[1]", "2 ~> Int")
+    , ("%(eval \"from 2 to 5\", \"from %Int to %Int\")[2]", "5 ~> Int")
+    , ("%(eval \"range -3 downwards\", \"range %Int downwards\")[1]", "-3 ~> Int")
+    , ("%(eval \"if true then\", \"if %Bool then\")[1]", "true ~> Bool")
+    ]
+  mapM_ (\source -> expectSourceValue source source $ \value ->
+    assert ("keyword forms compose with identifiers, specification, and inclusion: " <> source)
+      (renderInterpretedValue value == "true"))
+    [ "(eval \"from 2 to 5\", \"from %Int to %Int\") = (\"from 2 to 5\" ~> \"from %Int to %Int\")"
+    , "(2 ~> from 0 to 5) of from -1 to 8"
+    , "(from 0 to 5 <~ 2) = (2 ~> from 0 to 5)"
+    , "(2..3 ~> range 0 to 5) of range 0 to 8"
+    , "(range 0 to 5 <~ 2..3) = (2..3 ~> range 0 to 5)"
+    , "(2, b : 5) of (a? : from 0 to 8, b? : from 0 to 8)"
+    , "(eval \"(b : 5; 2)\", {a? : from 0 to 8, b? : from 0 to 8}) of {b? : Int, a? : Int}"
+    , "(if true then 2 else (1 and false)) of from 0 to 5"
+    , "((if false then (1 and false) else 2) ~> from 0 to 5) of Int"
+    , "(from 0 to 5 <~ (if true then 2 else (1 and false))) = (2 ~> from 0 to 5)"
+    , "(if true then (b? : from 0 to 5 := 2) else (1 and false)) of (b? : Int)"
+    ]
+  expectSourceRejection "keyword schema rejects an invalid bound"
+    "eval \"from nope to 5\", \"from %Int to %Int\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
+  expectSourceRejection "keyword schema rejects an invalid condition"
+    "eval \"if 1 then\", \"if %Bool then\""
+    (\case
+      AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember -> True
+      _ -> False)
 
 testStringTemplates :: IO ()
 testStringTemplates = do

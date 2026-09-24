@@ -60,6 +60,57 @@ testTree =
 
 regressionTests :: IO ()
 regressionTests = do
+  assertAstOutput "eval consumes a semicolon-separated target"
+    "eval \"x : 3, (b : 8; 2)\", x : 3; {a? : Nat := 2, b? : Nat}"
+    (Eval (AsciiStringLiteral "x : 3, (b : 8; 2)")
+      (AtlasMap
+        [ AST.identifierType "x" (natural 3)
+        , ArgumentMap
+            [ EitherType (AST.assignment "a" NaturalType (natural 2)) NaturalType
+            , EitherType (AST.identifierType "b" NaturalType) NaturalType
+            ]
+        ]))
+  assertAstOutput "eval consumes newline-separated target components"
+    "eval \"(1; 2)\", Nat\nNat"
+    (Eval (AsciiStringLiteral "(1; 2)") (AtlasMap [NaturalType, NaturalType]))
+  assertAstOutput "parentheses delimit eval before access and arithmetic"
+    "(eval \"(b : 8; 2)\", {a? : Nat, b? : Nat})[1] * 5"
+    (Multiplication
+      (MapAccess
+        (Eval (AsciiStringLiteral "(b : 8; 2)")
+          (ArgumentMap
+            [ EitherType (AST.identifierType "a" NaturalType) NaturalType
+            , EitherType (AST.identifierType "b" NaturalType) NaturalType]))
+        (natural 1)) (natural 5))
+  assertAstOutput "eval accepts a computed parenthesized source"
+    "eval (\"1\", \"2\"), Int"
+    (Eval (MapConcatenation (AsciiStringLiteral "1") (AsciiStringLiteral "2")) IntegerType)
+  assertRejected "eval requires its source-target comma" "eval \"2\" Nat"
+  assertRejected "eval requires a target" "eval \"2\","
+  assertRejected "eval requires a source" "eval , Nat"
+  assertRejected "eval is reserved as a bare identifier" "eval : Nat"
+  assertAstOutput "eval keyword respects identifier boundaries"
+    "evaluate : Nat" (AST.identifierType "evaluate" NaturalType)
+  assertAstOutput "argument map uses existing map arity"
+    "{b := 8; 2}"
+    (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
+  assertAstOutput "empty argument map" "{}" (AtlasMap [])
+  assertAstOutput "comma argument map exposes both members"
+    "{b := 8, 2}"
+    (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
+  assertAstOutput "parenthesized concatenation remains one argument"
+    "{(1, 2), 3}"
+    (ArgumentMap [MapConcatenation (natural 1) (natural 2), natural 3])
+  assertAstOutput "argument map permits a trailing comma"
+    "{1, 2,}" (ArgumentMap [natural 1, natural 2])
+  assertAstOutput "unary argument map" "{2}" (natural 2)
+  assertAstOutput "argument map supports newline separators"
+    "{1\n2}" (ArgumentMap [natural 1, natural 2])
+  assertParsed "argument map AST round trip"
+    "{a? : Nat; b? : String}"
+    (ArgumentMap
+      [EitherType (AST.identifierType "a" NaturalType) NaturalType
+      ,EitherType (AST.identifierType "b" StringType) StringType])
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1177,6 +1228,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Subfederation
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm genExpression Extract
+    , Gen.subterm2 genExpression genExpression Eval
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification

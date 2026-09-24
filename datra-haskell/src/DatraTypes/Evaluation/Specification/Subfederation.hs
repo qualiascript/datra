@@ -28,6 +28,16 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | ArgumentMapForm _ underlying <- interpretedForm source =
+      decideValueSubfederation underlying target
+  | ArgumentMapForm _ underlying <- interpretedForm target =
+      decideValueSubfederation source underlying
+  | FederationSpecificationForm _ previousTarget _ <- interpretedForm source =
+      decideValueSubfederation previousTarget target
+  | SpecificationForm specification <- interpretedForm source =
+      decideValueSubfederation
+        (evaluatedSpecificationTarget specification)
+        target
   | AssignmentForm assignment <- interpretedForm source =
       decideValueSubfederation
         (evaluatedSpecificationTarget assignment)

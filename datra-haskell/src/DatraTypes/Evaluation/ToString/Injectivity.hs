@@ -79,6 +79,7 @@ stringConversionProperties semantics =
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]
     MapSemantics _ components -> compositeProperties components
+    ArgumentMapSemantics _ components -> compositeProperties components
     SpecificationSemantics source target ->
       compositeProperties [source, target]
     FormulationSemantics {} -> injectiveUnknownAlphabet

@@ -35,6 +35,10 @@ selectFederationMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectFederationMember source target
+  | ArgumentMapForm _ underlying <- interpretedForm target =
+      selectFederationMember source underlying
+  | ArgumentMapForm _ underlying <- interpretedForm source =
+      selectFederationMember underlying target
   | AssignmentForm assignment <- interpretedForm source =
       selectFederationMember
         (evaluatedSpecificationSourceValue assignment)
@@ -140,7 +144,7 @@ selectSequentialMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectSequentialMember source target =
-  case (sequenceOperands source, sequenceOperands target) of
+  case (sourceComponents, sequenceOperands target) of
     (Just sourceMembers, Just targetMembers)
       | length sourceMembers == length targetMembers ->
           mapDecision
@@ -148,6 +152,17 @@ selectSequentialMember source target =
             (decideAll
               (zipWith selectFederationMember sourceMembers targetMembers))
     _ -> DecisionRefuted
+  where
+    -- Canonical strings may present concrete components by concatenation.
+    -- Match the retained operand boundaries against the target sequence;
+    -- do not flatten a nested ordered map into its enclosing components.
+    sourceComponents =
+      case sequenceOperands source of
+        Just members -> Just members
+        Nothing ->
+          case interpretedForm source of
+            ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
+            _ -> Nothing
 
 selectExpansionMember
   :: InterpretedValue

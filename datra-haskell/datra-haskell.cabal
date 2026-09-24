@@ -215,6 +215,8 @@ library
         Evaluation.ToString
         Evaluation.ToString.Injectivity
         Evaluation.Value
+        Evaluation.Arguments
+        Evaluation.Eval
         Extract
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:

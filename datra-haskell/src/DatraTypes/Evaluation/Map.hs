@@ -1,6 +1,7 @@
 -- | Atlas-map assembly and map/range concatenation.
 module Evaluation.Map
   ( makeAtlasMap
+  , hasConcreteSource
   , makeAtlasExpansion
   , concatenateValues
   ) where
@@ -97,7 +98,7 @@ makeProductMap productForm cardinality values productFederation = value
         NoInsertion
         valueMap
         federation
-        (if all interpretedValueHasTotalMap values
+        (if all hasConcreteSource values
               && atlasMapFederationExpressionIsSingleton federation
           then TotalInterpretedMap
           else NonTotalInterpretedMap)

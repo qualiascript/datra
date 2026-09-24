@@ -6,6 +6,7 @@ module Evaluation.Numerical
   , multiplyValues
   , exponentiateValues
   , requireExplicit
+  , requireFiniteInteger
   , requireRangeUpperBoundary
   ) where
 

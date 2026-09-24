@@ -28,6 +28,8 @@ module DatraTypes
   , weakToStringValue
   , stringTemplateValue
   , extractValue
+  , evalValues
+  , requireFiniteInteger
   , formulationValue
   , addValues
   , subtractValues
@@ -59,6 +61,7 @@ module DatraTypes
   , simpleIdentifierTypeValue
   , assignIdentifierValues
   , makeAtlasMap
+  , makeArgumentMap
   , makeAtlasExpansion
   , concatenateValues
   , accessValues
@@ -105,6 +108,7 @@ import Evaluation.Boolean
   , makeBooleanType
   )
 import Evaluation.Either (makeEitherValue)
+import Evaluation.Arguments (makeArgumentMap)
 import Evaluation.Optional (makeNothing, makeOptionalValue)
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
@@ -113,6 +117,7 @@ import Evaluation.ToString
   , weakToStringValue
   )
 import Extract (extractValue)
+import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
@@ -121,6 +126,7 @@ import Evaluation.Map
   )
 import Evaluation.Numerical
   ( addValues
+  , requireFiniteInteger
   , subtractValues
   , minusValue
   , exponentiateValues

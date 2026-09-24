@@ -86,6 +86,7 @@ reservedIdentifierStrings =
       , BooleanAndOperator
       , BooleanOrOperator
       , BooleanNotOperator
+      , EvalOperator
       , EitherOperator
       , OptionalOperator
       ]

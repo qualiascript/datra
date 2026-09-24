@@ -37,6 +37,8 @@ import Evaluation.Access.RangeSelection
   )
 import Evaluation.Range qualified as RangeEvaluation
 import Evaluation.Value
+import Evaluation.Arguments (argumentAlternatives, makeDistinctUnion)
+import Evaluation.Specification (specifyValues)
 import NaturalRange qualified
 import MapOperators.AccessOperator
   ( validateAccessSelection )
@@ -54,6 +56,14 @@ accessValues
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
   case interpretedForm mapValue of
+    ArgumentMapForm _ underlying ->
+      traverse (`accessValues` insertionValue) (argumentAlternatives underlying)
+        >>= makeDistinctUnion
+    FederationSpecificationForm _ _ branches -> do
+      selected <- traverse (`accessValues` insertionValue) branches
+      source <- makeDistinctUnion (map specificationSource selected)
+      target <- makeDistinctUnion (map specificationTarget selected)
+      specifyValues source target
     SpecificationForm specification ->
       accessSpecification accessValues specification insertionValue
     AssignmentForm specification ->
@@ -61,6 +71,20 @@ accessValues mapValue insertionValue =
     IdentifierTypeForm identifier ->
       accessIdentifierType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
+
+specificationSource :: InterpretedValue -> InterpretedValue
+specificationSource value =
+  case interpretedForm value of
+    SpecificationForm specification -> evaluatedSpecificationSourceValue specification
+    AssignmentForm specification -> evaluatedSpecificationSourceValue specification
+    _ -> value
+
+specificationTarget :: InterpretedValue -> InterpretedValue
+specificationTarget value =
+  case interpretedForm value of
+    SpecificationForm specification -> evaluatedSpecificationTarget specification
+    AssignmentForm specification -> evaluatedSpecificationTarget specification
+    _ -> value
 
 accessFederationValues
   :: InterpretedValue

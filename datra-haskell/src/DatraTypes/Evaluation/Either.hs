@@ -13,6 +13,7 @@ import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.String (federationProducesStrings)
 import Evaluation.Value
+import Evaluation.Federation.Structure (sequenceOperands)
 import ValuedIntegerRange qualified
 import ValuedNaturalRange qualified
 
@@ -39,6 +40,10 @@ alternativesArePairwiseDistinct (member : remaining) =
 alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
   | interpretedCanonicalResult left == interpretedCanonicalResult right = False
+  | ArgumentMapForm _ underlying <- interpretedForm left =
+      alternativesAreDistinct underlying right
+  | ArgumentMapForm _ underlying <- interpretedForm right =
+      alternativesAreDistinct left underlying
   | AssignmentForm leftAssignment <- interpretedForm left =
       alternativesAreDistinct
         (evaluatedSpecificationTarget leftAssignment)
@@ -66,6 +71,10 @@ alternativesAreDistinct left right
   | EitherForm rightEither <- interpretedForm right =
       alternativesAreDistinct left (evaluatedEitherLeft rightEither)
         && alternativesAreDistinct left (evaluatedEitherRight rightEither)
+  | Just leftMembers <- sequenceOperands left
+  , Just rightMembers <- sequenceOperands right =
+      length leftMembers /= length rightMembers
+        || or (zipWith alternativesAreDistinct leftMembers rightMembers)
   | interpretedValueHasTotalMap left = memberIsRefuted left right
   | interpretedValueHasTotalMap right = memberIsRefuted right left
   | federationProducesStrings (interpretedAtlasMapFederation left)
