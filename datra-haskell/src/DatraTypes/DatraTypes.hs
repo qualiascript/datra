@@ -79,6 +79,8 @@ module DatraTypes
   , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , overloadValues
+  , overloadValuesComplete
   , namedAccessValue
   , accessValues
   , validateFunctionInput
@@ -142,6 +144,10 @@ import Evaluation.Map
   ( concatenateValues
   , makeAtlasExpansion
   , makeAtlasMap
+  )
+import Evaluation.Overload
+  ( overloadValues
+  , overloadValuesComplete
   )
 import Evaluation.Numerical
   ( addValues

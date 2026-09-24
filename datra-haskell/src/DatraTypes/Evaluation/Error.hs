@@ -55,6 +55,8 @@ data AtlasMapFederationUncertainty
 data InterpretingError
   = NamedAccessError String
   | FunctionError String
+  | OverloadError String
+  | AssertionFailed
   | IdentifierStringOverlap String
   | UnknownIdentifier String
   | CyclicIdentifierReference [String]

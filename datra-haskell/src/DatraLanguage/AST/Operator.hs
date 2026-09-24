@@ -26,6 +26,7 @@ data Operator
   | BooleanNotOperator
   | ExtractOperator
   | EvalOperator
+  | AssertOperator
   | BeginOperator
   | LetOperator
   | EitherOperator
@@ -35,6 +36,8 @@ data Operator
   | ConcatenationOperator
   | AccessOperator
   | SpecificationOperator
+  | OverloadOperator
+  | ReverseOverloadOperator
   | IdentifierTypeOperator
   | AssignmentOperator
   deriving (Eq, Show)
@@ -60,6 +63,7 @@ operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol EvalOperator = "eval"
+operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol EitherOperator = "Either"
@@ -69,6 +73,8 @@ operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
 operatorCanonicalSymbol AccessOperator = "<@>"
 operatorCanonicalSymbol SpecificationOperator = "~>"
+operatorCanonicalSymbol OverloadOperator = "<<"
+operatorCanonicalSymbol ReverseOverloadOperator = ">>"
 operatorCanonicalSymbol IdentifierTypeOperator = ":"
 operatorCanonicalSymbol AssignmentOperator = ":="
 
@@ -94,6 +100,7 @@ operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol EvalOperator = Just "eval"
+operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol EitherOperator = Just "|"
@@ -103,6 +110,8 @@ operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","
 operatorSourceSymbol AccessOperator = Just "@"
 operatorSourceSymbol SpecificationOperator = Just "~>"
+operatorSourceSymbol OverloadOperator = Just "<<"
+operatorSourceSymbol ReverseOverloadOperator = Just ">>"
 operatorSourceSymbol IdentifierTypeOperator = Just ":"
 operatorSourceSymbol AssignmentOperator = Just ":="
 

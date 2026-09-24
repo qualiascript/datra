@@ -64,9 +64,15 @@ specifyValues source target
       case decideValueSubfederation source target of
         DecisionProved () -> Right (makeFunctionValue signature
           { functionSource = functionSource original
-          , functionInvoke = fmap (\invoke argument -> do
-              validateFunctionInput argument (functionDomain signature)
-              invoke argument) (functionInvoke original)
+          , functionPrepare = Just (\argument -> do
+              prepared <- case functionPrepare original of
+                Just prepare -> prepare argument
+                Nothing -> do
+                  validateFunctionInput argument (functionDomain original)
+                  pure argument
+              validateFunctionInput prepared (functionDomain signature)
+              pure prepared)
+          , functionInvoke = functionInvoke original
           })
         DecisionRefuted -> Left (FunctionError "function signature violates input contravariance or output covariance")
         DecisionUndecidable -> Left (FunctionError ("cannot decide function specification: " <> show (interpretedCanonicalResult source) <> " to " <> show (interpretedCanonicalResult target)))

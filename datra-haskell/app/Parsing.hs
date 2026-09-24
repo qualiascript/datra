@@ -46,6 +46,7 @@ import DatraLanguage.AST
       , MapExpansion
       , MapSequence
       , MapSpecification
+      , Overload
       , IdentifierOperation
       , Multiplication
       , Subtraction
@@ -73,6 +74,7 @@ import DatraLanguage.AST
       , BooleanNot
       , Extract
       , Eval
+      , Assert
       , Begin
       , Program
       , FunctionType
@@ -160,7 +162,7 @@ parseDatra :: String -> Either String Expression
 parseDatra = parseDatraWithSourceName "<input>"
 
 -- | Outer parentheses select expression mode; every other resource is an
--- implicit begin/yield program, with an optional begin and default yield 0.
+-- implicit begin/yield program, with an optional begin and default yield ().
 parseDatraWithSourceName :: FilePath -> String -> Either String Expression
 parseDatraWithSourceName sourceName source =
   locatedValue <$> parseDatraLocatedWithSourceName sourceName source
@@ -301,6 +303,8 @@ astForm =
       [ InModule <$> (astSymbol "in-module" *> astString) <*> astExpression
       , Import True <$> (astSymbol "import-all" *> astString)
       , Import False <$> (astSymbol "import" *> astString)
+      , Assert True <$> (astSymbol "assert-hard" *> astExpression)
+      , astUnary AST.AssertOperator (Assert False)
       , SyntaxType <$> (astSymbol "as?" *> astString) <*> pure True <*> astExpression
       , SyntaxType <$> (astSymbol "as" *> astString) <*> pure False <*> astExpression
       , astBinary AST.FunctionTypeOperator FunctionType
@@ -340,6 +344,7 @@ astForm =
       , NamedAccess <$> (astSymbol "." *> astExpression) <*> (IdentifierString <$> astString)
       , astBinary AST.AccessOperator MapAccess
       , astBinary AST.SpecificationOperator MapSpecification
+      , astBinary AST.OverloadOperator Overload
       ])
 
 astIdentifierOperation
@@ -492,7 +497,7 @@ implicitProgram = withReferences $ do
   _ <- optional (continuedWordOperator AST.BeginOperator)
   bindings <- elements
   result <- withDeclarations bindings $ optional (continuedReservedWord Reserved.YieldWord *> expression)
-  pure (Program bindings (maybe (EllipsisNatural 0) id result))
+  pure (Program bindings (maybe (AtlasMap []) id result))
 
 withReferences :: Parser value -> Parser value
 withReferences = local (\context -> context { referencesAllowed = True })
@@ -533,7 +538,13 @@ mapSeparator =
 -- Reverse specification is the outermost expression layer, so either side
 -- can contain identifier operations, concatenation, and function applications.
 expression :: Parser Expression
-expression = expressionWith mapExpression
+expression = assertExpression <|> expressionWith mapExpression
+
+assertExpression :: Parser Expression
+assertExpression = do
+  _ <- continuedWordOperator AST.AssertOperator
+  hard <- maybe False (const True) <$> optional (try (continuedKeyword "hard"))
+  Assert hard <$> expression
 
 expressionWith :: Parser Expression -> Parser Expression
 expressionWith operand = do
@@ -548,8 +559,30 @@ expressionWith operand = do
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
   signature <- arrowExpressionWith operand
-  implementation <- optional (functionBody <|> externalExpression)
+  implementation <- optional (functionImplementation signature)
   pure (maybe signature (`MapSpecification` signature) implementation)
+
+-- A bare @yield@ is a function implementation only after an actual function
+-- type.  Without this guard it can consume the yield belonging to the
+-- surrounding resource or begin block after any preceding expression.
+functionImplementation :: Expression -> Parser Expression
+functionImplementation signature =
+  functionBody
+    <|> bareFunctionYield
+    <|> externalExpression
+  where
+    bareFunctionYield = case signature of
+      FunctionType {} ->
+        FunctionBody []
+          <$> (sameLineReservedWord Reserved.YieldWord *> expression)
+      _ -> empty
+
+-- The compact function form is deliberately line-bound: a newline otherwise
+-- makes @yield@ indistinguishable from the enclosing block's result.  The
+-- explicit @do@/optional @begin@ forms are the multiline escape hatch.
+sameLineReservedWord :: Reserved.ReservedWord -> Parser Text
+sameLineReservedWord reserved =
+  keywordToken (Text.pack (Reserved.reservedWordText reserved)) <* hspace1
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
 arrowExpressionWith operand = do
@@ -642,7 +675,7 @@ identifierValueExpression = do
   output <- optional (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
     (makeExprParser rangeExpression identifierValueOperatorTable))
   let signature = maybe input (FunctionType input) output
-  implementation <- optional (functionBody <|> externalExpression)
+  implementation <- optional (functionImplementation signature)
   pure (maybe signature (`MapSpecification` signature) implementation)
 
 -- An arithmetic operator followed by another identifier operation belongs to
@@ -814,6 +847,7 @@ functionBody = try $ do
   body <- syntaxApplication
   case body of
     FunctionBody {} -> pure body
+    Begin bindings result -> pure (FunctionBody bindings result)
     _ -> empty
 
 externalExpression :: Parser Expression
@@ -1023,6 +1057,8 @@ identifierValueOperatorTable =
 mapAccessAndSpecificationOperators :: [Operator Parser Expression]
 mapAccessAndSpecificationOperators =
   [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
+  , InfixL (Overload <$ continuedOperator AST.OverloadOperator)
+  , InfixL (flip Overload <$ continuedOperator AST.ReverseOverloadOperator)
   , InfixL
       (MapSpecification <$ continuedOperator AST.SpecificationOperator)
   ]
@@ -1066,6 +1102,8 @@ postfixRangeEnd =
         [ operatorToken AST.ConcatenationOperator
         , operatorToken AST.AccessOperator
         , operatorToken AST.SpecificationOperator
+        , operatorToken AST.OverloadOperator
+        , operatorToken AST.ReverseOverloadOperator
         , operatorToken AST.AssignmentOperator
         , symbol reverseSpecificationSymbol
         ])

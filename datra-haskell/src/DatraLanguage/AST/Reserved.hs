@@ -81,7 +81,7 @@ reservedSymbolIdentifiersAreUnique =
 reservedIdentifierStrings :: [String]
 reservedIdentifierStrings =
   []
-    <> ["as", "import", "this"]
+    <> ["as", "hard", "import", "this"]
     <> map reservedWordText identifierReservedWords
     <> map operatorCanonicalSymbol
       [ DoOperator
@@ -92,6 +92,7 @@ reservedIdentifierStrings =
       , BooleanOrOperator
       , BooleanNotOperator
       , EvalOperator
+      , AssertOperator
       , BeginOperator
       , LetOperator
       , EitherOperator

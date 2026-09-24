@@ -62,6 +62,8 @@ localizeInterpretingError reason =
   case reason of
     NamedAccessError message -> LocalizedMessage "named access failed" [message]
     FunctionError message -> LocalizedMessage "function evaluation failed" [message]
+    OverloadError message -> LocalizedMessage "overloading failed" [message]
+    AssertionFailed -> LocalizedMessage "assertion failed" []
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
     UnknownIdentifier name ->

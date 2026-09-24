@@ -7,7 +7,10 @@ import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , renderDatraError
   )
-import Interpreting (interpretLocatedWithImports)
+import Interpreting
+  ( EvaluationMode (DevelopmentMode, ProductionMode)
+  , interpretLocatedWithImportsInMode
+  )
 import ModuleLoading (loadImports, loadExpressionImports, importSyntax)
 import Options.Applicative
 import Parsing
@@ -21,9 +24,9 @@ import System.Exit (die)
 import System.FilePath ((</>), takeDirectory)
 
 data Command
-  = Build Input FilePath FilePath Locale
+  = Build Input FilePath FilePath Locale EvaluationMode
   | GenerateAst Input FilePath
-  | InterpretAst Input FilePath Locale
+  | InterpretAst Input FilePath Locale EvaluationMode
 
 data Input
   = InputFile FilePath
@@ -93,6 +96,7 @@ buildParser =
       "FILE"
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
+    <*> modeOption
 
 generateAstParser :: Parser Command
 generateAstParser =
@@ -116,6 +120,7 @@ interpretAstParser =
       "FILE"
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
+    <*> modeOption
 
 sourceInputParser :: FilePath -> Parser Input
 sourceInputParser defaultPath =
@@ -190,10 +195,33 @@ localeName :: Locale -> String
 localeName English = "english"
 localeName Romanian = "romanian"
 
+modeOption :: Parser EvaluationMode
+modeOption =
+  option modeReader
+    ( long "mode"
+        <> metavar "MODE"
+        <> value DevelopmentMode
+        <> showDefaultWith modeName
+        <> help "Assertion mode: dev or prod"
+    )
+
+modeReader :: ReadM EvaluationMode
+modeReader = eitherReader $ \modeText ->
+  case map toLower modeText of
+    "dev" -> Right DevelopmentMode
+    "development" -> Right DevelopmentMode
+    "prod" -> Right ProductionMode
+    "production" -> Right ProductionMode
+    _ -> Left "expected dev, development, prod, or production"
+
+modeName :: EvaluationMode -> String
+modeName DevelopmentMode = "dev"
+modeName ProductionMode = "prod"
+
 runCommand :: Command -> IO ()
 runCommand commandValue =
   case commandValue of
-    Build input astPath outputPath locale -> do
+    Build input astPath outputPath locale mode -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
       imports <- loadImports sourceName source >>= parseOrFail errorPath
@@ -203,7 +231,7 @@ runCommand commandValue =
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImports imports locatedExpression)
+        (interpretLocatedWithImportsInMode mode imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
     GenerateAst input outputPath -> do
       let errorPath = errorPathFor input [outputPath]
@@ -214,7 +242,7 @@ runCommand commandValue =
           (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
-    InterpretAst input outputPath locale -> do
+    InterpretAst input outputPath locale mode -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       locatedExpression <-
@@ -222,7 +250,7 @@ runCommand commandValue =
           (parseDatraAstLocatedWithSourceName sourceName source)
       imports <- loadExpressionImports sourceName (locatedValue locatedExpression) >>= parseOrFail errorPath
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImports imports locatedExpression)
+        (interpretLocatedWithImportsInMode mode imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
 
 errorPathFor :: Input -> [FilePath] -> FilePath

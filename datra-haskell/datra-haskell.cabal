@@ -215,6 +215,7 @@ library
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Optional
+        Evaluation.Overload
         Evaluation.Range
         Evaluation.Specification
         Evaluation.Specification.Composition
@@ -380,6 +381,7 @@ test-suite datra-interpreting-test
     other-modules:
         Datra.Interpreter.FunctionTests
         Datra.Interpreter.ModuleTests
+        Datra.Interpreter.OverloadAssertionTests
         Datra.Interpreter.ScopeTests
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport

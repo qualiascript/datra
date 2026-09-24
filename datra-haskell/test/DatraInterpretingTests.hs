@@ -5,6 +5,7 @@ module DatraInterpretingTests (main) where
 
 import Datra.Interpreter.FunctionTests (functionTests)
 import Datra.Interpreter.ModuleTests (moduleTests)
+import Datra.Interpreter.OverloadAssertionTests (overloadAssertionTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
 import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
 import DatraLanguage.AST
@@ -126,6 +127,7 @@ testTree =
     , functionTests
     , scopeTests
     , moduleTests
+    , overloadAssertionTests
     , standardLibraryTests
     , testGroup "properties"
         [ testProperty "natural addition agrees with Haskell" propNaturalAddition
@@ -725,10 +727,10 @@ testPrograms = do
     , ("a : 2 * 3\nb : 8\nyield a + b", "14")
     , ("begin\na : 2 * 3\nb : 8\nyield a + b", "14")
     , ("begin\na : 2 * 3\nb : 5\nyield a + b", "11")
-    , ("a : 2 * 3\nb : 5", "0")
-    , ("begin a : 6; b : 5", "0")
-    , ("", "0")
-    , ("2 + 3", "0")
+    , ("a : 2 * 3\nb : 5", "()")
+    , ("begin a : 6; b : 5", "()")
+    , ("", "()")
+    , ("2 + 3", "()")
     , ("# comment\n(2 + 3) # trailing comment", "5")
     , ("yield (1; 2)", "(1; 2)")
     , ("(2 + 3)", "5")

@@ -262,6 +262,8 @@ data EvaluatedFunction = EvaluatedFunction
   , functionCodomain :: InterpretedValue
   , functionPattern :: Maybe (String, Bool)
   , functionSource :: Maybe String
+  , functionPrepare :: Maybe
+      (InterpretedValue -> Either InterpretingError InterpretedValue)
   , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
   }
 
@@ -673,7 +675,7 @@ optionalAssignmentValue
   -> CanonicalResult
   -> CanonicalResult
   -> CanonicalResult
-optionalAssignmentValue identifierString typeAnnotation source =
+optionalAssignmentValue identifierString _typeAnnotation source =
   case source of
     CanonicalAssignment sourceString _ givenValue
       | sourceString == identifierString -> givenValue
@@ -681,8 +683,7 @@ optionalAssignmentValue identifierString typeAnnotation source =
         (CanonicalAssignment sourceString sourceType givenValue)
         sourceMissing
       | sourceString == identifierString
-      , sourceType == typeAnnotation
-      , sourceMissing == typeAnnotation -> givenValue
+      , sourceType == sourceMissing -> givenValue
     _ -> source
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind

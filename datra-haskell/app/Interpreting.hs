@@ -4,9 +4,12 @@
 -- operations and all type errors are provided by 'DatraTypes'.
 module Interpreting
   ( ModuleSource (..)
+  , EvaluationMode (..)
   , moduleExportNames
   , interpretLocatedWithImports
+  , interpretLocatedWithImportsInMode
   , interpretWithImports
+  , interpretWithImportsInMode
   , InterpretedValue
   , CanonicalResult (..)
   , InterpretedValueKind (..)
@@ -43,6 +46,7 @@ import DatraLanguage.AST
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , normalizeExpression
+  , mapExpressionChildren
   )
 import DatraTypes
 import Parsing (parseDatra)
@@ -69,8 +73,17 @@ interpretLocatedExpression (Located sourceSpan expressionValue) =
     (interpretExpressionReason expressionValue)
 
 interpretLocatedWithImports :: [(String, ModuleSource)] -> Located Expression -> Either (DatraError InterpretingError) InterpretedValue
-interpretLocatedWithImports modules (Located sourceSpan expression) =
-  Bifunctor.first (atSourceSpan sourceSpan) (interpretWithImports modules expression)
+interpretLocatedWithImports =
+  interpretLocatedWithImportsInMode DevelopmentMode
+
+interpretLocatedWithImportsInMode
+  :: EvaluationMode
+  -> [(String, ModuleSource)]
+  -> Located Expression
+  -> Either (DatraError InterpretingError) InterpretedValue
+interpretLocatedWithImportsInMode mode modules (Located sourceSpan expression) =
+  Bifunctor.first (atSourceSpan sourceSpan)
+    (interpretWithImportsInMode mode modules expression)
 
 interpretExpressionReason
   :: Expression
@@ -82,7 +95,43 @@ interpretWithImports modules expression = do
   scope <- standardScope
   evalInScope (("\0imports", ModuleCatalog modules) : scope) [] expression
 
+interpretWithImportsInMode
+  :: EvaluationMode
+  -> [(String, ModuleSource)]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretWithImportsInMode mode modules expression =
+  interpretWithImports
+    (map (fmapModule mode) modules)
+    (expressionForMode mode expression)
+
 data ModuleSource = StandardLibraryModule | ModuleSource FilePath Expression [(String, ModuleSource)]
+
+data EvaluationMode
+  = DevelopmentMode
+  | ProductionMode
+  deriving (Eq, Show)
+
+expressionForMode :: EvaluationMode -> Expression -> Expression
+expressionForMode DevelopmentMode = id
+expressionForMode ProductionMode = removeSoftAssertions
+  where
+    removeSoftAssertions (Assert False _) = AtlasMap []
+    removeSoftAssertions expressionValue =
+      mapExpressionChildren removeSoftAssertions expressionValue
+
+fmapModule
+  :: EvaluationMode
+  -> (String, ModuleSource)
+  -> (String, ModuleSource)
+fmapModule mode (name, source) = (name, transform source)
+  where
+    transform StandardLibraryModule = StandardLibraryModule
+    transform (ModuleSource path expression dependencies) =
+      ModuleSource
+        path
+        (expressionForMode mode expression)
+        (map (fmapModule mode) dependencies)
 
 
 standardScope :: Either InterpretingError Scope
@@ -266,7 +315,8 @@ interpretNormalizedExpression scope resolving expressionValue =
     FunctionType domain codomain -> do
       input <- compileParameters interpret domain >>= parameterDomain
       output <- interpret codomain
-      pure (makeFunctionValue (EvaluatedFunction input output Nothing Nothing Nothing))
+      pure (makeFunctionValue
+        (EvaluatedFunction input output Nothing Nothing Nothing Nothing))
     FunctionBody bindings result -> createFunction scope resolving Nothing bindings result
     FunctionApplication function argument -> do
       callable <- interpret function
@@ -280,8 +330,15 @@ interpretNormalizedExpression scope resolving expressionValue =
     IdentifierReference (IdentifierString name) -> resolveIdentifier scope resolving name
     Eval source target ->
       binary (evalValues canonicalStringCodec) source target
+    Assert _ condition -> do
+      accepted <- interpret condition >>= booleanCondition
+      if accepted
+        then Right (makeAtlasMap 0 [])
+        else Left AssertionFailed
     MapConcatenation left right ->
       binary concatenateValues left right
+    Overload defaults supplied ->
+      binary overloadValues defaults supplied
     NamedAccess (IdentifierReference (IdentifierString namespace)) (IdentifierString name)
       | Just (NamespaceBinding _ exported) <- lookup namespace scope -> do
           member <- resolveIdentifier exported [] name
@@ -401,6 +458,7 @@ bindingImports strict expressionValue =
       ([(name, strict, maybe annotation (\value -> if value == annotation then value else MapSpecification value annotation) given)], [])
     EitherType named@(IdentifierOperation _ annotation _) missing
       | annotation == missing -> bindingImports strict named
+    Assert {} -> ([], [expressionValue])
     _ -> ([], [expressionValue | strict])
 
 interpretStringTemplateWith
@@ -618,7 +676,8 @@ createFunction captured resolving explicit bindings result = do
         _ <- specifyValues value output
         pure value
   pure (makeFunctionValue (EvaluatedFunction input output Nothing
-    (Just (renderSourceExpression (FunctionBody bindings result))) (Just invoke)))
+    (Just (renderSourceExpression (FunctionBody bindings result)))
+    (Just (prepareArguments schema)) (Just invoke)))
   where
     evaluate = evalInScope captured resolving
     -- A recursive call is checked against its declared signature. Evaluating
@@ -635,13 +694,26 @@ applyFunction callable input = case candidates of
     value <- invoke input
     _ <- specifyValues value (functionCodomain function)
     pure value
-  [] -> Left (FunctionError "no applicable function alternative; syntax-only alternatives require their AST pattern")
+  []
+    | any ambiguous preparations ->
+        Left (FunctionError
+          "ambiguous argument bindings; supply identifiers to select the intended slots")
+    | otherwise -> Left (FunctionError
+        "no applicable function alternative; syntax-only alternatives require their AST pattern")
   [_] -> Left (FunctionError "this external adapter requires unevaluated AST captures")
   _ -> Left (FunctionError "ambiguous function sum application")
   where
-    candidates = [function | function <- functionAlternatives callable
-      , maybe True snd (functionPattern function)
-      , Right _ <- [validateFunctionInput input (functionDomain function)]]
+    preparations = [(function, prepare function)
+      | function <- functionAlternatives callable
+      , maybe True snd (functionPattern function)]
+    candidates = [function | (function, Right _) <- preparations]
+    ambiguous (_, Left (OverloadError message)) =
+      message == "ambiguous overload; supply identifiers to select the intended slots"
+    ambiguous _ = False
+    prepare function =
+      case functionPrepare function of
+        Just operation -> operation input
+        Nothing -> input <$ validateFunctionInput input (functionDomain function)
 
 externalValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 externalValue descriptor | CanonicalAsciiString symbol <- interpretedCanonicalResult descriptor = registeredExternal symbol
@@ -700,7 +772,7 @@ registeredExternal symbol = case symbol of
     concreteCanonical value = value
     syntaxAdapter arity = pure (makeFunctionValue (EvaluatedFunction
       (if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)) astTypeValue Nothing
-      (Just ("external " <> show symbol)) Nothing))
+      (Just ("external " <> show symbol)) Nothing Nothing))
     nativeRange valued = do
       ints <- integerTypeValue
       up <- asciiStringValue "upwards"
@@ -725,7 +797,9 @@ registeredExternal symbol = case symbol of
                   then (if valued then valuedNaturalRangeValue else naturalRangeValue) (fromInteger start) (fromInteger end)
                   else (if valued then valuedIntegerRangeValue else integerRangeValue) start end
       pure (makeFunctionValue (EvaluatedFunction domain integerRangeTypeValue Nothing
-        (Just ("external " <> show symbol)) (Just invoke)))
+        (Just ("external " <> show symbol))
+        (Just (\argument -> argument <$ validateFunctionInput argument domain))
+        (Just invoke)))
     optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
     lookupArgument name values = maybe (Left (FunctionError ("missing native argument " <> name))) Right (lookup name values)
     nativeFunction domain codomain implementation = do
@@ -739,7 +813,8 @@ registeredExternal symbol = case symbol of
             _ <- specifyValues result output
             pure result
       pure (makeFunctionValue (EvaluatedFunction input output Nothing
-        (Just ("external " <> show symbol)) (Just invoke)))
+        (Just ("external " <> show symbol))
+        (Just (prepareArguments schema)) (Just invoke)))
 
 
 importModule :: Scope -> (Bool, String) -> Either InterpretingError Scope

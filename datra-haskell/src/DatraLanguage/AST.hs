@@ -102,6 +102,7 @@ data Expression
   | BooleanNot Expression
   | Extract Expression
   | Eval Expression Expression
+  | Assert Bool Expression
   | This
   | InModule String Expression
   | Import Bool String
@@ -120,6 +121,7 @@ data Expression
   | NamedAccess Expression IdentifierString
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
+  | Overload Expression Expression
   | IdentifierOperation
       { identifierOperationString :: IdentifierString
       , identifierOperationTypeAnnotation :: Expression
@@ -178,6 +180,7 @@ data OperatorExpression
   | Not OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
+  | AssertValue Bool OperatorExpression
   | ThisValue
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
@@ -196,6 +199,7 @@ data OperatorExpression
   | NamedAccessValue OperatorExpression IdentifierString
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
+  | OverloadValue OperatorExpression OperatorExpression
   | IdentifierOperationValue
       { operatorIdentifierString :: IdentifierString
       , operatorTypeAnnotation :: OperatorExpression
@@ -286,6 +290,8 @@ normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
 normalizeExpression (Eval source target) =
   Eval (normalizeExpression source) (normalizeExpression target)
+normalizeExpression (Assert hard condition) =
+  Assert hard (normalizeExpression condition)
 normalizeExpression This = This
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
@@ -311,6 +317,8 @@ normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
   MapSpecification (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Overload left right) =
+  Overload (normalizeExpression left) (normalizeExpression right)
 normalizeExpression
     (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperation
@@ -420,6 +428,7 @@ lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
+lower (Assert hard condition) = AssertValue hard (lower condition)
 lower This = ThisValue
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
@@ -439,6 +448,7 @@ lower (MapConcatenation left right) =
 lower (NamedAccess value name) = NamedAccessValue (lower value) name
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
+lower (Overload left right) = OverloadValue (lower left) (lower right)
 lower (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperationValue
     identifierString
@@ -585,6 +595,9 @@ prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
 prettyOperator (EvalValue source target) =
   prettyBinary EvalOperator source target
+prettyOperator (AssertValue hard condition) =
+  prettyForm (if hard then "assert-hard" else "assert")
+    [prettyOperator condition]
 prettyOperator ThisValue = "this"
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
@@ -613,6 +626,8 @@ prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
   prettyBinary SpecificationOperator left right
+prettyOperator (OverloadValue left right) =
+  prettyBinary OverloadOperator left right
 prettyOperator
     (IdentifierOperationValue
       (IdentifierString identifierString)
@@ -813,6 +828,7 @@ traverseExpressionChildren visit expression = case expression of
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Eval a b -> Eval <$> visit a <*> visit b
+  Assert hard x -> Assert hard <$> visit x
   FunctionType a b -> FunctionType <$> visit a <*> visit b
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b
@@ -820,6 +836,7 @@ traverseExpressionChildren visit expression = case expression of
   MapConcatenation a b -> MapConcatenation <$> visit a <*> visit b
   MapAccess a b -> MapAccess <$> visit a <*> visit b
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
+  Overload a b -> Overload <$> visit a <*> visit b
   Program xs y -> Program <$> traverse visit xs <*> visit y
   Begin xs y -> Begin <$> traverse visit xs <*> visit y
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y

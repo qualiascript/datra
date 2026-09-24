@@ -66,12 +66,29 @@ regressionTests = do
     "f 2 3 + 4" (Addition
       (FunctionApplication (FunctionApplication (IdentifierReference (IdentifierString "f")) (natural 2)) (natural 3))
       (natural 4))
+  assertAstOutput "left overload"
+    "a << b"
+    (Overload (ref "a") (ref "b"))
+  assertAstOutput "right overload reverses operands"
+    "a >> b"
+    (Overload (ref "b") (ref "a"))
+  assertAstOutput "assert captures a complete Boolean expression"
+    "assert f 5 = 120"
+    (Assert False
+      (Equality
+        (FunctionApplication (ref "f") (natural 5))
+        (natural 120)))
+  assertAstOutput "hard assert"
+    "assert hard false"
+    (Assert True (ref "false"))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import False "library_one", Import True "standard_library"
     , InModule "standard_library" This
     , NamedAccess This (IdentifierString "abc")
     , SyntaxType "$Int next" True (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
+    , Assert True (BooleanLiteral True)
+    , Overload (natural 1) (natural 2)
     , External (AsciiStringLiteral "datra.add")
     ]
   assertAstOutput "eval consumes a semicolon-separated target"
@@ -138,6 +155,10 @@ regressionTests = do
       (IdentifierReference (IdentifierString "x")))
   assertRejected "let requires a block" "let x : 1"
   assertRejected "begin requires yield" "begin x : 1"
+  assertRejected "function bodies require an explicit yield"
+    "f := ({n? : Nat} -> () do assert n of Nat)"
+  assertRejected "compact function yield stays on the signature line"
+    "f := ({n? : Nat} -> Nat\nyield n + 1)"
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1359,8 +1380,8 @@ assertResourceEnvelopes = do
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail message)
     [ ("a : 6\nyield a", Program [AST.identifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
-    , ("begin a : 6", Program [AST.identifierType "a" (natural 6)] (natural 0))
-    , ("", Program [] (natural 0))
+    , ("begin a : 6", Program [AST.identifierType "a" (natural 6)] (AtlasMap []))
+    , ("", Program [] (AtlasMap []))
     ]
   where
     assertEnvelope label source expected =

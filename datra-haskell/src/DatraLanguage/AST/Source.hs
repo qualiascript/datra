@@ -34,7 +34,10 @@ source context expression =
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
+    OverloadValue left right -> binary 1 "<<" left right
     EvalValue text target -> wrapped 0 ("eval " <> source 3 text <> " at " <> source 0 target)
+    AssertValue hard condition -> wrapped 0
+      ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
     EitherValue left right -> binary 3 "|" left right

@@ -43,7 +43,7 @@ block:
 docker run --rm datra-haskell:prod build \
   --source 'let factorial := ({n? : Int} -> Int do
   yield if n = 0 then 1 else n * factorial (n - 1))
-yield factorial 5' \
+assert factorial 5 = 120' \
   --ast-output /dev/null \
   --output -
 ```
@@ -51,8 +51,12 @@ yield factorial 5' \
 Expected output:
 
 ```text
-120
+()
 ```
+
+The CLI defaults to development mode, where `assert` is evaluated. Use
+`--mode prod` to omit ordinary assertions. `assert hard ...` is always
+evaluated.
 
 To work with files, mount a directory at `/data`:
 

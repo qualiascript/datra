@@ -132,6 +132,10 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         joinTypes left right
       Equality a b -> recur a >> recur b >> booleanTypeValue
       Subfederation a b -> recur a >> recur b >> booleanTypeValue
+      Assert _ condition -> do
+        value <- recur condition
+        check value =<< booleanTypeValue
+        pure (makeAtlasMap 0 [])
       MapSpecification source target -> do
         actual <- recur source
         expected <- recur target
@@ -161,6 +165,7 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
       MapSequence values -> makeAtlasMap 2 <$> traverse recur values
       ArgumentMap values -> traverse recur values >>= makeArgumentMap
       MapConcatenation a b -> do left <- recur a; right <- recur b; concatenateValues left right
+      Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
       EitherType a b -> do left <- recur a; right <- recur b; joinTypes left right
       Begin entries value -> inferBlock scope entries value
       Program entries value -> inferBlock scope entries value

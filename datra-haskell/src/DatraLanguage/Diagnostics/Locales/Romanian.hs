@@ -60,6 +60,8 @@ localizeInterpretingError reason =
   case reason of
     NamedAccessError message -> LocalizedMessage "accesul prin nume a eșuat" [message]
     FunctionError message -> LocalizedMessage "evaluarea funcției a eșuat" [message]
+    OverloadError message -> LocalizedMessage "supraîncărcarea a eșuat" [message]
+    AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
     UnknownIdentifier name ->

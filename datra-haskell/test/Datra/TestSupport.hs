@@ -7,6 +7,8 @@ module Datra.TestSupport
   , moduleFailureCase
   , programCase
   , programFailureCase
+  , programCaseInMode
+  , programFailureCaseInMode
   , runExpression
   , runModuleProgram
   , runProgram
@@ -15,8 +17,10 @@ module Datra.TestSupport
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraTypes (InterpretedValue, InterpretingError)
 import Interpreting
-  ( interpretExpressionReason
+  ( EvaluationMode
+  , interpretExpressionReason
   , interpretWithImports
+  , interpretWithImportsInMode
   )
 import ModuleLoading (importSyntax, loadImports)
 import Parsing
@@ -53,6 +57,15 @@ runProgram source = do
   expression <- first SourceParseFailure (parseDatra source)
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
+runProgramInMode
+  :: EvaluationMode
+  -> String
+  -> Either SourceFailure InterpretedValue
+runProgramInMode mode source = do
+  expression <- first SourceParseFailure (parseDatra source)
+  first SourceEvaluationFailure
+    (interpretWithImportsInMode mode [] expression)
+
 runModuleProgram :: FilePath -> String -> IO (Either ModuleFailure InterpretedValue)
 runModuleProgram origin source = do
   loaded <- loadImports origin source
@@ -75,6 +88,15 @@ programCase :: TestName -> String -> String -> TestTree
 programCase name source expected =
   testCase name (assertRendered expected (runProgram source))
 
+programCaseInMode
+  :: EvaluationMode
+  -> TestName
+  -> String
+  -> String
+  -> TestTree
+programCaseInMode mode name source expected =
+  testCase name (assertRendered expected (runProgramInMode mode source))
+
 moduleCase :: FilePath -> TestName -> String -> String -> TestTree
 moduleCase origin name source expected = testCase name $ do
   result <- runModuleProgram origin source
@@ -95,6 +117,16 @@ programFailureCase
   -> TestTree
 programFailureCase name source expected =
   testCase name (assertFailureResult name expected (runProgram source))
+
+programFailureCaseInMode
+  :: EvaluationMode
+  -> TestName
+  -> String
+  -> SourceFailure
+  -> TestTree
+programFailureCaseInMode mode name source expected =
+  testCase name
+    (assertFailureResult name expected (runProgramInMode mode source))
 
 moduleFailureCase
   :: FilePath

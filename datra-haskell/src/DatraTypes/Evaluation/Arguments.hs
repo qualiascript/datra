@@ -85,6 +85,7 @@ argumentRows value = case interpretedForm value of
   EitherForm _ -> concat <$> traverse argumentRows (argumentAlternatives value)
   SequentialMapForm -> (:[]) <$> pages
   MapForm -> (:[]) <$> pages
+  SpecificationForm _ -> (:[]) <$> pages
   _ -> pure [[value]]
   where
     pages = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
