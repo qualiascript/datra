@@ -216,7 +216,7 @@ library
         Evaluation.Numerical
         Evaluation.Optional
         Evaluation.Overload
-        Evaluation.CanonicalType
+        Evaluation.DatraType
         Evaluation.Range
         Evaluation.Specification
         Evaluation.Specification.Composition

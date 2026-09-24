@@ -185,8 +185,8 @@ buildEither (member :| next : remaining) =
 rawEither :: InterpretedValue -> InterpretedValue -> InterpretedValue
 rawEither left right =
   makeInterpretedValue
-    (composedStructuralCanonicalType
-      (map interpretedCanonicalType [left, right]))
+    (composedStructuralDatraType
+      (map interpretedDatraType [left, right]))
     (EitherForm alternatives)
     NoInsertion
     emptyInterpretedMap

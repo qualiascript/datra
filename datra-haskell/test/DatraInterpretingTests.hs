@@ -121,7 +121,7 @@ testTree =
         , testCase "access" testAccess
         , testCase "specification" testSpecification
         , testCase "identifier types and assignments" testIdentifiers
-        , testCase "canonical Datra type capabilities" testCanonicalTypes
+        , testCase "Datra and canonical type capabilities" testCanonicalTypes
         , testCase "typed rejections" testTypedRejections
         , testCase "located rejection" testLocatedRejection
         ]
@@ -778,21 +778,37 @@ testBegin = do
 
 testCanonicalTypes :: IO ()
 testCanonicalTypes = do
-  expectSourceValue "canonical string type capability" "Nat" $ \value ->
-    assert "Nat has canonical toString"
-      (Types.canonicalStringRepresentation
-        (Types.interpretedCanonicalType value)
-          == Types.CanonicalStringRepresentation)
+  mapM_ expectCanonicalType
+    [ "Nat"
+    , "Int"
+    , "String"
+    , "Iden"
+    , "Bool"
+    , "(Nat; Int)"
+    , "begin yield 11"
+    ]
+  mapM_ expectNonCanonicalDatraType
+    [ "AST"
+    , "Expr"
+    , "Block"
+    , "Pages"
+    , "NatRange"
+    , "IntRange"
+    , "StringTemplate"
+    , "Nat -> Nat"
+    , "(Nat; AST)"
+    , "Nat | (Nat -> Nat)"
+    ]
   expectSourceValue "weak function string capability" "Nat -> Nat" $ \value ->
-    assert "functions remain canonical types with weakToString only"
-      (Types.canonicalStringRepresentation
-        (Types.interpretedCanonicalType value)
-          == Types.WeakStringRepresentation)
+    assert "functions are DatraType values without a CanonicalType"
+      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
+        Nothing -> True
+        Just _ -> False)
   expectSourceValue "canonical begin block capability" "begin yield 11" $ \value -> do
-    assert "a retained total block has canonical toString"
-      (Types.canonicalStringRepresentation
-        (Types.interpretedCanonicalType value)
-          == Types.CanonicalStringRepresentation)
+    assert "a retained total block embeds a CanonicalType"
+      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
+        Just _ -> True
+        Nothing -> False)
     case Types.toStringValue canonicalStringCodec value of
       Left rejection ->
         fail ("canonical block conversion was rejected: " <> show rejection)
@@ -800,6 +816,21 @@ testCanonicalTypes = do
         assert "canonical block conversion retains block and yielded value"
           (renderInterpretedValue rendered
             == "\"11 <~ begin\\nyield 11\"")
+  where
+    expectCanonicalType source =
+      expectSourceValue (source <> " is canonical") source $ \value ->
+        assert (source <> " embeds the narrower CanonicalType")
+          (case Types.datraCanonicalType
+              (Types.interpretedDatraType value) of
+            Just _ -> True
+            Nothing -> False)
+    expectNonCanonicalDatraType source =
+      expectSourceValue (source <> " is noncanonical") source $ \value ->
+        assert (source <> " is a DatraType without a CanonicalType")
+          (case Types.datraCanonicalType
+              (Types.interpretedDatraType value) of
+            Nothing -> True
+            Just _ -> False)
 
 testPrograms :: IO ()
 testPrograms = do
@@ -1294,9 +1325,14 @@ testStringTemplates = do
       let dependentIdentifier =
             Types.dependentIdentifierTypeValue "n" (const "same") naturals
       assert "widest dependent identifier type is weakToString-only"
-        (Types.canonicalStringRepresentation
-          (Types.interpretedCanonicalType dependentIdentifier)
+        (Types.datraStringRepresentation
+          (Types.interpretedDatraType dependentIdentifier)
             == Types.WeakStringRepresentation)
+      assert "widest dependent identifier is not a CanonicalType"
+        (case Types.datraCanonicalType
+            (Types.interpretedDatraType dependentIdentifier) of
+          Nothing -> True
+          Just _ -> False)
       assert "dependent identifier type has no proven injective toString"
         (case Types.toStringValue
             canonicalStringCodec dependentIdentifier of

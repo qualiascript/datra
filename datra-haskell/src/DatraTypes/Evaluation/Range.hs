@@ -226,7 +226,7 @@ interpretedNaturalRangeValue
   -> InterpretedValue
 interpretedNaturalRangeValue valueRange =
   makeInterpretedValue
-    structuralCanonicalType
+    structuralDatraType
     (NaturalRangeForm evaluatedNaturalRange)
     (ValidInsertion insertion)
     valueMap
@@ -251,7 +251,7 @@ interpretedValuedNaturalRangeValue
   -> InterpretedValue
 interpretedValuedNaturalRangeValue semantics valueRange =
   makeInterpretedValue
-    structuralCanonicalType
+    structuralDatraType
     (ValuedNaturalRangeForm evaluatedValuedNaturalRange)
     (ValidInsertion insertion)
     valueMap
@@ -273,7 +273,7 @@ interpretedIntegerRangeValue
   -> InterpretedValue
 interpretedIntegerRangeValue valueRange =
   makeInterpretedValue
-    structuralCanonicalType
+    structuralDatraType
     (IntegerRangeForm evaluatedIntegerRange)
     (ValidInsertion insertion)
     valueMap
@@ -297,7 +297,7 @@ interpretedValuedIntegerRangeValue
   -> InterpretedValue
 interpretedValuedIntegerRangeValue semantics valueRange =
   makeInterpretedValue
-    structuralCanonicalType
+    structuralDatraType
     (ValuedIntegerRangeForm evaluatedValuedIntegerRange)
     (ValidInsertion insertion)
     valueMap
@@ -332,7 +332,7 @@ interpretedNaturalRangeFallback start target = do
       valueMap = mapFromInsertion insertion [semantics]
   pure
     (makeSingletonInterpretedValue
-      structuralCanonicalType
+      structuralDatraType
       (RangeForm evaluated)
       (ValidInsertion insertion)
       valueMap
@@ -381,7 +381,7 @@ makeEvaluatedRangeAt level start target =
 interpretedRangeValue :: EvaluatedRange -> InterpretedValue
 interpretedRangeValue evaluatedRange =
   makeSingletonInterpretedValue
-    structuralCanonicalType
+    structuralDatraType
     (RangeForm evaluatedRange)
     (ValidInsertion insertion)
     valueMap

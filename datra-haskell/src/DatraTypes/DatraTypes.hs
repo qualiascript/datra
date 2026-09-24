@@ -5,8 +5,10 @@
 -- strongly typed failures belong here.
 module DatraTypes
   ( CanonicalType
+  , DatraType
   , StringRepresentation (..)
-  , canonicalStringRepresentation
+  , datraCanonicalType
+  , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
@@ -89,7 +91,7 @@ module DatraTypes
   , validateFunctionInput
   , specifyValues
   , interpretedValueKind
-  , interpretedCanonicalType
+  , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
   , interpretedCanonicalResult
@@ -190,8 +192,10 @@ import Evaluation.Specification
   )
 import Evaluation.Value
   ( CanonicalType
+  , DatraType
   , StringRepresentation (..)
-  , canonicalStringRepresentation
+  , datraCanonicalType
+  , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
@@ -208,7 +212,7 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult
-  , interpretedCanonicalType
+  , interpretedDatraType
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal

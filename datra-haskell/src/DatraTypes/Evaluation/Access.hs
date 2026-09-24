@@ -233,7 +233,7 @@ formulationAccessResult
   -> InterpretedValue
 formulationAccessResult sourceIsTotal selected level =
   makeSingletonInterpretedValue
-    (interpretedCanonicalType template)
+    (interpretedDatraType template)
     (interpretedForm template)
     (interpretedInsertionCapability template)
     resultMap
@@ -265,7 +265,7 @@ finishAccess mapValue selected =
           Nothing -> fallbackResult
       fallbackResult =
         makeSingletonInterpretedValue
-          structuralCanonicalType
+          structuralDatraType
           MapForm
           NoInsertion
           selected
@@ -320,7 +320,7 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
             )
   pure . Just $
     makeSingletonInterpretedValue
-      structuralCanonicalType
+      structuralDatraType
       rangeForm
       resultCapability
       (selected { interpretedMapComponents = [semantics] })

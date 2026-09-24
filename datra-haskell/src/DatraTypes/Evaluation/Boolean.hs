@@ -38,7 +38,7 @@ makeBoolean flag = value
         True
     value =
       makeSingletonInterpretedValue
-        structuralCanonicalType
+        structuralDatraType
         (BooleanForm flag)
         NoInsertion
         (interpretedMap underlying)

@@ -60,8 +60,8 @@ identifierStringProjectionValue evaluated = value
     value =
       makeEvaluatedIdentifierValue
         (if isTotal
-          then structuralCanonicalType
-          else weakStructuralCanonicalType)
+          then structuralDatraType
+          else weakStructuralDatraType)
         (IdentifierStringProjectionForm evaluated)
         (IdentifierStringProjectionAtlasMapFederation evaluated)
         underlying
@@ -107,21 +107,21 @@ makeDependentIdentifierTypeValue dependency underlying = value
         valueMap
         semantics
     canonicalType
-      | isTotal = structuralCanonicalType
+      | isTotal = structuralDatraType
       | otherwise =
           case dependency of
             SimpleIdentifierDependency _ ->
-              structuralCanonicalTypeWith
-                (canonicalStringRepresentation
-                  (interpretedCanonicalType underlying))
+              structuralDatraTypeWith
+                (datraStringRepresentation
+                  (interpretedDatraType underlying))
             DependentIdentifierDependency {} ->
-              weakStructuralCanonicalType
+              weakStructuralDatraType
 
 -- | Identifier types and their string projections preserve the totality of
 -- the underlying value. This is also the exact boundary between their
 -- singleton and primitive federation representations.
 makeEvaluatedIdentifierValue
-  :: CanonicalType
+  :: DatraType
   -> ValueForm
   -> InterpretedAtlasMapFederationPrimitive
   -> InterpretedValue

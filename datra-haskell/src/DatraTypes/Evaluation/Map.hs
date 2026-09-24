@@ -89,8 +89,8 @@ makeProductMap productForm cardinality values productFederation = value
       | otherwise = productFederation memberFederations
     value =
       makeInterpretedValue
-        (composedStructuralCanonicalType
-          (map interpretedCanonicalType values))
+        (composedStructuralDatraType
+          (map interpretedDatraType values))
         (case productForm of
           SequentialProduct -> SequentialMapForm
           ExpansionProduct ->
@@ -188,8 +188,8 @@ concatenateValues left right = do
         | otherwise = baseResultMap
       ordinaryResult =
         makeInterpretedValue
-          (composedStructuralCanonicalType
-            (map interpretedCanonicalType [left, right]))
+          (composedStructuralDatraType
+            (map interpretedDatraType [left, right]))
           form
           insertionCapability
           resultMap

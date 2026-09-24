@@ -57,8 +57,8 @@ specifyValues source target
         [] -> Left (FunctionError "no matching alternative in function specification")
         _ -> Left (FunctionError "ambiguous function specification")
   | otherwise =
-      case canonicalSpecificationImplementation
-          (interpretedCanonicalType target) of
+      case datraSpecificationImplementation
+          (interpretedDatraType target) of
         BuiltinMetaSpecification kind ->
           specifyBuiltinMetaType kind source target
         FunctionSpecification -> specifyFunction source target
@@ -204,8 +204,8 @@ specifyFamily source branches target = do
   specified <- traverse (`specifyValues` target) branches
   pure
     (makeInterpretedValue
-      (composedStructuralCanonicalType
-        (map interpretedCanonicalType [source, target]))
+      (composedStructuralDatraType
+        (map interpretedDatraType [source, target]))
       (FederationSpecificationForm source target specified)
       NoInsertion
       emptyInterpretedMap
@@ -262,8 +262,8 @@ assignIdentifierValues identifierString typeAnnotation givenValue = do
         SpecificationForm specification ->
           Right
             (makeInterpretedValue
-              (composedStructuralCanonicalType
-                (map interpretedCanonicalType
+              (composedStructuralDatraType
+                (map interpretedDatraType
                   [typeAnnotation, givenValue]))
               (AssignmentForm specification)
               NoInsertion
@@ -417,8 +417,8 @@ specifiedValue
   -> InterpretedValue
 specifiedValue sourceValue totalSource sourceCanonical target member =
   makeInterpretedValue
-    (composedStructuralCanonicalType
-      (map interpretedCanonicalType [sourceValue, target]))
+    (composedStructuralDatraType
+      (map interpretedDatraType [sourceValue, target]))
     (SpecificationForm
       EvaluatedSpecification
         { evaluatedSpecificationSourceValue = sourceValue

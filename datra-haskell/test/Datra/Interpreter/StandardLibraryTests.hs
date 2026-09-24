@@ -83,16 +83,16 @@ standardLibraryTests =
             , "String of StringTemplate"
             ]
         ]
-    , canonicalTypeContractTests
+    , datraTypeContractTests
     , declaredPatternTests
     ]
 
 -- The source library, rather than a parallel Haskell export table, declares
 -- which host capabilities become language types. Every declared type must
 -- support both fundamental typing operations.
-canonicalTypeContractTests :: TestTree
-canonicalTypeContractTests =
-  testGroup "canonical Datra type contract"
+datraTypeContractTests :: TestTree
+datraTypeContractTests =
+  testGroup "Datra type contract"
     [ programCase typeName
         (unlines
           [ "assert " <> typeName <> " of " <> typeName

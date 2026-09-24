@@ -40,8 +40,8 @@ toStringValue
 toStringValue codec source =
   if stringConversionIsIdentity (interpretedForm source)
     then Right source
-    else case canonicalStringRepresentation
-        (interpretedCanonicalType source) of
+    else case datraStringRepresentation
+        (interpretedDatraType source) of
       WeakStringRepresentation -> Left NonInjectiveStringInterpolation
       CanonicalStringRepresentation ->
         if interpretedTypeIsTotal source
@@ -56,7 +56,7 @@ toStringValue codec source =
   where
     pointwiseFederation proof =
       makeInterpretedValue
-        structuralCanonicalType
+        structuralDatraType
         ToStringForm
         NoInsertion
         emptyInterpretedMap
@@ -77,7 +77,7 @@ weakToStringValue codec source =
     Left NonInjectiveStringInterpolation ->
       Right
         (makeInterpretedValue
-          weakStructuralCanonicalType
+          weakStructuralDatraType
           WeakToStringForm
           NoInsertion
           emptyInterpretedMap
@@ -95,7 +95,7 @@ stringTemplateValue value =
     then value
     else
       makeInterpretedValue
-        (interpretedCanonicalType value)
+        (interpretedDatraType value)
         (StringTemplateForm value)
         (interpretedInsertionCapability value)
         (interpretedMap value)

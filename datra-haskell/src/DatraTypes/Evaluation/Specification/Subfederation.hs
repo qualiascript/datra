@@ -33,8 +33,8 @@ decideValueSubfederation source target
   | EitherForm alternatives <- interpretedForm target, not (null (functionAlternatives target)) =
       decideAnyEitherAlternative source alternatives
   | otherwise =
-      case canonicalSubfederationImplementation
-          (interpretedCanonicalType target) of
+      case datraSubfederationImplementation
+          (interpretedDatraType target) of
         BuiltinMetaSubfederation kind -> decideMetaType source kind
         FunctionSubfederation -> decideFunctionSubfederation source target
         StructuralSubfederation ->

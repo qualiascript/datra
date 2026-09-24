@@ -6,19 +6,24 @@
 module Evaluation.Value
   ( BuiltinMetaType (..)
   , CanonicalType
+  , DatraType
   , SpecificationImplementation (..)
   , SubfederationImplementation (..)
   , StringRepresentation (..)
-  , structuralCanonicalType
-  , weakStructuralCanonicalType
-  , structuralCanonicalTypeWith
-  , composedStructuralCanonicalType
-  , functionCanonicalType
-  , builtinMetaCanonicalType
-  , totalBlockCanonicalType
-  , canonicalSpecificationImplementation
-  , canonicalSubfederationImplementation
-  , canonicalStringRepresentation
+  , makeCanonicalType
+  , canonicalTypeAsDatraType
+  , makeNonCanonicalDatraType
+  , structuralDatraType
+  , weakStructuralDatraType
+  , structuralDatraTypeWith
+  , composedStructuralDatraType
+  , functionDatraType
+  , builtinMetaDatraType
+  , totalBlockDatraType
+  , datraSpecificationImplementation
+  , datraSubfederationImplementation
+  , datraCanonicalType
+  , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
   , syntaxCategoryTypeValue
@@ -69,7 +74,7 @@ module Evaluation.Value
   , interpretedAtlasMapFederation
   , interpretedTotalAtlasMap
   , interpretedSemantics
-  , interpretedCanonicalType
+  , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
   , interpretedCanonicalResult
@@ -105,7 +110,7 @@ import AtlasMapFederationExpression
 import Data.Char (chr)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
-import Evaluation.CanonicalType
+import Evaluation.DatraType
 import MapOperators.OrderedAtlasMap
   ( OrdinalOrderedValues (..)
   , appendOrdinalOrderedValues
@@ -285,7 +290,7 @@ data EvaluatedFunction = EvaluatedFunction
   }
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
-makeFunctionValue function = makeInterpretedValue functionCanonicalType
+makeFunctionValue function = makeInterpretedValue functionDatraType
   (FunctionForm function) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
@@ -323,7 +328,7 @@ builtinMetaTypeName StringTemplateMetaType = "StringTemplate"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
 builtinMetaTypeValue kind = makeInterpretedValue
-  (builtinMetaCanonicalType kind)
+  (builtinMetaDatraType kind)
   (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
@@ -503,7 +508,7 @@ data CanonicalResult
   deriving (Eq, Show)
 
 data InterpretedValue = InterpretedValue
-  { interpretedCanonicalType :: CanonicalType
+  { interpretedDatraType :: DatraType
   , interpretedForm :: ValueForm
   , interpretedInsertionCapability :: InsertionCapability
   , interpretedMap :: InterpretedMap
@@ -516,7 +521,7 @@ data InterpretedValue = InterpretedValue
 data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
 
 makeInterpretedValue
-  :: CanonicalType
+  :: DatraType
   -> ValueForm
   -> InsertionCapability
   -> InterpretedMap
@@ -524,9 +529,9 @@ makeInterpretedValue
   -> InterpretedValueTotality
   -> ValueSemantics
   -> InterpretedValue
-makeInterpretedValue canonicalType form capability valueMap federation totality semantics =
+makeInterpretedValue datraType form capability valueMap federation totality semantics =
   InterpretedValue
-    { interpretedCanonicalType = canonicalType
+    { interpretedDatraType = datraType
     , interpretedForm = form
     , interpretedInsertionCapability = capability
     , interpretedMap = valueMap
@@ -540,16 +545,16 @@ makeInterpretedValue canonicalType form capability valueMap federation totality 
     }
 
 makeSingletonInterpretedValue
-  :: CanonicalType
+  :: DatraType
   -> ValueForm
   -> InsertionCapability
   -> InterpretedMap
   -> InterpretedValueTotality
   -> ValueSemantics
   -> InterpretedValue
-makeSingletonInterpretedValue canonicalType form capability valueMap totality =
+makeSingletonInterpretedValue datraType form capability valueMap totality =
   makeInterpretedValue
-    canonicalType
+    datraType
     form
     capability
     valueMap
@@ -564,8 +569,8 @@ interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMa
 interpretedTypeIsTotal :: InterpretedValue -> Bool
 interpretedTypeIsTotal value =
   interpretedValueHasTotalMap value
-    || case canonicalSpecificationImplementation
-        (interpretedCanonicalType value) of
+    || case datraSpecificationImplementation
+        (interpretedDatraType value) of
       TotalBlockSpecification -> True
       _ -> False
 
@@ -573,10 +578,10 @@ interpretedTypeIsTotal value =
 withEvaluationSource :: Maybe String -> InterpretedValue -> InterpretedValue
 withEvaluationSource source value =
   value
-    { interpretedCanonicalType =
+    { interpretedDatraType =
         maybe
-          (interpretedCanonicalType value)
-          (const totalBlockCanonicalType)
+          (interpretedDatraType value)
+          (const totalBlockDatraType)
           source
     , interpretedEvaluationSource = source
     }

@@ -30,8 +30,8 @@ makeArgumentMap members = do
     ]
   pure
     (makeInterpretedValue
-      (composedStructuralCanonicalType
-        (map interpretedCanonicalType members))
+      (composedStructuralDatraType
+        (map interpretedDatraType members))
       (ArgumentMapForm members union)
       NoInsertion
       (interpretedMap union)
