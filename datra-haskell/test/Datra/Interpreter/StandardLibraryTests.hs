@@ -9,7 +9,6 @@ import DatraTypes
   , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
-  , NamedAccessFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
@@ -19,19 +18,32 @@ standardLibraryTests =
     [ testGroup "qualified syntax"
         [ expressionCase source source expected
         | (source, expected) <-
-            [ ("StdLib.if false then (1 + \"bad\") else 11", "11")
-            , ("StdLib.from (1 + 1) to 5", "from 2 to 5")
-            , ("StdLib.range 2 downwards", "range 2 downwards")
-            , ("StdLib.true", "true : true")
+            [ ("Std.if false then (1 + \"bad\") else 11", "11")
+            , ("Std.from (1 + 1) to 5", "from 2 to 5")
+            , ("Std.range 2 downwards", "range 2 downwards")
+            , ("Std.true", "true : true")
             ]
         ]
     , testGroup "scope values"
         [ programCase source source expected
         | (source, expected) <-
             [ ("a:=5\nb:=8\nyield this.a", "a : 5")
-            , ("_private:=3\na:=5\nyield this", "a : 5")
+            , ("_private:=3\na:=5\nyield public this", "a : 5")
+            , ( "yield public (_private:3;a:5) of (a?:Nat)"
+              , "true"
+              )
+            , ( "yield public (_private:3;a:5) ~> (a?:Nat)"
+              , "a? : Nat := 5"
+              )
+            , ("_private:=3\na:=5\nyield this._private", "_private : 3")
             , ("a:=5\nyield this.a of (a?:Nat)", "true")
             , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
+            , ("a:=(b:2;c:3)\nyield a.(b,c)", "b : 2, c : 3")
+            , ("a:=(b:2;c:3)\nyield a.(b,c) of (a.b,a.c)", "true")
+            , ( "a:=(b:2;c:3)\n"
+                  <> "yield a.(b,c) ~> (b?:Nat,c?:Nat)"
+              , "b? : Nat := 2, c? : Nat := 3"
+              )
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$upwards)", "from 2 upwards")
             , ("f := external \"datra.add\"\nyield f (b:5;6)", "11")
@@ -42,12 +54,8 @@ standardLibraryTests =
             ]
         ]
     , testGroup "scope rejections"
-        [ programFailureCase "private member access"
-            "_private:=3\na:=5\nyield this._private"
-            (SourceEvaluationFailure
-              (NamedAccessFailed (NamedFieldNotFound "_private")))
-        , programFailureCase "private standard-library eval"
-            "yield StdLib._eval"
+        [ programFailureCase "private standard-library eval"
+            "yield Std._eval"
             (SourceEvaluationFailure
               (UnknownIdentifier "_eval"))
         , programFailureCase "duplicate scope member"

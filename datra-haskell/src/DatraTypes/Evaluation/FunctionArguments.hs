@@ -12,7 +12,7 @@ module Evaluation.FunctionArguments
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.Identifier (isPrivateIdentifier)
+import DatraLanguage.Identifier (public)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (..)
@@ -35,7 +35,7 @@ compileParameters evaluate expression =
         (IdentifierOperation (IdentifierString name) annotation given)
         missing
       | annotation == missing -> do
-          if isPrivateIdentifier name
+          if not (isPublic name)
             then Left (PrivateParameterCannotBeOptional name)
             else pure ()
           parameterSlot (Just name) True annotation given
@@ -53,6 +53,7 @@ compileParameters evaluate expression =
         <$> evaluate expression
         <*> pure Nothing
   where
+    isPublic name = not (null (public [(name, ())]))
     recur = compileParameters evaluate
     parameterSlot name optional annotation given = do
       annotationValue <- evaluate annotation

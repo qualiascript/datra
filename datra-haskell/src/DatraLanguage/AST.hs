@@ -113,6 +113,7 @@ data Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
   | External Expression
+  | Module IdentifierString [Expression] Expression
   | Program [Expression] Expression
   | Begin [Expression] Expression
   | Let Expression
@@ -194,6 +195,7 @@ data OperatorExpression
   | FunctionBodyValue [OperatorExpression] OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
   | ExternalValue OperatorExpression
+  | ModuleValue IdentifierString [OperatorExpression] OperatorExpression
   | ProgramValue [OperatorExpression] OperatorExpression
   | BeginValue [OperatorExpression] OperatorExpression
   | LetValue OperatorExpression
@@ -309,6 +311,8 @@ normalizeExpression (FunctionType input output) = FunctionType (normalizeExpress
 normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
 normalizeExpression (External descriptor) = External (normalizeExpression descriptor)
+normalizeExpression (Module name bindings result) =
+  Module name (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Program bindings result) =
   Program (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Begin bindings result) =
@@ -450,6 +454,8 @@ lower (FunctionType input output) = FunctionTypeValue (lower input) (lower outpu
 lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
 lower (External descriptor) = ExternalValue (lower descriptor)
+lower (Module name bindings result) =
+  ModuleValue name (map lower bindings) (lower result)
 lower (Program bindings result) = ProgramValue (map lower bindings) (lower result)
 lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
@@ -623,6 +629,12 @@ prettyOperator (FunctionTypeValue input output) = prettyBinary FunctionTypeOpera
 prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
 prettyOperator (ExternalValue descriptor) = prettyUnary ExternalOperator descriptor
+prettyOperator (ModuleValue (IdentifierString name) bindings result) =
+  prettyForm "module"
+    [ pretty (renderIdentifierString name)
+    , prettyForm "bindings" (map prettyOperator bindings)
+    , prettyOperator result
+    ]
 prettyOperator (ProgramValue bindings result) =
   prettyForm "program"
     [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
@@ -858,6 +870,7 @@ traverseExpressionChildren visit expression = case expression of
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
   Overload a b -> Overload <$> visit a <*> visit b
   SafeOverload a b -> SafeOverload <$> visit a <*> visit b
+  Module name xs y -> Module name <$> traverse visit xs <*> visit y
   Program xs y -> Program <$> traverse visit xs <*> visit y
   Begin xs y -> Begin <$> traverse visit xs <*> visit y
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y

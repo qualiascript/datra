@@ -2,6 +2,7 @@
 module DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
+  , public
   , isPrivateIdentifier
   , isLeadingIdentifierCharacter
   , isIdentifierCharacter
@@ -10,6 +11,12 @@ module DatraLanguage.Identifier
 
 import Data.Char (ord)
 import DatraLanguage.AST.Reserved qualified as Reserved
+
+-- | Keep exactly the named bindings whose identifiers are externally visible.
+-- Module export maps and function argument routing share this operation so a
+-- leading underscore has one meaning throughout the language.
+public :: [(String, value)] -> [(String, value)]
+public = filter (not . isPrivateIdentifier . fst)
 
 data IdentifierSpelling
   = BareIdentifier String

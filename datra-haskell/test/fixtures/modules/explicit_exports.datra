@@ -1,2 +1,4 @@
+module ExplicitExports
+begin
 hidden : "$Int plus" as ({value?:Int} -> Int) := (do yield value + 1)
-yield (public : 7; _hidden : 8)
+yield public (visible : 7; _hidden : 8)

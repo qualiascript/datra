@@ -1,2 +1,4 @@
+module LibraryTwo
+begin
 x := 9
-yield this
+yield public this

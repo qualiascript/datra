@@ -55,6 +55,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
                   name expected (length values))
           | otherwise -> controlWithValidCaptures name values
     controlArity "datra.syntax.if" = Just 3
+    controlArity "datra.syntax.module" = Just 3
     controlArity "datra.syntax.ifThen" = Just 2
     controlArity "datra.syntax.begin" = Just 2
     controlArity "datra.syntax.do" = Just 2
@@ -63,6 +64,9 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     controlArity _ = Nothing
     controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
       Right (Conditional condition yes no)
+    controlWithValidCaptures "datra.syntax.module"
+        [IdentifierReference name, entries, result] =
+      Right (Module name (block entries) result)
     controlWithValidCaptures "datra.syntax.ifThen" [condition, yes] =
       Right (Conditional condition yes (AtlasMap []))
     controlWithValidCaptures "datra.syntax.begin" [entries,result] =

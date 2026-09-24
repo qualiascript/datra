@@ -1,0 +1,51 @@
+module Std
+begin
+
+  # Ordinary context bindings; only primitive values cross the external boundary.
+  let Any := external "datra.Any"
+  let Nat := external "datra.Nat"
+  let Int := external "datra.Int"
+  let String := external "datra.String"
+  let StringTemplate := external "datra.StringTemplate"
+  let IdenStr := external "datra.IdenStr"
+
+  let false := (False : 0)
+  let true := (True : 1)
+  let nothing := $Nothing
+  let Bool := (false | true)
+  let _Wards := ($upwards | $downwards)
+
+  let AST := external "datra.AST"
+  let Expr := external "datra.Expr"
+  let Block := external "datra.Block"
+  let Pages := external "datra.Pages"
+  let NatRange := external "datra.NatRange"
+  let IntRange := external "datra.IntRange"
+  let NatValRange := external "datra.NatValRange"
+  let IntValRange := external "datra.IntValRange"
+  let public := external "datra.public"
+
+  from := (
+    ("$Int to $Int" as? (Int, Int -> IntValRange) external "datra.from") |
+    ("$Int $_Wards" as? (Int, _Wards -> IntValRange) external "datra.from")
+  )
+  range := (
+    ("$Int to $Int" as? (Int, Int -> IntRange) external "datra.range") |
+    ("$Int $_Wards" as? (Int, _Wards -> IntRange) external "datra.range")
+  )
+
+  # Syntax adapters receive ASTs. The sum is one value bound to one identifier.
+  module : "$IdenStr begin $Block yield $Expr" as (AST, AST, AST -> AST) := external "datra.syntax.module"
+  if := (
+    ("$Expr then $Expr else $Expr" as (AST, AST, AST -> AST) external "datra.syntax.if") |
+    ("$Expr then $Expr" as (AST, AST -> AST) external "datra.syntax.ifThen")
+  )
+  begin : "$Block yield $Expr" as (AST, AST -> AST) := external "datra.syntax.begin"
+  do := (
+    ("$Block yield $Expr" as (AST, AST -> AST) external "datra.syntax.do") |
+    ("begin $Block yield $Expr" as (AST, AST -> AST) external "datra.syntax.do")
+  )
+  let : "$Expr" as (AST -> AST) := external "datra.syntax.let"
+  _eval : "$Expr at $Pages" as (AST, AST -> AST) := external "datra.syntax.eval"
+
+yield public this

@@ -5,6 +5,7 @@
 module Interpreting
   ( ModuleSource (..)
   , EvaluationMode (..)
+  , moduleName
   , moduleExportNames
   , interpretLocatedWithImports
   , interpretLocatedWithImportsInMode
@@ -36,7 +37,7 @@ module Interpreting
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub)
 import FunctionInference
-import ModuleNames (moduleIdentifier, isPrivateIdentifier)
+import DatraLanguage.Identifier (public)
 import RuntimeModules
   ( EvaluationMode (..)
   , ModuleSource (..)
@@ -47,7 +48,6 @@ import StdLib
   ( isStandardLibraryRequest
   , standardLibraryFileName
   , standardLibraryIdentity
-  , standardLibraryNamespace
   )
 import Control.Monad (foldM)
 import DatraLanguage.AST.Source (renderSourceExpression)
@@ -119,9 +119,11 @@ interpretWithImportsInMode mode modules expression =
 
 standardScope :: Either InterpretingError Scope
 standardScope = do
-  exported <- filter (not . isPrivateIdentifier . fst) <$> standardLibraryScope
+  expression <- parsedStandardLibrary
+  namespace <- declaredModuleName expression
+  exported <- standardLibraryScope
   pure
-    ((standardLibraryNamespace,
+    ((namespace,
       NamespaceBinding standardLibraryIdentity exported) : exported)
 
 standardLibraryScope :: Either InterpretingError Scope
@@ -148,7 +150,7 @@ standardLibraryInternalScopeFor
   -> Either InterpretingError Scope
 standardLibraryInternalScopeFor expression =
   case expression of
-    Program bindings _ -> importScope [] [] bindings
+    Module _ bindings _ -> importScope [] [] bindings
     _ -> Left (ModuleEvaluationFailed
       (StandardLibraryRequiresDeclarationBlock standardLibraryFileName))
 
@@ -322,13 +324,14 @@ interpretNormalizedExpression scope resolving expressionValue =
       input <- compileParameters interpret domain >>= parameterDomain
       output <- interpret codomain
       pure (makeFunctionValue
-        (EvaluatedFunction input output Nothing Nothing Nothing Nothing))
+        (EvaluatedFunction input output Nothing Nothing Nothing Nothing True))
     FunctionBody bindings result -> createFunction scope resolving Nothing bindings result
     FunctionApplication function argument -> do
       callable <- interpret function
       input <- interpret argument >>= functionArgumentValue
       applyFunction callable input
     External descriptor -> interpret descriptor >>= externalValue
+    Module _ bindings result -> evaluateBlock Nothing bindings result
     Program bindings result -> evaluateBlock Nothing bindings result
     Begin bindings result ->
       evaluateBlock (Just (renderSourceExpression expressionValue)) bindings result
@@ -728,7 +731,7 @@ createFunction captured resolving explicit bindings result = do
         pure value
   pure (makeFunctionValue (EvaluatedFunction input output Nothing
     (Just (renderSourceExpression (FunctionBody bindings result)))
-    (Just (prepareArguments schema)) (Just invoke)))
+    (Just (prepareArguments schema)) (Just invoke) True))
   where
     evaluate = evalInScope captured resolving
     -- A recursive call is checked against its declared signature. Evaluating
@@ -746,7 +749,9 @@ applyFunction callable input =
   case selectFunctionCandidate preparations of
     Right (function, _) | Just invoke <- functionInvoke function -> do
       value <- invoke input
-      _ <- specifyValues value (functionCodomain function)
+      _ <- if functionValidatesResult function
+        then specifyValues value (functionCodomain function)
+        else Right value
       pure value
     Right _ -> Left (FunctionEvaluationFailed
       ExternalAdapterRequiresAstCaptures)
@@ -798,11 +803,16 @@ registeredExternal symbol = case symbol of
   "datra.Int" -> integerTypeValue
   "datra.String" -> Right stringTypeValue
   "datra.IdenStr" -> Right identifierValueTypeValue
+  "datra.public" -> Right (makeFunctionValue (EvaluatedFunction
+    anyTypeValue anyTypeValue Nothing
+    (Just ("external " <> show symbol))
+    (Just Right) (Just publicValue) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
   "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
   "datra.Pages" -> Right (syntaxCategoryTypeValue "Pages")
   "datra.syntax.if" -> syntaxAdapter 3
+  "datra.syntax.module" -> syntaxAdapter 3
   "datra.syntax.ifThen" -> syntaxAdapter 2
   "datra.syntax.begin" -> syntaxAdapter 2
   "datra.syntax.do" -> syntaxAdapter 2
@@ -830,7 +840,7 @@ registeredExternal symbol = case symbol of
     concreteCanonical value = value
     syntaxAdapter arity = pure (makeFunctionValue (EvaluatedFunction
       (if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)) astTypeValue Nothing
-      (Just ("external " <> show symbol)) Nothing Nothing))
+      (Just ("external " <> show symbol)) Nothing Nothing True))
     nativeRange valued = do
       ints <- integerTypeValue
       up <- asciiStringValue "upwards"
@@ -859,7 +869,7 @@ registeredExternal symbol = case symbol of
       pure (makeFunctionValue (EvaluatedFunction domain codomain Nothing
         (Just ("external " <> show symbol))
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
-        (Just invoke)))
+        (Just invoke) True))
     optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
     lookupArgument name values = maybe
       (Left (ExternalEvaluationFailed (MissingNativeArgument name)))
@@ -877,13 +887,13 @@ registeredExternal symbol = case symbol of
             pure result
       pure (makeFunctionValue (EvaluatedFunction input output Nothing
         (Just ("external " <> show symbol))
-        (Just (prepareArguments schema)) (Just invoke)))
+        (Just (prepareArguments schema)) (Just invoke) True))
 
 
 importModule :: Scope -> (Bool, String) -> Either InterpretingError Scope
 importModule scope (allNames, requested) = do
-  (identity, exported) <- lookupModule scope requested >>= moduleExports
-  let namespace = moduleIdentifier requested
+  (identity, namespace, exported) <-
+    lookupModule scope requested >>= moduleExports
   namespaceScope <- case lookup namespace scope of
     Nothing -> pure ((namespace, NamespaceBinding identity exported) : scope)
     Just (NamespaceBinding previous _) | previous == identity -> pure scope
@@ -896,23 +906,35 @@ importModule scope (allNames, requested) = do
       Just _ | identity == standardLibraryIdentity -> Right values
       _ -> Left (IdentifierStringOverlap name)
 
-moduleExports :: ModuleSource -> Either InterpretingError (FilePath, Scope)
+moduleExports
+  :: ModuleSource
+  -> Either InterpretingError (FilePath, String, Scope)
 moduleExports StdLibModule = do
+  name <- moduleName StdLibModule
   values <- standardLibraryScope
-  pure
-    (standardLibraryIdentity,
-      filter (not . isPrivateIdentifier . fst) values)
+  pure (standardLibraryIdentity, name, values)
 moduleExports moduleSource@(ModuleSource path expression _) = do
+  name <- moduleName moduleSource
   scope <- moduleScope moduleSource
   exports <- moduleResult scope expression >>= exportedBindings
-  pure (path, exports)
+  pure (path, name, exports)
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
-moduleExportNames source = map fst . snd <$> moduleExports source
+moduleExportNames source = do
+  (_, _, exported) <- moduleExports source
+  pure (map fst exported)
+
+moduleName :: ModuleSource -> Either InterpretingError String
+moduleName StdLibModule = parsedStandardLibrary >>= declaredModuleName
+moduleName (ModuleSource _ expression _) = declaredModuleName expression
+
+declaredModuleName :: Expression -> Either InterpretingError String
+declaredModuleName (Module (IdentifierString name) _ _) = Right name
+declaredModuleName _ = Left (ModuleEvaluationFailed
+  ImportedModuleRequiresDeclarationBlock)
 
 moduleResult :: Scope -> Expression -> Either InterpretingError InterpretedValue
-moduleResult scope (Program _ result) = evalInScope scope [] result
-moduleResult scope (Begin _ result) = evalInScope scope [] result
+moduleResult scope (Module _ _ result) = evalInScope scope [] result
 moduleResult _ _ = Left (ModuleEvaluationFailed
   ImportedModuleRequiresDeclarationBlock)
 
@@ -920,28 +942,39 @@ scopeValue :: Scope -> [String] -> Either InterpretingError InterpretedValue
 scopeValue scope resolving = do
   let names = case lookup "\0this" scope of Just (ScopeMembers values) -> values; _ -> []
   members <- traverse (\name -> simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name)
-    (filter (not . isPrivateIdentifier) names)
+    names
   pure (makeAtlasMap 2 members)
 
 exportedBindings :: InterpretedValue -> Either InterpretingError Scope
-exportedBindings value = filter (not . isPrivateIdentifier . fst) <$> namedBindings value
+exportedBindings = namedBindings
 
-namedBindings :: InterpretedValue -> Either InterpretingError Scope
-namedBindings value = case interpretedCanonicalResult value of
+publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
+publicValue value = do
+  members <- namedMembers value
+  pure (makeAtlasMap 2 (map snd (public members)))
+
+namedMembers
+  :: InterpretedValue
+  -> Either InterpretingError [(String, InterpretedValue)]
+namedMembers value = case interpretedCanonicalResult value of
   CanonicalMap _ members -> traverse field members
-  member@CanonicalAssignment {} -> (:[]) <$> field member
-  member@CanonicalSimpleIdentifierType {} -> (:[]) <$> field member
+  CanonicalConcatenation members -> traverse field members
+  member@CanonicalAssignment {} -> (: []) <$> field member
+  member@CanonicalSimpleIdentifierType {} -> (: []) <$> field member
   _ -> Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports)
   where
-    field (CanonicalSimpleIdentifierType name _) = do
-      selected <- namedAccessValue value name
-      payload <- accessValues selected (naturalValue 1)
-      pure (name, EvaluatedBinding payload)
-    field (CanonicalAssignment name _ _) = do
-      selected <- namedAccessValue value name
-      payload <- accessValues selected (naturalValue 1)
-      pure (name, EvaluatedBinding payload)
+    field CanonicalSimpleIdentifierType { canonicalIdentifierString = name } =
+      (name,) <$> namedAccessValue value name
+    field CanonicalAssignment { canonicalAssignmentIdentifierString = name } =
+      (name,) <$> namedAccessValue value name
     field _ = Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
+
+namedBindings :: InterpretedValue -> Either InterpretingError Scope
+namedBindings value = namedMembers value >>= traverse field
+  where
+    field (name, selected) = do
+      payload <- accessValues selected (naturalValue 1)
+      pure (name, EvaluatedBinding payload)
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path
@@ -955,8 +988,7 @@ moduleScope StdLibModule = standardLibraryInternalScope
 moduleScope (ModuleSource _ expression dependencies) = do
   base <- standardScope
   entries <- case expression of
-    Program declarations _ -> Right declarations
-    Begin declarations _ -> Right declarations
+    Module _ declarations _ -> Right declarations
     _ -> Left (ModuleEvaluationFailed
       ImportedModuleRequiresDeclarationBlock)
   importScope (("\0imports", ModuleCatalog dependencies) : base) [] entries

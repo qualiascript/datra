@@ -6,20 +6,18 @@ import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
 import DatraTypes (InterpretingError (..))
-import ModuleNames (moduleIdentifier)
 import System.FilePath (takeFileName)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertEqual, testCase)
 
 moduleTests :: TestTree
 moduleTests =
   testGroup "modules"
-    [ testCase "snake-case path becomes a namespace" $
-        assertEqual "module namespace" "StdLib"
-          (moduleIdentifier "path/std_lib.datra")
-    , moduleCase origin "qualified value"
+    [ moduleCase origin "qualified value"
         "import \"library_one\"\nyield LibraryOne.x"
         "x : 7"
+    , moduleCase origin "declared name is independent of filename"
+        "import \"different_filename\"\nyield DeclaredName.x"
+        "x : 12"
     , moduleCase origin "import all"
         "import all \"library_one\"\nyield x"
         "7"
@@ -43,15 +41,21 @@ moduleTests =
         "import \"nested\"\nyield Nested.x"
         "x : 8"
     , moduleCase origin "explicit export map"
-        "import all \"explicit_exports\"\nyield public"
+        "import all \"explicit_exports\"\nyield visible"
         "7"
+    , moduleCase origin "dotted module exports select named bindings"
+        "import all \"selected_exports\"\nyield a + b"
+        "3"
     , moduleCase origin "explicit standard-library import is idempotent"
-        ("import all \"std_lib\"\n"
-          <> "yield StdLib.if true then 11 else (1+\"bad\")")
+        ("import all \"std\"\n"
+          <> "yield Std.if true then 11 else (1+\"bad\")")
         "11"
     , moduleFailureCase origin "qualified import does not leak names"
         "import \"library_one\"\nyield x"
         (== ModuleEvaluationFailure (UnknownIdentifier "x"))
+    , moduleFailureCase origin "filename is not an implicit namespace"
+        "import \"different_filename\"\nyield DifferentFilename.x"
+        isEvaluationFailure
     , moduleFailureCase origin "import-all collision"
         ("import all \"library_one\"\n"
           <> "import all \"library_two\"\nyield x")
@@ -65,6 +69,9 @@ moduleTests =
     , moduleFailureCase origin "explicit exports exclude private fields"
         "import \"explicit_exports\"\nyield ExplicitExports._hidden"
         isEvaluationFailure
+    , moduleFailureCase origin "dotted module exports omit unselected bindings"
+        "import all \"selected_exports\"\nyield c"
+        (== ModuleEvaluationFailure (UnknownIdentifier "c"))
     , moduleFailureCase origin "unexported syntax is unavailable"
         "import \"explicit_exports\"\nyield ExplicitExports.hidden 1 plus"
         (== ModuleEvaluationFailure (UnknownIdentifier "hidden"))

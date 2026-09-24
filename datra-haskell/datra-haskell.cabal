@@ -20,7 +20,7 @@ extra-doc-files:
     README.md
     NOTICE
 extra-source-files:
-    std_lib.datra
+    lib/std.datra
     test/fixtures/cli/*.ast
     test/fixtures/cli/*.datra
     test/fixtures/cli/*.out
@@ -317,7 +317,6 @@ executable datra-haskell
     other-modules:
         Interpreting
         RuntimeModules
-        ModuleNames
         ModuleLoading
         FunctionInference
         StdLib
@@ -372,7 +371,6 @@ test-suite datra-parsing-test
         Parsing
         StdLib
         SyntaxDefinitions
-        ModuleNames
     ghc-options:      -main-is DatraParsingTests.main
     build-depends:
         template-haskell,
@@ -403,7 +401,6 @@ test-suite datra-interpreting-test
         Datra.TestSupport
         Interpreting
         RuntimeModules
-        ModuleNames
         ModuleLoading
         FunctionInference
         StdLib
