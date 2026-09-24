@@ -3,7 +3,7 @@ let Nat := external "datra.Nat"
 let Int := external "datra.Int"
 let String := external "datra.String"
 let StringTemplate := external "datra.StringTemplate"
-let Iden := external "datra.Iden"
+let IdenStr := external "datra.IdenStr"
 
 let false := (False : 0)
 let true := (True : 1)

@@ -192,6 +192,8 @@ overloadFailure failure =
       "supraîncărcare ambiguă; există mai multe potriviri care păstrează ordinea"
     OverloadMissingRequiredSlot ->
       "supraîncărcarea lasă necompletată o poziție obligatorie"
+    OverloadSkippedRequiredSlot ->
+      "un argument obligatoriu fără valoare implicită nu poate fi omis"
     OverloadChangedDefault ->
       "supraîncărcarea sigură nu poate schimba o valoare implicită existentă"
 

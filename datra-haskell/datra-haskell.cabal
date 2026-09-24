@@ -228,12 +228,14 @@ library
         Evaluation.ToString
         Evaluation.ToString.Injectivity
         Evaluation.TypeFamily.BuiltinMeta
+        Evaluation.TypeFamily
         Evaluation.TypeFamily.Function
         Evaluation.TypeFamily.Structural
         Evaluation.TypeFamily.Structural.Specification
         Evaluation.TypeFamily.Structural.Subfederation
         Evaluation.TypeFamily.TotalBlock
         Evaluation.Value
+        Evaluation.Value.Semantics
         Evaluation.Arguments
         Evaluation.Eval
         Extract

@@ -88,6 +88,16 @@ module DatraTypes
   , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , ArgumentSchema
+  , argumentSlotSchema
+  , orderedArgumentSchema
+  , unorderedArgumentSchema
+  , concatenatedArgumentSchema
+  , argumentSchemaBindings
+  , argumentSchemaDomain
+  , argumentSchemaPositionalDomain
+  , argumentSchemaValuesComplete
+  , overloadArgumentSchemaComplete
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -167,9 +177,19 @@ import Evaluation.Map
   , makeAtlasMap
   )
 import Evaluation.Overload
-  ( overloadValues
+  ( ArgumentSchema
+  , argumentSchemaBindings
+  , argumentSchemaDomain
+  , argumentSchemaPositionalDomain
+  , argumentSchemaValuesComplete
+  , argumentSlotSchema
+  , concatenatedArgumentSchema
+  , orderedArgumentSchema
+  , overloadArgumentSchemaComplete
+  , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
+  , unorderedArgumentSchema
   )
 import Evaluation.Numerical
   ( addValues

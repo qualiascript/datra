@@ -58,7 +58,7 @@ standardLibraryTypeExamples =
   [ canonical "Nat" "Nat"
   , canonical "Int" "Int"
   , canonical "String" "String"
-  , canonical "Iden" "Iden"
+  , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
   , weak "AST" "AST"
   , weak "Expr" "Expr"

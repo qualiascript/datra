@@ -13,6 +13,7 @@ module Parsing
   , parseDatraAstWithSourceName
   , parseDatraAstLocated
   , parseDatraAstLocatedWithSourceName
+  , standardLibraryExpression
   ) where
 
 import Control.Applicative (empty, optional, some, (<|>))
@@ -100,7 +101,11 @@ import DatraLanguage.AST
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import ModuleNames (isPrivateIdentifier, moduleIdentifier)
-import StdLib (standardLibrarySource)
+import StdLib
+  ( standardLibraryFileName
+  , standardLibraryIdentity
+  , standardLibrarySource
+  )
 import SyntaxDefinitions
 import DatraLanguage.AST.Reserved.Bootstrap
   ( reservedSymbolReplacements
@@ -226,9 +231,18 @@ runDatraParser
 runDatraParser parser resourceName source =
   runParser (runReaderT parser (ParserContext 0 False libraryRules [] [])) resourceName source
 
+-- | The bootstrap parse is a shared CAF: syntax discovery and evaluation use
+-- the exact same standard-library AST rather than parsing the source twice.
+standardLibraryExpression :: Either String Expression
+standardLibraryExpression =
+  Bifunctor.first errorBundlePretty
+    (runParser
+      (runReaderT resource (ParserContext 0 False [] [] []))
+      standardLibraryFileName
+      (Text.pack standardLibrarySource))
+
 libraryDeclarations :: [Expression]
-libraryDeclarations = case runParser (runReaderT resource (ParserContext 0 False [] [] []))
-    "std_lib.datra" (Text.pack standardLibrarySource) of
+libraryDeclarations = case standardLibraryExpression of
   Right (Program declarations _) -> declarations
   _ -> []
 
@@ -236,7 +250,7 @@ libraryRules :: [SyntaxRule]
 libraryRules = rules <> [rule { syntaxName = "StdLib." <> syntaxName rule } | rule <- rules]
   where
     rules =
-      [ rule { syntaxModule = Just "std_lib" }
+      [ rule { syntaxModule = Just standardLibraryIdentity }
       | rule <- concatMap declarationRules libraryDeclarations
       , not (isPrivateIdentifier (syntaxName rule))
       ]

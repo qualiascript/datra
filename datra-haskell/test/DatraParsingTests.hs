@@ -188,12 +188,12 @@ regressionTests = do
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
     "extract applies to a parenthesized reverse specification"
-    "%(\"%Iden %Int\" <~ \"alco 100\")"
+    "%(\"%IdenStr %Int\" <~ \"alco 100\")"
     (Extract
       (MapSpecification
         (AsciiStringLiteral "alco 100")
         (StringTemplate
-          [ StringTemplateInterpolation (ref "Iden")
+          [ StringTemplateInterpolation (ref "IdenStr")
           , StringTemplateLiteral " "
           , StringTemplateInterpolation (ref "Int")
           ])))
@@ -203,7 +203,7 @@ regressionTests = do
     (MapAccess (Extract (ref "String")) (natural 0))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
-    ["Nat", "Int", "String", "Iden", "Bool", "true", "false", "nothing"]
+    ["Nat", "Int", "String", "IdenStr", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
   assertAstSyntax
@@ -773,9 +773,9 @@ regressionTests = do
     "\"%String\""
     (StringTemplate [StringTemplateInterpolation (ref "String")])
   assertParsed
-    "Iden is available to string templates"
-    "\"%Iden\""
-    (StringTemplate [StringTemplateInterpolation (ref "Iden")])
+    "IdenStr is available to string templates"
+    "\"%IdenStr\""
+    (StringTemplate [StringTemplateInterpolation (ref "IdenStr")])
   assertAstOutput
     "digit-leading compact strings retain an apostrophe before an operator"
     "$12' of \"%(Nat)'\""
@@ -1270,7 +1270,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "Iden", "Bool", "AST", "IntRange", "NatRange", "StringTemplate"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "StringTemplate"]
     , IdentifierReference <$> genIdentifierString
     , pure This
     , Import <$> Gen.bool <*> Gen.element ["std_lib", "library_one", "path/library_two"]

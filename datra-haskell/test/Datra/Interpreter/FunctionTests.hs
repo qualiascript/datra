@@ -7,8 +7,21 @@ import Test.Tasty (TestTree, testGroup)
 functionTests :: TestTree
 functionTests =
   testGroup "functions"
-    [ testGroup "application"
-        [ programCase "explicit unordered parameters"
+    [ argumentSchemaMatrixTests
+    , testGroup "application"
+        [ programCase "it observes the complete given map"
+            (unlines
+              [ "sum := (Nat, Nat -> Nat yield it[0] + it[1])"
+              , "assert sum (1, 2) = 3"
+              ])
+            "()"
+        , programCase "it observes defaults after skipped-argument overloading"
+            (unlines
+              [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield it[0] ^ it[1])"
+              , "assert my_pow (*, 3) = 8"
+              ])
+            "()"
+        , programCase "explicit unordered parameters"
             "f := ({a?:Int,b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
             "11"
         , programCase "inferred parameters"
@@ -104,6 +117,50 @@ functionTests =
             "nothing"
         ]
     , recursionTests
+    ]
+
+data ArgumentSchemaCase = ArgumentSchemaCase
+  { argumentCaseName :: String
+  , argumentCaseDomain :: String
+  , argumentCaseBody :: String
+  , argumentCaseInput :: String
+  , argumentCaseExpected :: String
+  }
+
+-- This is the regression matrix for the shared overload/function argument
+-- schema.  Each row exercises a distinct routing rule rather than a separate
+-- call-only implementation.
+argumentSchemaMatrixTests :: TestTree
+argumentSchemaMatrixTests =
+  testGroup "shared argument-schema matrix"
+    [ programCase (argumentCaseName testCase)
+        ( "f := (" <> argumentCaseDomain testCase
+            <> " -> Int yield " <> argumentCaseBody testCase <> ")\n"
+            <> "yield f " <> argumentCaseInput testCase
+        )
+        (argumentCaseExpected testCase)
+    | testCase <-
+        [ ArgumentSchemaCase
+            "written order wins for equal positional annotations"
+            "{x : Int, y : Int}" "x * 10 + y" "(2, 3)" "23"
+        , ArgumentSchemaCase
+            "the sole valid reorder is accepted"
+            "{x : Int, y : String}" "x" "($value, 2)" "2"
+        , ArgumentSchemaCase
+            "names select an otherwise ambiguous reorder"
+            "{x : Int, y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
+        , ArgumentSchemaCase
+            "concatenated ordered and argument-map segments compose"
+            "x : Int, {y? : Int, z? : Int}"
+            "x * 100 + y * 10 + z" "(x : 2, z : 4, 3)" "234"
+        , ArgumentSchemaCase
+            "a total annotation fills an omitted slot"
+            "{x? : 5}" "x" "()" "5"
+        , ArgumentSchemaCase
+            "a skip preserves a private positional default"
+            "{_base : Nat := 2, _exponent : Nat}"
+            "_base ^ _exponent" "(*, 3)" "8"
+        ]
     ]
 
 recursionTests :: TestTree

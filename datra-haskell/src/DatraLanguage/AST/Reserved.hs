@@ -58,7 +58,7 @@ reservedSymbols
 reservedSymbolIdentifierString :: ReservedSymbol -> String
 reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
 reservedSymbolIdentifierString StringTypeSymbol = "String"
-reservedSymbolIdentifierString IdentifierValueTypeSymbol = "Iden"
+reservedSymbolIdentifierString IdentifierValueTypeSymbol = "IdenStr"
 reservedSymbolIdentifierString IntegerTypeSymbol = "Int"
 reservedSymbolIdentifierString NaturalTypeSymbol = "Nat"
 reservedSymbolIdentifierString IfSymbol = "if"

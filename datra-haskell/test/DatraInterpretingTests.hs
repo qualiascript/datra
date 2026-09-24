@@ -531,9 +531,9 @@ testArgumentMaps = do
     assert "required names accept positional values in written order"
       (renderInterpretedValue value == "(1; 2) ~> {x : Int, y : Int}")
   expectSourceValue "a unique valid argument reorder is selected"
-      "($a, 5) ~> {x : Int, y : Iden}" $ \value ->
+      "($a, 5) ~> {x : Int, y : IdenStr}" $ \value ->
     assert "the unique reordered presentation is retained"
-      (renderInterpretedValue value == "($a; 5) ~> {x : Int, y : Iden}")
+      (renderInterpretedValue value == "($a; 5) ~> {x : Int, y : IdenStr}")
   let example = "{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}"
   expectSourceValue "argument specification preserves written source" example $ \value ->
     assert "argument-map source order and partial names survive"
@@ -668,7 +668,7 @@ testEval = do
       assert (source <> " decoded at " <> target)
         (renderInterpretedValue value == expected))
     [ ("\"12\"", "Int", "12 ~> Int")
-    , ("\"alco\"", "Iden", "$alco ~> Iden")
+    , ("\"alco\"", "IdenStr", "$alco ~> IdenStr")
     , ("\"hello world\"", "String", "\"hello world\" ~> String")
     , ("(\"1\", \"2\")", "Int", "12 ~> Int")
     , ( "\"x : 3, (b : 8; 2)\""
@@ -798,7 +798,7 @@ testCanonicalTypes = do
     [ "Nat"
     , "Int"
     , "String"
-    , "Iden"
+    , "IdenStr"
     , "Bool"
     , "(Nat; Int)"
     , "begin yield 11"
@@ -960,43 +960,43 @@ testStringTemplates = do
     assert "the interpolated arithmetic result equals the expected string"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "Iden template accepts a compact-string value"
-      "\"My name is alco\" ~> \"My name is %Iden\"" $ \value ->
-    assert "a compact name matches Iden"
+      "IdenStr template accepts a compact-string value"
+      "\"My name is alco\" ~> \"My name is %IdenStr\"" $ \value ->
+    assert "a compact name matches IdenStr"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"My name is alco\" ~> \"My name is %Iden\""
+          == "\"My name is alco\" ~> \"My name is %IdenStr\""
       )
   expectSourceRejection
-    "Iden template rejects whitespace within the captured value"
-    "\"My name is whatever you call me\" ~> \"My name is %Iden\""
+    "IdenStr template rejects whitespace within the captured value"
+    "\"My name is whatever you call me\" ~> \"My name is %IdenStr\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
   expectSourceValue
-      "Iden accepts a digit-leading alphanumeric value"
-      "\"345abc\" ~> \"%Iden\"" $ \value ->
-    assert "a digit-leading nonnumeric compact string matches Iden"
+      "IdenStr accepts a digit-leading alphanumeric value"
+      "\"345abc\" ~> \"%IdenStr\"" $ \value ->
+    assert "a digit-leading nonnumeric compact string matches IdenStr"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceRejection
-    "Iden rejects an entirely numeric string"
-    "\"12\" ~> \"%Iden\""
+    "IdenStr rejects an entirely numeric string"
+    "\"12\" ~> \"%IdenStr\""
     (\case
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
   expectSourceValue
-      "a space separates adjacent Iden interpolations"
-      "\"name alco\" ~> \"%Iden %Iden\"" $ \value ->
+      "a space separates adjacent IdenStr interpolations"
+      "\"name alco\" ~> \"%IdenStr %IdenStr\"" $ \value ->
     assert "the separated identifier values are selected uniquely"
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "\"name alco\" ~> \"%Iden %Iden\""
+          == "\"name alco\" ~> \"%IdenStr %IdenStr\""
       )
   expectSourceRejection
-    "adjacent Iden interpolations are ambiguous"
-    "\"%Iden%Iden\""
+    "adjacent IdenStr interpolations are ambiguous"
+    "\"%IdenStr%IdenStr\""
     (\case
       AmbiguousStringTemplate -> True
       _ -> False)
@@ -1007,20 +1007,20 @@ testStringTemplates = do
       (renderInterpretedValue value == "true")
   expectSourceValue
       "plain identifier value belongs to an optional identifier template"
-      "\"my name is alco\" of \"my name is %(ie? : Iden)\"" $ \value ->
+      "\"my name is alco\" of \"my name is %(ie? : IdenStr)\"" $ \value ->
     assert "the missing-name branch renders the plain identifier value"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "canonical optional assignment belongs to its string template"
-      ( "\"my name is (ie? : Iden := $alco)\" of "
-          <> "\"my name is %(ie? : Iden)\""
+      ( "\"my name is (ie? : IdenStr := $alco)\" of "
+          <> "\"my name is %(ie? : IdenStr)\""
       ) $ \value ->
     assert "the present-name branch renders its canonical assignment"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "noncanonical assignment spelling is outside the template"
       ( "\"my name is (ie := $alco)\" of "
-          <> "\"my name is %(ie? : Iden)\""
+          <> "\"my name is %(ie? : IdenStr)\""
       ) $ \value ->
     assert "only the optional canonical assignment spelling is accepted"
       (renderInterpretedValue value == "false")
@@ -1044,46 +1044,46 @@ testStringTemplates = do
       (renderInterpretedValue value == "true")
   expectSourceValue
       "Either containing a simple identifier type is injective"
-      "\"ie : 12\" of \"%(ie : Nat | Iden)\"" $ \value ->
+      "\"ie : 12\" of \"%(ie : Nat | IdenStr)\"" $ \value ->
     assert "the simple identifier alternative is decoded canonically"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "other branch beside a simple identifier type remains injective"
-      "\"alco\" of \"%(ie : Nat | Iden)\"" $ \value ->
+      "\"alco\" of \"%(ie : Nat | IdenStr)\"" $ \value ->
     assert "the string-valued alternative retains identity conversion"
       (renderInterpretedValue value == "true")
   expectSourceValue
       "extract returns the source string and typed template holes"
-      "%(\"%Iden %Int\" <~ \"alco 100\")" $ \value ->
+      "%(\"%IdenStr %Int\" <~ \"alco 100\")" $ \value ->
     assert "extract follows the retained string-template selection witness"
       ( renderInterpretedValue value
-          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+          == "(\"alco 100\"; $alco ~> IdenStr; 100 ~> Int)"
       )
   expectSourceValue
       "extract forgets a simple identifier assignment wrapper"
-      "%(a : \"%Iden %Int\" := \"alco 100\")" $ \value ->
+      "%(a : \"%IdenStr %Int\" := \"alco 100\")" $ \value ->
     assert "identifier extraction matches direct specification extraction"
       ( renderInterpretedValue value
-          == "(\"alco 100\"; $alco ~> Iden; 100 ~> Int)"
+          == "(\"alco 100\"; $alco ~> IdenStr; 100 ~> Int)"
       )
   expectSourceValue
       "extract index zero selects the original string"
-      "%(my_val : \"%Iden %Int\" := \"alco 100\") [0]" $ \value ->
+      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [0]" $ \value ->
     assert "the first extracted component is always the source string"
       (renderInterpretedValue value == "\"alco 100\"")
   expectSourceValue
-      "extract index one selects the Iden hole"
-      "%(my_val : \"%Iden %Int\" := \"alco 100\") [1]" $ \value ->
+      "extract index one selects the IdenStr hole"
+      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [1]" $ \value ->
     assert "the second extracted component is the first typed hole"
-      (renderInterpretedValue value == "$alco ~> Iden")
+      (renderInterpretedValue value == "$alco ~> IdenStr")
   expectSourceValue
       "extract index two selects the Int hole"
-      "%(my_val : \"%Iden %Int\" := \"alco 100\") [2]" $ \value ->
+      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [2]" $ \value ->
     assert "the third extracted component is the second typed hole"
       (renderInterpretedValue value == "100 ~> Int")
   expectSourceValue
       "extracted numerical specifications participate in arithmetic"
-      "%(my_val : \"%Iden %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
+      "%(my_val : \"%IdenStr %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
     assert "a specification with a valued-range target coerces to its source"
       (renderInterpretedValue value == "true")
   expectSourceValue
@@ -1584,18 +1584,18 @@ testOptionalsAndConditionals = do
           (AST.dependentIdentifierType identifierString AST.integerType)
           AST.integerType
   expectSourceValue
-      "inferred assignment belongs to an optional Iden slot"
-      "(ie := $alco) of (ie? : Iden)" $ \value ->
+      "inferred assignment belongs to an optional IdenStr slot"
+      "(ie := $alco) of (ie? : IdenStr)" $ \value ->
     assert "the inferred assignment widens through its identifier target"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "canonical optional assignment belongs to its optional Iden slot"
-      "(ie? : Iden := $alco) of (ie? : Iden)" $ \value ->
+      "canonical optional assignment belongs to its optional IdenStr slot"
+      "(ie? : IdenStr := $alco) of (ie? : IdenStr)" $ \value ->
     assert "the optional assignment retains the present branch"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "plain identifier value belongs to an optional Iden slot"
-      "$alco of (ie? : Iden)" $ \value ->
+      "plain identifier value belongs to an optional IdenStr slot"
+      "$alco of (ie? : IdenStr)" $ \value ->
     assert "the plain value selects the unnamed branch"
       (renderInterpretedValue value == "true")
   expectValue "optional Nat" (AST.optional AST.naturalType) $ \value ->

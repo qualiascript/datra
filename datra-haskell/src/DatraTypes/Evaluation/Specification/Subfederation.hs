@@ -4,10 +4,10 @@ module Evaluation.Specification.Subfederation
   ) where
 
 import Evaluation.Specification.Decision
-import Evaluation.TypeFamily.BuiltinMeta qualified as BuiltinMeta
-import Evaluation.TypeFamily.Function qualified as Function
-import Evaluation.TypeFamily.Structural qualified as Structural
-import Evaluation.TypeFamily.TotalBlock qualified as TotalBlock
+import Evaluation.TypeFamily
+  ( TypeFamilyOperations (decideTypeFamilySubfederation)
+  , typeFamilyOperations
+  )
 import Evaluation.Value
 
 decideValueSubfederation
@@ -22,17 +22,12 @@ decideValueSubfederation source target
   , isFunctionFamily target =
       decideAnyEitherAlternative source alternatives
   | otherwise =
-      case datraTypeFamily (interpretedDatraType target) of
-        BuiltinMetaTypeFamily kind ->
-          BuiltinMeta.decideBuiltinMetaSubfederation source kind
-        FunctionTypeFamily ->
-          Function.decideFunctionSubfederation
-            decideValueSubfederation source target
-        StructuralTypeFamily ->
-          Structural.decideStructuralSubfederation
-            decideValueSubfederation source target
-        TotalBlockTypeFamily ->
-          TotalBlock.decideTotalBlockSubfederation source target
+      decideTypeFamilySubfederation
+        (typeFamilyOperations
+          (datraTypeFamily (interpretedDatraType target)))
+        decideValueSubfederation
+        source
+        target
 
 -- Function alternatives are handled before family dispatch because the
 -- enclosing Either is structural while every member has function behavior.

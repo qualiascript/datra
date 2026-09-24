@@ -10,6 +10,7 @@ import DatraLanguage.AST
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import SyntaxDefinitions
 import ModuleNames (isPrivateIdentifier)
+import StdLib (isStandardLibraryRequest)
 
 loadImports :: FilePath -> String -> IO (Either String [(String, ModuleSource)])
 loadImports origin source = case sourceImports source of
@@ -31,7 +32,7 @@ loadPaths ancestors origin = fmap sequence . traverse (load ancestors origin)
       Left message -> pure (Left message)
       Right paths -> loadPaths visiting parent paths
     load visiting parent requested
-      | requested `elem` ["std_lib", "std_lib.datra"] =
+      | isStandardLibraryRequest requested =
           pure (Right (requested, StdLibModule))
       | otherwise = do
           let filename = if null (takeExtension requested) then requested <> ".datra" else requested

@@ -60,6 +60,9 @@ standardLibraryTests =
             "yield external \"missing.symbol\""
             (SourceEvaluationFailure
               (FunctionError "unknown registered external: missing.symbol"))
+        , programFailureCase "the former Iden spelling is no longer exported"
+            "yield Iden"
+            (SourceEvaluationFailure (UnknownIdentifier "Iden"))
         ]
     , testGroup "library types"
         [ expressionCase source source "true"
@@ -77,8 +80,8 @@ standardLibraryTests =
             , "Pages of AST"
             , "not (Block of Expr)"
             , "(Expr ~> AST) of AST"
-            , "\"%Int %Iden\" of StringTemplate"
-            , "(\"%Int %Iden\" ~> StringTemplate) of StringTemplate"
+            , "\"%Int %IdenStr\" of StringTemplate"
+            , "(\"%Int %IdenStr\" ~> StringTemplate) of StringTemplate"
             , "not (2 of StringTemplate)"
             , "String of StringTemplate"
             ]

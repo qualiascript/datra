@@ -17,10 +17,12 @@ import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   )
-import Evaluation.TypeFamily.BuiltinMeta qualified as BuiltinMeta
+import Evaluation.TypeFamily
+  ( TypeFamilyOperations (specifyTypeFamily)
+  , typeFamilyOperations
+  )
 import Evaluation.TypeFamily.Function qualified as Function
 import Evaluation.TypeFamily.Structural qualified as Structural
-import Evaluation.TypeFamily.TotalBlock qualified as TotalBlock
 import Evaluation.Value
 
 specifyValues
@@ -48,18 +50,13 @@ specifyValues source target
             "no matching alternative in function specification")
         _ -> Left (FunctionError "ambiguous function specification")
   | otherwise =
-      case datraTypeFamily (interpretedDatraType target) of
-        BuiltinMetaTypeFamily kind ->
-          BuiltinMeta.specifyBuiltinMetaType
-            decideValueSubfederation kind source target
-        FunctionTypeFamily ->
-          Function.specifyFunction
-            decideValueSubfederation specifyValues source target
-        StructuralTypeFamily ->
-          Structural.specifyStructural
-            specifyValues decideValueSubfederation source target
-        TotalBlockTypeFamily ->
-          TotalBlock.specifyTotalBlock source target
+      specifyTypeFamily
+        (typeFamilyOperations
+          (datraTypeFamily (interpretedDatraType target)))
+        decideValueSubfederation
+        specifyValues
+        source
+        target
 
 assignIdentifierValues
   :: String

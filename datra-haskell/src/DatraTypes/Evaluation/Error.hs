@@ -61,6 +61,7 @@ data OverloadFailure
   | OverloadAmbiguousWithoutWrittenOrder
   | OverloadAmbiguousWrittenOrder
   | OverloadMissingRequiredSlot
+  | OverloadSkippedRequiredSlot
   | OverloadChangedDefault
   deriving (Eq, Show)
 

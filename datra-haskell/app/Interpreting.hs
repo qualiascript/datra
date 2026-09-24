@@ -38,7 +38,12 @@ import Data.List (nub)
 import FunctionArguments
 import FunctionInference
 import ModuleNames (moduleIdentifier, isPrivateIdentifier)
-import StdLib (standardLibrarySource)
+import StdLib
+  ( isStandardLibraryRequest
+  , standardLibraryFileName
+  , standardLibraryIdentity
+  , standardLibraryNamespace
+  )
 import Control.Monad (foldM)
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.AST
@@ -49,7 +54,7 @@ import DatraLanguage.AST
   , mapExpressionChildren
   )
 import DatraTypes
-import Parsing (parseDatra)
+import Parsing (parseDatra, standardLibraryExpression)
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -137,19 +142,35 @@ fmapModule mode (name, source) = (name, transform source)
 standardScope :: Either InterpretingError Scope
 standardScope = do
   exported <- filter (not . isPrivateIdentifier . fst) <$> standardLibraryScope
-  pure (("StdLib", NamespaceBinding "std_lib" exported) : exported)
+  pure
+    ((standardLibraryNamespace,
+      NamespaceBinding standardLibraryIdentity exported) : exported)
 
 standardLibraryScope :: Either InterpretingError Scope
 standardLibraryScope = do
-  expression <- either (Left . FunctionError) Right (parseDatra standardLibrarySource)
-  scope <- standardLibraryInternalScope
+  expression <- parsedStandardLibrary
+  scope <- standardLibraryInternalScopeFor expression
   moduleResult scope expression >>= exportedBindings
 
 standardLibraryInternalScope :: Either InterpretingError Scope
-standardLibraryInternalScope = case parseDatra standardLibrarySource of
-  Left message -> Left (FunctionError ("std_lib.datra: " <> message))
-  Right (Program bindings _) -> importScope [] [] bindings
-  Right _ -> Left (FunctionError "std_lib.datra must contain declarations")
+standardLibraryInternalScope =
+  parsedStandardLibrary >>= standardLibraryInternalScopeFor
+
+parsedStandardLibrary :: Either InterpretingError Expression
+parsedStandardLibrary =
+  either
+    (Left . FunctionError . ((standardLibraryFileName <> ": ") <>))
+    Right
+    standardLibraryExpression
+
+standardLibraryInternalScopeFor
+  :: Expression
+  -> Either InterpretingError Scope
+standardLibraryInternalScopeFor expression =
+  case expression of
+    Program bindings _ -> importScope [] [] bindings
+    _ -> Left (FunctionError
+      (standardLibraryFileName <> " must contain declarations"))
 
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
@@ -663,11 +684,22 @@ createFunction captured resolving explicit bindings result = do
   schema <- compileParameters evaluate domainExpression
   let parameters = parameterBindings schema
       names = map fst parameters
-  case [name | name <- names, name `elem` map fst captured || length (filter (== name) names) > 1] of
+  case [ name
+       | name <- names
+       , name == "it"
+          || name `elem` map fst captured
+          || length (filter (== name) names) > 1
+       ] of
     name : _ -> Left (IdentifierStringOverlap name)
     [] -> pure ()
   input <- parameterDomain schema
-  inferredOutput <- inferBody evaluateForInference parameters bindings result
+  let positionalInput = parameterPositionalDomain schema
+  inferredOutput <-
+    inferBody
+      evaluateForInference
+      (("it", positionalInput) : parameters)
+      bindings
+      result
   output <- case specifiedOutput of
     Nothing -> pure inferredOutput
     Just annotation -> do
@@ -675,8 +707,12 @@ createFunction captured resolving explicit bindings result = do
       included <- subfederationValues inferredOutput target >>= booleanCondition
       if included then pure target else Left (FunctionError "function body does not satisfy its declared output type")
   let invoke argument = do
+        argumentValues <- parameterValues schema argument
         imported <- matchArguments schema argument
-        let localScope = [(name, EvaluatedBinding value) | (name,value) <- imported] <> captured
+        let localScope =
+              ("it", EvaluatedBinding argumentValues)
+                : [(name, EvaluatedBinding value) | (name,value) <- imported]
+                <> captured
         bodyScope <- importScope localScope [] bindings
         value <- evalInScope bodyScope [] result
         _ <- specifyValues value output
@@ -704,6 +740,7 @@ applyFunction callable input = case candidates of
     | any ambiguous preparations ->
         Left (FunctionError
           "ambiguous argument bindings; supply identifiers to select the intended slots")
+    | Just failure <- firstSkippedRequired preparations -> Left failure
     | otherwise -> Left (FunctionError
         "no applicable function alternative; syntax-only alternatives require their AST pattern")
   [_] -> Left (FunctionError "this external adapter requires unevaluated AST captures")
@@ -716,6 +753,11 @@ applyFunction callable input = case candidates of
     ambiguous (_, Left (OverloadError failure)) =
       overloadFailureIsAmbiguous failure
     ambiguous _ = False
+    firstSkippedRequired [] = Nothing
+    firstSkippedRequired
+        ((_, Left failure@(OverloadError OverloadSkippedRequiredSlot)) : _) =
+      Just failure
+    firstSkippedRequired (_ : remaining) = firstSkippedRequired remaining
     prepare function =
       case functionPrepare function of
         Just operation -> operation input
@@ -747,7 +789,7 @@ registeredExternal symbol = case symbol of
   "datra.Nat" -> naturalTypeValue
   "datra.Int" -> integerTypeValue
   "datra.String" -> Right stringTypeValue
-  "datra.Iden" -> Right identifierValueTypeValue
+  "datra.IdenStr" -> Right identifierValueTypeValue
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
   "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
@@ -836,13 +878,15 @@ importModule scope (allNames, requested) = do
     insertExport identity values entry@(name,_) = case lookup name values of
       Nothing -> Right (entry:values)
       -- Every file already has this exact implicit import.
-      Just _ | identity == "std_lib" -> Right values
+      Just _ | identity == standardLibraryIdentity -> Right values
       _ -> Left (IdentifierStringOverlap name)
 
 moduleExports :: ModuleSource -> Either InterpretingError (FilePath, Scope)
 moduleExports StdLibModule = do
   values <- standardLibraryScope
-  pure ("std_lib", filter (not . isPrivateIdentifier . fst) values)
+  pure
+    (standardLibraryIdentity,
+      filter (not . isPrivateIdentifier . fst) values)
 moduleExports moduleSource@(ModuleSource path expression _) = do
   scope <- moduleScope moduleSource
   exports <- moduleResult scope expression >>= exportedBindings
@@ -885,7 +929,7 @@ namedBindings value = case interpretedCanonicalResult value of
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path
-  | path `elem` ["std_lib", "std_lib.datra"] = Right StdLibModule
+  | isStandardLibraryRequest path = Right StdLibModule
   | Just (ModuleCatalog modules) <- lookup "\0imports" scope
   , Just value <- lookup path modules = Right value
   | otherwise = Left (FunctionError ("module was not loaded: " <> path))

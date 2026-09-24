@@ -113,7 +113,13 @@ overloadTests =
 defaultedFunctionTests :: TestTree
 defaultedFunctionTests =
   testGroup "defaulted function arguments"
-    [ programCase "positional-only my_pow skips its defaulted first argument"
+    [ programCase "unparenthesized my_pow can assert a skipped default"
+        (unlines
+          [ "my_pow := {_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent"
+          , "assert my_pow (*, 3) = 8"
+          ])
+        "()"
+    , programCase "positional-only my_pow skips its defaulted first argument"
         (unlines
           [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
           , "yield my_pow (*, 3)"
@@ -131,6 +137,13 @@ defaultedFunctionTests =
           , "yield add (3, *)"
           ])
         "7"
+    , programFailureCase "function call cannot skip a required argument"
+        (unlines
+          [ "sum := ({_x : Nat, _y : Nat} -> Nat yield _x + _y)"
+          , "yield sum (*, 3)"
+          ])
+        (SourceEvaluationFailure
+          (OverloadError OverloadSkippedRequiredSlot))
     , programCase "a grouped singleton skip preserves a positional default"
         (unlines
           [ "f := ({_value : Nat := 4} -> Nat yield _value)"

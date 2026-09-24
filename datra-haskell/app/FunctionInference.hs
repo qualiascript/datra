@@ -149,6 +149,10 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
           (filter (\name -> case name of '_':_ -> False; _ -> True) members)
         pure (makeAtlasMap 2 values)
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
+      MapAccess operand index -> do
+        value <- recur operand
+        position <- recur index
+        accessValues value position
       FunctionApplication function argument -> do
         callable <- recur function
         case functionSignature callable of

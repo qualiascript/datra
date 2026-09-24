@@ -2,141 +2,82 @@
 -- template. Calls and the public overload operators therefore share exactly
 -- the same matching rules.
 module FunctionArguments
-  ( ParameterSchema (..)
-  , compileParameters
+  ( compileParameters
   , parameterBindings
   , parameterDomain
-  , parameterTemplate
+  , parameterPositionalDomain
+  , parameterValues
   , prepareArguments
   , matchArguments
   ) where
 
-import Control.Monad (foldM)
-import Data.List (nubBy)
 import DatraLanguage.AST
 import DatraTypes
 import ModuleNames (isPrivateIdentifier)
 
-data ParameterSchema
-  = Parameter
-      (Maybe String)
-      Bool
-      InterpretedValue
-      (Maybe InterpretedValue)
-  | Ordered [ParameterSchema]
-  | Unordered [ParameterSchema]
-  | Concatenated [ParameterSchema]
-
 compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
   -> Expression
-  -> Either InterpretingError ParameterSchema
+  -> Either InterpretingError ArgumentSchema
 compileParameters evaluate expression =
   case expression of
     IdentifierOperation (IdentifierString name) annotation given ->
-      Parameter (Just name) False
+      argumentSlotSchema (Just name) False
         <$> evaluate annotation
         <*> traverse evaluate given
     EitherType
-        named@(IdentifierOperation (IdentifierString name) annotation _)
+        (IdentifierOperation (IdentifierString name) annotation given)
         missing
       | annotation == missing -> do
           if isPrivateIdentifier name
             then Left (FunctionError
               "private parameter names cannot be optional")
             else pure ()
-          schema <- compileParameters evaluate named
-          case schema of
-            Parameter _ _ target defaultValue ->
-              Right (Parameter (Just name) True target defaultValue)
-            _ -> Left (FunctionError "invalid optional parameter")
-    AtlasMap members -> Ordered <$> traverse recur members
-    MapSequence members -> Ordered <$> traverse recur members
-    ArgumentMap members -> Unordered <$> traverse recur members
+          argumentSlotSchema (Just name) True
+            <$> evaluate annotation
+            <*> traverse evaluate given
+    AtlasMap members -> orderedArgumentSchema 2 <$> traverse recur members
+    MapSequence members -> orderedArgumentSchema 2 <$> traverse recur members
+    ArgumentMap members -> unorderedArgumentSchema <$> traverse recur members
     MapConcatenation _ _ ->
-      Concatenated <$> traverse recur (flatten expression)
+      concatenatedArgumentSchema <$> traverse recur (flatten expression)
       where
         flatten (MapConcatenation left right) =
           flatten left <> flatten right
         flatten value = [value]
-    _ -> Parameter Nothing False <$> evaluate expression <*> pure Nothing
+    _ -> argumentSlotSchema Nothing False <$> evaluate expression <*> pure Nothing
   where
     recur = compileParameters evaluate
 
-parameterBindings :: ParameterSchema -> [(String, InterpretedValue)]
-parameterBindings schema =
-  case schema of
-    Parameter (Just name) _ target _ -> [(name, target)]
-    Parameter Nothing _ _ _ -> []
-    Ordered children -> concatMap parameterBindings children
-    Unordered children -> concatMap parameterBindings children
-    Concatenated children -> concatMap parameterBindings children
+parameterBindings :: ArgumentSchema -> [(String, InterpretedValue)]
+parameterBindings = argumentSchemaBindings
 
 -- | The callable type intentionally excludes defaults. Defaults are behavior
 -- of the function value, while its body and signature see the annotation.
 parameterDomain
-  :: ParameterSchema
+  :: ArgumentSchema
   -> Either InterpretingError InterpretedValue
-parameterDomain schema =
-  case schema of
-    Parameter Nothing _ target _ -> pure target
-    Parameter (Just name) optional target _ -> do
-      let named = simpleIdentifierTypeValue name target
-      if optional then eitherValue named target else pure named
-    Ordered children -> makeAtlasMap 2 <$> traverse parameterDomain children
-    Unordered children -> traverse parameterDomain children >>= makeArgumentMap
-    Concatenated children -> do
-      alternatives <- traverse pages children
-      let presentations = map (makeAtlasMap 2 . concat) (sequence alternatives)
-      case nubBy sameValue presentations of
-        [] -> pure (makeAtlasMap 0 [])
-        first : rest -> foldM eitherValue first rest
-  where
-    sameValue left right =
-      interpretedCanonicalResult left == interpretedCanonicalResult right
-    pages (Ordered entries) = (:[]) <$> traverse parameterDomain entries
-    pages unordered@(Unordered _) = parameterDomain unordered >>= argumentRows
-    pages (Concatenated entries) =
-      map concat . sequence <$> traverse pages entries
-    pages entry = (\value -> [[value]]) <$> parameterDomain entry
+parameterDomain = argumentSchemaDomain
 
--- | Preserve defaults and map structure for the ordinary overload operation
--- performed at each call.
-parameterTemplate
-  :: ParameterSchema
+parameterPositionalDomain :: ArgumentSchema -> InterpretedValue
+parameterPositionalDomain = argumentSchemaPositionalDomain
+
+parameterValues
+  :: ArgumentSchema
+  -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-parameterTemplate schema =
-  case schema of
-    Parameter Nothing _ target defaultValue ->
-      pure (maybe target id defaultValue)
-    Parameter (Just name) optional target defaultValue -> do
-      present <-
-        case defaultValue of
-          Nothing -> pure (simpleIdentifierTypeValue name target)
-          Just value -> assignIdentifierValues name target value
-      if optional then eitherValue present target else pure present
-    Ordered children -> makeAtlasMap 2 <$> traverse parameterTemplate children
-    Unordered children -> traverse parameterTemplate children >>= makeArgumentMap
-    Concatenated [] -> pure (makeAtlasMap 0 [])
-    Concatenated (first : remaining) -> do
-      initial <- parameterTemplate first
-      foldM
-        (\left right -> parameterTemplate right >>= concatenateValues left)
-        initial
-        remaining
+parameterValues = argumentSchemaValuesComplete
 
 prepareArguments
-  :: ParameterSchema
+  :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 prepareArguments schema input = do
-  template <- parameterTemplate schema
-  fst <$> overloadValuesComplete template input
+  fst <$> overloadArgumentSchemaComplete schema input
 
 matchArguments
-  :: ParameterSchema
+  :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 matchArguments schema input = do
-  template <- parameterTemplate schema
-  snd <$> overloadValuesComplete template input
+  snd <$> overloadArgumentSchemaComplete schema input

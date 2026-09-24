@@ -2,16 +2,31 @@
 -- defaults; the right operand is matched against the same shape with those
 -- defaults erased, then replaces only the slots it supplies.
 module Evaluation.Overload
-  ( overloadValues
+  ( ArgumentSchema
+  , argumentSlotSchema
+  , orderedArgumentSchema
+  , unorderedArgumentSchema
+  , concatenatedArgumentSchema
+  , argumentSchemaBindings
+  , argumentSchemaDomain
+  , argumentSchemaPositionalDomain
+  , argumentSchemaValuesComplete
+  , overloadArgumentSchemaComplete
+  , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
   ) where
 
 import Control.Applicative ((<|>))
+import Control.Monad (foldM)
 import Data.Foldable (traverse_)
 import Data.List (nubBy, permutations, sortOn)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
-import Evaluation.Arguments (makeArgumentMap, overloadArgumentRows)
+import Evaluation.Arguments
+  ( argumentRows
+  , makeArgumentMap
+  , overloadArgumentRows
+  )
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
   ( InterpretingError (..)
@@ -23,17 +38,17 @@ import Evaluation.Specification (assignIdentifierValues, specifyValues)
 import Evaluation.Value
 import Numeric.Natural (Natural)
 
-data OverloadTemplate
-  = OverloadSlot
+data ArgumentSchema
+  = ArgumentSlotSchema
       Int
       (Maybe String)
       Bool
       InterpretedValue
       (Maybe InterpretedValue)
-  | OverloadOrdered Natural [OverloadTemplate]
-  | OverloadUnordered [OverloadTemplate]
-  | OverloadConcatenated OverloadTemplate OverloadTemplate
-  | OverloadEmpty
+  | OrderedArgumentSchema Natural [ArgumentSchema]
+  | UnorderedArgumentSchema [ArgumentSchema]
+  | ConcatenatedArgumentSchema ArgumentSchema ArgumentSchema
+  | EmptyArgumentSchema
 
 data Slot = Slot
   { slotIndex :: Int
@@ -42,7 +57,10 @@ data Slot = Slot
   , slotDefault :: Maybe InterpretedValue
   }
 
-type Replacements = [(Int, InterpretedValue)]
+-- 'Nothing' records an explicit positional @*@.  Keeping it distinct from an
+-- absent entry lets complete calls diagnose a skipped required slot while
+-- partial overload expressions may still leave that slot as a type.
+type Replacements = [(Int, Maybe InterpretedValue)]
 
 -- | Overload the defaults and supplied values in a runtime value. Missing
 -- non-defaulted slots remain types, which makes the operator useful for
@@ -52,7 +70,7 @@ overloadValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 overloadValues templateValue supplied = do
-  let template = fst (templateFromValue 0 templateValue)
+  let template = normalizeArgumentSchema (argumentSchemaFromValue templateValue)
   replacements <- resolveReplacements template supplied
   buildTemplate replacements template
 
@@ -64,7 +82,7 @@ safeOverloadValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 safeOverloadValues templateValue supplied = do
-  let template = fst (templateFromValue 0 templateValue)
+  let template = normalizeArgumentSchema (argumentSchemaFromValue templateValue)
       slots = templateSlots template
   replacements <- resolveReplacements template supplied
   traverse_ (preserveDefault slots) replacements
@@ -72,15 +90,18 @@ safeOverloadValues templateValue supplied = do
 
 preserveDefault
   :: [Slot]
-  -> (Int, InterpretedValue)
+  -> (Int, Maybe InterpretedValue)
   -> Either InterpretingError ()
 preserveDefault slots (index, replacement) =
-  case slotDefault =<< findSlot index slots of
+  case replacement of
     Nothing -> Right ()
-    Just defaultValue
-      | interpretedCanonicalResult replacement
-          == interpretedCanonicalResult defaultValue -> Right ()
-      | otherwise -> Left (OverloadError OverloadChangedDefault)
+    Just replacementValue ->
+      case slotDefault =<< findSlot index slots of
+        Nothing -> Right ()
+        Just defaultValue
+          | interpretedCanonicalResult replacementValue
+              == interpretedCanonicalResult defaultValue -> Right ()
+          | otherwise -> Left (OverloadError OverloadChangedDefault)
   where
     findSlot _ [] = Nothing
     findSlot target (slot : remaining)
@@ -95,15 +116,11 @@ overloadValuesComplete
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
-overloadValuesComplete templateValue supplied = do
-  let template = fst (templateFromValue 0 templateValue)
-  replacements <- resolveReplacements template supplied
-  completed <- traverse (completeSlot replacements) (templateSlots template)
-  result <- buildTemplate replacements template
-  pure (result, [(name, value) | (Just name, value) <- completed])
+overloadValuesComplete templateValue =
+  overloadArgumentSchemaComplete (argumentSchemaFromValue templateValue)
 
 resolveReplacements
-  :: OverloadTemplate
+  :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError Replacements
 resolveReplacements template supplied = do
@@ -141,18 +158,21 @@ resolveReplacements template supplied = do
   where
     sameReplacements left right = canonical left == canonical right
     canonical = sortOn fst . map
-      (\(index, value) -> (index, interpretedCanonicalResult value))
+      (\(index, value) ->
+        (index, interpretedCanonicalResult <$> value))
 
 matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
 matchInputs _ [] = [[]]
 matchInputs [] _ = []
-matchInputs (_ : remainingSlots) (Nothing : remainingInputs) =
-  matchInputs remainingSlots remainingInputs
+matchInputs (slot : remainingSlots) (Nothing : remainingInputs) =
+  [ (slotIndex slot, Nothing) : later
+  | later <- matchInputs remainingSlots remainingInputs
+  ]
 matchInputs (slot : remainingSlots)
     inputs@(Just input : remainingInputs) =
   case matchSlot slot input of
     Just value ->
-      [ (slotIndex slot, value) : later
+      [ (slotIndex slot, Just value) : later
       | later <- matchInputs remainingSlots remainingInputs
       ]
     Nothing -> matchInputs remainingSlots inputs
@@ -185,93 +205,222 @@ suppliedValue value =
           (Just name, maybe annotation id supplied)
         Nothing -> (Nothing, value)
 
-templateSlots :: OverloadTemplate -> [Slot]
+templateSlots :: ArgumentSchema -> [Slot]
 templateSlots template =
   case template of
-    OverloadSlot index name _ annotation defaultValue ->
+    ArgumentSlotSchema index name _ annotation defaultValue ->
       [Slot index name annotation defaultValue]
-    OverloadOrdered _ children -> concatMap templateSlots children
-    OverloadUnordered children -> concatMap templateSlots children
-    OverloadConcatenated left right ->
+    OrderedArgumentSchema _ children -> concatMap templateSlots children
+    UnorderedArgumentSchema children -> concatMap templateSlots children
+    ConcatenatedArgumentSchema left right ->
       templateSlots left <> templateSlots right
-    OverloadEmpty -> []
+    EmptyArgumentSchema -> []
 
 -- Ordered maps retain one slot order. Argument maps contribute every member
 -- order, so unnamed values remain ambiguous while named values normalize to
 -- one replacement set. Concatenation preserves the order of its segments.
-templateSlotOrders :: OverloadTemplate -> [[Slot]]
+templateSlotOrders :: ArgumentSchema -> [[Slot]]
 templateSlotOrders template =
   case template of
-    OverloadSlot index name _ annotation defaultValue ->
+    ArgumentSlotSchema index name _ annotation defaultValue ->
       [[Slot index name annotation defaultValue]]
-    OverloadOrdered _ children -> combine children
-    OverloadUnordered children ->
+    OrderedArgumentSchema _ children -> combine children
+    UnorderedArgumentSchema children ->
       concatMap combine (permutations children)
-    OverloadConcatenated left right ->
+    ConcatenatedArgumentSchema left right ->
       [leftSlots <> rightSlots
       | leftSlots <- templateSlotOrders left
       , rightSlots <- templateSlotOrders right
       ]
-    OverloadEmpty -> [[]]
+    EmptyArgumentSchema -> [[]]
   where
     combine children =
       map concat (sequence (map templateSlotOrders children))
 
-templateFromValue :: Int -> InterpretedValue -> (OverloadTemplate, Int)
-templateFromValue next value =
-  case optionalNamedParts value of
-    Just (name, annotation, defaultValue) ->
-      ( OverloadSlot next (Just name) True annotation defaultValue
-      , next + 1
-      )
-    Nothing ->
-      case namedParts value of
+argumentSchemaFromValue :: InterpretedValue -> ArgumentSchema
+argumentSchemaFromValue value = fst (fromValue 0 value)
+  where
+    fromValue next current =
+      case optionalNamedParts current of
         Just (name, annotation, defaultValue) ->
-          ( OverloadSlot next (Just name) False annotation defaultValue
+          ( ArgumentSlotSchema next (Just name) True annotation defaultValue
           , next + 1
           )
         Nothing ->
-          case interpretedForm value of
-            ArgumentMapForm members _ ->
-              mapChildren OverloadUnordered next members
-            ConcatenatedMapForm left right ->
-              let (leftTemplate, afterLeft) = templateFromValue next left
-                  (rightTemplate, afterRight) =
-                    templateFromValue afterLeft right
-              in ( OverloadConcatenated leftTemplate rightTemplate
-                 , afterRight
-                 )
-            SequentialMapForm ->
-              case finiteMembers value of
-                Just [] -> (OverloadEmpty, next)
-                Just members ->
-                  let (children, afterChildren) =
-                        templatesFromValues next members
-                  in ( OverloadOrdered
-                         (interpretedMapCardinality (interpretedMap value))
-                         children
-                     , afterChildren
+          case namedParts current of
+            Just (name, annotation, defaultValue) ->
+              ( ArgumentSlotSchema next (Just name) False annotation defaultValue
+              , next + 1
+              )
+            Nothing ->
+              case interpretedForm current of
+                ArgumentMapForm members _ ->
+                  mapChildren UnorderedArgumentSchema next members
+                ConcatenatedMapForm left right ->
+                  let (leftTemplate, afterLeft) = fromValue next left
+                      (rightTemplate, afterRight) =
+                        fromValue afterLeft right
+                  in ( ConcatenatedArgumentSchema leftTemplate rightTemplate
+                     , afterRight
                      )
-                Nothing -> slot
-            MapForm
-              | Just [] <- finiteMembers value -> (OverloadEmpty, next)
-            _ -> slot
-  where
-    slot = (OverloadSlot next Nothing False value Nothing, next + 1)
+                SequentialMapForm ->
+                  case finiteMembers current of
+                    Just [] -> (EmptyArgumentSchema, next)
+                    Just members ->
+                      let (children, afterChildren) =
+                            schemasFromValues next members
+                      in ( OrderedArgumentSchema
+                             (interpretedMapCardinality (interpretedMap current))
+                             children
+                         , afterChildren
+                         )
+                    Nothing -> slot current next
+                MapForm
+                  | Just [] <- finiteMembers current ->
+                      (EmptyArgumentSchema, next)
+                _ -> slot current next
+    slot current next =
+      (ArgumentSlotSchema next Nothing False current Nothing, next + 1)
     mapChildren constructor start members =
-      let (children, afterChildren) = templatesFromValues start members
+      let (children, afterChildren) = schemasFromValues start members
       in (constructor children, afterChildren)
+    schemasFromValues next [] = ([], next)
+    schemasFromValues next (member : remaining) =
+      let (schema, afterSchema) = fromValue next member
+          (schemas, finalIndex) =
+            schemasFromValues afterSchema remaining
+      in (schema : schemas, finalIndex)
 
-templatesFromValues
-  :: Int
-  -> [InterpretedValue]
-  -> ([OverloadTemplate], Int)
-templatesFromValues next [] = ([], next)
-templatesFromValues next (value : remaining) =
-  let (template, afterTemplate) = templateFromValue next value
-      (templates, finalIndex) =
-        templatesFromValues afterTemplate remaining
-  in (template : templates, finalIndex)
+normalizeArgumentSchema :: ArgumentSchema -> ArgumentSchema
+normalizeArgumentSchema schema = fst (go 0 schema)
+  where
+    go next current =
+      case current of
+        ArgumentSlotSchema _ name optional annotation defaultValue ->
+          ( ArgumentSlotSchema next name optional annotation defaultValue
+          , next + 1
+          )
+        OrderedArgumentSchema cardinality children ->
+          let (normalized, afterChildren) = normalizeChildren next children
+          in (OrderedArgumentSchema cardinality normalized, afterChildren)
+        UnorderedArgumentSchema children ->
+          let (normalized, afterChildren) = normalizeChildren next children
+          in (UnorderedArgumentSchema normalized, afterChildren)
+        ConcatenatedArgumentSchema left right ->
+          let (normalizedLeft, afterLeft) = go next left
+              (normalizedRight, afterRight) = go afterLeft right
+          in (ConcatenatedArgumentSchema normalizedLeft normalizedRight, afterRight)
+        EmptyArgumentSchema -> (EmptyArgumentSchema, next)
+    normalizeChildren next [] = ([], next)
+    normalizeChildren next (child : remaining) =
+      let (normalized, afterChild) = go next child
+          (normalizedRemaining, finalIndex) =
+            normalizeChildren afterChild remaining
+      in (normalized : normalizedRemaining, finalIndex)
+
+argumentSlotSchema
+  :: Maybe String
+  -> Bool
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+  -> ArgumentSchema
+argumentSlotSchema = ArgumentSlotSchema 0
+
+orderedArgumentSchema :: Natural -> [ArgumentSchema] -> ArgumentSchema
+orderedArgumentSchema = OrderedArgumentSchema
+
+unorderedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
+unorderedArgumentSchema = UnorderedArgumentSchema
+
+concatenatedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
+concatenatedArgumentSchema schemas =
+  case schemas of
+    [] -> EmptyArgumentSchema
+    first : remaining -> foldl ConcatenatedArgumentSchema first remaining
+
+argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
+argumentSchemaBindings schema =
+  case schema of
+    ArgumentSlotSchema _ (Just name) _ annotation _ -> [(name, annotation)]
+    ArgumentSlotSchema _ Nothing _ _ _ -> []
+    OrderedArgumentSchema _ children -> concatMap argumentSchemaBindings children
+    UnorderedArgumentSchema children -> concatMap argumentSchemaBindings children
+    ConcatenatedArgumentSchema left right ->
+      argumentSchemaBindings left <> argumentSchemaBindings right
+    EmptyArgumentSchema -> []
+
+argumentSchemaDomain
+  :: ArgumentSchema
+  -> Either InterpretingError InterpretedValue
+argumentSchemaDomain schema =
+  case schema of
+    ArgumentSlotSchema _ Nothing _ annotation _ -> pure annotation
+    ArgumentSlotSchema _ (Just name) optional annotation _ -> do
+      let named = simpleIdentifierTypeValue name annotation
+      if optional then makeEitherValue named annotation else pure named
+    OrderedArgumentSchema cardinality children ->
+      makeAtlasMap cardinality <$> traverse argumentSchemaDomain children
+    UnorderedArgumentSchema children ->
+      traverse argumentSchemaDomain children >>= makeArgumentMap
+    ConcatenatedArgumentSchema _ _ -> do
+      alternatives <- schemaPages schema
+      let presentations = map (makeAtlasMap 2) alternatives
+      case nubBy sameValue presentations of
+        [] -> pure (makeAtlasMap 0 [])
+        first : remaining -> foldM makeEitherValue first remaining
+    EmptyArgumentSchema -> pure (makeAtlasMap 0 [])
+  where
+    sameValue left right =
+      interpretedCanonicalResult left == interpretedCanonicalResult right
+    schemaPages current =
+      case current of
+        OrderedArgumentSchema _ entries ->
+          (:[]) <$> traverse argumentSchemaDomain entries
+        unordered@(UnorderedArgumentSchema _) ->
+          argumentSchemaDomain unordered >>= argumentRows
+        ConcatenatedArgumentSchema left right ->
+          (\(leftPages, rightPages) ->
+              [leftPage <> rightPage
+              | leftPage <- leftPages
+              , rightPage <- rightPages])
+            <$> ((,) <$> schemaPages left <*> schemaPages right)
+        EmptyArgumentSchema -> pure [[]]
+        entry -> (\value -> [[value]]) <$> argumentSchemaDomain entry
+
+-- | The function body's implicit @it@ observes slots positionally.  Its
+-- inference view therefore erases parameter names and defaults while keeping
+-- the same written slot order used by overload resolution.
+argumentSchemaPositionalDomain
+  :: ArgumentSchema
+  -> InterpretedValue
+argumentSchemaPositionalDomain schema =
+  makeAtlasMap 2
+    [ slotAnnotation slot
+    | slot <- templateSlots (normalizeArgumentSchema schema)
+    ]
+
+-- | Complete the schema and expose the resulting values in written positional
+-- order.  This is the map bound to a function body's implicit @it@ name.
+argumentSchemaValuesComplete
+  :: ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+argumentSchemaValuesComplete schema supplied = do
+  let normalized = normalizeArgumentSchema schema
+  replacements <- resolveReplacements normalized supplied
+  completed <- traverse (completeSlot replacements) (templateSlots normalized)
+  pure (makeAtlasMap 2 (map snd completed))
+
+overloadArgumentSchemaComplete
+  :: ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
+overloadArgumentSchemaComplete schema supplied = do
+  let normalized = normalizeArgumentSchema schema
+  replacements <- resolveReplacements normalized supplied
+  completed <- traverse (completeSlot replacements) (templateSlots normalized)
+  result <- buildTemplate replacements normalized
+  pure (result, [(name, value) | (Just name, value) <- completed])
 
 finiteMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMembers value = do
@@ -326,33 +475,44 @@ completeSlot
   -> Slot
   -> Either InterpretingError (Maybe String, InterpretedValue)
 completeSlot replacements slot =
-  case lookup (slotIndex slot) replacements
-      <|> slotDefault slot of
-    Just value -> Right (slotName slot, value)
-    Nothing
-      | interpretedTypeIsTotal (slotAnnotation slot) ->
-          Right (slotName slot, slotAnnotation slot)
-      | otherwise -> Left (OverloadError OverloadMissingRequiredSlot)
+  case lookup (slotIndex slot) replacements of
+    Just (Just value) -> Right (slotName slot, value)
+    Just Nothing -> fillSlot OverloadSkippedRequiredSlot
+    Nothing -> fillSlot OverloadMissingRequiredSlot
+  where
+    fillSlot failure =
+      case slotDefault slot of
+        Just value -> Right (slotName slot, value)
+        Nothing
+          | interpretedTypeIsTotal (slotAnnotation slot) ->
+              Right (slotName slot, slotAnnotation slot)
+          | otherwise -> Left (OverloadError failure)
 
 buildTemplate
   :: Replacements
-  -> OverloadTemplate
+  -> ArgumentSchema
   -> Either InterpretingError InterpretedValue
 buildTemplate replacements template =
   case template of
-    OverloadSlot index name optional annotation defaultValue ->
+    ArgumentSlotSchema index name optional annotation defaultValue ->
       buildSlot name optional annotation
-        (lookup index replacements <|> defaultValue)
-    OverloadOrdered cardinality children ->
+        (replacementAt index replacements <|> defaultValue)
+    OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse (buildTemplate replacements) children
-    OverloadUnordered children ->
+    UnorderedArgumentSchema children ->
       traverse (buildTemplate replacements) children >>= makeArgumentMap
-    OverloadConcatenated left right ->
+    ConcatenatedArgumentSchema left right ->
       do
         leftValue <- buildTemplate replacements left
         rightValue <- buildTemplate replacements right
         concatenateValues leftValue rightValue
-    OverloadEmpty -> Right (makeAtlasMap 0 [])
+    EmptyArgumentSchema -> Right (makeAtlasMap 0 [])
+
+replacementAt :: Int -> Replacements -> Maybe InterpretedValue
+replacementAt index replacements =
+  case lookup index replacements of
+    Just (Just value) -> Just value
+    _ -> Nothing
 
 buildSlot
   :: Maybe String

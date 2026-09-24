@@ -192,6 +192,8 @@ overloadFailure failure =
       "ambiguous overload; multiple order-preserving matches exist"
     OverloadMissingRequiredSlot ->
       "overload leaves a required slot without a value"
+    OverloadSkippedRequiredSlot ->
+      "a required argument without a default value cannot be skipped"
     OverloadChangedDefault ->
       "safe overload cannot change an existing default value"
 

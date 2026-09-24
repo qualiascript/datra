@@ -18,7 +18,7 @@ import Evaluation.Error
   ( InterpretingError (..)
   , OperandSide (..)
   )
-import Evaluation.Numerical (numericallyEqualsOne)
+import Evaluation.Numerical (numericallyEquivalent)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
@@ -70,9 +70,9 @@ equalValues left right =
   Right
     (makeBoolean
       (if hasSkipOperand
-        then if numericallyEqualsOne left && numericallyEqualsOne right
-          then DatraTrue
-          else DatraFalse
+        then case numericallyEquivalent left right of
+          Just True -> DatraTrue
+          _ -> DatraFalse
         else datraAnd
           (subfederationFlag left right)
           (subfederationFlag right left)))
