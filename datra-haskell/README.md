@@ -297,6 +297,19 @@ Function specification checks input contravariance and output covariance;
 `of` uses the same relation. Implementations are not tested on sample inputs to
 establish their type.
 
+Recursive functions use an explicit signature to check calls to themselves.
+For example, this factorial function handles nonnegative inputs:
+
+```datra
+factorial := ({n? : Int} -> Int do
+  yield if n = 0 then 1 else n * factorial (n - 1))
+yield factorial 5
+```
+
+The output is `120`. `factorial 0` returns `1`; the lazy `if` leaves the
+recursive branch unevaluated at the base case. The optional name also permits
+`factorial (n : 5)`.
+
 Registered Haskell implementations and primitive types use a symbol string:
 
 ```datra

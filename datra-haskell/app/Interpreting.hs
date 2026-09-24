@@ -603,7 +603,7 @@ createFunction captured resolving explicit bindings result = do
     name : _ -> Left (IdentifierStringOverlap name)
     [] -> pure ()
   input <- parameterDomain schema
-  inferredOutput <- inferBody evaluate parameters bindings result
+  inferredOutput <- inferBody evaluateForInference parameters bindings result
   output <- case specifiedOutput of
     Nothing -> pure inferredOutput
     Just annotation -> do
@@ -619,7 +619,15 @@ createFunction captured resolving explicit bindings result = do
         pure value
   pure (makeFunctionValue (EvaluatedFunction input output Nothing
     (Just (renderSourceExpression (FunctionBody bindings result))) (Just invoke)))
-  where evaluate = evalInScope captured resolving
+  where
+    evaluate = evalInScope captured resolving
+    -- A recursive call is checked against its declared signature. Evaluating
+    -- the body here would demand the closure while it is still being checked.
+    -- Ordinary cyclic values still go through resolveIdentifier's cycle check.
+    evaluateForInference (IdentifierReference (IdentifierString name))
+      | Just (DeferredBinding lexical (MapSpecification (FunctionBody _ _) signature@FunctionType {})) <- lookup name captured =
+          evalInScope lexical resolving signature
+    evaluateForInference expression = evaluate expression
 
 applyFunction :: InterpretedValue -> InterpretedValue -> Either InterpretingError InterpretedValue
 applyFunction callable input = case candidates of

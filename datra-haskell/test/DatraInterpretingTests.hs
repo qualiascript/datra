@@ -100,6 +100,7 @@ testTree =
         , testCase "named field access" testNamedAccess
         , testCase "qualified library syntax" testQualifiedSyntax
         , testCase "functions and externals" testFunctions
+        , testCase "recursive factorial" testRecursiveFactorial
         , testCase "module imports and private helpers" testModules
         , testCase "scope values and explicit syntax sums" testScopeSums
         , testCase "declared AST patterns" testDeclaredPatterns
@@ -3562,6 +3563,32 @@ testFunctions = do
     , "external (backend:\"haskell\";symbol:\"missing\")"
     ]
 
+
+testRecursiveFactorial :: IO ()
+testRecursiveFactorial = do
+  let declaration = unlines
+        [ "factorial := ({n? : Int} -> Int do"
+        , "  yield if n = 0 then 1 else n * factorial (n - 1))"
+        ]
+      run source = parseDatra source >>= either (Left . show) Right . interpretExpressionReason
+  mapM_ (\(body, expected) -> case run (declaration <> body) of
+      Left failure -> fail (body <> ": " <> failure)
+      Right value -> assert body (renderInterpretedValue value == expected))
+    [ ("yield factorial 0", "1")
+    , ("yield factorial 1", "1")
+    , ("yield factorial 5", "120")
+    , ("yield factorial 8", "40320")
+    , ("yield factorial (n : 6)", "720")
+    , ("f := (factorial ~> ({n? : Nat} -> Int))\nyield f 5", "120")
+    , ("yield factorial of ({n? : Nat} -> Int)", "true")
+    ]
+  mapM_ (\source -> case run source of
+      Left _ -> pure ()
+      Right value -> fail (source <> " unexpectedly returned " <> renderInterpretedValue value))
+    [ declaration <> "yield factorial true"
+    , "factorial := ({n? : Int} -> String do yield if n = 0 then 1 else factorial (n - 1))\nyield factorial 0"
+    , "a := b\nb := a\nyield a"
+    ]
 
 testModules :: IO ()
 testModules = do
