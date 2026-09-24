@@ -367,8 +367,14 @@ localizeModuleFailure failure =
         ["cale: " <> path]
     ImportOutsideScope ->
       LocalizedMessage "import trebuie să fie o intrare de domeniu" []
-    ImportedModuleRequiresDeclarationBlock ->
-      LocalizedMessage "modulul importat trebuie să conțină un bloc de declarații" []
+    ImportedModuleRequiresSimpleIdentifierType ->
+      LocalizedMessage "fișierul importat trebuie să producă un tip de identificator simplu"
+        ["folosiți yield Nume := valoare"]
+    ImportedModuleRequiresTotalValue ->
+      LocalizedMessage "identificatorul importat trebuie să aibă o valoare totală" []
+    ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
+      LocalizedMessage
+        "import all necesită o hartă totală de tipuri de identificator simplu" []
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "modulul importat trebuie să producă un domeniu sau o hartă denumită"
         ["folosiți yield this pentru a exporta domeniul"]

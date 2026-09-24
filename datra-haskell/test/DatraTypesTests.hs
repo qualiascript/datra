@@ -320,6 +320,38 @@ testDiagnostics = do
         (Types.ModuleEvaluationFailed (Types.ModuleNotLoaded "missing"))
         == LocalizedMessage "modulul nu a fost încărcat" ["modul: missing"]
     )
+  assert "unnamed imported files have a localized module failure"
+    ( localizeDiagnostic English
+        (Types.ModuleEvaluationFailed
+          Types.ImportedModuleRequiresSimpleIdentifierType)
+        == LocalizedMessage
+          "imported file must yield a simple identifier type"
+          ["use yield Name := value"]
+      && localizeDiagnostic Romanian
+        (Types.ModuleEvaluationFailed
+          Types.ImportedModuleRequiresSimpleIdentifierType)
+        == LocalizedMessage
+          "fișierul importat trebuie să producă un tip de identificator simplu"
+          ["folosiți yield Nume := valoare"]
+      && localizeDiagnostic English
+        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresTotalValue)
+        == LocalizedMessage
+          "imported identifier must have a total value" []
+      && localizeDiagnostic Romanian
+        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresTotalValue)
+        == LocalizedMessage
+          "identificatorul importat trebuie să aibă o valoare totală" []
+      && localizeDiagnostic English
+        (Types.ModuleEvaluationFailed
+          Types.ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
+        == LocalizedMessage
+          "import all requires a total map of simple identifier types" []
+      && localizeDiagnostic Romanian
+        (Types.ModuleEvaluationFailed
+          Types.ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
+        == LocalizedMessage
+          "import all necesită o hartă totală de tipuri de identificator simplu" []
+    )
   assert "named-access failures are localized from semantic fields"
     ( localizeDiagnostic English
         (Types.NamedAccessFailed (Types.NamedFieldNotFound "field"))

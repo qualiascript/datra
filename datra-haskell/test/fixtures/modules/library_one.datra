@@ -1,5 +1,6 @@
-let _offset := 4
-x := 7
-increment := ({value? : Int} -> Int do yield value + _offset)
-shift : "$Int" as ({value? : Int} -> Int) := (do yield value + _offset)
-yield this
+yield LibraryOne := begin
+  let _offset := 4
+  x := 7
+  increment := ({value? : Int} -> Int do yield value + _offset)
+  shift : "$Int" as ({value? : Int} -> Int) := (do yield value + _offset)
+yield public this

@@ -5,15 +5,15 @@ import Control.Exception (IOException, try)
 import Data.Bifunctor qualified as Bifunctor
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>), takeDirectory, takeExtension)
-import Interpreting (moduleExportNames)
+import Interpreting (moduleExportNames, moduleName)
 import RuntimeModules (ModuleSource (..))
 import Parsing (sourceImports, parseDatraLocatedWithSyntaxImports)
 import DatraLanguage.AST
+import DatraLanguage.Identifier (public)
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
 import SyntaxDefinitions
-import ModuleNames (isPrivateIdentifier)
 import StdLib (isStandardLibraryRequest)
 
 loadImports
@@ -74,13 +74,24 @@ loadPaths ancestors origin = fmap sequence . traverse (load ancestors origin)
                     pure (requested, ModuleSource path expression imports)
 
 
-importSyntax :: [(String, ModuleSource)] -> [(String, [SyntaxRule])]
-importSyntax = map (\(path, source) -> (path,
+importSyntax
+  :: [(String, ModuleSource)]
+  -> [(String, String, [SyntaxRule])]
+importSyntax = concatMap (\(path, source) ->
+  [ (path, namespace,
   [rule { syntaxModule = Just path }
   | Right exported <- [moduleExportNames source]
   , declaration <- declarations source, rule <- declarationRules declaration
-  , not (isPrivateIdentifier (syntaxName rule)), syntaxName rule `elem` exported]))
+  , not (null (public [(syntaxName rule, ())]))
+  , syntaxName rule `elem` exported])
+  | Right namespace <- [moduleName source]
+  ])
   where
-    declarations (ModuleSource _ (Program entries _) _) = entries
-    declarations (ModuleSource _ (Begin entries _) _) = entries
+    declarations (ModuleSource _ expression _) =
+      outer expression <> inner expression
     declarations _ = []
+    outer (Program entries _) = entries
+    outer _ = []
+    inner expression = case namedBeginBlock expression of
+      Just (_, entries, _) -> entries
+      Nothing -> []

@@ -367,8 +367,14 @@ localizeModuleFailure failure =
         ["path: " <> path]
     ImportOutsideScope ->
       LocalizedMessage "import must be a scope entry" []
-    ImportedModuleRequiresDeclarationBlock ->
-      LocalizedMessage "imported module must contain a declaration block" []
+    ImportedModuleRequiresSimpleIdentifierType ->
+      LocalizedMessage "imported file must yield a simple identifier type"
+        ["use yield Name := value"]
+    ImportedModuleRequiresTotalValue ->
+      LocalizedMessage "imported identifier must have a total value" []
+    ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
+      LocalizedMessage
+        "import all requires a total map of simple identifier types" []
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "imported module must yield a scope or named map"
         ["use yield this to export its scope"]

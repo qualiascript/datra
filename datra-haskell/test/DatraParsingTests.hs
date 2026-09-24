@@ -136,14 +136,22 @@ regressionTests = do
       (Exponentiation EllipsisLiteral (natural 0))
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
-    [ Import False "library_one", Import True "std_lib"
-    , InModule "std_lib" This
+    [ Import False "library_one", Import True "std"
+    , InModule "std" This
     , NamedAccess This (IdentifierString "abc")
     , SyntaxType "$Int next" True (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
     , External (AsciiStringLiteral "datra.add")
+    , Program []
+        (AST.assignment "Example"
+          (Begin
+            [AST.assignment "x" (natural 1) (natural 1)]
+            (FunctionApplication (ref "public") This))
+          (Begin
+            [AST.assignment "x" (natural 1) (natural 1)]
+            (FunctionApplication (ref "public") This)))
     ]
   assertAstRoundTrip "internal eval AST remains serializable"
     (renderExpression
@@ -190,6 +198,27 @@ regressionTests = do
         [AST.dependentIdentifierType "a" (Multiplication (natural 2) (natural 3)), AST.dependentIdentifierType "b" (natural 5)]
         (Addition (IdentifierReference (IdentifierString "a")) (IdentifierReference (IdentifierString "b")))
   assertParsed "begin newline bindings" "begin\n a : 2 * 3\n b : 5\nyield a + b" block
+  let assignedBlock = Begin
+        [ AST.assignment "a" (natural 2) (natural 2)
+        , AST.assignment "b" (natural 3) (natural 3)
+        ]
+        (Addition (ref "a") (ref "b"))
+  assertParsed "assignment directly infers a begin block"
+    "my_val := begin\n a := 2\n b := 3\nyield a + b"
+    (AST.assignment "my_val" assignedBlock assignedBlock)
+  assertParsed "assignment specifies a begin block after its annotation"
+    "my_val := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
+    (AST.assignment "my_val" (natural 5) assignedBlock)
+  assertParsed "optional assignment specifies a begin block"
+    "my_val? := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
+    (EitherType
+      (AST.assignment "my_val" (natural 5) assignedBlock)
+      (natural 5))
+  assertRejected "a multiline assignment block requires begin"
+    "my_val := 5 ~>\n a := 2\nyield a"
+  assertAstOutput "module remains an ordinary identifier"
+    "module : Nat"
+    (AST.dependentIdentifierType "module" (ref "Nat"))
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x : 10 yield x"
@@ -973,6 +1002,20 @@ regressionTests = do
     "$a[$b][$c]"
     ((AST.asciiString "a" <@> AST.asciiString "b") <@> AST.asciiString "c")
   assertAstOutput
+    "named access expands over a list of identifiers"
+    "a.(b, c)"
+    (MapConcatenation
+      (NamedAccess (ref "a") (IdentifierString "b"))
+      (NamedAccess (ref "a") (IdentifierString "c")))
+  assertAstOutput
+    "named access lists accept standard strings"
+    "a.(\"b\", c)"
+    (MapConcatenation
+      (NamedAccess (ref "a") (IdentifierString "b"))
+      (NamedAccess (ref "a") (IdentifierString "c")))
+  assertRejected "named access lists require at least one name" "a.()"
+  assertRejected "named access lists reject expressions" "a.(b + c)"
+  assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"
     (AST.asciiString "a" <@> (AST.asciiString "b" <@> AST.asciiString "c"))
@@ -1292,7 +1335,7 @@ genExpression =
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "StringTemplate"]
     , IdentifierReference <$> genIdentifierString
     , pure This
-    , Import <$> Gen.bool <*> Gen.element ["std_lib", "library_one", "path/library_two"]
+    , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
@@ -1305,7 +1348,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
-    , Gen.subterm genExpression (InModule "std_lib")
+    , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression (SyntaxType "$Int next" True)
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
@@ -1491,17 +1534,17 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "String")) == "(% (ref $String))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply (in-module $std_lib (~> (external \"datra.from\") "
+        == "(apply (in-module $std (~> (external \"datra.from\") "
           <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntValRange)))) "
-          <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
-          <> "(~> 5 (in-module $std_lib (ref $Int)))))"
+          <> "(<:> (~> 2 (in-module $std (ref $Int))) "
+          <> "(~> 5 (in-module $std (ref $Int)))))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply (in-module $std_lib (~> (external \"datra.from\") "
+        == "(apply (in-module $std (~> (external \"datra.from\") "
           <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntValRange)))) "
-          <> "(<:> (~> 2 (in-module $std_lib (ref $Int))) "
-          <> "(~> $upwards (in-module $std_lib (ref $_Wards)))))"
+          <> "(<:> (~> 2 (in-module $std (ref $Int))) "
+          <> "(~> $upwards (in-module $std (ref $_Wards)))))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -1594,7 +1637,7 @@ rangeCall name start end = FunctionApplication
       (ref (if name == "from" then "IntValRange" else "IntRange")))))
   (AtlasMap [checked "Int" start, checked endpointType endpoint])
   where
-    scoped = InModule "std_lib"
+    scoped = InModule "std"
     checked target value = MapSpecification value (scoped (ref target))
     (endpointType, endpoint) = case end of
       UpperBound value -> ("Int", value)

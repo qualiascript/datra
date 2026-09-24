@@ -115,7 +115,9 @@ data ModuleEvaluationFailure
   = StandardLibraryParseFailure FilePath String
   | StandardLibraryRequiresDeclarationBlock FilePath
   | ImportOutsideScope
-  | ImportedModuleRequiresDeclarationBlock
+  | ImportedModuleRequiresSimpleIdentifierType
+  | ImportedModuleRequiresTotalValue
+  | ImportAllRequiresTotalMapOfSimpleIdentifierTypes
   | ImportedModuleRequiresNamedExports
   | ModuleExportRequiresIdentifier
   | ModuleNotLoaded String

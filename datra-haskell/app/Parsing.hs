@@ -97,17 +97,18 @@ import DatraLanguage.AST
       , StringTemplateLiteral
       , StringTemplateWeakInterpolation
       )
+  , namedBeginBlock
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
+  , public
   , isAsciiCharacter
   , isIdentifierCharacter
   , isLeadingIdentifierCharacter
   )
-import ModuleNames (isPrivateIdentifier, moduleIdentifier)
 import StdLib
   ( standardLibraryFileName
   , standardLibraryIdentity
@@ -167,7 +168,7 @@ data ParserContext = ParserContext
   , referencesAllowed :: Bool
   , syntaxRules :: [SyntaxRule]
   , syntaxStops :: [Text]
-  , syntaxImports :: [(String, [SyntaxRule])]
+  , syntaxImports :: [(String, String, [SyntaxRule])]
   }
 
 type Parser = ReaderT ParserContext (Parsec Void Text)
@@ -202,7 +203,7 @@ parseDatraLocatedWithSourceName
 parseDatraLocatedWithSourceName = parseDatraLocatedWithSyntaxImports []
 
 parseDatraLocatedWithSyntaxImports
-  :: [(String, [SyntaxRule])]
+  :: [(String, String, [SyntaxRule])]
   -> FilePath
   -> String
   -> Either ParseFailure (Located Expression)
@@ -264,17 +265,32 @@ standardLibraryExpression =
 
 libraryDeclarations :: [Expression]
 libraryDeclarations = case standardLibraryExpression of
+  Right expressionValue
+    | Just (_, declarations, _) <- namedBeginBlock expressionValue ->
+        declarations
   Right (Program declarations _) -> declarations
   _ -> []
 
 libraryRules :: [SyntaxRule]
-libraryRules = rules <> [rule { syntaxName = "StdLib." <> syntaxName rule } | rule <- rules]
+libraryRules =
+  rules
+    <> [ rule
+          { syntaxName = libraryNamespace <> "." <> syntaxName rule }
+       | rule <- rules
+       ]
   where
     rules =
       [ rule { syntaxModule = Just standardLibraryIdentity }
       | rule <- concatMap declarationRules libraryDeclarations
-      , not (isPrivateIdentifier (syntaxName rule))
+      , not (null (public [(syntaxName rule, ())]))
       ]
+
+libraryNamespace :: String
+libraryNamespace = case standardLibraryExpression of
+  Right expressionValue
+    | Just (IdentifierString name, _, _) <- namedBeginBlock expressionValue ->
+        name
+  _ -> ""
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -519,7 +535,7 @@ resource = snd <$> resourceWithEnvelope
 resourceWithEnvelope :: Parser (ResourceEnvelope, Expression)
 resourceWithEnvelope = do
   fullSpaceConsumer
-  result <- explicitResource <|> implicitResource
+  result <- standardLibraryResource <|> explicitResource <|> implicitResource
   fullSpaceConsumer
   eof
   pure result
@@ -529,6 +545,32 @@ resourceWithEnvelope = do
       (,) ExplicitMapEnvelope <$> parenthesizedExpression
     implicitResource =
       (,) ImplicitBlockEnvelope <$> implicitProgram
+
+standardLibraryResource :: Parser (ResourceEnvelope, Expression)
+standardLibraryResource = withReferences $ do
+  rules <- syntaxRules <$> ask
+  guard (null rules)
+  value <- bootstrapNamedBlock
+  case namedBeginBlock value of
+    Just _ -> pure (ImplicitBlockEnvelope, value)
+    Nothing -> empty
+  where
+    -- The standard library defines the ordinary module and begin forms, but
+    -- its own outer named block must be readable before those rules exist.
+    bootstrapNamedBlock = do
+      _ <- continuedReservedWord Reserved.YieldWord
+      name <- IdentifierString
+        <$> (identifierExpression >>= validateIdentifierSpelling)
+      _ <- continuedOperator AST.AssignmentOperator
+      lineSpaceConsumer
+      _ <- continuedWordOperator AST.BeginOperator
+      bindings <- elements
+      result <- withDeclarations bindings
+        (continuedReservedWord Reserved.YieldWord *> expression)
+      let block = Begin bindings result
+      pure
+        (Program []
+          (IdentifierOperation name block (Just block)))
 
 -- Parse the parenthesized expression itself in lookahead so the closing
 -- parenthesis must enclose the whole resource. This distinguishes an explicit
@@ -557,8 +599,17 @@ withDeclarations entries = local $ \context -> context
   { syntaxRules = concatMap (rulesFor context) entries <> syntaxRules context }
   where
     rulesFor context (Import allNames path) =
-      let rules = maybe [] id (lookup path (syntaxImports context))
-          qualified = [rule { syntaxName = moduleIdentifier path <> "." <> syntaxName rule } | rule <- rules]
+      let imported =
+            [ (namespace, importedRules)
+            | (requested, namespace, importedRules) <- syntaxImports context
+            , requested == path
+            ]
+          rules = concatMap snd imported
+          qualified =
+            [ rule { syntaxName = namespace <> "." <> syntaxName rule }
+            | (namespace, moduleRules) <- imported
+            , rule <- moduleRules
+            ]
       in qualified <> if allNames then rules else []
     rulesFor _ entry = declarationRules entry
 
@@ -669,30 +720,32 @@ mapExpression =
 identifierOperation :: Parser Expression
 identifierOperation = do
   identifierSpelling <- try identifierExpression
+  let identifierName = case identifierSpelling of
+        BareIdentifier name -> name
+        FullStringIdentifier name -> name
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
   guard
     (not
       (isOptional
-        && isPrivateIdentifier
-          (case identifierSpelling of
-            BareIdentifier name -> name
-            FullStringIdentifier name -> name)))
+        && null (public [(identifierName, ())])))
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
         let name = case identifierSpelling of BareIdentifier value -> value; FullStringIdentifier value -> value
             operationIdentifierString = IdentifierString name
-        givenValue <- identifierValueExpression
-        let proposed = IdentifierOperation operationIdentifierString givenValue (Just givenValue)
+        (typeAnnotation, givenValue) <- assignedIdentifierValue
+        let proposed =
+              IdentifierOperation
+                operationIdentifierString typeAnnotation (Just givenValue)
         if null (declarationRules proposed) then void (validateIdentifierSpelling identifierSpelling) else pure ()
         let operation =
               IdentifierOperation
                 operationIdentifierString
-                givenValue
+                typeAnnotation
                 (Just givenValue)
-        pure (optionalIdentifier isOptional operation givenValue)
+        pure (optionalIdentifier isOptional operation typeAnnotation)
     , do
         _ <- continuedOperator AST.DependentIdentifierTypeOperator
         operationIdentifierString <-
@@ -716,6 +769,22 @@ optionalIdentifier :: Bool -> Expression -> Expression -> Expression
 optionalIdentifier False operation _ = operation
 optionalIdentifier True operation missingValue =
   EitherType operation missingValue
+
+-- A named value may bind a begin block directly. When a specification is
+-- supplied before @~>@, keep it as the identifier annotation and the block as
+-- the implementation; without one, the block's evaluated singleton type is
+-- inferred in the same way as every ordinary @:=@ binding.
+assignedIdentifierValue :: Parser (Expression, Expression)
+assignedIdentifierValue = do
+  inferred <- identifierValueExpression
+  explicitBlock <- optional . try $ do
+    _ <- continuedOperator AST.SpecificationOperator
+    _ <- lookAhead (keywordToken "begin")
+    block <- identifierValueExpression
+    case block of
+      Begin {} -> pure block
+      _ -> empty
+  pure (inferred, maybe inferred id explicitBlock)
 
 -- Identifier annotations and assigned values may use range, arithmetic, and
 -- access operators directly. Concatenation and specification are deliberately
@@ -789,6 +858,7 @@ term = do
     applicationArgument = accessedTerm (choice
       [ argumentMap
       , parenthesizedExpression
+      , This <$ keyword "this"
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , identifierReference
       ])
@@ -994,11 +1064,35 @@ accessedTerm atom = do
     , do
         _ <- try (char '.' <* notFollowedBy (char '.'))
         horizontalSpaceConsumer
-        name <- IdentifierString <$> (bareIdentifierToken <|> standardStringToken)
+        names <- namedAccessNames
         horizontalSpaceConsumer
-        pure (`NamedAccess` name)
+        pure (expandedNamedAccess names)
     ])
   pure (foldl (\value select -> select value) source selections)
+
+namedAccessNames :: Parser [IdentifierString]
+namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
+  where
+    parenthesized = between
+      (symbol "(" <* lineSpaceConsumer)
+      (lineSpaceConsumer *> symbol ")") $ do
+        first <- namedAccessName
+        rest <- many
+          (continuedOperator AST.ConcatenationOperator *> namedAccessName)
+        pure (first : rest)
+
+namedAccessName :: Parser IdentifierString
+namedAccessName =
+  IdentifierString <$> (bareIdentifierToken <|> standardStringToken)
+
+expandedNamedAccess
+  :: [IdentifierString]
+  -> Expression
+  -> Expression
+expandedNamedAccess names value =
+  case map (NamedAccess value) names of
+    [] -> value
+    first : rest -> foldl MapConcatenation first rest
 
 bracketedInsertion :: Parser Expression
 bracketedInsertion =

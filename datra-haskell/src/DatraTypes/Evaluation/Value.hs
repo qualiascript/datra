@@ -238,6 +238,7 @@ data EvaluatedFunction = EvaluatedFunction
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError InterpretedValue)
   , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , functionValidatesResult :: Bool
   }
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue

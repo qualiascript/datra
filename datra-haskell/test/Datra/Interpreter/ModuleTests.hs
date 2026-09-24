@@ -5,21 +5,22 @@ module Datra.Interpreter.ModuleTests (moduleTests) where
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
-import DatraTypes (InterpretingError (..))
-import ModuleNames (moduleIdentifier)
+import DatraTypes
+  ( InterpretingError (..)
+  , ModuleEvaluationFailure (..)
+  )
 import System.FilePath (takeFileName)
 import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (assertEqual, testCase)
 
 moduleTests :: TestTree
 moduleTests =
   testGroup "modules"
-    [ testCase "snake-case path becomes a namespace" $
-        assertEqual "module namespace" "StdLib"
-          (moduleIdentifier "path/std_lib.datra")
-    , moduleCase origin "qualified value"
+    [ moduleCase origin "qualified value"
         "import \"library_one\"\nyield LibraryOne.x"
         "x : 7"
+    , moduleCase origin "declared name is independent of filename"
+        "import \"different_filename\"\nyield DeclaredName.x"
+        "x : 12"
     , moduleCase origin "import all"
         "import all \"library_one\"\nyield x"
         "7"
@@ -43,15 +44,30 @@ moduleTests =
         "import \"nested\"\nyield Nested.x"
         "x : 8"
     , moduleCase origin "explicit export map"
-        "import all \"explicit_exports\"\nyield public"
+        "import all \"explicit_exports\"\nyield visible"
         "7"
+    , moduleCase origin "dotted module exports select named bindings"
+        "import all \"selected_exports\"\nyield a + b"
+        "3"
+    , moduleCase origin "outer yielded block supplies the module namespace"
+        "import \"selected_exports\"\nyield SelectedExports.a + SelectedExports.b"
+        "3"
+    , moduleCase origin "qualified import accepts any total named value"
+        "import \"total_value\"\nyield Answer"
+        "42"
+    , moduleCase origin "qualified import evaluates preceding file bindings"
+        "import \"total_value_with_binding\"\nyield AnswerWithBinding"
+        "42"
     , moduleCase origin "explicit standard-library import is idempotent"
-        ("import all \"std_lib\"\n"
-          <> "yield StdLib.if true then 11 else (1+\"bad\")")
+        ("import all \"std\"\n"
+          <> "yield Std.if true then 11 else (1+\"bad\")")
         "11"
     , moduleFailureCase origin "qualified import does not leak names"
         "import \"library_one\"\nyield x"
         (== ModuleEvaluationFailure (UnknownIdentifier "x"))
+    , moduleFailureCase origin "filename is not an implicit namespace"
+        "import \"different_filename\"\nyield DifferentFilename.x"
+        isEvaluationFailure
     , moduleFailureCase origin "import-all collision"
         ("import all \"library_one\"\n"
           <> "import all \"library_two\"\nyield x")
@@ -65,6 +81,9 @@ moduleTests =
     , moduleFailureCase origin "explicit exports exclude private fields"
         "import \"explicit_exports\"\nyield ExplicitExports._hidden"
         isEvaluationFailure
+    , moduleFailureCase origin "dotted module exports omit unselected bindings"
+        "import all \"selected_exports\"\nyield c"
+        (== ModuleEvaluationFailure (UnknownIdentifier "c"))
     , moduleFailureCase origin "unexported syntax is unavailable"
         "import \"explicit_exports\"\nyield ExplicitExports.hidden 1 plus"
         (== ModuleEvaluationFailure (UnknownIdentifier "hidden"))
@@ -82,6 +101,24 @@ moduleTests =
           ModuleLoadingFailure (ModuleReadFailed requested _ _) ->
             requested == "missing"
           _ -> False)
+    , moduleFailureCase origin "imported file must yield a simple identifier type"
+        "import \"unnamed\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed ImportedModuleRequiresSimpleIdentifierType))
+    , moduleFailureCase origin "qualified import requires a total value"
+        "import \"non_total_value\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed ImportedModuleRequiresTotalValue))
+    , moduleFailureCase origin "import all rejects a scalar total value"
+        "import all \"total_value\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed
+            ImportAllRequiresTotalMapOfSimpleIdentifierTypes))
+    , moduleFailureCase origin "import all rejects unnamed map members"
+        "import all \"unnamed_members\""
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed
+            ImportAllRequiresTotalMapOfSimpleIdentifierTypes))
     ]
   where
     isEvaluationFailure (ModuleEvaluationFailure _) = True

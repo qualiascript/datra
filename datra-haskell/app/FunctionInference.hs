@@ -149,7 +149,7 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         values <- traverse
           (\name -> simpleIdentifierTypeValue name
             <$> infer scope members (IdentifierReference (IdentifierString name)))
-          (filter (\name -> case name of '_':_ -> False; _ -> True) members)
+          members
         pure (makeAtlasMap 2 values)
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
       MapAccess operand index -> do

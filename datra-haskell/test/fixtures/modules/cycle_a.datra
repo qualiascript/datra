@@ -1,1 +1,3 @@
-import "cycle_b"
+yield CycleA := begin
+  import "cycle_b"
+yield public this

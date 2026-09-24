@@ -25,6 +25,18 @@ scopeTests =
         , expressionFailureCase "a declaration cannot see itself"
             "begin a := a yield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
+        , programCase "identifier directly binds an inferred begin block"
+            "my_val := begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
+            "5"
+        , programCase "identifier specifies a begin block explicitly"
+            "my_val := 5 ~> begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
+            "5"
+        , programCase "optional identifier specifies a begin block"
+            "my_val? := 5 ~> begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
+            "5"
+        , programCase "begin-block binding supports a federation annotation"
+            "my_val := Int ~> begin\n a := 2\n b := 3\nyield a + b\nyield my_val of Int"
+            "true"
         ]
     , testGroup "let block declarations"
         [ expressionCase "let is visible before its declaration"

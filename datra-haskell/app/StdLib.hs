@@ -5,28 +5,25 @@
 module StdLib
   ( standardLibraryIdentity
   , standardLibraryFileName
-  , standardLibraryNamespace
   , standardLibrarySource
   , isStandardLibraryRequest
   ) where
 import Language.Haskell.TH.Syntax (addDependentFile, lift, runIO)
 
 standardLibraryIdentity :: String
-standardLibraryIdentity = "std_lib"
+standardLibraryIdentity = "std"
 
 standardLibraryFileName :: FilePath
-standardLibraryFileName = "std_lib.datra"
-
-standardLibraryNamespace :: String
-standardLibraryNamespace = "StdLib"
+standardLibraryFileName = "std.datra"
 
 isStandardLibraryRequest :: FilePath -> Bool
 isStandardLibraryRequest requested =
   requested == standardLibraryIdentity
     || requested == standardLibraryFileName
+    || requested == "lib/" <> standardLibraryFileName
 
 standardLibrarySource :: String
 standardLibrarySource = $(do
-  addDependentFile "std_lib.datra"
-  contents <- runIO (readFile "std_lib.datra")
+  addDependentFile "lib/std.datra"
+  contents <- runIO (readFile "lib/std.datra")
   lift contents)

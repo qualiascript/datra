@@ -1,3 +1,4 @@
-import "library_one"
-x := LibraryOne.x[1] + 1
-yield this
+yield Nested := begin
+  import "library_one"
+  x := LibraryOne.x[1] + 1
+yield public this

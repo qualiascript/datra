@@ -1,2 +1,3 @@
-x := 9
-yield this
+yield LibraryTwo := begin
+  x := 9
+yield public this

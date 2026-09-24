@@ -9,6 +9,8 @@ module DatraLanguage.AST
   , traverseExpressionChildren
   , mapExpressionChildren
   , expressionChildren
+  , yieldedIdentifier
+  , namedBeginBlock
   , normalizeExpression
   , renderExpression
   , renderOperatorExpression
@@ -131,6 +133,30 @@ data Expression
       , identifierOperationGivenValue :: Maybe Expression
       }
   deriving (Eq, Show)
+
+-- | A module resource yields exactly one simple identifier type. Its
+-- annotation or assigned implementation is the value imported under that
+-- identifier.
+yieldedIdentifier
+  :: Expression
+  -> Maybe (IdentifierString, Expression, Maybe Expression)
+yieldedIdentifier (Program _ result) = yieldedIdentifier result
+yieldedIdentifier (IdentifierOperation name annotation given) =
+  Just (name, annotation, given)
+yieldedIdentifier _ = Nothing
+
+-- | Some named module values are begin blocks. Their declarations remain
+-- available for syntax discovery and lexical evaluation, but begin is not a
+-- requirement of the general import contract.
+namedBeginBlock
+  :: Expression
+  -> Maybe (IdentifierString, [Expression], Expression)
+namedBeginBlock expressionValue = do
+  (name, annotation, given) <- yieldedIdentifier expressionValue
+  let value = maybe annotation id given
+  case value of
+    Begin bindings result -> Just (name, bindings, result)
+    _ -> Nothing
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
 -- operator notation.
