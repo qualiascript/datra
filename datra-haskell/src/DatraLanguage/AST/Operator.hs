@@ -7,7 +7,11 @@ module DatraLanguage.AST.Operator
   ) where
 
 data Operator
-  = SequentialOperator
+  = FunctionTypeOperator
+  | ApplicationOperator
+  | DoOperator
+  | ExternalOperator
+  | SequentialOperator
   | ExpansionOperator
   | RangeOperator
   | RangePlusOperator
@@ -37,6 +41,10 @@ data Operator
 
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String
+operatorCanonicalSymbol FunctionTypeOperator = "->"
+operatorCanonicalSymbol ApplicationOperator = "apply"
+operatorCanonicalSymbol DoOperator = "do"
+operatorCanonicalSymbol ExternalOperator = "external"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ExpansionOperator = "<+>"
 operatorCanonicalSymbol RangeOperator = "<..>"
@@ -67,6 +75,10 @@ operatorCanonicalSymbol AssignmentOperator = ":="
 -- | Concrete source spelling, when an operator is represented by one token.
 -- Sequential and expansion structure comes from map separators and nesting.
 operatorSourceSymbol :: Operator -> Maybe String
+operatorSourceSymbol FunctionTypeOperator = Just "->"
+operatorSourceSymbol ApplicationOperator = Nothing
+operatorSourceSymbol DoOperator = Just "do"
+operatorSourceSymbol ExternalOperator = Just "external"
 operatorSourceSymbol SequentialOperator = Nothing
 operatorSourceSymbol ExpansionOperator = Nothing
 operatorSourceSymbol RangeOperator = Just ".."

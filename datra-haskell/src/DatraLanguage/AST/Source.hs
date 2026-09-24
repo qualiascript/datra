@@ -12,6 +12,14 @@ renderSourceExpression = source 0 . toOperatorExpression
 source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
+    ThisValue -> "this"
+    InModuleValue _ value -> source context value
+    ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
+    SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)
+    FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
+    FunctionApplicationValue function input -> wrapped 11 (source 11 function <> " " <> source 12 input)
+    FunctionBodyValue bindings result -> wrapped 0 ("do\n" <> concatMap (indent . source 0) bindings <> "yield " <> source 0 result)
+    ExternalValue descriptor -> wrapped 0 ("external " <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0
       ("begin\n" <> concatMap (indent . source 0) bindings
@@ -26,7 +34,7 @@ source context expression =
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
-    EvalValue text target -> wrapped 0 ("eval " <> source 3 text <> ", " <> source 0 target)
+    EvalValue text target -> wrapped 0 ("eval " <> source 3 text <> " at " <> source 0 target)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
     EitherValue left right -> binary 3 "|" left right
@@ -42,6 +50,7 @@ source context expression =
     Not operand -> unary "not " operand
     ExtractValue operand -> unary "%" operand
     OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
+    NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand position -> wrapped 10 (source 11 operand <> "[" <> source 0 position <> "]")
     Range left right -> binary 9 ".." left right
     RangePlus operand -> source 11 operand <> ".."

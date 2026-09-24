@@ -60,6 +60,8 @@ localizeAccessError reason =
 localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
+    NamedAccessError message -> LocalizedMessage "named access failed" [message]
+    FunctionError message -> LocalizedMessage "function evaluation failed" [message]
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
     UnknownIdentifier name ->
@@ -186,6 +188,7 @@ operandSide LeftOperand = "left"
 operandSide RightOperand = "right"
 
 valueKind :: InterpretedValueKind -> String
+valueKind FunctionValueKind = "function"
 valueKind NaturalValueKind = "natural"
 valueKind IntegerValueKind = "integer"
 valueKind BooleanValueKind = "Boolean"

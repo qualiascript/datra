@@ -1,6 +1,7 @@
 -- | Compile-time decision procedure for the specification operator.
 module Evaluation.Specification
-  ( specifyValues
+  ( validateFunctionInput
+  , specifyValues
   , assignIdentifierValues
   ) where
 
@@ -32,6 +33,8 @@ import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   )
 import Evaluation.Value
+import Control.Monad (foldM)
+import Evaluation.Either (makeEitherValue)
 import Evaluation.Arguments (argumentAlternatives)
 
 specifyValues
@@ -39,6 +42,36 @@ specifyValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyValues source target
+  | EitherForm _ <- interpretedForm source
+  , let alternatives = functionAlternatives source
+  , not (null alternatives) = do
+      specified <- traverse (`specifyValues` target) (argumentAlternatives source)
+      case specified of
+        first:rest -> foldM makeEitherValue first rest
+        [] -> Left (FunctionError "empty function sum")
+  | Just _ <- interpretedFunction source
+  , EitherForm _ <- interpretedForm target =
+      case [signature | signature <- functionAlternatives target
+            , DecisionProved () <- [decideValueSubfederation source (makeFunctionValue signature)]] of
+        [signature] -> specifyValues source (makeFunctionValue signature)
+        [] -> Left (FunctionError "no matching alternative in function specification")
+        _ -> Left (FunctionError "ambiguous function specification")
+  | BuiltinMetaTypeForm kind <- interpretedForm target = case decideValueSubfederation source target of
+      DecisionProved () -> Right source
+      _ -> Left (FunctionError ("expected " <> builtinMetaTypeName kind))
+  | Just original <- interpretedFunction source
+  , Just signature <- interpretedFunction target =
+      case decideValueSubfederation source target of
+        DecisionProved () -> Right (makeFunctionValue signature
+          { functionSource = functionSource original
+          , functionInvoke = fmap (\invoke argument -> do
+              validateFunctionInput argument (functionDomain signature)
+              invoke argument) (functionInvoke original)
+          })
+        DecisionRefuted -> Left (FunctionError "function signature violates input contravariance or output covariance")
+        DecisionUndecidable -> Left (FunctionError ("cannot decide function specification: " <> show (interpretedCanonicalResult source) <> " to " <> show (interpretedCanonicalResult target)))
+  | Just _ <- interpretedFunction source = Left (FunctionError "expected a function type")
+  | Just _ <- interpretedFunction target = Left (FunctionError "expected a function value")
   | federationUsesWeakToString (interpretedAtlasMapFederation target) =
       Left NoCanonicalStringConversion
   | interpretedCanonicalResult source == interpretedCanonicalResult target =
@@ -355,3 +388,9 @@ originalSpecificationSourceSemantics value =
         givenValueSemantics
         True
     semantics -> semantics
+
+
+validateFunctionInput :: InterpretedValue -> InterpretedValue -> Either InterpretingError ()
+validateFunctionInput input domain = case decideValueSubfederation input domain of
+  DecisionProved () -> Right ()
+  _ -> () <$ specifyValues input domain

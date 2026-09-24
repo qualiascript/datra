@@ -1,0 +1,2 @@
+hidden : "$Int plus" as ({value?:Int} -> Int) := (do yield value + 1)
+yield (public : 7; _hidden : 8)

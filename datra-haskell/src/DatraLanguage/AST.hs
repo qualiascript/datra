@@ -6,6 +6,9 @@ module DatraLanguage.AST
   , Expression (..)
   , OperatorExpression (..)
   , toOperatorExpression
+  , traverseExpressionChildren
+  , mapExpressionChildren
+  , expressionChildren
   , normalizeExpression
   , renderExpression
   , renderOperatorExpression
@@ -15,6 +18,8 @@ module DatraLanguage.AST
   , isReservedIdentifierString
   ) where
 
+import Data.Functor.Identity (Identity (..))
+import Data.Functor.Const (Const (..))
 import Data.Char (ord, toUpper)
 import DatraLanguage.AST.Operator
   ( Operator (..)
@@ -97,6 +102,14 @@ data Expression
   | BooleanNot Expression
   | Extract Expression
   | Eval Expression Expression
+  | This
+  | InModule String Expression
+  | Import Bool String
+  | SyntaxType String Bool Expression
+  | FunctionType Expression Expression
+  | FunctionBody [Expression] Expression
+  | FunctionApplication Expression Expression
+  | External Expression
   | Program [Expression] Expression
   | Begin [Expression] Expression
   | Let Expression
@@ -104,6 +117,7 @@ data Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
+  | NamedAccess Expression IdentifierString
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
   | IdentifierOperation
@@ -164,6 +178,14 @@ data OperatorExpression
   | Not OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
+  | ThisValue
+  | InModuleValue String OperatorExpression
+  | ImportValue Bool String
+  | SyntaxTypeValue String Bool OperatorExpression
+  | FunctionTypeValue OperatorExpression OperatorExpression
+  | FunctionBodyValue [OperatorExpression] OperatorExpression
+  | FunctionApplicationValue OperatorExpression OperatorExpression
+  | ExternalValue OperatorExpression
   | ProgramValue [OperatorExpression] OperatorExpression
   | BeginValue [OperatorExpression] OperatorExpression
   | LetValue OperatorExpression
@@ -171,6 +193,7 @@ data OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
+  | NamedAccessValue OperatorExpression IdentifierString
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | IdentifierOperationValue
@@ -263,6 +286,14 @@ normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
 normalizeExpression (Eval source target) =
   Eval (normalizeExpression source) (normalizeExpression target)
+normalizeExpression This = This
+normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
+normalizeExpression (Import allNames path) = Import allNames path
+normalizeExpression (SyntaxType patternText ordinary signature) = SyntaxType patternText ordinary (normalizeExpression signature)
+normalizeExpression (FunctionType input output) = FunctionType (normalizeExpression input) (normalizeExpression output)
+normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
+normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
+normalizeExpression (External descriptor) = External (normalizeExpression descriptor)
 normalizeExpression (Program bindings result) =
   Program (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Begin bindings result) =
@@ -275,6 +306,7 @@ normalizeExpression (Exponentiation left right) =
   Exponentiation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression value) name
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -388,6 +420,14 @@ lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
+lower This = ThisValue
+lower (InModule path value) = InModuleValue path (lower value)
+lower (Import allNames path) = ImportValue allNames path
+lower (SyntaxType patternText ordinary signature) = SyntaxTypeValue patternText ordinary (lower signature)
+lower (FunctionType input output) = FunctionTypeValue (lower input) (lower output)
+lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
+lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
+lower (External descriptor) = ExternalValue (lower descriptor)
 lower (Program bindings result) = ProgramValue (map lower bindings) (lower result)
 lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
@@ -396,6 +436,7 @@ lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
+lower (NamedAccess value name) = NamedAccessValue (lower value) name
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (IdentifierOperation identifierString typeAnnotation givenValue) =
@@ -544,6 +585,14 @@ prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
 prettyOperator (EvalValue source target) =
   prettyBinary EvalOperator source target
+prettyOperator ThisValue = "this"
+prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
+prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
+prettyOperator (SyntaxTypeValue patternText ordinary signature) = prettyForm (if ordinary then "as?" else "as") [pretty (renderAsciiStringLiteral patternText), prettyOperator signature]
+prettyOperator (FunctionTypeValue input output) = prettyBinary FunctionTypeOperator input output
+prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
+prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
+prettyOperator (ExternalValue descriptor) = prettyUnary ExternalOperator descriptor
 prettyOperator (ProgramValue bindings result) =
   prettyForm "program"
     [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
@@ -559,6 +608,7 @@ prettyOperator (Power left right) =
   prettyBinary ExponentiationOperator left right
 prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
+prettyOperator (NamedAccessValue value (IdentifierString name)) = prettyForm "." [prettyOperator value, pretty (renderAsciiStringLiteral name)]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
@@ -737,3 +787,56 @@ isAsciiLetter :: Char -> Bool
 isAsciiLetter character =
   ('a' <= character && character <= 'z')
     || ('A' <= character && character <= 'Z')
+
+-- | One shared traversal of immediate AST children, preserving identifiers and
+-- literal metadata. Analyses and source migrations compose it recursively.
+traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> Expression -> f Expression
+traverseExpressionChildren visit expression = case expression of
+  AtlasMap xs -> AtlasMap <$> traverse visit xs
+  ArgumentMap xs -> ArgumentMap <$> traverse visit xs
+  MapSequence xs -> MapSequence <$> traverse visit xs
+  Extract x -> Extract <$> visit x
+  Minus x -> Minus <$> visit x
+  BooleanNot x -> BooleanNot <$> visit x
+  OptionalType x -> OptionalType <$> visit x
+  External x -> External <$> visit x
+  Let x -> Let <$> visit x
+  SuperEllipsisRangePlus x -> SuperEllipsisRangePlus <$> visit x
+  SuperEllipsisRangeMinus x -> SuperEllipsisRangeMinus <$> visit x
+  MapExpansion a b -> MapExpansion <$> visit a <*> visit b
+  SuperEllipsisRange a b -> SuperEllipsisRange <$> visit a <*> visit b
+  EitherType a b -> EitherType <$> visit a <*> visit b
+  Addition a b -> Addition <$> visit a <*> visit b
+  Subtraction a b -> Subtraction <$> visit a <*> visit b
+  Subfederation a b -> Subfederation <$> visit a <*> visit b
+  Equality a b -> Equality <$> visit a <*> visit b
+  BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
+  BooleanOr a b -> BooleanOr <$> visit a <*> visit b
+  Eval a b -> Eval <$> visit a <*> visit b
+  FunctionType a b -> FunctionType <$> visit a <*> visit b
+  FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
+  Multiplication a b -> Multiplication <$> visit a <*> visit b
+  Exponentiation a b -> Exponentiation <$> visit a <*> visit b
+  MapConcatenation a b -> MapConcatenation <$> visit a <*> visit b
+  MapAccess a b -> MapAccess <$> visit a <*> visit b
+  MapSpecification a b -> MapSpecification <$> visit a <*> visit b
+  Program xs y -> Program <$> traverse visit xs <*> visit y
+  Begin xs y -> Begin <$> traverse visit xs <*> visit y
+  FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
+  Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
+  InModule path value -> InModule path <$> visit value
+  NamedAccess value name -> (`NamedAccess` name) <$> visit value
+  SyntaxType text ordinary signature -> SyntaxType text ordinary <$> visit signature
+  IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
+  StringTemplate parts -> StringTemplate <$> traverse part parts
+  _ -> pure expression
+  where
+    part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
+    part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
+    part (StringTemplateWeakInterpolation value) = StringTemplateWeakInterpolation <$> visit value
+
+mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression
+mapExpressionChildren visit = runIdentity . traverseExpressionChildren (Identity . visit)
+
+expressionChildren :: Expression -> [Expression]
+expressionChildren = getConst . traverseExpressionChildren (Const . (:[]))

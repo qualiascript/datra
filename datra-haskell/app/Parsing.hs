@@ -3,6 +3,8 @@
 module Parsing
   ( ResourceEnvelope (..)
   , parseDatra
+  , sourceImports
+  , parseDatraLocatedWithSyntaxImports
   , parseDatraWithSourceName
   , parseDatraLocated
   , parseDatraLocatedWithSourceName
@@ -20,7 +22,9 @@ import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
   )
-import Data.Bifunctor (first)
+import Data.Bifunctor qualified as Bifunctor
+import Data.List (nubBy)
+import Data.Maybe (catMaybes)
 import Data.Char (chr, digitToInt, isHexDigit, ord)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -36,6 +40,7 @@ import DatraLanguage.AST
       , EllipsisLiteral
       , EllipsisNatural
       , Exponentiation
+      , NamedAccess
       , MapAccess
       , MapConcatenation
       , MapExpansion
@@ -70,6 +75,14 @@ import DatraLanguage.AST
       , Eval
       , Begin
       , Program
+      , FunctionType
+      , SyntaxType
+      , This
+      , InModule
+      , Import
+      , FunctionBody
+      , FunctionApplication
+      , External
       , Let
       , IdentifierReference
       )
@@ -81,6 +94,9 @@ import DatraLanguage.AST
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
+import ModuleNames (moduleIdentifier)
+import StandardLibrary (standardLibrarySource)
+import SyntaxDefinitions
 import DatraLanguage.AST.Reserved.Bootstrap
   ( reservedSymbolReplacements
   )
@@ -110,7 +126,6 @@ import Text.Megaparsec
   , notFollowedBy
   , runParser
   , sepEndBy
-  , sepEndBy1
   , sourceColumn
   , sourceLine
   , sourceName
@@ -126,6 +141,9 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 data ParserContext = ParserContext
   { interpolationDepth :: Int
   , referencesAllowed :: Bool
+  , syntaxRules :: [SyntaxRule]
+  , syntaxStops :: [Text]
+  , syntaxImports :: [(String, [SyntaxRule])]
   }
 
 type Parser = ReaderT ParserContext (Parsec Void Text)
@@ -154,9 +172,13 @@ parseDatraLocatedWithSourceName
   :: FilePath
   -> String
   -> Either String (Located Expression)
-parseDatraLocatedWithSourceName resourceName source =
-  first errorBundlePretty
-    (runDatraParser locatedResource resourceName (Text.pack source))
+parseDatraLocatedWithSourceName = parseDatraLocatedWithSyntaxImports []
+
+parseDatraLocatedWithSyntaxImports :: [(String, [SyntaxRule])] -> FilePath -> String -> Either String (Located Expression)
+parseDatraLocatedWithSyntaxImports imports resourceName source =
+  Bifunctor.first errorBundlePretty (runParser
+    (runReaderT locatedResource (ParserContext 0 False libraryRules [] imports))
+    resourceName (Text.pack source))
 
 -- | Parse a source resource and retain its expression/program envelope.
 parseDatraLocatedResourceWithSourceName
@@ -164,7 +186,7 @@ parseDatraLocatedResourceWithSourceName
   -> String
   -> Either String (ResourceEnvelope, Located Expression)
 parseDatraLocatedResourceWithSourceName resourceName source =
-  first errorBundlePretty
+  Bifunctor.first errorBundlePretty
     (runDatraParser
       locatedResourceWithEnvelope resourceName (Text.pack source))
 
@@ -188,7 +210,7 @@ parseDatraAstLocatedWithSourceName
   -> String
   -> Either String (Located Expression)
 parseDatraAstLocatedWithSourceName resourceName source =
-  first errorBundlePretty
+  Bifunctor.first errorBundlePretty
     (runDatraParser locatedAstResource resourceName (Text.pack source))
 
 runDatraParser
@@ -197,7 +219,17 @@ runDatraParser
   -> Text
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
-  runParser (runReaderT parser (ParserContext 0 False)) resourceName source
+  runParser (runReaderT parser (ParserContext 0 False libraryRules [] [])) resourceName source
+
+libraryDeclarations :: [Expression]
+libraryDeclarations = case runParser (runReaderT resource (ParserContext 0 False [] [] []))
+    "standard_library.datra" (Text.pack standardLibrarySource) of
+  Right (Program declarations _) -> declarations
+  _ -> []
+
+libraryRules :: [SyntaxRule]
+libraryRules = rules <> [rule { syntaxName = "StandardLibrary." <> syntaxName rule } | rule <- rules]
+  where rules = [rule { syntaxModule = Just "standard_library" } | rule <- concatMap declarationRules libraryDeclarations]
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -248,32 +280,34 @@ astEmptyMap :: Parser Expression
 astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
-astAtom = astLexeme (atomicExpressionToken astStringTemplateToken)
+astAtom = astLexeme (This <$ keywordToken "this" <|> choice
+  [ replacement <$ keywordToken (Text.pack (Reserved.reservedSymbolIdentifierString reserved))
+  | (reserved, replacement) <- reservedSymbolReplacements
+  ] <|> atomicExpressionToken astStringTemplateToken)
 
 atomicExpressionToken :: Parser Expression -> Parser Expression
 atomicExpressionToken nestedStringTemplate =
   choice
-    [ reservedSymbolReplacementToken
-    , EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
+    [ EllipsisLiteral <$ chunk (Text.pack AST.ellipsisSymbol)
     , AsciiStringLiteral <$> identifierStringToken
     , nestedStringTemplate
     , EllipsisNatural <$> Lexer.decimal
     ]
-  where
-    reservedSymbolReplacementToken =
-      choice
-        [ replacement
-            <$ keywordToken
-              (Text.pack
-                (Reserved.reservedSymbolIdentifierString reservedSymbol))
-        | (reservedSymbol, replacement) <- reservedSymbolReplacements
-        ]
 
 astForm :: Parser Expression
 astForm =
   between (astSymbol "(") (astSymbol ")")
     (choice
-      [ astSequence
+      [ InModule <$> (astSymbol "in-module" *> astString) <*> astExpression
+      , Import True <$> (astSymbol "import-all" *> astString)
+      , Import False <$> (astSymbol "import" *> astString)
+      , SyntaxType <$> (astSymbol "as?" *> astString) <*> pure True <*> astExpression
+      , SyntaxType <$> (astSymbol "as" *> astString) <*> pure False <*> astExpression
+      , astBinary AST.FunctionTypeOperator FunctionType
+      , astBinary AST.ApplicationOperator FunctionApplication
+      , astUnary AST.ExternalOperator External
+      , astBlock "do" FunctionBody
+      , astSequence
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
       , astNaturalRangeExpression
       , astIdentifierOperation AST.AssignmentOperator (Just ())
@@ -296,13 +330,14 @@ astForm =
       , astBlock "program" Program
       , astUnary AST.LetOperator Let
       , IdentifierReference . IdentifierString <$>
-          (astSymbol "ref" *> (astLexeme identifierStringToken <|> astStandardString))
+          (astSymbol "ref" *> astString)
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
       , astBinary AST.ConcatenationOperator MapConcatenation
+      , NamedAccess <$> (astSymbol "." *> astExpression) <*> (IdentifierString <$> astString)
       , astBinary AST.AccessOperator MapAccess
       , astBinary AST.SpecificationOperator MapSpecification
       ])
@@ -456,7 +491,7 @@ implicitProgram :: Parser Expression
 implicitProgram = withReferences $ do
   _ <- optional (continuedWordOperator AST.BeginOperator)
   bindings <- elements
-  result <- optional (continuedReservedWord Reserved.YieldWord *> expression)
+  result <- withDeclarations bindings $ optional (continuedReservedWord Reserved.YieldWord *> expression)
   pure (Program bindings (maybe (EllipsisNatural 0) id result))
 
 withReferences :: Parser value -> Parser value
@@ -467,8 +502,25 @@ sequenceExpression [] = AtlasMap []
 sequenceExpression [expressionValue] = expressionValue
 sequenceExpression expressions = AtlasMap expressions
 
+withDeclarations :: [Expression] -> Parser a -> Parser a
+withDeclarations entries = local $ \context -> context
+  { syntaxRules = concatMap (rulesFor context) entries <> syntaxRules context }
+  where
+    rulesFor context (Import allNames path) =
+      let rules = maybe [] id (lookup path (syntaxImports context))
+          qualified = [rule { syntaxName = moduleIdentifier path <> "." <> syntaxName rule } | rule <- rules]
+      in qualified <> if allNames then rules else []
+    rulesFor _ entry = declarationRules entry
+
 elements :: Parser [Expression]
-elements = expression `sepEndBy` mapSeparator
+elements = do
+  first <- optional expression
+  case first of
+    Nothing -> pure []
+    Just entry -> withDeclarations [entry] $ do
+      more <- optional mapSeparator
+      rest <- case more of Nothing -> pure []; Just _ -> elements
+      pure (entry : rest)
 
 -- A newline is a separator only while parsing map elements. Newlines after
 -- an infix operator are consumed by 'continuedSymbol' before this parser can
@@ -478,21 +530,44 @@ mapSeparator =
   void (semicolon <* lineSpaceConsumer)
     <|> void (some lineBreak)
 
--- Reverse specification is the outermost expression layer. Keeping it
--- outside 'mapExpression' lets identifier operations occupy either side of
--- @<~@ without making bare identifiers valid general-purpose operands.
+-- Reverse specification is the outermost expression layer, so either side
+-- can contain identifier operations, concatenation, and function applications.
 expression :: Parser Expression
 expression = expressionWith mapExpression
 
 expressionWith :: Parser Expression -> Parser Expression
 expressionWith operand = do
-  target <- eitherExpressionWith operand
+  target <- functionExpressionWith operand
   maybeSource <-
     optional (continuedSymbol reverseSpecificationSymbol *> expressionWith operand)
   pure
     (case maybeSource of
       Nothing -> target
       Just source -> MapSpecification source target)
+
+functionExpressionWith :: Parser Expression -> Parser Expression
+functionExpressionWith operand = do
+  signature <- arrowExpressionWith operand
+  implementation <- optional (functionBody <|> externalExpression)
+  pure (maybe signature (`MapSpecification` signature) implementation)
+
+arrowExpressionWith :: Parser Expression -> Parser Expression
+arrowExpressionWith operand = do
+  rawInput <- eitherExpressionWith operand
+  input <- syntaxTypeSuffix rawInput operand
+  output <- optional (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith operand)
+  pure (maybe input (FunctionType input) output)
+
+syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
+syntaxTypeSuffix input operand = case input of
+  AsciiStringLiteral patternText -> do
+    signature <- optional $ do
+      _ <- keywordToken "as"
+      ordinary <- maybe False (const True) <$> optional (char '?')
+      lineSpaceConsumer
+      SyntaxType patternText ordinary <$> arrowExpressionWith operand
+    pure (maybe input id signature)
+  _ -> pure input
 
 eitherExpressionWith :: Parser Expression -> Parser Expression
 eitherExpressionWith operand =
@@ -510,9 +585,7 @@ mapExpression :: Parser Expression
 mapExpression =
   makeExprParser (try identifierOperation <|> rangeExpression) mapOperatorTable
 
--- Identifier operations are the only operands that begin with an unprefixed
--- identifier. Requiring @:@ or @:=@ here keeps bare identifiers invalid while
--- allowing a complete identifier operation in any map-operand position.
+-- A colon distinguishes a declaration from a bare lexical reference or call.
 identifierOperation :: Parser Expression
 identifierOperation = do
   identifierSpelling <- try identifierExpression
@@ -522,10 +595,11 @@ identifierOperation = do
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
-        operationIdentifierString <-
-          IdentifierString
-            <$> validateIdentifierSpelling identifierSpelling
+        let name = case identifierSpelling of BareIdentifier value -> value; FullStringIdentifier value -> value
+            operationIdentifierString = IdentifierString name
         givenValue <- identifierValueExpression
+        let proposed = IdentifierOperation operationIdentifierString givenValue (Just givenValue)
+        if null (declarationRules proposed) then void (validateIdentifierSpelling identifierSpelling) else pure ()
         let operation =
               IdentifierOperation
                 operationIdentifierString
@@ -536,8 +610,11 @@ identifierOperation = do
         _ <- continuedOperator AST.IdentifierTypeOperator
         operationIdentifierString <-
           IdentifierString
-            <$> validateIdentifierSpelling identifierSpelling
+            <$> pure (case identifierSpelling of BareIdentifier name -> name; FullStringIdentifier name -> name)
         typeAnnotation <- identifierValueExpression
+        case typeAnnotation of
+          SyntaxType {} -> pure ()
+          _ -> void (validateIdentifierSpelling identifierSpelling)
         givenValue <-
           optional
             (continuedOperator AST.AssignmentOperator *>
@@ -559,8 +636,14 @@ optionalIdentifier True operation missingValue =
 -- explicit parentheses remain available when either belongs to the
 -- identifier's own value.
 identifierValueExpression :: Parser Expression
-identifierValueExpression =
-  makeExprParser rangeExpression identifierValueOperatorTable
+identifierValueExpression = do
+  rawInput <- makeExprParser rangeExpression identifierValueOperatorTable
+  input <- syntaxTypeSuffix rawInput (makeExprParser rangeExpression identifierValueOperatorTable)
+  output <- optional (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
+    (makeExprParser rangeExpression identifierValueOperatorTable))
+  let signature = maybe input (FunctionType input) output
+  implementation <- optional (functionBody <|> externalExpression)
+  pure (maybe signature (`MapSpecification` signature) implementation)
 
 -- An arithmetic operator followed by another identifier operation belongs to
 -- the surrounding expression. Otherwise it remains part of this identifier's
@@ -609,7 +692,19 @@ rangeEndpoint :: Parser Expression
 rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
-term = accessedTerm extractedTermAtom
+term = do
+  function <- accessedTerm extractedTermAtom
+  arguments <- many (try (notFollowedBy (try identifierOperationStart) *> applicationArgument))
+  pure (foldl FunctionApplication function arguments)
+  where
+    -- Horizontal whitespace has already been consumed by lexemes. A newline
+    -- remains a block boundary; operator and syntax words cannot be arguments.
+    applicationArgument = accessedTerm (choice
+      [ argumentMap
+      , parenthesizedExpression
+      , lexeme (atomicExpressionToken sourceStringTemplateToken)
+      , identifierReference
+      ])
 
 -- Extract binds to its primary operand before bracket access, so @%a[x]@
 -- means @(%a)[x]@. A larger specification operand remains available through
@@ -622,50 +717,124 @@ extractedTermAtom =
 termAtom :: Parser Expression
 termAtom =
   choice
-    [ beginExpression
-    , letExpression
-    , evalExpression
+    [ This <$ keyword "this"
+    , importExpression
+    , syntaxApplication
+    , bootstrapLet
+    , externalExpression
     , argumentMap
     , try parenthesizedReverseSpecification
     , parenthesizedExpression
-    , try conditionalExpression
-    , try naturalRangeExpression
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
 
-beginExpression :: Parser Expression
-beginExpression = do
-  _ <- continuedWordOperator AST.BeginOperator
-  withReferences $ do
-    bindings <- expression `sepEndBy` mapSeparator
-    _ <- continuedReservedWord Reserved.YieldWord
-    Begin bindings <$> expression
+importExpression :: Parser Expression
+importExpression = do
+  _ <- continuedKeyword "import"
+  allNames <- maybe False (const True) <$> optional (continuedKeyword "all")
+  Import allNames <$> standardString
 
-letExpression :: Parser Expression
-letExpression = do
-  context <- ask
-  guard (referencesAllowed context)
+-- Scan import literals without interpreting strings as syntax. This allows the
+-- loader to resolve dependencies before parsing expressions using their names.
+sourceImports :: String -> Either String [String]
+sourceImports source = Bifunctor.first errorBundlePretty $
+  runParser (runReaderT scan (ParserContext 0 False libraryRules [] [])) "<imports>" (Text.pack source)
+  where
+    paths (Import _ path) = [path]
+    paths _ = []
+    scan = concat <$> many item <* eof
+    item = try (paths <$> importExpression)
+      <|> ([] <$ sourceStringTemplateToken)
+      <|> ([] <$ lineComment)
+      <|> ([] <$ anySingle)
+
+syntaxApplication :: Parser Expression
+syntaxApplication = do
+  name <- lookAhead $ do
+    first <- bareIdentifierToken
+    rest <- many (try (char '.' <* notFollowedBy (char '.') *> bareIdentifierToken))
+    pure (foldl (\left right -> left <> "." <> right) first rest)
+  rules <- filter ((== name) . syntaxName) . syntaxRules <$> ask
+  candidates <- catMaybes <$> traverse (\rule -> optional $ try $ lookAhead $ do
+    value <- parseRule rule
+    end <- getOffset
+    pure (rule, value, end)) rules
+  case candidates of
+    [] -> empty
+    _ -> do
+      let furthest = maximum [end | (_,_,end) <- candidates]
+          best = nubBy (\(_,a,_) (_,b,_) -> a == b)
+            [candidate | candidate@(_,_,end) <- candidates, end == furthest]
+      case best of
+        [(rule,_,_)] -> parseRule rule
+        _ -> fail ("ambiguous AST pattern for " <> name)
+  where
+    parseRule rule = do
+      _ <- continuedKeyword (Text.pack (syntaxName rule))
+      captures <- parsePieces (syntaxPieces rule)
+      expanded <- either fail pure (expandSyntax rule captures)
+      case expanded of
+        Let _ -> ask >>= guard . referencesAllowed
+        _ -> pure ()
+      pure expanded
+    obviouslyNumeric (EllipsisNatural _) = True
+    obviouslyNumeric (Minus value) = obviouslyNumeric value
+    obviouslyNumeric _ = False
+    parsePieces [] = pure []
+    parsePieces (SyntaxLiteral token : rest) = do
+      lineSpaceConsumer
+      _ <- if all (`elem` (",;" :: String)) token
+        then continuedSymbol (Text.pack token) else keyword (Text.pack token) <* lineSpaceConsumer
+      parsePieces rest
+    parsePieces (SyntaxHole kind : rest) = do
+      lineSpaceConsumer
+      let stops = case take 1 rest of
+            [SyntaxLiteral token] -> [Text.pack token]
+            [SyntaxHole nextType] -> map Text.pack (declarationLiterals libraryDeclarations nextType)
+            _ -> []
+          literal = choice [AsciiStringLiteral value <$ (keyword (Text.pack value) <* lineSpaceConsumer)
+            | value <- declarationLiterals libraryDeclarations kind]
+      value <- local (\context -> context { syntaxStops = stops <> syntaxStops context }) $
+        if kind `elem` ["Block", "Pages"] then do
+          entries <- withReferences elements
+          guard (kind == "Block" || not (null entries))
+          pure (AtlasMap entries)
+        else literal <|> (if kind /= "Expr" then boundaryAwareArithmeticExpression
+          else if "," `elem` stops then nonConcatenatedExpression else expression)
+      let enums = declarationLiterals libraryDeclarations kind
+      guard (null enums || not (obviouslyNumeric value))
+      let continue = (value :) <$> parsePieces rest
+      case value of
+        AtlasMap entries | kind == "Block" -> withDeclarations entries continue
+        _ -> continue
+
+functionBody :: Parser Expression
+functionBody = try $ do
+  body <- syntaxApplication
+  case body of
+    FunctionBody {} -> pure body
+    _ -> empty
+
+externalExpression :: Parser Expression
+externalExpression = External <$> (continuedWordOperator AST.ExternalOperator *> (stringExpression <|> parenthesizedExpression))
+
+-- Bootstrap only the declaration prefix needed to read the library itself.
+bootstrapLet :: Parser Expression
+bootstrapLet = do
+  rules <- syntaxRules <$> ask
+  guard (null rules)
   _ <- continuedWordOperator AST.LetOperator
   Let <$> expression
 
 identifierReference :: Parser Expression
 identifierReference = try $ do
-  context <- ask
-  guard (referencesAllowed context)
-  spelling <- BareIdentifier <$> bareIdentifier
-  IdentifierReference . IdentifierString <$> validateIdentifierSpelling spelling
-
--- The first unparenthesized comma separates the source from the target.
--- The target consumes the rest of the enclosing map, including semicolon
--- and newline components. Parenthesize eval to use its result in an operation.
-evalExpression :: Parser Expression
-evalExpression = do
-  _ <- continuedWordOperator AST.EvalOperator
-  source <- nonConcatenatedExpression
-  _ <- continuedOperator AST.ConcatenationOperator
-  target <- sequenceExpression <$> (expression `sepEndBy1` mapSeparator)
-  pure (Eval source target)
+  stops <- syntaxStops <$> ask
+  mapM_ (notFollowedBy . keywordToken) stops
+  first <- bareIdentifierToken
+  horizontalSpaceConsumer
+  name <- validateIdentifierSpelling (BareIdentifier first)
+  pure (IdentifierReference (IdentifierString name))
 
 -- Argument maps have the same member separators and empty/unary arity as
 -- parenthesized maps, but admit every permutation of their members.
@@ -701,17 +870,6 @@ parenthesizedReverseSpecification = do
   _ <- notFollowedBy (try (continuedSymbol reverseSpecificationSymbol))
   pure (MapSpecification source target)
 
-conditionalExpression :: Parser Expression
-conditionalExpression = do
-  _ <- continuedReservedSymbol Reserved.IfSymbol
-  condition <- expression
-  _ <- continuedReservedWord Reserved.ThenWord
-  consequent <- expression
-  alternative <-
-    maybe (AtlasMap []) id
-      <$> optional (continuedReservedWord Reserved.ElseWord *> expression)
-  pure (Conditional condition consequent alternative)
-
 rangeEndpointTerm :: Parser Expression
 rangeEndpointTerm = accessedTerm rangeEndpointAtom
 
@@ -730,8 +888,16 @@ rangeEndpointAtom =
 accessedTerm :: Parser Expression -> Parser Expression
 accessedTerm atom = do
   source <- atom
-  insertions <- many bracketedInsertion
-  pure (foldl MapAccess source insertions)
+  selections <- many (choice
+    [ (\insertion value -> MapAccess value insertion) <$> bracketedInsertion
+    , do
+        _ <- try (char '.' <* notFollowedBy (char '.'))
+        horizontalSpaceConsumer
+        name <- IdentifierString <$> (bareIdentifierToken <|> standardStringToken)
+        horizontalSpaceConsumer
+        pure (`NamedAccess` name)
+    ])
+  pure (foldl (\value select -> select value) source selections)
 
 bracketedInsertion :: Parser Expression
 bracketedInsertion =
@@ -739,37 +905,6 @@ bracketedInsertion =
     (symbol "[" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol "]")
     expression
-
-naturalRangeExpression :: Parser Expression
-naturalRangeExpression = do
-  prefix <- choice
-    [ RangePrefix <$ continuedReservedSymbol Reserved.RangeSymbol
-    , FromPrefix <$ continuedReservedSymbol Reserved.FromSymbol
-    ]
-  bounds <- naturalRangeBounds
-  pure (naturalRangeExpressionFor prefix bounds)
-
--- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
--- after a @range@ or @from@ prefix.
-naturalRangeBounds :: Parser NaturalRangeBounds
-naturalRangeBounds = do
-  origin <- signedIntegerToken <* keywordSeparator
-  choice
-    [ NaturalRangeTo origin
-        <$> (continuedReservedWord Reserved.ToWord *> lexeme signedIntegerToken)
-    , NaturalRangeFromUpwards origin <$ reservedWord Reserved.UpwardsWord
-    , IntegerRangeFromDownwards origin <$ reservedWord Reserved.DownwardsWord
-    ]
-
-signedIntegerToken :: Parser Integer
-signedIntegerToken =
-  try (char '-' *> (negate <$> Lexer.decimal))
-    <|> try
-      (keywordToken
-        (Text.pack (AST.operatorCanonicalSymbol AST.MinusOperator))
-        *> keywordSeparator
-        *> (negate <$> Lexer.decimal))
-    <|> Lexer.decimal
 
 naturalRangeExpressionFor
   :: NaturalRangePrefix
@@ -799,19 +934,12 @@ naturalRangeExpressionFor FromPrefix (IntegerRangeFromDownwards origin) =
 keyword :: Text -> Parser Text
 keyword value = lexeme (keywordToken value)
 
-reservedWord :: Reserved.ReservedWord -> Parser Text
-reservedWord = keyword . Text.pack . Reserved.reservedWordText
-
 continuedKeyword :: Text -> Parser Text
 continuedKeyword value = keywordToken value <* keywordSeparator
 
 continuedReservedWord :: Reserved.ReservedWord -> Parser Text
 continuedReservedWord =
   continuedKeyword . Text.pack . Reserved.reservedWordText
-
-continuedReservedSymbol :: Reserved.ReservedSymbol -> Parser Text
-continuedReservedSymbol =
-  continuedKeyword . Text.pack . Reserved.reservedSymbolIdentifierString
 
 continuedWordOperator :: AST.Operator -> Parser Text
 continuedWordOperator =
@@ -998,6 +1126,9 @@ standardString = lexeme standardStringToken
 astStandardString :: Parser String
 astStandardString = astLexeme standardStringToken
 
+astString :: Parser String
+astString = astLexeme identifierStringToken <|> astStandardString
+
 standardStringToken :: Parser String
 standardStringToken =
   parsedLiteralText <$> quotedStringParts Nothing
@@ -1069,16 +1200,15 @@ withInterpolationComments parser = do
   local (\context -> context { interpolationDepth = interpolationDepth context + 1 }) parser
 
 sourceSimpleInterpolation :: Parser Expression
-sourceSimpleInterpolation =
-  simpleInterpolationWith sourceStringTemplateToken
+sourceSimpleInterpolation = simpleInterpolationWith
+  (atomicExpressionToken sourceStringTemplateToken <|> (IdentifierReference . IdentifierString <$> bareIdentifierToken))
 
 astSimpleInterpolation :: Parser Expression
-astSimpleInterpolation =
-  simpleInterpolationWith astStringTemplateToken
+astSimpleInterpolation = simpleInterpolationWith astAtom
 
 simpleInterpolationWith :: Parser Expression -> Parser Expression
-simpleInterpolationWith nestedStringTemplate = do
-  expressionValue <- atomicExpressionToken nestedStringTemplate
+simpleInterpolationWith atomParser = do
+  expressionValue <- atomParser
   isOptional <- maybe False (const True) <$> optional (char '?')
   pure
     (if isOptional
@@ -1221,10 +1351,14 @@ operatorSourceText operator =
     Nothing -> error "operator has no concrete source token"
 
 operatorToken :: AST.Operator -> Parser Text
-operatorToken = symbol . operatorSourceText
+operatorToken operator = lexeme $ try $ do
+  token <- chunk (operatorSourceText operator)
+  if operator `elem` [AST.MinusOperator, AST.SubtractionOperator]
+    then notFollowedBy (char '>') else pure ()
+  pure token
 
 continuedOperator :: AST.Operator -> Parser Text
-continuedOperator = continuedSymbol . operatorSourceText
+continuedOperator operator = operatorToken operator <* lineSpaceConsumer
 
 semicolon :: Parser Text
 semicolon = symbol ";"

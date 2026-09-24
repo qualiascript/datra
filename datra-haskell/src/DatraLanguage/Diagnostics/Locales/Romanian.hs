@@ -58,6 +58,8 @@ localizeAccessError reason =
 localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
+    NamedAccessError message -> LocalizedMessage "accesul prin nume a eșuat" [message]
+    FunctionError message -> LocalizedMessage "evaluarea funcției a eșuat" [message]
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
     UnknownIdentifier name ->
@@ -186,6 +188,7 @@ operandSide LeftOperand = "stâng"
 operandSide RightOperand = "drept"
 
 valueKind :: InterpretedValueKind -> String
+valueKind FunctionValueKind = "function"
 valueKind NaturalValueKind = "număr natural"
 valueKind IntegerValueKind = "număr întreg"
 valueKind BooleanValueKind = "boolean"

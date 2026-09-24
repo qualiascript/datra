@@ -1,6 +1,7 @@
 -- | Total constructors for primitive evaluated Datra values.
 module Evaluation.Construction
-  ( makeNatural
+  ( makeNothing
+  , makeNatural
   , makeInteger
   , makeAsciiString
   , makeStringType
@@ -54,6 +55,7 @@ makeInteger integer
 -- | Construct the semantic two-page presentation of a nonempty ASCII string,
 -- or the canonical empty presentation for an empty string.
 makeAsciiString :: String -> InterpretedValue
+makeAsciiString "Nothing" = makeNothing
 makeAsciiString characters = value
   where
     characterValues =
@@ -161,3 +163,21 @@ mapFromInsertion insertion components =
   where
     isEmpty =
       someSuperEllipsisInsertionOrderType insertion == finiteOrdinal 0
+
+-- | The distinguished absent value, rendered canonically as @Nothing : ()@.
+makeNothing :: InterpretedValue
+makeNothing = value
+  where
+    unitSemantics = MapSemantics 0 []
+    semantics =
+      IdentifierTypeSemantics
+        (SimpleIdentifierDependency "Nothing")
+        unitSemantics
+        True
+    value =
+      makeSingletonInterpretedValue
+        NothingForm
+        NoInsertion
+        emptyInterpretedMap
+        TotalInterpretedMap
+        semantics

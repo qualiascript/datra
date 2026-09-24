@@ -1,0 +1,3 @@
+import "library_one"
+x := LibraryOne.x[1] + 1
+yield this

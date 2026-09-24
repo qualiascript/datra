@@ -1,17 +1,18 @@
 module Main (main) where
 
 import Data.Char (toLower)
-import DatraLanguage.AST (Expression, renderExpression)
+import DatraLanguage.AST (renderExpression)
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
   , renderDatraError
   )
-import Interpreting (InterpretedValue, interpretLocatedExpression)
+import Interpreting (interpretLocatedWithImports)
+import ModuleLoading (loadImports, loadExpressionImports, importSyntax)
 import Options.Applicative
 import Parsing
   ( parseDatraAstLocatedWithSourceName
-  , parseDatraLocatedWithSourceName
+  , parseDatraLocatedWithSyntaxImports
   )
 import Rendering
   ( renderInterpretedValue
@@ -195,19 +196,22 @@ runCommand commandValue =
     Build input astPath outputPath locale -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
+      imports <- loadImports sourceName source >>= parseOrFail errorPath
       locatedExpression <-
         parseOrFail errorPath
-          (parseDatraLocatedWithSourceName sourceName source)
+          (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
-      interpreted <- interpretOrFail errorPath locale locatedExpression
+      interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
+        (interpretLocatedWithImports imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
     GenerateAst input outputPath -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
+      imports <- loadImports sourceName source >>= parseOrFail errorPath
       locatedExpression <-
         parseOrFail errorPath
-          (parseDatraLocatedWithSourceName sourceName source)
+          (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
     InterpretAst input outputPath locale -> do
@@ -216,7 +220,9 @@ runCommand commandValue =
       locatedExpression <-
         parseOrFail errorPath
           (parseDatraAstLocatedWithSourceName sourceName source)
-      interpreted <- interpretOrFail errorPath locale locatedExpression
+      imports <- loadExpressionImports sourceName (locatedValue locatedExpression) >>= parseOrFail errorPath
+      interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
+        (interpretLocatedWithImports imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
 
 errorPathFor :: Input -> [FilePath] -> FilePath
@@ -233,15 +239,6 @@ errorPathFor input outputPaths =
 
 parseOrFail :: FilePath -> Either String value -> IO value
 parseOrFail errorPath = either (failWithOutput errorPath) pure
-
-interpretOrFail
-  :: FilePath
-  -> Locale
-  -> Located Expression
-  -> IO InterpretedValue
-interpretOrFail errorPath locale =
-  either (failWithOutput errorPath . renderDatraError locale) pure
-    . interpretLocatedExpression
 
 failWithOutput :: FilePath -> String -> IO value
 failWithOutput errorPath rendered = do

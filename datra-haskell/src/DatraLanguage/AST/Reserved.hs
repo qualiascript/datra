@@ -80,10 +80,13 @@ reservedSymbolIdentifiersAreUnique =
 
 reservedIdentifierStrings :: [String]
 reservedIdentifierStrings =
-  map reservedSymbolIdentifierString reservedSymbols
+  []
+    <> ["as", "import", "this"]
     <> map reservedWordText identifierReservedWords
     <> map operatorCanonicalSymbol
-      [ MinusOperator
+      [ DoOperator
+      , ExternalOperator
+      , MinusOperator
       , SubfederationOperator
       , BooleanAndOperator
       , BooleanOrOperator

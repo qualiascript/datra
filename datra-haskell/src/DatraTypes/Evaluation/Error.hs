@@ -19,7 +19,8 @@ data OperandSide = LeftOperand | RightOperand
   deriving (Eq, Show)
 
 data InterpretedValueKind
-  = NaturalValueKind
+  = FunctionValueKind
+  | NaturalValueKind
   | IntegerValueKind
   | BooleanValueKind
   | EitherValueKind
@@ -52,7 +53,9 @@ data AtlasMapFederationUncertainty
   deriving (Eq, Show)
 
 data InterpretingError
-  = IdentifierStringOverlap String
+  = NamedAccessError String
+  | FunctionError String
+  | IdentifierStringOverlap String
   | UnknownIdentifier String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
