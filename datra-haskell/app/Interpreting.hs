@@ -243,6 +243,7 @@ data Binding
   | ImportedBinding FilePath InterpretedValue
   | ModuleCatalog [(String, ModuleSource)]
   | ScopeMembers [String]
+  | CanonicalNames [(String, String)]
 
 evalInScope :: Scope -> [String] -> Interpreter
 evalInScope scope resolving = interpretNormalizedExpression scope resolving . normalizeExpression
@@ -443,7 +444,10 @@ interpretNormalizedExpression scope resolving expressionValue =
     interpret = evalInScope scope resolving
     binary = interpretBinaryWith interpret
     evaluateBlock source bindings result = do
-      imported <- importScope scope resolving bindings
+      let origins = canonicalDependencyNames bindings result
+          reconstructionScope = if null origins then scope
+            else ("\0canonical", CanonicalNames origins) : scope
+      imported <- importScope reconstructionScope resolving bindings
       withEvaluationSource source <$> evalInScope imported resolving result
 
 resolveIdentifier
@@ -455,6 +459,7 @@ resolveIdentifier scope resolving name =
     Just (RetainedBinding _ _ _ value) -> Right value
     Just (ImportedBinding _ value) -> Right value
     Just ScopeMembers {} -> Left (UnknownIdentifier name)
+    Just CanonicalNames {} -> Left (UnknownIdentifier name)
     Just ModuleCatalog {} -> Left (UnknownIdentifier name)
     Just (DeferredBinding captured annotation expressionValue) -> do
       case annotation of
@@ -1142,8 +1147,10 @@ closureResolver scope = resolver
             (intercalate "." (originName name : fields))
             expressionValue emptyResolver)
     originName name
+      | Just original <- lookup name
+          (concat [names | (_, CanonicalNames names) <- scope]) = original
       | name `elem` standardNames = "Std." <> name
-      | otherwise = dropWhile (== '_') name
+      | otherwise = name
     standardNames =
       ["Any", "Nat", "Int", "String", "StringTemplate", "IdenStr"
       ,"Bool", "true", "false", "nothing", "AST", "Expr", "Block", "Pages"

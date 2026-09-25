@@ -84,20 +84,27 @@ an import of the whole module. Recursive functions use `let`.
 For example, a dependency on `Int` is declared as:
 
 ```datra
-"__Std.Int" : (external "datra.Int")
+"___Std.Int" : (external "datra.Int")
 ```
 
-The reference `this."__Std.Int"[1]` denotes its bound value. This canonical
+The reference `this."___Std.Int"[1]` denotes its bound value. This canonical
 reference form also supports identifiers containing spaces or dots, bypassing
 bare-symbol restrictions. No additional `_dependency0_0` alias is needed. Extra
-leading underscores distinguish nested dependency levels.
+leading underscores distinguish nested dependency levels. A reconstructed
+user-origin name is encoded by prepending `_`, then adding the level's `L + 2`
+scope underscores. At level zero, `abc` becomes `"___abc"`, `_abc` becomes
+`"____abc"`, and `_____abc` becomes `"________abc"`. Original underscores are
+never stripped. This applies to standard-library dependencies too.
 
-Generated recursive bindings follow the same rule: `let "__function0" : ...`
-is referenced as `this."__function0"[1]`, including in recursive calls and the
-final `yield`. Every generated name at level `L` has `L + 2` leading underscores:
-`"__function0"`, `"___function1"`, `"____function2"`, and so on. Generated names
+Generated recursive bindings follow the same rule: `let "__fun" : ...`
+is referenced as `this."__fun"[1]`, including in recursive calls and the
+final `yield`. Internal names at level `L` have `L + 2` leading underscores:
+`"__fun"`, `"___fun"`, `"____fun"`, and so on. Generated names
 are checked against declarations and one another, since a user can also declare
-an identical quoted name.
+an identical quoted name, or a name matching an internal name at a deeper level.
+When a reconstruction block is read back, its user-name marker and scope prefix
+are decoded together; serializing again does not accumulate underscores.
+Observable parameter names and map fields retain their original labels.
 
 Computed positional access selects a declaration before evaluating its value:
 

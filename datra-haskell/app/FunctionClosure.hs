@@ -4,11 +4,11 @@ module FunctionClosure
   ( Dependency (..)
   , Resolver (..)
   , closeFunction
+  , canonicalDependencyNames
   ) where
 
 import Data.List (nub, stripPrefix)
 import Data.Char (isDigit)
-import Text.Read (readMaybe)
 import DatraLanguage.AST
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
 
@@ -32,16 +32,16 @@ type Collected = [(String, IdentifierString, Expression)]
 
 closeFunction :: Resolver -> Maybe String -> Expression -> Expression
 closeFunction resolver self expression =
-  close 0 [] resolver self expression
+  close 0 [] [] resolver self expression
 
-close :: Int -> References -> Resolver -> Maybe String -> Expression -> Expression
-close depth ancestors resolver self original =
+close :: Int -> References -> [String] -> Resolver -> Maybe String -> Expression -> Expression
+close depth ancestors occupied resolver self original =
   if null definitions && not recursive
     then rewritten
     else Begin (definitions <> [Let (assigned root rewritten)]) (IdentifierReference root)
   where
-    expression = rebaseClosed depth [] original
-    reserved = declaredNames expression
+    expression = rebaseClosed depth occupied [] original
+    reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
     (rewritten, collected) = runState (rewrite depth (rootText : reserved) active resolver [] expression) []
@@ -72,9 +72,10 @@ rewrite depth reserved active resolver bound expression
             name : _ -> pure (IdentifierReference name)
             [] -> do
               let name = fresh
-                    (replicate (depth + 2) '_' <> dropWhile (== '_') (dependencyName dependency))
+                    (replicate (depth + 2) '_' <> "_" <> dependencyName dependency)
                     (reserved <> [text | (_, IdentifierString text, _) <- collected])
                   value = close (depth + 1) active
+                    (reserved <> [text | (_, IdentifierString text, _) <- collected] <> [nameText name])
                     (dependencyResolver dependency)
                     (Just (dependencyKey dependency))
                     (dependencyExpression dependency)
@@ -85,7 +86,7 @@ rewrite depth reserved active resolver bound expression =
   case expression of
     InModule path body
       | Just imported <- resolveDependencyModule resolver path ->
-          pure (close (depth + 1) active imported Nothing body)
+          pure (close (depth + 1) active reserved imported Nothing body)
     MapSpecification (FunctionBody entries result) (FunctionType domain codomain) -> do
       closedDomain <- rewrite depth reserved active resolver bound domain
       closedCodomain <- rewrite depth reserved active resolver bound codomain
@@ -118,7 +119,7 @@ assigned name expression = IdentifierOperation name expression Nothing
 
 -- Generated roots use the same quoted namespace as their dependencies.
 functionName :: Int -> String
-functionName depth = replicate (depth + 2) '_' <> "function" <> show depth
+functionName depth = replicate (depth + 2) '_' <> "fun"
 
 fresh :: String -> [String] -> IdentifierString
 fresh candidate reserved = go (0 :: Int)
@@ -146,38 +147,84 @@ referenceNames :: Expression -> [IdentifierString]
 referenceNames (IdentifierReference name) = [name]
 referenceNames value = concatMap referenceNames (expressionChildren value)
 
+-- Decode only a complete reconstruction block, never an arbitrary user name.
+-- Removing exactly the scope prefix plus the user marker preserves all original
+-- leading underscores, including names which resemble generated identifiers.
+canonicalDependencyNames :: [Expression] -> Expression -> [(String, String)]
+canonicalDependencyNames entries result = case canonicalBlock entries result of
+  Just (depth, root, _) ->
+    [(text, original) | entry <- entries, name@(IdentifierString text) <- entryName entry
+      , name /= root, Just original <- [stripPrefix (replicate (depth + 3) '_') text]]
+  Nothing -> []
+
+canonicalBlock :: [Expression] -> Expression -> Maybe (Int, IdentifierString, String)
+canonicalBlock entries (IdentifierReference root@(IdentifierString rootText)) = do
+  collisionSuffix <- stripPrefix "fun" (dropWhile (== '_') rootText)
+  let depth = length (takeWhile (== '_') rootText) - 2
+  if depth >= 0
+      && (null collisionSuffix || case collisionSuffix of
+        '_' : rest -> not (null rest) && all isDigit rest
+        _ -> False)
+    then case reverse entries of
+      Let (IdentifierOperation declared _ _) : _ | declared == root ->
+        Just (depth, root, collisionSuffix)
+      _ -> Nothing
+    else Nothing
+canonicalBlock _ _ = Nothing
+
+nameText :: IdentifierString -> String
+nameText (IdentifierString text) = text
+
+entryName :: Expression -> [IdentifierString]
+entryName (Let value) = entryName value
+entryName (IdentifierOperation name _ _) = [name]
+entryName _ = []
+
+-- Generated descendants will be renamed in their own scopes. Reserving their
+-- old spellings in the parent would make every round trip invent new suffixes.
+ordinaryDeclaredNames :: Expression -> [String]
+ordinaryDeclaredNames (Begin entries result)
+  | Just _ <- canonicalBlock entries result =
+      concatMap contents entries <> ordinaryDeclaredNames result
+  where
+    contents (Let value) = contents value
+    contents (IdentifierOperation _ annotation given) =
+      ordinaryDeclaredNames annotation <> maybe [] ordinaryDeclaredNames given
+    contents value = ordinaryDeclaredNames value
+ordinaryDeclaredNames value =
+  bindingNames value <> concatMap ordinaryDeclaredNames (expressionChildren value)
+
 -- Move an already closed function into a dependency subblock without colliding
 -- with the caller's generated bindings. Only blocks with our complete emitted
 -- shape are rebased; user names and observable ordinary map fields are retained.
-rebaseClosed :: Int -> [(IdentifierString, IdentifierString)] -> Expression -> Expression
-rebaseClosed depth inherited expression = case expression of
-  Begin entries (IdentifierReference root@(IdentifierString rootText))
-    | length (takeWhile (== '_') rootText) >= 2
-    , Just suffix <- stripPrefix "function" (dropWhile (== '_') rootText)
-    , (digits, collisionSuffix) <- span isDigit suffix
-    , Just oldDepth <- (readMaybe digits :: Maybe Int)
-    , Let (IdentifierOperation declared _ _) : _ <- reverse entries
-    , declared == root ->
-        let rename name@(IdentifierString text)
-              | name == root = IdentifierString (functionName depth <> collisionSuffix)
+rebaseClosed :: Int -> [String] -> [(IdentifierString, IdentifierString)] -> Expression -> Expression
+rebaseClosed depth occupied inherited expression = case expression of
+  Begin entries result
+    | Just (oldDepth, root, _) <- canonicalBlock entries result ->
+        let candidate name@(IdentifierString text)
+              | name == root = IdentifierString (functionName depth)
               | Just tailText <- stripPrefix (replicate (oldDepth + 2) '_') text =
                   IdentifierString (replicate (depth + 2) '_' <> tailText)
               | otherwise = name
             names = [name | declaration <- entries
                      , name <- entryName declaration]
-            scope = [(name, rename name) | name <- names] <> inherited
+            ordinaryNames = ordinaryDeclaredNames expression
+            reserved = occupied <> ordinaryNames
+            allocate namesSoFar name = namesSoFar <>
+              [(name, fresh (nameText (candidate name))
+                (reserved <> map (nameText . snd) namesSoFar))]
+            assignedNames = foldl allocate [] names
+            scope = assignedNames <> inherited
+            enclosingNames = reserved <> map (nameText . snd) assignedNames
             entry (Let value) = Let (entry value)
             entry (IdentifierOperation name annotation given) =
               IdentifierOperation (renamed scope name)
-                (rebaseClosed (depth + 1) scope annotation)
-                (rebaseClosed (depth + 1) scope <$> given)
-            entry value = rebaseClosed (depth + 1) scope value
-        in Begin (map entry entries) (IdentifierReference (rename root))
+                (rebaseClosed (depth + 1) enclosingNames scope annotation)
+                (rebaseClosed (depth + 1) enclosingNames scope <$> given)
+            entry value = rebaseClosed (depth + 1) enclosingNames scope value
+        in Begin (map entry entries) (IdentifierReference (renamed scope root))
   IdentifierReference name -> IdentifierReference (renamed inherited name)
   NamedAccess This name -> NamedAccess This (renamed inherited name)
-  _ -> mapExpressionChildren (rebaseClosed depth inherited) expression
+  _ -> mapExpressionChildren (rebaseClosed depth occupied inherited) expression
   where
     renamed names name = maybe name id (lookup name names)
-    entryName (Let value) = entryName value
-    entryName (IdentifierOperation name _ _) = [name]
-    entryName _ = []
