@@ -4,6 +4,7 @@
 module Evaluation.Overload
   ( ArgumentSchema
   , argumentSlotSchema
+  , dependentArgumentSlotSchema
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
@@ -44,6 +45,7 @@ data ArgumentSchema
       Int
       (Maybe String)
       Bool
+      Bool
       InterpretedValue
       (Maybe InterpretedValue)
   | OrderedArgumentSchema Natural [ArgumentSchema]
@@ -54,6 +56,8 @@ data ArgumentSchema
 data Slot = Slot
   { slotIndex :: Int
   , slotName :: Maybe String
+  , slotOptionalName :: Bool
+  , slotDependentBinder :: Bool
   , slotAnnotation :: InterpretedValue
   , slotDefault :: Maybe InterpretedValue
   }
@@ -183,13 +187,17 @@ matchSlot slot input = do
   let (inputName, inputValue) = suppliedValue input
   case (slotName slot, inputName) of
     (Just expected, Just actual)
-      | not (isPublicIdentifier expected) -> Nothing
-      | expected == actual -> pure ()
+      | not (isPublicIdentifier expected)
+      , not (slotDependentBinder slot) -> Nothing
+      | expected == actual
+      , not (slotDependentBinder slot) || suppliedAsAssignment input -> pure ()
       | otherwise -> Nothing
     -- A missing source name is positional. Required and optional target names
     -- differ in whether omission is allowed, not in whether a supplied value
     -- may acquire that name through deterministic argument matching.
-    (Just _, Nothing) -> pure ()
+    (Just _, Nothing)
+      | slotDependentBinder slot && not (slotOptionalName slot) -> Nothing
+      | otherwise -> pure ()
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
   case specifyValues inputValue (slotAnnotation slot) of
@@ -210,11 +218,19 @@ suppliedValue value =
           (Just name, maybe annotation id supplied)
         Nothing -> (Nothing, value)
 
+suppliedAsAssignment :: InterpretedValue -> Bool
+suppliedAsAssignment value =
+  case interpretedForm value of
+    AssignmentForm _ -> True
+    _ -> case interpretedCanonicalResult value of
+      CanonicalAssignment {} -> True
+      _ -> False
+
 templateSlots :: ArgumentSchema -> [Slot]
 templateSlots template =
   case template of
-    ArgumentSlotSchema index name _ annotation defaultValue ->
-      [Slot index name annotation defaultValue]
+    ArgumentSlotSchema index name optional dependent annotation defaultValue ->
+      [Slot index name optional dependent annotation defaultValue]
     OrderedArgumentSchema _ children -> concatMap templateSlots children
     UnorderedArgumentSchema children -> concatMap templateSlots children
     ConcatenatedArgumentSchema left right ->
@@ -227,8 +243,8 @@ templateSlots template =
 templateSlotOrders :: ArgumentSchema -> [[Slot]]
 templateSlotOrders template =
   case template of
-    ArgumentSlotSchema index name _ annotation defaultValue ->
-      [[Slot index name annotation defaultValue]]
+    ArgumentSlotSchema index name optional dependent annotation defaultValue ->
+      [[Slot index name optional dependent annotation defaultValue]]
     OrderedArgumentSchema _ children -> combine children
     UnorderedArgumentSchema children ->
       concatMap combine (permutations children)
@@ -248,13 +264,13 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
     fromValue next current =
       case optionalNamedParts current of
         Just (name, annotation, defaultValue) ->
-          ( ArgumentSlotSchema next (Just name) True annotation defaultValue
+          ( ArgumentSlotSchema next (Just name) True False annotation defaultValue
           , next + 1
           )
         Nothing ->
           case namedParts current of
             Just (name, annotation, defaultValue) ->
-              ( ArgumentSlotSchema next (Just name) False annotation defaultValue
+              ( ArgumentSlotSchema next (Just name) False False annotation defaultValue
               , next + 1
               )
             Nothing ->
@@ -285,7 +301,7 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
                       (EmptyArgumentSchema, next)
                 _ -> slot current next
     slot current next =
-      (ArgumentSlotSchema next Nothing False current Nothing, next + 1)
+      (ArgumentSlotSchema next Nothing False False current Nothing, next + 1)
     mapChildren constructor start members =
       let (children, afterChildren) = schemasFromValues start members
       in (constructor children, afterChildren)
@@ -301,8 +317,8 @@ normalizeArgumentSchema schema = fst (go 0 schema)
   where
     go next current =
       case current of
-        ArgumentSlotSchema _ name optional annotation defaultValue ->
-          ( ArgumentSlotSchema next name optional annotation defaultValue
+        ArgumentSlotSchema _ name optional dependent annotation defaultValue ->
+          ( ArgumentSlotSchema next name optional dependent annotation defaultValue
           , next + 1
           )
         OrderedArgumentSchema cardinality children ->
@@ -329,7 +345,16 @@ argumentSlotSchema
   -> InterpretedValue
   -> Maybe InterpretedValue
   -> ArgumentSchema
-argumentSlotSchema = ArgumentSlotSchema 0
+argumentSlotSchema name optional annotation defaultValue =
+  ArgumentSlotSchema 0 name optional False annotation defaultValue
+
+dependentArgumentSlotSchema
+  :: String
+  -> Bool
+  -> InterpretedValue
+  -> ArgumentSchema
+dependentArgumentSlotSchema name optional annotation =
+  ArgumentSlotSchema 0 (Just name) optional True annotation Nothing
 
 orderedArgumentSchema :: Natural -> [ArgumentSchema] -> ArgumentSchema
 orderedArgumentSchema = OrderedArgumentSchema
@@ -346,8 +371,8 @@ concatenatedArgumentSchema schemas =
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =
   case schema of
-    ArgumentSlotSchema _ (Just name) _ annotation _ -> [(name, annotation)]
-    ArgumentSlotSchema _ Nothing _ _ _ -> []
+    ArgumentSlotSchema _ (Just name) _ _ annotation _ -> [(name, annotation)]
+    ArgumentSlotSchema _ Nothing _ _ _ _ -> []
     OrderedArgumentSchema _ children -> concatMap argumentSchemaBindings children
     UnorderedArgumentSchema children -> concatMap argumentSchemaBindings children
     ConcatenatedArgumentSchema left right ->
@@ -359,8 +384,8 @@ argumentSchemaDomain
   -> Either InterpretingError InterpretedValue
 argumentSchemaDomain schema =
   case schema of
-    ArgumentSlotSchema _ Nothing _ annotation _ -> pure annotation
-    ArgumentSlotSchema _ (Just name) optional annotation _ -> do
+    ArgumentSlotSchema _ Nothing _ _ annotation _ -> pure annotation
+    ArgumentSlotSchema _ (Just name) optional _ annotation _ -> do
       let named = simpleIdentifierTypeValue name annotation
       if optional then makeEitherValue named annotation else pure named
     OrderedArgumentSchema cardinality children ->
@@ -499,8 +524,8 @@ buildTemplate
   -> Either InterpretingError InterpretedValue
 buildTemplate replacements template =
   case template of
-    ArgumentSlotSchema index name optional annotation defaultValue ->
-      buildSlot name optional annotation
+    ArgumentSlotSchema index name optional dependent annotation defaultValue ->
+      buildSlot name optional dependent annotation
         (replacementAt index replacements <|> defaultValue)
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse (buildTemplate replacements) children
@@ -522,17 +547,18 @@ replacementAt index replacements =
 buildSlot
   :: Maybe String
   -> Bool
+  -> Bool
   -> InterpretedValue
   -> Maybe InterpretedValue
   -> Either InterpretingError InterpretedValue
-buildSlot Nothing _ annotation supplied =
+buildSlot Nothing _ _ annotation supplied =
   Right (maybe annotation id supplied)
-buildSlot (Just name) optional annotation supplied = do
+buildSlot (Just name) optional dependent annotation supplied = do
   present <-
     case supplied of
       Nothing -> Right (simpleIdentifierTypeValue name annotation)
       Just value
-        | not (isPublicIdentifier name) -> do
+        | not (isPublicIdentifier name) && not dependent -> do
             _ <- specifyValues value annotation
             Right (simpleIdentifierTypeValue name value)
       Just value ->

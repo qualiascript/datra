@@ -11,8 +11,8 @@ Inline recursion uses `fun`, where `this` is the value being defined:
 `input.datra`:
 
 ```datra
-let factorial := {n? : Int} -> Int do
-  yield if n = 0 then 1 else n * factorial (n - 1)
+factorial := fun {n? : Int} -> Int do
+  yield if n = 0 then 1 else n * this (n - 1)
 assert factorial 5 = 120
 ```
 

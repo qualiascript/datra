@@ -101,7 +101,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "nothing result" "yield (() -> nothing yield nothing)"
       "()" "nothing"
   , roundTrip "inferred parameters" "yield (do yield a + b)" "(2, 3)" "5"
-  , roundTrip "narrowed callable"
+  , roundTripUsingStd "narrowed callable"
       "f := ({x? : Int} -> Int yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , roundTrip "mutual recursive definitions"
@@ -109,7 +109,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "4" "true"
   , roundTrip "registered native function" "yield external \"datra.add\""
       "(2, 3)" "5"
-  , roundTrip "syntax function ordinary application"
+  , roundTripUsingStd "syntax function ordinary application"
       "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
       "4" "5"
   , testCase "unused ambient bindings are absent" $ do
@@ -176,7 +176,16 @@ threeLevels =
   "base := 2\nstep := base + 1\nnext := step + 1\nyield ({n? : Int} -> Int yield n + next)"
 
 roundTrip :: String -> String -> String -> String -> TestTree
-roundTrip name program argument expected = testCase name $ do
+roundTrip = roundTripWith True
+
+-- A specification wrapped around a closed function retains its public type
+-- spelling. Those names intentionally belong to Std, while the function body
+-- itself remains independently closed.
+roundTripUsingStd :: String -> String -> String -> String -> TestTree
+roundTripUsingStd = roundTripWith False
+
+roundTripWith :: Bool -> String -> String -> String -> String -> TestTree
+roundTripWith independentlyClosed name program argument expected = testCase name $ do
   original <- requireProgram program
   let text = renderInterpretedValue original
   reconstructed <- requireExpression text
@@ -188,11 +197,17 @@ roundTrip name program argument expected = testCase name $ do
     Right _ -> pure ()
   result <- requireProgram ("f := " <> text <> "\nyield f " <> argument)
   assertEqual "reconstructed call" expected (renderInterpretedValue result)
-  closed <- either (assertFailure . show) pure (parseDatra ("(" <> text <> "\n)"))
-  input <- either (assertFailure . show) pure (parseDatra ("(" <> argument <> ")"))
-  independent <- either (assertFailure . show) pure
-    (interpretClosedExpression (FunctionApplication closed input))
-  assertEqual "call needs no implicit Std or modules" expected (renderInterpretedValue independent)
+  if independentlyClosed
+    then do
+      closed <- either (assertFailure . show) pure
+        (parseDatra ("(" <> text <> "\n)"))
+      input <- either (assertFailure . show) pure
+        (parseDatra ("(" <> argument <> ")"))
+      independent <- either (assertFailure . show) pure
+        (interpretClosedExpression (FunctionApplication closed input))
+      assertEqual "call needs no implicit Std or modules"
+        expected (renderInterpretedValue independent)
+    else pure ()
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram

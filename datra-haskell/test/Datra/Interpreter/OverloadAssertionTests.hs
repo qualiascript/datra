@@ -69,10 +69,10 @@ overloadTests =
         (SourceEvaluationFailure
           (OverloadError OverloadNoMatch))
     , programCase "safe overload fills a later compatible slot"
-        "yield {x : Nat := 2, String} <<< \"a\""
+        "yield {x : Nat := 2, Str} <<< \"a\""
         "{x : Nat := 2, $a}"
     , programCase "reverse safe overload reverses the operands"
-        "yield \"a\" >>> {x : Nat := 2, String}"
+        "yield \"a\" >>> {x : Nat := 2, Str}"
         "{x : Nat := 2, $a}"
     , programCase "safe overload accepts the existing default"
         "yield {x : Nat := 2} <<< 2"
@@ -82,7 +82,7 @@ overloadTests =
         (SourceEvaluationFailure
           (OverloadError OverloadChangedDefault))
     , programCase "safe overload result supports subfederation"
-        "yield ({x? : Nat := 2, String} <<< \"a\") of {x? : Nat, String}"
+        "yield ({x? : Nat := 2, Str} <<< \"a\") of {x? : Nat, Str}"
         "true"
     , programCase "safe overload result supports specification"
         "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"

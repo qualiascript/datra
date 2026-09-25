@@ -38,8 +38,8 @@ Build just one with `make docker-prod` or `make docker-development`.
 
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source 'let factorial := {n? : Int} -> Int do
-  yield if n = 0 then 1 else n * factorial (n - 1)
+  --source 'factorial := fun {n? : Int} -> Int do
+  yield if n = 0 then 1 else n * this (n - 1)
 assert factorial 5 = 120' \
   --ast-output /dev/null \
   --output -

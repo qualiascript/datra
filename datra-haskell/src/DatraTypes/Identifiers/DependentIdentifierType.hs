@@ -16,11 +16,20 @@ module DependentIdentifierType
   ) where
 
 import AtlasMapFederation (AtlasMapFederation)
+import DatraTypes.DependentTypes
+  ( DependentSum
+  , dependentSum
+  , dependentSumDomain
+  , dependentSumFiberAt
+  )
 
 type role DependentIdentifierType nominal nominal
-data DependentIdentifierType federationScope index = DependentIdentifierType
-  (AtlasMapFederation federationScope index)
-  (index -> String)
+newtype DependentIdentifierType federationScope index =
+  DependentIdentifierType
+    (DependentSum
+      (AtlasMapFederation federationScope index)
+      index
+      String)
 
 data DependentIdentifierTypeMember index = DependentIdentifierTypeMember
   { identifierMemberString :: String
@@ -31,18 +40,21 @@ dependentIdentifierType
   :: AtlasMapFederation federationScope index
   -> (index -> String)
   -> DependentIdentifierType federationScope index
-dependentIdentifierType = DependentIdentifierType
+dependentIdentifierType federation stringAt =
+  DependentIdentifierType (dependentSum federation stringAt)
 
 dependentIdentifierTypeFederation
   :: DependentIdentifierType federationScope index
   -> AtlasMapFederation federationScope index
-dependentIdentifierTypeFederation (DependentIdentifierType federation _) = federation
+dependentIdentifierTypeFederation (DependentIdentifierType value) =
+  dependentSumDomain value
 
 dependentIdentifierTypeStringAt
   :: DependentIdentifierType federationScope index
   -> index
   -> String
-dependentIdentifierTypeStringAt (DependentIdentifierType _ stringAt) = stringAt
+dependentIdentifierTypeStringAt (DependentIdentifierType value) =
+  dependentSumFiberAt value
 
 dependentIdentifierTypeMemberAt
   :: DependentIdentifierType federationScope index

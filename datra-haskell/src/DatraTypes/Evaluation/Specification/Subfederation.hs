@@ -15,6 +15,10 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | DependentSumForm dependent <- interpretedForm target =
+      case evaluatedDependentSumSpecify dependent source of
+        Right _ -> DecisionProved ()
+        Left _ -> DecisionRefuted
   | EitherForm alternatives <- interpretedForm source
   , isFunctionFamily source =
       decideAllEitherAlternatives alternatives target

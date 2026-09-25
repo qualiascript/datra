@@ -33,6 +33,8 @@ specifyValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyValues source target
+  | DependentSumForm dependent <- interpretedForm target =
+      evaluatedDependentSumSpecify dependent source
   | EitherForm _ <- interpretedForm source
   , isFunctionFamily source = do
       specified <- traverse (`specifyValues` target) (argumentAlternatives source)

@@ -26,6 +26,14 @@ standardLibraryTests =
             "AST := 2\nyield AST" "2"
         , programCase "AST external uses the private type spelling"
             "yield external \"datra.AST\"" "_AST"
+        , programFailureCase "Expr is private to the library"
+            "yield Expr" (SourceEvaluationFailure (UnknownIdentifier "Expr"))
+        , programFailureCase "Block is private to the library"
+            "yield Block" (SourceEvaluationFailure (UnknownIdentifier "Block"))
+        , programFailureCase "Pages is private to the library"
+            "yield Pages" (SourceEvaluationFailure (UnknownIdentifier "Pages"))
+        , programFailureCase "IdenExp is private to the library"
+            "yield IdenExp" (SourceEvaluationFailure (UnknownIdentifier "IdenExp"))
         ]
     , testGroup "qualified syntax"
         [ expressionCase source source expected
@@ -138,7 +146,7 @@ standardLibraryTests =
             [ "Any of Any"
             , "Nat of Any"
             , "5 of Any"
-            , "(Nat; String) of Any"
+            , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
             , "not ((external \"datra.AST\") of Any)"
@@ -158,17 +166,88 @@ standardLibraryTests =
             , "not (from (-2) to 5 of NatValRange)"
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "Expr of (external \"datra.AST\")"
-            , "Block of (external \"datra.AST\")"
-            , "Pages of (external \"datra.AST\")"
-            , "not (Block of Expr)"
-            , "(Expr ~> (external \"datra.AST\")) of (external \"datra.AST\")"
-            , "\"%Any\" of StringTemplate"
-            , "\"%Int %IdenStr\" of StringTemplate"
-            , "(\"%Int %IdenStr\" ~> StringTemplate) of StringTemplate"
-            , "not (2 of StringTemplate)"
-            , "String of StringTemplate"
+            , "(external \"datra.Expr\") of (external \"datra.AST\")"
+            , "(external \"datra.Block\") of (external \"datra.AST\")"
+            , "(external \"datra.Pages\") of (external \"datra.AST\")"
+            , "not ((external \"datra.Block\") of (external \"datra.Expr\"))"
+            , "((external \"datra.Expr\") ~> (external \"datra.AST\")) of (external \"datra.AST\")"
+            , "\"%Any\" of StrTempl"
+            , "\"%Int %IdenStr\" of StrTempl"
+            , "(\"%Int %IdenStr\" ~> StrTempl) of StrTempl"
+            , "not (2 of StrTempl)"
+            , "Str of StrTempl"
             ]
+        ]
+    , testGroup "dependent List"
+        [ programCase "Str is List Char"
+            "yield Str = List Char" "true"
+        , programCase "natural list uses semicolon members"
+            "yield (1; 2; 3) of List Nat" "true"
+        , programCase "natural list rejects a non-natural member"
+            "yield (1; \"x\") of List Nat" "false"
+        , programCase "List Str preserves nested string members"
+            "yield (\"a\"; \"bc\") of List Str" "true"
+        , programCase "List Str rejects a non-string member"
+            "yield (\"a\"; 2) of List Str" "false"
+        , programCase "comma remains string concatenation, not a List Str spine"
+            "yield not ((\"a\", \"bc\") of List Str)" "true"
+        ]
+    , testGroup "dependent sums"
+        [ programCase "optional binder accepts positional witnesses"
+            ( "Pair := {with T? of Any; value? : T}\n"
+                <> "yield (Nat; 5) of Pair"
+            )
+            "true"
+        , programCase "optional binder accepts named assignment witnesses"
+            ( "Pair := {with T? of Any; value? : T}\n"
+                <> "yield {T := Nat; value := 5} of Pair"
+            )
+            "true"
+        , programCase "required binder accepts its named assignment form"
+            ( "Pair := {with T of Any; value? : T}\n"
+                <> "yield {T := Nat; value := 5} of Pair"
+            )
+            "true"
+        , programCase "required binder rejects a positional witness"
+            ( "Pair := {with T of Any; value? : T}\n"
+                <> "yield not ((Nat; 5) of Pair)"
+            )
+            "true"
+        , programCase "dependent sum validates the selected fibre"
+            ( "Pair := {with T? of Any; value? : T}\n"
+                <> "yield not ({T := Nat; value := \"bad\"} of Pair)"
+            )
+            "true"
+        , programCase "dependent sum binders scope sequentially"
+            ( "Nested := {with T? of Any; with U? of T; value? : U}\n"
+                <> "yield {T := Any; U := Nat; value := 5} of Nested"
+            )
+            "true"
+        , programCase "dependent sum composes with forward specification"
+            ( "Pair := {with T? of Any; value? : T}\n"
+                <> "yield ({T := Nat; value := 5} ~> Pair) of Pair"
+            )
+            "true"
+        , programCase "dependent sum composes with reverse specification"
+            ( "Pair := {with T? of Any; value? : T}\n"
+                <> "yield (Pair <~ {T := Nat; value := 5}) of Pair"
+            )
+            "true"
+        , programCase "private optional binder is valid in an ordered map"
+            ( "Pair := (with _T? of Any; value? : _T)\n"
+                <> "yield (_T := Nat; value := 5) of Pair"
+            )
+            "true"
+        , programFailureCase "ordinary map names do not bind later members"
+            ( "Bad := {T? : Any; value? : T}\n"
+                <> "yield Bad"
+            )
+            (SourceEvaluationFailure (UnknownIdentifier "T"))
+        , programFailureCase "dependent sums do not bind forwards"
+            ( "Bad := {value? : T; with T? of Any}\n"
+                <> "yield Bad"
+            )
+            (SourceEvaluationFailure (UnknownIdentifier "T"))
         ]
     , declaredPatternTests
     ]

@@ -144,6 +144,7 @@ data InterpretingError
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
+  | DependentBinderOutsideContainer String
   | ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind

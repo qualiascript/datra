@@ -116,10 +116,13 @@ rewrite mode depth reserved active resolver bound expression =
       | Just imported <- resolveDependencyModule resolver path ->
           pure (close mode (depth + 1) active reserved imported Nothing False False body)
     MapSpecification (FunctionBody entries result) (FunctionType domain codomain) -> do
-      closedDomain <- rewrite mode depth reserved active resolver bound domain
-      closedCodomain <- rewrite mode depth reserved active resolver bound codomain
+      let parameters = parameterNames domain
+      closedDomain <- rewrite mode depth reserved active resolver
+        (parameters <> bound) domain
+      closedCodomain <- rewrite mode depth reserved active resolver
+        (parameters <> bound) codomain
       body <- rewrite mode depth reserved active resolver
-        ("it" : parameterNames domain <> bound) (FunctionBody entries result)
+        ("it" : parameters <> bound) (FunctionBody entries result)
       pure (MapSpecification body (FunctionType closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
@@ -162,6 +165,7 @@ fresh candidate reserved = go (0 :: Int)
       where name = candidate <> if suffix == 0 then "" else "_" <> show suffix
 
 parameterNames :: Expression -> [String]
+parameterNames (ForBinding (IdentifierString name) _ _) = [name]
 parameterNames value@(IdentifierOperation _ _ _) = bindingNames value
 parameterNames (EitherType named@(IdentifierOperation _ _ _) _) = bindingNames named
 parameterNames value = concatMap parameterNames (expressionChildren value)

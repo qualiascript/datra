@@ -1,7 +1,9 @@
 -- | Declarative AST templates. External AST adapters preserve control semantics
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
-  ( SyntaxRule (..), SyntaxPiece (..), declarationRules, expandSyntax, declarationLiterals ) where
+  ( SyntaxRule (..), SyntaxPiece (..), declarationRules, expandSyntax
+  , declarationLiterals, absorbFunSequence
+  ) where
 import Data.List (isPrefixOf)
 import DatraLanguage.AST
 import DatraLanguage.Diagnostics.Application
@@ -41,7 +43,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     checkedCaptures = zipWith checkCapture [kind | SyntaxHole kind <- syntaxPieces rule] captures
     checkCapture kind value
-      | kind `elem` ["Expr", "Block", "Pages", "_AST"] = value
+      | kind `elem` ["_Expr", "_Block", "_Pages", "_IdenExp", "_AST"] = value
       | otherwise = MapSpecification value (scoped (IdentifierReference (IdentifierString kind)))
     block (AtlasMap entries) = entries
     block value = [value]
@@ -60,6 +62,8 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     controlArity "datra.syntax.do" = Just 2
     controlArity "datra.syntax.let" = Just 1
     controlArity "datra.syntax.fun" = Just 1
+    controlArity "datra.syntax.with" = Just 2
+    controlArity "datra.syntax.for" = Just 2
     controlArity "datra.syntax.eval" = Just 2
     controlArity _ = Nothing
     controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
@@ -72,10 +76,23 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
       Right (FunctionBody (block entries) result)
     controlWithValidCaptures "datra.syntax.let" [entry] =
       Right (Let (absorbAssignedConcatenation entry))
-    controlWithValidCaptures "datra.syntax.fun" [entry] = Right (Fun entry)
+    controlWithValidCaptures "datra.syntax.fun" [entry] =
+      Right (Fun (absorbFunSequence entry))
+    controlWithValidCaptures "datra.syntax.with" [name,bound] =
+      dependentBinder "with" WithBinding name bound
+    controlWithValidCaptures "datra.syntax.for" [name,bound] =
+      dependentBinder "for" ForBinding name bound
     controlWithValidCaptures "datra.syntax.eval" [source,target] =
       Right (Eval source target)
     controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
+
+    dependentBinder name constructor binder bound =
+      case binder of
+        IdentifierReference identifier ->
+          Right (constructor identifier False bound)
+        OptionalType (IdentifierReference identifier) ->
+          Right (constructor identifier True bound)
+        _ -> Left (InvalidDependentBinder name)
 
     -- @:=@ normally stops before a comma so declarations remain map members.
     -- Inside @let@ the whole captured expression is one early binding, so a
@@ -100,6 +117,18 @@ externalSymbol (External descriptor) = findSymbol descriptor
     first (Just value:_) = Just value
     first (_:rest) = first rest
 externalSymbol _ = Nothing
+
+-- Within @fun@, the canonical recursive-list spelling associates a following
+-- sequence with the nonempty branch: @() | T; this@ means
+-- @() | (T; this)@.  This keeps @;@ available for nested element types.
+absorbFunSequence :: Expression -> Expression
+absorbFunSequence expressionValue =
+  case expressionValue of
+    MapSequence (EitherType (AtlasMap []) headValue : remaining)
+      | not (null remaining)
+      , last remaining == This ->
+          EitherType (AtlasMap []) (MapSequence (headValue : remaining))
+    _ -> expressionValue
 
 -- Literal alternatives of a named type can be spelled as keywords in an AST
 -- pattern, while ordinary application keeps their $identifier value spelling.

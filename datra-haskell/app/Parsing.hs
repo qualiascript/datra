@@ -85,6 +85,8 @@ import DatraLanguage.AST
       , SyntaxType
       , This
       , Fun
+      , WithBinding
+      , ForBinding
       , InModule
       , Import
       , FunctionBody
@@ -366,6 +368,8 @@ astForm =
       , Assert True <$> (astSymbol "assert-hard" *> astExpression)
       , astUnary AST.AssertOperator (Assert False)
       , astUnaryForm "fun" Fun
+      , astDependentBinder "with" WithBinding
+      , astDependentBinder "for" ForBinding
       , SyntaxType <$> (astSymbol "as?" *> astString) <*> pure True <*> astExpression
       , SyntaxType <$> (astSymbol "as" *> astString) <*> pure False <*> astExpression
       , astBinary AST.FunctionTypeOperator FunctionType
@@ -409,6 +413,18 @@ astForm =
       , astBinary AST.SafeOverloadOperator SafeOverload
       , astBinary AST.OverloadOperator Overload
       ])
+
+astDependentBinder
+  :: Text
+  -> (IdentifierString -> Bool -> Expression -> Expression)
+  -> Parser Expression
+astDependentBinder name constructor = do
+  _ <- astSymbol name
+  spelling <- astIdentifierExpression
+  identifier <- IdentifierString <$> validateIdentifierSpelling spelling
+  optionalName <- maybe False (const True) <$> optional
+    (char '?' <* astSpaceConsumer)
+  constructor identifier optionalName <$> astExpression
 
 astIdentifierOperation
   :: AST.Operator
@@ -889,6 +905,9 @@ termAtom =
     , importExpression
     , syntaxApplication
     , bootstrapLet
+    , bootstrapFun
+    , bootstrapDependentBinder "with" WithBinding
+    , bootstrapDependentBinder "for" ForBinding
     , externalExpression
     , argumentMap
     , try parenthesizedReverseSpecification
@@ -976,17 +995,24 @@ syntaxApplication = do
           literal = choice [AsciiStringLiteral value <$ (keyword (Text.pack value) <* lineSpaceConsumer)
             | value <- declarationLiterals libraryDeclarations kind]
       value <- local (\context -> context { syntaxStops = stops <> syntaxStops context }) $
-        if kind `elem` ["Block", "Pages"] then do
+        if kind == "_IdenExp" then do
+          spelling <- identifierExpression
+          name <- validateIdentifierSpelling spelling
+          optionalName <- maybe False (const True) <$> optional
+            (operatorToken AST.OptionalOperator)
+          pure ((if optionalName then OptionalType else id)
+            (IdentifierReference (IdentifierString name)))
+        else if kind `elem` ["_Block", "_Pages"] then do
           entries <- withReferences elements
-          guard (kind == "Block" || not (null entries))
+          guard (kind == "_Block" || not (null entries))
           pure (AtlasMap entries)
-        else literal <|> (if kind /= "Expr" then boundaryAwareArithmeticExpression
+        else literal <|> (if kind /= "_Expr" then boundaryAwareArithmeticExpression
           else if "," `elem` stops then nonConcatenatedExpression else expression)
       let enums = declarationLiterals libraryDeclarations kind
       guard (null enums || not (obviouslyNumeric value))
       let continue = (value :) <$> parsePieces rest
       case value of
-        AtlasMap entries | kind == "Block" -> withDeclarations entries continue
+        AtlasMap entries | kind == "_Block" -> withDeclarations entries continue
         _ -> continue
 
 functionBody :: Parser Expression
@@ -1008,6 +1034,31 @@ bootstrapLet = do
   _ <- continuedWordOperator AST.LetOperator
   Let <$> expression
 
+bootstrapFun :: Parser Expression
+bootstrapFun = do
+  rules <- syntaxRules <$> ask
+  guard (null rules)
+  _ <- continuedKeyword "fun"
+  Fun . absorbFunSequence <$> expression
+
+-- The standard library defines these adapters itself, but its declarations
+-- may also use them.  Bootstrap only their narrow identifier-expression
+-- grammar; ordinary resources continue to obtain the syntax from Std.
+bootstrapDependentBinder
+  :: Text
+  -> (IdentifierString -> Bool -> Expression -> Expression)
+  -> Parser Expression
+bootstrapDependentBinder word constructor = do
+  rules <- syntaxRules <$> ask
+  guard (null rules)
+  _ <- continuedKeyword word
+  spelling <- identifierExpression
+  name <- validateIdentifierSpelling spelling
+  optionalName <- maybe False (const True) <$> optional
+    (operatorToken AST.OptionalOperator)
+  _ <- continuedWordOperator AST.SubfederationOperator
+  constructor (IdentifierString name) optionalName <$> expression
+
 identifierReference :: Parser Expression
 identifierReference = try $ do
   stops <- syntaxStops <$> ask
@@ -1020,11 +1071,13 @@ identifierReference = try $ do
 -- Argument maps have the same member separators and empty/unary arity as
 -- parenthesized maps, but admit every permutation of their members.
 argumentMap :: Parser Expression
-argumentMap =
-  ArgumentMap <$>
+argumentMap = do
+  members <-
     between (symbol "{" <* lineSpaceConsumer)
       (lineSpaceConsumer *> symbol "}")
       (argumentExpression `sepEndBy` argumentSeparator)
+  guard (all validDependentName members)
+  pure (ArgumentMap members)
   where
     -- At the brace level commas separate arguments. Parsing a parenthesized
     -- expression restores ordinary concatenation, preserving nested maps.
@@ -1032,6 +1085,11 @@ argumentMap =
     argumentSeparator =
       void (continuedOperator AST.ConcatenationOperator)
         <|> mapSeparator
+    validDependentName (ForBinding (IdentifierString name) True _) =
+      not (null (public [(name, ())]))
+    validDependentName (WithBinding (IdentifierString name) True _) =
+      not (null (public [(name, ())]))
+    validDependentName _ = True
 
 -- Shared operand grammar where an unparenthesized comma is a delimiter.
 nonConcatenatedExpression :: Parser Expression

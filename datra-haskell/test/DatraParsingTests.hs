@@ -109,6 +109,28 @@ regressionTests = do
   assertAstOutput "fun expands to an inline fixed point"
     "fun 5"
     (Fun (natural 5))
+  assertAstOutput "optional dependent product binder"
+    "for T? of Any"
+    (ForBinding (IdentifierString "T") True (ref "Any"))
+  assertAstOutput "required dependent product binder"
+    "for \"T\" of Any"
+    (ForBinding (IdentifierString "T") False (ref "Any"))
+  assertAstOutput "optional dependent sum binder"
+    "with T? of Any"
+    (WithBinding (IdentifierString "T") True (ref "Any"))
+  assertAstOutput "quoted dependent sum binder"
+    "with \"T\"? of Any"
+    (WithBinding (IdentifierString "T") True (ref "Any"))
+  assertParsed "private optional dependent binder is valid in an ordered map"
+    "(with _T? of Any; value? : _T)"
+    (AtlasMap
+      [ WithBinding (IdentifierString "_T") True (ref "Any")
+      , EitherType
+          (AST.dependentIdentifierType "value" (ref "_T"))
+          (ref "_T")
+      ])
+  assertRejected "private optional dependent binder is invalid in an argument map"
+    "{for _T? of Any; value? : _T}"
   assertAstOutput "not equals"
     "a =/= b"
     (Inequality (ref "a") (ref "b"))
@@ -147,6 +169,8 @@ regressionTests = do
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
     , External (AsciiStringLiteral "datra.add")
+    , ForBinding (IdentifierString "T") True (ref "Any")
+    , WithBinding (IdentifierString "T") False (ref "Any")
     , Program []
         (AST.assignment "Example"
           (Begin
@@ -191,10 +215,10 @@ regressionTests = do
   assertAstOutput "argument map supports newline separators"
     "{1\n2}" (ArgumentMap [natural 1, natural 2])
   assertParsed "argument map AST round trip"
-    "{a? : Nat; b? : String}"
+    "{a? : Nat; b? : Str}"
     (ArgumentMap
       [EitherType (AST.dependentIdentifierType "a" (ref "Nat")) (ref "Nat")
-      ,EitherType (AST.dependentIdentifierType "b" (ref "String")) (ref "String")])
+      ,EitherType (AST.dependentIdentifierType "b" (ref "Str")) (ref "Str")])
   assertRejected "private argument names cannot be optional"
     "{_x? : Nat; y : Nat}"
   let block = Begin
@@ -250,11 +274,11 @@ regressionTests = do
           ])))
   assertParsed
     "extract binds before bracket access"
-    "%String[0]"
-    (MapAccess (Extract (ref "String")) (natural 0))
+    "%Str[0]"
+    (MapAccess (Extract (ref "Str")) (natural 0))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
-    ["Nat", "Int", "String", "IdenStr", "Bool", "true", "false", "nothing"]
+    ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
   assertLocatedParse
   assertResourceEnvelopes
   assertAstSyntax
@@ -326,9 +350,9 @@ regressionTests = do
     "Nat"
     (ref "Nat")
   assertAstOutput
-    "String library reference"
-    "String"
-    (ref "String")
+    "Str library reference"
+    "Str"
+    (ref "Str")
   assertAstOutput
     "Int library reference"
     "Int"
@@ -407,12 +431,12 @@ regressionTests = do
     (AST.eitherType
       (AST.dependentIdentifierType "a" (ref "Nat"))
       (ref "Nat"))
-  assertParsed "ordinary library names can name fields" "String : Nat"
-    (AST.dependentIdentifierType "String" (ref "Nat"))
+  assertParsed "ordinary library names can name fields" "Str : Nat"
+    (AST.dependentIdentifierType "Str" (ref "Nat"))
   assertAstOutput
     "reserved names can be full-string identifier expressions"
-    "\"String\" : Nat"
-    (AST.dependentIdentifierType "String" (ref "Nat"))
+    "\"Str\" : Nat"
+    (AST.dependentIdentifierType "Str" (ref "Nat"))
   assertAstOutput
     "contextual range words remain bare identifier expressions"
     "to : Nat"
@@ -821,8 +845,8 @@ regressionTests = do
     (StringTemplate [StringTemplateInterpolation (natural 4)])
   assertParsed
     "library names may be simple interpolations"
-    "\"%String\""
-    (StringTemplate [StringTemplateInterpolation (ref "String")])
+    "\"%Str\""
+    (StringTemplate [StringTemplateInterpolation (ref "Str")])
   assertParsed
     "IdenStr is available to string templates"
     "\"%IdenStr\""
@@ -838,8 +862,8 @@ regressionTests = do
         ]))
   assertParsed
     "weak interpolation has explicit compact syntax"
-    "\"%!String\""
-    (StringTemplate [StringTemplateWeakInterpolation (ref "String")])
+    "\"%!Str\""
+    (StringTemplate [StringTemplateWeakInterpolation (ref "Str")])
   assertParsed
     "weak interpolation supports compound expressions"
     "\"%!(Nat | Nat)\""
@@ -946,10 +970,10 @@ regressionTests = do
     "an unescaped percent without an interpolation is rejected"
     "\"literal % character\""
   assertAstOutput
-    "string literals are members of String"
-    "\"my_string\" of String = true"
+    "string literals are members of Str"
+    "\"my_string\" of Str = true"
     (AST.equal
-      (AST.subfederation (AST.asciiString "my_string") (ref "String"))
+      (AST.subfederation (AST.asciiString "my_string") (ref "Str"))
       (ref "true"))
   assertAllHexadecimalAsciiEscapes
   assertAstOutput
@@ -1335,7 +1359,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "String", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "StringTemplate"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "StrTempl"]
     , IdentifierReference <$> genIdentifierString
     , pure This
     , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
@@ -1508,8 +1532,8 @@ assertAstSyntax = do
     )
   assert "weak template interpolation retains its marker"
     ( renderExpression
-        (StringTemplate [StringTemplateWeakInterpolation (ref "String")])
-        == "\"%!((ref $String))\""
+        (StringTemplate [StringTemplateWeakInterpolation (ref "Str")])
+        == "\"%!((ref $Str))\""
     )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression
@@ -1534,7 +1558,7 @@ assertAstSyntax = do
         == "(~> (<..> 2 5) (ref $Nat))"
     )
   assert "the extract operator retains its percent AST symbol"
-    (renderExpression (Extract (ref "String")) == "(% (ref $String))")
+    (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
         == "(apply (in-module $std (~> (external \"datra.from\") "

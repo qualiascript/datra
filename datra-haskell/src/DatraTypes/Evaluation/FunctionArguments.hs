@@ -2,6 +2,7 @@
 -- argument schema used by both function calls and overload operators.
 module Evaluation.FunctionArguments
   ( compileParameters
+  , compileDependentParameter
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
@@ -13,6 +14,7 @@ module Evaluation.FunctionArguments
 
 import DatraLanguage.AST
 import DatraLanguage.Identifier (public)
+import Data.Foldable (traverse_)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (..)
@@ -27,39 +29,70 @@ compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
   -> Expression
   -> Either InterpretingError ArgumentSchema
-compileParameters evaluate expression =
-  case expression of
-    IdentifierOperation (IdentifierString name) annotation given ->
-      parameterSlot (Just name) False annotation given
-    EitherType
-        (IdentifierOperation (IdentifierString name) annotation given)
-        missing
-      | annotation == missing -> do
-          if not (isPublic name)
-            then Left (PrivateParameterCannotBeOptional name)
-            else pure ()
-          parameterSlot (Just name) True annotation given
-    AtlasMap members -> orderedArgumentSchema 2 <$> traverse recur members
-    MapSequence members -> orderedArgumentSchema 2 <$> traverse recur members
-    ArgumentMap members -> unorderedArgumentSchema <$> traverse recur members
-    MapConcatenation _ _ ->
-      concatenatedArgumentSchema <$> traverse recur (flatten expression)
-      where
-        flatten (MapConcatenation left right) =
-          flatten left <> flatten right
-        flatten value = [value]
-    _ ->
-      argumentSlotSchema Nothing False
-        <$> evaluate expression
-        <*> pure Nothing
+compileParameters evaluate = compile False
   where
+    compile allowPrivateOptional expression =
+      case expression of
+        ForBinding (IdentifierString name) optional bound -> do
+          validateOptionalName allowPrivateOptional name optional
+          annotationValue <- evaluate bound
+          requireCanonicalTypeAnnotation annotationValue
+          pure (dependentArgumentSlotSchema name optional annotationValue)
+        IdentifierOperation (IdentifierString name) annotation given ->
+          parameterSlot (Just name) False annotation given
+        EitherType
+            (IdentifierOperation (IdentifierString name) annotation given)
+            missing
+          | annotation == missing -> do
+              validateOptionalName allowPrivateOptional name True
+              parameterSlot (Just name) True annotation given
+        AtlasMap members ->
+          orderedArgumentSchema 2 <$> traverse (compile True) members
+        MapSequence members ->
+          orderedArgumentSchema 2 <$> traverse (compile True) members
+        ArgumentMap members -> do
+          traverse_ validateArgumentMapName members
+          unorderedArgumentSchema <$> traverse (compile False) members
+        MapConcatenation _ _ ->
+          concatenatedArgumentSchema
+            <$> traverse (compile allowPrivateOptional) (flatten expression)
+          where
+            flatten (MapConcatenation left right) =
+              flatten left <> flatten right
+            flatten value = [value]
+        _ ->
+          argumentSlotSchema Nothing False
+            <$> evaluate expression
+            <*> pure Nothing
     isPublic name = not (null (public [(name, ())]))
-    recur = compileParameters evaluate
+    validateOptionalName allowPrivate name optional
+      | optional && not allowPrivate && not (isPublic name) =
+          Left (PrivateParameterCannotBeOptional name)
+      | otherwise = Right ()
+    validateArgumentMapName member =
+      case member of
+        ForBinding (IdentifierString name) True _
+          | not (isPublic name) ->
+              Left (PrivateParameterCannotBeOptional name)
+        EitherType
+            (IdentifierOperation (IdentifierString name) annotation _)
+            missing
+          | annotation == missing
+          , not (isPublic name) ->
+              Left (PrivateParameterCannotBeOptional name)
+        _ -> Right ()
     parameterSlot name optional annotation given = do
       annotationValue <- evaluate annotation
       requireCanonicalTypeAnnotation annotationValue
       argumentSlotSchema name optional annotationValue
         <$> traverse evaluate given
+
+compileDependentParameter
+  :: String
+  -> Bool
+  -> InterpretedValue
+  -> ArgumentSchema
+compileDependentParameter = dependentArgumentSlotSchema
 
 parameterBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 parameterBindings = argumentSchemaBindings

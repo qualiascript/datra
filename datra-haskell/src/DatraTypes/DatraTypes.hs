@@ -11,6 +11,7 @@ module DatraTypes
   , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
+  , makeDependentSumValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -48,6 +49,8 @@ module DatraTypes
   , nothingValue
   , asciiStringValue
   , stringTypeValue
+  , charTypeValue
+  , listTypeValue
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
@@ -86,6 +89,7 @@ module DatraTypes
   , integerTypeValue
   , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , inferredIdentifierAssignmentValue
   , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
@@ -106,6 +110,7 @@ module DatraTypes
   , argumentSchemaPositionalDomain
   , argumentSchemaValuesComplete
   , compileParameters
+  , compileDependentParameter
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
@@ -176,6 +181,7 @@ import Evaluation.Boolean
 import Evaluation.Either (makeEitherValue)
 import Evaluation.FunctionArguments
   ( compileParameters
+  , compileDependentParameter
   , matchArguments
   , parameterBindings
   , parameterDomain
@@ -249,6 +255,7 @@ import Evaluation.Range
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , inferredIdentifierAssignmentValue
   , requireCanonicalTypeAnnotation
   )
 import Evaluation.Specification
@@ -264,6 +271,7 @@ import Evaluation.Value
   , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
+  , makeDependentSumValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -298,6 +306,7 @@ import Evaluation.Value
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 
 import Data.Char (ord)
 import Data.List (find)
@@ -338,6 +347,45 @@ asciiStringValue value =
 
 stringTypeValue :: InterpretedValue
 stringTypeValue = makeStringType
+
+charTypeValue :: Either InterpretingError InterpretedValue
+charTypeValue = do
+  characters <- valuedNaturalRangeValue 0 255
+  pure (makeDependentSumValue "Char" characters $ \source -> do
+    _ <- specifyValues source characters
+    pure source)
+
+-- | The semantic fixed point of @() | (T; this)@.  It is constructed by the
+-- language-level @fun@ operator; this helper only supplies the generic
+-- pointwise Atlas-map membership operation.
+listTypeValue :: String -> InterpretedValue -> InterpretedValue
+listTypeValue "Char" _ = stringTypeValue
+listTypeValue elementSource elementType =
+  makeDependentSumValue presentation staticTarget validate
+  where
+    presentation = "List " <> elementSource
+    staticTarget = anyTypeValue
+    validate source = do
+      case interpretedValueKind source of
+        MapValueKind -> pure ()
+        AsciiStringValueKind -> pure ()
+        _ -> Left (ExpectedBuiltinType presentation)
+      count <- maybe
+        (Left (FunctionEvaluationFailed
+          FunctionArgumentsRequireFinitePages))
+        Right
+        (naturalAtOrdinal
+          (interpretedMapFinalOrderType (interpretedMap source)))
+      mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
+      pure source
+    validateAt source position = do
+      member <- maybe
+        (Left (FunctionEvaluationFailed
+          (FunctionArgumentPageUnavailable position)))
+        Right
+        (interpretedMapValueAt
+          (interpretedMap source) (finiteOrdinal position))
+      () <$ specifyValues member elementType
 
 identifierValueTypeValue :: InterpretedValue
 identifierValueTypeValue = makeIdentifierValueType

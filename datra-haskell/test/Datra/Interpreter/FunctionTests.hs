@@ -67,13 +67,13 @@ functionTests =
             "true"
         , programCase "function sum selects the numerical alternative"
             (unlines
-              [ "f := (({x?:Nat} -> Int do yield x+1) | ({x?:String} -> String do yield x))"
+              [ "f := (({x?:Nat} -> Int do yield x+1) | ({x?:Str} -> Str do yield x))"
               , "yield f 4"
               ])
             "5"
         , programCase "function sum selects the string alternative"
             (unlines
-              [ "f := (({x?:Nat} -> Int do yield x+1) | ({x?:String} -> String do yield x))"
+              [ "f := (({x?:Nat} -> Int do yield x+1) | ({x?:Str} -> Str do yield x))"
               , "yield f \"ok\""
               ])
             "$ok"
@@ -135,14 +135,14 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "ambiguous reorder is reported structurally"
-            ( "f := ({a:Int,b:String,c:String} -> Int yield a)\n"
+            ( "f := ({a:Int,b:Str,c:Str} -> Int yield a)\n"
                 <> "yield f ($x,$y,5)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed
                 AmbiguousFunctionArgumentBindings))
         , programFailureCase "declared result rejects inferred body"
-            "f := ({a?:Int} -> String do yield a+1)\nyield f 5"
+            "f := ({a?:Int} -> Str do yield a+1)\nyield f 5"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
         , programCase "positional absence can acquire a required name"
@@ -176,6 +176,60 @@ functionTests =
             "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"
             "0"
         ]
+    , testGroup "dependent products"
+        [ programCase "optional binder accepts positional witnesses"
+            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+                <> "yield identity (Nat; 5)"
+            )
+            "5"
+        , programCase "optional binder accepts named assignment witnesses"
+            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+                <> "yield identity {T := Nat; value := 5}"
+            )
+            "5"
+        , programCase "required binder accepts only its named assignment form"
+            ( "identity := ({for T of Any; value? : T} -> T yield value)\n"
+                <> "yield identity {T := Nat; value := 5}"
+            )
+            "5"
+        , programFailureCase "required binder rejects a positional witness"
+            ( "identity := ({for T of Any; value? : T} -> T yield value)\n"
+                <> "yield identity (Nat; 5)"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programFailureCase "dependent value must inhabit its selected type"
+            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+                <> "yield identity (Nat; \"bad\")"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programCase "dependent binders scope sequentially"
+            ( "identity := ({for T? of Any; for U? of T; value? : U} -> U yield value)\n"
+                <> "yield identity (Any; Nat; 5)"
+            )
+            "5"
+        , programCase "dependent product composes with of"
+            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+                <> "yield identity of ({for T? of Any; value? : T} -> T)"
+            )
+            "true"
+        , programCase "dependent product composes with specification"
+            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+                <> "yield (identity ~> ({for T? of Any; value? : T} -> T)) (Nat; 5)"
+            )
+            "5"
+        , programFailureCase "ordinary parameters do not bind later annotations"
+            ( "bad := ({T? : Any; value? : T} -> Any yield value)\n"
+                <> "yield bad"
+            )
+            (SourceEvaluationFailure (UnknownIdentifier "T"))
+        , programFailureCase "dependent products do not bind forwards"
+            ( "bad := ({value? : T; for T? of Any} -> Any yield value)\n"
+                <> "yield bad"
+            )
+            (SourceEvaluationFailure (UnknownIdentifier "T"))
+        ]
     , recursionTests
     ]
 
@@ -205,7 +259,7 @@ argumentSchemaMatrixTests =
             "{x : Int, y : Int}" "x * 10 + y" "(2, 3)" "23"
         , ArgumentSchemaCase
             "the sole valid reorder is accepted"
-            "{x : Int, y : String}" "x" "($value, 2)" "2"
+            "{x : Int, y : Str}" "x" "($value, 2)" "2"
         , ArgumentSchemaCase
             "names select an otherwise ambiguous reorder"
             "{x : Int, y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
@@ -249,7 +303,7 @@ recursionTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
          , programFailureCase "recursive result type mismatch"
             (unlines
-              [ "let factorial := ({n? : Int} -> String do"
+              [ "let factorial := ({n? : Int} -> Str do"
               , "  yield if n = 0 then 1 else factorial (n - 1))"
               , "yield factorial 0"
               ])

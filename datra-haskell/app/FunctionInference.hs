@@ -7,15 +7,49 @@ import Data.List (nub)
 import DatraLanguage.AST
 import DatraTypes
 
+data DependentBindingTag = ForBindingTag | WithBindingTag
+  deriving (Eq)
+
 freeIdentifiers :: Expression -> [String]
 freeIdentifiers = nub . free []
   where
     free bound expression = case expression of
       IdentifierReference (IdentifierString name) -> [name | name `notElem` bound]
+      FunctionType domain codomain ->
+        dependentEntries bound ForBindingTag (domainEntries domain)
+          <> free (dependentNames ForBindingTag (domainEntries domain) <> bound) codomain
+      ArgumentMap entries -> dependentEntries bound ForBindingTag entries
+      AtlasMap entries -> dependentEntries bound WithBindingTag entries
+      MapSequence entries -> dependentEntries bound WithBindingTag entries
       FunctionBody bindings result -> block bound bindings result
       Begin bindings result -> block bound bindings result
       Program bindings result -> block bound bindings result
       _ -> concatMap (free bound) (children expression)
+    dependentEntries bound tag = entries bound
+      where
+        entries _ [] = []
+        entries visible (entry : remaining) =
+          free visible (binderBound entry)
+            <> entries (binderScope visible entry) remaining
+        binderBound (ForBinding _ _ value) | tag == ForBindingTag = value
+        binderBound (WithBinding _ _ value) | tag == WithBindingTag = value
+        binderBound value = value
+        binderScope visible (ForBinding (IdentifierString name) _ _)
+          | tag == ForBindingTag = name : visible
+        binderScope visible (WithBinding (IdentifierString name) _ _)
+          | tag == WithBindingTag = name : visible
+        binderScope visible _ = visible
+    dependentNames tag = foldl collect []
+      where
+        collect names (ForBinding (IdentifierString name) _ _)
+          | tag == ForBindingTag = names <> [name]
+        collect names (WithBinding (IdentifierString name) _ _)
+          | tag == WithBindingTag = names <> [name]
+        collect names _ = names
+    domainEntries (ArgumentMap entries) = entries
+    domainEntries (AtlasMap entries) = entries
+    domainEntries (MapSequence entries) = entries
+    domainEntries value = [value]
     block bound bindings result = entries initial bindings
       where
         declarations = map blockDeclaration bindings

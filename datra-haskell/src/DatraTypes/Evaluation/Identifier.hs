@@ -2,6 +2,7 @@
 module Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
   , requireCanonicalTypeAnnotation
   ) where
@@ -48,6 +49,21 @@ simpleIdentifierTypeValue identifierString underlying
       makeDependentIdentifierTypeValue
         (SimpleIdentifierDependency identifierString)
         underlying
+
+-- | An inferred assignment may bind a non-total value such as a type.  Its
+-- federation remains the dependent identifier family, while its canonical
+-- presentation records that the value was explicitly supplied.
+inferredIdentifierAssignmentValue
+  :: String
+  -> InterpretedValue
+  -> InterpretedValue
+inferredIdentifierAssignmentValue identifierString underlying =
+  (simpleIdentifierTypeValue identifierString underlying)
+    { interpretedSemantics = AssignmentSemantics
+        identifierString
+        (interpretedSemantics underlying)
+        (interpretedSemantics underlying)
+    }
 
 identifierStringProjectionValue
   :: EvaluatedDependentIdentifierType

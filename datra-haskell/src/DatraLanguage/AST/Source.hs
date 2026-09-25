@@ -14,6 +14,10 @@ source context expression =
   case expression of
     ThisValue -> "this"
     FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
+    WithBindingValue (IdentifierString name) optional bound -> wrapped 0
+      ("with " <> binderName name optional <> " of " <> source 0 bound)
+    ForBindingValue (IdentifierString name) optional bound -> wrapped 0
+      ("for " <> binderName name optional <> " of " <> source 0 bound)
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)
@@ -103,5 +107,7 @@ source context expression =
     applicationInput operand = source 12 operand
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
+    binderName name optional =
+      renderIdentifierString name <> if optional then "?" else ""
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])

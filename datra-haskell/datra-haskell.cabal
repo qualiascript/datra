@@ -54,6 +54,7 @@ library
         DatraLanguage.AST.Syntax
         DatraLanguage.Identifier
         DatraTypes
+        DatraTypes.DependentTypes
         AsciiMap
         AsciiString
         MapOperators
