@@ -8,18 +8,10 @@ Datra is a language for data transformations. The [preprint](preprint.pdf),
 
 Inline recursion uses `fun`, where `this` is the value being defined:
 
-`input.datra`:
-
 ```datra
 factorial := fun {n? : Int} -> Int do
   yield if n = 0 then 1 else n * this (n - 1)
 assert factorial 5 = 120
-```
-
-`output.datra`:
-
-```text
-()
 ```
 
 ## First-class variadic arguments
@@ -43,12 +35,6 @@ assert display(1) = "1"
 assert display(1, 2, 3) = "(1; 2; 3)"
 assert display(arg1 := 10, 4) = "(4; 10)"
 assert ((arg2 := 10, 4) of {Args Int,}) = false # missing hole for `arg1`
-```
-
-`output.datra`:
-
-```text
-()
 ```
 
 See the [Haskell implementation README](datra-haskell/README.md) for Docker
