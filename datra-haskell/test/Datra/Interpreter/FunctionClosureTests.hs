@@ -14,6 +14,24 @@ functionClosureTests :: TestTree
 functionClosureTests = testGroup "canonical function reconstruction"
   [ roundTrip "recursive factorial" factorial "5" "120"
   , roundTrip "recursive base case" factorial "0" "1"
+  , roundTrip "user local named _function0"
+      "let factorial := ({n? : Int} -> Int do _function0 : 0; yield if n = _function0 then 1 else n * factorial (n - 1))\nyield factorial"
+      "5" "120"
+  , roundTrip "quoted local matches generated root"
+      "let factorial := ({n? : Int} -> Int do \"__function0\" : 0; yield if n = this.\"__function0\"[1] then 1 else n * factorial (n - 1))\nyield factorial"
+      "5" "120"
+  , roundTrip "captured name matches generated root"
+      "_function0 := 4\nyield ({n? : Int} -> Int yield n + _function0)"
+      "3" "7"
+  , roundTrip "quoted capture matches generated root"
+      "\"__function0\" := 4\nyield ({n? : Int} -> Int yield n + this.\"__function0\"[1])"
+      "3" "7"
+  , testCase "generated recursion uses quoted canonical references" $ do
+      value <- requireProgram factorial
+      let text = renderInterpretedValue value
+      assertBool "quoted function declaration" ("let \"__function0\" :" `isInfixOf` text)
+      assertBool "quoted recursive reference" ("this.\"__function0\"[1] (n - 1)" `isInfixOf` text)
+      assertBool "quoted result reference" ("yield this.\"__function0\"[1]" `isInfixOf` text)
   , roundTrip "transitive captured definitions"
       "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
       "7" "11"
@@ -77,6 +95,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "module filename is not a runtime dependency" (not ("import " `isInfixOf` text))
+      assertBool "nested root has level plus two underscores"
+        ("let \"___function1\" :" `isInfixOf` text)
+      assertBool "nested root uses canonical reference syntax"
+        ("yield this.\"___function1\"[1]" `isInfixOf` text)
       reconstructed <- requireExpression text
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")

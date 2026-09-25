@@ -92,6 +92,13 @@ reference form also supports identifiers containing spaces or dots, bypassing
 bare-symbol restrictions. No additional `_dependency0_0` alias is needed. Extra
 leading underscores distinguish nested dependency levels.
 
+Generated recursive bindings follow the same rule: `let "__function0" : ...`
+is referenced as `this."__function0"[1]`, including in recursive calls and the
+final `yield`. Every generated name at level `L` has `L + 2` leading underscores:
+`"__function0"`, `"___function1"`, `"____function2"`, and so on. Generated names
+are checked against declarations and one another, since a user can also declare
+an identical quoted name.
+
 Computed positional access selects a declaration before evaluating its value:
 
 ```datra

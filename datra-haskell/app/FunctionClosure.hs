@@ -7,6 +7,7 @@ module FunctionClosure
   ) where
 
 import Data.List (nub, stripPrefix)
+import Data.Char (isDigit)
 import Text.Read (readMaybe)
 import DatraLanguage.AST
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
@@ -41,9 +42,9 @@ close depth ancestors resolver self original =
   where
     expression = rebaseClosed depth [] original
     reserved = declaredNames expression
-    root = fresh ("_function" <> show depth) reserved
+    root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
-    (rewritten, collected) = runState (rewrite depth reserved active resolver [] expression) []
+    (rewritten, collected) = runState (rewrite depth (rootText : reserved) active resolver [] expression) []
     definitions = [assigned name value | (_, name, value) <- collected]
     recursive = root `elem` referenceNames rewritten
 
@@ -115,6 +116,10 @@ referencePath _ = Nothing
 assigned :: IdentifierString -> Expression -> Expression
 assigned name expression = IdentifierOperation name expression Nothing
 
+-- Generated roots use the same quoted namespace as their dependencies.
+functionName :: Int -> String
+functionName depth = replicate (depth + 2) '_' <> "function" <> show depth
+
 fresh :: String -> [String] -> IdentifierString
 fresh candidate reserved = go (0 :: Int)
   where
@@ -147,12 +152,14 @@ referenceNames value = concatMap referenceNames (expressionChildren value)
 rebaseClosed :: Int -> [(IdentifierString, IdentifierString)] -> Expression -> Expression
 rebaseClosed depth inherited expression = case expression of
   Begin entries (IdentifierReference root@(IdentifierString rootText))
-    | Just suffix <- stripPrefix "_function" rootText
-    , Just oldDepth <- (readMaybe suffix :: Maybe Int)
+    | length (takeWhile (== '_') rootText) >= 2
+    , Just suffix <- stripPrefix "function" (dropWhile (== '_') rootText)
+    , (digits, collisionSuffix) <- span isDigit suffix
+    , Just oldDepth <- (readMaybe digits :: Maybe Int)
     , Let (IdentifierOperation declared _ _) : _ <- reverse entries
     , declared == root ->
         let rename name@(IdentifierString text)
-              | name == root = IdentifierString ("_function" <> show depth)
+              | name == root = IdentifierString (functionName depth <> collisionSuffix)
               | Just tailText <- stripPrefix (replicate (oldDepth + 2) '_') text =
                   IdentifierString (replicate (depth + 2) '_' <> tailText)
               | otherwise = name
