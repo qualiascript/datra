@@ -75,6 +75,12 @@ alternativesAreDistinct left right
   | EitherForm rightEither <- interpretedForm right =
       alternativesAreDistinct left (evaluatedEitherLeft rightEither)
         && alternativesAreDistinct left (evaluatedEitherRight rightEither)
+  | DependentSumForm dependent <- interpretedForm right
+  , interpretedValueHasTotalMap left =
+      dependentMemberIsRefuted dependent left
+  | DependentSumForm dependent <- interpretedForm left
+  , interpretedValueHasTotalMap right =
+      dependentMemberIsRefuted dependent right
   | Just _ <- interpretedFunction left = True
   | Just _ <- interpretedFunction right = True
   | Just leftMembers <- sequenceOperands left
@@ -118,6 +124,15 @@ memberIsRefuted member federation =
     DecisionRefuted -> True
     DecisionProved _ -> False
     DecisionUndecidable -> False
+
+dependentMemberIsRefuted
+  :: EvaluatedDependentSum
+  -> InterpretedValue
+  -> Bool
+dependentMemberIsRefuted dependent member =
+  case evaluatedDependentSumSpecify dependent member of
+    Left _ -> True
+    Right _ -> False
 
 rangeAlternativesAreDistinct
   :: InterpretedValue

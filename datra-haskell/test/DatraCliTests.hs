@@ -36,6 +36,8 @@ main = defaultMain $ testGroup "Datra CLI"
   , testCase "production mode keeps hard assertions" testHardProductionAssertion
   , testCase "invalid mode uses a structured diagnostic" testInvalidMode
   , testCase "invalid locale uses a structured diagnostic" testInvalidLocale
+  , testCase "no-std runs a self-contained program" testNoStandardLibrary
+  , testCase "no-std does not expose standard names" testNoStandardLibraryNames
   ]
 
 fixtureBase :: FilePath
@@ -151,6 +153,36 @@ testInvalidLocale = do
       assertBool ("unexpected diagnostic: " <> errors)
         ("diagnostic locale is not supported" `isInfixOf` errors
           && "given locale: klingon" `isInfixOf` errors)
+
+testNoStandardLibrary :: Assertion
+testNoStandardLibrary = do
+  (status, output, errors) <- runDatra
+    [ "build"
+    , "--no-std"
+    , "--source", "yield 7"
+    , "--ast-output", "-"
+    , "--output", "-"
+    ]
+  assertEqual "exit status" ExitSuccess status
+  assertBool "canonical AST is still emitted" ("(program" `isInfixOf` output)
+  assertBool "interpreted value is emitted" ("7\n" `isInfixOf` output)
+  assertEqual "stderr" "" errors
+
+testNoStandardLibraryNames :: Assertion
+testNoStandardLibraryNames = do
+  (status, _, errors) <- runDatra
+    [ "build"
+    , "--no-std"
+    , "--source", "yield Int"
+    , "--ast-output", "-"
+    , "--output", "-"
+    ]
+  case status of
+    ExitSuccess -> assertFailure "Int unexpectedly remained available without Std"
+    ExitFailure _ ->
+      assertBool ("unexpected diagnostic: " <> errors)
+        ("identifier is not imported in this scope" `isInfixOf` errors
+          && "identifier: Int" `isInfixOf` errors)
 
 runDatra :: [String] -> IO (ExitCode, String, String)
 runDatra arguments = do

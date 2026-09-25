@@ -73,6 +73,7 @@ data Expression
   | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
+  | ArgumentMapSplice Expression
   | MapSequence [Expression]
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
@@ -135,6 +136,11 @@ data Expression
       , identifierOperationTypeAnnotation :: Expression
       , identifierOperationGivenValue :: Maybe Expression
       }
+  | IdentifierTemplateOperation
+      { identifierTemplateParts :: [StringTemplatePart Expression]
+      , identifierTemplateTypeAnnotation :: Expression
+      , identifierTemplateGivenValue :: Maybe Expression
+      }
   deriving (Eq, Show)
 
 -- | A module resource yields exactly one simple identifier type. Its
@@ -179,6 +185,7 @@ data OperatorExpression
   | EmptyMap
   | Sequential [OperatorExpression]
   | Arguments [OperatorExpression]
+  | ArgumentsSplice OperatorExpression
   | Expansion OperatorExpression OperatorExpression
   | Range OperatorExpression OperatorExpression
   | RangePlus OperatorExpression
@@ -243,6 +250,10 @@ data OperatorExpression
       , operatorTypeAnnotation :: OperatorExpression
       , operatorGivenValue :: Maybe OperatorExpression
       }
+  | IdentifierTemplateOperationValue
+      [StringTemplatePart OperatorExpression]
+      OperatorExpression
+      (Maybe OperatorExpression)
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -266,6 +277,8 @@ normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentMap expressions) =
   normalizeSequence ArgumentMap expressions
+normalizeExpression (ArgumentMapSplice expression) =
+  ArgumentMapSplice (normalizeExpression expression)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (MapExpansion left right) =
@@ -378,6 +391,12 @@ normalizeExpression
     identifierString
     (normalizeExpression typeAnnotation)
     (normalizeExpression <$> givenValue)
+normalizeExpression
+    (IdentifierTemplateOperation parts typeAnnotation givenValue) =
+  IdentifierTemplateOperation
+    (map normalizeStringTemplatePart parts)
+    (normalizeExpression typeAnnotation)
+    (normalizeExpression <$> givenValue)
 
 normalizeStringTemplatePart
   :: StringTemplatePart Expression
@@ -442,6 +461,7 @@ lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
 lower (ArgumentMap expressions) = Arguments (map lower expressions)
+lower (ArgumentMapSplice expression) = ArgumentsSplice (lower expression)
 lower (MapSequence expressions) = Sequential (map lower expressions)
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
@@ -515,6 +535,11 @@ lower (IdentifierOperation identifierString typeAnnotation givenValue) =
     identifierString
     (lower typeAnnotation)
     (lower <$> givenValue)
+lower (IdentifierTemplateOperation parts typeAnnotation givenValue) =
+  IdentifierTemplateOperationValue
+    (map lowerStringTemplatePart parts)
+    (lower typeAnnotation)
+    (lower <$> givenValue)
 
 lowerStringTemplatePart
   :: StringTemplatePart Expression
@@ -575,6 +600,8 @@ prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator expressions)
 prettyOperator (Arguments expressions) =
   prettyForm "{}" (map prettyOperator expressions)
+prettyOperator (ArgumentsSplice expression) =
+  prettyForm "{,}" [prettyOperator expression]
 prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
 prettyOperator (Range lowerBound upperBound) =
@@ -725,6 +752,16 @@ prettyOperator
               [ prettyOperator typeAnnotation
               , prettyOperator givenValueExpression
               ])
+prettyOperator
+    (IdentifierTemplateOperationValue parts typeAnnotation givenValue) =
+  prettyForm
+    (case givenValue of
+      Nothing -> operatorCanonicalSymbol DependentIdentifierTypeOperator
+      Just _ -> operatorCanonicalSymbol AssignmentOperator)
+    ( pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
+      : prettyOperator typeAnnotation
+      : maybe [] ((: []) . prettyOperator) givenValue
+    )
 
 prettyUnary
   :: Operator
@@ -886,6 +923,7 @@ traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> E
 traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
+  ArgumentMapSplice x -> ArgumentMapSplice <$> visit x
   MapSequence xs -> MapSequence <$> traverse visit xs
   Extract x -> Extract <$> visit x
   Minus x -> Minus <$> visit x
@@ -929,6 +967,11 @@ traverseExpressionChildren visit expression = case expression of
   NamedAccess value name -> (`NamedAccess` name) <$> visit value
   SyntaxType text ordinary signature -> SyntaxType text ordinary <$> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
+  IdentifierTemplateOperation parts annotation given ->
+    IdentifierTemplateOperation
+      <$> traverse part parts
+      <*> visit annotation
+      <*> traverse visit given
   StringTemplate parts -> StringTemplate <$> traverse part parts
   _ -> pure expression
   where

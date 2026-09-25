@@ -16,13 +16,13 @@ import DatraLanguage.Diagnostics.Localization
   )
 import Interpreting
   ( EvaluationMode (DevelopmentMode, ProductionMode)
-  , interpretLocatedWithImportsInMode
+  , interpretLocatedWithImportsInModeAndStandardLibrary
   )
 import ModuleLoading (loadImports, loadExpressionImports, importSyntax)
 import Options.Applicative
 import Parsing
   ( parseDatraAstLocatedWithSourceName
-  , parseDatraLocatedWithSyntaxImports
+  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
   )
 import Rendering
   ( renderInterpretedValue
@@ -31,9 +31,9 @@ import System.Exit (die)
 import System.FilePath ((</>), takeDirectory)
 
 data Command
-  = Build Input FilePath FilePath Locale EvaluationMode
-  | GenerateAst Input FilePath
-  | InterpretAst Input FilePath Locale EvaluationMode
+  = Build Input FilePath FilePath Locale EvaluationMode Bool
+  | GenerateAst Input FilePath Bool
+  | InterpretAst Input FilePath Locale EvaluationMode Bool
 
 data Input
   = InputFile FilePath
@@ -104,6 +104,7 @@ buildParser =
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
     <*> modeOption
+    <*> standardLibraryOption
 
 generateAstParser :: Parser Command
 generateAstParser =
@@ -115,6 +116,7 @@ generateAstParser =
       defaultAstPath
       "FILE"
       "Write the canonical AST to FILE; use - for stdout"
+    <*> standardLibraryOption
 
 interpretAstParser :: Parser Command
 interpretAstParser =
@@ -128,6 +130,14 @@ interpretAstParser =
       "Write the interpreted value to FILE; use - for stdout"
     <*> localeOption
     <*> modeOption
+    <*> standardLibraryOption
+
+standardLibraryOption :: Parser Bool
+standardLibraryOption =
+  not <$> switch
+    ( long "no-std"
+        <> help "Run without implicitly importing the standard library"
+    )
 
 sourceInputParser :: FilePath -> Parser Input
 sourceInputParser defaultPath =
@@ -246,30 +256,33 @@ modeName ProductionMode = "prod"
 runCommand :: Command -> IO ()
 runCommand commandValue =
   case commandValue of
-    Build input astPath outputPath locale mode -> do
+    Build input astPath outputPath locale mode includeStandardLibrary -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
       imports <- loadImports sourceName source
         >>= diagnosticOrFail locale errorPath
       locatedExpression <-
         diagnosticOrFail locale errorPath
-          (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
+          (parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+            includeStandardLibrary (importSyntax imports) sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImportsInMode mode imports locatedExpression)
+        (interpretLocatedWithImportsInModeAndStandardLibrary
+          includeStandardLibrary mode imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
-    GenerateAst input outputPath -> do
+    GenerateAst input outputPath includeStandardLibrary -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       imports <- loadImports sourceName source
         >>= diagnosticOrFail English errorPath
       locatedExpression <-
         diagnosticOrFail English errorPath
-          (parseDatraLocatedWithSyntaxImports (importSyntax imports) sourceName source)
+          (parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+            includeStandardLibrary (importSyntax imports) sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
-    InterpretAst input outputPath locale mode -> do
+    InterpretAst input outputPath locale mode includeStandardLibrary -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
       locatedExpression <-
@@ -278,7 +291,8 @@ runCommand commandValue =
       imports <- loadExpressionImports sourceName (locatedValue locatedExpression)
         >>= diagnosticOrFail locale errorPath
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
-        (interpretLocatedWithImportsInMode mode imports locatedExpression)
+        (interpretLocatedWithImportsInModeAndStandardLibrary
+          includeStandardLibrary mode imports locatedExpression)
       writeOutput outputPath (renderInterpretedValue interpreted)
 
 errorPathFor :: Input -> [FilePath] -> FilePath

@@ -58,6 +58,24 @@ accessValues
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
   case interpretedForm mapValue of
+    DependentSumForm dependent
+      | Just access <- evaluatedDependentSumAccess dependent ->
+          access insertionValue
+    EitherForm alternatives ->
+      let members =
+            [ evaluatedEitherLeft alternatives
+            , evaluatedEitherRight alternatives
+            ]
+          attempts =
+            [ accessValues member insertionValue
+            | member <- members
+            , not (emptyMapValue member && not (emptyMapValue insertionValue))
+            ]
+      in case [value | Right value <- attempts] of
+        [] -> case attempts of
+          Left failure : _ -> Left failure
+          _ -> accessFederationValues mapValue insertionValue
+        values -> makeDistinctUnion values
     ArgumentMapForm _ underlying ->
       traverse (`accessValues` insertionValue) (argumentAlternatives underlying)
         >>= makeDistinctUnion
@@ -73,6 +91,9 @@ accessValues mapValue insertionValue =
     DependentIdentifierTypeForm identifier ->
       accessDependentIdentifierType mapValue identifier insertionValue
     _ -> accessFederationValues mapValue insertionValue
+  where
+    emptyMapValue value =
+      interpretedMapFinalOrderType (interpretedMap value) == finiteOrdinal 0
 
 specificationSource :: InterpretedValue -> InterpretedValue
 specificationSource value =

@@ -8,10 +8,13 @@ module Evaluation.Overload
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
+  , projectedArgumentSchema
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaPositionalDomain
+  , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , argumentValuesComplete
   , overloadArgumentSchemaComplete
   , overloadValues
   , safeOverloadValues
@@ -27,8 +30,11 @@ import DatraLanguage.Identifier (public)
 import Evaluation.Arguments
   ( argumentRows
   , makeArgumentMap
+  , makeDistinctUnion
   , overloadArgumentRows
   )
+import Evaluation.Access (accessValues)
+import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
   ( InterpretingError (..)
@@ -51,6 +57,7 @@ data ArgumentSchema
   | OrderedArgumentSchema Natural [ArgumentSchema]
   | UnorderedArgumentSchema [ArgumentSchema]
   | ConcatenatedArgumentSchema ArgumentSchema ArgumentSchema
+  | ProjectedArgumentSchema InterpretedValue
   | EmptyArgumentSchema
 
 data Slot = Slot
@@ -144,7 +151,11 @@ resolveReplacements template supplied = do
           , replacements <- matchInputs writtenOrder row
           ]
       routes =
-        [ concatMap (`matchInputs` row) slotOrders
+        [ concat
+            [ matchInputs slots orderedInputs
+            | slots <- slotOrders
+            , orderedInputs <- inputOrders row
+            ]
         | row <- rows
         ]
   if any null routes
@@ -165,10 +176,28 @@ resolveReplacements template supplied = do
     canonical = sortOn fst . map
       (\(index, value) ->
         (index, interpretedCanonicalResult <$> value))
+    inputOrders row
+      | any hasName row = permutations row
+      | otherwise = [row]
+    hasName Nothing = False
+    hasName (Just value) =
+      case suppliedValue value of
+        (Just _, _) -> True
+        _ -> False
 
 matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
 matchInputs _ [] = [[]]
 matchInputs [] _ = []
+matchInputs [slot] inputs
+  | length inputs > 1
+  , Just values <- sequence inputs
+  , all unnamed values
+  , Just grouped <- matchSlot slot (makeAtlasMap 2 values) =
+      [[(slotIndex slot, Just grouped)]]
+  where
+    unnamed value = case suppliedValue value of
+      (Nothing, _) -> True
+      _ -> False
 matchInputs (slot : remainingSlots) (Nothing : remainingInputs) =
   [ (slotIndex slot, Nothing) : later
   | later <- matchInputs remainingSlots remainingInputs
@@ -201,7 +230,10 @@ matchSlot slot input = do
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
   case specifyValues inputValue (slotAnnotation slot) of
-    Right _ -> Just inputValue
+    Right prepared
+      | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
+          Just prepared
+      | otherwise -> Just inputValue
     Left _ -> Nothing
 
 isPublicIdentifier :: String -> Bool
@@ -235,6 +267,7 @@ templateSlots template =
     UnorderedArgumentSchema children -> concatMap templateSlots children
     ConcatenatedArgumentSchema left right ->
       templateSlots left <> templateSlots right
+    ProjectedArgumentSchema _ -> []
     EmptyArgumentSchema -> []
 
 -- Ordered maps retain one slot order. Argument maps contribute every member
@@ -253,6 +286,7 @@ templateSlotOrders template =
       | leftSlots <- templateSlotOrders left
       , rightSlots <- templateSlotOrders right
       ]
+    ProjectedArgumentSchema _ -> [[]]
     EmptyArgumentSchema -> [[]]
   where
     combine children =
@@ -296,9 +330,19 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
                          , afterChildren
                          )
                     Nothing -> slot current next
-                MapForm
-                  | Just [] <- finiteMembers current ->
-                      (EmptyArgumentSchema, next)
+                MapForm ->
+                  case finiteMembers current of
+                    Just [] -> (EmptyArgumentSchema, next)
+                    Just members ->
+                      let (children, afterChildren) =
+                            schemasFromValues next members
+                      in ( OrderedArgumentSchema
+                             (interpretedMapCardinality
+                               (interpretedMap current))
+                             children
+                         , afterChildren
+                         )
+                    Nothing -> slot current next
                 _ -> slot current next
     slot current next =
       (ArgumentSlotSchema next Nothing False False current Nothing, next + 1)
@@ -331,6 +375,8 @@ normalizeArgumentSchema schema = fst (go 0 schema)
           let (normalizedLeft, afterLeft) = go next left
               (normalizedRight, afterRight) = go afterLeft right
           in (ConcatenatedArgumentSchema normalizedLeft normalizedRight, afterRight)
+        ProjectedArgumentSchema target ->
+          (ProjectedArgumentSchema target, next)
         EmptyArgumentSchema -> (EmptyArgumentSchema, next)
     normalizeChildren next [] = ([], next)
     normalizeChildren next (child : remaining) =
@@ -368,6 +414,9 @@ concatenatedArgumentSchema schemas =
     [] -> EmptyArgumentSchema
     first : remaining -> foldl ConcatenatedArgumentSchema first remaining
 
+projectedArgumentSchema :: InterpretedValue -> ArgumentSchema
+projectedArgumentSchema = ProjectedArgumentSchema
+
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =
   case schema of
@@ -377,6 +426,7 @@ argumentSchemaBindings schema =
     UnorderedArgumentSchema children -> concatMap argumentSchemaBindings children
     ConcatenatedArgumentSchema left right ->
       argumentSchemaBindings left <> argumentSchemaBindings right
+    ProjectedArgumentSchema _ -> []
     EmptyArgumentSchema -> []
 
 argumentSchemaDomain
@@ -398,6 +448,7 @@ argumentSchemaDomain schema =
       case nubBy sameValue presentations of
         [] -> pure (makeAtlasMap 0 [])
         first : remaining -> foldM makeEitherValue first remaining
+    ProjectedArgumentSchema target -> pure target
     EmptyArgumentSchema -> pure (makeAtlasMap 0 [])
   where
     sameValue left right =
@@ -414,6 +465,7 @@ argumentSchemaDomain schema =
               | leftPage <- leftPages
               , rightPage <- rightPages])
             <$> ((,) <$> schemaPages left <*> schemaPages right)
+        ProjectedArgumentSchema target -> argumentRows target
         EmptyArgumentSchema -> pure [[]]
         entry -> (\value -> [[value]]) <$> argumentSchemaDomain entry
 
@@ -424,10 +476,59 @@ argumentSchemaPositionalDomain
   :: ArgumentSchema
   -> InterpretedValue
 argumentSchemaPositionalDomain schema =
-  makeAtlasMap 2
-    [ slotAnnotation slot
-    | slot <- templateSlots (normalizeArgumentSchema schema)
-    ]
+  case schema of
+    ProjectedArgumentSchema target -> projectedPositionalDomain target
+    _ -> makeAtlasMap 2
+      [ slotAnnotation slot
+      | slot <- templateSlots (normalizeArgumentSchema schema)
+      ]
+
+-- | A projected argument federation is consumed as a positional variadic
+-- sequence inside a function body.  Its first positional member determines
+-- the homogeneous element view used by source-defined prefix families such
+-- as @Args T@; exact finite-prefix membership remains with the projection's
+-- own dependent-sum validator.
+argumentSchemaVariadicElementType
+  :: ArgumentSchema
+  -> Maybe InterpretedValue
+argumentSchemaVariadicElementType schema =
+  case schema of
+    ProjectedArgumentSchema target ->
+      either (const Nothing) Just
+        (accessValues (projectedPositionalDomain target) (makeNatural 0))
+    _ -> Nothing
+
+-- A projected argument federation retains its public slot names for call
+-- matching, but the function body's @it@ map is positional. Preserve the
+-- family itself and erase names only after a page has been selected.
+projectedPositionalDomain :: InterpretedValue -> InterpretedValue
+projectedPositionalDomain target =
+  case interpretedForm target of
+    DependentSumForm dependent
+      | Just project <- evaluatedDependentSumAccess dependent ->
+          withDependentSumAccess
+            (\insertion -> project insertion >>= eraseNames)
+            target
+    EitherForm alternatives ->
+      case makeDistinctUnion
+          [ projectedPositionalDomain (evaluatedEitherLeft alternatives)
+          , projectedPositionalDomain (evaluatedEitherRight alternatives)
+          ] of
+        Right value -> value
+        Left _ -> target
+    _ -> target
+  where
+    eraseNames value =
+      case interpretedForm value of
+        DependentIdentifierTypeForm identifier ->
+          eraseNames (evaluatedIdentifierUnderlying identifier)
+        EitherForm alternatives ->
+          traverse eraseNames
+            [ evaluatedEitherLeft alternatives
+            , evaluatedEitherRight alternatives
+            ]
+            >>= makeDistinctUnion
+        _ -> Right value
 
 -- | Complete the schema and expose the resulting values in written positional
 -- order.  This is the map bound to a function body's implicit @it@ name.
@@ -435,22 +536,40 @@ argumentSchemaValuesComplete
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-argumentSchemaValuesComplete schema supplied = do
-  let normalized = normalizeArgumentSchema schema
-  replacements <- resolveReplacements normalized supplied
-  completed <- traverse (completeSlot replacements) (templateSlots normalized)
-  pure (makeAtlasMap 2 (map snd completed))
+argumentSchemaValuesComplete schema supplied =
+  case schema of
+    ProjectedArgumentSchema target -> specifyValues supplied target
+    _ -> do
+      let normalized = normalizeArgumentSchema schema
+      replacements <- resolveReplacements normalized supplied
+      completed <- traverse (completeSlot replacements) (templateSlots normalized)
+      pure (makeAtlasMap 2 (map snd completed))
+
+-- | Complete an evaluated argument-map type and expose its values in the
+-- type's canonical positional order.  Dependent projections use this same
+-- machinery, so named and positional calls cannot acquire separate rules.
+argumentValuesComplete
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+argumentValuesComplete template =
+  argumentSchemaValuesComplete (argumentSchemaFromValue template)
 
 overloadArgumentSchemaComplete
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
-overloadArgumentSchemaComplete schema supplied = do
-  let normalized = normalizeArgumentSchema schema
-  replacements <- resolveReplacements normalized supplied
-  completed <- traverse (completeSlot replacements) (templateSlots normalized)
-  result <- buildTemplate replacements normalized
-  pure (result, [(name, value) | (Just name, value) <- completed])
+overloadArgumentSchemaComplete schema supplied =
+  case schema of
+    ProjectedArgumentSchema target -> do
+      prepared <- specifyValues supplied target
+      pure (prepared, [])
+    _ -> do
+      let normalized = normalizeArgumentSchema schema
+      replacements <- resolveReplacements normalized supplied
+      completed <- traverse (completeSlot replacements) (templateSlots normalized)
+      result <- buildTemplate replacements normalized
+      pure (result, [(name, value) | (Just name, value) <- completed])
 
 finiteMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMembers value = do
@@ -516,7 +635,11 @@ completeSlot replacements slot =
         Nothing
           | interpretedTypeIsTotal (slotAnnotation slot) ->
               Right (slotName slot, slotAnnotation slot)
-          | otherwise -> Left (OverloadError failure)
+          | otherwise ->
+              let empty = makeAtlasMap 0 []
+              in case specifyValues empty (slotAnnotation slot) of
+                Right _ -> Right (slotName slot, empty)
+                Left _ -> Left (OverloadError failure)
 
 buildTemplate
   :: Replacements
@@ -536,6 +659,7 @@ buildTemplate replacements template =
         leftValue <- buildTemplate replacements left
         rightValue <- buildTemplate replacements right
         concatenateValues leftValue rightValue
+    ProjectedArgumentSchema target -> Right target
     EmptyArgumentSchema -> Right (makeAtlasMap 0 [])
 
 replacementAt :: Int -> Replacements -> Maybe InterpretedValue

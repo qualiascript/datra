@@ -19,6 +19,12 @@ decideValueSubfederation source target
       case evaluatedDependentSumSpecify dependent source of
         Right _ -> DecisionProved ()
         Left _ -> DecisionRefuted
+  | EitherForm alternatives <- interpretedForm target
+  , eitherContainsDependentSum alternatives =
+      decideAny
+        [ decideValueSubfederation source alternative
+        | alternative <- flattenEither target
+        ]
   | EitherForm alternatives <- interpretedForm source
   , isFunctionFamily source =
       decideAllEitherAlternatives alternatives target
@@ -32,6 +38,25 @@ decideValueSubfederation source target
         decideValueSubfederation
         source
         target
+
+eitherContainsDependentSum :: EvaluatedEither -> Bool
+eitherContainsDependentSum alternatives =
+  any isDependentSum
+    (flattenEither (evaluatedEitherLeft alternatives)
+      <> flattenEither (evaluatedEitherRight alternatives))
+  where
+    isDependentSum value =
+      case interpretedForm value of
+        DependentSumForm _ -> True
+        _ -> False
+
+flattenEither :: InterpretedValue -> [InterpretedValue]
+flattenEither value =
+  case interpretedForm value of
+    EitherForm alternatives ->
+      flattenEither (evaluatedEitherLeft alternatives)
+        <> flattenEither (evaluatedEitherRight alternatives)
+    _ -> [value]
 
 -- Function alternatives are handled before family dispatch because the
 -- enclosing Either is structural while every member has function behavior.

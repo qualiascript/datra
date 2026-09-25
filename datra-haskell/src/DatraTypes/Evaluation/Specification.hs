@@ -35,6 +35,16 @@ specifyValues
 specifyValues source target
   | DependentSumForm dependent <- interpretedForm target =
       evaluatedDependentSumSpecify dependent source
+  | EitherForm _ <- interpretedForm target
+  , any isDependentSum (argumentAlternatives target) =
+      case
+          [ prepared
+          | alternative <- argumentAlternatives target
+          , Right prepared <- [specifyValues source alternative]
+          ] of
+        [prepared] -> Right prepared
+        _ -> Left (FunctionEvaluationFailed
+          NoMatchingFunctionSpecificationAlternative)
   | EitherForm _ <- interpretedForm source
   , isFunctionFamily source = do
       specified <- traverse (`specifyValues` target) (argumentAlternatives source)
@@ -62,6 +72,12 @@ specifyValues source target
         specifyValues
         source
         target
+
+isDependentSum :: InterpretedValue -> Bool
+isDependentSum value =
+  case interpretedForm value of
+    DependentSumForm _ -> True
+    _ -> False
 
 assignIdentifierValues
   :: String

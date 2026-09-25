@@ -25,7 +25,7 @@ standardLibraryTests =
         , programCase "AST can be a user binding"
             "AST := 2\nyield AST" "2"
         , programCase "AST external uses the private type spelling"
-            "yield external \"datra.AST\"" "_AST"
+            "yield _external \"datra.AST\"" "_AST"
         , programFailureCase "Expr is private to the library"
             "yield Expr" (SourceEvaluationFailure (UnknownIdentifier "Expr"))
         , programFailureCase "Block is private to the library"
@@ -111,7 +111,7 @@ standardLibraryTests =
               )
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$upwards)", "from 2 upwards")
-            , ("f := external \"datra.add\"\nyield f (b:5;6)", "11")
+            , ("f := _external \"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
@@ -132,7 +132,7 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "unknown external shorthand"
-            "yield external \"missing.symbol\""
+            "yield _external \"missing.symbol\""
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalSymbol "missing.symbol")))
@@ -149,8 +149,8 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "not ((external \"datra.AST\") of Any)"
-            , "not ((Nat; (external \"datra.AST\")) of Any)"
+            , "not ((_external \"datra.AST\") of Any)"
+            , "not ((Nat; (_external \"datra.AST\")) of Any)"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -166,11 +166,11 @@ standardLibraryTests =
             , "not (from (-2) to 5 of NatValRange)"
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "(external \"datra.Expr\") of (external \"datra.AST\")"
-            , "(external \"datra.Block\") of (external \"datra.AST\")"
-            , "(external \"datra.Pages\") of (external \"datra.AST\")"
-            , "not ((external \"datra.Block\") of (external \"datra.Expr\"))"
-            , "((external \"datra.Expr\") ~> (external \"datra.AST\")) of (external \"datra.AST\")"
+            , "(_external \"datra.Expr\") of (_external \"datra.AST\")"
+            , "(_external \"datra.Block\") of (_external \"datra.AST\")"
+            , "(_external \"datra.Pages\") of (_external \"datra.AST\")"
+            , "not ((_external \"datra.Block\") of (_external \"datra.Expr\"))"
+            , "((_external \"datra.Expr\") ~> (_external \"datra.AST\")) of (_external \"datra.AST\")"
             , "\"%Any\" of StrTempl"
             , "\"%Int %IdenStr\" of StrTempl"
             , "(\"%Int %IdenStr\" ~> StrTempl) of StrTempl"
@@ -181,6 +181,8 @@ standardLibraryTests =
     , testGroup "dependent List"
         [ programCase "Str is List Char"
             "yield Str = List Char" "true"
+        , programCase "an element is the singleton member of its List type"
+            "yield 1 of List Nat" "true"
         , programCase "natural list uses semicolon members"
             "yield (1; 2; 3) of List Nat" "true"
         , programCase "natural list rejects a non-natural member"
@@ -189,8 +191,37 @@ standardLibraryTests =
             "yield (\"a\"; \"bc\") of List Str" "true"
         , programCase "List Str rejects a non-string member"
             "yield (\"a\"; 2) of List Str" "false"
-        , programCase "comma remains string concatenation, not a List Str spine"
-            "yield not ((\"a\", \"bc\") of List Str)" "true"
+        , programCase "concatenated strings inhabit List Str as one string"
+            "yield (\"a\", \"bc\") of List Str" "true"
+        ]
+    , testGroup "Maybe and variadic Args"
+        [ programCase "Maybe uses tagged Nothing and Just alternatives"
+            "yield (($Nothing; Just : 5) of (Maybe Nat; Maybe Nat))"
+            "true"
+        , programCase "Args accepts every finite positional prefix"
+            ( "values := ({Args Int,} -> List Int yield it)\n"
+                <> "yield values(1, 2, 3)"
+            )
+            "(1; 2; 3)"
+        , programCase "Args reorders named and positional slots"
+            ( "values := ({Args Int,} -> List Int yield it)\n"
+                <> "yield values(arg1 := 3, 0)"
+            )
+            "(0; 3)"
+        , programFailureCase "Args rejects a gap in its finite prefix"
+            ( "values := ({Args Int,} -> List Int yield it)\n"
+                <> "yield values(arg2 := 3, 0)"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        ]
+    , testGroup "dependent family sugar"
+        [ programCase "with-in-do builds an indexed sum family"
+            "yield (with i in range 0 to 2 do i + 1)[2]"
+            "3"
+        , programCase "for-in-do builds an indexed product family"
+            "yield (for i in range 0 to 2 do i + 1)[2]"
+            "3"
         ]
     , testGroup "dependent sums"
         [ programCase "optional binder accepts positional witnesses"
@@ -278,7 +309,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"$Int next\" as (Int -> Int) external \"datra.abs\")"
+        ( "step := ((\"$Int next\" as (Int -> Int) _external \"datra.abs\")"
             <> " | (\"$Int next\" as (Int -> Int) do yield 2))\n"
             <> "yield step 3 next"
         )

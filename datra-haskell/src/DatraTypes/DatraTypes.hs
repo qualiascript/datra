@@ -12,6 +12,8 @@ module DatraTypes
   , EvaluatedFunction (..)
   , makeFunctionValue
   , makeDependentSumValue
+  , withDependentSumAccess
+  , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -105,10 +107,13 @@ module DatraTypes
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
+  , projectedArgumentSchema
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaPositionalDomain
+  , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , argumentValuesComplete
   , compileParameters
   , compileDependentParameter
   , parameterBindings
@@ -217,9 +222,12 @@ import Evaluation.Overload
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaPositionalDomain
+  , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , argumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
+  , projectedArgumentSchema
   , orderedArgumentSchema
   , overloadArgumentSchemaComplete
   , overloadValues
@@ -272,6 +280,8 @@ import Evaluation.Value
   , EvaluatedFunction (..)
   , makeFunctionValue
   , makeDependentSumValue
+  , withDependentSumAccess
+  , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -306,7 +316,7 @@ import Evaluation.Value
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
 
 import Data.Char (ord)
 import Data.List (find)
@@ -360,16 +370,26 @@ charTypeValue = do
 -- pointwise Atlas-map membership operation.
 listTypeValue :: String -> InterpretedValue -> InterpretedValue
 listTypeValue "Char" _ = stringTypeValue
-listTypeValue elementSource elementType =
-  makeDependentSumValue presentation staticTarget validate
+listTypeValue elementSource elementType = value
   where
+    value = withDependentSumAccess project
+      (makeDependentSumValue presentation staticTarget validate)
     presentation = "List " <> elementSource
-    staticTarget = anyTypeValue
+    staticTarget = makeLazyMapValue omega (const (Just elementType))
+    project insertion =
+      case interpretedValueKind insertion of
+        NaturalValueKind -> Right elementType
+        _ -> Right value
     validate source = do
       case interpretedValueKind source of
-        MapValueKind -> pure ()
+        MapValueKind -> validateMembers source
         AsciiStringValueKind -> pure ()
-        _ -> Left (ExpectedBuiltinType presentation)
+        -- Atlas normalization erases a singleton sequence, so @T; ()@ is
+        -- represented by the element itself.  This is the one-element fibre
+        -- of the same recursive list, not a separate special case in source.
+        _ -> () <$ specifyValues source elementType
+      pure source
+    validateMembers source = do
       count <- maybe
         (Left (FunctionEvaluationFailed
           FunctionArgumentsRequireFinitePages))
@@ -377,7 +397,6 @@ listTypeValue elementSource elementType =
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap source)))
       mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
-      pure source
     validateAt source position = do
       member <- maybe
         (Left (FunctionEvaluationFailed

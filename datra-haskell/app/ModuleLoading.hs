@@ -15,6 +15,11 @@ import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
 import SyntaxDefinitions
 import StdLib (isStandardLibraryRequest)
+import IntegersLib
+  ( integersLibraryFileName
+  , integersLibrarySource
+  , isIntegersLibraryRequest
+  )
 
 loadImports
   :: FilePath
@@ -48,6 +53,16 @@ loadPaths ancestors origin = fmap sequence . traverse (load ancestors origin)
     load visiting parent requested
       | isStandardLibraryRequest requested =
           pure (Right (requested, StdLibModule))
+      | isIntegersLibraryRequest requested =
+          pure $ do
+            expression <- Bifunctor.first
+              (ImportedModuleParseFailed integersLibraryFileName)
+              (locatedValue <$> parseDatraLocatedWithSyntaxImports
+                [] integersLibraryFileName integersLibrarySource)
+            Right
+              ( requested
+              , ModuleSource integersLibraryFileName expression []
+              )
       | otherwise = do
           let filename = if null (takeExtension requested) then requested <> ".datra" else requested
               location = takeDirectory parent </> filename

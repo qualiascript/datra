@@ -23,7 +23,11 @@ import Evaluation.Error
   )
 import Evaluation.Identifier (requireCanonicalTypeAnnotation)
 import Evaluation.Overload
-import Evaluation.Value (InterpretedValue)
+import Evaluation.Value
+  ( InterpretedValue
+  , ValueForm (DependentSumForm)
+  , interpretedForm
+  )
 
 compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -53,6 +57,11 @@ compileParameters evaluate = compile False
         ArgumentMap members -> do
           traverse_ validateArgumentMapName members
           unorderedArgumentSchema <$> traverse (compile False) members
+        ArgumentMapSplice member -> do
+          value <- evaluate member
+          case interpretedForm value of
+            DependentSumForm _ -> pure (projectedArgumentSchema value)
+            _ -> pure (projectedArgumentSchema value)
         MapConcatenation _ _ ->
           concatenatedArgumentSchema
             <$> traverse (compile allowPrivateOptional) (flatten expression)

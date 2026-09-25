@@ -6,6 +6,7 @@ module SyntaxDefinitions
   ) where
 import Data.List (isPrefixOf)
 import DatraLanguage.AST
+import IdentifierValueType (isIdentifierValue)
 import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure (..))
 
@@ -64,6 +65,8 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     controlArity "datra.syntax.fun" = Just 1
     controlArity "datra.syntax.with" = Just 2
     controlArity "datra.syntax.for" = Just 2
+    controlArity "datra.syntax.withIn" = Just 3
+    controlArity "datra.syntax.forIn" = Just 3
     controlArity "datra.syntax.eval" = Just 2
     controlArity _ = Nothing
     controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
@@ -82,6 +85,10 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
       dependentBinder "with" WithBinding name bound
     controlWithValidCaptures "datra.syntax.for" [name,bound] =
       dependentBinder "for" ForBinding name bound
+    controlWithValidCaptures "datra.syntax.withIn" [name,bound,body] =
+      localDependentFamily "with" WithBinding name bound body
+    controlWithValidCaptures "datra.syntax.forIn" [name,bound,body] =
+      localDependentFamily "for" ForBinding name bound body
     controlWithValidCaptures "datra.syntax.eval" [source,target] =
       Right (Eval source target)
     controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
@@ -92,7 +99,24 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
           Right (constructor identifier False bound)
         OptionalType (IdentifierReference identifier) ->
           Right (constructor identifier True bound)
+        AsciiStringLiteral identifier
+          | isIdentifierValue identifier ->
+              Right (constructor (IdentifierString identifier) False bound)
         _ -> Left (InvalidDependentBinder name)
+
+    -- The witness is deliberately optional in the lowered representation:
+    -- projection discards page zero, so the source spelling needs only the
+    -- local identifier rather than the public argument-map binder form.
+    localDependentFamily name constructor binder bound body = do
+      dependent <- dependentBinder name constructor binder bound
+      Right (MapAccess (AtlasMap [makeOptional dependent, body])
+        (EllipsisNatural 1))
+      where
+        makeOptional (WithBinding identifier _ value) =
+          WithBinding identifier True value
+        makeOptional (ForBinding identifier _ value) =
+          ForBinding identifier True value
+        makeOptional value = value
 
     -- @:=@ normally stops before a comma so declarations remain map members.
     -- Inside @let@ the whole captured expression is one early binding, so a
@@ -128,6 +152,10 @@ absorbFunSequence expressionValue =
       | not (null remaining)
       , last remaining == This ->
           EitherType (AtlasMap []) (MapSequence (headValue : remaining))
+    AtlasMap (EitherType (AtlasMap []) headValue : remaining)
+      | not (null remaining)
+      , last remaining == This ->
+          EitherType (AtlasMap []) (AtlasMap (headValue : remaining))
     _ -> expressionValue
 
 -- Literal alternatives of a named type can be spelled as keywords in an AST

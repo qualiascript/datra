@@ -1,13 +1,14 @@
 yield Std := begin
 
-  Any := external "datra.Any"
-  Nat := external "datra.Nat"
-  Int := external "datra.Int"
-  Char := external "datra.Char"
+  Any := _external "datra.Any"
+  Nat := _external "datra.Nat"
+  Int := _external "datra.Int"
+  Char := _external "datra.Char"
   List := (for T? of Any) -> Any yield fun (() | T; this)
+  Maybe := (for T? of Any) -> Any yield $Nothing | Just : T
   Str := List Char
-  StrTempl := external "datra.StrTempl"
-  IdenStr := external "datra.IdenStr"
+  StrTempl := _external "datra.StrTempl"
+  IdenStr := _external "datra.IdenStr"
 
   false := (False : 0)
   true := (True : 1)
@@ -15,40 +16,51 @@ yield Std := begin
   Bool := (false | true)
   _Wards := ($upwards | $downwards)
 
-  _AST := external "datra.AST"
-  _Expr := external "datra.Expr"
-  _IdenExp := external "datra.IdenExp"
-  _Block := external "datra.Block"
-  _Pages := external "datra.Pages"
-  NatRange := external "datra.NatRange"
-  IntRange := external "datra.IntRange"
-  NatValRange := external "datra.NatValRange"
-  IntValRange := external "datra.IntValRange"
-  public := external "datra.public"
+  _AST := _external "datra.AST"
+  _Expr := _external "datra.Expr"
+  _IdenExp := _external "datra.IdenExp"
+  _Block := _external "datra.Block"
+  _Pages := _external "datra.Pages"
+
+  NatRange := _external "datra.NatRange"
+  IntRange := _external "datra.IntRange"
+  NatValRange := _external "datra.NatValRange"
+  IntValRange := _external "datra.IntValRange"
+  public := _external "datra.public"
 
   from := (
-    ("$Int to $Int" as? (Int, Int -> IntValRange) external "datra.from") |
-    ("$Int $_Wards" as? (Int, _Wards -> IntValRange) external "datra.from")
+    ("$Int to $Int" as? (Int, Int -> IntValRange) _external "datra.from") |
+    ("$Int $_Wards" as? (Int, _Wards -> IntValRange) _external "datra.from")
   )
   range := (
-    ("$Int to $Int" as? (Int, Int -> IntRange) external "datra.range") |
-    ("$Int $_Wards" as? (Int, _Wards -> IntRange) external "datra.range")
+    ("$Int to $Int" as? (Int, Int -> IntRange) _external "datra.range") |
+    ("$Int $_Wards" as? (Int, _Wards -> IntRange) _external "datra.range")
   )
 
   # Syntax adapters receive ASTs. The sum is one value bound to one identifier.
   if := (
-    ("$_Expr then $_Expr else $_Expr" as (_AST, _AST, _AST -> _AST) external "datra.syntax.if") |
-    ("$_Expr then $_Expr" as (_AST, _AST -> _AST) external "datra.syntax.ifThen")
+    ("$_Expr then $_Expr else $_Expr" as (_AST, _AST, _AST -> _AST) _external "datra.syntax.if") |
+    ("$_Expr then $_Expr" as (_AST, _AST -> _AST) _external "datra.syntax.ifThen")
   )
-  begin : "$_Block yield $_Expr" as (_AST, _AST -> _AST) := external "datra.syntax.begin"
+  begin : "$_Block yield $_Expr" as (_AST, _AST -> _AST) := _external "datra.syntax.begin"
   do := (
-    ("$_Block yield $_Expr" as (_AST, _AST -> _AST) external "datra.syntax.do") |
-    ("begin $_Block yield $_Expr" as (_AST, _AST -> _AST) external "datra.syntax.do")
+    ("$_Block yield $_Expr" as (_AST, _AST -> _AST) _external "datra.syntax.do") |
+    ("begin $_Block yield $_Expr" as (_AST, _AST -> _AST) _external "datra.syntax.do")
   )
-  let : "$_Expr" as (_AST -> _AST) := external "datra.syntax.let"
-  fun : "$_Expr" as (_AST -> _AST) := external "datra.syntax.fun"
-  with : "$_IdenExp of $_Expr" as (_AST, _AST -> _AST) := external "datra.syntax.with"
-  for : "$_IdenExp of $_Expr" as (_AST, _AST -> _AST) := external "datra.syntax.for"
-  _eval : "$_Expr at $_Pages" as (_AST, _AST -> _AST) := external "datra.syntax.eval"
+  let : "$_Expr" as (_AST -> _AST) := _external "datra.syntax.let"
+  fun : "$_Expr" as (_AST -> _AST) := _external "datra.syntax.fun"
+  with := (
+    ("$_IdenExp of $_Expr" as (_AST, _AST -> _AST) _external "datra.syntax.with") |
+    ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) _external "datra.syntax.withIn")
+  )
+  Args := (for T? of Any) -> Any do
+    _ArgsSlots := with i in Nat do "arg%(i)"? : T
+  yield () | with n in Nat do _ArgsSlots[range 0 to n]
+  for := (
+    ("$_IdenExp of $_Expr" as (_AST, _AST -> _AST) _external "datra.syntax.for") |
+    ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) _external "datra.syntax.forIn")
+  )
+
+  _eval : "$_Expr at $_Pages" as (_AST, _AST -> _AST) := _external "datra.syntax.eval"
 
 yield public this

@@ -19,6 +19,7 @@ freeIdentifiers = nub . free []
         dependentEntries bound ForBindingTag (domainEntries domain)
           <> free (dependentNames ForBindingTag (domainEntries domain) <> bound) codomain
       ArgumentMap entries -> dependentEntries bound ForBindingTag entries
+      ArgumentMapSplice entry -> dependentEntries bound ForBindingTag [entry]
       AtlasMap entries -> dependentEntries bound WithBindingTag entries
       MapSequence entries -> dependentEntries bound WithBindingTag entries
       FunctionBody bindings result -> block bound bindings result
@@ -47,6 +48,7 @@ freeIdentifiers = nub . free []
           | tag == WithBindingTag = names <> [name]
         collect names _ = names
     domainEntries (ArgumentMap entries) = entries
+    domainEntries (ArgumentMapSplice entry) = [entry]
     domainEntries (AtlasMap entries) = entries
     domainEntries (MapSequence entries) = entries
     domainEntries value = [value]
@@ -147,6 +149,11 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
         value <- recur condition
         check value =<< booleanTypeValue
         pure (makeAtlasMap 0 [])
+      -- A function implementation introduces its own parameter scope.  When
+      -- it has an explicit signature, that signature is the complete type of
+      -- the local value; attempting to infer the nested body here would make
+      -- its @it@ look like the enclosing function's argument.
+      MapSpecification FunctionBody {} target@FunctionType {} -> recur target
       MapSpecification source target -> do
         actual <- recur source
         expected <- recur target
@@ -187,6 +194,7 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
       AtlasMap values -> makeAtlasMap 2 <$> traverse recur values
       MapSequence values -> makeAtlasMap 2 <$> traverse recur values
       ArgumentMap values -> traverse recur values >>= makeArgumentMap
+      ArgumentMapSplice value -> recur value
       MapConcatenation a b -> do left <- recur a; right <- recur b; concatenateValues left right
       Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
       SafeOverload a b -> do left <- recur a; right <- recur b; safeOverloadValues left right
@@ -226,12 +234,15 @@ lookupInferenceBinding name = go
       | otherwise = go remaining
 
 check :: InterpretedValue -> InterpretedValue -> Either InterpretingError ()
-check actual expected = do
-  accepted <- isSubtype actual expected
-  if accepted then Right () else Left (FunctionEvaluationFailed
-    (InferredTypeOutsideRequirement
-      (show (interpretedCanonicalResult actual))
-      (show (interpretedCanonicalResult expected))))
+check actual expected
+  | interpretedCanonicalResult actual
+      == interpretedCanonicalResult expected = Right ()
+  | otherwise = do
+      accepted <- isSubtype actual expected
+      if accepted then Right () else Left (FunctionEvaluationFailed
+        (InferredTypeOutsideRequirement
+          (show (interpretedCanonicalResult actual))
+          (show (interpretedCanonicalResult expected))))
 
 isSubtype :: InterpretedValue -> InterpretedValue -> Either InterpretingError Bool
 isSubtype source target = subfederationValues source target >>= booleanCondition

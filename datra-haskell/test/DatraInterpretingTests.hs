@@ -814,16 +814,16 @@ testCanonicalTypes = do
     , "Nat | (Nat -> Nat)"
     ]
   mapM_ expectNonCanonicalDatraType
-    [ "external \"datra.AST\""
-    , "external \"datra.Expr\""
-    , "external \"datra.Block\""
-    , "external \"datra.Pages\""
+    [ "_external \"datra.AST\""
+    , "_external \"datra.Expr\""
+    , "_external \"datra.Block\""
+    , "_external \"datra.Pages\""
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
     , "StrTempl"
-    , "(Nat; (external \"datra.AST\"))"
+    , "(Nat; (_external \"datra.AST\"))"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     assert "functions carry a CanonicalType"

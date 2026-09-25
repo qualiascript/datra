@@ -107,7 +107,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "mutual recursive definitions"
       "let even := ({n? : Int} -> Bool yield if n = 0 then true else odd (n - 1))\nlet odd := ({n? : Int} -> Bool yield if n = 0 then false else even (n - 1))\nyield even"
       "4" "true"
-  , roundTrip "registered native function" "yield external \"datra.add\""
+  , roundTrip "registered native function" "yield _external \"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
       "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
@@ -118,7 +118,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "explicit primitive implementation" ("external \"datra.Int\"" `isInfixOf` text)
+      assertBool "explicit primitive implementation" ("_external \"datra.Int\"" `isInfixOf` text)
       assertBool "dependency selected through this" ("this.\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"

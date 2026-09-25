@@ -72,6 +72,8 @@ module Evaluation.Value
   , makeInterpretedValue
   , makeSingletonInterpretedValue
   , makeDependentSumValue
+  , withDependentSumAccess
+  , makeLazyMapValue
   , interpretedForm
   , interpretedInsertionCapability
   , interpretedMap
@@ -197,6 +199,9 @@ data EvaluatedDependentSum = EvaluatedDependentSum
   { evaluatedDependentSumStaticTarget :: InterpretedValue
   , evaluatedDependentSumSpecify
       :: InterpretedValue -> Either InterpretingError InterpretedValue
+  , evaluatedDependentSumAccess
+      :: Maybe
+          (InterpretedValue -> Either InterpretingError InterpretedValue)
   }
 
 -- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
@@ -486,12 +491,52 @@ makeDependentSumValue
 makeDependentSumValue source staticTarget specify =
   makeInterpretedValue
     structuralDatraType
-    (DependentSumForm (EvaluatedDependentSum staticTarget specify))
+    (DependentSumForm (EvaluatedDependentSum staticTarget specify Nothing))
     (interpretedInsertionCapability staticTarget)
     (interpretedMap staticTarget)
     (interpretedAtlasMapFederation staticTarget)
     NonTotalInterpretedMap
     (DependentSumSemantics source)
+
+-- | Attach the exact access map of a dependent family.  The structural
+-- target remains available for ordinary static reasoning, while projection
+-- is delayed until a concrete insertion is supplied.
+withDependentSumAccess
+  :: (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumAccess access value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent { evaluatedDependentSumAccess = Just access }
+        }
+    _ -> value
+
+-- | A lazily indexed Atlas map.  This is the erased runtime presentation of
+-- a dependent family's page projection; values are demanded through normal
+-- Atlas access rather than materialized eagerly.
+makeLazyMapValue
+  :: Ordinal
+  -> (Ordinal -> Maybe InterpretedValue)
+  -> InterpretedValue
+makeLazyMapValue orderType valueAt =
+  makeInterpretedValue
+    structuralDatraType
+    MapForm
+    NoInsertion
+    (InterpretedMap
+      1
+      (OrdinalOrderedValues orderType valueAt)
+      [])
+    (SingletonAtlasMapFederation
+      (InterpretedMap
+        1
+        (OrdinalOrderedValues orderType valueAt)
+        []))
+    NonTotalInterpretedMap
+    (MapSemantics 1 [])
 
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap

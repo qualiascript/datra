@@ -25,7 +25,7 @@ source context expression =
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
-    ExternalValue descriptor -> wrapped 0 ("external " <> source 12 descriptor)
+    ExternalValue descriptor -> wrapped 10 ("_external " <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
@@ -37,6 +37,12 @@ source context expression =
         Just value | value == annotation -> " := " <> source 2 value
         _ -> " : " <> source 13 annotation
           <> maybe "" (\value -> " := " <> source 2 value) given)
+    IdentifierTemplateOperationValue parts annotation given -> wrapped 1
+      (renderStringTemplate (source 0) (const Nothing) parts <> case given of
+        Just value | value == annotation -> " := " <> source 2 value
+        _ -> " : " <> source 13 annotation
+          <> maybe "" (\value -> " := " <> source 2 value) given)
+    ArgumentsSplice value -> "{" <> source 0 value <> ",}"
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> intercalate "; " (map (source 0) members) <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"

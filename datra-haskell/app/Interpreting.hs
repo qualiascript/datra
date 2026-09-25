@@ -9,6 +9,7 @@ module Interpreting
   , moduleExportNames
   , interpretLocatedWithImports
   , interpretLocatedWithImportsInMode
+  , interpretLocatedWithImportsInModeAndStandardLibrary
   , interpretWithImports
   , interpretWithImportsInMode
   , InterpretedValue
@@ -41,6 +42,7 @@ import BlockScope
 import FunctionClosure
 import FunctionInference
 import DatraLanguage.Identifier (public)
+import IdentifierValueType (isIdentifierValue)
 import RuntimeModules
   ( EvaluationMode (..)
   , ModuleSource (..)
@@ -100,8 +102,20 @@ interpretLocatedWithImportsInMode
   -> Located Expression
   -> Either (DatraError InterpretingError) InterpretedValue
 interpretLocatedWithImportsInMode mode modules (Located sourceSpan expression) =
+  interpretLocatedWithImportsInModeAndStandardLibrary
+    True mode modules (Located sourceSpan expression)
+
+interpretLocatedWithImportsInModeAndStandardLibrary
+  :: Bool
+  -> EvaluationMode
+  -> [(String, ModuleSource)]
+  -> Located Expression
+  -> Either (DatraError InterpretingError) InterpretedValue
+interpretLocatedWithImportsInModeAndStandardLibrary
+    includeStandardLibrary mode modules (Located sourceSpan expression) =
   Bifunctor.first (atSourceSpan sourceSpan)
-    (interpretWithImportsInMode mode modules expression)
+    (interpretWithImportsInModeAndStandardLibrary
+      includeStandardLibrary mode modules expression)
 
 interpretExpressionReason
   :: Expression
@@ -123,8 +137,20 @@ interpretWithImportsInMode
   -> Expression
   -> Either InterpretingError InterpretedValue
 interpretWithImportsInMode mode modules expression =
-  interpretWithImports
-    (modulesForMode mode modules)
+  interpretWithImportsInModeAndStandardLibrary True mode modules expression
+
+interpretWithImportsInModeAndStandardLibrary
+  :: Bool
+  -> EvaluationMode
+  -> [(String, ModuleSource)]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretWithImportsInModeAndStandardLibrary
+    includeStandardLibrary mode modules expression = do
+  base <- if includeStandardLibrary then standardScope else Right []
+  evalInScope
+    (("\0imports", ModuleCatalog (modulesForMode mode modules)) : base)
+    []
     (expressionForMode mode expression)
 
 
@@ -223,6 +249,8 @@ canonicalExpressionCandidates expressionValue =
       MapSequence <$> traverse canonicalExpressionCandidates members
     ArgumentMap members ->
       ArgumentMap <$> traverse canonicalExpressionCandidates members
+    ArgumentMapSplice member ->
+      ArgumentMapSplice <$> canonicalExpressionCandidates member
     MapExpansion left right ->
       MapExpansion
         <$> canonicalExpressionCandidates left
@@ -349,14 +377,19 @@ interpretNormalizedExpression scope resolving expressionValue =
     AtlasMap expressions
       | any isWithBinding expressions ->
           createDependentSum scope resolving (AtlasMap expressions)
+      | any isForBinding expressions ->
+          createDependentProduct scope resolving (AtlasMap expressions)
       | otherwise -> interpretAtlasMapWith interpret expressions
     ArgumentMap expressions
       | any isWithBinding expressions ->
           createDependentSum scope resolving (ArgumentMap expressions)
       | otherwise -> traverse interpret expressions >>= makeArgumentMap
+    ArgumentMapSplice expression -> interpret expression
     MapSequence expressions
       | any isWithBinding expressions ->
           createDependentSum scope resolving (MapSequence expressions)
+      | any isForBinding expressions ->
+          createDependentProduct scope resolving (MapSequence expressions)
       | otherwise -> interpretAtlasMapWith interpret expressions
     MapExpansion left right ->
       interpretAtlasMapWithBuilder
@@ -519,7 +552,43 @@ interpretNormalizedExpression scope resolving expressionValue =
     IdentifierOperation
         (IdentifierString identifierString)
         typeAnnotationExpression
+        maybeGivenValueExpression ->
+      interpretIdentifierOperation
+        identifierString typeAnnotationExpression maybeGivenValueExpression
+    IdentifierTemplateOperation
+        parts
+        typeAnnotationExpression
         maybeGivenValueExpression -> do
+      identifier <- interpretStringTemplateWith interpret parts
+      case interpretedCanonicalResult identifier of
+        CanonicalAsciiString identifierString
+          | isIdentifierValue identifierString ->
+          interpretIdentifierOperation
+            identifierString typeAnnotationExpression maybeGivenValueExpression
+        _ -> do
+          typeAnnotation <- interpret typeAnnotationExpression
+          requireCanonicalTypeAnnotation typeAnnotation
+          case maybeGivenValueExpression of
+            -- A name template is not a dependent identifier: only its name
+            -- awaits the surrounding dependent witness.  Static evaluation
+            -- therefore erases the unavailable name but retains the ordinary
+            -- annotation.  Exact fibre evaluation below supplies the witness
+            -- and constructs the concrete identifier normally.
+            Nothing -> Right
+              (simpleIdentifierTypeValue
+                (renderInterpretedValue identifier)
+                typeAnnotation)
+            Just givenExpression -> do
+              given <- interpret givenExpression
+              assignIdentifierValues
+                (renderInterpretedValue identifier)
+                given
+                typeAnnotation
+
+  where
+    interpret = evalInScope scope resolving
+    interpretIdentifierOperation
+        identifierString typeAnnotationExpression maybeGivenValueExpression = do
       typeAnnotation <- interpret typeAnnotationExpression
       requireCanonicalTypeAnnotation typeAnnotation
       case maybeGivenValueExpression of
@@ -553,9 +622,6 @@ interpretNormalizedExpression scope resolving expressionValue =
                   , givenValue = renderInterpretedValue givenValue
                   })
             result -> result
-
-  where
-    interpret = evalInScope scope resolving
     binary = interpretBinaryWith interpret
     evaluateBlock source bindings result = do
       let origins = canonicalDependencyNames bindings result
@@ -566,6 +632,8 @@ interpretNormalizedExpression scope resolving expressionValue =
 
     isWithBinding WithBinding {} = True
     isWithBinding _ = False
+    isForBinding ForBinding {} = True
+    isForBinding _ = False
 
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
@@ -844,6 +912,7 @@ recursiveListElement expressionValue =
   case expressionValue of
     EitherType (AtlasMap []) (MapConcatenation element This) -> Just element
     EitherType (AtlasMap []) (MapSequence [element, This]) -> Just element
+    EitherType (AtlasMap []) (AtlasMap [element, This]) -> Just element
     MapSequence [EitherType (AtlasMap []) element, This] -> Just element
     AtlasMap [EitherType (AtlasMap []) element, This] -> Just element
     _ -> Nothing
@@ -857,6 +926,9 @@ staticDependentDomain expressionValue =
     ArgumentMap entries ->
       let (values, substitutions) = staticEntries [] entries
       in (ArgumentMap values, substitutions)
+    ArgumentMapSplice entry ->
+      let (value, substitutions) = staticEntry [] entry
+      in (ArgumentMapSplice value, substitutions)
     AtlasMap entries ->
       let (values, substitutions) = staticEntries [] entries
       in (AtlasMap values, substitutions)
@@ -893,6 +965,7 @@ domainEntries :: Expression -> [Expression]
 domainEntries expressionValue =
   case expressionValue of
     ArgumentMap entries -> entries
+    ArgumentMapSplice entry -> [entry]
     AtlasMap entries -> entries
     MapSequence entries -> entries
     MapConcatenation left right -> domainEntries left <> domainEntries right
@@ -902,6 +975,8 @@ staticDependentSumExpression :: Expression -> Expression
 staticDependentSumExpression expressionValue =
   case expressionValue of
     ArgumentMap entries -> ArgumentMap (fst (staticEntries [] entries))
+    ArgumentMapSplice entry ->
+      ArgumentMapSplice (fst (staticEntry [] entry))
     AtlasMap entries -> AtlasMap (fst (staticEntries [] entries))
     MapSequence entries -> MapSequence (fst (staticEntries [] entries))
     _ -> fst (staticEntry [] expressionValue)
@@ -929,14 +1004,156 @@ createDependentSum
 createDependentSum captured resolving written = do
   let evaluate = evalInScope captured resolving
       staticExpression = staticDependentSumExpression written
-  schema <- compileParameters evaluate staticExpression
-  staticTarget <- parameterDomain schema
-  let specify source = do
+      compiledSchema = compileParameters evaluate staticExpression
+  (staticTarget, specify) <- case compiledSchema of
+    Right schema -> do
+      target <- parameterDomain schema
+      pure (target, \source -> do
         supplied <- matchArguments schema source
         _ <- validateWithArguments captured resolving written supplied
-        pure source
-  pure (makeDependentSumValue
-    (renderSourceExpression written) staticTarget specify)
+        pure source)
+    Left symbolicFailure ->
+      case representativeDependentTarget captured resolving written of
+        Right target -> pure
+          (target, \source -> source <$ specifyValues source target)
+        Left _ -> Left symbolicFailure
+  let dependent = makeDependentSumValue
+        (renderSourceExpression written) staticTarget specify
+      project insertion =
+        projectDependentSum
+          captured resolving written staticTarget insertion
+  pure (withDependentSumAccess project dependent)
+
+-- | Interpret a dependent product as its indexed Atlas family. Page zero is
+-- the index domain and page one is a lazy map of fibres, so the surface
+-- @for i in A do B@ projection uses the same ordinary @[1]@ machinery as
+-- every other Atlas value.
+createDependentProduct
+  :: Scope
+  -> [String]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+createDependentProduct captured resolving written =
+  case domainEntries written of
+    ForBinding (IdentifierString name) _ boundExpression : entries -> do
+      bound <- evalInScope captured resolving boundExpression
+      let orderType = interpretedMapFinalOrderType (interpretedMap bound)
+          fibreAt position = do
+            witness <- maybe
+              (Left (FunctionEvaluationFailed
+                (FunctionArgumentPageUnavailable 0)))
+              Right
+              (interpretedMapValueAt (interpretedMap bound) position)
+            values <- instantiateDependentEntries
+              captured resolving name witness entries
+            case values of
+              [] -> Right (makeAtlasMap 0 [])
+              [value] -> Right value
+              _ -> Right (makeAtlasMap 2 values)
+      fibres <- case naturalAtOrdinal orderType of
+        Just count -> makeAtlasMap 2 <$> traverse
+          (fibreAt . finiteOrdinal)
+          (if count == 0 then [] else [0 .. count - 1])
+        Nothing -> pure (makeLazyMapValue orderType
+          (either (const Nothing) Just . fibreAt))
+      pure (makeAtlasMap 2 [bound, fibres])
+    _ -> Left (DependentBinderOutsideContainer "for")
+
+-- | Some dependent value expressions cannot be approximated by replacing a
+-- binder with its whole upper bound (for example, a range endpoint).  In that
+-- case use the first member of the binder federation as a structural fibre;
+-- exact checking still happens against the concrete fibre selected later.
+representativeDependentTarget
+  :: Scope
+  -> [String]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+representativeDependentTarget captured resolving written =
+  case domainEntries written of
+    WithBinding (IdentifierString name) _ boundExpression : entries -> do
+      bound <- evalInScope captured resolving boundExpression
+      witness <- maybe
+        (Left (FunctionEvaluationFailed
+          (FunctionArgumentPageUnavailable 0)))
+        Right
+        (interpretedMapValueAt
+          (interpretedMap bound)
+          (finiteOrdinal 0))
+      values <- instantiateDependentEntries
+        captured resolving name witness entries
+      pure (makeAtlasMap 2 (witness : values))
+    _ -> Left (OverloadError OverloadNoMatch)
+
+-- | Project a dependent family by instantiating each fibre only when its
+-- Atlas page is demanded.  This is deliberately unaware of clients such as
+-- @Args@: the binder's own ordered federation supplies the indices, and the
+-- ordinary argument-map machinery decides membership in each projected
+-- fibre.
+projectDependentSum
+  :: Scope
+  -> [String]
+  -> Expression
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+projectDependentSum captured resolving written staticTarget insertion =
+  case domainEntries written of
+    WithBinding (IdentifierString name) _ boundExpression : entries -> do
+      bound <- evalInScope captured resolving boundExpression
+      let orderType = interpretedMapFinalOrderType (interpretedMap bound)
+          fibreAtOrdinal position = do
+            witness <- maybe
+              (Left (FunctionEvaluationFailed
+                (FunctionArgumentPageUnavailable 0)))
+              Right
+              (interpretedMapValueAt (interpretedMap bound) position)
+            values <- instantiateDependentEntries
+              captured resolving name witness entries
+            accessValues (makeAtlasMap 2 (witness : values)) insertion
+          lazyMap = makeLazyMapValue orderType
+            (either (const Nothing) Just . fibreAtOrdinal)
+          prepare source = do
+            rows <- overloadArgumentRows source
+            let candidateSizes = nub (map (fromIntegral . length) rows)
+                candidateIndices = nub
+                  [ index
+                  | size <- candidateSizes
+                  , index <- [0 .. size]
+                  ]
+                attempts =
+                  [ fibreAtOrdinal (finiteOrdinal size)
+                      >>= (`argumentValuesComplete` source)
+                  | size <- candidateIndices
+                  ]
+            firstSuccessful attempts
+          projection = makeDependentSumValue
+            (renderSourceExpression written
+              <> "[" <> renderInterpretedValue insertion <> "]")
+            lazyMap
+            prepare
+      pure (withDependentSumAccess (accessValues lazyMap) projection)
+    _ -> accessValues staticTarget insertion
+  where
+    firstSuccessful attempts =
+      case [value | Right value <- attempts] of
+        value : _ -> Right value
+        [] -> Left (OverloadError OverloadNoMatch)
+
+instantiateDependentEntries
+  :: Scope
+  -> [String]
+  -> String
+  -> InterpretedValue
+  -> [Expression]
+  -> Either InterpretingError [InterpretedValue]
+instantiateDependentEntries captured resolving name witness =
+  go [(name, EvaluatedBinding witness)]
+  where
+    go _ [] = Right []
+    go dependentScope (entry : remaining) = do
+      value <- evalInScope (dependentScope <> captured) resolving entry
+      later <- go dependentScope remaining
+      pure (value : later)
 
 validateWithArguments
   :: Scope
@@ -1037,7 +1254,12 @@ createFunction captured resolving explicit bindings result = do
     name : _ -> Left (IdentifierStringOverlap name)
     [] -> pure ()
   input <- parameterDomain schema
-  let positionalInput = parameterPositionalDomain schema
+  let rawPositionalInput = parameterPositionalDomain schema
+      positionalInput =
+        case argumentSchemaVariadicElementType schema of
+          Just elementType ->
+            listTypeValue (renderInterpretedValue elementType) elementType
+          Nothing -> rawPositionalInput
       (explicitSelf, selfIncludesDependencies) = case lookup "\0fun" captured of
         Just (SelfBinding includesDependencies _) -> (True, includesDependencies)
         _ -> (False, False)
@@ -1060,7 +1282,10 @@ createFunction captured resolving explicit bindings result = do
     Just _ -> do
       target <- maybe (Left (FunctionEvaluationFailed
         FunctionBodyOutsideDeclaredResult)) Right staticDeclaredOutput
-      included <- subfederationValues inferredOutput target >>= booleanCondition
+      included <- if interpretedCanonicalResult inferredOutput
+          == interpretedCanonicalResult target
+        then Right True
+        else subfederationValues inferredOutput target >>= booleanCondition
       if included then pure target else Left (FunctionEvaluationFailed
         FunctionBodyOutsideDeclaredResult)
   let dependentBindings argument = do
@@ -1185,7 +1410,7 @@ registeredExternal symbol = case symbol of
     signatureText <- signatureSource anyTypeValue anyTypeValue
     pure (makeFunctionValue (EvaluatedFunction
       anyTypeValue anyTypeValue Nothing
-      (Just ("external " <> show symbol)) signatureText
+      (Just ("_external " <> show symbol)) signatureText
       (Just Right) (Just publicValue) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
@@ -1200,6 +1425,8 @@ registeredExternal symbol = case symbol of
   "datra.syntax.fun" -> syntaxAdapter 1
   "datra.syntax.with" -> syntaxAdapter 2
   "datra.syntax.for" -> syntaxAdapter 2
+  "datra.syntax.withIn" -> syntaxAdapter 3
+  "datra.syntax.forIn" -> syntaxAdapter 3
   "datra.syntax.eval" -> syntaxAdapter 2
   "datra.StrTempl" -> Right stringTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
@@ -1225,7 +1452,7 @@ registeredExternal symbol = case symbol of
       let domain = if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)
       signatureText <- signatureSource domain astTypeValue
       pure (makeFunctionValue (EvaluatedFunction domain astTypeValue Nothing
-        (Just ("external " <> show symbol)) signatureText Nothing Nothing True))
+        (Just ("_external " <> show symbol)) signatureText Nothing Nothing True))
     nativeRange valued = do
       ints <- integerTypeValue
       up <- asciiStringValue "upwards"
@@ -1253,7 +1480,7 @@ registeredExternal symbol = case symbol of
             if valued then integerValuedRangeTypeValue else integerRangeTypeValue
       signatureText <- signatureSource domain codomain
       pure (makeFunctionValue (EvaluatedFunction domain codomain Nothing
-        (Just ("external " <> show symbol)) signatureText
+        (Just ("_external " <> show symbol)) signatureText
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
         (Just invoke) True))
     optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
@@ -1273,7 +1500,7 @@ registeredExternal symbol = case symbol of
             pure result
       signatureText <- signatureSource input output
       pure (makeFunctionValue (EvaluatedFunction input output Nothing
-        (Just ("external " <> show symbol)) signatureText
+        (Just ("_external " <> show symbol)) signatureText
         (Just (prepareArguments schema)) (Just invoke) True))
 
 

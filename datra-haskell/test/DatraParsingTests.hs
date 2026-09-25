@@ -121,6 +121,29 @@ regressionTests = do
   assertAstOutput "quoted dependent sum binder"
     "with \"T\"? of Any"
     (WithBinding (IdentifierString "T") True (ref "Any"))
+  assertAstOutput "dependent sum family sugar"
+    "with i in Nat do \"arg%(i)\"? : Int"
+    (MapAccess
+      (AtlasMap
+        [ WithBinding (IdentifierString "i") True (ref "Nat")
+        , EitherType
+            (IdentifierTemplateOperation
+              [ StringTemplateLiteral "arg"
+              , StringTemplateInterpolation (ref "i")
+              ]
+              (ref "Int")
+              Nothing)
+            (ref "Int")
+        ])
+      (natural 1))
+  assertAstOutput "dependent product family sugar accepts a quoted binder"
+    "for \"i\" in Nat do i"
+    (MapAccess
+      (AtlasMap
+        [ ForBinding (IdentifierString "i") True (ref "Nat")
+        , ref "i"
+        ])
+      (natural 1))
   assertParsed "private optional dependent binder is valid in an ordered map"
     "(with _T? of Any; value? : _T)"
     (AtlasMap
@@ -211,6 +234,9 @@ regressionTests = do
     (ArgumentMap [MapConcatenation (natural 1) (natural 2), natural 3])
   assertAstOutput "argument map permits a trailing comma"
     "{1, 2,}" (ArgumentMap [natural 1, natural 2])
+  assertAstOutput "a unary trailing comma splices an argument federation"
+    "{Args Int,}"
+    (ArgumentMapSplice (FunctionApplication (ref "Args") (ref "Int")))
   assertAstOutput "unary argument map" "{2}" (natural 2)
   assertAstOutput "argument map supports newline separators"
     "{1\n2}" (ArgumentMap [natural 1, natural 2])
@@ -1561,14 +1587,14 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply (in-module $std (~> (external \"datra.from\") "
+        == "(apply (in-module $std (~> (_external \"datra.from\") "
           <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntValRange)))) "
           <> "(<:> (~> 2 (in-module $std (ref $Int))) "
           <> "(~> 5 (in-module $std (ref $Int)))))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply (in-module $std (~> (external \"datra.from\") "
+        == "(apply (in-module $std (~> (_external \"datra.from\") "
           <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntValRange)))) "
           <> "(<:> (~> 2 (in-module $std (ref $Int))) "
           <> "(~> $upwards (in-module $std (ref $_Wards)))))"

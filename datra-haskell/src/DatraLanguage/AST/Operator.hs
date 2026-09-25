@@ -50,7 +50,7 @@ operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
 operatorCanonicalSymbol ApplicationOperator = "apply"
 operatorCanonicalSymbol DoOperator = "do"
-operatorCanonicalSymbol ExternalOperator = "external"
+operatorCanonicalSymbol ExternalOperator = "_external"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ExpansionOperator = "<+>"
 operatorCanonicalSymbol RangeOperator = "<..>"
@@ -90,7 +90,7 @@ operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
-operatorSourceSymbol ExternalOperator = Just "external"
+operatorSourceSymbol ExternalOperator = Just "_external"
 operatorSourceSymbol SequentialOperator = Nothing
 operatorSourceSymbol ExpansionOperator = Nothing
 operatorSourceSymbol RangeOperator = Just ".."
