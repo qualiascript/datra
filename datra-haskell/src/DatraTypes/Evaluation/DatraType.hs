@@ -101,7 +101,7 @@ composedStructuralDatraType components =
       else WeakStringRepresentation)
 
 functionDatraType :: DatraType
-functionDatraType = makeNonCanonicalDatraType FunctionTypeFamily
+functionDatraType = canonicalTypeAsDatraType (makeCanonicalType FunctionTypeFamily)
 
 builtinMetaDatraType :: BuiltinMetaType -> DatraType
 builtinMetaDatraType kind =

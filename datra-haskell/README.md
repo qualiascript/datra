@@ -74,6 +74,41 @@ Use the `ast` command to generate canonical AST notation and `interpret` to
 evaluate an existing AST file. Pass `-` as an input or output path for standard
 input or standard output.
 
+## Canonical function source
+
+Function values render as executable Datra. Referenced definitions are rebuilt
+recursively in nested blocks, including standard-library dependencies down to
+their `external` registrations. Selected module members are reconstructed without
+an import of the whole module. Recursive functions use `let`.
+
+For example, a dependency on `Int` is declared as:
+
+```datra
+"__Std.Int" : (external "datra.Int")
+```
+
+The reference `this."__Std.Int"[1]` denotes its bound value. This canonical
+reference form also supports identifiers containing spaces or dots, bypassing
+bare-symbol restrictions. No additional `_dependency0_0` alias is needed. Extra
+leading underscores distinguish nested dependency levels.
+
+Computed positional access selects a declaration before evaluating its value:
+
+```datra
+x : 2
+y : 3
+z : this[y-x][1]
+yield z
+```
+
+This returns `3`; `this[y-x][0]` returns the identifier name, displayed as `$y`.
+Standalone `this` still denotes
+the block's declaration map.
+
+The function reconstruction tests check text stability, canonical identity, and
+application after reconstruction without an implicit standard-library scope.
+These checks are not a proof of canonicity for every Datra type.
+
 ## Development checks
 
 The repository-local toolchain is selected by `cabal.project`:

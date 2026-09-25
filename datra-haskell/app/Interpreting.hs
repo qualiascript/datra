@@ -20,6 +20,7 @@ module Interpreting
   , interpretExpression
   , interpretLocatedExpression
   , interpretExpressionReason
+  , interpretClosedExpression
   , interpretedValueKind
   , interpretedValueHasTotalMap
   , interpretedCanonicalResult
@@ -35,7 +36,8 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub)
+import Data.List (nub, intercalate)
+import FunctionClosure
 import FunctionInference
 import DatraLanguage.Identifier (public)
 import RuntimeModules
@@ -57,6 +59,7 @@ import DatraLanguage.AST
   , StringTemplatePart (..)
   , namedBeginBlock
   , normalizeExpression
+  , mapExpressionChildren
   , yieldedIdentifier
   )
 import DatraTypes
@@ -71,6 +74,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (parseFailureMessage) )
 import Numeric.Natural (Natural)
+import DatraOrdinal (naturalAtOrdinal)
 
 interpretExpression
   :: Expression
@@ -102,6 +106,10 @@ interpretExpressionReason
   :: Expression
   -> Either InterpretingError InterpretedValue
 interpretExpressionReason = interpretWithImports []
+
+-- | Evaluate a closed reconstruction without importing Std or any modules.
+interpretClosedExpression :: Expression -> Either InterpretingError InterpretedValue
+interpretClosedExpression = evalInScope [] []
 
 interpretWithImports :: [(String, ModuleSource)] -> Expression -> Either InterpretingError InterpretedValue
 interpretWithImports modules expression = do
@@ -231,6 +239,7 @@ type Scope = [(String, Binding)]
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
+  | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
   | ImportedBinding FilePath InterpretedValue
   | ModuleCatalog [(String, ModuleSource)]
   | ScopeMembers [String]
@@ -329,8 +338,9 @@ interpretNormalizedExpression scope resolving expressionValue =
     FunctionType domain codomain -> do
       input <- compileParameters interpret domain >>= parameterDomain
       output <- interpret codomain
+      signatureText <- signatureSource input output
       pure (makeFunctionValue
-        (EvaluatedFunction input output Nothing Nothing Nothing Nothing True))
+        (EvaluatedFunction input output Nothing Nothing signatureText Nothing Nothing True))
     FunctionBody bindings result -> createFunction scope resolving Nothing bindings result
     FunctionApplication function argument -> do
       callable <- interpret function
@@ -363,7 +373,26 @@ interpretNormalizedExpression scope resolving expressionValue =
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
             result -> result
+    -- Project one declared binding without forcing the whole scope map. This
+    -- also permits projections next to recursive function declarations.
+    NamedAccess This (IdentifierString name)
+      | Just (ScopeMembers names) <- lookup "\0this" scope
+      , name `elem` names ->
+          simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name
     NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
+    MapAccess This insertionOperand -> do
+      insertion <- interpret insertionOperand
+      let names = case lookup "\0this" scope of
+            Just (ScopeMembers values) -> values
+            _ -> []
+          shape = makeAtlasMap 2
+            [simpleIdentifierTypeValue name (naturalValue 0) | name <- names]
+      -- Validate the index against the declaration map before demanding values.
+      _ <- accessValues shape insertion
+      case interpretedExplicitOrdinal insertion >>= (naturalAtOrdinal . snd) of
+        Just index | name : _ <- drop (fromIntegral index) names ->
+          simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name
+        _ -> scopeValue scope resolving >>= (`accessValues` insertion)
     MapAccess mapOperand insertionOperand ->
       binary accessValues mapOperand insertionOperand
     MapSpecification implementation (SyntaxType text ordinary signature) -> do
@@ -423,6 +452,7 @@ resolveIdentifier scope resolving name =
   case lookup name scope of
     Nothing -> Left (UnknownIdentifier name)
     Just (EvaluatedBinding value) -> Right value
+    Just (RetainedBinding _ _ _ value) -> Right value
     Just (ImportedBinding _ value) -> Right value
     Just ScopeMembers {} -> Left (UnknownIdentifier name)
     Just ModuleCatalog {} -> Left (UnknownIdentifier name)
@@ -463,8 +493,10 @@ importScope enclosing resolving entries = do
     (\(name, _, _, _) -> (name,) <$> resolveIdentifier deferred resolving name)
     (filter (\(_, strict, _, _) -> strict) definitions)
   let imported = map replaceEvaluated deferred
-      replaceEvaluated entry@(name, _) =
-        maybe entry ((name,) . EvaluatedBinding) (lookup name evaluated)
+      replaceEvaluated entry@(name, binding) = case (binding, lookup name evaluated) of
+        (DeferredBinding lexical annotation expressionValue, Just value) ->
+          (name, RetainedBinding lexical annotation expressionValue value)
+        _ -> entry
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
@@ -698,7 +730,7 @@ createFunction captured resolving explicit bindings result = do
       inferred <- inferParameters names body
       let parameter (name, target) = EitherType
             (IdentifierOperation (IdentifierString name) target Nothing) target
-      pure (AtlasMap (map parameter inferred), Nothing)
+      pure (explicitPrimitives (AtlasMap (map parameter inferred)), Nothing)
   schema <- compileParameters evaluate domainExpression
   let parameters = parameterBindings schema
       names = map fst parameters
@@ -736,8 +768,19 @@ createFunction captured resolving explicit bindings result = do
         value <- evalInScope bodyScope [] result
         _ <- specifyValues value output
         pure value
+  outputExpression <- maybe (valueExpression output) Right specifiedOutput
+  signatureText <- signatureSource input output
+  let definition = MapSpecification (FunctionBody bindings result)
+        (FunctionType domainExpression outputExpression)
+      self = case [bindingKey name expressionValue
+                  | (name, binding) <- captured
+                  , Just (_, _, expressionValue) <- [bindingDefinition binding]
+                  , expressionValue == definition] of
+        key : _ -> Just key
+        [] -> Nothing
+      closed = closeFunction (closureResolver captured) self definition
   pure (makeFunctionValue (EvaluatedFunction input output Nothing
-    (Just (renderSourceExpression (FunctionBody bindings result)))
+    (Just (renderSourceExpression closed)) signatureText
     (Just (prepareArguments schema)) (Just invoke) True))
   where
     evaluate = evalInScope captured resolving
@@ -810,10 +853,12 @@ registeredExternal symbol = case symbol of
   "datra.Int" -> integerTypeValue
   "datra.String" -> Right stringTypeValue
   "datra.IdenStr" -> Right identifierValueTypeValue
-  "datra.public" -> Right (makeFunctionValue (EvaluatedFunction
-    anyTypeValue anyTypeValue Nothing
-    (Just ("external " <> show symbol))
-    (Just Right) (Just publicValue) False))
+  "datra.public" -> do
+    signatureText <- signatureSource anyTypeValue anyTypeValue
+    pure (makeFunctionValue (EvaluatedFunction
+      anyTypeValue anyTypeValue Nothing
+      (Just ("external " <> show symbol)) signatureText
+      (Just Right) (Just publicValue) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
   "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
@@ -844,9 +889,11 @@ registeredExternal symbol = case symbol of
   where
     concreteCanonical (CanonicalSpecification source _) = concreteCanonical source
     concreteCanonical value = value
-    syntaxAdapter arity = pure (makeFunctionValue (EvaluatedFunction
-      (if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)) astTypeValue Nothing
-      (Just ("external " <> show symbol)) Nothing Nothing True))
+    syntaxAdapter arity = do
+      let domain = if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)
+      signatureText <- signatureSource domain astTypeValue
+      pure (makeFunctionValue (EvaluatedFunction domain astTypeValue Nothing
+        (Just ("external " <> show symbol)) signatureText Nothing Nothing True))
     nativeRange valued = do
       ints <- integerTypeValue
       up <- asciiStringValue "upwards"
@@ -872,8 +919,9 @@ registeredExternal symbol = case symbol of
                   else (if valued then valuedIntegerRangeValue else integerRangeValue) start end
       let codomain =
             if valued then integerValuedRangeTypeValue else integerRangeTypeValue
+      signatureText <- signatureSource domain codomain
       pure (makeFunctionValue (EvaluatedFunction domain codomain Nothing
-        (Just ("external " <> show symbol))
+        (Just ("external " <> show symbol)) signatureText
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
         (Just invoke) True))
     optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
@@ -891,8 +939,9 @@ registeredExternal symbol = case symbol of
             result <- implementation bindings
             _ <- specifyValues result output
             pure result
+      signatureText <- signatureSource input output
       pure (makeFunctionValue (EvaluatedFunction input output Nothing
-        (Just ("external " <> show symbol))
+        (Just ("external " <> show symbol)) signatureText
         (Just (prepareArguments schema)) (Just invoke) True))
 
 
@@ -933,12 +982,12 @@ loadedModuleValue moduleSource@(ModuleSource path expression dependencies) = do
     (("\0imports", ModuleCatalog dependencies) : base)
     []
     (resourceBindings expression)
-  let valueExpression = case given of
+  let yieldedExpression = case given of
         Nothing -> annotation
         Just value
           | value == annotation -> value
           | otherwise -> MapSpecification value annotation
-  value <- evalInScope scope [] valueExpression
+  value <- evalInScope scope [] yieldedExpression
   pure (path, name, value)
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
@@ -1048,3 +1097,98 @@ moduleScope (ModuleSource _ expression dependencies) = do
 resourceBindings :: Expression -> [Expression]
 resourceBindings (Program bindings _) = bindings
 resourceBindings _ = []
+
+-- | Source provenance survives eager let evaluation. Ordinary definitions
+-- already retain their lexical scope; both use the same reconstruction path.
+bindingDefinition :: Binding -> Maybe (Scope, Maybe Expression, Expression)
+bindingDefinition (DeferredBinding lexical annotation expressionValue) =
+  Just (lexical, annotation, expressionValue)
+bindingDefinition (RetainedBinding lexical annotation expressionValue _) =
+  Just (lexical, annotation, expressionValue)
+bindingDefinition _ = Nothing
+
+bindingKey :: String -> Expression -> String
+bindingKey name expressionValue = name <> ":" <> show expressionValue
+
+closureResolver :: Scope -> Resolver
+closureResolver scope = resolver
+  where
+    resolver = Resolver resolve moduleResolver scopeIndex
+    scopeIndex expressionValue = do
+      index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
+      ordinal <- interpretedExplicitOrdinal index >>= (naturalAtOrdinal . snd)
+      ScopeMembers names <- lookup "\0this" scope
+      case drop (fromIntegral ordinal) names of
+        name : _ -> Just name
+        [] -> Nothing
+    moduleResolver path = case lookupModule scope path >>= moduleScope of
+      Right imported -> Just (closureResolver imported)
+      Left _ -> Nothing
+    resolve [] = Nothing
+    resolve ["\0this", name] = resolve [name]
+    resolve (name : fields) = do
+      binding <- lookup name scope
+      case (fields, bindingDefinition binding) of
+        ([], Just (lexical, _, expressionValue)) ->
+          Just (Dependency (bindingKey name expressionValue)
+            (originName name) expressionValue (closureResolver lexical))
+        _ -> do
+          value <- either (const Nothing) Just (resolveIdentifier scope [] name)
+          selected <- either (const Nothing) Just
+            (foldM namedAccessValue value fields)
+          expressionValue <- either (const Nothing) Just (valueExpression selected)
+          pure (Dependency
+            (intercalate "." (name : fields) <> ":" <> show expressionValue)
+            (intercalate "." (originName name : fields))
+            expressionValue emptyResolver)
+    originName name
+      | name `elem` standardNames = "Std." <> name
+      | otherwise = dropWhile (== '_') name
+    standardNames =
+      ["Any", "Nat", "Int", "String", "StringTemplate", "IdenStr"
+      ,"Bool", "true", "false", "nothing", "AST", "Expr", "Block", "Pages"
+      ,"NatRange", "IntRange", "NatValRange", "IntValRange", "public"
+      ,"from", "range", "if", "begin", "do", "let"]
+
+emptyResolver :: Resolver
+emptyResolver = Resolver (const Nothing) (const Nothing) (const Nothing)
+
+-- Primitive leaves name the host registration rather than assuming Std is in
+-- scope. Compound values recursively replace the library names in their source.
+valueExpression :: InterpretedValue -> Either InterpretingError Expression
+valueExpression value = case parseDatra
+    ("(" <> renderCanonicalResult (interpretedCanonicalResult value) <> "\n)") of
+  Right expressionValue -> Right (explicitPrimitives (normalizeExpression expressionValue))
+  Left _ -> Left NoCanonicalStringConversion
+
+explicitPrimitives :: Expression -> Expression
+explicitPrimitives expressionValue = case expressionValue of
+  IdentifierReference (IdentifierString "true") -> booleanExpression True
+  IdentifierReference (IdentifierString "false") -> booleanExpression False
+  IdentifierReference (IdentifierString "nothing") -> nothingExpression
+  IdentifierReference (IdentifierString "Bool") ->
+    EitherType (booleanExpression False) (booleanExpression True)
+  BooleanLiteral value -> booleanExpression value
+  BooleanType -> EitherType (booleanExpression False) (booleanExpression True)
+  NothingLiteral -> nothingExpression
+  IdentifierReference (IdentifierString name)
+    | name `elem` primitiveNames -> External (AsciiStringLiteral ("datra." <> name))
+  NaturalType -> External (AsciiStringLiteral "datra.Nat")
+  IntegerType -> External (AsciiStringLiteral "datra.Int")
+  StringType -> External (AsciiStringLiteral "datra.String")
+  IdentifierValueType -> External (AsciiStringLiteral "datra.IdenStr")
+  _ -> mapExpressionChildren explicitPrimitives expressionValue
+  where
+    nothingExpression = IdentifierOperation (IdentifierString "Nothing") (AtlasMap []) Nothing
+    booleanExpression value = IdentifierOperation
+      (IdentifierString (if value then "True" else "False"))
+      (EllipsisNatural (if value then 1 else 0)) Nothing
+    primitiveNames =
+      ["Any", "Nat", "Int", "String", "StringTemplate", "IdenStr"
+      ,"AST", "Expr", "Block", "Pages", "NatRange", "IntRange"
+      ,"NatValRange", "IntValRange", "range", "from", "public"]
+
+-- Signatures themselves must not rely on implicit standard-library names.
+signatureSource :: InterpretedValue -> InterpretedValue -> Either InterpretingError String
+signatureSource input output = renderSourceExpression <$>
+  (FunctionType <$> valueExpression input <*> valueExpression output)

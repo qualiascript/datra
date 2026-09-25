@@ -319,6 +319,7 @@ executable datra-haskell
         RuntimeModules
         ModuleLoading
         FunctionInference
+        FunctionClosure
         StdLib
         SyntaxDefinitions
         Parsing
@@ -392,6 +393,7 @@ test-suite datra-interpreting-test
     main-is:          DatraInterpretingTests.hs
     other-modules:
         Datra.Interpreter.DatraTypeLawTests
+        Datra.Interpreter.FunctionClosureTests
         Datra.Interpreter.FunctionTests
         Datra.Interpreter.IntegrationTests
         Datra.Interpreter.ModuleTests
@@ -403,6 +405,7 @@ test-suite datra-interpreting-test
         RuntimeModules
         ModuleLoading
         FunctionInference
+        FunctionClosure
         StdLib
         SyntaxDefinitions
         Parsing

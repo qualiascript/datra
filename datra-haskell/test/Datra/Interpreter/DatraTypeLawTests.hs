@@ -81,9 +81,9 @@ compositeTypeExamples =
   , canonical "canonical federation" "Nat | String"
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
-  , weak "function" "Nat -> Nat"
+  , canonical "function" "Nat -> Nat"
   , weak "map containing a noncanonical type" "(Nat; AST)"
-  , weak "federation containing a function" "Nat | (Nat -> Nat)"
+  , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 
 canonical :: String -> String -> DatraTypeExample

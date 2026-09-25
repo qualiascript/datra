@@ -235,6 +235,7 @@ data EvaluatedFunction = EvaluatedFunction
   , functionCodomain :: InterpretedValue
   , functionPattern :: Maybe (String, Bool)
   , functionSource :: Maybe String
+  , functionSignatureSource :: String
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError InterpretedValue)
   , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
@@ -246,7 +247,14 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
   (FunctionForm function) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
-    (interpretedSemantics (functionCodomain function)) (functionPattern function) (functionSource function))
+    (interpretedSemantics (functionCodomain function)) (functionPattern function) (Just canonicalSource))
+  where
+    signature = functionSignatureSource function
+    canonicalSource = case functionPattern function of
+      Nothing -> maybe signature id (functionSource function)
+      Just (patternText, ordinary) ->
+        let typed = "(" <> show patternText <> (if ordinary then " as? (" else " as (") <> signature <> "))"
+        in maybe typed (\body -> "(" <> body <> ") ~> " <> typed) (functionSource function)
 
 interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
 interpretedFunction value = case interpretedForm value of
@@ -470,6 +478,9 @@ interpretedTypeIsTotal value =
     || case datraTypeFamily
         (interpretedDatraType value) of
       TotalBlockTypeFamily -> True
+      FunctionTypeFamily -> case interpretedFunction value of
+        Just function -> maybe False (const True) (functionSource function)
+        Nothing -> False
       _ -> False
 
 -- | Retain evaluation provenance without changing the semantic map or codec.

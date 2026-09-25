@@ -58,8 +58,9 @@ renderInterpretedValue value =
   retainSource value (renderCanonicalResult (interpretedCanonicalResult value))
 
 retainSource :: InterpretedValue -> String -> String
-retainSource value result =
-  case interpretedEvaluationSource value of
+retainSource value result
+  | CanonicalFunction {} <- interpretedCanonicalResult value = result
+  | otherwise = case interpretedEvaluationSource value of
     Nothing -> result
     Just block -> operand <> " <~ " <> block
       where
@@ -123,7 +124,9 @@ prettyNonKeywordCanonicalResult result =
           typed = case patternInfo of
             Nothing -> signature
             Just (text, ordinary) -> pretty (show text) <+> (if ordinary then "as?" else "as") <+> parens signature
-      in typed <> maybe mempty (\text -> " " <> pretty text) body
+      in case body of
+        Nothing -> typed
+        Just text -> parens (pretty text)
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalInteger value ->
       prettySourceSymbol MinusOperator <> pretty (negate value)

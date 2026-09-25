@@ -44,7 +44,7 @@ stringConversionProperties semantics =
   case semantics of
     BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion
-    FunctionSemantics {} -> unknownConversion
+    FunctionSemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
     NaturalRangeSemantics {} -> numericRange

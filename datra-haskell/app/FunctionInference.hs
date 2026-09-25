@@ -1,6 +1,8 @@
 -- | Conservative inference for the executable expression fragment. Unknown
 -- constraints are reported, never accepted by trying example arguments.
 module FunctionInference (freeIdentifiers, inferParameters, inferBody) where
+
+import DatraOrdinal (naturalAtOrdinal)
 import Data.List (nub)
 import DatraLanguage.AST
 import DatraTypes
@@ -152,6 +154,16 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
           members
         pure (makeAtlasMap 2 values)
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
+      MapAccess This index -> do
+        position <- recur index
+        let shape = makeAtlasMap 2
+              [simpleIdentifierTypeValue name (naturalValue 0) | name <- members]
+        _ <- accessValues shape position
+        case interpretedExplicitOrdinal position >>= (naturalAtOrdinal . snd) of
+          Just ordinal | name : _ <- drop (fromIntegral ordinal) members ->
+            simpleIdentifierTypeValue name
+              <$> recur (IdentifierReference (IdentifierString name))
+          _ -> recur This >>= (`accessValues` position)
       MapAccess operand index -> do
         value <- recur operand
         position <- recur index

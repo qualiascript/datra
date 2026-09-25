@@ -83,7 +83,7 @@ standardLibraryTests =
             , "5 of Any"
             , "(Nat; String) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
-            , "not ((Nat -> Nat) of Any)"
+            , "(Nat -> Nat) of Any"
             , "not (AST of Any)"
             , "not ((Nat; AST) of Any)"
             , "(5 ~> Any) = 5"
