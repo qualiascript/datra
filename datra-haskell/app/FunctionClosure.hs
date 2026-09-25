@@ -113,8 +113,11 @@ rewrite mode depth reserved active resolver bound expression
 rewrite mode depth reserved active resolver bound expression =
   case expression of
     InModule path body
-      | Just imported <- resolveDependencyModule resolver path ->
-          pure (close mode (depth + 1) active reserved imported Nothing False False body)
+      | Just imported <- resolveDependencyModule resolver path -> case mode of
+        InlineDependencies ->
+          rewrite mode (depth + 1) reserved active imported bound body
+        BindDependencies ->
+          rewrite mode (depth + 1) reserved active imported bound body
     MapSpecification (FunctionBody entries result) (FunctionType domain codomain) -> do
       let parameters = parameterNames domain
       closedDomain <- rewrite mode depth reserved active resolver

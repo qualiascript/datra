@@ -71,7 +71,10 @@ source context expression =
     ExtractValue operand -> unary "%" operand
     OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
-    Access operand position -> wrapped 10 (source 11 operand <> "[" <> source 0 position <> "]")
+    -- Access associates to the left, so a second page selection can continue
+    -- directly as @value[first][second]@.  Operands with genuinely looser
+    -- precedence are still parenthesized by their own renderer.
+    Access operand position -> wrapped 10 (source 10 operand <> "[" <> source 0 position <> "]")
     Range left right -> binary 9 ".." left right
     RangePlus operand -> source 11 operand <> ".."
     RangeMinus operand -> source 11 operand <> "..-"
