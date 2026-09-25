@@ -43,7 +43,7 @@ assert display() = "()"
 assert display(1) = "1"
 assert display(1, 2, 3) = "(1; 2; 3)"
 assert display(arg1 := 10, 4) = "(4; 10)"
-assert ((arg2 := 10, 4) of {Args Int,}) = false # missing hole for `arg1`
+assert ((arg2 := 10, 4) of {Args Int,}) = false # missing argument: `arg1`
 ```
 
 See the [Haskell implementation README](datra-haskell/README.md) for Docker
