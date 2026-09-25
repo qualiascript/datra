@@ -348,6 +348,11 @@ normalizeExpression (Exponentiation left right) =
 normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression value) name
+-- The payload of a scope identifier is its canonical reference spelling.
+-- It resolves the binding directly, including quoted names and captured names,
+-- without materializing the current block's declaration map.
+normalizeExpression (MapAccess (NamedAccess This name) (EllipsisNatural 1)) =
+  IdentifierReference name
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =

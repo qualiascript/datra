@@ -26,10 +26,14 @@ source context expression =
       ("begin\n" <> concatMap (indent . source 0) bindings
         <> "yield " <> source 0 result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
-    IdentifierReferenceValue (IdentifierString name) -> name
+    IdentifierReferenceValue (IdentifierString name)
+      | renderIdentifierString name == name -> name
+      | otherwise -> "this." <> renderIdentifierString name <> "[1]"
     IdentifierOperationValue (IdentifierString name) annotation given -> wrapped 1
-      (renderIdentifierString name <> " : " <> source 0 annotation
-        <> maybe "" (\value -> " := " <> source 0 value) given)
+      (renderIdentifierString name <> case given of
+        Just value | value == annotation -> " := " <> source 2 value
+        _ -> " : " <> source 13 annotation
+          <> maybe "" (\value -> " := " <> source 2 value) given)
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> intercalate "; " (map (source 0) members) <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"

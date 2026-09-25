@@ -14,7 +14,7 @@ yield Std := begin
   let Bool := (false | true)
   let _Wards := ($upwards | $downwards)
 
-  let AST := external "datra.AST"
+  let _AST := external "datra.AST"
   let Expr := external "datra.Expr"
   let Block := external "datra.Block"
   let Pages := external "datra.Pages"
@@ -35,15 +35,15 @@ yield Std := begin
 
   # Syntax adapters receive ASTs. The sum is one value bound to one identifier.
   if := (
-    ("$Expr then $Expr else $Expr" as (AST, AST, AST -> AST) external "datra.syntax.if") |
-    ("$Expr then $Expr" as (AST, AST -> AST) external "datra.syntax.ifThen")
+    ("$Expr then $Expr else $Expr" as (_AST, _AST, _AST -> _AST) external "datra.syntax.if") |
+    ("$Expr then $Expr" as (_AST, _AST -> _AST) external "datra.syntax.ifThen")
   )
-  begin : "$Block yield $Expr" as (AST, AST -> AST) := external "datra.syntax.begin"
+  begin : "$Block yield $Expr" as (_AST, _AST -> _AST) := external "datra.syntax.begin"
   do := (
-    ("$Block yield $Expr" as (AST, AST -> AST) external "datra.syntax.do") |
-    ("begin $Block yield $Expr" as (AST, AST -> AST) external "datra.syntax.do")
+    ("$Block yield $Expr" as (_AST, _AST -> _AST) external "datra.syntax.do") |
+    ("begin $Block yield $Expr" as (_AST, _AST -> _AST) external "datra.syntax.do")
   )
-  let : "$Expr" as (AST -> AST) := external "datra.syntax.let"
-  _eval : "$Expr at $Pages" as (AST, AST -> AST) := external "datra.syntax.eval"
+  let : "$Expr" as (_AST -> _AST) := external "datra.syntax.let"
+  _eval : "$Expr at $Pages" as (_AST, _AST -> _AST) := external "datra.syntax.eval"
 
 yield public this

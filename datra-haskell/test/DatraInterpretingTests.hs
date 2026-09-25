@@ -3,6 +3,7 @@
 
 module DatraInterpretingTests (main) where
 
+import Datra.Interpreter.FunctionClosureTests (functionClosureTests)
 import Datra.Interpreter.FunctionTests (functionTests)
 import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
 import Datra.Interpreter.IntegrationTests (integrationTests)
@@ -129,6 +130,7 @@ testTree =
         , testCase "typed rejections" testTypedRejections
         , testCase "located rejection" testLocatedRejection
         ]
+    , functionClosureTests
     , functionTests
     , datraTypeLawTests
     , integrationTests
@@ -740,7 +742,7 @@ testBegin = do
   expectSourceValue "retained block" example $ \value -> do
     assert "the arithmetic result is eleven" (interpretedInteger value == Just 11)
     assert "the block remains in reverse-specification output"
-      (renderInterpretedValue value == "11 <~ " <> example)
+      (renderInterpretedValue value == "11 <~ begin\n a : (2 * 3)\n b : 5\nyield a + b")
     expectSourceValue "retained block output can be read again"
       (renderInterpretedValue value) $ \decoded ->
         assert "output preserves its value" (interpretedInteger decoded == Just 11)
@@ -808,9 +810,11 @@ testCanonicalTypes = do
     , "Bool"
     , "(Nat; Int)"
     , "begin yield 11"
+    , "Nat -> Nat"
+    , "Nat | (Nat -> Nat)"
     ]
   mapM_ expectNonCanonicalDatraType
-    [ "AST"
+    [ "external \"datra.AST\""
     , "Expr"
     , "Block"
     , "Pages"
@@ -819,15 +823,13 @@ testCanonicalTypes = do
     , "NatValRange"
     , "IntValRange"
     , "StringTemplate"
-    , "Nat -> Nat"
-    , "(Nat; AST)"
-    , "Nat | (Nat -> Nat)"
+    , "(Nat; (external \"datra.AST\"))"
     ]
-  expectSourceValue "weak function string capability" "Nat -> Nat" $ \value ->
-    assert "functions are DatraType values without a CanonicalType"
+  expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
+    assert "functions carry a CanonicalType"
       (case Types.datraCanonicalType (Types.interpretedDatraType value) of
-        Nothing -> True
-        Just _ -> False)
+        Nothing -> False
+        Just _ -> True)
   expectSourceValue "canonical begin block capability" "begin yield 11" $ \value -> do
     assert "a retained total block embeds a CanonicalType"
       (case Types.datraCanonicalType (Types.interpretedDatraType value) of

@@ -1,6 +1,8 @@
 -- | Conservative inference for the executable expression fragment. Unknown
 -- constraints are reported, never accepted by trying example arguments.
 module FunctionInference (freeIdentifiers, inferParameters, inferBody) where
+
+import BlockScope
 import Data.List (nub)
 import DatraLanguage.AST
 import DatraTypes
@@ -16,34 +18,15 @@ freeIdentifiers = nub . free []
       _ -> concatMap (free bound) (children expression)
     block bound bindings result = entries initial bindings
       where
-        declarations = map (blockDeclaration False) bindings
-        initial = [name | Just (name, True, _) <- declarations] <> bound
+        declarations = map blockDeclaration bindings
+        initial = [declarationName value | Just value <- declarations, declarationIsLet value] <> bound
         entries visible [] = free visible result
         entries visible (entry : remaining) =
           free visible entry <> entries (afterEntry visible entry) remaining
         afterEntry visible entry =
-          case blockDeclaration False entry of
-            Just (name, False, _) -> name : visible
+          case blockDeclaration entry of
+            Just value | not (declarationIsLet value) -> declarationName value : visible
             _ -> visible
-
-blockDeclaration :: Bool -> Expression -> Maybe (String, Bool, Expression)
-blockDeclaration strict expression =
-  case expression of
-    Let binding -> blockDeclaration True binding
-    IdentifierOperation (IdentifierString name) annotation given ->
-      Just
-        ( name
-        , strict
-        , maybe annotation
-            (\value ->
-              if value == annotation
-                then value
-                else MapSpecification value annotation)
-            given
-        )
-    EitherType named@(IdentifierOperation _ annotation _) missing
-      | annotation == missing -> blockDeclaration strict named
-    _ -> Nothing
 
 data InferenceBinding = InferenceBinding
   { inferenceBindingName :: String
@@ -89,23 +72,12 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         definitions =
           [ definition
           | entry <- entries
-          , Just definition <- [blockDeclaration False entry]
+          , Just definition <- [blockDeclaration entry]
           ]
-        memberNames = [name | (name, _, _) <- definitions]
-        initial = recursiveLets <> enclosing
-        recursiveLets =
-          [ InferenceBinding name expressionValue memberNames
-              (scopeBefore position)
-          | (position, (name, strict, expressionValue)) <- zip [0..] definitions
-          , strict
-          ]
-        scopeBefore position =
-          foldl addOrdinary initial (take position definitions)
-        addOrdinary scope (name, strict, expressionValue)
-          | strict = scope
-          | otherwise =
-              InferenceBinding name expressionValue memberNames scope : scope
-        imported = foldl addOrdinary initial definitions
+        memberNames = map declarationName definitions
+        imported = buildScopeBindings
+          (\captured value -> InferenceBinding (declarationName value)
+            (declarationValue value) memberNames captured) enclosing definitions
 
     infer scope members expression = case expression of
       IdentifierReference (IdentifierString name)
@@ -145,13 +117,11 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         expected <- recur target
         check actual expected
         pure expected
-      This -> do
-        values <- traverse
-          (\name -> simpleIdentifierTypeValue name
-            <$> infer scope members (IdentifierReference (IdentifierString name)))
-          members
-        pure (makeAtlasMap 2 values)
+      This -> declarationMap members (recur . IdentifierReference . IdentifierString)
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
+      MapAccess This index -> do
+        position <- recur index
+        projectDeclaration members (recur . IdentifierReference . IdentifierString) position
       MapAccess operand index -> do
         value <- recur operand
         position <- recur index

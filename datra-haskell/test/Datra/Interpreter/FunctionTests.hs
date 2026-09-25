@@ -59,13 +59,12 @@ functionTests =
               , "yield identity 5"
               ])
             "5"
-        , programFailureCase "Any rejects a weak-only function argument value"
+        , programCase "Any accepts a canonical function argument value"
             (unlines
               [ "identity := ({value?:Any} -> Any yield value)"
-              , "yield identity (Nat -> Nat)"
+              , "yield (identity (Nat -> Nat)) of (Nat -> Nat)"
               ])
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+            "true"
         , programCase "function sum selects the numerical alternative"
             (unlines
               [ "f := (({x?:Nat} -> Int do yield x+1) | ({x?:String} -> String do yield x))"
@@ -164,18 +163,18 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed
                 (IncompatibleInferredParameterConstraints "value")))
-        , expressionFailureCase "function type cannot annotate an identifier"
-            "callback : (Nat -> Nat)"
-            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
-        , programFailureCase "block binding cannot bypass canonical annotation"
-            "callback : (Nat -> Nat)\nyield callback"
-            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
+        , programCase "function type annotates an identifier"
+            "assert (callback : (Nat -> Nat)) of (callback : (Nat -> Nat))"
+            "()"
+        , programCase "block binding accepts a canonical function annotation"
+            "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
+            "true"
         , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : AST"
+            "node : (external \"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
-        , expressionFailureCase "function parameter annotation must be canonical"
-            "({callback?:(Nat -> Nat)} -> Nat yield 0)"
-            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
+        , programCase "function parameter annotation is canonical"
+            "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"
+            "0"
         ]
     , recursionTests
     ]

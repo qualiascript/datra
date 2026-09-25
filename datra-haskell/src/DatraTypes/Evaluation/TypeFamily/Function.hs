@@ -29,7 +29,13 @@ specifyFunction decideSubfederation specify source target =
     (Just original, Just signature) ->
       case decideSubfederation source target of
         DecisionProved () -> Right (makeFunctionValue signature
-          { functionSource = functionSource original
+          { functionSource = case functionSource original of
+              Nothing -> Nothing
+              Just sourceText
+                | interpretedCanonicalResult (functionDomain original) == interpretedCanonicalResult (functionDomain signature)
+                , interpretedCanonicalResult (functionCodomain original) == interpretedCanonicalResult (functionCodomain signature) -> Just sourceText
+              Just sourceText -> Just
+                ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
           , functionPrepare = Just (\argument -> do
               prepared <- case functionPrepare original of
                 Just prepare -> prepare argument
@@ -71,6 +77,7 @@ decideFunctionSubfederation
   -> InterpretedValue
   -> Decision ()
 decideFunctionSubfederation decideSubfederation source target
+  | interpretedCanonicalResult source == interpretedCanonicalResult target = DecisionProved ()
   | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just sourceFunction <- interpretedFunction source
   , Just targetFunction <- interpretedFunction target =
