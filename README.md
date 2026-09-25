@@ -14,6 +14,15 @@ factorial := fun {n? : Int} -> Int do
 assert factorial 5 = 120
 ```
 
+Alternative, one can also use let-binding directly, which binds the `factorial` identifier early to its scope, which
+also allows cyclic dependencies:
+
+```datra
+factorial := fun {n? : Int} -> Int do
+  yield if n = 0 then 1 else n * this (n - 1)
+assert factorial 5 = 120
+```
+
 ## First-class variadic arguments
 
 Variadic arguments need no special handling in Datra. `Args` is a first-class
