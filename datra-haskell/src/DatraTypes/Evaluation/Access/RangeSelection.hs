@@ -111,6 +111,7 @@ accessSource value =
     AssignmentForm _ -> ordinarySource []
     DependentIdentifierTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
+    DependentSumForm _ -> ordinarySource []
     ExplicitForm explicitValue ->
       let (level, ordinalValue) = explicitOrdinal explicitValue
       in ordinarySource [singletonDescribedRange level ordinalValue]
@@ -183,6 +184,7 @@ semanticAccessSource semantics =
     DependentIdentifierTypeSemantics _ _ _ -> ordinarySource []
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
+    DependentSumSemantics _ -> ordinarySource []
   where
     ordinarySource ranges = AccessSource ranges False Nothing
     rangeSource ranges = AccessSource ranges True Nothing

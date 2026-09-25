@@ -94,6 +94,9 @@ localizeSyntaxExpansionFailure failure =
         , "capturi așteptate: " <> show expected
         , "capturi primite: " <> show given
         ]
+    InvalidDependentBinder name ->
+      LocalizedMessage "legătura dependentă necesită un identificator"
+        ["adaptor: " <> name]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -157,6 +160,9 @@ localizeInterpretingError reason =
       LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let necesită un bloc begin" []
+    DependentBinderOutsideContainer binder ->
+      LocalizedMessage "legătura dependentă necesită un container de tip exterior"
+        ["legătură: " <> binder]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie numeric")

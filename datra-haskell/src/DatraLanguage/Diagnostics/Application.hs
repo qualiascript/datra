@@ -26,6 +26,7 @@ data SyntaxExpansionFailure
       , expectedSyntaxCaptureCount :: Int
       , givenSyntaxCaptureCount :: Int
       }
+  | InvalidDependentBinder String
   deriving (Eq, Show)
 
 data CommandLineOptionFailure

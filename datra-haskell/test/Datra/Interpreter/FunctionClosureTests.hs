@@ -1,6 +1,6 @@
 module Datra.Interpreter.FunctionClosureTests (functionClosureTests) where
 
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf, tails)
 import Datra.TestSupport
 import DatraTypes
 import Interpreting (canonicalStringCodec, interpretClosedExpression)
@@ -28,24 +28,22 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "3" "7"
   , roundTrip "user names retain every leading underscore" underscoredCaptures "0" "15"
   , roundTrip "three dependency levels reconstruct independently" threeLevels "3" "7"
-  , testCase "each dependency level contributes its own scope prefix" $ do
+  , testCase "each dependency level uses the closure-local namespace" $ do
       value <- requireProgram threeLevels
       let text = renderInterpretedValue value
-      mapM_ (\(level, userName) -> do
-        let root = replicate (level + 2) '_' <> "fun"
-            dependency = replicate (level + 3) '_' <> userName
-        assertBool ("wrong root at level " <> show level)
-          (("let " <> show root <> " :") `isInfixOf` text)
-        assertBool ("wrong dependency at level " <> show level)
+      mapM_ (\userName -> do
+        let dependency = "___" <> userName
+        assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :") `isInfixOf` text)
-        assertBool ("wrong dependency reference at level " <> show level)
+        assertBool ("wrong dependency reference for " <> show userName)
           (("this." <> show dependency <> "[1]") `isInfixOf` text))
-        [(0, "next"), (1, "step"), (2, "base")]
-  , roundTrip "user function name is distinct from the generated root"
-      "fun := 4\nyield ({n? : Int} -> Int yield n + fun)"
+        ["next", "step", "base"]
+      assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
+  , roundTrip "user value is distinct from the inline fixed point"
+      "userFun := 4\nyield ({n? : Int} -> Int yield n + userFun)"
       "3" "7"
-  , roundTrip "outer user name cannot capture a nested generated root"
-      "fun := 4\ninc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield fun + inc n)"
+  , roundTrip "outer user name cannot capture a nested fixed point"
+      "userFun := 4\ninc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield userFun + inc n)"
       "3" "8"
   , testCase "user injection adds one marker after the scope prefix" $ do
       value <- requireProgram underscoredCaptures
@@ -57,12 +55,17 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded reference for " <> show name)
           (("this." <> show encoded <> "[1]") `isInfixOf` text))
         ["abc", "_abc", "_____abc", "__fun", "___abc"]
-  , testCase "generated recursion uses quoted canonical references" $ do
+  , testCase "generated recursion uses fun without a temporary name" $ do
       value <- requireProgram factorial
       let text = renderInterpretedValue value
-      assertBool "quoted function declaration" ("let \"__fun\" :" `isInfixOf` text)
-      assertBool "quoted recursive reference" ("this.\"__fun\"[1] (n - 1)" `isInfixOf` text)
-      assertBool "quoted result reference" ("yield this.\"__fun\"[1]" `isInfixOf` text)
+      assertBool "canonical closure is a single line" (not ('\n' `elem` text))
+      assertBool "begin entries are separated from yield"
+        ("; yield fun " `isInfixOf` text)
+      assertBool "do scope is space-delimited"
+        ("fun (do yield if " `isInfixOf` text)
+      assertBool "closure yields an inline fixed point" ("yield fun " `isInfixOf` text)
+      assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
+      assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))
   , roundTrip "transitive captured definitions"
       "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
       "7" "11"
@@ -98,15 +101,15 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "nothing result" "yield (() -> nothing yield nothing)"
       "()" "nothing"
   , roundTrip "inferred parameters" "yield (do yield a + b)" "(2, 3)" "5"
-  , roundTrip "narrowed callable"
+  , roundTripUsingStd "narrowed callable"
       "f := ({x? : Int} -> Int yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , roundTrip "mutual recursive definitions"
       "let even := ({n? : Int} -> Bool yield if n = 0 then true else odd (n - 1))\nlet odd := ({n? : Int} -> Bool yield if n = 0 then false else even (n - 1))\nyield even"
       "4" "true"
-  , roundTrip "registered native function" "yield external \"datra.add\""
+  , roundTrip "registered native function" "yield _external \"datra.add\""
       "(2, 3)" "5"
-  , roundTrip "syntax function ordinary application"
+  , roundTripUsingStd "syntax function ordinary application"
       "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
       "4" "5"
   , testCase "unused ambient bindings are absent" $ do
@@ -115,7 +118,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "explicit primitive implementation" ("external \"datra.Int\"" `isInfixOf` text)
+      assertBool "explicit primitive implementation" ("_external \"datra.Int\"" `isInfixOf` text)
       assertBool "dependency selected through this" ("this.\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"
@@ -128,10 +131,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "module filename is not a runtime dependency" (not ("import " `isInfixOf` text))
-      assertBool "nested root has level plus two underscores"
-        ("let \"___fun\" :" `isInfixOf` text)
-      assertBool "nested root uses canonical reference syntax"
-        ("yield this.\"___fun\"[1]" `isInfixOf` text)
+      assertBool "closure has no generated let root"
+        (not ("let \"___fun\" :" `isInfixOf` text))
       reconstructed <- requireExpression text
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
@@ -147,15 +148,29 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable imported origin" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 3")
       assertEqual "captured imported value" "10" (renderInterpretedValue result)
-  , testCase "user name cannot collide with a rebased module function" $ do
+  , testCase "user name cannot collide with a nested module function" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import \"library_one\"\nfun := 4\nyield ({n? : Int} -> Int yield fun + LibraryOne.increment n)"
+        "import \"library_one\"\nuserFun := 4\nyield ({n? : Int} -> Int yield userFun + LibraryOne.increment n)"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       reconstructed <- requireExpression text
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
+  , testCase "optional integer closure avoids nested module reconstruction" $ do
+      original <- runModuleProgram "lib/integers.datra"
+        "import \"integers\"\nyield Ints.max"
+      value <- either (assertFailure . show) pure original
+      let text = renderInterpretedValue value
+      assertEqual "from is expanded only at its source use" 1
+        (occurrences "_external \"datra.from\"" text)
+      -- Args, the recursive helper, and max each use range once.
+      assertEqual "range is expanded only at its three source uses" 3
+        (occurrences "_external \"datra.range\"" text)
+      assertBool "chained page access is printed directly"
+        ("it[1][0]" `isInfixOf` text)
+      assertBool "redundant chained-access parentheses are absent"
+        (not ("(it[1])[0]" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
   , programCase "functions can annotate named parameters"
       "apply := ({callback? : (Nat -> Nat), value? : Nat} -> Nat yield callback value)\nyield apply (({n? : Nat} -> Nat yield n + 1), 4)"
@@ -175,7 +190,16 @@ threeLevels =
   "base := 2\nstep := base + 1\nnext := step + 1\nyield ({n? : Int} -> Int yield n + next)"
 
 roundTrip :: String -> String -> String -> String -> TestTree
-roundTrip name program argument expected = testCase name $ do
+roundTrip = roundTripWith True
+
+-- A specification wrapped around a closed function retains its public type
+-- spelling. Those names intentionally belong to Std, while the function body
+-- itself remains independently closed.
+roundTripUsingStd :: String -> String -> String -> String -> TestTree
+roundTripUsingStd = roundTripWith False
+
+roundTripWith :: Bool -> String -> String -> String -> String -> TestTree
+roundTripWith independentlyClosed name program argument expected = testCase name $ do
   original <- requireProgram program
   let text = renderInterpretedValue original
   reconstructed <- requireExpression text
@@ -187,14 +211,23 @@ roundTrip name program argument expected = testCase name $ do
     Right _ -> pure ()
   result <- requireProgram ("f := " <> text <> "\nyield f " <> argument)
   assertEqual "reconstructed call" expected (renderInterpretedValue result)
-  closed <- either (assertFailure . show) pure (parseDatra ("(" <> text <> "\n)"))
-  input <- either (assertFailure . show) pure (parseDatra ("(" <> argument <> ")"))
-  independent <- either (assertFailure . show) pure
-    (interpretClosedExpression (FunctionApplication closed input))
-  assertEqual "call needs no implicit Std or modules" expected (renderInterpretedValue independent)
+  if independentlyClosed
+    then do
+      closed <- either (assertFailure . show) pure
+        (parseDatra ("(" <> text <> "\n)"))
+      input <- either (assertFailure . show) pure
+        (parseDatra ("(" <> argument <> ")"))
+      independent <- either (assertFailure . show) pure
+        (interpretClosedExpression (FunctionApplication closed input))
+      assertEqual "call needs no implicit Std or modules"
+        expected (renderInterpretedValue independent)
+    else pure ()
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram
 
 requireExpression :: String -> IO InterpretedValue
 requireExpression = either (assertFailure . show) pure . runExpression
+
+occurrences :: String -> String -> Int
+occurrences needle = length . filter (needle `isPrefixOf`) . tails

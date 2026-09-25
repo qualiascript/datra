@@ -173,6 +173,7 @@ prettyNonKeywordCanonicalResult result =
               compactCanonicalStringInterpolation
               parts)
         Nothing -> prettyCanonicalResult template
+    CanonicalDependentSum source -> pretty source
     CanonicalSimpleIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol DependentIdentifierTypeOperator
@@ -242,6 +243,8 @@ canonicalStringTemplateParts result =
     CanonicalWeakToString source ->
       Just [StringTemplateWeakInterpolation source]
     CanonicalStringTemplate nested -> canonicalStringTemplateParts nested
+    CanonicalDependentSum "Str" ->
+      Just [StringTemplateInterpolation result]
     _ -> Nothing
 
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
@@ -250,7 +253,9 @@ compactCanonicalStringInterpolation result
   , isNothingValue missing =
       (<> sourceSymbol OptionalOperator)
         <$> compactCanonicalStringInterpolation operand
-  | result == CanonicalStringType = reserved Reserved.StringTypeSymbol
+  | result == CanonicalStringType
+      || result == CanonicalDependentSum "Str" =
+      reserved Reserved.StringTypeSymbol
   | result == CanonicalIdentifierValueType =
       reserved Reserved.IdentifierValueTypeSymbol
   | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
@@ -316,6 +321,7 @@ isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
 isAtomicOptionalOperand CanonicalStringType = True
+isAtomicOptionalOperand (CanonicalDependentSum "Str") = True
 isAtomicOptionalOperand CanonicalIdentifierValueType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 

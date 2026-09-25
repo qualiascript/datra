@@ -5,6 +5,7 @@ module Parsing
   , parseDatra
   , sourceImports
   , parseDatraLocatedWithSyntaxImports
+  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
   , parseDatraWithSourceName
   , parseDatraLocated
   , parseDatraLocatedWithSourceName
@@ -38,6 +39,7 @@ import DatraLanguage.AST
       , StringTemplate
       , AtlasMap
       , ArgumentMap
+      , ArgumentMapSplice
       , Skip
       , EllipsisLiteral
       , EllipsisNatural
@@ -51,6 +53,7 @@ import DatraLanguage.AST
       , Overload
       , SafeOverload
       , IdentifierOperation
+      , IdentifierTemplateOperation
       , Multiplication
       , Subtraction
       , Minus
@@ -84,6 +87,9 @@ import DatraLanguage.AST
       , FunctionType
       , SyntaxType
       , This
+      , Fun
+      , WithBinding
+      , ForBinding
       , InModule
       , Import
       , FunctionBody
@@ -150,7 +156,6 @@ import Text.Megaparsec
   , manyTill
   , notFollowedBy
   , runParser
-  , sepEndBy
   , sourceColumn
   , sourceLine
   , sourceName
@@ -166,6 +171,7 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 data ParserContext = ParserContext
   { interpolationDepth :: Int
   , referencesAllowed :: Bool
+  , parsingStandardLibrary :: Bool
   , syntaxRules :: [SyntaxRule]
   , syntaxStops :: [Text]
   , syntaxImports :: [(String, String, [SyntaxRule])]
@@ -208,9 +214,23 @@ parseDatraLocatedWithSyntaxImports
   -> String
   -> Either ParseFailure (Located Expression)
 parseDatraLocatedWithSyntaxImports imports resourceName source =
+  parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+    True imports resourceName source
+
+parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+  :: Bool
+  -> [(String, String, [SyntaxRule])]
+  -> FilePath
+  -> String
+  -> Either ParseFailure (Located Expression)
+parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+    includeStandardLibrary imports resourceName source =
   Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
-    (runReaderT locatedResource (ParserContext 0 False libraryRules [] imports))
+    (runReaderT locatedResource
+      (ParserContext 0 False False rules [] imports))
     resourceName (Text.pack source))
+  where
+    rules = if includeStandardLibrary then libraryRules else []
 
 -- | Parse a source resource and retain its expression/program envelope.
 parseDatraLocatedResourceWithSourceName
@@ -251,7 +271,7 @@ runDatraParser
   -> Text
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
-  runParser (runReaderT parser (ParserContext 0 False libraryRules [] [])) resourceName source
+  runParser (runReaderT parser (ParserContext 0 False False libraryRules [] [])) resourceName source
 
 -- | The bootstrap parse is a shared CAF: syntax discovery and evaluation use
 -- the exact same standard-library AST rather than parsing the source twice.
@@ -259,7 +279,7 @@ standardLibraryExpression :: Either ParseFailure Expression
 standardLibraryExpression =
   Bifunctor.first (ParseFailure . errorBundlePretty)
     (runParser
-      (runReaderT resource (ParserContext 0 False [] [] []))
+      (runReaderT resource (ParserContext 0 False True [] [] []))
       standardLibraryFileName
       (Text.pack standardLibrarySource))
 
@@ -364,6 +384,9 @@ astForm =
       , Import False <$> (astSymbol "import" *> astString)
       , Assert True <$> (astSymbol "assert-hard" *> astExpression)
       , astUnary AST.AssertOperator (Assert False)
+      , astUnaryForm "fun" Fun
+      , astDependentBinder "with" WithBinding
+      , astDependentBinder "for" ForBinding
       , SyntaxType <$> (astSymbol "as?" *> astString) <*> pure True <*> astExpression
       , SyntaxType <$> (astSymbol "as" *> astString) <*> pure False <*> astExpression
       , astBinary AST.FunctionTypeOperator FunctionType
@@ -372,7 +395,10 @@ astForm =
       , astBlock "do" FunctionBody
       , astSequence
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
+      , ArgumentMapSplice <$> (astSymbol "{,}" *> astExpression)
       , astNaturalRangeExpression
+      , try (astIdentifierTemplateOperation AST.AssignmentOperator (Just ()))
+      , try (astIdentifierTemplateOperation AST.DependentIdentifierTypeOperator Nothing)
       , astIdentifierOperation AST.AssignmentOperator (Just ())
       , astIdentifierOperation AST.DependentIdentifierTypeOperator Nothing
       , astBinary AST.ExpansionOperator MapExpansion
@@ -408,6 +434,18 @@ astForm =
       , astBinary AST.OverloadOperator Overload
       ])
 
+astDependentBinder
+  :: Text
+  -> (IdentifierString -> Bool -> Expression -> Expression)
+  -> Parser Expression
+astDependentBinder name constructor = do
+  _ <- astSymbol name
+  spelling <- astIdentifierExpression
+  identifier <- IdentifierString <$> validateIdentifierSpelling spelling
+  optionalName <- maybe False (const True) <$> optional
+    (char '?' <* astSpaceConsumer)
+  constructor identifier optionalName <$> astExpression
+
 astIdentifierOperation
   :: AST.Operator
   -> Maybe ()
@@ -434,6 +472,25 @@ astIdentifierOperation operator assignmentMarker = do
           Just given ->
             IdentifierOperation
               operationIdentifierString typeAnnotation (Just given))
+
+astIdentifierTemplateOperation
+  :: AST.Operator
+  -> Maybe ()
+  -> Parser Expression
+astIdentifierTemplateOperation operator assignmentMarker = do
+  _ <- astOperatorToken operator
+  template <- astLexeme astStringTemplateToken
+  parts <- case template of
+    StringTemplate values -> pure values
+    _ -> empty
+  typeAnnotation <- astExpression
+  case assignmentMarker of
+    Nothing ->
+      pure (IdentifierTemplateOperation parts typeAnnotation Nothing)
+    Just () -> do
+      givenValue <- optional astExpression
+      pure (IdentifierTemplateOperation
+        parts typeAnnotation (Just (maybe typeAnnotation id givenValue)))
 
 astConditional :: Parser Expression
 astConditional = do
@@ -502,6 +559,14 @@ astUnary operator constructor = do
   _ <- astOperatorToken operator
   constructor <$> astExpression
 
+astUnaryForm
+  :: Text
+  -> (Expression -> Expression)
+  -> Parser Expression
+astUnaryForm name constructor = do
+  _ <- astSymbol name
+  constructor <$> astExpression
+
 astBinary
   :: AST.Operator
   -> (Expression -> Expression -> Expression)
@@ -548,8 +613,8 @@ resourceWithEnvelope = do
 
 standardLibraryResource :: Parser (ResourceEnvelope, Expression)
 standardLibraryResource = withReferences $ do
-  rules <- syntaxRules <$> ask
-  guard (null rules)
+  context <- ask
+  guard (parsingStandardLibrary context)
   value <- bootstrapNamedBlock
   case namedBeginBlock value of
     Just _ -> pure (ImplicitBlockEnvelope, value)
@@ -615,7 +680,10 @@ withDeclarations entries = local $ \context -> context
 
 elements :: Parser [Expression]
 elements = do
-  first <- optional expression
+  first <- optional
+    (notFollowedBy
+      (keywordToken (Text.pack (Reserved.reservedWordText Reserved.YieldWord)))
+      *> expression)
   case first of
     Nothing -> pure []
     Just entry -> withDeclarations [entry] $ do
@@ -714,7 +782,35 @@ eitherExpressionWith operand =
 
 mapExpression :: Parser Expression
 mapExpression =
-  makeExprParser (try identifierOperation <|> rangeExpression) mapOperatorTable
+  makeExprParser
+    (try identifierTemplateOperation <|> try identifierOperation <|> rangeExpression)
+    mapOperatorTable
+
+identifierTemplateOperation :: Parser Expression
+identifierTemplateOperation = do
+  template <- try stringExpression
+  parts <- case template of
+    StringTemplate values -> pure values
+    _ -> empty
+  isOptional <-
+    maybe False (const True)
+      <$> optional (operatorToken AST.OptionalOperator)
+  choice
+    [ do
+        _ <- continuedOperator AST.AssignmentOperator
+        (typeAnnotation, givenValue) <- assignedIdentifierValue
+        let operation = IdentifierTemplateOperation
+              parts typeAnnotation (Just givenValue)
+        pure (optionalIdentifier isOptional operation typeAnnotation)
+    , do
+        _ <- continuedOperator AST.DependentIdentifierTypeOperator
+        typeAnnotation <- identifierValueExpression
+        givenValue <- optional
+          (continuedOperator AST.AssignmentOperator *>
+            identifierValueExpression)
+        let operation = IdentifierTemplateOperation parts typeAnnotation givenValue
+        pure (optionalIdentifier isOptional operation typeAnnotation)
+    ]
 
 -- A colon distinguishes a declaration from a bare lexical reference or call.
 identifierOperation :: Parser Expression
@@ -776,7 +872,10 @@ optionalIdentifier True operation missingValue =
 -- inferred in the same way as every ordinary @:=@ binding.
 assignedIdentifierValue :: Parser (Expression, Expression)
 assignedIdentifierValue = do
-  inferred <- identifierValueExpression
+  -- Give a declared syntax form the whole assignment operand before the
+  -- restricted identifier-value grammar can reinterpret its literal words
+  -- (notably @do@) as a function implementation.
+  inferred <- try syntaxApplication <|> identifierValueExpression
   explicitBlock <- optional . try $ do
     _ <- continuedOperator AST.SpecificationOperator
     _ <- lookAhead (keywordToken "begin")
@@ -879,6 +978,9 @@ termAtom =
     , importExpression
     , syntaxApplication
     , bootstrapLet
+    , bootstrapFun
+    , bootstrapDependentBinder "with" WithBinding
+    , bootstrapDependentBinder "for" ForBinding
     , externalExpression
     , argumentMap
     , try parenthesizedReverseSpecification
@@ -906,7 +1008,7 @@ importExpression = do
 -- loader to resolve dependencies before parsing expressions using their names.
 sourceImports :: String -> Either ParseFailure [String]
 sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
-  runParser (runReaderT scan (ParserContext 0 False libraryRules [] [])) "<imports>" (Text.pack source)
+  runParser (runReaderT scan (ParserContext 0 False False libraryRules [] [])) "<imports>" (Text.pack source)
   where
     paths (Import _ path) = [path]
     paths _ = []
@@ -958,29 +1060,43 @@ syntaxApplication = do
         then continuedSymbol (Text.pack token) else keyword (Text.pack token) <* lineSpaceConsumer
       parsePieces rest
     parsePieces (SyntaxHole kind : rest) = do
+      context <- ask
+      let knownDeclarations
+            | parsingStandardLibrary context = []
+            | otherwise = libraryDeclarations
       lineSpaceConsumer
       let stops = case take 1 rest of
             [SyntaxLiteral token] -> [Text.pack token]
-            [SyntaxHole nextType] -> map Text.pack (declarationLiterals libraryDeclarations nextType)
+            [SyntaxHole nextType] -> map Text.pack
+              (declarationLiterals knownDeclarations nextType)
             _ -> []
           literal = choice [AsciiStringLiteral value <$ (keyword (Text.pack value) <* lineSpaceConsumer)
-            | value <- declarationLiterals libraryDeclarations kind]
-      value <- local (\context -> context { syntaxStops = stops <> syntaxStops context }) $
-        if kind `elem` ["Block", "Pages"] then do
+            | value <- declarationLiterals knownDeclarations kind]
+      value <- local (\nested -> nested { syntaxStops = stops <> syntaxStops nested }) $
+        if kind == "_IdenExp" then do
+          spelling <- identifierExpression
+          name <- validateIdentifierSpelling spelling
+          optionalName <- maybe False (const True) <$> optional
+            (operatorToken AST.OptionalOperator)
+          pure ((if optionalName then OptionalType else id)
+            (IdentifierReference (IdentifierString name)))
+        else if kind `elem` ["_Block", "_Pages"] then do
           entries <- withReferences elements
-          guard (kind == "Block" || not (null entries))
+          guard (kind == "_Block" || not (null entries))
           pure (AtlasMap entries)
-        else literal <|> (if kind /= "Expr" then boundaryAwareArithmeticExpression
+        else literal <|> (if kind /= "_Expr" then boundaryAwareArithmeticExpression
           else if "," `elem` stops then nonConcatenatedExpression else expression)
-      let enums = declarationLiterals libraryDeclarations kind
+      let enums = declarationLiterals knownDeclarations kind
       guard (null enums || not (obviouslyNumeric value))
       let continue = (value :) <$> parsePieces rest
       case value of
-        AtlasMap entries | kind == "Block" -> withDeclarations entries continue
+        AtlasMap entries | kind == "_Block" -> withDeclarations entries continue
         _ -> continue
 
 functionBody :: Parser Expression
 functionBody = try $ do
+  stops <- syntaxStops <$> ask
+  mapM_ (notFollowedBy . keywordToken) stops
   body <- syntaxApplication
   case body of
     FunctionBody {} -> pure body
@@ -998,6 +1114,31 @@ bootstrapLet = do
   _ <- continuedWordOperator AST.LetOperator
   Let <$> expression
 
+bootstrapFun :: Parser Expression
+bootstrapFun = do
+  rules <- syntaxRules <$> ask
+  guard (null rules)
+  _ <- continuedKeyword "fun"
+  Fun . absorbFunSequence <$> expression
+
+-- The standard library defines these adapters itself, but its declarations
+-- may also use them.  Bootstrap only their narrow identifier-expression
+-- grammar; ordinary resources continue to obtain the syntax from Std.
+bootstrapDependentBinder
+  :: Text
+  -> (IdentifierString -> Bool -> Expression -> Expression)
+  -> Parser Expression
+bootstrapDependentBinder word constructor = do
+  rules <- syntaxRules <$> ask
+  guard (all ((/= Text.unpack word) . syntaxName) rules)
+  _ <- continuedKeyword word
+  spelling <- identifierExpression
+  name <- validateIdentifierSpelling spelling
+  optionalName <- maybe False (const True) <$> optional
+    (operatorToken AST.OptionalOperator)
+  _ <- continuedWordOperator AST.SubfederationOperator
+  constructor (IdentifierString name) optionalName <$> expression
+
 identifierReference :: Parser Expression
 identifierReference = try $ do
   stops <- syntaxStops <$> ask
@@ -1010,18 +1151,40 @@ identifierReference = try $ do
 -- Argument maps have the same member separators and empty/unary arity as
 -- parenthesized maps, but admit every permutation of their members.
 argumentMap :: Parser Expression
-argumentMap =
-  ArgumentMap <$>
+argumentMap = do
+  (members, trailingConcatenation) <-
     between (symbol "{" <* lineSpaceConsumer)
       (lineSpaceConsumer *> symbol "}")
-      (argumentExpression `sepEndBy` argumentSeparator)
+      argumentMembers
+  guard (all validDependentName members)
+  pure $ case (members, trailingConcatenation) of
+    ([member], True) -> ArgumentMapSplice member
+    _ -> ArgumentMap members
   where
     -- At the brace level commas separate arguments. Parsing a parenthesized
     -- expression restores ordinary concatenation, preserving nested maps.
     argumentExpression = nonConcatenatedExpression
+    argumentMembers = do
+      first <- optional argumentExpression
+      case first of
+        Nothing -> pure ([], False)
+        Just value -> remaining [value]
+    remaining reversed =
+      (do
+        comma <- argumentSeparator
+        next <- optional argumentExpression
+        case next of
+          Nothing -> pure (reverse reversed, comma)
+          Just value -> remaining (value : reversed))
+        <|> pure (reverse reversed, False)
     argumentSeparator =
-      void (continuedOperator AST.ConcatenationOperator)
-        <|> mapSeparator
+      True <$ continuedOperator AST.ConcatenationOperator
+        <|> False <$ mapSeparator
+    validDependentName (ForBinding (IdentifierString name) True _) =
+      not (null (public [(name, ())]))
+    validDependentName (WithBinding (IdentifierString name) True _) =
+      not (null (public [(name, ())]))
+    validDependentName _ = True
 
 -- Shared operand grammar where an unparenthesized comma is a delimiter.
 nonConcatenatedExpression :: Parser Expression

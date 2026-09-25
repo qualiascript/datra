@@ -58,18 +58,18 @@ standardLibraryTypeExamples =
   [ canonical "Any" "Any"
   , canonical "Nat" "Nat"
   , canonical "Int" "Int"
-  , canonical "String" "String"
+  , canonical "Str" "Str"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , weak "AST" "external \"datra.AST\""
-  , weak "Expr" "Expr"
-  , weak "Block" "Block"
-  , weak "Pages" "Pages"
+  , weak "AST" "_external \"datra.AST\""
+  , weak "private Expr primitive" "_external \"datra.Expr\""
+  , weak "private Block primitive" "_external \"datra.Block\""
+  , weak "private Pages primitive" "_external \"datra.Pages\""
   , weak "NatRange" "NatRange"
   , weak "IntRange" "IntRange"
   , weak "NatValRange" "NatValRange"
   , weak "IntValRange" "IntValRange"
-  , weak "StringTemplate" "StringTemplate"
+  , weak "StrTempl" "StrTempl"
   ]
 
 compositeTypeExamples :: [DatraTypeExample]
@@ -78,11 +78,11 @@ compositeTypeExamples =
   , canonical "positional skip sentinel" "*"
   , canonical "overlapping coalition sequence"
       "(from 2 to 5; from 4 to 8)"
-  , canonical "canonical federation" "Nat | String"
+  , canonical "canonical federation" "Nat | Str"
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
-  , weak "map containing a noncanonical type" "(Nat; (external \"datra.AST\"))"
+  , weak "map containing a noncanonical type" "(Nat; (_external \"datra.AST\"))"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 
@@ -166,7 +166,7 @@ extensionalEqualityTests =
         , ("numerical coalition sequence and concatenation",
             "(Nat; Int)", "Nat, Int", True, True)
         , ("proper numerical subtype", "from 0 to 3", "from 0 to 5", True, False)
-        , ("disjoint primitive types", "Nat", "String", False, False)
+        , ("disjoint primitive types", "Nat", "Str", False, False)
         , ("function signature", "Nat -> Nat", "Nat -> Nat", True, True)
         , ("block and yielded value", "begin yield 5", "5", True, True)
         ]
@@ -209,7 +209,7 @@ totalBlockTests =
         "true"
     , expressionCase "equal source specifies it"
         "5 ~> (begin yield 5)"
-        "5 <~ begin\nyield 5"
+        "5 <~ begin yield 5"
     , expressionFailureCase "unequal source cannot specify it"
         "6 ~> (begin yield 5)"
         (SourceEvaluationFailure

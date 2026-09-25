@@ -21,6 +21,7 @@ extra-doc-files:
     NOTICE
 extra-source-files:
     lib/std.datra
+    lib/integers.datra
     test/fixtures/cli/*.ast
     test/fixtures/cli/*.datra
     test/fixtures/cli/*.out
@@ -54,6 +55,7 @@ library
         DatraLanguage.AST.Syntax
         DatraLanguage.Identifier
         DatraTypes
+        DatraTypes.DependentTypes
         AsciiMap
         AsciiString
         MapOperators
@@ -322,6 +324,7 @@ executable datra-haskell
         FunctionClosure
         BlockScope
         StdLib
+        IntegersLib
         SyntaxDefinitions
         Parsing
         Rendering
@@ -409,6 +412,7 @@ test-suite datra-interpreting-test
         FunctionClosure
         BlockScope
         StdLib
+        IntegersLib
         SyntaxDefinitions
         Parsing
         Rendering

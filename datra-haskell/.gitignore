@@ -10,7 +10,6 @@ dist/
 .hls/
 .bsp/
 /resources/
-/docs/ai-generated/
 input.datra
 output.datra
 output.datra.ast

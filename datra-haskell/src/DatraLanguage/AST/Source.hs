@@ -13,18 +13,21 @@ source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
     ThisValue -> "this"
+    FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
+    WithBindingValue (IdentifierString name) optional bound -> wrapped 0
+      ("with " <> binderName name optional <> " of " <> source 0 bound)
+    ForBindingValue (IdentifierString name) optional bound -> wrapped 0
+      ("for " <> binderName name optional <> " of " <> source 0 bound)
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
-    FunctionBodyValue bindings result -> wrapped 0 ("do\n" <> concatMap (indent . source 0) bindings <> "yield " <> source 0 result)
-    ExternalValue descriptor -> wrapped 0 ("external " <> source 12 descriptor)
+    FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
+    ExternalValue descriptor -> wrapped 10 ("_external " <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
-    BeginValue bindings result -> wrapped 0
-      ("begin\n" <> concatMap (indent . source 0) bindings
-        <> "yield " <> source 0 result)
+    BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
@@ -34,6 +37,12 @@ source context expression =
         Just value | value == annotation -> " := " <> source 2 value
         _ -> " : " <> source 13 annotation
           <> maybe "" (\value -> " := " <> source 2 value) given)
+    IdentifierTemplateOperationValue parts annotation given -> wrapped 1
+      (renderStringTemplate (source 0) (const Nothing) parts <> case given of
+        Just value | value == annotation -> " := " <> source 2 value
+        _ -> " : " <> source 13 annotation
+          <> maybe "" (\value -> " := " <> source 2 value) given)
+    ArgumentsSplice value -> "{" <> source 0 value <> ",}"
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> intercalate "; " (map (source 0) members) <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
@@ -62,7 +71,10 @@ source context expression =
     ExtractValue operand -> unary "%" operand
     OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
-    Access operand position -> wrapped 10 (source 11 operand <> "[" <> source 0 position <> "]")
+    -- Access associates to the left, so a second page selection can continue
+    -- directly as @value[first][second]@.  Operands with genuinely looser
+    -- precedence are still parenthesized by their own renderer.
+    Access operand position -> wrapped 10 (source 10 operand <> "[" <> source 0 position <> "]")
     Range left right -> binary 9 ".." left right
     RangePlus operand -> source 11 operand <> ".."
     RangeMinus operand -> source 11 operand <> "..-"
@@ -104,4 +116,7 @@ source context expression =
     applicationInput operand = source 12 operand
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
-    indent = unlines . map (" " <>) . lines
+    binderName name optional =
+      renderIdentifierString name <> if optional then "?" else ""
+    block keyword bindings result = keyword <> " "
+      <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])

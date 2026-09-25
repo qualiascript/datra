@@ -448,17 +448,17 @@ testLiteralsAndArithmetic = do
         && interpretedMapCardinality (interpretedMap value) == 0
         && renderInterpretedValue value == "\"\""
       )
-  expectValue "String type" AST.stringType $ \value ->
-    assert "String renders as the ASCII string federation"
+  expectValue "Str type" AST.stringType $ \value ->
+    assert "Str renders as the ASCII string federation"
       ( interpretedValueKind value == AsciiStringValueKind
-        && renderInterpretedValue value == "String"
+        && renderInterpretedValue value == "Str"
       )
   expectValue
       "string membership"
       (AST.equal
         (AST.subfederation (AST.asciiString "my_string") AST.stringType)
         (AST.boolean True)) $ \value ->
-    assert "a string literal is a member of String"
+    assert "a string literal is a member of Str"
       (renderInterpretedValue value == "true")
   expectValue "natural literal" (natural 10) $ \value ->
     assert "naturals remain typed rank-one explicit values"
@@ -530,7 +530,7 @@ testArgumentMaps = do
     , "{2; 8} of {a : Nat; b : Nat}"
     , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
-    , "($a, $b, 5) of {Int, String, String}"
+    , "($a, $b, 5) of {Int, Str, Str}"
     ]
   expectSourceValue "written order wins over other valid permutations"
       "(1, 2) ~> {x : Int, y : Int}" $ \value ->
@@ -675,7 +675,7 @@ testEval = do
         (renderInterpretedValue value == expected))
     [ ("\"12\"", "Int", "12 ~> Int")
     , ("\"alco\"", "IdenStr", "$alco ~> IdenStr")
-    , ("\"hello world\"", "String", "\"hello world\" ~> String")
+    , ("\"hello world\"", "Str", "\"hello world\" ~> Str")
     , ("(\"1\", \"2\")", "Int", "12 ~> Int")
     , ( "\"x : 3, (b : 8; 2)\""
       , "x : 3; {a? : Nat := 2, b? : Nat}"
@@ -742,7 +742,7 @@ testBegin = do
   expectSourceValue "retained block" example $ \value -> do
     assert "the arithmetic result is eleven" (interpretedInteger value == Just 11)
     assert "the block remains in reverse-specification output"
-      (renderInterpretedValue value == "11 <~ begin\n a : (2 * 3)\n b : 5\nyield a + b")
+      (renderInterpretedValue value == "11 <~ begin a : (2 * 3); b : 5; yield a + b")
     expectSourceValue "retained block output can be read again"
       (renderInterpretedValue value) $ \decoded ->
         assert "output preserves its value" (interpretedInteger decoded == Just 11)
@@ -766,7 +766,7 @@ testBegin = do
       assert
         ("specification retains the block and yielded value: "
           <> renderInterpretedValue value)
-        (renderInterpretedValue value == "11 <~ begin\nyield 11")
+        (renderInterpretedValue value == "11 <~ begin yield 11")
   expectSourceRejection "a different value cannot specify a begin block"
     "12 ~> (begin yield 11)"
     (\case
@@ -805,7 +805,7 @@ testCanonicalTypes = do
     [ "Any"
     , "Nat"
     , "Int"
-    , "String"
+    , "Str"
     , "IdenStr"
     , "Bool"
     , "(Nat; Int)"
@@ -814,16 +814,16 @@ testCanonicalTypes = do
     , "Nat | (Nat -> Nat)"
     ]
   mapM_ expectNonCanonicalDatraType
-    [ "external \"datra.AST\""
-    , "Expr"
-    , "Block"
-    , "Pages"
+    [ "_external \"datra.AST\""
+    , "_external \"datra.Expr\""
+    , "_external \"datra.Block\""
+    , "_external \"datra.Pages\""
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "StringTemplate"
-    , "(Nat; (external \"datra.AST\"))"
+    , "StrTempl"
+    , "(Nat; (_external \"datra.AST\"))"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     assert "functions carry a CanonicalType"
@@ -841,7 +841,7 @@ testCanonicalTypes = do
       Right rendered ->
         assert "canonical block conversion retains block and yielded value"
           (renderInterpretedValue rendered
-            == "\"11 <~ begin\\nyield 11\"")
+            == "\"11 <~ begin yield 11\"")
   where
     expectCanonicalType source =
       expectSourceValue (source <> " is canonical") source $ \value ->
@@ -1097,18 +1097,18 @@ testStringTemplates = do
     assert "a specification with a valued-range target coerces to its source"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "extract treats a literal template as one String hole"
+      "extract treats a literal template as one Str hole"
       "%(\"hello world\" <~ \"hello world\")" $ \value ->
     assert "a holeless template retains its source and synthesized hole"
       ( renderInterpretedValue value
-          == "(\"hello world\"; \"hello world\" ~> String)"
+          == "(\"hello world\"; \"hello world\" ~> Str)"
       )
   expectSourceValue
-      "extract treats percent String as the whole-string hole"
-      "%(\"%String\" <~ \"hello world\")" $ \value ->
-    assert "String identity extraction matches the holeless case"
+      "extract treats percent Str as the whole-string hole"
+      "%(\"%Str\" <~ \"hello world\")" $ \value ->
+    assert "Str identity extraction matches the holeless case"
       ( renderInterpretedValue value
-          == "(\"hello world\"; \"hello world\" ~> String)"
+          == "(\"hello world\"; \"hello world\" ~> Str)"
       )
   let template = StringTemplate
         [ StringTemplateLiteral "example"
@@ -1226,7 +1226,7 @@ testStringTemplates = do
     assert "string-template inclusion follows the same component structure"
       (renderInterpretedValue value == "true")
   expectValue
-      "delimited string template is a String subfederation"
+      "delimited string template is a Str subfederation"
       (AST.subfederation separatedNaturals StringType) $ \value ->
     assert "every member produced by the template is a string"
       (renderInterpretedValue value == "true")
@@ -1329,7 +1329,7 @@ testStringTemplates = do
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
-  assert "adjacent String interpolations are ambiguous"
+  assert "adjacent Str interpolations are ambiguous"
     (case interpretExpressionReason
         (StringTemplate
           [ StringTemplateInterpolation StringType
@@ -1337,7 +1337,7 @@ testStringTemplates = do
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
-  assert "a delimiter cannot disambiguate arbitrary String values"
+  assert "a delimiter cannot disambiguate arbitrary Str values"
     (case interpretExpressionReason
         (StringTemplate
           [ StringTemplateInterpolation StringType
@@ -1530,7 +1530,7 @@ testBooleansAndEither = do
       "disjoint primitive families form an Either federation"
       (AST.eitherType AST.naturalType StringType) $ \value ->
     assert "numeric and string Atlas maps are distinguishable"
-      (renderInterpretedValue value == "Nat | String")
+      (renderInterpretedValue value == "Nat | Str")
   assert "the same identifier does not distinguish overlapping alternatives"
     (case interpretExpressionReason
         (AST.eitherType
@@ -3175,9 +3175,9 @@ testIdentifiers = do
       (renderInterpretedValue value == "true")
   expectValue
       "quoted reserved identifier"
-      (identifier "String" NaturalType) $ \value ->
+      (identifier "Str" NaturalType) $ \value ->
     assert "reserved identifier names render with their full-string spelling"
-      (renderInterpretedValue value == "String : Nat")
+      (renderInterpretedValue value == "Str : Nat")
   expectValue "unit identifier" valueUnit $ \value ->
     assert "a unit identifier canonicalizes to its identifier string"
       ( interpretedValueKind value == AsciiStringValueKind
@@ -3683,12 +3683,12 @@ testNamedAccess :: IO ()
 testNamedAccess = do
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
       assert (source <> " preserves the selected field") (renderInterpretedValue value == expected))
-    [ ("{a : Nat := 5, b : String}.a", "a : Nat := 5")
-    , ("{b : String, a : Nat := 5}.a", "a : Nat := 5")
-    , ("{a? : Nat := 5, b : String}.a", "a : Nat := 5")
+    [ ("{a : Nat := 5, b : Str}.a", "a : Nat := 5")
+    , ("{b : Str, a : Nat := 5}.a", "a : Nat := 5")
+    , ("{a? : Nat := 5, b : Str}.a", "a : Nat := 5")
     , ("({b:8,2} ~> {a?:Nat:=2,b?:Nat}).b", "b : Nat := 8")
-    , ("{a:Nat:=5,b:String}.a of (a:Nat)", "true")
-    , ("{a:Nat:=5,b:String}.a ~> (a:Int)", "a : Int := 5")
+    , ("{a:Nat:=5,b:Str}.a of (a:Nat)", "true")
+    , ("{a:Nat:=5,b:Str}.a ~> (a:Int)", "a : Int := 5")
     , ("(x:3, {a:5,b:8}).b", "b : 8")
     , ("{a:5,b:8}.a[1] * 2", "10")
     ]

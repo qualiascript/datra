@@ -57,7 +57,7 @@ reservedSymbols
 -- | The unique simple-identifier spelling reserved for a context binding.
 reservedSymbolIdentifierString :: ReservedSymbol -> String
 reservedSymbolIdentifierString BooleanTypeSymbol = "Bool"
-reservedSymbolIdentifierString StringTypeSymbol = "String"
+reservedSymbolIdentifierString StringTypeSymbol = "Str"
 reservedSymbolIdentifierString IdentifierValueTypeSymbol = "IdenStr"
 reservedSymbolIdentifierString IntegerTypeSymbol = "Int"
 reservedSymbolIdentifierString NaturalTypeSymbol = "Nat"

@@ -11,6 +11,9 @@ module DatraTypes
   , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
+  , makeDependentSumValue
+  , withDependentSumAccess
+  , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -48,6 +51,8 @@ module DatraTypes
   , nothingValue
   , asciiStringValue
   , stringTypeValue
+  , charTypeValue
+  , listTypeValue
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
@@ -86,6 +91,7 @@ module DatraTypes
   , integerTypeValue
   , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , inferredIdentifierAssignmentValue
   , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
@@ -101,11 +107,15 @@ module DatraTypes
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
+  , projectedArgumentSchema
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaPositionalDomain
+  , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , argumentValuesComplete
   , compileParameters
+  , compileDependentParameter
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
@@ -176,6 +186,7 @@ import Evaluation.Boolean
 import Evaluation.Either (makeEitherValue)
 import Evaluation.FunctionArguments
   ( compileParameters
+  , compileDependentParameter
   , matchArguments
   , parameterBindings
   , parameterDomain
@@ -211,9 +222,12 @@ import Evaluation.Overload
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaPositionalDomain
+  , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , argumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
+  , projectedArgumentSchema
   , orderedArgumentSchema
   , overloadArgumentSchemaComplete
   , overloadValues
@@ -249,6 +263,7 @@ import Evaluation.Range
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
+  , inferredIdentifierAssignmentValue
   , requireCanonicalTypeAnnotation
   )
 import Evaluation.Specification
@@ -264,6 +279,9 @@ import Evaluation.Value
   , datraStringRepresentation
   , EvaluatedFunction (..)
   , makeFunctionValue
+  , makeDependentSumValue
+  , withDependentSumAccess
+  , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -298,6 +316,7 @@ import Evaluation.Value
   , interpretedValueKind
   )
 import Numeric.Natural (Natural)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
 
 import Data.Char (ord)
 import Data.List (find)
@@ -338,6 +357,54 @@ asciiStringValue value =
 
 stringTypeValue :: InterpretedValue
 stringTypeValue = makeStringType
+
+charTypeValue :: Either InterpretingError InterpretedValue
+charTypeValue = do
+  characters <- valuedNaturalRangeValue 0 255
+  pure (makeDependentSumValue "Char" characters $ \source -> do
+    _ <- specifyValues source characters
+    pure source)
+
+-- | The semantic fixed point of @() | (T; this)@.  It is constructed by the
+-- language-level @fun@ operator; this helper only supplies the generic
+-- pointwise Atlas-map membership operation.
+listTypeValue :: String -> InterpretedValue -> InterpretedValue
+listTypeValue "Char" _ = stringTypeValue
+listTypeValue elementSource elementType = value
+  where
+    value = withDependentSumAccess project
+      (makeDependentSumValue presentation staticTarget validate)
+    presentation = "List " <> elementSource
+    staticTarget = makeLazyMapValue omega (const (Just elementType))
+    project insertion =
+      case interpretedValueKind insertion of
+        NaturalValueKind -> Right elementType
+        _ -> Right value
+    validate source = do
+      case interpretedValueKind source of
+        MapValueKind -> validateMembers source
+        AsciiStringValueKind -> pure ()
+        -- Atlas normalization erases a singleton sequence, so @T; ()@ is
+        -- represented by the element itself.  This is the one-element fibre
+        -- of the same recursive list, not a separate special case in source.
+        _ -> () <$ specifyValues source elementType
+      pure source
+    validateMembers source = do
+      count <- maybe
+        (Left (FunctionEvaluationFailed
+          FunctionArgumentsRequireFinitePages))
+        Right
+        (naturalAtOrdinal
+          (interpretedMapFinalOrderType (interpretedMap source)))
+      mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
+    validateAt source position = do
+      member <- maybe
+        (Left (FunctionEvaluationFailed
+          (FunctionArgumentPageUnavailable position)))
+        Right
+        (interpretedMapValueAt
+          (interpretedMap source) (finiteOrdinal position))
+      () <$ specifyValues member elementType
 
 identifierValueTypeValue :: InterpretedValue
 identifierValueTypeValue = makeIdentifierValueType

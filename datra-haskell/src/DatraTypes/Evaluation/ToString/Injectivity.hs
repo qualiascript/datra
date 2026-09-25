@@ -80,6 +80,7 @@ stringConversionProperties semantics =
     ToStringSemantics source -> stringConversionProperties source
     WeakToStringSemantics _ -> unknownConversion
     StringTemplateSemantics source -> stringConversionProperties source
+    DependentSumSemantics _ -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]
     MapSemantics _ components -> compositeProperties components

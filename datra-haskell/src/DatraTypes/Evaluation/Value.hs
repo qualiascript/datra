@@ -51,6 +51,7 @@ module Evaluation.Value
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
   , EvaluatedDependentIdentifierType (..)
+  , EvaluatedDependentSum (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
@@ -70,6 +71,9 @@ module Evaluation.Value
   , InterpretedValueTotality (..)
   , makeInterpretedValue
   , makeSingletonInterpretedValue
+  , makeDependentSumValue
+  , withDependentSumAccess
+  , makeLazyMapValue
   , interpretedForm
   , interpretedInsertionCapability
   , interpretedMap
@@ -189,6 +193,17 @@ data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   , evaluatedIdentifierUnderlying :: InterpretedValue
   }
 
+-- | A dependent sum keeps its ordinary structural approximation for map
+-- operations and its exact left-to-right membership procedure for typing.
+data EvaluatedDependentSum = EvaluatedDependentSum
+  { evaluatedDependentSumStaticTarget :: InterpretedValue
+  , evaluatedDependentSumSpecify
+      :: InterpretedValue -> Either InterpretingError InterpretedValue
+  , evaluatedDependentSumAccess
+      :: Maybe
+          (InterpretedValue -> Either InterpretingError InterpretedValue)
+  }
+
 -- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
 -- is attached only by constructors known to give every final-page region a
 -- singleton value; being a singleton federation is not sufficient by itself.
@@ -305,7 +320,7 @@ builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
 builtinMetaTypeName IntValRangeMetaType = "IntValRange"
-builtinMetaTypeName StringTemplateMetaType = "StringTemplate"
+builtinMetaTypeName StringTemplateMetaType = "StrTempl"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
 builtinMetaTypeValue kind = makeInterpretedValue
@@ -358,6 +373,7 @@ data ValueForm
   | AssignmentForm EvaluatedSpecification
   | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
   | IdentifierStringProjectionForm EvaluatedDependentIdentifierType
+  | DependentSumForm EvaluatedDependentSum
   | SequentialMapForm
   | ExpansionMapForm InterpretedValue InterpretedValue
   | ConcatenatedMapForm InterpretedValue InterpretedValue
@@ -467,6 +483,61 @@ makeSingletonInterpretedValue datraType form capability valueMap totality =
     (SingletonAtlasMapFederation valueMap)
     totality
 
+makeDependentSumValue
+  :: String
+  -> InterpretedValue
+  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+makeDependentSumValue source staticTarget specify =
+  makeInterpretedValue
+    structuralDatraType
+    (DependentSumForm (EvaluatedDependentSum staticTarget specify Nothing))
+    (interpretedInsertionCapability staticTarget)
+    (interpretedMap staticTarget)
+    (interpretedAtlasMapFederation staticTarget)
+    NonTotalInterpretedMap
+    (DependentSumSemantics source)
+
+-- | Attach the exact access map of a dependent family.  The structural
+-- target remains available for ordinary static reasoning, while projection
+-- is delayed until a concrete insertion is supplied.
+withDependentSumAccess
+  :: (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumAccess access value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent { evaluatedDependentSumAccess = Just access }
+        }
+    _ -> value
+
+-- | A lazily indexed Atlas map.  This is the erased runtime presentation of
+-- a dependent family's page projection; values are demanded through normal
+-- Atlas access rather than materialized eagerly.
+makeLazyMapValue
+  :: Ordinal
+  -> (Ordinal -> Maybe InterpretedValue)
+  -> InterpretedValue
+makeLazyMapValue orderType valueAt =
+  makeInterpretedValue
+    structuralDatraType
+    MapForm
+    NoInsertion
+    (InterpretedMap
+      1
+      (OrdinalOrderedValues orderType valueAt)
+      [])
+    (SingletonAtlasMapFederation
+      (InterpretedMap
+        1
+        (OrdinalOrderedValues orderType valueAt)
+        []))
+    NonTotalInterpretedMap
+    (MapSemantics 1 [])
+
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
 
@@ -531,6 +602,7 @@ interpretedValueKind value =
     AssignmentForm _ -> SpecificationValueKind
     DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind
     IdentifierStringProjectionForm _ -> DependentIdentifierTypeValueKind
+    DependentSumForm _ -> MapValueKind
     SequentialMapForm -> MapValueKind
     ExpansionMapForm _ _ -> MapValueKind
     ConcatenatedMapForm _ _ -> MapValueKind

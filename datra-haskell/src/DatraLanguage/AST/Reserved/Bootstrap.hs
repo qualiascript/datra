@@ -14,7 +14,6 @@ import DatraLanguage.AST
       , IdentifierValueType
       , NaturalType
       , NothingLiteral
-      , StringType
       )
   )
 import DatraLanguage.AST.Reserved
@@ -28,7 +27,7 @@ reservedSymbolReplacements :: [(ReservedSymbol, Expression)]
 reservedSymbolReplacements = mapMaybe replacement reservedSymbols
   where
     replacement BooleanTypeSymbol = Just (BooleanTypeSymbol, BooleanType)
-    replacement StringTypeSymbol = Just (StringTypeSymbol, StringType)
+    replacement StringTypeSymbol = Nothing
     replacement IdentifierValueTypeSymbol =
       Just (IdentifierValueTypeSymbol, IdentifierValueType)
     replacement IntegerTypeSymbol = Just (IntegerTypeSymbol, IntegerType)

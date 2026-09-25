@@ -98,6 +98,9 @@ localizeSyntaxExpansionFailure failure =
         , "expected captures: " <> show expected
         , "given captures: " <> show given
         ]
+    InvalidDependentBinder name ->
+      LocalizedMessage "dependent binder requires an identifier"
+        ["adapter: " <> name]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -159,6 +162,9 @@ localizeInterpretingError reason =
       LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let requires an enclosing begin block" []
+    DependentBinderOutsideContainer binder ->
+      LocalizedMessage "dependent binder requires an enclosing type container"
+        ["binder: " <> binder]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         (operandSide side <> " operand must be numerical")

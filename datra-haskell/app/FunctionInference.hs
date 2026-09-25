@@ -7,15 +7,51 @@ import Data.List (nub)
 import DatraLanguage.AST
 import DatraTypes
 
+data DependentBindingTag = ForBindingTag | WithBindingTag
+  deriving (Eq)
+
 freeIdentifiers :: Expression -> [String]
 freeIdentifiers = nub . free []
   where
     free bound expression = case expression of
       IdentifierReference (IdentifierString name) -> [name | name `notElem` bound]
+      FunctionType domain codomain ->
+        dependentEntries bound ForBindingTag (domainEntries domain)
+          <> free (dependentNames ForBindingTag (domainEntries domain) <> bound) codomain
+      ArgumentMap entries -> dependentEntries bound ForBindingTag entries
+      ArgumentMapSplice entry -> dependentEntries bound ForBindingTag [entry]
+      AtlasMap entries -> dependentEntries bound WithBindingTag entries
+      MapSequence entries -> dependentEntries bound WithBindingTag entries
       FunctionBody bindings result -> block bound bindings result
       Begin bindings result -> block bound bindings result
       Program bindings result -> block bound bindings result
       _ -> concatMap (free bound) (children expression)
+    dependentEntries bound tag = entries bound
+      where
+        entries _ [] = []
+        entries visible (entry : remaining) =
+          free visible (binderBound entry)
+            <> entries (binderScope visible entry) remaining
+        binderBound (ForBinding _ _ value) | tag == ForBindingTag = value
+        binderBound (WithBinding _ _ value) | tag == WithBindingTag = value
+        binderBound value = value
+        binderScope visible (ForBinding (IdentifierString name) _ _)
+          | tag == ForBindingTag = name : visible
+        binderScope visible (WithBinding (IdentifierString name) _ _)
+          | tag == WithBindingTag = name : visible
+        binderScope visible _ = visible
+    dependentNames tag = foldl collect []
+      where
+        collect names (ForBinding (IdentifierString name) _ _)
+          | tag == ForBindingTag = names <> [name]
+        collect names (WithBinding (IdentifierString name) _ _)
+          | tag == WithBindingTag = names <> [name]
+        collect names _ = names
+    domainEntries (ArgumentMap entries) = entries
+    domainEntries (ArgumentMapSplice entry) = [entry]
+    domainEntries (AtlasMap entries) = entries
+    domainEntries (MapSequence entries) = entries
+    domainEntries value = [value]
     block bound bindings result = entries initial bindings
       where
         declarations = map blockDeclaration bindings
@@ -62,9 +98,10 @@ inferParameters names body = traverse infer names
         require target value = [target | name `elem` freeIdentifiers value] <> recur value
 
 inferBody :: (Expression -> Either InterpretingError InterpretedValue)
-  -> [(String, InterpretedValue)] -> [Expression] -> Expression
+  -> [(String, InterpretedValue)] -> Maybe InterpretedValue
+  -> [Expression] -> Expression
   -> Either InterpretingError InterpretedValue
-inferBody evaluate parameters bindings result = inferBlock [] bindings result
+inferBody evaluate parameters self bindings result = inferBlock [] bindings result
   where
     inferBlock enclosing entries resultValue =
       infer imported memberNames resultValue
@@ -112,12 +149,20 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         value <- recur condition
         check value =<< booleanTypeValue
         pure (makeAtlasMap 0 [])
+      -- A function implementation introduces its own parameter scope.  When
+      -- it has an explicit signature, that signature is the complete type of
+      -- the local value; attempting to infer the nested body here would make
+      -- its @it@ look like the enclosing function's argument.
+      MapSpecification FunctionBody {} target@FunctionType {} -> recur target
       MapSpecification source target -> do
         actual <- recur source
         expected <- recur target
         check actual expected
         pure expected
-      This -> declarationMap members (recur . IdentifierReference . IdentifierString)
+      This -> maybe
+        (declarationMap members (recur . IdentifierReference . IdentifierString))
+        Right
+        self
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
       MapAccess This index -> do
         position <- recur index
@@ -133,7 +178,12 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
             InferredApplicationRequiresFunction)
           Just (domain,codomain) -> do
             actual <- recur argument
-            check actual domain
+            -- An inline fixed point is checked when it is actually called.
+            -- This permits guarded Nat recursion such as @n = 0@ followed by
+            -- @this (n - 1)@ without pretending subtraction is always Nat.
+            case (function, self) of
+              (This, Just _) -> pure ()
+              _ -> check actual domain
             pure codomain
       IdentifierOperation (IdentifierString name) annotation given -> do
         target <- recur annotation
@@ -144,10 +194,17 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
       AtlasMap values -> makeAtlasMap 2 <$> traverse recur values
       MapSequence values -> makeAtlasMap 2 <$> traverse recur values
       ArgumentMap values -> traverse recur values >>= makeArgumentMap
+      ArgumentMapSplice value -> recur value
       MapConcatenation a b -> do left <- recur a; right <- recur b; concatenateValues left right
       Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
       SafeOverload a b -> do left <- recur a; right <- recur b; safeOverloadValues left right
       EitherType a b -> do left <- recur a; right <- recur b; joinTypes left right
+      StringTemplate parts -> do
+        -- Interpolation affects whether evaluating the template can succeed,
+        -- but not its result type. Still infer every embedded expression so
+        -- unknown names and invalid enclosing parameter uses are diagnosed.
+        mapM_ inferTemplatePart parts
+        pure stringTypeValue
       Begin entries value -> inferBlock scope entries value
       Program entries value -> inferBlock scope entries value
       -- Literals, primitive types and closed expressions have exact known types.
@@ -156,6 +213,9 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
             UnsupportedInferredExpression)
       where
         recur = infer scope members
+        inferTemplatePart (StringTemplateLiteral _) = Right ()
+        inferTemplatePart (StringTemplateInterpolation value) = () <$ recur value
+        inferTemplatePart (StringTemplateWeakInterpolation value) = () <$ recur value
         numeric operation signed a b = do
           left <- recur a
           right <- recur b
@@ -183,12 +243,15 @@ lookupInferenceBinding name = go
       | otherwise = go remaining
 
 check :: InterpretedValue -> InterpretedValue -> Either InterpretingError ()
-check actual expected = do
-  accepted <- isSubtype actual expected
-  if accepted then Right () else Left (FunctionEvaluationFailed
-    (InferredTypeOutsideRequirement
-      (show (interpretedCanonicalResult actual))
-      (show (interpretedCanonicalResult expected))))
+check actual expected
+  | interpretedCanonicalResult actual
+      == interpretedCanonicalResult expected = Right ()
+  | otherwise = do
+      accepted <- isSubtype actual expected
+      if accepted then Right () else Left (FunctionEvaluationFailed
+        (InferredTypeOutsideRequirement
+          (show (interpretedCanonicalResult actual))
+          (show (interpretedCanonicalResult expected))))
 
 isSubtype :: InterpretedValue -> InterpretedValue -> Either InterpretingError Bool
 isSubtype source target = subfederationValues source target >>= booleanCondition

@@ -60,6 +60,7 @@ import DatraOrdinal
   , ordinalCoefficients
   )
 import qualified DatraTypes as Types
+import DatraTypes.DependentTypes qualified as Dependent
 import DatraLanguage.AST qualified as AST
 import DomanialInclusion (dominionAtlas, dominionCellDataValue)
 import Dot
@@ -176,6 +177,7 @@ testTree =
             testNumericalSemanticsAgreement
         , testCase "typing abstractions" testTypingAbstractions
         , testCase "argument schemas" testArgumentSchemas
+        , testCase "dependent type constructors" testDependentTypes
         ]
     , testGroup "properties"
         [ testProperty "ASCII strings preserve every byte" propAsciiStringRoundTrip
@@ -216,6 +218,22 @@ testEvaluationBoundary = do
               start target)) ->
         start == omega && target == finiteOrdinal 2
       _ -> False)
+
+testDependentTypes :: IO ()
+testDependentTypes = do
+  let dependentSumValue = Dependent.dependentSum "indices" length
+      selected = Dependent.dependentSumMemberAt dependentSumValue "abc"
+      dependentProductValue = Dependent.dependentProduct [1 :: Int, 2] show
+  assert "dependent sum retains its domain"
+    (Dependent.dependentSumDomain dependentSumValue == "indices")
+  assert "dependent sum selects a fibre from its witness"
+    ( Dependent.dependentSumMemberIndex selected == "abc"
+      && Dependent.dependentSumMemberFiber selected == 3
+    )
+  assert "dependent product retains its domain"
+    (Dependent.dependentProductDomain dependentProductValue == [1, 2])
+  assert "dependent product selects a fibre from its witness"
+    (Dependent.dependentProductFiberAt dependentProductValue (7 :: Int) == "7")
 
 testDiagnostics :: IO ()
 testDiagnostics = do

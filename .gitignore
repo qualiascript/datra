@@ -24,3 +24,7 @@ preprint_full.log
 preprint_full.synctex.gz
 preprint_full.pdf
 preprint_full.tex
+input.datra
+output.datra
+output.datra.error
+output.datra.ast

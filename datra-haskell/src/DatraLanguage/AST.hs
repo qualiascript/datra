@@ -73,6 +73,7 @@ data Expression
   | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
+  | ArgumentMapSplice Expression
   | MapSequence [Expression]
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
@@ -108,6 +109,9 @@ data Expression
   | Eval Expression Expression
   | Assert Bool Expression
   | This
+  | Fun Expression
+  | WithBinding IdentifierString Bool Expression
+  | ForBinding IdentifierString Bool Expression
   | InModule String Expression
   | Import Bool String
   | SyntaxType String Bool Expression
@@ -131,6 +135,11 @@ data Expression
       { identifierOperationString :: IdentifierString
       , identifierOperationTypeAnnotation :: Expression
       , identifierOperationGivenValue :: Maybe Expression
+      }
+  | IdentifierTemplateOperation
+      { identifierTemplateParts :: [StringTemplatePart Expression]
+      , identifierTemplateTypeAnnotation :: Expression
+      , identifierTemplateGivenValue :: Maybe Expression
       }
   deriving (Eq, Show)
 
@@ -176,6 +185,7 @@ data OperatorExpression
   | EmptyMap
   | Sequential [OperatorExpression]
   | Arguments [OperatorExpression]
+  | ArgumentsSplice OperatorExpression
   | Expansion OperatorExpression OperatorExpression
   | Range OperatorExpression OperatorExpression
   | RangePlus OperatorExpression
@@ -213,6 +223,9 @@ data OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
   | AssertValue Bool OperatorExpression
   | ThisValue
+  | FunValue OperatorExpression
+  | WithBindingValue IdentifierString Bool OperatorExpression
+  | ForBindingValue IdentifierString Bool OperatorExpression
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
   | SyntaxTypeValue String Bool OperatorExpression
@@ -237,6 +250,10 @@ data OperatorExpression
       , operatorTypeAnnotation :: OperatorExpression
       , operatorGivenValue :: Maybe OperatorExpression
       }
+  | IdentifierTemplateOperationValue
+      [StringTemplatePart OperatorExpression]
+      OperatorExpression
+      (Maybe OperatorExpression)
   deriving (Eq, Show)
 
 toOperatorExpression :: Expression -> OperatorExpression
@@ -260,6 +277,8 @@ normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentMap expressions) =
   normalizeSequence ArgumentMap expressions
+normalizeExpression (ArgumentMapSplice expression) =
+  ArgumentMapSplice (normalizeExpression expression)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (MapExpansion left right) =
@@ -328,6 +347,11 @@ normalizeExpression (Eval source target) =
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
 normalizeExpression This = This
+normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
+normalizeExpression (WithBinding name optional bound) =
+  WithBinding name optional (normalizeExpression bound)
+normalizeExpression (ForBinding name optional bound) =
+  ForBinding name optional (normalizeExpression bound)
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
 normalizeExpression (SyntaxType patternText ordinary signature) = SyntaxType patternText ordinary (normalizeExpression signature)
@@ -365,6 +389,12 @@ normalizeExpression
     (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperation
     identifierString
+    (normalizeExpression typeAnnotation)
+    (normalizeExpression <$> givenValue)
+normalizeExpression
+    (IdentifierTemplateOperation parts typeAnnotation givenValue) =
+  IdentifierTemplateOperation
+    (map normalizeStringTemplatePart parts)
     (normalizeExpression typeAnnotation)
     (normalizeExpression <$> givenValue)
 
@@ -431,6 +461,7 @@ lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
 lower (ArgumentMap expressions) = Arguments (map lower expressions)
+lower (ArgumentMapSplice expression) = ArgumentsSplice (lower expression)
 lower (MapSequence expressions) = Sequential (map lower expressions)
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
@@ -474,6 +505,11 @@ lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower This = ThisValue
+lower (Fun operand) = FunValue (lower operand)
+lower (WithBinding name optional bound) =
+  WithBindingValue name optional (lower bound)
+lower (ForBinding name optional bound) =
+  ForBindingValue name optional (lower bound)
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
 lower (SyntaxType patternText ordinary signature) = SyntaxTypeValue patternText ordinary (lower signature)
@@ -497,6 +533,11 @@ lower (SafeOverload left right) = SafeOverloadValue (lower left) (lower right)
 lower (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperationValue
     identifierString
+    (lower typeAnnotation)
+    (lower <$> givenValue)
+lower (IdentifierTemplateOperation parts typeAnnotation givenValue) =
+  IdentifierTemplateOperationValue
+    (map lowerStringTemplatePart parts)
     (lower typeAnnotation)
     (lower <$> givenValue)
 
@@ -559,6 +600,8 @@ prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator expressions)
 prettyOperator (Arguments expressions) =
   prettyForm "{}" (map prettyOperator expressions)
+prettyOperator (ArgumentsSplice expression) =
+  prettyForm "{,}" [prettyOperator expression]
 prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
 prettyOperator (Range lowerBound upperBound) =
@@ -647,6 +690,17 @@ prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
 prettyOperator ThisValue = "this"
+prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
+prettyOperator (WithBindingValue (IdentifierString name) optional bound) =
+  prettyForm "with"
+    [ pretty (renderIdentifierString name <> if optional then "?" else "")
+    , prettyOperator bound
+    ]
+prettyOperator (ForBindingValue (IdentifierString name) optional bound) =
+  prettyForm "for"
+    [ pretty (renderIdentifierString name <> if optional then "?" else "")
+    , prettyOperator bound
+    ]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
 prettyOperator (SyntaxTypeValue patternText ordinary signature) = prettyForm (if ordinary then "as?" else "as") [pretty (renderAsciiStringLiteral patternText), prettyOperator signature]
@@ -698,6 +752,16 @@ prettyOperator
               [ prettyOperator typeAnnotation
               , prettyOperator givenValueExpression
               ])
+prettyOperator
+    (IdentifierTemplateOperationValue parts typeAnnotation givenValue) =
+  prettyForm
+    (case givenValue of
+      Nothing -> operatorCanonicalSymbol DependentIdentifierTypeOperator
+      Just _ -> operatorCanonicalSymbol AssignmentOperator)
+    ( pretty (renderStringTemplate renderOperatorExpression (const Nothing) parts)
+      : prettyOperator typeAnnotation
+      : maybe [] ((: []) . prettyOperator) givenValue
+    )
 
 prettyUnary
   :: Operator
@@ -859,6 +923,7 @@ traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> E
 traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
+  ArgumentMapSplice x -> ArgumentMapSplice <$> visit x
   MapSequence xs -> MapSequence <$> traverse visit xs
   Extract x -> Extract <$> visit x
   Minus x -> Minus <$> visit x
@@ -880,6 +945,11 @@ traverseExpressionChildren visit expression = case expression of
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Eval a b -> Eval <$> visit a <*> visit b
   Assert hard x -> Assert hard <$> visit x
+  Fun x -> Fun <$> visit x
+  WithBinding name optional bound ->
+    WithBinding name optional <$> visit bound
+  ForBinding name optional bound ->
+    ForBinding name optional <$> visit bound
   FunctionType a b -> FunctionType <$> visit a <*> visit b
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b
@@ -897,6 +967,11 @@ traverseExpressionChildren visit expression = case expression of
   NamedAccess value name -> (`NamedAccess` name) <$> visit value
   SyntaxType text ordinary signature -> SyntaxType text ordinary <$> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
+  IdentifierTemplateOperation parts annotation given ->
+    IdentifierTemplateOperation
+      <$> traverse part parts
+      <*> visit annotation
+      <*> traverse visit given
   StringTemplate parts -> StringTemplate <$> traverse part parts
   _ -> pure expression
   where
