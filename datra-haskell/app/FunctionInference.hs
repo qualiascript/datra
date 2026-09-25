@@ -199,6 +199,12 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
       Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
       SafeOverload a b -> do left <- recur a; right <- recur b; safeOverloadValues left right
       EitherType a b -> do left <- recur a; right <- recur b; joinTypes left right
+      StringTemplate parts -> do
+        -- Interpolation affects whether evaluating the template can succeed,
+        -- but not its result type. Still infer every embedded expression so
+        -- unknown names and invalid enclosing parameter uses are diagnosed.
+        mapM_ inferTemplatePart parts
+        pure stringTypeValue
       Begin entries value -> inferBlock scope entries value
       Program entries value -> inferBlock scope entries value
       -- Literals, primitive types and closed expressions have exact known types.
@@ -207,6 +213,9 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
             UnsupportedInferredExpression)
       where
         recur = infer scope members
+        inferTemplatePart (StringTemplateLiteral _) = Right ()
+        inferTemplatePart (StringTemplateInterpolation value) = () <$ recur value
+        inferTemplatePart (StringTemplateWeakInterpolation value) = () <$ recur value
         numeric operation signed a b = do
           left <- recur a
           right <- recur b
