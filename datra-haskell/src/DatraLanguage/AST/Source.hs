@@ -31,7 +31,7 @@ source context expression =
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
-      | otherwise -> "this." <> renderIdentifierString name <> "[1]"
+      | otherwise -> "!" <> renderIdentifierString name
     IdentifierOperationValue (IdentifierString name) annotation given -> wrapped 1
       (renderIdentifierString name <> case given of
         Just value | value == annotation -> " := " <> source 2 value
@@ -71,6 +71,11 @@ source context expression =
     ExtractValue operand -> unary "%" operand
     OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
+    Access operand (NaturalValue 1)
+      | Just names <- scopeNames operand ->
+          "!" <> case names of
+            [name] -> renderIdentifierString name
+            _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     -- Access associates to the left, so a second page selection can continue
     -- directly as @value[first][second]@.  Operands with genuinely looser
     -- precedence are still parenthesized by their own renderer.
@@ -120,3 +125,9 @@ source context expression =
       renderIdentifierString name <> if optional then "?" else ""
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
+
+-- Preserve the exact expansion of @this.(a, b)[1]@ when rendering name lists.
+scopeNames :: OperatorExpression -> Maybe [String]
+scopeNames (NamedAccessValue ThisValue (IdentifierString name)) = Just [name]
+scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
+scopeNames _ = Nothing

@@ -738,6 +738,14 @@ parseTestExpression source =
 
 testBegin :: IO ()
 testBegin = do
+  expectSourceValue "retained block canonicalizes value lookup"
+    "begin \"value with spaces\" : 5; yield this.\"value with spaces\"[1] + 1" $ \value -> do
+      let rendered = renderInterpretedValue value
+      assert "block uses the symbolic lookup operator"
+        (rendered == "6 <~ begin \"value with spaces\" : 5; yield !\"value with spaces\" + 1")
+      expectSourceValue "canonical value lookup block round trip" rendered $ \decoded ->
+        assert "canonical block remains stable"
+          (renderInterpretedValue decoded == rendered)
   let example = "begin\n a : 2 * 3\n b : 5\nyield a + b"
   expectSourceValue "retained block" example $ \value -> do
     assert "the arithmetic result is eleven" (interpretedInteger value == Just 11)

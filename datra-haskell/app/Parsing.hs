@@ -955,7 +955,8 @@ term = do
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
     applicationArgument = accessedTerm (choice
-      [ argumentMap
+      [ valueOfExpression
+      , argumentMap
       , parenthesizedExpression
       , This <$ keyword "this"
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -974,6 +975,7 @@ termAtom :: Parser Expression
 termAtom =
   choice
     [ bareSkip
+    , valueOfExpression
     , This <$ keyword "this"
     , importExpression
     , syntaxApplication
@@ -1243,6 +1245,17 @@ namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
         rest <- many
           (continuedOperator AST.ConcatenationOperator *> namedAccessName)
         pure (first : rest)
+
+-- Like named access, the operand denotes names rather than evaluating them.
+-- Subsequent selections apply to the retrieved value: @!a[0]@ means
+-- @this.a[1][0]@. Keep this sugar in the core grammar so serialized closures
+-- can use it without importing a syntax declaration from Std.
+valueOfExpression :: Parser Expression
+valueOfExpression = do
+  _ <- operatorToken AST.ValueOfOperator
+  names <- namedAccessNames
+  horizontalSpaceConsumer
+  pure (MapAccess (expandedNamedAccess names This) (EllipsisNatural 1))
 
 namedAccessName :: Parser IdentifierString
 namedAccessName =

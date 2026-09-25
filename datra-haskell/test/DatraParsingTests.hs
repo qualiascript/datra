@@ -25,6 +25,7 @@ import DatraLanguage.AST.Syntax
   )
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Diagnostics
   ( Located (Located)
   , SourcePosition (SourcePosition)
@@ -1068,6 +1069,50 @@ regressionTests = do
       (NamedAccess (ref "a") (IdentifierString "c")))
   assertRejected "named access lists require at least one name" "a.()"
   assertRejected "named access lists reject expressions" "a.(b + c)"
+  let valueOf name = MapAccess (NamedAccess This (IdentifierString name)) (natural 1)
+  assertAstOutput "value lookup expands to the binding's value page"
+    "!a" (valueOf "a")
+  assertAstOutput "value lookup accepts quoted names"
+    "!\"name with spaces\"" (valueOf "name with spaces")
+  assertAstOutput "value lookup accepts reserved names"
+    "!this" (valueOf "this")
+  assertAstOutput "value lookup binds before arithmetic"
+    "!a + 2" (Addition (valueOf "a") (natural 2))
+  assertAstOutput "value lookup precedes chained access"
+    "!a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
+  assertAstOutput "value lookup can be a function"
+    "!f 2" (FunctionApplication (valueOf "f") (natural 2))
+  assertAstOutput "value lookup can be an application argument"
+    "f !a" (FunctionApplication (ref "f") (valueOf "a"))
+  assertAstOutput "optional value follows value lookup"
+    "!a?" (OptionalType (valueOf "a"))
+  let nameList = MapAccess
+        (MapConcatenation
+          (NamedAccess This (IdentifierString "a"))
+          (NamedAccess This (IdentifierString "b")))
+        (natural 1)
+  assertAstOutput "value lookup preserves named access list semantics"
+    "!(a, \"b\")" nameList
+  assertRejected "value lookup needs a name" "!"
+  assertRejected "value lookup rejects empty name lists" "!()"
+  assertRejected "value lookup rejects computed names like named access" "!(a + b)"
+  mapM_ (\(value, expected) -> do
+      assert "source rendering uses value lookup sugar"
+        (renderSourceExpression value == expected)
+      assertAstOutput "rendered value lookup reparses" expected value)
+    [ (valueOf "a", "!a")
+    , (valueOf "name with spaces", "!\"name with spaces\"")
+    , (nameList, "!(a, b)")
+    , (FunctionApplication (valueOf "f") (valueOf "a"), "!f !a")
+    , (MapAccess (valueOf "a") (natural 0), "!a[0]")
+    , (NamedAccess (valueOf "a") (IdentifierString "b"), "!a.b")
+    , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
+        "x : !\"type name\"")
+    , (MapAccess (NamedAccess This (IdentifierString "a")) (natural 0), "this.a[0]")
+    , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
+    ]
+  assert "quoted identifier references render through value lookup"
+    (renderSourceExpression (ref "___Std.Int") == "!\"___Std.Int\"")
   assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"

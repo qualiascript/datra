@@ -118,6 +118,33 @@ standardLibraryTests =
               )
             ]
         ]
+    , testGroup "value lookup"
+        [ programCase "retrieves a named binding"
+            "x := 5\nyield !x" "5"
+        , programCase "retrieves a quoted binding"
+            "\"value with spaces\" := 5\nyield !\"value with spaces\"" "5"
+        , programCase "retrieves a private binding"
+            "_x := 5\nyield !_x" "5"
+        , programCase "further access selects from the retrieved value"
+            "x := (5; 8)\nyield !x[1]" "8"
+        , programCase "optional names accept named and positional inputs"
+            ("f := ({x? : Nat} -> Nat yield !x + 1)\n"
+              <> "yield (f 5; f (x := 5))")
+            "(6; 6)"
+        , programCase "optional names retain defaults"
+            "f := ({x? : Nat := 5} -> Nat yield !x + 1)\nyield f ()" "6"
+        , programCase "specification accepts the retrieved value"
+            "x := 5\nyield (!x ~> Int) of Int" "true"
+        , programCase "reverse specification accepts the retrieved value"
+            "x := 5\nyield (Int <~ !x) of Int" "true"
+        , programCase "subfederation checks the retrieved value"
+            "x := 5\nyield !x of Nat" "true"
+        , programCase "subfederation rejects a different value"
+            "x := 5\nyield !x of 6" "false"
+        , programCase "lookup does not change optional-name specification"
+            ("x := 5\nyield (x := !x) ~> (x? : Nat)")
+            "x? : Nat := 5"
+        ]
     , testGroup "scope rejections"
         [ programFailureCase "private standard-library eval"
             "yield Std._eval"

@@ -26,6 +26,7 @@ data Operator
   | BooleanOrOperator
   | BooleanNotOperator
   | ExtractOperator
+  | ValueOfOperator
   | EvalOperator
   | AssertOperator
   | BeginOperator
@@ -66,6 +67,7 @@ operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol ExtractOperator = "%"
+operatorCanonicalSymbol ValueOfOperator = "!"
 operatorCanonicalSymbol EvalOperator = "eval"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
@@ -106,6 +108,7 @@ operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol ExtractOperator = Just "%"
+operatorSourceSymbol ValueOfOperator = Just "!"
 operatorSourceSymbol EvalOperator = Just "eval"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"

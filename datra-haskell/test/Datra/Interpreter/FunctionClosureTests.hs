@@ -36,7 +36,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :") `isInfixOf` text)
         assertBool ("wrong dependency reference for " <> show userName)
-          (("this." <> show dependency <> "[1]") `isInfixOf` text))
+          (("!" <> show dependency) `isInfixOf` text))
         ["next", "step", "base"]
       assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
   , roundTrip "user value is distinct from the inline fixed point"
@@ -53,7 +53,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded declaration for " <> show name)
           ((show encoded <> " :") `isInfixOf` text)
         assertBool ("missing encoded reference for " <> show name)
-          (("this." <> show encoded <> "[1]") `isInfixOf` text))
+          (("!" <> show encoded) `isInfixOf` text))
         ["abc", "_abc", "_____abc", "__fun", "___abc"]
   , testCase "generated recursion uses fun without a temporary name" $ do
       value <- requireProgram factorial
@@ -87,6 +87,12 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "quoted parameter reference"
       "yield ({\"value with spaces\" : Int} -> Int yield this.\"value with spaces\"[1] + 1)"
       "4" "5"
+  , roundTrip "value lookup in an optional named parameter"
+      "yield ({\"value with spaces\"? : Int} -> Int yield !\"value with spaces\" + 1)"
+      "4" "5"
+  , roundTrip "value lookup applies a captured function"
+      "inc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield !inc !n)"
+      "4" "5"
   , roundTrip "library inlining preserves a user _AST parameter"
       "yield ({_AST : Int} -> Int yield _AST + 1)" "4" "5"
   , roundTrip "quoted captured identifier"
@@ -119,7 +125,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
       assertBool "explicit primitive implementation" ("_external \"datra.Int\"" `isInfixOf` text)
-      assertBool "dependency selected through this" ("this.\"___Std.Int\"" `isInfixOf` text)
+      assertBool "dependency selected through value lookup" ("!\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"
       b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int yield x + offset)"
