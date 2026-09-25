@@ -18,8 +18,8 @@ Alternative, one can also use let-binding directly, which binds the `factorial` 
 also allows cyclic dependencies:
 
 ```datra
-factorial := fun {n? : Int} -> Int do
-  yield if n = 0 then 1 else n * this (n - 1)
+let factorial := {n? : Int} -> Int do
+  yield if n = 0 then 1 else n * factorial (n - 1)
 assert factorial 5 = 120
 ```
 
