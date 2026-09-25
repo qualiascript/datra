@@ -5,12 +5,20 @@ import DatraTypes
   ( InterpretingError (IdentifierStringOverlap, UnknownIdentifier)
   )
 import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertFailure, testCase)
 
 scopeTests :: TestTree
 scopeTests =
   testGroup "lexical scope"
     [ testGroup "ordinary block declarations"
-        [ programCase "computed this projection demands only its selected declaration"
+        [ testCase "quoted identifier cannot declare a block binding" $
+            -- Use the supported block terminator so this checks the declaration,
+            -- rather than rejecting an unrelated `end` syntax error.
+            case runExpression "begin\n \"~~~\" : 2\nyield ()" of
+              Left _ -> pure ()
+              Right _ -> assertFailure
+                "quoted identifier was accepted as an ordinary block binding"
+        , programCase "computed this projection demands only its selected declaration"
             "x : 2\ny : 3\nz : this[y-x][1]\nyield z"
             "3"
         , programCase "computed this name projection"
@@ -70,7 +78,10 @@ scopeTests =
             "11"
         ]
     , testGroup "map members"
-        [ programFailureCase "ordinary map member cannot see itself"
+        [ programCase "quoted identifier remains valid in a map"
+            "yield (\"~~~\" : 2)[1]"
+            "2"
+        , programFailureCase "ordinary map member cannot see itself"
             "yield (a : a)"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         , programFailureCase "ordinary map member cannot see an earlier sibling"
