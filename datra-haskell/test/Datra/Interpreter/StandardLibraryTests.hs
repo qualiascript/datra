@@ -44,6 +44,14 @@ standardLibraryTests =
               <> "if n = 0 then 1 else n * this (n - 1)\n"
               <> "yield factorial 5")
             "120"
+        , programCase "fun and let factorials agree"
+            ("inlineFactorial := fun {n? : Int} -> Int yield "
+              <> "if n = 0 then 1 else n * this (n - 1)\n"
+              <> "let boundFactorial := ({n? : Int} -> Int yield "
+              <> "if n = 0 then 1 else n * boundFactorial (n - 1))\n"
+              <> "assert inlineFactorial 6 = boundFactorial 6\n"
+              <> "yield inlineFactorial 6")
+            "720"
         , programCase "finite access lazily unfolds recursive data"
             ("name := fun \"hi:\", this\n"
               <> "k : Nat := 1\n"

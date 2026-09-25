@@ -36,12 +36,10 @@ Build just one with `make docker-prod` or `make docker-development`.
 
 ## Run Datra
 
-Inline recursion uses `fun`, where `this` is the value being defined:
-
 ```sh
 docker run --rm datra-haskell:prod build \
-  --source 'factorial := fun ({n? : Int} -> Int do
-  yield if n = 0 then 1 else n * this (n - 1))
+  --source 'let factorial := {n? : Int} -> Int do
+  yield if n = 0 then 1 else n * factorial (n - 1)
 assert factorial 5 = 120' \
   --ast-output /dev/null \
   --output -
