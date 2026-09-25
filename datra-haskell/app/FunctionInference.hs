@@ -62,9 +62,10 @@ inferParameters names body = traverse infer names
         require target value = [target | name `elem` freeIdentifiers value] <> recur value
 
 inferBody :: (Expression -> Either InterpretingError InterpretedValue)
-  -> [(String, InterpretedValue)] -> [Expression] -> Expression
+  -> [(String, InterpretedValue)] -> Maybe InterpretedValue
+  -> [Expression] -> Expression
   -> Either InterpretingError InterpretedValue
-inferBody evaluate parameters bindings result = inferBlock [] bindings result
+inferBody evaluate parameters self bindings result = inferBlock [] bindings result
   where
     inferBlock enclosing entries resultValue =
       infer imported memberNames resultValue
@@ -117,7 +118,10 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
         expected <- recur target
         check actual expected
         pure expected
-      This -> declarationMap members (recur . IdentifierReference . IdentifierString)
+      This -> maybe
+        (declarationMap members (recur . IdentifierReference . IdentifierString))
+        Right
+        self
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
       MapAccess This index -> do
         position <- recur index
@@ -133,7 +137,12 @@ inferBody evaluate parameters bindings result = inferBlock [] bindings result
             InferredApplicationRequiresFunction)
           Just (domain,codomain) -> do
             actual <- recur argument
-            check actual domain
+            -- An inline fixed point is checked when it is actually called.
+            -- This permits guarded Nat recursion such as @n = 0@ followed by
+            -- @this (n - 1)@ without pretending subtraction is always Nat.
+            case (function, self) of
+              (This, Just _) -> pure ()
+              _ -> check actual domain
             pure codomain
       IdentifierOperation (IdentifierString name) annotation given -> do
         target <- recur annotation

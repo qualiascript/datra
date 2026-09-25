@@ -44,6 +44,7 @@ yield Std := begin
     ("begin $Block yield $Expr" as (_AST, _AST -> _AST) external "datra.syntax.do")
   )
   let : "$Expr" as (_AST -> _AST) := external "datra.syntax.let"
+  fun : "$Expr" as (_AST -> _AST) := external "datra.syntax.fun"
   _eval : "$Expr at $Pages" as (_AST, _AST -> _AST) := external "datra.syntax.eval"
 
 yield public this

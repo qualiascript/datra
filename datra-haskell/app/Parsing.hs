@@ -84,6 +84,7 @@ import DatraLanguage.AST
       , FunctionType
       , SyntaxType
       , This
+      , Fun
       , InModule
       , Import
       , FunctionBody
@@ -364,6 +365,7 @@ astForm =
       , Import False <$> (astSymbol "import" *> astString)
       , Assert True <$> (astSymbol "assert-hard" *> astExpression)
       , astUnary AST.AssertOperator (Assert False)
+      , astUnaryForm "fun" Fun
       , SyntaxType <$> (astSymbol "as?" *> astString) <*> pure True <*> astExpression
       , SyntaxType <$> (astSymbol "as" *> astString) <*> pure False <*> astExpression
       , astBinary AST.FunctionTypeOperator FunctionType
@@ -500,6 +502,14 @@ astUnary
   -> Parser Expression
 astUnary operator constructor = do
   _ <- astOperatorToken operator
+  constructor <$> astExpression
+
+astUnaryForm
+  :: Text
+  -> (Expression -> Expression)
+  -> Parser Expression
+astUnaryForm name constructor = do
+  _ <- astSymbol name
   constructor <$> astExpression
 
 astBinary

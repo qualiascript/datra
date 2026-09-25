@@ -36,6 +36,43 @@ standardLibraryTests =
             , ("Std.true", "true : true")
             ]
         ]
+    , testGroup "inline fixed points"
+        [ programCase "literal fixed point"
+            "yield fun 5" "5"
+        , programCase "recursive Nat function"
+            ("factorial := fun {n? : Nat} -> Nat yield "
+              <> "if n = 0 then 1 else n * this (n - 1)\n"
+              <> "yield factorial 5")
+            "120"
+        , programCase "finite access lazily unfolds recursive data"
+            ("name := fun \"hi:\", this\n"
+              <> "k : Nat := 1\n"
+              <> "yield name[from 0 to 3 * (k + 1) - 1]")
+            "\"hi:hi:\""
+        , programCase "recursive concatenation is not string-specific"
+            ("values := fun 1, this\n"
+              <> "yield values[from 0 to 3]")
+            "(1; 1; 1; 1)"
+        , programCase "recursive semicolon sequence uses map machinery"
+            ("values := fun (1; 2; this)\n"
+              <> "yield values[from 0 to 5]")
+            "(1; 2; 1; 2; 1; 2)"
+        , programCase "let and fun share productive fixed-point access"
+            ("let name := \"hi:\", name\n"
+              <> "k : Nat := 1\n"
+              <> "yield name[from 0 to 3 * (k + 1) - 1]")
+            "\"hi:hi:\""
+        , programCase "fixed point specification"
+            "yield (fun 5) ~> Nat" "5 ~> Nat"
+        , programCase "fixed point reverse specification"
+            "yield Nat <~ (fun 5)" "5 ~> Nat"
+        , programCase "fixed point subfederation"
+            "yield (fun 5) of Nat" "true"
+        , programCase "fixed point as an optional named argument"
+            ("apply := ({value? : Nat} -> Nat yield value + 1)\n"
+              <> "yield apply (fun 5)")
+            "6"
+        ]
     , testGroup "scope values"
         [ programCase source source expected
         | (source, expected) <-

@@ -59,6 +59,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     controlArity "datra.syntax.begin" = Just 2
     controlArity "datra.syntax.do" = Just 2
     controlArity "datra.syntax.let" = Just 1
+    controlArity "datra.syntax.fun" = Just 1
     controlArity "datra.syntax.eval" = Just 2
     controlArity _ = Nothing
     controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
@@ -69,10 +70,23 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
       Right (Begin (block entries) result)
     controlWithValidCaptures "datra.syntax.do" [entries,result] =
       Right (FunctionBody (block entries) result)
-    controlWithValidCaptures "datra.syntax.let" [entry] = Right (Let entry)
+    controlWithValidCaptures "datra.syntax.let" [entry] =
+      Right (Let (absorbAssignedConcatenation entry))
+    controlWithValidCaptures "datra.syntax.fun" [entry] = Right (Fun entry)
     controlWithValidCaptures "datra.syntax.eval" [source,target] =
       Right (Eval source target)
     controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
+
+    -- @:=@ normally stops before a comma so declarations remain map members.
+    -- Inside @let@ the whole captured expression is one early binding, so a
+    -- following concatenation belongs to the assigned value.
+    absorbAssignedConcatenation value = case value of
+      MapConcatenation
+          (IdentifierOperation name annotation (Just given)) right
+        | annotation == given ->
+            let assignedValue = MapConcatenation given right
+            in IdentifierOperation name assignedValue (Just assignedValue)
+      _ -> value
 
 externalSymbol :: Expression -> Maybe String
 externalSymbol (External (AsciiStringLiteral symbol)) = Just symbol

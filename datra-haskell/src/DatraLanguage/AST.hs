@@ -108,6 +108,7 @@ data Expression
   | Eval Expression Expression
   | Assert Bool Expression
   | This
+  | Fun Expression
   | InModule String Expression
   | Import Bool String
   | SyntaxType String Bool Expression
@@ -213,6 +214,7 @@ data OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
   | AssertValue Bool OperatorExpression
   | ThisValue
+  | FunValue OperatorExpression
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
   | SyntaxTypeValue String Bool OperatorExpression
@@ -328,6 +330,7 @@ normalizeExpression (Eval source target) =
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
 normalizeExpression This = This
+normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
 normalizeExpression (SyntaxType patternText ordinary signature) = SyntaxType patternText ordinary (normalizeExpression signature)
@@ -474,6 +477,7 @@ lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower This = ThisValue
+lower (Fun operand) = FunValue (lower operand)
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
 lower (SyntaxType patternText ordinary signature) = SyntaxTypeValue patternText ordinary (lower signature)
@@ -647,6 +651,7 @@ prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
 prettyOperator ThisValue = "this"
+prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
 prettyOperator (SyntaxTypeValue patternText ordinary signature) = prettyForm (if ordinary then "as?" else "as") [pretty (renderAsciiStringLiteral patternText), prettyOperator signature]
@@ -880,6 +885,7 @@ traverseExpressionChildren visit expression = case expression of
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Eval a b -> Eval <$> visit a <*> visit b
   Assert hard x -> Assert hard <$> visit x
+  Fun x -> Fun <$> visit x
   FunctionType a b -> FunctionType <$> visit a <*> visit b
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b

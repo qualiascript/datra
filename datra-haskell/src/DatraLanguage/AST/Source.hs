@@ -13,6 +13,7 @@ source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
     ThisValue -> "this"
+    FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)

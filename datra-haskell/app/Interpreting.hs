@@ -74,6 +74,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (parseFailureMessage) )
 import Numeric.Natural (Natural)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 
 interpretExpression
   :: Expression
@@ -238,12 +239,97 @@ type Scope = [(String, Binding)]
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
+  | SelfBinding Bool (Either InterpretingError InterpretedValue)
   | QualifiedBinding String Binding
   | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
   | ImportedBinding FilePath InterpretedValue
   | ModuleCatalog [(String, ModuleSource)]
   | ScopeMembers [String]
   | CanonicalNames [(String, String)]
+
+data RecursivePrefix
+  = RecursiveConcatenation Expression
+  | RecursiveAtlasSequence [Expression]
+  | RecursiveMapSequence [Expression]
+
+-- A finite access into a productive recursive map only needs finitely many
+-- unfoldings. Both comma concatenation and semicolon sequencing delegate back
+-- to their ordinary evaluators after the recursive tail has been removed.
+lazyRecursivePrefix :: Scope -> Expression -> Maybe (Scope, RecursivePrefix)
+lazyRecursivePrefix scope expression = case expression of
+  Fun value -> (scope,) <$> recursivePrefixFor (== This) value
+  IdentifierReference (IdentifierString name) -> do
+    binding <- lookup name scope
+    (captured, _, definition) <- bindingDefinition binding
+    let isSelf value = value == IdentifierReference (IdentifierString name)
+    prefix <- case definition of
+      Fun value -> recursivePrefixFor (== This) value
+      value -> recursivePrefixFor isSelf value
+    pure (captured, prefix)
+  _ -> Nothing
+
+recursivePrefixFor :: (Expression -> Bool) -> Expression -> Maybe RecursivePrefix
+recursivePrefixFor isSelf expression = case expression of
+  MapConcatenation prefix suffix
+    | isSelf suffix -> Just (RecursiveConcatenation prefix)
+  AtlasMap members -> RecursiveAtlasSequence <$> sequencePrefix members
+  MapSequence members -> RecursiveMapSequence <$> sequencePrefix members
+  _ -> Nothing
+  where
+    sequencePrefix members = case reverse members of
+      suffix : reversedPrefix
+        | isSelf suffix
+        , not (null reversedPrefix) -> Just (reverse reversedPrefix)
+      _ -> Nothing
+
+accessRepeatedPrefix
+  :: Scope
+  -> [String]
+  -> RecursivePrefix
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+accessRepeatedPrefix captured resolving recursivePrefix insertion = do
+  prefix <- evalInScope captured resolving (prefixExpression recursivePrefix)
+  case (selectionMaximum insertion, naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap prefix))) of
+    (Just maximumPosition, Just prefixLength)
+      | prefixLength > 0 -> do
+          repeated <- unfold (maximumPosition `div` prefixLength + 1) prefix
+          accessValues repeated insertion
+    _ -> accessValues prefix insertion
+  where
+    prefixExpression (RecursiveConcatenation value) = value
+    prefixExpression (RecursiveAtlasSequence values) = AtlasMap values
+    prefixExpression (RecursiveMapSequence values) = MapSequence values
+
+    unfold copies value = case recursivePrefix of
+      RecursiveConcatenation _ -> repeatValue value copies
+      RecursiveAtlasSequence values ->
+        evalInScope captured resolving (AtlasMap (repeatExpressions copies values))
+      RecursiveMapSequence values ->
+        evalInScope captured resolving (MapSequence (repeatExpressions copies values))
+
+    repeatValue value copies = go copies value
+      where
+        go remaining accumulated
+          | remaining <= 1 = Right accumulated
+          | otherwise = concatenateValues accumulated value >>= go (remaining - 1)
+
+    repeatExpressions copies values = go copies
+      where
+        go remaining
+          | remaining <= 0 = []
+          | otherwise = values <> go (remaining - 1)
+
+selectionMaximum :: InterpretedValue -> Maybe Natural
+selectionMaximum insertion = do
+  count <- naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap insertion))
+  positions <- traverse selected (if count == 0 then [] else [0 .. count - 1])
+  pure (if null positions then 0 else maximum positions)
+  where
+    selected position = do
+      value <- interpretedMapValueAt (interpretedMap insertion) (finiteOrdinal position)
+      (_, ordinal) <- interpretedExplicitOrdinal value
+      naturalAtOrdinal ordinal
 
 evalInScope :: Scope -> [String] -> Interpreter
 evalInScope scope resolving = interpretNormalizedExpression scope resolving . normalizeExpression
@@ -324,7 +410,15 @@ interpretNormalizedExpression scope resolving expressionValue =
       interpret operand >>= booleanNotValue
     Extract operand ->
       interpret operand >>= extractValue
-    This -> scopeValue scope resolving
+    This -> case lookup "\0fun" scope of
+      Just (SelfBinding _ value) -> value
+      _ -> scopeValue scope resolving
+    Fun operand -> recursive
+      where
+        recursive = evalInScope
+          (("\0fun", SelfBinding (case operand of Begin {} -> True; _ -> False) recursive) : scope)
+          resolving
+          operand
     InModule path body -> do
       moduleSource <- lookupModule scope path
       imported <- moduleScope moduleSource
@@ -377,15 +471,24 @@ interpretNormalizedExpression scope resolving expressionValue =
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
     NamedAccess This (IdentifierString name)
+      | Just (SelfBinding _ value) <- lookup "\0fun" scope ->
+          value >>= (`namedAccessValue` name)
+    NamedAccess This (IdentifierString name)
       | Just (ScopeMembers names) <- lookup "\0this" scope
       , name `elem` names ->
           simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name
     NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
     MapAccess This insertionOperand -> do
       insertion <- interpret insertionOperand
-      projectDeclaration (scopeMemberNames scope) (resolveIdentifier scope resolving) insertion
+      case lookup "\0fun" scope of
+        Just (SelfBinding _ value) -> value >>= (`accessValues` insertion)
+        _ -> projectDeclaration (scopeMemberNames scope) (resolveIdentifier scope resolving) insertion
     MapAccess mapOperand insertionOperand ->
-      binary accessValues mapOperand insertionOperand
+      case lazyRecursivePrefix scope mapOperand of
+        Just (captured, prefix) -> do
+          insertion <- interpret insertionOperand
+          accessRepeatedPrefix captured resolving prefix insertion
+        Nothing -> binary accessValues mapOperand insertionOperand
     MapSpecification implementation (SyntaxType text ordinary signature) -> do
       value <- interpret (MapSpecification implementation signature)
       case interpretedFunction value of
@@ -447,6 +550,7 @@ resolveIdentifier scope resolving name =
   where
     resolve (QualifiedBinding _ binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
+    resolve (SelfBinding _ value) = value
     resolve (RetainedBinding _ _ _ value) = Right value
     resolve (ImportedBinding _ value) = Right value
     resolve ScopeMembers {} = Left (UnknownIdentifier name)
@@ -468,7 +572,11 @@ importScope :: Scope -> [String] -> [Expression] -> Either InterpretingError Sco
 importScope enclosing resolving entries = do
   (deferred, eagerNames, eagerEntries) <- declareScope enclosing entries
   evaluated <- traverse
-    (\name -> (name,) <$> resolveIdentifier deferred resolving name) eagerNames
+    (\name -> (name,) <$> resolveIdentifier deferred resolving name)
+    [ name
+    | name <- eagerNames
+    , maybe True (not . productiveRecursiveBinding name) (lookup name deferred)
+    ]
   let imported = map replaceEvaluated deferred
       replaceEvaluated entry@(name, binding) = case (binding, lookup name evaluated) of
         (DeferredBinding lexical annotation expressionValue, Just value) ->
@@ -478,13 +586,26 @@ importScope enclosing resolving entries = do
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
 
+productiveRecursiveBinding :: String -> Binding -> Bool
+productiveRecursiveBinding name binding =
+  case bindingDefinition binding of
+    Just (_, _, definition) ->
+      case recursivePrefixFor
+          (== IdentifierReference (IdentifierString name))
+          definition of
+        Just _ -> True
+        Nothing -> False
+    _ -> False
+
 -- Source reconstruction needs definitions without forcing native implementations
 -- while their signatures are themselves being reconstructed.
 declareScope :: Scope -> [Expression] -> Either InterpretingError (Scope, [String], [Expression])
 declareScope enclosing entries = do
   outer <- foldM importModule enclosing [(allNames,path) | Import allNames path <- entries]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
-  _ <- foldM checkName (map fst outer) definitions
+      outerNames = map fst outer
+      canonicalNames = concat [map fst names | (_, CanonicalNames names) <- outer]
+  _ <- foldM (checkName outerNames canonicalNames) [] definitions
   let names = map declarationName definitions
       makeBinding captured declaration =
         (declarationName declaration, DeferredBinding captured
@@ -492,10 +613,12 @@ declareScope enclosing entries = do
       deferred = buildScopeBindings makeBinding (("\0this", ScopeMembers names) : outer) definitions
   pure (deferred, [declarationName value | value <- definitions, declarationIsLet value], eagerEntries)
   where
-    checkName names declaration
-      | declarationName declaration `elem` names =
-          Left (IdentifierStringOverlap (declarationName declaration))
-      | otherwise = Right (declarationName declaration : names)
+    checkName outerNames canonicalNames declared declaration
+      | name `elem` declared = Left (IdentifierStringOverlap name)
+      | name `elem` outerNames && name `notElem` canonicalNames =
+          Left (IdentifierStringOverlap name)
+      | otherwise = Right (name : declared)
+      where name = declarationName declaration
 
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
@@ -716,10 +839,17 @@ createFunction captured resolving explicit bindings result = do
     [] -> pure ()
   input <- parameterDomain schema
   let positionalInput = parameterPositionalDomain schema
+      (explicitSelf, selfIncludesDependencies) = case lookup "\0fun" captured of
+        Just (SelfBinding includesDependencies _) -> (True, includesDependencies)
+        _ -> (False, False)
+  selfForInference <- case (explicitSelf, explicit) of
+    (True, Just (domain, codomain)) -> Just <$> evaluate (FunctionType domain codomain)
+    _ -> pure Nothing
   inferredOutput <-
     inferBody
       evaluateForInference
       (("it", positionalInput) : parameters)
+      selfForInference
       bindings
       result
   output <- case specifiedOutput of
@@ -750,7 +880,12 @@ createFunction captured resolving explicit bindings result = do
                   , expressionValue == definition] of
         key : _ -> Just key
         [] -> Nothing
-      closed = closeFunction (closureResolver captured) self definition
+      closed = closeFunction
+        (closureResolver captured)
+        self
+        explicitSelf
+        selfIncludesDependencies
+        definition
   pure (makeFunctionValue (EvaluatedFunction input output Nothing
     (Just (renderSourceExpression closed)) signatureText
     (Just (prepareArguments schema)) (Just invoke) True))
@@ -840,6 +975,7 @@ registeredExternal symbol = case symbol of
   "datra.syntax.begin" -> syntaxAdapter 2
   "datra.syntax.do" -> syntaxAdapter 2
   "datra.syntax.let" -> syntaxAdapter 1
+  "datra.syntax.fun" -> syntaxAdapter 1
   "datra.syntax.eval" -> syntaxAdapter 2
   "datra.StringTemplate" -> Right stringTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue

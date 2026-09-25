@@ -106,6 +106,9 @@ regressionTests = do
   assertAstOutput "hard assert"
     "assert hard false"
     (Assert True (ref "false"))
+  assertAstOutput "fun expands to an inline fixed point"
+    "fun 5"
+    (Fun (natural 5))
   assertAstOutput "not equals"
     "a =/= b"
     (Inequality (ref "a") (ref "b"))

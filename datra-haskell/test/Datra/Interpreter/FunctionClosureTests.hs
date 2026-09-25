@@ -28,24 +28,22 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "3" "7"
   , roundTrip "user names retain every leading underscore" underscoredCaptures "0" "15"
   , roundTrip "three dependency levels reconstruct independently" threeLevels "3" "7"
-  , testCase "each dependency level contributes its own scope prefix" $ do
+  , testCase "each dependency level uses the closure-local namespace" $ do
       value <- requireProgram threeLevels
       let text = renderInterpretedValue value
-      mapM_ (\(level, userName) -> do
-        let root = replicate (level + 2) '_' <> "fun"
-            dependency = replicate (level + 3) '_' <> userName
-        assertBool ("wrong root at level " <> show level)
-          (("let " <> show root <> " :") `isInfixOf` text)
-        assertBool ("wrong dependency at level " <> show level)
+      mapM_ (\userName -> do
+        let dependency = "___" <> userName
+        assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :") `isInfixOf` text)
-        assertBool ("wrong dependency reference at level " <> show level)
+        assertBool ("wrong dependency reference for " <> show userName)
           (("this." <> show dependency <> "[1]") `isInfixOf` text))
-        [(0, "next"), (1, "step"), (2, "base")]
-  , roundTrip "user function name is distinct from the generated root"
-      "fun := 4\nyield ({n? : Int} -> Int yield n + fun)"
+        ["next", "step", "base"]
+      assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
+  , roundTrip "user value is distinct from the inline fixed point"
+      "userFun := 4\nyield ({n? : Int} -> Int yield n + userFun)"
       "3" "7"
-  , roundTrip "outer user name cannot capture a nested generated root"
-      "fun := 4\ninc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield fun + inc n)"
+  , roundTrip "outer user name cannot capture a nested fixed point"
+      "userFun := 4\ninc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield userFun + inc n)"
       "3" "8"
   , testCase "user injection adds one marker after the scope prefix" $ do
       value <- requireProgram underscoredCaptures
@@ -57,12 +55,12 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded reference for " <> show name)
           (("this." <> show encoded <> "[1]") `isInfixOf` text))
         ["abc", "_abc", "_____abc", "__fun", "___abc"]
-  , testCase "generated recursion uses quoted canonical references" $ do
+  , testCase "generated recursion uses fun without a temporary name" $ do
       value <- requireProgram factorial
       let text = renderInterpretedValue value
-      assertBool "quoted function declaration" ("let \"__fun\" :" `isInfixOf` text)
-      assertBool "quoted recursive reference" ("this.\"__fun\"[1] (n - 1)" `isInfixOf` text)
-      assertBool "quoted result reference" ("yield this.\"__fun\"[1]" `isInfixOf` text)
+      assertBool "closure yields an inline fixed point" ("yield fun " `isInfixOf` text)
+      assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
+      assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))
   , roundTrip "transitive captured definitions"
       "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
       "7" "11"
@@ -128,10 +126,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "module filename is not a runtime dependency" (not ("import " `isInfixOf` text))
-      assertBool "nested root has level plus two underscores"
-        ("let \"___fun\" :" `isInfixOf` text)
-      assertBool "nested root uses canonical reference syntax"
-        ("yield this.\"___fun\"[1]" `isInfixOf` text)
+      assertBool "closure has no generated let root"
+        (not ("let \"___fun\" :" `isInfixOf` text))
       reconstructed <- requireExpression text
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
@@ -147,9 +143,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable imported origin" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 3")
       assertEqual "captured imported value" "10" (renderInterpretedValue result)
-  , testCase "user name cannot collide with a rebased module function" $ do
+  , testCase "user name cannot collide with a nested module function" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import \"library_one\"\nfun := 4\nyield ({n? : Int} -> Int yield fun + LibraryOne.increment n)"
+        "import \"library_one\"\nuserFun := 4\nyield ({n? : Int} -> Int yield userFun + LibraryOne.increment n)"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       reconstructed <- requireExpression text
