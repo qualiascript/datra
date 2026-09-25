@@ -216,8 +216,8 @@ standardLibraryTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "source-defined Args supports string-template functions"
             ( "MyArgs := (for T? of Any) -> Any do\n"
-                <> "  _ArgsSlots := with i in Nat do \"arg%(i)\"? : T\n"
-                <> "yield () | with n in Nat do _ArgsSlots[range 0 to n]\n"
+                <> "  slots := with i in Nat do \"arg%(i)\"? : T\n"
+                <> "yield () | with n in Nat do slots[range 0 to n]\n"
                 <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
                 <> "assert ((arg2 := 10, 4) of {MyArgs Int,}) = false\n"
                 <> "yield (display(); display(1); display(1, 2, 3); "

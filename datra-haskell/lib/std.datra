@@ -54,8 +54,8 @@ yield Std := begin
     ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) _external "datra.syntax.withIn")
   )
   Args := (for T? of Any) -> Any do
-    _ArgsSlots := with i in Nat do "arg%(i)"? : T
-  yield () | with n in Nat do _ArgsSlots[range 0 to n]
+    slots := with i in Nat do "arg%(i)"? : T
+  yield () | with n in Nat do slots[range 0 to n]
   for := (
     ("$_IdenExp of $_Expr" as (_AST, _AST -> _AST) _external "datra.syntax.for") |
     ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) _external "datra.syntax.forIn")
