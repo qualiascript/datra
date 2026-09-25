@@ -742,7 +742,7 @@ testBegin = do
   expectSourceValue "retained block" example $ \value -> do
     assert "the arithmetic result is eleven" (interpretedInteger value == Just 11)
     assert "the block remains in reverse-specification output"
-      (renderInterpretedValue value == "11 <~ begin\n a : (2 * 3)\n b : 5\nyield a + b")
+      (renderInterpretedValue value == "11 <~ begin a : (2 * 3); b : 5; yield a + b")
     expectSourceValue "retained block output can be read again"
       (renderInterpretedValue value) $ \decoded ->
         assert "output preserves its value" (interpretedInteger decoded == Just 11)
@@ -766,7 +766,7 @@ testBegin = do
       assert
         ("specification retains the block and yielded value: "
           <> renderInterpretedValue value)
-        (renderInterpretedValue value == "11 <~ begin\nyield 11")
+        (renderInterpretedValue value == "11 <~ begin yield 11")
   expectSourceRejection "a different value cannot specify a begin block"
     "12 ~> (begin yield 11)"
     (\case
@@ -841,7 +841,7 @@ testCanonicalTypes = do
       Right rendered ->
         assert "canonical block conversion retains block and yielded value"
           (renderInterpretedValue rendered
-            == "\"11 <~ begin\\nyield 11\"")
+            == "\"11 <~ begin yield 11\"")
   where
     expectCanonicalType source =
       expectSourceValue (source <> " is canonical") source $ \value ->

@@ -58,6 +58,11 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , testCase "generated recursion uses fun without a temporary name" $ do
       value <- requireProgram factorial
       let text = renderInterpretedValue value
+      assertBool "canonical closure is a single line" (not ('\n' `elem` text))
+      assertBool "begin entries are separated from yield"
+        ("; yield fun " `isInfixOf` text)
+      assertBool "do scope is space-delimited"
+        ("fun (do yield if " `isInfixOf` text)
       assertBool "closure yields an inline fixed point" ("yield fun " `isInfixOf` text)
       assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
       assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))

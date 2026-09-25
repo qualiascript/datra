@@ -20,12 +20,10 @@ source context expression =
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
-    FunctionBodyValue bindings result -> wrapped 0 ("do\n" <> concatMap (indent . source 0) bindings <> "yield " <> source 0 result)
+    FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
     ExternalValue descriptor -> wrapped 0 ("external " <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
-    BeginValue bindings result -> wrapped 0
-      ("begin\n" <> concatMap (indent . source 0) bindings
-        <> "yield " <> source 0 result)
+    BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
@@ -105,4 +103,5 @@ source context expression =
     applicationInput operand = source 12 operand
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
-    indent = unlines . map (" " <>) . lines
+    block keyword bindings result = keyword <> " "
+      <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])

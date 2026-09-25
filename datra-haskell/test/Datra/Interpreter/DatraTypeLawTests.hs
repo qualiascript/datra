@@ -209,7 +209,7 @@ totalBlockTests =
         "true"
     , expressionCase "equal source specifies it"
         "5 ~> (begin yield 5)"
-        "5 <~ begin\nyield 5"
+        "5 <~ begin yield 5"
     , expressionFailureCase "unequal source cannot specify it"
         "6 ~> (begin yield 5)"
         (SourceEvaluationFailure
