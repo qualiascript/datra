@@ -300,7 +300,7 @@ isFunctionFamily value =
 
 builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName AnyMetaType = "Any"
-builtinMetaTypeName (ASTMetaType name) = maybe "AST" id name
+builtinMetaTypeName (ASTMetaType name) = maybe "_AST" id name
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"

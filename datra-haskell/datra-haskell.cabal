@@ -320,6 +320,7 @@ executable datra-haskell
         ModuleLoading
         FunctionInference
         FunctionClosure
+        BlockScope
         StdLib
         SyntaxDefinitions
         Parsing
@@ -406,6 +407,7 @@ test-suite datra-interpreting-test
         ModuleLoading
         FunctionInference
         FunctionClosure
+        BlockScope
         StdLib
         SyntaxDefinitions
         Parsing

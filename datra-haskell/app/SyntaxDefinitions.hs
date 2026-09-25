@@ -41,7 +41,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     checkedCaptures = zipWith checkCapture [kind | SyntaxHole kind <- syntaxPieces rule] captures
     checkCapture kind value
-      | kind `elem` ["Expr", "Block", "Pages", "AST"] = value
+      | kind `elem` ["Expr", "Block", "Pages", "_AST"] = value
       | otherwise = MapSpecification value (scoped (IdentifierReference (IdentifierString kind)))
     block (AtlasMap entries) = entries
     block value = [value]

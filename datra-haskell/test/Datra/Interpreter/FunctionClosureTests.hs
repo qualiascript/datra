@@ -84,6 +84,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "quoted parameter reference"
       "yield ({\"value with spaces\" : Int} -> Int yield this.\"value with spaces\"[1] + 1)"
       "4" "5"
+  , roundTrip "library inlining preserves a user _AST parameter"
+      "yield ({_AST : Int} -> Int yield _AST + 1)" "4" "5"
   , roundTrip "quoted captured identifier"
       "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int yield x + this.\"name.with.dots\"[1])"
       "7" "11"
@@ -134,6 +136,17 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "private closure dependency survived" "11" (renderInterpretedValue result)
+  , testCase "import-all dependency names retain their module origin" $ do
+      original <- runModuleProgram "test/fixtures/modules/main.datra"
+        "import all \"library_one\"\nyield ({n? : Int} -> Int yield x + n)"
+      value <- either (assertFailure . show) pure original
+      let text = renderInterpretedValue value
+      assertBool "actual module provenance is retained"
+        ("\"___LibraryOne.x\"" `isInfixOf` text)
+      reconstructed <- requireExpression text
+      assertEqual "stable imported origin" text (renderInterpretedValue reconstructed)
+      result <- requireProgram ("f := " <> text <> "\nyield f 3")
+      assertEqual "captured imported value" "10" (renderInterpretedValue result)
   , testCase "user name cannot collide with a rebased module function" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
         "import \"library_one\"\nfun := 4\nyield ({n? : Int} -> Int yield fun + LibraryOne.increment n)"

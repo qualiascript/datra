@@ -4,9 +4,11 @@ module FunctionClosure
   ( Dependency (..)
   , Resolver (..)
   , closeFunction
+  , inlineDependencies
   , canonicalDependencyNames
   ) where
 
+import BlockScope (bindingNames)
 import Data.List (nub, stripPrefix)
 import Data.Char (isDigit)
 import DatraLanguage.AST
@@ -27,15 +29,22 @@ data Resolver = Resolver
   , resolveScopeIndex :: Expression -> Maybe String
   }
 
+data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
+
 type References = [(String, IdentifierString)]
 type Collected = [(String, IdentifierString, Expression)]
 
 closeFunction :: Resolver -> Maybe String -> Expression -> Expression
 closeFunction resolver self expression =
-  close 0 [] [] resolver self expression
+  close BindDependencies 0 [] [] resolver self expression
 
-close :: Int -> References -> [String] -> Resolver -> Maybe String -> Expression -> Expression
-close depth ancestors occupied resolver self original =
+-- Reuse the same scope-aware traversal when embedding primitive definitions
+-- from a source library. Cycles still get a local recursive binding.
+inlineDependencies :: Resolver -> Expression -> Expression
+inlineDependencies resolver = close InlineDependencies 0 [] [] resolver Nothing
+
+close :: DependencyMode -> Int -> References -> [String] -> Resolver -> Maybe String -> Expression -> Expression
+close mode depth ancestors occupied resolver self original =
   if null definitions && not recursive
     then rewritten
     else Begin (definitions <> [Let (assigned root rewritten)]) (IdentifierReference root)
@@ -44,23 +53,23 @@ close depth ancestors occupied resolver self original =
     reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
-    (rewritten, collected) = runState (rewrite depth (rootText : reserved) active resolver [] expression) []
-    definitions = [assigned name value | (_, name, value) <- collected]
+    (rewritten, collected) = runState (rewrite mode depth (rootText : reserved) active resolver [] expression) []
+    definitions = [assigned name value | mode == BindDependencies, (_, name, value) <- collected]
     recursive = root `elem` referenceNames rewritten
 
-rewrite :: Int -> [String] -> References -> Resolver -> [String]
+rewrite :: DependencyMode -> Int -> [String] -> References -> Resolver -> [String]
   -> Expression -> State Collected Expression
-rewrite depth reserved active resolver bound (MapAccess This index)
+rewrite mode depth reserved active resolver bound (MapAccess This index)
   | Just name <- resolveScopeIndex resolver index = do
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
       -- unrelated entries of the original scope map.
-      selector <- rewrite depth reserved active resolver bound index
-      value <- rewrite depth reserved active resolver bound
+      selector <- rewrite mode depth reserved active resolver bound index
+      value <- rewrite mode depth reserved active resolver bound
         (IdentifierReference (IdentifierString name))
       pure (Begin [Let selector]
         (IdentifierOperation (IdentifierString name) value Nothing))
-rewrite depth reserved active resolver bound expression
+rewrite mode depth reserved active resolver bound expression
   | Just path@(first : _) <- referencePath expression
   , first `notElem` bound
   , Just dependency <- resolveDependency resolver path = do
@@ -68,29 +77,29 @@ rewrite depth reserved active resolver bound expression
         Just name -> pure (IdentifierReference name)
         Nothing -> do
           collected <- get
-          case [name | (key, name, _) <- collected, key == dependencyKey dependency] of
-            name : _ -> pure (IdentifierReference name)
+          case [(name, value) | (key, name, value) <- collected, key == dependencyKey dependency] of
+            (name, value) : _ -> pure (dependencyUse mode name value)
             [] -> do
               let name = fresh
                     (replicate (depth + 2) '_' <> "_" <> dependencyName dependency)
                     (reserved <> [text | (_, IdentifierString text, _) <- collected])
-                  value = close (depth + 1) active
+                  value = close mode (depth + 1) active
                     (reserved <> [text | (_, IdentifierString text, _) <- collected] <> [nameText name])
                     (dependencyResolver dependency)
                     (Just (dependencyKey dependency))
                     (dependencyExpression dependency)
               put (collected <> [(dependencyKey dependency, name, value)])
-              pure (IdentifierReference name)
+              pure (dependencyUse mode name value)
 
-rewrite depth reserved active resolver bound expression =
+rewrite mode depth reserved active resolver bound expression =
   case expression of
     InModule path body
       | Just imported <- resolveDependencyModule resolver path ->
-          pure (close (depth + 1) active reserved imported Nothing body)
+          pure (close mode (depth + 1) active reserved imported Nothing body)
     MapSpecification (FunctionBody entries result) (FunctionType domain codomain) -> do
-      closedDomain <- rewrite depth reserved active resolver bound domain
-      closedCodomain <- rewrite depth reserved active resolver bound codomain
-      body <- rewrite depth reserved active resolver
+      closedDomain <- rewrite mode depth reserved active resolver bound domain
+      closedCodomain <- rewrite mode depth reserved active resolver bound codomain
+      body <- rewrite mode depth reserved active resolver
         ("it" : parameterNames domain <> bound) (FunctionBody entries result)
       pure (MapSpecification body (FunctionType closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
@@ -98,14 +107,18 @@ rewrite depth reserved active resolver bound expression =
     Program entries result -> block Program entries result
     _ -> traverseExpressionChildren recur expression
   where
-    recur = rewrite depth reserved active resolver bound
+    recur = rewrite mode depth reserved active resolver bound
     block constructor entries result = do
       let names = concatMap bindingNames entries
           -- Source validity and declaration ordering have already been checked
           -- by the evaluator; bound names must never become captured imports.
-          inside = rewrite depth reserved active
+          inside = rewrite mode depth reserved active
             resolver { resolveScopeIndex = const Nothing } (names <> bound)
       constructor <$> traverse inside entries <*> inside result
+
+dependencyUse :: DependencyMode -> IdentifierString -> Expression -> Expression
+dependencyUse BindDependencies name _ = IdentifierReference name
+dependencyUse InlineDependencies _ value = value
 
 referencePath :: Expression -> Maybe [String]
 referencePath (MapAccess (NamedAccess This (IdentifierString name)) (EllipsisNatural 1)) =
@@ -128,12 +141,6 @@ fresh candidate reserved = go (0 :: Int)
       | name `elem` reserved = go (suffix + 1)
       | otherwise = IdentifierString name
       where name = candidate <> if suffix == 0 then "" else "_" <> show suffix
-
-bindingNames :: Expression -> [String]
-bindingNames (Let value) = bindingNames value
-bindingNames (IdentifierOperation (IdentifierString name) _ _) = [name]
-bindingNames (EitherType named@(IdentifierOperation _ _ _) _) = bindingNames named
-bindingNames _ = []
 
 parameterNames :: Expression -> [String]
 parameterNames value@(IdentifierOperation _ _ _) = bindingNames value

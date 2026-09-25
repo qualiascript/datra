@@ -37,6 +37,7 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, intercalate)
+import BlockScope
 import FunctionClosure
 import FunctionInference
 import DatraLanguage.Identifier (public)
@@ -59,7 +60,6 @@ import DatraLanguage.AST
   , StringTemplatePart (..)
   , namedBeginBlock
   , normalizeExpression
-  , mapExpressionChildren
   , yieldedIdentifier
   )
 import DatraTypes
@@ -74,7 +74,6 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (parseFailureMessage) )
 import Numeric.Natural (Natural)
-import DatraOrdinal (naturalAtOrdinal)
 
 interpretExpression
   :: Expression
@@ -135,7 +134,7 @@ standardScope = do
   exported <- exportedBindings value
   pure
     ((namespace,
-      ImportedBinding standardLibraryIdentity value) : exported)
+      ImportedBinding standardLibraryIdentity value) : qualifyBindings namespace exported)
 
 standardLibraryValue :: Either InterpretingError InterpretedValue
 standardLibraryValue = do
@@ -239,6 +238,7 @@ type Scope = [(String, Binding)]
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
+  | QualifiedBinding String Binding
   | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
   | ImportedBinding FilePath InterpretedValue
   | ModuleCatalog [(String, ModuleSource)]
@@ -383,17 +383,7 @@ interpretNormalizedExpression scope resolving expressionValue =
     NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
     MapAccess This insertionOperand -> do
       insertion <- interpret insertionOperand
-      let names = case lookup "\0this" scope of
-            Just (ScopeMembers values) -> values
-            _ -> []
-          shape = makeAtlasMap 2
-            [simpleIdentifierTypeValue name (naturalValue 0) | name <- names]
-      -- Validate the index against the declaration map before demanding values.
-      _ <- accessValues shape insertion
-      case interpretedExplicitOrdinal insertion >>= (naturalAtOrdinal . snd) of
-        Just index | name : _ <- drop (fromIntegral index) names ->
-          simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name
-        _ -> scopeValue scope resolving >>= (`accessValues` insertion)
+      projectDeclaration (scopeMemberNames scope) (resolveIdentifier scope resolving) insertion
     MapAccess mapOperand insertionOperand ->
       binary accessValues mapOperand insertionOperand
     MapSpecification implementation (SyntaxType text ordinary signature) -> do
@@ -453,15 +443,16 @@ interpretNormalizedExpression scope resolving expressionValue =
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
 resolveIdentifier scope resolving name =
-  case lookup name scope of
-    Nothing -> Left (UnknownIdentifier name)
-    Just (EvaluatedBinding value) -> Right value
-    Just (RetainedBinding _ _ _ value) -> Right value
-    Just (ImportedBinding _ value) -> Right value
-    Just ScopeMembers {} -> Left (UnknownIdentifier name)
-    Just CanonicalNames {} -> Left (UnknownIdentifier name)
-    Just ModuleCatalog {} -> Left (UnknownIdentifier name)
-    Just (DeferredBinding captured annotation expressionValue) -> do
+  maybe (Left (UnknownIdentifier name)) resolve (lookup name scope)
+  where
+    resolve (QualifiedBinding _ binding) = resolve binding
+    resolve (EvaluatedBinding value) = Right value
+    resolve (RetainedBinding _ _ _ value) = Right value
+    resolve (ImportedBinding _ value) = Right value
+    resolve ScopeMembers {} = Left (UnknownIdentifier name)
+    resolve CanonicalNames {} = Left (UnknownIdentifier name)
+    resolve ModuleCatalog {} = Left (UnknownIdentifier name)
+    resolve (DeferredBinding captured annotation expressionValue) = do
       case annotation of
         Nothing -> pure ()
         Just typeExpression ->
@@ -475,28 +466,9 @@ resolveIdentifier scope resolving name =
 -- the deferred definitions. Names are checked before evaluating any binding.
 importScope :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
 importScope enclosing resolving entries = do
-  outer <- foldM importModule enclosing [(allNames,path) | Import allNames path <- entries]
-  let (definitions, eagerEntries) = foldMap (bindingImports False) entries
-  _ <- foldM checkName (map fst outer) definitions
-  let names = [name | (name, _, _, _) <- definitions]
-      initial = ("\0this", ScopeMembers names) : predeclaredLets <> outer
-      predeclaredLets =
-        [ (name, DeferredBinding
-            (scopeBefore position) annotation expressionValue)
-        | (position, (name, strict, annotation, expressionValue)) <-
-            zip [0..] definitions
-        , strict
-        ]
-      scopeBefore position =
-        foldl importOrdinary initial (take position definitions)
-      importOrdinary scope (name, strict, annotation, expressionValue)
-        | strict = scope
-        | otherwise =
-            (name, DeferredBinding scope annotation expressionValue) : scope
-      deferred = foldl importOrdinary initial definitions
+  (deferred, eagerNames, eagerEntries) <- declareScope enclosing entries
   evaluated <- traverse
-    (\(name, _, _, _) -> (name,) <$> resolveIdentifier deferred resolving name)
-    (filter (\(_, strict, _, _) -> strict) definitions)
+    (\name -> (name,) <$> resolveIdentifier deferred resolving name) eagerNames
   let imported = map replaceEvaluated deferred
       replaceEvaluated entry@(name, binding) = case (binding, lookup name evaluated) of
         (DeferredBinding lexical annotation expressionValue, Just value) ->
@@ -505,43 +477,37 @@ importScope enclosing resolving entries = do
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
+
+-- Source reconstruction needs definitions without forcing native implementations
+-- while their signatures are themselves being reconstructed.
+declareScope :: Scope -> [Expression] -> Either InterpretingError (Scope, [String], [Expression])
+declareScope enclosing entries = do
+  outer <- foldM importModule enclosing [(allNames,path) | Import allNames path <- entries]
+  let (definitions, eagerEntries) = foldMap (bindingImports False) entries
+  _ <- foldM checkName (map fst outer) definitions
+  let names = map declarationName definitions
+      makeBinding captured declaration =
+        (declarationName declaration, DeferredBinding captured
+          (declarationAnnotation declaration) (declarationValue declaration))
+      deferred = buildScopeBindings makeBinding (("\0this", ScopeMembers names) : outer) definitions
+  pure (deferred, [declarationName value | value <- definitions, declarationIsLet value], eagerEntries)
   where
-    checkName names (name, _, _, _)
-      | name `elem` names =
-          Left (IdentifierStringOverlap name)
-      | otherwise = Right (name : names)
+    checkName names declaration
+      | declarationName declaration `elem` names =
+          Left (IdentifierStringOverlap (declarationName declaration))
+      | otherwise = Right (declarationName declaration : names)
 
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
 -- the surrounding scope nor become visible to sibling members.
-bindingImports
-  :: Bool
-  -> Expression
-  -> ([(String, Bool, Maybe Expression, Expression)], [Expression])
+bindingImports :: Bool -> Expression -> ([Declaration], [Expression])
 bindingImports strict expressionValue =
-  case expressionValue of
-    Let binding -> bindingImports True binding
-    IdentifierOperation (IdentifierString name) annotation given ->
-      ([(name, strict, annotationToCheck annotation given, bindingValue)], [])
-      where
-        bindingValue = maybe annotation
-          (\value -> if value == annotation
-            then value
-            else MapSpecification value annotation)
-          given
-        annotationToCheck typeAnnotation maybeImplementation =
-          case maybeImplementation of
-            Just implementation
-              | implementation == typeAnnotation -> Nothing
-            Just FunctionBody {}
-              | FunctionType {} <- typeAnnotation -> Nothing
-            Just _
-              | SyntaxType {} <- typeAnnotation -> Nothing
-            _ -> Just typeAnnotation
-    EitherType named@(IdentifierOperation _ annotation _) missing
-      | annotation == missing -> bindingImports strict named
-    Assert {} -> ([], [expressionValue])
-    _ -> ([], [expressionValue | strict])
+  case blockDeclaration (if strict then Let expressionValue else expressionValue) of
+    Just declaration -> ([declaration], [])
+    Nothing -> case expressionValue of
+      Let value -> bindingImports True value
+      Assert {} -> ([], [expressionValue])
+      _ -> ([], [expressionValue | strict])
 
 interpretStringTemplateWith
   :: Interpreter
@@ -735,7 +701,8 @@ createFunction captured resolving explicit bindings result = do
       inferred <- inferParameters names body
       let parameter (name, target) = EitherType
             (IdentifierOperation (IdentifierString name) target Nothing) target
-      pure (explicitPrimitives (AtlasMap (map parameter inferred)), Nothing)
+      domain <- closedSourceExpression (renderSourceExpression (AtlasMap (map parameter inferred)))
+      pure (domain, Nothing)
   schema <- compileParameters evaluate domainExpression
   let parameters = parameterBindings schema
       names = map fst parameters
@@ -961,7 +928,7 @@ importModule scope (allNames, requested) = do
     Nothing -> pure ((namespace, ImportedBinding identity value) : scope)
     Just (ImportedBinding previous _) | previous == identity -> pure scope
     _ -> Left (IdentifierStringOverlap namespace)
-  if allNames then foldM (insertExport identity) namespaceScope exported else pure namespaceScope
+  if allNames then foldM (insertExport identity) namespaceScope (qualifyBindings namespace exported) else pure namespaceScope
   where
     insertExport identity values entry@(name,_) = case lookup name values of
       Nothing -> Right (entry:values)
@@ -1042,14 +1009,20 @@ importAllBindings value
       ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
 
 scopeValue :: Scope -> [String] -> Either InterpretingError InterpretedValue
-scopeValue scope resolving = do
-  let names = case lookup "\0this" scope of Just (ScopeMembers values) -> values; _ -> []
-  members <- traverse (\name -> simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name)
-    names
-  pure (makeAtlasMap 2 members)
+scopeValue scope resolving =
+  declarationMap (scopeMemberNames scope) (resolveIdentifier scope resolving)
+
+scopeMemberNames :: Scope -> [String]
+scopeMemberNames scope = case lookup "\0this" scope of
+  Just (ScopeMembers names) -> names
+  _ -> []
 
 exportedBindings :: InterpretedValue -> Either InterpretingError Scope
 exportedBindings = namedBindings
+
+qualifyBindings :: String -> Scope -> Scope
+qualifyBindings namespace = map (\(name, binding) ->
+  (name, QualifiedBinding (namespace <> "." <> name) binding))
 
 publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 publicValue value = do
@@ -1106,6 +1079,7 @@ resourceBindings _ = []
 -- | Source provenance survives eager let evaluation. Ordinary definitions
 -- already retain their lexical scope; both use the same reconstruction path.
 bindingDefinition :: Binding -> Maybe (Scope, Maybe Expression, Expression)
+bindingDefinition (QualifiedBinding _ binding) = bindingDefinition binding
 bindingDefinition (DeferredBinding lexical annotation expressionValue) =
   Just (lexical, annotation, expressionValue)
 bindingDefinition (RetainedBinding lexical annotation expressionValue _) =
@@ -1121,12 +1095,8 @@ closureResolver scope = resolver
     resolver = Resolver resolve moduleResolver scopeIndex
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
-      ordinal <- interpretedExplicitOrdinal index >>= (naturalAtOrdinal . snd)
-      ScopeMembers names <- lookup "\0this" scope
-      case drop (fromIntegral ordinal) names of
-        name : _ -> Just name
-        [] -> Nothing
-    moduleResolver path = case lookupModule scope path >>= moduleScope of
+      either (const Nothing) id (selectedDeclarationName (scopeMemberNames scope) index)
+    moduleResolver path = case lookupModule scope path >>= definitionModuleScope of
       Right imported -> Just (closureResolver imported)
       Left _ -> Nothing
     resolve [] = Nothing
@@ -1149,51 +1119,38 @@ closureResolver scope = resolver
     originName name
       | Just original <- lookup name
           (concat [names | (_, CanonicalNames names) <- scope]) = original
-      | name `elem` standardNames = "Std." <> name
+      | Just (QualifiedBinding origin _) <- lookup name scope = origin
       | otherwise = name
-    standardNames =
-      ["Any", "Nat", "Int", "String", "StringTemplate", "IdenStr"
-      ,"Bool", "true", "false", "nothing", "AST", "Expr", "Block", "Pages"
-      ,"NatRange", "IntRange", "NatValRange", "IntValRange", "public"
-      ,"from", "range", "if", "begin", "do", "let"]
 
 emptyResolver :: Resolver
 emptyResolver = Resolver (const Nothing) (const Nothing) (const Nothing)
 
--- Primitive leaves name the host registration rather than assuming Std is in
--- scope. Compound values recursively replace the library names in their source.
+-- Render/parse remains the bridge from evaluated values to the shared AST.
+-- Resolve library spellings from the library source, using the same lexical
+-- dependency traversal as closures rather than a second primitive registry.
 valueExpression :: InterpretedValue -> Either InterpretingError Expression
-valueExpression value = case parseDatra
-    ("(" <> renderCanonicalResult (interpretedCanonicalResult value) <> "\n)") of
-  Right expressionValue -> Right (explicitPrimitives (normalizeExpression expressionValue))
-  Left _ -> Left NoCanonicalStringConversion
+valueExpression = closedSourceExpression . renderCanonicalResult . interpretedCanonicalResult
 
-explicitPrimitives :: Expression -> Expression
-explicitPrimitives expressionValue = case expressionValue of
-  IdentifierReference (IdentifierString "true") -> booleanExpression True
-  IdentifierReference (IdentifierString "false") -> booleanExpression False
-  IdentifierReference (IdentifierString "nothing") -> nothingExpression
-  IdentifierReference (IdentifierString "Bool") ->
-    EitherType (booleanExpression False) (booleanExpression True)
-  BooleanLiteral value -> booleanExpression value
-  BooleanType -> EitherType (booleanExpression False) (booleanExpression True)
-  NothingLiteral -> nothingExpression
-  IdentifierReference (IdentifierString name)
-    | name `elem` primitiveNames -> External (AsciiStringLiteral ("datra." <> name))
-  NaturalType -> External (AsciiStringLiteral "datra.Nat")
-  IntegerType -> External (AsciiStringLiteral "datra.Int")
-  StringType -> External (AsciiStringLiteral "datra.String")
-  IdentifierValueType -> External (AsciiStringLiteral "datra.IdenStr")
-  _ -> mapExpressionChildren explicitPrimitives expressionValue
-  where
-    nothingExpression = IdentifierOperation (IdentifierString "Nothing") (AtlasMap []) Nothing
-    booleanExpression value = IdentifierOperation
-      (IdentifierString (if value then "True" else "False"))
-      (EllipsisNatural (if value then 1 else 0)) Nothing
-    primitiveNames =
-      ["Any", "Nat", "Int", "String", "StringTemplate", "IdenStr"
-      ,"AST", "Expr", "Block", "Pages", "NatRange", "IntRange"
-      ,"NatValRange", "IntValRange", "range", "from", "public"]
+closedSourceExpression :: String -> Either InterpretingError Expression
+closedSourceExpression text = do
+  expressionValue <- either (const (Left NoCanonicalStringConversion)) Right
+    (parseDatra ("(" <> text <> "\n)"))
+  definitions <- standardLibraryDefinitionScope
+  pure (inlineDependencies (closureResolver definitions) (normalizeExpression expressionValue))
+
+standardLibraryDefinitionScope :: Either InterpretingError Scope
+standardLibraryDefinitionScope = do
+  expressionValue <- parsedStandardLibrary
+  case namedBeginBlock expressionValue of
+    Just (_, declarations, _) -> do
+      (definitions, _, _) <- declareScope [] declarations
+      pure definitions
+    Nothing -> Left (ModuleEvaluationFailed
+      (StandardLibraryRequiresDeclarationBlock standardLibraryFileName))
+
+definitionModuleScope :: ModuleSource -> Either InterpretingError Scope
+definitionModuleScope StdLibModule = standardLibraryDefinitionScope
+definitionModuleScope source = moduleScope source
 
 -- Signatures themselves must not rely on implicit standard-library names.
 signatureSource :: InterpretedValue -> InterpretedValue -> Either InterpretingError String

@@ -15,7 +15,19 @@ import Test.Tasty (TestTree, testGroup)
 standardLibraryTests :: TestTree
 standardLibraryTests =
   testGroup "standard library and declarative syntax"
-    [ testGroup "qualified syntax"
+    [ testGroup "private AST implementation type"
+        [ programFailureCase "AST is no longer implicitly imported"
+            "yield AST" (SourceEvaluationFailure (UnknownIdentifier "AST"))
+        , programFailureCase "_AST is private to the library"
+            "yield _AST" (SourceEvaluationFailure (UnknownIdentifier "_AST"))
+        , programFailureCase "Std does not export _AST"
+            "yield Std._AST" (SourceEvaluationFailure (UnknownIdentifier "_AST"))
+        , programCase "AST can be a user binding"
+            "AST := 2\nyield AST" "2"
+        , programCase "AST external uses the private type spelling"
+            "yield external \"datra.AST\"" "_AST"
+        ]
+    , testGroup "qualified syntax"
         [ expressionCase source source expected
         | (source, expected) <-
             [ ("Std.if false then (1 + \"bad\") else 11", "11")
@@ -84,8 +96,8 @@ standardLibraryTests =
             , "(Nat; String) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "not (AST of Any)"
-            , "not ((Nat; AST) of Any)"
+            , "not ((external \"datra.AST\") of Any)"
+            , "not ((Nat; (external \"datra.AST\")) of Any)"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -101,11 +113,11 @@ standardLibraryTests =
             , "not (from (-2) to 5 of NatValRange)"
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "Expr of AST"
-            , "Block of AST"
-            , "Pages of AST"
+            , "Expr of (external \"datra.AST\")"
+            , "Block of (external \"datra.AST\")"
+            , "Pages of (external \"datra.AST\")"
             , "not (Block of Expr)"
-            , "(Expr ~> AST) of AST"
+            , "(Expr ~> (external \"datra.AST\")) of (external \"datra.AST\")"
             , "\"%Any\" of StringTemplate"
             , "\"%Int %IdenStr\" of StringTemplate"
             , "(\"%Int %IdenStr\" ~> StringTemplate) of StringTemplate"

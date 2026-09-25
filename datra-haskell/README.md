@@ -81,6 +81,10 @@ recursively in nested blocks, including standard-library dependencies down to
 their `external` registrations. Selected module members are reconstructed without
 an import of the whole module. Recursive functions use `let`.
 
+Reconstruction reads primitive definitions from `lib/std.datra` and retains
+module origins on imported bindings. Syntax adapters use the private `_AST`
+binding; it is not exported by `Std` or implicitly imported into user programs.
+
 For example, a dependency on `Int` is declared as:
 
 ```datra

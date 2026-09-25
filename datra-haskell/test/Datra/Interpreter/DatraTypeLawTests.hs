@@ -61,7 +61,7 @@ standardLibraryTypeExamples =
   , canonical "String" "String"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , weak "AST" "AST"
+  , weak "AST" "external \"datra.AST\""
   , weak "Expr" "Expr"
   , weak "Block" "Block"
   , weak "Pages" "Pages"
@@ -82,7 +82,7 @@ compositeTypeExamples =
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
-  , weak "map containing a noncanonical type" "(Nat; AST)"
+  , weak "map containing a noncanonical type" "(Nat; (external \"datra.AST\"))"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 

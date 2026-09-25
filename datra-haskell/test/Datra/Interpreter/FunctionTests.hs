@@ -170,7 +170,7 @@ functionTests =
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : AST"
+            "node : (external \"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"
