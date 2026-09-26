@@ -40,6 +40,7 @@ module DatraLanguage.AST.Syntax
   , or
   , not
   , extract
+  , stripIdentifiers
   , minus
   , (-)
   , (+)
@@ -191,6 +192,9 @@ not = BooleanNot
 
 extract :: Expression -> Expression
 extract = Extract
+
+stripIdentifiers :: Expression -> Expression
+stripIdentifiers = StripIdentifiers
 
 minus :: Expression -> Expression
 minus = Minus

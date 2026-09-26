@@ -226,17 +226,17 @@ standardLibraryTests =
             "yield (($Nothing; Just : 5) of (Maybe Nat; Maybe Nat))"
             "true"
         , programCase "Args accepts every finite positional prefix"
-            ( "values := ({Args Int,} -> List Int yield it)\n"
+            ( "values := ({Args Int,} -> List Int yield ^it)\n"
                 <> "yield values(1, 2, 3)"
             )
             "(1; 2; 3)"
         , programCase "Args reorders named and positional slots"
-            ( "values := ({Args Int,} -> List Int yield it)\n"
+            ( "values := ({Args Int,} -> List Int yield ^it)\n"
                 <> "yield values(arg1 := 3, 0)"
             )
             "(0; 3)"
         , programFailureCase "Args rejects a gap in its finite prefix"
-            ( "values := ({Args Int,} -> List Int yield it)\n"
+            ( "values := ({Args Int,} -> List Int yield ^it)\n"
                 <> "yield values(arg2 := 3, 0)"
             )
             (SourceEvaluationFailure
@@ -245,7 +245,7 @@ standardLibraryTests =
             ( "MyArgs := (for T? of Any) -> Any do\n"
                 <> "  slots := with i in Nat do \"arg%(i)\"? : T\n"
                 <> "yield () | with n in Nat do slots[range 0 to n]\n"
-                <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
+                <> "display := {MyArgs Int,} -> Str do yield \"%(^it)\"\n"
                 <> "assert ((arg2 := 10, 4) of {MyArgs Int,}) = false\n"
                 <> "yield (display(); display(1); display(1, 2, 3); "
                 <> "display(arg1 := 10, 4))"

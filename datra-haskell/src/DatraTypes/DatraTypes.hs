@@ -12,6 +12,7 @@ module DatraTypes
   , EvaluatedFunction (..)
   , makeFunctionValue
   , makeDependentSumValue
+  , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
   , syntaxCategoryTypeValue
@@ -58,6 +59,8 @@ module DatraTypes
   , toStringValue
   , weakToStringValue
   , stringTemplateValue
+  , stripIdentifiersValue
+  , stripIdentifiersType
   , extractValue
   , evalValues
   , requireFiniteInteger
@@ -110,6 +113,8 @@ module DatraTypes
   , projectedArgumentSchema
   , argumentSchemaBindings
   , argumentSchemaDomain
+  , argumentSchemaBodyDomain
+  , argumentSchemaBodyValues
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
@@ -209,6 +214,7 @@ import Evaluation.ToString
   , toStringValue
   , weakToStringValue
   )
+import Evaluation.IdentifierErasure (stripIdentifiersValue, stripIdentifiersType)
 import Extract (extractValue)
 import Evaluation.Eval (evalValues)
 import BooleanType qualified
@@ -221,6 +227,8 @@ import Evaluation.Overload
   ( ArgumentSchema
   , argumentSchemaBindings
   , argumentSchemaDomain
+  , argumentSchemaBodyDomain
+  , argumentSchemaBodyValues
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
@@ -280,6 +288,7 @@ import Evaluation.Value
   , EvaluatedFunction (..)
   , makeFunctionValue
   , makeDependentSumValue
+  , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
   , syntaxCategoryTypeValue

@@ -6,8 +6,8 @@ yield Ints := begin
       else begin
         let _candidate := _maximum (it[1][0]; it[1][range 1 upwards])
       yield if it[0] of from _candidate upwards then it[0] else _candidate
-  yield if it = () then nothing
-    else Just := _maximum (it[0]; it[range 1 upwards])
+  yield if ^it = () then nothing
+    else Just := _maximum (^it[0]; ^it[range 1 upwards])
 
   min := {Args Int,} -> Maybe Int do
     let _minimum := (Int; List Int) -> Int do
@@ -15,7 +15,7 @@ yield Ints := begin
       else begin
         let _candidate := _minimum (it[1][0]; it[1][range 1 upwards])
       yield if it[0] of from _candidate downwards then it[0] else _candidate
-  yield if it = () then nothing
-    else Just := _minimum (it[0]; it[range 1 upwards])
+  yield if ^it = () then nothing
+    else Just := _minimum (^it[0]; ^it[range 1 upwards])
 
 yield public this

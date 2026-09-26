@@ -218,6 +218,7 @@ library
         Evaluation.Federation.Structure
         Evaluation.FunctionArguments
         Evaluation.Identifier
+        Evaluation.IdentifierErasure
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Optional
