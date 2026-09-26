@@ -303,6 +303,15 @@ regressionTests = do
     "extract binds before bracket access"
     "%Str[0]"
     (MapAccess (Extract (ref "Str")) (natural 0))
+  assertParsed "identifier erasure is a prefix operator"
+    "^it" (StripIdentifiers (ref "it"))
+  assertParsed "identifier erasure binds before bracket access"
+    "^it[0]" (MapAccess (StripIdentifiers (ref "it")) (natural 0))
+  assertParsed "identifier erasure coexists with exponentiation"
+    "^it ^ 2" (Exponentiation (StripIdentifiers (ref "it")) (natural 2))
+  assertParsed "identifier erasure source rendering preserves named access"
+    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "it") (IdentifierString "abc"))))
+    (StripIdentifiers (NamedAccess (ref "it") (IdentifierString "abc")))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
@@ -1466,6 +1475,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
     , Gen.subterm genExpression OptionalType
+    , Gen.subterm genExpression StripIdentifiers
     , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression Eval
     , Gen.subterm2 genExpression genExpression MapConcatenation

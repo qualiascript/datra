@@ -25,6 +25,7 @@ data Operator
   | BooleanAndOperator
   | BooleanOrOperator
   | BooleanNotOperator
+  | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
   | EvalOperator
@@ -66,6 +67,7 @@ operatorCanonicalSymbol InequalityOperator = "=/="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
+operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol ValueOfOperator = "!"
 operatorCanonicalSymbol EvalOperator = "eval"
@@ -107,6 +109,7 @@ operatorSourceSymbol InequalityOperator = Just "=/="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
+operatorSourceSymbol StripIdentifiersOperator = Just "^"
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol ValueOfOperator = Just "!"
 operatorSourceSymbol EvalOperator = Just "eval"

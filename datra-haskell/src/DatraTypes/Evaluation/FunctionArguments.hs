@@ -23,11 +23,7 @@ import Evaluation.Error
   )
 import Evaluation.Identifier (requireCanonicalTypeAnnotation)
 import Evaluation.Overload
-import Evaluation.Value
-  ( InterpretedValue
-  , ValueForm (DependentSumForm)
-  , interpretedForm
-  )
+import Evaluation.Value (InterpretedValue)
 
 compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -58,10 +54,7 @@ compileParameters evaluate = compile False
           traverse_ validateArgumentMapName members
           unorderedArgumentSchema <$> traverse (compile False) members
         ArgumentMapSplice member -> do
-          value <- evaluate member
-          case interpretedForm value of
-            DependentSumForm _ -> pure (projectedArgumentSchema value)
-            _ -> pure (projectedArgumentSchema value)
+          projectedArgumentSchema <$> evaluate member
         MapConcatenation _ _ ->
           concatenatedArgumentSchema
             <$> traverse (compile allowPrivateOptional) (flatten expression)
@@ -70,9 +63,7 @@ compileParameters evaluate = compile False
               flatten left <> flatten right
             flatten value = [value]
         _ ->
-          argumentSlotSchema Nothing False
-            <$> evaluate expression
-            <*> pure Nothing
+          argumentSchemaFromValue <$> evaluate expression
     isPublic name = not (null (public [(name, ())]))
     validateOptionalName allowPrivate name optional
       | optional && not allowPrivate && not (isPublic name) =
@@ -120,7 +111,7 @@ parameterValues
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-parameterValues = argumentSchemaValuesComplete
+parameterValues = argumentSchemaBodyValues
 
 prepareArguments
   :: ArgumentSchema

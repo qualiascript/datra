@@ -3,6 +3,7 @@
 -- defaults erased, then replaces only the slots it supplies.
 module Evaluation.Overload
   ( ArgumentSchema
+  , argumentSchemaFromValue
   , argumentSlotSchema
   , dependentArgumentSlotSchema
   , orderedArgumentSchema
@@ -11,6 +12,8 @@ module Evaluation.Overload
   , projectedArgumentSchema
   , argumentSchemaBindings
   , argumentSchemaDomain
+  , argumentSchemaBodyDomain
+  , argumentSchemaBodyValues
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
@@ -415,7 +418,15 @@ concatenatedArgumentSchema schemas =
     first : remaining -> foldl ConcatenatedArgumentSchema first remaining
 
 projectedArgumentSchema :: InterpretedValue -> ArgumentSchema
-projectedArgumentSchema = ProjectedArgumentSchema
+projectedArgumentSchema target
+  | hasDependentFamily target = ProjectedArgumentSchema target
+  | otherwise = argumentSchemaFromValue target
+  where
+    hasDependentFamily value = case interpretedForm value of
+      DependentSumForm _ -> True
+      EitherForm alternatives -> hasDependentFamily (evaluatedEitherLeft alternatives)
+        || hasDependentFamily (evaluatedEitherRight alternatives)
+      _ -> False
 
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =
@@ -469,9 +480,46 @@ argumentSchemaDomain schema =
         EmptyArgumentSchema -> pure [[]]
         entry -> (\value -> [[value]]) <$> argumentSchemaDomain entry
 
--- | The function body's implicit @it@ observes slots positionally.  Its
--- inference view therefore erases parameter names and defaults while keeping
--- the same written slot order used by overload resolution.
+-- | The body sees completed slots in written order, with names retained even
+-- when a caller supplies an optional name positionally.
+argumentSchemaBodyDomain :: ArgumentSchema -> InterpretedValue
+argumentSchemaBodyDomain schema = case schema of
+  ProjectedArgumentSchema target -> projectedBodyDomain target
+  _ -> makeAtlasMap 2
+    [ namedSlot (slotName slot, slotAnnotation slot)
+    | slot <- templateSlots (normalizeArgumentSchema schema)
+    ]
+
+-- Projection selects ordinary schemas, including optional names. The body
+-- always sees their completed, named form, independently of library spelling.
+projectedBodyDomain :: InterpretedValue -> InterpretedValue
+projectedBodyDomain target = case interpretedForm target of
+  DependentSumForm dependent
+    | Just project <- evaluatedDependentSumAccess dependent ->
+        withDependentSumAccess
+          (fmap (argumentSchemaBodyDomain . argumentSchemaFromValue) . project)
+          target
+  EitherForm alternatives -> target
+    { interpretedForm = EitherForm alternatives
+        { evaluatedEitherLeft = projectedBodyDomain (evaluatedEitherLeft alternatives)
+        , evaluatedEitherRight = projectedBodyDomain (evaluatedEitherRight alternatives) } }
+  _ -> argumentSchemaBodyDomain (argumentSchemaFromValue target)
+
+namedSlot :: (Maybe String, InterpretedValue) -> InterpretedValue
+namedSlot (name, value) = maybe value (`simpleIdentifierTypeValue` value) name
+
+argumentSchemaBodyValues
+  :: ArgumentSchema -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+argumentSchemaBodyValues schema supplied = case schema of
+  ProjectedArgumentSchema target -> specifyValues supplied target
+  _ -> do
+    let normalized = normalizeArgumentSchema schema
+    replacements <- resolveReplacements normalized supplied
+    completed <- traverse (completeSlot replacements) (templateSlots normalized)
+    pure (makeAtlasMap 2 (map namedSlot completed))
+
+-- | Values-only view of the written slots, used to infer identifier erasure.
 argumentSchemaPositionalDomain
   :: ArgumentSchema
   -> InterpretedValue
@@ -498,9 +546,8 @@ argumentSchemaVariadicElementType schema =
         (accessValues (projectedPositionalDomain target) (makeNatural 0))
     _ -> Nothing
 
--- A projected argument federation retains its public slot names for call
--- matching, but the function body's @it@ map is positional. Preserve the
--- family itself and erase names only after a page has been selected.
+-- The erased view of a projected argument federation preserves the family
+-- and removes identifier wrappers after a page has been selected.
 projectedPositionalDomain :: InterpretedValue -> InterpretedValue
 projectedPositionalDomain target =
   case interpretedForm target of
@@ -531,7 +578,7 @@ projectedPositionalDomain target =
         _ -> Right value
 
 -- | Complete the schema and expose the resulting values in written positional
--- order.  This is the map bound to a function body's implicit @it@ name.
+-- order, without identifier wrappers.
 argumentSchemaValuesComplete
   :: ArgumentSchema
   -> InterpretedValue
@@ -545,15 +592,15 @@ argumentSchemaValuesComplete schema supplied =
       completed <- traverse (completeSlot replacements) (templateSlots normalized)
       pure (makeAtlasMap 2 (map snd completed))
 
--- | Complete an evaluated argument-map type and expose its values in the
--- type's canonical positional order.  Dependent projections use this same
+-- | Complete an evaluated argument-map type and expose named slots in the
+-- type's canonical positional order. Dependent projections use this same
 -- machinery, so named and positional calls cannot acquire separate rules.
 argumentValuesComplete
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 argumentValuesComplete template =
-  argumentSchemaValuesComplete (argumentSchemaFromValue template)
+  argumentSchemaBodyValues (argumentSchemaFromValue template)
 
 overloadArgumentSchemaComplete
   :: ArgumentSchema

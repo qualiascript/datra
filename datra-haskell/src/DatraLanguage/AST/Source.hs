@@ -68,6 +68,7 @@ source context expression =
     Power left right -> binary 9 "^" left right
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
+    StripIdentifiersValue operand -> wrapped 10 ("^" <> source 13 operand)
     ExtractValue operand -> unary "%" operand
     OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)

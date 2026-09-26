@@ -37,7 +37,7 @@ yield () | with n in Nat do slots[range 0 to n]
 For example:
 
 ```datra
-display := {Args Int,} -> Str do yield "%(it)"
+display := {Args Int,} -> Str do yield "%(^it)"
 
 assert display() = "()"
 assert display(1) = "1"

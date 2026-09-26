@@ -5,6 +5,7 @@ import DatraTypes
   ( ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
+  , InterpretedValueKind (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
@@ -21,7 +22,7 @@ functionTests =
             "()"
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
-              [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield it[0] ^ it[1])"
+              [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield it._base[1] ^ it._exponent[1])"
               , "assert my_pow (*, 3) = 8"
               ])
             "()"
@@ -77,6 +78,90 @@ functionTests =
               , "yield f \"ok\""
               ])
             "$ok"
+        ]
+    , testGroup "identifier-preserving input maps"
+        [ programCase "required and optional names survive positional calls"
+            (unlines
+              [ "f := {abc : Nat, xyz? : Nat} -> Bool do"
+              , "  yield it.abc[0] = $abc and it.abc[1] = abc and it.xyz[0] = $xyz and it.xyz[1] = xyz"
+              , "assert f(3, 4)"
+              , "assert f(xyz := 4, abc := 3)"
+              ]) "()"
+        , programCase "mixed slots preserve their written positions"
+            (unlines
+              [ "f := (abc? : Nat; Nat; xyz? : Nat) -> Bool do"
+              , "  yield it[0][0] = $abc and it[0][1] = 3 and it[1] = 4 and it[2][0] = $xyz and it[2][1] = 5"
+              , "assert f(3; 4; 5)"
+              ]) "()"
+        , programCase "named access contributes to inferred output types"
+            "f := ({abc? : Nat} -> Nat yield it.abc[1] + 1)\nyield f 6"
+            "7"
+        , programCase "computed input schemas preserve names without special functions"
+            (unlines
+              [ "Slots := (() -> Any yield (abc? : Nat; Nat))"
+              , "f := {Slots (),} -> Bool do"
+              , "  yield it.abc[0] = $abc and it.abc[1] = 3 and it[1] = 4"
+              , "assert f(3; 4)"
+              ]) "()"
+        , programCase "aliased schemas preserve names"
+            (unlines
+              [ "Schema := (abc? : Nat; Nat)"
+              , "f := Schema -> Bool do"
+              , "  yield it.abc[1] = 3 and it[1] = 4"
+              , "assert f(3; 4)"
+              ]) "()"
+        , programCase "inferred parameters also retain their names in it"
+            "f := (do yield abc + it.abc[1])\nyield f 7"
+            "14"
+        , programCase "projected schemas retain names inside the body"
+            (unlines
+              [ "Slots := (for T? of Any) -> Any do"
+              , "  slots := with i in Nat do \"field%(i)\"? : T"
+              , "yield () | with n in Nat do slots[range 0 to n]"
+              , "f := {Slots Nat,} -> Nat yield it[0][1]"
+              , "assert f(3; 4) = 3"
+              , "pick := {Slots Nat,} -> Any yield it.field1[1]"
+              , "assert pick(3; 4) = 4"
+              ]) "()"
+        , programCase "projected input maps retain names after returning"
+            (unlines
+              [ "f := {Args Int,} -> Any yield it"
+              , "assert (f(3; 4)).arg0[0] = $arg0"
+              , "assert (f(arg1 := 4, 3)).arg1[1] = 4"
+              ]) "()"
+        , programCase "empty and singleton unnamed inputs keep their shape"
+            (unlines
+              [ "empty := (() -> Any yield it)"
+              , "single := (Nat -> Nat yield it)"
+              , "assert empty() = ()"
+              , "assert single 8 = 8"
+              ]) "()"
+        , programCase "erasure supports mixed parameters during inference"
+            "f := ((abc? : Nat; Nat) -> (Nat; Nat) yield ^it)\nyield f(3; 4)"
+            "(3; 4)"
+        , programCase "erasure works through local bindings"
+            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield ^args)\nyield f 7"
+            "7"
+        , expressionCase "erasure removes identifiers throughout nested maps"
+            "^(a := (b := 2; 3); 4; c := 5)"
+            "((2; 3); 4; 5)"
+        , expressionCase "erasure preserves ordinary strings and empty maps"
+            "(^$abc; ^(); ^(1; 2); ^7)"
+            "($abc; (); (1; 2); 7)"
+        , programCase "erasure works on a block's declaration map"
+            "yield begin\n  abc := 2\n  def := 3\nyield ^this"
+            "(2; 3)"
+        , expressionCase "prefix erasure and exponentiation remain distinct"
+            "^(base := 2) ^ 3"
+            "8"
+        , expressionCase "erasure removes Boolean identifiers too"
+            "(^true; ^false)" "(1; 0)"
+        , expressionCase "erasure is idempotent"
+            "^^(abc := 7; 8)"
+            "(7; 8)"
+        , expressionFailureCase "erasure requires a total map"
+            "^(abc : Nat)"
+            (SourceEvaluationFailure (ExpectedTotalAtlasMap DependentIdentifierTypeValueKind))
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"

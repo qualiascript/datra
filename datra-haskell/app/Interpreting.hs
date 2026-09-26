@@ -448,6 +448,8 @@ interpretNormalizedExpression scope resolving expressionValue =
       binary booleanOrValues left right
     BooleanNot operand ->
       interpret operand >>= booleanNotValue
+    StripIdentifiers operand ->
+      interpret operand >>= stripIdentifiersValue
     Extract operand ->
       interpret operand >>= extractValue
     This -> case lookup "\0fun" scope of
@@ -1233,7 +1235,8 @@ createFunction captured resolving explicit bindings result = do
     Just (domain, codomain) -> Right (domain, Just codomain)
     Nothing -> do
       let body = FunctionBody bindings result
-          names = filter (`notElem` map fst captured) (freeIdentifiers body)
+          names = filter (\name -> name /= "it" && name `notElem` map fst captured)
+            (freeIdentifiers body)
       inferred <- inferParameters names body
       let parameter (name, target) = EitherType
             (IdentifierOperation (IdentifierString name) target Nothing) target
@@ -1254,13 +1257,13 @@ createFunction captured resolving explicit bindings result = do
     name : _ -> Left (IdentifierStringOverlap name)
     [] -> pure ()
   input <- parameterDomain schema
-  let rawPositionalInput = parameterPositionalDomain schema
-      positionalInput =
-        case argumentSchemaVariadicElementType schema of
-          Just elementType ->
-            listTypeValue (renderInterpretedValue elementType) elementType
-          Nothing -> rawPositionalInput
-      (explicitSelf, selfIncludesDependencies) = case lookup "\0fun" captured of
+  bodyInput <- case argumentSchemaVariadicElementType schema of
+    Just elementType -> do
+      erasedElement <- stripIdentifiersType elementType
+      let erased = listTypeValue (renderInterpretedValue erasedElement) erasedElement
+      pure (withIdentifierErasureType erased (argumentSchemaBodyDomain schema))
+    Nothing -> pure (argumentSchemaBodyDomain schema)
+  let (explicitSelf, selfIncludesDependencies) = case lookup "\0fun" captured of
         Just (SelfBinding includesDependencies _) -> (True, includesDependencies)
         _ -> (False, False)
   selfForInference <- case (explicitSelf, explicit) of
@@ -1273,7 +1276,7 @@ createFunction captured resolving explicit bindings result = do
           == interpretedCanonicalResult anyTypeValue -> pure target
     _ -> inferBody
       evaluateForInference
-      (("it", positionalInput) : parameters)
+      (("it", bodyInput) : parameters)
       selfForInference
       bindings
       result

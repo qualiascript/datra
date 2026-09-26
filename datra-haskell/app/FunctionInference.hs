@@ -136,6 +136,7 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
       BooleanAnd a b -> logical [a,b]
       BooleanOr a b -> logical [a,b]
       BooleanNot a -> logical [a]
+      StripIdentifiers operand -> recur operand >>= stripIdentifiersType
       Conditional condition yes no -> do
         flag <- recur condition
         check flag =<< booleanTypeValue

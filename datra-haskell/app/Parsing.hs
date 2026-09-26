@@ -80,6 +80,7 @@ import DatraLanguage.AST
       , BooleanOr
       , BooleanNot
       , Extract
+      , StripIdentifiers
       , Eval
       , Assert
       , Begin
@@ -414,6 +415,7 @@ astForm =
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
+      , astUnary AST.StripIdentifiersOperator StripIdentifiers
       , astUnary AST.ExtractOperator Extract
       , astBinary AST.EvalOperator Eval
       , astBlock "begin" Begin
@@ -969,6 +971,7 @@ term = do
 extractedTermAtom :: Parser Expression
 extractedTermAtom =
   (Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom))
+    <|> (StripIdentifiers <$> (operatorToken AST.StripIdentifiersOperator *> extractedTermAtom))
     <|> termAtom
 
 termAtom :: Parser Expression

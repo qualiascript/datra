@@ -2,7 +2,7 @@ let factorial := ({n? : Int := 5} -> Int do
 begin
   assert n of Int
   yield if n = 0 then 1 else n * factorial (n - 1))
-my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield it[0] ^ it[1])
+my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield ^it[0] ^ ^it[1])
 sum := (Nat, Nat -> Nat yield it[0] + it[1])
 parsed := %("from 2 to 5" ~> "from %Int to %Int")
 overloaded := ({x : Nat := 2, Nat} << 4)

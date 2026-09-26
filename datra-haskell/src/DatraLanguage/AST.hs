@@ -105,6 +105,7 @@ data Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
+  | StripIdentifiers Expression
   | Extract Expression
   | Eval Expression Expression
   | Assert Bool Expression
@@ -219,6 +220,7 @@ data OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
+  | StripIdentifiersValue OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
   | AssertValue Bool OperatorExpression
@@ -340,6 +342,8 @@ normalizeExpression (BooleanOr left right) =
   BooleanOr (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
+normalizeExpression (StripIdentifiers operand) =
+  StripIdentifiers (normalizeExpression operand)
 normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
 normalizeExpression (Eval source target) =
@@ -501,6 +505,7 @@ lower (Inequality left right) = NotEqual (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
+lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
 lower (Assert hard condition) = AssertValue hard (lower condition)
@@ -682,6 +687,8 @@ prettyOperator (Or left right) =
   prettyBinary BooleanOrOperator left right
 prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
+prettyOperator (StripIdentifiersValue operand) =
+  prettyUnary StripIdentifiersOperator operand
 prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
 prettyOperator (EvalValue source target) =
@@ -925,6 +932,7 @@ traverseExpressionChildren visit expression = case expression of
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
   ArgumentMapSplice x -> ArgumentMapSplice <$> visit x
   MapSequence xs -> MapSequence <$> traverse visit xs
+  StripIdentifiers x -> StripIdentifiers <$> visit x
   Extract x -> Extract <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
