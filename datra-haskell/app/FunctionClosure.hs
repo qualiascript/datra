@@ -170,7 +170,9 @@ fresh candidate reserved = go (0 :: Int)
 parameterNames :: Expression -> [String]
 parameterNames (ForBinding (IdentifierString name) _ _) = [name]
 parameterNames value@(IdentifierOperation _ _ _) = bindingNames value
-parameterNames (EitherType named@(IdentifierOperation _ _ _) _) = bindingNames named
+parameterNames value
+  | Just (named@IdentifierOperation {}, _) <-
+      optionalIdentifierExpression value = bindingNames named
 parameterNames value = concatMap parameterNames (expressionChildren value)
 
 declaredNames :: Expression -> [String]

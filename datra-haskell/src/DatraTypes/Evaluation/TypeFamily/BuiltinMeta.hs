@@ -32,6 +32,8 @@ decideBuiltinMetaSubfederation source target =
         case datraCanonicalType (interpretedDatraType source) of
           Just _ -> True
           Nothing -> False
+      (_, OrdinalMetaType) -> isTransfiniteOrdinal
+        (interpretedSemantics source)
       (BuiltinMetaTypeForm actual, expected) | actual == expected -> True
       (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType Nothing) -> True
       (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True
@@ -45,3 +47,13 @@ decideBuiltinMetaSubfederation source target =
       (_, StringTemplateMetaType) ->
         federationProducesStrings (interpretedAtlasMapFederation source)
       _ -> False
+
+isTransfiniteOrdinal :: ValueSemantics -> Bool
+isTransfiniteOrdinal semantics = case semantics of
+  ExplicitSemantics level _ -> level > 1
+  FormulationSemantics level -> level > 0
+  DependentIdentifierTypeSemantics _ underlying _ ->
+    isTransfiniteOrdinal underlying
+  AssignmentSemantics _ _ given -> isTransfiniteOrdinal given
+  SpecificationSemantics source _ -> isTransfiniteOrdinal source
+  _ -> False

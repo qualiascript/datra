@@ -1,13 +1,13 @@
--- | Checked numerical coercions and ordinal arithmetic for evaluated values.
+-- | Checked finite numerical coercions and arithmetic for evaluated values.
 module Evaluation.Numerical
   ( addValues
   , subtractValues
+  , plusValue
   , minusValue
   , multiplyValues
   , exponentiateValues
-  , requireExplicit
   , requireFiniteInteger
-  , requireRangeUpperBoundary
+  , requireNaturalExponent
   , numericallyEquivalent
   ) where
 
@@ -15,7 +15,6 @@ import DatraOrdinal
   ( Ordinal
   , finiteOrdinal
   , naturalAtOrdinal
-  , omegaPower
   )
 import Evaluation.Error
   ( InterpretingError (..)
@@ -23,7 +22,6 @@ import Evaluation.Error
   )
 import Evaluation.Construction
   ( makeExplicit
-  , makeExplicitValue
   , makeFormulation
   , makeInteger
   )
@@ -46,8 +44,8 @@ addValues left right = do
     (Just (IntegerNumerical _), _) -> integerBinary (+) left right
     (_, Just (IntegerNumerical _)) -> integerBinary (+) left right
     _ -> do
-      leftValue <- requireNumerical LeftOperand left
-      rightValue <- requireNumerical RightOperand right
+      leftValue <- requireFiniteNumerical LeftOperand left
+      rightValue <- requireFiniteNumerical RightOperand right
       pure (makeNumericalResult
         (addNumericalDenotations leftValue rightValue))
 
@@ -56,6 +54,14 @@ subtractValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 subtractValues = integerBinary (-)
+
+plusValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
+plusValue value =
+  case numericalProjection value of
+    Just (IntegerNumerical integer) -> Right (makeInteger integer)
+    _ -> makeNumericalResult <$> requireFiniteNumerical LeftOperand value
 
 minusValue
   :: InterpretedValue
@@ -72,8 +78,8 @@ multiplyValues left right = do
     (Just (IntegerNumerical _), _) -> integerBinary (*) left right
     (_, Just (IntegerNumerical _)) -> integerBinary (*) left right
     _ -> do
-      leftValue <- requireNumerical LeftOperand left
-      rightValue <- requireNumerical RightOperand right
+      leftValue <- requireFiniteNumerical LeftOperand left
+      rightValue <- requireFiniteNumerical RightOperand right
       pure (makeNumericalResult
         (multiplyNumericalDenotations leftValue rightValue))
 
@@ -87,7 +93,7 @@ exponentiateValues base exponentValue = do
     Just (IntegerNumerical integer) ->
       pure (makeInteger (integer ^ naturalPower))
     _ -> do
-      baseValue <- requireNumerical LeftOperand base
+      baseValue <- requireFiniteNumerical LeftOperand base
       pure (makeNumericalResult
         (exponentiateNumericalDenotation baseValue naturalPower))
 
@@ -111,43 +117,18 @@ requireFiniteInteger side value =
     Nothing ->
       Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
 
-requireExplicit
-  :: OperandSide
-  -> InterpretedValue
-  -> Either InterpretingError EvaluatedExplicit
-requireExplicit side value =
-  case numericalProjection value of
-    Just (ExplicitNumerical _ ordinalValue) ->
-      Right (makeExplicitValue ComputedOrigin ordinalValue)
-    Just (FormulationNumerical level) ->
-      Right
-        (makeExplicitValue
-          ComputedOrigin
-          (omegaPower level))
-    _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
-
-requireRangeUpperBoundary
-  :: OperandSide
-  -> InterpretedValue
-  -> Either InterpretingError (Natural, Ordinal)
-requireRangeUpperBoundary side value =
-  case numericalProjection value of
-    Just (ExplicitNumerical level ordinalValue) ->
-      Right (level, ordinalValue)
-    Just (FormulationNumerical level) -> Right (level, omegaPower level)
-    _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
-
-requireNumerical
+requireFiniteNumerical
   :: OperandSide
   -> InterpretedValue
   -> Either InterpretingError NumericalDenotation
-requireNumerical side value =
+requireFiniteNumerical side value =
   case numericalProjection value of
-    Just (ExplicitNumerical _ ordinalValue) ->
-      Right (ExplicitDenotation ordinalValue)
-    Just (FormulationNumerical level) ->
-      Right (FormulationDenotation level)
-    _ -> Left (ExpectedNumericalOperand side (interpretedValueKind value))
+    Just (FormulationNumerical 0) ->
+      Right (ExplicitDenotation (finiteOrdinal 1))
+    Just (ExplicitNumerical 1 ordinalValue)
+      | Just _ <- naturalAtOrdinal ordinalValue ->
+          Right (ExplicitDenotation ordinalValue)
+    _ -> Left (ExpectedFiniteIntegerOperand side (interpretedValueKind value))
 
 requireNaturalExponent
   :: InterpretedValue

@@ -29,8 +29,8 @@ reservedWordText ThenWord = "then"
 reservedWordText YieldWord = "yield"
 reservedWordText ElseWord = "else"
 reservedWordText ToWord = "to"
-reservedWordText UpwardsWord = "upwards"
-reservedWordText DownwardsWord = "downwards"
+reservedWordText UpwardsWord = "up"
+reservedWordText DownwardsWord = "down"
 
 -- | A reserved identifier whose value is supplied by the language context.
 -- Some are currently parser forms or interpreter/FFI bootstraps; a future
@@ -99,7 +99,7 @@ reservedIdentifierStrings =
       ]
   where
     -- These words introduce or delimit expressions wherever an identifier
-    -- could begin. Range continuations (to/upwards/downwards) are contextual
+    -- could begin. Range continuations (to/up/down) are contextual
     -- and deliberately remain valid bare identifier names.
     identifierReservedWords =
       filter reservesIdentifier

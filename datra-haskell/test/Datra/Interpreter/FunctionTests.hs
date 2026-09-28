@@ -22,7 +22,7 @@ functionTests =
             "()"
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
-              [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield it._base[1] ^ it._exponent[1])"
+              [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield it.base[1] ^ it.exponent[1])"
               , "assert my_pow (*, 3) = 8"
               ])
             "()"
@@ -42,7 +42,7 @@ functionTests =
             "f := ({x?:Int} -> Int do yield x)\nyield f (x:2)"
             "2"
         , programCase "optional value retains a required name"
-            "f := ({x:Int?} -> Int? do yield x)\nyield f (x:nothing)"
+            "f := ({x:Maybe Int} -> Maybe Int do yield x)\nyield f (x:nothing)"
             "nothing"
         , programCase "lexical closure"
             "offset:=3\nf := (do yield a+offset)\nyield f 8"
@@ -80,9 +80,9 @@ functionTests =
             "$ok"
         ]
     , testGroup "identifier-preserving input maps"
-        [ programCase "required and optional names survive positional calls"
+        [ programCase "optional names survive positional calls"
             (unlines
-              [ "f := {abc : Nat, xyz? : Nat} -> Bool do"
+              [ "f := {abc? : Nat, xyz? : Nat} -> Bool do"
               , "  yield it.abc[0] = $abc and it.abc[1] = abc and it.xyz[0] = $xyz and it.xyz[1] = xyz"
               , "assert f(3, 4)"
               , "assert f(xyz := 4, abc := 3)"
@@ -131,71 +131,71 @@ functionTests =
               ]) "()"
         , programCase "empty and singleton unnamed inputs keep their shape"
             (unlines
-              [ "empty := (() -> Any yield it)"
+              [ "emptyInput := (() -> Any yield it)"
               , "single := (Nat -> Nat yield it)"
-              , "assert empty() = ()"
+              , "assert emptyInput() = ()"
               , "assert single 8 = 8"
               ]) "()"
         , programCase "erasure supports mixed parameters during inference"
-            "f := ((abc? : Nat; Nat) -> (Nat; Nat) yield ^it)\nyield f(3; 4)"
+            "f := ((abc? : Nat; Nat) -> (Nat; Nat) yield val it)\nyield f(3; 4)"
             "(3; 4)"
         , programCase "erasure works through local bindings"
-            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield ^args)\nyield f 7"
+            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield val args)\nyield f 7"
             "7"
         , expressionCase "erasure removes identifiers throughout nested maps"
-            "^(a := (b := 2; 3); 4; c := 5)"
+            "val (a := (b := 2; 3); 4; c := 5)"
             "((2; 3); 4; 5)"
         , expressionCase "erasure preserves ordinary strings and empty maps"
-            "(^$abc; ^(); ^(1; 2); ^7)"
+            "(val $abc; val (); val (1; 2); val 7)"
             "($abc; (); (1; 2); 7)"
         , programCase "erasure works on a block's declaration map"
-            "yield begin\n  abc := 2\n  def := 3\nyield ^this"
+            "yield begin\n  abc := 2\n  def := 3\nyield val this"
             "(2; 3)"
         , expressionCase "prefix erasure and exponentiation remain distinct"
-            "^(base := 2) ^ 3"
+            "val (base := 2) ^ 3"
             "8"
         , expressionCase "erasure removes Boolean identifiers too"
-            "(^true; ^false)" "(1; 0)"
+            "(val true; val false)" "(1; 0)"
         , expressionCase "erasure is idempotent"
-            "^^(abc := 7; 8)"
+            "val val (abc := 7; 8)"
             "(7; 8)"
         , expressionFailureCase "erasure requires a total map"
-            "^(abc : Nat)"
+            "val (abc : Nat)"
             (SourceEvaluationFailure (ExpectedTotalAtlasMap DependentIdentifierTypeValueKind))
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"
-            "f := _external \"datra.add\"\nyield f (b:5;6)"
+            "f := !^\"datra.add\"\nyield f (b:5;6)"
             "11"
         , programCase "structured external descriptor"
-            ("f := _external (backend:\"haskell\";symbol:\"datra.add\")\n"
+            ("f := !^(backend:\"haskell\";symbol:\"datra.add\")\n"
               <> "yield f (b:5;6)")
             "11"
         , expressionFailureCase "unknown external backend"
-            "_external (backend:\"missing\";symbol:\"datra.add\")"
+            "!^(backend:\"missing\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnsupportedExternalBackend "missing")))
         , expressionFailureCase "unknown external symbol"
-            "_external (backend:\"haskell\";symbol:\"missing\")"
+            "!^(backend:\"haskell\";symbol:\"missing\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
         , expressionFailureCase "duplicate external descriptor field"
-            "_external (backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
+            "!^(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed DuplicateExternalDescriptorField))
         , expressionFailureCase "unknown external descriptor field"
-            "_external (backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
+            "!^(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalDescriptorFields ["extra"])))
         , expressionFailureCase "missing external descriptor field"
-            "_external (backend:\"haskell\")"
+            "!^(backend:\"haskell\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (MissingExternalDescriptorField "symbol")))
         , expressionFailureCase "external descriptor requires string fields"
-            "_external (1; 2)"
+            "!^(1; 2)"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
         ]
@@ -206,21 +206,26 @@ functionTests =
         , expressionCase "invalid function variance"
             "(Nat -> Int) of (Int -> Nat)"
             "false"
-        , programCase "required names accept deterministic positional input"
-            "f := ({x:Int} -> Int do yield x+1)\nyield f 2"
+        , programCase "required names accept matching named input"
+            "f := ({x:Int} -> Int do yield x+1)\nyield f (x:2)"
             "3"
+        , programFailureCase "required names reject positional input"
+            "f := ({x:Int} -> Int do yield x+1)\nyield f 2"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "written order resolves otherwise ambiguous arguments"
             "f := ({x?:Int,y?:Int} -> Int do yield x+y)\nyield f {2,3}"
             "5"
-        , programCase "private parameter names expose positional slots"
+        , programFailureCase "private required names reject positional input"
             "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (1,2)"
-            "3"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "private parameter slots reject named input"
             "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (_x:1,_y:2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "ambiguous reorder is reported structurally"
-            ( "f := ({a:Int,b:Str,c:Str} -> Int yield a)\n"
+            ( "f := ({a?:Int,b?:Str,c?:Str} -> Int yield a)\n"
                 <> "yield f ($x,$y,5)"
             )
             (SourceEvaluationFailure
@@ -230,9 +235,10 @@ functionTests =
             "f := ({a?:Int} -> Str do yield a+1)\nyield f 5"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
-        , programCase "positional absence can acquire a required name"
-            "f := ({x:Int?} -> Int? do yield x)\nyield f nothing"
-            "nothing"
+        , programFailureCase "required Maybe parameter rejects positional absence"
+            "f := ({x:Maybe Int} -> Maybe Int do yield x)\nyield f nothing"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "unconstrained inferred parameter is structured"
             "f := (do yield value)\nyield f"
             (SourceEvaluationFailure
@@ -255,7 +261,7 @@ functionTests =
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : (_external \"datra.AST\")"
+            "node : (!^\"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"
@@ -341,10 +347,10 @@ argumentSchemaMatrixTests =
     | testCase <-
         [ ArgumentSchemaCase
             "written order wins for equal positional annotations"
-            "{x : Int, y : Int}" "x * 10 + y" "(2, 3)" "23"
+            "{x? : Int, y? : Int}" "x * 10 + y" "(2, 3)" "23"
         , ArgumentSchemaCase
             "the sole valid reorder is accepted"
-            "{x : Int, y : Str}" "x" "($value, 2)" "2"
+            "{x? : Int, y? : Str}" "x" "($value, 2)" "2"
         , ArgumentSchemaCase
             "names select an otherwise ambiguous reorder"
             "{x : Int, y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
@@ -357,8 +363,8 @@ argumentSchemaMatrixTests =
             "{x? : 5}" "x" "()" "5"
         , ArgumentSchemaCase
             "a skip preserves a private positional default"
-            "{_base : Nat := 2, _exponent : Nat}"
-            "_base ^ _exponent" "(*, 3)" "8"
+            "{base? : Nat := 2, exponent? : Nat}"
+            "base ^ exponent" "(*, 3)" "8"
         ]
     ]
 

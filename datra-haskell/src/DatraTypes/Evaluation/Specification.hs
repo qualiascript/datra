@@ -5,6 +5,7 @@
 module Evaluation.Specification
   ( validateFunctionInput
   , specifyValues
+  , contextuallySpecifyValues
   , assignIdentifierValues
   ) where
 
@@ -16,6 +17,7 @@ import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
   )
+import Evaluation.Identifier (inferredIdentifierAssignmentValue)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
@@ -72,6 +74,48 @@ specifyValues source target
         specifyValues
         source
         target
+
+-- | Apply an expected type as inference context. Ordinary specification keeps
+-- its explicit semantics; this extension is only for a surrounding construct
+-- whose target makes exactly one named alternative possible.
+contextuallySpecifyValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+contextuallySpecifyValues source target =
+  case specifyValues source target of
+    Right prepared -> Right prepared
+    Left original ->
+      case interpretedForm target of
+        DependentIdentifierTypeForm identifier
+          | sourceHasNoIdentifier source
+          , SimpleIdentifierDependency name <-
+              evaluatedIdentifierDependency identifier -> do
+              let underlying = evaluatedIdentifierUnderlying identifier
+              prepared <- contextuallySpecifyValues source underlying
+              let given = case decideValueSubfederation source underlying of
+                    DecisionProved () -> source
+                    _ -> prepared
+              pure (inferredIdentifierAssignmentValue name given)
+        EitherForm _ ->
+          case
+              [ prepared
+              | alternative <- argumentAlternatives target
+              , Right prepared <-
+                  [contextuallySpecifyValues source alternative]
+              ] of
+            [prepared] -> Right prepared
+            _ -> Left original
+        _ -> Left original
+
+sourceHasNoIdentifier :: InterpretedValue -> Bool
+sourceHasNoIdentifier source =
+  case interpretedForm source of
+    AssignmentForm _ -> False
+    DependentIdentifierTypeForm _ -> False
+    SpecificationForm specification ->
+      sourceHasNoIdentifier (evaluatedSpecificationSourceValue specification)
+    _ -> True
 
 isDependentSum :: InterpretedValue -> Bool
 isDependentSum value =

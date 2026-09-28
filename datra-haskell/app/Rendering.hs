@@ -249,10 +249,6 @@ canonicalStringTemplateParts result =
 
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
 compactCanonicalStringInterpolation result
-  | CanonicalEither operand missing <- result
-  , isNothingValue missing =
-      (<> sourceSymbol OptionalOperator)
-        <$> compactCanonicalStringInterpolation operand
   | result == CanonicalStringType
       || result == CanonicalDependentSum "Str" =
       reserved Reserved.StringTypeSymbol
@@ -281,7 +277,7 @@ prettyNonKeywordSpecificationOperand operand =
   case operand of
     CanonicalAssignment {} -> parens (prettyCanonicalResult operand)
     CanonicalEither {}
-      | isBooleanType operand || isOptionalType operand ->
+      | isBooleanType operand || isMaybeType operand ->
           prettyCanonicalResult operand
       | otherwise -> parens (prettyCanonicalResult operand)
     CanonicalSpecification {} -> parens (prettyCanonicalResult operand)
@@ -301,7 +297,7 @@ prettyEither
   -> Doc annotation
 prettyEither whole left right
   | isBooleanType whole = reservedSymbolDoc Reserved.BooleanTypeSymbol
-  | isNothingValue right = prettyOptional left
+  | Just operand <- maybeTypeOperand left right = prettyMaybe operand
   | Just optionalIdentifier <- optionalIdentifierParts left right =
       optionalIdentifier
   | otherwise =
@@ -309,9 +305,9 @@ prettyEither whole left right
         <+> prettySourceSymbol EitherOperator
         <+> prettyCanonicalResult right
 
-prettyOptional :: CanonicalResult -> Doc annotation
-prettyOptional operand =
-  optionalOperand <> prettySourceSymbol OptionalOperator
+prettyMaybe :: CanonicalResult -> Doc annotation
+prettyMaybe operand =
+  "Maybe" <+> optionalOperand
   where
     optionalOperand
       | isAtomicOptionalOperand operand = prettyCanonicalResult operand
@@ -354,9 +350,21 @@ optionalIdentifierParts left right =
                     <+> prettyCanonicalResult givenValue)
     _ -> Nothing
 
-isOptionalType :: CanonicalResult -> Bool
-isOptionalType (CanonicalEither _ right) = isNothingValue right
-isOptionalType _ = False
+isMaybeType :: CanonicalResult -> Bool
+isMaybeType (CanonicalEither left right) =
+  case maybeTypeOperand left right of
+    Just _ -> True
+    Nothing -> False
+isMaybeType _ = False
+
+maybeTypeOperand
+  :: CanonicalResult
+  -> CanonicalResult
+  -> Maybe CanonicalResult
+maybeTypeOperand left right
+  | isNothingValue left
+  , CanonicalSimpleIdentifierType "Just" operand <- right = Just operand
+  | otherwise = Nothing
 
 isNothingValue :: CanonicalResult -> Bool
 isNothingValue

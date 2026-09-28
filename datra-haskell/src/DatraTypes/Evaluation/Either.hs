@@ -69,6 +69,10 @@ alternativesAreDistinct left right
       identifierAlternativesAreDistinct leftIdentifier rightIdentifier
   | DependentIdentifierTypeForm _ <- interpretedForm left = True
   | DependentIdentifierTypeForm _ <- interpretedForm right = True
+  | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm left
+  , ValuedNaturalRangeForm _ <- interpretedForm right = True
+  | ValuedNaturalRangeForm _ <- interpretedForm left
+  , BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm right = True
   | EitherForm leftEither <- interpretedForm left =
       alternativesAreDistinct (evaluatedEitherLeft leftEither) right
         && alternativesAreDistinct (evaluatedEitherRight leftEither) right

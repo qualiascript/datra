@@ -40,10 +40,10 @@ compileParameters evaluate = compile False
           pure (dependentArgumentSlotSchema name optional annotationValue)
         IdentifierOperation (IdentifierString name) annotation given ->
           parameterSlot (Just name) False annotation given
-        EitherType
-            (IdentifierOperation (IdentifierString name) annotation given)
-            missing
-          | annotation == missing -> do
+        optional
+          | Just
+              (IdentifierOperation (IdentifierString name) annotation given, _)
+              <- optionalIdentifierExpression optional -> do
               validateOptionalName allowPrivateOptional name True
               parameterSlot (Just name) True annotation given
         AtlasMap members ->
@@ -74,10 +74,9 @@ compileParameters evaluate = compile False
         ForBinding (IdentifierString name) True _
           | not (isPublic name) ->
               Left (PrivateParameterCannotBeOptional name)
-        EitherType
-            (IdentifierOperation (IdentifierString name) annotation _)
-            missing
-          | annotation == missing
+        optional
+          | Just (IdentifierOperation (IdentifierString name) _ _, _) <-
+              optionalIdentifierExpression optional
           , not (isPublic name) ->
               Left (PrivateParameterCannotBeOptional name)
         _ -> Right ()

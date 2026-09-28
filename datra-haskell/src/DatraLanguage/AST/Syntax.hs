@@ -41,6 +41,7 @@ module DatraLanguage.AST.Syntax
   , not
   , extract
   , stripIdentifiers
+  , plus
   , minus
   , (-)
   , (+)
@@ -195,6 +196,9 @@ extract = Extract
 
 stripIdentifiers :: Expression -> Expression
 stripIdentifiers = StripIdentifiers
+
+plus :: Expression -> Expression
+plus = Plus
 
 minus :: Expression -> Expression
 minus = Minus

@@ -2,6 +2,8 @@
 module Evaluation.IdentifierErasure
   ( stripIdentifiersValue
   , stripIdentifiersType
+  , stripOuterIdentifierValue
+  , stripOuterIdentifierType
   ) where
 
 import BooleanType (booleanNatural)
@@ -25,6 +27,31 @@ stripIdentifiersType
 stripIdentifiersType value
   | Just erased <- interpretedIdentifierErasureType value = Right erased
   | otherwise = erase value
+
+-- | Remove one identifier wrapped around the complete value. Unlike @val@,
+-- this does not erase identifiers nested inside an argument map.
+stripOuterIdentifierValue
+  :: InterpretedValue -> Either InterpretingError InterpretedValue
+stripOuterIdentifierValue value = case interpretedForm value of
+  AssignmentForm specification
+    | isIdentifier (evaluatedSpecificationTarget specification) ->
+        Right (evaluatedSpecificationSourceValue specification)
+  SpecificationForm specification
+    | isIdentifier (evaluatedSpecificationTarget specification) ->
+        Right (evaluatedSpecificationSourceValue specification)
+  DependentIdentifierTypeForm identifier ->
+    Right (evaluatedIdentifierUnderlying identifier)
+  _ -> Left (ExpectedTotalAtlasMap (interpretedValueKind value))
+
+-- | Type-level counterpart of 'stripOuterIdentifierValue'.
+stripOuterIdentifierType
+  :: InterpretedValue -> Either InterpretingError InterpretedValue
+stripOuterIdentifierType = stripOuterIdentifierValue
+
+isIdentifier :: InterpretedValue -> Bool
+isIdentifier value = case interpretedForm value of
+  DependentIdentifierTypeForm _ -> True
+  _ -> False
 
 erase :: InterpretedValue -> Either InterpretingError InterpretedValue
 erase value = case interpretedForm value of

@@ -34,6 +34,8 @@ data Operator
   | LetOperator
   | EitherOperator
   | OptionalOperator
+  | ListUnconsOperator
+  | MaybeThenOperator
   | MultiplicationOperator
   | ExponentiationOperator
   | ConcatenationOperator
@@ -52,7 +54,7 @@ operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
 operatorCanonicalSymbol ApplicationOperator = "apply"
 operatorCanonicalSymbol DoOperator = "do"
-operatorCanonicalSymbol ExternalOperator = "_external"
+operatorCanonicalSymbol ExternalOperator = "!^"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ExpansionOperator = "<+>"
 operatorCanonicalSymbol RangeOperator = "<..>"
@@ -60,7 +62,7 @@ operatorCanonicalSymbol RangePlusOperator = "..+"
 operatorCanonicalSymbol RangeMinusOperator = "..-"
 operatorCanonicalSymbol AdditionOperator = "+"
 operatorCanonicalSymbol SubtractionOperator = "-"
-operatorCanonicalSymbol MinusOperator = "minus"
+operatorCanonicalSymbol MinusOperator = "-"
 operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
 operatorCanonicalSymbol InequalityOperator = "=/="
@@ -76,6 +78,8 @@ operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol EitherOperator = "Either"
 operatorCanonicalSymbol OptionalOperator = "optional"
+operatorCanonicalSymbol ListUnconsOperator = "uncons"
+operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
@@ -94,7 +98,7 @@ operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
-operatorSourceSymbol ExternalOperator = Just "_external"
+operatorSourceSymbol ExternalOperator = Just "!^"
 operatorSourceSymbol SequentialOperator = Nothing
 operatorSourceSymbol ExpansionOperator = Nothing
 operatorSourceSymbol RangeOperator = Just ".."
@@ -109,15 +113,17 @@ operatorSourceSymbol InequalityOperator = Just "=/="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
-operatorSourceSymbol StripIdentifiersOperator = Just "^"
+operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
-operatorSourceSymbol ValueOfOperator = Just "!"
+operatorSourceSymbol ValueOfOperator = Just "^"
 operatorSourceSymbol EvalOperator = Just "eval"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
+operatorSourceSymbol ListUnconsOperator = Just "!"
+operatorSourceSymbol MaybeThenOperator = Just "??"
 operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","

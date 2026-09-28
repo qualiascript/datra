@@ -20,6 +20,7 @@ module DatraTypes
   , functionAlternatives
   , stringTemplateTypeValue
   , anyTypeValue
+  , ordinalTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
@@ -49,6 +50,9 @@ module DatraTypes
   , booleanTypeValue
   , eitherValue
   , optionalValue
+  , optionalPresentType
+  , justUnderlying
+  , optionalUnderlying
   , nothingValue
   , asciiStringValue
   , stringTypeValue
@@ -61,6 +65,8 @@ module DatraTypes
   , stringTemplateValue
   , stripIdentifiersValue
   , stripIdentifiersType
+  , stripOuterIdentifierValue
+  , stripOuterIdentifierType
   , extractValue
   , evalValues
   , requireFiniteInteger
@@ -68,9 +74,18 @@ module DatraTypes
   , skipValue
   , addValues
   , subtractValues
+  , plusValue
   , minusValue
   , multiplyValues
   , exponentiateValues
+  , ordinalSumValues
+  , ordinalProductValues
+  , ordinalMinusValues
+  , ordinalExponentValues
+  , ordinalLTValues
+  , ordinalLTEValues
+  , ordinalGTValues
+  , ordinalGTEValues
   , subfederationValues
   , equalValues
   , booleanAndValues
@@ -118,6 +133,7 @@ module DatraTypes
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , optionalArgumentSlot
   , argumentValuesComplete
   , compileParameters
   , compileDependentParameter
@@ -136,6 +152,7 @@ module DatraTypes
   , accessValues
   , validateFunctionInput
   , specifyValues
+  , contextuallySpecifyValues
   , interpretedValueKind
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -207,14 +224,25 @@ import Evaluation.Arguments
   , makeArgumentMap
   , overloadArgumentRows
   )
-import Evaluation.Optional (makeNothing, makeOptionalValue)
+import Evaluation.Optional
+  ( justUnderlying
+  , makeNothing
+  , makeOptionalValue
+  , optionalPresentType
+  , optionalUnderlying
+  )
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
   , stringTemplateValue
   , toStringValue
   , weakToStringValue
   )
-import Evaluation.IdentifierErasure (stripIdentifiersValue, stripIdentifiersType)
+import Evaluation.IdentifierErasure
+  ( stripIdentifiersValue
+  , stripIdentifiersType
+  , stripOuterIdentifierValue
+  , stripOuterIdentifierType
+  )
 import Extract (extractValue)
 import Evaluation.Eval (evalValues)
 import BooleanType qualified
@@ -232,6 +260,7 @@ import Evaluation.Overload
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , optionalArgumentSlot
   , argumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
@@ -247,9 +276,20 @@ import Evaluation.Numerical
   ( addValues
   , requireFiniteInteger
   , subtractValues
+  , plusValue
   , minusValue
   , exponentiateValues
   , multiplyValues
+  )
+import Evaluation.Ordinal
+  ( ordinalSumValues
+  , ordinalProductValues
+  , ordinalMinusValues
+  , ordinalExponentValues
+  , ordinalLTValues
+  , ordinalLTEValues
+  , ordinalGTValues
+  , ordinalGTEValues
   )
 import Evaluation.Range
   ( boundedRangeValue
@@ -276,6 +316,7 @@ import Evaluation.Identifier
   )
 import Evaluation.Specification
   ( assignIdentifierValues
+  , contextuallySpecifyValues
   , validateFunctionInput
   , specifyValues
   )
@@ -296,6 +337,7 @@ import Evaluation.Value
   , functionAlternatives
   , stringTemplateTypeValue
   , anyTypeValue
+  , ordinalTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue

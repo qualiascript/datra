@@ -105,7 +105,7 @@ programFileCase expectedLineCount name path expected = testCase name $ do
     (name <> " line count")
     expectedLineCount
     (length (lines source))
-  assertRendered expected (runProgram source)
+  runModuleProgram path source >>= assertRendered expected
 
 programCaseInMode
   :: EvaluationMode

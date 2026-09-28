@@ -25,23 +25,22 @@ source context expression =
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
-    ExternalValue descriptor -> wrapped 10 ("_external " <> source 12 descriptor)
+    ExternalValue descriptor -> wrapped 10 ("!^" <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
-      | otherwise -> "!" <> renderIdentifierString name
-    IdentifierOperationValue (IdentifierString name) annotation given -> wrapped 1
-      (renderIdentifierString name <> case given of
-        Just value | value == annotation -> " := " <> source 2 value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> source 2 value) given)
-    IdentifierTemplateOperationValue parts annotation given -> wrapped 1
-      (renderStringTemplate (source 0) (const Nothing) parts <> case given of
-        Just value | value == annotation -> " := " <> source 2 value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> source 2 value) given)
+      | otherwise -> "^" <> renderIdentifierString name
+    IdentifierOperationValue (IdentifierString name) annotation given ->
+      identifierOperation
+        (renderIdentifierString name) False annotation given
+    IdentifierTemplateOperationValue parts annotation given ->
+      identifierOperation
+        (renderStringTemplate (source 0) (const Nothing) parts)
+        False
+        annotation
+        given
     ArgumentsSplice value -> "{" <> source 0 value <> ",}"
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> intercalate "; " (map (source 0) members) <> "}"
@@ -55,6 +54,7 @@ source context expression =
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
+    MaybeThenValue optional branch -> binary 1 "??" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right
     And left right -> binary 5 "and" left right
@@ -66,15 +66,30 @@ source context expression =
     Multiply left right -> wrapped 8
       (multiplicand left <> " * " <> multiplicand right)
     Power left right -> binary 9 "^" left right
+    Positive operand -> unary "+" operand
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
-    StripIdentifiersValue operand -> wrapped 10 ("^" <> source 13 operand)
+    -- Declarative syntax holes capture a complete expression. Parenthesize a
+    -- nested @val@ application so a following operator stays outside it.
+    StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)
     ExtractValue operand -> unary "%" operand
-    OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
+    OptionalValue
+        (IdentifierOperationValue (IdentifierString name) annotation given) ->
+      identifierOperation
+        (renderIdentifierString name) True annotation given
+    OptionalValue
+        (IdentifierTemplateOperationValue parts annotation given) ->
+      identifierOperation
+        (renderStringTemplate (source 0) (const Nothing) parts)
+        True
+        annotation
+        given
+    OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
+    ListUnconsValue operand -> wrapped 10 (source 10 operand <> "!")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->
-          "!" <> case names of
+          "^" <> case names of
             [name] -> renderIdentifierString name
             _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     -- Access associates to the left, so a second page selection can continue
@@ -85,15 +100,15 @@ source context expression =
     RangePlus operand -> source 11 operand <> ".."
     RangeMinus operand -> source 11 operand <> "..-"
     InclusiveNaturalRange start end -> bounded "range" start end
-    InclusiveNaturalRangeUpwards start -> open "range" start "upwards"
+    InclusiveNaturalRangeUpwards start -> open "range" start "up"
     InclusiveValuedNaturalRange start end -> bounded "from" start end
-    InclusiveValuedNaturalRangeUpwards start -> open "from" start "upwards"
+    InclusiveValuedNaturalRangeUpwards start -> open "from" start "up"
     InclusiveIntegerRange start end -> bounded "range" start end
-    InclusiveIntegerRangeUpwards start -> open "range" start "upwards"
-    InclusiveIntegerRangeDownwards start -> open "range" start "downwards"
+    InclusiveIntegerRangeUpwards start -> open "range" start "up"
+    InclusiveIntegerRangeDownwards start -> open "range" start "down"
     InclusiveValuedIntegerRange start end -> bounded "from" start end
-    InclusiveValuedIntegerRangeUpwards start -> open "from" start "upwards"
-    InclusiveValuedIntegerRangeDownwards start -> open "from" start "downwards"
+    InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
+    InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
@@ -119,11 +134,18 @@ source context expression =
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
     applicationInput SkipValue = "(*)"
+    applicationInput operand
+      | Just _ <- valueLookupNames operand = "(" <> source 0 operand <> ")"
     applicationInput operand = source 12 operand
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     binderName name optional =
       renderIdentifierString name <> if optional then "?" else ""
+    identifierOperation name optional annotation given = wrapped 1
+      (name <> (if optional then "?" else "") <> case given of
+        Just value | value == annotation -> " := " <> source 2 value
+        _ -> " : " <> source 13 annotation
+          <> maybe "" (\value -> " := " <> source 2 value) given)
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
 
@@ -132,3 +154,7 @@ scopeNames :: OperatorExpression -> Maybe [String]
 scopeNames (NamedAccessValue ThisValue (IdentifierString name)) = Just [name]
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
+
+valueLookupNames :: OperatorExpression -> Maybe [String]
+valueLookupNames (Access operand (NaturalValue 1)) = scopeNames operand
+valueLookupNames _ = Nothing

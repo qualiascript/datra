@@ -17,6 +17,7 @@ module Evaluation.Overload
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , optionalArgumentSlot
   , argumentValuesComplete
   , overloadArgumentSchemaComplete
   , overloadValues
@@ -46,6 +47,8 @@ import Evaluation.Error
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues, makeAtlasMap)
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
+import Evaluation.Specification.Decision (Decision (DecisionProved))
+import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
 import Numeric.Natural (Natural)
 
@@ -138,43 +141,51 @@ resolveReplacements
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError Replacements
-resolveReplacements template supplied = do
-  rows <- overloadArgumentRows supplied
-  writtenRows <-
-    case interpretedForm supplied of
-      ArgumentMapForm members _ ->
-        overloadArgumentRows (makeAtlasMap 2 members)
-      _ -> pure rows
-  let writtenOrder = templateSlots template
-      slotOrders = templateSlotOrders template
-      writtenRoutes =
-        nubBy sameReplacements
-          [ replacements
-          | row <- writtenRows
-          , replacements <- matchInputs writtenOrder row
-          ]
-      routes =
-        [ concat
-            [ matchInputs slots orderedInputs
-            | slots <- slotOrders
-            , orderedInputs <- inputOrders row
+resolveReplacements template supplied
+  | [slot] <- templateSlots template
+  , not (isSkip supplied)
+  , Just value <- matchSlot slot supplied =
+      Right [(slotIndex slot, Just value)]
+  | otherwise = do
+      rows <- overloadArgumentRows supplied
+      writtenRows <-
+        case interpretedForm supplied of
+          ArgumentMapForm members _ ->
+            overloadArgumentRows (makeAtlasMap 2 members)
+          _ -> pure rows
+      let writtenOrder = templateSlots template
+          slotOrders = templateSlotOrders template
+          writtenRoutes =
+            nubBy sameReplacements
+              [ replacements
+              | row <- writtenRows
+              , replacements <- matchInputs writtenOrder row
+              ]
+          routes =
+            [ concat
+                [ matchInputs slots orderedInputs
+                | slots <- slotOrders
+                , orderedInputs <- inputOrders row
+                ]
+            | row <- rows
             ]
-        | row <- rows
-        ]
-  if any null routes
-    then Left (OverloadError OverloadNoMatch)
-    else case writtenRoutes of
-      -- Written order is the canonical positional interpretation. Prefer it
-      -- even when equal annotations also admit other permutations.
-      [replacements] -> Right replacements
-      [] ->
-        case nubBy sameReplacements (concat routes) of
-          [] -> Left (OverloadError OverloadNoMatch)
+      if any null routes
+        then Left (OverloadError OverloadNoMatch)
+        else case writtenRoutes of
+          -- Written order is the canonical positional interpretation. Prefer
+          -- it even when equal annotations admit other permutations.
           [replacements] -> Right replacements
-          _ -> Left (OverloadError
-            OverloadAmbiguousWithoutWrittenOrder)
-      _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
+          [] ->
+            case nubBy sameReplacements (concat routes) of
+              [] -> Left (OverloadError OverloadNoMatch)
+              [replacements] -> Right replacements
+              _ -> Left (OverloadError
+                OverloadAmbiguousWithoutWrittenOrder)
+          _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
   where
+    isSkip value = case interpretedForm value of
+      SkipForm _ -> True
+      _ -> False
     sameReplacements left right = canonical left == canonical right
     canonical = sortOn fst . map
       (\(index, value) ->
@@ -224,19 +235,19 @@ matchSlot slot input = do
       | expected == actual
       , not (slotDependentBinder slot) || suppliedAsAssignment input -> pure ()
       | otherwise -> Nothing
-    -- A missing source name is positional. Required and optional target names
-    -- differ in whether omission is allowed, not in whether a supplied value
-    -- may acquire that name through deterministic argument matching.
     (Just _, Nothing)
-      | slotDependentBinder slot && not (slotOptionalName slot) -> Nothing
-      | otherwise -> pure ()
+      | slotOptionalName slot -> pure ()
+      | otherwise -> Nothing
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
   case specifyValues inputValue (slotAnnotation slot) of
     Right prepared
       | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
           Just prepared
-      | otherwise -> Just inputValue
+      | DecisionProved () <-
+          decideValueSubfederation inputValue (slotAnnotation slot) ->
+          Just inputValue
+      | otherwise -> Just prepared
     Left _ -> Nothing
 
 isPublicIdentifier :: String -> Bool
@@ -451,8 +462,16 @@ argumentSchemaDomain schema =
       if optional then makeEitherValue named annotation else pure named
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse argumentSchemaDomain children
-    UnorderedArgumentSchema children ->
-      traverse argumentSchemaDomain children >>= makeArgumentMap
+    UnorderedArgumentSchema children -> do
+      members <- traverse argumentSchemaDomain children
+      case makeArgumentMap members of
+        Right domain -> Right domain
+        -- The runtime schema retains unordered routing and gives the written
+        -- positional order priority. When optional labels make its permuted
+        -- federation overlap, keep that written presentation as the semantic
+        -- function domain instead of rejecting an otherwise callable schema.
+        Left EitherAlternativesNotDistinct -> Right (makeAtlasMap 2 members)
+        Left failure -> Left failure
     ConcatenatedArgumentSchema _ _ -> do
       alternatives <- schemaPages schema
       let presentations = map (makeAtlasMap 2) alternatives
@@ -614,9 +633,37 @@ overloadArgumentSchemaComplete schema supplied =
     _ -> do
       let normalized = normalizeArgumentSchema schema
       replacements <- resolveReplacements normalized supplied
-      completed <- traverse (completeSlot replacements) (templateSlots normalized)
-      result <- buildTemplate replacements normalized
+      let slots = templateSlots normalized
+      completed <- traverse (completeSlot replacements) slots
+      result <- buildCompletedTemplate
+        (zip (map slotIndex slots) completed)
+        normalized
       pure (result, [(name, value) | (Just name, value) <- completed])
+
+-- A completed call has selected one concrete branch for every optional name.
+-- Retaining each slot's missing branch here can make an otherwise unambiguous
+-- unordered call overlap with itself (notably @Int@ next to @List Int@).
+buildCompletedTemplate
+  :: [(Int, (Maybe String, InterpretedValue))]
+  -> ArgumentSchema
+  -> Either InterpretingError InterpretedValue
+buildCompletedTemplate completed schema =
+  case schema of
+    ArgumentSlotSchema index _ _ _ annotation _ ->
+      case lookup index completed of
+        Just slot -> Right (namedSlot slot)
+        Nothing -> Right annotation
+    OrderedArgumentSchema cardinality children ->
+      makeAtlasMap cardinality
+        <$> traverse (buildCompletedTemplate completed) children
+    UnorderedArgumentSchema children ->
+      traverse (buildCompletedTemplate completed) children >>= makeArgumentMap
+    ConcatenatedArgumentSchema left right -> do
+      leftValue <- buildCompletedTemplate completed left
+      rightValue <- buildCompletedTemplate completed right
+      concatenateValues leftValue rightValue
+    ProjectedArgumentSchema target -> Right target
+    EmptyArgumentSchema -> Right (makeAtlasMap 0 [])
 
 finiteMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMembers value = do
@@ -640,6 +687,13 @@ optionalNamedParts value = do
       == interpretedCanonicalResult (evaluatedEitherRight alternatives)
     then Just parts
     else Nothing
+
+-- | Observe an optional identifier slot without exposing its internal Either
+-- representation across the DatraTypes boundary.
+optionalArgumentSlot :: InterpretedValue -> Maybe (String, InterpretedValue)
+optionalArgumentSlot value = do
+  (name, annotation, _) <- optionalNamedParts value
+  pure (name, annotation)
 
 namedParts
   :: InterpretedValue

@@ -175,6 +175,14 @@ testDatraOrdinalEnumeration = do
     ( powerOrdinal omegaPlusOne 0 == finiteOrdinal 1
       && powerOrdinal omegaPlusOne 2 == ordinal [1, 1, 1]
     )
+  assert "ordinal comparison helpers agree with strict ordering"
+    ( ordinalLT (finiteOrdinal 2) omega
+      && ordinalLTE (finiteOrdinal 2) omega
+      && ordinalGT omega (finiteOrdinal 2)
+      && ordinalGTE omega (finiteOrdinal 2)
+      && ordinalLTE omega omega
+      && ordinalGTE omega omega
+    )
 
 testEmptyAtlas :: IO ()
 testEmptyAtlas =

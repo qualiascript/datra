@@ -61,10 +61,9 @@ standardLibraryTypeExamples =
   , canonical "Str" "Str"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , weak "AST" "_external \"datra.AST\""
-  , weak "private Expr primitive" "_external \"datra.Expr\""
-  , weak "private Block primitive" "_external \"datra.Block\""
-  , weak "private Pages primitive" "_external \"datra.Pages\""
+  , weak "AST" "!^\"datra.AST\""
+  , weak "private Expr primitive" "!^\"datra.Expr\""
+  , weak "private Block primitive" "!^\"datra.Block\""
   , weak "NatRange" "NatRange"
   , weak "IntRange" "IntRange"
   , weak "NatValRange" "NatValRange"
@@ -82,7 +81,7 @@ compositeTypeExamples =
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
-  , weak "map containing a noncanonical type" "(Nat; (_external \"datra.AST\"))"
+  , weak "map containing a noncanonical type" "(Nat; (!^\"datra.AST\"))"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 
@@ -175,11 +174,11 @@ extensionalEqualityTests =
 skipCoercionTests :: TestTree
 skipCoercionTests =
   testGroup "skip numerical coercion"
-    [ expressionCase "rank-zero formulation equals the numerical skip value"
-        "...^() = *"
+    [ expressionCase "skip has numerical value one"
+        "* + 0 = 1"
         "true"
     , expressionCase "coercion does not erase skip typing identity"
-        "not (...^() of *) and not (* of ...^())"
+        "not (* of Nat) and not (1 of *)"
         "true"
     ]
 

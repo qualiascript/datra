@@ -38,7 +38,7 @@ import Evaluation.Error
   , OperandSide (..)
   )
 import Evaluation.Construction (mapFromInsertion)
-import Evaluation.Numerical
+import Evaluation.Ordinal
   ( requireExplicit
   , requireRangeUpperBoundary
   )

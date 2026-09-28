@@ -29,8 +29,10 @@ blockDeclaration = declaration False
       Just (Declaration name strict (annotationToCheck annotation given)
         (maybe annotation (\value -> if value == annotation then value
           else MapSpecification value annotation) given))
-    declaration strict (EitherType named@(IdentifierOperation _ annotation _) missing)
-      | annotation == missing = declaration strict named
+    declaration strict optional
+      | Just (named@IdentifierOperation {}, _) <-
+          optionalIdentifierExpression optional =
+          declaration strict named
     declaration _ _ = Nothing
 
     annotationToCheck annotation (Just implementation)

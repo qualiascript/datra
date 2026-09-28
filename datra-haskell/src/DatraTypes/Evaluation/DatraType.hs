@@ -31,6 +31,7 @@ module Evaluation.DatraType
 -- bindings; the standard library remains responsible for publishing them.
 data BuiltinMetaType
   = AnyMetaType
+  | OrdinalMetaType
   | ASTMetaType (Maybe String)
   | NatRangeMetaType
   | IntRangeMetaType
@@ -107,6 +108,8 @@ builtinMetaDatraType :: BuiltinMetaType -> DatraType
 builtinMetaDatraType kind =
   case kind of
     AnyMetaType -> canonicalTypeAsDatraType
+      (makeCanonicalType (BuiltinMetaTypeFamily kind))
+    OrdinalMetaType -> canonicalTypeAsDatraType
       (makeCanonicalType (BuiltinMetaTypeFamily kind))
     _ -> makeNonCanonicalDatraType (BuiltinMetaTypeFamily kind)
 

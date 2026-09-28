@@ -15,6 +15,8 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+      DecisionProved ()
   | DependentSumForm dependent <- interpretedForm target =
       case evaluatedDependentSumSpecify dependent source of
         Right _ -> DecisionProved ()

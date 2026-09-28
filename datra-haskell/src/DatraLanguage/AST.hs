@@ -11,6 +11,7 @@ module DatraLanguage.AST
   , expressionChildren
   , yieldedIdentifier
   , namedBeginBlock
+  , optionalIdentifierExpression
   , normalizeExpression
   , renderExpression
   , renderOperatorExpression
@@ -27,7 +28,6 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
-  , operatorSourceSymbol
   )
 import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -95,9 +95,12 @@ data Expression
   | BooleanType
   | EitherType Expression Expression
   | OptionalType Expression
+  | ListUncons Expression
+  | MaybeThen Expression Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
   | Subtraction Expression Expression
+  | Plus Expression
   | Minus Expression
   | Subfederation Expression Expression
   | Equality Expression Expression
@@ -168,6 +171,18 @@ namedBeginBlock expressionValue = do
     Begin bindings result -> Just (name, bindings, result)
     _ -> Nothing
 
+-- | Recover the present and unnamed alternatives represented by identifier
+-- postfix @?@. Other optional nodes use ordinary @Maybe T@ semantics.
+optionalIdentifierExpression
+  :: Expression
+  -> Maybe (Expression, Expression)
+optionalIdentifierExpression (OptionalType operation) =
+  case operation of
+    IdentifierOperation _ annotation _ -> Just (operation, annotation)
+    IdentifierTemplateOperation _ annotation _ -> Just (operation, annotation)
+    _ -> Nothing
+optionalIdentifierExpression _ = Nothing
+
 -- | Lower map notation and render the unevaluated AST using canonical AST
 -- operator notation.
 renderExpression :: Expression -> String
@@ -207,12 +222,15 @@ data OperatorExpression
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
+  | ListUnconsValue OperatorExpression
+  | MaybeThenValue OperatorExpression OperatorExpression
   | ConditionalValue
       OperatorExpression
       OperatorExpression
       OperatorExpression
   | Add OperatorExpression OperatorExpression
   | Subtract OperatorExpression OperatorExpression
+  | Positive OperatorExpression
   | Negate OperatorExpression
   | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
@@ -320,6 +338,10 @@ normalizeExpression (EitherType left right) =
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
   OptionalType (normalizeExpression operand)
+normalizeExpression (ListUncons operand) =
+  ListUncons (normalizeExpression operand)
+normalizeExpression (MaybeThen optional branch) =
+  MaybeThen (normalizeExpression optional) (normalizeExpression branch)
 normalizeExpression (Conditional condition consequent alternative) =
   Conditional
     (normalizeExpression condition)
@@ -329,6 +351,7 @@ normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Subtraction left right) =
   Subtraction (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Plus operand) = Plus (normalizeExpression operand)
 normalizeExpression (Minus operand) = Minus (normalizeExpression operand)
 normalizeExpression (Subfederation left right) =
   Subfederation (normalizeExpression left) (normalizeExpression right)
@@ -493,10 +516,14 @@ lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
+lower (ListUncons operand) = ListUnconsValue (lower operand)
+lower (MaybeThen optional branch) =
+  MaybeThenValue (lower optional) (lower branch)
 lower (Conditional condition consequent alternative) =
   ConditionalValue (lower condition) (lower consequent) (lower alternative)
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Subtraction left right) = Subtract (lower left) (lower right)
+lower (Plus operand) = Positive (lower operand)
 lower (Minus operand) = Negate (lower operand)
 lower (Subfederation left right) =
   IsSubfederation (lower left) (lower right)
@@ -662,6 +689,11 @@ prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
+prettyOperator (ListUnconsValue operand) =
+  prettyForm (operatorCanonicalSymbol ListUnconsOperator) [prettyOperator operand]
+prettyOperator (MaybeThenValue optional branch) =
+  prettyForm (operatorCanonicalSymbol MaybeThenOperator)
+    [prettyOperator optional, prettyOperator branch]
 prettyOperator (ConditionalValue condition consequent alternative) =
   prettyForm
     (Reserved.reservedSymbolIdentifierString Reserved.IfSymbol)
@@ -673,6 +705,8 @@ prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Subtract left right) =
   prettyBinary SubtractionOperator left right
+prettyOperator (Positive operand) =
+  prettyUnary AdditionOperator operand
 prettyOperator (Negate operand) =
   prettyUnary MinusOperator operand
 prettyOperator (IsSubfederation left right) =
@@ -871,7 +905,7 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
       case compactInterpolation expressionValue of
         Just symbol
           | compactInterpolationBoundary rest ->
-              prefix <> symbol <> escapeOptionalSuffix rest
+              prefix <> symbol <> rest
         Nothing ->
           prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
         Just _ ->
@@ -880,9 +914,6 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
     compactInterpolationBoundary [] = True
     compactInterpolationBoundary (character : _) =
       not (isCanonicalCharacter character)
-
-    escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
-    escapeOptionalSuffix rest = rest
 
 compactOperatorStringInterpolation
   :: OperatorExpression
@@ -898,16 +929,9 @@ compactOperatorStringInterpolation expressionValue =
     BooleanValue False -> reserved Reserved.FalseSymbol
     BooleanValue True -> reserved Reserved.TrueSymbol
     BooleanTypeValue -> reserved Reserved.BooleanTypeSymbol
-    OptionalValue operand ->
-      (<> optionalSourceSymbol)
-        <$> compactOperatorStringInterpolation operand
     _ -> Nothing
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
-    optionalSourceSymbol =
-      case operatorSourceSymbol OptionalOperator of
-        Just symbol -> symbol
-        Nothing -> operatorCanonicalSymbol OptionalOperator
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =
@@ -934,9 +958,11 @@ traverseExpressionChildren visit expression = case expression of
   MapSequence xs -> MapSequence <$> traverse visit xs
   StripIdentifiers x -> StripIdentifiers <$> visit x
   Extract x -> Extract <$> visit x
+  Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
   OptionalType x -> OptionalType <$> visit x
+  ListUncons x -> ListUncons <$> visit x
   External x -> External <$> visit x
   Let x -> Let <$> visit x
   SuperEllipsisRangePlus x -> SuperEllipsisRangePlus <$> visit x
@@ -944,6 +970,7 @@ traverseExpressionChildren visit expression = case expression of
   MapExpansion a b -> MapExpansion <$> visit a <*> visit b
   SuperEllipsisRange a b -> SuperEllipsisRange <$> visit a <*> visit b
   EitherType a b -> EitherType <$> visit a <*> visit b
+  MaybeThen a b -> MaybeThen <$> visit a <*> visit b
   Addition a b -> Addition <$> visit a <*> visit b
   Subtraction a b -> Subtraction <$> visit a <*> visit b
   Subfederation a b -> Subfederation <$> visit a <*> visit b
