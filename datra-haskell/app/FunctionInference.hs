@@ -99,12 +99,14 @@ inferParameters names body = traverse infer names
 
 inferBody :: (Expression -> Either InterpretingError InterpretedValue)
   -> [(String, InterpretedValue)] -> Maybe InterpretedValue
+  -> [String] -> Maybe InterpretedValue
   -> [Expression] -> Expression
   -> Either InterpretingError InterpretedValue
-inferBody evaluate parameters self bindings result = inferBlock [] bindings result
+inferBody evaluate parameters self namedSelf declaredOutput bindings result =
+  inferBlock declaredOutput [] bindings result
   where
-    inferBlock enclosing entries resultValue =
-      infer imported memberNames resultValue
+    inferBlock resultType enclosing entries resultValue =
+      inferExpected imported memberNames resultType resultValue
       where
         definitions =
           [ definition
@@ -115,6 +117,28 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
         imported = buildScopeBindings
           (\captured value -> InferenceBinding (declarationName value)
             (declarationValue value) memberNames captured) enclosing definitions
+
+    inferExpected scope members expected expression =
+      case (expected, expression) of
+        (Just target, Conditional condition yes no) -> do
+          flag <- infer scope members condition
+          check flag =<< booleanTypeValue
+          _ <- inferExpected scope members (Just target) yes
+          _ <- inferExpected scope members (Just target) no
+          pure target
+        (Just target, Begin entries value) ->
+          inferBlock (Just target) scope entries value
+        (Just target, Program entries value) ->
+          inferBlock (Just target) scope entries value
+        (Just target, value) -> do
+          actual <- infer scope members value
+          case check actual target of
+            Right () -> pure target
+            Left _ -> case contextuallySpecifyValues actual target of
+              Right _ -> pure target
+              Left _ -> Left (FunctionEvaluationFailed
+                FunctionBodyOutsideDeclaredResult)
+        (Nothing, value) -> infer scope members value
 
     infer scope members expression = case expression of
       IdentifierReference (IdentifierString name)
@@ -157,7 +181,9 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
       MapSpecification FunctionBody {} target@FunctionType {} -> recur target
       MapSpecification source target -> do
         actual <- recur source
-        expected <- recur target
+        expected <- case evaluate target of
+          Right value -> Right value
+          Left _ -> recur target
         check actual expected
         pure expected
       This -> maybe
@@ -184,7 +210,9 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
             -- @this (n - 1)@ without pretending subtraction is always Nat.
             case (function, self) of
               (This, Just _) -> pure ()
-              _ -> check actual domain
+              (IdentifierReference (IdentifierString name), _)
+                | name `elem` namedSelf -> pure ()
+              _ -> checkFunctionArgument argument actual domain
             pure codomain
       IdentifierOperation (IdentifierString name) annotation given -> do
         target <- recur annotation
@@ -206,8 +234,8 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
         -- unknown names and invalid enclosing parameter uses are diagnosed.
         mapM_ inferTemplatePart parts
         pure stringTypeValue
-      Begin entries value -> inferBlock scope entries value
-      Program entries value -> inferBlock scope entries value
+      Begin entries value -> inferBlock Nothing scope entries value
+      Program entries value -> inferBlock Nothing scope entries value
       -- Literals, primitive types and closed expressions have exact known types.
       _ | all (`notElem` map fst parameters) (freeIdentifiers expression) -> evaluate expression
         | otherwise -> Left (FunctionEvaluationFailed
@@ -234,6 +262,54 @@ inferBody evaluate parameters self bindings result = inferBlock [] bindings resu
           bools <- booleanTypeValue
           traverse recur operands >>= mapM_ (`check` bools)
           pure bools
+
+        -- Argument maps try their written order before any permutation. This
+        -- lets an inferred assignment use the corresponding slot annotation
+        -- as context, while reordered calls still fall back to the complete
+        -- argument-map check.
+        checkFunctionArgument written actual expected =
+          case check actual expected of
+            Right () -> Right ()
+            Left original ->
+              case checkWrittenOrder written expected original of
+                Right () -> Right ()
+                Left _ -> Left original
+
+        checkWrittenOrder written expected original = do
+          expectedMembers <- case argumentRows expected of
+            Right (first : _) -> Right first
+            _ -> Left original
+          let suppliedMembers = writtenMembers written
+          if length suppliedMembers /= length expectedMembers
+            then Left original
+            else mapM_ (uncurry (checkMember original))
+              (zip suppliedMembers expectedMembers)
+
+        checkMember original supplied expected = do
+          (expectedName, expectedType) <- expectedSlot expected
+          case supplied of
+            IdentifierOperation actualName annotation (Just value)
+              | annotation == value -> do
+                  case expectedName of
+                    Just name | name /= actualName -> Left original
+                    _ -> pure ()
+                  recur value >>= (`check` expectedType)
+            _ -> recur supplied >>= (`check` expectedType)
+
+        expectedSlot expected =
+          case interpretedCanonicalResult expected of
+            CanonicalSimpleIdentifierType name _ ->
+              (Just (IdentifierString name),) <$>
+                accessValues expected (naturalValue 1)
+            _ -> Right (Nothing, expected)
+
+        writtenMembers written = case written of
+          AtlasMap values -> values
+          MapSequence values -> values
+          ArgumentMap values -> values
+          MapConcatenation left right ->
+            writtenMembers left <> writtenMembers right
+          value -> [value]
 
 lookupInferenceBinding :: String -> [InferenceBinding] -> Maybe InferenceBinding
 lookupInferenceBinding name = go

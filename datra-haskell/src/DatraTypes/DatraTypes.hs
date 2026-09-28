@@ -136,6 +136,7 @@ module DatraTypes
   , accessValues
   , validateFunctionInput
   , specifyValues
+  , contextuallySpecifyValues
   , interpretedValueKind
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -276,6 +277,7 @@ import Evaluation.Identifier
   )
 import Evaluation.Specification
   ( assignIdentifierValues
+  , contextuallySpecifyValues
   , validateFunctionInput
   , specifyValues
   )

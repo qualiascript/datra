@@ -2,7 +2,7 @@
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxPiece (..), declarationRules, expandSyntax
-  , declarationLiterals, absorbFunSequence
+  , declarationLiterals, absorbFunSequence, externalSymbol
   ) where
 import Data.List (isPrefixOf)
 import DatraLanguage.AST
@@ -44,7 +44,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     checkedCaptures = zipWith checkCapture [kind | SyntaxHole kind <- syntaxPieces rule] captures
     checkCapture kind value
-      | kind `elem` ["_Expr", "_Block", "_Pages", "_IdenExp", "_AST"] = value
+      | kind `elem` ["_Expr", "_Block", "_IdenExp", "_AST"] = value
       | otherwise = MapSpecification value (scoped (IdentifierReference (IdentifierString kind)))
     block (AtlasMap entries) = entries
     block value = [value]
@@ -67,7 +67,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     controlArity "datra.syntax.for" = Just 2
     controlArity "datra.syntax.withIn" = Just 3
     controlArity "datra.syntax.forIn" = Just 3
-    controlArity "datra.syntax.eval" = Just 2
+    controlArity "datra.syntax.val" = Just 1
     controlArity _ = Nothing
     controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
       Right (Conditional condition yes no)
@@ -89,8 +89,8 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
       localDependentFamily "with" WithBinding name bound body
     controlWithValidCaptures "datra.syntax.forIn" [name,bound,body] =
       localDependentFamily "for" ForBinding name bound body
-    controlWithValidCaptures "datra.syntax.eval" [source,target] =
-      Right (Eval source target)
+    controlWithValidCaptures "datra.syntax.val" [value] =
+      Right (StripIdentifiers value)
     controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
 
     dependentBinder name constructor binder bound =

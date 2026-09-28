@@ -25,13 +25,13 @@ source context expression =
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
-    ExternalValue descriptor -> wrapped 10 ("_external " <> source 12 descriptor)
+    ExternalValue descriptor -> wrapped 10 ("!^" <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
-      | otherwise -> "!" <> renderIdentifierString name
+      | otherwise -> "^" <> renderIdentifierString name
     IdentifierOperationValue (IdentifierString name) annotation given -> wrapped 1
       (renderIdentifierString name <> case given of
         Just value | value == annotation -> " := " <> source 2 value
@@ -68,13 +68,15 @@ source context expression =
     Power left right -> binary 9 "^" left right
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
-    StripIdentifiersValue operand -> wrapped 10 ("^" <> source 13 operand)
+    -- Declarative syntax holes capture a complete expression. Parenthesize a
+    -- nested @val@ application so a following operator stays outside it.
+    StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)
     ExtractValue operand -> unary "%" operand
     OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->
-          "!" <> case names of
+          "^" <> case names of
             [name] -> renderIdentifierString name
             _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     -- Access associates to the left, so a second page selection can continue
@@ -119,6 +121,8 @@ source context expression =
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
     applicationInput SkipValue = "(*)"
+    applicationInput operand
+      | Just _ <- valueLookupNames operand = "(" <> source 0 operand <> ")"
     applicationInput operand = source 12 operand
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
@@ -132,3 +136,7 @@ scopeNames :: OperatorExpression -> Maybe [String]
 scopeNames (NamedAccessValue ThisValue (IdentifierString name)) = Just [name]
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
+
+valueLookupNames :: OperatorExpression -> Maybe [String]
+valueLookupNames (Access operand (NaturalValue 1)) = scopeNames operand
+valueLookupNames _ = Nothing

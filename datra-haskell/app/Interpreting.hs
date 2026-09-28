@@ -493,7 +493,7 @@ interpretNormalizedExpression scope resolving expressionValue =
       callable <- interpret function
       input <- interpret argument >>= functionArgumentValue
       applyFunction callable input
-    External descriptor -> interpret descriptor >>= externalValue
+    External descriptor -> interpret descriptor >>= externalValue scope resolving
     Program bindings result -> evaluateBlock Nothing bindings result
     Begin bindings result ->
       evaluateBlock (Just (renderSourceExpression expressionValue)) bindings result
@@ -702,7 +702,9 @@ declareScope enclosing entries = do
   _ <- foldM (checkName outerNames canonicalNames) [] definitions
   let names = map declarationName definitions
       makeBinding captured declaration =
-        (declarationName declaration, DeferredBinding captured
+        (declarationName declaration, DeferredBinding
+          (if isOuterScopeExternal (declarationValue declaration)
+            then outer else captured)
           (declarationAnnotation declaration) (declarationValue declaration))
       deferred = buildScopeBindings makeBinding (("\0this", ScopeMembers names) : outer) definitions
   pure (deferred, [declarationName value | value <- definitions, declarationIsLet value], eagerEntries)
@@ -713,6 +715,10 @@ declareScope enclosing entries = do
           Left (IdentifierStringOverlap name)
       | otherwise = Right (name : declared)
       where name = declarationName declaration
+
+    isOuterScopeExternal (External (AsciiStringLiteral symbol)) =
+      symbol == "datra.syntax.super"
+    isOuterScopeExternal _ = False
 
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
@@ -1270,6 +1276,16 @@ createFunction captured resolving explicit bindings result = do
     (True, Just (domain, codomain)) -> Just <$> evaluate (FunctionType domain codomain)
     _ -> pure Nothing
   staticDeclaredOutput <- traverse evaluate specifiedOutput
+  let namedSelf = case writtenOutput of
+        Just codomain ->
+          [ name
+          | (name, binding) <- captured
+          , Just (_, _, expressionValue) <- [bindingDefinition binding]
+          , expressionValue == MapSpecification
+              (FunctionBody bindings result)
+              (FunctionType writtenDomainExpression codomain)
+          ]
+        Nothing -> []
   inferredOutput <- case staticDeclaredOutput of
     Just target
       | interpretedCanonicalResult target
@@ -1278,6 +1294,8 @@ createFunction captured resolving explicit bindings result = do
       evaluateForInference
       (("it", bodyInput) : parameters)
       selfForInference
+      namedSelf
+      staticDeclaredOutput
       bindings
       result
   output <- case specifiedOutput of
@@ -1285,12 +1303,10 @@ createFunction captured resolving explicit bindings result = do
     Just _ -> do
       target <- maybe (Left (FunctionEvaluationFailed
         FunctionBodyOutsideDeclaredResult)) Right staticDeclaredOutput
-      included <- if interpretedCanonicalResult inferredOutput
-          == interpretedCanonicalResult target
-        then Right True
-        else subfederationValues inferredOutput target >>= booleanCondition
-      if included then pure target else Left (FunctionEvaluationFailed
-        FunctionBodyOutsideDeclaredResult)
+      case contextuallySpecify inferredOutput target of
+        Right _ -> pure target
+        Left _ -> Left (FunctionEvaluationFailed
+          FunctionBodyOutsideDeclaredResult)
   let dependentBindings argument = do
         imported <- matchArguments schema argument
         dependentScope <- validateDependentArguments
@@ -1313,8 +1329,7 @@ createFunction captured resolving explicit bindings result = do
           Nothing -> Right output
           Just annotation ->
             evalInScope (dependentScope <> captured) resolving annotation
-        _ <- specifyValues value dynamicOutput
-        pure value
+        contextuallySpecify value dynamicOutput
   outputExpression <- maybe (valueExpression output) Right specifiedOutput
   signatureText <- case writtenOutput of
     Just annotation -> pure (renderSourceExpression
@@ -1355,10 +1370,9 @@ applyFunction callable input =
   case selectFunctionCandidate preparations of
     Right (function, _) | Just invoke <- functionInvoke function -> do
       value <- invoke input
-      _ <- if functionValidatesResult function
-        then specifyValues value (functionCodomain function)
-        else Right value
-      pure value
+      if functionValidatesResult function
+        then contextuallySpecify value (functionCodomain function)
+        else pure value
     Right _ -> Left (FunctionEvaluationFailed
       ExternalAdapterRequiresAstCaptures)
     Left failure -> Left failure
@@ -1371,25 +1385,44 @@ applyFunction callable input =
         Just operation -> operation input
         Nothing -> input <$ validateFunctionInput input (functionDomain function)
 
-externalValue :: InterpretedValue -> Either InterpretingError InterpretedValue
-externalValue descriptor | CanonicalAsciiString symbol <- interpretedCanonicalResult descriptor = registeredExternal symbol
-externalValue descriptor = do
-  fields <- fieldsOf (interpretedCanonicalResult descriptor)
-  if length (map fst fields) /= length (nub (map fst fields))
-    then Left (ExternalEvaluationFailed DuplicateExternalDescriptorField)
-    else pure ()
-  let unknownFields =
-        filter (`notElem` ["backend", "symbol"]) (map fst fields)
-  if null unknownFields
-    then pure ()
-    else Left (ExternalEvaluationFailed
-      (UnknownExternalDescriptorFields unknownFields))
-  backend <- required "backend" fields
-  symbol <- required "symbol" fields
-  if backend /= "haskell" then Left (ExternalEvaluationFailed
-    (UnsupportedExternalBackend backend))
-    else registeredExternal symbol
+contextuallySpecify
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+contextuallySpecify source target = do
+  included <- if interpretedCanonicalResult source
+      == interpretedCanonicalResult target
+    then Right True
+    else subfederationValues source target >>= booleanCondition
+  if included then Right source else contextuallySpecifyValues source target
+
+externalValue
+  :: Scope
+  -> [String]
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+externalValue scope resolving descriptor =
+  case interpretedCanonicalResult descriptor of
+    CanonicalAsciiString symbol -> resolve symbol
+    canonical -> do
+      fields <- fieldsOf canonical
+      if length (map fst fields) /= length (nub (map fst fields))
+        then Left (ExternalEvaluationFailed DuplicateExternalDescriptorField)
+        else pure ()
+      let unknownFields =
+            filter (`notElem` ["backend", "symbol"]) (map fst fields)
+      if null unknownFields
+        then pure ()
+        else Left (ExternalEvaluationFailed
+          (UnknownExternalDescriptorFields unknownFields))
+      backend <- required "backend" fields
+      symbol <- required "symbol" fields
+      if backend /= "haskell" then Left (ExternalEvaluationFailed
+        (UnsupportedExternalBackend backend))
+        else resolve symbol
   where
+    resolve "datra.syntax.super" = scopeValue scope resolving
+    resolve symbol = registeredExternal symbol
     required name fields = maybe
       (Left (ExternalEvaluationFailed
         (MissingExternalDescriptorField name)))
@@ -1413,13 +1446,12 @@ registeredExternal symbol = case symbol of
     signatureText <- signatureSource anyTypeValue anyTypeValue
     pure (makeFunctionValue (EvaluatedFunction
       anyTypeValue anyTypeValue Nothing
-      (Just ("_external " <> show symbol)) signatureText
+      (Just ("!^" <> show symbol)) signatureText
       (Just Right) (Just publicValue) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
   "datra.IdenExp" -> Right (syntaxCategoryTypeValue "IdenExp")
   "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
-  "datra.Pages" -> Right (syntaxCategoryTypeValue "Pages")
   "datra.syntax.if" -> syntaxAdapter 3
   "datra.syntax.ifThen" -> syntaxAdapter 2
   "datra.syntax.begin" -> syntaxAdapter 2
@@ -1430,7 +1462,7 @@ registeredExternal symbol = case symbol of
   "datra.syntax.for" -> syntaxAdapter 2
   "datra.syntax.withIn" -> syntaxAdapter 3
   "datra.syntax.forIn" -> syntaxAdapter 3
-  "datra.syntax.eval" -> syntaxAdapter 2
+  "datra.syntax.val" -> syntaxAdapter 1
   "datra.StrTempl" -> Right stringTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
   "datra.IntRange" -> Right integerRangeTypeValue
@@ -1455,7 +1487,7 @@ registeredExternal symbol = case symbol of
       let domain = if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)
       signatureText <- signatureSource domain astTypeValue
       pure (makeFunctionValue (EvaluatedFunction domain astTypeValue Nothing
-        (Just ("_external " <> show symbol)) signatureText Nothing Nothing True))
+        (Just ("!^" <> show symbol)) signatureText Nothing Nothing True))
     nativeRange valued = do
       ints <- integerTypeValue
       up <- asciiStringValue "upwards"
@@ -1483,7 +1515,7 @@ registeredExternal symbol = case symbol of
             if valued then integerValuedRangeTypeValue else integerRangeTypeValue
       signatureText <- signatureSource domain codomain
       pure (makeFunctionValue (EvaluatedFunction domain codomain Nothing
-        (Just ("_external " <> show symbol)) signatureText
+        (Just ("!^" <> show symbol)) signatureText
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
         (Just invoke) True))
     optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
@@ -1503,7 +1535,7 @@ registeredExternal symbol = case symbol of
             pure result
       signatureText <- signatureSource input output
       pure (makeFunctionValue (EvaluatedFunction input output Nothing
-        (Just ("_external " <> show symbol)) signatureText
+        (Just ("!^" <> show symbol)) signatureText
         (Just (prepareArguments schema)) (Just invoke) True))
 
 

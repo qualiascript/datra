@@ -36,7 +36,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :") `isInfixOf` text)
         assertBool ("wrong dependency reference for " <> show userName)
-          (("!" <> show dependency) `isInfixOf` text))
+          (("^" <> show dependency) `isInfixOf` text))
         ["next", "step", "base"]
       assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
   , roundTrip "user value is distinct from the inline fixed point"
@@ -53,7 +53,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded declaration for " <> show name)
           ((show encoded <> " :") `isInfixOf` text)
         assertBool ("missing encoded reference for " <> show name)
-          (("!" <> show encoded) `isInfixOf` text))
+          (("^" <> show encoded) `isInfixOf` text))
         ["abc", "_abc", "_____abc", "__fun", "___abc"]
   , testCase "generated recursion uses fun without a temporary name" $ do
       value <- requireProgram factorial
@@ -73,7 +73,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "seed := 2\nlet offset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
       "7" "11"
   , roundTrip "identifier erasure survives serialization"
-      "yield ({abc? : Nat} -> Nat yield ^it)" "7" "7"
+      "yield ({abc? : Nat} -> Nat yield val it)" "7" "7"
   , roundTrip "input names survive serialization"
       "yield ({abc? : Nat} -> Nat yield it.abc[1])" "7" "7"
   , roundTrip "defaults survive serialization"
@@ -92,10 +92,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "yield ({\"value with spaces\" : Int} -> Int yield this.\"value with spaces\"[1] + 1)"
       "4" "5"
   , roundTrip "value lookup in an optional named parameter"
-      "yield ({\"value with spaces\"? : Int} -> Int yield !\"value with spaces\" + 1)"
+      "yield ({\"value with spaces\"? : Int} -> Int yield ^\"value with spaces\" + 1)"
       "4" "5"
   , roundTrip "value lookup applies a captured function"
-      "inc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield !inc !n)"
+      "inc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield ^inc (^n))"
       "4" "5"
   , roundTrip "library inlining preserves a user _AST parameter"
       "yield ({_AST : Int} -> Int yield _AST + 1)" "4" "5"
@@ -117,7 +117,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "mutual recursive definitions"
       "let even := ({n? : Int} -> Bool yield if n = 0 then true else odd (n - 1))\nlet odd := ({n? : Int} -> Bool yield if n = 0 then false else even (n - 1))\nyield even"
       "4" "true"
-  , roundTrip "registered native function" "yield _external \"datra.add\""
+  , roundTrip "registered native function" "yield !^\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
       "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
@@ -128,8 +128,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "explicit primitive implementation" ("_external \"datra.Int\"" `isInfixOf` text)
-      assertBool "dependency selected through value lookup" ("!\"___Std.Int\"" `isInfixOf` text)
+      assertBool "explicit primitive implementation" ("!^\"datra.Int\"" `isInfixOf` text)
+      assertBool "dependency selected through value lookup" ("^\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"
       b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int yield x + offset)"
@@ -173,14 +173,14 @@ functionClosureTests = testGroup "canonical function reconstruction"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertEqual "from is expanded only at its source use" 1
-        (occurrences "_external \"datra.from\"" text)
+        (occurrences "!^\"datra.from\"" text)
       -- Args, the recursive helper, and max each use range once.
       assertEqual "range is expanded only at its three source uses" 3
-        (occurrences "_external \"datra.range\"" text)
-      assertBool "chained page access is printed directly"
-        ("it[1][0]" `isInfixOf` text)
-      assertBool "redundant chained-access parentheses are absent"
-        (not ("(it[1])[0]" `isInfixOf` text))
+        (occurrences "!^\"datra.range\"" text)
+      assertBool "the inferred list binding is indexed directly"
+        ("values[0]" `isInfixOf` text)
+      assertBool "the removed explicit list specification stays absent"
+        (not ("values ~>" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
   , programCase "functions can annotate named parameters"
       "apply := ({callback? : (Nat -> Nat), value? : Nat} -> Nat yield callback value)\nyield apply (({n? : Nat} -> Nat yield n + 1), 4)"

@@ -46,6 +46,8 @@ import Evaluation.Error
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues, makeAtlasMap)
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
+import Evaluation.Specification.Decision (Decision (DecisionProved))
+import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
 import Numeric.Natural (Natural)
 
@@ -236,7 +238,10 @@ matchSlot slot input = do
     Right prepared
       | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
           Just prepared
-      | otherwise -> Just inputValue
+      | DecisionProved () <-
+          decideValueSubfederation inputValue (slotAnnotation slot) ->
+          Just inputValue
+      | otherwise -> Just prepared
     Left _ -> Nothing
 
 isPublicIdentifier :: String -> Bool

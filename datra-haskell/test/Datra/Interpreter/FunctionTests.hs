@@ -131,71 +131,71 @@ functionTests =
               ]) "()"
         , programCase "empty and singleton unnamed inputs keep their shape"
             (unlines
-              [ "empty := (() -> Any yield it)"
+              [ "emptyInput := (() -> Any yield it)"
               , "single := (Nat -> Nat yield it)"
-              , "assert empty() = ()"
+              , "assert emptyInput() = ()"
               , "assert single 8 = 8"
               ]) "()"
         , programCase "erasure supports mixed parameters during inference"
-            "f := ((abc? : Nat; Nat) -> (Nat; Nat) yield ^it)\nyield f(3; 4)"
+            "f := ((abc? : Nat; Nat) -> (Nat; Nat) yield val it)\nyield f(3; 4)"
             "(3; 4)"
         , programCase "erasure works through local bindings"
-            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield ^args)\nyield f 7"
+            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield val args)\nyield f 7"
             "7"
         , expressionCase "erasure removes identifiers throughout nested maps"
-            "^(a := (b := 2; 3); 4; c := 5)"
+            "val (a := (b := 2; 3); 4; c := 5)"
             "((2; 3); 4; 5)"
         , expressionCase "erasure preserves ordinary strings and empty maps"
-            "(^$abc; ^(); ^(1; 2); ^7)"
+            "(val $abc; val (); val (1; 2); val 7)"
             "($abc; (); (1; 2); 7)"
         , programCase "erasure works on a block's declaration map"
-            "yield begin\n  abc := 2\n  def := 3\nyield ^this"
+            "yield begin\n  abc := 2\n  def := 3\nyield val this"
             "(2; 3)"
         , expressionCase "prefix erasure and exponentiation remain distinct"
-            "^(base := 2) ^ 3"
+            "val (base := 2) ^ 3"
             "8"
         , expressionCase "erasure removes Boolean identifiers too"
-            "(^true; ^false)" "(1; 0)"
+            "(val true; val false)" "(1; 0)"
         , expressionCase "erasure is idempotent"
-            "^^(abc := 7; 8)"
+            "val val (abc := 7; 8)"
             "(7; 8)"
         , expressionFailureCase "erasure requires a total map"
-            "^(abc : Nat)"
+            "val (abc : Nat)"
             (SourceEvaluationFailure (ExpectedTotalAtlasMap DependentIdentifierTypeValueKind))
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"
-            "f := _external \"datra.add\"\nyield f (b:5;6)"
+            "f := !^\"datra.add\"\nyield f (b:5;6)"
             "11"
         , programCase "structured external descriptor"
-            ("f := _external (backend:\"haskell\";symbol:\"datra.add\")\n"
+            ("f := !^(backend:\"haskell\";symbol:\"datra.add\")\n"
               <> "yield f (b:5;6)")
             "11"
         , expressionFailureCase "unknown external backend"
-            "_external (backend:\"missing\";symbol:\"datra.add\")"
+            "!^(backend:\"missing\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnsupportedExternalBackend "missing")))
         , expressionFailureCase "unknown external symbol"
-            "_external (backend:\"haskell\";symbol:\"missing\")"
+            "!^(backend:\"haskell\";symbol:\"missing\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
         , expressionFailureCase "duplicate external descriptor field"
-            "_external (backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
+            "!^(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed DuplicateExternalDescriptorField))
         , expressionFailureCase "unknown external descriptor field"
-            "_external (backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
+            "!^(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalDescriptorFields ["extra"])))
         , expressionFailureCase "missing external descriptor field"
-            "_external (backend:\"haskell\")"
+            "!^(backend:\"haskell\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (MissingExternalDescriptorField "symbol")))
         , expressionFailureCase "external descriptor requires string fields"
-            "_external (1; 2)"
+            "!^(1; 2)"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
         ]
@@ -255,7 +255,7 @@ functionTests =
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : (_external \"datra.AST\")"
+            "node : (!^\"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"
