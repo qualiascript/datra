@@ -7,6 +7,9 @@ module DatraOrdinal
   , omega
   , omegaPower
   , ordinalLT
+  , ordinalLTE
+  , ordinalGT
+  , ordinalGTE
   , addOrdinals
   , multiplyOrdinals
   , powerOrdinal
@@ -38,6 +41,15 @@ import Numeric.Natural (Natural)
 -- non-canonical ordinal by using this observation function.
 ordinalCoefficients :: Ordinal -> [Natural]
 ordinalCoefficients (Ordinal values) = values
+
+ordinalLTE :: Ordinal -> Ordinal -> Bool
+ordinalLTE left right = not (ordinalLT right left)
+
+ordinalGT :: Ordinal -> Ordinal -> Bool
+ordinalGT left right = ordinalLT right left
+
+ordinalGTE :: Ordinal -> Ordinal -> Bool
+ordinalGTE left right = not (ordinalLT left right)
 
 -- | Split off an ordinal's finite tail.  The first component is zero or a
 -- limit ordinal, and adding the second component reconstructs the input.

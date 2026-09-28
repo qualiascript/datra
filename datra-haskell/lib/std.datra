@@ -3,6 +3,7 @@ begin : "$_Block yield $_Expr" as (_AST, _AST -> _AST) := !^"datra.syntax.begin"
 yield Std := begin
 
   Any := !^"datra.Any"
+  Ordinal := !^"datra.Ordinal"
   Nat := !^"datra.Nat"
   Int := !^"datra.Int"
   Char := !^"datra.Char"

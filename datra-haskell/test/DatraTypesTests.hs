@@ -202,10 +202,10 @@ testEvaluationBoundary = do
         Types.makeAtlasMap
           2
           [Types.naturalValue 0, Types.naturalValue 1]
-  assert "DatraTypes rejects non-numerical operands without AST interpretation"
+  assert "DatraTypes rejects non-finite operands without AST interpretation"
     (case Types.addValues nonemptyMap (Types.naturalValue 1) of
       Left
-          (Types.ExpectedNumericalOperand
+          (Types.ExpectedFiniteIntegerOperand
             Types.LeftOperand Types.MapValueKind) -> True
       _ -> False)
   assert "DatraTypes owns checked range construction"
@@ -2268,30 +2268,34 @@ testNumericalSemanticsAgreement = do
           (\value -> value `seq` (2 :: Natural))
       evaluatedProduct =
         Types.interpretedCanonicalResult
-          <$> Types.multiplyValues
+          <$> Types.ordinalProductValues
                 (Types.formulationValue 1)
                 (Types.formulationValue 1)
-  assert "typed and evaluated formulation multiplication share level policy"
+  assert "typed and ordinal formulation multiplication share level policy"
     ( typedProductLevel == Just 2
-      && evaluatedProduct == Right (Types.CanonicalFormulation 2)
+      && evaluatedProduct
+        == Right (Types.CanonicalExplicit 3 (ordinal [1, 0, 0]))
     )
   case DatraNatural.ellipsisNatural 3 $ \three ->
       Numeric.exponentiationOperator
         ellipsis three Numeric.someSuperEllipsisLevel of
     Just (Just typedPowerLevel) ->
-      assert "typed and evaluated formulation exponentiation share level policy"
-        ((Types.interpretedCanonicalResult
-          <$> Types.exponentiateValues
-                (Types.formulationValue 1)
-                (Types.naturalValue 3))
-          == Right (Types.CanonicalFormulation typedPowerLevel))
+      assert "typed and ordinal formulation exponentiation share level policy"
+        ( typedPowerLevel == 3
+          && (Types.interpretedCanonicalResult
+            <$> Types.ordinalExponentValues
+                  (Types.formulationValue 1)
+                  (Types.naturalValue 3))
+            == Right
+              (Types.CanonicalExplicit 4 (ordinal [1, 0, 0, 0]))
+        )
     _ -> fail "typed formulation exponentiation setup was rejected"
   case DatraNatural.ellipsisNatural 2 $ \two ->
       Numeric.additionOperator ellipsis two superEllipsisValueOrdinal of
     Just (Just typedSum) ->
       assert "typed and evaluated addition share ordinal policy"
         ((Types.interpretedCanonicalResult
-          <$> Types.addValues
+          <$> Types.ordinalSumValues
                 (Types.formulationValue 1)
                 (Types.naturalValue 2))
           == Right (Types.CanonicalExplicit 2 typedSum))

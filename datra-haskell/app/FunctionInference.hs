@@ -84,6 +84,7 @@ inferParameters names body = traverse infer names
       Subtraction a b -> numerical a b
       Multiplication a b -> numerical a b
       Exponentiation a b -> numerical a b
+      Plus a -> require IntegerType a
       Minus a -> require IntegerType a
       BooleanAnd a b -> require BooleanType a <> require BooleanType b
       BooleanOr a b -> require BooleanType a <> require BooleanType b
@@ -167,6 +168,10 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
       Multiplication a b -> numeric multiplyValues False a b
       Subtraction a b -> numeric subtractValues True a b
       Exponentiation a b -> numeric exponentiateValues False a b
+      Plus a -> do
+        operand <- recur a
+        check operand =<< integerTypeValue
+        if interpretedValueHasTotalMap operand then plusValue operand else integerTypeValue
       Minus a -> do
         operand <- recur a
         check operand =<< integerTypeValue

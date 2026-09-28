@@ -100,6 +100,7 @@ data Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
   | Subtraction Expression Expression
+  | Plus Expression
   | Minus Expression
   | Subfederation Expression Expression
   | Equality Expression Expression
@@ -229,6 +230,7 @@ data OperatorExpression
       OperatorExpression
   | Add OperatorExpression OperatorExpression
   | Subtract OperatorExpression OperatorExpression
+  | Positive OperatorExpression
   | Negate OperatorExpression
   | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
@@ -349,6 +351,7 @@ normalizeExpression (Addition left right) =
   Addition (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Subtraction left right) =
   Subtraction (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (Plus operand) = Plus (normalizeExpression operand)
 normalizeExpression (Minus operand) = Minus (normalizeExpression operand)
 normalizeExpression (Subfederation left right) =
   Subfederation (normalizeExpression left) (normalizeExpression right)
@@ -520,6 +523,7 @@ lower (Conditional condition consequent alternative) =
   ConditionalValue (lower condition) (lower consequent) (lower alternative)
 lower (Addition left right) = Add (lower left) (lower right)
 lower (Subtraction left right) = Subtract (lower left) (lower right)
+lower (Plus operand) = Positive (lower operand)
 lower (Minus operand) = Negate (lower operand)
 lower (Subfederation left right) =
   IsSubfederation (lower left) (lower right)
@@ -701,6 +705,8 @@ prettyOperator (Add left right) =
   prettyBinary AdditionOperator left right
 prettyOperator (Subtract left right) =
   prettyBinary SubtractionOperator left right
+prettyOperator (Positive operand) =
+  prettyUnary AdditionOperator operand
 prettyOperator (Negate operand) =
   prettyUnary MinusOperator operand
 prettyOperator (IsSubfederation left right) =
@@ -952,6 +958,7 @@ traverseExpressionChildren visit expression = case expression of
   MapSequence xs -> MapSequence <$> traverse visit xs
   StripIdentifiers x -> StripIdentifiers <$> visit x
   Extract x -> Extract <$> visit x
+  Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
   OptionalType x -> OptionalType <$> visit x

@@ -174,6 +174,17 @@ maybeExpansion value =
     (AST.assignment "Nothing" AST.emptyMap AST.emptyMap)
     (AST.dependentIdentifierType "Just" value)
 
+ordinalCall :: String -> [Expression] -> Expression
+ordinalCall name arguments =
+  FunctionApplication
+    (External (AsciiStringLiteral ("datra.ordinal." <> name)))
+    (AtlasMap arguments)
+
+ordinalSum, ordinalProduct, ordinalExponent :: Expression -> Expression -> Expression
+ordinalSum left right = ordinalCall "sum" [left, right]
+ordinalProduct left right = ordinalCall "prod" [left, right]
+ordinalExponent left right = ordinalCall "exp" [left, right]
+
 propNaturalAddition :: H.Property
 propNaturalAddition = H.property $ do
   left <- H.forAll naturalGen
@@ -355,6 +366,16 @@ naturalOrdinal value = do
 
 testIntegers :: IO ()
 testIntegers = do
+  expectValue "unary natural plus" (AST.plus (natural 6)) $ \value ->
+    assert "unary plus preserves a natural"
+      ( interpretedInteger value == Just 6
+        && renderInterpretedValue value == "6"
+      )
+  expectValue "unary integer plus" (AST.plus (AST.minus (natural 6))) $ \value ->
+    assert "unary plus preserves a negative integer"
+      ( interpretedInteger value == Just (-6)
+        && renderInterpretedValue value == "-6"
+      )
   expectValue "integer negation" (AST.minus (natural 6)) $ \value ->
     assert "minus creates the complemented integer -6"
       ( interpretedValueKind value == IntegerValueKind
@@ -432,6 +453,12 @@ testIntegers = do
           (ExpectedFiniteIntegerOperand
             RightOperand FormulationValueKind) -> True
       _ -> False)
+  assert "unary plus rejects transfinite ordinals"
+    (case interpretExpressionReason (AST.plus (...)) of
+      Left
+          (ExpectedFiniteIntegerOperand
+            LeftOperand FormulationValueKind) -> True
+      _ -> False)
   assert "negative exponents remain unsupported"
     (case interpretExpressionReason
         ((AST.^) (natural 2) (AST.minus (natural 1))) of
@@ -501,16 +528,18 @@ testLiteralsAndArithmetic = do
         (natural 3)) $ \value ->
     assert "nothing follows its identifier string and unit map to zero"
       (renderInterpretedValue value == "true")
-  expectValue
-      "Ellipsis soft coercion"
-      ((AST.+) (...) (natural 0)) $ \value ->
-    assert "adding zero coerces Ellipsis to an explicit rank-two omega"
-      (interpretedExplicitOrdinal value == Just (2, omega))
-  expectValue
-      "formulation multiplication"
-      ((AST.*) (...) (...)) $ \value ->
-    assert "multiplying two Ellipsis formulations produces level two"
-      (interpretedFormulationLevel value == Just 2)
+  assert "numerical addition rejects transfinite ordinals"
+    (case interpretExpressionReason ((AST.+) (...) (natural 0)) of
+      Left (ExpectedFiniteIntegerOperand LeftOperand FormulationValueKind) -> True
+      _ -> False)
+  assert "numerical multiplication rejects transfinite ordinals"
+    (case interpretExpressionReason ((AST.*) (...) (...)) of
+      Left (ExpectedFiniteIntegerOperand LeftOperand FormulationValueKind) -> True
+      _ -> False)
+  assert "numerical exponentiation rejects transfinite ordinals"
+    (case interpretExpressionReason ((AST.^) (...) (natural 2)) of
+      Left (ExpectedFiniteIntegerOperand LeftOperand FormulationValueKind) -> True
+      _ -> False)
   testRemainingLiterals
 
 testArgumentMaps :: IO ()
@@ -1427,25 +1456,25 @@ testStringTemplates = do
         (StringTemplate
           [StringTemplateInterpolation
             (Addition (AsciiStringLiteral "x") (natural 1))]) of
-      Left (ExpectedNumericalOperand LeftOperand AsciiStringValueKind) -> True
+      Left (ExpectedFiniteIntegerOperand LeftOperand AsciiStringValueKind) -> True
       _ -> False)
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do
   expectValue
-      "zero formulation exponent"
-      ((AST.^) (...) (natural 0)) $ \value ->
-    assert "Ellipsis to zero evaluates to Dot"
-      (interpretedFormulationLevel value == Just 0)
+      "zero ordinal exponent"
+      (ordinalExponent (...) (natural 0)) $ \value ->
+    assert "an ordinal to zero evaluates to one"
+      (renderInterpretedValue value == "1")
   expectValue
-      "second formulation exponent"
-      ((AST.^) (...) (natural 2)) $ \value ->
-    assert "Ellipsis squared evaluates to a level-two formulation"
-      (interpretedFormulationLevel value == Just 2)
+      "second ordinal exponent"
+      (ordinalExponent (...) (natural 2)) $ \value ->
+    assert "ordinal exponentiation returns an explicit ordinal"
+      (renderInterpretedValue value == "... ^ 2 + 0")
   expectValue
       "ordinal multiplication order"
-      ((AST.*)
-        ((AST.+) (...) (natural 1))
+      (ordinalProduct
+        (ordinalSum (...) (natural 1))
         (natural 2)) $ \value ->
     assert "ordinal multiplication preserves noncommutative order"
       (interpretedExplicitOrdinal value
@@ -2010,7 +2039,7 @@ testCanonicalResults = do
     assert "adjacent descending ranges canonicalize in traversal order"
       (renderInterpretedValue value == "9..2")
   let levelTwoFormulation =
-        (AST.^) (...) (natural 2)
+        ordinalExponent (...) (natural 2)
   expectValue
       "adjacent cross-rank ranges"
       ((<.>)
@@ -2064,23 +2093,18 @@ testRendering = do
       (renderInterpretedValue value == "...")
   expectValue
       "explicit omega"
-      ((AST.+) (...) (natural 0)) $ \value ->
+      (ordinalSum (...) (natural 0)) $ \value ->
     assert "explicit omega is distinguished from the formulation"
       (renderInterpretedValue value == "... + 0")
   expectValue
-      "Dot formulation"
-      ((AST.^) (...) (natural 0)) $ \value ->
-    assert "Dot uses the agreed formulation syntax"
-      (renderInterpretedValue value == "... ^ 0")
-  expectValue
-      "second super-ellipsis formulation"
-      ((AST.^) (...) (natural 2)) $ \value ->
-    assert "higher formulations render by kind"
-      (renderInterpretedValue value == "... ^ 2")
+      "second explicit ordinal power"
+      (ordinalExponent (...) (natural 2)) $ \value ->
+    assert "higher ordinal powers render canonically"
+      (renderInterpretedValue value == "... ^ 2 + 0")
   expectValue
       "zero multiplication"
-      ((AST.+)
-        ((AST.*) (...) (natural 0))
+      (ordinalSum
+        (ordinalProduct (...) (natural 0))
         (natural 2)) $ \value ->
     assert "arithmetic results return to their minimal rank"
       (renderInterpretedValue value == "2")
@@ -2608,7 +2632,7 @@ testAccess = do
   expectRangeAccess
     "open transfinite range access computes its limit boundary"
     RangeValueKind
-    ((..+) ((AST.+) (...) (natural 2)))
+    ((..+) (ordinalSum (...) (natural 2)))
     ((..+) (natural 3))
     "(... + 5)..(... * 2 + 0)"
   expectRangeAccess
@@ -2616,7 +2640,7 @@ testAccess = do
     RangeValueKind
     ((<.>)
       ((..+) (natural 2))
-      ((..+) ((AST.+) (...) (natural 10))))
+      ((..+) (ordinalSum (...) (natural 10))))
     ((..+) (...))
     "(... + 10).."
   expectRangeAccess
@@ -2624,10 +2648,10 @@ testAccess = do
     RangeValueKind
     ((<.>)
       ((..+) (natural 2))
-      ((..+) ((AST.+) (...) (natural 10))))
+      ((..+) (ordinalSum (...) (natural 10))))
     ((<..>)
-      ((AST.+) (...) (natural 2))
-      ((AST.+) (...) (natural 0)))
+      (ordinalSum (...) (natural 2))
+      (ordinalSum (...) (natural 0)))
     "(... + 12)..(... + 10)"
   expectRangeAccess
     "a computed range result remains reusable as an insertion"
@@ -2680,18 +2704,6 @@ testAccess = do
       (selected == map Just [2 .. 7] <> [Nothing])
     assert "finite access renders its selected result values"
       (renderInterpretedValue value == "(2; 3; 4; 5; 6; 7)")
-  let levelTwoFormulation =
-        (AST.^) (...) (natural 2)
-      mixedRankInsertion =
-        (<.>)
-          ((<..>) (natural 2) (natural 5))
-          ((<..>) (natural 5) levelTwoFormulation)
-  expectValue "mixed-rank range access"
-      ((<@>) levelTwoFormulation mixedRankInsertion) $ \value ->
-    assert "a cofinal mixed-rank selection canonicalizes as a formulation"
-      ( interpretedValueKind value == FormulationValueKind
-        && renderInterpretedValue value == "... ^ 2"
-      )
   expectValue
       "empty access"
       ((<@>)
@@ -3275,15 +3287,15 @@ testIdentifiers = do
       (AST.equal (AST.minus xFive) (AST.minus (natural 5))) $ \value ->
     assert "unary minus shares identifier coercion"
       (renderInterpretedValue value == "true")
-  let omegaSquared = (AST.^) (...) (natural 2)
+  let omegaSquared = ordinalExponent (...) (natural 2)
   expectValue
       "transfinite identifier addition"
       (AST.equal
-        ((AST.+)
+        (ordinalSum
           (identifier "x" omegaSquared)
           (identifier "y" (natural 1)))
-        ((AST.+) omegaSquared (natural 1))) $ \value ->
-    assert "higher-rank numerical identifiers retain ordinal arithmetic"
+        (ordinalSum omegaSquared (natural 1))) $ \value ->
+    assert "higher-rank identifiers retain ordinal arithmetic"
       (renderInterpretedValue value == "true")
   expectValue
       "identity assignment specifies its total identifier"
@@ -3487,20 +3499,20 @@ testTypedRejections = do
   assert "maps are rejected as numerical operands with a specific side"
     (case interpretExpressionReason
         ((AST.+) (AtlasMap [natural 0, natural 1]) (natural 1)) of
-      Left (ExpectedNumericalOperand LeftOperand MapValueKind) -> True
+      Left (ExpectedFiniteIntegerOperand LeftOperand MapValueKind) -> True
       _ -> False)
   assert "non-total identifiers are rejected as numerical operands"
     (case interpretExpressionReason
         ((AST.+) (AST.dependentIdentifierType "x" NaturalType) (natural 1)) of
       Left
-          (ExpectedNumericalOperand
+          (ExpectedFiniteIntegerOperand
             LeftOperand DependentIdentifierTypeValueKind) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
     (case interpretExpressionReason
         ((AST.^)
           (natural 2)
-          ((AST.+) (...) (natural 0))) of
+          (ordinalSum (...) (natural 0))) of
       Left (ExpectedNaturalExponent ExplicitOrdinalValueKind) -> True
       _ -> False)
   assert "out-of-bounds access reports the first invalid position"
@@ -3568,21 +3580,21 @@ testLocatedRejection = do
       Left
           (DatraError
             (Just actualSpan)
-            (ExpectedNumericalOperand LeftOperand MapValueKind)) ->
+            (ExpectedFiniteIntegerOperand LeftOperand MapValueKind)) ->
         actualSpan == sourceSpan
       _ -> False)
   assert "English interpretation errors are localized only at display time"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left valueError ->
         renderDatraError English valueError
-          == "<test>:1:5: left operand must be numerical\n"
+          == "<test>:1:5: left operand must be a finite integer\n"
               <> "  actual value kind: map"
       Right _ -> False)
   assert "Romanian interpretation errors are localized only at display time"
     (case interpretLocatedExpression (Located sourceSpan expressionValue) of
       Left valueError ->
         renderDatraError Romanian valueError
-          == "<test>:1:5: operandul stâng trebuie să fie numeric\n"
+          == "<test>:1:5: operandul stâng trebuie să fie un întreg finit\n"
               <> "  tipul efectiv al valorii: hartă"
       Right _ -> False)
   let ambiguousTemplate =

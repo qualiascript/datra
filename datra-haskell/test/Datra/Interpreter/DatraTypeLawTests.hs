@@ -174,11 +174,11 @@ extensionalEqualityTests =
 skipCoercionTests :: TestTree
 skipCoercionTests =
   testGroup "skip numerical coercion"
-    [ expressionCase "rank-zero formulation equals the numerical skip value"
-        "...^() = *"
+    [ expressionCase "skip has numerical value one"
+        "* + 0 = 1"
         "true"
     , expressionCase "coercion does not erase skip typing identity"
-        "not (...^() of *) and not (* of ...^())"
+        "not (* of Nat) and not (1 of *)"
         "true"
     ]
 

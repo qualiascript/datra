@@ -84,6 +84,34 @@ moduleTests =
     , moduleFailureCase origin "numbers is not imported by default"
         "yield Numbers.max(1, 2)"
         (== ModuleEvaluationFailure (UnknownIdentifier "Numbers"))
+    , moduleCase origin "ordinal arithmetic module"
+        ( "import \"ordinals\"\n"
+            <> "yield (Ordinals.sum ... 2; "
+            <> "Ordinals.prod ... 2; "
+            <> "Ordinals.exp ... 2; "
+            <> "Ordinals.minus 2 3)"
+        )
+        "(... + 2; ... * 2 + 0; ... ^ 2 + 0; 0)"
+    , moduleCase origin "ordinal comparisons"
+        ( "import \"ordinals\"\n"
+            <> "yield (Ordinals.lt 2 3; Ordinals.lte 3 3; "
+            <> "Ordinals.gt 3 2; Ordinals.gte 3 3)"
+        )
+        "(true; true; true; true)"
+    , moduleCase origin "ordinal operations accept x and y argument maps"
+        "import \"ordinals\"\nyield Ordinals.sum(y := 3; x := 2)"
+        "5"
+    , moduleCase origin "OrdValue contains naturals and transfinite ordinals"
+        ( "import \"ordinals\"\n"
+            <> "yield (Ordinals.OrdValue = (Ordinal | Nat); "
+            <> "2 of Ordinals.OrdValue; ... of Ordinals.OrdValue)"
+        )
+        "(true; true; true)"
+    , moduleCase origin "ordinal exponent uniquely reorders positional arguments"
+        ( "import \"ordinals\"\n"
+            <> "yield (Ordinals.exp 2 ...; Ordinals.exp ... 2)"
+        )
+        "(... ^ 2 + 0; ... ^ 2 + 0)"
     , moduleFailureCase origin "qualified import does not leak names"
         "import \"library_one\"\nyield x"
         (== ModuleEvaluationFailure (UnknownIdentifier "x"))

@@ -24,6 +24,7 @@ extra-doc-files:
 extra-source-files:
     lib/std.datra
     lib/numbers.datra
+    lib/ordinals.datra
     test/fixtures/cli/*.ast
     test/fixtures/cli/*.datra
     test/fixtures/cli/*.out
@@ -223,6 +224,7 @@ library
         Evaluation.IdentifierErasure
         Evaluation.Map
         Evaluation.Numerical
+        Evaluation.Ordinal
         Evaluation.Optional
         Evaluation.Overload
         Evaluation.DatraType

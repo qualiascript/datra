@@ -56,6 +56,7 @@ import DatraLanguage.AST
       , IdentifierTemplateOperation
       , Multiplication
       , Subtraction
+      , Plus
       , Minus
       , NaturalRange
       , NaturalRangeUpwards
@@ -424,8 +425,9 @@ astForm =
       , astBinary AST.RangeOperator SuperEllipsisRange
       , astUnary AST.RangePlusOperator SuperEllipsisRangePlus
       , astUnary AST.RangeMinusOperator SuperEllipsisRangeMinus
-      , astBinary AST.AdditionOperator Addition
-      , astBinary AST.SubtractionOperator Subtraction
+      , try (astBinary AST.AdditionOperator Addition)
+      , astUnary AST.AdditionOperator Plus
+      , try (astBinary AST.SubtractionOperator Subtraction)
       , astUnary AST.MinusOperator Minus
       , astBinary AST.SubfederationOperator Subfederation
       , astBinary AST.InequalityOperator Inequality
@@ -955,6 +957,14 @@ boundaryAwareArithmeticExpression :: Parser Expression
 boundaryAwareArithmeticExpression =
   makeExprParser term boundaryAwareArithmeticOperatorTable
 
+-- Adjacent declarative holes use whitespace as their boundary. Arithmetic and
+-- access remain available, while ordinary application requires parentheses so
+-- the next hole cannot be swallowed as another argument.
+nonApplicationArithmeticExpression :: Parser Expression
+nonApplicationArithmeticExpression =
+  makeExprParser (accessedTerm extractedTermAtom)
+    boundaryAwareArithmeticOperatorTable
+
 -- Ranges have a small dedicated grammar so exactly one unparenthesized '..'
 -- is permitted at this precedence level. Each explicit endpoint is a complete
 -- arithmetic expression; nested ranges therefore require parentheses.
@@ -1080,8 +1090,14 @@ syntaxApplication = do
     [] -> empty
     _ -> do
       let furthest = maximum [end | (_,_,end) <- candidates]
-          best = nubBy (\(_,a,_) (_,b,_) -> a == b)
+          longest =
             [candidate | candidate@(_,_,end) <- candidates, end == furthest]
+          specificity (rule, _, _) = length
+            [() | SyntaxLiteral _ <- syntaxPieces rule]
+          mostSpecific = maximum (map specificity longest)
+          best = nubBy (\(_,a,_) (_,b,_) -> a == b)
+            [candidate | candidate <- longest
+              , specificity candidate == mostSpecific]
       case best of
         [(rule,_,_)] -> parseRule rule
         _ -> fail ("ambiguous AST pattern for " <> name)
@@ -1098,6 +1114,7 @@ syntaxApplication = do
         _ -> pure ()
       pure expanded
     obviouslyNumeric (EllipsisNatural _) = True
+    obviouslyNumeric (Plus value) = obviouslyNumeric value
     obviouslyNumeric (Minus value) = obviouslyNumeric value
     obviouslyNumeric _ = False
     parsePieces [] = pure []
@@ -1116,6 +1133,10 @@ syntaxApplication = do
             _ -> []
           literal = choice [AsciiStringLiteral value <$ (keyword (Text.pack value) <* lineSpaceConsumer)
             | value <- declarationLiterals knownDeclarations kind]
+          enums = declarationLiterals knownDeclarations kind
+          adjacentHole = case rest of
+            SyntaxHole _ : _ -> null enums
+            _ -> False
       value <- local (\nested -> nested { syntaxStops = stops <> syntaxStops nested }) $
         if kind == "_IdenExp" then do
           spelling <- identifierExpression
@@ -1130,9 +1151,9 @@ syntaxApplication = do
               { outerSyntaxDeclarations = syntaxDeclarations nested })
             (withReferences elements)
           pure (AtlasMap entries)
-        else literal <|> (if kind /= "_Expr" then boundaryAwareArithmeticExpression
+        else literal <|> (if adjacentHole then nonApplicationArithmeticExpression
+          else if kind /= "_Expr" then boundaryAwareArithmeticExpression
           else if "," `elem` stops then nonConcatenatedExpression else expression)
-      let enums = declarationLiterals knownDeclarations kind
       guard (null enums || not (obviouslyNumeric value))
       let continue = (value :) <$> parsePieces rest
       case value of
@@ -1373,8 +1394,8 @@ arithmeticOperatorTableWith
   -> [[Operator Parser Expression]]
 arithmeticOperatorTableWith infixOperator =
   [ [InfixR (Exponentiation <$ exponentiationOperator infixOperator)]
-  , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
-    , Prefix (Minus <$ continuedWordOperator AST.MinusOperator)
+  , [ Prefix (Plus <$ operatorToken AST.AdditionOperator)
+    , Prefix (Minus <$ operatorToken AST.MinusOperator)
     , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
     ]
   , [InfixL (Multiplication <$ multiplicationOperator infixOperator)]

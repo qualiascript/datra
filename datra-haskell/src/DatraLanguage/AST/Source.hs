@@ -66,6 +66,7 @@ source context expression =
     Multiply left right -> wrapped 8
       (multiplicand left <> " * " <> multiplicand right)
     Power left right -> binary 9 "^" left right
+    Positive operand -> unary "+" operand
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
     -- Declarative syntax holes capture a complete expression. Parenthesize a

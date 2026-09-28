@@ -26,6 +26,7 @@ import Evaluation.Specification.Federation
 import Evaluation.Specification.String
   ( selectStringFederationMember
   )
+import Evaluation.TypeFamily.BuiltinMeta qualified as BuiltinMeta
 import Evaluation.Value
 
 -- | Select a total source map from any target federation. Atomic targets are
@@ -56,6 +57,12 @@ selectFederationMember source target
         Just _ -> DecisionProved
           (EvaluatedCanonicalTypeMember (interpretedCanonicalResult source))
         Nothing -> DecisionRefuted
+  | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm target =
+      case BuiltinMeta.decideBuiltinMetaSubfederation source OrdinalMetaType of
+        DecisionProved () -> DecisionProved
+          (EvaluatedCanonicalTypeMember (interpretedCanonicalResult source))
+        DecisionRefuted -> DecisionRefuted
+        DecisionUndecidable -> DecisionUndecidable
   | otherwise =
       case selectIdentifierMember source target of
         Just decision -> decision

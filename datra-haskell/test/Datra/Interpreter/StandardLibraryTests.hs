@@ -210,6 +210,8 @@ standardLibraryTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "InhabitedList describes a split list"
             "yield (1; (2; 3)) of InhabitedList Int" "true"
+        , programCase "inferred type aliases reduce to their canonical type"
+            "Alias := (Nat | Str)\nyield Alias = (Nat | Str)" "true"
         , programCase "empty recognizes the empty map"
             "yield (empty (); empty (1; 2))" "(true; false)"
         ]

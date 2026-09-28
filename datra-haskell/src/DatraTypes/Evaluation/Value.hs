@@ -30,6 +30,7 @@ module Evaluation.Value
   , isFunctionFamily
   , stringTemplateTypeValue
   , anyTypeValue
+  , ordinalTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
@@ -317,6 +318,7 @@ isFunctionFamily value =
 
 builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName AnyMetaType = "Any"
+builtinMetaTypeName OrdinalMetaType = "Ordinal"
 builtinMetaTypeName (ASTMetaType name) = maybe "_AST" id name
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
@@ -330,10 +332,11 @@ builtinMetaTypeValue kind = makeInterpretedValue
   (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
-anyTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
+anyTypeValue, ordinalTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
   naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
   stringTemplateTypeValue :: InterpretedValue
 anyTypeValue = builtinMetaTypeValue AnyMetaType
+ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
 astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType

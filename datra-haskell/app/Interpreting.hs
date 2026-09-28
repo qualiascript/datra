@@ -449,6 +449,7 @@ interpretNormalizedExpression scope resolving expressionValue =
       binary addValues left right
     Subtraction left right ->
       binary subtractValues left right
+    Plus operand -> interpret operand >>= plusValue
     Minus operand -> interpret operand >>= minusValue
     Multiplication left right ->
       binary multiplyValues left right
@@ -538,7 +539,7 @@ interpretNormalizedExpression scope resolving expressionValue =
           case namedAccessValue value name of
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
-            result -> result
+            result -> result >>= transparentEitherAlias
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
     NamedAccess This (IdentifierString name)
@@ -608,6 +609,11 @@ interpretNormalizedExpression scope resolving expressionValue =
 
   where
     interpret = evalInScope scope resolving
+    transparentEitherAlias value =
+      case stripOuterIdentifierType value of
+        Right underlying
+          | interpretedValueKind underlying == EitherValueKind -> Right underlying
+        _ -> Right value
     interpretIdentifierOperation
         identifierString typeAnnotationExpression maybeGivenValueExpression = do
       typeAnnotation <- interpret typeAnnotationExpression
@@ -682,7 +688,8 @@ resolveIdentifier scope resolving name =
     resolve (QualifiedBinding _ binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
     resolve (SelfBinding _ value) = value
-    resolve (RetainedBinding _ _ _ value) = Right value
+    resolve (RetainedBinding _ annotation _ value) =
+      Right (resolveInferredEitherAlias annotation value)
     resolve (ImportedBinding _ value) = Right value
     resolve ScopeMembers {} = Left (UnknownIdentifier name)
     resolve CanonicalNames {} = Left (UnknownIdentifier name)
@@ -693,7 +700,15 @@ resolveIdentifier scope resolving name =
         Just typeExpression ->
           evalInScope captured resolving typeExpression
             >>= requireCanonicalTypeAnnotation
-      evalInScope captured resolving expressionValue
+      resolveInferredEitherAlias annotation
+        <$> evalInScope captured resolving expressionValue
+
+    resolveInferredEitherAlias Nothing value =
+      case stripOuterIdentifierType value of
+        Right underlying
+          | interpretedValueKind underlying == EitherValueKind -> underlying
+        _ -> value
+    resolveInferredEitherAlias (Just _) value = value
 
 -- A block imports declarations from left to right. Ordinary definitions capture
 -- only earlier ordinary definitions, while every let definition is predeclared
@@ -1482,6 +1497,7 @@ externalValue scope resolving descriptor =
 registeredExternal :: String -> Either InterpretingError InterpretedValue
 registeredExternal symbol = case symbol of
   "datra.Any" -> Right anyTypeValue
+  "datra.Ordinal" -> Right ordinalTypeValue
   "datra.Nat" -> naturalTypeValue
   "datra.Int" -> integerTypeValue
   "datra.Char" -> charTypeValue
@@ -1523,6 +1539,19 @@ registeredExternal symbol = case symbol of
     value <- lookupArgument "value" arguments
     integer <- requireFiniteInteger LeftOperand value
     pure (integerValue (abs integer))
+  "datra.ordinal.sum" -> ordinalBinaryNative ordinalOperandType ordinalSumValues
+  "datra.ordinal.prod" -> ordinalBinaryNative ordinalOperandType ordinalProductValues
+  "datra.ordinal.minus" -> ordinalBinaryNative ordinalOperandType ordinalMinusValues
+  "datra.ordinal.exp" -> nativeFunction
+    (ArgumentMap
+      [optional "x" ordinalOperandType, optional "power" NaturalType]) ordinalOperandType $ \arguments -> do
+        ordinalValue <- lookupArgument "x" arguments
+        power <- lookupArgument "power" arguments
+        ordinalExponentValues ordinalValue power
+  "datra.ordinal.lt" -> ordinalComparisonNative ordinalLTValues
+  "datra.ordinal.lte" -> ordinalComparisonNative ordinalLTEValues
+  "datra.ordinal.gt" -> ordinalComparisonNative ordinalGTValues
+  "datra.ordinal.gte" -> ordinalComparisonNative ordinalGTEValues
   _ -> Left (ExternalEvaluationFailed (UnknownExternalSymbol symbol))
   where
     concreteCanonical (CanonicalSpecification source _) = concreteCanonical source
@@ -1568,6 +1597,19 @@ registeredExternal symbol = case symbol of
       (Left (ExternalEvaluationFailed (MissingNativeArgument name)))
       Right
       (lookup name values)
+    ordinalOperandType = EitherType
+      (External (AsciiStringLiteral "datra.Ordinal")) NaturalType
+    ordinalBinaryDomain = ArgumentMap
+      [ optional "x" ordinalOperandType
+      , optional "y" ordinalOperandType
+      ]
+    ordinalBinaryNative output operation = nativeFunction
+      ordinalBinaryDomain output $ \arguments -> do
+          left <- lookupArgument "x" arguments
+          right <- lookupArgument "y" arguments
+          operation left right
+    ordinalComparisonNative operation = ordinalBinaryNative BooleanType $ \left right ->
+      booleanValue <$> operation left right
     nativeFunction domain codomain implementation = do
       let evaluate = evalInScope [] []
       schema <- compileParameters evaluate domain

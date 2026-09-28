@@ -64,8 +64,8 @@ overloadTests =
     , programCase "skip composes through argument-map overload input"
         "yield {x? : Nat, y? : Nat} << {*, 3}"
         "{x? : Nat, y? : Nat := 3}"
-    , programFailureCase "rank-zero formulation is not a skip"
-        "yield {x? : Nat, y? : Nat} << ((...) ^ 0, 3)"
+    , programFailureCase "transfinite ordinal is not a skip"
+        "yield {x? : Nat, y? : Nat} << (..., 3)"
         (SourceEvaluationFailure
           (OverloadError OverloadNoMatch))
     , programCase "safe overload fills a later compatible slot"
@@ -96,8 +96,8 @@ overloadTests =
           , "assert {*, 3} of {*, Nat}"
           , "assert ((*, 3) ~> (*, Nat)) of (*, Nat)"
           , "assert ({*, 3} ~> {*, Nat}) of {*, Nat}"
-          , "assert not (((...) ^ 0, 3) of (*, Nat))"
-          , "assert not ((*, 3) of ((...) ^ 0, Nat))"
+          , "assert not ((..., 3) of (*, Nat))"
+          , "assert not ((*, 3) of (..., Nat))"
           ])
         "()"
     , programCase "skip coerces to one in numerical operators"
@@ -109,7 +109,7 @@ overloadTests =
           , "assert (*) * (*) = 1"
           , "assert 2 ^ * = 2"
           , "assert -* = -1"
-          , "assert ...^() = *"
+          , "assert +* = 1"
           ])
         "()"
     ]
@@ -154,10 +154,10 @@ defaultedFunctionTests =
           , "yield f (*)"
           ])
         "4"
-    , programFailureCase "function call does not treat rank-zero as skip"
+    , programFailureCase "function call does not treat an ordinal as skip"
         (unlines
           [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
-          , "yield my_pow ((...) ^ 0, 3)"
+          , "yield my_pow (..., 3)"
           ])
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))

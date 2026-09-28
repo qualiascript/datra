@@ -20,6 +20,7 @@ module DatraTypes
   , functionAlternatives
   , stringTemplateTypeValue
   , anyTypeValue
+  , ordinalTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue
@@ -73,9 +74,18 @@ module DatraTypes
   , skipValue
   , addValues
   , subtractValues
+  , plusValue
   , minusValue
   , multiplyValues
   , exponentiateValues
+  , ordinalSumValues
+  , ordinalProductValues
+  , ordinalMinusValues
+  , ordinalExponentValues
+  , ordinalLTValues
+  , ordinalLTEValues
+  , ordinalGTValues
+  , ordinalGTEValues
   , subfederationValues
   , equalValues
   , booleanAndValues
@@ -266,9 +276,20 @@ import Evaluation.Numerical
   ( addValues
   , requireFiniteInteger
   , subtractValues
+  , plusValue
   , minusValue
   , exponentiateValues
   , multiplyValues
+  )
+import Evaluation.Ordinal
+  ( ordinalSumValues
+  , ordinalProductValues
+  , ordinalMinusValues
+  , ordinalExponentValues
+  , ordinalLTValues
+  , ordinalLTEValues
+  , ordinalGTValues
+  , ordinalGTEValues
   )
 import Evaluation.Range
   ( boundedRangeValue
@@ -316,6 +337,7 @@ import Evaluation.Value
   , functionAlternatives
   , stringTemplateTypeValue
   , anyTypeValue
+  , ordinalTypeValue
   , builtinMetaTypeName
   , naturalRangeTypeValue
   , integerRangeTypeValue

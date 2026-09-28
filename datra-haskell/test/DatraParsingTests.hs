@@ -402,9 +402,17 @@ regressionTests = do
     "from -3 to 4"
     (fromTo (-3) 4)
   assertAstOutput
+    "unary numerical plus"
+    "+6"
+    (AST.plus (natural 6))
+  assertAstOutput
     "unary integer negation"
     "-6"
     (AST.minus (natural 6))
+  assertAstOutput
+    "minus is an ordinary identifier rather than a word operator"
+    "minus 6"
+    (FunctionApplication (ref "minus") (natural 6))
   assertAstOutput
     "integer subtraction"
     "5 - 8"
@@ -1442,9 +1450,10 @@ regressionTests = do
     "(1.. ...)"
   assertRejected "addition requires a right operand" "(1 +)"
   assertRejected "parentheses must be balanced" "((1 + 2)"
-  assertRejected
-    "an operator starting the next line is not retroactive continuation"
+  assertAstOutput
+    "a prefix operator on the next line starts a new map member"
     "2\n+ 3"
+    (natural 2 <:> AST.plus (natural 3))
   assertAstOutput
     "separate parenthesized maps form an implicit outer map"
     "(1)\n(2)"
@@ -1505,6 +1514,9 @@ genExpression =
     , Gen.subterm genExpression SuperEllipsisRangePlus
     , Gen.subterm genExpression SuperEllipsisRangeMinus
     , Gen.subterm2 genExpression genExpression Addition
+    , Gen.subterm2 genExpression genExpression Subtraction
+    , Gen.subterm genExpression Plus
+    , Gen.subterm genExpression Minus
     , Gen.subterm2 genExpression genExpression Multiplication
     , Gen.subterm2 genExpression genExpression Exponentiation
     , Gen.subterm2 genExpression genExpression Subfederation
