@@ -167,18 +167,19 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
-  , testCase "optional integer closure avoids nested module reconstruction" $ do
-      original <- runModuleProgram "lib/integers.datra"
-        "import \"integers\"\nyield Ints.max"
+  , testCase "optional number closure avoids nested module reconstruction" $ do
+      original <- runModuleProgram "lib/numbers.datra"
+        "import \"numbers\"\nyield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertEqual "from is expanded only at its source use" 1
         (occurrences "!^\"datra.from\"" text)
-      -- Args, the recursive helper, and max each use range once.
-      assertEqual "range is expanded only at its three source uses" 3
+      -- Args and the recursive helper each use range once.
+      assertEqual "range is expanded only at its two source uses" 2
         (occurrences "!^\"datra.range\"" text)
-      assertBool "the inferred list binding uses mapped head-tail access"
-        ("values[(0;" `isInfixOf` text)
+      assertBool "the inferred list binding uses split sequencing"
+        ("values := (val it)!" `isInfixOf` text
+          && "values ?? maximum it" `isInfixOf` text)
       assertBool "the removed explicit list specification stays absent"
         (not ("values ~>" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"

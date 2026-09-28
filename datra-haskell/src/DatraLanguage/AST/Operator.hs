@@ -34,6 +34,8 @@ data Operator
   | LetOperator
   | EitherOperator
   | OptionalOperator
+  | ListUnconsOperator
+  | MaybeThenOperator
   | MultiplicationOperator
   | ExponentiationOperator
   | ConcatenationOperator
@@ -76,6 +78,8 @@ operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol EitherOperator = "Either"
 operatorCanonicalSymbol OptionalOperator = "optional"
+operatorCanonicalSymbol ListUnconsOperator = "uncons"
+operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
@@ -118,6 +122,8 @@ operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
+operatorSourceSymbol ListUnconsOperator = Just "!"
+operatorSourceSymbol MaybeThenOperator = Just "??"
 operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","

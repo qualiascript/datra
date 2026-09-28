@@ -462,8 +462,25 @@ regressionTests = do
     "Maybe (Nat | Int)"
     (FunctionApplication (ref "Maybe")
       (AST.eitherType (ref "Nat") (ref "Int")))
-  assertRejected "postfix optional is not a value operator" "Nat?"
-  assertRejected "postfix optional rejects grouped values" "(Nat | Int)?"
+  assertAstOutput "postfix optional aliases Maybe"
+    "Nat?" (OptionalType (ref "Nat"))
+  assertAstOutput "postfix optional accepts grouped types"
+    "(Nat | Int)?"
+    (OptionalType (AST.eitherType (ref "Nat") (ref "Int")))
+  assertAstOutput "parenthesized postfix optional nests"
+    "(Nat?)?" (OptionalType (OptionalType (ref "Nat")))
+  assertAstOutput "postfix list split"
+    "values!" (ListUncons (ref "values"))
+  assertAstOutput "Maybe sequencing binds after list split"
+    "values! ?? maximum it"
+    (MaybeThen
+      (ListUncons (ref "values"))
+      (FunctionApplication (ref "maximum") (ref "it")))
+  assertAstOutput "Maybe sequencing is distinct from an optional declaration"
+    "values ?? maximum it"
+    (MaybeThen
+      (ref "values")
+      (FunctionApplication (ref "maximum") (ref "it")))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
@@ -1100,7 +1117,8 @@ regressionTests = do
     "^f 2" (FunctionApplication (valueOf "f") (natural 2))
   assertAstOutput "value lookup can be an application argument"
     "f (^a)" (FunctionApplication (ref "f") (valueOf "a"))
-  assertRejected "postfix optional cannot follow value lookup" "^a?"
+  assertAstOutput "postfix optional can follow value lookup"
+    "^a?" (OptionalType (valueOf "a"))
   assertAstOutput "Maybe accepts a looked-up value"
     "Maybe (^a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
   let nameList = MapAccess

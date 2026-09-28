@@ -49,6 +49,9 @@ module DatraTypes
   , booleanTypeValue
   , eitherValue
   , optionalValue
+  , optionalPresentType
+  , justUnderlying
+  , optionalUnderlying
   , nothingValue
   , asciiStringValue
   , stringTypeValue
@@ -61,6 +64,8 @@ module DatraTypes
   , stringTemplateValue
   , stripIdentifiersValue
   , stripIdentifiersType
+  , stripOuterIdentifierValue
+  , stripOuterIdentifierType
   , extractValue
   , evalValues
   , requireFiniteInteger
@@ -209,14 +214,25 @@ import Evaluation.Arguments
   , makeArgumentMap
   , overloadArgumentRows
   )
-import Evaluation.Optional (makeNothing, makeOptionalValue)
+import Evaluation.Optional
+  ( justUnderlying
+  , makeNothing
+  , makeOptionalValue
+  , optionalPresentType
+  , optionalUnderlying
+  )
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
   , stringTemplateValue
   , toStringValue
   , weakToStringValue
   )
-import Evaluation.IdentifierErasure (stripIdentifiersValue, stripIdentifiersType)
+import Evaluation.IdentifierErasure
+  ( stripIdentifiersValue
+  , stripIdentifiersType
+  , stripOuterIdentifierValue
+  , stripOuterIdentifierType
+  )
 import Extract (extractValue)
 import Evaluation.Eval (evalValues)
 import BooleanType qualified

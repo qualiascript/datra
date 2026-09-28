@@ -63,27 +63,27 @@ moduleTests =
         ("import all \"std\"\n"
           <> "yield Std.if true then 11 else (1+\"bad\")")
         "11"
-    , moduleCase origin "integers max and min satisfy positional assertions"
-        ( "import \"integers\"\n"
-            <> "assert Ints.max() = nothing\n"
-            <> "assert Ints.max(1) = (Just : 1)\n"
-            <> "assert Ints.max(1, 5, 3) = (Just : 5)\n"
-            <> "assert Ints.min(1, 5, 3) = (Just : 1)"
+    , moduleCase origin "numbers max and min satisfy positional assertions"
+        ( "import \"numbers\"\n"
+            <> "assert Numbers.max() = nothing\n"
+            <> "assert Numbers.max(1) = (Just : 1)\n"
+            <> "assert Numbers.max(1, 5, 3) = (Just : 5)\n"
+            <> "assert Numbers.min(1, 5, 3) = (Just : 1)"
         )
         "()"
-    , moduleCase origin "integers max and min support mixed named calls"
-        ( "import \"integers\"\n"
-            <> "yield (Ints.max(arg1 := 3, 0); "
-            <> "Ints.min(arg2 := 12, arg0 := 9, 2))"
+    , moduleCase origin "numbers max and min support mixed named calls"
+        ( "import \"numbers\"\n"
+            <> "yield (Numbers.max(arg1 := 3, 0); "
+            <> "Numbers.min(arg2 := 12, arg0 := 9, 2))"
         )
         "(Just : 3; Just : 2)"
-    , moduleFailureCase origin "integers max rejects argument gaps"
-        "import \"integers\"\nyield Ints.max(arg2 := 3, 0)"
+    , moduleFailureCase origin "numbers max rejects argument gaps"
+        "import \"numbers\"\nyield Numbers.max(arg2 := 3, 0)"
         (== ModuleEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-    , moduleFailureCase origin "integers is not imported by default"
-        "yield Ints.max(1, 2)"
-        (== ModuleEvaluationFailure (UnknownIdentifier "Ints"))
+    , moduleFailureCase origin "numbers is not imported by default"
+        "yield Numbers.max(1, 2)"
+        (== ModuleEvaluationFailure (UnknownIdentifier "Numbers"))
     , moduleFailureCase origin "qualified import does not leak names"
         "import \"library_one\"\nyield x"
         (== ModuleEvaluationFailure (UnknownIdentifier "x"))

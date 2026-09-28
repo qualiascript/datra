@@ -39,6 +39,7 @@ yield Std := begin
   val : "$_Expr" as (_AST -> _AST) := !^"datra.syntax.val"
 
   List := (for T? of Any) -> Any yield fun (() | T; this)
+  InhabitedList := (for T? of Any) -> Any yield (T; List T)
   Just := (for T? of Any) -> Any yield Just : T
   Maybe := (for T? of Any) -> Any yield $Nothing | Just T
   Str := List Char

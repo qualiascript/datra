@@ -14,12 +14,7 @@ import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application
   ( ModuleLoadFailure (..))
 import SyntaxDefinitions
-import StdLib (isStandardLibraryRequest)
-import IntegersLib
-  ( integersLibraryFileName
-  , integersLibrarySource
-  , isIntegersLibraryRequest
-  )
+import LibraryFiles (bundledLibrary, isStandardLibraryRequest)
 
 loadImports
   :: FilePath
@@ -53,40 +48,37 @@ loadPaths ancestors origin = fmap sequence . traverse (load ancestors origin)
     load visiting parent requested
       | isStandardLibraryRequest requested =
           pure (Right (requested, StdLibModule))
-      | isIntegersLibraryRequest requested =
-          pure $ do
-            expression <- Bifunctor.first
-              (ImportedModuleParseFailed integersLibraryFileName)
-              (locatedValue <$> parseDatraLocatedWithSyntaxImports
-                [] integersLibraryFileName integersLibrarySource)
-            Right
-              ( requested
-              , ModuleSource integersLibraryFileName expression []
-              )
       | otherwise = do
-          let filename = if null (takeExtension requested) then requested <> ".datra" else requested
-              location = takeDirectory parent </> filename
-          resolved <- try (canonicalizePath location) :: IO (Either IOException FilePath)
-          case resolved of
-            Left exception -> pure (Left
-              (ImportPathResolutionFailed
-                requested location (show exception)))
-            Right path | path `elem` visiting ->
-              pure (Left (CyclicModuleImport path))
-            Right path -> do
-              loaded <- try (readFile path >>= \text -> length text `seq` pure text) :: IO (Either IOException String)
-              case loaded of
+          shipped <- bundledLibrary requested
+          case shipped of
+            Just (path, text) -> parseModule visiting requested path text
+            Nothing -> do
+              let filename = if null (takeExtension requested) then requested <> ".datra" else requested
+                  location = takeDirectory parent </> filename
+              resolved <- try (canonicalizePath location) :: IO (Either IOException FilePath)
+              case resolved of
                 Left exception -> pure (Left
-                  (ModuleReadFailed requested path (show exception)))
-                Right text -> do
-                  dependencies <- go (path:visiting) path text
-                  pure $ do
-                    imports <- dependencies
-                    expression <- Bifunctor.first
-                      (ImportedModuleParseFailed path)
-                      (locatedValue <$> parseDatraLocatedWithSyntaxImports
-                        (importSyntax imports) path text)
-                    pure (requested, ModuleSource path expression imports)
+                  (ImportPathResolutionFailed
+                    requested location (show exception)))
+                Right path | path `elem` visiting ->
+                  pure (Left (CyclicModuleImport path))
+                Right path -> do
+                  loaded <- try (readFile path >>= \text -> length text `seq` pure text) :: IO (Either IOException String)
+                  case loaded of
+                    Left exception -> pure (Left
+                      (ModuleReadFailed requested path (show exception)))
+                    Right text -> parseModule visiting requested path text
+    parseModule visiting requested path text
+      | path `elem` visiting = pure (Left (CyclicModuleImport path))
+      | otherwise = do
+          dependencies <- go (path:visiting) path text
+          pure $ do
+            imports <- dependencies
+            expression <- Bifunctor.first
+              (ImportedModuleParseFailed path)
+              (locatedValue <$> parseDatraLocatedWithSyntaxImports
+                (importSyntax imports) path text)
+            pure (requested, ModuleSource path expression imports)
 
 
 importSyntax

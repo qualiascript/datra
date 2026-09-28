@@ -49,7 +49,7 @@ import RuntimeModules
   , expressionForMode
   , modulesForMode
   )
-import StdLib
+import LibraryFiles
   ( isStandardLibraryRequest
   , standardLibraryFileName
   , standardLibraryIdentity
@@ -429,6 +429,18 @@ interpretNormalizedExpression scope resolving expressionValue =
       case optionalIdentifierExpression expressionValue of
         Just (present, missing) -> binary eitherValue present missing
         Nothing -> interpret operand >>= optionalValue
+    ListUncons operand -> interpret operand >>= unconsList
+    MaybeThen optional branch -> do
+      optionalResult <- interpret optional
+      case interpretedCanonicalResult optionalResult of
+        CanonicalAssignment "Nothing" _ _ -> pure nothingValue
+        CanonicalAssignment "Just" _ _ -> do
+          result <- evalInScope
+            (("it", EvaluatedBinding optionalResult) : scope)
+            resolving
+            branch
+          liftMaybeResult result
+        _ -> Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
     Conditional condition consequent alternative -> do
       conditionValue <- interpret condition
       conditionFlag <- booleanCondition conditionValue
@@ -632,6 +644,24 @@ interpretNormalizedExpression scope resolving expressionValue =
                   })
             result -> result
     binary = interpretBinaryWith interpret
+    liftMaybeResult result = case interpretedCanonicalResult result of
+      CanonicalAssignment "Nothing" _ _ -> pure result
+      CanonicalAssignment "Just" _ _ -> pure result
+      _ -> optionalValue result >>= contextuallySpecify result
+    unconsList value = do
+      count <- maybe
+        (Left (FunctionEvaluationFailed FunctionArgumentsRequireFinitePages))
+        Right
+        (naturalAtOrdinal
+          (interpretedMapFinalOrderType (interpretedMap value)))
+      if count == 0
+        then pure nothingValue
+        else do
+          headValue <- accessValues value (naturalValue 0)
+          tailRange <- naturalRangeUpwardsValue 1
+          tailValue <- accessValues value tailRange
+          let pair = makeAtlasMap 2 [headValue, tailValue]
+          optionalValue pair >>= contextuallySpecify pair
     evaluateBlock source bindings result = do
       let origins = canonicalDependencyNames bindings result
           reconstructionScope = if null origins then scope
@@ -1375,8 +1405,8 @@ createFunction captured resolving explicit bindings result = do
 applyFunction :: InterpretedValue -> InterpretedValue -> Either InterpretingError InterpretedValue
 applyFunction callable input =
   case selectFunctionCandidate preparations of
-    Right (function, _) | Just invoke <- functionInvoke function -> do
-      value <- invoke input
+    Right (function, (argument, _)) | Just invoke <- functionInvoke function -> do
+      value <- invoke argument
       if functionValidatesResult function
         then contextuallySpecify value (functionCodomain function)
         else pure value
@@ -1388,9 +1418,16 @@ applyFunction callable input =
       | function <- functionAlternatives callable
       , maybe True snd (functionPattern function)]
     prepare function =
-      case functionPrepare function of
-        Just operation -> operation input
-        Nothing -> input <$ validateFunctionInput input (functionDomain function)
+      case attempt input of
+        Right prepared -> Right (input, prepared)
+        Left original -> case stripOuterIdentifierValue input of
+          Right erased -> (erased,) <$> attempt erased
+          Left _ -> Left original
+      where
+        attempt argument = case functionPrepare function of
+          Just operation -> operation argument
+          Nothing -> argument <$ validateFunctionInput
+            argument (functionDomain function)
 
 contextuallySpecify
   :: InterpretedValue

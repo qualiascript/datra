@@ -95,6 +95,8 @@ data Expression
   | BooleanType
   | EitherType Expression Expression
   | OptionalType Expression
+  | ListUncons Expression
+  | MaybeThen Expression Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
   | Subtraction Expression Expression
@@ -169,7 +171,7 @@ namedBeginBlock expressionValue = do
     _ -> Nothing
 
 -- | Recover the present and unnamed alternatives represented by identifier
--- postfix @?@. Other optional nodes retain ordinary @T | Nothing@ semantics.
+-- postfix @?@. Other optional nodes use ordinary @Maybe T@ semantics.
 optionalIdentifierExpression
   :: Expression
   -> Maybe (Expression, Expression)
@@ -219,6 +221,8 @@ data OperatorExpression
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
+  | ListUnconsValue OperatorExpression
+  | MaybeThenValue OperatorExpression OperatorExpression
   | ConditionalValue
       OperatorExpression
       OperatorExpression
@@ -332,6 +336,10 @@ normalizeExpression (EitherType left right) =
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
   OptionalType (normalizeExpression operand)
+normalizeExpression (ListUncons operand) =
+  ListUncons (normalizeExpression operand)
+normalizeExpression (MaybeThen optional branch) =
+  MaybeThen (normalizeExpression optional) (normalizeExpression branch)
 normalizeExpression (Conditional condition consequent alternative) =
   Conditional
     (normalizeExpression condition)
@@ -505,6 +513,9 @@ lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
+lower (ListUncons operand) = ListUnconsValue (lower operand)
+lower (MaybeThen optional branch) =
+  MaybeThenValue (lower optional) (lower branch)
 lower (Conditional condition consequent alternative) =
   ConditionalValue (lower condition) (lower consequent) (lower alternative)
 lower (Addition left right) = Add (lower left) (lower right)
@@ -674,6 +685,11 @@ prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
+prettyOperator (ListUnconsValue operand) =
+  prettyForm (operatorCanonicalSymbol ListUnconsOperator) [prettyOperator operand]
+prettyOperator (MaybeThenValue optional branch) =
+  prettyForm (operatorCanonicalSymbol MaybeThenOperator)
+    [prettyOperator optional, prettyOperator branch]
 prettyOperator (ConditionalValue condition consequent alternative) =
   prettyForm
     (Reserved.reservedSymbolIdentifierString Reserved.IfSymbol)
@@ -939,6 +955,7 @@ traverseExpressionChildren visit expression = case expression of
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
   OptionalType x -> OptionalType <$> visit x
+  ListUncons x -> ListUncons <$> visit x
   External x -> External <$> visit x
   Let x -> Let <$> visit x
   SuperEllipsisRangePlus x -> SuperEllipsisRangePlus <$> visit x
@@ -946,6 +963,7 @@ traverseExpressionChildren visit expression = case expression of
   MapExpansion a b -> MapExpansion <$> visit a <*> visit b
   SuperEllipsisRange a b -> SuperEllipsisRange <$> visit a <*> visit b
   EitherType a b -> EitherType <$> visit a <*> visit b
+  MaybeThen a b -> MaybeThen <$> visit a <*> visit b
   Addition a b -> Addition <$> visit a <*> visit b
   Subtraction a b -> Subtraction <$> visit a <*> visit b
   Subfederation a b -> Subfederation <$> visit a <*> visit b

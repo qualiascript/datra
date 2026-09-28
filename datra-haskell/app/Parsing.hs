@@ -72,6 +72,8 @@ import DatraLanguage.AST
       , ValuedIntegerRangeDownwards
       , EitherType
       , OptionalType
+      , ListUncons
+      , MaybeThen
       , Conditional
       , Subfederation
       , Equality
@@ -116,10 +118,10 @@ import DatraLanguage.Identifier
   , isIdentifierCharacter
   , isLeadingIdentifierCharacter
   )
-import StdLib
+import LibraryFiles
   ( standardLibraryFileName
   , standardLibraryIdentity
-  , standardLibrarySource
+  , requiredBundledLibrarySource
   )
 import SyntaxDefinitions
 import DatraLanguage.AST.Reserved.Bootstrap
@@ -287,7 +289,7 @@ standardLibraryExpression =
     (runParser
       (runReaderT resource (ParserContext 0 False [] [] [] [] []))
       standardLibraryFileName
-      (Text.pack standardLibrarySource))
+      (Text.pack (requiredBundledLibrarySource standardLibraryFileName)))
 
 libraryDeclarations :: [Expression]
 libraryDeclarations =
@@ -441,6 +443,8 @@ astForm =
           (astSymbol "ref" *> astString)
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
+      , astUnary AST.ListUnconsOperator ListUncons
+      , astBinary AST.MaybeThenOperator MaybeThen
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
@@ -705,13 +709,23 @@ assertExpression = do
 
 expressionWith :: Parser Expression -> Parser Expression
 expressionWith operand = do
-  target <- functionExpressionWith operand
+  target <- maybeThenExpressionWith operand
   maybeSource <-
     optional (continuedSymbol reverseSpecificationSymbol *> expressionWith operand)
   pure
     (case maybeSource of
       Nothing -> target
       Just source -> MapSpecification source target)
+
+-- Maybe sequencing is deliberately low-precedence and right-associative so
+-- its lazy branch can contain a complete function or map expression.
+maybeThenExpressionWith :: Parser Expression -> Parser Expression
+maybeThenExpressionWith operand = do
+  optionalValue <- functionExpressionWith operand
+  branch <- optional
+    (continuedOperator AST.MaybeThenOperator *>
+      maybeThenExpressionWith operand)
+  pure (maybe optionalValue (MaybeThen optionalValue) branch)
 
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
@@ -1226,8 +1240,22 @@ accessedTerm atom = do
         names <- namedAccessNames
         horizontalSpaceConsumer
         pure (expandedNamedAccess names)
+    , OptionalType <$ optionalTypeSuffix
+    , ListUncons <$ listUnconsSuffix
     ])
   pure (foldl (\value select -> select value) source selections)
+
+optionalTypeSuffix :: Parser Text
+optionalTypeSuffix = try $ do
+  token <- operatorToken AST.OptionalOperator
+  notFollowedBy (char ':')
+  pure token
+
+listUnconsSuffix :: Parser Text
+listUnconsSuffix = try $ do
+  token <- operatorToken AST.ListUnconsOperator
+  notFollowedBy (char '^')
+  pure token
 
 namedAccessNames :: Parser [IdentifierString]
 namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
@@ -1713,8 +1741,11 @@ operatorToken operator = lexeme $ try $ do
       Just value -> pure (Text.pack value)
       Nothing -> empty
   token <- chunk sourceText
-  if operator `elem` [AST.MinusOperator, AST.SubtractionOperator]
-    then notFollowedBy (char '>') else pure ()
+  case operator of
+    AST.MinusOperator -> notFollowedBy (char '>')
+    AST.SubtractionOperator -> notFollowedBy (char '>')
+    AST.OptionalOperator -> notFollowedBy (char '?')
+    _ -> pure ()
   pure token
 
 continuedOperator :: AST.Operator -> Parser Text

@@ -54,6 +54,7 @@ source context expression =
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
+    MaybeThenValue optional branch -> binary 1 "??" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right
     And left right -> binary 5 "and" left right
@@ -82,8 +83,8 @@ source context expression =
         True
         annotation
         given
-    OptionalValue operand -> wrapped 3
-      (source 4 operand <> " | (Nothing := ())")
+    OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
+    ListUnconsValue operand -> wrapped 10 (source 10 operand <> "!")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->

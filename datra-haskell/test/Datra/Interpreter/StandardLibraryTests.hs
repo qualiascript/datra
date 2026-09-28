@@ -173,8 +173,44 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
         ]
-    , testGroup "ordinary stdlib helpers"
-        [ programCase "empty recognizes the empty map"
+    , testGroup "Maybe and list operators"
+        [ programCase "postfix optional aliases Maybe"
+            "yield Int? = Maybe Int" "true"
+        , programCase "parenthesized postfix optional nests"
+            "yield (Int?)? = Maybe (Maybe Int)" "true"
+        , programCase "empty list split is nothing"
+            "yield ()!" "nothing"
+        , programCase "nonempty list split preserves head and tail"
+            "yield (1; 2; 3)!" "Just : (1; (2; 3))"
+        , programCase "Maybe sequencing binds tagged it"
+            "yield (1; 2; 3)! ?? val it"
+            "Just : (1; (2; 3))"
+        , programCase "Maybe sequencing leaves the absent branch lazy"
+            "yield ()! ?? missing" "nothing"
+        , programFailureCase "Maybe sequencing rejects a non-Maybe left operand"
+            "yield 1 ?? 2"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programFailureCase "Maybe sequencing statically requires a Maybe left operand"
+            "yield (() -> Int? yield 1 ?? 2)"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programCase "optional named matcher accepts split positional values"
+            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+                <> "yield candidate)\n"
+                <> "yield (1; 2; 3)! ?? head it"
+            )
+            "Just : 1"
+        , programFailureCase "required named matcher rejects split positional values"
+            ( "head := ({candidate : Int, remaining : List Int} -> Int "
+                <> "yield candidate)\n"
+                <> "yield (1; 2; 3)! ?? head it"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programCase "InhabitedList describes a split list"
+            "yield (1; (2; 3)) of InhabitedList Int" "true"
+        , programCase "empty recognizes the empty map"
             "yield (empty (); empty (1; 2))" "(true; false)"
         ]
     , testGroup "scope rejections"

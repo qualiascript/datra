@@ -25,6 +25,8 @@ freeIdentifiers = nub . free []
       FunctionBody bindings result -> block bound bindings result
       Begin bindings result -> block bound bindings result
       Program bindings result -> block bound bindings result
+      MaybeThen optional branch ->
+        free bound optional <> free ("it" : bound) branch
       _ -> concatMap (free bound) (children expression)
     dependentEntries bound tag = entries bound
       where
@@ -64,12 +66,9 @@ freeIdentifiers = nub . free []
             Just value | not (declarationIsLet value) -> declarationName value : visible
             _ -> visible
 
-data InferenceBinding = InferenceBinding
-  { inferenceBindingName :: String
-  , inferenceBindingExpression :: Expression
-  , inferenceBindingMembers :: [String]
-  , inferenceBindingScope :: [InferenceBinding]
-  }
+data InferenceBinding =
+  InferenceBinding String Expression [String] [InferenceBinding]
+  | InferenceValueBinding String InterpretedValue
 
 inferParameters :: [String] -> Expression -> Either InterpretingError [(String, Expression)]
 inferParameters names body = traverse infer names
@@ -118,6 +117,13 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
           (\captured value -> InferenceBinding (declarationName value)
             (declarationValue value) memberNames captured) enclosing definitions
 
+    inferMaybePresent scope members optional = do
+      optionalType <- infer scope members optional
+      maybe
+        (Left (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        Right
+        (optionalPresentType optionalType)
+
     inferExpected scope members expected expression =
       case (expected, expression) of
         (Just target, Conditional condition yes no) -> do
@@ -125,6 +131,14 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
           check flag =<< booleanTypeValue
           _ <- inferExpected scope members (Just target) yes
           _ <- inferExpected scope members (Just target) no
+          pure target
+        (Just target, MaybeThen optional branch) -> do
+          present <- inferMaybePresent scope members optional
+          _ <- inferExpected
+            (InferenceValueBinding "it" present : scope)
+            members
+            (Just target)
+            branch
           pure target
         (Just target, Begin entries value) ->
           inferBlock (Just target) scope entries value
@@ -142,12 +156,12 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
 
     infer scope members expression = case expression of
       IdentifierReference (IdentifierString name)
-        | Just target <- lookup name parameters -> Right target
         | Just binding <- lookupInferenceBinding name scope ->
-            infer
-              (inferenceBindingScope binding)
-              (inferenceBindingMembers binding)
-              (inferenceBindingExpression binding)
+            case binding of
+              InferenceBinding _ value bindingMembers bindingScope ->
+                infer bindingScope bindingMembers value
+              InferenceValueBinding _ target -> Right target
+        | Just target <- lookup name parameters -> Right target
         | otherwise -> evaluate expression
       Addition a b -> numeric addValues False a b
       Multiplication a b -> numeric multiplyValues False a b
@@ -167,6 +181,18 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         left <- recur yes
         right <- recur no
         joinTypes left right
+      MaybeThen optional branch -> do
+        present <- inferMaybePresent scope members optional
+        branchType <- infer
+          (InferenceValueBinding "it" present : scope)
+          members
+          branch
+        optionalValue branchType
+      ListUncons operand -> do
+        listType <- recur operand
+        indexedType <- accessValues listType (naturalValue 0)
+        let elementType = maybe indexedType id (optionalUnderlying indexedType)
+        optionalValue (makeAtlasMap 2 [elementType, listType])
       Equality a b -> recur a >> recur b >> booleanTypeValue
       Inequality a b -> recur a >> recur b >> booleanTypeValue
       Subfederation a b -> recur a >> recur b >> booleanTypeValue
@@ -277,10 +303,35 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         checkFunctionArgument written actual expected =
           case check actual expected of
             Right () -> Right ()
-            Left original ->
-              case checkWrittenOrder written expected original of
+            Left original -> do
+              supplied <- case stripOuterIdentifierType actual of
+                Right erased -> Right erased
+                Left _ -> Right actual
+              case validateFunctionInput supplied expected of
                 Right () -> Right ()
-                Left _ -> Left original
+                Left _ -> case checkValueOrder supplied expected original of
+                  Right () -> Right ()
+                  Left _ -> case checkWrittenOrder written expected original of
+                    Right () -> Right ()
+                    Left _ -> Left original
+
+        checkValueOrder supplied expected original = do
+          suppliedMembers <- case argumentRows supplied of
+            Right (first : _) -> Right first
+            _ -> Left original
+          expectedMembers <- case argumentRows expected of
+            Right (first : _) -> Right first
+            _ -> Left original
+          if length suppliedMembers /= length expectedMembers
+            then Left original
+            else mapM_ (uncurry (checkValueMember original))
+              (zip suppliedMembers expectedMembers)
+
+        checkValueMember original supplied expected = do
+          (_, acceptsUnnamed, expectedType) <- expectedSlot expected
+          if acceptsUnnamed
+            then check supplied expectedType
+            else Left original
 
         checkWrittenOrder written expected original = do
           expectedMembers <- case argumentRows expected of
@@ -343,8 +394,10 @@ lookupInferenceBinding name = go
   where
     go [] = Nothing
     go (binding : remaining)
-      | inferenceBindingName binding == name = Just binding
+      | bindingName binding == name = Just binding
       | otherwise = go remaining
+    bindingName (InferenceBinding binding _ _ _) = binding
+    bindingName (InferenceValueBinding binding _) = binding
 
 check :: InterpretedValue -> InterpretedValue -> Either InterpretingError ()
 check actual expected

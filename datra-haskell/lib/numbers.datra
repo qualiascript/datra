@@ -1,23 +1,21 @@
-yield Ints := begin
+yield Numbers := begin
 
-  max := {Args Int,} -> Maybe Int do
-    values := val it
+  max := {Args Int,} -> Int? do
+    values := (val it)!
     let maximum := {candidate? : Int, remaining? : List Int} -> Int do
     yield if empty remaining then candidate
       else begin
         let next := maximum remaining[0; range 1 up]
       yield if candidate of from next up then candidate else next
-  yield if empty values then nothing
-    else maximum values[0; range 1 up]
+  yield values ?? maximum it
 
-  min := {Args Int,} -> Maybe Int do
-    values := val it
+  min := {Args Int,} -> Int? do
+    values := (val it)!
     let minimum := {candidate? : Int, remaining? : List Int} -> Int do
     yield if empty remaining then candidate
       else begin
         let next := minimum remaining[0; range 1 up]
       yield if candidate of from next down then candidate else next
-  yield if empty values then nothing
-    else minimum values[0; range 1 up]
+  yield values ?? minimum it
 
 yield public this
