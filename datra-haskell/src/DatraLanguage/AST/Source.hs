@@ -98,15 +98,15 @@ source context expression =
     RangePlus operand -> source 11 operand <> ".."
     RangeMinus operand -> source 11 operand <> "..-"
     InclusiveNaturalRange start end -> bounded "range" start end
-    InclusiveNaturalRangeUpwards start -> open "range" start "upwards"
+    InclusiveNaturalRangeUpwards start -> open "range" start "up"
     InclusiveValuedNaturalRange start end -> bounded "from" start end
-    InclusiveValuedNaturalRangeUpwards start -> open "from" start "upwards"
+    InclusiveValuedNaturalRangeUpwards start -> open "from" start "up"
     InclusiveIntegerRange start end -> bounded "range" start end
-    InclusiveIntegerRangeUpwards start -> open "range" start "upwards"
-    InclusiveIntegerRangeDownwards start -> open "range" start "downwards"
+    InclusiveIntegerRangeUpwards start -> open "range" start "up"
+    InclusiveIntegerRangeDownwards start -> open "range" start "down"
     InclusiveValuedIntegerRange start end -> bounded "from" start end
-    InclusiveValuedIntegerRangeUpwards start -> open "from" start "upwards"
-    InclusiveValuedIntegerRangeDownwards start -> open "from" start "downwards"
+    InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
+    InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom

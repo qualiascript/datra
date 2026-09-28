@@ -40,7 +40,7 @@ standardLibraryTests =
         | (source, expected) <-
             [ ("Std.if false then (1 + \"bad\") else 11", "11")
             , ("Std.from (1 + 1) to 5", "from 2 to 5")
-            , ("Std.range 2 downwards", "range 2 downwards")
+            , ("Std.range 2 down", "range 2 down")
             , ("Std.true", "true : true")
             ]
         ]
@@ -110,7 +110,7 @@ standardLibraryTests =
               , "b? : Nat := 2, c? : Nat := 3"
               )
             , ("yield from (2,5)", "from 2 to 5")
-            , ("yield from (2,$upwards)", "from 2 upwards")
+            , ("yield from (2,$up)", "from 2 up")
             , ("f := !^\"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
@@ -144,6 +144,23 @@ standardLibraryTests =
         , programCase "lookup does not change optional-name specification"
             ("x := 5\nyield (x := ^x) ~> (x? : Nat)")
             "x? : Nat := 5"
+        ]
+    , testGroup "mapped access"
+        [ programCase "brackets preserve a semicolon selector map"
+            "values := (10; 20; 30)\nyield values[0; range 1 up]"
+            "(10; (20; 30))"
+        , programCase "infix access preserves a semicolon selector map"
+            "values := (10; 20; 30)\nyield values @ (0; range 1 up)"
+            "(10; (20; 30))"
+        , programCase "comma selectors concatenate their access results"
+            "values := (10; 20; 30)\nyield values[0, range 1 up]"
+            "(10; 20; 30)"
+        , programCase "semicolon access retains overlapping argument types"
+            ( "split := ({Args Int,} -> (Int; List Int) do "
+                <> "yield (val it)[0; range 1 up])\n"
+                <> "yield split(10, 20, 30)"
+            )
+            "(10; (20; 30))"
         ]
     , testGroup "contextual result inference"
         [ programCase "selects a uniquely matching user-defined sum member"
@@ -200,7 +217,7 @@ standardLibraryTests =
             , "not (NatRange of IntValRange)"
             , "not (NatValRange of IntRange)"
             , "from 2 to 5 of NatValRange"
-            , "range 2 upwards of NatRange"
+            , "range 2 up of NatRange"
             , "not (from (-2) to 5 of NatValRange)"
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"

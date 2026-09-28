@@ -177,8 +177,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       -- Args, the recursive helper, and max each use range once.
       assertEqual "range is expanded only at its three source uses" 3
         (occurrences "!^\"datra.range\"" text)
-      assertBool "the inferred list binding is indexed directly"
-        ("values[0]" `isInfixOf` text)
+      assertBool "the inferred list binding uses mapped head-tail access"
+        ("values[(0;" `isInfixOf` text)
       assertBool "the removed explicit list specification stays absent"
         (not ("values ~>" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"

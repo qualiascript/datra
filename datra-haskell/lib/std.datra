@@ -48,7 +48,7 @@ yield Std := begin
   nothing := $Nothing
   Bool := (false | true)
   empty := Any -> Bool yield it = ()
-  _Wards := ($upwards | $downwards)
+  _Direction := ($up | $down)
 
   NatRange := !^"datra.NatRange"
   IntRange := !^"datra.IntRange"
@@ -58,11 +58,11 @@ yield Std := begin
 
   from := (
     ("$Int to $Int" as? (Int, Int -> IntValRange) !^"datra.from") |
-    ("$Int $_Wards" as? (Int, _Wards -> IntValRange) !^"datra.from")
+    ("$Int $_Direction" as? (Int, _Direction -> IntValRange) !^"datra.from")
   )
   range := (
     ("$Int to $Int" as? (Int, Int -> IntRange) !^"datra.range") |
-    ("$Int $_Wards" as? (Int, _Wards -> IntRange) !^"datra.range")
+    ("$Int $_Direction" as? (Int, _Direction -> IntRange) !^"datra.range")
   )
 
   Args := (for T? of Any) -> Any do

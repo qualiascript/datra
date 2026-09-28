@@ -1497,8 +1497,8 @@ registeredExternal symbol = case symbol of
         (Just ("!^" <> show symbol)) signatureText Nothing Nothing True))
     nativeRange valued = do
       ints <- integerTypeValue
-      up <- asciiStringValue "upwards"
-      down <- asciiStringValue "downwards"
+      up <- asciiStringValue "up"
+      down <- asciiStringValue "down"
       wards <- eitherValue ints up >>= (`eitherValue` down)
       let domain = makeAtlasMap 2 [ints, wards]
       let invoke argument = do
@@ -1508,10 +1508,10 @@ registeredExternal symbol = case symbol of
             _ <- specifyValues endValue wards
             start <- requireFiniteInteger LeftOperand startValue
             case concreteCanonical (interpretedCanonicalResult endValue) of
-              CanonicalAsciiString "upwards"
+              CanonicalAsciiString "up"
                 | start >= 0 -> (if valued then valuedNaturalRangeUpwardsValue else naturalRangeUpwardsValue) (fromInteger start)
                 | otherwise -> (if valued then valuedIntegerRangeUpwardsValue else integerRangeUpwardsValue) start
-              CanonicalAsciiString "downwards" ->
+              CanonicalAsciiString "down" ->
                 if valued then valuedIntegerRangeDownwardsValue start else integerRangeDownwardsValue start
               _ -> do
                 end <- requireFiniteInteger RightOperand endValue

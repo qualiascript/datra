@@ -25,7 +25,11 @@ import Evaluation.Access.Federation
   )
 import Evaluation.Access.Specification (accessSpecification)
 import Evaluation.Access.Identifier (accessDependentIdentifierType)
-import Evaluation.Map (makeAtlasMap)
+import Evaluation.Map
+  ( concatenateValues
+  , makeAtlasExpansion
+  , makeAtlasMap
+  )
 import Evaluation.Construction (makeAsciiString, makeFormulation)
 import Evaluation.Access.RangeSelection
   ( AccessSource (..)
@@ -39,7 +43,11 @@ import Evaluation.Access.RangeSelection
   )
 import Evaluation.Range qualified as RangeEvaluation
 import Evaluation.Value
-import Evaluation.Arguments (argumentAlternatives, makeDistinctUnion)
+import Evaluation.Arguments
+  ( argumentAlternatives
+  , makeArgumentMap
+  , makeDistinctUnion
+  )
 import Evaluation.Specification (specifyValues)
 import NaturalRange qualified
 import MapOperators.AccessOperator
@@ -57,6 +65,55 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
+  case interpretedForm insertionValue of
+    SequentialMapForm ->
+      accessMappedMembers makeAtlasMap mapValue insertionValue
+    MapForm ->
+      accessMappedMembers makeAtlasMap mapValue insertionValue
+    ExpansionMapForm left right -> do
+      selectedLeft <- accessValues mapValue left
+      selectedRight <- accessValues mapValue right
+      pure
+        (makeAtlasExpansion
+          (interpretedMapCardinality (interpretedMap insertionValue))
+          [selectedLeft, selectedRight])
+    ConcatenatedMapForm left right -> do
+      selectedLeft <- accessValues mapValue left
+      selectedRight <- accessValues mapValue right
+      concatenateValues selectedLeft selectedRight
+    ArgumentMapForm members _ ->
+      traverse (accessValues mapValue) members >>= makeArgumentMap
+    _ -> accessSingleValue mapValue insertionValue
+
+-- A map of selectors preserves the map's own structure. In particular,
+-- @source[first; rest]@ is a two-page map whose second page may itself be a
+-- map; it is not the flattened insertion denoted by @source[first, rest]@.
+accessMappedMembers
+  :: (Natural -> [InterpretedValue] -> InterpretedValue)
+  -> InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+accessMappedMembers build mapValue selectors =
+  case finiteMapMembers selectors of
+    Nothing -> accessSingleValue mapValue selectors
+    Just members ->
+      build
+        (interpretedMapCardinality (interpretedMap selectors))
+        <$> traverse (accessValues mapValue) members
+
+finiteMapMembers :: InterpretedValue -> Maybe [InterpretedValue]
+finiteMapMembers value = do
+  count <- naturalAtOrdinal
+    (interpretedMapFinalOrderType (interpretedMap value))
+  traverse
+    (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
+    (if count == 0 then [] else [0 .. count - 1])
+
+accessSingleValue
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+accessSingleValue mapValue insertionValue =
   case interpretedForm mapValue of
     DependentSumForm dependent
       | Just access <- evaluatedDependentSumAccess dependent ->

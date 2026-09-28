@@ -322,7 +322,21 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
           ArgumentMap values -> values
           MapConcatenation left right ->
             writtenMembers left <> writtenMembers right
+          MapAccess source selectors ->
+            mappedAccessMembers source selectors
           value -> [value]
+
+        mappedAccessMembers source selectors =
+          case selectors of
+            AtlasMap values -> map (MapAccess source) values
+            MapSequence values -> map (MapAccess source) values
+            ArgumentMap values -> map (MapAccess source) values
+            MapExpansion left right ->
+              [MapAccess source left, MapAccess source right]
+            MapConcatenation left right ->
+              mappedAccessMembers source left
+                <> mappedAccessMembers source right
+            value -> [MapAccess source value]
 
 lookupInferenceBinding :: String -> [InferenceBinding] -> Maybe InferenceBinding
 lookupInferenceBinding name = go

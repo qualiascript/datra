@@ -551,7 +551,7 @@ astNaturalRangeExpression = do
   bounds <- astNaturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
 
--- The shared @a to b@ / @a upwards@ grammar is intentionally reachable only
+-- The shared @a to b@ / @a up@ grammar is intentionally reachable only
 -- after a @range@ or @from@ prefix.
 astNaturalRangeBounds :: Parser NaturalRangeBounds
 astNaturalRangeBounds = do
@@ -1270,7 +1270,10 @@ bracketedInsertion =
   between
     (symbol "[" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol "]")
-    expression
+    (do
+      selections <- elements
+      guard (not (null selections))
+      pure (sequenceExpression selections))
 
 naturalRangeExpressionFor
   :: NaturalRangePrefix

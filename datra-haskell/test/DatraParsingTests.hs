@@ -362,15 +362,15 @@ regressionTests = do
     (...)
   assertAstOutput
     "specification into a library range"
-    "2..5 ~> range 0 upwards"
+    "2..5 ~> range 0 up"
     ((natural 2 <..> natural 5) ~> rangeUpwards 0)
   assertAstOutput
     "bounded from call"
     "from 2 to 5"
     (fromTo 2 5)
   assertAstOutput
-    "upwards from call"
-    "from 2 upwards"
+    "up from call"
+    "from 2 up"
     (fromUpwards 2)
   assertParsed "unregistered keyword names parse as applications" "within 2 to 5"
     (foldl FunctionApplication (IdentifierReference (IdentifierString "within"))
@@ -395,7 +395,7 @@ regressionTests = do
     (ref "Int")
   assertAstOutput
     "descending open integer range"
-    "range -1 downwards"
+    "range -1 down"
     (rangeDownwards (-1))
   assertAstOutput
     "bounded valued integer range"
@@ -481,9 +481,9 @@ regressionTests = do
     (AST.dependentIdentifierType "to" (ref "Nat"))
   assertAstOutput
     "contextual range directions remain bare identifier expressions"
-    "(upwards : Nat; downwards : Nat)"
-    (AST.dependentIdentifierType "upwards" (ref "Nat")
-      <:> AST.dependentIdentifierType "downwards" (ref "Nat"))
+    "(up : Nat; down : Nat)"
+    (AST.dependentIdentifierType "up" (ref "Nat")
+      <:> AST.dependentIdentifierType "down" (ref "Nat"))
   assertAstOutput
     "uppercase built-in names remain bare identifier expressions"
     "False : Nat"
@@ -593,11 +593,11 @@ regressionTests = do
     (natural 2 ~> ref "Nat")
   assertParsed "unprefixed range words have ordinary application syntax" "2 to 5"
     (FunctionApplication (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "to"))) (natural 5))
-  assertParsed "unprefixed direction is an ordinary reference" "2 upwards"
-    (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "upwards")))
+  assertParsed "unprefixed direction is an ordinary reference" "2 up"
+    (FunctionApplication (natural 2) (IdentifierReference (IdentifierString "up")))
   assertAstOutput
     "specification binds after access and concatenation"
-    "1, 2 @ range 0 upwards ~> range 0 to 10"
+    "1, 2 @ range 0 up ~> range 0 to 10"
     (((natural 1 <.> natural 2) <@> rangeUpwards 0) ~> rangeTo 0 10)
   assertAstOutput
     "access after a specification projects its fibers"
@@ -632,7 +632,7 @@ regressionTests = do
     ((natural 2 <..> natural 3) ~> rangeTo 2 5 ~> rangeTo 2 8)
   assertAstOutput
     "reverse specification binds after access and concatenation"
-    "range 0 to 10 <~ 1, 2 @ range 0 upwards"
+    "range 0 to 10 <~ 1, 2 @ range 0 up"
     (((natural 1 <.> natural 2) <@> rangeUpwards 0) ~> rangeTo 0 10)
   assertAstOutput
     "a postfix range can precede reverse specification"
@@ -1047,11 +1047,11 @@ regressionTests = do
     (rangeTo 2 5)
   assertAstOutput
     "open inclusive natural range"
-    "range 2 upwards"
+    "range 2 up"
     (rangeUpwards 2)
   assertAstOutput
     "natural range access"
-    "1, 2, 3 @ range 1 upwards"
+    "1, 2, 3 @ range 1 up"
     ((natural 1 <.> natural 2 <.> natural 3) <@> rangeUpwards 1)
   assertAstOutput
     "bracket access binds before arithmetic"
@@ -1146,6 +1146,17 @@ regressionTests = do
     "bracket insertion accepts an explicitly constructed map"
     "$a[(1; 2)]"
     (AST.asciiString "a" <@> (natural 1 <:> natural 2))
+  let headTailAccess =
+        AST.asciiString "a"
+          <@> AtlasMap [natural 0, rangeUpwards 1]
+  assertAstOutput
+    "bracket insertion accepts an inline selector map"
+    "$a[0; range 1 up]"
+    headTailAccess
+  assertAstOutput
+    "infix access accepts the same selector map"
+    "$a @ (0; range 1 up)"
+    headTailAccess
   assertAstOutput
     "bracket access accepts an explicitly constructed map on the left"
     "(2; 3)[0]"
@@ -1657,9 +1668,9 @@ assertAstSyntax = do
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
         == "(apply (in-module $std (~> (!^ \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $_Wards)) (ref $IntValRange)))) "
+          <> "(-> (<.> (ref $Int) (ref $_Direction)) (ref $IntValRange)))) "
           <> "(<:> (~> 2 (in-module $std (ref $Int))) "
-          <> "(~> $upwards (in-module $std (ref $_Wards)))))"
+          <> "(~> $up (in-module $std (ref $_Direction)))))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -1756,5 +1767,5 @@ rangeCall name start end = FunctionApplication
     checked target value = MapSpecification value (scoped (ref target))
     (endpointType, endpoint) = case end of
       UpperBound value -> ("Int", value)
-      Upwards -> ("_Wards", AsciiStringLiteral "upwards")
-      Downwards -> ("_Wards", AsciiStringLiteral "downwards")
+      Upwards -> ("_Direction", AsciiStringLiteral "up")
+      Downwards -> ("_Direction", AsciiStringLiteral "down")
