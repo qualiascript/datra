@@ -445,10 +445,9 @@ testArgumentSchemas = do
       evaluateNatural expression
         | expression == naturalExpression = Right naturalType
         | otherwise = Left (Types.UnknownIdentifier "unexpected test expression")
-      privateOptional = AST.EitherType
+      privateOptional = AST.OptionalType
         (AST.IdentifierOperation
           (AST.IdentifierString "_value") naturalExpression Nothing)
-        naturalExpression
   assert "private optional parameters use a structured boundary error"
     (case Types.compileParameters evaluateNatural privateOptional of
       Left (Types.PrivateParameterCannotBeOptional "_value") -> True
@@ -457,9 +456,9 @@ testArgumentSchemas = do
       exponentValue = Types.naturalValue 3
       positionalSchema = Types.orderedArgumentSchema 2
         [ Types.argumentSlotSchema
-            (Just "_base") False naturalType (Just defaultBase)
+            (Just "base") True naturalType (Just defaultBase)
         , Types.argumentSlotSchema
-            (Just "_exponent") False naturalType Nothing
+            (Just "exponent") True naturalType Nothing
         ]
   skipped <- expectRight "construct skipped arguments"
     (Types.makeArgumentMap [Types.skipValue, exponentValue])
@@ -471,10 +470,10 @@ testArgumentSchemas = do
           (Types.makeAtlasMap 2 [defaultBase, exponentValue]))
   (_, bindings) <- expectRight "bind skipped positional arguments"
     (Types.overloadArgumentSchemaComplete positionalSchema skipped)
-  assert "private positional parameters still produce body bindings"
+  assert "optional positional parameters still produce body bindings"
     (map (\(name, value) -> (name, Types.interpretedCanonicalResult value)) bindings
-      == [ ("_base", Types.interpretedCanonicalResult defaultBase)
-         , ("_exponent", Types.interpretedCanonicalResult exponentValue)
+      == [ ("base", Types.interpretedCanonicalResult defaultBase)
+         , ("exponent", Types.interpretedCanonicalResult exponentValue)
          ])
 
   let requiredSchema = Types.orderedArgumentSchema 2
@@ -490,9 +489,9 @@ testArgumentSchemas = do
   reordered <- expectRight "construct uniquely reorderable arguments"
     (Types.makeArgumentMap [text, Types.naturalValue 7])
   let reorderSchema = Types.unorderedArgumentSchema
-        [ Types.argumentSlotSchema (Just "x") False integerType Nothing
+        [ Types.argumentSlotSchema (Just "x") True integerType Nothing
         , Types.argumentSlotSchema
-            (Just "label") False Types.stringTypeValue Nothing
+            (Just "label") True Types.stringTypeValue Nothing
         ]
   (_, reorderedBindings) <- expectRight "uniquely reorder arguments"
     (Types.overloadArgumentSchemaComplete reorderSchema reordered)

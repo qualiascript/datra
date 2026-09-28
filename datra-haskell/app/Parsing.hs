@@ -804,7 +804,7 @@ identifierTemplateOperation = do
         (typeAnnotation, givenValue) <- assignedIdentifierValue
         let operation = IdentifierTemplateOperation
               parts typeAnnotation (Just givenValue)
-        pure (optionalIdentifier isOptional operation typeAnnotation)
+        pure (optionalIdentifier isOptional operation)
     , do
         _ <- continuedOperator AST.DependentIdentifierTypeOperator
         typeAnnotation <- identifierValueExpression
@@ -812,7 +812,7 @@ identifierTemplateOperation = do
           (continuedOperator AST.AssignmentOperator *>
             identifierValueExpression)
         let operation = IdentifierTemplateOperation parts typeAnnotation givenValue
-        pure (optionalIdentifier isOptional operation typeAnnotation)
+        pure (optionalIdentifier isOptional operation)
     ]
 
 -- A colon distinguishes a declaration from a bare lexical reference or call.
@@ -847,7 +847,7 @@ identifierOperation = do
                 operationIdentifierString
                 resolvedAnnotation
                 (Just resolvedValue)
-        pure (optionalIdentifier isOptional operation resolvedAnnotation)
+        pure (optionalIdentifier isOptional operation)
     , do
         _ <- continuedOperator AST.DependentIdentifierTypeOperator
         operationIdentifierString <-
@@ -864,7 +864,7 @@ identifierOperation = do
         let operation =
               IdentifierOperation
                 operationIdentifierString typeAnnotation givenValue
-        pure (optionalIdentifier isOptional operation typeAnnotation)
+        pure (optionalIdentifier isOptional operation)
     ]
 
 -- Symbolic parser values can project declarations from an enclosing scope.
@@ -896,10 +896,9 @@ resolveSymbolicAssignment context annotation given =
       externalSymbol value == Just "datra.syntax.super"
     isOuterScopeValue _ = False
 
-optionalIdentifier :: Bool -> Expression -> Expression -> Expression
-optionalIdentifier False operation _ = operation
-optionalIdentifier True operation missingValue =
-  EitherType operation missingValue
+optionalIdentifier :: Bool -> Expression -> Expression
+optionalIdentifier False operation = operation
+optionalIdentifier True operation = OptionalType operation
 
 -- A named value may bind a begin block directly. When a specification is
 -- supplied before @~>@, keep it as the identifier annotation and the block as
@@ -1342,8 +1341,7 @@ arithmeticOperatorTableWith
   :: (AST.Operator -> Parser Text)
   -> [[Operator Parser Expression]]
 arithmeticOperatorTableWith infixOperator =
-  [ [Postfix (OptionalType <$ operatorToken AST.OptionalOperator)]
-  , [InfixR (Exponentiation <$ exponentiationOperator infixOperator)]
+  [ [InfixR (Exponentiation <$ exponentiationOperator infixOperator)]
   , [ Prefix (Minus <$ operatorToken AST.MinusOperator)
     , Prefix (Minus <$ continuedWordOperator AST.MinusOperator)
     , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
@@ -1595,13 +1593,7 @@ astSimpleInterpolation :: Parser Expression
 astSimpleInterpolation = simpleInterpolationWith astAtom
 
 simpleInterpolationWith :: Parser Expression -> Parser Expression
-simpleInterpolationWith atomParser = do
-  expressionValue <- atomParser
-  isOptional <- maybe False (const True) <$> optional (char '?')
-  pure
-    (if isOptional
-      then OptionalType expressionValue
-      else expressionValue)
+simpleInterpolationWith = id
 
 buildStringTemplate :: [ParsedStringTemplatePart] -> Expression
 buildStringTemplate parsedParts =

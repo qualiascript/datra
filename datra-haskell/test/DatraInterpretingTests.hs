@@ -161,6 +161,19 @@ testTree =
 assert :: String -> Bool -> IO ()
 assert = assertBool
 
+maybeType :: Expression -> Expression
+maybeType = FunctionApplication
+  (IdentifierReference (IdentifierString "Maybe"))
+
+justValue :: Expression -> Expression
+justValue value = AST.assignment "Just" value value
+
+maybeExpansion :: Expression -> Expression
+maybeExpansion value =
+  AST.eitherType
+    (AST.assignment "Nothing" AST.emptyMap AST.emptyMap)
+    (AST.dependentIdentifierType "Just" value)
+
 propNaturalAddition :: H.Property
 propNaturalAddition = H.property $ do
   left <- H.forAll naturalGen
@@ -270,9 +283,9 @@ propOptionalIntegerRangeBranches = H.property $ do
       expressionValue =
         AST.conditional
           (AST.boolean selectValue)
-          (integerExpression selected)
+          (justValue (integerExpression selected))
           nothingValue
-          ~> AST.optional (AST.integerWithinTo (-25) 25)
+          ~> maybeType (AST.integerWithinTo (-25) 25)
   case interpretExpressionReason expressionValue of
     Right _ -> H.success
     Left rejection -> H.annotateShow rejection >> H.failure
@@ -1243,7 +1256,7 @@ testStringTemplates = do
           ]
       optionalIntegerTemplate =
         StringTemplate
-          [StringTemplateInterpolation (OptionalType IntegerType)]
+          [StringTemplateInterpolation (maybeType IntegerType)]
   expectValue
       "\"true\" ~> \"%Bool\""
       (AsciiStringLiteral "true" ~> booleanTemplate) $ \value ->
@@ -1260,11 +1273,11 @@ testStringTemplates = do
           == "$falsetrue ~> \"%Bool%Bool\""
       )
   expectValue
-      "\"nothing\" ~> \"%Int?\""
+      "\"nothing\" ~> \"%(Maybe Int)\""
       (AsciiStringLiteral "nothing" ~> optionalIntegerTemplate) $ \value ->
     assert "the optional missing constructor selects through toString"
       ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "$nothing ~> \"%Int?\""
+        && renderInterpretedValue value == "$nothing ~> \"%(Maybe Int)\""
       )
   expectValue
       "non-digit delimiter between natural interpolations"
@@ -1612,29 +1625,29 @@ testOptionalsAndConditionals = do
       "$alco of (ie? : IdenStr)" $ \value ->
     assert "the plain value selects the unnamed branch"
       (renderInterpretedValue value == "true")
-  expectValue "optional Nat" (AST.optional AST.naturalType) $ \value ->
-    assert "the exact optional federation restores its suffix"
-      (renderInterpretedValue value == "Nat?")
+  expectValue "Maybe Nat" (maybeType AST.naturalType) $ \value ->
+    assert "the exact optional federation restores its constructor syntax"
+      (renderInterpretedValue value == "Maybe Nat")
   expectValue
       "expanded optional equality"
       (AST.equal
-        (AST.optional AST.naturalType)
-        (AST.eitherType AST.naturalType nothingValue)) $ \value ->
+        (maybeType AST.naturalType)
+        (maybeExpansion AST.naturalType)) $ \value ->
     assert "optional syntax is definitionally its expanded federation"
       (renderInterpretedValue value == "true")
   expectValue
       "Nothing specification"
-      (nothingValue ~> AST.optional AST.naturalType) $ \value ->
+      (nothingValue ~> maybeType AST.naturalType) $ \value ->
     assert "absence selects the tagged optional alternative"
       (renderInterpretedValue value
-        == "nothing ~> Nat?")
+        == "nothing ~> Maybe Nat")
   expectValue
       "canonical Nothing identifier"
       (AST.dependentIdentifierType "Nothing" AST.emptyMap
-        ~> AST.optional AST.naturalType) $ \value ->
+        ~> maybeType AST.naturalType) $ \value ->
     assert "Nothing : () round-trips as the distinguished absence"
       (renderInterpretedValue value
-        == "nothing ~> Nat?")
+        == "nothing ~> Maybe Nat")
   expectValue
       "optional identifier"
       (AST.eitherType
@@ -1769,29 +1782,29 @@ testCombinedTypeSystems = do
         (AST.+) (AST.minus (natural 6)) (natural 2)
   expectValue
       "equality-driven optional integer specification"
-      ( AST.conditional condition computedInteger nothingValue
-          ~> AST.optional AST.integerType
+      ( AST.conditional condition (justValue computedInteger) nothingValue
+          ~> maybeType AST.integerType
       ) $ \value ->
-    assert "Boolean equality and arithmetic compose into Int?"
+    assert "Boolean equality and arithmetic compose into Maybe Int"
       (renderInterpretedValue value
-        == "-4 ~> Int?")
+        == "(Just : -4) ~> Maybe Int")
   expectValue
       "false branch optional specification"
       ( AST.conditional
           (AST.and (AST.boolean True) (AST.boolean False))
-          computedInteger
+          (justValue computedInteger)
           nothingValue
-          ~> AST.optional AST.integerType
+          ~> maybeType AST.integerType
       ) $ \value ->
     assert "a conditional absence composes through optional specification"
       (renderInterpretedValue value
-        == "nothing ~> Int?")
+        == "nothing ~> Maybe Int")
   expectValue
       "missing optional identifier path"
       ( AST.conditional
           (AST.equal
-            (AST.optional AST.naturalType)
-            (AST.eitherType AST.naturalType nothingValue))
+            (maybeType AST.naturalType)
+            (maybeExpansion AST.naturalType))
           (natural 12)
           (natural 99)
           ~> AST.eitherType
@@ -1840,26 +1853,29 @@ testCombinatorialNumericalSystems = do
       (renderInterpretedValue value == "-1 ~> from -5 to 5")
   expectValue
       "descending range through optional Int"
-      ( (AST.minus (natural 1)
-          ~> AST.integerWithinTo 2 (-2))
-          ~> AST.optional AST.integerType
+      ( AST.assignment
+          "Just"
+          (AST.integerWithinTo 2 (-2))
+          (AST.minus (natural 1))
+          ~> maybeType AST.integerType
       ) $ \value ->
     assert "descending numerical subtypes compose into optional Int"
       (renderInterpretedValue value
-        == "-1 ~> Int?")
+        == "(Just : -1) ~> Maybe Int")
   expectValue
       "conditional power and subtraction range check"
       ( AST.conditional
           (AST.equal smallRange smallRange)
-          ((AST.-)
-            ((AST.^) (AST.minus (natural 2)) (natural 4))
-            (natural 9))
+          (justValue
+            ((AST.-)
+              ((AST.^) (AST.minus (natural 2)) (natural 4))
+              (natural 9)))
           nothingValue
-          ~> AST.optional (AST.integerWithinTo (-10) 10)
+          ~> maybeType (AST.integerWithinTo (-10) 10)
       ) $ \value ->
     assert "range equality can guard signed arithmetic and optional subtyping"
       (renderInterpretedValue value
-        == "7 ~> (from -10 to 10)?")
+        == "(Just : 7) ~> Maybe (from -10 to 10)")
   expectValue
       "optional numerical identifier equality"
       (AST.equal optionalIdentifierRange optionalIdentifierRange) $ \value ->

@@ -9,7 +9,8 @@ import Evaluation.Error (InterpretingError)
 import Evaluation.Construction (makeNothing)
 import Evaluation.Value
 
--- | @T?@ is definitionally @T | Nothing := ()@.
+-- | An optional value is definitionally @T | Nothing := ()@. Surface Datra
+-- constructs it with @Maybe T@; @?@ is reserved for identifier forms.
 makeOptionalValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue

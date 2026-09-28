@@ -20,6 +20,9 @@ data SyntaxRule = SyntaxRule
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules (Let value) = declarationRules value
+declarationRules optional
+  | Just (operation, _) <- optionalIdentifierExpression optional =
+      declarationRules operation
 declarationRules (IdentifierOperation (IdentifierString name) annotation (Just implementation)) =
   collect name (if annotation == implementation then implementation else MapSpecification implementation annotation)
   where

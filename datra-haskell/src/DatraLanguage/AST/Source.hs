@@ -32,16 +32,15 @@ source context expression =
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
       | otherwise -> "^" <> renderIdentifierString name
-    IdentifierOperationValue (IdentifierString name) annotation given -> wrapped 1
-      (renderIdentifierString name <> case given of
-        Just value | value == annotation -> " := " <> source 2 value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> source 2 value) given)
-    IdentifierTemplateOperationValue parts annotation given -> wrapped 1
-      (renderStringTemplate (source 0) (const Nothing) parts <> case given of
-        Just value | value == annotation -> " := " <> source 2 value
-        _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> source 2 value) given)
+    IdentifierOperationValue (IdentifierString name) annotation given ->
+      identifierOperation
+        (renderIdentifierString name) False annotation given
+    IdentifierTemplateOperationValue parts annotation given ->
+      identifierOperation
+        (renderStringTemplate (source 0) (const Nothing) parts)
+        False
+        annotation
+        given
     ArgumentsSplice value -> "{" <> source 0 value <> ",}"
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> intercalate "; " (map (source 0) members) <> "}"
@@ -72,7 +71,19 @@ source context expression =
     -- nested @val@ application so a following operator stays outside it.
     StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)
     ExtractValue operand -> unary "%" operand
-    OptionalValue operand -> wrapped 10 (source 11 operand <> "?")
+    OptionalValue
+        (IdentifierOperationValue (IdentifierString name) annotation given) ->
+      identifierOperation
+        (renderIdentifierString name) True annotation given
+    OptionalValue
+        (IdentifierTemplateOperationValue parts annotation given) ->
+      identifierOperation
+        (renderStringTemplate (source 0) (const Nothing) parts)
+        True
+        annotation
+        given
+    OptionalValue operand -> wrapped 3
+      (source 4 operand <> " | (Nothing := ())")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->
@@ -128,6 +139,11 @@ source context expression =
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     binderName name optional =
       renderIdentifierString name <> if optional then "?" else ""
+    identifierOperation name optional annotation given = wrapped 1
+      (name <> (if optional then "?" else "") <> case given of
+        Just value | value == annotation -> " := " <> source 2 value
+        _ -> " : " <> source 13 annotation
+          <> maybe "" (\value -> " := " <> source 2 value) given)
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
 

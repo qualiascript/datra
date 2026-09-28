@@ -228,6 +228,13 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
       Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
       SafeOverload a b -> do left <- recur a; right <- recur b; safeOverloadValues left right
       EitherType a b -> do left <- recur a; right <- recur b; joinTypes left right
+      OptionalType operand ->
+        case optionalIdentifierExpression expression of
+          Just (present, missing) -> do
+            left <- recur present
+            right <- recur missing
+            joinTypes left right
+          Nothing -> evaluate (OptionalType operand)
       StringTemplate parts -> do
         -- Interpolation affects whether evaluating the template can succeed,
         -- but not its result type. Still infer every embedded expression so
@@ -286,7 +293,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
               (zip suppliedMembers expectedMembers)
 
         checkMember original supplied expected = do
-          (expectedName, expectedType) <- expectedSlot expected
+          (expectedName, acceptsUnnamed, expectedType) <- expectedSlot expected
           case supplied of
             IdentifierOperation actualName annotation (Just value)
               | annotation == value -> do
@@ -294,14 +301,20 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
                     Just name | name /= actualName -> Left original
                     _ -> pure ()
                   recur value >>= (`check` expectedType)
-            _ -> recur supplied >>= (`check` expectedType)
+            _
+              | acceptsUnnamed ->
+                  recur supplied >>= (`check` expectedType)
+              | otherwise -> Left original
 
         expectedSlot expected =
-          case interpretedCanonicalResult expected of
-            CanonicalSimpleIdentifierType name _ ->
-              (Just (IdentifierString name),) <$>
-                accessValues expected (naturalValue 1)
-            _ -> Right (Nothing, expected)
+          case optionalArgumentSlot expected of
+            Just (name, annotation) ->
+              Right (Just (IdentifierString name), True, annotation)
+            Nothing -> case interpretedCanonicalResult expected of
+              CanonicalSimpleIdentifierType name _ -> do
+                underlying <- accessValues expected (naturalValue 1)
+                Right (Just (IdentifierString name), False, underlying)
+              _ -> Right (Nothing, True, expected)
 
         writtenMembers written = case written of
           AtlasMap values -> values

@@ -62,6 +62,7 @@ import DatraLanguage.AST
   , StringTemplatePart (..)
   , namedBeginBlock
   , normalizeExpression
+  , optionalIdentifierExpression
   , mapExpressionChildren
   , yieldedIdentifier
   )
@@ -238,28 +239,32 @@ canonicalStringCandidates characters =
 -- explain a value's type. Decode those contexts into their concrete member
 -- expressions before asking the semantic federation to select one.
 canonicalExpressionCandidates :: Expression -> [Expression]
-canonicalExpressionCandidates expressionValue =
-  case expressionValue of
-    EitherType left right ->
-      canonicalExpressionCandidates left
-        <> canonicalExpressionCandidates right
-    AtlasMap members ->
-      AtlasMap <$> traverse canonicalExpressionCandidates members
-    MapSequence members ->
-      MapSequence <$> traverse canonicalExpressionCandidates members
-    ArgumentMap members ->
-      ArgumentMap <$> traverse canonicalExpressionCandidates members
-    ArgumentMapSplice member ->
-      ArgumentMapSplice <$> canonicalExpressionCandidates member
-    MapExpansion left right ->
-      MapExpansion
-        <$> canonicalExpressionCandidates left
-        <*> canonicalExpressionCandidates right
-    MapConcatenation left right ->
-      MapConcatenation
-        <$> canonicalExpressionCandidates left
-        <*> canonicalExpressionCandidates right
-    _ -> [expressionValue]
+canonicalExpressionCandidates expressionValue
+  | Just (present, missing) <- optionalIdentifierExpression expressionValue =
+      canonicalExpressionCandidates present
+        <> canonicalExpressionCandidates missing
+  | otherwise =
+      case expressionValue of
+        EitherType left right ->
+          canonicalExpressionCandidates left
+            <> canonicalExpressionCandidates right
+        AtlasMap members ->
+          AtlasMap <$> traverse canonicalExpressionCandidates members
+        MapSequence members ->
+          MapSequence <$> traverse canonicalExpressionCandidates members
+        ArgumentMap members ->
+          ArgumentMap <$> traverse canonicalExpressionCandidates members
+        ArgumentMapSplice member ->
+          ArgumentMapSplice <$> canonicalExpressionCandidates member
+        MapExpansion left right ->
+          MapExpansion
+            <$> canonicalExpressionCandidates left
+            <*> canonicalExpressionCandidates right
+        MapConcatenation left right ->
+          MapConcatenation
+            <$> canonicalExpressionCandidates left
+            <*> canonicalExpressionCandidates right
+        _ -> [expressionValue]
 
 type Interpreter = Expression -> Either InterpretingError InterpretedValue
 
@@ -421,7 +426,9 @@ interpretNormalizedExpression scope resolving expressionValue =
     EitherType left right ->
       binary eitherValue left right
     OptionalType operand ->
-      interpret operand >>= optionalValue
+      case optionalIdentifierExpression expressionValue of
+        Just (present, missing) -> binary eitherValue present missing
+        Nothing -> interpret operand >>= optionalValue
     Conditional condition consequent alternative -> do
       conditionValue <- interpret condition
       conditionFlag <- booleanCondition conditionValue
@@ -1184,10 +1191,10 @@ validateWithArguments captured resolving domain supplied =
         IdentifierOperation (IdentifierString name) annotation _ -> do
           validateNamed dependentScope name annotation
           go dependentScope remaining
-        EitherType
-            (IdentifierOperation (IdentifierString name) annotation _)
-            missing
-          | annotation == missing -> do
+        optional
+          | Just
+              (IdentifierOperation (IdentifierString name) annotation _, _)
+              <- optionalIdentifierExpression optional -> do
               validateNamed dependentScope name annotation
               go dependentScope remaining
         _ -> go dependentScope remaining
@@ -1219,10 +1226,10 @@ validateDependentArguments captured resolving domain supplied =
         IdentifierOperation (IdentifierString name) annotation _ -> do
           validateNamed dependentScope name annotation
           go dependentScope remaining
-        EitherType
-            (IdentifierOperation (IdentifierString name) annotation _)
-            missing
-          | annotation == missing -> do
+        optional
+          | Just
+              (IdentifierOperation (IdentifierString name) annotation _, _)
+              <- optionalIdentifierExpression optional -> do
               validateNamed dependentScope name annotation
               go dependentScope remaining
         _ -> go dependentScope remaining
@@ -1244,8 +1251,8 @@ createFunction captured resolving explicit bindings result = do
           names = filter (\name -> name /= "it" && name `notElem` map fst captured)
             (freeIdentifiers body)
       inferred <- inferParameters names body
-      let parameter (name, target) = EitherType
-            (IdentifierOperation (IdentifierString name) target Nothing) target
+      let parameter (name, target) = OptionalType
+            (IdentifierOperation (IdentifierString name) target Nothing)
       domain <- closedSourceExpression (renderSourceExpression (AtlasMap (map parameter inferred)))
       pure (domain, Nothing)
   let (domainExpression, substitutions) =
@@ -1518,7 +1525,8 @@ registeredExternal symbol = case symbol of
         (Just ("!^" <> show symbol)) signatureText
         (Just (\argument -> argument <$ validateFunctionInput argument domain))
         (Just invoke) True))
-    optional name target = EitherType (IdentifierOperation (IdentifierString name) target Nothing) target
+    optional name target =
+      OptionalType (IdentifierOperation (IdentifierString name) target Nothing)
     lookupArgument name values = maybe
       (Left (ExternalEvaluationFailed (MissingNativeArgument name)))
       Right

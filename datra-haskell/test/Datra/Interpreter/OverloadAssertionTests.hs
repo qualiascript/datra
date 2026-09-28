@@ -56,29 +56,29 @@ overloadTests =
         "yield {a? : Nat := 3, b? : Nat := 4} << 5"
         "{a? : Nat := 5, b? : Nat := 4}"
     , programCase "overload does not skip a compatible defaulted slot"
-        "yield {x : Nat := 2, Nat} << 4"
-        "{x : Nat := 4, Nat}"
+        "yield {x? : Nat := 2, Nat} << 4"
+        "{x? : Nat := 4, Nat}"
     , programCase "skip advances one positional overload slot"
-        "yield {x : Nat, y : Nat} << (*, 3)"
-        "{x : Nat, y : Nat := 3}"
+        "yield {x? : Nat, y? : Nat} << (*, 3)"
+        "{x? : Nat, y? : Nat := 3}"
     , programCase "skip composes through argument-map overload input"
-        "yield {x : Nat, y : Nat} << {*, 3}"
-        "{x : Nat, y : Nat := 3}"
+        "yield {x? : Nat, y? : Nat} << {*, 3}"
+        "{x? : Nat, y? : Nat := 3}"
     , programFailureCase "rank-zero formulation is not a skip"
-        "yield {x : Nat, y : Nat} << ((...) ^ 0, 3)"
+        "yield {x? : Nat, y? : Nat} << ((...) ^ 0, 3)"
         (SourceEvaluationFailure
           (OverloadError OverloadNoMatch))
     , programCase "safe overload fills a later compatible slot"
-        "yield {x : Nat := 2, Str} <<< \"a\""
-        "{x : Nat := 2, $a}"
+        "yield {x? : Nat := 2, Str} <<< \"a\""
+        "{x? : Nat := 2, $a}"
     , programCase "reverse safe overload reverses the operands"
-        "yield \"a\" >>> {x : Nat := 2, Str}"
-        "{x : Nat := 2, $a}"
+        "yield \"a\" >>> {x? : Nat := 2, Str}"
+        "{x? : Nat := 2, $a}"
     , programCase "safe overload accepts the existing default"
-        "yield {x : Nat := 2} <<< 2"
-        "x : Nat := 2"
+        "yield {x? : Nat := 2} <<< 2"
+        "x? : Nat := 2"
     , programFailureCase "safe overload rejects a changed default"
-        "yield {x : Nat := 2, Nat} <<< 4"
+        "yield {x? : Nat := 2, Nat} <<< 4"
         (SourceEvaluationFailure
           (OverloadError OverloadChangedDefault))
     , programCase "safe overload result supports subfederation"
@@ -88,8 +88,8 @@ overloadTests =
         "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"
         "x? : Int := 2"
     , programCase "safe overload can leave a default skipped"
-        "yield {x : Nat := 2, y : Nat} <<< (*, 3)"
-        "{x : Nat := 2, y : Nat := 3}"
+        "yield {x? : Nat := 2, y? : Nat} <<< (*, 3)"
+        "{x? : Nat := 2, y? : Nat := 3}"
     , programCase "skip specifications match only skip positions"
         (unlines
           [ "assert (*, 3) of (*, Nat)"
@@ -119,44 +119,44 @@ defaultedFunctionTests =
   testGroup "defaulted function arguments"
     [ programCase "unparenthesized my_pow can assert a skipped default"
         (unlines
-          [ "my_pow := {_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent"
+          [ "my_pow := {base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent"
           , "assert my_pow (*, 3) = 8"
           ])
         "()"
     , programCase "positional-only my_pow skips its defaulted first argument"
         (unlines
-          [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
+          [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
           , "yield my_pow (*, 3)"
           ])
         "8"
     , programCase "positional-only my_pow accepts a skip in an argument map"
         (unlines
-          [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
+          [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
           , "yield my_pow {*, 3}"
           ])
         "8"
     , programCase "function call can skip a later default"
         (unlines
-          [ "add := ({x : Nat, y? : Nat := 4} -> Nat yield x + y)"
+          [ "add := ({x? : Nat, y? : Nat := 4} -> Nat yield x + y)"
           , "yield add (3, *)"
           ])
         "7"
     , programFailureCase "function call cannot skip a required argument"
         (unlines
-          [ "sum := ({_x : Nat, _y : Nat} -> Nat yield _x + _y)"
+          [ "sum := ({x : Nat, y? : Nat} -> Nat yield x + y)"
           , "yield sum (*, 3)"
           ])
         (SourceEvaluationFailure
           (OverloadError OverloadSkippedRequiredSlot))
     , programCase "a grouped singleton skip preserves a positional default"
         (unlines
-          [ "f := ({_value : Nat := 4} -> Nat yield _value)"
+          [ "f := ({value? : Nat := 4} -> Nat yield value)"
           , "yield f (*)"
           ])
         "4"
     , programFailureCase "function call does not treat rank-zero as skip"
         (unlines
-          [ "my_pow := ({_base : Nat := 2, _exponent : Nat} -> Nat yield _base ^ _exponent)"
+          [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
           , "yield my_pow ((...) ^ 0, 3)"
           ])
         (SourceEvaluationFailure

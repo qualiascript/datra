@@ -11,6 +11,7 @@ module DatraLanguage.AST
   , expressionChildren
   , yieldedIdentifier
   , namedBeginBlock
+  , optionalIdentifierExpression
   , normalizeExpression
   , renderExpression
   , renderOperatorExpression
@@ -27,7 +28,6 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
-  , operatorSourceSymbol
   )
 import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -167,6 +167,18 @@ namedBeginBlock expressionValue = do
   case value of
     Begin bindings result -> Just (name, bindings, result)
     _ -> Nothing
+
+-- | Recover the present and unnamed alternatives represented by identifier
+-- postfix @?@. Other optional nodes retain ordinary @T | Nothing@ semantics.
+optionalIdentifierExpression
+  :: Expression
+  -> Maybe (Expression, Expression)
+optionalIdentifierExpression (OptionalType operation) =
+  case operation of
+    IdentifierOperation _ annotation _ -> Just (operation, annotation)
+    IdentifierTemplateOperation _ annotation _ -> Just (operation, annotation)
+    _ -> Nothing
+optionalIdentifierExpression _ = Nothing
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
 -- operator notation.
@@ -871,7 +883,7 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
       case compactInterpolation expressionValue of
         Just symbol
           | compactInterpolationBoundary rest ->
-              prefix <> symbol <> escapeOptionalSuffix rest
+              prefix <> symbol <> rest
         Nothing ->
           prefix <> "(" <> renderExpressionValue expressionValue <> ")" <> rest
         Just _ ->
@@ -880,9 +892,6 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
     compactInterpolationBoundary [] = True
     compactInterpolationBoundary (character : _) =
       not (isCanonicalCharacter character)
-
-    escapeOptionalSuffix ('?' : rest) = '\\' : '?' : rest
-    escapeOptionalSuffix rest = rest
 
 compactOperatorStringInterpolation
   :: OperatorExpression
@@ -898,16 +907,9 @@ compactOperatorStringInterpolation expressionValue =
     BooleanValue False -> reserved Reserved.FalseSymbol
     BooleanValue True -> reserved Reserved.TrueSymbol
     BooleanTypeValue -> reserved Reserved.BooleanTypeSymbol
-    OptionalValue operand ->
-      (<> optionalSourceSymbol)
-        <$> compactOperatorStringInterpolation operand
     _ -> Nothing
   where
     reserved = Just . Reserved.reservedSymbolIdentifierString
-    optionalSourceSymbol =
-      case operatorSourceSymbol OptionalOperator of
-        Just symbol -> symbol
-        Nothing -> operatorCanonicalSymbol OptionalOperator
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =

@@ -2,7 +2,7 @@ yield Ints := begin
 
   max := {Args Int,} -> Maybe Int do
     values := val it
-    let maximum := {candidate : Int, remaining : List Int} -> Int do
+    let maximum := {candidate? : Int, remaining? : List Int} -> Int do
     yield if empty remaining then candidate
       else begin
         let next := maximum (remaining[0]; remaining[range 1 upwards])
@@ -12,7 +12,7 @@ yield Ints := begin
 
   min := {Args Int,} -> Maybe Int do
     values := val it
-    let minimum := {candidate : Int, remaining : List Int} -> Int do
+    let minimum := {candidate? : Int, remaining? : List Int} -> Int do
     yield if empty remaining then candidate
       else begin
         let next := minimum (remaining[0]; remaining[range 1 upwards])

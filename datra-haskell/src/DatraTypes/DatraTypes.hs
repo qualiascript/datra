@@ -118,6 +118,7 @@ module DatraTypes
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , optionalArgumentSlot
   , argumentValuesComplete
   , compileParameters
   , compileDependentParameter
@@ -233,6 +234,7 @@ import Evaluation.Overload
   , argumentSchemaPositionalDomain
   , argumentSchemaVariadicElementType
   , argumentSchemaValuesComplete
+  , optionalArgumentSlot
   , argumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema

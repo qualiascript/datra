@@ -127,14 +127,13 @@ regressionTests = do
     (MapAccess
       (AtlasMap
         [ WithBinding (IdentifierString "i") True (ref "Nat")
-        , EitherType
+        , OptionalType
             (IdentifierTemplateOperation
               [ StringTemplateLiteral "arg"
               , StringTemplateInterpolation (ref "i")
               ]
               (ref "Int")
               Nothing)
-            (ref "Int")
         ])
       (natural 1))
   assertAstOutput "dependent product family sugar accepts a quoted binder"
@@ -149,9 +148,8 @@ regressionTests = do
     "(with _T? of Any; value? : _T)"
     (AtlasMap
       [ WithBinding (IdentifierString "_T") True (ref "Any")
-      , EitherType
+      , OptionalType
           (AST.dependentIdentifierType "value" (ref "_T"))
-          (ref "_T")
       ])
   assertRejected "private optional dependent binder is invalid in an argument map"
     "{for _T? of Any; value? : _T}"
@@ -244,8 +242,9 @@ regressionTests = do
   assertParsed "argument map AST round trip"
     "{a? : Nat; b? : Str}"
     (ArgumentMap
-      [EitherType (AST.dependentIdentifierType "a" (ref "Nat")) (ref "Nat")
-      ,EitherType (AST.dependentIdentifierType "b" (ref "Str")) (ref "Str")])
+      [ OptionalType (AST.dependentIdentifierType "a" (ref "Nat"))
+      , OptionalType (AST.dependentIdentifierType "b" (ref "Str"))
+      ])
   assertRejected "private argument names cannot be optional"
     "{_x? : Nat; y : Nat}"
   let block = Begin
@@ -265,9 +264,8 @@ regressionTests = do
     (AST.assignment "my_val" (natural 5) assignedBlock)
   assertParsed "optional assignment specifies a begin block"
     "my_val? := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
-    (EitherType
-      (AST.assignment "my_val" (natural 5) assignedBlock)
-      (natural 5))
+    (OptionalType
+      (AST.assignment "my_val" (natural 5) assignedBlock))
   assertRejected "a multiline assignment block requires begin"
     "my_val := 5 ~>\n a := 2\nyield a"
   assertAstOutput "module remains an ordinary identifier"
@@ -456,19 +454,21 @@ regressionTests = do
       (AST.subfederation (natural 1) (ref "Int"))
       (ref "true"))
   assertAstOutput
-    "optional type suffix"
-    "Nat?"
-    (AST.optional (ref "Nat"))
+    "Maybe is an ordinary type application"
+    "Maybe Nat"
+    (FunctionApplication (ref "Maybe") (ref "Nat"))
   assertAstOutput
-    "optional suffix applies to a complete type expression"
-    "(Nat | Int)?"
-    (AST.optional (AST.eitherType (ref "Nat") (ref "Int")))
+    "Maybe accepts a grouped type expression"
+    "Maybe (Nat | Int)"
+    (FunctionApplication (ref "Maybe")
+      (AST.eitherType (ref "Nat") (ref "Int")))
+  assertRejected "postfix optional is not a value operator" "Nat?"
+  assertRejected "postfix optional rejects grouped values" "(Nat | Int)?"
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
-    (AST.eitherType
-      (AST.dependentIdentifierType "a" (ref "Nat"))
-      (ref "Nat"))
+    (OptionalType
+      (AST.dependentIdentifierType "a" (ref "Nat")))
   assertParsed "ordinary library names can name fields" "Str : Nat"
     (AST.dependentIdentifierType "Str" (ref "Nat"))
   assertAstOutput
@@ -491,23 +491,19 @@ regressionTests = do
   assertAstOutput
     "full-string identifier expressions compose with optional syntax"
     "\"Abc\"? : Nat"
-    (AST.eitherType
-      (AST.dependentIdentifierType "Abc" (ref "Nat"))
-      (ref "Nat"))
+    (OptionalType
+      (AST.dependentIdentifierType "Abc" (ref "Nat")))
   assertAstOutput
     "optional assigned identifier slot"
     "a? : Nat := 5"
-    (AST.eitherType
-      (AST.assignment "a" (ref "Nat") (natural 5))
-      (ref "Nat"))
+    (OptionalType
+      (AST.assignment "a" (ref "Nat") (natural 5)))
   let optionalIntegerSlots =
         MapConcatenation
-          (AST.eitherType
-            (AST.dependentIdentifierType "a" (ref "Int"))
-            (ref "Int"))
-          (AST.eitherType
-            (AST.dependentIdentifierType "b" (ref "Int"))
-            (ref "Int"))
+          (OptionalType
+            (AST.dependentIdentifierType "a" (ref "Int")))
+          (OptionalType
+            (AST.dependentIdentifierType "b" (ref "Int")))
       integerPair = MapConcatenation (natural 12) (natural 23)
   assertAstOutput
     "optional identifier slots are concatenation operands"
@@ -537,21 +533,17 @@ regressionTests = do
         (natural 2)
         (AST.assignment "b" (natural 5) (natural 5)))
       (MapConcatenation
-        (AST.eitherType
-          (AST.dependentIdentifierType "a" (ref "Int"))
-          (ref "Int"))
-        (AST.eitherType
-          (AST.dependentIdentifierType "b" (fromTo 3 8))
-          (fromTo 3 8))))
+        (OptionalType
+          (AST.dependentIdentifierType "a" (ref "Int")))
+        (OptionalType
+          (AST.dependentIdentifierType "b" (fromTo 3 8)))))
   let optionalAssigned identifierString value =
-        AST.eitherType
+        OptionalType
           (AST.assignment
             identifierString (ref "Int") (natural value))
-          (ref "Int")
       optionalIdentifier identifierString =
-        AST.eitherType
+        OptionalType
           (AST.dependentIdentifierType identifierString (ref "Int"))
-          (ref "Int")
   assertAstOutput
     "parenthesized reverse specification stays in its concatenation slot"
     "a? : Int := 12, (b? : Int) <~ (b? : Int := 23)"
@@ -581,20 +573,19 @@ regressionTests = do
     (AST.conditionalWithoutElse (ref "false") (natural 1))
   assertAstOutput
     "conditional combines optionals, equality, logic, and identifiers"
-    ( "if (Nat? = (Nat | Nothing := ())) and not false "
+    ( "if (Maybe Nat = (Nat | Nothing := ())) and not false "
         <> "then (a? : Nat := 5) else (Nothing := ())"
     )
     (AST.conditional
       (AST.and
         (AST.equal
-          (AST.optional (ref "Nat"))
+          (FunctionApplication (ref "Maybe") (ref "Nat"))
           (AST.eitherType
             (ref "Nat")
             (AST.assignment "Nothing" AST.emptyMap AST.emptyMap)))
         (AST.not (ref "false")))
-      (AST.eitherType
-        (AST.assignment "a" (ref "Nat") (natural 5))
-        (ref "Nat"))
+      (OptionalType
+        (AST.assignment "a" (ref "Nat") (natural 5)))
       (AST.assignment "Nothing" AST.emptyMap AST.emptyMap))
   assertAstOutput
     "natural value specified into Nat"
@@ -909,10 +900,18 @@ regressionTests = do
       [StringTemplateWeakInterpolation
         (EitherType (ref "Nat") (ref "Nat"))])
   assertParsed
-    "postfix optional composes with a simple interpolation"
+    "a question mark after simple interpolation is literal text"
     "\"%Int?\""
     (StringTemplate
-      [StringTemplateInterpolation (OptionalType (ref "Int"))])
+      [ StringTemplateInterpolation (ref "Int")
+      , StringTemplateLiteral "?"
+      ])
+  assertParsed
+    "Maybe interpolation uses an explicit expression"
+    "\"%(Maybe Int)\""
+    (StringTemplate
+      [StringTemplateInterpolation
+        (FunctionApplication (ref "Maybe") (ref "Int"))])
   assertParsed
     "an escaped question mark remains text after a simple interpolation"
     "\"%Int\\?\""
@@ -1101,8 +1100,9 @@ regressionTests = do
     "^f 2" (FunctionApplication (valueOf "f") (natural 2))
   assertAstOutput "value lookup can be an application argument"
     "f (^a)" (FunctionApplication (ref "f") (valueOf "a"))
-  assertAstOutput "optional value follows value lookup"
-    "^a?" (OptionalType (valueOf "a"))
+  assertRejected "postfix optional cannot follow value lookup" "^a?"
+  assertAstOutput "Maybe accepts a looked-up value"
+    "Maybe (^a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
   let nameList = MapAccess
         (MapConcatenation
           (NamedAccess This (IdentifierString "a"))
@@ -1482,7 +1482,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
-    , Gen.subterm genExpression OptionalType
     , Gen.subterm genExpression StripIdentifiers
     , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression Eval
