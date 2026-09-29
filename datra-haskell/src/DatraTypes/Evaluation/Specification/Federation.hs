@@ -49,6 +49,7 @@ selectAtomicFederationMember source target =
               (EvaluatedSingletonAtlasMapMember
                 (interpretedCanonicalResult source))
           else DecisionRefuted)
+    CoalizedAtlasMapFederation _ -> Nothing
     PrimitiveAtlasMapFederation
         (NaturalRangeAtlasMapFederation
           (EvaluatedNaturalRange targetRange)) ->

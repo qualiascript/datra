@@ -31,6 +31,8 @@ federationProducesStrings federation =
         ToStringAtlasMapFederation _ _ -> True
         WeakToStringAtlasMapFederation _ -> True
         _ -> False
+    CoalizedAtlasMapFederation operand ->
+      federationProducesStrings operand
     ConcatenatedAtlasMapFederation left right ->
       federationProducesStrings left && federationProducesStrings right
     SequentialAtlasMapFederation _ -> False
@@ -44,6 +46,8 @@ federationUsesWeakToString federation =
       case primitive of
         WeakToStringAtlasMapFederation _ -> True
         _ -> False
+    CoalizedAtlasMapFederation operand ->
+      federationUsesWeakToString operand
     ConcatenatedAtlasMapFederation left right ->
       federationUsesWeakToString left || federationUsesWeakToString right
     SequentialAtlasMapFederation members ->
@@ -107,6 +111,8 @@ selectCharacters selectMember characters federation =
               ToStringInverseRejected -> DecisionRefuted)
         WeakToStringAtlasMapFederation _ -> Just DecisionUndecidable
         _ -> Nothing
+    CoalizedAtlasMapFederation operand ->
+      selectCharacters selectMember characters operand
     ConcatenatedAtlasMapFederation left right -> do
       decisions <-
         traverse

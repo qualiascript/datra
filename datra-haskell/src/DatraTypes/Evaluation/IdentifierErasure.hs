@@ -8,6 +8,7 @@ module Evaluation.IdentifierErasure
 
 import BooleanType (booleanNatural)
 import Evaluation.Construction (makeNatural)
+import Evaluation.Coalization (coalizeMapMemberAt, coalizeValue)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Arguments (makeArgumentMap, makeDistinctUnion)
 import Evaluation.Error (InterpretingError (..), FunctionFailure (..))
@@ -60,6 +61,7 @@ erase value = case interpretedForm value of
     stripIdentifiersType (evaluatedIdentifierUnderlying identifier)
   AssignmentForm specification -> eraseSpecification specification
   SpecificationForm specification -> eraseSpecification specification
+  CoalizationForm operand -> coalizeValue <$> stripIdentifiersType operand
   SequentialMapForm -> eraseMembers
   MapForm -> eraseMembers
   ExpansionMapForm left right ->
@@ -89,4 +91,5 @@ erase value = case interpretedForm value of
           stripIdentifiersType
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
           (if count == 0 then [] else [0 .. count - 1])
-        pure (makeAtlasMap (interpretedMapCardinality (interpretedMap value)) members)
+        let cardinality = interpretedMapCardinality (interpretedMap value)
+        pure (makeAtlasMap cardinality (map (coalizeMapMemberAt cardinality) members))

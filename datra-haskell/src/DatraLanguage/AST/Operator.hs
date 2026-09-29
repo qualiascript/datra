@@ -29,7 +29,7 @@ data Operator
   | BooleanAndOperator
   | BooleanOrOperator
   | BooleanNotOperator
-  | CoalitionOperator
+  | CoalizationOperator
   | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
@@ -78,7 +78,7 @@ operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
-operatorCanonicalSymbol CoalitionOperator = "><"
+operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol ValueOfOperator = "!"
@@ -127,7 +127,7 @@ operatorSourceSymbol GreaterThanOrEqualOperator = Just ">="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
-operatorSourceSymbol CoalitionOperator = Just "><"
+operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol ValueOfOperator = Just "^"

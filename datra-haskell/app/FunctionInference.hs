@@ -188,6 +188,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
       BooleanAnd a b -> logical [a,b]
       BooleanOr a b -> logical [a,b]
       BooleanNot a -> logical [a]
+      Coalization operand -> coalizeValue <$> recur operand
       StripIdentifiers operand -> recur operand >>= stripIdentifiersType
       Conditional condition yes no -> do
         flag <- recur condition

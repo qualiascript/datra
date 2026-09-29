@@ -60,6 +60,8 @@ decideCompositeFederationAccess mapValue insertionValue = do
           decideFlattenedFederationAccess mapValue insertionValue insertion
         SingletonAtlasMapFederation _ ->
           decideDirectFederationAccess insertionValue
+        CoalizedAtlasMapFederation _ ->
+          decideDirectFederationAccess insertionValue
         PrimitiveAtlasMapFederation _ ->
           undecidableAccess
 

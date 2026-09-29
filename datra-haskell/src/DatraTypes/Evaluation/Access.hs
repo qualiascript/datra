@@ -21,9 +21,7 @@ import Evaluation.Access.Composition
   , accessMapFor
   , decideFederationAccess
   )
-import Evaluation.Access.Federation
-  ( federationIsCoalition
-  )
+import Evaluation.Coalization (coalizeMapMemberAt, valueIsCoalition)
 import Evaluation.Access.Specification (accessSpecification)
 import Evaluation.Access.Identifier (accessDependentIdentifierType)
 import Evaluation.Map
@@ -108,10 +106,10 @@ accessMappedMembers
 accessMappedMembers build mapValue selectors =
   case finiteMapMembers selectors of
     Nothing -> accessSingleValue mapValue selectors
-    Just members ->
-      build
-        (interpretedMapCardinality (interpretedMap selectors))
-        <$> traverse (accessValues mapValue) members
+    Just members -> do
+      let cardinality = interpretedMapCardinality (interpretedMap selectors)
+      selected <- traverse (accessValues mapValue) members
+      pure (build cardinality (map (coalizeMapMemberAt cardinality) selected))
 
 finiteMapMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMapMembers value = do
@@ -376,9 +374,6 @@ finishAccess mapValue selected =
       traverse
         (interpretedMapValueAt selected . finiteOrdinal)
         [0 .. cardinality - 1]
-
-valueIsCoalition :: InterpretedValue -> Bool
-valueIsCoalition = federationIsCoalition . interpretedAtlasMapFederation
 
 rangeAccessResult
   :: Bool

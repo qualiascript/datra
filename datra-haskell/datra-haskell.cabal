@@ -43,8 +43,8 @@ common test-dependencies
         tasty-hunit >= 0.10 && < 0.11
 
 flag liquid
-    description: Enable LiquidHaskell verification during ordinary builds
-    default:     True
+    description: Enable explicit LiquidHaskell verification
+    default:     False
     manual:      True
 
 library
@@ -214,6 +214,7 @@ library
         Evaluation.Access.RangeSelection
         Evaluation.Access.Specification
         Evaluation.Construction
+        Evaluation.Coalization
         Evaluation.Boolean
         Evaluation.Either
         Evaluation.Error
@@ -257,6 +258,7 @@ library
         containers >= 0.6 && < 0.9,
         prettyprinter >= 1.7 && < 1.8
     if flag(liquid)
+        cpp-options: -DDATRA_LIQUID
         build-depends:
             liquidhaskell == 0.9.14.1.1
     hs-source-dirs:

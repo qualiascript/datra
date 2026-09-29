@@ -191,6 +191,10 @@ prettyNonKeywordCanonicalResult result =
         <+> "0"
     CanonicalAssignment identifierString typeAnnotation givenValue ->
       prettyAssignment identifierString typeAnnotation givenValue
+    CanonicalCoalization operand ->
+      prettySourceSymbol CoalizationOperator
+        <> " "
+        <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
     CanonicalArgumentMap totalPages components ->
@@ -477,19 +481,34 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"
 prettyMap _ [component] = prettyCanonicalResult component
-prettyMap cardinality components =
+prettyMap _ components =
   parens
     (concatWith (\left right -> left <> "; " <> right)
-      (map (prettyMapMember cardinality) components))
+      (map prettyCanonicalResult components))
 
--- The coalition operator keeps a map-valued operand at the current level when
--- canonical source is parsed again, instead of letting its own cardinality
--- raise that of the surrounding map.
-prettyMapMember :: Natural -> CanonicalResult -> Doc annotation
-prettyMapMember outerCardinality member@(CanonicalMap memberCardinality _)
-  | memberCardinality >= outerCardinality =
-      prettySourceSymbol CoalitionOperator <> " " <> prettyCanonicalResult member
-prettyMapMember _ member = prettyCanonicalResult member
+prettyCoalizationOperand :: CanonicalResult -> Doc annotation
+prettyCoalizationOperand operand
+  | coalizationOperandNeedsParens operand =
+      parens (prettyCanonicalResult operand)
+  | otherwise = prettyCanonicalResult operand
+
+coalizationOperandNeedsParens :: CanonicalResult -> Bool
+coalizationOperandNeedsParens operand =
+  case operand of
+    CanonicalFunction {} -> True
+    CanonicalEither {} -> True
+    CanonicalRangeConcatenation {} -> True
+    CanonicalConcatenation {} -> True
+    CanonicalStringTemplate {} -> True
+    CanonicalDependentSum {} -> True
+    CanonicalSimpleIdentifierType {} -> True
+    CanonicalDependentIdentifierType {} -> True
+    CanonicalIdentifierStringProjection {} -> True
+    CanonicalAssignment {} -> True
+    CanonicalSpecification {} -> True
+    CanonicalMap 0 _ -> False
+    CanonicalMap _ [_] -> True
+    _ -> False
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =

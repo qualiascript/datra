@@ -172,9 +172,9 @@ regressionTests = do
     (Multiplication Skip Skip)
   assertRejected "bare left skip is ambiguous with multiplication" "* * 7"
   assertRejected "bare right skip is ambiguous with multiplication" "7 * *"
-  assertAstOutput "coalition keeps a map operand at the current level"
+  assertAstOutput "coalization keeps a map operand at the current level"
     ">< (1; 2)"
-    (Coalition (AtlasMap [natural 1, natural 2]))
+    (Coalization (AtlasMap [natural 1, natural 2]))
   assertAstOutput "skip composes in an ordered map"
     "(*, 3)"
     (MapConcatenation Skip (natural 3))
@@ -194,7 +194,7 @@ regressionTests = do
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
-    , Coalition (AtlasMap [natural 1, natural 2])
+    , Coalization (AtlasMap [natural 1, natural 2])
     , External (AsciiStringLiteral "datra.add")
     , ForBinding (IdentifierString "T") True (ref "Any")
     , WithBinding (IdentifierString "T") False (ref "Any")

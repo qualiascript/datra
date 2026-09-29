@@ -112,6 +112,12 @@ accessSource value =
     DependentIdentifierTypeForm _ -> ordinarySource []
     IdentifierStringProjectionForm _ -> ordinarySource []
     DependentSumForm _ -> ordinarySource []
+    CoalizationForm _ ->
+      let combined = semanticAccessSource (interpretedSemantics value)
+      in combined
+          { sourceIsRangeLike = False
+          , sourceFormulationLevel = Nothing
+          }
     ExplicitForm explicitValue ->
       let (level, ordinalValue) = explicitOrdinal explicitValue
       in ordinarySource [singletonDescribedRange level ordinalValue]
@@ -185,6 +191,7 @@ semanticAccessSource semantics =
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
     DependentSumSemantics _ -> ordinarySource []
+    CoalizationSemantics operand -> semanticAccessSource operand
   where
     ordinarySource ranges = AccessSource ranges False Nothing
     rangeSource ranges = AccessSource ranges True Nothing

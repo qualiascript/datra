@@ -47,7 +47,7 @@ overloadTests =
         "true"
     , programCase "overload result supports specification"
         "yield ({a? : Nat := 3} << 5) ~> (a? : Int)"
-        "a? : (from 0 up; nothing | () | Just : $Complement) := 5"
+        "a? : >< (from 0 up; nothing | () | Just : $Complement) := 5"
     , programFailureCase "overload rejects an incompatible value"
         "yield {a? : Nat := 3} << true"
         (SourceEvaluationFailure
@@ -86,7 +86,7 @@ overloadTests =
         "true"
     , programCase "safe overload result supports specification"
         "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"
-        "x? : (from 0 up; nothing | () | Just : $Complement) := 2"
+        "x? : >< (from 0 up; nothing | () | Just : $Complement) := 2"
     , programCase "safe overload can leave a default skipped"
         "yield {x? : Nat := 2, y? : Nat} <<< (*, 3)"
         "{x? : from 0 up := 2, y? : from 0 up := 3}"

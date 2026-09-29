@@ -14,7 +14,6 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (makeAtlasMap)
-import Evaluation.Numerical (complementedIntegerComponents)
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.String (federationProducesStrings)
@@ -36,6 +35,16 @@ decideStructuralSubfederation decideSubfederation source target
       decideSubfederation sourcePayload targetPayload
   | SkipForm _ <- interpretedForm source = DecisionRefuted
   | SkipForm _ <- interpretedForm target = DecisionRefuted
+  | CoalizationForm sourceOperand <- interpretedForm source
+  , CoalizationForm targetOperand <- interpretedForm target =
+      decideSubfederation sourceOperand targetOperand
+  | CoalizationForm sourceOperand <- interpretedForm source =
+      decideSubfederation sourceOperand target
+  | CoalizationForm _ <- interpretedForm target
+  , interpretedValueHasTotalMap source =
+      mapDecision (const ()) (selectFederationMember source target)
+  | CoalizationForm targetOperand <- interpretedForm target =
+      decideSubfederation source targetOperand
   | Just _ <- interpretedFunction source
   , EitherForm targetEither <- interpretedForm target =
       decideAnyEitherAlternative decideSubfederation source targetEither
@@ -62,9 +71,7 @@ decideStructuralSubfederation decideSubfederation source target
   | Just targetMembers <- sequenceOperands target =
       decideSequenceSubfederation
         decideSubfederation
-        (case complementedIntegerComponents source of
-          Just members -> members
-          Nothing -> maybe [source] id (sequenceOperands source))
+        (maybe [source] id (sequenceOperands source))
         targetMembers
   | interpretedValueHasTotalMap source =
       mapDecision (const ()) (selectFederationMember source target)
