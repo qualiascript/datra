@@ -38,8 +38,10 @@ closeFunction resolver self explicitSelf selfIncludesDependencies expression =
   close BindDependencies 0 [] [] resolver self
     explicitSelf selfIncludesDependencies expression
 
--- Reuse the same scope-aware traversal when embedding primitive definitions
--- from a source library. Cycles still get a local recursive binding.
+-- Reuse the same scope-aware dependency graph when reconstructing values from
+-- a source library.  Keeping dependencies as recursive local bindings avoids
+-- repeatedly expanding shared branches, while an active back-edge can refer
+-- directly to the binding whose definition is being collected.
 inlineDependencies :: Resolver -> Expression -> Expression
 inlineDependencies resolver expression =
   close InlineDependencies 0 [] [] resolver Nothing False False expression
@@ -48,14 +50,19 @@ close :: DependencyMode -> Int -> References -> [String] -> Resolver
   -> Maybe String -> Bool -> Bool -> Expression -> Expression
 close mode depth ancestors occupied resolver self
     explicitSelf selfIncludesDependencies original =
-  case (null definitions, recursiveInDefinitions, selfBound) of
-    (True, _, False) -> selfRewritten
-    (True, _, True) -> Fun selfRewritten
-    (False, True, _) -> Fun (Begin selfDefinitions selfRewritten)
-    (False, False, True) | selfIncludesDependencies ->
-      Fun (Begin definitions selfRewritten)
-    (False, False, True) -> Begin definitions (Fun selfRewritten)
-    (False, False, False) -> Begin definitions selfRewritten
+  case mode of
+    InlineDependencies
+      | null definitions -> selfRewritten
+      | otherwise -> transparentDependencyBlock definitions selfRewritten
+    BindDependencies ->
+      case (null definitions, recursiveInDefinitions, selfBound) of
+        (True, _, False) -> selfRewritten
+        (True, _, True) -> Fun selfRewritten
+        (False, True, _) -> Fun (Begin selfDefinitions selfRewritten)
+        (False, False, True) | selfIncludesDependencies ->
+          Fun (Begin definitions selfRewritten)
+        (False, False, True) -> Begin definitions (Fun selfRewritten)
+        (False, False, False) -> Begin definitions selfRewritten
   where
     expression = original
     reserved = occupied <> declaredNames expression
@@ -64,8 +71,7 @@ close mode depth ancestors occupied resolver self
     (rewritten, collected) = runState (rewrite mode depth (rootText : reserved) active resolver [] expression) []
     definitions =
       [ Let (assigned name value)
-      | mode == BindDependencies
-      , (_, name, value) <- collected
+      | (_, name, value) <- collected
       ]
     recursiveInBody = root `elem` referenceNames rewritten
     recursiveInDefinitions = root `elem` concatMap referenceNames definitions
@@ -102,7 +108,7 @@ rewrite mode depth reserved active resolver bound expression
         Nothing -> do
           collected <- get
           case [(name, value) | (key, name, value) <- collected, key == dependencyKey dependency] of
-            (name, value) : _ -> pure (dependencyUse mode name value)
+            (name, _) : _ -> pure (IdentifierReference name)
             [] -> do
               let name = fresh
                     ("___" <> dependencyName dependency)
@@ -110,31 +116,19 @@ rewrite mode depth reserved active resolver bound expression
                   occupied = reserved
                     <> [text | (_, IdentifierString text, _) <- collected]
                     <> [nameText name]
-              value <- case mode of
-                BindDependencies ->
-                  rewrite mode (depth + 1) occupied
-                    ((dependencyKey dependency, name) : active)
-                    (dependencyResolver dependency)
-                    []
-                    (dependencyExpression dependency)
-                InlineDependencies -> pure
-                  (close mode (depth + 1) active occupied
-                    (dependencyResolver dependency)
-                    (Just (dependencyKey dependency))
-                    False
-                    False
-                    (dependencyExpression dependency))
+              value <- rewrite mode (depth + 1) occupied
+                ((dependencyKey dependency, name) : active)
+                (dependencyResolver dependency)
+                []
+                (dependencyExpression dependency)
               transitive <- get
               put (transitive <> [(dependencyKey dependency, name, value)])
-              pure (dependencyUse mode name value)
+              pure (IdentifierReference name)
 
 rewrite mode depth reserved active resolver bound expression =
   case expression of
     InModule path body
-      | Just imported <- resolveDependencyModule resolver path -> case mode of
-        InlineDependencies ->
-          rewrite mode (depth + 1) reserved active imported bound body
-        BindDependencies ->
+      | Just imported <- resolveDependencyModule resolver path ->
           rewrite mode (depth + 1) reserved active imported bound body
     MapSpecification (FunctionBody entries result) (FunctionType domain codomain) -> do
       let parameters = parameterNames domain
@@ -168,9 +162,16 @@ rewrite mode depth reserved active resolver bound expression =
             resolver { resolveScopeIndex = const Nothing } (names <> bound)
       constructor <$> traverse inside entries <*> inside result
 
-dependencyUse :: DependencyMode -> IdentifierString -> Expression -> Expression
-dependencyUse BindDependencies name _ = IdentifierReference name
-dependencyUse InlineDependencies _ value = value
+-- A retained begin block is itself a singleton type.  Selecting the result
+-- from an ordered pair outside that block recovers the yielded value's own
+-- type family while keeping the recursive lexical scope executable.  The
+-- leading value keeps the sequence explicit through source normalization;
+-- semicolon sequencing preserves a map-valued result as one member.
+transparentDependencyBlock :: [Expression] -> Expression -> Expression
+transparentDependencyBlock definitions result =
+  MapAccess
+    (Begin definitions (MapSequence [EllipsisNatural 0, result]))
+    (EllipsisNatural 1)
 
 referencePath :: Expression -> Maybe [String]
 referencePath (MapAccess (NamedAccess This (IdentifierString name)) (EllipsisNatural 1)) =

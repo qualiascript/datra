@@ -20,6 +20,12 @@ functionTests =
               , "assert sum (1, 2) = 3"
               ])
             "()"
+        , programCase "sequenced Int annotations remain individual slots"
+            (unlines
+              [ "sum := ((Int; Int) -> Int yield it[0] + it[1])"
+              , "assert sum ((2 ~> Int); (5 ~> Int)) = 7"
+              ])
+            "()"
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
               [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield it.base[1] ^ it.exponent[1])"
@@ -144,10 +150,10 @@ functionTests =
             "7"
         , expressionCase "erasure removes identifiers throughout nested maps"
             "val (a := (b := 2; 3); 4; c := 5)"
-            "((2; 3); 4; 5)"
+            "((0; (2; 3))[1]; 4; 5)"
         , expressionCase "erasure preserves ordinary strings and empty maps"
             "(val $abc; val (); val (1; 2); val 7)"
-            "($abc; (); (1; 2); 7)"
+            "($abc; (); (0; (1; 2))[1]; 7)"
         , programCase "erasure works on a block's declaration map"
             "yield begin\n  abc := 2\n  def := 3\nyield val this"
             "(2; 3)"

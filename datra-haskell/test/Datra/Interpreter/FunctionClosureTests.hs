@@ -115,6 +115,12 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "nothing result" "yield (() -> nothing yield nothing)"
       "()" "nothing"
   , roundTrip "inferred parameters" "yield (do yield a + b)" "(2, 3)" "5"
+  , testCase "inferred signatures share one recursive dependency graph" $ do
+      value <- requireProgram "yield (do yield a + b)"
+      let text = renderInterpretedValue value
+      assertEqual "from is collected once for the complete signature"
+        1
+        (occurrences "let \"___from\" :=" text)
   , roundTripUsingStd "narrowed callable"
       "f := ({x? : Int} -> Int yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
@@ -138,7 +144,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "explicit primitive implementation" ("!^\"datra.Int\"" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("!^\"datra.from\"" `isInfixOf` text)
+      assertBool "obsolete primitive Int dependency"
+        (not ("!^\"datra.Int\"" `isInfixOf` text))
       assertBool "dependency selected through value lookup" ("^\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"
@@ -182,11 +190,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
         "import \"numbers\"\nyield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
-      assertEqual "from is expanded only at its source use" 1
-        (occurrences "!^\"datra.from\"" text)
-      -- Args and the recursive helper each use range once.
-      assertEqual "range is expanded only at its two source uses" 2
-        (occurrences "!^\"datra.range\"" text)
+      assertEqual "from has one shared dependency binding" 1
+        (occurrences "let \"___from\" :=" text)
+      assertEqual "range has one shared dependency binding" 1
+        (occurrences "let \"___range\" :=" text)
       assertBool "the inferred list binding uses split sequencing"
         ("values := (val it)!" `isInfixOf` text
           && "values ?? maximum it" `isInfixOf` text)

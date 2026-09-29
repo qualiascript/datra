@@ -477,10 +477,21 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"
 prettyMap _ [component] = prettyCanonicalResult component
-prettyMap _ components =
+prettyMap cardinality components =
   parens
     (concatWith (\left right -> left <> "; " <> right)
-      (map prettyCanonicalResult components))
+      (map (prettyMapMember cardinality) components))
+
+-- A semicolon preserves a map-valued operand as one member.  Once an alias
+-- such as Int has been evaluated, however, its canonical source is itself a
+-- semicolon map; spelling that source directly would make a later parse infer
+-- one additional nesting level.  Select it from an explicit pair so the
+-- surrounding sequence still sees one atomic operand.
+prettyMapMember :: Natural -> CanonicalResult -> Doc annotation
+prettyMapMember outerCardinality member@(CanonicalMap memberCardinality _)
+  | memberCardinality >= outerCardinality =
+      parens ("0; " <> prettyCanonicalResult member) <> "[1]"
+prettyMapMember _ member = prettyCanonicalResult member
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =

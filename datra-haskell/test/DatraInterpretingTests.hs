@@ -2522,7 +2522,7 @@ testAccess = do
         threeValues
         (AtlasMap [natural 0, NaturalRangeUpwards 1])) $ \value ->
     assert "head and tail access remains a two-page map"
-      (renderInterpretedValue value == "(1; (2; 3))")
+      (renderInterpretedValue value == "(1; (0; (2; 3))[1])")
   expectValue
       "a concatenated selector map concatenates access results"
       ((<@>)

@@ -1444,7 +1444,8 @@ createFunction captured resolving explicit bindings result = do
       inferred <- inferParameters names body
       let parameter (name, target) = OptionalType
             (IdentifierOperation (IdentifierString name) target Nothing)
-      domain <- closedSourceExpression (renderSourceExpression (AtlasMap (map parameter inferred)))
+      domain <- parsedSourceExpression
+        (renderSourceExpression (AtlasMap (map parameter inferred)))
       pure (domain, Nothing)
   let (domainExpression, substitutions) =
         staticDependentDomain writtenDomainExpression
@@ -1530,7 +1531,11 @@ createFunction captured resolving explicit bindings result = do
           Just annotation ->
             evalInScope (dependentScope <> captured) resolving annotation
         contextuallySpecify value dynamicOutput
-  outputExpression <- maybe (valueExpression output) Right specifiedOutput
+  outputExpression <- maybe
+    (parsedSourceExpression
+      (renderCanonicalResult (interpretedCanonicalResult output)))
+    Right
+    specifiedOutput
   signatureText <- case writtenOutput of
     Just annotation -> pure (renderSourceExpression
       (FunctionType writtenDomainExpression annotation))
@@ -1951,6 +1956,17 @@ closureResolver scope = resolver
       Left _ -> Nothing
     resolve [] = Nothing
     resolve ["\0this", name] = resolve [name]
+    resolve (name : fields@(_ : _))
+      | Just (ImportedBinding identity _) <- lookup name scope
+      , Just source <- moduleSourceByIdentity identity
+      , Right imported <- definitionModuleScope source
+      , Just dependency <- resolveDependency (closureResolver imported) fields =
+          Just dependency
+            { dependencyKey = identity <> ":" <> dependencyKey dependency
+            , dependencyName = originName name <> "." <> dependencyName dependency
+            , dependencyExpression = normalizeExpression
+                (dependencyExpression dependency)
+            }
     resolve (name : fields) = do
       binding <- lookup name scope
       case (fields, bindingDefinition binding) of
@@ -1971,6 +1987,20 @@ closureResolver scope = resolver
           (concat [names | (_, CanonicalNames names) <- scope]) = original
       | Just (QualifiedBinding origin _) <- lookup name scope = origin
       | otherwise = name
+    moduleSourceByIdentity identity
+      | identity == standardLibraryIdentity = Just StdLibModule
+      | Just (ModuleCatalog modules) <- lookup "\0imports" scope =
+          findModule modules
+      | otherwise = Nothing
+      where
+        findModule [] = Nothing
+        findModule ((_, source@(ModuleSource path _ dependencies)) : remaining)
+          | path == identity = Just source
+          | Just nested <- findModule dependencies = Just nested
+          | otherwise = findModule remaining
+        findModule ((_, StdLibModule) : remaining)
+          | identity == standardLibraryIdentity = Just StdLibModule
+          | otherwise = findModule remaining
 
 emptyResolver :: Resolver
 emptyResolver = Resolver (const Nothing) (const Nothing) (const Nothing)
@@ -1983,10 +2013,15 @@ valueExpression = closedSourceExpression . renderCanonicalResult . interpretedCa
 
 closedSourceExpression :: String -> Either InterpretingError Expression
 closedSourceExpression text = do
+  expressionValue <- parsedSourceExpression text
+  definitions <- standardLibraryDefinitionScope
+  pure (inlineDependencies (closureResolver definitions) expressionValue)
+
+parsedSourceExpression :: String -> Either InterpretingError Expression
+parsedSourceExpression text = do
   expressionValue <- either (const (Left NoCanonicalStringConversion)) Right
     (parseDatra ("(" <> text <> "\n)"))
-  definitions <- standardLibraryDefinitionScope
-  pure (inlineDependencies (closureResolver definitions) (normalizeExpression expressionValue))
+  pure (normalizeExpression expressionValue)
 
 standardLibraryDefinitionScope :: Either InterpretingError Scope
 standardLibraryDefinitionScope = do
