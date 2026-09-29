@@ -392,23 +392,19 @@ interpretNormalizedExpression scope resolving expressionValue =
     StringTemplate parts -> interpretStringTemplateWith interpret parts
     StringType -> Right stringTypeValue
     IdentifierValueType -> Right identifierValueTypeValue
-    AtlasMap expressions
-      | any isWithBinding expressions ->
-          createDependentSum scope resolving (AtlasMap expressions)
-      | any isForBinding expressions ->
-          createDependentProduct scope resolving (AtlasMap expressions)
-      | otherwise -> interpretAtlasMapWith interpret expressions
-    ArgumentMap expressions
-      | any isWithBinding expressions ->
-          createDependentSum scope resolving (ArgumentMap expressions)
-      | otherwise -> traverse interpret expressions >>= makeArgumentMap
+    AtlasMap expressions -> interpretContainer
+      (interpretAtlasMapWith interpret expressions)
+      (AtlasMap expressions)
+      expressions
+    ArgumentMap expressions -> interpretContainer
+      (traverse interpret expressions >>= makeArgumentMap)
+      (ArgumentMap expressions)
+      expressions
     ArgumentMapSplice expression -> interpret expression
-    MapSequence expressions
-      | any isWithBinding expressions ->
-          createDependentSum scope resolving (MapSequence expressions)
-      | any isForBinding expressions ->
-          createDependentProduct scope resolving (MapSequence expressions)
-      | otherwise -> interpretAtlasMapWith interpret expressions
+    MapSequence expressions -> interpretContainer
+      (interpretAtlasMapWith interpret expressions)
+      (MapSequence expressions)
+      expressions
     MapExpansion left right ->
       interpretAtlasMapWithBuilder
         makeAtlasExpansion
@@ -527,6 +523,7 @@ interpretNormalizedExpression scope resolving expressionValue =
         Nothing -> Left (FunctionEvaluationFailed
           AstPatternRequiresFunctionSignature)
     FunctionType domain codomain -> do
+      rejectMixedDependentContainer domain
       let (staticDomain, substitutions) = staticDependentDomain domain
           staticCodomain = substituteDependent substitutions codomain
       input <- compileParameters interpret staticDomain >>= parameterDomain
@@ -708,10 +705,50 @@ interpretNormalizedExpression scope resolving expressionValue =
       imported <- importScope reconstructionScope resolving bindings
       withEvaluationSource source <$> evalInScope imported resolving result
 
-    isWithBinding WithBinding {} = True
-    isWithBinding _ = False
-    isForBinding ForBinding {} = True
-    isForBinding _ = False
+    interpretContainer ordinary container expressions =
+      case dependentBindingsKind expressions of
+        NoDependentBindings -> ordinary
+        SumDependentBindings -> createDependentSum scope resolving container
+        ProductDependentBindings ->
+          createDependentProduct scope resolving container
+        MixedDependentBindings -> Left MixedDependentBinders
+
+isWithBinding :: Expression -> Bool
+isWithBinding WithBinding {} = True
+isWithBinding _ = False
+
+isForBinding :: Expression -> Bool
+isForBinding ForBinding {} = True
+isForBinding _ = False
+
+data DependentBindingsKind
+  = NoDependentBindings
+  | SumDependentBindings
+  | ProductDependentBindings
+  | MixedDependentBindings
+
+dependentBindingsKind :: [Expression] -> DependentBindingsKind
+dependentBindingsKind expressions =
+  case (any isWithBinding expressions, any isForBinding expressions) of
+    (False, False) -> NoDependentBindings
+    (True, False) -> SumDependentBindings
+    (False, True) -> ProductDependentBindings
+    (True, True) -> MixedDependentBindings
+
+rejectMixedDependentContainer
+  :: Expression
+  -> Either InterpretingError ()
+rejectMixedDependentContainer container =
+  case container of
+    ArgumentMap expressions -> reject expressions
+    AtlasMap expressions -> reject expressions
+    MapSequence expressions -> reject expressions
+    _ -> Right ()
+  where
+    reject expressions =
+      case dependentBindingsKind expressions of
+        MixedDependentBindings -> Left MixedDependentBinders
+        _ -> Right ()
 
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
@@ -1449,6 +1486,7 @@ createFunction captured resolving explicit bindings result = do
       domain <- parsedSourceExpression
         (renderSourceExpression (AtlasMap (map parameter inferred)))
       pure (domain, Nothing)
+  rejectMixedDependentContainer writtenDomainExpression
   let (domainExpression, substitutions) =
         staticDependentDomain writtenDomainExpression
       specifiedOutput = substituteDependent substitutions <$> writtenOutput

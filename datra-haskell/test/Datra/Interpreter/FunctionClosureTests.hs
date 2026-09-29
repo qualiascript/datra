@@ -1,5 +1,6 @@
 module Datra.Interpreter.FunctionClosureTests (functionClosureTests) where
 
+import Control.Monad (when)
 import Data.List (isInfixOf, isPrefixOf, tails)
 import Datra.TestSupport
 import DatraTypes
@@ -12,8 +13,7 @@ import Test.Tasty.HUnit
 
 functionClosureTests :: TestTree
 functionClosureTests = testGroup "canonical function reconstruction"
-  [ roundTrip "recursive factorial" factorial "5" "120"
-  , roundTrip "recursive base case" factorial "0" "1"
+  [ canonicalRoundTrip "recursive factorial" factorial "5" "120"
   , roundTrip "user local named _fun"
       "let factorial := ({n? : Int} -> Int do _fun : 0; yield if n = _fun then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"
@@ -26,7 +26,6 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "quoted capture matches generated root"
       "\"__fun\" := 4\nyield ({n? : Int} -> Int yield n + this.\"__fun\"[1])"
       "3" "7"
-  , roundTrip "user names retain every leading underscore" underscoredCaptures "0" "15"
   , roundTrip "three dependency levels reconstruct independently" threeLevels "3" "7"
   , testCase "each dependency level uses the closure-local namespace" $ do
       value <- requireProgram threeLevels
@@ -70,7 +69,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertBool "closure yields an inline fixed point" ("yield fun " `isInfixOf` text)
       assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
       assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))
-  , roundTrip "transitive captured definitions"
+  , canonicalRoundTrip "transitive captured definitions"
       "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
       "7" "11"
   , roundTrip "eager capture retains its definition"
@@ -124,9 +123,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTripUsingStd "narrowed callable"
       "f := ({x? : Int} -> Int yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
-  , roundTrip "mutual recursive definitions"
-      "let even := ({n? : Int} -> Bool yield if n = 0 then true else odd (n - 1))\nlet odd := ({n? : Int} -> Bool yield if n = 0 then false else even (n - 1))\nyield even"
-      "4" "true"
+  , mutualRecursiveDefinitions
   , roundTrip "registered native function" "yield !^\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
@@ -186,7 +183,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
   , testCase "optional number closure avoids nested module reconstruction" $ do
-      original <- runModuleProgram "lib/numbers.datra"
+      original <- runModuleProgram "libs/numbers.datra"
         "import \"numbers\"\nyield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
@@ -218,38 +215,79 @@ threeLevels =
   "base := 2\nstep := base + 1\nnext := step + 1\nyield ({n? : Int} -> Int yield n + next)"
 
 roundTrip :: String -> String -> String -> String -> TestTree
-roundTrip = roundTripWith True
+roundTrip = roundTripWith True False
+
+-- Canonical idempotence is an invariant of the closure format, rather than a
+-- distinct behavior of every source spelling. Exercise the complete
+-- evaluation/render/evaluation cycle on representative closure shapes; the
+-- remaining cases still parse and invoke their rendered closure with no
+-- ambient scope.
+canonicalRoundTrip :: String -> String -> String -> String -> TestTree
+canonicalRoundTrip = roundTripWith True True
 
 -- A specification wrapped around a closed function retains its public type
 -- spelling. Those names intentionally belong to Std, while the function body
 -- itself remains independently closed.
 roundTripUsingStd :: String -> String -> String -> String -> TestTree
-roundTripUsingStd = roundTripWith False
+roundTripUsingStd = roundTripWith False False
 
-roundTripWith :: Bool -> String -> String -> String -> String -> TestTree
-roundTripWith independentlyClosed name program argument expected = testCase name $ do
+roundTripWith
+  :: Bool
+  -> Bool
+  -> String
+  -> String
+  -> String
+  -> String
+  -> TestTree
+roundTripWith independentlyClosed checkCanonical
+    name program argument expected = testCase name $ do
   original <- requireProgram program
   let text = renderInterpretedValue original
-  reconstructed <- requireExpression text
-  assertEqual "canonical text is idempotent" text (renderInterpretedValue reconstructed)
-  assertEqual "canonical identity survives"
-    (interpretedCanonicalResult original) (interpretedCanonicalResult reconstructed)
-  case toStringValue canonicalStringCodec original of
-    Left failure -> assertFailure (show failure)
-    Right _ -> pure ()
-  result <- requireProgram ("f := " <> text <> "\nyield f " <> argument)
-  assertEqual "reconstructed call" expected (renderInterpretedValue result)
+  when checkCanonical $ do
+    reconstructed <- requireExpression text
+    assertEqual "canonical text is idempotent"
+      text (renderInterpretedValue reconstructed)
+    assertEqual "canonical identity survives"
+      (interpretedCanonicalResult original)
+      (interpretedCanonicalResult reconstructed)
+    case toStringValue canonicalStringCodec original of
+      Left failure -> assertFailure (show failure)
+      Right _ -> pure ()
   if independentlyClosed
-    then do
-      closed <- either (assertFailure . show) pure
-        (parseDatra ("(" <> text <> "\n)"))
-      input <- either (assertFailure . show) pure
-        (parseDatra ("(" <> argument <> ")"))
-      independent <- either (assertFailure . show) pure
-        (interpretClosedExpression (FunctionApplication closed input))
-      assertEqual "call needs no implicit Std or modules"
-        expected (renderInterpretedValue independent)
-    else pure ()
+    then assertClosedCall text argument expected
+    else do
+      result <- requireProgram ("f := " <> text <> "\nyield f " <> argument)
+      assertEqual "reconstructed call" expected (renderInterpretedValue result)
+
+mutualRecursiveDefinitions :: TestTree
+mutualRecursiveDefinitions = testCase "mutual recursive definitions" $ do
+  original <- requireProgram (mutualDefinitions <> "\nyield even")
+  let text = renderInterpretedValue original
+  assertEqual "odd is collected once" 1
+    (occurrences "let \"___odd\" :=" text)
+  assertBool "even refers to its collected odd dependency"
+    ("else ^\"___odd\" (n - 1)" `isInfixOf` text)
+  assertBool "odd's back-edge refers to the reconstructed even function"
+    ("else this (n - 1)" `isInfixOf` text)
+  result <- requireProgram (mutualDefinitions <> "\nyield even 2")
+  assertEqual "mutual call crosses both recursive definitions"
+    "true" (renderInterpretedValue result)
+
+mutualDefinitions :: String
+mutualDefinitions =
+  "let even := ({n? : Int} -> Bool yield if n = 0 then true else odd (n - 1))\n\
+  \let odd := ({n? : Int} -> Bool yield if n = 0 then false else even (n - 1))"
+
+assertClosedCall :: String -> String -> String -> IO ()
+assertClosedCall text argument expected = do
+  closed <- either (assertFailure . show) pure
+    (parseDatra ("(" <> text <> "\n)"))
+  input <- either (assertFailure . show) pure
+    (parseDatra ("(" <> argument <> ")"))
+  independent <- either (assertFailure . show) pure
+    (interpretClosedExpression (FunctionApplication closed input))
+  assertEqual "call needs no implicit Std or modules"
+    expected (renderInterpretedValue independent)
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram

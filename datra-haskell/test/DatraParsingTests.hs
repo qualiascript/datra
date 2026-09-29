@@ -145,6 +145,22 @@ regressionTests = do
         , ref "i"
         ])
       (natural 1))
+  assertAstOutput "dependent sum family sugar can omit in before from"
+    "with i from 0 to 3 do i * 2"
+    (MapAccess
+      (AtlasMap
+        [ WithBinding (IdentifierString "i") True (intValRange (fromTo 0 3))
+        , Multiplication (ref "i") (natural 2)
+        ])
+      (natural 1))
+  assertAstOutput "dependent product family sugar can omit in before from"
+    "for i from 0 to 3 do i * 2"
+    (MapAccess
+      (AtlasMap
+        [ ForBinding (IdentifierString "i") True (intValRange (fromTo 0 3))
+        , Multiplication (ref "i") (natural 2)
+        ])
+      (natural 1))
   assertParsed "private optional dependent binder is valid in an ordered map"
     "(with _T? of Any; value? : _T)"
     (AtlasMap
@@ -241,6 +257,43 @@ regressionTests = do
   assertAstOutput "a unary trailing comma splices an argument federation"
     "{Args Int,}"
     (ArgumentMapSplice (FunctionApplication (ref "Args") (ref "Int")))
+  let implicitVariadicDomain = ArgumentMap
+        [ ForBinding (IdentifierString "_T") False (ref "IntLimit")
+        , ArgumentMapSplice
+            (FunctionApplication (ref "Args") (ref "_T"))
+        ]
+  assertAstOutput
+    "a trailing comma splices after a dependent binder"
+    "{for _T of IntLimit; Args _T,}"
+    implicitVariadicDomain
+  assertAstOutput
+    "a comma after a dependent binder introduces the same splice"
+    "{for _T of IntLimit, Args _T}"
+    implicitVariadicDomain
+  let implicitVariadicFunction = MapSpecification
+        (FunctionBody [] (ref "nothing"))
+        (FunctionType implicitVariadicDomain
+          (OptionalType (ref "_T")))
+  assertAstOutput
+    "a trailing splice composes through a function definition"
+    "max := {for _T of IntLimit; Args _T,} -> _T? do yield nothing"
+    (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
+  assertAstOutput
+    "a separating comma produces the same function definition"
+    "max := {for _T of IntLimit, Args _T} -> _T? do yield nothing"
+    (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
+  assert "a dependent argument splice renders without nested braces"
+    (renderSourceExpression implicitVariadicDomain
+      == "{for _T of IntLimit; Args _T,}")
+  assertAstOutput
+    "a grouped comma remains inside a dependent binder bound"
+    "{for _T of (IntLimit, Nothing); Args _T,}"
+    (ArgumentMap
+      [ ForBinding (IdentifierString "_T") False
+          (MapConcatenation (ref "IntLimit") (ref "Nothing"))
+      , ArgumentMapSplice
+          (FunctionApplication (ref "Args") (ref "_T"))
+      ])
   assertAstOutput "unary argument map" "{2}" (natural 2)
   assertAstOutput "argument map supports newline separators"
     "{1\n2}" (ArgumentMap [natural 1, natural 2])
@@ -289,6 +342,49 @@ regressionTests = do
     "f := ({n? : Nat} -> () do assert n of Nat)"
   assertRejected "compact function yield stays on the signature line"
     "f := ({n? : Nat} -> Nat\nyield n + 1)"
+  let identityBody = FunctionBody [] (ref "value")
+      optionalInput = ArgumentMap
+        [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
+      inferredFunction input = MapSpecification identityBody
+        (FunctionType input (ref "Any"))
+  assertParsed "an arrow-less code block defaults its codomain to Any"
+    "{value? : Any} do yield value"
+    (inferredFunction optionalInput)
+  assertParsed "an unparenthesized declarative domain owns the following block"
+    "for T? of Any do yield value"
+    (inferredFunction
+      (ForBinding (IdentifierString "T") True (ref "Any")))
+  assertParsed "arrow-less code blocks accept forward specifications"
+    "(Nat ~> Any) do yield value"
+    (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+  assertParsed "arrow-less code blocks accept reverse specifications"
+    "(Any <~ Nat) do yield value"
+    (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+  assertParsed "arrow-less code blocks accept subfederations"
+    "(Nat of Any) do yield value"
+    (inferredFunction (Subfederation (ref "Nat") (ref "Any")))
+  assertParsed "an explicit code-block codomain is preserved"
+    "{value? : Any} -> Nat do yield value"
+    (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
+  assertParsed "a declared syntax signature is not a shorthand function domain"
+    "\"$Int next\" as (Int -> Int) do yield value"
+    (MapSpecification identityBody
+      (SyntaxType "$Int next" False
+        (FunctionType (ref "Int") (ref "Int"))))
+  let syntaxAdapterType = SyntaxType "$_Expr" False
+        (FunctionType (ref "Any") (ref "Any"))
+      syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
+  assertParsed "inline external syntax adapters use an explicit yield"
+    "\"$_Expr\" as (Any -> Any) yield !^\"datra.syntax.test\""
+    (MapSpecification syntaxAdapter syntaxAdapterType)
+  assertRejected "inline external syntax adapters require yield"
+    "\"$_Expr\" as (Any -> Any) !^\"datra.syntax.test\""
+  assertParsed "typed external syntax adapters use an explicit yield"
+    "handler : \"$_Expr\" as (Any -> Any) := yield !^\"datra.syntax.test\""
+    (IdentifierOperation
+      (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
+  assertRejected "typed external syntax adapters require yield after assignment"
+    "handler : \"$_Expr\" as (Any -> Any) := !^\"datra.syntax.test\""
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1161,8 +1257,13 @@ regressionTests = do
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
-    "x := ($up | $down)"
+    "x := $up | $down"
     (IdentifierOperation (IdentifierString "x") alternatives (Just alternatives))
+  assert "assignment rendering does not regroup a federation"
+    (renderSourceExpression
+      (IdentifierOperation
+        (IdentifierString "x") alternatives (Just alternatives))
+      == "x := $up | $down")
   assert "quoted identifier references render through value lookup"
     (renderSourceExpression (ref "___Std.Int") == "^\"___Std.Int\"")
   assertAstOutput
@@ -1785,6 +1886,9 @@ integer value
 rangeTo, fromTo :: Integer -> Integer -> Expression
 rangeTo start end = rangeCall "range" (integer start) (UpperBound (integer end))
 fromTo start end = rangeCall "from" (integer start) (UpperBound (integer end))
+
+intValRange :: Expression -> Expression
+intValRange value = MapSpecification value (InModule "std" (ref "IntValRange"))
 
 rangeUpwards, rangeDownwards, fromUpwards :: Integer -> Expression
 rangeUpwards start = rangeCall "range" (integer start) Upwards

@@ -1,4 +1,4 @@
--- | Generic discovery for Datra modules distributed in @lib/@.
+-- | Generic discovery for Datra modules distributed in @libs/@.
 module LibraryFiles
   ( bundledLibrary
   , requiredBundledLibrarySource
@@ -23,15 +23,15 @@ isStandardLibraryRequest :: FilePath -> Bool
 isStandardLibraryRequest requested =
   requested == standardLibraryIdentity
     || requested == standardLibraryFileName
-    || requested == "lib/" <> standardLibraryFileName
+    || requested == "libs/" <> standardLibraryFileName
 
--- | Resolve any shipped library by its bare name, filename, or @lib/@ path.
+-- | Resolve any shipped library by its bare name, filename, or @libs/@ path.
 -- The directory contents, rather than a Haskell registry, decide which
 -- optional modules exist.
 bundledLibrary :: FilePath -> IO (Maybe (FilePath, String))
 bundledLibrary requested = do
   let filename = libraryFileName requested
-  path <- getDataFileName ("lib" </> filename)
+  path <- getDataFileName ("libs" </> filename)
   exists <- doesFileExist path
   if not exists
     then pure Nothing

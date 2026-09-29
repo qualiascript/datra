@@ -15,16 +15,16 @@ bug-reports:        https://github.com/qualiascript/datra/issues
 category:           Development
 build-type:         Simple
 data-files:
-    lib/*.datra
+    libs/*.datra
 tested-with:        GHC == 9.14.1
 extra-doc-files:
     CHANGELOG.md
     README.md
     NOTICE
 extra-source-files:
-    lib/std.datra
-    lib/numbers.datra
-    lib/ordinals.datra
+    libs/std.datra
+    libs/numbers.datra
+    libs/ordinals.datra
     test/fixtures/cli/*.ast
     test/fixtures/cli/*.datra
     test/fixtures/cli/*.out

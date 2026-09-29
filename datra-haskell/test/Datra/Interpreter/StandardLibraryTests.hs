@@ -373,9 +373,27 @@ standardLibraryTests =
         [ programCase "with-in-do builds an indexed sum family"
             "yield (with i in range 0 to 2 do i + 1)[2]"
             "3"
+        , programCase "with-from-do omits the in keyword"
+            "yield (with i from 0 to 2 do i + 1)[2]"
+            "3"
         , programCase "for-in-do builds an indexed product family"
             "yield (for i in range 0 to 2 do i + 1)[2]"
             "3"
+        , programCase "for-from-do maps a finite valued range"
+            "yield for i from 0 to 3 do i * 2"
+            "(0; 2; 4; 6)"
+        , programCase "omitted-in accepts a valued range expression"
+            "values := from 0 to 3\nyield for i values do i * 2"
+            "(0; 2; 4; 6)"
+        , programCase "for-from-do maps an infinite valued range lazily"
+            "yield (for i from 0 up do i * i)[5]"
+            "25"
+        , programFailureCase "for without in rejects an ordinary range"
+            "yield for i range 0 to 2 do i"
+            (SourceEvaluationFailure (ExpectedBuiltinType "IntValRange"))
+        , programFailureCase "with without in rejects an ordinary range"
+            "yield with i range 0 to 2 do i"
+            (SourceEvaluationFailure (ExpectedBuiltinType "IntValRange"))
         ]
     , testGroup "dependent sums"
         [ programCase "optional binder accepts positional witnesses"
@@ -433,6 +451,12 @@ standardLibraryTests =
                 <> "yield Bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
+        , programFailureCase "argument maps reject mixed dependent binders"
+            "yield {with T? of Any; for U? of Any; value? : T}"
+            (SourceEvaluationFailure MixedDependentBinders)
+        , programFailureCase "ordered maps reject mixed dependent binders"
+            "yield (for T? of Any; with U? of Any; value? : T)"
+            (SourceEvaluationFailure MixedDependentBinders)
         ]
     , integerLimitTests
     , declaredPatternTests
@@ -595,7 +619,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"$Int next\" as (Int -> Int) !^\"datra.abs\")"
+        ( "step := ((\"$Int next\" as (Int -> Int) yield !^\"datra.abs\")"
             <> " | (\"$Int next\" as (Int -> Int) do yield 2))\n"
             <> "yield step 3 next"
         )

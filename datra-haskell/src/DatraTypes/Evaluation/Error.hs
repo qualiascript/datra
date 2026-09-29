@@ -145,6 +145,7 @@ data InterpretingError
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
   | DependentBinderOutsideContainer String
+  | MixedDependentBinders
   | ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind

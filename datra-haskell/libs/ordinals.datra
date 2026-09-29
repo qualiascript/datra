@@ -1,0 +1,15 @@
+yield Ordinals := begin
+
+  OrdValue := Ordinal | Nat
+
+  sum := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> OrdValue yield !^"datra.ordinal.sum"
+  prod := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> OrdValue yield !^"datra.ordinal.prod"
+  minus := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> OrdValue yield !^"datra.ordinal.minus"
+  exp := "$_Expr $_Expr" as? {x? : OrdValue, power? : Nat} -> OrdValue yield !^"datra.ordinal.exp"
+
+  lt := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> Bool yield !^"datra.ordinal.lt"
+  lte := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> Bool yield !^"datra.ordinal.lte"
+  gt := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> Bool yield !^"datra.ordinal.gt"
+  gte := "$_Expr $_Expr" as? {x? : OrdValue, y? : OrdValue} -> Bool yield !^"datra.ordinal.gte"
+
+yield public this
