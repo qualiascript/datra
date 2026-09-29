@@ -46,6 +46,7 @@ import Evaluation.Error
   )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues, makeAtlasMap)
+import Evaluation.Numerical (complementedIntegerComponents)
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
@@ -147,7 +148,11 @@ resolveReplacements template supplied
   , Just value <- matchSlot slot supplied =
       Right [(slotIndex slot, Just value)]
   | otherwise = do
-      rows <- overloadArgumentRows supplied
+      rows <- case complementedIntegerComponents supplied of
+        Just members
+          | length (templateSlots template) > 1 ->
+              pure [map Just members]
+        _ -> overloadArgumentRows supplied
       writtenRows <-
         case interpretedForm supplied of
           ArgumentMapForm members _ ->
@@ -227,7 +232,10 @@ matchInputs (slot : remainingSlots)
 
 matchSlot :: Slot -> InterpretedValue -> Maybe InterpretedValue
 matchSlot slot input = do
-  let (inputName, inputValue) = suppliedValue input
+  let (inputName, inputValue) =
+        case slotName slot of
+          Nothing -> (Nothing, input)
+          Just _ -> suppliedValue input
   case (slotName slot, inputName) of
     (Just expected, Just actual)
       | not (isPublicIdentifier expected)
@@ -322,42 +330,29 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
               , next + 1
               )
             Nothing ->
-              case interpretedForm current of
-                ArgumentMapForm members _ ->
-                  mapChildren UnorderedArgumentSchema next members
-                ConcatenatedMapForm left right ->
-                  let (leftTemplate, afterLeft) = fromValue next left
-                      (rightTemplate, afterRight) =
-                        fromValue afterLeft right
-                  in ( ConcatenatedArgumentSchema leftTemplate rightTemplate
-                     , afterRight
-                     )
-                SequentialMapForm ->
-                  case finiteMembers current of
-                    Just [] -> (EmptyArgumentSchema, next)
-                    Just members ->
-                      let (children, afterChildren) =
-                            schemasFromValues next members
-                      in ( OrderedArgumentSchema
-                             (interpretedMapCardinality (interpretedMap current))
-                             children
-                         , afterChildren
-                         )
-                    Nothing -> slot current next
-                MapForm ->
-                  case finiteMembers current of
-                    Just [] -> (EmptyArgumentSchema, next)
-                    Just members ->
-                      let (children, afterChildren) =
-                            schemasFromValues next members
-                      in ( OrderedArgumentSchema
-                             (interpretedMapCardinality
-                               (interpretedMap current))
-                             children
-                         , afterChildren
-                         )
-                    Nothing -> slot current next
-                _ -> slot current next
+              fromComposite next current
+    fromComposite next current =
+      case interpretedForm current of
+        ArgumentMapForm members _ ->
+          mapChildren UnorderedArgumentSchema next members
+        ConcatenatedMapForm left right ->
+          let (leftTemplate, afterLeft) = fromValue next left
+              (rightTemplate, afterRight) = fromValue afterLeft right
+          in (ConcatenatedArgumentSchema leftTemplate rightTemplate, afterRight)
+        SequentialMapForm -> fromFiniteMap next current
+        MapForm -> fromFiniteMap next current
+        _ -> slot current next
+    fromFiniteMap next current =
+      case finiteMembers current of
+        Just [] -> (EmptyArgumentSchema, next)
+        Just members ->
+          let (children, afterChildren) = schemasFromSlots next members
+          in ( OrderedArgumentSchema
+                 (interpretedMapCardinality (interpretedMap current))
+                 children
+             , afterChildren
+             )
+        Nothing -> slot current next
     slot current next =
       (ArgumentSlotSchema next Nothing False False current Nothing, next + 1)
     mapChildren constructor start members =
@@ -369,6 +364,25 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
           (schemas, finalIndex) =
             schemasFromValues afterSchema remaining
       in (schema : schemas, finalIndex)
+    schemasFromSlots next [] = ([], next)
+    schemasFromSlots next (member : remaining) =
+      let (schema, afterSchema) = directSlot next member
+          (schemas, finalIndex) =
+            schemasFromSlots afterSchema remaining
+      in (schema : schemas, finalIndex)
+    directSlot next current =
+      case optionalNamedParts current of
+        Just (name, annotation, defaultValue) ->
+          ( ArgumentSlotSchema next (Just name) True False annotation defaultValue
+          , next + 1
+          )
+        Nothing ->
+          case namedParts current of
+            Just (name, annotation, defaultValue) ->
+              ( ArgumentSlotSchema next (Just name) False False annotation defaultValue
+              , next + 1
+              )
+            Nothing -> slot current next
 
 normalizeArgumentSchema :: ArgumentSchema -> ArgumentSchema
 normalizeArgumentSchema schema = fst (go 0 schema)

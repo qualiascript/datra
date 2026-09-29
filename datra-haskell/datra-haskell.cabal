@@ -222,6 +222,7 @@ library
         Evaluation.FunctionArguments
         Evaluation.Identifier
         Evaluation.IdentifierErasure
+        Evaluation.LimitRange
         Evaluation.Map
         Evaluation.Numerical
         Evaluation.Ordinal

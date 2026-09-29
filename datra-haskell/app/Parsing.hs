@@ -79,6 +79,10 @@ import DatraLanguage.AST
       , Subfederation
       , Equality
       , Inequality
+      , LessThan
+      , LessThanOrEqual
+      , GreaterThan
+      , GreaterThanOrEqual
       , BooleanAnd
       , BooleanOr
       , BooleanNot
@@ -432,6 +436,10 @@ astForm =
       , astBinary AST.SubfederationOperator Subfederation
       , astBinary AST.InequalityOperator Inequality
       , astBinary AST.EqualityOperator Equality
+      , astBinary AST.LessThanOrEqualOperator LessThanOrEqual
+      , astBinary AST.GreaterThanOrEqualOperator GreaterThanOrEqual
+      , astBinary AST.LessThanOperator LessThan
+      , astBinary AST.GreaterThanOperator GreaterThan
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
@@ -616,7 +624,10 @@ astReservedSymbol =
   astSymbol . Text.pack . Reserved.reservedSymbolIdentifierString
 
 astOperatorToken :: AST.Operator -> Parser Text
-astOperatorToken = astSymbol . Text.pack . AST.operatorCanonicalSymbol
+astOperatorToken operator = astLexeme $ try $ do
+  token <- chunk (Text.pack (AST.operatorCanonicalSymbol operator))
+  _ <- lookAhead space1
+  pure token
 
 resource :: Parser Expression
 resource = snd <$> resourceWithEnvelope
@@ -794,6 +805,10 @@ eitherExpressionWith operand =
         (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
     , [ InfixL (Inequality <$ continuedOperator AST.InequalityOperator)
       , InfixL (Equality <$ continuedOperator AST.EqualityOperator)
+      , InfixL (LessThanOrEqual <$ continuedOperator AST.LessThanOrEqualOperator)
+      , InfixL (GreaterThanOrEqual <$ continuedOperator AST.GreaterThanOrEqualOperator)
+      , InfixL (LessThan <$ continuedOperator AST.LessThanOperator)
+      , InfixL (GreaterThan <$ continuedOperator AST.GreaterThanOperator)
       ]
     , [InfixL (BooleanAnd <$ continuedWordOperator AST.BooleanAndOperator)]
     , [InfixL (BooleanOr <$ continuedWordOperator AST.BooleanOrOperator)]
@@ -1118,20 +1133,20 @@ syntaxApplication = do
     obviouslyNumeric (Minus value) = obviouslyNumeric value
     obviouslyNumeric _ = False
     parsePieces [] = pure []
-    parsePieces (SyntaxLiteral token : rest) = do
-      lineSpaceConsumer
+    parsePieces (piece@(SyntaxLiteral token) : rest) = do
+      syntaxPieceSpaceConsumer piece
       _ <- if all (`elem` (",;" :: String)) token
-        then continuedSymbol (Text.pack token) else keyword (Text.pack token) <* lineSpaceConsumer
+        then symbol (Text.pack token) else keyword (Text.pack token)
       parsePieces rest
-    parsePieces (SyntaxHole kind : rest) = do
+    parsePieces (piece@(SyntaxHole kind) : rest) = do
       knownDeclarations <- syntaxDeclarations <$> ask
-      lineSpaceConsumer
+      syntaxPieceSpaceConsumer piece
       let stops = case take 1 rest of
             [SyntaxLiteral token] -> [Text.pack token]
             [SyntaxHole nextType] -> map Text.pack
               (declarationLiterals knownDeclarations nextType)
             _ -> []
-          literal = choice [AsciiStringLiteral value <$ (keyword (Text.pack value) <* lineSpaceConsumer)
+          literal = choice [AsciiStringLiteral value <$ keyword (Text.pack value)
             | value <- declarationLiterals knownDeclarations kind]
           enums = declarationLiterals knownDeclarations kind
           adjacentHole = case rest of
@@ -1159,6 +1174,11 @@ syntaxApplication = do
       case value of
         AtlasMap entries | kind == "_Block" -> withDeclarations entries continue
         _ -> continue
+
+    -- The enclosing block owns the line break after a completed syntax
+    -- application. Whitespace is consumed only while another pattern piece is
+    -- still required, so sibling entries remain separate AST nodes.
+    syntaxPieceSpaceConsumer _ = lineSpaceConsumer
 
 functionBody :: Parser Expression
 functionBody = try $ do
@@ -1766,6 +1786,8 @@ operatorToken operator = lexeme $ try $ do
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
+    AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
+    AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()
   pure token
 

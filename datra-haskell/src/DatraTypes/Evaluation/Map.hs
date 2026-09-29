@@ -7,13 +7,11 @@ module Evaluation.Map
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (AtlasMapFederationProved)
-  , AtlasMapFederationExpression (..)
+  ( AtlasMapFederationExpression (..)
   , atlasMapFederationExpressionIsSingleton
   )
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.Error (InterpretingError)
-import Evaluation.Access.Federation (federationIsCoalition)
 import Evaluation.Federation
   ( decideFederationConcatenation
   , requireFederationDecision
@@ -64,9 +62,7 @@ makeProductMap
   -> InterpretedValue
 makeProductMap productForm cardinality values productFederation = value
   where
-    -- Both sequence and expansion preserve every operand structurally. A
-    -- nonempty sequence of coalitions shares the canonical semantics of its
-    -- explicit concatenation only when that concatenation is itself proved.
+    -- Both sequence and expansion preserve every operand structurally.
     finalValues =
       foldl'
         appendOrdinalOrderedValues
@@ -74,15 +70,7 @@ makeProductMap productForm cardinality values productFederation = value
         (map singletonOrdinalOrderedValues values)
     components =
       map interpretedSemantics values
-    semantics =
-      case productForm of
-        SequentialProduct
-          | not (null memberFederations)
-          , all federationIsCoalition memberFederations ->
-              if federationConcatenationIsValid memberFederations
-                then ConcatenationSemantics components
-                else MapSemantics cardinality components
-        _ -> MapSemantics cardinality components
+    semantics = MapSemantics cardinality components
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
     federation
@@ -109,29 +97,20 @@ makeProductMap productForm cardinality values productFederation = value
           else NonTotalInterpretedMap)
         semantics
 
--- A sequence may use comma-form canonical syntax only when evaluating that
--- spelling would pass the same concatenation proof as an explicit comma.
--- Coalition shape alone is insufficient: overlapping coalitions such as Nat
--- and Int still need their semicolon sequence boundary retained.
-federationConcatenationIsValid
-  :: [InterpretedAtlasMapFederation]
-  -> Bool
-federationConcatenationIsValid [] = False
-federationConcatenationIsValid (first : remaining) =
-  go first remaining
-  where
-    go _ [] = True
-    go accumulated (next : rest) =
-      case decideFederationConcatenation accumulated next of
-        AtlasMapFederationProved () ->
-          go (ConcatenatedAtlasMapFederation accumulated next) rest
-        _ -> False
-
 concatenateValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-concatenateValues left right = do
+concatenateValues left right
+  | isUnitValue left = Right right
+  | isUnitValue right = Right left
+  | otherwise = concatenateNonUnitValues left right
+
+concatenateNonUnitValues
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+concatenateNonUnitValues left right = do
   requireFederationDecision
     (decideFederationConcatenation
       (interpretedAtlasMapFederation left)
@@ -139,7 +118,10 @@ concatenateValues left right = do
   normalizedRanges <-
     traverse canonicalizeRanges (concatenatedRanges left right)
   let insertionCapability =
-        maybe NoInsertion concatenateRangeCapability normalizedRanges
+        maybe
+          (concatenateInsertionCapabilities left right)
+          concatenateRangeCapability
+          normalizedRanges
       (form, finalValues, components, semantics) =
         case normalizedRanges of
           Just ranges ->
@@ -229,6 +211,30 @@ concatenateValues left right = do
   where
     operandsAreTotal =
       hasConcreteSource left && hasConcreteSource right
+
+concatenateInsertionCapabilities
+  :: InterpretedValue
+  -> InterpretedValue
+  -> InsertionCapability
+concatenateInsertionCapabilities left right =
+  case
+      ( interpretedInsertionCapability left
+      , interpretedInsertionCapability right
+      ) of
+    (ValidInsertion leftInsertion, ValidInsertion rightInsertion) ->
+      ValidInsertion
+        (appendSomeSuperEllipsisInsertion leftInsertion rightInsertion)
+    (RejectedInsertion rejection, _) -> RejectedInsertion rejection
+    (_, RejectedInsertion rejection) -> RejectedInsertion rejection
+    _ -> NoInsertion
+
+isUnitValue :: InterpretedValue -> Bool
+isUnitValue value =
+  case interpretedForm value of
+    SequentialMapForm ->
+      interpretedMapCardinality (interpretedMap value) == 0
+        && interpretedCanonicalResult value == CanonicalMap 0 []
+    _ -> False
 
 -- A specification retains the certified total map that originally selected
 -- its target. When it is embedded in a concatenation, that concrete source is

@@ -140,7 +140,8 @@ valuedNaturalRangeUpwardsValue start =
 naturalTypeValue :: Either InterpretingError InterpretedValue
 naturalTypeValue =
   case NaturalType.naturalTypeEither
-      (interpretedValuedNaturalRangeValue NaturalTypeSemantics) of
+      (interpretedValuedNaturalRangeValue
+        (ValuedNaturalRangeSemantics 0 NaturalRange.UpwardsTarget)) of
     Left rejection -> Left (RangeConstructionRejected rejection)
     Right value -> Right value
 

@@ -35,7 +35,8 @@ type Collected = [(String, IdentifierString, Expression)]
 
 closeFunction :: Resolver -> Maybe String -> Bool -> Bool -> Expression -> Expression
 closeFunction resolver self explicitSelf selfIncludesDependencies expression =
-  close BindDependencies 0 [] [] resolver self explicitSelf selfIncludesDependencies expression
+  close BindDependencies 0 [] [] resolver self
+    explicitSelf selfIncludesDependencies expression
 
 -- Reuse the same scope-aware traversal when embedding primitive definitions
 -- from a source library. Cycles still get a local recursive binding.
@@ -43,8 +44,10 @@ inlineDependencies :: Resolver -> Expression -> Expression
 inlineDependencies resolver expression =
   close InlineDependencies 0 [] [] resolver Nothing False False expression
 
-close :: DependencyMode -> Int -> References -> [String] -> Resolver -> Maybe String -> Bool -> Bool -> Expression -> Expression
-close mode depth ancestors occupied resolver self explicitSelf selfIncludesDependencies original =
+close :: DependencyMode -> Int -> References -> [String] -> Resolver
+  -> Maybe String -> Bool -> Bool -> Expression -> Expression
+close mode depth ancestors occupied resolver self
+    explicitSelf selfIncludesDependencies original =
   case (null definitions, recursiveInDefinitions, selfBound) of
     (True, _, False) -> selfRewritten
     (True, _, True) -> Fun selfRewritten
@@ -59,7 +62,11 @@ close mode depth ancestors occupied resolver self explicitSelf selfIncludesDepen
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
     (rewritten, collected) = runState (rewrite mode depth (rootText : reserved) active resolver [] expression) []
-    definitions = [assigned name value | mode == BindDependencies, (_, name, value) <- collected]
+    definitions =
+      [ Let (assigned name value)
+      | mode == BindDependencies
+      , (_, name, value) <- collected
+      ]
     recursiveInBody = root `elem` referenceNames rewritten
     recursiveInDefinitions = root `elem` concatMap referenceNames definitions
     recursive = recursiveInBody || recursiveInDefinitions
@@ -100,14 +107,25 @@ rewrite mode depth reserved active resolver bound expression
               let name = fresh
                     ("___" <> dependencyName dependency)
                     (reserved <> [text | (_, IdentifierString text, _) <- collected])
-                  value = close mode (depth + 1) active
-                    (reserved <> [text | (_, IdentifierString text, _) <- collected] <> [nameText name])
+                  occupied = reserved
+                    <> [text | (_, IdentifierString text, _) <- collected]
+                    <> [nameText name]
+              value <- case mode of
+                BindDependencies ->
+                  rewrite mode (depth + 1) occupied
+                    ((dependencyKey dependency, name) : active)
+                    (dependencyResolver dependency)
+                    []
+                    (dependencyExpression dependency)
+                InlineDependencies -> pure
+                  (close mode (depth + 1) active occupied
                     (dependencyResolver dependency)
                     (Just (dependencyKey dependency))
                     False
                     False
-                    (dependencyExpression dependency)
-              put (collected <> [(dependencyKey dependency, name, value)])
+                    (dependencyExpression dependency))
+              transitive <- get
+              put (transitive <> [(dependencyKey dependency, name, value)])
               pure (dependencyUse mode name value)
 
 rewrite mode depth reserved active resolver bound expression =
@@ -130,6 +148,15 @@ rewrite mode depth reserved active resolver bound expression =
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
     Program entries result -> block Program entries result
+    OptionalType operand
+      | Nothing <- optionalIdentifierExpression expression ->
+          recur
+            (FunctionApplication
+              (IdentifierReference (IdentifierString "Maybe"))
+              operand)
+    SyntaxType _ _ signature -> recur signature
+    MapSpecification implementation (SyntaxType _ _ signature) ->
+      recur (MapSpecification implementation signature)
     _ -> traverseExpressionChildren recur expression
   where
     recur = rewrite mode depth reserved active resolver bound
@@ -153,7 +180,7 @@ referencePath (NamedAccess source (IdentifierString name)) = (<> [name]) <$> ref
 referencePath _ = Nothing
 
 assigned :: IdentifierString -> Expression -> Expression
-assigned name expression = IdentifierOperation name expression Nothing
+assigned name expression = IdentifierOperation name expression (Just expression)
 
 -- Generated roots use the same quoted namespace as their dependencies.
 functionName :: Int -> String
@@ -202,7 +229,7 @@ nameText (IdentifierString text) = text
 
 entryName :: Expression -> [IdentifierString]
 entryName (Let value) = entryName value
-entryName (IdentifierOperation name _ Nothing) = [name]
+entryName (IdentifierOperation name _ _) = [name]
 entryName _ = []
 
 replaceReference :: IdentifierString -> Expression -> Expression -> Expression

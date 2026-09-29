@@ -164,18 +164,27 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
               InferenceValueBinding _ target -> Right target
         | Just target <- lookup name parameters -> Right target
         | otherwise -> evaluate expression
-      Addition a b -> numeric addValues False a b
-      Multiplication a b -> numeric multiplyValues False a b
-      Subtraction a b -> numeric subtractValues True a b
-      Exponentiation a b -> numeric exponentiateValues False a b
+      Addition a b -> numeric "+" addValues False a b
+      Multiplication a b -> numeric "*" multiplyValues False a b
+      Subtraction a b -> numeric "-" subtractValues True a b
+      Exponentiation a b -> power a b
       Plus a -> do
         operand <- recur a
-        check operand =<< integerTypeValue
-        if interpretedValueHasTotalMap operand then plusValue operand else integerTypeValue
+        limits <- integerLimitType
+        check operand limits
+        if interpretedValueHasTotalMap operand
+          then plusValue operand
+          else pure operand
       Minus a -> do
         operand <- recur a
-        check operand =<< integerTypeValue
-        if interpretedValueHasTotalMap operand then minusValue operand else integerTypeValue
+        limits <- integerLimitType
+        check operand limits
+        if interpretedValueHasTotalMap operand
+          then minusValue operand
+          else do
+            ints <- integerType
+            finite <- isSubtype operand ints
+            pure (if finite then ints else operand)
       BooleanAnd a b -> logical [a,b]
       BooleanOr a b -> logical [a,b]
       BooleanNot a -> logical [a]
@@ -200,6 +209,10 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         optionalValue (makeAtlasMap 2 [elementType, listType])
       Equality a b -> recur a >> recur b >> booleanTypeValue
       Inequality a b -> recur a >> recur b >> booleanTypeValue
+      LessThan a b -> comparison a b
+      LessThanOrEqual a b -> comparison a b
+      GreaterThan a b -> comparison a b
+      GreaterThanOrEqual a b -> comparison a b
       Subfederation a b -> recur a >> recur b >> booleanTypeValue
       Assert _ condition -> do
         value <- recur condition
@@ -265,7 +278,10 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
             left <- recur present
             right <- recur missing
             joinTypes left right
-          Nothing -> evaluate (OptionalType operand)
+          Nothing -> recur
+            (FunctionApplication
+              (IdentifierReference (IdentifierString "Maybe"))
+              operand)
       StringTemplate parts -> do
         -- Interpolation affects whether evaluating the template can succeed,
         -- but not its result type. Still infer every embedded expression so
@@ -283,19 +299,88 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         inferTemplatePart (StringTemplateLiteral _) = Right ()
         inferTemplatePart (StringTemplateInterpolation value) = () <$ recur value
         inferTemplatePart (StringTemplateWeakInterpolation value) = () <$ recur value
-        numeric operation signed a b = do
+        numeric operator operation signed a b = do
           left <- recur a
           right <- recur b
-          ints <- integerTypeValue
-          check left ints
-          check right ints
-          if interpretedValueHasTotalMap left && interpretedValueHasTotalMap right
+          limits <- integerLimitType
+          check left limits
+          check right limits
+          let leftConcrete = concreteIntegerLimit left
+              rightConcrete = concreteIntegerLimit right
+          if leftConcrete && rightConcrete
             then operation left right
             else do
-              nats <- naturalTypeValue
+              rejectIndeterminate operator left right
+              ints <- integerType
+              leftFinite <- isSubtype left ints
+              rightFinite <- isSubtype right ints
+              nats <- naturalType
               leftNat <- isSubtype left nats
               rightNat <- isSubtype right nats
-              pure (if not signed && leftNat && rightNat then nats else ints)
+              if leftFinite && rightFinite
+                then pure (if not signed && leftNat && rightNat then nats else ints)
+              else if not leftConcrete && rightConcrete
+                  then pure left
+                  else if leftConcrete && not rightConcrete
+                    then pure right
+                    else pure limits
+        power base exponentValue = do
+          baseType <- recur base
+          exponentType <- recur exponentValue
+          limits <- integerLimitType
+          nats <- naturalType
+          check baseType limits
+          check exponentType nats
+          if concreteIntegerLimit baseType
+              && concreteIntegerLimit exponentType
+            then exponentiateValues baseType exponentType
+            else do
+              ints <- integerType
+              natural <- isSubtype baseType nats
+              finite <- isSubtype baseType ints
+              pure
+                (if natural then nats
+                  else if finite then ints
+                  else baseType)
+        comparison a b = do
+          left <- recur a
+          right <- recur b
+          limits <- integerLimitType
+          check left limits
+          check right limits
+          booleanTypeValue
+        integerLimitType = standardType "IntLimit"
+        integerType = standardType "Int"
+        naturalType = standardType "Nat"
+        standardType name = evaluate
+          (IdentifierReference (IdentifierString name))
+        concreteIntegerLimit value = case integerLimitProjection value of
+          Just _ -> True
+          Nothing -> False
+        rejectIndeterminate operator left right = do
+          positive <- asciiStringValue "PosInf"
+          negative <- asciiStringValue "NegInf"
+          let contains member target = isSubtype member target
+          leftPositive <- contains positive left
+          leftNegative <- contains negative left
+          rightPositive <- contains positive right
+          rightNegative <- contains negative right
+          zero <- contains (naturalValue 0) left
+          rightZero <- contains (naturalValue 0) right
+          let unsafe = case operator of
+                "+" ->
+                  (leftPositive && rightNegative)
+                    || (leftNegative && rightPositive)
+                "-" ->
+                  (leftPositive && rightPositive)
+                    || (leftNegative && rightNegative)
+                "*" ->
+                  (zero && (rightPositive || rightNegative))
+                    || (rightZero && (leftPositive || leftNegative))
+                _ -> False
+          if unsafe
+            then Left (IndeterminateInfinityOperation operator)
+            else Right ()
         logical operands = do
           bools <- booleanTypeValue
           traverse recur operands >>= mapM_ (`check` bools)

@@ -70,6 +70,10 @@ module DatraTypes
   , extractValue
   , evalValues
   , requireFiniteInteger
+  , IntegerLimit (..)
+  , integerLimitProjection
+  , requireIntegerLimit
+  , makeIntegerLimit
   , formulationValue
   , skipValue
   , addValues
@@ -78,6 +82,7 @@ module DatraTypes
   , minusValue
   , multiplyValues
   , exponentiateValues
+  , compareIntegerLimitValues
   , ordinalSumValues
   , ordinalProductValues
   , ordinalMinusValues
@@ -106,6 +111,8 @@ module DatraTypes
   , valuedIntegerRangeValue
   , valuedIntegerRangeUpwardsValue
   , valuedIntegerRangeDownwardsValue
+  , IntegerRangeKind (..)
+  , integerLimitRangeValue
   , integerTypeValue
   , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
@@ -274,6 +281,11 @@ import Evaluation.Overload
   )
 import Evaluation.Numerical
   ( addValues
+  , compareIntegerLimitValues
+  , IntegerLimit (..)
+  , integerLimitProjection
+  , makeIntegerLimit
+  , requireIntegerLimit
   , requireFiniteInteger
   , subtractValues
   , plusValue
@@ -307,6 +319,10 @@ import Evaluation.Range
   , openPlusRangeValue
   , valuedNaturalRangeUpwardsValue
   , valuedNaturalRangeValue
+  )
+import Evaluation.LimitRange
+  ( IntegerRangeKind (..)
+  , integerLimitRangeValue
   )
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue

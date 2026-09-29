@@ -60,6 +60,10 @@ source context expression =
     And left right -> binary 5 "and" left right
     Equal left right -> binary 6 "=" left right
     NotEqual left right -> binary 6 "=/=" left right
+    Less left right -> binary 6 "<" left right
+    LessOrEqual left right -> binary 6 "<=" left right
+    Greater left right -> binary 6 ">" left right
+    GreaterOrEqual left right -> binary 6 ">=" left right
     IsSubfederation left right -> binary 6 "of" left right
     Add left right -> binary 7 "+" left right
     Subtract left right -> binary 7 "-" left right
@@ -143,9 +147,9 @@ source context expression =
       renderIdentifierString name <> if optional then "?" else ""
     identifierOperation name optional annotation given = wrapped 1
       (name <> (if optional then "?" else "") <> case given of
-        Just value | value == annotation -> " := " <> source 2 value
+        Just value | value == annotation -> " := " <> source 7 value
         _ -> " : " <> source 13 annotation
-          <> maybe "" (\value -> " := " <> source 2 value) given)
+          <> maybe "" (\value -> " := " <> source 7 value) given)
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
 

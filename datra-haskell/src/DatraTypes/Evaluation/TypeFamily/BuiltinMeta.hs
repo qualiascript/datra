@@ -38,15 +38,75 @@ decideBuiltinMetaSubfederation source target =
       (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType Nothing) -> True
       (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True
       (BuiltinMetaTypeForm NatValRangeMetaType, IntValRangeMetaType) -> True
+      (_, NatRangeMetaType) | isPositiveInfinity source -> True
+      (_, IntRangeMetaType) | isInfinity source -> True
+      (_, NatValRangeMetaType) | isPositiveInfinity source -> True
+      (_, IntValRangeMetaType) | isInfinity source -> True
       (NaturalRangeForm _, NatRangeMetaType) -> True
       (NaturalRangeForm _, IntRangeMetaType) -> True
       (IntegerRangeForm _, IntRangeMetaType) -> True
+      (RangeForm valueRange, NatRangeMetaType) ->
+        evaluatedRangeLevel valueRange == 1
+      (RangeForm valueRange, IntRangeMetaType) ->
+        evaluatedRangeLevel valueRange <= 2
+      (RangeConcatenationForm ranges _, NatRangeMetaType) ->
+        all ((== 1) . evaluatedRangeLevel) ranges
+      (RangeConcatenationForm ranges _, IntRangeMetaType) ->
+        all ((<= 2) . evaluatedRangeLevel) ranges
+      (ConcatenatedMapForm left right, expected) ->
+        isRange left expected && isRange right expected
       (ValuedNaturalRangeForm _, NatValRangeMetaType) -> True
       (ValuedNaturalRangeForm _, IntValRangeMetaType) -> True
       (ValuedIntegerRangeForm _, IntValRangeMetaType) -> True
+      (EitherForm alternatives, NatRangeMetaType) ->
+        rangeWithInfinity alternatives NatRangeMetaType
+      (EitherForm alternatives, IntRangeMetaType) ->
+        rangeWithInfinity alternatives IntRangeMetaType
+      (EitherForm alternatives, NatValRangeMetaType) ->
+        rangeWithInfinity alternatives NatValRangeMetaType
+      (EitherForm alternatives, IntValRangeMetaType) ->
+        rangeWithInfinity alternatives IntValRangeMetaType
       (_, StringTemplateMetaType) ->
         federationProducesStrings (interpretedAtlasMapFederation source)
       _ -> False
+
+    rangeWithInfinity alternatives expected =
+      let left = evaluatedEitherLeft alternatives
+          right = evaluatedEitherRight alternatives
+      in (isInfinity left && isRange right expected)
+          || (isRange left expected && isInfinity right)
+
+    isInfinity value =
+      interpretedCanonicalResult value == CanonicalAsciiString "PosInf"
+        || interpretedCanonicalResult value == CanonicalAsciiString "NegInf"
+
+    isPositiveInfinity value =
+      interpretedCanonicalResult value == CanonicalAsciiString "PosInf"
+
+    isRange value expected =
+      case (interpretedForm value, expected) of
+        (_, NatRangeMetaType) | isPositiveInfinity value -> True
+        (_, IntRangeMetaType) | isInfinity value -> True
+        (_, NatValRangeMetaType) | isPositiveInfinity value -> True
+        (_, IntValRangeMetaType) | isInfinity value -> True
+        (NaturalRangeForm _, NatRangeMetaType) -> True
+        (NaturalRangeForm _, IntRangeMetaType) -> True
+        (IntegerRangeForm _, IntRangeMetaType) -> True
+        (RangeForm valueRange, NatRangeMetaType) ->
+          evaluatedRangeLevel valueRange == 1
+        (RangeForm valueRange, IntRangeMetaType) ->
+          evaluatedRangeLevel valueRange <= 2
+        (RangeConcatenationForm ranges _, NatRangeMetaType) ->
+          all ((== 1) . evaluatedRangeLevel) ranges
+        (RangeConcatenationForm ranges _, IntRangeMetaType) ->
+          all ((<= 2) . evaluatedRangeLevel) ranges
+        (ConcatenatedMapForm left right, _) ->
+          isRange left expected && isRange right expected
+        (EitherForm nested, _) -> rangeWithInfinity nested expected
+        (ValuedNaturalRangeForm _, NatValRangeMetaType) -> True
+        (ValuedNaturalRangeForm _, IntValRangeMetaType) -> True
+        (ValuedIntegerRangeForm _, IntValRangeMetaType) -> True
+        _ -> False
 
 isTransfiniteOrdinal :: ValueSemantics -> Bool
 isTransfiniteOrdinal semantics = case semantics of

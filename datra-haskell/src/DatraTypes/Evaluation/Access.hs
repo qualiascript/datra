@@ -14,6 +14,7 @@ import Data.Bifunctor qualified as Bifunctor
 import Evaluation.Error
   ( InterpretingError (..)
   , NamedAccessFailure (..)
+  , OperandSide (LeftOperand)
   )
 import Evaluation.Access.Composition
   ( FederationAccess (..)
@@ -30,7 +31,8 @@ import Evaluation.Map
   , makeAtlasExpansion
   , makeAtlasMap
   )
-import Evaluation.Construction (makeAsciiString, makeFormulation)
+import Evaluation.Construction (makeAsciiString, makeExplicit, makeFormulation)
+import Evaluation.Numerical (IntegerLimit (..), requireIntegerLimit)
 import Evaluation.Access.RangeSelection
   ( AccessSource (..)
   , DescribedRange (..)
@@ -65,6 +67,16 @@ accessValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessValues mapValue insertionValue =
+  case requireIntegerLimit LeftOperand insertionValue of
+    Right PositiveInfinity ->
+      accessValues mapValue (makeExplicit ComputedOrigin (omegaPower 1))
+    _ -> accessUncoerced mapValue insertionValue
+
+accessUncoerced
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+accessUncoerced mapValue insertionValue =
   case interpretedForm insertionValue of
     SequentialMapForm ->
       accessMappedMembers makeAtlasMap mapValue insertionValue

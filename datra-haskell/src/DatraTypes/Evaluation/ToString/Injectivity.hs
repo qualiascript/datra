@@ -7,16 +7,19 @@ module Evaluation.ToString.Injectivity
   ( proveInjectiveToString
   ) where
 
-import Data.List (nub)
+import Data.List (isInfixOf, nub)
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraOrdinal (naturalAtOrdinal)
 import Evaluation.Value
+import Evaluation.Numerical
+  ( complementedIntegerTypeIncludesInfinity )
 import IdentifierValueType (identifierValueCharacterAlphabet)
 
 data StringConversionProperties = StringConversionProperties
   { conversionIsInjective :: Bool
   , conversionCharacterAlphabet :: Maybe String
   , conversionExactStrings :: Maybe [String]
+  , conversionExcludesSubstring :: String -> Bool
   }
 
 proveInjectiveToString
@@ -33,6 +36,8 @@ proveInjectiveToString decodeCanonical source =
                 conversionCharacterAlphabet properties
             , injectiveToStringExactStrings =
                 conversionExactStrings properties
+            , injectiveToStringExcludesSubstring =
+                conversionExcludesSubstring properties
             , invertInjectiveToString = decodeToStringMember decodeCanonical
             }
       else Nothing
@@ -40,24 +45,26 @@ proveInjectiveToString decodeCanonical source =
 stringConversionProperties
   :: ValueSemantics
   -> StringConversionProperties
-stringConversionProperties semantics =
-  case semantics of
+stringConversionProperties semantics
+  | Just includesInfinity <-
+      complementedIntegerTypeIncludesInfinity semantics =
+      complementedIntegerProperties includesInfinity
+  | otherwise = case semantics of
     BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
     NaturalRangeSemantics {} -> numericRange
-    ValuedNaturalRangeSemantics {} -> numericRange
+    ValuedNaturalRangeSemantics {} -> naturalNumber
     NaturalTypeSemantics -> naturalNumber
     IntegerRangeSemantics {} -> numericRange
-    ValuedIntegerRangeSemantics {} -> numericRange
+    ValuedIntegerRangeSemantics {} -> integerNumber
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
     StringTypeSemantics -> injectiveUnknownAlphabet
     IdentifierValueTypeSemantics ->
-      StringConversionProperties
-        True (Just identifierValueCharacterAlphabet) Nothing
+      knownAlphabet identifierValueCharacterAlphabet
     EitherSemantics left right ->
       eitherConversionProperties
         (stringConversionProperties left)
@@ -91,17 +98,21 @@ stringConversionProperties semantics =
     RangeSemantics {} -> injectiveUnknownAlphabet
   where
     naturalNumber =
-      StringConversionProperties True (Just "0123456789") Nothing
+      knownAlphabet "0123456789"
     integerNumber =
-      StringConversionProperties True (Just "-0123456789") Nothing
+      knownAlphabet "-0123456789"
     numericRange =
-      StringConversionProperties
-        True (Just " -0123456789.rangeftoupwds") Nothing
+      knownAlphabet " -0123456789.rangeftoupwds"
     injectiveUnknownAlphabet =
-      StringConversionProperties True Nothing Nothing
+      StringConversionProperties True Nothing Nothing (const False)
     knownAlphabet alphabet =
-      StringConversionProperties True (Just alphabet) Nothing
-    unknownConversion = StringConversionProperties False Nothing Nothing
+      StringConversionProperties
+        True
+        (Just alphabet)
+        Nothing
+        (\substring -> any (`notElem` alphabet) substring)
+    unknownConversion =
+      StringConversionProperties False Nothing Nothing (const False)
 
     structuralWrapperProperties underlying =
       (stringConversionProperties underlying)
@@ -114,6 +125,7 @@ stringConversionProperties semantics =
         (all (conversionIsInjective . stringConversionProperties) members)
         Nothing
         Nothing
+        (const False)
 
 reservedConstructorString
   :: IdentifierDependency
@@ -148,6 +160,9 @@ eitherConversionProperties left right =
     (unionMaybe unionLists
       (conversionExactStrings left)
       (conversionExactStrings right))
+    (\substring ->
+      conversionExcludesSubstring left substring
+        && conversionExcludesSubstring right substring)
 
 exactStrings :: [String] -> StringConversionProperties
 exactStrings strings =
@@ -155,6 +170,73 @@ exactStrings strings =
     True
     (Just (nub (concat strings)))
     (Just strings)
+    (\substring -> all (not . isInfixOf substring) strings)
+
+data StringLanguageSegment
+  = FixedString String
+  | SomeCharacters String
+
+complementedIntegerProperties :: Bool -> StringConversionProperties
+complementedIntegerProperties includesInfinity =
+  StringConversionProperties
+    True
+    Nothing
+    Nothing
+    (\substring ->
+      not (null substring)
+        && all (not . languageCanContain substring) presentations)
+  where
+    magnitude = SomeCharacters "0123456789"
+    magnitudes =
+      [ [magnitude] ]
+        <> [ [FixedString "Infinity"] | includesInfinity ]
+    presentations =
+      magnitudes
+        <> map (FixedString "-" :) magnitudes
+        <> [ FixedString "(" : value
+              <> [FixedString suffix]
+           | value <- magnitudes
+           , suffix <- ["; nothing)", "; Just : $Complement)"]
+           ]
+
+languageCanContain :: String -> [StringLanguageSegment] -> Bool
+languageCanContain substring segments =
+  any (containsCompatibleWindow substring . expandSegments segments)
+    (segmentLengths substring segments)
+
+segmentLengths
+  :: String
+  -> [StringLanguageSegment]
+  -> [[Int]]
+segmentLengths substring = traverse lengths
+  where
+    maximumUsefulLength = max 1 (length substring)
+    lengths (FixedString fixed) = [length fixed]
+    lengths (SomeCharacters _) = [1 .. maximumUsefulLength]
+
+expandSegments
+  :: [StringLanguageSegment]
+  -> [Int]
+  -> [Either Char String]
+expandSegments segments lengths =
+  concat (zipWith expand segments lengths)
+  where
+    expand (FixedString fixed) _ = map Left fixed
+    expand (SomeCharacters alphabet) count = replicate count (Right alphabet)
+
+containsCompatibleWindow :: String -> [Either Char String] -> Bool
+containsCompatibleWindow substring characters =
+  any (and . zipWith compatible substring)
+    (windows (length substring) characters)
+  where
+    compatible expected (Left actual) = expected == actual
+    compatible expected (Right alphabet) = expected `elem` alphabet
+
+windows :: Int -> [value] -> [[value]]
+windows width values
+  | width <= 0 = [[]]
+  | length values < width = []
+  | otherwise = take width values : windows width (drop 1 values)
 
 unionMaybe
   :: (value -> value -> value)

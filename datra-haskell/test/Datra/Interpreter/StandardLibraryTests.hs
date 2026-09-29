@@ -4,9 +4,7 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraTypes
-  ( AtlasMapFederationRefutation
-      (AtlasMapFederationSpecificationHasNoMatchingMember)
-  , ExternalFailure (..)
+  ( ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
   )
@@ -79,9 +77,9 @@ standardLibraryTests =
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
         , programCase "fixed point specification"
-            "yield (fun 5) ~> Nat" "5 ~> Nat"
+            "yield (fun 5) ~> Nat" "5 ~> from 0 up"
         , programCase "fixed point reverse specification"
-            "yield Nat <~ (fun 5)" "5 ~> Nat"
+            "yield Nat <~ (fun 5)" "5 ~> from 0 up"
         , programCase "fixed point subfederation"
             "yield (fun 5) of Nat" "true"
         , programCase "fixed point as an optional named argument"
@@ -98,16 +96,16 @@ standardLibraryTests =
               , "true"
               )
             , ( "yield public (_private:3;a:5) ~> (a?:Nat)"
-              , "a? : Nat := 5"
+              , "a? : from 0 up := 5"
               )
             , ("_private:=3\na:=5\nyield this._private", "_private : 3")
             , ("a:=5\nyield this.a of (a?:Nat)", "true")
-            , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
+            , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : from 0 up := 5")
             , ("a:=(b:2;c:3)\nyield a.(b,c)", "b : 2, c : 3")
             , ("a:=(b:2;c:3)\nyield a.(b,c) of (a.b,a.c)", "true")
             , ( "a:=(b:2;c:3)\n"
                   <> "yield a.(b,c) ~> (b?:Nat,c?:Nat)"
-              , "b? : Nat := 2, c? : Nat := 3"
+              , "b? : from 0 up := 2, c? : from 0 up := 3"
               )
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$up)", "from 2 up")
@@ -143,7 +141,7 @@ standardLibraryTests =
             "x := 5\nyield ^x of 6" "false"
         , programCase "lookup does not change optional-name specification"
             ("x := 5\nyield (x := ^x) ~> (x? : Nat)")
-            "x? : Nat := 5"
+            "x? : from 0 up := 5"
         ]
     , testGroup "mapped access"
         [ programCase "brackets preserve a semicolon selector map"
@@ -212,8 +210,6 @@ standardLibraryTests =
             "yield (1; (2; 3)) of InhabitedList Int" "true"
         , programCase "inferred type aliases reduce to their canonical type"
             "Alias := (Nat | Str)\nyield Alias = (Nat | Str)" "true"
-        , programCase "empty recognizes the empty map"
-            "yield (empty (); empty (1; 2))" "(true; false)"
         ]
     , testGroup "scope rejections"
         [ programFailureCase "duplicate scope member"
@@ -394,7 +390,114 @@ standardLibraryTests =
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
         ]
+    , integerLimitTests
     , declaredPatternTests
+    ]
+
+integerLimitTests :: TestTree
+integerLimitTests =
+  testGroup "integer limits and infinity"
+    [ testGroup "types"
+        [ programCase "Nat is the open upward range"
+            "yield Nat" "from 0 up"
+        , programCase "finite and infinite values inhabit their limit types"
+            ( "yield (0 of Nat; 23 of Nat; not (-1 of Nat); "
+                <> "0 of NatLimit; Infinity of NatLimit; "
+                <> "not (-Infinity of NatLimit); "
+                <> "-23 of Int; 23 of Int; not (Infinity of Int); "
+                <> "Infinity of IntLimit; -Infinity of IntLimit)"
+            )
+            "(true; true; true; true; true; true; true; true; true; true; true)"
+        , programCase "unit is neutral in sequences and concatenations"
+            "yield ((23; ()) = 23; ((); 23) = 23; (23, ()) = 23; ((), 23) = 23)"
+            "(true; true; true; true)"
+        , programCase "complement representation inhabits integer types"
+            ( "yield ((22; Just : $Complement) of Int; "
+                <> "(Infinity; Just : $Complement) of IntLimit)"
+            )
+            "(true; true)"
+        ]
+    , testGroup "open and closed ranges"
+        [ programCase "from upward excludes positive infinity"
+            "yield (Infinity of from 0 up)" "false"
+        , programCase "from through infinity includes its endpoint"
+            "yield (Infinity of from 0 to Infinity)" "true"
+        , programCase "transfinite access reaches positive infinity"
+            "yield (from 0 to Infinity)[...]" "Infinity"
+        , programCase "finite access before the transfinite endpoint"
+            "yield ((from 0 to Infinity)[0]; (from 0 to Infinity)[23])"
+            "(0; 23)"
+        , programCase "range upward excludes positive infinity"
+            "yield (Infinity of range 0 up)" "false"
+        , programCase "range through infinity includes its endpoint"
+            "yield (Infinity of range 0 to Infinity)" "true"
+        , programCase "infinite range origins select the expected limits"
+            ( "yield (Infinity of range Infinity up; "
+                <> "not (0 of range Infinity up); "
+                <> "-Infinity of range -Infinity down; "
+                <> "not (0 of range -Infinity down); "
+                <> "-20 of range Infinity down; "
+                <> "0 of range Infinity to -Infinity; "
+                <> "20 of range -Infinity to Infinity)"
+            )
+            "(true; true; true; true; true; true; true)"
+        , programFailureCase "from rejects a positive-infinite origin"
+            "yield from Infinity down"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programFailureCase "from rejects a negative-infinite origin"
+            "yield from -Infinity up"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        ]
+    , testGroup "operators"
+        [ programCase "addition and subtraction preserve infinite limits"
+            ( "yield (Infinity + 23; 23 + Infinity; "
+                <> "-Infinity + 23; 23 + -Infinity; "
+                <> "Infinity - 23; 23 - Infinity; "
+                <> "-Infinity - 23; 23 - -Infinity)"
+            )
+            ( "(Infinity; Infinity; -Infinity; -Infinity; "
+                <> "Infinity; -Infinity; -Infinity; Infinity)"
+            )
+        , programCase "multiplication applies signs to infinity"
+            ( "yield (Infinity * 2; 2 * Infinity; Infinity * -2; "
+                <> "-Infinity * -2; -3 * -Infinity)"
+            )
+            "(Infinity; Infinity; -Infinity; Infinity; Infinity)"
+        , programCase "unary operators use canonical infinity forms"
+            "yield (+Infinity; -Infinity; -(-Infinity))"
+            "(Infinity; -Infinity; Infinity)"
+        , programCase "infinite powers respect zero and parity"
+            "yield (Infinity ^ 0; Infinity ^ 3; (-Infinity) ^ 2; (-Infinity) ^ 3)"
+            "(1; Infinity; Infinity; -Infinity)"
+        , programCase "comparisons order all integer limits"
+            ( "yield (-Infinity < -23; -23 <= -23; -23 < Infinity; "
+                <> "Infinity > 23; Infinity >= Infinity; "
+                <> "not (Infinity < Infinity); not (-Infinity > -Infinity))"
+            )
+            "(true; true; true; true; true; true; true)"
+        , programCase "a safe IntLimit function is inferred"
+            ( "increment := (IntLimit -> IntLimit yield it + 1)\n"
+                <> "yield (increment Infinity; increment (-Infinity))"
+            )
+            "(Infinity; -Infinity)"
+        , programFailureCase "zero times positive infinity is indeterminate"
+            "yield 0 * Infinity"
+            (SourceEvaluationFailure (IndeterminateInfinityOperation "*"))
+        , programFailureCase "zero times negative infinity is indeterminate"
+            "yield -Infinity * 0"
+            (SourceEvaluationFailure (IndeterminateInfinityOperation "*"))
+        , programFailureCase "opposite infinities cannot be added"
+            "yield Infinity + -Infinity"
+            (SourceEvaluationFailure (IndeterminateInfinityOperation "+"))
+        , programFailureCase "equal infinities cannot be subtracted"
+            "yield Infinity - Infinity"
+            (SourceEvaluationFailure (IndeterminateInfinityOperation "-"))
+        , programFailureCase "negative infinities cannot be subtracted"
+            "yield (-Infinity) - (-Infinity)"
+            (SourceEvaluationFailure (IndeterminateInfinityOperation "-"))
+        ]
     ]
 
 declaredPatternTests :: TestTree
@@ -413,8 +516,7 @@ declaredPatternTests =
     , programFailureCase "syntax pattern checks captures"
         (declaration <> "yield step (-1) next")
         (SourceEvaluationFailure
-          (AtlasMapFederationOperationRefuted
-            AtlasMapFederationSpecificationHasNoMatchingMember))
+          (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "syntax-only function rejects ordinary calls"
         (declaration <> "yield step 2")
         (SourceEvaluationFailure
@@ -431,6 +533,6 @@ declaredPatternTests =
     ]
   where
     declaration =
-      "step : \"$Nat next\" as ({value?:Int} -> Int) := (do yield value+1)\n"
+      "step : \"$Nat next\" as ({value?:Nat} -> Int) := (do yield value+1)\n"
     ordinaryDeclaration =
       "step : \"$Nat next\" as? ({value?:Int} -> Int) := (do yield value+1)\n"

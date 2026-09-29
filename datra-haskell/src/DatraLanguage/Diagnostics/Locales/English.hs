@@ -185,6 +185,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "exponent must be a natural value"
         ["actual value kind: " <> valueKind actual]
+    IndeterminateInfinityOperation operator ->
+      LocalizedMessage
+        "operation is indeterminate for these infinity operands"
+        ["operator: " <> operator]
     ExpectedInsertionOperand actual ->
       LocalizedMessage
         "right operand of map access must define a super-ellipsis insertion"

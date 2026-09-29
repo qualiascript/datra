@@ -183,6 +183,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "exponentul trebuie să fie o valoare naturală"
         ["tipul efectiv al valorii: " <> valueKind actual]
+    IndeterminateInfinityOperation operator ->
+      LocalizedMessage
+        "operația este nedeterminată pentru acești operanzi infiniți"
+        ["operator: " <> operator]
     ExpectedInsertionOperand actual ->
       LocalizedMessage
         ( "operandul drept al accesării hărții trebuie să definească "

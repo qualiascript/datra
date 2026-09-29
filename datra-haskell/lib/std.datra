@@ -4,11 +4,17 @@ yield Std := begin
 
   Any := !^"datra.Any"
   Ordinal := !^"datra.Ordinal"
-  Nat := !^"datra.Nat"
-  Int := !^"datra.Int"
   Char := !^"datra.Char"
   StrTempl := !^"datra.StrTempl"
   IdenStr := !^"datra.IdenStr"
+
+  Infinity := $PosInf
+  SignedInfinity := (Infinity | $NegInf)
+  false := (False : 0)
+  true := (True : 1)
+  nothing := $Nothing
+  Bool := (false | true)
+  _Direction := ($up | $down)
 
   _AST := !^"datra.AST"
   _Expr := !^"datra.Expr"
@@ -37,38 +43,35 @@ yield Std := begin
     ("$_IdenExp of $_Expr" as (_AST, _AST -> _AST) !^"datra.syntax.for") |
     ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) !^"datra.syntax.forIn")
   )
-  val : "$_Expr" as (_AST -> _AST) := !^"datra.syntax.val"
+  val := "$_Expr" as (_AST -> _AST) !^"datra.syntax.val"
+  public := !^"datra.public"
 
   List := (for T? of Any) -> Any yield fun (() | T; this)
   InhabitedList := (for T? of Any) -> Any yield (T; List T)
   Just := (for T? of Any) -> Any yield Just : T
-  Maybe := (for T? of Any) -> Any yield $Nothing | Just T
+  Maybe := (for T? of Any) -> Any yield (Nothing? : ()) | Just T
   Str := List Char
-
-  false := (False : 0)
-  true := (True : 1)
-  nothing := $Nothing
-  Bool := (false | true)
-  empty := Any -> Bool yield it = ()
-  _Direction := ($up | $down)
 
   NatRange := !^"datra.NatRange"
   IntRange := !^"datra.IntRange"
   NatValRange := !^"datra.NatValRange"
   IntValRange := !^"datra.IntValRange"
-  public := !^"datra.public"
 
-  from := (
-    ("$Int to $Int" as? (Int, Int -> IntValRange) !^"datra.from") |
-    ("$Int $_Direction" as? (Int, _Direction -> IntValRange) !^"datra.from")
+  let from := (
+    ("$Int to $Int" as? {origin : Int; target : IntLimit} -> IntValRange !^"datra.from") |
+    ("$Int $_Direction" as? {origin : Int; direction : _Direction} -> IntValRange !^"datra.from")
   )
-  range := (
-    ("$Int to $Int" as? (Int, Int -> IntRange) !^"datra.range") |
-    ("$Int $_Direction" as? (Int, _Direction -> IntRange) !^"datra.range")
+  let range := (
+    ("$Int to $Int" as? {origin : IntLimit; target : IntLimit} -> IntRange !^"datra.range") |
+    ("$Int $_Direction" as? {origin : IntLimit; direction : _Direction} -> IntRange !^"datra.range")
   )
+
+  let Nat := from 0 up
+  let NatLimit := from 0 to Infinity
+  let Int := (Nat; $Complement?)
+  let IntLimit := (NatLimit; $Complement?)
 
   Args := (for T? of Any) -> Any do
     slots := with i in Nat do "arg%(i)"? : T
   yield () | with n in Nat do slots[range 0 to n]
-
 yield public this

@@ -62,8 +62,9 @@ compileParameters evaluate = compile False
             flatten (MapConcatenation left right) =
               flatten left <> flatten right
             flatten value = [value]
-        _ ->
-          argumentSchemaFromValue <$> evaluate expression
+        _ -> do
+          annotation <- evaluate expression
+          pure (argumentSchemaFromValue annotation)
     isPublic name = not (null (public [(name, ())]))
     validateOptionalName allowPrivate name optional
       | optional && not allowPrivate && not (isPublic name) =

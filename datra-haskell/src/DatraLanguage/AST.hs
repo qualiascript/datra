@@ -105,6 +105,10 @@ data Expression
   | Subfederation Expression Expression
   | Equality Expression Expression
   | Inequality Expression Expression
+  | LessThan Expression Expression
+  | LessThanOrEqual Expression Expression
+  | GreaterThan Expression Expression
+  | GreaterThanOrEqual Expression Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
@@ -235,6 +239,10 @@ data OperatorExpression
   | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
   | NotEqual OperatorExpression OperatorExpression
+  | Less OperatorExpression OperatorExpression
+  | LessOrEqual OperatorExpression OperatorExpression
+  | Greater OperatorExpression OperatorExpression
+  | GreaterOrEqual OperatorExpression OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
@@ -359,6 +367,14 @@ normalizeExpression (Equality left right) =
   Equality (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Inequality left right) =
   Inequality (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (LessThan left right) =
+  LessThan (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (LessThanOrEqual left right) =
+  LessThanOrEqual (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (GreaterThan left right) =
+  GreaterThan (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (GreaterThanOrEqual left right) =
+  GreaterThanOrEqual (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanAnd left right) =
   BooleanAnd (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanOr left right) =
@@ -529,6 +545,10 @@ lower (Subfederation left right) =
   IsSubfederation (lower left) (lower right)
 lower (Equality left right) = Equal (lower left) (lower right)
 lower (Inequality left right) = NotEqual (lower left) (lower right)
+lower (LessThan left right) = Less (lower left) (lower right)
+lower (LessThanOrEqual left right) = LessOrEqual (lower left) (lower right)
+lower (GreaterThan left right) = Greater (lower left) (lower right)
+lower (GreaterThanOrEqual left right) = GreaterOrEqual (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
@@ -709,6 +729,14 @@ prettyOperator (Positive operand) =
   prettyUnary AdditionOperator operand
 prettyOperator (Negate operand) =
   prettyUnary MinusOperator operand
+prettyOperator (Less left right) =
+  prettyBinary LessThanOperator left right
+prettyOperator (LessOrEqual left right) =
+  prettyBinary LessThanOrEqualOperator left right
+prettyOperator (Greater left right) =
+  prettyBinary GreaterThanOperator left right
+prettyOperator (GreaterOrEqual left right) =
+  prettyBinary GreaterThanOrEqualOperator left right
 prettyOperator (IsSubfederation left right) =
   prettyBinary SubfederationOperator left right
 prettyOperator (Equal left right) =

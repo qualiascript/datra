@@ -220,9 +220,10 @@ stringFederationExcludes delimiter federation =
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
         ToStringAtlasMapFederation _ proof ->
-          case injectiveToStringCharacterAlphabet proof of
-            Nothing -> False
-            Just alphabet -> any (`notElem` alphabet) delimiter
+          injectiveToStringExcludesSubstring proof delimiter
+            || case injectiveToStringCharacterAlphabet proof of
+              Nothing -> False
+              Just alphabet -> any (`notElem` alphabet) delimiter
         WeakToStringAtlasMapFederation _ -> False
         StringTypeAtlasMapFederation -> False
         IdentifierValueTypeAtlasMapFederation ->

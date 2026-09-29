@@ -34,7 +34,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       mapM_ (\userName -> do
         let dependency = "___" <> userName
         assertBool ("wrong dependency for " <> show userName)
-          ((show dependency <> " :") `isInfixOf` text)
+          ((show dependency <> " :=") `isInfixOf` text)
         assertBool ("wrong dependency reference for " <> show userName)
           (("^" <> show dependency) `isInfixOf` text))
         ["next", "step", "base"]
@@ -45,16 +45,20 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "outer user name cannot capture a nested fixed point"
       "userFun := 4\ninc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield userFun + inc n)"
       "3" "8"
-  , testCase "user injection adds one marker after the scope prefix" $ do
+  , testCase "user captures receive unique closure-local names" $ do
       value <- requireProgram underscoredCaptures
       let text = renderInterpretedValue value
-      mapM_ (\name -> do
-        let encoded = replicate 3 '_' <> name
+      mapM_ (\(name, encoded) -> do
         assertBool ("missing encoded declaration for " <> show name)
-          ((show encoded <> " :") `isInfixOf` text)
+          ((show encoded <> " :=") `isInfixOf` text)
         assertBool ("missing encoded reference for " <> show name)
           (("^" <> show encoded) `isInfixOf` text))
-        ["abc", "_abc", "_____abc", "__fun", "___abc"]
+        [ ("abc", "___abc")
+        , ("_abc", "____abc")
+        , ("_____abc", "_____abc")
+        , ("__fun", "_____fun")
+        , ("___abc", "___abc_1")
+        ]
   , testCase "generated recursion uses fun without a temporary name" $ do
       value <- requireProgram factorial
       let text = renderInterpretedValue value
@@ -122,6 +126,12 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTripUsingStd "syntax function ordinary application"
       "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
       "4" "5"
+  , testCase "closed syntax function retains only its map signature" $ do
+      value <- requireProgram
+        "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
+      let text = renderInterpretedValue value
+      assertBool "consumed syntax annotation leaked into the closure"
+        (not (" as " `isInfixOf` text || " as? " `isInfixOf` text))
   , testCase "unused ambient bindings are absent" $ do
       value <- requireProgram
         "unused := 987654321\noffset := 4\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
