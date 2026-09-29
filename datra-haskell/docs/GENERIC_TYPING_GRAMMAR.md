@@ -104,17 +104,19 @@ max := {Args (&_T :: IntLimit),} -> _T do
 ```
 
 Here `_T` belongs to the type of `max`. Function-type resolution collects it
-before resolving ordinary domain types, so it is available throughout the
-domain and crosses `->` into the codomain.
+before resolving any ordinary type in the signature, so it is available
+throughout both the domain and codomain.
 
-A generic introduced in a codomain is collected before the ordinary result
-types in that codomain. Domain generics precede codomain generics in the
-function's generic ordering:
+The marker may occur in the codomain while declaring a generic used in the
+domain:
 
 ```datra
-parse := Str -> {value : (^_T :: Any)} do
-  # body
+preserve := {value? : T} -> (&T :: Any) do
+  yield value
 ```
+
+The marker determines the generic's polarity, name mode, and bound; its textual
+position does not begin its scope.
 
 A nested function type creates a nested generic scope. Its introductions do
 not become generics of the outer function:
@@ -124,20 +126,26 @@ apply := {f? : ({x? : (&T :: Any)} -> T); x? : Any} -> Any do
   # T belongs to f's function type
 ```
 
-A codomain generic does not resolve names in the domain. A generic introduction
-in a standalone map, application, or type alias without an enclosing function
-arrow is a parse or normalization error.
+A generic introduction in a standalone map, application, or type alias without
+an enclosing function arrow is a parse or normalization error.
 
 ## Scope collection and generic prefix
 
-Function-type resolution uses two passes for each side of the arrow.
+Function-type resolution uses two passes over the complete outer signature.
+The scan includes the domain and codomain, but treats nested function types as
+separate declaration scopes.
 
-The collection pass walks the domain, records every generic introduction in
-its source order, and replaces the marked occurrence with a stable binder
-reference. These declarations form a virtual prefix before all ordinary domain
-slots. The resolution pass then resolves every ordinary domain type against the
-complete prefix. It therefore permits an ordinary type to use a generic whose
-marked declaration appears later in the map:
+The collection pass records every generic introduction owned by the outer
+function in source order and replaces the marked occurrence with a stable
+binder reference. These declarations form a virtual prefix before every
+ordinary domain and codomain type. The resolution pass then resolves the whole
+ordinary signature against the complete prefix. It therefore permits an
+ordinary type to use a generic whose marked declaration appears later in the
+same map or across the arrow:
+
+Collection visits the domain before the codomain and preserves lexical order
+within each expression. This gives every generic a deterministic position in
+the prefix without making that position a scope boundary.
 
 ```datra
 choose := {left? : T; right? : (&T :: Any)} -> T do
@@ -156,13 +164,9 @@ The marked `right` position remains an ordinary `T` argument after declaring
 the generic. The declaration location defines `T`'s polarity, name mode,
 supertype, source location, and relative position among the generic prefix.
 
-The codomain is collected after the domain. Its additional generics form a
-second prefix before ordinary result slots and are appended after the domain
-generics in the function's full generic ordering.
-
 Generic bounds are resolved in generic-prefix order. A bound may refer to an
 earlier generic declaration, while ordinary parameter and result types may
-refer to any generic in the prefix available on their side of the arrow:
+refer to any generic in the complete function prefix:
 
 ```datra
 pair := {pair? : Pair T U; types? : Pair (&T :: Any) (&U :: T)}
@@ -172,6 +176,21 @@ pair := {pair? : Pair T U; types? : Pair (&T :: Any) (&U :: T)}
 
 Here `T` precedes `U` in the prefix, so the bound of `U` may reference `T`.
 A bound that depends on a later generic declaration is invalid.
+
+This makes higher-order interfaces direct:
+
+```datra
+map := {
+  values? : List (&A :: Any)
+  transform? : A -> B
+} -> List (&B :: Any) do
+  # body sees values and transform
+```
+
+The collection pass produces the prefix `[A, B]` before resolving
+`values`, `transform`, or the result. `A` can be inferred from `values`, and
+`B` can be inferred from the supplied `transform` function type. Neither
+generic is included in the body-visible arguments.
 
 A second marked introduction with the same name in one function scope is a
 duplicate declaration. Plain occurrences of that name are references,
@@ -218,27 +237,23 @@ data GenericBinder = GenericBinder
   }
 
 data FunctionType = FunctionType
-  { functionDomainGenerics   :: [GenericBinder]
-  , functionDomain           :: Expression
-  , functionCodomainGenerics :: [GenericBinder]
-  , functionCodomain         :: Expression
+  { functionGenerics :: [GenericBinder]
+  , functionDomain   :: Expression
+  , functionCodomain :: Expression
   }
 ```
 
 The parser may temporarily represent the source occurrence as a
 `GenericIntroduction`. Function-type resolution then:
 
-1. collects all domain introductions in source order;
-2. allocates stable binder identities and builds the domain generic prefix;
+1. scans the outer domain and codomain for introductions in source order,
+   without collecting declarations owned by nested function types;
+2. allocates stable binder identities and builds one function generic prefix;
 3. replaces each introduction occurrence with a reference to its binder;
-4. resolves every ordinary domain type against the complete prefix;
-5. repeats collection and resolution for additional codomain generics; and
-6. attaches both ordered prefixes to the owning `FunctionType`.
-
-Concatenating `functionDomainGenerics` and `functionCodomainGenerics` gives the
-full function telescope. Keeping the two prefixes explicit also records which
-evidence must exist before body invocation and which evidence is established
-while validating or packaging the result.
+4. resolves generic bounds sequentially in prefix order;
+5. resolves every ordinary domain and codomain type against the complete
+   prefix; and
+6. attaches the ordered prefix to the owning `FunctionType`.
 
 Binder identity, rather than identifier text alone, distinguishes shadowed
 generics in nested function types.
@@ -332,9 +347,12 @@ rules.
 
 ## Inference and constraint solving
 
-Private generic inference is part of function matching. It uses dependent
-ordinary inputs for a domain binder and the produced ordinary result for a
-codomain sum binder.
+Private generic inference is part of function matching. Declaration location
+does not determine the evidence source. A product generic is resolved before
+body invocation from its dependent domain occurrences, an explicit public
+witness, or an expected result constraint. A sum generic is opened from
+dependent input evidence when available and may be established and sealed by
+dependent result evidence after the body returns.
 
 For each private binder, matching must find one unique canonical candidate
 that:
@@ -383,25 +401,28 @@ The prepared interface layout places generic evidence first and ordinary body
 arguments after it:
 
 ```text
-[domain generic evidence 0 .. domainGenericCount - 1]
-[ordinary body arguments domainGenericCount .. end]
+[generic interface slots 0 .. genericCount - 1]
+[ordinary body arguments genericCount .. end]
 ```
 
-The argument schema records `domainGenericCount`. For an ordered internal
-argument vector, constructing the body-visible `it` is equivalent to:
+The function schema records `genericCount`. A generic interface slot contains
+resolved evidence when that evidence is known before invocation and a sealed
+pending slot when a result-side sum will establish its evidence after the body
+returns. For an ordered internal argument vector, constructing the body-visible
+`it` is equivalent to:
 
 ```haskell
-bodyValues = drop domainGenericCount preparedValues
+bodyValues = drop genericCount preparedValues
 ```
 
 Named and structurally mapped domains perform the same operation by projecting
-the schema's ordinary slots. The domain-generic-count boundary remains the
-canonical ordering rule, so erasure does not require rediscovering generic
-fields by identifier text.
+the schema's ordinary slots. The generic-count boundary remains the canonical
+ordering rule, so erasure does not require rediscovering generic fields by
+identifier text.
 
 For `{x? : T; y? : (&T :: Any)}`, the prepared interface vector is
-conceptually `[T, x, y]`, `domainGenericCount` is `1`, and the body-visible
-`it` is `[x, y]`.
+conceptually `[T, x, y]`, `genericCount` is `1`, and the body-visible `it` is
+`[x, y]`.
 
 Invocation has an external and internal boundary:
 
@@ -463,8 +484,8 @@ adapt := {
 ```
 
 Conceptually, this is an ordered generic prefix containing a sum, a product,
-and a sum, followed by the ordinary domain slots. It cannot be reduced to one
-sum-or-product classification for the whole domain. Interface preparation
+and a sum before the ordinary signature types. It cannot be reduced to one
+sum-or-product classification for the whole function. Interface preparation
 processes each binder in order, carrying the resolved environment forward to
 the next binder.
 
@@ -500,19 +521,19 @@ specification, and dependent-value validation machinery.
 3. Produce a `GenericIntroduction` containing polarity, name mode, bound, and
    source location.
 4. Resolve introductions only while constructing a function type.
-5. Pre-scan the complete domain, collecting its binders in source order before
-   resolving any ordinary domain type.
-6. Build the generic prefix, replace marked occurrences with stable generic
-   references, and then resolve ordinary domain types against the prefix.
-7. Extend the domain prefix across the arrow into the codomain.
-8. Pre-scan the codomain for additional binders, append them after the domain
-   prefix, and then resolve ordinary codomain types.
-9. Resolve generic bounds sequentially within prefix order, allowing only
+5. Pre-scan the complete outer function signature, traversing its domain and
+   codomain in source order while treating nested function types as separate
+   declaration scopes.
+6. Build one generic prefix before all ordinary signature types and replace
+   marked occurrences with stable generic references.
+7. Resolve generic bounds sequentially within prefix order, allowing only
    dependencies on earlier generic binders.
-10. Resolve nested function types independently.
-11. Reject duplicate declarations, invalid generic names, unresolved generic
+8. Resolve every ordinary domain and codomain type against the complete prefix.
+9. Resolve nested function types independently, while allowing their ordinary
+   types to reference generics from enclosing function scopes.
+10. Reject duplicate declarations, invalid generic names, unresolved generic
     references, and introductions without a function-type owner.
-12. Preserve the first-class representation through canonical AST round trips.
+11. Preserve the first-class representation through canonical AST round trips.
 
 Prefix parsing must remain compatible with surrounding operator precedence.
 In particular, grouping such as `Args (&_T :: IntLimit)` must make `Args` an
@@ -525,14 +546,14 @@ application of the resolved generic reference, while the bound remains
    schema to the AST.
 2. Implement function-owned two-pass prefix collection and canonical rendering.
 3. Extend function argument schemas with virtual generic witness slots that
-   precede and remain distinct from body argument slots, recording the domain
-   generic count explicitly.
+   precede and remain distinct from body argument slots, recording the generic
+   count explicitly.
 4. Implement public required and public optionally named witness matching.
 5. Implement private product constraint collection and unique-candidate
    inference.
 6. Specialize dependent domain and codomain annotations with resolved evidence.
-7. Project the suffix beginning at `domainGenericCount` before invoking the
-   body and keep all generic names out of the body environment and `it`.
+7. Project the suffix beginning at `genericCount` before invoking the body and
+   keep all generic names out of the body environment and `it`.
 8. Implement domain-side sum opening and codomain-side sum packaging, retaining
    sealed evidence where required.
 9. Add private-sum escape analysis.
@@ -559,17 +580,22 @@ parser, interpreter, and closure builder.
 - Multiple introductions are collected into a generic prefix in
   first-occurrence order.
 - An ordinary field may reference a generic whose marked declaration occurs
-  later in the domain or result map.
+  later anywhere in the outer function signature.
 - `(x : T, y : &T)` resolves both ordinary fields against the prefixed `T`.
+- `{value : T} -> (&T)` resolves the domain reference against the codomain
+  marker.
+- `map` resolves `B` in `transform : A -> B` against the marker in its outer
+  codomain.
 - A later generic bound may reference an earlier generic binder; a generic
   bound that references a later binder fails.
 - Product and sum introductions may alternate in one function scope.
 - Cross-polarity bounds resolve against earlier binders in telescope order.
 - Duplicate declarations in one function type fail structurally.
-- All domain generics are available throughout the domain and codomain.
-- Codomain generics are available throughout the ordinary codomain types but
-  do not resolve domain names.
+- Every outer-function generic is available throughout the ordinary domain and
+  codomain, independent of marker location.
 - Nested function types own independent generic scopes.
+- Ordinary types in a nested function may reference enclosing generics, while
+  marked introductions in that nested function belong to the nested function.
 - A generic introduction without a function-type owner is rejected.
 - Canonical AST rendering and parsing preserve polarity, identifier mode,
   bound, binder identity, and ownership.
@@ -603,8 +629,7 @@ parser, interpreter, and closure builder.
 - Public and private generic witnesses are absent from the body-visible `it`.
 - Generic names are unresolved if referenced as body variables.
 - The interface schema places every generic slot before every ordinary slot.
-- `domainGenericCount` identifies the exact suffix used to construct body
-  `it`.
+- `genericCount` identifies the exact suffix used to construct body `it`.
 - Ordinary arguments retain their existing names and positions after erasure.
 - The external wrapper validates results after the internal closure returns.
 - Recursive `this` calls re-enter generic matching.
@@ -641,13 +666,13 @@ The feature is complete when:
 2. omitted bounds resolve to `Any` and explicit bounds preserve their full
    expression;
 3. every generic is owned by exactly one function type, collected into an
-   ordered prefix, and available to all ordinary types on its side of the
-   arrow;
+   ordered prefix, and available to every ordinary type in that function's
+   signature;
 4. private products infer uniquely from dependent inputs;
 5. sums open and package dependent values with sealed evidence;
 6. public witness modes match according to their identifier form;
 7. all generic evidence precedes ordinary arguments and is erased from the body
-   environment and `it` using the recorded domain generic count;
+   environment and `it` using the recorded generic count;
 8. dependent results are validated at the external function boundary;
 9. private sum escape is checked;
 10. products and sums can alternate in one ordered function generic telescope;
