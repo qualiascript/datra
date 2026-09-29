@@ -1,4 +1,4 @@
-.PHONY: check coverage docker-images docker-development docker-prod
+.PHONY: check coverage verify-liquid docker-images docker-development docker-prod
 
 CABAL_PROJECT ?= cabal.project
 CABAL := cabal --project-file=$(CABAL_PROJECT)
@@ -7,11 +7,14 @@ CABAL := cabal --project-file=$(CABAL_PROJECT)
 
 check:
 	cabal check
-	$(CABAL) build all --enable-tests
-	$(CABAL) test all --test-show-details=direct
+	$(CABAL) build all --enable-tests -f-liquid -j1
+	$(CABAL) test all -f-liquid -j1 --test-show-details=direct
 
 coverage:
-	$(CABAL) test all --enable-coverage --test-show-details=direct
+	$(CABAL) test all --enable-coverage -f-liquid -j1 --test-show-details=direct
+
+verify-liquid:
+	$(CABAL) build lib:datra-haskell -fliquid -j1
 
 docker-images: docker-development docker-prod
 
