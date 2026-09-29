@@ -186,7 +186,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
   , testCase "optional number closure avoids nested module reconstruction" $ do
-      original <- runModuleProgram "lib/numbers.datra"
+      original <- runModuleProgram "libs/numbers.datra"
         "import \"numbers\"\nyield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value

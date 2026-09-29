@@ -50,7 +50,7 @@ RUN cabal update && \
       -fliquid \
       -j1
 
-COPY lib/std.datra ./lib/std.datra
+COPY libs ./libs
 COPY app ./app
 COPY src ./src
 COPY test ./test

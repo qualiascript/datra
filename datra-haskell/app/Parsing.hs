@@ -745,25 +745,41 @@ maybeThenExpressionWith operand = do
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
   signature <- arrowExpressionWith operand
-  implementation <- optional (functionImplementation signature)
-  pure (maybe signature (`MapSpecification` signature) implementation)
+  attachFunctionImplementation signature
 
--- A bare @yield@ is a function implementation only after an actual function
--- type.  Without this guard it can consume the yield belonging to the
--- surrounding resource or begin block after any preceding expression.
+-- A code block turns an arrow-less expression into a function whose output is
+-- unconstrained. Explicit function types retain their declared codomain.
+attachFunctionImplementation :: Expression -> Parser Expression
+attachFunctionImplementation signature = do
+  implementation <- optional (functionImplementation signature)
+  pure (case implementation of
+    Nothing -> signature
+    Just body -> MapSpecification body (completedSignature body signature))
+
+completedSignature :: Expression -> Expression -> Expression
+completedSignature FunctionBody {} signature@FunctionType {} = signature
+completedSignature FunctionBody {} signature@SyntaxType {} = signature
+completedSignature FunctionBody {} signature =
+  FunctionType signature (IdentifierReference (IdentifierString "Any"))
+completedSignature _ signature = signature
+
+-- A compact @yield@ attaches an implementation to a declared function or
+-- syntax signature. Without this guard it could consume the yield belonging
+-- to the surrounding resource or begin block after any preceding expression.
 functionImplementation :: Expression -> Parser Expression
 functionImplementation signature =
   functionBody
-    <|> bareFunctionYield
-    <|> syntaxImplementation
-    <|> externalExpression
+    <|> compactImplementation
   where
-    bareFunctionYield = case signature of
+    compactImplementation = case signature of
       FunctionType {} ->
         FunctionBody []
           <$> (sameLineReservedWord Reserved.YieldWord *> expression)
+      SyntaxType {} ->
+        sameLineReservedWord Reserved.YieldWord *>
+          (externalExpression <|> externalSyntaxApplication)
       _ -> empty
-    syntaxImplementation = try $ do
+    externalSyntaxApplication = try $ do
       value <- syntaxApplication
       case value of
         External {} -> pure value
@@ -781,28 +797,43 @@ sameLineReservedWord reserved =
   keywordToken (Text.pack (Reserved.reservedWordText reserved)) <* hspace1
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
-arrowExpressionWith operand = do
-  rawInput <- eitherExpressionWith operand
-  input <- syntaxTypeSuffix rawInput operand
-  output <- optional (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith operand)
+arrowExpressionWith = arrowExpressionWithLayer eitherExpressionWith
+
+arrowExpressionWithLayer
+  :: (Parser Expression -> Parser Expression)
+  -> Parser Expression
+  -> Parser Expression
+arrowExpressionWithLayer expressionLayer operand = do
+  rawInput <- expressionLayer operand
+  let signature = arrowExpressionWithLayer expressionLayer operand
+  input <- syntaxTypeSuffix rawInput signature
+  output <- optional
+    (continuedOperator AST.FunctionTypeOperator *> signature)
   pure (maybe input (FunctionType input) output)
 
 syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
-syntaxTypeSuffix input operand = case input of
+syntaxTypeSuffix input signature = case input of
   AsciiStringLiteral patternText -> do
-    signature <- optional $ do
+    syntaxSignature <- optional $ do
       _ <- keywordToken "as"
       ordinary <- maybe False (const True) <$> optional (char '?')
       lineSpaceConsumer
-      SyntaxType patternText ordinary <$> arrowExpressionWith operand
-    pure (maybe input id signature)
+      SyntaxType patternText ordinary <$> signature
+    pure (maybe input id syntaxSignature)
   _ -> pure input
 
 eitherExpressionWith :: Parser Expression -> Parser Expression
-eitherExpressionWith operand =
+eitherExpressionWith = eitherExpressionWithOperator
+  (continuedOperator AST.EitherOperator)
+
+eitherExpressionWithOperator
+  :: Parser Text
+  -> Parser Expression
+  -> Parser Expression
+eitherExpressionWithOperator eitherOperator operand =
   makeExprParser
     operand
-    [ [InfixR (EitherType <$ continuedOperator AST.EitherOperator)]
+    [ [InfixR (EitherType <$ eitherOperator)]
     , [InfixL
         (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
     , [ InfixL (Inequality <$ continuedOperator AST.InequalityOperator)
@@ -841,9 +872,7 @@ identifierTemplateOperation = do
     , do
         _ <- continuedOperator AST.DependentIdentifierTypeOperator
         typeAnnotation <- identifierValueExpression
-        givenValue <- optional
-          (continuedOperator AST.AssignmentOperator *>
-            identifierValueExpression)
+        givenValue <- optional (assignedValueFor typeAnnotation)
         let operation = IdentifierTemplateOperation parts typeAnnotation givenValue
         pure (optionalIdentifier isOptional operation)
     ]
@@ -890,15 +919,31 @@ identifierOperation = do
         case typeAnnotation of
           SyntaxType {} -> pure ()
           _ -> void (validateIdentifierSpelling identifierSpelling)
-        givenValue <-
-          optional
-            (continuedOperator AST.AssignmentOperator *>
-              identifierValueExpression)
+        givenValue <- optional (assignedValueFor typeAnnotation)
         let operation =
               IdentifierOperation
                 operationIdentifierString typeAnnotation givenValue
         pure (optionalIdentifier isOptional operation)
     ]
+
+-- A raw external adapter is an implementation, not an ordinary syntax value.
+-- Make that role explicit with @yield@ after @:=@. Structured implementations
+-- such as parenthesized @do ... yield ...@ bodies remain self-delimiting.
+assignedValueFor :: Expression -> Parser Expression
+assignedValueFor typeAnnotation = do
+  _ <- continuedOperator AST.AssignmentOperator
+  case typeAnnotation of
+    SyntaxType {} ->
+      functionImplementation typeAnnotation <|> structuredSyntaxBody
+    _ -> assignedValueExpression
+  where
+    -- Parenthesized bodies already carry their own explicit @do ... yield@
+    -- boundary and remain valid syntax implementations.
+    structuredSyntaxBody = try $ do
+      value <- identifierValueExpression
+      case value of
+        FunctionBody {} -> pure value
+        _ -> empty
 
 -- Symbolic parser values can project declarations from an enclosing scope.
 -- The capability is introduced by an ordinary stdlib binding whose value is
@@ -942,7 +987,10 @@ assignedIdentifierValue = do
   -- Give a declared syntax form the whole assignment operand before the
   -- restricted identifier-value grammar can reinterpret its literal words
   -- (notably @do@) as a function implementation.
-  inferred <- try syntaxApplication <|> identifierValueExpression
+  inferred <-
+    try syntaxExpressionWithFunctionBody
+      <|> try syntaxApplication
+      <|> assignedValueExpression
   explicitBlock <- optional . try $ do
     _ <- continuedOperator AST.SpecificationOperator
     _ <- lookAhead (keywordToken "begin")
@@ -952,6 +1000,15 @@ assignedIdentifierValue = do
       _ -> empty
   pure (inferred, maybe inferred id explicitBlock)
 
+-- Assignment parsing normally gives declared syntax priority. Recognize the
+-- one case where the following block belongs outside that syntax expression:
+-- @name := for T? of Any do ...@.
+syntaxExpressionWithFunctionBody :: Parser Expression
+syntaxExpressionWithFunctionBody = do
+  signature <- functionDomainSyntaxApplication
+  body <- functionBody
+  pure (MapSpecification body (completedSignature body signature))
+
 -- Identifier annotations and assigned values may use range, arithmetic, and
 -- access operators directly. Concatenation and specification are deliberately
 -- excluded at this level so @,@ and @~>@ terminate the identifier operand;
@@ -959,13 +1016,37 @@ assignedIdentifierValue = do
 -- identifier's own value.
 identifierValueExpression :: Parser Expression
 identifierValueExpression = do
-  rawInput <- makeExprParser rangeExpression identifierValueOperatorTable
-  input <- syntaxTypeSuffix rawInput (makeExprParser rangeExpression identifierValueOperatorTable)
-  output <- optional (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
-    (makeExprParser rangeExpression identifierValueOperatorTable))
-  let signature = maybe input (FunctionType input) output
-  implementation <- optional (functionImplementation signature)
-  pure (maybe signature (`MapSpecification` signature) implementation)
+  signature <- do
+    rawInput <- makeExprParser rangeExpression identifierValueOperatorTable
+    input <- syntaxTypeSuffix rawInput
+      (arrowExpressionWith
+        (makeExprParser rangeExpression identifierValueOperatorTable))
+    output <- optional
+      (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
+        (makeExprParser rangeExpression identifierValueOperatorTable))
+    pure (maybe input (FunctionType input) output)
+  attachFunctionImplementation signature
+
+-- The value following @:=@ additionally admits an unparenthesized federation.
+-- Type annotations keep the narrower grammar so @name : T | U@ continues to
+-- mean a federation whose first member is a named type.
+assignedValueExpression :: Parser Expression
+assignedValueExpression = do
+  signature <- arrowExpressionWithLayer
+    assignmentEitherExpressionWith
+    (makeExprParser rangeExpression identifierValueOperatorTable)
+  attachFunctionImplementation signature
+
+-- Assignment has lower precedence than federation, except that a following
+-- identifier declaration starts the next federation member. Thus
+-- @Alias := Nat | Str@ assigns the complete federation while
+-- @False := 0 | True := 1@ remains a federation of two declarations.
+assignmentEitherExpressionWith :: Parser Expression -> Parser Expression
+assignmentEitherExpressionWith operand =
+  makeExprParser operand
+    [[InfixR (EitherType <$ try
+      (continuedOperator AST.EitherOperator
+        <* notFollowedBy (try identifierOperationStart)))]]
 
 -- An arithmetic operator followed by another identifier operation belongs to
 -- the surrounding expression. Otherwise it remains part of this identifier's
@@ -1053,6 +1134,7 @@ termAtom =
     , valueOfExpression
     , This <$ keyword "this"
     , importExpression
+    , try syntaxExpressionWithFunctionBody
     , syntaxApplication
     , argumentMap
     , try parenthesizedReverseSpecification
@@ -1093,7 +1175,38 @@ sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
       <|> ([] <$ anySingle)
 
 syntaxApplication :: Parser Expression
-syntaxApplication = do
+syntaxApplication = syntaxApplicationWith expression
+
+-- Parse a declarative expression as a completed function domain. Only its
+-- terminal expression hole uses the non-implementing grammar, leaving a
+-- following @do@ or @begin@ for 'syntaxExpressionWithFunctionBody'.
+functionDomainSyntaxApplication :: Parser Expression
+functionDomainSyntaxApplication =
+  syntaxApplicationWith functionDomainExpression
+
+functionDomainExpression :: Parser Expression
+functionDomainExpression = functionDomainExpressionWith mapExpression
+
+functionDomainExpressionWith :: Parser Expression -> Parser Expression
+functionDomainExpressionWith operand = do
+  target <- functionDomainMaybeThenExpressionWith operand
+  maybeSource <- optional
+    (continuedSymbol reverseSpecificationSymbol *>
+      functionDomainExpressionWith operand)
+  pure (case maybeSource of
+    Nothing -> target
+    Just source -> MapSpecification source target)
+
+functionDomainMaybeThenExpressionWith :: Parser Expression -> Parser Expression
+functionDomainMaybeThenExpressionWith operand = do
+  optionalValue <- arrowExpressionWith operand
+  branch <- optional
+    (continuedOperator AST.MaybeThenOperator *>
+      functionDomainMaybeThenExpressionWith operand)
+  pure (maybe optionalValue (MaybeThen optionalValue) branch)
+
+syntaxApplicationWith :: Parser Expression -> Parser Expression
+syntaxApplicationWith terminalExpression = do
   name <- lookAhead $ do
     first <- bareIdentifierToken
     rest <- many (try (char '.' <* notFollowedBy (char '.') *> bareIdentifierToken))
@@ -1168,7 +1281,8 @@ syntaxApplication = do
               { outerSyntaxDeclarations = syntaxDeclarations nested })
             (withReferences elements)
           pure (AtlasMap entries)
-        else literal <|> (if adjacentHole then nonApplicationArithmeticExpression
+        else literal <|> (if kind == "_Expr" && null rest then terminalExpression
+          else if adjacentHole then nonApplicationArithmeticExpression
           else if kind /= "_Expr" then boundaryAwareArithmeticExpression
           else if "," `elem` stops then nonConcatenatedExpression else expression)
       guard (null enums || not (obviouslyNumeric value))

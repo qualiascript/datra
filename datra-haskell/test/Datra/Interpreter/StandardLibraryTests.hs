@@ -595,7 +595,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"$Int next\" as (Int -> Int) !^\"datra.abs\")"
+        ( "step := ((\"$Int next\" as (Int -> Int) yield !^\"datra.abs\")"
             <> " | (\"$Int next\" as (Int -> Int) do yield 2))\n"
             <> "yield step 3 next"
         )

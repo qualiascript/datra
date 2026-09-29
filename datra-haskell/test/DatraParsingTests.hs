@@ -289,6 +289,49 @@ regressionTests = do
     "f := ({n? : Nat} -> () do assert n of Nat)"
   assertRejected "compact function yield stays on the signature line"
     "f := ({n? : Nat} -> Nat\nyield n + 1)"
+  let identityBody = FunctionBody [] (ref "value")
+      optionalInput = ArgumentMap
+        [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
+      inferredFunction input = MapSpecification identityBody
+        (FunctionType input (ref "Any"))
+  assertParsed "an arrow-less code block defaults its codomain to Any"
+    "{value? : Any} do yield value"
+    (inferredFunction optionalInput)
+  assertParsed "an unparenthesized declarative domain owns the following block"
+    "for T? of Any do yield value"
+    (inferredFunction
+      (ForBinding (IdentifierString "T") True (ref "Any")))
+  assertParsed "arrow-less code blocks accept forward specifications"
+    "(Nat ~> Any) do yield value"
+    (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+  assertParsed "arrow-less code blocks accept reverse specifications"
+    "(Any <~ Nat) do yield value"
+    (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+  assertParsed "arrow-less code blocks accept subfederations"
+    "(Nat of Any) do yield value"
+    (inferredFunction (Subfederation (ref "Nat") (ref "Any")))
+  assertParsed "an explicit code-block codomain is preserved"
+    "{value? : Any} -> Nat do yield value"
+    (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
+  assertParsed "a declared syntax signature is not a shorthand function domain"
+    "\"$Int next\" as (Int -> Int) do yield value"
+    (MapSpecification identityBody
+      (SyntaxType "$Int next" False
+        (FunctionType (ref "Int") (ref "Int"))))
+  let syntaxAdapterType = SyntaxType "$_Expr" False
+        (FunctionType (ref "Any") (ref "Any"))
+      syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
+  assertParsed "inline external syntax adapters use an explicit yield"
+    "\"$_Expr\" as (Any -> Any) yield !^\"datra.syntax.test\""
+    (MapSpecification syntaxAdapter syntaxAdapterType)
+  assertRejected "inline external syntax adapters require yield"
+    "\"$_Expr\" as (Any -> Any) !^\"datra.syntax.test\""
+  assertParsed "typed external syntax adapters use an explicit yield"
+    "handler : \"$_Expr\" as (Any -> Any) := yield !^\"datra.syntax.test\""
+    (IdentifierOperation
+      (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
+  assertRejected "typed external syntax adapters require yield after assignment"
+    "handler : \"$_Expr\" as (Any -> Any) := !^\"datra.syntax.test\""
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1161,8 +1204,13 @@ regressionTests = do
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
-    "x := ($up | $down)"
+    "x := $up | $down"
     (IdentifierOperation (IdentifierString "x") alternatives (Just alternatives))
+  assert "assignment rendering does not regroup a federation"
+    (renderSourceExpression
+      (IdentifierOperation
+        (IdentifierString "x") alternatives (Just alternatives))
+      == "x := $up | $down")
   assert "quoted identifier references render through value lookup"
     (renderSourceExpression (ref "___Std.Int") == "^\"___Std.Int\"")
   assertAstOutput
