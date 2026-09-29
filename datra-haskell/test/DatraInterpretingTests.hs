@@ -858,7 +858,7 @@ testBegin = do
     "begin \"value with spaces\" : 5; yield this.\"value with spaces\"[1] + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block uses the symbolic lookup operator"
-        (rendered == "6 <~ begin \"value with spaces\" : 5; yield ^\"value with spaces\" + 1")
+        (rendered == "6 <~ begin \"value with spaces\" : 5; yield $~\"value with spaces\" + 1")
       expectSourceValue "canonical value lookup block round trip" rendered $ \decoded ->
         assert "canonical block remains stable"
           (renderInterpretedValue decoded == rendered)
@@ -938,15 +938,15 @@ testCanonicalTypes = do
     , "Nat | (Nat -> Nat)"
     ]
   mapM_ expectNonCanonicalDatraType
-    [ "!^\"datra.AST\""
-    , "!^\"datra.Expr\""
-    , "!^\"datra.Block\""
+    [ "!$~\"datra.AST\""
+    , "!$~\"datra.Expr\""
+    , "!$~\"datra.Block\""
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
     , "StrTempl"
-    , "(Nat; (!^\"datra.AST\"))"
+    , "(Nat; (!$~\"datra.AST\"))"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     assert "functions carry a CanonicalType"

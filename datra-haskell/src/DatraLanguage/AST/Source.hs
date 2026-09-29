@@ -25,13 +25,13 @@ source context expression =
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
-    ExternalValue descriptor -> wrapped 10 ("!^" <> source 12 descriptor)
+    ExternalValue descriptor -> wrapped 10 ("!$~" <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
-      | otherwise -> "^" <> renderIdentifierString name
+      | otherwise -> "$~" <> renderIdentifierString name
     IdentifierOperationValue (IdentifierString name) annotation given ->
       identifierOperation
         (renderIdentifierString name) False annotation given
@@ -94,7 +94,7 @@ source context expression =
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->
-          "^" <> case names of
+          "$~" <> case names of
             [name] -> renderIdentifierString name
             _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     -- Access associates to the left, so a second page selection can continue

@@ -171,37 +171,37 @@ functionTests =
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"
-            "f := !^\"datra.add\"\nyield f (b:5;6)"
+            "f := !$~\"datra.add\"\nyield f (b:5;6)"
             "11"
         , programCase "structured external descriptor"
-            ("f := !^(backend:\"haskell\";symbol:\"datra.add\")\n"
+            ("f := !$~(backend:\"haskell\";symbol:\"datra.add\")\n"
               <> "yield f (b:5;6)")
             "11"
         , expressionFailureCase "unknown external backend"
-            "!^(backend:\"missing\";symbol:\"datra.add\")"
+            "!$~(backend:\"missing\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnsupportedExternalBackend "missing")))
         , expressionFailureCase "unknown external symbol"
-            "!^(backend:\"haskell\";symbol:\"missing\")"
+            "!$~(backend:\"haskell\";symbol:\"missing\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
         , expressionFailureCase "duplicate external descriptor field"
-            "!^(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
+            "!$~(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed DuplicateExternalDescriptorField))
         , expressionFailureCase "unknown external descriptor field"
-            "!^(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
+            "!$~(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalDescriptorFields ["extra"])))
         , expressionFailureCase "missing external descriptor field"
-            "!^(backend:\"haskell\")"
+            "!$~(backend:\"haskell\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (MissingExternalDescriptorField "symbol")))
         , expressionFailureCase "external descriptor requires string fields"
-            "!^(1; 2)"
+            "!$~(1; 2)"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
         ]
@@ -267,7 +267,7 @@ functionTests =
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : (!^\"datra.AST\")"
+            "node : (!$~\"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"

@@ -1699,7 +1699,7 @@ registeredExternal symbol = case symbol of
     signatureText <- signatureSource anyTypeValue anyTypeValue
     pure (makeFunctionValue (EvaluatedFunction
       anyTypeValue anyTypeValue Nothing
-      (Just ("!^" <> show symbol)) signatureText
+      (Just ("!$~" <> show symbol)) signatureText
       (Just Right) (Just publicValue) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
@@ -1751,7 +1751,7 @@ registeredExternal symbol = case symbol of
       let domain = if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)
       signatureText <- signatureSource domain astTypeValue
       pure (makeFunctionValue (EvaluatedFunction domain astTypeValue Nothing
-        (Just ("!^" <> show symbol)) signatureText Nothing Nothing True))
+        (Just ("!$~" <> show symbol)) signatureText Nothing Nothing True))
     nativeRange kind = do
       let invoke argument = do
             startValue <- accessValues argument (naturalValue 0)
@@ -1789,7 +1789,7 @@ registeredExternal symbol = case symbol of
             pure result
       signatureText <- signatureSource input output
       pure (makeFunctionValue (EvaluatedFunction input output Nothing
-        (Just ("!^" <> show symbol)) signatureText
+        (Just ("!$~" <> show symbol)) signatureText
         (Just (prepareArguments schema)) (Just invoke) True))
 
 unlinkedExternalFunction
@@ -1799,7 +1799,7 @@ unlinkedExternalFunction
   -> InterpretedValue
 unlinkedExternalFunction arity symbol invoke =
   makeFunctionValue (EvaluatedFunction domain anyTypeValue Nothing
-    (Just ("!^" <> show symbol)) signatureText Nothing (Just invoke) False)
+    (Just ("!$~" <> show symbol)) signatureText Nothing (Just invoke) False)
   where
     domain
       | arity == 1 = anyTypeValue

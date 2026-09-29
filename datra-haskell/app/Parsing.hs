@@ -1447,7 +1447,7 @@ optionalTypeSuffix = try $ do
 listUnconsSuffix :: Parser Text
 listUnconsSuffix = try $ do
   token <- operatorToken AST.ListUnconsOperator
-  notFollowedBy (char '^')
+  notFollowedBy (chunk "$~")
   pure token
 
 namedAccessNames :: Parser [IdentifierString]
@@ -1462,7 +1462,7 @@ namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
         pure (first : rest)
 
 -- Like named access, the operand denotes names rather than evaluating them.
--- Subsequent selections apply to the retrieved value: @^a[0]@ means
+-- Subsequent selections apply to the retrieved value: @$~a[0]@ means
 -- @this.a[1][0]@. Keep this sugar in the core grammar so serialized closures
 -- can use it without importing a syntax declaration from Std.
 valueOfExpression :: Parser Expression
@@ -1577,8 +1577,8 @@ arithmeticOperatorTableWith infixOperator =
     ]
   ]
 
--- Prefix value lookup and infix exponentiation intentionally share @^@.
--- Parentheses make the transition between those two roles explicit.
+-- Parentheses make transitions between prefix value lookup and infix
+-- exponentiation explicit.
 exponentiationOperator
   :: (AST.Operator -> Parser Text)
   -> Parser Text
