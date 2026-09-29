@@ -90,6 +90,7 @@ stringConversionProperties semantics
     DependentSumSemantics _ -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]
+    CoalizationSemantics operand -> structuralWrapperProperties operand
     MapSemantics _ components -> compositeProperties components
     ArgumentMapSemantics _ components -> compositeProperties components
     SpecificationSemantics source target ->

@@ -114,6 +114,7 @@ data ValueSemantics
       , assignmentTypeAnnotation :: ValueSemantics
       , assignmentGivenValue :: ValueSemantics
       }
+  | CoalizationSemantics ValueSemantics
   | MapSemantics Natural [ValueSemantics]
   | ArgumentMapSemantics Bool [ValueSemantics]
   | SpecificationSemantics ValueSemantics ValueSemantics
@@ -155,6 +156,7 @@ data CanonicalResult
       , canonicalAssignmentTypeAnnotation :: CanonicalResult
       , canonicalAssignmentGivenValue :: CanonicalResult
       }
+  | CanonicalCoalization CanonicalResult
   | CanonicalMap Natural [CanonicalResult]
   | CanonicalArgumentMap Bool [CanonicalResult]
   | CanonicalSpecification CanonicalResult CanonicalResult
@@ -220,6 +222,8 @@ canonicalResult semantics =
         identifierString
         (canonicalResult typeAnnotation)
         (canonicalResult givenValue)
+    CoalizationSemantics operand ->
+      CanonicalCoalization (canonicalResult operand)
     MapSemantics cardinality components ->
       CanonicalMap cardinality (map canonicalResult components)
     ArgumentMapSemantics totalPages members ->

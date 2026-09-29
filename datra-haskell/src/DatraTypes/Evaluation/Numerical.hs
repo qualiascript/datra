@@ -10,7 +10,6 @@ module Evaluation.Numerical
   , IntegerLimit (..)
   , integerLimitProjection
   , requireIntegerLimit
-  , complementedIntegerComponents
   , complementedIntegerTypeIncludesInfinity
   , makeIntegerLimit
   , requireFiniteInteger
@@ -28,13 +27,10 @@ import Evaluation.Error
   , OperandSide (..)
   )
 import Evaluation.Construction
-  ( makeAsciiString
-  , makeExplicit
+  ( makeExplicit
   , makeFormulation
   , makeInteger
-  , makeNatural
   )
-import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Value
 import NaturalRange qualified
 import Numeric.Natural (Natural)
@@ -286,30 +282,10 @@ data NumericalProjection
 integerLimitProjection :: InterpretedValue -> Maybe IntegerLimit
 integerLimitProjection = integerLimitSemantics . interpretedSemantics
 
--- The source-level signed representation stores the complement of @x@ as
--- @-x-1@ followed by the distinguished marker. Direct values need no extra
--- presentation; only complemented values project to two sequence members.
-complementedIntegerComponents
-  :: InterpretedValue
-  -> Maybe [InterpretedValue]
-complementedIntegerComponents value =
-  case integerLimitProjection value of
-    Just (FiniteInteger integer)
-      | integer < 0 -> Just
-          [ makeNatural (fromInteger (negate integer - 1))
-          , complementMarker
-          ]
-    Just NegativeInfinity -> Just
-      [makeAsciiString "PosInf", complementMarker]
-    _ -> Nothing
-  where
-    complementMarker = simpleIdentifierTypeValue
-      "Just"
-      (makeAsciiString "Complement")
-
 integerLimitSemantics :: ValueSemantics -> Maybe IntegerLimit
 integerLimitSemantics semantics =
   case semantics of
+    CoalizationSemantics operand -> integerLimitSemantics operand
     IntegerSemantics integer -> Just (FiniteInteger integer)
     ExplicitSemantics 1 ordinalValue ->
       FiniteInteger . toInteger <$> naturalAtOrdinal ordinalValue
@@ -369,6 +345,7 @@ numericalProjection = numericalSemantics . interpretedSemantics
 numericalSemantics :: ValueSemantics -> Maybe NumericalProjection
 numericalSemantics semantics =
   case semantics of
+    CoalizationSemantics operand -> numericalSemantics operand
     ExplicitSemantics level ordinalValue ->
       Just (ExplicitNumerical level ordinalValue)
     IntegerSemantics integer -> Just (IntegerNumerical integer)
@@ -403,6 +380,7 @@ isValuedNumericalTarget :: ValueSemantics -> Bool
 isValuedNumericalTarget semantics
   | Just _ <- complementedIntegerTypeIncludesInfinity semantics = True
   | otherwise = case semantics of
+    CoalizationSemantics operand -> isValuedNumericalTarget operand
     ExplicitSemantics _ _ -> True
     IntegerSemantics _ -> True
     FormulationSemantics _ -> True
@@ -428,6 +406,8 @@ isValuedNumericalTarget semantics
 complementedIntegerTypeIncludesInfinity :: ValueSemantics -> Maybe Bool
 complementedIntegerTypeIncludesInfinity semantics =
   case semantics of
+    CoalizationSemantics operand ->
+      complementedIntegerTypeIncludesInfinity operand
     MapSemantics _ [magnitude, complement]
       | Just includesInfinity <- nonnegativeMagnitude magnitude
       , optionalComplement complement -> Just includesInfinity
@@ -436,6 +416,7 @@ complementedIntegerTypeIncludesInfinity semantics =
 nonnegativeMagnitude :: ValueSemantics -> Maybe Bool
 nonnegativeMagnitude semantics =
   case semantics of
+    CoalizationSemantics operand -> nonnegativeMagnitude operand
     NaturalTypeSemantics -> Just False
     ValuedNaturalRangeSemantics 0 NaturalRange.UpwardsTarget -> Just False
     ConcatenationSemantics members
@@ -454,6 +435,7 @@ optionalComplement semantics =
       && any isComplement alternatives
       && all (\member -> isAbsent member || isComplement member) alternatives
   where
+    flattenEither (CoalizationSemantics operand) = flattenEither operand
     flattenEither (EitherSemantics left right) =
       flattenEither left <> flattenEither right
     flattenEither member = [member]

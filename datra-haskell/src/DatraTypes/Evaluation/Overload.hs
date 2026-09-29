@@ -46,7 +46,6 @@ import Evaluation.Error
   )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues, makeAtlasMap)
-import Evaluation.Numerical (complementedIntegerComponents)
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
@@ -148,11 +147,7 @@ resolveReplacements template supplied
   , Just value <- matchSlot slot supplied =
       Right [(slotIndex slot, Just value)]
   | otherwise = do
-      rows <- case complementedIntegerComponents supplied of
-        Just members
-          | length (templateSlots template) > 1 ->
-              pure [map Just members]
-        _ -> overloadArgumentRows supplied
+      rows <- overloadArgumentRows supplied
       writtenRows <-
         case interpretedForm supplied of
           ArgumentMapForm members _ ->

@@ -68,8 +68,8 @@ yield Std := begin
 
   let Nat := from 0 up
   let NatLimit := from 0 to Infinity
-  let Int := (Nat; $Complement?)
-  let IntLimit := (NatLimit; $Complement?)
+  let Int := >< (Nat; $Complement?)
+  let IntLimit := >< (NatLimit; $Complement?)
 
   Args := (for T? of Any) -> Any do
     slots := with i in Nat do "arg%(i)"? : T

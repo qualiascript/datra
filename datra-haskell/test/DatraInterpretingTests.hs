@@ -166,7 +166,7 @@ sourceNatType :: String
 sourceNatType = "from 0 up"
 
 sourceIntType :: String
-sourceIntType = "(from 0 up; nothing | () | Just : $Complement)"
+sourceIntType = ">< (from 0 up; nothing | () | Just : $Complement)"
 
 maybeType :: Expression -> Expression
 maybeType = FunctionApplication
@@ -784,13 +784,13 @@ testEval = do
         (renderInterpretedValue value == expected))
     [ ( "\"12\""
       , "Int"
-      , "12 ~> (from 0 up; nothing | () | Just : $Complement)"
+      , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ("\"alco\"", "IdenStr", "$alco ~> IdenStr")
     , ("\"hello world\"", "Str", "\"hello world\" ~> Str")
     , ( "(\"1\", \"2\")"
       , "Int"
-      , "12 ~> (from 0 up; nothing | () | Just : $Complement)"
+      , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ( "\"x : 3, (b : 8; 2)\""
       , "x : 3; {a? : Nat := 2, b? : Nat}"
@@ -1051,13 +1051,13 @@ testEvalBackedKeywords = do
     , ("if false then (1 and false)", "()")
     , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
     , ( "%(\"from 2 to 5\" ~> \"from %Int to %Int\")[1]"
-      , "2 ~> (from 0 up; nothing | () | Just : $Complement)"
+      , "2 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ( "%(\"from 2 to 5\" ~> \"from %Int to %Int\")[2]"
-      , "5 ~> (from 0 up; nothing | () | Just : $Complement)"
+      , "5 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ( "%(\"range -3 down\" ~> \"range %Int down\")[1]"
-      , "-3 ~> (from 0 up; nothing | () | Just : $Complement)"
+      , "-3 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ("%(\"if true then\" ~> \"if %Bool then\")[1]", "true ~> Bool")
     ]
@@ -1194,7 +1194,7 @@ testStringTemplates = do
     assert "extract follows the retained string-template selection witness"
       ( renderInterpretedValue value
           == "(\"alco 100\"; $alco ~> IdenStr; "
-            <> "100 ~> (from 0 up; nothing | () | Just : $Complement))"
+            <> "100 ~> >< (from 0 up; nothing | () | Just : $Complement))"
       )
   expectSourceValue
       "extract forgets a simple identifier assignment wrapper"
@@ -1202,7 +1202,7 @@ testStringTemplates = do
     assert "identifier extraction matches direct specification extraction"
       ( renderInterpretedValue value
           == "(\"alco 100\"; $alco ~> IdenStr; "
-            <> "100 ~> (from 0 up; nothing | () | Just : $Complement))"
+            <> "100 ~> >< (from 0 up; nothing | () | Just : $Complement))"
       )
   expectSourceValue
       "extract index zero selects the original string"
@@ -1219,7 +1219,7 @@ testStringTemplates = do
       "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [2]" $ \value ->
     assert "the third extracted component is the second typed hole"
       (renderInterpretedValue value
-        == "100 ~> (from 0 up; nothing | () | Just : $Complement)")
+        == "100 ~> >< (from 0 up; nothing | () | Just : $Complement)")
   expectSourceValue
       "extracted numerical specifications participate in arithmetic"
       "%(my_val : \"%IdenStr %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->

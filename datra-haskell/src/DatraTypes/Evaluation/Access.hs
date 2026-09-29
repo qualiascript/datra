@@ -22,7 +22,7 @@ import Evaluation.Access.Composition
   , decideFederationAccess
   )
 import Evaluation.Access.Federation
-  ( federationIsCoalition
+  ( valueIsCoalition
   )
 import Evaluation.Access.Specification (accessSpecification)
 import Evaluation.Access.Identifier (accessDependentIdentifierType)
@@ -376,9 +376,6 @@ finishAccess mapValue selected =
       traverse
         (interpretedMapValueAt selected . finiteOrdinal)
         [0 .. cardinality - 1]
-
-valueIsCoalition :: InterpretedValue -> Bool
-valueIsCoalition = federationIsCoalition . interpretedAtlasMapFederation
 
 rangeAccessResult
   :: Bool

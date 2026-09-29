@@ -376,6 +376,7 @@ data ValueForm
   | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
   | IdentifierStringProjectionForm EvaluatedDependentIdentifierType
   | DependentSumForm EvaluatedDependentSum
+  | CoalizationForm InterpretedValue
   | SequentialMapForm
   | ExpansionMapForm InterpretedValue InterpretedValue
   | ConcatenatedMapForm InterpretedValue InterpretedValue
@@ -614,6 +615,7 @@ interpretedValueKind value =
     DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind
     IdentifierStringProjectionForm _ -> DependentIdentifierTypeValueKind
     DependentSumForm _ -> MapValueKind
+    CoalizationForm _ -> MapValueKind
     SequentialMapForm -> MapValueKind
     ExpansionMapForm _ _ -> MapValueKind
     ConcatenatedMapForm _ _ -> MapValueKind

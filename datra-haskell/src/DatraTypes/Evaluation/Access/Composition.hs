@@ -38,9 +38,12 @@ decideFederationAccess
   -> InterpretedValue
   -> Either InterpretingError FederationAccess
 decideFederationAccess mapValue insertionValue =
-  case decideAtomicFederationAccess mapValue insertionValue of
-    Just decision -> decision
-    Nothing -> decideCompositeFederationAccess mapValue insertionValue
+  case interpretedForm mapValue of
+    CoalizationForm _ -> decideDirectFederationAccess insertionValue
+    _ ->
+      case decideAtomicFederationAccess mapValue insertionValue of
+        Just decision -> decision
+        Nothing -> decideCompositeFederationAccess mapValue insertionValue
 
 decideCompositeFederationAccess
   :: InterpretedValue
@@ -87,21 +90,24 @@ decideFlattenedFederationAccess mapValue insertionValue insertion
 -- automatically extends concatenations and expansions built from that leaf.
 accessLayout :: InterpretedValue -> AccessLayout
 accessLayout value =
-  case atomicAccessLayout value of
-    Just layout -> layout
-    Nothing ->
-      case interpretedForm value of
-        SequentialMapForm -> fixedLayout (interpretedMap value)
-        ConcatenatedMapForm left right -> combinedLayout left right
-        RangeConcatenationForm _ (Just (left, right)) ->
-          combinedLayout left right
-        ExpansionMapForm left right -> combinedLayout left right
-        _ ->
-          AccessLayout
-            { accessLayoutRepresentativeMap = interpretedMap value
-            , accessLayoutFixedOrderType = Nothing
-            , accessLayoutAccessibleRegions = []
-            }
+  case interpretedForm value of
+    CoalizationForm _ -> fixedLayout (interpretedMap value)
+    _ ->
+      case atomicAccessLayout value of
+        Just layout -> layout
+        Nothing ->
+          case interpretedForm value of
+            SequentialMapForm -> fixedLayout (interpretedMap value)
+            ConcatenatedMapForm left right -> combinedLayout left right
+            RangeConcatenationForm _ (Just (left, right)) ->
+              combinedLayout left right
+            ExpansionMapForm left right -> combinedLayout left right
+            _ ->
+              AccessLayout
+                { accessLayoutRepresentativeMap = interpretedMap value
+                , accessLayoutFixedOrderType = Nothing
+                , accessLayoutAccessibleRegions = []
+                }
   where
     fixedLayout valueMap =
       let orderType = interpretedMapFinalOrderType valueMap

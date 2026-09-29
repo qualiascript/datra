@@ -214,6 +214,7 @@ library
         Evaluation.Access.RangeSelection
         Evaluation.Access.Specification
         Evaluation.Construction
+        Evaluation.Coalization
         Evaluation.Boolean
         Evaluation.Either
         Evaluation.Error

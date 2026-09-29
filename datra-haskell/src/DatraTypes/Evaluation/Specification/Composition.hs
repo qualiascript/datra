@@ -18,7 +18,10 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues, makeAtlasMap)
-import Evaluation.Numerical (complementedIntegerComponents)
+import Evaluation.Numerical
+  ( IntegerLimit (..)
+  , complementedIntegerTypeIncludesInfinity
+  )
 import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
@@ -43,6 +46,11 @@ selectFederationMember source target
       selectFederationMember sourcePayload targetPayload
   | SkipForm _ <- interpretedForm source = DecisionRefuted
   | SkipForm _ <- interpretedForm target = DecisionRefuted
+  | CoalizationForm sourceOperand <- interpretedForm source
+  , CoalizationForm targetOperand <- interpretedForm target =
+      selectFederationMember sourceOperand targetOperand
+  | CoalizationForm targetOperand <- interpretedForm target =
+      selectCoalizationMember source targetOperand
   | ArgumentMapForm members underlying <- interpretedForm target =
       ArgumentMap.selectArgumentMapMember
         selectFederationMember source members underlying
@@ -175,15 +183,46 @@ selectSequentialMember source target =
     -- Match the retained operand boundaries against the target sequence;
     -- do not flatten a nested ordered map into its enclosing components.
     sourceComponents =
-      case complementedIntegerComponents source of
+      case sequenceOperands source of
         Just members -> Just members
         Nothing ->
-          case sequenceOperands source of
-            Just members -> Just members
-            Nothing ->
-              case interpretedForm source of
-                ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
-                _ -> Just [source]
+          case interpretedForm source of
+            ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
+            _ -> Just [source]
+
+-- A coalized target is one federation position even when its carrier was
+-- constructed from several pages. Complemented integer families are the one
+-- source-defined carrier whose concrete values do not retain that page shape;
+-- recognize them once at the coalization boundary instead of teaching every
+-- sequence/argument consumer how to split negative integers.
+selectCoalizationMember
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Decision EvaluatedAtlasMapFederationMember
+selectCoalizationMember source operand =
+  case complementedIntegerTypeIncludesInfinity
+      (interpretedSemantics operand) of
+    Just includesInfinity ->
+      case coalizedIntegerSource source of
+        Just PositiveInfinity
+          | not includesInfinity -> DecisionRefuted
+        Just NegativeInfinity
+          | not includesInfinity -> DecisionRefuted
+        Just _ -> DecisionProved
+          (EvaluatedSingletonAtlasMapMember
+            (interpretedCanonicalResult source))
+        Nothing -> selectFederationMember source operand
+    Nothing -> selectFederationMember source operand
+
+coalizedIntegerSource :: InterpretedValue -> Maybe IntegerLimit
+coalizedIntegerSource source =
+  case interpretedInteger source of
+    Just integer -> Just (FiniteInteger integer)
+    Nothing ->
+      case interpretedCanonicalResult source of
+        CanonicalAsciiString "PosInf" -> Just PositiveInfinity
+        CanonicalAsciiString "NegInf" -> Just NegativeInfinity
+        _ -> Nothing
 
 selectSequenceMembers
   :: [InterpretedValue]

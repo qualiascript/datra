@@ -8,6 +8,7 @@ module Evaluation.Access.Federation
   , decideDirectFederationAccess
   , emptyMapAccessCounterexample
   , federationIsCoalition
+  , valueIsCoalition
   , naturalRangeFederation
   , requireInsertion
   ) where
@@ -185,6 +186,15 @@ federationIsCoalition federation =
         && federationIsCoalition
           (interpretedAtlasMapFederation (evaluatedEitherRight alternatives))
     _ -> False
+
+-- | Explicit coalization is the value-level witness that a constructed
+-- federation occupies one stable position. Primitive carriers retain their
+-- existing structural recognition.
+valueIsCoalition :: InterpretedValue -> Bool
+valueIsCoalition value =
+  case interpretedForm value of
+    CoalizationForm _ -> True
+    _ -> federationIsCoalition (interpretedAtlasMapFederation value)
 
 naturalRangeFederation
   :: InterpretedValue

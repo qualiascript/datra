@@ -15,6 +15,7 @@ module DatraTypes
   , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
+  , coalizeValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
@@ -202,6 +203,7 @@ import Evaluation.Construction
   , makeNatural
   , makeInteger
   )
+import Evaluation.Coalization (coalizeValue)
 import Evaluation.Boolean
   ( booleanAndValues
   , booleanCondition

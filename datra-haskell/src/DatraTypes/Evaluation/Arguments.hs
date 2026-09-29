@@ -20,7 +20,7 @@ import Evaluation.Error
   )
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Map (makeAtlasMap, hasConcreteSource, concatenateValues)
-import Evaluation.Access.Federation (federationIsCoalition)
+import Evaluation.Access.Federation (valueIsCoalition)
 import Evaluation.Value
 
 makeArgumentMap :: [InterpretedValue] -> Either InterpretingError InterpretedValue
@@ -47,7 +47,7 @@ makeArgumentMap members = do
   where
     totalPage member =
       hasConcreteSource member
-        || federationIsCoalition (interpretedAtlasMapFederation member)
+        || valueIsCoalition member
 
 -- The existing Either constructor still checks separation between different
 -- members. Only identical alternatives are removed here.
