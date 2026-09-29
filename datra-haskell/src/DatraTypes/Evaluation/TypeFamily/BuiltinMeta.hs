@@ -28,6 +28,10 @@ decideBuiltinMetaSubfederation source target =
   if accepted then DecisionProved () else DecisionRefuted
   where
     accepted = case (interpretedForm source, target) of
+      (CoalizationForm operand, expected) ->
+        case decideBuiltinMetaSubfederation operand expected of
+          DecisionProved () -> True
+          _ -> False
       (_, AnyMetaType) ->
         case datraCanonicalType (interpretedDatraType source) of
           Just _ -> True
@@ -85,6 +89,7 @@ decideBuiltinMetaSubfederation source target =
 
     isRange value expected =
       case (interpretedForm value, expected) of
+        (CoalizationForm operand, _) -> isRange operand expected
         (_, NatRangeMetaType) | isPositiveInfinity value -> True
         (_, IntRangeMetaType) | isInfinity value -> True
         (_, NatValRangeMetaType) | isPositiveInfinity value -> True

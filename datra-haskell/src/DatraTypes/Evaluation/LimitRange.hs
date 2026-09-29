@@ -5,6 +5,7 @@ module Evaluation.LimitRange
   ) where
 
 import Evaluation.Either (makeEitherValue)
+import Evaluation.Coalization (coalizeValue)
 import Evaluation.Error
   ( InterpretingError (..)
   , OperandSide (..)
@@ -112,7 +113,7 @@ finiteStartRange kind start endpoint =
     includeEndpoint finite limit =
       case kind of
         ValuedIntegerRangeKind ->
-          concatenateValues finite (makeIntegerLimit limit)
+          coalizeValue <$> concatenateValues finite (makeIntegerLimit limit)
         IntegerRangeKind ->
           makeEitherValue finite (makeIntegerLimit limit)
     upwards value

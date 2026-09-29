@@ -7,8 +7,6 @@ module Evaluation.Access.Federation
   , decideAtomicFederationAccess
   , decideDirectFederationAccess
   , emptyMapAccessCounterexample
-  , federationIsCoalition
-  , valueIsCoalition
   , naturalRangeFederation
   , requireInsertion
   ) where
@@ -64,6 +62,8 @@ atomicFederationAccess
 atomicFederationAccess value =
   case interpretedAtlasMapFederation value of
     SingletonAtlasMapFederation _ ->
+      Just (directRule (fixedLayout (interpretedMap value)))
+    CoalizedAtlasMapFederation _ ->
       Just (directRule (fixedLayout (interpretedMap value)))
     PrimitiveAtlasMapFederation
         (ValuedNaturalRangeAtlasMapFederation _) ->
@@ -166,35 +166,6 @@ emptyMapAccessCounterexample =
   Left
     (AtlasMapFederationOperationRefuted
       AtlasMapFederationAccessHasEmptyCounterexample)
-
--- Valued ranges and identifier types are federations whose member Atlases form
--- one coalition and occupy one stable position in a sequential product. A
--- tagged Either remains a coalition exactly when both alternatives do.
-federationIsCoalition :: InterpretedAtlasMapFederation -> Bool
-federationIsCoalition federation =
-  case federation of
-    PrimitiveAtlasMapFederation
-        (ValuedNaturalRangeAtlasMapFederation _) -> True
-    PrimitiveAtlasMapFederation
-        (ValuedIntegerRangeAtlasMapFederation _) -> True
-    PrimitiveAtlasMapFederation
-        (DependentIdentifierTypeAtlasMapFederation _) -> True
-    PrimitiveAtlasMapFederation
-        (EitherAtlasMapFederation alternatives) ->
-      federationIsCoalition
-        (interpretedAtlasMapFederation (evaluatedEitherLeft alternatives))
-        && federationIsCoalition
-          (interpretedAtlasMapFederation (evaluatedEitherRight alternatives))
-    _ -> False
-
--- | Explicit coalization is the value-level witness that a constructed
--- federation occupies one stable position. Primitive carriers retain their
--- existing structural recognition.
-valueIsCoalition :: InterpretedValue -> Bool
-valueIsCoalition value =
-  case interpretedForm value of
-    CoalizationForm _ -> True
-    _ -> federationIsCoalition (interpretedAtlasMapFederation value)
 
 naturalRangeFederation
   :: InterpretedValue

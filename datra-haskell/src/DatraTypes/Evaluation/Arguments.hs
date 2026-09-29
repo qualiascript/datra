@@ -20,7 +20,7 @@ import Evaluation.Error
   )
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Map (makeAtlasMap, hasConcreteSource, concatenateValues)
-import Evaluation.Access.Federation (valueIsCoalition)
+import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Value
 
 makeArgumentMap :: [InterpretedValue] -> Either InterpretingError InterpretedValue

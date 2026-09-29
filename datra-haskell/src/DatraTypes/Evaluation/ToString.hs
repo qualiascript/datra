@@ -170,6 +170,8 @@ federationExactStrings federation =
           injectiveToStringExactStrings proof
         WeakToStringAtlasMapFederation _ -> Nothing
         _ -> Nothing
+    CoalizedAtlasMapFederation operand ->
+      federationExactStrings operand
     ConcatenatedAtlasMapFederation left right -> do
       leftStrings <- federationExactStrings left
       rightStrings <- federationExactStrings right
@@ -229,6 +231,8 @@ stringFederationExcludes delimiter federation =
         IdentifierValueTypeAtlasMapFederation ->
           any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False
+    CoalizedAtlasMapFederation operand ->
+      stringFederationExcludes delimiter operand
     SequentialAtlasMapFederation members ->
       all (stringFederationExcludes delimiter) members
     ExpansionAtlasMapFederation leftValue rightValue ->

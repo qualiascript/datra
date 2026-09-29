@@ -665,7 +665,7 @@ testArgumentMaps = do
     assert "family widening retains the original source"
       (renderInterpretedValue value
         == "{b : 8, 2} ~> {b? : " <> sourceIntType
-          <> "; a? : " <> sourceIntType <> "}")
+          <> ", a? : " <> sourceIntType <> "}")
   mapM_ (\source -> expectSourceValue
     ("argument rendering round trip: " <> source) source $ \value ->
     let rendered = renderInterpretedValue value
@@ -2521,8 +2521,16 @@ testAccess = do
       ((<@>)
         threeValues
         (AtlasMap [natural 0, NaturalRangeUpwards 1])) $ \value ->
-    assert "head and tail access remains a two-page map"
-      (renderInterpretedValue value == "(1; >< (2; 3))")
+    assert "head and tail access retains a semantic coalization boundary"
+      ( renderInterpretedValue value == "(1; >< (2; 3))"
+        && case interpretedMapValueAt
+            (interpretedMap value) (finiteOrdinal 1) of
+          Just member ->
+            case Types.interpretedCanonicalResult member of
+              Types.CanonicalCoalization _ -> True
+              _ -> False
+          Nothing -> False
+      )
   expectValue
       "a concatenated selector map concatenates access results"
       ((<@>)

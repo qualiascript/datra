@@ -698,7 +698,8 @@ interpretNormalizedExpression scope resolving expressionValue =
           headValue <- accessValues value (naturalValue 0)
           tailRange <- naturalRangeUpwardsValue 1
           tailValue <- accessValues value tailRange
-          let pair = makeAtlasMap 2 [headValue, tailValue]
+          let pair = makeAtlasMap 2
+                (map (coalizeMapMemberAt 2) [headValue, tailValue])
           optionalValue pair >>= contextuallySpecify pair
     evaluateBlock source bindings result = do
       let origins = canonicalDependencyNames bindings result
@@ -1089,7 +1090,7 @@ interpretAtlasMapWithBuilder buildMap interpret expressions = do
       cardinality
         | mapDepth == 0 = 0
         | otherwise = mapDepth + 1
-  pure (buildMap cardinality values)
+  pure (buildMap cardinality (map (coalizeMapMemberAt cardinality) values))
 
 expressionNestingDepth :: Expression -> InterpretedValue -> Natural
 expressionNestingDepth expressionValue value =

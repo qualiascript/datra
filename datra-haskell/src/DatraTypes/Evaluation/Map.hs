@@ -170,9 +170,9 @@ concatenateNonUnitValues left right = do
               (interpretedAtlasMapFederation left)
               (interpretedAtlasMapFederation right)
       preserveFederationSyntax =
-        semanticsContainsNaturalRange
+        semanticsContainsRange
           (interpretedSemantics left)
-          || semanticsContainsNaturalRange
+          || semanticsContainsRange
             (interpretedSemantics right)
           || preservesConcatenationBoundary left
           || preservesConcatenationBoundary right
@@ -265,15 +265,18 @@ preservesConcatenationBoundary value =
     SpecificationForm _ -> True
     _ -> False
 
-semanticsContainsNaturalRange :: ValueSemantics -> Bool
-semanticsContainsNaturalRange (NaturalRangeSemantics _ _) = True
-semanticsContainsNaturalRange (ValuedNaturalRangeSemantics _ _) = True
-semanticsContainsNaturalRange NaturalTypeSemantics = True
-semanticsContainsNaturalRange (ConcatenationSemantics members) =
-  any semanticsContainsNaturalRange members
-semanticsContainsNaturalRange (MapSemantics _ members) =
-  any semanticsContainsNaturalRange members
-semanticsContainsNaturalRange _ = False
+semanticsContainsRange :: ValueSemantics -> Bool
+semanticsContainsRange (NaturalRangeSemantics _ _) = True
+semanticsContainsRange (ValuedNaturalRangeSemantics _ _) = True
+semanticsContainsRange (IntegerRangeSemantics _ _) = True
+semanticsContainsRange (ValuedIntegerRangeSemantics _ _) = True
+semanticsContainsRange NaturalTypeSemantics = True
+semanticsContainsRange IntegerTypeSemantics = True
+semanticsContainsRange (ConcatenationSemantics members) =
+  any semanticsContainsRange members
+semanticsContainsRange (MapSemantics _ members) =
+  any semanticsContainsRange members
+semanticsContainsRange _ = False
 
 concatenationMembers :: ValueSemantics -> [ValueSemantics]
 concatenationMembers (ConcatenationSemantics members) = members

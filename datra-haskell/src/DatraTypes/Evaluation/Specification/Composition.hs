@@ -94,6 +94,7 @@ selectFederationMember source target
                           selectConcatenatedMember source target
                         ExpansionAtlasMapFederation _ _ ->
                           selectExpansionMember source target
+                        CoalizedAtlasMapFederation _ -> DecisionUndecidable
                         SingletonAtlasMapFederation _ -> DecisionUndecidable
                         PrimitiveAtlasMapFederation _ -> DecisionUndecidable
 

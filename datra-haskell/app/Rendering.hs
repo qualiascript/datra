@@ -481,10 +481,10 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"
 prettyMap _ [component] = prettyCanonicalResult component
-prettyMap cardinality components =
+prettyMap _ components =
   parens
     (concatWith (\left right -> left <> "; " <> right)
-      (map (prettyMapMember cardinality) components))
+      (map prettyCanonicalResult components))
 
 prettyCoalizationOperand :: CanonicalResult -> Doc annotation
 prettyCoalizationOperand operand
@@ -509,15 +509,6 @@ coalizationOperandNeedsParens operand =
     CanonicalMap 0 _ -> False
     CanonicalMap _ [_] -> True
     _ -> False
-
--- The coalization operator keeps a map-valued operand at the current level when
--- canonical source is parsed again, instead of letting its own cardinality
--- raise that of the surrounding map.
-prettyMapMember :: Natural -> CanonicalResult -> Doc annotation
-prettyMapMember outerCardinality member@(CanonicalMap memberCardinality _)
-  | memberCardinality >= outerCardinality =
-      prettySourceSymbol CoalizationOperator <> " " <> prettyCanonicalResult member
-prettyMapMember _ member = prettyCanonicalResult member
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =
