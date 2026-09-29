@@ -380,9 +380,16 @@ result := my_max (Args (from -128 to 127))
 the inferred return type is the unique integer-range type selected for those
 arguments, subject to `IntLimit`.
 
+An unconstrained private product may remain symbolic at its declared bound when
+the executed path and returned value are valid for every permitted
+instantiation. For example, `nothing` inhabits `_T?` for every
+`_T` within `IntLimit`. This does not expose a generic witness to the body or
+select an arbitrary concrete subtype.
+
 Matching reports a structured generic error when:
 
-- no evidence is available for a private generic;
+- a concrete witness is required but no argument, expected result, or valid
+  symbolic-bound interpretation can supply it;
 - evidence admits more than one canonical candidate;
 - dependent occurrences impose conflicting constraints;
 - a candidate lies outside the declared supertype;
@@ -612,6 +619,53 @@ parser, interpreter, and closure builder.
 - Domain specialization validates dependent arguments.
 - Codomain specialization validates the returned value.
 - `my_max` over `Args (from -128 to 127)` has the inferred range return type.
+
+### Numbers module regression target
+
+The `Numbers` implementations of `max` and `min` use one private product
+generic for their variadic element and result type:
+
+```datra
+max := {Args (&_T :: IntLimit),} -> _T? do
+  values := (val it)!
+  let maximum := {candidate? : _T, remaining? : List _T} -> _T do
+    yield if candidate = Infinity or remaining = () then candidate
+      else begin
+        let next := maximum remaining[0; range 1 up]
+      yield if candidate >= next then candidate else next
+yield values ?? maximum it
+
+min := {Args (&_T :: IntLimit),} -> _T? do
+  values := (val it)!
+  let minimum := {candidate? : _T, remaining? : List _T} -> _T do
+    yield if candidate = -Infinity or remaining = () then candidate
+      else begin
+        let next := minimum remaining[0; range 1 up]
+      yield if candidate <= next then candidate else next
+yield values ?? minimum it
+```
+
+The `_T?` codomain applies the ordinary optional-value operator to the generic
+reference `_T`; it is not a generic declaration or optional generic name.
+The nested helper signatures resolve `_T` from the enclosing function's generic
+prefix, while runtime body lookup still has no `_T` binding.
+
+Regression coverage must establish that:
+
+- nonempty positional arguments infer one shared `_T` and produce the correct
+  maximum or minimum;
+- the observable result type is `_T?`, specialized from the argument evidence
+  rather than widened to `IntLimit?`;
+- an `Args (from -128 to 127)` instantiation retains that inferred range in the
+  result type;
+- zero arguments return `nothing` without choosing an arbitrary concrete `_T`;
+- named and reordered variadic arguments preserve their existing behavior;
+- negative integers, `Infinity`, and `-Infinity` preserve their existing
+  comparison behavior;
+- the recursive `maximum` and `minimum` closures use the enclosing `_T` in
+  their signatures without capturing it as a runtime body value; and
+- body-visible `it` contains only the variadic number arguments, with the
+  generic interface prefix erased.
 
 ### Sum semantics
 
