@@ -388,6 +388,16 @@ testDiagnostics = do
           "adnotarea de tip a identificatorului nu este canonică"
           ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
     )
+  assert "mixed dependent binders have an explicit bilingual diagnostic"
+    ( localizeDiagnostic English Types.MixedDependentBinders
+      == LocalizedMessage
+          "dependent sums and products cannot be mixed in one type container"
+          []
+      && localizeDiagnostic Romanian Types.MixedDependentBinders
+      == LocalizedMessage
+          "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
+          []
+    )
   assert "parser failures have exact bilingual localization"
     ( localizeDiagnostic English (ParseFailure "bad token")
         == LocalizedMessage "source could not be parsed" ["bad token"]

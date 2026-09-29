@@ -163,6 +163,10 @@ localizeInterpretingError reason =
     DependentBinderOutsideContainer binder ->
       LocalizedMessage "legătura dependentă necesită un container de tip exterior"
         ["legătură: " <> binder]
+    MixedDependentBinders ->
+      LocalizedMessage
+        "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
+        []
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie numeric")

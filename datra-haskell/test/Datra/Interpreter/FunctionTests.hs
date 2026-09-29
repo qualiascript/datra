@@ -274,7 +274,10 @@ functionTests =
             "0"
         ]
     , testGroup "dependent products"
-        [ programCase "optional binder accepts positional witnesses"
+        [ programCase "argument maps evaluate homogeneous products"
+            "yield ({for i? of from 0 to 2; i})[1]"
+            "(0; 1; 2)"
+        , programCase "optional binder accepts positional witnesses"
             ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
                 <> "yield identity (Nat; 5)"
             )
@@ -326,6 +329,11 @@ functionTests =
                 <> "yield bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
+        , programFailureCase "function domains reject mixed dependent binders"
+            ( "bad := ({for T? of Any; with U? of Any; value? : T} "
+                <> "-> Any yield value)\nyield bad"
+            )
+            (SourceEvaluationFailure MixedDependentBinders)
         ]
     , recursionTests
     ]

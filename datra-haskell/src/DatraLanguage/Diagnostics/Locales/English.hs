@@ -165,6 +165,10 @@ localizeInterpretingError reason =
     DependentBinderOutsideContainer binder ->
       LocalizedMessage "dependent binder requires an enclosing type container"
         ["binder: " <> binder]
+    MixedDependentBinders ->
+      LocalizedMessage
+        "dependent sums and products cannot be mixed in one type container"
+        []
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         (operandSide side <> " operand must be numerical")
