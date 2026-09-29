@@ -17,7 +17,8 @@ import Evaluation.Federation.Structure
   , expansionOperands
   , sequenceOperands
   )
-import Evaluation.Map (concatenateValues)
+import Evaluation.Map (concatenateValues, makeAtlasMap)
+import Evaluation.Numerical (complementedIntegerComponents)
 import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.Federation
@@ -164,24 +165,47 @@ selectSequentialMember
   -> Decision EvaluatedAtlasMapFederationMember
 selectSequentialMember source target =
   case (sourceComponents, sequenceOperands target) of
-    (Just sourceMembers, Just targetMembers)
-      | length sourceMembers == length targetMembers ->
-          mapDecision
-            EvaluatedSequentialAtlasMapMember
-            (decideAll
-              (zipWith selectFederationMember sourceMembers targetMembers))
+    (Just sourceMembers, Just targetMembers) ->
+      mapDecision
+        EvaluatedSequentialAtlasMapMember
+        (selectSequenceMembers sourceMembers targetMembers)
     _ -> DecisionRefuted
   where
     -- Canonical strings may present concrete components by concatenation.
     -- Match the retained operand boundaries against the target sequence;
     -- do not flatten a nested ordered map into its enclosing components.
     sourceComponents =
-      case sequenceOperands source of
+      case complementedIntegerComponents source of
         Just members -> Just members
         Nothing ->
-          case interpretedForm source of
-            ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
-            _ -> Nothing
+          case sequenceOperands source of
+            Just members -> Just members
+            Nothing ->
+              case interpretedForm source of
+                ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
+                _ -> Just [source]
+
+selectSequenceMembers
+  :: [InterpretedValue]
+  -> [InterpretedValue]
+  -> Decision [EvaluatedAtlasMapFederationMember]
+selectSequenceMembers [] [] = DecisionProved []
+selectSequenceMembers _ [] = DecisionRefuted
+selectSequenceMembers sources (target : remainingTargets) =
+  decideAny (consumeSource <> consumeUnit)
+  where
+    consumeSource = case sources of
+      [] -> []
+      source : remainingSources ->
+        [ prependDecision
+            (selectFederationMember source target)
+            (selectSequenceMembers remainingSources remainingTargets)
+        ]
+    consumeUnit =
+      [ prependDecision
+          (selectFederationMember (makeAtlasMap 0 []) target)
+          (selectSequenceMembers sources remainingTargets)
+      ]
 
 selectExpansionMember
   :: InterpretedValue
@@ -200,11 +224,21 @@ selectConcatenatedMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectConcatenatedMember source target =
-  mapDecision
-    EvaluatedConcatenatedAtlasMapMember
-    (selectConcatenationPartitions
-      (concatenationOperands source)
-      (concatenationOperands target))
+  decideAny (memberDecisions <> [partitionDecision])
+  where
+    targetMembers = concatenationOperands target
+    memberDecisions =
+      [ mapDecision
+          (EvaluatedConcatenatedAtlasMapMember . (: []))
+          (selectFederationMember source member)
+      | member <- targetMembers
+      ]
+    partitionDecision =
+      mapDecision
+        EvaluatedConcatenatedAtlasMapMember
+        (selectConcatenationPartitions
+          (concatenationOperands source)
+          targetMembers)
 
 selectConcatenationPartitions
   :: [InterpretedValue]
@@ -212,21 +246,25 @@ selectConcatenationPartitions
   -> Decision [EvaluatedAtlasMapFederationMember]
 selectConcatenationPartitions [] [] = DecisionProved []
 selectConcatenationPartitions _ [] = DecisionRefuted
-selectConcatenationPartitions [] _ = DecisionRefuted
 selectConcatenationPartitions sourceMembers (target : remainingTargets) =
-  decideAny
-    [ case concatenateGroup prefix of
-        Nothing -> DecisionRefuted
-        Just sourceGroup ->
-          prependDecision
-            (selectFederationMember sourceGroup target)
-            (selectConcatenationPartitions suffix remainingTargets)
-    | prefixLength <- [1 .. maximumPrefixLength]
-    , let (prefix, suffix) = splitAt prefixLength sourceMembers
-    ]
+  decideAny (consumeSource <> consumeUnit)
   where
-    maximumPrefixLength =
-      length sourceMembers - length remainingTargets
+    consumeSource =
+      [ case concatenateGroup prefix of
+          Nothing -> DecisionRefuted
+          Just sourceGroup ->
+            prependDecision
+              (selectFederationMember sourceGroup target)
+              (selectConcatenationPartitions suffix remainingTargets)
+      | prefixLength <- [1 .. maximumPrefixLength]
+      , let (prefix, suffix) = splitAt prefixLength sourceMembers
+      ]
+    consumeUnit =
+      [ prependDecision
+          (selectFederationMember (makeAtlasMap 0 []) target)
+          (selectConcatenationPartitions sourceMembers remainingTargets)
+      ]
+    maximumPrefixLength = length sourceMembers
 
 concatenateGroup :: [InterpretedValue] -> Maybe InterpretedValue
 concatenateGroup [] = Nothing

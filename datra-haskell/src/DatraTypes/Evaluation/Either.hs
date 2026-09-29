@@ -5,6 +5,7 @@ module Evaluation.Either
 
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
+import Data.List (nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import Evaluation.Error
@@ -29,7 +30,22 @@ makeEitherValue left right =
     then Right (buildEither members)
     else Left EitherAlternativesNotDistinct
   where
-    members = eitherMembers left <> eitherMembers right
+    members = case nubBy identicalLoweredSyntaxFunction
+        (NonEmpty.toList (eitherMembers left <> eitherMembers right)) of
+      first : remaining -> first :| remaining
+      [] -> left :| []
+
+identicalLoweredSyntaxFunction :: InterpretedValue -> InterpretedValue -> Bool
+identicalLoweredSyntaxFunction left right =
+  case (interpretedFunction left, interpretedFunction right) of
+    (Just leftFunction, Just rightFunction) ->
+      case ( functionSyntaxOrdinary leftFunction
+           , functionSyntaxOrdinary rightFunction
+           ) of
+        (Just _, Just _) ->
+          interpretedCanonicalResult left == interpretedCanonicalResult right
+        _ -> False
+    _ -> False
 
 alternativesArePairwiseDistinct :: [InterpretedValue] -> Bool
 alternativesArePairwiseDistinct [] = True
@@ -41,9 +57,11 @@ alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
   | interpretedCanonicalResult left == interpretedCanonicalResult right = False
   | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
-      case (functionPattern a, functionPattern b) of
-        (Just (p,_), Just (q,_)) | p /= q -> True
-        _ -> alternativesAreDistinct (functionDomain a) (functionDomain b)
+      alternativesAreDistinct (functionDomain a) (functionDomain b)
+  | ArgumentMapForm leftMembers _ <- interpretedForm left
+  , ArgumentMapForm rightMembers _ <- interpretedForm right =
+      length leftMembers /= length rightMembers
+        || or (zipWith alternativesAreDistinct leftMembers rightMembers)
   | ArgumentMapForm _ underlying <- interpretedForm left =
       alternativesAreDistinct underlying right
   | ArgumentMapForm _ underlying <- interpretedForm right =
@@ -91,6 +109,10 @@ alternativesAreDistinct left right
   , Just rightMembers <- sequenceOperands right =
       length leftMembers /= length rightMembers
         || or (zipWith alternativesAreDistinct leftMembers rightMembers)
+  | interpretedValueHasTotalMap right
+  , sequenceRequiresMultipleSources left = True
+  | interpretedValueHasTotalMap left
+  , sequenceRequiresMultipleSources right = True
   | interpretedValueHasTotalMap left = memberIsRefuted left right
   | interpretedValueHasTotalMap right = memberIsRefuted right left
   | federationProducesStrings (interpretedAtlasMapFederation left)
@@ -99,6 +121,20 @@ alternativesAreDistinct left right
   , federationProducesStrings (interpretedAtlasMapFederation right) = True
   | otherwise = rangeAlternativesAreDistinct left right
 
+-- Literal unit components are neutral in a sequence. An atomic total value
+-- still supplies one structural component, so it cannot overlap a sequence
+-- with two or more non-unit components. Use literal structure here rather
+-- than asking whether @()@ subtypes a component: the empty map also denotes
+-- numerical zero, but that does not erase a Nat slot's map cardinality.
+sequenceRequiresMultipleSources :: InterpretedValue -> Bool
+sequenceRequiresMultipleSources value =
+  case sequenceOperands value of
+    Nothing -> False
+    Just members -> length (filter (not . isLiteralUnit) members) > 1
+  where
+    isLiteralUnit member =
+      interpretedCanonicalResult member == CanonicalMap 0 []
+
 isNumericalRange :: InterpretedValue -> Bool
 isNumericalRange value =
   case interpretedForm value of
@@ -106,6 +142,8 @@ isNumericalRange value =
     ValuedNaturalRangeForm _ -> True
     IntegerRangeForm _ -> True
     ValuedIntegerRangeForm _ -> True
+    RangeForm _ -> True
+    RangeConcatenationForm _ _ -> True
     _ -> False
 
 identifierAlternativesAreDistinct

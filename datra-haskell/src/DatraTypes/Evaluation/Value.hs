@@ -251,7 +251,7 @@ data EvaluatedSpecification = EvaluatedSpecification
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
-  , functionPattern :: Maybe (String, Bool)
+  , functionSyntaxOrdinary :: Maybe Bool
   , functionSource :: Maybe String
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
@@ -265,14 +265,11 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
   (FunctionForm function) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
-    (interpretedSemantics (functionCodomain function)) (functionPattern function) (Just canonicalSource))
+    (interpretedSemantics (functionCodomain function))
+    (functionSyntaxOrdinary function) (Just canonicalSource))
   where
     signature = functionSignatureSource function
-    canonicalSource = case functionPattern function of
-      Nothing -> maybe signature id (functionSource function)
-      Just (patternText, ordinary) ->
-        let typed = "(" <> show patternText <> (if ordinary then " as? (" else " as (") <> signature <> "))"
-        in maybe typed (\body -> "(" <> body <> ") ~> " <> typed) (functionSource function)
+    canonicalSource = maybe signature id (functionSource function)
 
 interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
 interpretedFunction value = case interpretedForm value of
@@ -408,6 +405,7 @@ data ToStringInverseDecision
 data ProvenInjectiveToString = ProvenInjectiveToString
   { injectiveToStringCharacterAlphabet :: Maybe String
   , injectiveToStringExactStrings :: Maybe [String]
+  , injectiveToStringExcludesSubstring :: String -> Bool
   , invertInjectiveToString :: String -> ToStringInverseDecision
   }
 

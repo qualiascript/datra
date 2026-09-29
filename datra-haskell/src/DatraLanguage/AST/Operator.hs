@@ -22,9 +22,14 @@ data Operator
   | SubfederationOperator
   | EqualityOperator
   | InequalityOperator
+  | LessThanOperator
+  | LessThanOrEqualOperator
+  | GreaterThanOperator
+  | GreaterThanOrEqualOperator
   | BooleanAndOperator
   | BooleanOrOperator
   | BooleanNotOperator
+  | CoalitionOperator
   | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
@@ -66,9 +71,14 @@ operatorCanonicalSymbol MinusOperator = "-"
 operatorCanonicalSymbol SubfederationOperator = "of"
 operatorCanonicalSymbol EqualityOperator = "="
 operatorCanonicalSymbol InequalityOperator = "=/="
+operatorCanonicalSymbol LessThanOperator = "<"
+operatorCanonicalSymbol LessThanOrEqualOperator = "<="
+operatorCanonicalSymbol GreaterThanOperator = ">"
+operatorCanonicalSymbol GreaterThanOrEqualOperator = ">="
 operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
+operatorCanonicalSymbol CoalitionOperator = "><"
 operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol ValueOfOperator = "!"
@@ -110,9 +120,14 @@ operatorSourceSymbol MinusOperator = Just "-"
 operatorSourceSymbol SubfederationOperator = Just "of"
 operatorSourceSymbol EqualityOperator = Just "="
 operatorSourceSymbol InequalityOperator = Just "=/="
+operatorSourceSymbol LessThanOperator = Just "<"
+operatorSourceSymbol LessThanOrEqualOperator = Just "<="
+operatorSourceSymbol GreaterThanOperator = Just ">"
+operatorSourceSymbol GreaterThanOrEqualOperator = Just ">="
 operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
+operatorSourceSymbol CoalitionOperator = Just "><"
 operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol ValueOfOperator = Just "^"

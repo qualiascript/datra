@@ -3,6 +3,9 @@ module Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   ) where
 
+import AtlasMapFederationExpression
+  ( AtlasMapFederationExpression (..)
+  )
 import Evaluation.Specification.Decision
 import Evaluation.TypeFamily
   ( TypeFamilyOperations (decideTypeFamilySubfederation)
@@ -15,6 +18,7 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | productFederationFormsConflict source target = DecisionRefuted
   | interpretedCanonicalResult source == interpretedCanonicalResult target =
       DecisionProved ()
   | DependentSumForm dependent <- interpretedForm target =
@@ -40,6 +44,24 @@ decideValueSubfederation source target
         decideValueSubfederation
         source
         target
+
+-- Sequential products retain their Atlas-map positions. Concatenation joins
+-- federations without introducing those positions, so equal final values do
+-- not make the two structures mutually inclusive.
+productFederationFormsConflict
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Bool
+productFederationFormsConflict left right =
+  case
+      ( interpretedAtlasMapFederation left
+      , interpretedAtlasMapFederation right
+      ) of
+    (SequentialAtlasMapFederation _, ConcatenatedAtlasMapFederation _ _) ->
+      True
+    (ConcatenatedAtlasMapFederation _ _, SequentialAtlasMapFederation _) ->
+      True
+    _ -> False
 
 eitherContainsDependentSum :: EvaluatedEither -> Bool
 eitherContainsDependentSum alternatives =

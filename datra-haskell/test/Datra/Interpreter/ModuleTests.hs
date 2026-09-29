@@ -77,6 +77,18 @@ moduleTests =
             <> "Numbers.min(arg2 := 12, arg0 := 9, 2))"
         )
         "(Just : 3; Just : 2)"
+    , moduleCase origin "numbers max and min support integer limits"
+        ( "import \"numbers\"\n"
+            <> "yield (Numbers.max(-Infinity, 3, Infinity, -4); "
+            <> "Numbers.min(Infinity, 3, -Infinity, 4))"
+        )
+        "(Just : Infinity; Just : -Infinity)"
+    , moduleCase origin "numbers max and min retain finite integer behavior"
+        ( "import \"numbers\"\n"
+            <> "yield (Numbers.max(-20, -3, -11); "
+            <> "Numbers.min(-20, -3, -11))"
+        )
+        "(Just : -3; Just : -20)"
     , moduleFailureCase origin "numbers max rejects argument gaps"
         "import \"numbers\"\nyield Numbers.max(arg2 := 3, 0)"
         (== ModuleEvaluationFailure

@@ -31,7 +31,9 @@ compileParameters
   -> Either InterpretingError ArgumentSchema
 compileParameters evaluate = compile False
   where
-    compile allowPrivateOptional expression =
+    compile = compileWith False
+    compileMember = compileWith True
+    compileWith directMember allowPrivateOptional expression =
       case expression of
         ForBinding (IdentifierString name) optional bound -> do
           validateOptionalName allowPrivateOptional name optional
@@ -47,12 +49,12 @@ compileParameters evaluate = compile False
               validateOptionalName allowPrivateOptional name True
               parameterSlot (Just name) True annotation given
         AtlasMap members ->
-          orderedArgumentSchema 2 <$> traverse (compile True) members
+          orderedArgumentSchema 2 <$> traverse (compileMember True) members
         MapSequence members ->
-          orderedArgumentSchema 2 <$> traverse (compile True) members
+          orderedArgumentSchema 2 <$> traverse (compileMember True) members
         ArgumentMap members -> do
           traverse_ validateArgumentMapName members
-          unorderedArgumentSchema <$> traverse (compile False) members
+          unorderedArgumentSchema <$> traverse (compileMember False) members
         ArgumentMapSplice member -> do
           projectedArgumentSchema <$> evaluate member
         MapConcatenation _ _ ->
@@ -62,8 +64,12 @@ compileParameters evaluate = compile False
             flatten (MapConcatenation left right) =
               flatten left <> flatten right
             flatten value = [value]
-        _ ->
-          argumentSchemaFromValue <$> evaluate expression
+        _ -> do
+          annotation <- evaluate expression
+          pure
+            (if directMember
+              then argumentSlotSchema Nothing False annotation Nothing
+              else argumentSchemaFromValue annotation)
     isPublic name = not (null (public [(name, ())]))
     validateOptionalName allowPrivate name optional
       | optional && not allowPrivate && not (isPublic name) =

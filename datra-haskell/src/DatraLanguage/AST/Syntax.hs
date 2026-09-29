@@ -36,6 +36,10 @@ module DatraLanguage.AST.Syntax
   , conditionalWithoutElse
   , subfederation
   , equal
+  , less
+  , lessOrEqual
+  , greater
+  , greaterOrEqual
   , and
   , or
   , not
@@ -178,6 +182,18 @@ conditionalWithoutElse condition consequent =
 
 equal :: Expression -> Expression -> Expression
 equal = Equality
+
+less :: Expression -> Expression -> Expression
+less = LessThan
+
+lessOrEqual :: Expression -> Expression -> Expression
+lessOrEqual = LessThanOrEqual
+
+greater :: Expression -> Expression -> Expression
+greater = GreaterThan
+
+greaterOrEqual :: Expression -> Expression -> Expression
+greaterOrEqual = GreaterThanOrEqual
 
 subfederation :: Expression -> Expression -> Expression
 subfederation = Subfederation

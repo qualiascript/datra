@@ -107,6 +107,9 @@ terminateBeforeNewline (component : remaining) =
 
 prettyCanonicalResult :: CanonicalResult -> Doc annotation
 prettyCanonicalResult result
+  | result == CanonicalAsciiString "PosInf" = "Infinity"
+  | result == CanonicalAsciiString "NegInf" =
+      prettySourceSymbol MinusOperator <> "Infinity"
   | isBooleanValue "False" 0 result =
       pretty (Reserved.reservedSymbolIdentifierString Reserved.FalseSymbol)
   | isBooleanValue "True" 1 result =
@@ -119,13 +122,10 @@ prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
 prettyNonKeywordCanonicalResult result =
   case result of
     CanonicalBuiltinMetaType kind -> pretty (builtinMetaTypeName kind)
-    CanonicalFunction input output patternInfo body ->
+    CanonicalFunction input output body ->
       let signature = parens (prettyCanonicalResult input) <+> "->" <+> parens (prettyCanonicalResult output)
-          typed = case patternInfo of
-            Nothing -> signature
-            Just (text, ordinary) -> pretty (show text) <+> (if ordinary then "as?" else "as") <+> parens signature
       in case body of
-        Nothing -> typed
+        Nothing -> signature
         Just text -> parens (pretty text)
     CanonicalExplicit _ value -> prettyExplicit value
     CanonicalInteger value ->
@@ -477,10 +477,19 @@ reservedSymbolDoc = pretty . Reserved.reservedSymbolIdentifierString
 prettyMap :: Natural -> [CanonicalResult] -> Doc annotation
 prettyMap 0 _ = "()"
 prettyMap _ [component] = prettyCanonicalResult component
-prettyMap _ components =
+prettyMap cardinality components =
   parens
     (concatWith (\left right -> left <> "; " <> right)
-      (map prettyCanonicalResult components))
+      (map (prettyMapMember cardinality) components))
+
+-- The coalition operator keeps a map-valued operand at the current level when
+-- canonical source is parsed again, instead of letting its own cardinality
+-- raise that of the surrounding map.
+prettyMapMember :: Natural -> CanonicalResult -> Doc annotation
+prettyMapMember outerCardinality member@(CanonicalMap memberCardinality _)
+  | memberCardinality >= outerCardinality =
+      prettySourceSymbol CoalitionOperator <> " " <> prettyCanonicalResult member
+prettyMapMember _ member = prettyCanonicalResult member
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =

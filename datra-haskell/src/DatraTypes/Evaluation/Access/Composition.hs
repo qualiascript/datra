@@ -108,8 +108,8 @@ accessLayout value =
       in AccessLayout valueMap (Just orderType) (fullRegion orderType)
 
     combinedLayout left right =
-      let leftLayout = accessLayout left
-          rightLayout = accessLayout right
+      let leftLayout = concatenationOperandLayout left
+          rightLayout = concatenationOperandLayout right
           representativeMap =
             appendAccessMaps
               (accessLayoutRepresentativeMap leftLayout)
@@ -128,6 +128,22 @@ accessLayout value =
               Nothing ->
                 accessLayoutAccessibleRegions leftLayout
       in AccessLayout representativeMap fixedOrderType accessibleRegions
+
+    -- Comma concatenation flattens each operand's map. A valued range is a
+    -- one-slot coalition when it appears in a semicolon sequence, but its
+    -- actual values occupy their full ordinal extent when concatenated.
+    concatenationOperandLayout operand =
+      case interpretedForm operand of
+        ConcatenatedMapForm first second -> combinedLayout first second
+        RangeConcatenationForm _ (Just (first, second)) ->
+          combinedLayout first second
+        ExpansionMapForm first second -> combinedLayout first second
+        NaturalRangeForm _ ->
+          maybe
+            (fixedLayout (interpretedMap operand))
+            id
+            (atomicAccessLayout operand)
+        _ -> fixedLayout (interpretedMap operand)
 
     fullRegion orderType
       | orderType == finiteOrdinal 0 = []

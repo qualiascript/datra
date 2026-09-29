@@ -83,8 +83,8 @@ decideFunctionSubfederation decideSubfederation source target
   , Just targetFunction <- interpretedFunction target =
       if not
           (patternCompatible
-            (functionPattern sourceFunction)
-            (functionPattern targetFunction))
+            (functionSyntaxOrdinary sourceFunction)
+            (functionSyntaxOrdinary targetFunction))
         then DecisionRefuted else case functionSource targetFunction of
         Just _ -> DecisionUndecidable
         Nothing -> mapDecision (const ()) (decideAll
@@ -97,7 +97,7 @@ decideFunctionSubfederation decideSubfederation source target
           ])
   | otherwise = DecisionRefuted
 
-patternCompatible :: Maybe (String, Bool) -> Maybe (String, Bool) -> Bool
+patternCompatible :: Maybe Bool -> Maybe Bool -> Bool
 patternCompatible _ Nothing = True
 patternCompatible (Just source) (Just target) = source == target
 patternCompatible Nothing (Just _) = False

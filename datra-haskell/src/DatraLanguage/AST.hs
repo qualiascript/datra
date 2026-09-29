@@ -105,9 +105,14 @@ data Expression
   | Subfederation Expression Expression
   | Equality Expression Expression
   | Inequality Expression Expression
+  | LessThan Expression Expression
+  | LessThanOrEqual Expression Expression
+  | GreaterThan Expression Expression
+  | GreaterThanOrEqual Expression Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
+  | Coalition Expression
   | StripIdentifiers Expression
   | Extract Expression
   | Eval Expression Expression
@@ -235,9 +240,14 @@ data OperatorExpression
   | IsSubfederation OperatorExpression OperatorExpression
   | Equal OperatorExpression OperatorExpression
   | NotEqual OperatorExpression OperatorExpression
+  | Less OperatorExpression OperatorExpression
+  | LessOrEqual OperatorExpression OperatorExpression
+  | Greater OperatorExpression OperatorExpression
+  | GreaterOrEqual OperatorExpression OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
+  | CoalitionValue OperatorExpression
   | StripIdentifiersValue OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
@@ -359,12 +369,22 @@ normalizeExpression (Equality left right) =
   Equality (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Inequality left right) =
   Inequality (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (LessThan left right) =
+  LessThan (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (LessThanOrEqual left right) =
+  LessThanOrEqual (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (GreaterThan left right) =
+  GreaterThan (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (GreaterThanOrEqual left right) =
+  GreaterThanOrEqual (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanAnd left right) =
   BooleanAnd (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanOr left right) =
   BooleanOr (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
+normalizeExpression (Coalition operand) =
+  Coalition (normalizeExpression operand)
 normalizeExpression (StripIdentifiers operand) =
   StripIdentifiers (normalizeExpression operand)
 normalizeExpression (Extract operand) =
@@ -529,9 +549,14 @@ lower (Subfederation left right) =
   IsSubfederation (lower left) (lower right)
 lower (Equality left right) = Equal (lower left) (lower right)
 lower (Inequality left right) = NotEqual (lower left) (lower right)
+lower (LessThan left right) = Less (lower left) (lower right)
+lower (LessThanOrEqual left right) = LessOrEqual (lower left) (lower right)
+lower (GreaterThan left right) = Greater (lower left) (lower right)
+lower (GreaterThanOrEqual left right) = GreaterOrEqual (lower left) (lower right)
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
+lower (Coalition operand) = CoalitionValue (lower operand)
 lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
@@ -709,6 +734,14 @@ prettyOperator (Positive operand) =
   prettyUnary AdditionOperator operand
 prettyOperator (Negate operand) =
   prettyUnary MinusOperator operand
+prettyOperator (Less left right) =
+  prettyBinary LessThanOperator left right
+prettyOperator (LessOrEqual left right) =
+  prettyBinary LessThanOrEqualOperator left right
+prettyOperator (Greater left right) =
+  prettyBinary GreaterThanOperator left right
+prettyOperator (GreaterOrEqual left right) =
+  prettyBinary GreaterThanOrEqualOperator left right
 prettyOperator (IsSubfederation left right) =
   prettyBinary SubfederationOperator left right
 prettyOperator (Equal left right) =
@@ -721,6 +754,8 @@ prettyOperator (Or left right) =
   prettyBinary BooleanOrOperator left right
 prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
+prettyOperator (CoalitionValue operand) =
+  prettyUnary CoalitionOperator operand
 prettyOperator (StripIdentifiersValue operand) =
   prettyUnary StripIdentifiersOperator operand
 prettyOperator (ExtractValue operand) =
@@ -961,6 +996,7 @@ traverseExpressionChildren visit expression = case expression of
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
+  Coalition x -> Coalition <$> visit x
   OptionalType x -> OptionalType <$> visit x
   ListUncons x -> ListUncons <$> visit x
   External x -> External <$> visit x

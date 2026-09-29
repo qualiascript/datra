@@ -79,7 +79,7 @@ identifierDependenciesCompatible left right =
 data ValueSemantics
   = BuiltinMetaTypeSemantics BuiltinMetaType
   | FunctionSemantics
-      ValueSemantics ValueSemantics (Maybe (String, Bool)) (Maybe String)
+      ValueSemantics ValueSemantics (Maybe Bool) (Maybe String)
   | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
   | FormulationSemantics Natural
@@ -122,7 +122,7 @@ data ValueSemantics
 data CanonicalResult
   = CanonicalBuiltinMetaType BuiltinMetaType
   | CanonicalFunction
-      CanonicalResult CanonicalResult (Maybe (String, Bool)) (Maybe String)
+      CanonicalResult CanonicalResult (Maybe String)
   | CanonicalExplicit Natural Ordinal
   | CanonicalInteger Integer
   | CanonicalFormulation Natural
@@ -164,9 +164,9 @@ canonicalResult :: ValueSemantics -> CanonicalResult
 canonicalResult semantics =
   case semantics of
     BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
-    FunctionSemantics input output patternInfo body ->
+    FunctionSemantics input output _ body ->
       CanonicalFunction
-        (canonicalResult input) (canonicalResult output) patternInfo body
+        (canonicalResult input) (canonicalResult output) body
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
     FormulationSemantics level -> CanonicalFormulation level

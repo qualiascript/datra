@@ -7,13 +7,14 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationDecision (..)
   , AtlasMapFederationExpression (..)
   )
-import Evaluation.Access.Federation (federationIsCoalition)
 import Evaluation.Federation (decidePrimitiveSubfederation)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
   , sequenceOperands
   )
+import Evaluation.Map (makeAtlasMap)
+import Evaluation.Numerical (complementedIntegerComponents)
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.String (federationProducesStrings)
@@ -58,10 +59,13 @@ decideStructuralSubfederation decideSubfederation source target
       decideSubfederation
         (evaluatedSpecificationTarget assignment)
         target
-  | Just sourceMembers <- sequenceOperands source
-  , Just targetMembers <- sequenceOperands target =
-      decidePointwiseSubfederation
-        decideSubfederation (Just sourceMembers) (Just targetMembers)
+  | Just targetMembers <- sequenceOperands target =
+      decideSequenceSubfederation
+        decideSubfederation
+        (case complementedIntegerComponents source of
+          Just members -> members
+          Nothing -> maybe [source] id (sequenceOperands source))
+        targetMembers
   | interpretedValueHasTotalMap source =
       mapDecision (const ()) (selectFederationMember source target)
   | otherwise =
@@ -85,6 +89,13 @@ decideNonEitherSubfederation decideSubfederation source target =
   case targetFederation of
     PrimitiveAtlasMapFederation StringTypeAtlasMapFederation
       | federationProducesStrings sourceFederation -> DecisionProved ()
+    ConcatenatedAtlasMapFederation _ _
+      | not (isConcatenatedFederation sourceFederation)
+      , not (isSequentialFederation sourceFederation) ->
+          decideAny
+            [ decideSubfederation source member
+            | member <- concatenationOperands target
+            ]
     _ ->
       case (sourceFederation, targetFederation) of
         ( PrimitiveAtlasMapFederation
@@ -118,18 +129,10 @@ decideNonEitherSubfederation decideSubfederation source target =
             (sequenceOperands target)
         ( SequentialAtlasMapFederation _
           , ConcatenatedAtlasMapFederation _ _
-          ) ->
-            decideCoalitionComponents
-              decideSubfederation
-              (sequenceOperands source)
-              (Just (concatenationOperands target))
+          ) -> DecisionRefuted
         ( ConcatenatedAtlasMapFederation _ _
           , SequentialAtlasMapFederation _
-          ) ->
-            decideCoalitionComponents
-              decideSubfederation
-              (Just (concatenationOperands source))
-              (sequenceOperands target)
+          ) -> DecisionRefuted
         ( ExpansionAtlasMapFederation _ _
           , ExpansionAtlasMapFederation _ _
           ) ->
@@ -146,6 +149,14 @@ decideNonEitherSubfederation decideSubfederation source target =
   where
     sourceFederation = interpretedAtlasMapFederation source
     targetFederation = interpretedAtlasMapFederation target
+    isConcatenatedFederation federation =
+      case federation of
+        ConcatenatedAtlasMapFederation _ _ -> True
+        _ -> False
+    isSequentialFederation federation =
+      case federation of
+        SequentialAtlasMapFederation _ -> True
+        _ -> False
 
 decideAllEitherAlternatives
   :: SubfederationDecider
@@ -227,24 +238,36 @@ decidePointwiseSubfederation
           (zipWith decideSubfederation sourceMembers targetMembers))
 decidePointwiseSubfederation _ _ _ = DecisionRefuted
 
--- A sequence and its explicit concatenation describe the same ordered
--- federation exactly when every component is a coalition.
-decideCoalitionComponents
+decideSequenceSubfederation
   :: SubfederationDecider
-  -> Maybe [InterpretedValue]
-  -> Maybe [InterpretedValue]
+  -> [InterpretedValue]
+  -> [InterpretedValue]
   -> Decision ()
-decideCoalitionComponents decideSubfederation sourceMembers targetMembers =
-  case (sourceMembers, targetMembers) of
-    (Just source, Just target)
-      | all valueIsCoalition (source <> target) ->
-          decidePointwiseSubfederation
-            decideSubfederation sourceMembers targetMembers
-    _ -> DecisionRefuted
-
-valueIsCoalition :: InterpretedValue -> Bool
-valueIsCoalition =
-  federationIsCoalition . interpretedAtlasMapFederation
+decideSequenceSubfederation _ [] [] = DecisionProved ()
+decideSequenceSubfederation _ _ [] = DecisionRefuted
+decideSequenceSubfederation decideSubfederation sources
+    (target : remainingTargets) =
+  decideAny (consumeSource <> [consumeUnit])
+  where
+    consumeSource = case sources of
+      [] -> []
+      source : remainingSources ->
+        [ mapDecision
+            (const ())
+            (decideAll
+              [ decideSubfederation source target
+              , decideSequenceSubfederation
+                  decideSubfederation remainingSources remainingTargets
+              ])
+        ]
+    consumeUnit =
+      mapDecision
+        (const ())
+        (decideAll
+          [ decideSubfederation (makeAtlasMap 0 []) target
+          , decideSequenceSubfederation
+              decideSubfederation sources remainingTargets
+          ])
 
 isNonAlternativeMember :: InterpretedValue -> Bool
 isNonAlternativeMember member =

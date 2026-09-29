@@ -162,8 +162,6 @@ extensionalEqualityTests =
     [ testCase name (assertEqualityLaw left right expectedLeft expectedRight)
     | (name, left, right, expectedLeft, expectedRight) <-
         [ ("reordered federation", "0 | 1", "1 | 0", True, True)
-        , ("numerical coalition sequence and concatenation",
-            "(Nat; Int)", "Nat, Int", True, True)
         , ("proper numerical subtype", "from 0 to 3", "from 0 to 5", True, False)
         , ("disjoint primitive types", "Nat", "Str", False, False)
         , ("function signature", "Nat -> Nat", "Nat -> Nat", True, True)

@@ -71,6 +71,7 @@ regressionTests = do
         , syntaxPieces = []
         , syntaxOrdinary = False
         , syntaxSignature = ref "Any"
+        , syntaxRecursive = False
         , syntaxModule = Nothing
         , syntaxImplementation = External (AsciiStringLiteral implementation)
         }
@@ -171,6 +172,9 @@ regressionTests = do
     (Multiplication Skip Skip)
   assertRejected "bare left skip is ambiguous with multiplication" "* * 7"
   assertRejected "bare right skip is ambiguous with multiplication" "7 * *"
+  assertAstOutput "coalition keeps a map operand at the current level"
+    ">< (1; 2)"
+    (Coalition (AtlasMap [natural 1, natural 2]))
   assertAstOutput "skip composes in an ordered map"
     "(*, 3)"
     (MapConcatenation Skip (natural 3))
@@ -190,6 +194,7 @@ regressionTests = do
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
+    , Coalition (AtlasMap [natural 1, natural 2])
     , External (AsciiStringLiteral "datra.add")
     , ForBinding (IdentifierString "T") True (ref "Any")
     , WithBinding (IdentifierString "T") False (ref "Any")
@@ -1154,6 +1159,10 @@ regressionTests = do
     , (MapAccess (NamedAccess This (IdentifierString "a")) (natural 0), "this.a[0]")
     , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
     ]
+  let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
+  assertAstOutput "assignment retains its complete alternative value"
+    "x := ($up | $down)"
+    (IdentifierOperation (IdentifierString "x") alternatives (Just alternatives))
   assert "quoted identifier references render through value lookup"
     (renderSourceExpression (ref "___Std.Int") == "^\"___Std.Int\"")
   assertAstOutput
@@ -1691,16 +1700,14 @@ assertAstSyntax = do
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
         == "(apply (in-module $std (~> (!^ \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $Int)) (ref $IntValRange)))) "
-          <> "(<:> (~> 2 (in-module $std (ref $Int))) "
-          <> "(~> 5 (in-module $std (ref $Int)))))"
+          <> "(-> ({} (: origin (ref $Int)) (: target (ref $IntLimit))) "
+          <> "(ref $IntValRange)))) (<:> 2 5))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
         == "(apply (in-module $std (~> (!^ \"datra.from\") "
-          <> "(-> (<.> (ref $Int) (ref $_Direction)) (ref $IntValRange)))) "
-          <> "(<:> (~> 2 (in-module $std (ref $Int))) "
-          <> "(~> $up (in-module $std (ref $_Direction)))))"
+          <> "(-> ({} (: origin (ref $Int)) (: direction (ref $_Direction))) "
+          <> "(ref $IntValRange)))) (<:> 2 $up))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -1789,13 +1796,16 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
   (scoped (MapSpecification (External (AsciiStringLiteral ("datra." <> name)))
-    (FunctionType (MapConcatenation (ref "Int") (ref endpointType))
+    (FunctionType (ArgumentMap
+      [ AST.dependentIdentifierType "origin" (ref originType)
+      , AST.dependentIdentifierType endpointName (ref endpointType)
+      ])
       (ref (if name == "from" then "IntValRange" else "IntRange")))))
-  (AtlasMap [checked "Int" start, checked endpointType endpoint])
+  (AtlasMap [start, endpoint])
   where
     scoped = InModule "std"
-    checked target value = MapSpecification value (scoped (ref target))
-    (endpointType, endpoint) = case end of
-      UpperBound value -> ("Int", value)
-      Upwards -> ("_Direction", AsciiStringLiteral "up")
-      Downwards -> ("_Direction", AsciiStringLiteral "down")
+    originType = if name == "from" then "Int" else "IntLimit"
+    (endpointName, endpointType, endpoint) = case end of
+      UpperBound value -> ("target", "IntLimit", value)
+      Upwards -> ("direction", "_Direction", AsciiStringLiteral "up")
+      Downwards -> ("direction", "_Direction", AsciiStringLiteral "down")

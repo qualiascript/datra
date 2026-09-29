@@ -14,12 +14,14 @@ data SyntaxPiece = SyntaxLiteral String | SyntaxHole String deriving (Eq,Show)
 data SyntaxRule = SyntaxRule
   { syntaxName :: String, syntaxPieces :: [SyntaxPiece]
   , syntaxOrdinary :: Bool, syntaxSignature :: Expression
+  , syntaxRecursive :: Bool
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
   } deriving (Eq,Show)
 
 declarationRules :: Expression -> [SyntaxRule]
-declarationRules (Let value) = declarationRules value
+declarationRules (Let value) =
+  [rule { syntaxRecursive = True } | rule <- declarationRules value]
 declarationRules optional
   | Just (operation, _) <- optionalIdentifierExpression optional =
       declarationRules operation
@@ -28,7 +30,7 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
   where
     collect key (EitherType a b) = collect key a <> collect key b
     collect key (MapSpecification body (SyntaxType patternText ordinary signature)) =
-      [SyntaxRule key (map piece (words patternText)) ordinary signature Nothing body]
+      [SyntaxRule key (map piece (words patternText)) ordinary signature False Nothing body]
     collect _ _ = []
     piece ('$':kind) = SyntaxHole kind
     piece literal = SyntaxLiteral literal
@@ -41,14 +43,17 @@ expandSyntax
 expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
   Just name | "datra.syntax." `isPrefixOf` name -> control name captures
   _ -> Right (FunctionApplication
-    (scoped (MapSpecification (syntaxImplementation rule) (syntaxSignature rule)))
-    (case checkedCaptures of [value] -> value; _ -> AtlasMap checkedCaptures))
+    callable
+    (case captures of [value] -> value; _ -> AtlasMap captures))
   where
+    callable
+      | syntaxRecursive rule
+      , Nothing <- syntaxModule rule =
+          IdentifierReference (IdentifierString localName)
+      | otherwise = scoped
+          (MapSpecification (syntaxImplementation rule) (syntaxSignature rule))
+    localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
-    checkedCaptures = zipWith checkCapture [kind | SyntaxHole kind <- syntaxPieces rule] captures
-    checkCapture kind value
-      | kind `elem` ["_Expr", "_Block", "_IdenExp", "_AST"] = value
-      | otherwise = MapSpecification value (scoped (IdentifierReference (IdentifierString kind)))
     block (AtlasMap entries) = entries
     block value = [value]
     control name values =

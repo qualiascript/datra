@@ -150,6 +150,7 @@ data InterpretingError
   | ExpectedBooleanOperand OperandSide InterpretedValueKind
   | ExpectedBooleanCondition InterpretedValueKind
   | ExpectedNaturalExponent InterpretedValueKind
+  | IndeterminateInfinityOperation String
   | ExpectedInsertionOperand InterpretedValueKind
   | ExpectedTotalAtlasMap InterpretedValueKind
   | RangeConstructionRejected SuperEllipsisRangeError
