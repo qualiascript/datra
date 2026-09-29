@@ -35,7 +35,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :=") `isInfixOf` text)
         assertBool ("wrong dependency reference for " <> show userName)
-          (("^" <> show dependency) `isInfixOf` text))
+          (("$~" <> show dependency) `isInfixOf` text))
         ["next", "step", "base"]
       assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
   , roundTrip "user value is distinct from the inline fixed point"
@@ -51,7 +51,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded declaration for " <> show name)
           ((show encoded <> " :=") `isInfixOf` text)
         assertBool ("missing encoded reference for " <> show name)
-          (("^" <> show encoded) `isInfixOf` text))
+          (("$~" <> show encoded) `isInfixOf` text))
         [ ("abc", "___abc")
         , ("_abc", "____abc")
         , ("_____abc", "_____abc")
@@ -95,10 +95,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "yield ({\"value with spaces\" : Int} -> Int yield this.\"value with spaces\"[1] + 1)"
       "(\"value with spaces\" : 4)" "5"
   , roundTrip "value lookup in an optional named parameter"
-      "yield ({\"value with spaces\"? : Int} -> Int yield ^\"value with spaces\" + 1)"
+      "yield ({\"value with spaces\"? : Int} -> Int yield $~\"value with spaces\" + 1)"
       "4" "5"
   , roundTrip "value lookup applies a captured function"
-      "inc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield ^inc (^n))"
+      "inc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield $~inc ($~n))"
       "4" "5"
   , roundTrip "library inlining preserves a user _AST parameter"
       "yield ({_AST : Int := 4} -> Int yield _AST + 1)" "()" "5"
@@ -124,7 +124,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "f := ({x? : Int} -> Int yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , mutualRecursiveDefinitions
-  , roundTrip "registered native function" "yield !^\"datra.add\""
+  , roundTrip "registered native function" "yield !$~\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
       "step : \"$Nat next\" as? ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
@@ -141,10 +141,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("!^\"datra.from\"" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("!$~\"datra.from\"" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
-        (not ("!^\"datra.Int\"" `isInfixOf` text))
-      assertBool "dependency selected through value lookup" ("^\"___Std.Int\"" `isInfixOf` text)
+        (not ("!$~\"datra.Int\"" `isInfixOf` text))
+      assertBool "dependency selected through value lookup" ("$~\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"
       b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int yield x + offset)"
@@ -266,7 +266,7 @@ mutualRecursiveDefinitions = testCase "mutual recursive definitions" $ do
   assertEqual "odd is collected once" 1
     (occurrences "let \"___odd\" :=" text)
   assertBool "even refers to its collected odd dependency"
-    ("else ^\"___odd\" (n - 1)" `isInfixOf` text)
+    ("else $~\"___odd\" (n - 1)" `isInfixOf` text)
   assertBool "odd's back-edge refers to the reconstructed even function"
     ("else this (n - 1)" `isInfixOf` text)
   result <- requireProgram (mutualDefinitions <> "\nyield even 2")

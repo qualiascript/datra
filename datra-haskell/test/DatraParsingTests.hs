@@ -375,16 +375,16 @@ regressionTests = do
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use an explicit yield"
-    "\"$_Expr\" as (Any -> Any) yield !^\"datra.syntax.test\""
+    "\"$_Expr\" as (Any -> Any) yield !$~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertRejected "inline external syntax adapters require yield"
-    "\"$_Expr\" as (Any -> Any) !^\"datra.syntax.test\""
+    "\"$_Expr\" as (Any -> Any) !$~\"datra.syntax.test\""
   assertParsed "typed external syntax adapters use an explicit yield"
-    "handler : \"$_Expr\" as (Any -> Any) := yield !^\"datra.syntax.test\""
+    "handler : \"$_Expr\" as (Any -> Any) := yield !$~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assertRejected "typed external syntax adapters require yield after assignment"
-    "handler : \"$_Expr\" as (Any -> Any) := !^\"datra.syntax.test\""
+    "handler : \"$_Expr\" as (Any -> Any) := !$~\"datra.syntax.test\""
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -409,7 +409,8 @@ regressionTests = do
   assertParsed "identifier erasure coexists with exponentiation"
     "(val it) ^ 2" (Exponentiation (StripIdentifiers (ref "it")) (natural 2))
   assertParsed "external escape constructs an External AST"
-    "!^\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
+    "!$~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
+  assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   assertParsed "identifier erasure source rendering preserves named access"
     (renderSourceExpression (StripIdentifiers (NamedAccess (ref "it") (IdentifierString "abc"))))
     (StripIdentifiers (NamedAccess (ref "it") (IdentifierString "abc")))
@@ -1206,52 +1207,53 @@ regressionTests = do
   assertRejected "named access lists require at least one name" "a.()"
   assertRejected "named access lists reject expressions" "a.(b + c)"
   let valueOf name = MapAccess (NamedAccess This (IdentifierString name)) (natural 1)
+  assertRejected "legacy value lookup symbol is rejected" "^a"
   assertAstOutput "value lookup expands to the binding's value page"
-    "^a" (valueOf "a")
+    "$~a" (valueOf "a")
   assertAstOutput "value lookup accepts quoted names"
-    "^\"name with spaces\"" (valueOf "name with spaces")
+    "$~\"name with spaces\"" (valueOf "name with spaces")
   assertAstOutput "value lookup accepts reserved names"
-    "^this" (valueOf "this")
+    "$~this" (valueOf "this")
   assertAstOutput "value lookup binds before arithmetic"
-    "^a + 2" (Addition (valueOf "a") (natural 2))
-  assertRejected "lookup before exponentiation requires parentheses" "^a ^ 2"
-  assertRejected "lookup after exponentiation requires parentheses" "2 ^ ^a"
+    "$~a + 2" (Addition (valueOf "a") (natural 2))
+  assertRejected "lookup before exponentiation requires parentheses" "$~a ^ 2"
+  assertRejected "lookup after exponentiation requires parentheses" "2 ^ $~a"
   assertAstOutput "parenthesized lookup can be exponentiated"
-    "(^a) ^ 2" (Exponentiation (valueOf "a") (natural 2))
+    "($~a) ^ 2" (Exponentiation (valueOf "a") (natural 2))
   assertAstOutput "an exponent can be a parenthesized lookup"
-    "2 ^ (^a)" (Exponentiation (natural 2) (valueOf "a"))
+    "2 ^ ($~a)" (Exponentiation (natural 2) (valueOf "a"))
   assertAstOutput "value lookup precedes chained access"
-    "^a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
+    "$~a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
   assertAstOutput "value lookup can be a function"
-    "^f 2" (FunctionApplication (valueOf "f") (natural 2))
+    "$~f 2" (FunctionApplication (valueOf "f") (natural 2))
   assertAstOutput "value lookup can be an application argument"
-    "f (^a)" (FunctionApplication (ref "f") (valueOf "a"))
+    "f ($~a)" (FunctionApplication (ref "f") (valueOf "a"))
   assertAstOutput "postfix optional can follow value lookup"
-    "^a?" (OptionalType (valueOf "a"))
+    "$~a?" (OptionalType (valueOf "a"))
   assertAstOutput "Maybe accepts a looked-up value"
-    "Maybe (^a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
+    "Maybe ($~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
   let nameList = MapAccess
         (MapConcatenation
           (NamedAccess This (IdentifierString "a"))
           (NamedAccess This (IdentifierString "b")))
         (natural 1)
   assertAstOutput "value lookup preserves named access list semantics"
-    "^(a, \"b\")" nameList
-  assertRejected "value lookup needs a name" "^"
-  assertRejected "value lookup rejects empty name lists" "^()"
-  assertRejected "value lookup rejects computed names like named access" "^(a + b)"
+    "$~(a, \"b\")" nameList
+  assertRejected "value lookup needs a name" "$~"
+  assertRejected "value lookup rejects empty name lists" "$~()"
+  assertRejected "value lookup rejects computed names like named access" "$~(a + b)"
   mapM_ (\(value, expected) -> do
       assert "source rendering uses value lookup sugar"
         (renderSourceExpression value == expected)
       assertAstOutput "rendered value lookup reparses" expected value)
-    [ (valueOf "a", "^a")
-    , (valueOf "name with spaces", "^\"name with spaces\"")
-    , (nameList, "^(a, b)")
-    , (FunctionApplication (valueOf "f") (valueOf "a"), "^f (^a)")
-    , (MapAccess (valueOf "a") (natural 0), "^a[0]")
-    , (NamedAccess (valueOf "a") (IdentifierString "b"), "^a.b")
+    [ (valueOf "a", "$~a")
+    , (valueOf "name with spaces", "$~\"name with spaces\"")
+    , (nameList, "$~(a, b)")
+    , (FunctionApplication (valueOf "f") (valueOf "a"), "$~f ($~a)")
+    , (MapAccess (valueOf "a") (natural 0), "$~a[0]")
+    , (NamedAccess (valueOf "a") (IdentifierString "b"), "$~a.b")
     , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
-        "x : ^\"type name\"")
+        "x : $~\"type name\"")
     , (MapAccess (NamedAccess This (IdentifierString "a")) (natural 0), "this.a[0]")
     , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
     ]
@@ -1265,7 +1267,7 @@ regressionTests = do
         (IdentifierString "x") alternatives (Just alternatives))
       == "x := $up | $down")
   assert "quoted identifier references render through value lookup"
-    (renderSourceExpression (ref "___Std.Int") == "^\"___Std.Int\"")
+    (renderSourceExpression (ref "___Std.Int") == "$~\"___Std.Int\"")
   assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"
@@ -1800,13 +1802,13 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply (in-module $std (~> (!^ \"datra.from\") "
+        == "(apply (in-module $std (~> (!$~ \"datra.from\") "
           <> "(-> ({} (: origin (ref $Int)) (: target (ref $IntLimit))) "
           <> "(ref $IntValRange)))) (<:> 2 5))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply (in-module $std (~> (!^ \"datra.from\") "
+        == "(apply (in-module $std (~> (!$~ \"datra.from\") "
           <> "(-> ({} (: origin (ref $Int)) (: direction (ref $_Direction))) "
           <> "(ref $IntValRange)))) (<:> 2 $up))"
     )

@@ -59,7 +59,7 @@ operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
 operatorCanonicalSymbol ApplicationOperator = "apply"
 operatorCanonicalSymbol DoOperator = "do"
-operatorCanonicalSymbol ExternalOperator = "!^"
+operatorCanonicalSymbol ExternalOperator = "!$~"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ExpansionOperator = "<+>"
 operatorCanonicalSymbol RangeOperator = "<..>"
@@ -108,7 +108,7 @@ operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
-operatorSourceSymbol ExternalOperator = Just "!^"
+operatorSourceSymbol ExternalOperator = Just "!$~"
 operatorSourceSymbol SequentialOperator = Nothing
 operatorSourceSymbol ExpansionOperator = Nothing
 operatorSourceSymbol RangeOperator = Just ".."
@@ -130,7 +130,7 @@ operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
-operatorSourceSymbol ValueOfOperator = Just "^"
+operatorSourceSymbol ValueOfOperator = Just "$~"
 operatorSourceSymbol EvalOperator = Just "eval"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"

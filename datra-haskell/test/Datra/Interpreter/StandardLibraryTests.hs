@@ -23,7 +23,7 @@ standardLibraryTests =
         , programCase "AST can be a user binding"
             "AST := 2\nyield AST" "2"
         , programCase "AST external uses the private type spelling"
-            "yield !^\"datra.AST\"" "_AST"
+            "yield !$~\"datra.AST\"" "_AST"
         , programFailureCase "Expr is private to the library"
             "yield Expr" (SourceEvaluationFailure (UnknownIdentifier "Expr"))
         , programFailureCase "Block is private to the library"
@@ -109,7 +109,7 @@ standardLibraryTests =
               )
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$up)", "from 2 up")
-            , ("f := !^\"datra.add\"\nyield f (b:5;6)", "11")
+            , ("f := !$~\"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
@@ -118,29 +118,29 @@ standardLibraryTests =
         ]
     , testGroup "value lookup"
         [ programCase "retrieves a named binding"
-            "x := 5\nyield ^x" "5"
+            "x := 5\nyield $~x" "5"
         , programCase "retrieves a quoted binding"
-            "\"value with spaces\" := 5\nyield ^\"value with spaces\"" "5"
+            "\"value with spaces\" := 5\nyield $~\"value with spaces\"" "5"
         , programCase "retrieves a private binding"
-            "_x := 5\nyield ^_x" "5"
+            "_x := 5\nyield $~_x" "5"
         , programCase "further access selects from the retrieved value"
-            "x := (5; 8)\nyield ^x[1]" "8"
+            "x := (5; 8)\nyield $~x[1]" "8"
         , programCase "optional names accept named and positional inputs"
-            ("f := ({x? : Nat} -> Nat yield ^x + 1)\n"
+            ("f := ({x? : Nat} -> Nat yield $~x + 1)\n"
               <> "yield (f 5; f (x := 5))")
             "(6; 6)"
         , programCase "optional names retain defaults"
-            "f := ({x? : Nat := 5} -> Nat yield ^x + 1)\nyield f ()" "6"
+            "f := ({x? : Nat := 5} -> Nat yield $~x + 1)\nyield f ()" "6"
         , programCase "specification accepts the retrieved value"
-            "x := 5\nyield (^x ~> Int) of Int" "true"
+            "x := 5\nyield ($~x ~> Int) of Int" "true"
         , programCase "reverse specification accepts the retrieved value"
-            "x := 5\nyield (Int <~ ^x) of Int" "true"
+            "x := 5\nyield (Int <~ $~x) of Int" "true"
         , programCase "subfederation checks the retrieved value"
-            "x := 5\nyield ^x of Nat" "true"
+            "x := 5\nyield $~x of Nat" "true"
         , programCase "subfederation rejects a different value"
-            "x := 5\nyield ^x of 6" "false"
+            "x := 5\nyield $~x of 6" "false"
         , programCase "lookup does not change optional-name specification"
-            ("x := 5\nyield (x := ^x) ~> (x? : Nat)")
+            ("x := 5\nyield (x := $~x) ~> (x? : Nat)")
             "x? : from 0 up := 5"
         ]
     , testGroup "mapped access"
@@ -263,7 +263,7 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "unknown external shorthand"
-            "yield !^\"missing.symbol\""
+            "yield !$~\"missing.symbol\""
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalSymbol "missing.symbol")))
@@ -280,8 +280,8 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "not ((!^\"datra.AST\") of Any)"
-            , "not ((Nat; (!^\"datra.AST\")) of Any)"
+            , "not ((!$~\"datra.AST\") of Any)"
+            , "not ((Nat; (!$~\"datra.AST\")) of Any)"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -299,10 +299,10 @@ standardLibraryTests =
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "(!^\"datra.Expr\") of (!^\"datra.AST\")"
-            , "(!^\"datra.Block\") of (!^\"datra.AST\")"
-            , "not ((!^\"datra.Block\") of (!^\"datra.Expr\"))"
-            , "((!^\"datra.Expr\") ~> (!^\"datra.AST\")) of (!^\"datra.AST\")"
+            , "(!$~\"datra.Expr\") of (!$~\"datra.AST\")"
+            , "(!$~\"datra.Block\") of (!$~\"datra.AST\")"
+            , "not ((!$~\"datra.Block\") of (!$~\"datra.Expr\"))"
+            , "((!$~\"datra.Expr\") ~> (!$~\"datra.AST\")) of (!$~\"datra.AST\")"
             , "\"%Any\" of StrTempl"
             , "\"%Int %IdenStr\" of StrTempl"
             , "(\"%Int %IdenStr\" ~> StrTempl) of StrTempl"
@@ -619,7 +619,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"$Int next\" as (Int -> Int) yield !^\"datra.abs\")"
+        ( "step := ((\"$Int next\" as (Int -> Int) yield !$~\"datra.abs\")"
             <> " | (\"$Int next\" as (Int -> Int) do yield 2))\n"
             <> "yield step 3 next"
         )
