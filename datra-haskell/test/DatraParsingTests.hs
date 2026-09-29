@@ -241,6 +241,43 @@ regressionTests = do
   assertAstOutput "a unary trailing comma splices an argument federation"
     "{Args Int,}"
     (ArgumentMapSplice (FunctionApplication (ref "Args") (ref "Int")))
+  let implicitVariadicDomain = ArgumentMap
+        [ ForBinding (IdentifierString "_T") False (ref "IntLimit")
+        , ArgumentMapSplice
+            (FunctionApplication (ref "Args") (ref "_T"))
+        ]
+  assertAstOutput
+    "a trailing comma splices after a dependent binder"
+    "{for _T of IntLimit; Args _T,}"
+    implicitVariadicDomain
+  assertAstOutput
+    "a comma after a dependent binder introduces the same splice"
+    "{for _T of IntLimit, Args _T}"
+    implicitVariadicDomain
+  let implicitVariadicFunction = MapSpecification
+        (FunctionBody [] (ref "nothing"))
+        (FunctionType implicitVariadicDomain
+          (OptionalType (ref "_T")))
+  assertAstOutput
+    "a trailing splice composes through a function definition"
+    "max := {for _T of IntLimit; Args _T,} -> _T? do yield nothing"
+    (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
+  assertAstOutput
+    "a separating comma produces the same function definition"
+    "max := {for _T of IntLimit, Args _T} -> _T? do yield nothing"
+    (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
+  assert "a dependent argument splice renders without nested braces"
+    (renderSourceExpression implicitVariadicDomain
+      == "{for _T of IntLimit; Args _T,}")
+  assertAstOutput
+    "a grouped comma remains inside a dependent binder bound"
+    "{for _T of (IntLimit, Nothing); Args _T,}"
+    (ArgumentMap
+      [ ForBinding (IdentifierString "_T") False
+          (MapConcatenation (ref "IntLimit") (ref "Nothing"))
+      , ArgumentMapSplice
+          (FunctionApplication (ref "Args") (ref "_T"))
+      ])
   assertAstOutput "unary argument map" "{2}" (natural 2)
   assertAstOutput "argument map supports newline separators"
     "{1\n2}" (ArgumentMap [natural 1, natural 2])

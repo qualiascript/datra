@@ -1254,7 +1254,8 @@ syntaxApplicationWith terminalExpression = do
         then symbol (Text.pack token) else keyword (Text.pack token)
       parsePieces rest
     parsePieces (piece@(SyntaxHole kind) : rest) = do
-      knownDeclarations <- syntaxDeclarations <$> ask
+      context <- ask
+      let knownDeclarations = syntaxDeclarations context
       syntaxPieceSpaceConsumer piece
       let stops = case take 1 rest of
             [SyntaxLiteral token] -> [Text.pack token]
@@ -1281,7 +1282,10 @@ syntaxApplicationWith terminalExpression = do
               { outerSyntaxDeclarations = syntaxDeclarations nested })
             (withReferences elements)
           pure (AtlasMap entries)
-        else literal <|> (if kind == "_Expr" && null rest then terminalExpression
+        else literal <|> (if kind == "_Expr" && null rest
+          then if "," `elem` syntaxStops context
+            then nonConcatenatedExpression
+            else terminalExpression
           else if adjacentHole then nonApplicationArithmeticExpression
           else if kind /= "_Expr" then boundaryAwareArithmeticExpression
           else if "," `elem` stops then nonConcatenatedExpression else expression)
@@ -1319,14 +1323,15 @@ identifierReference = try $ do
 -- parenthesized maps, but admit every permutation of their members.
 argumentMap :: Parser Expression
 argumentMap = do
-  (members, trailingConcatenation) <-
+  (members, separators, trailingConcatenation) <-
     between (symbol "{" <* lineSpaceConsumer)
       (lineSpaceConsumer *> symbol "}")
       argumentMembers
   guard (all validDependentName members)
-  pure $ case (members, trailingConcatenation) of
-    ([member], True) -> ArgumentMapSplice member
-    _ -> ArgumentMap members
+  pure $ case (members, separators, trailingConcatenation) of
+    ([member], _, True) -> ArgumentMapSplice member
+    _ -> ArgumentMap
+      (spliceDependentTail members separators trailingConcatenation)
   where
     -- At the brace level commas separate arguments. Parsing a parenthesized
     -- expression restores ordinary concatenation, preserving nested maps.
@@ -1334,16 +1339,20 @@ argumentMap = do
     argumentMembers = do
       first <- optional argumentExpression
       case first of
-        Nothing -> pure ([], False)
-        Just value -> remaining [value]
-    remaining reversed =
+        Nothing -> pure ([], [], False)
+        Just value -> remaining [value] []
+    remaining reversed reversedSeparators =
       (do
         comma <- argumentSeparator
         next <- optional argumentExpression
         case next of
-          Nothing -> pure (reverse reversed, comma)
-          Just value -> remaining (value : reversed))
-        <|> pure (reverse reversed, False)
+          Nothing -> pure
+            (reverse reversed, reverse reversedSeparators, comma)
+          Just value -> remaining
+            (value : reversed)
+            (comma : reversedSeparators))
+        <|> pure
+          (reverse reversed, reverse reversedSeparators, False)
     argumentSeparator =
       True <$ continuedOperator AST.ConcatenationOperator
         <|> False <$ mapSeparator
@@ -1352,12 +1361,30 @@ argumentMap = do
     validDependentName (WithBinding (IdentifierString name) True _) =
       not (null (public [(name, ())]))
     validDependentName _ = True
+    spliceDependentTail members separators trailing =
+      case reverse members of
+        member : reversedPrefix
+          | let prefix = reverse reversedPrefix
+          , not (null prefix)
+          , all dependentBinder prefix
+          , not (dependentBinder member)
+          , trailing || maybe False id (lastMaybe separators) ->
+              prefix <> [ArgumentMapSplice member]
+        _ -> members
+    dependentBinder ForBinding {} = True
+    dependentBinder WithBinding {} = True
+    dependentBinder _ = False
+    lastMaybe [] = Nothing
+    lastMaybe values = Just (last values)
 
 -- Shared operand grammar where an unparenthesized comma is a delimiter.
 nonConcatenatedExpression :: Parser Expression
 nonConcatenatedExpression = expressionWith
-  (makeExprParser (try identifierOperation <|> rangeExpression)
-    (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators]))
+  (local
+    (\context -> context
+      { syntaxStops = "," : syntaxStops context })
+    (makeExprParser (try identifierOperation <|> rangeExpression)
+      (arithmeticOperatorTable <> [mapAccessAndSpecificationOperators])))
 
 -- Explicitly parenthesizing both operands makes a reverse specification a
 -- self-contained map operand. This lets @x, (target) <~ (source)@ retain the
