@@ -1,550 +1,658 @@
 # Generic Typing Grammar
 
-Status: implementation plan. This document specifies the first implementation
-of `::` and `&` generic typing syntax and records the intended later inference
-and erasure semantics. The first implementation should not add inference,
-erasure, mixed dependent containers, or existential escape.
+Status: design specification.
 
 ## Purpose
 
-Generic typing syntax introduces a dependent type binder at the point where
-the bound identifier is used. It avoids manually placing a `for` or `with`
-binder at the front of a containing type expression.
+Generic typing introduces dependent product and dependent sum variables directly
+in a function type. These variables belong to the function interface: the
+interface uses them to match, infer, validate, and package values, while the
+function body receives only ordinary arguments.
 
-The two forms have different polarity:
-
-```datra
-T :: Bound
-&T :: Bound
-```
-
-- `T :: Bound` introduces a dependent product binder corresponding to
-  `for T of Bound`.
-- `&T :: Bound` introduces a dependent sum binder corresponding to
-  `with T of Bound`.
-
-The identifier occurrence itself becomes an ordinary reference to the newly
-introduced binder.
-
-For example:
+The two prefixes select the dependent polarity:
 
 ```datra
-{value? : (T :: Any)} -> T
+&T
+^T
 ```
 
-has the phase-one behavior of:
+- `&` introduces a dependent product generic.
+- `^` introduces a dependent sum generic.
+
+An optional infix `::` clause constrains the generic's supertype:
 
 ```datra
-{for T of Any; value? : T} -> T
+&T :: IntLimit
+^T :: Any
 ```
 
-Similarly:
-
-```datra
-SomeValue := {value? : (&T :: Any)}
-```
-
-has the phase-one behavior of:
-
-```datra
-SomeValue := {with T of Any; value? : T}
-```
-
-The term **generic typing grammar** refers to both `::` and `&...::`.
+When the clause is absent, the supertype is `Any`.
 
 ## Surface grammar
 
 Conceptually:
 
 ```text
-generic-typing-expression := generic-product | generic-sum
-generic-product           := generic-name "::" generic-bound?
-generic-sum               := "&" generic-name "::" generic-bound?
-generic-name              := private-name | required-public-name | optional-public-name
-generic-bound             := expression
+generic-introduction := generic-polarity generic-name generic-bound?
+generic-polarity     := "&" | "^"
+generic-name         := private-name
+                      | required-public-name
+                      | optional-public-name
+generic-bound        := "::" expression
 ```
 
-The identifier reuses the existing dependent-binder name handling. There are
-three modes:
+Examples:
 
 ```datra
-_T :: Any   # private and required
-T :: Any    # public and required
-T? :: Any   # public and optional
-```
-
-The same distinction applies to generic sums:
-
-```datra
-&_T :: Any
-&T :: Any
+&_T
+&T :: IntLimit
 &T? :: Any
+
+^_T
+^T :: IntLimit
+^T? :: Any
 ```
 
-This maps directly onto the existing dependent-binder optional-name flag:
-
-- `_T` produces a private required binder;
-- `T` produces a public required binder;
-- `T?` produces a public optional-name binder.
-
-Private optional `_T?` is not part of this three-way grammar. It should be
-rejected rather than acquiring container-dependent behavior.
-
-### Default bound
-
-The bound may be omitted. A postfix `::` means `:: Any`:
+The prefix is part of the generic introduction. `::` is an infix operator
+between that introduction and its supertype. In application position, grouping
+makes the intended argument boundary explicit:
 
 ```datra
-T ::    # T :: Any
-&T ::   # &T :: Any
+Args (&_T :: IntLimit)
+Box (^T :: Any)
 ```
 
-The postfix form is recognized when `::` is followed by the end of its
-enclosing expression or by a delimiter such as `)`, `}`, `,`, `;`, or `->`.
-A line break alone should not be used as the only disambiguator when the next
-line can continue an expression.
+The right-hand side of `::` accepts the same annotation expression class as a
+function parameter type. Its extent ends at the enclosing expression's normal
+delimiter or precedence boundary.
 
-### Precedence and grouping
+## Identifier modes
 
-The left side of `::` is only the binder identifier, not an arbitrary
-expression. Consequently:
+Generic identifiers reuse the language's three-way identifier distinction:
+
+| Form | Visibility at the call boundary | Witness selection |
+| --- | --- | --- |
+| `_T` | private | inferred |
+| `T` | public | explicitly supplied by name |
+| `T?` | public | explicitly supplied by name or position |
+
+The trailing `?` makes the public name optional; it does not make the generic
+witness or its value optional.
+
+The same modes apply to both polarities:
 
 ```datra
-Args (T :: IntLimit)
+&_T :: IntLimit
+&T :: IntLimit
+&T? :: IntLimit
+
+^_T :: Any
+^T :: Any
+^T? :: Any
 ```
 
-binds `T`, while this must not be interpreted as binding `Args T`:
+`_T?` is outside the three-way identifier grammar and is rejected.
+
+## Function-type ownership
+
+A generic introduction is valid only inside a function type. The nearest
+enclosing function arrow owns it.
 
 ```datra
-Args T :: IntLimit
-```
-
-Parentheses should be required when a generic typing expression is used as a
-function argument, as in the intended standard-library spelling:
-
-```datra
-max := {Args (T :: IntLimit),} -> T do
+max := {Args (&_T :: IntLimit),} -> _T do
   # body
 ```
 
-The right-hand bound should consume the same expression class accepted after
-`of` in an explicit dependent binder. Parentheses remain available when the
-bound would otherwise meet an enclosing delimiter ambiguously.
+Here `_T` belongs to the type of `max`. Function-type resolution collects it
+before resolving ordinary domain types, so it is available throughout the
+domain and crosses `->` into the codomain.
 
-## Public and private names
-
-A name without a leading underscore or trailing `?` is public and required:
+A generic introduced in a codomain is collected before the ordinary result
+types in that codomain. Domain generics precede codomain generics in the
+function's generic ordering:
 
 ```datra
-T :: IntLimit
-&T :: Any
+parse := Str -> {value : (^_T :: Any)} do
+  # body
 ```
 
-During phase one, callers or value constructors provide a public witness
-explicitly. For a product binder in an unordered function domain, this means a
-required named assignment rather than the optional behavior of `T?`:
+A nested function type creates a nested generic scope. Its introductions do
+not become generics of the outer function:
 
 ```datra
-identity := {value? : (T :: Any)} -> T do yield value
+apply := {f? : ({x? : (&T :: Any)} -> T); x? : Any} -> Any do
+  # T belongs to f's function type
+```
+
+A codomain generic does not resolve names in the domain. A generic introduction
+in a standalone map, application, or type alias without an enclosing function
+arrow is a parse or normalization error.
+
+## Scope collection and generic prefix
+
+Function-type resolution uses two passes for each side of the arrow.
+
+The collection pass walks the domain, records every generic introduction in
+its source order, and replaces the marked occurrence with a stable binder
+reference. These declarations form a virtual prefix before all ordinary domain
+slots. The resolution pass then resolves every ordinary domain type against the
+complete prefix. It therefore permits an ordinary type to use a generic whose
+marked declaration appears later in the map:
+
+```datra
+choose := {left? : T; right? : (&T :: Any)} -> T do
+  yield left
+```
+
+The interface schema for this domain is ordered conceptually as:
+
+```text
+generic T :: Any
+left  : T
+right : T
+```
+
+The marked `right` position remains an ordinary `T` argument after declaring
+the generic. The declaration location defines `T`'s polarity, name mode,
+supertype, source location, and relative position among the generic prefix.
+
+The codomain is collected after the domain. Its additional generics form a
+second prefix before ordinary result slots and are appended after the domain
+generics in the function's full generic ordering.
+
+Generic bounds are resolved in generic-prefix order. A bound may refer to an
+earlier generic declaration, while ordinary parameter and result types may
+refer to any generic in the prefix available on their side of the arrow:
+
+```datra
+pair := {pair? : Pair T U; types? : Pair (&T :: Any) (&U :: T)}
+  -> Pair T U do
+  yield pair
+```
+
+Here `T` precedes `U` in the prefix, so the bound of `U` may reference `T`.
+A bound that depends on a later generic declaration is invalid.
+
+A second marked introduction with the same name in one function scope is a
+duplicate declaration. Plain occurrences of that name are references,
+regardless of whether they appear textually before or after its marker.
+
+The ordered generic prefix forms a telescope. Product and sum binders may
+alternate in that telescope, and a later binder may depend on any earlier
+binder regardless of polarity:
+
+```datra
+mapPacked := {
+  value? : (^_Source :: Any)
+  fallback? : (&Target :: Any)
+  transform? : _Source -> Target
+} -> Target do
+  yield transform value
+```
+
+This signature first opens a hidden source type and then selects a target type
+from the supplied fallback and transformation. The body receives `value`,
+`fallback`, and `transform`; the two generic witnesses remain at the interface
+boundary.
+
+## First-class representation
+
+Generic typing is represented directly in the function type. A suitable AST
+shape is:
+
+```haskell
+data GenericPolarity
+  = GenericProduct
+  | GenericSum
+
+data GenericNameMode
+  = PrivateInferred
+  | PublicRequired
+  | PublicOptionalName
+
+data GenericBinder = GenericBinder
+  { genericPolarity :: GenericPolarity
+  , genericName     :: IdentifierString
+  , genericNameMode :: GenericNameMode
+  , genericBound    :: Expression
+  }
+
+data FunctionType = FunctionType
+  { functionDomainGenerics   :: [GenericBinder]
+  , functionDomain           :: Expression
+  , functionCodomainGenerics :: [GenericBinder]
+  , functionCodomain         :: Expression
+  }
+```
+
+The parser may temporarily represent the source occurrence as a
+`GenericIntroduction`. Function-type resolution then:
+
+1. collects all domain introductions in source order;
+2. allocates stable binder identities and builds the domain generic prefix;
+3. replaces each introduction occurrence with a reference to its binder;
+4. resolves every ordinary domain type against the complete prefix;
+5. repeats collection and resolution for additional codomain generics; and
+6. attaches both ordered prefixes to the owning `FunctionType`.
+
+Concatenating `functionDomainGenerics` and `functionCodomainGenerics` gives the
+full function telescope. Keeping the two prefixes explicit also records which
+evidence must exist before body invocation and which evidence is established
+while validating or packaging the result.
+
+Binder identity, rather than identifier text alone, distinguishes shadowed
+generics in nested function types.
+
+Expression traversal, normalization, canonical rendering, free-identifier
+analysis, closure dependency collection, and specification must all preserve
+the generic binder and its references.
+
+## Dependent product generics
+
+A dependent product generic describes a function that works for a selected
+type satisfying the declared supertype.
+
+### Private inferred product
+
+```datra
+max := {Args (&_T :: IntLimit),} -> _T do
+  # `it` contains Args, but no `_T` witness
+```
+
+At a call, the function interface:
+
+1. collects constraints for `_T` from the supplied `Args` value;
+2. selects one unique type within `IntLimit` that satisfies those constraints;
+3. substitutes that type into the complete function signature;
+4. validates the ordinary arguments against the specialized domain;
+5. invokes the body with the ordinary arguments only;
+6. validates the result against the specialized `_T` codomain.
+
+The caller cannot explicitly bind `_T`.
+
+### Public required product
+
+```datra
+identity := {value? : (&T :: Any)} -> T do
+  yield value
 
 yield identity {T := Nat; value := 5}
 ```
 
-Omitting `T` must fail function matching, just as it does for an explicit
-required `for T of Any` binder.
+`T` is a required public interface witness. The supplied witness is checked
+against `Any`, and `value` is checked against the selected `T`.
 
-The `T?` spelling is public but optionally named, matching existing dependent
-binder behavior. It accepts either its named assignment form or the
-corresponding positional witness:
+### Public optionally named product
 
 ```datra
-identity := {value? : (T? :: Any)} -> T do yield value
+identity := {value? : (&T? :: Any)} -> T do
+  yield value
 
 yield identity (Nat; 5)
 yield identity {T := Nat; value := 5}
 ```
 
-A leading underscore creates a private generic binder:
+Both calls provide the witness. The first provides it positionally; the second
+uses its public name.
+
+## Dependent sum generics
+
+A dependent sum generic associates a hidden or explicit type witness with
+ordinary values at a function boundary.
+
+In a function domain, the interface opens the incoming dependent package,
+validates its related values with one witness, and passes only the ordinary
+values to the body:
 
 ```datra
-_T :: IntLimit
-&_T :: Any
+render := {
+  value? : (^_T :: Any)
+  render? : _T -> Str
+} -> Str do
+  yield render value
 ```
 
-The intended final behavior is that a private generic witness cannot be
-matched explicitly by a caller. It will become useful when generic witness
-inference is implemented. Since inference is not part of phase one, successful
-runtime examples should use public identifiers. Phase-one tests should still
-cover parsing, lowering, privacy preservation, and the expected failure to
-call a private generic interface without inference.
+The call interface infers `_T` from the incoming dependent values. The body can
+use `value` and `render`, but `_T` is not a body binding and is not a member
+of `it`.
 
-## Binder placement and scope
-
-The parser must preserve a generic introduction long enough to hoist its
-binder into a containing dependent type container. At the original occurrence,
-the expression is replaced with an identifier reference.
-
-For example:
+In a function codomain, the interface infers or accepts the witness from the
+returned ordinary value, validates the dependent result, and seals the witness
+in the result package:
 
 ```datra
-{Args (T :: IntLimit),}
+parse := Str -> {value : (^_T :: Any)} do
+  yield {value := parseValue it}
 ```
 
-introduces the equivalent container shape:
+A private sum witness remains hidden when the package leaves the function. A
+public `T` witness is required at the relevant boundary, while `T?` may be
+provided positionally or by name. All three modes use the same body-erasure
+rules.
+
+## Inference and constraint solving
+
+Private generic inference is part of function matching. It uses dependent
+ordinary inputs for a domain binder and the produced ordinary result for a
+codomain sum binder.
+
+For each private binder, matching must find one unique canonical candidate
+that:
+
+1. satisfies every dependent occurrence of the binder;
+2. satisfies its declared supertype;
+3. is consistent with already resolved earlier generics; and
+4. makes the specialized domain or codomain valid.
+
+Binders are resolved in telescope order. Resolving one binder substitutes its
+evidence into the bounds and dependent occurrences of all later binders. This
+allows a sum witness to constrain a later product, a product witness to
+constrain a later sum, and longer alternating dependency chains.
+
+For an `Args _T` occurrence, all supplied arguments contribute constraints to
+the same `_T`. In the intended range test:
 
 ```datra
-{for T of IntLimit; Args T,}
+my_max := {Args (&_T :: IntLimit),} -> _T do
+  # implementation
+
+result := my_max (Args (from -128 to 127))
 ```
 
-The generated binder is placed before the ordinary payload members of its
-host container. Multiple generated binders are placed in first-occurrence
-order:
+the inferred return type is the unique integer-range type selected for those
+arguments, subject to `IntLimit`.
 
-```datra
-{pair? : Pair (T :: Any) (U :: T)}
-```
+Matching reports a structured generic error when:
 
-corresponds to:
+- no evidence is available for a private generic;
+- evidence admits more than one canonical candidate;
+- dependent occurrences impose conflicting constraints;
+- a candidate lies outside the declared supertype;
+- a required public witness is absent; or
+- an explicit witness conflicts with dependent values.
 
-```datra
-{for T of Any; for U of T; pair? : Pair T U}
-```
+Overload selection must retain these errors when the generic candidate is the
+relevant function, rather than reducing them to silent candidate loss.
 
-This order is semantically significant: later generic bounds may reference
-earlier generic names. Forward references remain invalid.
+## Erasure and invocation
 
-### Host container
+Generic witnesses are interface data. They are absent from the body's named
+scope and from the body-visible `it`, regardless of identifier mode.
 
-The nearest enclosing type container owns the generated binders:
-
-- an argument map;
-- an ordered Atlas map;
-- a map sequence; or
-- a function domain.
-
-Grouping parentheses around the generic typing expression do not create a new
-host. A genuinely nested map does create a new host, so its binders do not
-escape into an outer map.
-
-If a generic typing expression appears in a function domain that has no
-existing map container, lowering should synthesize an argument-map domain so
-the generated witness and the original domain are both function arguments.
-For example:
-
-```datra
-Args (T :: Any) -> T
-```
-
-has the effective domain:
-
-```datra
-{for T of Any; Args T,} -> T
-```
-
-If no enclosing function domain or map exists, lowering synthesizes an ordered
-dependent container around the enclosing expression:
-
-```datra
-List (T :: Any)
-```
-
-corresponds to the dependent product family:
-
-```datra
-(for T of Any; List T)
-```
-
-and:
-
-```datra
-Value (&T :: Any)
-```
-
-corresponds to:
-
-```datra
-(with T of Any; Value T)
-```
-
-### Function arrows
-
-A binder introduced in a function domain scopes across `->` into the
-codomain, matching the existing behavior of an explicit dependent product:
-
-```datra
-{value? : (T :: Any)} -> T
-```
-
-The codomain may therefore reference `T`.
-
-A binder introduced only inside a codomain does not scope backward into the
-domain. It constructs a dependent type inside that codomain instead.
-
-## AST representation
-
-Do not immediately erase the distinction between generic typing syntax and an
-explicit `for` or `with` binder. Later inference and body erasure require the
-runtime/compiler to know which binders came from `::`.
-
-Add dedicated AST representation, for example:
-
-```haskell
-data GenericBindingKind
-  = GenericProductBinding
-  | GenericSumBinding
-
-data Expression
-  = ...
-  | GenericBinding
-      GenericBindingKind
-      IdentifierString
-      Bool -- optional public name
-      Expression
-```
-
-The exact constructor names may follow existing project conventions. The
-important properties are:
-
-1. product versus sum remains explicit;
-2. the identifier and bound remain available;
-3. required versus optional public naming remains available;
-4. the node is distinguishable from explicit `ForBinding`/`WithBinding`;
-5. canonical AST rendering and parsing round-trip it;
-6. generic occurrences are replaced by `IdentifierReference` nodes after
-   their binders have been collected into the host container.
-
-Phase-one semantic helpers may treat a generic product like `ForBinding` and a
-generic sum like `WithBinding`, but that equivalence should be implemented
-through shared binder inspection functions rather than by discarding origin
-metadata.
-
-The following existing logic will need to recognize generic binders:
-
-- dependent-container classification;
-- function free-identifier analysis;
-- static dependent-domain substitution;
-- dependent-sum static conversion and validation;
-- dependent-product creation;
-- function parameter compilation and dependent validation;
-- expression traversal, normalization, rendering, and canonical parsing;
-- closure dependency collection;
-- optional-name/public-name validation where applicable.
-
-Prefer one shared dependent-binder view over adding parallel constructor cases
-independently throughout the interpreter.
-
-## Phase-one semantics
-
-Phase one implements syntax, hoisting, all three identifier modes, and current
-dependent-type behavior.
-
-It does **not** implement:
-
-- inference of private generic witnesses;
-- removal of generic witnesses from the function body's `it` value;
-- removal of generic names from the function body's named scope;
-- creation of a specialized internal closure;
-- existential witness erasure;
-- escape analysis for a private generic sum witness;
-- mixed dependent sum/product containers.
-
-Until body erasure is implemented, a generated public product binder may be
-visible to the body in the same places as an explicit binder. Retaining the AST
-origin marker is what allows the later implementation to change only generic
-binders without changing explicit `for`/`with` behavior.
-
-## Mixed products and sums
-
-Generic product and sum introductions may both parse and lower, but a single
-host container containing both remains unsupported:
-
-```datra
-{left? : (T :: Any); right? : (&U :: Any)}
-```
-
-It must fail with the existing structured error:
+The prepared interface layout places generic evidence first and ordinary body
+arguments after it:
 
 ```text
-dependent sums and products cannot be mixed in one type container
+[domain generic evidence 0 .. domainGenericCount - 1]
+[ordinary body arguments domainGenericCount .. end]
 ```
 
-The result must not depend on which binder occurs first. Supporting alternating
-dependent sums and products is a separate type-system implementation.
+The argument schema records `domainGenericCount`. For an ordered internal
+argument vector, constructing the body-visible `it` is equivalent to:
 
-## Generic sums in phase one
+```haskell
+bodyValues = drop domainGenericCount preparedValues
+```
 
-`&T :: Bound` should work anywhere the equivalent explicit required `with T of
-Bound` currently works. The primary phase-one integration case is a dependent
-sum type whose public witness is supplied explicitly:
+Named and structurally mapped domains perform the same operation by projecting
+the schema's ordinary slots. The domain-generic-count boundary remains the
+canonical ordering rule, so erasure does not require rediscovering generic
+fields by identifier text.
+
+For `{x? : T; y? : (&T :: Any)}`, the prepared interface vector is
+conceptually `[T, x, y]`, `domainGenericCount` is `1`, and the body-visible
+`it` is `[x, y]`.
+
+Invocation has an external and internal boundary:
+
+```text
+call arguments
+    -> resolve public witnesses and infer private witnesses
+    -> specialize and validate the function signature
+    -> project ordinary body arguments
+    -> invoke the internal closure
+    -> validate or package the result
+```
+
+The external function value owns the `FunctionType`, generic schema, inference
+logic, and result checking. The internal closure owns the body and receives the
+projected ordinary arguments. This may be represented as two runtime values or
+as one function value with separate preparation and invocation stages.
+
+Recursive `this` calls target the external function interface. Each recursive
+call therefore performs generic matching and specialization for its own
+arguments.
+
+Erasure is semantic rather than necessarily physical. A private dependent sum
+may retain sealed runtime evidence for validation and later opening, but that
+evidence is not available as an ordinary field or body name.
+
+## Escape rules
+
+A dependent product generic may appear in the codomain because the caller has
+selected or inferred it from the function domain:
 
 ```datra
-SomeValue := {value? : (&T :: Any)}
-
-assert {T := Nat; value := 5} of SomeValue
+head := {values? : List (&_T :: Any)} -> _T do
+  # implementation
 ```
 
-If an inline generic sum is used in a function-domain form that the existing
-function parameter compiler does not support, it may retain the existing
-structured rejection for that explicit form. Do not add mixed-quantifier or
-existential-function semantics merely to make the syntax succeed in every
-position. A named dependent-sum type can still be used as an ordinary function
-parameter annotation.
+A private dependent sum witness cannot appear as an unsealed public result or
+escape into a type position outside its owning package. It may leave the
+function only through a dependent sum package that retains its hidden evidence,
+or through a result widened to a type independent of that witness.
 
-## Future interface-only semantics
+Escape checking operates on binder identity after function-type scope
+resolution. An illegal escape produces a structured error naming the affected
+generic and its source location.
 
-The intended follow-up behavior distinguishes generic typing binders from
-explicit dependent binders.
+## Combining products and sums
 
-For a generic product interface:
+A function type may contain both product and sum generics. Their source order
+defines the nesting order of the dependent quantifiers:
 
 ```datra
-max := {Args (_T :: IntLimit),} -> _T do
-  # body
+adapt := {
+  source? : (^_Source :: Any)
+  fallback? : (&Target :: Any)
+  proof? : (^_Proof :: Any)
+  adapter? : _Source -> Target
+  check? : Target -> _Proof
+} -> Target do
+  # body sees source, fallback, proof, adapter, and check
 ```
 
-the eventual invocation model is:
+Conceptually, this is an ordered generic prefix containing a sum, a product,
+and a sum, followed by the ordinary domain slots. It cannot be reduced to one
+sum-or-product classification for the whole domain. Interface preparation
+processes each binder in order, carrying the resolved environment forward to
+the next binder.
 
-1. the external function infers or matches `_T`;
-2. it validates the remaining arguments using the instantiated `_T`;
-3. it removes `_T` from the argument value passed to the body;
-4. `_T` is absent from the body's named scope and `it` value;
-5. an internal specialized closure evaluates the body;
-6. the external function validates the result against `_T`.
+Each binder keeps its own boundary behavior:
 
-Explicit `for`/`with` binders remain body-visible. This is why the AST must
-retain generic origin metadata.
+- a product binder selects or infers a witness and specializes later types;
+- a domain sum binder opens dependent input evidence;
+- a codomain sum binder packages dependent output evidence; and
+- erasure projects all resolved witnesses away before the body runs.
 
-The existing separation between the external `ArgumentSchema`,
-`argumentSchemaBodyDomain`/`argumentSchemaBodyValues`, and the function's
-`prepare`/`invoke` hooks should be reused. A physical second public function
-value is not necessarily required; `invoke` can implement the conceptual
-outer-wrapper/inner-closure boundary.
+Escape analysis follows the nested telescope. A private sum witness may be
+used by later binders inside its scope, but any result that depends on it must
+preserve the package that owns its hidden evidence.
 
-For a private generic sum (`&_T`), later work must also prevent `_T` from
-escaping as a naked result type. A hidden existential may escape only through
-an existential package or another representation that preserves its hiding.
+The current interpreter's `MixedDependentBinders` rejection represents an
+implementation gap. Generic function types replace that whole-container
+classification with ordered telescope evaluation. Existing explicit dependent
+containers can retain their current mixed-binder error until they acquire the
+same representation.
 
-## Parser and lowering plan
+## Relationship to explicit dependent bindings
 
-1. Add tokens/parsing for `::` and prefix `&` in generic typing position.
-2. Parse the left side with the shared three-way dependent-identifier rule:
-   private required, public required, or public optional.
-3. Parse an omitted bound as `Any` using delimiter-aware lookahead.
-4. Produce a generic product/sum marker rather than an ordinary binder.
-5. Traverse each generic host expression left-to-right:
-   - collect generic markers in first-occurrence order;
-   - replace marker occurrences with identifier references;
-   - reject duplicate generic declarations in one host;
-   - prepend generated binders to the host payload.
-6. For a function domain without a map, synthesize an argument map.
-7. For a non-function expression without a map, synthesize an ordered map.
-8. Preserve function-domain binder scope across the codomain.
-9. Extend canonical AST parsing/rendering and generic AST traversal.
-10. Ensure no unhosted generic marker can reach evaluation.
+Generic binders are part of a function interface and follow inference and
+erasure semantics. Explicit dependent bindings remain ordinary language-level
+bindings with their normal value and body visibility. The AST keeps these
+constructs distinct while allowing them to share constraint solving,
+specification, and dependent-value validation machinery.
 
-Hoisting should be a named normalization pass with focused tests, not a set of
-special cases embedded across unrelated parser precedence functions.
+## Parser and scope-resolution plan
+
+1. Parse prefix `&` and `^` followed by the shared three-way identifier rule.
+2. Parse an optional `:: expression` bound, defaulting the bound to `Any`.
+3. Produce a `GenericIntroduction` containing polarity, name mode, bound, and
+   source location.
+4. Resolve introductions only while constructing a function type.
+5. Pre-scan the complete domain, collecting its binders in source order before
+   resolving any ordinary domain type.
+6. Build the generic prefix, replace marked occurrences with stable generic
+   references, and then resolve ordinary domain types against the prefix.
+7. Extend the domain prefix across the arrow into the codomain.
+8. Pre-scan the codomain for additional binders, append them after the domain
+   prefix, and then resolve ordinary codomain types.
+9. Resolve generic bounds sequentially within prefix order, allowing only
+   dependencies on earlier generic binders.
+10. Resolve nested function types independently.
+11. Reject duplicate declarations, invalid generic names, unresolved generic
+    references, and introductions without a function-type owner.
+12. Preserve the first-class representation through canonical AST round trips.
+
+Prefix parsing must remain compatible with surrounding operator precedence.
+In particular, grouping such as `Args (&_T :: IntLimit)` must make `Args` an
+application of the resolved generic reference, while the bound remains
+`IntLimit`.
 
 ## Semantic implementation plan
 
-1. Introduce a shared dependent-binder descriptor exposing:
-   - sum or product polarity;
-   - explicit or generic origin;
-   - identifier;
-   - required/optional status;
-   - bound expression.
-2. Refactor existing binder consumers to use the descriptor where doing so
-   removes duplicate `ForBinding`/`WithBinding` case logic.
-3. Preserve the parsed required/optional mode in parameter and sum schemas.
-4. Preserve public/private identifier rules.
-5. Include generic binders in the existing homogeneous/mixed container
-   classifier so mixed containers produce `MixedDependentBinders`.
-6. Use existing specification and subfederation paths after constructing the
-   appropriate dependent product or sum.
-7. Leave inference and body erasure explicitly unimplemented.
+1. Add generic polarity, name mode, binder identity, and function generic
+   schema to the AST.
+2. Implement function-owned two-pass prefix collection and canonical rendering.
+3. Extend function argument schemas with virtual generic witness slots that
+   precede and remain distinct from body argument slots, recording the domain
+   generic count explicitly.
+4. Implement public required and public optionally named witness matching.
+5. Implement private product constraint collection and unique-candidate
+   inference.
+6. Specialize dependent domain and codomain annotations with resolved evidence.
+7. Project the suffix beginning at `domainGenericCount` before invoking the
+   body and keep all generic names out of the body environment and `it`.
+8. Implement domain-side sum opening and codomain-side sum packaging, retaining
+   sealed evidence where required.
+9. Add private-sum escape analysis.
+10. Replace whole-function mixed-polarity classification with ordered generic
+    telescope evaluation, allowing `&` and `^` binders to alternate.
+11. Keep `MixedDependentBinders` for explicit dependent containers that have
+    not been converted to telescope evaluation.
+12. Reuse common specification and subfederation operations for specialized
+    dependent values.
+
+The implementation should use one generic-binder descriptor and one scope
+resolver rather than duplicating polarity and identifier-mode logic across the
+parser, interpreter, and closure builder.
 
 ## Regression test plan
 
-### Parsing and canonical AST
+### Parsing and scope
 
-- `_T :: Any`, `T :: Any`, and `T? :: Any` produce private-required,
-  public-required, and public-optional generic product binders respectively.
-- `&_T :: Any`, `&T :: Any`, and `&T? :: Any` produce the corresponding
-  generic sum binders.
-- Each of those forms supports postfix `::` with an implicit `Any` bound.
-- `_T? :: Any` and `&_T? :: Any` are rejected.
-- An arbitrary expression cannot appear to the left of `::`.
-- `Args (T :: IntLimit)` replaces the occurrence with `Args T`.
-- Multiple binders are hoisted in first-occurrence order.
-- A later bound may reference an earlier generic name.
-- A forward reference remains rejected.
-- A nested map owns its own generic binders.
-- A function-domain binder scopes the codomain.
-- A scalar function domain is converted into an argument-map domain.
-- A top-level scalar generic type is converted into an ordered dependent
-  container.
-- Canonical AST rendering and parsing round-trip generic-origin metadata.
+- `&_T`, `&T`, and `&T?` produce the three product name modes.
+- `^_T`, `^T`, and `^T?` produce the three sum name modes.
+- Every form accepts an explicit `:: Bound`; an absent bound records `Any`.
+- `_T?` is rejected for both polarities.
+- `Args (&_T :: IntLimit)` parses the application and bound correctly.
+- Multiple introductions are collected into a generic prefix in
+  first-occurrence order.
+- An ordinary field may reference a generic whose marked declaration occurs
+  later in the domain or result map.
+- `(x : T, y : &T)` resolves both ordinary fields against the prefixed `T`.
+- A later generic bound may reference an earlier generic binder; a generic
+  bound that references a later binder fails.
+- Product and sum introductions may alternate in one function scope.
+- Cross-polarity bounds resolve against earlier binders in telescope order.
+- Duplicate declarations in one function type fail structurally.
+- All domain generics are available throughout the domain and codomain.
+- Codomain generics are available throughout the ordinary codomain types but
+  do not resolve domain names.
+- Nested function types own independent generic scopes.
+- A generic introduction without a function-type owner is rejected.
+- Canonical AST rendering and parsing preserve polarity, identifier mode,
+  bound, binder identity, and ownership.
 
-### Products
+### Product semantics
 
-- A public generic product witness can be supplied explicitly by name.
-- The public witness is required; omitting it fails function matching.
-- A `T?` product witness accepts both named and positional forms.
-- The dependent argument is validated against the selected witness.
-- The dependent result is checked against the selected witness.
-- Multiple public generic product witnesses bind in order.
-- A private generic product interface cannot be called explicitly and remains
-  unavailable until inference is implemented.
-- Existing explicit `for T?`, `for T`, and private explicit binders retain
-  their behavior.
+- A required public product witness is accepted by name and is required.
+- An optionally named public product witness works positionally and by name.
+- A private product witness cannot be supplied explicitly.
+- A private product is inferred from one dependent argument.
+- Multiple dependent arguments contribute consistent constraints.
+- Conflicting, ambiguous, absent, and out-of-bound evidence each produce a
+  structured error.
+- Domain specialization validates dependent arguments.
+- Codomain specialization validates the returned value.
+- `my_max` over `Args (from -128 to 127)` has the inferred range return type.
 
-### Sums
+### Sum semantics
 
-- A public generic sum witness can be supplied explicitly when constructing a
-  value.
-- Omitting a required public sum witness is rejected.
-- A `T?` sum witness accepts both named and positional forms.
-- Later fields are validated against the selected witness.
-- Multiple generic sum witnesses bind in order.
-- Existing explicit `with T?`, `with T`, and private explicit binders retain
-  their behavior.
+- A required public sum witness is accepted at its boundary and is required.
+- An optionally named public sum witness works positionally and by name.
+- A private domain sum is inferred and opened from dependent input values.
+- A private codomain sum is inferred and sealed from dependent result values.
+- Multiple fields use the same witness and conflicting fields fail.
+- Hidden evidence is absent from ordinary projections, rendering, the body
+  environment, and `it`.
+- A private sum cannot escape outside its package or owning function scope.
+
+### Erasure and closure behavior
+
+- Public and private generic witnesses are absent from the body-visible `it`.
+- Generic names are unresolved if referenced as body variables.
+- The interface schema places every generic slot before every ordinary slot.
+- `domainGenericCount` identifies the exact suffix used to construct body
+  `it`.
+- Ordinary arguments retain their existing names and positions after erasure.
+- The external wrapper validates results after the internal closure returns.
+- Recursive `this` calls re-enter generic matching.
+- Closure dependency collection does not capture generic witnesses as ordinary
+  lexical values.
 
 ### Required language interactions
 
-Per the repository language-development requirements, cover both generic
-products and generic sums with:
+Cover both product and sum function types with:
 
 - forward specification using `~>`;
 - reverse specification using `<~`;
 - subfederation using `of`;
-- named and positional value forms where the required binder permits them;
-- optional names on dependent payload fields, while keeping those distinct
-  from required and optionally named generic binders.
+- named and positional calls for public optionally named witnesses;
+- ordinary optional parameter names, kept distinct from generic name mode; and
+- nested closures and recursive calls.
 
 ### Rejections
 
-- A generic sum and product in either order produce
-  `MixedDependentBinders`.
-- Mixing a generic binder with an explicit binder of the opposite polarity
-  produces the same error.
-- Duplicate generated names are rejected structurally.
-- A generic marker without a valid host cannot reach the interpreter.
-- Invalid private/public matching produces a structured evaluation failure,
-  not parser backtracking or silent candidate loss.
+- A generic bound that references a later product or sum binder is rejected as
+  an invalid prefix dependency.
+- A mixed generic telescope with unsatisfied or cyclic evidence reports the
+  binder at which resolution failed.
+- An unsupported escape reports the generic binder and source location.
+- An invalid public/private witness match is a structured matching error.
+- A generic parse failure cannot silently select a different grammar branch.
 
-## Completion criteria for phase one
+## Completion criteria
 
-Phase one is complete when:
+The feature is complete when:
 
-1. product and sum forms parse for `_T`, `T`, and `T?`, with explicit and
-   implicit-`Any` bounds;
-2. generated binders preserve private-required, public-required, or
-   public-optional mode and retain generic-origin metadata;
-3. binders hoist and scope according to this document;
-4. public product and sum examples work with explicit witnesses;
-5. private spellings are represented but do not pretend to have inference;
-6. mixed containers fail with `MixedDependentBinders` independent of order;
-7. specification, reverse specification, and subfederation regressions pass;
-8. existing explicit dependent binder behavior remains unchanged;
-9. focused parser/interpreter tests pass;
-10. the full non-Liquid test suite passes once, serially, as final validation.
+1. both prefixes parse with private, required-public, and optionally named
+   public identifiers;
+2. omitted bounds resolve to `Any` and explicit bounds preserve their full
+   expression;
+3. every generic is owned by exactly one function type, collected into an
+   ordered prefix, and available to all ordinary types on its side of the
+   arrow;
+4. private products infer uniquely from dependent inputs;
+5. sums open and package dependent values with sealed evidence;
+6. public witness modes match according to their identifier form;
+7. all generic evidence precedes ordinary arguments and is erased from the body
+   environment and `it` using the recorded domain generic count;
+8. dependent results are validated at the external function boundary;
+9. private sum escape is checked;
+10. products and sums can alternate in one ordered function generic telescope;
+11. cross-polarity dependencies resolve in source order;
+12. `~>`, `<~`, and `of` interactions pass for both polarities and mixed
+    telescopes;
+13. focused parser, interpreter, and closure tests pass; and
+14. the full non-Liquid test suite passes once, serially, as final validation.
