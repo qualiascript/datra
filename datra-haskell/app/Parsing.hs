@@ -86,6 +86,7 @@ import DatraLanguage.AST
       , BooleanAnd
       , BooleanOr
       , BooleanNot
+      , Coalition
       , Extract
       , StripIdentifiers
       , Eval
@@ -443,6 +444,7 @@ astForm =
       , astBinary AST.BooleanAndOperator BooleanAnd
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
+      , astUnary AST.CoalitionOperator Coalition
       , astUnary AST.StripIdentifiersOperator StripIdentifiers
       , astUnary AST.ExtractOperator Extract
       , astBinary AST.EvalOperator Eval
@@ -1417,6 +1419,7 @@ arithmeticOperatorTableWith infixOperator =
   , [ Prefix (Plus <$ operatorToken AST.AdditionOperator)
     , Prefix (Minus <$ operatorToken AST.MinusOperator)
     , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
+    , Prefix (Coalition <$ operatorToken AST.CoalitionOperator)
     ]
   , [InfixL (Multiplication <$ multiplicationOperator infixOperator)]
   , [ InfixL (Addition <$ infixOperator AST.AdditionOperator)

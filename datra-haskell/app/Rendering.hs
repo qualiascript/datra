@@ -482,15 +482,13 @@ prettyMap cardinality components =
     (concatWith (\left right -> left <> "; " <> right)
       (map (prettyMapMember cardinality) components))
 
--- A semicolon preserves a map-valued operand as one member.  Once an alias
--- such as Int has been evaluated, however, its canonical source is itself a
--- semicolon map; spelling that source directly would make a later parse infer
--- one additional nesting level.  Select it from an explicit pair so the
--- surrounding sequence still sees one atomic operand.
+-- The coalition operator keeps a map-valued operand at the current level when
+-- canonical source is parsed again, instead of letting its own cardinality
+-- raise that of the surrounding map.
 prettyMapMember :: Natural -> CanonicalResult -> Doc annotation
 prettyMapMember outerCardinality member@(CanonicalMap memberCardinality _)
   | memberCardinality >= outerCardinality =
-      parens ("0; " <> prettyCanonicalResult member) <> "[1]"
+      prettySourceSymbol CoalitionOperator <> " " <> prettyCanonicalResult member
 prettyMapMember _ member = prettyCanonicalResult member
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation

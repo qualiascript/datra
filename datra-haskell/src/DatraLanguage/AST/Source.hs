@@ -73,6 +73,7 @@ source context expression =
     Positive operand -> unary "+" operand
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
+    CoalitionValue operand -> unary ">< " operand
     -- Declarative syntax holes capture a complete expression. Parenthesize a
     -- nested @val@ application so a following operator stays outside it.
     StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)

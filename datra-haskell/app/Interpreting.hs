@@ -492,6 +492,7 @@ interpretNormalizedExpression scope resolving expressionValue =
       binary booleanOrValues left right
     BooleanNot operand ->
       interpret operand >>= booleanNotValue
+    Coalition operand -> interpret operand
     StripIdentifiers operand ->
       interpret operand >>= stripIdentifiersValue
     Extract operand ->

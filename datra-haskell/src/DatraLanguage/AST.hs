@@ -112,6 +112,7 @@ data Expression
   | BooleanAnd Expression Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
+  | Coalition Expression
   | StripIdentifiers Expression
   | Extract Expression
   | Eval Expression Expression
@@ -246,6 +247,7 @@ data OperatorExpression
   | And OperatorExpression OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
+  | CoalitionValue OperatorExpression
   | StripIdentifiersValue OperatorExpression
   | ExtractValue OperatorExpression
   | EvalValue OperatorExpression OperatorExpression
@@ -381,6 +383,8 @@ normalizeExpression (BooleanOr left right) =
   BooleanOr (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
+normalizeExpression (Coalition operand) =
+  Coalition (normalizeExpression operand)
 normalizeExpression (StripIdentifiers operand) =
   StripIdentifiers (normalizeExpression operand)
 normalizeExpression (Extract operand) =
@@ -552,6 +556,7 @@ lower (GreaterThanOrEqual left right) = GreaterOrEqual (lower left) (lower right
 lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
+lower (Coalition operand) = CoalitionValue (lower operand)
 lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Eval source target) = EvalValue (lower source) (lower target)
@@ -749,6 +754,8 @@ prettyOperator (Or left right) =
   prettyBinary BooleanOrOperator left right
 prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
+prettyOperator (CoalitionValue operand) =
+  prettyUnary CoalitionOperator operand
 prettyOperator (StripIdentifiersValue operand) =
   prettyUnary StripIdentifiersOperator operand
 prettyOperator (ExtractValue operand) =
@@ -989,6 +996,7 @@ traverseExpressionChildren visit expression = case expression of
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
+  Coalition x -> Coalition <$> visit x
   OptionalType x -> OptionalType <$> visit x
   ListUncons x -> ListUncons <$> visit x
   External x -> External <$> visit x
