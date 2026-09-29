@@ -1253,46 +1253,55 @@ syntaxApplicationWith terminalExpression = do
       _ <- if all (`elem` (",;" :: String)) token
         then symbol (Text.pack token) else keyword (Text.pack token)
       parsePieces rest
-    parsePieces (piece@(SyntaxHole kind) : rest) = do
+    parsePieces (piece@(SyntaxHole holeKind) : rest) = do
       context <- ask
       let knownDeclarations = syntaxDeclarations context
       syntaxPieceSpaceConsumer piece
       let stops = case take 1 rest of
             [SyntaxLiteral token] -> [Text.pack token]
-            [SyntaxHole nextType] -> map Text.pack
+            [SyntaxHole (ValueSyntaxHole nextType)] -> map Text.pack
               (declarationLiterals knownDeclarations nextType)
             _ -> []
           literal = choice [AsciiStringLiteral value <$ keyword (Text.pack value)
-            | value <- declarationLiterals knownDeclarations kind]
-          enums = declarationLiterals knownDeclarations kind
+            | ValueSyntaxHole kind <- [holeKind]
+            , value <- declarationLiterals knownDeclarations kind]
+          enums = case holeKind of
+            ValueSyntaxHole kind -> declarationLiterals knownDeclarations kind
+            _ -> []
           adjacentHole = case rest of
             SyntaxHole _ : _ -> null enums
             _ -> False
       value <- local (\nested -> nested { syntaxStops = stops <> syntaxStops nested }) $
-        if kind == "_IdenExp" then do
-          spelling <- identifierExpression
-          name <- validateIdentifierSpelling spelling
-          optionalName <- maybe False (const True) <$> optional
-            (operatorToken AST.OptionalOperator)
-          pure ((if optionalName then OptionalType else id)
-            (IdentifierReference (IdentifierString name)))
-        else if kind == "_Block" then do
-          entries <- local
-            (\nested -> nested
-              { outerSyntaxDeclarations = syntaxDeclarations nested })
-            (withReferences elements)
-          pure (AtlasMap entries)
-        else literal <|> (if kind == "_Expr" && null rest
-          then if "," `elem` syntaxStops context
-            then nonConcatenatedExpression
-            else terminalExpression
-          else if adjacentHole then nonApplicationArithmeticExpression
-          else if kind /= "_Expr" then boundaryAwareArithmeticExpression
-          else if "," `elem` stops then nonConcatenatedExpression else expression)
+        case holeKind of
+          IdentifierExpressionSyntaxHole -> do
+            spelling <- identifierExpression
+            name <- validateIdentifierSpelling spelling
+            optionalName <- maybe False (const True) <$> optional
+              (operatorToken AST.OptionalOperator)
+            pure ((if optionalName then OptionalType else id)
+              (IdentifierReference (IdentifierString name)))
+          BlockSyntaxHole -> do
+            entries <- local
+              (\nested -> nested
+                { outerSyntaxDeclarations = syntaxDeclarations nested })
+              (withReferences elements)
+            pure (AtlasMap entries)
+          ExpressionSyntaxHole
+            | null rest ->
+                if "," `elem` syntaxStops context
+                  then nonConcatenatedExpression
+                  else terminalExpression
+            | adjacentHole -> nonApplicationArithmeticExpression
+            | "," `elem` stops -> nonConcatenatedExpression
+            | otherwise -> expression
+          ValueSyntaxHole _ -> literal <|>
+            if adjacentHole
+              then nonApplicationArithmeticExpression
+              else boundaryAwareArithmeticExpression
       guard (null enums || not (obviouslyNumeric value))
       let continue = (value :) <$> parsePieces rest
-      case value of
-        AtlasMap entries | kind == "_Block" -> withDeclarations entries continue
+      case (holeKind, value) of
+        (BlockSyntaxHole, AtlasMap entries) -> withDeclarations entries continue
         _ -> continue
 
     -- The enclosing block owns the line break after a completed syntax

@@ -145,6 +145,22 @@ regressionTests = do
         , ref "i"
         ])
       (natural 1))
+  assertAstOutput "dependent sum family sugar can omit in before from"
+    "with i from 0 to 3 do i * 2"
+    (MapAccess
+      (AtlasMap
+        [ WithBinding (IdentifierString "i") True (intValRange (fromTo 0 3))
+        , Multiplication (ref "i") (natural 2)
+        ])
+      (natural 1))
+  assertAstOutput "dependent product family sugar can omit in before from"
+    "for i from 0 to 3 do i * 2"
+    (MapAccess
+      (AtlasMap
+        [ ForBinding (IdentifierString "i") True (intValRange (fromTo 0 3))
+        , Multiplication (ref "i") (natural 2)
+        ])
+      (natural 1))
   assertParsed "private optional dependent binder is valid in an ordered map"
     "(with _T? of Any; value? : _T)"
     (AtlasMap
@@ -1870,6 +1886,9 @@ integer value
 rangeTo, fromTo :: Integer -> Integer -> Expression
 rangeTo start end = rangeCall "range" (integer start) (UpperBound (integer end))
 fromTo start end = rangeCall "from" (integer start) (UpperBound (integer end))
+
+intValRange :: Expression -> Expression
+intValRange value = MapSpecification value (InModule "std" (ref "IntValRange"))
 
 rangeUpwards, rangeDownwards, fromUpwards :: Integer -> Expression
 rangeUpwards start = rangeCall "range" (integer start) Upwards

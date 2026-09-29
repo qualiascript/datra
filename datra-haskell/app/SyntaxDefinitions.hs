@@ -1,7 +1,8 @@
 -- | Declarative AST templates. External AST adapters preserve control semantics
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
-  ( SyntaxRule (..), SyntaxPiece (..), declarationRules, expandSyntax
+  ( SyntaxRule (..), SyntaxPiece (..), SyntaxHoleKind (..)
+  , declarationRules, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
   ) where
 import Data.List (isPrefixOf)
@@ -10,7 +11,17 @@ import IdentifierValueType (isIdentifierValue)
 import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure (..))
 
-data SyntaxPiece = SyntaxLiteral String | SyntaxHole String deriving (Eq,Show)
+data SyntaxHoleKind
+  = ExpressionSyntaxHole
+  | BlockSyntaxHole
+  | IdentifierExpressionSyntaxHole
+  | ValueSyntaxHole String
+  deriving (Eq,Show)
+
+data SyntaxPiece
+  = SyntaxLiteral String
+  | SyntaxHole SyntaxHoleKind
+  deriving (Eq,Show)
 data SyntaxRule = SyntaxRule
   { syntaxName :: String, syntaxPieces :: [SyntaxPiece]
   , syntaxOrdinary :: Bool, syntaxSignature :: Expression
@@ -32,7 +43,12 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
     collect key (MapSpecification body (SyntaxType patternText ordinary signature)) =
       [SyntaxRule key (map piece (words patternText)) ordinary signature False Nothing body]
     collect _ _ = []
-    piece ('$':kind) = SyntaxHole kind
+    -- These are parser-level AST categories. Every other hole names the
+    -- value type that its captured expression must inhabit.
+    piece "$_Expr" = SyntaxHole ExpressionSyntaxHole
+    piece "$_Block" = SyntaxHole BlockSyntaxHole
+    piece "$_IdenExp" = SyntaxHole IdentifierExpressionSyntaxHole
+    piece ('$':kind) = SyntaxHole (ValueSyntaxHole kind)
     piece literal = SyntaxLiteral literal
 declarationRules _ = []
 
@@ -41,7 +57,8 @@ expandSyntax
   -> [Expression]
   -> Either SyntaxExpansionFailure Expression
 expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
-  Just name | "datra.syntax." `isPrefixOf` name -> control name captures
+  Just name | "datra.syntax." `isPrefixOf` name ->
+    control name captures
   _ -> Right (FunctionApplication
     callable
     (case captures of [value] -> value; _ -> AtlasMap captures))
@@ -54,6 +71,12 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
           (MapSpecification (syntaxImplementation rule) (syntaxSignature rule))
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
+    specifiedValueCaptures = zipWith specifyCapture
+      [kind | SyntaxHole kind <- syntaxPieces rule]
+    specifyCapture (ValueSyntaxHole kind) capture =
+      MapSpecification capture
+        (scoped (IdentifierReference (IdentifierString kind)))
+    specifyCapture _ capture = capture
     block (AtlasMap entries) = entries
     block value = [value]
     control name values =
@@ -64,7 +87,8 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
               Left
                 (InvalidSyntaxControlCaptures
                   name expected (length values))
-          | otherwise -> controlWithValidCaptures name values
+          | otherwise ->
+              controlWithValidCaptures name (specifiedValueCaptures values)
     controlArity "datra.syntax.if" = Just 3
     controlArity "datra.syntax.ifThen" = Just 2
     controlArity "datra.syntax.begin" = Just 2

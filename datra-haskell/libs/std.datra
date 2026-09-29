@@ -35,10 +35,12 @@ yield Std := begin
   fun : "$_Expr" as _AST -> _AST := yield !^"datra.syntax.fun"
   with :=
     ("$_IdenExp of $_Expr" as (_AST, _AST -> _AST) yield !^"datra.syntax.with") |
-    ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) yield !^"datra.syntax.withIn")
+    ("$_IdenExp in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) yield !^"datra.syntax.withIn") |
+    ("$_IdenExp $IntValRange do $_Expr" as (_AST, _AST, _AST -> _AST) yield !^"datra.syntax.withIn")
   for :=
     ("$_IdenExp of $_Expr" as (_AST, _AST -> _AST) yield !^"datra.syntax.for") |
-    ("$IdenStr in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) yield !^"datra.syntax.forIn")
+    ("$_IdenExp in $_Expr do $_Expr" as (_AST, _AST, _AST -> _AST) yield !^"datra.syntax.forIn") |
+    ("$_IdenExp $IntValRange do $_Expr" as (_AST, _AST, _AST -> _AST) yield !^"datra.syntax.forIn")
   val := "$_Expr" as _AST -> _AST yield !^"datra.syntax.val"
   public := !^"datra.public"
 
