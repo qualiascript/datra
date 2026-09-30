@@ -56,11 +56,11 @@ yield Std := begin
   IntValRange := !$~"datra.IntValRange"
 
   let from :=
-    ("$Int to $Int" as? {origin : Int; target : IntLimit} -> IntValRange yield !$~"datra.from") |
+    ("$Int to $IntLimit" as? {origin : Int; target : IntLimit} -> IntValRange yield !$~"datra.from") |
     ("$Int $_Direction" as? {origin : Int; direction : _Direction} -> IntValRange yield !$~"datra.from")
   let range :=
-    ("$Int to $Int" as? {origin : IntLimit; target : IntLimit} -> IntRange yield !$~"datra.range") |
-    ("$Int $_Direction" as? {origin : IntLimit; direction : _Direction} -> IntRange yield !$~"datra.range")
+    ("$IntLimit to $IntLimit" as? {origin : IntLimit; target : IntLimit} -> IntRange yield !$~"datra.range") |
+    ("$IntLimit $_Direction" as? {origin : IntLimit; direction : _Direction} -> IntRange yield !$~"datra.range")
 
   let Nat := from 0 up
   let NatLimit := from 0 to Infinity

@@ -1091,6 +1091,16 @@ testEvalBackedKeywords = do
 testStringTemplates :: IO ()
 testStringTemplates = do
   expectSourceValue
+      "Int template excludes Infinity"
+      "\"Infinity\" of \"%Int\"" $ \value ->
+    assert "Infinity is not an Int template member"
+      (renderInterpretedValue value == "false")
+  expectSourceValue
+      "IntLimit template includes Infinity"
+      "\"Infinity\" of \"%IntLimit\"" $ \value ->
+    assert "Infinity is an IntLimit template member"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
       "surface arithmetic interpolation equality"
       "\"2 + 2 = %(2+2)\" = \"2 + 2 = 4\"" $ \value ->
     assert "the interpolated arithmetic result equals the expected string"
