@@ -2,34 +2,26 @@
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
-  , declarationRules, syntaxTemplateFromPattern, expandSyntax
+  , declarationRules, syntaxTemplatePatternTexts
+  , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
+  , qualifySyntaxRule, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
   ) where
 import Data.List (isPrefixOf)
 import DatraLanguage.AST
+import DatraLanguage.SyntaxTemplate
+  ( SyntaxHoleKind (..)
+  , SyntaxPiece (..)
+  , SyntaxTemplate (..)
+  , parseSyntaxTemplate
+  )
 import IdentifierValueType (isIdentifierValue)
 import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure (..))
 
-data SyntaxHoleKind
-  = ExpressionSyntaxHole
-  | BlockSyntaxHole
-  | IdentifierExpressionSyntaxHole
-  | ValueSyntaxHole String
-  deriving (Eq,Show)
-
-data SyntaxPiece
-  = SyntaxLiteral String
-  | SyntaxHole SyntaxHoleKind
-  deriving (Eq,Show)
-
-newtype SyntaxTemplate = SyntaxTemplate
-  { syntaxTemplatePieces :: [SyntaxPiece]
-  } deriving (Eq,Show)
-
 data SyntaxRule = SyntaxRule
-  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate
-  , syntaxOrdinary :: Bool, syntaxSignature :: Expression
+  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate String
+  , syntaxSignature :: Expression
   , syntaxRecursive :: Bool
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
@@ -45,25 +37,52 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
   collect name (if annotation == implementation then implementation else MapSpecification implementation annotation)
   where
     collect key (EitherType a b) = collect key a <> collect key b
-    collect key (MapSpecification body (SyntaxType patternText ordinary signature)) =
-      [SyntaxRule key (syntaxTemplateFromPattern patternText)
-        ordinary signature False Nothing body]
+    collect key (MapSpecification body (SyntaxType templates signature)) =
+      [ SyntaxRule key (syntaxTemplateFromPattern patternText)
+          signature False Nothing body
+      | patternText <- maybe [] id (syntaxTemplatePatternTexts templates)
+      ]
     collect _ _ = []
 declarationRules _ = []
 
-syntaxPatternPieces :: String -> [SyntaxPiece]
-syntaxPatternPieces = map piece . words
+-- | The left operand of @%>@ is an ordinary inhabited list value. Rules must
+-- be available before evaluation, so each member is required to be an
+-- explicit extracted string at declaration time.
+syntaxTemplatePatternTexts :: Expression -> Maybe [String]
+syntaxTemplatePatternTexts (Extract templates) = templateTexts templates
   where
-    -- These are parser-level AST categories. Every other hole names the
-    -- value type that its captured expression must inhabit.
-    piece "$_Expr" = SyntaxHole ExpressionSyntaxHole
-    piece "$_Block" = SyntaxHole BlockSyntaxHole
-    piece "$_IdenExp" = SyntaxHole IdentifierExpressionSyntaxHole
-    piece ('$':kind) = SyntaxHole (ValueSyntaxHole kind)
-    piece literal = SyntaxLiteral literal
+    templateTexts (AsciiStringLiteral patternText) = Just [patternText]
+    templateTexts (AtlasMap values)
+      | not (null values) = traverse templateText values
+    templateTexts _ = Nothing
+    templateText (AsciiStringLiteral patternText) = Just patternText
+    templateText _ = Nothing
+syntaxTemplatePatternTexts _ = Nothing
 
-syntaxTemplateFromPattern :: String -> SyntaxTemplate
-syntaxTemplateFromPattern = SyntaxTemplate . syntaxPatternPieces
+syntaxTemplateFromPattern :: String -> SyntaxTemplate String
+syntaxTemplateFromPattern = parseSyntaxTemplate id
+
+syntaxTemplateLiteralPrefix :: SyntaxRule -> [String]
+syntaxTemplateLiteralPrefix = foldr prefix []
+  . syntaxTemplatePieces . syntaxTemplate
+  where
+    prefix (SyntaxLiteral literal) rest = literal : rest
+    prefix (SyntaxHole _) _ = []
+
+-- | Qualify the callable binding and its independently declared surface head.
+-- They need not have the same unqualified spelling.
+qualifySyntaxRule :: String -> SyntaxRule -> SyntaxRule
+qualifySyntaxRule namespace rule = rule
+  { syntaxName = qualifiedName
+  , syntaxTemplate = qualifyTemplate (syntaxTemplate rule)
+  }
+  where
+    originalName = syntaxName rule
+    qualifiedName = namespace <> "." <> originalName
+    qualifyTemplate (SyntaxTemplate (SyntaxLiteral name : pieces)) =
+      SyntaxTemplate
+        (SyntaxLiteral (namespace <> "." <> name) : pieces)
+    qualifyTemplate template = template
 
 -- | Expand captures selected by one declared syntax template.
 expandSyntax

@@ -4,7 +4,7 @@ module Evaluation.ToString
   ( CanonicalStringCodec (..)
   , toStringValue
   , weakToStringValue
-  , stringTemplateValue
+  , templateValue
   , stringConversionIsIdentity
   , stringFederationConcatenationIsInjective
   ) where
@@ -89,21 +89,21 @@ weakToStringValue codec source =
 
 -- | Retain the ordinary concatenation result while recording that its members
 -- are the pointwise outputs of one string template.
-stringTemplateValue :: InterpretedValue -> InterpretedValue
-stringTemplateValue value =
+templateValue :: InterpretedValue -> InterpretedValue
+templateValue value =
   if stringConversionIsIdentity (interpretedForm value)
     then value
     else
       makeInterpretedValue
         (interpretedDatraType value)
-        (StringTemplateForm value)
+        (TemplateForm value)
         (interpretedInsertionCapability value)
         (interpretedMap value)
         (interpretedAtlasMapFederation value)
         (if interpretedValueHasTotalMap value
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
-        (StringTemplateSemantics (interpretedSemantics value))
+        (TemplateSemantics (interpretedSemantics value))
 
 stringConversionIsIdentity :: ValueForm -> Bool
 stringConversionIsIdentity form =
@@ -113,7 +113,7 @@ stringConversionIsIdentity form =
     IdentifierValueTypeForm -> True
     ToStringForm -> True
     WeakToStringForm -> True
-    StringTemplateForm _ -> True
+    TemplateForm _ -> True
     _ -> False
 
 -- | Decide the string-specific case omitted by generic Atlas federation

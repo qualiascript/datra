@@ -19,6 +19,14 @@ decideValueSubfederation
   -> Decision ()
 decideValueSubfederation source target
   | productFederationFormsConflict source target = DecisionRefuted
+  | Just _ <- interpretedFunction source
+  , Just _ <- interpretedFunction target =
+      decideTypeFamilySubfederation
+        (typeFamilyOperations
+          (datraTypeFamily (interpretedDatraType target)))
+        decideValueSubfederation
+        source
+        target
   | interpretedCanonicalResult source == interpretedCanonicalResult target =
       DecisionProved ()
   | DependentSumForm dependent <- interpretedForm target =

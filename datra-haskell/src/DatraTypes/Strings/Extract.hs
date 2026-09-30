@@ -9,6 +9,7 @@ import AtlasMapFederationExpression
 import Evaluation.Construction (makeAsciiString, makeStringType)
 import Evaluation.Error
   ( InterpretingError (ExpectedStringTemplateSpecification) )
+import Evaluation.Federation.Structure (sequenceOperands)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Specification (specifyValues)
 import Evaluation.Value
@@ -21,6 +22,9 @@ extractValue value =
     SpecificationForm specification -> extractSpecification specification
     AssignmentForm specification -> extractSpecification specification
     AsciiStringForm _ -> assembleExtraction value []
+    SequentialMapForm
+      | Just members <- sequenceOperands value ->
+          makeAtlasMap 2 <$> traverse extractValue members
     _ -> extractionExpected value
 
 extractSpecification
@@ -88,7 +92,7 @@ extractTemplateHoles
   -> Either InterpretingError [InterpretedValue]
 extractTemplateHoles target member =
   case interpretedForm target of
-    StringTemplateForm underlying ->
+    TemplateForm underlying ->
       extractTemplateHoles underlying member
     ConcatenatedMapForm left right ->
       case member of

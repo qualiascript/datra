@@ -68,7 +68,8 @@ standardLibraryTypeExamples =
   , weak "IntRange" "IntRange"
   , weak "NatValRange" "NatValRange"
   , weak "IntValRange" "IntValRange"
-  , weak "StrTempl" "StrTempl"
+  , canonical "Template" "Template"
+  , weak "private SyntaxTemplate primitive" "!$~\"datra.SyntaxTemplate\""
   ]
 
 compositeTypeExamples :: [DatraTypeExample]

@@ -67,10 +67,18 @@ import DatraLanguage.AST
   , mapExpressionChildren
   , yieldedIdentifier
   )
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (FunctionSyntax)
+  , parseSyntaxTemplate
+  , traverseSyntaxTemplate
+  )
 import DatraTypes
 import Parsing (parseDatra, standardLibraryExpression)
 import Rendering (renderCanonicalResult, renderInterpretedValue)
-import SyntaxDefinitions (SyntaxHoleKind (ValueSyntaxHole))
+import SyntaxDefinitions
+  ( SyntaxHoleKind (ValueSyntaxHole)
+  , syntaxTemplatePatternTexts
+  )
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located)
@@ -224,7 +232,7 @@ canonicalStringCodec =
 -- AST categories such as @_Expr@ are intentionally outside this function.
 matchesValueSyntaxHoleWith
   :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind
+  -> SyntaxHoleKind String
   -> Expression
   -> Bool
 matchesValueSyntaxHoleWith interpret (ValueSyntaxHole kind) captured =
@@ -238,6 +246,24 @@ matchesValueSyntaxHoleWith interpret (ValueSyntaxHole kind) captured =
     Right _ -> True
     Left _ -> False
 matchesValueSyntaxHoleWith _ _ _ = False
+
+evaluateFunctionSyntax
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> Expression
+  -> Either InterpretingError (FunctionSyntax InterpretedValue)
+evaluateFunctionSyntax interpret templatesExpression = do
+  patternTexts <- maybe
+    (Left (ExpectedStringTemplateSpecification MapValueKind))
+    Right
+    (syntaxTemplatePatternTexts templatesExpression)
+  templateValues <- traverse asciiStringValue patternTexts
+  _ <- traverse (`specifyValues` templateTypeValue) templateValues
+  FunctionSyntax <$> traverse evaluateTemplate patternTexts
+  where
+    evaluateTemplate patternText = traverseSyntaxTemplate interpret
+      (parseSyntaxTemplate
+        (IdentifierReference . IdentifierString)
+        patternText)
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =
@@ -538,11 +564,12 @@ interpretNormalizedExpression scope resolving expressionValue =
       imported <- moduleScope moduleSource
       evalInScope imported resolving body
     Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
-    SyntaxType _ ordinary signature -> do
+    SyntaxType templates signature -> do
+      syntax <- evaluateFunctionSyntax interpret templates
       value <- interpret signature
       case interpretedFunction value of
         Just function -> pure (makeFunctionValue function
-          { functionSyntaxOrdinary = Just ordinary })
+          { functionSyntax = Just syntax })
         Nothing -> Left (FunctionEvaluationFailed
           AstPatternRequiresFunctionSignature)
     FunctionType domain codomain -> do
@@ -607,13 +634,18 @@ interpretNormalizedExpression scope resolving expressionValue =
           insertion <- interpret insertionOperand
           accessRepeatedPrefix captured resolving prefix insertion
         Nothing -> binary accessValues mapOperand insertionOperand
-    MapSpecification implementation (SyntaxType _ ordinary signature) -> do
-      value <- interpret (MapSpecification implementation signature)
-      case interpretedFunction value of
-        Just function -> pure (makeFunctionValue function
-          { functionSyntaxOrdinary = Just ordinary })
-        Nothing -> Left (FunctionEvaluationFailed
-          AstPatternRequiresFunctionImplementation)
+    MapSpecification implementation syntaxType@(SyntaxType
+        templates signature)
+      | not (syntaxImplementationExpression implementation) ->
+          interpretSpecificationWith interpret implementation syntaxType
+      | otherwise -> do
+          syntax <- evaluateFunctionSyntax interpret templates
+          value <- interpret (MapSpecification implementation signature)
+          case interpretedFunction value of
+            Just function -> pure (makeFunctionValue function
+              { functionSyntax = Just syntax })
+            Nothing -> Left (FunctionEvaluationFailed
+              AstPatternRequiresFunctionImplementation)
     MapSpecification (FunctionBody bindings result) (FunctionType domain codomain) ->
       createFunction scope resolving (Just (domain, codomain)) bindings result
     MapSpecification sourceOperand targetOperand ->
@@ -735,6 +767,11 @@ interpretNormalizedExpression scope resolving expressionValue =
         ProductDependentBindings ->
           createDependentProduct scope resolving container
         MixedDependentBindings -> Left MixedDependentBinders
+
+syntaxImplementationExpression :: Expression -> Bool
+syntaxImplementationExpression FunctionBody {} = True
+syntaxImplementationExpression External {} = True
+syntaxImplementationExpression _ = False
 
 isWithBinding :: Expression -> Bool
 isWithBinding WithBinding {} = True
@@ -974,7 +1011,7 @@ interpretStringTemplateWith interpret parts = do
     [] -> asciiStringValue ""
     firstValue : remaining -> do
       result <- foldM concatenateTemplateValues firstValue remaining
-      pure (stringTemplateValue result)
+      pure (templateValue result)
   where
     interpretPart (StringTemplateLiteral value) = asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
@@ -1646,8 +1683,7 @@ applyFunction callable input =
     Left failure -> Left failure
   where
     preparations = [(function, prepare function)
-      | function <- functionAlternatives callable
-      , maybe True id (functionSyntaxOrdinary function)]
+      | function <- functionAlternatives callable]
     prepare function =
       case attempt input of
         Right prepared -> Right (input, prepared)
@@ -1739,7 +1775,8 @@ registeredExternal symbol = case symbol of
   "datra.syntax.withIn" -> syntaxAdapter 3
   "datra.syntax.forIn" -> syntaxAdapter 3
   "datra.syntax.val" -> syntaxAdapter 1
-  "datra.StrTempl" -> Right stringTemplateTypeValue
+  "datra.Template" -> Right templateTypeValue
+  "datra.SyntaxTemplate" -> Right syntaxTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
   "datra.IntRange" -> Right integerRangeTypeValue
   "datra.NatValRange" -> Right naturalValuedRangeTypeValue

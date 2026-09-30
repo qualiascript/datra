@@ -51,6 +51,7 @@ stringConversionProperties semantics
       complementedIntegerProperties includesInfinity
   | otherwise = case semantics of
     BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
+    BuiltinMetaTypeSemantics TemplateMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
@@ -86,7 +87,7 @@ stringConversionProperties semantics
     IdentifierStringProjectionSemantics {} -> unknownConversion
     ToStringSemantics source -> stringConversionProperties source
     WeakToStringSemantics _ -> unknownConversion
-    StringTemplateSemantics source -> stringConversionProperties source
+    TemplateSemantics source -> stringConversionProperties source
     DependentSumSemantics _ -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]

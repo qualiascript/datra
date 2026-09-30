@@ -23,12 +23,14 @@ module Evaluation.Value
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , functionSyntaxEquivalent
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
   , isFunctionFamily
-  , stringTemplateTypeValue
+  , templateTypeValue
+  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
@@ -117,6 +119,12 @@ import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (..)
+  , SyntaxHoleKind (..)
+  , SyntaxPiece (..)
+  , SyntaxTemplate (..)
+  )
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
 import Evaluation.DatraType
@@ -251,7 +259,7 @@ data EvaluatedSpecification = EvaluatedSpecification
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
-  , functionSyntaxOrdinary :: Maybe Bool
+  , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
   , functionSource :: Maybe String
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
@@ -260,13 +268,44 @@ data EvaluatedFunction = EvaluatedFunction
   , functionValidatesResult :: Bool
   }
 
+functionSyntaxEquivalent
+  :: FunctionSyntax InterpretedValue
+  -> FunctionSyntax InterpretedValue
+  -> Bool
+functionSyntaxEquivalent left right =
+  let leftTemplates = functionSyntaxTemplates left
+      rightTemplates = functionSyntaxTemplates right
+  in length leftTemplates == length rightTemplates
+    && and (zipWith templateEquivalent leftTemplates rightTemplates)
+  where
+    templateEquivalent
+        (SyntaxTemplate leftPieces) (SyntaxTemplate rightPieces) =
+      length leftPieces == length rightPieces
+        && and (zipWith pieceEquivalent leftPieces rightPieces)
+    pieceEquivalent
+        (SyntaxLiteral leftLiteral) (SyntaxLiteral rightLiteral) =
+      leftLiteral == rightLiteral
+    pieceEquivalent
+        (SyntaxHole leftHole) (SyntaxHole rightHole) =
+      holeEquivalent leftHole rightHole
+    pieceEquivalent _ _ = False
+    holeEquivalent ExpressionSyntaxHole ExpressionSyntaxHole = True
+    holeEquivalent BlockSyntaxHole BlockSyntaxHole = True
+    holeEquivalent
+        IdentifierExpressionSyntaxHole IdentifierExpressionSyntaxHole = True
+    holeEquivalent
+        (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
+      interpretedCanonicalResult leftValue
+        == interpretedCanonicalResult rightValue
+    holeEquivalent _ _ = False
+
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
 makeFunctionValue function = makeInterpretedValue functionDatraType
   (FunctionForm function) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
     (interpretedSemantics (functionCodomain function))
-    (functionSyntaxOrdinary function) (Just canonicalSource))
+    (Just canonicalSource))
   where
     signature = functionSignatureSource function
     canonicalSource = maybe signature id (functionSource function)
@@ -321,7 +360,8 @@ builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
 builtinMetaTypeName IntValRangeMetaType = "IntValRange"
-builtinMetaTypeName StringTemplateMetaType = "StrTempl"
+builtinMetaTypeName TemplateMetaType = "Template"
+builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
 builtinMetaTypeValue kind = makeInterpretedValue
@@ -331,7 +371,7 @@ builtinMetaTypeValue kind = makeInterpretedValue
 
 anyTypeValue, ordinalTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
   naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
-  stringTemplateTypeValue :: InterpretedValue
+  templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
 anyTypeValue = builtinMetaTypeValue AnyMetaType
 ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
 astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
@@ -339,7 +379,8 @@ naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
 naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
 integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
-stringTemplateTypeValue = builtinMetaTypeValue StringTemplateMetaType
+templateTypeValue = builtinMetaTypeValue TemplateMetaType
+syntaxTemplateTypeValue = builtinMetaTypeValue SyntaxTemplateMetaType
 
 syntaxCategoryTypeValue :: String -> InterpretedValue
 syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType . Just
@@ -370,7 +411,7 @@ data ValueForm
   | IdentifierValueTypeForm
   | ToStringForm
   | WeakToStringForm
-  | StringTemplateForm InterpretedValue
+  | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
@@ -585,7 +626,7 @@ interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
     BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
-    BuiltinMetaTypeForm StringTemplateMetaType -> AsciiStringValueKind
+    BuiltinMetaTypeForm TemplateMetaType -> AsciiStringValueKind
     BuiltinMetaTypeForm _ -> RangeValueKind
     FunctionForm _ -> FunctionValueKind
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
@@ -609,7 +650,7 @@ interpretedValueKind value =
     IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
     WeakToStringForm -> AsciiStringValueKind
-    StringTemplateForm _ -> AsciiStringValueKind
+    TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind

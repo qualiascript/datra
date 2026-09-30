@@ -20,7 +20,8 @@ source context expression =
       ("for " <> binderName name optional <> " of " <> source 0 bound)
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
-    SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)
+    SyntaxTypeValue templates signature -> wrapped 1
+      (source 2 templates <> " %> " <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)

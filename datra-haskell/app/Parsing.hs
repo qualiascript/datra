@@ -25,8 +25,8 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (find, nubBy)
-import Data.Maybe (catMaybes)
+import Data.List (find)
+import Data.Maybe (catMaybes, isJust)
 import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -316,10 +316,7 @@ standardLibraryValueDeclarations = case standardLibraryExpression of
 libraryRules :: [SyntaxRule]
 libraryRules =
   rules
-    <> [ rule
-          { syntaxName = libraryNamespace <> "." <> syntaxName rule }
-       | rule <- rules
-       ]
+    <> map (qualifySyntaxRule libraryNamespace) rules
   where
     rules = map inStandardLibrary
       ( concatMap declarationRules standardLibraryBootstrapDeclarations
@@ -413,8 +410,7 @@ astForm =
       , astUnaryForm "fun" Fun
       , astDependentBinder "with" WithBinding
       , astDependentBinder "for" ForBinding
-      , SyntaxType <$> (astSymbol "as?" *> astString) <*> pure True <*> astExpression
-      , SyntaxType <$> (astSymbol "as" *> astString) <*> pure False <*> astExpression
+      , astBinary AST.SyntaxTypeOperator SyntaxType
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
       , astUnary AST.ExternalOperator External
@@ -684,7 +680,7 @@ withDeclarations entries = local $ \context -> context
             ]
           rules = concatMap snd imported
           qualified =
-            [ rule { syntaxName = namespace <> "." <> syntaxName rule }
+            [ qualifySyntaxRule namespace rule
             | (namespace, moduleRules) <- imported
             , rule <- moduleRules
             ]
@@ -854,15 +850,12 @@ arrowExpressionWithLayer expressionLayer operand = do
   pure (maybe input (FunctionType input) output)
 
 syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
-syntaxTypeSuffix input signature = case input of
-  AsciiStringLiteral patternText -> do
-    syntaxSignature <- optional $ do
-      _ <- keywordToken "as"
-      ordinary <- maybe False (const True) <$> optional (char '?')
-      lineSpaceConsumer
-      SyntaxType patternText ordinary <$> signature
-    pure (maybe input id syntaxSignature)
-  _ -> pure input
+syntaxTypeSuffix input signature = do
+  syntaxSignature <- optional . try $ do
+    _ <- continuedOperator AST.SyntaxTypeOperator
+    guard (isJust (syntaxTemplatePatternTexts input))
+    SyntaxType input <$> signature
+  pure (maybe input id syntaxSignature)
 
 eitherExpressionWith :: Parser Expression -> Parser Expression
 eitherExpressionWith = eitherExpressionWithOperator
@@ -1245,34 +1238,43 @@ functionDomainMaybeThenExpressionWith operand =
 
 syntaxApplicationWith :: Parser Expression -> Parser Expression
 syntaxApplicationWith terminalExpression = do
-  name <- lookAhead $ do
+  surfaceHead <- optional $ try $ lookAhead $ do
     first <- bareIdentifierToken
-    rest <- many (try (char '.' <* notFollowedBy (char '.') *> bareIdentifierToken))
+    rest <- many
+      (try (char '.' <* notFollowedBy (char '.') *> bareIdentifierToken))
     pure (foldl (\left right -> left <> "." <> right) first rest)
-  rules <- filter ((== name) . syntaxName) . syntaxRules <$> ask
+  rules <- filter (matchesSurfaceHead surfaceHead) . syntaxRules <$> ask
+  prefixedRules <- catMaybes <$> traverse (\rule -> optional $ try $ lookAhead $ do
+    parseLiteralPrefix rule
+    pure rule) rules
   candidates <- catMaybes <$> traverse (\rule -> optional $ try $ lookAhead $ do
     value <- parseRule rule
-    end <- getOffset
-    pure (rule, value, end)) rules
+    pure (rule, value)) prefixedRules
   case candidates of
     [] -> empty
-    _ -> do
-      let furthest = maximum [end | (_,_,end) <- candidates]
-          longest =
-            [candidate | candidate@(_,_,end) <- candidates, end == furthest]
-          specificity (rule, _, _) = length
-            [() | SyntaxLiteral _ <- syntaxTemplatePieces (syntaxTemplate rule)]
-          mostSpecific = maximum (map specificity longest)
-          best = nubBy (\(_,a,_) (_,b,_) -> a == b)
-            [candidate | candidate <- longest
-              , specificity candidate == mostSpecific]
-      case best of
-        [(rule,_,_)] -> parseRule rule
-        _ -> fail ("ambiguous AST pattern for " <> name)
+    (rule,_) : _ -> parseRule rule
   where
+    matchesSurfaceHead surfaceHead rule =
+      case (surfaceHead, syntaxTemplateLiteralPrefix rule) of
+        (Just name, first : _) -> first == name
+        (_, []) -> True
+        (Nothing, _ : _) -> False
+    parseLiteralPrefix rule =
+      mapM_ parseLiteral
+        [ piece
+        | piece@(SyntaxLiteral _) <- takeWhile isLiteral
+            (syntaxTemplatePieces (syntaxTemplate rule))
+        ]
+    isLiteral SyntaxLiteral {} = True
+    isLiteral _ = False
+    parseLiteral piece@(SyntaxLiteral token) = do
+      syntaxPieceSpaceConsumer piece
+      _ <- if all (`elem` (",;" :: String)) token
+        then symbol (Text.pack token) else keyword (Text.pack token)
+      pure ()
+    parseLiteral _ = pure ()
     parseRule rule = do
-      _ <- continuedKeyword (Text.pack (syntaxName rule))
-      captures <- parsePieces rule
+      captures <- parsePieces rule True
         (syntaxTemplatePieces (syntaxTemplate rule))
       expanded <- either
         (fail . renderDatraError English . withoutSourceSpan)
@@ -1286,13 +1288,11 @@ syntaxApplicationWith terminalExpression = do
     obviouslyNumeric (Plus value) = obviouslyNumeric value
     obviouslyNumeric (Minus value) = obviouslyNumeric value
     obviouslyNumeric _ = False
-    parsePieces _ [] = pure []
-    parsePieces rule (piece@(SyntaxLiteral token) : rest) = do
-      syntaxPieceSpaceConsumer piece
-      _ <- if all (`elem` (",;" :: String)) token
-        then symbol (Text.pack token) else keyword (Text.pack token)
-      parsePieces rule rest
-    parsePieces rule (piece@(SyntaxHole holeKind) : rest) = do
+    parsePieces _ _ [] = pure []
+    parsePieces rule _ (piece@SyntaxLiteral {} : rest) = do
+      parseLiteral piece
+      parsePieces rule False rest
+    parsePieces rule firstPiece (piece@(SyntaxHole holeKind) : rest) = do
       context <- ask
       let knownDeclarations = syntaxDeclarations context
       syntaxPieceSpaceConsumer piece
@@ -1310,7 +1310,19 @@ syntaxApplicationWith terminalExpression = do
           adjacentHole = case rest of
             SyntaxHole _ : _ -> null enums
             _ -> False
-      value <- local (\nested -> nested { syntaxStops = stops <> syntaxStops nested }) $
+          withoutRecursiveFallback nested
+            | firstPiece
+            , null (syntaxTemplateLiteralPrefix rule) =
+                nested
+                  { syntaxRules = filter
+                      (not . null . syntaxTemplateLiteralPrefix)
+                      (syntaxRules nested)
+                  }
+            | otherwise = nested
+          holeContext nested =
+            withoutRecursiveFallback nested
+              { syntaxStops = stops <> syntaxStops nested }
+      value <- local holeContext $
         case holeKind of
           IdentifierExpressionSyntaxHole -> do
             spelling <- identifierExpression
@@ -1346,7 +1358,7 @@ syntaxApplicationWith terminalExpression = do
               then nonApplicationArithmeticExpression
               else boundaryAwareArithmeticExpression
       guard (null enums || not (obviouslyNumeric value))
-      let continue = (value :) <$> parsePieces rule rest
+      let continue = (value :) <$> parsePieces rule False rest
       case (holeKind, value) of
         (BlockSyntaxHole, AtlasMap entries) -> withDeclarations entries continue
         _ -> continue
@@ -1643,10 +1655,11 @@ multiplicationOperator infixOperator = try $ do
   pure token
 
 operatorBeforeIdentifierBoundary :: AST.Operator -> Parser Text
-operatorBeforeIdentifierBoundary operator =
-  try
-    (continuedOperator operator
-      <* notFollowedBy (try identifierOperationStart))
+operatorBeforeIdentifierBoundary operator = try $ do
+  stops <- syntaxStops <$> ask
+  mapM_ (notFollowedBy . keywordToken) stops
+  continuedOperator operator
+    <* notFollowedBy (try identifierOperationStart)
 
 identifierOperationStart :: Parser ()
 identifierOperationStart = do

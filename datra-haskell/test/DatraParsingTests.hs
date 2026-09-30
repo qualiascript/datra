@@ -2,9 +2,9 @@
 
 module DatraParsingTests (main) where
 
-import Control.Exception (ErrorCall, evaluate, try)
 import Data.Char (chr, toUpper)
-import Data.List (isInfixOf)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationDecision (..))
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -28,6 +28,7 @@ import DatraLanguage.AST.Syntax
 import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.SyntaxTemplate qualified as SyntaxTemplate
 import DatraLanguage.Diagnostics
   ( Located (Located)
   , SourcePosition (SourcePosition)
@@ -53,7 +54,9 @@ import SyntaxDefinitions
   , expandSyntax
   )
 import SyntaxTemplateMatching
-  ( SyntaxTemplateMatchFailure (..)
+  ( SyntaxTemplateFederationFailure (..)
+  , SyntaxTemplateMatchFailure (..)
+  , compileSyntaxTemplateFederation
   , matchSyntaxTemplates
   )
 import Numeric (showHex)
@@ -62,7 +65,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
-import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
+import Test.Tasty.HUnit (assertBool, testCase)
 
 main :: IO ()
 main = defaultMain testTree
@@ -79,10 +82,15 @@ testTree =
 
 regressionTests :: IO ()
 regressionTests = do
+  assert "a hole identifier ends before an adjacent literal operator"
+    (SyntaxTemplate.parseSyntaxTemplate id "$Int++"
+      == SyntaxTemplate
+        [ SyntaxHole (ValueSyntaxHole "Int")
+        , SyntaxLiteral "++"
+        ])
   let syntaxControl implementation = SyntaxRule
         { syntaxName = "test-control"
         , syntaxTemplate = SyntaxTemplate []
-        , syntaxOrdinary = False
         , syntaxSignature = ref "Any"
         , syntaxRecursive = False
         , syntaxModule = Nothing
@@ -96,8 +104,7 @@ regressionTests = do
       == Left (UnknownSyntaxControlAdapter "datra.syntax.unknown"))
   let syntaxFunction name pieces implementation = SyntaxRule
         { syntaxName = name
-        , syntaxTemplate = SyntaxTemplate pieces
-        , syntaxOrdinary = True
+        , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
         , syntaxSignature = FunctionType
             (AtlasMap [ref "Int", ref "IntLimit"])
             (ref "IntValRange")
@@ -131,31 +138,31 @@ regressionTests = do
         ]
         "datra.unrelated"
   assert "Int template holes reject an Infinity AST"
-    (matchSyntaxTemplates matchesNumericHole [wrongFrom] fromPhrase
+    (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
   assert "IntLimit template holes accept an Infinity AST"
     (case expandSyntax correctFrom [natural 0, ref "Infinity"] of
       Right expected ->
-        matchSyntaxTemplates matchesNumericHole [correctFrom] fromPhrase
+        matchRules matchesNumericHole [correctFrom] fromPhrase
           == Right expected
       Left _ -> False)
   assert "the explicit AST head selects the syntax binding"
-    ( matchSyntaxTemplates matchesNumericHole
+    ( matchRules matchesNumericHole
         [unrelated, correctFrom]
         fromPhrase
-        == matchSyntaxTemplates matchesNumericHole [correctFrom] fromPhrase
+        == matchRules matchesNumericHole [correctFrom] fromPhrase
     )
   assert "syntax templates rewrite an AST after it is read"
     (case parseDatraLocatedWithSyntaxImportsAndStandardLibrary
         False [] "<syntax-template-test>" "(from 0 to Infinity)" of
       Right (Located _ parsedPhrase) ->
-        matchSyntaxTemplates matchesNumericHole [correctFrom] parsedPhrase
-          == matchSyntaxTemplates matchesNumericHole [correctFrom] fromPhrase
+        matchRules matchesNumericHole [correctFrom] parsedPhrase
+          == matchRules matchesNumericHole [correctFrom] fromPhrase
       Left _ -> False)
   let nestedTailPhrase = foldl FunctionApplication (ref "from")
         [natural 0, AtlasMap [ref "to", ref "Infinity"]]
   assert "matching does not flatten through a nested AST boundary"
-    (matchSyntaxTemplates matchesNumericHole [correctFrom] nestedTailPhrase
+    (matchRules matchesNumericHole [correctFrom] nestedTailPhrase
       == Left NoMatchingSyntaxTemplate)
   let greedyRule = syntaxFunction "greedy"
         [ SyntaxHole (ValueSyntaxHole "Prefix")
@@ -179,7 +186,7 @@ regressionTests = do
   assert "holes match greedily inside the current AST boundary"
     (case expandSyntax greedyRule [greedyPrefix, natural 3] of
       Right expected ->
-        matchSyntaxTemplates matchesGreedyHole [greedyRule] greedyPhrase
+        matchRules matchesGreedyHole [greedyRule] greedyPhrase
           == Right expected
       Left _ -> False)
   let contextualShort = syntaxFunction "contextual"
@@ -190,13 +197,35 @@ regressionTests = do
         "datra.contextual-long"
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
-  assert "the longest matching prefix wins without escaping its AST context"
-    (case expandSyntax contextualLong [natural 1, natural 2] of
+  assert "the first declaration wins and leaves its unmatched AST suffix"
+    (case expandSyntax contextualShort [natural 1] of
       Right expanded ->
-        matchSyntaxTemplates matchesNumericHole
+        matchRules matchesNumericHole
           [contextualShort, contextualLong]
           contextualPhrase
-          == Right (FunctionApplication expanded (ref "after"))
+          == Right (foldl FunctionApplication expanded
+            [ref "marker", natural 2, ref "after"])
+      Left _ -> False)
+  let rankedShort = syntaxFunction "ranked"
+        [SyntaxHole ExpressionSyntaxHole]
+        "datra.ranked-short"
+      rankedLong = syntaxFunction "ranked"
+        [ SyntaxHole ExpressionSyntaxHole
+        , SyntaxLiteral "marker"
+        , SyntaxHole ExpressionSyntaxHole
+        ]
+        "datra.ranked-long"
+      rankedPhrase = foldl FunctionApplication (ref "ranked")
+        [natural 1, ref "marker", natural 2]
+  let rankedCapture = foldl FunctionApplication (natural 1)
+        [ref "marker", natural 2]
+  assert "the first declaration greedily takes its longest valid match"
+    (case expandSyntax rankedShort [rankedCapture] of
+      Right expected ->
+        matchRules (const (const True))
+          [rankedShort, rankedLong]
+          rankedPhrase
+          == Right expected
       Left _ -> False)
   let tiedLeft = syntaxFunction "tied"
         [SyntaxHole ExpressionSyntaxHole]
@@ -204,20 +233,13 @@ regressionTests = do
       tiedRight = syntaxFunction "tied"
         [SyntaxHole ExpressionSyntaxHole]
         "datra.tied-right"
-      tiedPhrase = FunctionApplication (ref "tied") (natural 1)
-  tiedResult <- try (evaluate
-    (matchSyntaxTemplates (const (const True))
-      [tiedLeft, tiedRight] tiedPhrase))
-      :: IO
-        (Either ErrorCall
-          (Either SyntaxTemplateMatchFailure Expression))
-  case tiedResult of
-    Left failure -> assert
-      "equal template matches throw an internal overlap error"
-      ("internal error: syntax template federation admitted overlapping"
-        `isInfixOf` show failure)
-    Right _ -> assertFailure
-      "equal template matches unexpectedly escaped the overlap invariant"
+  assert "overlapping templates are rejected before AST matching"
+    (case compileSyntaxTemplateFederation
+        (\_ _ -> AtlasMapFederationRefuted ())
+        [tiedLeft, tiedRight] of
+      Left failure -> failure == OverlappingSyntaxTemplates
+        "tied $_Expr" "tied $_Expr"
+      Right _ -> False)
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
@@ -343,7 +365,8 @@ regressionTests = do
     [ Import False "library_one", Import True "std"
     , InModule "std" This
     , NamedAccess This (IdentifierString "abc")
-    , SyntaxType "$Int next" True (FunctionType (ref "Int") (ref "Int"))
+    , SyntaxType (Extract (AsciiStringLiteral "$Int next"))
+        (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
@@ -504,24 +527,35 @@ regressionTests = do
     "{value? : Any} -> Nat do yield value"
     (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
   assertParsed "a declared syntax signature is not a shorthand function domain"
-    "\"$Int next\" as (Int -> Int) do yield value"
+    "%\"step $Int next\" %> (Int -> Int) do yield value"
     (MapSpecification identityBody
-      (SyntaxType "$Int next" False
+      (SyntaxType (Extract (AsciiStringLiteral "step $Int next"))
         (FunctionType (ref "Int") (ref "Int"))))
-  let syntaxAdapterType = SyntaxType "$_Expr" False
+  assertParsed "%> accepts an ordinary inhabited template list"
+    "%(\"$Int++\"; \"increment $Int\") %> (Int -> Int)"
+    (SyntaxType
+      (Extract (AtlasMap
+        [ AsciiStringLiteral "$Int++"
+        , AsciiStringLiteral "increment $Int"
+        ]))
+      (FunctionType (ref "Int") (ref "Int")))
+  assertRejected "a syntax signature requires an explicit Template operand"
+    "\"step $Int next\" %> (Int -> Int) do yield value"
+  let syntaxAdapterType = SyntaxType
+        (Extract (AsciiStringLiteral "handler $_Expr"))
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use an explicit yield"
-    "\"$_Expr\" as (Any -> Any) yield !$~\"datra.syntax.test\""
+    "%\"handler $_Expr\" %> (Any -> Any) yield !$~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertRejected "inline external syntax adapters require yield"
-    "\"$_Expr\" as (Any -> Any) !$~\"datra.syntax.test\""
+    "%\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
   assertParsed "typed external syntax adapters use an explicit yield"
-    "handler : \"$_Expr\" as (Any -> Any) := yield !$~\"datra.syntax.test\""
+    "handler : %\"handler $_Expr\" %> (Any -> Any) := yield !$~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assertRejected "typed external syntax adapters require yield after assignment"
-    "handler : \"$_Expr\" as (Any -> Any) := !$~\"datra.syntax.test\""
+    "handler : %\"handler $_Expr\" %> (Any -> Any) := !$~\"datra.syntax.test\""
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1806,6 +1840,18 @@ regressionTests = do
     "(1)\n(2)"
     (natural 1 <:> natural 2)
 
+matchRules
+  :: (SyntaxHoleKind String -> Expression -> Bool)
+  -> [SyntaxRule]
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure Expression
+matchRules holeMatches rules expressionValue =
+  case compileSyntaxTemplateFederation
+      (\_ _ -> AtlasMapFederationProved ()) rules of
+    Right federation ->
+      matchSyntaxTemplates holeMatches federation expressionValue
+    Left _ -> Left NoMatchingSyntaxTemplate
+
 assert :: String -> Bool -> IO ()
 assert = assertBool
 
@@ -1832,7 +1878,7 @@ genExpression =
   Gen.recursive Gen.choice
     [ EllipsisNatural <$> Gen.integral (Range.linear 0 1000)
     , pure EllipsisLiteral
-    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "StrTempl"]
+    , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
     , pure This
     , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
@@ -1849,7 +1895,8 @@ genExpression =
     , Gen.subterm2 genExpression genExpression FunctionApplication
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
     , Gen.subterm genExpression (InModule "std")
-    , Gen.subterm genExpression (SyntaxType "$Int next" True)
+    , Gen.subterm genExpression
+        (SyntaxType (Extract (AsciiStringLiteral "$Int next")))
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Program [binding] result)

@@ -32,6 +32,11 @@ standardLibraryTests =
             "yield Pages" (SourceEvaluationFailure (UnknownIdentifier "Pages"))
         , programFailureCase "IdenExp is private to the library"
             "yield IdenExp" (SourceEvaluationFailure (UnknownIdentifier "IdenExp"))
+        , programFailureCase "_SyntaxTemplate is private to the library"
+            "yield _SyntaxTemplate"
+            (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
+        , programCase "SyntaxTemplate external uses the private type spelling"
+            "yield !$~\"datra.SyntaxTemplate\"" "_SyntaxTemplate"
         ]
     , testGroup "qualified syntax"
         [ expressionCase source source expected
@@ -333,11 +338,13 @@ standardLibraryTests =
             , "(!$~\"datra.Block\") of (!$~\"datra.AST\")"
             , "not ((!$~\"datra.Block\") of (!$~\"datra.Expr\"))"
             , "((!$~\"datra.Expr\") ~> (!$~\"datra.AST\")) of (!$~\"datra.AST\")"
-            , "\"%Any\" of StrTempl"
-            , "\"%Int %IdenStr\" of StrTempl"
-            , "(\"%Int %IdenStr\" ~> StrTempl) of StrTempl"
-            , "not (2 of StrTempl)"
-            , "Str of StrTempl"
+            , "\"%Any\" of Template"
+            , "\"%Int %IdenStr\" of Template"
+            , "(\"%Int %IdenStr\" ~> Template) of Template"
+            , "not (2 of Template)"
+            , "Str of Template"
+            , "Template of Any"
+            , "(\"left\"; \"right\") of InhabitedList Template"
             ]
         ]
     , testGroup "dependent List"
@@ -629,10 +636,52 @@ declaredPatternTests =
   testGroup "declared patterns"
     [ programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
+    , programCase "surface syntax name may differ from its binding"
+        ( "abc : %\"def $Nat next\" %> ({value?:Nat} -> Int)"
+            <> " := (do yield value+1)\n"
+            <> "yield def 2 next"
+        )
+        "3"
+    , programCase "the complete literal prefix is matched before its first hole"
+        ( "abc : %\"my name is $Nat\" %> ({value?:Nat} -> Int)"
+            <> " := (do yield value+1)\n"
+            <> "yield my name is 2"
+        )
+        "3"
+    , programCase "a template may begin with a postfix operand hole"
+        ( "increment : %\"$Int++\" %> ({value?:Int} -> Int)"
+            <> " := (do yield value+1)\n"
+            <> "yield 2++"
+        )
+        "3"
+    , programCase "one function accepts an inhabited list of templates"
+        ( "increment : %(\"$Int++\"; \"increment $Int\")"
+            <> " %> ({value?:Int} -> Int) := (do yield value+1)\n"
+            <> "yield (2++; increment 2)"
+        )
+        "(3; 3)"
+    , programCase "syntax annotation canonicalizes as an explicit function"
+        "yield (%\"step $Int next\" %> (Int -> Int))" "(Int -> Int)"
     , programCase "ordinary spelling"
         (ordinaryDeclaration <> "yield step (value:2)") "3"
     , programCase "syntax function subfederation"
         (declaration <> "yield step of ({value?:Nat} -> Int)") "true"
+    , programCase "identical syntax attachments are subfederations"
+        ( "yield ((%\"step $Int mark\" %> (Int -> Int))"
+            <> " of (%\"step $Int mark\" %> (Int -> Int)))"
+        )
+        "true"
+    , programCase "distinct syntax attachments are not subfederations"
+        ( "yield ((%\"step $Int left\" %> (Int -> Int))"
+            <> " of (%\"step $Int right\" %> (Int -> Int)))"
+        )
+        "false"
+    , programFailureCase "specification preserves syntax attachment identity"
+        ( "yield ((%\"step $Int left\" %> (Int -> Int))"
+            <> " ~> (%\"step $Int right\" %> (Int -> Int)))"
+        )
+        (SourceEvaluationFailure
+          (FunctionEvaluationFailed FunctionSignatureVarianceViolation))
     , programCase "ordinary specified function remains callable"
         (ordinaryDeclaration
           <> "f := (step ~> ({value?:Nat} -> Int))\nyield f 2")
@@ -641,22 +690,60 @@ declaredPatternTests =
         (declaration <> "yield step (-1) next")
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-    , programFailureCase "syntax-only function rejects ordinary calls"
-        (declaration <> "yield step 2")
+    , programFailureCase "$Int syntax holes reject Infinity"
+        ( "finite : %\"finite $Int\" %> ({value?:Int} -> Int)"
+            <> " := (do yield value)\n"
+            <> "yield finite Infinity"
+        )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+    , programCase "$IntLimit syntax holes accept Infinity"
+        ( "limit : %\"limit $IntLimit\" %> ({value?:IntLimit} -> IntLimit)"
+            <> " := (do yield value)\n"
+            <> "yield limit Infinity"
+        )
+        "Infinity"
+    , programFailureCase "syntax captures must also inhabit the function domain"
+        ( "step : %\"step $Int next\" %> ({value?:Nat} -> Int)"
+            <> " := (do yield value+1)\n"
+            <> "yield step (-1) next"
+        )
+        (SourceEvaluationFailure
+          (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+    , programCase "declared syntax functions always permit ordinary calls"
+        (declaration <> "yield step 2")
+        "3"
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"$Int next\" as (Int -> Int) yield !$~\"datra.abs\")"
-            <> " | (\"$Int next\" as (Int -> Int) do yield 2))\n"
-            <> "yield step 3 next"
+        ( "step := ((%\"step $Int next\" %> (Int -> Int) yield !$~\"datra.abs\")"
+            <> " | (%\"step $Int next\" %> (Int -> Int) do yield 2))\n"
+            <> "yield step"
+        )
+        (SourceEvaluationFailure EitherAlternativesNotDistinct)
+    , programCase "distinct literal syntax alternatives form a federation"
+        ( "step := ((%\"step $Int left\" %> ({value?:Int} -> Int) do yield value)"
+            <> " | (%\"step $Int right\" %> ({value?:Int} -> Int) do yield value))\n"
+            <> "yield step 3 right"
+        )
+        "3"
+    , programFailureCase
+        "syntax alternatives require disjoint ordinary domains"
+        ( "step := ((%\"step $Int left\" %> (Int -> Int) yield !$~\"datra.abs\")"
+            <> " | (%\"step $Int right\" %> (Int -> Int) yield !$~\"datra.abs\"))\n"
+            <> "yield step"
+        )
+        (SourceEvaluationFailure EitherAlternativesNotDistinct)
+    , programFailureCase "overlapping syntax hole domains are rejected"
+        ( "choose := ((%\"choose $Nat mark\" %> (Nat -> Int) yield !$~\"datra.abs\")"
+            <> " | (%\"choose $Int mark\" %> (Int -> Int) yield !$~\"datra.abs\"))\n"
+            <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     ]
   where
     declaration =
-      "step : \"$Nat next\" as ({value?:Nat} -> Int) := (do yield value+1)\n"
+      "step : %\"step $Nat next\" %> ({value?:Nat} -> Int) := (do yield value+1)\n"
     ordinaryDeclaration =
-      "step : \"$Nat next\" as? ({value?:Int} -> Int) := (do yield value+1)\n"
+      "step : %\"step $Nat next\" %> ({value?:Int} -> Int) := (do yield value+1)\n"

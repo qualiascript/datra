@@ -260,7 +260,7 @@ preservesConcatenationBoundary value =
     IdentifierValueTypeForm -> True
     ToStringForm -> True
     WeakToStringForm -> True
-    StringTemplateForm _ -> True
+    TemplateForm _ -> True
     AssignmentForm _ -> True
     SpecificationForm _ -> True
     _ -> False

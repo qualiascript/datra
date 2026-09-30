@@ -7,15 +7,18 @@
 -- string-template/value matching rather than a second parser-side type system.
 module SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
+  , SyntaxTemplateFederation
+  , SyntaxTemplateFederationFailure (..)
+  , compileSyntaxTemplateFederation
   , canonicalSyntaxTemplate
   , matchSyntaxTemplates
   ) where
 
-import Data.List (nubBy)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationDecision (..))
+import Data.Foldable (traverse_)
 import DatraLanguage.AST
-  ( Expression (..)
-  , IdentifierString (IdentifierString)
-  )
+  ( Expression (..) )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
@@ -23,6 +26,7 @@ import SyntaxDefinitions
   , SyntaxRule (..)
   , SyntaxTemplate (..)
   , expandSyntax
+  , syntaxTemplateLiteralPrefix
   )
 import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure )
@@ -33,38 +37,80 @@ data SyntaxTemplateMatchFailure
   | SyntaxTemplateExpansionFailure SyntaxExpansionFailure
   deriving (Eq, Show)
 
-type HoleMatches = SyntaxHoleKind -> Expression -> Bool
+newtype SyntaxTemplateFederation = SyntaxTemplateFederation [SyntaxRule]
+
+data SyntaxTemplateFederationFailure
+  = OverlappingSyntaxTemplates String String
+  | UndecidableSyntaxTemplates String String
+  deriving (Eq, Show)
+
+-- | Admit a template federation only after every pair which can share a
+-- surface head has a proof of deterministic distinction. Distinct leading
+-- literals are disjoint without consulting the decision procedure; a template
+-- without a leading literal remains on the conservative fallback path.
+compileSyntaxTemplateFederation
+  :: (SyntaxRule
+      -> SyntaxRule
+      -> AtlasMapFederationDecision refutation uncertainty ())
+  -> [SyntaxRule]
+  -> Either SyntaxTemplateFederationFailure SyntaxTemplateFederation
+compileSyntaxTemplateFederation decide rules = do
+  traverse_ requireDistinct
+    [ (left, right)
+    | (position, left) <- zip [0 :: Int ..] rules
+    , right <- drop (position + 1) rules
+    , templatesCanCompete left right
+    ]
+  pure (SyntaxTemplateFederation rules)
+  where
+    requireDistinct (left, right) =
+      case decide left right of
+        AtlasMapFederationProved () -> Right ()
+        AtlasMapFederationRefuted _ -> Left
+          (OverlappingSyntaxTemplates
+            (canonicalSyntaxTemplate left)
+            (canonicalSyntaxTemplate right))
+        AtlasMapFederationUndecidable _ -> Left
+          (UndecidableSyntaxTemplates
+            (canonicalSyntaxTemplate left)
+            (canonicalSyntaxTemplate right))
+    templatesCanCompete left right = and
+      (zipWith (==)
+        (syntaxTemplateLiteralPrefix left)
+        (syntaxTemplateLiteralPrefix right))
+
+type HoleMatches = SyntaxHoleKind String -> Expression -> Bool
 
 data SuccessfulMatch = SuccessfulMatch
   { successfulRule :: SyntaxRule
   , successfulCaptures :: [Expression]
-  , successfulConsumed :: Int
   , successfulRemaining :: [Expression]
   }
 
 -- | Match within one application spine. Its explicit head identifier first
--- selects one binding, so only rules attached to that name participate. Rules
--- try the longest prefix available inside that context; holes likewise try
+-- filters templates by their literal prefix. The selected template
+-- still expands to its own binding, whose name may differ. Rules
+-- are tried in declaration order. Within the first rule that fits, the rule
+-- tries the longest prefix available inside that context; holes likewise try
 -- their longest available sequence and backtrack when membership or the
 -- remaining pieces fail. Unconsumed arguments are reapplied to the rewritten
 -- prefix. Matching never descends through another AST node to enlarge the
--- context. More than one distinct match consuming the same longest prefix
--- violates the declaration federation's disjointness invariant.
+-- context.
 matchSyntaxTemplates
   :: HoleMatches
-  -> [SyntaxRule]
+  -> SyntaxTemplateFederation
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
-matchSyntaxTemplates holeMatches rules expressionValue = do
-  (name, arguments) <- maybe (Left NotSyntaxApplication) Right
-    (applicationPhrase expressionValue)
-  let applicable = filter ((== name) . syntaxName) rules
+matchSyntaxTemplates holeMatches
+    (SyntaxTemplateFederation rules) expressionValue = do
+  let phrase = applicationPhrase expressionValue
+      applicable = filter (prefixMatches phrase) rules
       successful =
-        [ SuccessfulMatch rule captures consumed remaining
+        [ SuccessfulMatch rule captures remaining
         | rule <- applicable
         , consumed <- reverse
-            [minimumRequiredValues (rulePieces rule) .. length arguments]
-        , let (candidate, remaining) = splitAt consumed arguments
+            [minimumRequiredValues (rulePieces rule) .. length phrase]
+        , let (candidate, remaining) = splitAt consumed phrase
         , captures <- matchPieces holeMatches (rulePieces rule) candidate
         ]
   matched <- chooseSuccessful successful
@@ -73,30 +119,23 @@ matchSyntaxTemplates holeMatches rules expressionValue = do
     Right
     (expandSyntax (successfulRule matched) (successfulCaptures matched))
   pure (foldl FunctionApplication expanded (successfulRemaining matched))
+  where
+    prefixMatches phrase rule = and
+      (zipWith matchesLiteral
+        (syntaxTemplateLiteralPrefix rule)
+        phrase)
+      && length (syntaxTemplateLiteralPrefix rule) <= length phrase
+    matchesLiteral literal = (== literal) . renderSourceExpression
 
 chooseSuccessful
   :: [SuccessfulMatch]
   -> Either SyntaxTemplateMatchFailure SuccessfulMatch
 chooseSuccessful [] = Left NoMatchingSyntaxTemplate
-chooseSuccessful matches =
-  case distinctLongest of
-    [matched] -> Right matched
-    ambiguous -> error
-      ("internal error: syntax template federation admitted overlapping "
-        <> "branches: "
-        <> show
-          (map (canonicalSyntaxTemplate . successfulRule) ambiguous))
-  where
-    longest = maximum (map successfulConsumed matches)
-    distinctLongest = nubBy
-      (\left right ->
-        successfulRule left == successfulRule right
-          && successfulCaptures left == successfulCaptures right)
-      (filter ((== longest) . successfulConsumed) matches)
+chooseSuccessful (matched : _) = Right matched
 
 canonicalSyntaxTemplate :: SyntaxRule -> String
 canonicalSyntaxTemplate rule = unwords
-  (syntaxName rule : map renderPiece (rulePieces rule))
+  (map renderPiece (rulePieces rule))
   where
     renderPiece (SyntaxLiteral literal) = literal
     renderPiece (SyntaxHole ExpressionSyntaxHole) = "$_Expr"
@@ -104,15 +143,13 @@ canonicalSyntaxTemplate rule = unwords
     renderPiece (SyntaxHole IdentifierExpressionSyntaxHole) = "$_IdenExp"
     renderPiece (SyntaxHole (ValueSyntaxHole kind)) = '$' : kind
 
-rulePieces :: SyntaxRule -> [SyntaxPiece]
+rulePieces :: SyntaxRule -> [SyntaxPiece String]
 rulePieces = syntaxTemplatePieces . syntaxTemplate
 
-applicationPhrase :: Expression -> Maybe (String, [Expression])
+applicationPhrase :: Expression -> [Expression]
 applicationPhrase expressionValue =
   case applicationSpine expressionValue of
-    (IdentifierReference (IdentifierString name), arguments) ->
-      Just (name, arguments)
-    _ -> Nothing
+    (headValue, arguments) -> headValue : arguments
 
 applicationSpine :: Expression -> (Expression, [Expression])
 applicationSpine = go []
@@ -123,7 +160,7 @@ applicationSpine = go []
 
 matchPieces
   :: HoleMatches
-  -> [SyntaxPiece]
+  -> [SyntaxPiece String]
   -> [Expression]
   -> [[Expression]]
 matchPieces _ [] [] = [[]]
@@ -141,11 +178,11 @@ matchPieces holeMatches (SyntaxHole kind : pieces) values =
   , captures <- matchPieces holeMatches pieces remaining
   ]
 
-maximumCaptureLength :: [SyntaxPiece] -> [Expression] -> Int
+maximumCaptureLength :: [SyntaxPiece String] -> [Expression] -> Int
 maximumCaptureLength remaining values =
   max 0 (length values - minimumRequiredValues remaining)
 
-minimumRequiredValues :: [SyntaxPiece] -> Int
+minimumRequiredValues :: [SyntaxPiece String] -> Int
 minimumRequiredValues = length
 
 applicationFrom :: [Expression] -> Expression

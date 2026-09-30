@@ -70,7 +70,7 @@ decideBuiltinMetaSubfederation source target =
         rangeWithInfinity alternatives NatValRangeMetaType
       (EitherForm alternatives, IntValRangeMetaType) ->
         rangeWithInfinity alternatives IntValRangeMetaType
-      (_, StringTemplateMetaType) ->
+      (_, TemplateMetaType) ->
         federationProducesStrings (interpretedAtlasMapFederation source)
       _ -> False
 

@@ -164,7 +164,7 @@ prettyNonKeywordCanonicalResult result =
           renderCanonicalResult
           compactCanonicalStringInterpolation
           [StringTemplateWeakInterpolation source])
-    CanonicalStringTemplate template ->
+    CanonicalTemplate template ->
       case canonicalStringTemplateParts template of
         Just parts ->
           pretty
@@ -246,7 +246,7 @@ canonicalStringTemplateParts result =
     CanonicalToString source -> Just [StringTemplateInterpolation source]
     CanonicalWeakToString source ->
       Just [StringTemplateWeakInterpolation source]
-    CanonicalStringTemplate nested -> canonicalStringTemplateParts nested
+    CanonicalTemplate nested -> canonicalStringTemplateParts nested
     CanonicalDependentSum "Str" ->
       Just [StringTemplateInterpolation result]
     _ -> Nothing
@@ -499,7 +499,7 @@ coalizationOperandNeedsParens operand =
     CanonicalEither {} -> True
     CanonicalRangeConcatenation {} -> True
     CanonicalConcatenation {} -> True
-    CanonicalStringTemplate {} -> True
+    CanonicalTemplate {} -> True
     CanonicalDependentSum {} -> True
     CanonicalSimpleIdentifierType {} -> True
     CanonicalDependentIdentifierType {} -> True

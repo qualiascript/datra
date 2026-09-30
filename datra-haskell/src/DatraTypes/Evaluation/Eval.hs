@@ -10,7 +10,7 @@ import Evaluation.Specification (specifyValues)
 import Evaluation.ToString
   ( CanonicalStringCodec
   , stringConversionIsIdentity
-  , stringTemplateValue
+  , templateValue
   , toStringValue
   )
 import Evaluation.Value
@@ -28,6 +28,6 @@ evalValues codec source target
       specifyValues source target
   | otherwise = do
       renderedTarget <- toStringValue codec target
-      matched <- specifyValues source (stringTemplateValue renderedTarget)
+      matched <- specifyValues source (templateValue renderedTarget)
       captured <- extractValue matched
       accessValues captured (makeNatural 1)

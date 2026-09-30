@@ -123,7 +123,7 @@ data Expression
   | ForBinding IdentifierString Bool Expression
   | InModule String Expression
   | Import Bool String
-  | SyntaxType String Bool Expression
+  | SyntaxType Expression Expression
   | FunctionType Expression Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
@@ -258,7 +258,7 @@ data OperatorExpression
   | ForBindingValue IdentifierString Bool OperatorExpression
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
-  | SyntaxTypeValue String Bool OperatorExpression
+  | SyntaxTypeValue OperatorExpression OperatorExpression
   | FunctionTypeValue OperatorExpression OperatorExpression
   | FunctionBodyValue [OperatorExpression] OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
@@ -401,7 +401,10 @@ normalizeExpression (ForBinding name optional bound) =
   ForBinding name optional (normalizeExpression bound)
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
-normalizeExpression (SyntaxType patternText ordinary signature) = SyntaxType patternText ordinary (normalizeExpression signature)
+normalizeExpression (SyntaxType templates signature) =
+  SyntaxType
+    (normalizeExpression templates)
+    (normalizeExpression signature)
 normalizeExpression (FunctionType input output) = FunctionType (normalizeExpression input) (normalizeExpression output)
 normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
@@ -569,7 +572,8 @@ lower (ForBinding name optional bound) =
   ForBindingValue name optional (lower bound)
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
-lower (SyntaxType patternText ordinary signature) = SyntaxTypeValue patternText ordinary (lower signature)
+lower (SyntaxType templates signature) =
+  SyntaxTypeValue (lower templates) (lower signature)
 lower (FunctionType input output) = FunctionTypeValue (lower input) (lower output)
 lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
@@ -779,7 +783,8 @@ prettyOperator (ForBindingValue (IdentifierString name) optional bound) =
     ]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
-prettyOperator (SyntaxTypeValue patternText ordinary signature) = prettyForm (if ordinary then "as?" else "as") [pretty (renderAsciiStringLiteral patternText), prettyOperator signature]
+prettyOperator (SyntaxTypeValue templates signature) =
+  prettyBinary SyntaxTypeOperator templates signature
 prettyOperator (FunctionTypeValue input output) = prettyBinary FunctionTypeOperator input output
 prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
@@ -1040,7 +1045,8 @@ traverseExpressionChildren visit expression = case expression of
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
   NamedAccess value name -> (`NamedAccess` name) <$> visit value
-  SyntaxType text ordinary signature -> SyntaxType text ordinary <$> visit signature
+  SyntaxType templates signature ->
+    SyntaxType <$> visit templates <*> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
   IdentifierTemplateOperation parts annotation given ->
     IdentifierTemplateOperation

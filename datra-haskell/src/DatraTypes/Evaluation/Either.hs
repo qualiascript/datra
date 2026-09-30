@@ -8,6 +8,11 @@ import AtlasMapFederationExpression
 import Data.List (nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (..)
+  , SyntaxPiece (..)
+  , SyntaxTemplate (..)
+  )
 import Evaluation.Error
   ( InterpretingError (EitherAlternativesNotDistinct) )
 import Evaluation.Specification.Composition (selectFederationMember)
@@ -39,11 +44,13 @@ identicalLoweredSyntaxFunction :: InterpretedValue -> InterpretedValue -> Bool
 identicalLoweredSyntaxFunction left right =
   case (interpretedFunction left, interpretedFunction right) of
     (Just leftFunction, Just rightFunction) ->
-      case ( functionSyntaxOrdinary leftFunction
-           , functionSyntaxOrdinary rightFunction
+      case ( functionSyntax leftFunction
+           , functionSyntax rightFunction
            ) of
-        (Just _, Just _) ->
-          interpretedCanonicalResult left == interpretedCanonicalResult right
+        (Just leftSyntax, Just rightSyntax) ->
+          functionSyntaxEquivalent leftSyntax rightSyntax
+            && interpretedCanonicalResult left
+              == interpretedCanonicalResult right
         _ -> False
     _ -> False
 
@@ -55,6 +62,15 @@ alternativesArePairwiseDistinct (member : remaining) =
 
 alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
+  | Just leftFunction <- interpretedFunction left
+  , Just rightFunction <- interpretedFunction right
+  , Just leftSyntax <- functionSyntax leftFunction
+  , Just rightSyntax <- functionSyntax rightFunction =
+      case decideSyntaxFunctionAlternatives
+          leftFunction leftSyntax rightFunction rightSyntax of
+        DecisionProved () -> True
+        DecisionRefuted -> False
+        DecisionUndecidable -> False
   | interpretedCanonicalResult left == interpretedCanonicalResult right = False
   | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
       alternativesAreDistinct (functionDomain a) (functionDomain b)
@@ -120,6 +136,54 @@ alternativesAreDistinct left right
   | isNumericalRange left
   , federationProducesStrings (interpretedAtlasMapFederation right) = True
   | otherwise = rangeAlternativesAreDistinct left right
+
+-- Declaration order makes structurally different templates deterministic for
+-- the declared spelling. Ordinary application is always available, so the
+-- domains must independently be disjoint as well.
+decideSyntaxFunctionAlternatives
+  :: EvaluatedFunction
+  -> FunctionSyntax InterpretedValue
+  -> EvaluatedFunction
+  -> FunctionSyntax InterpretedValue
+  -> Decision ()
+decideSyntaxFunctionAlternatives
+    leftFunction leftSyntax rightFunction rightSyntax
+  | not syntaxRoutesDistinct =
+      if functionSyntaxEquivalent leftSyntax rightSyntax
+        then DecisionRefuted
+        else DecisionUndecidable
+  | ordinaryRoutesOverlap = DecisionUndecidable
+  | otherwise = DecisionProved ()
+  where
+    syntaxRoutesDistinct = and
+      [ templatePriority leftTemplate /= templatePriority rightTemplate
+          || alignedLiteralsConflict leftTemplate rightTemplate
+          || alternativesAreDistinct
+            (functionDomain leftFunction)
+            (functionDomain rightFunction)
+      | leftTemplate <- functionSyntaxTemplates leftSyntax
+      , rightTemplate <- functionSyntaxTemplates rightSyntax
+      ]
+    ordinaryRoutesOverlap = not (alternativesAreDistinct
+      (functionDomain leftFunction)
+      (functionDomain rightFunction))
+
+templatePriority :: SyntaxTemplate value -> Int
+templatePriority (SyntaxTemplate pieces) = length pieces
+
+alignedLiteralsConflict
+  :: SyntaxTemplate left
+  -> SyntaxTemplate right
+  -> Bool
+alignedLiteralsConflict
+    (SyntaxTemplate leftPieces) (SyntaxTemplate rightPieces) =
+  length leftPieces == length rightPieces
+    && or (zipWith conflicts leftPieces rightPieces)
+  where
+    conflicts
+        (SyntaxLiteral leftLiteral) (SyntaxLiteral rightLiteral) =
+      leftLiteral /= rightLiteral
+    conflicts _ _ = False
 
 -- Literal unit components are neutral in a sequence. An atomic total value
 -- still supplies one structural component, so it cannot overlap a sequence

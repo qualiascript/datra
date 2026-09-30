@@ -10,6 +10,7 @@ module DatraTypes
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
   , withIdentifierErasureType
@@ -20,7 +21,8 @@ module DatraTypes
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
-  , stringTemplateTypeValue
+  , templateTypeValue
+  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
@@ -64,7 +66,7 @@ module DatraTypes
   , CanonicalStringCodec (..)
   , toStringValue
   , weakToStringValue
-  , stringTemplateValue
+  , templateValue
   , stripIdentifiersValue
   , stripIdentifiersType
   , stripOuterIdentifierValue
@@ -243,7 +245,7 @@ import Evaluation.Optional
   )
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
-  , stringTemplateValue
+  , templateValue
   , toStringValue
   , weakToStringValue
   )
@@ -346,6 +348,7 @@ import Evaluation.Value
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
   , withIdentifierErasureType
@@ -354,7 +357,8 @@ import Evaluation.Value
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
-  , stringTemplateTypeValue
+  , templateTypeValue
+  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName

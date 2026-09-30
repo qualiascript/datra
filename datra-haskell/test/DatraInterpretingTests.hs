@@ -3,8 +3,8 @@
 
 module DatraInterpretingTests (main) where
 
-import Control.Exception (ErrorCall, evaluate, try)
-import Data.List (isInfixOf)
+import AtlasMapFederationExpression
+  ( AtlasMapFederationDecision (..))
 import Datra.Interpreter.FunctionClosureTests (functionClosureTests)
 import Datra.Interpreter.FunctionTests (functionTests)
 import Datra.Interpreter.DatraTypeLawTests (datraTypeLawTests)
@@ -31,6 +31,8 @@ import DatraLanguage.AST.Syntax
   , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (FunctionSyntax) )
 import DatraTypes qualified as Types
 import Interpreting
   ( InterpretedValue
@@ -93,7 +95,9 @@ import SyntaxDefinitions
   , SyntaxTemplate (SyntaxTemplate)
   )
 import SyntaxTemplateMatching
-  ( SyntaxTemplateMatchFailure (NoMatchingSyntaxTemplate)
+  ( SyntaxTemplateFederationFailure (..)
+  , SyntaxTemplateMatchFailure (NoMatchingSyntaxTemplate)
+  , compileSyntaxTemplateFederation
   , matchSyntaxTemplates
   )
 import Hedgehog qualified as H
@@ -174,6 +178,18 @@ testTree =
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
+
+matchSingleRule
+  :: (SyntaxHoleKind String -> Expression -> Bool)
+  -> SyntaxRule
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure Expression
+matchSingleRule holeMatches rule expressionValue =
+  case compileSyntaxTemplateFederation
+      (\_ _ -> AtlasMapFederationProved ()) [rule] of
+    Right federation ->
+      matchSyntaxTemplates holeMatches federation expressionValue
+    Left _ -> Left NoMatchingSyntaxTemplate
 
 sourceNatType :: String
 sourceNatType = "from 0 up"
@@ -949,6 +965,7 @@ testCanonicalTypes = do
     , "begin yield 11"
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
+    , "Template"
     ]
   mapM_ expectNonCanonicalDatraType
     [ "!$~\"datra.AST\""
@@ -958,7 +975,6 @@ testCanonicalTypes = do
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "StrTempl"
     , "(Nat; (!$~\"datra.AST\"))"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
@@ -1103,6 +1119,23 @@ testEvalBackedKeywords = do
 
 testStringTemplates :: IO ()
 testStringTemplates = do
+  case interpretExpressionReason
+      (SyntaxType (Extract (AsciiStringLiteral "choose $Int mark"))
+        (FunctionType IntegerType IntegerType)) of
+    Right value -> do
+      assert "syntax annotations are erased from canonical function rendering"
+        (renderInterpretedValue value == "(Int -> Int)")
+      assert "evaluated function types retain their structured syntax attachment"
+        (case Types.interpretedFunction value >>= Types.functionSyntax of
+          Just (FunctionSyntax
+            [ SyntaxTemplate
+                [ SyntaxLiteral "choose"
+                , SyntaxHole (ValueSyntaxHole _)
+                , SyntaxLiteral "mark"
+                ]]) -> True
+          _ -> False)
+    Left failure -> assertFailure
+      ("syntax function type failed to evaluate: " <> show failure)
   assert "an Int syntax hole rejects the Infinity AST through template membership"
     (not (matchesValueSyntaxHoleWith
       interpretExpressionReason
@@ -1117,8 +1150,11 @@ testStringTemplates = do
       syntaxRule targetKind implementation = SyntaxRule
         { syntaxName = "from"
         , syntaxTemplate = SyntaxTemplate
-            [valueHole "Int", SyntaxLiteral "to", valueHole targetKind]
-        , syntaxOrdinary = True
+            [ SyntaxLiteral "from"
+            , valueHole "Int"
+            , SyntaxLiteral "to"
+            , valueHole targetKind
+            ]
         , syntaxSignature = FunctionType
             (AtlasMap [IntegerType, IdentifierReference
               (IdentifierString "IntLimit")])
@@ -1136,21 +1172,23 @@ testStringTemplates = do
         ]
       matchesHole = matchesValueSyntaxHoleWith interpretExpressionReason
   assert "the AST matcher rejects Infinity from an incorrectly declared Int hole"
-    (matchSyntaxTemplates matchesHole
-      [syntaxRule "Int" "datra.wrong-from"]
+    (matchSingleRule matchesHole
+      (syntaxRule "Int" "datra.wrong-from")
       fromInfinity
       == Left NoMatchingSyntaxTemplate)
   assert "the AST matcher accepts Infinity from the declared IntLimit hole"
-    (case matchSyntaxTemplates matchesHole
-        [syntaxRule "IntLimit" "datra.from"]
+    (case matchSingleRule matchesHole
+        (syntaxRule "IntLimit" "datra.from")
         fromInfinity of
       Right _ -> True
       Left _ -> False)
   let overlappingRule holeKind implementation = SyntaxRule
         { syntaxName = "choose"
         , syntaxTemplate = SyntaxTemplate
-            [valueHole holeKind, SyntaxLiteral "mark"]
-        , syntaxOrdinary = False
+            [ SyntaxLiteral "choose"
+            , valueHole holeKind
+            , SyntaxLiteral "mark"
+            ]
         , syntaxSignature = FunctionType
             (IdentifierReference (IdentifierString holeKind))
             IntegerType
@@ -1159,25 +1197,15 @@ testStringTemplates = do
         , syntaxImplementation =
             External (AsciiStringLiteral implementation)
         }
-      overlappingPhrase = foldl FunctionApplication
-        (IdentifierReference (IdentifierString "choose"))
-        [EllipsisNatural 5, IdentifierReference (IdentifierString "mark")]
-  overlapResult <- try (evaluate
-    (matchSyntaxTemplates matchesHole
-      [ overlappingRule "Nat" "datra.choose-nat"
-      , overlappingRule "Int" "datra.choose-int"
-      ]
-      overlappingPhrase))
-      :: IO
-        (Either ErrorCall
-          (Either SyntaxTemplateMatchFailure Expression))
-  case overlapResult of
-    Left failure -> assert
-      "overlapping Nat and Int syntax templates violate the federation invariant"
-      ("internal error: syntax template federation admitted overlapping"
-        `isInfixOf` show failure)
-    Right _ -> assertFailure
-      "overlapping Nat and Int syntax templates escaped the federation invariant"
+  assert "overlapping Nat and Int templates are rejected before AST matching"
+    (case compileSyntaxTemplateFederation
+        (\_ _ -> AtlasMapFederationRefuted ())
+        [ overlappingRule "Nat" "datra.choose-nat"
+        , overlappingRule "Int" "datra.choose-int"
+        ] of
+      Left failure -> failure == OverlappingSyntaxTemplates
+        "choose $Nat mark" "choose $Int mark"
+      Right _ -> False)
   expectSourceValue
       "Int template excludes Infinity"
       "\"Infinity\" of \"%Int\"" $ \value ->
@@ -1336,6 +1364,13 @@ testStringTemplates = do
     assert "Str identity extraction matches the holeless case"
       ( renderInterpretedValue value
           == "(\"hello world\"; \"hello world\" ~> Str)"
+      )
+  expectSourceValue
+      "extract maps pointwise over a sequence of templates"
+      "%(\"left\"; \"right\")" $ \value ->
+    assert "each template retains its ordinary extraction result"
+      ( renderInterpretedValue value
+          == "(($left; $left ~> Str); ($right; $right ~> Str))"
       )
   let template = StringTemplate
         [ StringTemplateLiteral "example"

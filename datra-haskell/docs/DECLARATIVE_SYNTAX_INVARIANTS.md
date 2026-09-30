@@ -6,33 +6,55 @@ spaces or line breaks.
 
 ## Expressed by declarations
 
-- The binding name is the first literal in a syntax phrase.
-- The explicit leading AST identifier resolves one binding before template
-  matching begins. Only templates attached to that binding participate; a
-  template belonging to another identifier is never a competing match.
-- The quoted template supplies the remaining literals and holes.
+- The complete syntax phrase is declared by the template. Its first literal is
+  the surface identifier; the parser does not prepend the binding identifier.
+- The maximal literal prefix before the first hole is matched before any hole
+  parsing. Its first literal supplies the reverse-lookup key and its remaining
+  literals filter that bucket. A binding named `abc` may therefore deliberately
+  declare a template beginning with `def`; matching `def` expands to `abc`.
+- A template without a literal prefix cannot use that index and remains on a
+  less-optimized fallback path. Current standard declarations all have one.
+- `%>` is a total map whose left operand has type
+  `InhabitedList Template`. It supplies one or more complete sequences of
+  literals and holes for the function signature on its right.
+- `%` maps a single string or an inhabited list of strings pointwise into
+  templates. Thus `%"..."` is the unary spelling and
+  `%("..."; "...")` supplies multiple templates without introducing a
+  special `%>` list grammar.
+- The public template type is `Template := !$~"datra.Template"`.
 - The quoted spelling is represented as a structured `SyntaxTemplate`; rules,
   matching, and future federation validation consume that same structure.
+- Its host type is introduced privately by the standard library as
+  `_SyntaxTemplate := !$~"datra.SyntaxTemplate"`; it is implementation support
+  for `%>`, not a public user-facing type.
 - A `$T` hole uses ordinary Datra membership in `T`; the function signature
   does not replace or widen that match.
-- `Str` and `IdenStr` captures require explicit `"` delimiters in an `as`
+- After every hole has matched, the assembled capture argument must be
+  compile-time proved to be a subfederation of the function domain. Hole
+  membership and function-domain membership are separate mandatory checks.
+- `Str` and `IdenStr` captures require explicit `"` delimiters in a `%>`
   template. Neither type is currently used by a declared syntax template.
-- `as` permits only the declared syntax spelling. `as?` permits both that
-  spelling and ordinary function application.
+- `%>` always permits both the declared syntax spelling and ordinary function
+  application (`<identifier> <expression>`).
 - The right-hand signature and implementation control the resulting call.
+- `%>` and the structured templates remain attached to the internal
+  function type for matching and federation decisions. Canonicalization erases
+  that attachment and presents the ordinary explicit function application.
 - Templates follow the visibility, import, and recursive `let` behavior of
   their bindings. A recursive binding is available while its value is read.
 - The current outer application spine supplies a hard matching boundary.
   Matching never descends through an argument's nested AST merely to obtain a
   longer match.
-- Within that boundary, branches greedily try the longest prefix, and each
-  hole greedily tries the longest available AST sequence. Both backtrack when
-  membership or the remaining template does not match. Arguments after the
-  matched prefix are reapplied to the rewritten AST.
+- Within that boundary, declarations are tried in source order. The first
+  declaration with a valid match wins. Within that declaration, the matcher
+  greedily tries the longest contextual prefix, and each hole greedily tries
+  the longest available AST sequence. Both backtrack when membership or the
+  remaining template does not match. Arguments after the matched prefix are
+  reapplied to the rewritten AST.
 - The federation represented by alternative syntax templates must be
-  disjoint. If two distinct matches consume the same longest contextual
-  prefix, matching throws an internal error: the overlap should have been
-  rejected when the federation was constructed.
+  disjoint. The AST matcher accepts only a federation whose pairwise
+  distinctions were admitted at construction, so an invalid semantic overlap
+  cannot reach matching as a runtime/internal-error case.
 - Template alternatives go through the existing federation decision shape.
   `Proved` means they are disjoint and is the only accepted result. `Refuted`
   means an overlap was proved, and `Undecidable` means no applicable proof of
@@ -47,14 +69,10 @@ representation.
 - How the enclosing AST identifies the complete candidate syntax phrase.
 - How unresolved identifiers in a candidate receive canonical values for hole
   membership without introducing a second parser-side type system.
-- Evaluated syntax functions currently retain the `as`/`as?` flag but discard
-  their structured template. The template federation must remain available
-  long enough for alternative branches to be checked for overlap
-  declaratively.
-- A template hole's type must remain an AST identifier reference, not merely
-  an unscoped string label. Closure reconstruction, module qualification, and
-  recursive binding must rewrite that reference in the same way they rewrite
-  the function signature.
+- Value-hole type references are resolved in the same lexical/module context
+  as the rest of the function type. Standard-library host types used by syntax
+  templates are therefore declared before those templates; recursive `let`
+  references continue to use the existing fixed-point scope.
 - A syntax template cannot be eagerly lowered to the current character-string
   template representation: that representation requires injective string
   splitting, while syntax templates resolve captures greedily inside bounded

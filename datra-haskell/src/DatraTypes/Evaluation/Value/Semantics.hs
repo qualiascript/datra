@@ -79,7 +79,7 @@ identifierDependenciesCompatible left right =
 data ValueSemantics
   = BuiltinMetaTypeSemantics BuiltinMetaType
   | FunctionSemantics
-      ValueSemantics ValueSemantics (Maybe Bool) (Maybe String)
+      ValueSemantics ValueSemantics (Maybe String)
   | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
   | FormulationSemantics Natural
@@ -99,7 +99,7 @@ data ValueSemantics
   | IdentifierValueTypeSemantics
   | ToStringSemantics ValueSemantics
   | WeakToStringSemantics ValueSemantics
-  | StringTemplateSemantics ValueSemantics
+  | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
   | DependentIdentifierTypeSemantics
       IdentifierDependency
@@ -143,7 +143,7 @@ data CanonicalResult
   | CanonicalIdentifierValueType
   | CanonicalToString CanonicalResult
   | CanonicalWeakToString CanonicalResult
-  | CanonicalStringTemplate CanonicalResult
+  | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
   | CanonicalSimpleIdentifierType
       { canonicalIdentifierString :: String
@@ -166,7 +166,7 @@ canonicalResult :: ValueSemantics -> CanonicalResult
 canonicalResult semantics =
   case semantics of
     BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
-    FunctionSemantics input output _ body ->
+    FunctionSemantics input output body ->
       CanonicalFunction
         (canonicalResult input) (canonicalResult output) body
     ExplicitSemantics level value -> CanonicalExplicit level value
@@ -194,8 +194,8 @@ canonicalResult semantics =
     ToStringSemantics source -> CanonicalToString (canonicalResult source)
     WeakToStringSemantics source ->
       CanonicalWeakToString (canonicalResult source)
-    StringTemplateSemantics source ->
-      CanonicalStringTemplate (canonicalResult source)
+    TemplateSemantics source ->
+      CanonicalTemplate (canonicalResult source)
     DependentSumSemantics source -> CanonicalDependentSum source
     DependentIdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying

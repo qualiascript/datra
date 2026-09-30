@@ -57,7 +57,7 @@ recursiveDefaultProgram = unlines
 
 templateBackedProgram :: String
 templateBackedProgram = unlines
-  [ "successor : \"$Nat next\" as ({value? : Int} -> Int) := (do"
+  [ "successor : %\"successor $Nat next\" %> ({value? : Int} -> Int) := (do"
   , "begin"
   , "  assert value of Nat"
   , "  yield value + 1)"

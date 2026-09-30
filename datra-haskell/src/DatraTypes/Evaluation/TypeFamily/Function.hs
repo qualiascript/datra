@@ -5,6 +5,7 @@ module Evaluation.TypeFamily.Function
   , decideFunctionSubfederation
   ) where
 
+import DatraLanguage.SyntaxTemplate (FunctionSyntax)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
@@ -77,15 +78,17 @@ decideFunctionSubfederation
   -> InterpretedValue
   -> Decision ()
 decideFunctionSubfederation decideSubfederation source target
-  | interpretedCanonicalResult source == interpretedCanonicalResult target = DecisionProved ()
-  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just sourceFunction <- interpretedFunction source
   , Just targetFunction <- interpretedFunction target =
       if not
           (patternCompatible
-            (functionSyntaxOrdinary sourceFunction)
-            (functionSyntaxOrdinary targetFunction))
-        then DecisionRefuted else case functionSource targetFunction of
+            (functionSyntax sourceFunction)
+            (functionSyntax targetFunction))
+        then DecisionRefuted
+      else if interpretedCanonicalResult source
+          == interpretedCanonicalResult target
+        then DecisionProved ()
+      else case functionSource targetFunction of
         Just _ -> DecisionUndecidable
         Nothing -> mapDecision (const ()) (decideAll
           [ decideSubfederation
@@ -95,9 +98,15 @@ decideFunctionSubfederation decideSubfederation source target
               (functionCodomain sourceFunction)
               (functionCodomain targetFunction)
           ])
+  | interpretedCanonicalResult source == interpretedCanonicalResult target = DecisionProved ()
+  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | otherwise = DecisionRefuted
 
-patternCompatible :: Maybe Bool -> Maybe Bool -> Bool
+patternCompatible
+  :: Maybe (FunctionSyntax InterpretedValue)
+  -> Maybe (FunctionSyntax InterpretedValue)
+  -> Bool
 patternCompatible _ Nothing = True
-patternCompatible (Just source) (Just target) = source == target
+patternCompatible (Just source) (Just target) =
+  functionSyntaxEquivalent source target
 patternCompatible Nothing (Just _) = False
