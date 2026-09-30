@@ -192,7 +192,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "range has one shared dependency binding" 1
         (occurrences "let \"___range\" :=" text)
       assertBool "the variadic input uses compact split sequencing directly"
-        ("val it ?! maximum" `isInfixOf` text
+        ("val it !? maximum" `isInfixOf` text
           && not ("values :=" `isInfixOf` text))
       assertBool "the removed explicit list specification stays absent"
         (not ("values ~>" `isInfixOf` text))

@@ -6,7 +6,7 @@ yield Numbers := begin
         else begin
           let next := maximum remaining[0; range 1 up]
         yield if candidate >= next then candidate else next
-  yield val it ?! maximum
+  yield val it !? maximum
 
   min := {Args IntLimit,} -> IntLimit? do
     let minimum := {candidate? : IntLimit, remaining? : List IntLimit} -> IntLimit do
@@ -14,6 +14,6 @@ yield Numbers := begin
         else begin
           let next := minimum remaining[0; range 1 up]
         yield if candidate <= next then candidate else next
-  yield val it ?! minimum
+  yield val it !? minimum
 
 yield public this

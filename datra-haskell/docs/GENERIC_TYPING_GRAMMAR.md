@@ -632,7 +632,7 @@ max := {Args (&_T :: IntLimit),} -> _T? do
       else begin
         let next := maximum remaining[0; range 1 up]
       yield if candidate >= next then candidate else next
-yield val it ?! maximum
+yield val it !? maximum
 
 min := {Args (&_T :: IntLimit),} -> _T? do
   let minimum := {candidate? : _T, remaining? : List _T} -> _T do
@@ -640,10 +640,10 @@ min := {Args (&_T :: IntLimit),} -> _T? do
       else begin
         let next := minimum remaining[0; range 1 up]
       yield if candidate <= next then candidate else next
-yield val it ?! minimum
+yield val it !? minimum
 ```
 
-The list-sequencing operator `values ?! function` abbreviates
+The list-sequencing operator `values !? function` abbreviates
 `values! ?? function it`. It guards on a successful, nonempty list split—not
 general Boolean truthiness—and leaves an empty input as `nothing`.
 

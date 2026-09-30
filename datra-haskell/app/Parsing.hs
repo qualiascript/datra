@@ -754,7 +754,7 @@ maybeThenExpressionFrom operand = do
     Nothing -> optionalValue
     Just (constructor, branch) -> constructor optionalValue branch)
 
--- @values ?! function@ is exactly @values! ?? function it@. Keeping the
+-- @values !? function@ is exactly @values! ?? function it@. Keeping the
 -- expansion structural also preserves the laziness of an absent list split.
 listMaybeThen :: Expression -> Expression -> Expression
 listMaybeThen values function =
@@ -764,8 +764,8 @@ listMaybeThen values function =
       function
       (IdentifierReference (IdentifierString "it")))
 
--- A trailing expression hole in declarative syntax binds before @?!@. This
--- lets forms such as @val values ?! function@ sequence the result of the
+-- A trailing expression hole in declarative syntax binds before @!?@. This
+-- lets forms such as @val values !? function@ sequence the result of the
 -- syntax application instead of capturing the sequencing inside its hole.
 unstoppedListMaybeThenOperator :: Parser Text
 unstoppedListMaybeThenOperator = do
@@ -1973,8 +1973,8 @@ operatorToken operator = lexeme $ try $ do
   case operator of
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
-    AST.OptionalOperator -> notFollowedBy (char '?' <|> char '!')
-    AST.ListUnconsOperator -> notFollowedBy (char '$')
+    AST.OptionalOperator -> notFollowedBy (char '?')
+    AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '$')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()

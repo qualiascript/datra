@@ -142,7 +142,7 @@ source context expression =
       (source (precedence + 1) left <> " " <> operator <> " " <> source (precedence + 1) right)
     unary operator operand = wrapped 10 (operator <> source 11 operand)
     listMaybeThen values function = wrapped 1
-      (listMaybeInput values <> " ?! " <> source 2 function)
+      (listMaybeInput values <> " !? " <> source 2 function)
     listMaybeInput (StripIdentifiersValue operand) =
       "val " <> source 0 operand
     listMaybeInput operand = source 2 operand
