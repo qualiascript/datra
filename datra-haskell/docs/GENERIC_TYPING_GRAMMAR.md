@@ -630,12 +630,14 @@ recursive function directly to the nonempty variadic split:
 max := {Args (&_T :: IntLimit),} -> _T? do
   yield val it !? fun {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = Infinity or remaining = () or
-      candidate >= (next : this remaining[0; range 1 up]) then candidate else next
+      candidate >= (next : this remaining[0; range 1 up]) then
+        candidate else next
 
 min := {Args (&_T :: IntLimit),} -> _T? do
   yield val it !? fun {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = -Infinity or remaining = () or
-      candidate <= (next : this remaining[0; range 1 up]) then candidate else next
+      candidate <= (next : this remaining[0; range 1 up]) then
+        candidate else next
 ```
 
 The list-sequencing operator `values !? function` abbreviates
