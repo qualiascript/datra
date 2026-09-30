@@ -40,7 +40,6 @@ integrationTests =
 recursiveDefaultProgram :: String
 recursiveDefaultProgram = unlines
   [ "let factorial := ({n? : Int := 5} -> Int do"
-  , "begin"
   , "  assert n of Int"
   , "  yield if n = 0 then 1 else n * factorial (n - 1))"
   , "arguments := ({n? : Int := 5} << 6)"
@@ -58,7 +57,6 @@ recursiveDefaultProgram = unlines
 templateBackedProgram :: String
 templateBackedProgram = unlines
   [ "successor : %\"successor $Nat next\" %> ({value? : Int} -> Int) := (do"
-  , "begin"
   , "  assert value of Nat"
   , "  yield value + 1)"
   , "assert successor 4 next = 5"
@@ -71,7 +69,7 @@ scopedAssertionProgram :: String
 scopedAssertionProgram = unlines
   [ "before := seed + 1"
   , "let seed := 10"
-  , "check := (() -> () do begin"
+  , "check := (() -> () do"
   , "  local := before + seed"
   , "  assert local = 21"
   , "  yield ())"

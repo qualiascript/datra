@@ -78,6 +78,10 @@ alternativesAreDistinct left right
   , ArgumentMapForm rightMembers _ <- interpretedForm right =
       length leftMembers /= length rightMembers
         || or (zipWith alternativesAreDistinct leftMembers rightMembers)
+  | ArgumentMapForm _ _ <- interpretedForm left
+  , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
+  | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
+  , ArgumentMapForm _ _ <- interpretedForm right = True
   | ArgumentMapForm _ underlying <- interpretedForm left =
       alternativesAreDistinct underlying right
   | ArgumentMapForm _ underlying <- interpretedForm right =

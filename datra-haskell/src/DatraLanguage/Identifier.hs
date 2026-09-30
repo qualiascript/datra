@@ -10,7 +10,6 @@ module DatraLanguage.Identifier
   ) where
 
 import Data.Char (ord)
-import DatraLanguage.AST.Reserved qualified as Reserved
 
 -- | Keep exactly the named bindings whose identifiers are externally visible.
 -- Module export maps and function argument routing share this operation so a
@@ -22,12 +21,9 @@ data IdentifierSpelling
   = BareIdentifier String
   | FullStringIdentifier String
 
--- | Quoted identifiers may contain reserved words; bare identifiers may not.
 identifierSpellingValue :: IdentifierSpelling -> Maybe String
 identifierSpellingValue (FullStringIdentifier value) = Just value
-identifierSpellingValue (BareIdentifier value)
-  | Reserved.isReservedIdentifierString value = Nothing
-  | otherwise = Just value
+identifierSpellingValue (BareIdentifier value) = Just value
 
 -- | Leading underscores make a binding private to its defining scope or turn
 -- a function parameter name into a positional-only implementation detail.

@@ -34,7 +34,6 @@ data Operator
   | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
-  | EvalOperator
   | AssertOperator
   | BeginOperator
   | LetOperator
@@ -60,7 +59,7 @@ data Operator
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
 operatorCanonicalSymbol SyntaxTypeOperator = "%>"
-operatorCanonicalSymbol ApplicationOperator = "apply"
+operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
 operatorCanonicalSymbol ExternalOperator = "!$~"
 operatorCanonicalSymbol SequentialOperator = "<:>"
@@ -85,13 +84,12 @@ operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol ValueOfOperator = "!"
-operatorCanonicalSymbol EvalOperator = "eval"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
-operatorCanonicalSymbol EitherOperator = "Either"
-operatorCanonicalSymbol OptionalOperator = "optional"
-operatorCanonicalSymbol ListUnconsOperator = "uncons"
+operatorCanonicalSymbol EitherOperator = "|"
+operatorCanonicalSymbol OptionalOperator = "?"
+operatorCanonicalSymbol ListUnconsOperator = "un-cons"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol ListMaybeThenOperator = "uncons-maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
@@ -136,7 +134,6 @@ operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol ValueOfOperator = Just "$~"
-operatorSourceSymbol EvalOperator = Just "eval"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"

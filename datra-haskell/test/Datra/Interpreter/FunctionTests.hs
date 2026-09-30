@@ -252,7 +252,7 @@ functionTests =
                 (UnconstrainedInferredParameter "value")))
         , programFailureCase "incompatible inferred constraints are structured"
             (unlines
-              [ "f := (do begin"
+              [ "f := (do"
               , "  assert value"
               , "  yield value + 1)"
               , "yield f"

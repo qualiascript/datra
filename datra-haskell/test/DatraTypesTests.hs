@@ -82,7 +82,6 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (UnsupportedEvaluationMode)
   , ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
-  , SyntaxExpansionFailure (InvalidSyntaxControlCaptures)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -409,24 +408,6 @@ testDiagnostics = do
         == LocalizedMessage "cyclic module import" ["module: cycle.datra"]
       && localizeDiagnostic Romanian (CyclicModuleImport "cycle.datra")
         == LocalizedMessage "import ciclic de modul" ["modul: cycle.datra"]
-    )
-  assert "syntax-expansion failures have exact bilingual localization"
-    ( localizeDiagnostic English
-        (InvalidSyntaxControlCaptures "datra.syntax.if" 3 2)
-        == LocalizedMessage
-          "syntax control adapter received invalid captures"
-          [ "adapter: datra.syntax.if"
-          , "expected captures: 3"
-          , "given captures: 2"
-          ]
-      && localizeDiagnostic Romanian
-        (InvalidSyntaxControlCaptures "datra.syntax.if" 3 2)
-        == LocalizedMessage
-          "adaptorul de control sintactic a primit capturi nevalide"
-          [ "adaptor: datra.syntax.if"
-          , "capturi așteptate: 3"
-          , "capturi primite: 2"
-          ]
     )
   assert "CLI-option failures have exact bilingual localization"
     ( localizeDiagnostic English (UnsupportedEvaluationMode "fast")

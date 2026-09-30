@@ -11,6 +11,8 @@ module SyntaxTemplateMatching
   , SyntaxTemplateFederationFailure (..)
   , compileSyntaxTemplateFederation
   , canonicalSyntaxTemplate
+  , matchSyntaxRule
+  , matchSyntaxRules
   , matchSyntaxTemplates
   ) where
 
@@ -18,7 +20,9 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationDecision (..))
 import Data.Foldable (traverse_)
 import DatraLanguage.AST
-  ( Expression (..) )
+  ( Expression (..)
+  , IdentifierString (IdentifierString)
+  )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
@@ -79,7 +83,7 @@ compileSyntaxTemplateFederation decide rules = do
         (syntaxTemplateLiteralPrefix left)
         (syntaxTemplateLiteralPrefix right))
 
-type HoleMatches = SyntaxHoleKind String -> Expression -> Bool
+type HoleMatches = SyntaxHoleKind Expression -> Expression -> Bool
 
 data SuccessfulMatch = SuccessfulMatch
   { successfulRule :: SyntaxRule
@@ -125,7 +129,29 @@ matchSyntaxTemplates holeMatches
         (syntaxTemplateLiteralPrefix rule)
         phrase)
       && length (syntaxTemplateLiteralPrefix rule) <= length phrase
-    matchesLiteral literal = (== literal) . renderSourceExpression
+    matchesLiteral = matchesLiteralExpression
+
+-- | Match one already admitted declaration. This is the parser integration
+-- boundary: parsing establishes the contextual AST extent of a phrase, while
+-- this matcher remains solely responsible for interpreting its template.
+matchSyntaxRule
+  :: HoleMatches
+  -> SyntaxRule
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure Expression
+matchSyntaxRule holeMatches rule =
+  matchSyntaxTemplates holeMatches (SyntaxTemplateFederation [rule])
+
+-- | Match declarations in their source order. Admission of overlapping
+-- function templates belongs to function federation; this operation only
+-- applies the already-visible ordered declarations to one parsed AST.
+matchSyntaxRules
+  :: HoleMatches
+  -> [SyntaxRule]
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure Expression
+matchSyntaxRules holeMatches rules =
+  matchSyntaxTemplates holeMatches (SyntaxTemplateFederation rules)
 
 chooseSuccessful
   :: [SuccessfulMatch]
@@ -141,9 +167,12 @@ canonicalSyntaxTemplate rule = unwords
     renderPiece (SyntaxHole ExpressionSyntaxHole) = "$_Expr"
     renderPiece (SyntaxHole BlockSyntaxHole) = "$_Block"
     renderPiece (SyntaxHole IdentifierExpressionSyntaxHole) = "$_IdenExp"
-    renderPiece (SyntaxHole (ValueSyntaxHole kind)) = '$' : kind
+    renderPiece (SyntaxHole (ValueSyntaxHole kind)) =
+      case kind of
+        IdentifierReference (IdentifierString name) -> '$' : name
+        _ -> "%(" <> renderSourceExpression kind <> ")"
 
-rulePieces :: SyntaxRule -> [SyntaxPiece String]
+rulePieces :: SyntaxRule -> [SyntaxPiece Expression]
 rulePieces = syntaxTemplatePieces . syntaxTemplate
 
 applicationPhrase :: Expression -> [Expression]
@@ -160,13 +189,13 @@ applicationSpine = go []
 
 matchPieces
   :: HoleMatches
-  -> [SyntaxPiece String]
+  -> [SyntaxPiece Expression]
   -> [Expression]
   -> [[Expression]]
 matchPieces _ [] [] = [[]]
 matchPieces _ [] _ = []
 matchPieces holeMatches (SyntaxLiteral literal : pieces) (value : values)
-  | renderSourceExpression value == literal =
+  | matchesLiteralExpression literal value =
       matchPieces holeMatches pieces values
 matchPieces _ (SyntaxLiteral _ : _) _ = []
 matchPieces holeMatches (SyntaxHole kind : pieces) values =
@@ -178,14 +207,20 @@ matchPieces holeMatches (SyntaxHole kind : pieces) values =
   , captures <- matchPieces holeMatches pieces remaining
   ]
 
-maximumCaptureLength :: [SyntaxPiece String] -> [Expression] -> Int
+maximumCaptureLength :: [SyntaxPiece Expression] -> [Expression] -> Int
 maximumCaptureLength remaining values =
   max 0 (length values - minimumRequiredValues remaining)
 
-minimumRequiredValues :: [SyntaxPiece String] -> Int
+minimumRequiredValues :: [SyntaxPiece Expression] -> Int
 minimumRequiredValues = length
 
 applicationFrom :: [Expression] -> Expression
 applicationFrom [] = AtlasMap []
 applicationFrom (first : remaining) =
   foldl FunctionApplication first remaining
+
+matchesLiteralExpression :: String -> Expression -> Bool
+matchesLiteralExpression literal expressionValue =
+  case expressionValue of
+    IdentifierReference (IdentifierString value) -> value == literal
+    _ -> renderSourceExpression expressionValue == literal

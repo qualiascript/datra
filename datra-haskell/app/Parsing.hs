@@ -26,7 +26,7 @@ import Control.Monad.Combinators.Expr
   )
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (find)
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (isJust)
 import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -89,13 +89,11 @@ import DatraLanguage.AST
       , Coalization
       , Extract
       , StripIdentifiers
-      , Eval
       , Assert
       , Begin
       , Program
       , FunctionType
       , SyntaxType
-      , This
       , Fun
       , WithBinding
       , ForBinding
@@ -115,7 +113,6 @@ import DatraLanguage.AST
   , namedBeginBlock
   )
 import DatraLanguage.AST.Operator qualified as AST
-import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
@@ -130,21 +127,15 @@ import LibraryFiles
   , requiredBundledLibrarySource
   )
 import SyntaxDefinitions
-import DatraLanguage.AST.Reserved.Bootstrap
-  ( reservedSymbolReplacements
-  )
+import SyntaxTemplateMatching
+  ( matchSyntaxRule )
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
-  , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (ParseFailure) )
-import DatraLanguage.Diagnostics.Localization
-  ( Locale (English)
-  , renderDatraError
-  )
 import IdentifierValueType
   ( isIdentifierValue
   , isIdentifierValueCharacter
@@ -316,7 +307,8 @@ standardLibraryValueDeclarations = case standardLibraryExpression of
 libraryRules :: [SyntaxRule]
 libraryRules =
   rules
-    <> map (qualifySyntaxRule libraryNamespace) rules
+    <> map (qualifySyntaxRule libraryNamespace)
+      (filter (not . null . syntaxTemplateLiteralPrefix) rules)
   where
     rules = map inStandardLibrary
       ( concatMap declarationRules standardLibraryBootstrapDeclarations
@@ -384,10 +376,9 @@ astEmptyMap :: Parser Expression
 astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
-astAtom = astLexeme (Skip <$ chunk "*" <|> This <$ keywordToken "this" <|> choice
-  [ replacement <$ keywordToken (Text.pack (Reserved.reservedSymbolIdentifierString reserved))
-  | (reserved, replacement) <- reservedSymbolReplacements
-  ] <|> atomicExpressionToken astStringTemplateToken)
+astAtom = astLexeme
+  (Skip <$ chunk "*"
+    <|> atomicExpressionToken astStringTemplateToken)
 
 atomicExpressionToken :: Parser Expression -> Parser Expression
 atomicExpressionToken nestedStringTemplate =
@@ -444,7 +435,6 @@ astForm =
       , astUnary AST.CoalizationOperator Coalization
       , astUnary AST.StripIdentifiersOperator StripIdentifiers
       , astUnary AST.ExtractOperator Extract
-      , astBinary AST.EvalOperator Eval
       , astBlock "begin" Begin
       , astBlock "program" Program
       , astUnary AST.LetOperator Let
@@ -525,7 +515,7 @@ astIdentifierTemplateOperation operator assignmentMarker = do
 
 astConditional :: Parser Expression
 astConditional = do
-  _ <- astReservedSymbol Reserved.IfSymbol
+  _ <- astSymbol "if"
   condition <- astExpression
   consequent <- astExpression
   alternative <- astExpression
@@ -558,8 +548,8 @@ data NaturalRangeBounds
 astNaturalRangeExpression :: Parser Expression
 astNaturalRangeExpression = do
   prefix <- choice
-    [ RangePrefix <$ astReservedSymbol Reserved.RangeSymbol
-    , FromPrefix <$ astReservedSymbol Reserved.FromSymbol
+    [ RangePrefix <$ astSymbol "range"
+    , FromPrefix <$ astSymbol "from"
     ]
   bounds <- astNaturalRangeBounds
   pure (naturalRangeExpressionFor prefix bounds)
@@ -571,9 +561,9 @@ astNaturalRangeBounds = do
   origin <- astSignedInteger
   choice
     [ NaturalRangeTo origin
-        <$> (astReservedWord Reserved.ToWord *> astSignedInteger)
-    , NaturalRangeFromUpwards origin <$ astReservedWord Reserved.UpwardsWord
-    , IntegerRangeFromDownwards origin <$ astReservedWord Reserved.DownwardsWord
+        <$> (astSymbol "to" *> astSignedInteger)
+    , NaturalRangeFromUpwards origin <$ astSymbol "up"
+    , IntegerRangeFromDownwards origin <$ astSymbol "down"
     ]
 
 astSignedInteger :: Parser Integer
@@ -615,13 +605,6 @@ astLexeme = Lexer.lexeme astSpaceConsumer
 astSymbol :: Text -> Parser Text
 astSymbol = Lexer.symbol astSpaceConsumer
 
-astReservedWord :: Reserved.ReservedWord -> Parser Text
-astReservedWord = astSymbol . Text.pack . Reserved.reservedWordText
-
-astReservedSymbol :: Reserved.ReservedSymbol -> Parser Text
-astReservedSymbol =
-  astSymbol . Text.pack . Reserved.reservedSymbolIdentifierString
-
 astOperatorToken :: AST.Operator -> Parser Text
 astOperatorToken operator = astLexeme $ try $ do
   token <- chunk (Text.pack (AST.operatorCanonicalSymbol operator))
@@ -654,9 +637,10 @@ outerMapEnvelope =
 
 implicitProgram :: Parser Expression
 implicitProgram = withReferences $ do
-  bindings <- elements
-  result <- withDeclarations bindings $ optional (continuedReservedWord Reserved.YieldWord *> expression)
-  pure (Program bindings (maybe (AtlasMap []) id result))
+  entries <- elements
+  pure $ case reverse entries of
+    [] -> Program [] (AtlasMap [])
+    result : reversedBindings -> Program (reverse reversedBindings) result
 
 withReferences :: Parser value -> Parser value
 withReferences = local (\context -> context { referencesAllowed = True })
@@ -683,16 +667,16 @@ withDeclarations entries = local $ \context -> context
             [ qualifySyntaxRule namespace rule
             | (namespace, moduleRules) <- imported
             , rule <- moduleRules
+            , not (null (syntaxTemplateLiteralPrefix rule))
             ]
       in qualified <> if allNames then rules else []
     rulesFor _ entry = declarationRules entry
 
 elements :: Parser [Expression]
 elements = do
+  stops <- syntaxStops <$> ask
   first <- optional
-    (notFollowedBy
-      (keywordToken (Text.pack (Reserved.reservedWordText Reserved.YieldWord)))
-      *> expression)
+    (mapM_ (notFollowedBy . keywordToken) stops *> expression)
   case first of
     Nothing -> pure []
     Just entry -> withDeclarations [entry] $ do
@@ -711,13 +695,7 @@ mapSeparator =
 -- Reverse specification is the outermost expression layer, so either side
 -- can contain identifier operations, concatenation, and function applications.
 expression :: Parser Expression
-expression = assertExpression <|> expressionWith mapExpression
-
-assertExpression :: Parser Expression
-assertExpression = do
-  _ <- continuedWordOperator AST.AssertOperator
-  hard <- maybe False (const True) <$> optional (try (continuedKeyword "hard"))
-  Assert hard <$> expression
+expression = expressionWith mapExpression
 
 expressionWith :: Parser Expression -> Parser Expression
 expressionWith operand = do
@@ -801,38 +779,15 @@ completedSignature FunctionBody {} signature =
   FunctionType signature (IdentifierReference (IdentifierString "Any"))
 completedSignature _ signature = signature
 
--- A compact @yield@ attaches an implementation to a declared function or
--- syntax signature. Without this guard it could consume the yield belonging
--- to the surrounding resource or begin block after any preceding expression.
+-- A function body is the expression immediately following its function type.
+-- External blocks inhabit @_Block@ directly; declarative @do ... yield ...@
+-- blocks are another body form supplied by the standard library.
 functionImplementation :: Expression -> Parser Expression
-functionImplementation signature =
-  functionBody
-    <|> compactImplementation
-  where
-    compactImplementation = case signature of
-      FunctionType {} ->
-        FunctionBody []
-          <$> (sameLineReservedWord Reserved.YieldWord *> expression)
-      SyntaxType {} ->
-        sameLineReservedWord Reserved.YieldWord *>
-          (externalExpression <|> externalSyntaxApplication)
-      _ -> empty
-    externalSyntaxApplication = try $ do
-      value <- syntaxApplication
-      case value of
-        External {} -> pure value
-        _ -> empty
+functionImplementation _ = externalExpression <|> functionBody
 
 externalExpression :: Parser Expression
 externalExpression =
   External <$> (operatorToken AST.ExternalOperator *> extractedTermAtom)
-
--- The compact function form is deliberately line-bound: a newline otherwise
--- makes @yield@ indistinguishable from the enclosing block's result.  The
--- explicit @do@/optional @begin@ forms are the multiline escape hatch.
-sameLineReservedWord :: Reserved.ReservedWord -> Parser Text
-sameLineReservedWord reserved =
-  keywordToken (Text.pack (Reserved.reservedWordText reserved)) <* hspace1
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
 arrowExpressionWith = arrowExpressionWithLayer eitherExpressionWith
@@ -853,7 +808,7 @@ syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
 syntaxTypeSuffix input signature = do
   syntaxSignature <- optional . try $ do
     _ <- continuedOperator AST.SyntaxTypeOperator
-    guard (isJust (syntaxTemplatePatternTexts input))
+    guard (isJust (syntaxTemplatesFromExpression input))
     SyntaxType input <$> signature
   pure (maybe input id syntaxSignature)
 
@@ -869,8 +824,6 @@ eitherExpressionWithOperator eitherOperator operand =
   makeExprParser
     operand
     [ [InfixR (EitherType <$ eitherOperator)]
-    , [InfixL
-        (Subfederation <$ continuedWordOperator AST.SubfederationOperator)]
     , [ InfixL (Inequality <$ continuedOperator AST.InequalityOperator)
       , InfixL (Equality <$ continuedOperator AST.EqualityOperator)
       , InfixL (LessThanOrEqual <$ continuedOperator AST.LessThanOrEqualOperator)
@@ -878,8 +831,6 @@ eitherExpressionWithOperator eitherOperator operand =
       , InfixL (LessThan <$ continuedOperator AST.LessThanOperator)
       , InfixL (GreaterThan <$ continuedOperator AST.GreaterThanOperator)
       ]
-    , [InfixL (BooleanAnd <$ continuedWordOperator AST.BooleanAndOperator)]
-    , [InfixL (BooleanOr <$ continuedWordOperator AST.BooleanOrOperator)]
     ]
 
 mapExpression :: Parser Expression
@@ -961,15 +912,15 @@ identifierOperation = do
         pure (optionalIdentifier isOptional operation)
     ]
 
--- A raw external adapter is an implementation, not an ordinary syntax value.
--- Make that role explicit with @yield@ after @:=@. Structured implementations
--- such as parenthesized @do ... yield ...@ bodies remain self-delimiting.
+-- A syntax annotation is still a function type, so its assigned value is
+-- parsed through the same function-body boundary as an inferred function.
 assignedValueFor :: Expression -> Parser Expression
 assignedValueFor typeAnnotation = do
   _ <- continuedOperator AST.AssignmentOperator
   case typeAnnotation of
     SyntaxType {} ->
-      functionImplementation typeAnnotation <|> structuredSyntaxBody
+      functionImplementation typeAnnotation
+        <|> structuredSyntaxBody
     _ -> assignedValueExpression
   where
     -- Parenthesized bodies already carry their own explicit @do ... yield@
@@ -1148,7 +1099,6 @@ term = do
     applicationArgument = accessedTerm (choice
       [ argumentMap
       , parenthesizedExpression
-      , This <$ keyword "this"
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , identifierReference
       ])
@@ -1167,8 +1117,6 @@ termAtom =
   choice
     [ bareSkip
     , valueOfExpression
-    , This <$ keyword "this"
-    , importExpression
     , try syntaxExpressionWithFunctionBody
     , syntaxApplication
     , argumentMap
@@ -1244,29 +1192,13 @@ syntaxApplicationWith terminalExpression = do
       (try (char '.' <* notFollowedBy (char '.') *> bareIdentifierToken))
     pure (foldl (\left right -> left <> "." <> right) first rest)
   rules <- filter (matchesSurfaceHead surfaceHead) . syntaxRules <$> ask
-  prefixedRules <- catMaybes <$> traverse (\rule -> optional $ try $ lookAhead $ do
-    parseLiteralPrefix rule
-    pure rule) rules
-  candidates <- catMaybes <$> traverse (\rule -> optional $ try $ lookAhead $ do
-    value <- parseRule rule
-    pure (rule, value)) prefixedRules
-  case candidates of
-    [] -> empty
-    (rule,_) : _ -> parseRule rule
+  choice (map (try . parseRule) rules)
   where
     matchesSurfaceHead surfaceHead rule =
       case (surfaceHead, syntaxTemplateLiteralPrefix rule) of
         (Just name, first : _) -> first == name
         (_, []) -> True
         (Nothing, _ : _) -> False
-    parseLiteralPrefix rule =
-      mapM_ parseLiteral
-        [ piece
-        | piece@(SyntaxLiteral _) <- takeWhile isLiteral
-            (syntaxTemplatePieces (syntaxTemplate rule))
-        ]
-    isLiteral SyntaxLiteral {} = True
-    isLiteral _ = False
     parseLiteral piece@(SyntaxLiteral token) = do
       syntaxPieceSpaceConsumer piece
       _ <- if all (`elem` (",;" :: String)) token
@@ -1276,14 +1208,36 @@ syntaxApplicationWith terminalExpression = do
     parseRule rule = do
       captures <- parsePieces rule True
         (syntaxTemplatePieces (syntaxTemplate rule))
-      expanded <- either
-        (fail . renderDatraError English . withoutSourceSpan)
+      matched <- either
+        (const empty)
         pure
-        (expandSyntax rule captures)
-      case expanded of
+        (matchSyntaxRule parsedHoleMatches rule
+          (syntaxPhrase rule captures))
+      case matched of
         Let _ -> ask >>= guard . referencesAllowed
         _ -> pure ()
-      pure expanded
+      pure matched
+    parsedHoleMatches ExpressionSyntaxHole _ = True
+    parsedHoleMatches BlockSyntaxHole AtlasMap {} = True
+    parsedHoleMatches IdentifierExpressionSyntaxHole
+        IdentifierReference {} = True
+    parsedHoleMatches IdentifierExpressionSyntaxHole
+        (OptionalType IdentifierReference {}) = True
+    parsedHoleMatches ValueSyntaxHole {} _ = True
+    parsedHoleMatches _ _ = False
+    syntaxPhrase rule captures = applicationFrom
+      (pieces (syntaxTemplatePieces (syntaxTemplate rule)) captures)
+      where
+        pieces [] _ = []
+        pieces (SyntaxLiteral literal : rest) remaining =
+          IdentifierReference (IdentifierString literal) :
+            pieces rest remaining
+        pieces (SyntaxHole _ : rest) (capture : remaining) =
+          capture : pieces rest remaining
+        pieces (SyntaxHole _ : rest) [] = pieces rest []
+        applicationFrom [] = AtlasMap []
+        applicationFrom (first : rest) =
+          foldl FunctionApplication first rest
     obviouslyNumeric (EllipsisNatural _) = True
     obviouslyNumeric (Plus value) = obviouslyNumeric value
     obviouslyNumeric (Minus value) = obviouslyNumeric value
@@ -1299,13 +1253,13 @@ syntaxApplicationWith terminalExpression = do
       let stops = case take 1 rest of
             [SyntaxLiteral token] -> [Text.pack token]
             [SyntaxHole (ValueSyntaxHole nextType)] -> map Text.pack
-              (declarationLiterals knownDeclarations nextType)
+              (holeLiterals knownDeclarations nextType)
             _ -> []
           literal = choice [AsciiStringLiteral value <$ keyword (Text.pack value)
             | ValueSyntaxHole kind <- [holeKind]
-            , value <- declarationLiterals knownDeclarations kind]
+            , value <- holeLiterals knownDeclarations kind]
           enums = case holeKind of
-            ValueSyntaxHole kind -> declarationLiterals knownDeclarations kind
+            ValueSyntaxHole kind -> holeLiterals knownDeclarations kind
             _ -> []
           adjacentHole = case rest of
             SyntaxHole _ : _ -> null enums
@@ -1314,11 +1268,11 @@ syntaxApplicationWith terminalExpression = do
             | firstPiece
             , null (syntaxTemplateLiteralPrefix rule) =
                 nested
-                  { syntaxRules = filter
-                      (not . null . syntaxTemplateLiteralPrefix)
-                      (syntaxRules nested)
+                  { syntaxRules = higherPrecedenceRules
                   }
             | otherwise = nested
+          higherPrecedenceRules =
+            drop 1 (dropWhile (/= rule) (syntaxRules context))
           holeContext nested =
             withoutRecursiveFallback nested
               { syntaxStops = stops <> syntaxStops nested }
@@ -1343,13 +1297,7 @@ syntaxApplicationWith terminalExpression = do
                       | "," `elem` syntaxStops context =
                           nonConcatenatedExpression
                       | otherwise = terminalExpression
-                in if externalSymbol (syntaxImplementation rule)
-                      == Just "datra.syntax.val"
-                    then local
-                      (\nested -> nested
-                        { listMaybeThenStopped = True })
-                      terminal
-                    else terminal
+                in terminal
             | adjacentHole -> nonApplicationArithmeticExpression
             | "," `elem` stops -> nonConcatenatedExpression
             | otherwise -> expression
@@ -1362,6 +1310,11 @@ syntaxApplicationWith terminalExpression = do
       case (holeKind, value) of
         (BlockSyntaxHole, AtlasMap entries) -> withDeclarations entries continue
         _ -> continue
+    holeLiterals declarations value = case value of
+      IdentifierReference (IdentifierString name) ->
+        declarationLiterals declarations name
+      AsciiStringLiteral literal -> [literal]
+      _ -> []
 
     -- The enclosing block owns the line break after a completed syntax
     -- application. Whitespace is consumed only while another pattern piece is
@@ -1527,7 +1480,10 @@ valueOfExpression = do
   names <- namedAccessNames
   horizontalSpaceConsumer
   notFollowedBy (operatorToken AST.ExponentiationOperator)
-  pure (MapAccess (expandedNamedAccess names This) (EllipsisNatural 1))
+  pure (MapAccess
+    (expandedNamedAccess names
+      (IdentifierReference (IdentifierString "this")))
+    (EllipsisNatural 1))
 
 namedAccessName :: Parser IdentifierString
 namedAccessName =
@@ -1583,14 +1539,6 @@ keyword value = lexeme (keywordToken value)
 continuedKeyword :: Text -> Parser Text
 continuedKeyword value = keywordToken value <* keywordSeparator
 
-continuedReservedWord :: Reserved.ReservedWord -> Parser Text
-continuedReservedWord =
-  continuedKeyword . Text.pack . Reserved.reservedWordText
-
-continuedWordOperator :: AST.Operator -> Parser Text
-continuedWordOperator =
-  continuedKeyword . Text.pack . AST.operatorCanonicalSymbol
-
 keywordToken :: Text -> Parser Text
 keywordToken value =
   try
@@ -1627,7 +1575,6 @@ arithmeticOperatorTableWith infixOperator =
   [ [InfixR (Exponentiation <$ exponentiationOperator infixOperator)]
   , [ Prefix (Plus <$ operatorToken AST.AdditionOperator)
     , Prefix (Minus <$ operatorToken AST.MinusOperator)
-    , Prefix (BooleanNot <$ continuedWordOperator AST.BooleanNotOperator)
     , Prefix (Coalization <$ operatorToken AST.CoalizationOperator)
     ]
   , [InfixL (Multiplication <$ multiplicationOperator infixOperator)]

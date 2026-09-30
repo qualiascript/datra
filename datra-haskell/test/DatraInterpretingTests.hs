@@ -179,8 +179,11 @@ testTree =
 assert :: String -> Bool -> IO ()
 assert = assertBool
 
+identifierReference :: String -> Expression
+identifierReference = IdentifierReference . IdentifierString
+
 matchSingleRule
-  :: (SyntaxHoleKind String -> Expression -> Bool)
+  :: (SyntaxHoleKind Expression -> Expression -> Bool)
   -> SyntaxRule
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
@@ -854,10 +857,12 @@ expectInternalEvalValue
 expectInternalEvalValue source target check = do
   sourceExpression <- parseTestExpression source
   targetExpression <- parseTestExpression target
-  expectValue
-    (source <> " decoded at " <> target)
-    (Eval sourceExpression targetExpression)
-    check
+  sourceValue <- either (fail . show) pure
+    (interpretExpressionReason sourceExpression)
+  targetValue <- either (fail . show) pure
+    (interpretExpressionReason targetExpression)
+  either (fail . show) check
+    (Types.evalValues canonicalStringCodec sourceValue targetValue)
 
 expectInternalEvalRejection
   :: String
@@ -867,7 +872,10 @@ expectInternalEvalRejection
 expectInternalEvalRejection source target matches = do
   sourceExpression <- parseTestExpression source
   targetExpression <- parseTestExpression target
-  case interpretExpressionReason (Eval sourceExpression targetExpression) of
+  case do
+      sourceValue <- interpretExpressionReason sourceExpression
+      targetValue <- interpretExpressionReason targetExpression
+      Types.evalValues canonicalStringCodec sourceValue targetValue of
     Left rejection
       | matches rejection -> pure ()
       | otherwise -> fail ("unexpected internal decode rejection: " <> show rejection)
@@ -1139,19 +1147,19 @@ testStringTemplates = do
   assert "an Int syntax hole rejects the Infinity AST through template membership"
     (not (matchesValueSyntaxHoleWith
       interpretExpressionReason
-      (ValueSyntaxHole "Int")
+      (ValueSyntaxHole (identifierReference "Int"))
       (IdentifierReference (IdentifierString "Infinity"))))
   assert "an IntLimit syntax hole accepts the Infinity AST through template membership"
     (matchesValueSyntaxHoleWith
       interpretExpressionReason
-      (ValueSyntaxHole "IntLimit")
+      (ValueSyntaxHole (identifierReference "IntLimit"))
       (IdentifierReference (IdentifierString "Infinity")))
   let valueHole = SyntaxHole . ValueSyntaxHole
       syntaxRule targetKind implementation = SyntaxRule
         { syntaxName = "from"
         , syntaxTemplate = SyntaxTemplate
             [ SyntaxLiteral "from"
-            , valueHole "Int"
+            , valueHole (identifierReference "Int")
             , SyntaxLiteral "to"
             , valueHole targetKind
             ]
@@ -1173,12 +1181,12 @@ testStringTemplates = do
       matchesHole = matchesValueSyntaxHoleWith interpretExpressionReason
   assert "the AST matcher rejects Infinity from an incorrectly declared Int hole"
     (matchSingleRule matchesHole
-      (syntaxRule "Int" "datra.wrong-from")
+      (syntaxRule (identifierReference "Int") "datra.wrong-from")
       fromInfinity
       == Left NoMatchingSyntaxTemplate)
   assert "the AST matcher accepts Infinity from the declared IntLimit hole"
     (case matchSingleRule matchesHole
-        (syntaxRule "IntLimit" "datra.from")
+        (syntaxRule (identifierReference "IntLimit") "datra.from")
         fromInfinity of
       Right _ -> True
       Left _ -> False)
@@ -1190,7 +1198,7 @@ testStringTemplates = do
             , SyntaxLiteral "mark"
             ]
         , syntaxSignature = FunctionType
-            (IdentifierReference (IdentifierString holeKind))
+            holeKind
             IntegerType
         , syntaxRecursive = False
         , syntaxModule = Nothing
@@ -1200,8 +1208,8 @@ testStringTemplates = do
   assert "overlapping Nat and Int templates are rejected before AST matching"
     (case compileSyntaxTemplateFederation
         (\_ _ -> AtlasMapFederationRefuted ())
-        [ overlappingRule "Nat" "datra.choose-nat"
-        , overlappingRule "Int" "datra.choose-int"
+        [ overlappingRule (identifierReference "Nat") "datra.choose-nat"
+        , overlappingRule (identifierReference "Int") "datra.choose-int"
         ] of
       Left failure -> failure == OverlappingSyntaxTemplates
         "choose $Nat mark" "choose $Int mark"

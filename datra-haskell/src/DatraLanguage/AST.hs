@@ -18,7 +18,6 @@ module DatraLanguage.AST
   , renderAsciiStringLiteral
   , renderStringTemplate
   , renderIdentifierString
-  , isReservedIdentifierString
   ) where
 
 import Data.Functor.Identity (Identity (..))
@@ -29,7 +28,6 @@ import DatraLanguage.AST.Operator
   , ellipsisSymbol
   , operatorCanonicalSymbol
   )
-import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
 import IdentifierValueType (isIdentifierValue)
 import Numeric.Natural (Natural)
@@ -115,9 +113,7 @@ data Expression
   | Coalization Expression
   | StripIdentifiers Expression
   | Extract Expression
-  | Eval Expression Expression
   | Assert Bool Expression
-  | This
   | Fun Expression
   | WithBinding IdentifierString Bool Expression
   | ForBinding IdentifierString Bool Expression
@@ -250,9 +246,7 @@ data OperatorExpression
   | CoalizationValue OperatorExpression
   | StripIdentifiersValue OperatorExpression
   | ExtractValue OperatorExpression
-  | EvalValue OperatorExpression OperatorExpression
   | AssertValue Bool OperatorExpression
-  | ThisValue
   | FunValue OperatorExpression
   | WithBindingValue IdentifierString Bool OperatorExpression
   | ForBindingValue IdentifierString Bool OperatorExpression
@@ -389,11 +383,8 @@ normalizeExpression (StripIdentifiers operand) =
   StripIdentifiers (normalizeExpression operand)
 normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
-normalizeExpression (Eval source target) =
-  Eval (normalizeExpression source) (normalizeExpression target)
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
-normalizeExpression This = This
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (WithBinding name optional bound) =
   WithBinding name optional (normalizeExpression bound)
@@ -425,7 +416,10 @@ normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression 
 -- The payload of a scope identifier is its canonical reference spelling.
 -- It resolves the binding directly, including quoted names and captured names,
 -- without materializing the current block's declaration map.
-normalizeExpression (MapAccess (NamedAccess This name) (EllipsisNatural 1)) =
+normalizeExpression
+    (MapAccess
+      (NamedAccess (IdentifierReference (IdentifierString "this")) name)
+      (EllipsisNatural 1)) =
   IdentifierReference name
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
@@ -562,9 +556,7 @@ lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
 lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
-lower (Eval source target) = EvalValue (lower source) (lower target)
 lower (Assert hard condition) = AssertValue hard (lower condition)
-lower This = ThisValue
 lower (Fun operand) = FunValue (lower operand)
 lower (WithBinding name optional bound) =
   WithBindingValue name optional (lower bound)
@@ -764,12 +756,9 @@ prettyOperator (StripIdentifiersValue operand) =
   prettyUnary StripIdentifiersOperator operand
 prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
-prettyOperator (EvalValue source target) =
-  prettyBinary EvalOperator source target
 prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
-prettyOperator ThisValue = "this"
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (WithBindingValue (IdentifierString name) optional bound) =
   prettyForm "with"
@@ -883,13 +872,11 @@ renderAsciiStringLiteral value
   | isIdentifierValue value = '$' : value
 renderAsciiStringLiteral value = renderStandardStringLiteral value
 
--- | Render an identifier expression. Canonical non-reserved names use their
--- compact bare spelling; reserved or noncanonical names use a full string.
+-- | Render a canonical identifier expression with its compact bare spelling.
 renderIdentifierString :: String -> String
 renderIdentifierString value@(first : _)
   | isLeadingCanonicalCharacter first
-      && isIdentifierValue value
-      && not (isReservedIdentifierString value) = value
+      && isIdentifierValue value = value
 renderIdentifierString value = renderStandardStringLiteral value
 
 renderStandardStringLiteral :: String -> String
@@ -1023,7 +1010,6 @@ traverseExpressionChildren visit expression = case expression of
   GreaterThanOrEqual a b -> GreaterThanOrEqual <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
-  Eval a b -> Eval <$> visit a <*> visit b
   Assert hard x -> Assert hard <$> visit x
   Fun x -> Fun <$> visit x
   WithBinding name optional bound ->

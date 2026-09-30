@@ -2,12 +2,12 @@
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
-  , declarationRules, syntaxTemplatePatternTexts
+  , SyntaxControl (..), syntaxControlForSymbol
+  , declarationRules, syntaxTemplatesFromExpression
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , qualifySyntaxRule, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
   ) where
-import Data.List (isPrefixOf)
 import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
@@ -20,12 +20,53 @@ import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure (..))
 
 data SyntaxRule = SyntaxRule
-  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate String
+  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate Expression
   , syntaxSignature :: Expression
   , syntaxRecursive :: Bool
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
   } deriving (Eq,Show)
+
+data SyntaxControl
+  = IfSyntaxControl
+  | IfThenSyntaxControl
+  | BeginSyntaxControl
+  | DoSyntaxControl
+  | LetSyntaxControl
+  | FunSyntaxControl
+  | WithSyntaxControl
+  | ForSyntaxControl
+  | WithInSyntaxControl
+  | ForInSyntaxControl
+  | ValSyntaxControl
+  | SubfederationSyntaxControl
+  | BooleanAndSyntaxControl
+  | BooleanOrSyntaxControl
+  | BooleanNotSyntaxControl
+  | AssertSyntaxControl
+  | AssertHardSyntaxControl
+  deriving (Eq, Show)
+
+syntaxControlForSymbol :: String -> Maybe SyntaxControl
+syntaxControlForSymbol symbol = lookup symbol
+  [ ("datra.syntax.if", IfSyntaxControl)
+  , ("datra.syntax.ifThen", IfThenSyntaxControl)
+  , ("datra.syntax.begin", BeginSyntaxControl)
+  , ("datra.syntax.do", DoSyntaxControl)
+  , ("datra.syntax.let", LetSyntaxControl)
+  , ("datra.syntax.fun", FunSyntaxControl)
+  , ("datra.syntax.with", WithSyntaxControl)
+  , ("datra.syntax.for", ForSyntaxControl)
+  , ("datra.syntax.withIn", WithInSyntaxControl)
+  , ("datra.syntax.forIn", ForInSyntaxControl)
+  , ("datra.syntax.val", ValSyntaxControl)
+  , ("datra.syntax.of", SubfederationSyntaxControl)
+  , ("datra.syntax.and", BooleanAndSyntaxControl)
+  , ("datra.syntax.or", BooleanOrSyntaxControl)
+  , ("datra.syntax.not", BooleanNotSyntaxControl)
+  , ("datra.syntax.assert", AssertSyntaxControl)
+  , ("datra.syntax.assertHard", AssertHardSyntaxControl)
+  ]
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules (Let value) =
@@ -38,9 +79,9 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
   where
     collect key (EitherType a b) = collect key a <> collect key b
     collect key (MapSpecification body (SyntaxType templates signature)) =
-      [ SyntaxRule key (syntaxTemplateFromPattern patternText)
+      [ SyntaxRule key template
           signature False Nothing body
-      | patternText <- maybe [] id (syntaxTemplatePatternTexts templates)
+      | template <- maybe [] id (syntaxTemplatesFromExpression templates)
       ]
     collect _ _ = []
 declarationRules _ = []
@@ -48,19 +89,33 @@ declarationRules _ = []
 -- | The left operand of @%>@ is an ordinary inhabited list value. Rules must
 -- be available before evaluation, so each member is required to be an
 -- explicit extracted string at declaration time.
-syntaxTemplatePatternTexts :: Expression -> Maybe [String]
-syntaxTemplatePatternTexts (Extract templates) = templateTexts templates
+syntaxTemplatesFromExpression
+  :: Expression
+  -> Maybe [SyntaxTemplate Expression]
+syntaxTemplatesFromExpression (Extract templates) = templateValues templates
   where
-    templateTexts (AsciiStringLiteral patternText) = Just [patternText]
-    templateTexts (AtlasMap values)
-      | not (null values) = traverse templateText values
-    templateTexts _ = Nothing
-    templateText (AsciiStringLiteral patternText) = Just patternText
-    templateText _ = Nothing
-syntaxTemplatePatternTexts _ = Nothing
+    templateValues value@AsciiStringLiteral {} =
+      (: []) <$> templateValue value
+    templateValues value@StringTemplate {} =
+      (: []) <$> templateValue value
+    templateValues (AtlasMap values)
+      | not (null values) = traverse templateValue values
+    templateValues _ = Nothing
+    templateValue (AsciiStringLiteral patternText) =
+      Just (syntaxTemplateFromPattern patternText)
+    templateValue (StringTemplate parts) =
+      SyntaxTemplate . concat <$> traverse templatePart parts
+    templateValue _ = Nothing
+    templatePart (StringTemplateLiteral literal) =
+      Just (syntaxTemplatePieces (syntaxTemplateFromPattern literal))
+    templatePart (StringTemplateInterpolation value) =
+      Just [SyntaxHole (ValueSyntaxHole value)]
+    templatePart StringTemplateWeakInterpolation {} = Nothing
+syntaxTemplatesFromExpression _ = Nothing
 
-syntaxTemplateFromPattern :: String -> SyntaxTemplate String
-syntaxTemplateFromPattern = parseSyntaxTemplate id
+syntaxTemplateFromPattern :: String -> SyntaxTemplate Expression
+syntaxTemplateFromPattern = parseSyntaxTemplate
+  (IdentifierReference . IdentifierString)
 
 syntaxTemplateLiteralPrefix :: SyntaxRule -> [String]
 syntaxTemplateLiteralPrefix = foldr prefix []
@@ -89,74 +144,63 @@ expandSyntax
   :: SyntaxRule
   -> [Expression]
   -> Either SyntaxExpansionFailure Expression
-expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
-  Just name | "datra.syntax." `isPrefixOf` name ->
-    control name captures
+expandSyntax rule captures = case
+    externalSymbol (syntaxImplementation rule) >>= syntaxControlForSymbol of
+  Just control -> controlWithValidCaptures control
+    (specifiedValueCaptures captures)
   _ -> Right (FunctionApplication
     callable
     (case captures of [value] -> value; _ -> AtlasMap captures))
   where
-    callable
-      | syntaxRecursive rule
-      , Nothing <- syntaxModule rule =
-          IdentifierReference (IdentifierString localName)
-      | otherwise = scoped
-          (MapSpecification (syntaxImplementation rule) (syntaxSignature rule))
+    callable = scoped (IdentifierReference (IdentifierString localName))
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     specifiedValueCaptures = zipWith specifyCapture
       [kind | SyntaxHole kind <- syntaxTemplatePieces (syntaxTemplate rule)]
     specifyCapture (ValueSyntaxHole kind) capture =
       MapSpecification capture
-        (scoped (IdentifierReference (IdentifierString kind)))
+        (scopeHoleType kind)
     specifyCapture _ capture = capture
+    scopeHoleType value@IdentifierReference {} = scoped value
+    scopeHoleType value = value
     block (AtlasMap entries) = entries
     block value = [value]
-    control name values =
-      case controlArity name of
-        Nothing -> Left (UnknownSyntaxControlAdapter name)
-        Just expected
-          | length values /= expected ->
-              Left
-                (InvalidSyntaxControlCaptures
-                  name expected (length values))
-          | otherwise ->
-              controlWithValidCaptures name (specifiedValueCaptures values)
-    controlArity "datra.syntax.if" = Just 3
-    controlArity "datra.syntax.ifThen" = Just 2
-    controlArity "datra.syntax.begin" = Just 2
-    controlArity "datra.syntax.do" = Just 2
-    controlArity "datra.syntax.let" = Just 1
-    controlArity "datra.syntax.fun" = Just 1
-    controlArity "datra.syntax.with" = Just 2
-    controlArity "datra.syntax.for" = Just 2
-    controlArity "datra.syntax.withIn" = Just 3
-    controlArity "datra.syntax.forIn" = Just 3
-    controlArity "datra.syntax.val" = Just 1
-    controlArity _ = Nothing
-    controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
+    controlWithValidCaptures IfSyntaxControl [condition, yes, no] =
       Right (conditionalWithBindings condition yes no)
-    controlWithValidCaptures "datra.syntax.ifThen" [condition, yes] =
+    controlWithValidCaptures IfThenSyntaxControl [condition, yes] =
       Right (conditionalWithBindings condition yes (AtlasMap []))
-    controlWithValidCaptures "datra.syntax.begin" [entries,result] =
+    controlWithValidCaptures BeginSyntaxControl [entries,result] =
       Right (Begin (block entries) result)
-    controlWithValidCaptures "datra.syntax.do" [entries,result] =
+    controlWithValidCaptures DoSyntaxControl [entries,result] =
       Right (FunctionBody (block entries) result)
-    controlWithValidCaptures "datra.syntax.let" [entry] =
+    controlWithValidCaptures LetSyntaxControl [entry] =
       Right (Let (absorbAssignedConcatenation entry))
-    controlWithValidCaptures "datra.syntax.fun" [entry] =
+    controlWithValidCaptures FunSyntaxControl [entry] =
       Right (Fun (absorbFunSequence entry))
-    controlWithValidCaptures "datra.syntax.with" [name,bound] =
+    controlWithValidCaptures WithSyntaxControl [name,bound] =
       dependentBinder "with" WithBinding name bound
-    controlWithValidCaptures "datra.syntax.for" [name,bound] =
+    controlWithValidCaptures ForSyntaxControl [name,bound] =
       dependentBinder "for" ForBinding name bound
-    controlWithValidCaptures "datra.syntax.withIn" [name,bound,body] =
+    controlWithValidCaptures WithInSyntaxControl [name,bound,body] =
       localDependentFamily "with" WithBinding name bound body
-    controlWithValidCaptures "datra.syntax.forIn" [name,bound,body] =
+    controlWithValidCaptures ForInSyntaxControl [name,bound,body] =
       localDependentFamily "for" ForBinding name bound body
-    controlWithValidCaptures "datra.syntax.val" [value] =
+    controlWithValidCaptures ValSyntaxControl [value] =
       Right (StripIdentifiers value)
-    controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
+    controlWithValidCaptures SubfederationSyntaxControl [source,target] =
+      Right (Subfederation source target)
+    controlWithValidCaptures BooleanAndSyntaxControl [left,right] =
+      Right (BooleanAnd left right)
+    controlWithValidCaptures BooleanOrSyntaxControl [left,right] =
+      Right (BooleanOr left right)
+    controlWithValidCaptures BooleanNotSyntaxControl [value] =
+      Right (BooleanNot value)
+    controlWithValidCaptures AssertSyntaxControl [condition] =
+      Right (Assert False condition)
+    controlWithValidCaptures AssertHardSyntaxControl [_,condition] =
+      Right (Assert True condition)
+    controlWithValidCaptures control _ =
+      Left (UnknownSyntaxControlAdapter (show control))
 
     dependentBinder name constructor binder bound =
       case binder of
@@ -292,11 +336,11 @@ absorbFunSequence expressionValue =
   case expressionValue of
     MapSequence (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == This ->
+      , last remaining == IdentifierReference (IdentifierString "this") ->
           EitherType (AtlasMap []) (MapSequence (headValue : remaining))
     AtlasMap (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == This ->
+      , last remaining == IdentifierReference (IdentifierString "this") ->
           EitherType (AtlasMap []) (AtlasMap (headValue : remaining))
     _ -> expressionValue
 

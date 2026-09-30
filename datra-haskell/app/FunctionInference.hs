@@ -157,6 +157,11 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
 
     infer scope members expression = case expression of
       IdentifierReference (IdentifierString name)
+        | name == "this" -> maybe
+            (declarationMap members
+              (recur . IdentifierReference . IdentifierString))
+            Right
+            self
         | Just binding <- lookupInferenceBinding name scope ->
             case binding of
               InferenceBinding _ value bindingMembers bindingScope ->
@@ -231,12 +236,8 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
           Left _ -> recur target
         check actual expected
         pure expected
-      This -> maybe
-        (declarationMap members (recur . IdentifierReference . IdentifierString))
-        Right
-        self
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
-      MapAccess This index -> do
+      MapAccess (IdentifierReference (IdentifierString "this")) index -> do
         position <- recur index
         projectDeclaration members (recur . IdentifierReference . IdentifierString) position
       MapAccess operand index -> do
@@ -254,7 +255,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
             -- This permits guarded Nat recursion such as @n = 0@ followed by
             -- @this (n - 1)@ without pretending subtraction is always Nat.
             case (function, self) of
-              (This, Just _) -> pure ()
+              (IdentifierReference (IdentifierString "this"), Just _) -> pure ()
               (IdentifierReference (IdentifierString name), _)
                 | name `elem` namedSelf -> pure ()
               _ -> checkFunctionArgument argument actual domain

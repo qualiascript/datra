@@ -12,7 +12,6 @@ renderSourceExpression = source 0 . toOperatorExpression
 source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
-    ThisValue -> "this"
     FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
     WithBindingValue (IdentifierString name) optional bound -> wrapped 0
       ("with " <> binderName name optional <> " of " <> source 0 bound)
@@ -50,7 +49,6 @@ source context expression =
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
     SafeOverloadValue left right -> binary 1 "<<<" left right
-    EvalValue text target -> wrapped 0 ("eval " <> source 3 text <> " at " <> source 0 target)
     AssertValue hard condition -> wrapped 0
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
@@ -146,8 +144,6 @@ source context expression =
       (listMaybeInput values <> " !? " <> listMaybeFunction function)
     listMaybeFunction function@FunValue {} = source 0 function
     listMaybeFunction function = source 2 function
-    listMaybeInput (StripIdentifiersValue operand) =
-      "val " <> source 0 operand
     listMaybeInput operand = source 2 operand
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
@@ -180,7 +176,10 @@ source context expression =
 
 -- Preserve the exact expansion of @this.(a, b)[1]@ when rendering name lists.
 scopeNames :: OperatorExpression -> Maybe [String]
-scopeNames (NamedAccessValue ThisValue (IdentifierString name)) = Just [name]
+scopeNames
+    (NamedAccessValue
+      (IdentifierReferenceValue (IdentifierString "this"))
+      (IdentifierString name)) = Just [name]
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
 

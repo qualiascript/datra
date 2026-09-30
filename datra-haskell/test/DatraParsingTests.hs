@@ -35,9 +35,7 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage)
-  , SyntaxExpansionFailure (..)
-  )
+  ( ParseFailure (parseFailureMessage) )
 import Parsing
   ( ResourceEnvelope (..)
   , parseDatra
@@ -96,12 +94,11 @@ regressionTests = do
         , syntaxModule = Nothing
         , syntaxImplementation = External (AsciiStringLiteral implementation)
         }
-  assert "syntax controls report capture arity structurally"
-    (expandSyntax (syntaxControl "datra.syntax.if") []
-      == Left (InvalidSyntaxControlCaptures "datra.syntax.if" 3 0))
-  assert "unknown syntax controls report their adapter structurally"
+  assert "external syntax implementations are not selected by namespace"
     (expandSyntax (syntaxControl "datra.syntax.unknown") []
-      == Left (UnknownSyntaxControlAdapter "datra.syntax.unknown"))
+      == Right (FunctionApplication
+        (ref "test-control")
+        (AtlasMap [])))
   let syntaxFunction name pieces implementation = SyntaxRule
         { syntaxName = name
         , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
@@ -112,16 +109,21 @@ regressionTests = do
         , syntaxModule = Nothing
         , syntaxImplementation = External (AsciiStringLiteral implementation)
         }
-      intHole = SyntaxHole (ValueSyntaxHole "Int")
-      intLimitHole = SyntaxHole (ValueSyntaxHole "IntLimit")
+      intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
+      intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
       fromPhrase = foldl FunctionApplication (ref "from")
         [natural 0, ref "to", ref "Infinity"]
       matchesNumericHole kind value = case (kind, value) of
-        (ValueSyntaxHole "Int", EllipsisNatural _) -> True
-        (ValueSyntaxHole "Int", Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole "IntLimit", EllipsisNatural _) -> True
-        (ValueSyntaxHole "IntLimit", Minus (EllipsisNatural _)) -> True
-        (ValueSyntaxHole "IntLimit", IdentifierReference
+        (ValueSyntaxHole (IdentifierReference (IdentifierString "Int")),
+          EllipsisNatural _) -> True
+        (ValueSyntaxHole (IdentifierReference (IdentifierString "Int")),
+          Minus (EllipsisNatural _)) -> True
+        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+          EllipsisNatural _) -> True
+        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+          Minus (EllipsisNatural _)) -> True
+        (ValueSyntaxHole (IdentifierReference (IdentifierString "IntLimit")),
+          IdentifierReference
             (IdentifierString "Infinity")) -> True
         _ -> False
       wrongFrom = syntaxFunction "from"
@@ -165,9 +167,9 @@ regressionTests = do
     (matchRules matchesNumericHole [correctFrom] nestedTailPhrase
       == Left NoMatchingSyntaxTemplate)
   let greedyRule = syntaxFunction "greedy"
-        [ SyntaxHole (ValueSyntaxHole "Prefix")
+        [ SyntaxHole (ValueSyntaxHole (ref "Prefix"))
         , SyntaxLiteral "marker"
-        , SyntaxHole (ValueSyntaxHole "Tail")
+        , SyntaxHole (ValueSyntaxHole (ref "Tail"))
         ]
         "datra.greedy"
       greedyPhrase = foldl FunctionApplication (ref "greedy")
@@ -180,8 +182,10 @@ regressionTests = do
       greedyPrefix = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
       matchesGreedyHole kind value = case kind of
-        ValueSyntaxHole "Prefix" -> True
-        ValueSyntaxHole "Tail" -> value == natural 3
+        ValueSyntaxHole (IdentifierReference (IdentifierString "Prefix")) ->
+          True
+        ValueSyntaxHole (IdentifierReference (IdentifierString "Tail")) ->
+          value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
     (case expandSyntax greedyRule [greedyPrefix, natural 3] of
@@ -363,8 +367,8 @@ regressionTests = do
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import False "library_one", Import True "std"
-    , InModule "std" This
-    , NamedAccess This (IdentifierString "abc")
+    , InModule "std" (ref "this")
+    , NamedAccess (ref "this") (IdentifierString "abc")
     , SyntaxType (Extract (AsciiStringLiteral "$Int next"))
         (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
@@ -378,26 +382,11 @@ regressionTests = do
         (AST.assignment "Example"
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
-            (FunctionApplication (ref "public") This))
+            (FunctionApplication (ref "public") (ref "this")))
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
-            (FunctionApplication (ref "public") This)))
+            (FunctionApplication (ref "public") (ref "this"))))
     ]
-  assertAstRoundTrip "internal eval AST remains serializable"
-    (renderExpression
-      (Eval
-        (AsciiStringLiteral "x : 3, (b : 8; 2)")
-        (AtlasMap
-          [ AST.dependentIdentifierType "x" (natural 3)
-          , ArgumentMap
-              [ EitherType
-                  (AST.assignment "a" (ref "Nat") (natural 2))
-                  (ref "Nat")
-              , EitherType
-                  (AST.dependentIdentifierType "b" (ref "Nat"))
-                  (ref "Nat")
-              ]
-          ])))
   assertAstOutput "eval is available as an ordinary user identifier"
     "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
   assertAstOutput "eval identifier respects identifier boundaries"
@@ -729,11 +718,11 @@ regressionTests = do
     "1 of Int"
     (AST.subfederation (natural 1) (ref "Int"))
   assertAstOutput
-    "subfederation check binds inside equality"
+    "equality binds inside a subfederation check"
     "1 of Int = true"
-    (AST.equal
-      (AST.subfederation (natural 1) (ref "Int"))
-      (ref "true"))
+    (AST.subfederation
+      (natural 1)
+      (AST.equal (ref "Int") (ref "true")))
   assertAstOutput
     "Maybe is an ordinary type application"
     "Maybe Nat"
@@ -767,11 +756,12 @@ regressionTests = do
     (MaybeThen
       (ListUncons (ref "values"))
       (FunctionApplication (ref "maximum") (ref "it")))
-  assertAstOutput "list sequencing binds after val without grouping"
+  assertAstOutput "a terminal syntax hole greedily captures list sequencing"
     "val values !? maximum"
-    (MaybeThen
-      (ListUncons (StripIdentifiers (ref "values")))
-      (FunctionApplication (ref "maximum") (ref "it")))
+    (StripIdentifiers
+      (MaybeThen
+        (ListUncons (ref "values"))
+        (FunctionApplication (ref "maximum") (ref "it"))))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -787,15 +777,16 @@ regressionTests = do
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
     ("val values !? fun {candidate? : IntLimit, "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
-    (MaybeThen
-      (ListUncons (StripIdentifiers (ref "values")))
-      (FunctionApplication inlineLimitFunction (ref "it")))
-  assert "list sequencing source rendering keeps the compact val form"
+    (StripIdentifiers
+      (MaybeThen
+        (ListUncons (ref "values"))
+        (FunctionApplication inlineLimitFunction (ref "it"))))
+  assert "source rendering groups val before outer list sequencing"
     ( renderSourceExpression
         (MaybeThen
           (ListUncons (StripIdentifiers (ref "values")))
           (FunctionApplication (ref "maximum") (ref "it")))
-        == "val values !? maximum"
+        == "(val values) !? maximum"
     )
   assertAstOutput "grouping keeps list sequencing inside val"
     "val (values !? maximum)"
@@ -819,14 +810,14 @@ regressionTests = do
           (ref "values")
           (FunctionApplication (ref "List") (ref "Int"))))
       (FunctionApplication (ref "maximum") (ref "it")))
-  assertAstOutput "list sequencing follows a subfederation expression"
+  assertAstOutput "subfederation greedily captures right-side sequencing"
     "values of List Int !? maximum"
-    (MaybeThen
-      (ListUncons
-        (Subfederation
-          (ref "values")
-          (FunctionApplication (ref "List") (ref "Int"))))
-      (FunctionApplication (ref "maximum") (ref "it")))
+    (Subfederation
+      (ref "values")
+      (MaybeThen
+        (ListUncons
+          (FunctionApplication (ref "List") (ref "Int")))
+        (FunctionApplication (ref "maximum") (ref "it"))))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
@@ -1475,7 +1466,8 @@ regressionTests = do
       (NamedAccess (ref "a") (IdentifierString "c")))
   assertRejected "named access lists require at least one name" "a.()"
   assertRejected "named access lists reject expressions" "a.(b + c)"
-  let valueOf name = MapAccess (NamedAccess This (IdentifierString name)) (natural 1)
+  let valueOf name =
+        MapAccess (NamedAccess (ref "this") (IdentifierString name)) (natural 1)
   assertRejected "legacy value lookup symbol is rejected" "^a"
   assertAstOutput "value lookup expands to the binding's value page"
     "$~a" (valueOf "a")
@@ -1503,8 +1495,8 @@ regressionTests = do
     "Maybe ($~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
   let nameList = MapAccess
         (MapConcatenation
-          (NamedAccess This (IdentifierString "a"))
-          (NamedAccess This (IdentifierString "b")))
+          (NamedAccess (ref "this") (IdentifierString "a"))
+          (NamedAccess (ref "this") (IdentifierString "b")))
         (natural 1)
   assertAstOutput "value lookup preserves named access list semantics"
     "$~(a, \"b\")" nameList
@@ -1523,7 +1515,7 @@ regressionTests = do
     , (NamedAccess (valueOf "a") (IdentifierString "b"), "$~a.b")
     , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
         "x : $~\"type name\"")
-    , (MapAccess (NamedAccess This (IdentifierString "a")) (natural 0), "this.a[0]")
+    , (MapAccess (NamedAccess (ref "this") (IdentifierString "a")) (natural 0), "this.a[0]")
     , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
@@ -1841,7 +1833,7 @@ regressionTests = do
     (natural 1 <:> natural 2)
 
 matchRules
-  :: (SyntaxHoleKind String -> Expression -> Bool)
+  :: (SyntaxHoleKind Expression -> Expression -> Bool)
   -> [SyntaxRule]
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
@@ -1880,7 +1872,7 @@ genExpression =
     , pure EllipsisLiteral
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
-    , pure This
+    , pure (ref "this")
     , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
@@ -1919,7 +1911,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression EitherType
     , Gen.subterm genExpression StripIdentifiers
     , Gen.subterm genExpression Extract
-    , Gen.subterm2 genExpression genExpression Eval
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
@@ -2084,15 +2075,11 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply (in-module $std (~> (!$~ \"datra.from\") "
-          <> "(-> ({} (: origin (ref $Int)) (: target (ref $IntLimit))) "
-          <> "(ref $IntValRange)))) (<:> 2 5))"
+        == "(apply-func (in-module $std (ref $from)) (<:> 2 5))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply (in-module $std (~> (!$~ \"datra.from\") "
-          <> "(-> ({} (: origin (ref $Int)) (: direction (ref $_Direction))) "
-          <> "(ref $IntValRange)))) (<:> 2 $up))"
+        == "(apply-func (in-module $std (ref $from)) (<:> 2 $up))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -2183,17 +2170,10 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
-  (scoped (MapSpecification (External (AsciiStringLiteral ("datra." <> name)))
-    (FunctionType (ArgumentMap
-      [ AST.dependentIdentifierType "origin" (ref originType)
-      , AST.dependentIdentifierType endpointName (ref endpointType)
-      ])
-      (ref (if name == "from" then "IntValRange" else "IntRange")))))
+  (InModule "std" (ref name))
   (AtlasMap [start, endpoint])
   where
-    scoped = InModule "std"
-    originType = if name == "from" then "Int" else "IntLimit"
-    (endpointName, endpointType, endpoint) = case end of
-      UpperBound value -> ("target", "IntLimit", value)
-      Upwards -> ("direction", "_Direction", AsciiStringLiteral "up")
-      Downwards -> ("direction", "_Direction", AsciiStringLiteral "down")
+    endpoint = case end of
+      UpperBound value -> value
+      Upwards -> AsciiStringLiteral "up"
+      Downwards -> AsciiStringLiteral "down"

@@ -1,6 +1,5 @@
 import "ordinals"
 let factorial := ({n? : Int := 5} -> Int do
-begin
   assert n of Int
   yield if n = 0 then 1 else n * factorial (n - 1))
 my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield (val it[0]) ^ (val it[1]))

@@ -238,10 +238,9 @@ functionBodySpellingTests =
     , programCase "do block"
         "f := ({n? : Nat} -> Nat do x := 1; yield n + x)\nyield f 4"
         "5"
-    , programCase "do begin block"
+    , programCase "multiline do block"
         (unlines
           [ "f := ({n? : Nat} -> Nat do"
-          , "begin"
           , "  x := 1"
           , "  yield n + x)"
           , "yield f 4"

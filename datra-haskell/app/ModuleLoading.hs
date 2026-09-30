@@ -5,7 +5,7 @@ import Control.Exception (IOException, try)
 import Data.Bifunctor qualified as Bifunctor
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>), takeDirectory, takeExtension)
-import Interpreting (moduleExportNames, moduleName)
+import Interpreting (importInvocation, moduleExportNames, moduleName)
 import RuntimeModules (ModuleSource (..))
 import Parsing (sourceImports, parseDatraLocatedWithSyntaxImports)
 import DatraLanguage.AST
@@ -32,8 +32,9 @@ loadExpressionImports
   -> IO (Either ModuleLoadFailure [(String, ModuleSource)])
 loadExpressionImports origin = loadPaths [] origin . paths
   where
-    paths (Import _ path) = [path]
-    paths value = concatMap paths (expressionChildren value)
+    paths value = case importInvocation value of
+      Just (_, path) -> [path]
+      Nothing -> concatMap paths (expressionChildren value)
 
 loadPaths
   :: [FilePath]

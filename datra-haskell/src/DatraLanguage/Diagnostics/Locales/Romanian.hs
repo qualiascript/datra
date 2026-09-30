@@ -88,12 +88,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "adaptorul de control sintactic nu este înregistrat"
         ["adaptor: " <> name]
-    InvalidSyntaxControlCaptures name expected given ->
-      LocalizedMessage "adaptorul de control sintactic a primit capturi nevalide"
-        [ "adaptor: " <> name
-        , "capturi așteptate: " <> show expected
-        , "capturi primite: " <> show given
-        ]
     InvalidDependentBinder name ->
       LocalizedMessage "legătura dependentă necesită un identificator"
         ["adaptor: " <> name]

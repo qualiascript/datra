@@ -7,6 +7,7 @@ module Interpreting
   , EvaluationMode (..)
   , moduleName
   , moduleExportNames
+  , importInvocation
   , interpretLocatedWithImports
   , interpretLocatedWithImportsInMode
   , interpretLocatedWithImportsInModeAndStandardLibrary
@@ -69,15 +70,16 @@ import DatraLanguage.AST
   )
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (FunctionSyntax)
-  , parseSyntaxTemplate
   , traverseSyntaxTemplate
   )
 import DatraTypes
 import Parsing (parseDatra, standardLibraryExpression)
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import SyntaxDefinitions
-  ( SyntaxHoleKind (ValueSyntaxHole)
-  , syntaxTemplatePatternTexts
+  ( SyntaxControl
+  , SyntaxHoleKind (ValueSyntaxHole)
+  , syntaxControlForSymbol
+  , syntaxTemplatesFromExpression
   )
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -232,14 +234,13 @@ canonicalStringCodec =
 -- AST categories such as @_Expr@ are intentionally outside this function.
 matchesValueSyntaxHoleWith
   :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind String
+  -> SyntaxHoleKind Expression
   -> Expression
   -> Bool
-matchesValueSyntaxHoleWith interpret (ValueSyntaxHole kind) captured =
+matchesValueSyntaxHoleWith interpret (ValueSyntaxHole targetExpression) captured =
   case do
       capturedValue <- interpret captured
-      target <- interpret
-        (IdentifierReference (IdentifierString kind))
+      target <- interpret targetExpression
       source <- asciiStringValue
         (renderInterpretedValue capturedValue)
       evalValues canonicalStringCodec source target of
@@ -252,18 +253,13 @@ evaluateFunctionSyntax
   -> Expression
   -> Either InterpretingError (FunctionSyntax InterpretedValue)
 evaluateFunctionSyntax interpret templatesExpression = do
-  patternTexts <- maybe
+  templates <- maybe
     (Left (ExpectedStringTemplateSpecification MapValueKind))
     Right
-    (syntaxTemplatePatternTexts templatesExpression)
-  templateValues <- traverse asciiStringValue patternTexts
-  _ <- traverse (`specifyValues` templateTypeValue) templateValues
-  FunctionSyntax <$> traverse evaluateTemplate patternTexts
-  where
-    evaluateTemplate patternText = traverseSyntaxTemplate interpret
-      (parseSyntaxTemplate
-        (IdentifierReference . IdentifierString)
-        patternText)
+    (syntaxTemplatesFromExpression templatesExpression)
+  FunctionSyntax <$> traverse
+    (traverseSyntaxTemplate interpret)
+    templates
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =
@@ -353,13 +349,15 @@ data RecursivePrefix
 -- to their ordinary evaluators after the recursive tail has been removed.
 lazyRecursivePrefix :: Scope -> Expression -> Maybe (Scope, RecursivePrefix)
 lazyRecursivePrefix scope expression = case expression of
-  Fun value -> (scope,) <$> recursivePrefixFor (== This) value
+  Fun value -> (scope,) <$> recursivePrefixFor
+    (== IdentifierReference (IdentifierString "this")) value
   IdentifierReference (IdentifierString name) -> do
     binding <- lookup name scope
     (captured, _, definition) <- bindingDefinition binding
     let isSelf value = value == IdentifierReference (IdentifierString name)
     prefix <- case definition of
-      Fun value -> recursivePrefixFor (== This) value
+      Fun value -> recursivePrefixFor
+        (== IdentifierReference (IdentifierString "this")) value
       value -> recursivePrefixFor isSelf value
     pure (captured, prefix)
   _ -> Nothing
@@ -542,9 +540,6 @@ interpretNormalizedExpression scope resolving expressionValue =
       interpret operand >>= stripIdentifiersValue
     Extract operand ->
       interpret operand >>= extractValue
-    This -> case lookup "\0fun" scope of
-      Just (SelfBinding _ value) -> value
-      _ -> scopeValue scope resolving
     Fun operand ->
       case recursiveListElement operand of
         Just element -> do
@@ -554,7 +549,9 @@ interpretNormalizedExpression scope resolving expressionValue =
         Nothing -> recursive
       where
         recursive = evalInScope
-          (("\0fun", SelfBinding (case operand of Begin {} -> True; _ -> False) recursive) : scope)
+          (("this", SelfBinding
+            (case operand of Begin {} -> True; _ -> False)
+            recursive) : scope)
           resolving
           operand
     WithBinding _ _ _ -> Left (DependentBinderOutsideContainer "with")
@@ -592,8 +589,6 @@ interpretNormalizedExpression scope resolving expressionValue =
       evaluateBlock (Just (renderSourceExpression expressionValue)) bindings result
     Let _ -> Left LetOutsideBegin
     IdentifierReference (IdentifierString name) -> resolveIdentifier scope resolving name
-    Eval source target ->
-      binary (evalValues canonicalStringCodec) source target
     Assert _ condition -> do
       accepted <- interpret condition >>= booleanCondition
       if accepted
@@ -615,19 +610,25 @@ interpretNormalizedExpression scope resolving expressionValue =
             result -> result >>= transparentEitherAlias
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
-    NamedAccess This (IdentifierString name)
-      | Just (SelfBinding _ value) <- lookup "\0fun" scope ->
+    NamedAccess
+        (IdentifierReference (IdentifierString "this"))
+        (IdentifierString name)
+      | Just (SelfBinding _ value) <- lookup "this" scope ->
           value >>= (`namedAccessValue` name)
-    NamedAccess This (IdentifierString name)
-      | Just (ScopeMembers names) <- lookup "\0this" scope
+      | Just (ScopeMembers names) <- lookup "this" scope
       , name `elem` names ->
           simpleIdentifierTypeValue name <$> resolveIdentifier scope resolving name
     NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
-    MapAccess This insertionOperand -> do
+    MapAccess
+        (IdentifierReference (IdentifierString "this"))
+        insertionOperand -> do
       insertion <- interpret insertionOperand
-      case lookup "\0fun" scope of
+      case lookup "this" scope of
         Just (SelfBinding _ value) -> value >>= (`accessValues` insertion)
-        _ -> projectDeclaration (scopeMemberNames scope) (resolveIdentifier scope resolving) insertion
+        _ -> projectDeclaration
+          (scopeMemberNames scope)
+          (resolveIdentifier scope resolving)
+          insertion
     MapAccess mapOperand insertionOperand ->
       case lazyRecursivePrefix scope mapOperand of
         Just (captured, prefix) -> do
@@ -638,6 +639,28 @@ interpretNormalizedExpression scope resolving expressionValue =
         templates signature)
       | not (syntaxImplementationExpression implementation) ->
           interpretSpecificationWith interpret implementation syntaxType
+      | External descriptorExpression <- implementation -> do
+          syntax <- evaluateFunctionSyntax interpret templates
+          descriptor <- interpret descriptorExpression
+          target <- interpret signature
+          value <- resolveExternal scope resolving descriptor
+          functionValue <- case value of
+            ResolvedSyntaxControl _ ->
+              case interpretedFunction target of
+                Just function -> pure (makeFunctionValue function
+                  { functionSource = Just
+                      (renderSourceExpression implementation) })
+                Nothing -> Left (FunctionEvaluationFailed
+                  AstPatternRequiresFunctionImplementation)
+            ResolvedExternalValue external ->
+              case linkExternalAdapter external target of
+                Just linked -> linked
+                Nothing -> contextuallySpecify external target
+          case interpretedFunction functionValue of
+            Just function -> pure (makeFunctionValue function
+              { functionSyntax = Just syntax })
+            Nothing -> Left (FunctionEvaluationFailed
+              AstPatternRequiresFunctionImplementation)
       | otherwise -> do
           syntax <- evaluateFunctionSyntax interpret templates
           value <- interpret (MapSpecification implementation signature)
@@ -964,7 +987,8 @@ productiveRecursiveBinding name binding =
 -- while their signatures are themselves being reconstructed.
 declareScope :: Scope -> [Expression] -> Either InterpretingError (Scope, [String], [Expression])
 declareScope enclosing entries = do
-  outer <- foldM importModule enclosing [(allNames,path) | Import allNames path <- entries]
+  outer <- foldM importModule enclosing
+    [ imported | Just imported <- map importInvocation entries ]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
       outerNames = map fst outer
       canonicalNames = concat [map fst names | (_, CanonicalNames names) <- outer]
@@ -975,7 +999,9 @@ declareScope enclosing entries = do
           (if isOuterScopeExternal (declarationValue declaration)
             then outer else captured)
           (declarationAnnotation declaration) (declarationValue declaration))
-      deferred = buildScopeBindings makeBinding (("\0this", ScopeMembers names) : outer) definitions
+      deferred = buildScopeBindings makeBinding
+        (("this", ScopeMembers names) : outer)
+        definitions
   pure (deferred, [declarationName value | value <- definitions, declarationIsLet value], eagerEntries)
   where
     checkName outerNames canonicalNames declared declaration
@@ -988,6 +1014,26 @@ declareScope enclosing entries = do
     isOuterScopeExternal (External (AsciiStringLiteral symbol)) =
       symbol == "datra.syntax.super"
     isOuterScopeExternal _ = False
+
+importInvocation :: Expression -> Maybe (Bool, String)
+importInvocation expressionValue =
+  case expressionValue of
+    Import allNames path -> Just (allNames, path)
+    FunctionApplication callable argument
+      | callableName callable == Just "import" ->
+          case argument of
+            AtlasMap [allCapture, pathCapture]
+              | capturedString allCapture == Just "all" ->
+                  (True,) <$> capturedString pathCapture
+            _ -> (False,) <$> capturedString argument
+    _ -> Nothing
+  where
+    callableName (IdentifierReference (IdentifierString name)) = Just name
+    callableName (InModule _ value) = callableName value
+    callableName _ = Nothing
+    capturedString (AsciiStringLiteral value) = Just value
+    capturedString (MapSpecification value _) = capturedString value
+    capturedString _ = Nothing
 
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
@@ -1215,11 +1261,23 @@ ensureMapLevel expressionValue =
 recursiveListElement :: Expression -> Maybe Expression
 recursiveListElement expressionValue =
   case expressionValue of
-    EitherType (AtlasMap []) (MapConcatenation element This) -> Just element
-    EitherType (AtlasMap []) (MapSequence [element, This]) -> Just element
-    EitherType (AtlasMap []) (AtlasMap [element, This]) -> Just element
-    MapSequence [EitherType (AtlasMap []) element, This] -> Just element
-    AtlasMap [EitherType (AtlasMap []) element, This] -> Just element
+    EitherType (AtlasMap [])
+        (MapConcatenation element (IdentifierReference (IdentifierString "this"))) ->
+      Just element
+    EitherType (AtlasMap [])
+        (MapSequence [element, IdentifierReference (IdentifierString "this")]) ->
+      Just element
+    EitherType (AtlasMap [])
+        (AtlasMap [element, IdentifierReference (IdentifierString "this")]) ->
+      Just element
+    MapSequence
+        [ EitherType (AtlasMap []) element
+        , IdentifierReference (IdentifierString "this")
+        ] -> Just element
+    AtlasMap
+        [ EitherType (AtlasMap []) element
+        , IdentifierReference (IdentifierString "this")
+        ] -> Just element
     _ -> Nothing
 
 -- Dependent binders are scoped by their enclosing domain and are introduced
@@ -1570,7 +1628,7 @@ createFunction captured resolving explicit bindings result = do
       let erased = listTypeValue (renderInterpretedValue erasedElement) erasedElement
       pure (withIdentifierErasureType erased (argumentSchemaBodyDomain schema))
     Nothing -> pure (argumentSchemaBodyDomain schema)
-  let (explicitSelf, selfIncludesDependencies) = case lookup "\0fun" captured of
+  let (explicitSelf, selfIncludesDependencies) = case lookup "this" captured of
         Just (SelfBinding includesDependencies _) -> (True, includesDependencies)
         _ -> (False, False)
   selfForInference <- case (explicitSelf, explicit) of
@@ -1712,7 +1770,23 @@ externalValue
   -> [String]
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-externalValue scope resolving descriptor =
+externalValue scope resolving descriptor = do
+  resolved <- resolveExternal scope resolving descriptor
+  case resolved of
+    ResolvedExternalValue value -> Right value
+    ResolvedSyntaxControl _ -> Left (FunctionEvaluationFailed
+      ExternalAdapterRequiresAstCaptures)
+
+data ResolvedExternal
+  = ResolvedExternalValue InterpretedValue
+  | ResolvedSyntaxControl SyntaxControl
+
+resolveExternal
+  :: Scope
+  -> [String]
+  -> InterpretedValue
+  -> Either InterpretingError ResolvedExternal
+resolveExternal scope resolving descriptor =
   case interpretedCanonicalResult descriptor of
     CanonicalAsciiString symbol -> resolve symbol
     canonical -> do
@@ -1732,8 +1806,34 @@ externalValue scope resolving descriptor =
         (UnsupportedExternalBackend backend))
         else resolve symbol
   where
-    resolve "datra.syntax.super" = scopeValue scope resolving
-    resolve symbol = registeredExternal symbol
+    resolve "datra.syntax.super" =
+      ResolvedExternalValue <$> scopeValue scope resolving
+    resolve "datra.import" =
+      Right (ResolvedExternalValue (importExternal False "datra.import"))
+    resolve "datra.importAll" =
+      Right (ResolvedExternalValue
+        (importExternal True "datra.importAll"))
+    resolve symbol = case syntaxControlForSymbol symbol of
+      Just control -> Right (ResolvedSyntaxControl control)
+      Nothing -> ResolvedExternalValue <$> registeredExternal symbol
+    importExternal allNames symbol =
+      unlinkedExternalFunction
+        (if allNames then 2 else 1)
+        symbol
+        (invokeImport allNames)
+    invokeImport allNames argument = do
+      pathValue <- if allNames
+        then accessValues argument (naturalValue 1)
+        else Right argument
+      requested <- case interpretedCanonicalResult pathValue of
+        CanonicalAsciiString path -> Right path
+        _ -> Left (ExternalEvaluationFailed
+          (MissingNativeArgument "path"))
+      (_, _, value) <- lookupModule scope requested >>= loadedModuleValue
+      if allNames
+        then () <$ importAllBindings value
+        else requireTotalModuleValue value
+      pure (makeAtlasMap 0 [])
     required name fields = maybe
       (Left (ExternalEvaluationFailed
         (MissingExternalDescriptorField name)))
@@ -1764,17 +1864,6 @@ registeredExternal symbol = case symbol of
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
   "datra.IdenExp" -> Right (syntaxCategoryTypeValue "IdenExp")
   "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
-  "datra.syntax.if" -> syntaxAdapter 3
-  "datra.syntax.ifThen" -> syntaxAdapter 2
-  "datra.syntax.begin" -> syntaxAdapter 2
-  "datra.syntax.do" -> syntaxAdapter 2
-  "datra.syntax.let" -> syntaxAdapter 1
-  "datra.syntax.fun" -> syntaxAdapter 1
-  "datra.syntax.with" -> syntaxAdapter 2
-  "datra.syntax.for" -> syntaxAdapter 2
-  "datra.syntax.withIn" -> syntaxAdapter 3
-  "datra.syntax.forIn" -> syntaxAdapter 3
-  "datra.syntax.val" -> syntaxAdapter 1
   "datra.Template" -> Right templateTypeValue
   "datra.SyntaxTemplate" -> Right syntaxTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
@@ -1807,11 +1896,6 @@ registeredExternal symbol = case symbol of
   "datra.ordinal.gte" -> ordinalComparisonNative ordinalGTEValues
   _ -> Left (ExternalEvaluationFailed (UnknownExternalSymbol symbol))
   where
-    syntaxAdapter arity = do
-      let domain = if arity == 1 then astTypeValue else makeAtlasMap 2 (replicate arity astTypeValue)
-      signatureText <- signatureSource domain astTypeValue
-      pure (makeFunctionValue (EvaluatedFunction domain astTypeValue Nothing
-        (Just ("!$~" <> show symbol)) signatureText Nothing Nothing True))
     nativeRange kind = do
       let invoke argument = do
             startValue <- accessValues argument (naturalValue 0)
@@ -1968,7 +2052,7 @@ scopeValue scope resolving =
   declarationMap (scopeMemberNames scope) (resolveIdentifier scope resolving)
 
 scopeMemberNames :: Scope -> [String]
-scopeMemberNames scope = case lookup "\0this" scope of
+scopeMemberNames scope = case lookup "this" scope of
   Just (ScopeMembers names) -> names
   _ -> []
 
@@ -2055,7 +2139,7 @@ closureResolver scope = resolver
       Right imported -> Just (closureResolver imported)
       Left _ -> Nothing
     resolve [] = Nothing
-    resolve ["\0this", name] = resolve [name]
+    resolve ["this", name] = resolve [name]
     resolve (name : fields@(_ : _))
       | Just (ImportedBinding identity _) <- lookup name scope
       , Just source <- moduleSourceByIdentity identity

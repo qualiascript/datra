@@ -78,15 +78,19 @@ close mode depth ancestors occupied resolver self
     recursive = recursiveInBody || recursiveInDefinitions
     selfBound = explicitSelf || recursive
     selfRewritten
-      | recursive = replaceReference root This rewritten
+      | recursive = replaceReference root
+          (IdentifierReference (IdentifierString "this")) rewritten
       | otherwise = rewritten
     selfDefinitions
-      | recursive = map (replaceReference root This) definitions
+      | recursive = map
+          (replaceReference root (IdentifierReference (IdentifierString "this")))
+          definitions
       | otherwise = definitions
 
 rewrite :: DependencyMode -> Int -> [String] -> References -> Resolver -> [String]
   -> Expression -> State Collected Expression
-rewrite mode depth reserved active resolver bound (MapAccess This index)
+rewrite mode depth reserved active resolver bound
+    (MapAccess (IdentifierReference (IdentifierString "this")) index)
   | Just name <- resolveScopeIndex resolver index = do
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
@@ -174,7 +178,12 @@ transparentDependencyBlock definitions result =
     (EllipsisNatural 1)
 
 referencePath :: Expression -> Maybe [String]
-referencePath (MapAccess (NamedAccess This (IdentifierString name)) (EllipsisNatural 1)) =
+referencePath
+    (MapAccess
+      (NamedAccess
+        (IdentifierReference (IdentifierString "this"))
+        (IdentifierString name))
+      (EllipsisNatural 1)) =
   Just ["\0this", name]
 referencePath (IdentifierReference (IdentifierString name)) = Just [name]
 referencePath (NamedAccess source (IdentifierString name)) = (<> [name]) <$> referencePath source

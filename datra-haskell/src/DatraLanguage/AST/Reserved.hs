@@ -6,18 +6,10 @@ module DatraLanguage.AST.Reserved
   , reservedSymbols
   , reservedSymbolIdentifierString
   , reservedSymbolIdentifiersAreUnique
-  , reservedIdentifierStrings
-  , isReservedIdentifierString
   ) where
-
-import DatraLanguage.AST.Operator
-  ( Operator (..)
-  , operatorCanonicalSymbol
-  )
 
 data ReservedWord
   = ThenWord
-  | YieldWord
   | ElseWord
   | ToWord
   | UpwardsWord
@@ -26,7 +18,6 @@ data ReservedWord
 
 reservedWordText :: ReservedWord -> String
 reservedWordText ThenWord = "then"
-reservedWordText YieldWord = "yield"
 reservedWordText ElseWord = "else"
 reservedWordText ToWord = "to"
 reservedWordText UpwardsWord = "up"
@@ -77,37 +68,3 @@ reservedSymbolIdentifiersAreUnique =
     allDifferent [] = True
     allDifferent (value : remaining) =
       value `notElem` remaining && allDifferent remaining
-
-reservedIdentifierStrings :: [String]
-reservedIdentifierStrings =
-  []
-    <> ["hard", "import", "this"]
-    <> map reservedWordText identifierReservedWords
-    <> map operatorCanonicalSymbol
-      [ DoOperator
-      , ExternalOperator
-      , MinusOperator
-      , SubfederationOperator
-      , BooleanAndOperator
-      , BooleanOrOperator
-      , BooleanNotOperator
-      , AssertOperator
-      , BeginOperator
-      , LetOperator
-      , EitherOperator
-      , OptionalOperator
-      ]
-  where
-    -- These words introduce or delimit expressions wherever an identifier
-    -- could begin. Range continuations (to/up/down) are contextual
-    -- and deliberately remain valid bare identifier names.
-    identifierReservedWords =
-      filter reservesIdentifier
-        ([minBound .. maxBound] :: [ReservedWord])
-    reservesIdentifier ToWord = False
-    reservesIdentifier UpwardsWord = False
-    reservesIdentifier DownwardsWord = False
-    reservesIdentifier _ = True
-
-isReservedIdentifierString :: String -> Bool
-isReservedIdentifierString value = value `elem` reservedIdentifierStrings

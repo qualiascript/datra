@@ -92,12 +92,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "syntax control adapter is not registered"
         ["adapter: " <> name]
-    InvalidSyntaxControlCaptures name expected given ->
-      LocalizedMessage "syntax control adapter received invalid captures"
-        [ "adapter: " <> name
-        , "expected captures: " <> show expected
-        , "given captures: " <> show given
-        ]
     InvalidDependentBinder name ->
       LocalizedMessage "dependent binder requires an identifier"
         ["adapter: " <> name]
