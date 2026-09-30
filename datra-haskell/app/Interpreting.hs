@@ -34,6 +34,7 @@ module Interpreting
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , canonicalStringCodec
+  , matchesValueSyntaxHoleWith
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
@@ -69,6 +70,7 @@ import DatraLanguage.AST
 import DatraTypes
 import Parsing (parseDatra, standardLibraryExpression)
 import Rendering (renderCanonicalResult, renderInterpretedValue)
+import SyntaxDefinitions (SyntaxHoleKind (ValueSyntaxHole))
 import DatraLanguage.Diagnostics
   ( DatraError
   , Located (Located)
@@ -215,6 +217,27 @@ canonicalStringCodec =
     { renderCanonicalString = renderInterpretedValue
     , decodeCanonicalString = canonicalStringCandidates
     }
+
+-- | Decide a declared @$T@ syntax hole through the same canonical-string
+-- federation used by ordinary Datra string templates. The supplied evaluator
+-- determines the lexical scope for both the captured AST and @T@. Parser-level
+-- AST categories such as @_Expr@ are intentionally outside this function.
+matchesValueSyntaxHoleWith
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> SyntaxHoleKind
+  -> Expression
+  -> Bool
+matchesValueSyntaxHoleWith interpret (ValueSyntaxHole kind) captured =
+  case do
+      capturedValue <- interpret captured
+      target <- interpret
+        (IdentifierReference (IdentifierString kind))
+      source <- asciiStringValue
+        (renderInterpretedValue capturedValue)
+      evalValues canonicalStringCodec source target of
+    Right _ -> True
+    Left _ -> False
+matchesValueSyntaxHoleWith _ _ _ = False
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =

@@ -2,7 +2,9 @@
 
 module DatraParsingTests (main) where
 
+import Control.Exception (ErrorCall, evaluate, try)
 import Data.Char (chr, toUpper)
+import Data.List (isInfixOf)
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -40,16 +42,27 @@ import Parsing
   , parseDatra
   , parseDatraAst
   , parseDatraLocated
+  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
   , parseDatraLocatedResourceWithSourceName
   )
-import SyntaxDefinitions (SyntaxRule (..), expandSyntax)
+import SyntaxDefinitions
+  ( SyntaxHoleKind (..)
+  , SyntaxPiece (..)
+  , SyntaxRule (..)
+  , SyntaxTemplate (..)
+  , expandSyntax
+  )
+import SyntaxTemplateMatching
+  ( SyntaxTemplateMatchFailure (..)
+  , matchSyntaxTemplates
+  )
 import Numeric (showHex)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
-import Test.Tasty.HUnit (assertBool, testCase)
+import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
 
 main :: IO ()
 main = defaultMain testTree
@@ -68,7 +81,7 @@ regressionTests :: IO ()
 regressionTests = do
   let syntaxControl implementation = SyntaxRule
         { syntaxName = "test-control"
-        , syntaxPieces = []
+        , syntaxTemplate = SyntaxTemplate []
         , syntaxOrdinary = False
         , syntaxSignature = ref "Any"
         , syntaxRecursive = False
@@ -81,6 +94,130 @@ regressionTests = do
   assert "unknown syntax controls report their adapter structurally"
     (expandSyntax (syntaxControl "datra.syntax.unknown") []
       == Left (UnknownSyntaxControlAdapter "datra.syntax.unknown"))
+  let syntaxFunction name pieces implementation = SyntaxRule
+        { syntaxName = name
+        , syntaxTemplate = SyntaxTemplate pieces
+        , syntaxOrdinary = True
+        , syntaxSignature = FunctionType
+            (AtlasMap [ref "Int", ref "IntLimit"])
+            (ref "IntValRange")
+        , syntaxRecursive = False
+        , syntaxModule = Nothing
+        , syntaxImplementation = External (AsciiStringLiteral implementation)
+        }
+      intHole = SyntaxHole (ValueSyntaxHole "Int")
+      intLimitHole = SyntaxHole (ValueSyntaxHole "IntLimit")
+      fromPhrase = foldl FunctionApplication (ref "from")
+        [natural 0, ref "to", ref "Infinity"]
+      matchesNumericHole kind value = case (kind, value) of
+        (ValueSyntaxHole "Int", EllipsisNatural _) -> True
+        (ValueSyntaxHole "Int", Minus (EllipsisNatural _)) -> True
+        (ValueSyntaxHole "IntLimit", EllipsisNatural _) -> True
+        (ValueSyntaxHole "IntLimit", Minus (EllipsisNatural _)) -> True
+        (ValueSyntaxHole "IntLimit", IdentifierReference
+            (IdentifierString "Infinity")) -> True
+        _ -> False
+      wrongFrom = syntaxFunction "from"
+        [intHole, SyntaxLiteral "to", intHole]
+        "datra.wrong-from"
+      correctFrom = syntaxFunction "from"
+        [intHole, SyntaxLiteral "to", intLimitHole]
+        "datra.from"
+      unrelated = syntaxFunction "unrelated"
+        [ intHole
+        , SyntaxLiteral "to"
+        , intLimitHole
+        , SyntaxLiteral "with-more-template-text"
+        ]
+        "datra.unrelated"
+  assert "Int template holes reject an Infinity AST"
+    (matchSyntaxTemplates matchesNumericHole [wrongFrom] fromPhrase
+      == Left NoMatchingSyntaxTemplate)
+  assert "IntLimit template holes accept an Infinity AST"
+    (case expandSyntax correctFrom [natural 0, ref "Infinity"] of
+      Right expected ->
+        matchSyntaxTemplates matchesNumericHole [correctFrom] fromPhrase
+          == Right expected
+      Left _ -> False)
+  assert "the explicit AST head selects the syntax binding"
+    ( matchSyntaxTemplates matchesNumericHole
+        [unrelated, correctFrom]
+        fromPhrase
+        == matchSyntaxTemplates matchesNumericHole [correctFrom] fromPhrase
+    )
+  assert "syntax templates rewrite an AST after it is read"
+    (case parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+        False [] "<syntax-template-test>" "(from 0 to Infinity)" of
+      Right (Located _ parsedPhrase) ->
+        matchSyntaxTemplates matchesNumericHole [correctFrom] parsedPhrase
+          == matchSyntaxTemplates matchesNumericHole [correctFrom] fromPhrase
+      Left _ -> False)
+  let nestedTailPhrase = foldl FunctionApplication (ref "from")
+        [natural 0, AtlasMap [ref "to", ref "Infinity"]]
+  assert "matching does not flatten through a nested AST boundary"
+    (matchSyntaxTemplates matchesNumericHole [correctFrom] nestedTailPhrase
+      == Left NoMatchingSyntaxTemplate)
+  let greedyRule = syntaxFunction "greedy"
+        [ SyntaxHole (ValueSyntaxHole "Prefix")
+        , SyntaxLiteral "marker"
+        , SyntaxHole (ValueSyntaxHole "Tail")
+        ]
+        "datra.greedy"
+      greedyPhrase = foldl FunctionApplication (ref "greedy")
+        [ natural 1
+        , ref "marker"
+        , natural 2
+        , ref "marker"
+        , natural 3
+        ]
+      greedyPrefix = foldl FunctionApplication (natural 1)
+        [ref "marker", natural 2]
+      matchesGreedyHole kind value = case kind of
+        ValueSyntaxHole "Prefix" -> True
+        ValueSyntaxHole "Tail" -> value == natural 3
+        _ -> False
+  assert "holes match greedily inside the current AST boundary"
+    (case expandSyntax greedyRule [greedyPrefix, natural 3] of
+      Right expected ->
+        matchSyntaxTemplates matchesGreedyHole [greedyRule] greedyPhrase
+          == Right expected
+      Left _ -> False)
+  let contextualShort = syntaxFunction "contextual"
+        [intHole]
+        "datra.contextual-short"
+      contextualLong = syntaxFunction "contextual"
+        [intHole, SyntaxLiteral "marker", intHole]
+        "datra.contextual-long"
+      contextualPhrase = foldl FunctionApplication (ref "contextual")
+        [natural 1, ref "marker", natural 2, ref "after"]
+  assert "the longest matching prefix wins without escaping its AST context"
+    (case expandSyntax contextualLong [natural 1, natural 2] of
+      Right expanded ->
+        matchSyntaxTemplates matchesNumericHole
+          [contextualShort, contextualLong]
+          contextualPhrase
+          == Right (FunctionApplication expanded (ref "after"))
+      Left _ -> False)
+  let tiedLeft = syntaxFunction "tied"
+        [SyntaxHole ExpressionSyntaxHole]
+        "datra.tied-left"
+      tiedRight = syntaxFunction "tied"
+        [SyntaxHole ExpressionSyntaxHole]
+        "datra.tied-right"
+      tiedPhrase = FunctionApplication (ref "tied") (natural 1)
+  tiedResult <- try (evaluate
+    (matchSyntaxTemplates (const (const True))
+      [tiedLeft, tiedRight] tiedPhrase))
+      :: IO
+        (Either ErrorCall
+          (Either SyntaxTemplateMatchFailure Expression))
+  case tiedResult of
+    Left failure -> assert
+      "equal template matches throw an internal overlap error"
+      ("internal error: syntax template federation admitted overlapping"
+        `isInfixOf` show failure)
+    Right _ -> assertFailure
+      "equal template matches unexpectedly escaped the overlap invariant"
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"

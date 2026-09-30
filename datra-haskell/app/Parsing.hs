@@ -1261,7 +1261,7 @@ syntaxApplicationWith terminalExpression = do
           longest =
             [candidate | candidate@(_,_,end) <- candidates, end == furthest]
           specificity (rule, _, _) = length
-            [() | SyntaxLiteral _ <- syntaxPieces rule]
+            [() | SyntaxLiteral _ <- syntaxTemplatePieces (syntaxTemplate rule)]
           mostSpecific = maximum (map specificity longest)
           best = nubBy (\(_,a,_) (_,b,_) -> a == b)
             [candidate | candidate <- longest
@@ -1272,7 +1272,8 @@ syntaxApplicationWith terminalExpression = do
   where
     parseRule rule = do
       _ <- continuedKeyword (Text.pack (syntaxName rule))
-      captures <- parsePieces rule (syntaxPieces rule)
+      captures <- parsePieces rule
+        (syntaxTemplatePieces (syntaxTemplate rule))
       expanded <- either
         (fail . renderDatraError English . withoutSourceSpan)
         pure

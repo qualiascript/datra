@@ -1,8 +1,8 @@
 -- | Declarative AST templates. External AST adapters preserve control semantics
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
-  ( SyntaxRule (..), SyntaxPiece (..), SyntaxHoleKind (..)
-  , declarationRules, expandSyntax
+  ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
+  , declarationRules, syntaxTemplateFromPattern, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
   ) where
 import Data.List (isPrefixOf)
@@ -22,8 +22,13 @@ data SyntaxPiece
   = SyntaxLiteral String
   | SyntaxHole SyntaxHoleKind
   deriving (Eq,Show)
+
+newtype SyntaxTemplate = SyntaxTemplate
+  { syntaxTemplatePieces :: [SyntaxPiece]
+  } deriving (Eq,Show)
+
 data SyntaxRule = SyntaxRule
-  { syntaxName :: String, syntaxPieces :: [SyntaxPiece]
+  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate
   , syntaxOrdinary :: Bool, syntaxSignature :: Expression
   , syntaxRecursive :: Bool
   , syntaxModule :: Maybe String
@@ -41,8 +46,14 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
   where
     collect key (EitherType a b) = collect key a <> collect key b
     collect key (MapSpecification body (SyntaxType patternText ordinary signature)) =
-      [SyntaxRule key (map piece (words patternText)) ordinary signature False Nothing body]
+      [SyntaxRule key (syntaxTemplateFromPattern patternText)
+        ordinary signature False Nothing body]
     collect _ _ = []
+declarationRules _ = []
+
+syntaxPatternPieces :: String -> [SyntaxPiece]
+syntaxPatternPieces = map piece . words
+  where
     -- These are parser-level AST categories. Every other hole names the
     -- value type that its captured expression must inhabit.
     piece "$_Expr" = SyntaxHole ExpressionSyntaxHole
@@ -50,8 +61,11 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
     piece "$_IdenExp" = SyntaxHole IdentifierExpressionSyntaxHole
     piece ('$':kind) = SyntaxHole (ValueSyntaxHole kind)
     piece literal = SyntaxLiteral literal
-declarationRules _ = []
 
+syntaxTemplateFromPattern :: String -> SyntaxTemplate
+syntaxTemplateFromPattern = SyntaxTemplate . syntaxPatternPieces
+
+-- | Expand captures selected by one declared syntax template.
 expandSyntax
   :: SyntaxRule
   -> [Expression]
@@ -72,7 +86,7 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     specifiedValueCaptures = zipWith specifyCapture
-      [kind | SyntaxHole kind <- syntaxPieces rule]
+      [kind | SyntaxHole kind <- syntaxTemplatePieces (syntaxTemplate rule)]
     specifyCapture (ValueSyntaxHole kind) capture =
       MapSpecification capture
         (scoped (IdentifierReference (IdentifierString kind)))

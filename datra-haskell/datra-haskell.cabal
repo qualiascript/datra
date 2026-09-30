@@ -333,6 +333,7 @@ executable datra-haskell
         BlockScope
         LibraryFiles
         SyntaxDefinitions
+        SyntaxTemplateMatching
         Parsing
         Rendering
         Paths_datra_haskell
@@ -385,6 +386,7 @@ test-suite datra-parsing-test
         Parsing
         LibraryFiles
         SyntaxDefinitions
+        SyntaxTemplateMatching
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -425,6 +427,7 @@ test-suite datra-interpreting-test
         BlockScope
         LibraryFiles
         SyntaxDefinitions
+        SyntaxTemplateMatching
         Parsing
         Rendering
         Paths_datra_haskell
