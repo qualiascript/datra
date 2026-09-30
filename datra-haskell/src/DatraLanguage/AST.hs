@@ -1012,6 +1012,10 @@ traverseExpressionChildren visit expression = case expression of
   Subfederation a b -> Subfederation <$> visit a <*> visit b
   Equality a b -> Equality <$> visit a <*> visit b
   Inequality a b -> Inequality <$> visit a <*> visit b
+  LessThan a b -> LessThan <$> visit a <*> visit b
+  LessThanOrEqual a b -> LessThanOrEqual <$> visit a <*> visit b
+  GreaterThan a b -> GreaterThan <$> visit a <*> visit b
+  GreaterThanOrEqual a b -> GreaterThanOrEqual <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Eval a b -> Eval <$> visit a <*> visit b

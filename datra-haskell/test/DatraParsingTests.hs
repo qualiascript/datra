@@ -759,6 +759,39 @@ regressionTests = do
       (ref "true")
       (natural 1)
       (AST.minus (natural 2)))
+  let nextValue = FunctionApplication (ref "compute") (ref "input")
+      nextDeclaration = AST.dependentIdentifierType "next" nextValue
+  assertAstOutput
+    "a referenced named condition value becomes a local declaration"
+    ("if candidate >= (next : compute input) "
+      <> "then candidate else next")
+    (Begin
+      [nextDeclaration]
+      (AST.conditional
+        (AST.greaterOrEqual (ref "candidate") (ref "next"))
+        (ref "candidate")
+        (ref "next")))
+  assertAstOutput
+    "condition-local declarations are not comparison-specific"
+    "if valid (parsed : parse input) then parsed else fallback"
+    (Begin
+      [ AST.dependentIdentifierType "parsed"
+          (FunctionApplication (ref "parse") (ref "input"))
+      ]
+      (AST.conditional
+        (FunctionApplication (ref "valid") (ref "parsed"))
+        (ref "parsed")
+        (ref "fallback")))
+  assertAstOutput
+    "an unreferenced named condition value remains a value"
+    "if valid (parsed : parse input) then accepted else fallback"
+    (AST.conditional
+      (FunctionApplication
+        (ref "valid")
+        (AST.dependentIdentifierType "parsed"
+          (FunctionApplication (ref "parse") (ref "input"))))
+      (ref "accepted")
+      (ref "fallback"))
   assertAstOutput
     "binary conditional defaults to unit"
     "if false then 1"

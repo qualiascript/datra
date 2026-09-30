@@ -195,7 +195,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
         ("val it !? fun" `isInfixOf` text
           && not ("values :=" `isInfixOf` text)
           && not ("maximum :=" `isInfixOf` text)
-          && not ("minimum :=" `isInfixOf` text))
+          && not ("minimum :=" `isInfixOf` text)
+          && not ("next :=" `isInfixOf` text))
       assertBool "the removed explicit list specification stays absent"
         (not ("values ~>" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"

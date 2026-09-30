@@ -102,9 +102,9 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
     controlArity "datra.syntax.val" = Just 1
     controlArity _ = Nothing
     controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
-      Right (Conditional condition yes no)
+      Right (conditionalWithBindings condition yes no)
     controlWithValidCaptures "datra.syntax.ifThen" [condition, yes] =
-      Right (Conditional condition yes (AtlasMap []))
+      Right (conditionalWithBindings condition yes (AtlasMap []))
     controlWithValidCaptures "datra.syntax.begin" [entries,result] =
       Right (Begin (block entries) result)
     controlWithValidCaptures "datra.syntax.do" [entries,result] =
@@ -160,6 +160,83 @@ expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
             let assignedValue = MapConcatenation given right
             in IdentifierOperation name assignedValue (Just assignedValue)
       _ -> value
+
+-- A named subexpression in a condition becomes a condition-local declaration
+-- when its name is used elsewhere in that condition or in either branch.
+-- Boolean operators lower to nested conditionals only when such a binding is
+-- present. This preserves short-circuit paths: a binding in the right side of
+-- @or@ is not evaluated when the left side succeeds, while it remains visible
+-- wherever that right side was evaluated. Unreferenced named values retain
+-- their ordinary value semantics (for example, @Just : 1@ remains a tag).
+conditionalWithBindings
+  :: Expression
+  -> Expression
+  -> Expression
+  -> Expression
+conditionalWithBindings condition yes no
+  | null (selectedConditionBindings condition yes no) =
+      Conditional condition yes no
+  | otherwise = lower condition yes no
+  where
+    lower (BooleanOr left right) consequent alternative =
+      lower left consequent (lower right consequent alternative)
+    lower (BooleanAnd left right) consequent alternative =
+      lower left (lower right consequent alternative) alternative
+    lower (BooleanNot operand) consequent alternative =
+      lower operand alternative consequent
+    lower operand consequent alternative =
+      lowerConditionAtom operand consequent alternative
+
+lowerConditionAtom :: Expression -> Expression -> Expression -> Expression
+lowerConditionAtom condition yes no =
+  case selected of
+    [] -> Conditional condition yes no
+    _ -> Begin declarations (Conditional rewrittenCondition yes no)
+  where
+    selected = selectedConditionBindings condition yes no
+    selectedNames = map fst selected
+    declarations =
+      [ IdentifierOperation name (rewrite value) Nothing
+      | (name, value) <- selected
+      ]
+    rewrittenCondition = rewrite condition
+    rewrite expressionValue = case expressionValue of
+      IdentifierOperation name _ Nothing
+        | name `elem` selectedNames -> IdentifierReference name
+      _ -> mapExpressionChildren rewrite expressionValue
+
+selectedConditionBindings
+  :: Expression
+  -> Expression
+  -> Expression
+  -> [(IdentifierString, Expression)]
+selectedConditionBindings condition yes no =
+  [ (name, value)
+  | (name@(IdentifierString text), value) <- candidates
+  , text `elem` referenced
+  ]
+  where
+    candidates = conditionBindingCandidates condition
+    referenced = identifierReferences condition
+      <> identifierReferences yes
+      <> identifierReferences no
+
+-- Nested declarations are emitted before their enclosing named expression so
+-- a hoisted outer value can refer to a hoisted inner value in ordinary block
+-- order.
+conditionBindingCandidates
+  :: Expression
+  -> [(IdentifierString, Expression)]
+conditionBindingCandidates expressionValue =
+  concatMap conditionBindingCandidates (expressionChildren expressionValue)
+    <> case expressionValue of
+      IdentifierOperation name value Nothing -> [(name, value)]
+      _ -> []
+
+identifierReferences :: Expression -> [String]
+identifierReferences expressionValue = case expressionValue of
+  IdentifierReference (IdentifierString name) -> [name]
+  _ -> concatMap identifierReferences (expressionChildren expressionValue)
 
 externalSymbol :: Expression -> Maybe String
 externalSymbol (External (AsciiStringLiteral symbol)) = Just symbol
