@@ -54,6 +54,11 @@ source context expression =
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
+    MaybeThenValue
+        (ListUnconsValue values)
+        (FunctionApplicationValue function
+          (IdentifierReferenceValue (IdentifierString "it"))) ->
+      listMaybeThen values function
     MaybeThenValue optional branch -> binary 1 "??" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right
@@ -136,6 +141,11 @@ source context expression =
     binary precedence operator left right = wrapped precedence
       (source (precedence + 1) left <> " " <> operator <> " " <> source (precedence + 1) right)
     unary operator operand = wrapped 10 (operator <> source 11 operand)
+    listMaybeThen values function = wrapped 1
+      (listMaybeInput values <> " ?! " <> source 2 function)
+    listMaybeInput (StripIdentifiersValue operand) =
+      "val " <> source 0 operand
+    listMaybeInput operand = source 2 operand
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
     applicationInput SkipValue = "(*)"

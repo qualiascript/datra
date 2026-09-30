@@ -227,6 +227,36 @@ standardLibraryTests =
             "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing leaves the absent branch lazy"
             "yield ()! ?? missing" "nothing"
+        , programCase "list sequencing applies a function to a nonempty split"
+            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+                <> "yield candidate)\n"
+                <> "yield (1; 2; 3) ?! head"
+            )
+            "Just : 1"
+        , programCase "list sequencing leaves an empty split lazy"
+            "yield () ?! missing" "nothing"
+        , programCase "list sequencing accepts an optional named parameter"
+            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+                <> "yield candidate)\n"
+                <> "apply := ({values? : List Int} -> Int? "
+                <> "yield values ?! head)\n"
+                <> "yield apply (4; 5)"
+            )
+            "Just : 4"
+        , programCase "list sequencing result supports specification"
+            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+                <> "yield candidate)\n"
+                <> "yield ((1; 2) ?! head) ~> Int?"
+            )
+            ( "(Just : 1) ~> (nothing | () | Just : >< "
+                <> "(from 0 up; nothing | () | Just : $Complement))"
+            )
+        , programCase "list sequencing result supports subfederation"
+            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+                <> "yield candidate)\n"
+                <> "yield ((1; 2) ?! head) of Int?"
+            )
+            "true"
         , programFailureCase "Maybe sequencing rejects a non-Maybe left operand"
             "yield 1 ?? 2"
             (SourceEvaluationFailure

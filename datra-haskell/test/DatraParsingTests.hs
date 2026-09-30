@@ -591,6 +591,53 @@ regressionTests = do
     (MaybeThen
       (ref "values")
       (FunctionApplication (ref "maximum") (ref "it")))
+  assertAstOutput "list sequencing combines split and Maybe application"
+    "values ?! maximum"
+    (MaybeThen
+      (ListUncons (ref "values"))
+      (FunctionApplication (ref "maximum") (ref "it")))
+  assertAstOutput "list sequencing binds after val without grouping"
+    "val values ?! maximum"
+    (MaybeThen
+      (ListUncons (StripIdentifiers (ref "values")))
+      (FunctionApplication (ref "maximum") (ref "it")))
+  assert "list sequencing source rendering keeps the compact val form"
+    ( renderSourceExpression
+        (MaybeThen
+          (ListUncons (StripIdentifiers (ref "values")))
+          (FunctionApplication (ref "maximum") (ref "it")))
+        == "val values ?! maximum"
+    )
+  assertAstOutput "grouping keeps list sequencing inside val"
+    "val (values ?! maximum)"
+    (StripIdentifiers
+      (MaybeThen
+        (ListUncons (ref "values"))
+        (FunctionApplication (ref "maximum") (ref "it"))))
+  assertAstOutput "list sequencing accepts an optional named left operand"
+    "values? : List Int ?! maximum"
+    (MaybeThen
+      (ListUncons
+        (OptionalType
+          (AST.dependentIdentifierType "values"
+            (FunctionApplication (ref "List") (ref "Int")))))
+      (FunctionApplication (ref "maximum") (ref "it")))
+  assertAstOutput "list sequencing follows forward specification"
+    "values ~> List Int ?! maximum"
+    (MaybeThen
+      (ListUncons
+        (MapSpecification
+          (ref "values")
+          (FunctionApplication (ref "List") (ref "Int"))))
+      (FunctionApplication (ref "maximum") (ref "it")))
+  assertAstOutput "list sequencing follows a subfederation expression"
+    "values of List Int ?! maximum"
+    (MaybeThen
+      (ListUncons
+        (Subfederation
+          (ref "values")
+          (FunctionApplication (ref "List") (ref "Int"))))
+      (FunctionApplication (ref "maximum") (ref "it")))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"

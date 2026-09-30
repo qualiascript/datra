@@ -41,6 +41,7 @@ data Operator
   | OptionalOperator
   | ListUnconsOperator
   | MaybeThenOperator
+  | ListMaybeThenOperator
   | MultiplicationOperator
   | ExponentiationOperator
   | ConcatenationOperator
@@ -90,6 +91,7 @@ operatorCanonicalSymbol EitherOperator = "Either"
 operatorCanonicalSymbol OptionalOperator = "optional"
 operatorCanonicalSymbol ListUnconsOperator = "uncons"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
+operatorCanonicalSymbol ListMaybeThenOperator = "uncons-maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
 operatorCanonicalSymbol ConcatenationOperator = "<.>"
@@ -139,6 +141,7 @@ operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
 operatorSourceSymbol ListUnconsOperator = Just "!"
 operatorSourceSymbol MaybeThenOperator = Just "??"
+operatorSourceSymbol ListMaybeThenOperator = Just "?!"
 operatorSourceSymbol MultiplicationOperator = Just "*"
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","

@@ -627,23 +627,25 @@ generic for their variadic element and result type:
 
 ```datra
 max := {Args (&_T :: IntLimit),} -> _T? do
-  values := (val it)!
   let maximum := {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = Infinity or remaining = () then candidate
       else begin
         let next := maximum remaining[0; range 1 up]
       yield if candidate >= next then candidate else next
-yield values ?? maximum it
+yield val it ?! maximum
 
 min := {Args (&_T :: IntLimit),} -> _T? do
-  values := (val it)!
   let minimum := {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = -Infinity or remaining = () then candidate
       else begin
         let next := minimum remaining[0; range 1 up]
       yield if candidate <= next then candidate else next
-yield values ?? minimum it
+yield val it ?! minimum
 ```
+
+The list-sequencing operator `values ?! function` abbreviates
+`values! ?? function it`. It guards on a successful, nonempty list split—not
+general Boolean truthiness—and leaves an empty input as `nothing`.
 
 The `_T?` codomain applies the ordinary optional-value operator to the generic
 reference `_T`; it is not a generic declaration or optional generic name.

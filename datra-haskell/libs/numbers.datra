@@ -1,21 +1,19 @@
 yield Numbers := begin
 
   max := {Args IntLimit,} -> IntLimit? do
-    values := (val it)!
     let maximum := {candidate? : IntLimit, remaining? : List IntLimit} -> IntLimit do
       yield if candidate = Infinity or remaining = () then candidate
         else begin
           let next := maximum remaining[0; range 1 up]
         yield if candidate >= next then candidate else next
-  yield values ?? maximum it
+  yield val it ?! maximum
 
   min := {Args IntLimit,} -> IntLimit? do
-    values := (val it)!
     let minimum := {candidate? : IntLimit, remaining? : List IntLimit} -> IntLimit do
       yield if candidate = -Infinity or remaining = () then candidate
         else begin
           let next := minimum remaining[0; range 1 up]
         yield if candidate <= next then candidate else next
-  yield values ?? minimum it
+  yield val it ?! minimum
 
 yield public this

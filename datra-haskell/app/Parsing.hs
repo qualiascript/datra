@@ -184,6 +184,7 @@ data ParserContext = ParserContext
   , syntaxDeclarations :: [Expression]
   , outerSyntaxDeclarations :: [Expression]
   , syntaxStops :: [Text]
+  , listMaybeThenStopped :: Bool
   , syntaxImports :: [(String, String, [SyntaxRule])]
   }
 
@@ -237,7 +238,7 @@ parseDatraLocatedWithSyntaxImportsAndStandardLibrary
     includeStandardLibrary imports resourceName source =
   Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
     (runReaderT locatedResource
-      (ParserContext 0 False rules declarations [] [] imports))
+      (ParserContext 0 False rules declarations [] [] False imports))
     resourceName (Text.pack source))
   where
     rules = if includeStandardLibrary then libraryRules else []
@@ -283,7 +284,7 @@ runDatraParser
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
   runParser (runReaderT parser
-    (ParserContext 0 False libraryRules libraryDeclarations [] [] []))
+    (ParserContext 0 False libraryRules libraryDeclarations [] [] False []))
     resourceName source
 
 -- | The standard library is parsed like any other resource. Its declarations
@@ -293,7 +294,7 @@ standardLibraryExpression :: Either ParseFailure Expression
 standardLibraryExpression =
   Bifunctor.first (ParseFailure . errorBundlePretty)
     (runParser
-      (runReaderT resource (ParserContext 0 False [] [] [] [] []))
+      (runReaderT resource (ParserContext 0 False [] [] [] [] False []))
       standardLibraryFileName
       (Text.pack (requiredBundledLibrarySource standardLibraryFileName)))
 
@@ -733,14 +734,44 @@ expressionWith operand = do
       Just source -> MapSpecification source target)
 
 -- Maybe sequencing is deliberately low-precedence and right-associative so
--- its lazy branch can contain a complete function or map expression.
+-- its lazy branch can contain a complete function or map expression. The
+-- list-sequencing shorthand lowers here so evaluation and inference share the
+-- existing list split and Maybe sequencing semantics.
 maybeThenExpressionWith :: Parser Expression -> Parser Expression
-maybeThenExpressionWith operand = do
-  optionalValue <- functionExpressionWith operand
-  branch <- optional
-    (continuedOperator AST.MaybeThenOperator *>
-      maybeThenExpressionWith operand)
-  pure (maybe optionalValue (MaybeThen optionalValue) branch)
+maybeThenExpressionWith operand =
+  maybeThenExpressionFrom (functionExpressionWith operand)
+
+maybeThenExpressionFrom :: Parser Expression -> Parser Expression
+maybeThenExpressionFrom operand = do
+  optionalValue <- operand
+  continuation <- optional $ do
+    constructor <-
+      MaybeThen <$ continuedOperator AST.MaybeThenOperator
+        <|> listMaybeThen <$ unstoppedListMaybeThenOperator
+    branch <- maybeThenExpressionFrom operand
+    pure (constructor, branch)
+  pure (case continuation of
+    Nothing -> optionalValue
+    Just (constructor, branch) -> constructor optionalValue branch)
+
+-- @values ?! function@ is exactly @values! ?? function it@. Keeping the
+-- expansion structural also preserves the laziness of an absent list split.
+listMaybeThen :: Expression -> Expression -> Expression
+listMaybeThen values function =
+  MaybeThen
+    (ListUncons values)
+    (FunctionApplication
+      function
+      (IdentifierReference (IdentifierString "it")))
+
+-- A trailing expression hole in declarative syntax binds before @?!@. This
+-- lets forms such as @val values ?! function@ sequence the result of the
+-- syntax application instead of capturing the sequencing inside its hole.
+unstoppedListMaybeThenOperator :: Parser Text
+unstoppedListMaybeThenOperator = do
+  stopped <- listMaybeThenStopped <$> ask
+  guard (not stopped)
+  continuedOperator AST.ListMaybeThenOperator
 
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
@@ -1163,7 +1194,7 @@ importExpression = do
 sourceImports :: String -> Either ParseFailure [String]
 sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan
-    (ParserContext 0 False libraryRules libraryDeclarations [] [] []))
+    (ParserContext 0 False libraryRules libraryDeclarations [] [] False []))
     "<imports>" (Text.pack source)
   where
     paths (Import _ path) = [path]
@@ -1198,12 +1229,8 @@ functionDomainExpressionWith operand = do
     Just source -> MapSpecification source target)
 
 functionDomainMaybeThenExpressionWith :: Parser Expression -> Parser Expression
-functionDomainMaybeThenExpressionWith operand = do
-  optionalValue <- arrowExpressionWith operand
-  branch <- optional
-    (continuedOperator AST.MaybeThenOperator *>
-      functionDomainMaybeThenExpressionWith operand)
-  pure (maybe optionalValue (MaybeThen optionalValue) branch)
+functionDomainMaybeThenExpressionWith operand =
+  maybeThenExpressionFrom (arrowExpressionWith operand)
 
 syntaxApplicationWith :: Parser Expression -> Parser Expression
 syntaxApplicationWith terminalExpression = do
@@ -1234,7 +1261,7 @@ syntaxApplicationWith terminalExpression = do
   where
     parseRule rule = do
       _ <- continuedKeyword (Text.pack (syntaxName rule))
-      captures <- parsePieces (syntaxPieces rule)
+      captures <- parsePieces rule (syntaxPieces rule)
       expanded <- either
         (fail . renderDatraError English . withoutSourceSpan)
         pure
@@ -1247,13 +1274,13 @@ syntaxApplicationWith terminalExpression = do
     obviouslyNumeric (Plus value) = obviouslyNumeric value
     obviouslyNumeric (Minus value) = obviouslyNumeric value
     obviouslyNumeric _ = False
-    parsePieces [] = pure []
-    parsePieces (piece@(SyntaxLiteral token) : rest) = do
+    parsePieces _ [] = pure []
+    parsePieces rule (piece@(SyntaxLiteral token) : rest) = do
       syntaxPieceSpaceConsumer piece
       _ <- if all (`elem` (",;" :: String)) token
         then symbol (Text.pack token) else keyword (Text.pack token)
-      parsePieces rest
-    parsePieces (piece@(SyntaxHole holeKind) : rest) = do
+      parsePieces rule rest
+    parsePieces rule (piece@(SyntaxHole holeKind) : rest) = do
       context <- ask
       let knownDeclarations = syntaxDeclarations context
       syntaxPieceSpaceConsumer piece
@@ -1288,9 +1315,17 @@ syntaxApplicationWith terminalExpression = do
             pure (AtlasMap entries)
           ExpressionSyntaxHole
             | null rest ->
-                if "," `elem` syntaxStops context
-                  then nonConcatenatedExpression
-                  else terminalExpression
+                let terminal
+                      | "," `elem` syntaxStops context =
+                          nonConcatenatedExpression
+                      | otherwise = terminalExpression
+                in if externalSymbol (syntaxImplementation rule)
+                      == Just "datra.syntax.val"
+                    then local
+                      (\nested -> nested
+                        { listMaybeThenStopped = True })
+                      terminal
+                    else terminal
             | adjacentHole -> nonApplicationArithmeticExpression
             | "," `elem` stops -> nonConcatenatedExpression
             | otherwise -> expression
@@ -1299,7 +1334,7 @@ syntaxApplicationWith terminalExpression = do
               then nonApplicationArithmeticExpression
               else boundaryAwareArithmeticExpression
       guard (null enums || not (obviouslyNumeric value))
-      let continue = (value :) <$> parsePieces rest
+      let continue = (value :) <$> parsePieces rule rest
       case (holeKind, value) of
         (BlockSyntaxHole, AtlasMap entries) -> withDeclarations entries continue
         _ -> continue
@@ -1445,10 +1480,7 @@ optionalTypeSuffix = try $ do
   pure token
 
 listUnconsSuffix :: Parser Text
-listUnconsSuffix = try $ do
-  token <- operatorToken AST.ListUnconsOperator
-  notFollowedBy (chunk "$~")
-  pure token
+listUnconsSuffix = operatorToken AST.ListUnconsOperator
 
 namedAccessNames :: Parser [IdentifierString]
 namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
@@ -1550,7 +1582,10 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    (sequenceExpression <$> elements)
+    (local
+      (\context -> context
+        { listMaybeThenStopped = False })
+      (sequenceExpression <$> elements))
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
@@ -1938,7 +1973,8 @@ operatorToken operator = lexeme $ try $ do
   case operator of
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
-    AST.OptionalOperator -> notFollowedBy (char '?')
+    AST.OptionalOperator -> notFollowedBy (char '?' <|> char '!')
+    AST.ListUnconsOperator -> notFollowedBy (char '$')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()
