@@ -623,24 +623,23 @@ parser, interpreter, and closure builder.
 ### Numbers module regression target
 
 The `Numbers` implementations of `max` and `min` use one private product
-generic for their variadic element and result type:
+generic for their variadic element and result type. Each applies an anonymous
+recursive function directly to the nonempty variadic split:
 
 ```datra
 max := {Args (&_T :: IntLimit),} -> _T? do
-  let maximum := {candidate? : _T, remaining? : List _T} -> _T do
+  yield val it !? fun {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = Infinity or remaining = () then candidate
       else begin
-        let next := maximum remaining[0; range 1 up]
+        let next := this remaining[0; range 1 up]
       yield if candidate >= next then candidate else next
-yield val it !? maximum
 
 min := {Args (&_T :: IntLimit),} -> _T? do
-  let minimum := {candidate? : _T, remaining? : List _T} -> _T do
+  yield val it !? fun {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = -Infinity or remaining = () then candidate
       else begin
-        let next := minimum remaining[0; range 1 up]
+        let next := this remaining[0; range 1 up]
       yield if candidate <= next then candidate else next
-yield val it !? minimum
 ```
 
 The list-sequencing operator `values !? function` abbreviates
@@ -648,9 +647,11 @@ The list-sequencing operator `values !? function` abbreviates
 general Boolean truthiness—and leaves an empty input as `nothing`.
 
 The `_T?` codomain applies the ordinary optional-value operator to the generic
-reference `_T`; it is not a generic declaration or optional generic name.
-The nested helper signatures resolve `_T` from the enclosing function's generic
-prefix, while runtime body lookup still has no `_T` binding.
+reference `_T`; it is not a generic declaration or optional generic name. The
+inline helper signatures resolve `_T` from the enclosing function's generic
+prefix, while runtime body lookup still has no `_T` binding. The `fun` operator
+gives each helper a fixed point: inside it, `this` refers to the helper itself,
+so recursion does not require a `maximum` or `minimum` binding.
 
 Regression coverage must establish that:
 
@@ -664,8 +665,8 @@ Regression coverage must establish that:
 - named and reordered variadic arguments preserve their existing behavior;
 - negative integers, `Infinity`, and `-Infinity` preserve their existing
   comparison behavior;
-- the recursive `maximum` and `minimum` closures use the enclosing `_T` in
-  their signatures without capturing it as a runtime body value; and
+- the anonymous helper signatures use the enclosing `_T` and recurse through
+  `this` without capturing `_T` as a runtime body value; and
 - body-visible `it` contains only the variadic number arguments, with the
   generic interface prefix erased.
 

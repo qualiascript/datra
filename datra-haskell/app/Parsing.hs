@@ -785,7 +785,18 @@ attachFunctionImplementation signature = do
   implementation <- optional (functionImplementation signature)
   pure (case implementation of
     Nothing -> signature
-    Just body -> MapSpecification body (completedSignature body signature))
+    Just body -> implementedFunction body signature)
+
+-- @fun@ is syntax, so its capture is parsed before a following function body
+-- is attached. Lift the fixed point over the completed function instead of
+-- leaving it on the domain of an inferred outer function. Thus
+-- @fun {x? : T} -> U do ...@ has the same AST as
+-- @fun ({x? : T} -> U do ...)@.
+implementedFunction :: Expression -> Expression -> Expression
+implementedFunction body (Fun signature) =
+  Fun (MapSpecification body (completedSignature body signature))
+implementedFunction body signature =
+  MapSpecification body (completedSignature body signature)
 
 completedSignature :: Expression -> Expression -> Expression
 completedSignature FunctionBody {} signature@FunctionType {} = signature
@@ -1038,7 +1049,7 @@ syntaxExpressionWithFunctionBody :: Parser Expression
 syntaxExpressionWithFunctionBody = do
   signature <- functionDomainSyntaxApplication
   body <- functionBody
-  pure (MapSpecification body (completedSignature body signature))
+  pure (implementedFunction body signature)
 
 -- Identifier annotations and assigned values may use range, arithmetic, and
 -- access operators directly. Concatenation and specification are deliberately

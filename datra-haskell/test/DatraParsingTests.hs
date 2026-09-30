@@ -601,6 +601,24 @@ regressionTests = do
     (MaybeThen
       (ListUncons (StripIdentifiers (ref "values")))
       (FunctionApplication (ref "maximum") (ref "it")))
+  let inlineLimitFunction = Fun
+        (MapSpecification
+          (FunctionBody [] (ref "candidate"))
+          (FunctionType
+            (ArgumentMap
+              [ OptionalType
+                  (AST.dependentIdentifierType "candidate" (ref "IntLimit"))
+              , OptionalType
+                  (AST.dependentIdentifierType "remaining"
+                    (FunctionApplication (ref "List") (ref "IntLimit")))
+              ])
+            (ref "IntLimit")))
+  assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
+    ("val values !? fun {candidate? : IntLimit, "
+      <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
+    (MaybeThen
+      (ListUncons (StripIdentifiers (ref "values")))
+      (FunctionApplication inlineLimitFunction (ref "it")))
   assert "list sequencing source rendering keeps the compact val form"
     ( renderSourceExpression
         (MaybeThen
