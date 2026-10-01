@@ -6,10 +6,7 @@ module Parsing
   , sourceImports
   , sourceImportInvocations
   , parseDatraRawLocatedWithSourceName
-  , parseDatraWithSourceName
   , parseDatraAst
-  , parseDatraAstWithSourceName
-  , parseDatraAstLocated
   , parseDatraAstLocatedWithSourceName
   ) where
 
@@ -213,10 +210,6 @@ parseDatraAstWithSourceName
   -> Either ParseFailure Expression
 parseDatraAstWithSourceName sourceName source =
   locatedValue <$> parseDatraAstLocatedWithSourceName sourceName source
-
-parseDatraAstLocated :: String -> Either ParseFailure (Located Expression)
-parseDatraAstLocated =
-  parseDatraAstLocatedWithSourceName "<ast-input>"
 
 parseDatraAstLocatedWithSourceName
   :: FilePath

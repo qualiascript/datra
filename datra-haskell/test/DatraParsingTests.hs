@@ -1742,6 +1742,14 @@ regressionTests = do
     "2\n3"
     (natural 2 <:> natural 3)
   assertAstOutput
+    "a parenthesized syntax operand ends before the next map element"
+    "1 of (Nat -> Int)\n\"x\""
+    ( Subfederation
+        (natural 1)
+        (FunctionType (ref "Nat") (ref "Int"))
+        <:> AsciiStringLiteral "x"
+    )
+  assertAstOutput
     "a newline after an operator continues the expression"
     "2 +\n3\n4"
     ((natural 2 AST.+ natural 3) <:> natural 4)

@@ -1068,12 +1068,9 @@ trailingIdentifier :: Expression -> Maybe String
 trailingIdentifier value = case value of
   IdentifierReference (IdentifierString name) -> Just name
   SyntaxBoundary _ -> Nothing
-  _ -> firstPresent
-    (map trailingIdentifier (reverse (expressionChildren value)))
-  where
-    firstPresent [] = Nothing
-    firstPresent (Just result : _) = Just result
-    firstPresent (Nothing : remaining) = firstPresent remaining
+  _ -> case reverse (expressionChildren value) of
+    rightmost : _ -> trailingIdentifier rightmost
+    [] -> Nothing
 
 continueLineExpression :: Expression -> Expression -> Expression
 continueLineExpression left right =
