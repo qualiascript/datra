@@ -6,6 +6,7 @@ module Parsing
   , sourceImports
   , parseDatraLocatedWithSyntaxImports
   , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+  , parseDatraRawLocatedWithSourceName
   , parseDatraWithSourceName
   , parseDatraLocated
   , parseDatraLocatedWithSourceName
@@ -175,6 +176,7 @@ data ParserContext = ParserContext
   , syntaxStops :: [Text]
   , listMaybeThenStopped :: Bool
   , syntaxImports :: [(String, String, [SyntaxRule])]
+  , declarativeSyntaxEnabled :: Bool
   }
 
 type Parser = ReaderT ParserContext (Parsec Void Text)
@@ -227,11 +229,25 @@ parseDatraLocatedWithSyntaxImportsAndStandardLibrary
     includeStandardLibrary imports resourceName source =
   Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
     (runReaderT locatedResource
-      (ParserContext 0 False rules declarations [] False imports))
+      (ParserContext 0 False rules declarations [] False imports True))
     resourceName (Text.pack source))
   where
     rules = if includeStandardLibrary then libraryRules else []
     declarations = if includeStandardLibrary then libraryDeclarations else []
+
+-- | Read source into the neutral AST used by declarative syntax matching.
+-- No declared template is consulted here. An implicit resource temporarily
+-- stores all of its surface entries as program bindings; the post-AST pass
+-- resolves its ordinary @yield@ application after syntax scopes are known.
+parseDatraRawLocatedWithSourceName
+  :: FilePath
+  -> String
+  -> Either ParseFailure (ResourceEnvelope, Located Expression)
+parseDatraRawLocatedWithSourceName resourceName source =
+  Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
+    (runReaderT locatedRawResourceWithEnvelope
+      (ParserContext 0 False [] [] [] False [] False))
+    resourceName (Text.pack source))
 
 -- | Parse a source resource and retain its expression/program envelope.
 parseDatraLocatedResourceWithSourceName
@@ -273,7 +289,7 @@ runDatraParser
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
   runParser (runReaderT parser
-    (ParserContext 0 False libraryRules libraryDeclarations [] False []))
+    (ParserContext 0 False libraryRules libraryDeclarations [] False [] True))
     resourceName source
 
 -- | Parse a bundled Datra module without pre-importing another module. Its
@@ -283,7 +299,7 @@ bundledLibraryExpression :: FilePath -> Either ParseFailure Expression
 bundledLibraryExpression requested =
   Bifunctor.first (ParseFailure . errorBundlePretty)
     (runParser
-      (runReaderT resource (ParserContext 0 False [] [] [] False []))
+      (runReaderT resource (ParserContext 0 False [] [] [] False [] True))
       requested
       (Text.pack (requiredBundledLibrarySource requested)))
 
@@ -327,6 +343,13 @@ locatedResourceWithEnvelope
 locatedResourceWithEnvelope = do
   (sourceSpan, (envelope, expressionValue)) <-
     spanned resourceWithEnvelope
+  pure (envelope, Located sourceSpan expressionValue)
+
+locatedRawResourceWithEnvelope
+  :: Parser (ResourceEnvelope, Located Expression)
+locatedRawResourceWithEnvelope = do
+  (sourceSpan, (envelope, expressionValue)) <-
+    spanned rawResourceWithEnvelope
   pure (envelope, Located sourceSpan expressionValue)
 
 locatedAstResource :: Parser (Located Expression)
@@ -620,6 +643,21 @@ resourceWithEnvelope = do
     implicitResource =
       (,) ImplicitBlockEnvelope <$> implicitProgram
 
+rawResourceWithEnvelope :: Parser (ResourceEnvelope, Expression)
+rawResourceWithEnvelope = do
+  fullSpaceConsumer
+  result <- explicitResource <|> implicitResource
+  fullSpaceConsumer
+  eof
+  pure result
+  where
+    explicitResource = do
+      _ <- try (lookAhead outerMapEnvelope)
+      (,) ExplicitMapEnvelope <$> parenthesizedExpression
+    implicitResource = do
+      entries <- withReferences elements
+      pure (ImplicitBlockEnvelope, Program entries (AtlasMap []))
+
 -- Parse the parenthesized expression itself in lookahead so the closing
 -- parenthesis must enclose the whole resource. This distinguishes an explicit
 -- map from an implicit sequence such as @(a); (b)@.
@@ -651,7 +689,9 @@ sequenceExpression expressions = AtlasMap expressions
 withDeclarations :: [Expression] -> Parser a -> Parser a
 withDeclarations entries = local $ \context ->
   let declaredNames = concatMap bindingNames entries
-      introducedRules = concatMap (rulesFor context) entries
+      introducedRules
+        | declarativeSyntaxEnabled context = concatMap (rulesFor context) entries
+        | otherwise = []
   in context
     { syntaxRules = introducedRules <> filter
         ((`notElem` declaredNames) . syntaxName)
@@ -752,10 +792,18 @@ functionExpressionWith operand = do
 -- unconstrained. Explicit function types retain their declared codomain.
 attachFunctionImplementation :: Expression -> Parser Expression
 attachFunctionImplementation signature = do
-  implementation <- optional (functionImplementation signature)
+  implementation <- if acceptsFunctionBody signature
+    then optional (functionImplementation signature)
+    else pure Nothing
   pure (case implementation of
     Nothing -> signature
     Just body -> implementedFunction body signature)
+
+acceptsFunctionBody :: Expression -> Bool
+acceptsFunctionBody FunctionType {} = True
+acceptsFunctionBody SyntaxType {} = True
+acceptsFunctionBody (Fun signature) = acceptsFunctionBody signature
+acceptsFunctionBody _ = False
 
 -- @fun@ is syntax, so its capture is parsed before a following function body
 -- is attached. Lift the fixed point over the completed function instead of
@@ -764,16 +812,9 @@ attachFunctionImplementation signature = do
 -- @fun ({x? : T} -> U do ...)@.
 implementedFunction :: Expression -> Expression -> Expression
 implementedFunction body (Fun signature) =
-  Fun (MapSpecification body (completedSignature body signature))
+  Fun (MapSpecification body signature)
 implementedFunction body signature =
-  MapSpecification body (completedSignature body signature)
-
-completedSignature :: Expression -> Expression -> Expression
-completedSignature FunctionBody {} signature@FunctionType {} = signature
-completedSignature FunctionBody {} signature@SyntaxType {} = signature
-completedSignature FunctionBody {} signature =
-  FunctionType signature (IdentifierReference (IdentifierString "Any"))
-completedSignature _ signature = signature
+  MapSpecification body signature
 
 -- A function body is the expression immediately following its function type.
 -- External blocks inhabit @_Block@ directly; declarative @do ... yield ...@
@@ -1112,7 +1153,7 @@ importExpression = do
 sourceImports :: String -> Either ParseFailure [String]
 sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan
-    (ParserContext 0 False libraryRules libraryDeclarations [] False []))
+    (ParserContext 0 False libraryRules libraryDeclarations [] False [] False))
     "<imports>" (Text.pack source)
   where
     paths (Import _ path) = [path]

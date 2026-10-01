@@ -17,13 +17,12 @@ import DatraLanguage.Diagnostics.Localization
 import Interpreting
   ( EvaluationMode (DevelopmentMode, ProductionMode)
   , interpretLocatedWithImportsInModeAndStandardLibrary
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
-import ModuleLoading (loadImports, loadExpressionImports, importSyntax)
+import ModuleLoading (loadImports, loadExpressionImports)
 import Options.Applicative
 import Parsing
-  ( parseDatraAstLocatedWithSourceName
-  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-  )
+  ( parseDatraAstLocatedWithSourceName )
 import Rendering
   ( renderInterpretedValue
   )
@@ -263,8 +262,8 @@ runCommand commandValue =
         >>= diagnosticOrFail locale errorPath
       locatedExpression <-
         diagnosticOrFail locale errorPath
-          (parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-            includeStandardLibrary (importSyntax imports) sourceName source)
+          (parseDatraSourceLocatedWithImportsAndStandardLibrary
+            includeStandardLibrary imports sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
@@ -278,8 +277,8 @@ runCommand commandValue =
         >>= diagnosticOrFail English errorPath
       locatedExpression <-
         diagnosticOrFail English errorPath
-          (parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-            includeStandardLibrary (importSyntax imports) sourceName source)
+          (parseDatraSourceLocatedWithImportsAndStandardLibrary
+            includeStandardLibrary imports sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
     InterpretAst input outputPath locale mode includeStandardLibrary -> do

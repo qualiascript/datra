@@ -13,6 +13,7 @@ module SyntaxTemplateMatching
   , canonicalSyntaxTemplate
   , matchSyntaxRule
   , matchSyntaxRules
+  , matchSyntaxRulesWith
   , matchSyntaxTemplates
   ) where
 
@@ -84,6 +85,7 @@ compileSyntaxTemplateFederation decide rules = do
         (syntaxTemplateLiteralPrefix right))
 
 type HoleMatches = SyntaxHoleKind Expression -> Expression -> Bool
+type CaptureHole = SyntaxHoleKind Expression -> Expression -> Maybe Expression
 
 data SuccessfulMatch = SuccessfulMatch
   { successfulRule :: SyntaxRule
@@ -106,6 +108,18 @@ matchSyntaxTemplates
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
 matchSyntaxTemplates holeMatches
+    federation expressionValue =
+  matchSyntaxTemplatesWith
+    (\kind value ->
+      if holeMatches kind value then Just value else Nothing)
+    federation expressionValue
+
+matchSyntaxTemplatesWith
+  :: CaptureHole
+  -> SyntaxTemplateFederation
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure Expression
+matchSyntaxTemplatesWith captureHole
     (SyntaxTemplateFederation rules) expressionValue = do
   let phrase = applicationPhrase expressionValue
       applicable = filter (prefixMatches phrase) rules
@@ -115,7 +129,7 @@ matchSyntaxTemplates holeMatches
         , consumed <- reverse
             [minimumRequiredValues (rulePieces rule) .. length phrase]
         , let (candidate, remaining) = splitAt consumed phrase
-        , captures <- matchPieces holeMatches (rulePieces rule) candidate
+        , captures <- matchPieces captureHole (rulePieces rule) candidate
         ]
   matched <- chooseSuccessful successful
   expanded <- either
@@ -153,6 +167,18 @@ matchSyntaxRules
 matchSyntaxRules holeMatches rules =
   matchSyntaxTemplates holeMatches (SyntaxTemplateFederation rules)
 
+-- | Variant used by production post-AST rewriting. Besides deciding
+-- membership, a hole may canonicalize the captured AST value. Literal value
+-- holes use this to turn a matched identifier token such as @hard@ into the
+-- corresponding string value before function application is constructed.
+matchSyntaxRulesWith
+  :: CaptureHole
+  -> [SyntaxRule]
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure Expression
+matchSyntaxRulesWith captureHole rules =
+  matchSyntaxTemplatesWith captureHole (SyntaxTemplateFederation rules)
+
 chooseSuccessful
   :: [SuccessfulMatch]
   -> Either SyntaxTemplateMatchFailure SuccessfulMatch
@@ -188,7 +214,7 @@ applicationSpine = go []
     go arguments function = (function, arguments)
 
 matchPieces
-  :: HoleMatches
+  :: CaptureHole
   -> [SyntaxPiece Expression]
   -> [Expression]
   -> [[Expression]]
@@ -199,13 +225,17 @@ matchPieces holeMatches (SyntaxLiteral literal : pieces) (value : values)
       matchPieces holeMatches pieces values
 matchPieces _ (SyntaxLiteral _ : _) _ = []
 matchPieces holeMatches (SyntaxHole kind : pieces) values =
-  [ capture : captures
+  [ matchedCapture : captures
   | count <- reverse [1 .. maximumCaptureLength pieces values]
   , let (captured, remaining) = splitAt count values
   , let capture = applicationFrom captured
-  , holeMatches kind capture
+  , matchedCapture <- maybeToList (holeMatches kind capture)
   , captures <- matchPieces holeMatches pieces remaining
   ]
+
+maybeToList :: Maybe value -> [value]
+maybeToList Nothing = []
+maybeToList (Just value) = [value]
 
 maximumCaptureLength :: [SyntaxPiece Expression] -> [Expression] -> Int
 maximumCaptureLength remaining values =

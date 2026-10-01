@@ -335,6 +335,7 @@ executable datra-haskell
         LibraryFiles
         SyntaxDefinitions
         SyntaxTemplateMatching
+        SyntaxRewriting
         Parsing
         Rendering
         Paths_datra_haskell
@@ -389,6 +390,7 @@ test-suite datra-parsing-test
         LibraryFiles
         SyntaxDefinitions
         SyntaxTemplateMatching
+        SyntaxRewriting
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -430,6 +432,7 @@ test-suite datra-interpreting-test
         LibraryFiles
         SyntaxDefinitions
         SyntaxTemplateMatching
+        SyntaxRewriting
         Parsing
         Rendering
         Paths_datra_haskell

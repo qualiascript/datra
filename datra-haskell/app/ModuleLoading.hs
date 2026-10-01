@@ -5,12 +5,14 @@ import Control.Exception (IOException, try)
 import Data.Bifunctor qualified as Bifunctor
 import System.Directory (canonicalizePath)
 import System.FilePath ((</>), takeDirectory, takeExtension, takeFileName)
-import Interpreting (importInvocation, moduleName, moduleSyntaxRules)
-import RuntimeModules (ModuleSource (..))
-import Parsing
-  ( sourceImports
-  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+import Interpreting
+  ( importInvocation
+  , moduleName
+  , moduleSyntaxRules
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
+import RuntimeModules (ModuleSource (..))
+import Parsing (sourceImports)
 import DatraLanguage.AST
 import DatraLanguage.Diagnostics (Located (locatedValue))
 import DatraLanguage.Diagnostics.Application
@@ -78,8 +80,8 @@ loadPaths ancestors origin = fmap sequence . traverse (load ancestors origin)
             expression <- Bifunctor.first
               (ImportedModuleParseFailed path)
               (locatedValue <$>
-                parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-                  False (importSyntax imports) path text)
+                parseDatraSourceLocatedWithImportsAndStandardLibrary
+                  False imports path text)
             pure (requested, ModuleSource identity expression imports)
 
 

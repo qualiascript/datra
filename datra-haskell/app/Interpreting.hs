@@ -9,6 +9,7 @@ module Interpreting
   , moduleExportNames
   , moduleSyntaxRules
   , importInvocation
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
   , interpretLocatedWithImports
   , interpretLocatedWithImportsInMode
   , interpretLocatedWithImportsInModeAndStandardLibrary
@@ -54,7 +55,9 @@ import RuntimeModules
   )
 import LibraryFiles
   ( standardLibraryFileName
+  , requiredBundledLibrarySource
   )
+import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.AST
@@ -76,9 +79,15 @@ import DatraLanguage.SyntaxTemplate
   )
 import DatraTypes
 import Parsing
-  ( bundledLibraryExpression
-  , parseDatra
+  ( parseDatra
   , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
+  , parseDatraRawLocatedWithSourceName
+  , ResourceEnvelope (..)
+  )
+import SyntaxRewriting
+  ( SyntaxRewriteFailure (..)
+  , rewriteExplicitSyntax
+  , rewriteImplicitSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import SyntaxDefinitions
@@ -94,7 +103,7 @@ import DatraLanguage.Diagnostics
   , withoutSourceSpan
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( ParseFailure (..) )
 import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 
@@ -103,6 +112,142 @@ interpretExpression
   -> Either (DatraError InterpretingError) InterpretedValue
 interpretExpression =
   Bifunctor.first withoutSourceSpan . interpretExpressionReason
+
+-- | Production source parsing is deliberately split into two phases. The
+-- lexical parser first reads a neutral AST without consulting declarations;
+-- this pass then applies the syntax functions visible through Std, explicit
+-- imports, and declarations introduced by the resource itself.
+parseDatraSourceLocatedWithImportsAndStandardLibrary
+  :: Bool
+  -> [(String, ModuleSource)]
+  -> FilePath
+  -> String
+  -> Either ParseFailure (Located Expression)
+parseDatraSourceLocatedWithImportsAndStandardLibrary
+    includeStandardLibrary modules sourceName source = do
+  (envelope, Located sourceSpan raw) <-
+    parseDatraRawLocatedWithSourceName sourceName source
+  base <- Bifunctor.first interpretingParseFailure
+    (if includeStandardLibrary then defaultImportScope else Right [])
+  standardRules <- Bifunctor.first interpretingParseFailure
+    (if includeStandardLibrary
+      then do
+        standard <- defaultModuleSource
+        moduleSyntaxRules standardLibraryFileName standard
+      else Right [])
+  importedRules <- Bifunctor.first interpretingParseFailure
+    (traverse (\(requested, moduleSource) ->
+      (,) requested <$> moduleSyntaxRules requested moduleSource) modules)
+  let capture = captureSyntaxHole base modules
+      rewrite = case (envelope, raw) of
+        (ExplicitMapEnvelope, expressionValue) ->
+          rewriteExplicitSyntax capture standardRules [] importedRules
+            expressionValue
+        (ImplicitBlockEnvelope, Program entries _) ->
+          rewriteImplicitSyntax capture standardRules [] importedRules entries
+        _ -> Left MissingImplicitBlockResult
+  expressionValue <- Bifunctor.first rewriteParseFailure rewrite
+  pure (Located sourceSpan expressionValue)
+  where
+    interpretingParseFailure = ParseFailure . show
+    rewriteParseFailure = ParseFailure . show
+
+captureSyntaxHole
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> Bool
+  -> [Expression]
+  -> SyntaxHoleKind Expression
+  -> Expression
+  -> Maybe Expression
+captureSyntaxHole base modules strict declarations kind captured =
+  case kind of
+    ExpressionSyntaxHole -> Just captured
+    BlockSyntaxHole -> case captured of
+      AtlasMap {} -> Just captured
+      _ -> Nothing
+    IdentifierExpressionSyntaxHole -> case captured of
+      IdentifierReference {} -> Just captured
+      OptionalType IdentifierReference {} -> Just captured
+      _ -> Nothing
+    ValueSyntaxHole target ->
+      literalCapture target captured
+        <|> if strict then evaluatedCapture else tentativeCapture
+  where
+    literalCapture (AsciiStringLiteral literal)
+        (IdentifierReference (IdentifierString capturedLiteral))
+      | literal == capturedLiteral = Just (AsciiStringLiteral literal)
+    literalCapture target value
+      | target == value = Just value
+    literalCapture _ _ = Nothing
+    tentativeCapture = case captured of
+      IdentifierReference (IdentifierString name)
+        | name `notElem` concatMap bindingNames declarations ->
+            Just (AsciiStringLiteral name)
+      _ -> Just captured
+    evaluatedCapture = do
+      (scope, _, _) <- either (const Nothing) Just
+        (declareScope
+          (("\0imports", ModuleCatalog modules) : base)
+          (map syntaxValidationDeclaration declarations))
+      let interpret = evalInScope scope []
+      if identifierCaptureIsSubtype scope declarations kind captured
+        then Just captured
+        else case canonicalValueCapture interpret kind captured of
+          Right canonical -> Just canonical
+          Left _ -> Nothing
+
+canonicalValueCapture
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> SyntaxHoleKind Expression
+  -> Expression
+  -> Either InterpretingError Expression
+canonicalValueCapture interpret (ValueSyntaxHole targetExpression) captured = do
+  target <- interpret targetExpression
+  case interpret captured of
+    Right value -> captured <$ specifyValues value target
+    Left failure -> case captured of
+      IdentifierReference (IdentifierString name) -> do
+        source <- asciiStringValue name
+        _ <- evalValues canonicalStringCodec source target
+        Right (AsciiStringLiteral name)
+      _ -> Left failure
+canonicalValueCapture _ _ _ = Left NoCanonicalStringConversion
+
+-- A recursive function body is the fixed-point seed already used by ordinary
+-- evaluation while its public signature is being assembled. Syntax-hole
+-- validation can reach that function through another recursive let before the
+-- direct self-cycle guard fires, so construct its validation-only declaration
+-- from the same seed. The completed declaration remains unchanged everywhere
+-- outside this scope and is still checked against its full signature.
+syntaxValidationDeclaration :: Expression -> Expression
+syntaxValidationDeclaration declaration = case declaration of
+  Let (IdentifierOperation name _ (Just definition))
+    | Just implementation <- recursiveFunctionImplementation definition ->
+        Let (IdentifierOperation name implementation (Just implementation))
+  _ -> declaration
+
+identifierCaptureIsSubtype
+  :: Scope
+  -> [Expression]
+  -> SyntaxHoleKind Expression
+  -> Expression
+  -> Bool
+identifierCaptureIsSubtype scope declarations
+    (ValueSyntaxHole target) (IdentifierReference (IdentifierString name)) =
+  case
+      [ annotation
+      | declaration <- reverse declarations
+      , Just details <- [blockDeclaration declaration]
+      , declarationName details == name
+      , Just annotation <- [declarationAnnotation details]
+      ] of
+    annotation : _ -> either (const False) id $ do
+      source <- evalInScope scope [] annotation
+      destination <- evalInScope scope [] target
+      subfederationValues source destination >>= booleanCondition
+    [] -> False
+identifierCaptureIsSubtype _ _ _ _ = False
 
 interpretLocatedExpression
   :: Located Expression
@@ -188,13 +333,25 @@ retainExportDefinition evaluated source =
     _ -> evaluated
 
 parsedDefaultModule :: Either InterpretingError Expression
-parsedDefaultModule =
+parsedDefaultModule = do
+  (envelope, Located _ raw) <- either parseFailure Right
+    (parseDatraRawLocatedWithSourceName standardLibraryFileName
+      (requiredBundledLibrarySource standardLibraryFileName))
+  let capture = captureSyntaxHole [] []
+      rewritten = case (envelope, raw) of
+        (ExplicitMapEnvelope, expressionValue) ->
+          rewriteExplicitSyntax capture [] [] [] expressionValue
+        (ImplicitBlockEnvelope, Program entries _) ->
+          rewriteImplicitSyntax capture [] [] [] entries
+        _ -> Left MissingImplicitBlockResult
   either
-    (Left . ModuleEvaluationFailed
-      . StandardLibraryParseFailure standardLibraryFileName
-      . parseFailureMessage)
+    (parseFailure . ParseFailure . show)
     Right
-    (bundledLibraryExpression standardLibraryFileName)
+    rewritten
+  where
+    parseFailure = Left . ModuleEvaluationFailed
+      . StandardLibraryParseFailure standardLibraryFileName
+      . parseFailureMessage
 
 defaultModuleSource :: Either InterpretingError ModuleSource
 defaultModuleSource =
@@ -207,10 +364,11 @@ canonicalStringCodec =
     , decodeCanonicalString = canonicalStringCandidates
     }
 
--- | Decide a declared @$T@ syntax hole through the same canonical-string
--- federation used by ordinary Datra string templates. The supplied evaluator
--- determines the lexical scope for both the captured AST and @T@. Parser-level
--- AST categories such as @_Expr@ are intentionally outside this function.
+-- | Decide a declared @$T@ syntax hole by evaluating the captured AST and
+-- checking its value directly against @T@. Canonical-string decoding is only
+-- needed by the production capture path for otherwise-unbound identifier
+-- literals. Parser-level AST categories such as @_Expr@ remain outside this
+-- function.
 matchesValueSyntaxHoleWith
   :: (Expression -> Either InterpretingError InterpretedValue)
   -> SyntaxHoleKind Expression
@@ -220,9 +378,7 @@ matchesValueSyntaxHoleWith interpret (ValueSyntaxHole targetExpression) captured
   case do
       capturedValue <- interpret captured
       target <- interpret targetExpression
-      source <- asciiStringValue
-        (renderInterpretedValue capturedValue)
-      evalValues canonicalStringCodec source target of
+      specifyValues capturedValue target of
     Right _ -> True
     Left _ -> False
 matchesValueSyntaxHoleWith _ _ _ = False

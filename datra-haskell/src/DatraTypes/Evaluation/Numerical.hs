@@ -11,6 +11,7 @@ module Evaluation.Numerical
   , integerLimitProjection
   , requireIntegerLimit
   , complementedIntegerTypeIncludesInfinity
+  , nonnegativeFederationInComplementedInteger
   , makeIntegerLimit
   , requireFiniteInteger
   , requireNaturalExponent
@@ -412,6 +413,19 @@ complementedIntegerTypeIncludesInfinity semantics =
       | Just includesInfinity <- nonnegativeMagnitude magnitude
       , optionalComplement complement -> Just includesInfinity
     _ -> Nothing
+
+-- | Relate a nonnegative valued range to the source-defined complemented
+-- integer carrier. Both sides are recognized from retained semantics rather
+-- than library binding names. An infinity-extended magnitude is included only
+-- when the complemented target retains its infinity member too.
+nonnegativeFederationInComplementedInteger
+  :: ValueSemantics
+  -> ValueSemantics
+  -> Maybe Bool
+nonnegativeFederationInComplementedInteger source target = do
+  sourceIncludesInfinity <- nonnegativeMagnitude source
+  targetIncludesInfinity <- complementedIntegerTypeIncludesInfinity target
+  pure (not sourceIncludesInfinity || targetIncludesInfinity)
 
 nonnegativeMagnitude :: ValueSemantics -> Maybe Bool
 nonnegativeMagnitude semantics =

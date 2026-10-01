@@ -14,6 +14,8 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (makeAtlasMap)
+import Evaluation.Numerical
+  ( nonnegativeFederationInComplementedInteger )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
 import Evaluation.Specification.String (federationProducesStrings)
@@ -38,6 +40,10 @@ decideStructuralSubfederation decideSubfederation source target
   | CoalizationForm sourceOperand <- interpretedForm source
   , CoalizationForm targetOperand <- interpretedForm target =
       decideSubfederation sourceOperand targetOperand
+  | CoalizationForm _ <- interpretedForm target
+  , Just included <- nonnegativeFederationInComplementedInteger
+      (interpretedSemantics source) (interpretedSemantics target) =
+      if included then DecisionProved () else DecisionRefuted
   | CoalizationForm sourceOperand <- interpretedForm source =
       decideSubfederation sourceOperand target
   | CoalizationForm _ <- interpretedForm target

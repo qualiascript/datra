@@ -222,7 +222,7 @@ expandSyntax
   -> Either SyntaxExpansionFailure Expression
 expandSyntax rule captures = case
     externalSymbol (syntaxImplementation rule) >>= syntaxFunctionBodyForSymbol of
-  Just body -> applySyntaxFunctionBody body (specifiedValueCaptures captures)
+  Just body -> applySyntaxFunctionBody body captures
   _ -> Right (FunctionApplication
     callable
     (case captures of [value] -> value; _ -> AtlasMap captures))
@@ -230,14 +230,6 @@ expandSyntax rule captures = case
     callable = scoped (IdentifierReference (IdentifierString localName))
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
-    specifiedValueCaptures = zipWith specifyCapture
-      [kind | SyntaxHole kind <- syntaxTemplatePieces (syntaxTemplate rule)]
-    specifyCapture (ValueSyntaxHole kind) capture =
-      MapSpecification capture
-        (scopeHoleType kind)
-    specifyCapture _ capture = capture
-    scopeHoleType value@IdentifierReference {} = scoped value
-    scopeHoleType value = value
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.

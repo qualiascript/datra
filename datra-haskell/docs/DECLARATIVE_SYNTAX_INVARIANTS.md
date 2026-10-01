@@ -14,9 +14,9 @@ spaces or line breaks.
   declare a template beginning with `def`; matching `def` expands to `abc`.
 - A template without a literal prefix cannot use that index and remains on a
   less-optimized fallback path. Current standard declarations all have one.
-- `%>` is a total map whose left operand has type
-  `InhabitedList Template`. It supplies one or more complete sequences of
-  literals and holes for the function signature on its right.
+- `%>` accepts one or more templates. Its own operation enforces that
+  nonempty shape; it does not depend on the separately declared
+  `InhabitedList` type.
 - `%` maps a single string or an inhabited list of strings pointwise into
   templates. Thus `%"..."` is the unary spelling and
   `%("..."; "...")` supplies multiple templates without introducing a
@@ -42,6 +42,11 @@ spaces or line breaks.
   that attachment and presents the ordinary explicit function application.
 - Templates follow the visibility, import, and recursive `let` behavior of
   their bindings. A recursive binding is available while its value is read.
+- Recursive blocks are matched in two phases. The tentative phase discovers
+  `let` declarations without evaluating value holes. The strict phase reruns
+  the original AST with evaluator-backed membership. Inner declarations
+  shadow outer declarations, while duplicate declarations in one block remain
+  invalid.
 - The current outer application spine supplies a hard matching boundary.
   Matching never descends through an argument's nested AST merely to obtain a
   longer match.
