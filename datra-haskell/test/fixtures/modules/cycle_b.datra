@@ -1,3 +1,5 @@
+import all "std"
+
 yield CycleB := begin
   import "cycle_a"
 yield public this

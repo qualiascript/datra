@@ -260,6 +260,7 @@ data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
   , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
+  , functionSyntaxSource :: Maybe (FunctionSyntax String)
   , functionSource :: Maybe String
   , functionSignatureSource :: String
   , functionPrepare :: Maybe

@@ -1,3 +1,5 @@
+import all "std"
+
 yield Numbers := begin
 
   max := {Args IntLimit,} -> IntLimit? do

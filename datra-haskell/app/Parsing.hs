@@ -14,7 +14,7 @@ module Parsing
   , parseDatraAstWithSourceName
   , parseDatraAstLocated
   , parseDatraAstLocatedWithSourceName
-  , standardLibraryExpression
+  , bundledLibraryExpression
   ) where
 
 import Control.Applicative (empty, optional, some, (<|>))
@@ -25,12 +25,12 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (find)
 import Data.Maybe (isJust)
 import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
+import BlockScope (bindingNames)
 import DatraLanguage.AST
   ( IdentifierString (IdentifierString)
   , Expression
@@ -123,7 +123,6 @@ import DatraLanguage.Identifier
   )
 import LibraryFiles
   ( standardLibraryFileName
-  , standardLibraryIdentity
   , requiredBundledLibrarySource
   )
 import SyntaxDefinitions
@@ -173,7 +172,6 @@ data ParserContext = ParserContext
   , referencesAllowed :: Bool
   , syntaxRules :: [SyntaxRule]
   , syntaxDeclarations :: [Expression]
-  , outerSyntaxDeclarations :: [Expression]
   , syntaxStops :: [Text]
   , listMaybeThenStopped :: Bool
   , syntaxImports :: [(String, String, [SyntaxRule])]
@@ -193,7 +191,7 @@ parseDatra :: String -> Either ParseFailure Expression
 parseDatra = parseDatraWithSourceName "<input>"
 
 -- | Outer parentheses select expression mode; every other resource is an
--- implicit begin/yield program, with an optional begin and default yield ().
+-- implicit block whose exported result is introduced explicitly by @yield@.
 parseDatraWithSourceName
   :: FilePath
   -> String
@@ -229,7 +227,7 @@ parseDatraLocatedWithSyntaxImportsAndStandardLibrary
     includeStandardLibrary imports resourceName source =
   Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
     (runReaderT locatedResource
-      (ParserContext 0 False rules declarations [] [] False imports))
+      (ParserContext 0 False rules declarations [] False imports))
     resourceName (Text.pack source))
   where
     rules = if includeStandardLibrary then libraryRules else []
@@ -275,31 +273,34 @@ runDatraParser
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
   runParser (runReaderT parser
-    (ParserContext 0 False libraryRules libraryDeclarations [] [] False []))
+    (ParserContext 0 False libraryRules libraryDeclarations [] False []))
     resourceName source
 
--- | The standard library is parsed like any other resource. Its declarations
--- become available from left to right, so the source order is its bootstrap.
--- This shared CAF keeps syntax discovery and evaluation on the same AST.
-standardLibraryExpression :: Either ParseFailure Expression
-standardLibraryExpression =
+-- | Parse a bundled Datra module without pre-importing another module. Its
+-- declarations become available from left to right, so its source order is
+-- its bootstrap.
+bundledLibraryExpression :: FilePath -> Either ParseFailure Expression
+bundledLibraryExpression requested =
   Bifunctor.first (ParseFailure . errorBundlePretty)
     (runParser
-      (runReaderT resource (ParserContext 0 False [] [] [] [] False []))
-      standardLibraryFileName
-      (Text.pack (requiredBundledLibrarySource standardLibraryFileName)))
+      (runReaderT resource (ParserContext 0 False [] [] [] False []))
+      requested
+      (Text.pack (requiredBundledLibrarySource requested)))
+
+defaultLibraryExpression :: Either ParseFailure Expression
+defaultLibraryExpression = bundledLibraryExpression standardLibraryFileName
 
 libraryDeclarations :: [Expression]
 libraryDeclarations =
-  standardLibraryBootstrapDeclarations <> standardLibraryValueDeclarations
+  defaultModuleBootstrapDeclarations <> defaultModuleValueDeclarations
 
-standardLibraryBootstrapDeclarations :: [Expression]
-standardLibraryBootstrapDeclarations = case standardLibraryExpression of
+defaultModuleBootstrapDeclarations :: [Expression]
+defaultModuleBootstrapDeclarations = case defaultLibraryExpression of
   Right (Program declarations _) -> declarations
   _ -> []
 
-standardLibraryValueDeclarations :: [Expression]
-standardLibraryValueDeclarations = case standardLibraryExpression of
+defaultModuleValueDeclarations :: [Expression]
+defaultModuleValueDeclarations = case defaultLibraryExpression of
   Right expressionValue
     | Just (_, declarations, _) <- namedBeginBlock expressionValue -> declarations
   _ -> []
@@ -307,25 +308,16 @@ standardLibraryValueDeclarations = case standardLibraryExpression of
 libraryRules :: [SyntaxRule]
 libraryRules =
   rules
-    <> map (qualifySyntaxRule libraryNamespace)
-      (filter (not . null . syntaxTemplateLiteralPrefix) rules)
   where
-    rules = map inStandardLibrary
-      ( concatMap declarationRules standardLibraryBootstrapDeclarations
+    rules = map inDefaultModule
+      ( concatMap declarationRules defaultModuleBootstrapDeclarations
         <> [ rule
-           | rule <- concatMap declarationRules standardLibraryValueDeclarations
+           | rule <- concatMap declarationRules defaultModuleValueDeclarations
            , not (null (public [(syntaxName rule, ())]))
            ]
       )
-    inStandardLibrary rule =
-      rule { syntaxModule = Just standardLibraryIdentity }
-
-libraryNamespace :: String
-libraryNamespace = case standardLibraryExpression of
-  Right expressionValue
-    | Just (IdentifierString name, _, _) <- namedBeginBlock expressionValue ->
-        name
-  _ -> ""
+    inDefaultModule rule =
+      rule { syntaxModule = Just standardLibraryFileName }
 
 locatedResource :: Parser (Located Expression)
 locatedResource = located resource
@@ -637,10 +629,16 @@ outerMapEnvelope =
 
 implicitProgram :: Parser Expression
 implicitProgram = withReferences $ do
-  entries <- elements
-  pure $ case reverse entries of
-    [] -> Program [] (AtlasMap [])
-    result : reversedBindings -> Program (reverse reversedBindings) result
+  parsed <- elements
+  let entries = case parsed of
+        [AtlasMap sequenceEntries] -> sequenceEntries
+        _ -> parsed
+  case reverse entries of
+    FunctionApplication
+        (IdentifierReference (IdentifierString "yield"))
+        result : reversedBindings ->
+      pure (Program (reverse reversedBindings) result)
+    _ -> empty
 
 withReferences :: Parser value -> Parser value
 withReferences = local (\context -> context { referencesAllowed = True })
@@ -651,25 +649,23 @@ sequenceExpression [expressionValue] = expressionValue
 sequenceExpression expressions = AtlasMap expressions
 
 withDeclarations :: [Expression] -> Parser a -> Parser a
-withDeclarations entries = local $ \context -> context
-  { syntaxRules = concatMap (rulesFor context) entries <> syntaxRules context
-  , syntaxDeclarations = entries <> syntaxDeclarations context
-  }
+withDeclarations entries = local $ \context ->
+  let declaredNames = concatMap bindingNames entries
+      introducedRules = concatMap (rulesFor context) entries
+  in context
+    { syntaxRules = introducedRules <> filter
+        ((`notElem` declaredNames) . syntaxName)
+        (syntaxRules context)
+    , syntaxDeclarations = entries <> syntaxDeclarations context
+    }
   where
     rulesFor context (Import allNames path) =
       let imported =
-            [ (namespace, importedRules)
-            | (requested, namespace, importedRules) <- syntaxImports context
+            [ importedRules
+            | (requested, _, importedRules) <- syntaxImports context
             , requested == path
             ]
-          rules = concatMap snd imported
-          qualified =
-            [ qualifySyntaxRule namespace rule
-            | (namespace, moduleRules) <- imported
-            , rule <- moduleRules
-            , not (null (syntaxTemplateLiteralPrefix rule))
-            ]
-      in qualified <> if allNames then rules else []
+      in if allNames then concat imported else []
     rulesFor _ entry = declarationRules entry
 
 elements :: Parser [Expression]
@@ -883,18 +879,15 @@ identifierOperation = do
         let name = case identifierSpelling of BareIdentifier value -> value; FullStringIdentifier value -> value
             operationIdentifierString = IdentifierString name
         (typeAnnotation, givenValue) <- assignedIdentifierValue
-        context <- ask
-        let (resolvedAnnotation, resolvedValue) =
-              resolveSymbolicAssignment context typeAnnotation givenValue
-            proposed =
+        let proposed =
               IdentifierOperation
-                operationIdentifierString resolvedAnnotation (Just resolvedValue)
+                operationIdentifierString typeAnnotation (Just givenValue)
         if null (declarationRules proposed) then void (validateIdentifierSpelling identifierSpelling) else pure ()
         let operation =
               IdentifierOperation
                 operationIdentifierString
-                resolvedAnnotation
-                (Just resolvedValue)
+                typeAnnotation
+                (Just givenValue)
         pure (optionalIdentifier isOptional operation)
     , do
         _ <- continuedOperator AST.DependentIdentifierTypeOperator
@@ -930,35 +923,6 @@ assignedValueFor typeAnnotation = do
       case value of
         FunctionBody {} -> pure value
         _ -> empty
-
--- Symbolic parser values can project declarations from an enclosing scope.
--- The capability is introduced by an ordinary stdlib binding whose value is
--- the external marker, rather than by reserving its identifier in the parser.
-resolveSymbolicAssignment
-  :: ParserContext
-  -> Expression
-  -> Expression
-  -> (Expression, Expression)
-resolveSymbolicAssignment context annotation given =
-  case given of
-    NamedAccess
-        (IdentifierReference source)
-        (IdentifierString outerName)
-      | Just sourceDeclaration <-
-          find (declares source) (syntaxDeclarations context)
-      , isOuterScopeValue sourceDeclaration
-      , Just (IdentifierOperation _ outerAnnotation (Just outerValue)) <-
-          find (declares (IdentifierString outerName))
-            (outerSyntaxDeclarations context) ->
-          (outerAnnotation, outerValue)
-    _ -> (annotation, given)
-  where
-    declares expected (IdentifierOperation actual _ _) =
-      actual == expected
-    declares _ _ = False
-    isOuterScopeValue (IdentifierOperation _ _ (Just value)) =
-      externalSymbol value == Just "datra.syntax.super"
-    isOuterScopeValue _ = False
 
 optionalIdentifier :: Bool -> Expression -> Expression
 optionalIdentifier False operation = operation
@@ -1091,13 +1055,15 @@ rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 term :: Parser Expression
 term = do
   function <- accessedTerm extractedTermAtom
-  arguments <- many (try (notFollowedBy (try identifierOperationStart) *> applicationArgument))
+  arguments <- many (try applicationArgument)
   pure (foldl FunctionApplication function arguments)
   where
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
     applicationArgument = accessedTerm (choice
-      [ argumentMap
+      [ try identifierTemplateOperation
+      , try identifierOperation
+      , argumentMap
       , parenthesizedExpression
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , identifierReference
@@ -1146,7 +1112,7 @@ importExpression = do
 sourceImports :: String -> Either ParseFailure [String]
 sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan
-    (ParserContext 0 False libraryRules libraryDeclarations [] [] False []))
+    (ParserContext 0 False libraryRules libraryDeclarations [] False []))
     "<imports>" (Text.pack source)
   where
     paths (Import _ path) = [path]
@@ -1286,10 +1252,7 @@ syntaxApplicationWith terminalExpression = do
             pure ((if optionalName then OptionalType else id)
               (IdentifierReference (IdentifierString name)))
           BlockSyntaxHole -> do
-            entries <- local
-              (\nested -> nested
-                { outerSyntaxDeclarations = syntaxDeclarations nested })
-              (withReferences elements)
+            entries <- withReferences elements
             pure (AtlasMap entries)
           ExpressionSyntaxHole
             | null rest ->

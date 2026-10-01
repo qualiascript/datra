@@ -1,3 +1,5 @@
+import all "std"
+
 yield LibraryOne := begin
   let _offset := 4
   x := 7

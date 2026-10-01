@@ -385,6 +385,7 @@ test-suite datra-parsing-test
     main-is:          DatraParsingTests.hs
     other-modules:
         Parsing
+        BlockScope
         LibraryFiles
         SyntaxDefinitions
         SyntaxTemplateMatching

@@ -1,6 +1,13 @@
-begin := %"begin $_Block yield $_Expr" %> (_AST, _AST -> _AST) !$~"datra.syntax.begin"
+_AST := !$~"datra.AST"
+_Expr := !$~"datra.Expr"
+_IdenExp := !$~"datra.IdenExp"
+_Block := !$~"datra.Block"
 
-Std := begin
+begin := %"begin $_Block yield $_Expr" %> (_AST, _AST -> _AST) !$~"datra.begin"
+
+yield Std := begin
+
+  begin := begin
 
   Any := !$~"datra.Any"
   Ordinal := !$~"datra.Ordinal"
@@ -22,46 +29,39 @@ Std := begin
   NatValRange := !$~"datra.NatValRange"
   IntValRange := !$~"datra.IntValRange"
 
-  _AST := !$~"datra.AST"
-  _Expr := !$~"datra.Expr"
-  _IdenExp := !$~"datra.IdenExp"
-  _Block := !$~"datra.Block"
-
   assert :=
     (%"assert %("hard") $_Expr" %>
-      ({_AST, $hard} -> _AST) !$~"datra.syntax.assertHard") |
-    (%"assert $_Expr" %> (_AST -> _AST) !$~"datra.syntax.assert")
-  or := %"$_Expr or $_Expr" %> (_AST, _AST -> _AST) !$~"datra.syntax.or"
-  and := %"$_Expr and $_Expr" %> (_AST, _AST -> _AST) !$~"datra.syntax.and"
-  of := %"$_Expr of $_Expr" %> (_AST, _AST -> _AST) !$~"datra.syntax.of"
-  not := %"not $_Expr" %> (_AST -> _AST) !$~"datra.syntax.not"
+      ({_AST, $hard} -> _AST) !$~"datra.assertHard") |
+    (%"assert $_Expr" %> (_AST -> _AST) !$~"datra.assert")
+  or := %"$_Expr or $_Expr" %> (_AST, _AST -> _AST) !$~"datra.or"
+  and := %"$_Expr and $_Expr" %> (_AST, _AST -> _AST) !$~"datra.and"
+  of := %"$_Expr of $_Expr" %> (_AST, _AST -> _AST) !$~"datra.of"
+  not := %"not $_Expr" %> (_AST -> _AST) !$~"datra.not"
   if :=
     (%"if $_Expr then $_Expr else $_Expr" %>
-      (_AST, _AST, _AST -> _AST) !$~"datra.syntax.if") |
+      (_AST, _AST, _AST -> _AST) !$~"datra.if") |
     (%"if $_Expr then $_Expr" %>
-      (_AST, _AST -> _AST) !$~"datra.syntax.ifThen")
-  super := !$~"datra.syntax.super"
-  begin := super.begin
-  do := %"do $_Block yield $_Expr" %> (_AST, _AST -> _AST) !$~"datra.syntax.do"
-  let := %"let $_Expr" %> (_AST -> _AST) !$~"datra.syntax.let"
-  fun := %"fun $_Expr" %> (_AST -> _AST) !$~"datra.syntax.fun"
+      (_AST, _AST -> _AST) !$~"datra.ifThen")
+  do := %"do $_Block yield $_Expr" %> (_AST, _AST -> _AST) !$~"datra.do"
+  let := %"let $_Expr" %> (_AST -> _AST) !$~"datra.let"
+  fun := %"fun $_Expr" %> (_AST -> _AST) !$~"datra.fun"
   with :=
     (%"with $_IdenExp of $_Expr" %>
-      (_AST, _AST -> _AST) !$~"datra.syntax.with") |
+      (_AST, _AST -> _AST) !$~"datra.with") |
     (%(
         "with $_IdenExp in $_Expr do $_Expr"
         "with $_IdenExp $IntValRange do $_Expr"
       ) %>
-      (_AST, _AST, _AST -> _AST) !$~"datra.syntax.withIn")
+      (_AST, _AST, _AST -> _AST) !$~"datra.withIn")
   for :=
     (%"for $_IdenExp of $_Expr" %>
-      (_AST, _AST -> _AST) !$~"datra.syntax.for") |
+      (_AST, _AST -> _AST) !$~"datra.for") |
     (%(
         "for $_IdenExp in $_Expr do $_Expr"
         "for $_IdenExp $IntValRange do $_Expr"
       ) %>
-      (_AST, _AST, _AST -> _AST) !$~"datra.syntax.forIn")
-  val := %"val $_Expr" %> (_AST -> _AST) !$~"datra.syntax.val"
+      (_AST, _AST, _AST -> _AST) !$~"datra.forIn")
+  val := %"val $_Expr" %> (_AST -> _AST) !$~"datra.val"
   public := !$~"datra.public"
 
   List := for T? of Any do yield fun (() | T; this)

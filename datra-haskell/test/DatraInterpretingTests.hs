@@ -35,7 +35,8 @@ import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (FunctionSyntax) )
 import DatraTypes qualified as Types
 import Interpreting
-  ( InterpretedValue
+  ( ModuleSource (..)
+  , InterpretedValue
   , InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
@@ -52,6 +53,8 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , matchesValueSyntaxHoleWith
+  , moduleExportNames
+  , moduleSyntaxRules
   )
 import DatraLanguage.Diagnostics.Interpreter
   ( AtlasMapFederationOperation (..)
@@ -89,7 +92,7 @@ import MapOperators.AccessOperator
 import Numeric.Natural (Natural)
 import Parsing (parseDatra)
 import SyntaxDefinitions
-  ( SyntaxHoleKind (ValueSyntaxHole)
+  ( SyntaxHoleKind (..)
   , SyntaxPiece (SyntaxHole, SyntaxLiteral)
   , SyntaxRule (..)
   , SyntaxTemplate (SyntaxTemplate)
@@ -129,6 +132,7 @@ testTree =
         , testCase "template-backed keyword forms" testEvalBackedKeywords
         , testCase "begin/yield scope and provenance" testBegin
         , testCase "begin/yield scope rejections" testBeginRejections
+        , testCase "module aliases retain syntax rules" testModuleSyntaxAlias
         , testCase "implicit programs" testPrograms
         , testCase "integers and integer ranges" testIntegers
         , testCase "closed infinite valued range" testClosedInfiniteValuedRange
@@ -178,6 +182,115 @@ testTree =
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
+
+testModuleSyntaxAlias :: IO ()
+testModuleSyntaxAlias = do
+  let astType = External (AsciiStringLiteral "datra.AST")
+      beginValue = SyntaxType
+        (Extract (AsciiStringLiteral "begin $_Block yield $_Expr"))
+        (FunctionType (AtlasMap [astType, astType]) astType)
+      binding name value = IdentifierOperation
+        (IdentifierString name) value (Just value)
+      moduleBody = Begin
+        [binding "begin" (identifierReference "begin")]
+        (identifierReference "this")
+      source = ModuleSource "alias-module.datra"
+        (Program
+          [ binding "begin" beginValue
+          , binding "outerOnly" (natural 7)
+          ]
+          (binding "AliasModule" moduleBody))
+        []
+  case moduleExportNames source of
+    Right names -> assert "only inner declarations are module members"
+      (names == ["begin"])
+    Left failure -> assertFailure
+      ("module export discovery failed: " <> show failure)
+  case moduleSyntaxRules "alias-module" source of
+    Right [rule] -> do
+      assert "the inner alias retains the outer function's syntax"
+        (syntaxName rule == "begin")
+      assert "the retained rule keeps its declared literal"
+        (syntaxTemplate rule == SyntaxTemplate
+          [ SyntaxLiteral "begin"
+          , SyntaxHole BlockSyntaxHole
+          , SyntaxLiteral "yield"
+          , SyntaxHole ExpressionSyntaxHole
+          ])
+    Right rules -> assertFailure
+      ("expected one exported syntax rule, got: " <> show rules)
+    Left failure -> assertFailure
+      ("module syntax discovery failed: " <> show failure)
+  let shadowingSource = ModuleSource "shadowing-module.datra"
+        (Program
+          [binding "begin" beginValue]
+          (binding "ShadowingModule" (Begin
+            [binding "begin" (natural 123)]
+            (identifierReference "this"))))
+        []
+  case moduleSyntaxRules "shadowing-module" shadowingSource of
+    Right [] -> pure ()
+    Right rules -> assertFailure
+      ("a non-function shadow retained syntax rules: " <> show rules)
+    Left failure -> assertFailure
+      ("shadowing module syntax discovery failed: " <> show failure)
+  let preservingSource = ModuleSource "preserving-module.datra"
+        (Program
+          [binding "begin" beginValue]
+          (binding "PreservingModule" (Begin
+            [ binding "_begin" (identifierReference "begin")
+            , binding "begin" (natural 123)
+            ]
+            (identifierReference "this"))))
+        []
+  case moduleSyntaxRules "preserving-module" preservingSource of
+    Right [rule] -> assert
+      "an alias made before shadowing retains the original syntax rules"
+      (syntaxName rule == "_begin"
+        && syntaxTemplate rule == SyntaxTemplate
+          [ SyntaxLiteral "begin"
+          , SyntaxHole BlockSyntaxHole
+          , SyntaxLiteral "yield"
+          , SyntaxHole ExpressionSyntaxHole
+          ])
+    Right rules -> assertFailure
+      ("expected only the preserved alias rule, got: " <> show rules)
+    Left failure -> assertFailure
+      ("syntax-preserving shadow failed: " <> show failure)
+  let duplicateSource = ModuleSource "duplicate-module.datra"
+        (Program [] (binding "DuplicateModule" (Begin
+          [ binding "abc" (natural 123)
+          , binding "abc" (natural 456)
+          ]
+          (identifierReference "this"))))
+        []
+  case moduleExportNames duplicateSource of
+    Left (IdentifierStringOverlap "abc") -> pure ()
+    result -> assertFailure
+      ("same-block redeclaration was not rejected: " <> show result)
+  let isolatedBody = Begin
+        [binding "x" (identifierReference "Int")]
+        (identifierReference "this")
+      isolatedSource = ModuleSource "isolated-module.datra"
+        (Program [] (binding "IsolatedModule" isolatedBody)) []
+  case moduleExportNames isolatedSource of
+    Left (UnknownIdentifier "Int") -> pure ()
+    result -> assertFailure
+      ("a loaded module implicitly received Std: " <> show result)
+  let explicitStd = ModuleSource "std.datra"
+        (Program [] (binding "Std" (Begin
+          [binding "Int" (natural 7)]
+          (identifierReference "this"))))
+        []
+      importingSource = ModuleSource "importing-module.datra"
+        (Program
+          [Import True "std"]
+          (binding "ImportingModule" isolatedBody))
+        [("std", explicitStd)]
+  case moduleExportNames importingSource of
+    Right ["x"] -> pure ()
+    result -> assertFailure
+      ("an explicit import-all did not supply module bindings: " <> show result)
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString
