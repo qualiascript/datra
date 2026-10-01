@@ -115,7 +115,7 @@ standardLibraryTests =
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$up)", "from 2 up")
             , ("f := !$~\"datra.add\"\nyield f (b:5;6)", "11")
-            , ( "f := (x:Int, {a?:Int,b?:Int} -> Int do yield x+a+b)\n"
+            , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
               )
@@ -233,7 +233,7 @@ standardLibraryTests =
         , programCase "Maybe sequencing leaves the absent branch lazy"
             "yield ()! ?? missing" "nothing"
         , programCase "list sequencing applies a function to a nonempty split"
-            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+            ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "yield candidate)\n"
                 <> "yield (1; 2; 3) !? head"
             )
@@ -241,7 +241,7 @@ standardLibraryTests =
         , programCase "list sequencing leaves an empty split lazy"
             "yield () !? missing" "nothing"
         , programCase "list sequencing accepts an optional named parameter"
-            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+            ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "yield candidate)\n"
                 <> "apply := ({values? : List Int} -> Int? "
                 <> "yield values !? head)\n"
@@ -249,7 +249,7 @@ standardLibraryTests =
             )
             "Just : 4"
         , programCase "list sequencing result supports specification"
-            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+            ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "yield candidate)\n"
                 <> "yield ((1; 2) !? head) ~> Int?"
             )
@@ -257,7 +257,7 @@ standardLibraryTests =
                 <> "(from 0 up; nothing | () | Just : $Complement))"
             )
         , programCase "list sequencing result supports subfederation"
-            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+            ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "yield candidate)\n"
                 <> "yield ((1; 2) !? head) of Int?"
             )
@@ -271,13 +271,13 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional named matcher accepts split positional values"
-            ( "head := ({candidate? : Int, remaining? : List Int} -> Int "
+            ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "yield candidate)\n"
                 <> "yield (1; 2; 3)! ?? head it"
             )
             "Just : 1"
         , programFailureCase "required named matcher rejects split positional values"
-            ( "head := ({candidate : Int, remaining : List Int} -> Int "
+            ( "head := ({candidate : Int; remaining : List Int} -> Int "
                 <> "yield candidate)\n"
                 <> "yield (1; 2; 3)! ?? head it"
             )

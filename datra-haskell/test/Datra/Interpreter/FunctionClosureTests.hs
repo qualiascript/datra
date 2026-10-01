@@ -80,7 +80,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "input names survive serialization"
       "yield ({abc? : Nat} -> Nat yield it.abc[1])" "7" "7"
   , roundTrip "defaults survive serialization"
-      "f := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)\nyield f"
+      "f := ({base? : Nat := 2; exponent? : Nat} -> Nat yield base ^ exponent)\nyield f"
       "(*, 3)" "8"
   , roundTrip "local this is not polluted by dependency bindings"
       "offset := 4\nf := ({x? : Int} -> Int do local := x + offset; yield this.local[1])\nyield f"
@@ -201,7 +201,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         (not ("values ~>" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
   , programCase "functions can annotate named parameters"
-      "apply := ({callback? : (Nat -> Nat), value? : Nat} -> Nat yield callback value)\nyield apply (({n? : Nat} -> Nat yield n + 1), 4)"
+      "apply := ({callback? : (Nat -> Nat); value? : Nat} -> Nat yield callback value)\nyield apply (({n? : Nat} -> Nat yield n + 1), 4)"
       "5"
   ]
 

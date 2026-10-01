@@ -31,7 +31,7 @@ yield Std := begin
   let := %"let $_Expr" %> (_AST -> _AST) !$~"datra.let"
   assert :=
     (%"assert %("hard") $_Expr" %>
-      ({_AST, $hard} -> _AST) !$~"datra.assertHard") |
+      (($hard; _AST) -> _AST) !$~"datra.assertHard") |
     (%"assert $_Expr" %> (_AST -> _AST) !$~"datra.assert")
   begin := begin
   do := %"do $_Block yield $_Expr" %> (_AST, _AST -> _AST) !$~"datra.do"
@@ -56,7 +56,7 @@ yield Std := begin
       (_AST, _AST -> _AST) !$~"datra.ifThen")
   import :=
     (%"import %("all") $Str" %>
-      ({$all, Str} -> ()) !$~"datra.importAll") |
+      (($all; Str) -> ()) !$~"datra.importAll") |
     (%"import $Str" %> (Str -> ()) !$~"datra.import")
   let range :=
     (%"range $IntLimit to $IntLimit" %>
@@ -83,7 +83,7 @@ yield Std := begin
   InhabitedList := (for T? of Any) -> Any do yield (T; List T)
   Just := (for T? of Any) -> Any do yield Just : T
   Maybe := (for T? of Any) -> Any do yield (Nothing? : ()) | Just T
-  let Str := List Char
+  let Str := >< (List Char)
   public := !$~"datra.public"
 
   let Nat := from 0 up

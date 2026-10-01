@@ -41,10 +41,10 @@ source context expression =
         False
         annotation
         given
-    ArgumentsSplice value -> "{" <> source 0 value <> ",}"
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
+    Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
@@ -166,13 +166,7 @@ source context expression =
     assignedValue value = source 7 value
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
-    argumentMembers members =
-      case reverse members of
-        ArgumentsSplice value : reversedPrefix ->
-          intercalate "; "
-            (map (source 0) (reverse reversedPrefix)
-              <> [source 0 value <> ","])
-        _ -> intercalate "; " (map (source 0) members)
+    argumentMembers = intercalate "; " . map (source 0)
 
 -- Preserve the exact expansion of @this.(a, b)[1]@ when rendering name lists.
 scopeNames :: OperatorExpression -> Maybe [String]
@@ -180,6 +174,7 @@ scopeNames
     (NamedAccessValue
       (IdentifierReferenceValue (IdentifierString "this"))
       (IdentifierString name)) = Just [name]
+scopeNames (Concatenate left EmptyMap) = scopeNames left
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
 

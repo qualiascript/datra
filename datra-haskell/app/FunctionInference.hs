@@ -19,7 +19,6 @@ freeIdentifiers = nub . free []
         dependentEntries bound ForBindingTag (domainEntries domain)
           <> free (dependentNames ForBindingTag (domainEntries domain) <> bound) codomain
       ArgumentMap entries -> dependentEntries bound ForBindingTag entries
-      ArgumentMapSplice entry -> dependentEntries bound ForBindingTag [entry]
       AtlasMap entries -> dependentEntries bound WithBindingTag entries
       MapSequence entries -> dependentEntries bound WithBindingTag entries
       FunctionBody bindings result -> block bound bindings result
@@ -50,7 +49,6 @@ freeIdentifiers = nub . free []
           | tag == WithBindingTag = names <> [name]
         collect names _ = names
     domainEntries (ArgumentMap entries) = entries
-    domainEntries (ArgumentMapSplice entry) = [entry]
     domainEntries (AtlasMap entries) = entries
     domainEntries (MapSequence entries) = entries
     domainEntries value = [value]
@@ -269,8 +267,10 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
       AtlasMap values -> makeAtlasMap 2 <$> traverse recur values
       MapSequence values -> makeAtlasMap 2 <$> traverse recur values
       ArgumentMap values -> traverse recur values >>= makeArgumentMap
-      ArgumentMapSplice value -> recur value
-      MapConcatenation a b -> do left <- recur a; right <- recur b; concatenateValues left right
+      MapConcatenation left right -> do
+        leftValue <- recur left
+        rightValue <- recur right
+        concatenateValues leftValue rightValue
       Overload a b -> do left <- recur a; right <- recur b; overloadValues left right
       SafeOverload a b -> do left <- recur a; right <- recur b; safeOverloadValues left right
       EitherType a b -> do left <- recur a; right <- recur b; joinTypes left right

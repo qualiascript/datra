@@ -55,7 +55,7 @@ compileParameters evaluate = compile False
         ArgumentMap members -> do
           traverse_ validateArgumentMapName members
           unorderedArgumentSchema <$> traverse (compileMember False) members
-        ArgumentMapSplice member -> do
+        MapConcatenation member (AtlasMap []) ->
           projectedArgumentSchema <$> evaluate member
         MapConcatenation _ _ ->
           concatenatedArgumentSchema

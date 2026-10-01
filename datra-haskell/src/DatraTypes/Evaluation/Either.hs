@@ -13,6 +13,8 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
+import DatraOrdinal (Ordinal, finiteOrdinal)
+import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Error
   ( InterpretingError (EitherAlternativesNotDistinct) )
 import Evaluation.Specification.Composition (selectFederationMember)
@@ -74,6 +76,9 @@ alternativesAreDistinct left right
   | interpretedCanonicalResult left == interpretedCanonicalResult right = False
   | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
       alternativesAreDistinct (functionDomain a) (functionDomain b)
+  | Just leftSlots <- structuralSlotOrdinal left
+  , Just rightSlots <- structuralSlotOrdinal right
+  , leftSlots /= rightSlots = True
   | ArgumentMapForm leftMembers _ <- interpretedForm left
   , ArgumentMapForm rightMembers _ <- interpretedForm right =
       length leftMembers /= length rightMembers
@@ -202,6 +207,22 @@ sequenceRequiresMultipleSources value =
   where
     isLiteralUnit member =
       interpretedCanonicalResult member == CanonicalMap 0 []
+
+structuralSlotOrdinal :: InterpretedValue -> Maybe Ordinal
+structuralSlotOrdinal value
+  | valueIsCoalition value = Just (finiteOrdinal 1)
+  | otherwise = case interpretedForm value of
+      SequentialMapForm -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      ArgumentMapForm members _ ->
+        Just (finiteOrdinal (fromIntegral (length members)))
+      BuiltinMetaTypeForm (ASTMetaType _) -> Just (finiteOrdinal 1)
+      _
+        | interpretedValueHasTotalMap value -> exactMapOrdinal
+        | otherwise -> Nothing
+  where
+    exactMapOrdinal = Just
+      (interpretedMapFinalOrderType (interpretedMap value))
 
 isNumericalRange :: InterpretedValue -> Bool
 isNumericalRange value =

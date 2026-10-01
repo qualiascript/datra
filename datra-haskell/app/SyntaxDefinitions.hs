@@ -314,7 +314,8 @@ externalSymbol (External descriptor) = findSymbol descriptor
   where
     findSymbol (IdentifierOperation (IdentifierString "symbol") (AsciiStringLiteral value) _) = Just value
     findSymbol (AtlasMap members) = first (map findSymbol members)
-    findSymbol (MapConcatenation a b) = first [findSymbol a,findSymbol b]
+    findSymbol (MapConcatenation left right) =
+      first [findSymbol left, findSymbol right]
     findSymbol _ = Nothing
     first [] = Nothing
     first (Just value:_) = Just value

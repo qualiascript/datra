@@ -40,7 +40,6 @@ import DatraLanguage.AST
       , StringTemplate
       , AtlasMap
       , ArgumentMap
-      , ArgumentMapSplice
       , Skip
       , EllipsisLiteral
       , EllipsisNatural
@@ -423,7 +422,7 @@ astForm =
       , astBlock "do" FunctionBody
       , astSequence
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
-      , ArgumentMapSplice <$> (astSymbol "{,}" *> astExpression)
+      , astBinary AST.ConcatenationOperator MapConcatenation
       , astNaturalRangeExpression
       , try (astIdentifierTemplateOperation AST.AssignmentOperator (Just ()))
       , try (astIdentifierTemplateOperation AST.DependentIdentifierTypeOperator Nothing)
@@ -462,7 +461,6 @@ astForm =
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
-      , astBinary AST.ConcatenationOperator MapConcatenation
       , NamedAccess <$> (astSymbol "." *> astExpression) <*> (IdentifierString <$> astString)
       , astBinary AST.AccessOperator MapAccess
       , astBinary AST.SpecificationOperator MapSpecification
@@ -1344,63 +1342,22 @@ identifierReference = try $ do
   name <- validateIdentifierSpelling (BareIdentifier first)
   pure (IdentifierReference (IdentifierString name))
 
--- Argument maps have the same member separators and empty/unary arity as
--- parenthesized maps, but admit every permutation of their members.
+-- Argument maps use the same expression operators and sequence separators as
+-- parenthesized maps: comma concatenates within one expression, while a
+-- semicolon or newline starts the next argument-map member.
 argumentMap :: Parser Expression
 argumentMap = do
-  (members, separators, trailingConcatenation) <-
-    between (symbol "{" <* lineSpaceConsumer)
-      (lineSpaceConsumer *> symbol "}")
-      argumentMembers
+  members <- between (symbol "{" <* lineSpaceConsumer)
+    (lineSpaceConsumer *> symbol "}")
+    elements
   guard (all validDependentName members)
-  pure $ case (members, separators, trailingConcatenation) of
-    ([member], _, True) -> ArgumentMapSplice member
-    _ -> ArgumentMap
-      (spliceDependentTail members separators trailingConcatenation)
+  pure (ArgumentMap members)
   where
-    -- At the brace level commas separate arguments. Parsing a parenthesized
-    -- expression restores ordinary concatenation, preserving nested maps.
-    argumentExpression = nonConcatenatedExpression
-    argumentMembers = do
-      first <- optional argumentExpression
-      case first of
-        Nothing -> pure ([], [], False)
-        Just value -> remaining [value] []
-    remaining reversed reversedSeparators =
-      (do
-        comma <- argumentSeparator
-        next <- optional argumentExpression
-        case next of
-          Nothing -> pure
-            (reverse reversed, reverse reversedSeparators, comma)
-          Just value -> remaining
-            (value : reversed)
-            (comma : reversedSeparators))
-        <|> pure
-          (reverse reversed, reverse reversedSeparators, False)
-    argumentSeparator =
-      True <$ continuedOperator AST.ConcatenationOperator
-        <|> False <$ mapSeparator
     validDependentName (ForBinding (IdentifierString name) True _) =
       not (null (public [(name, ())]))
     validDependentName (WithBinding (IdentifierString name) True _) =
       not (null (public [(name, ())]))
     validDependentName _ = True
-    spliceDependentTail members separators trailing =
-      case reverse members of
-        member : reversedPrefix
-          | let prefix = reverse reversedPrefix
-          , not (null prefix)
-          , all dependentBinder prefix
-          , not (dependentBinder member)
-          , trailing || maybe False id (lastMaybe separators) ->
-              prefix <> [ArgumentMapSplice member]
-        _ -> members
-    dependentBinder ForBinding {} = True
-    dependentBinder WithBinding {} = True
-    dependentBinder _ = False
-    lastMaybe [] = Nothing
-    lastMaybe values = Just (last values)
 
 -- Shared operand grammar where an unparenthesized comma is a delimiter.
 nonConcatenatedExpression :: Parser Expression
@@ -1631,7 +1588,8 @@ mapOperatorTable :: [[Operator Parser Expression]]
 mapOperatorTable =
   arithmeticOperatorTable
     <> [ [InfixR (MapConcatenation <$ infixComma)]
-       , [Postfix (finishConcatenation <$ trailingComma)]
+       , [Postfix
+          ((\value -> MapConcatenation value (AtlasMap [])) <$ trailingComma)]
        , mapAccessAndSpecificationOperators
        ]
 
@@ -1653,12 +1611,6 @@ mapAccessAndSpecificationOperators =
 
 reverseSpecificationSymbol :: Text
 reverseSpecificationSymbol = "<~"
-
-finishConcatenation :: Expression -> Expression
-finishConcatenation expressionValue@(MapConcatenation _ _) =
-  expressionValue
-finishConcatenation expressionValue =
-  MapConcatenation expressionValue (AtlasMap [])
 
 infixComma :: Parser Text
 infixComma =

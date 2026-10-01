@@ -470,8 +470,6 @@ canonicalExpressionCandidates expressionValue
           MapSequence <$> traverse canonicalExpressionCandidates members
         ArgumentMap members ->
           ArgumentMap <$> traverse canonicalExpressionCandidates members
-        ArgumentMapSplice member ->
-          ArgumentMapSplice <$> canonicalExpressionCandidates member
         MapExpansion left right ->
           MapExpansion
             <$> canonicalExpressionCandidates left
@@ -605,7 +603,6 @@ interpretNormalizedExpression scope resolving expressionValue =
       (traverse interpret expressions >>= makeArgumentMap)
       (ArgumentMap expressions)
       expressions
-    ArgumentMapSplice expression -> interpret expression
     MapSequence expressions -> interpretContainer
       (interpretAtlasMapWith interpret expressions)
       (MapSequence expressions)
@@ -1430,7 +1427,8 @@ recursiveListElement :: Expression -> Maybe Expression
 recursiveListElement expressionValue =
   case expressionValue of
     EitherType (AtlasMap [])
-        (MapConcatenation element (IdentifierReference (IdentifierString "this"))) ->
+        (MapConcatenation element
+          (IdentifierReference (IdentifierString "this"))) ->
       Just element
     EitherType (AtlasMap [])
         (MapSequence [element, IdentifierReference (IdentifierString "this")]) ->
@@ -1457,9 +1455,6 @@ staticDependentDomain expressionValue =
     ArgumentMap entries ->
       let (values, substitutions) = staticEntries [] entries
       in (ArgumentMap values, substitutions)
-    ArgumentMapSplice entry ->
-      let (value, substitutions) = staticEntry [] entry
-      in (ArgumentMapSplice value, substitutions)
     AtlasMap entries ->
       let (values, substitutions) = staticEntries [] entries
       in (AtlasMap values, substitutions)
@@ -1496,7 +1491,6 @@ domainEntries :: Expression -> [Expression]
 domainEntries expressionValue =
   case expressionValue of
     ArgumentMap entries -> entries
-    ArgumentMapSplice entry -> [entry]
     AtlasMap entries -> entries
     MapSequence entries -> entries
     MapConcatenation left right -> domainEntries left <> domainEntries right
@@ -1506,8 +1500,6 @@ staticDependentSumExpression :: Expression -> Expression
 staticDependentSumExpression expressionValue =
   case expressionValue of
     ArgumentMap entries -> ArgumentMap (fst (staticEntries [] entries))
-    ArgumentMapSplice entry ->
-      ArgumentMapSplice (fst (staticEntry [] entry))
     AtlasMap entries -> AtlasMap (fst (staticEntries [] entries))
     MapSequence entries -> MapSequence (fst (staticEntries [] entries))
     _ -> fst (staticEntry [] expressionValue)

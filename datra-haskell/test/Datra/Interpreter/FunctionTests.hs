@@ -28,12 +28,12 @@ functionTests =
             "()"
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
-              [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield it.base[1] ^ it.exponent[1])"
+              [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat yield it.base[1] ^ it.exponent[1])"
               , "assert my_pow (*, 3) = 8"
               ])
             "()"
         , programCase "explicit unordered parameters"
-            "f := ({a?:Int,b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
+            "f := ({a?:Int;b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
             "11"
         , programCase "inferred parameters"
             "f := (do yield a+b)\nyield f (6;5)"
@@ -88,7 +88,7 @@ functionTests =
     , testGroup "identifier-preserving input maps"
         [ programCase "optional names survive positional calls"
             (unlines
-              [ "f := {abc? : Nat, xyz? : Nat} -> Bool do"
+              [ "f := {abc? : Nat; xyz? : Nat} -> Bool do"
               , "  yield it.abc[0] = $abc and it.abc[1] = abc and it.xyz[0] = $xyz and it.xyz[1] = xyz"
               , "assert f(3, 4)"
               , "assert f(xyz := 4, abc := 3)"
@@ -220,18 +220,18 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "written order resolves otherwise ambiguous arguments"
-            "f := ({x?:Int,y?:Int} -> Int do yield x+y)\nyield f {2,3}"
+            "f := ({x?:Int;y?:Int} -> Int do yield x+y)\nyield f {2;3}"
             "5"
         , programFailureCase "private required names reject positional input"
-            "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (1,2)"
+            "sum := ({_x:Int;_y:Int} -> Int yield _x+_y)\nyield sum (1,2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "private parameter slots reject named input"
-            "sum := ({_x:Int,_y:Int} -> Int yield _x+_y)\nyield sum (_x:1,_y:2)"
+            "sum := ({_x:Int;_y:Int} -> Int yield _x+_y)\nyield sum (_x:1,_y:2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "ambiguous reorder is reported structurally"
-            ( "f := ({a?:Int,b?:Str,c?:Str} -> Int yield a)\n"
+            ( "f := ({a?:Int;b?:Str;c?:Str} -> Int yield a)\n"
                 <> "yield f ($x,$y,5)"
             )
             (SourceEvaluationFailure
@@ -361,23 +361,23 @@ argumentSchemaMatrixTests =
     | testCase <-
         [ ArgumentSchemaCase
             "written order wins for equal positional annotations"
-            "{x? : Int, y? : Int}" "x * 10 + y" "(2, 3)" "23"
+            "{x? : Int; y? : Int}" "x * 10 + y" "(2, 3)" "23"
         , ArgumentSchemaCase
             "the sole valid reorder is accepted"
-            "{x? : Int, y? : Str}" "x" "($value, 2)" "2"
+            "{x? : Int; y? : Str}" "x" "($value, 2)" "2"
         , ArgumentSchemaCase
             "names select an otherwise ambiguous reorder"
-            "{x : Int, y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
+            "{x : Int; y : Int}" "x * 10 + y" "(y : 3, x : 2)" "23"
         , ArgumentSchemaCase
             "concatenated ordered and argument-map segments compose"
-            "x : Int, {y? : Int, z? : Int}"
+            "x : Int, {y? : Int; z? : Int}"
             "x * 100 + y * 10 + z" "(x : 2, z : 4, 3)" "234"
         , ArgumentSchemaCase
             "a total annotation fills an omitted slot"
             "{x? : 5}" "x" "()" "5"
         , ArgumentSchemaCase
             "a skip preserves a private positional default"
-            "{base? : Nat := 2, exponent? : Nat}"
+            "{base? : Nat := 2; exponent? : Nat}"
             "base ^ exponent" "(*, 3)" "8"
         ]
     ]

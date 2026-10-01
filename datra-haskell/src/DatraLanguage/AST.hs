@@ -71,7 +71,6 @@ data Expression
   | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
-  | ArgumentMapSplice Expression
   | MapSequence [Expression]
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
@@ -202,7 +201,6 @@ data OperatorExpression
   | EmptyMap
   | Sequential [OperatorExpression]
   | Arguments [OperatorExpression]
-  | ArgumentsSplice OperatorExpression
   | Expansion OperatorExpression OperatorExpression
   | Range OperatorExpression OperatorExpression
   | RangePlus OperatorExpression
@@ -301,8 +299,6 @@ normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentMap expressions) =
   normalizeSequence ArgumentMap expressions
-normalizeExpression (ArgumentMapSplice expression) =
-  ArgumentMapSplice (normalizeExpression expression)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (MapExpansion left right) =
@@ -505,7 +501,6 @@ lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
 lower (ArgumentMap expressions) = Arguments (map lower expressions)
-lower (ArgumentMapSplice expression) = ArgumentsSplice (lower expression)
 lower (MapSequence expressions) = Sequential (map lower expressions)
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
@@ -653,8 +648,6 @@ prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator expressions)
 prettyOperator (Arguments expressions) =
   prettyForm "{}" (map prettyOperator expressions)
-prettyOperator (ArgumentsSplice expression) =
-  prettyForm "{,}" [prettyOperator expression]
 prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
 prettyOperator (Range lowerBound upperBound) =
@@ -981,7 +974,6 @@ traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> E
 traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
-  ArgumentMapSplice x -> ArgumentMapSplice <$> visit x
   MapSequence xs -> MapSequence <$> traverse visit xs
   StripIdentifiers x -> StripIdentifiers <$> visit x
   Extract x -> Extract <$> visit x
@@ -1020,7 +1012,8 @@ traverseExpressionChildren visit expression = case expression of
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
-  MapConcatenation a b -> MapConcatenation <$> visit a <*> visit b
+  MapConcatenation left right ->
+    MapConcatenation <$> visit left <*> visit right
   MapAccess a b -> MapAccess <$> visit a <*> visit b
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
   Overload a b -> Overload <$> visit a <*> visit b

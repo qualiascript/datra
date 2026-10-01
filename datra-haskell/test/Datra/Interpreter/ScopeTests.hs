@@ -103,16 +103,16 @@ scopeTests =
             "yield {a : a}"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         , programFailureCase "argument-map member cannot see an earlier sibling"
-            "yield {a : Nat, b : a}"
+            "yield {a : Nat; b : a}"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         , programFailureCase "argument-map member cannot see a later sibling"
-            "yield {a : b, b : Nat}"
+            "yield {a : b; b : Nat}"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
         , expressionFailureCase "ordinary map members do not escape into a block"
             "begin (a : 1, b : 2) yield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         , expressionFailureCase "argument-map members do not escape into a block"
-            "begin {a : 1, b : 2} yield a"
+            "begin {a : 1; b : 2} yield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         , expressionFailureCase "specified map members do not become block declarations"
             "begin (a : Nat) ~> (a : Int) yield a"

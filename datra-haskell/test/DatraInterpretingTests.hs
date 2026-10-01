@@ -123,6 +123,7 @@ testTree =
   testGroup "Datra interpreter"
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
+        , testCase "slot ordinal distinctness" testSlotOrdinalDistinctness
         , testCase "string templates" testStringTemplates
         , testCase "named field access" testNamedAccess
         , testCase "argument maps" testArgumentMaps
@@ -740,9 +741,9 @@ testArgumentMaps = do
     [ "{} = ()"
     , "{2} = 2"
     , "{1; 2} = ((1; 2) | (2; 1))"
-    , "{b := 8, 2} = {2; b := 8}"
-    , "{b := 8, 2} of {a? : Nat := 2, b? : Nat}"
-    , "{(1, 2), 3} = {3; (1, 2)}"
+    , "{b := 8; 2} = {2; b := 8}"
+    , "{b := 8; 2} of {a? : Nat := 2; b? : Nat}"
+    , "{(1, 2); 3} = {3; (1, 2)}"
     , "{2; 2} = (2; 2)"
     , "{1; 2; 3} = {3; 1; 2}"
     , "{(1; 2); 3} = {3; (1; 2)}"
@@ -766,31 +767,31 @@ testArgumentMaps = do
     ]
   expectSourceRejection
     "duplicate unnamed argument types have no distinct permutations"
-    "($a, $b, 5) of {Int, Str, Str}"
+    "($a, $b, 5) of {Int; Str; Str}"
     (== EitherAlternativesNotDistinct)
   expectSourceValue "written order wins over other valid permutations"
-      "(1, 2) ~> {x : Int, y : Int}" $ \value ->
+      "(1, 2) ~> {x : Int; y : Int}" $ \value ->
     assert "required names accept positional values in written order"
       (renderInterpretedValue value
         == "(1; 2) ~> {x : " <> sourceIntType
-          <> ", y : " <> sourceIntType <> "}")
+          <> "; y : " <> sourceIntType <> "}")
   expectSourceValue "a unique valid argument reorder is selected"
-      "($a, 5) ~> {x : Int, y : IdenStr}" $ \value ->
+      "($a, 5) ~> {x : Int; y : IdenStr}" $ \value ->
     assert "the unique reordered presentation is retained"
       (renderInterpretedValue value
-        == "($a; 5) ~> {x : " <> sourceIntType <> ", y : IdenStr}")
-  let example = "{b : 8, 2} ~> {a? : Nat := 2, b? : Nat}"
+        == "($a; 5) ~> {x : " <> sourceIntType <> "; y : IdenStr}")
+  let example = "{b : 8; 2} ~> {a? : Nat := 2; b? : Nat}"
   expectSourceValue "argument specification preserves written source" example $ \value ->
     assert "argument-map source order and partial names survive"
       (renderInterpretedValue value
-        == "{b : 8, 2} ~> {a? : " <> sourceNatType
-          <> " := 2, b? : " <> sourceNatType <> "}")
+        == "{b : 8; 2} ~> {a? : " <> sourceNatType
+          <> " := 2; b? : " <> sourceNatType <> "}")
   expectSourceValue "argument specification source order reverses independently"
       "{2; b := 8} ~> {a? : Nat; b? : Nat}" $ \value ->
     assert "source order is not rewritten to match the target"
       (renderInterpretedValue value
-        == "{2, b : 8} ~> {a? : " <> sourceNatType
-          <> ", b? : " <> sourceNatType <> "}")
+        == "{2; b : 8} ~> {a? : " <> sourceNatType
+          <> "; b? : " <> sourceNatType <> "}")
   expectSourceValue "ordered source can select an argument-map presentation"
       "((b := 8; 2) ~> {a? : Nat; b? : Nat})[1] * 5" $ \value ->
     assert "access follows the selected target permutation"
@@ -799,18 +800,18 @@ testArgumentMaps = do
       "{a? : Nat; b? : Nat} <~ {b := 8; 2}" $ \value ->
     assert "reverse specification preserves the same source"
       (renderInterpretedValue value
-        == "{b : 8, 2} ~> {a? : " <> sourceNatType
-          <> ", b? : " <> sourceNatType <> "}")
+        == "{b : 8; 2} ~> {a? : " <> sourceNatType
+          <> "; b? : " <> sourceNatType <> "}")
   expectSourceValue "widening reselects a reordered argument target"
-      "(((b := 8; 2) ~> {a? : Nat, b? : Nat}) ~> {b? : Int, a? : Int})[1] * 5" $ \value ->
+      "(((b := 8; 2) ~> {a? : Nat; b? : Nat}) ~> {b? : Int; a? : Int})[1] * 5" $ \value ->
     assert "the widened witness still follows source order"
       (renderInterpretedValue value == "10")
   expectSourceValue "argument-family specification widens"
-      "({b := 8, 2} ~> {a? : Nat, b? : Nat}) ~> {b? : Int, a? : Int}" $ \value ->
+      "({b := 8; 2} ~> {a? : Nat; b? : Nat}) ~> {b? : Int; a? : Int}" $ \value ->
     assert "family widening retains the original source"
       (renderInterpretedValue value
-        == "{b : 8, 2} ~> {b? : " <> sourceIntType
-          <> ", a? : " <> sourceIntType <> "}")
+        == "{b : 8; 2} ~> {b? : " <> sourceIntType
+          <> "; a? : " <> sourceIntType <> "}")
   mapM_ (\source -> expectSourceValue
     ("argument rendering round trip: " <> source) source $ \value ->
     let rendered = renderInterpretedValue value
@@ -820,7 +821,7 @@ testArgumentMaps = do
         (renderInterpretedValue roundTrip == rendered))
     [ example
     , "{b := 8; 2} ~> {a? : Nat := 2; b? : Nat}"
-    , "{(1, 2), 3}"
+    , "{(1, 2); 3}"
     , "{(a : Nat; b : Nat); 3}"
     , "{(1 ~> Nat); b := 8}"
     ]
@@ -833,12 +834,12 @@ testArgumentMaps = do
 
 testArgumentMapConcatenation :: IO ()
 testArgumentMapConcatenation = do
-  let source = "x : 3, {b : 8, 2}"
-      target = "x : 3, {a? : Nat := 2, b? : Nat}"
+  let source = "x : 3, {b : 8; 2}"
+      target = "x : 3, {a? : Nat := 2; b? : Nat}"
       example = source <> " ~> " <> target
       renderedExample =
         source <> " ~> x : 3, "
-          <> "{a? : from 0 up := 2, b? : from 0 up}"
+          <> "{a? : from 0 up := 2; b? : from 0 up}"
   mapM_ (\expression -> expectSourceValue expression expression $ \value -> do
     assert "concatenated specification preserves the supplied presentation"
       (renderInterpretedValue value == renderedExample)
@@ -851,18 +852,18 @@ testArgumentMapConcatenation = do
     assert "concatenated argument-map inclusion holds"
       (renderInterpretedValue value == "true"))
     [ source <> " of " <> target
-    , "({b : 8, 2}, x : 3) of ({a? : Nat, b? : Nat}, x : 3)"
-    , "x : 3, {a? : Nat, b? : Nat} of x : Int, {b? : Int, a? : Int}"
+    , "({b : 8; 2}, x : 3) of ({a? : Nat; b? : Nat}, x : 3)"
+    , "x : 3, {a? : Nat; b? : Nat} of x : Int, {b? : Int; a? : Int}"
     ]
   mapM_ (\expression -> expectSourceValue expression expression $ \value ->
     let rendered = renderInterpretedValue value
     in expectSourceValue "distributed concatenation round trip" rendered $ \roundTrip ->
       assert "both sides and nested concatenations preserve their source"
         (renderInterpretedValue roundTrip == rendered))
-    [ "{b : 8, 2}, x : 3 ~> {a? : Nat, b? : Nat}, x : Nat"
-    , "x : 3, {b : 8, 2}, y : 4 ~> x : Nat, {a? : Nat, b? : Nat}, y : Nat"
-    , "{b : 8, 2}, {d : 6, 4} ~> {a? : Nat, b? : Nat}, {c? : Nat, d? : Nat}"
-    , "(" <> example <> ") ~> x : Int, {b? : Int, a? : Int}"
+    [ "{b : 8; 2}, x : 3 ~> {a? : Nat; b? : Nat}, x : Nat"
+    , "x : 3, {b : 8; 2}, y : 4 ~> x : Nat, {a? : Nat; b? : Nat}, y : Nat"
+    , "{b : 8; 2}, {d : 6; 4} ~> {a? : Nat; b? : Nat}, {c? : Nat; d? : Nat}"
+    , "(" <> example <> ") ~> x : Int, {b? : Int; a? : Int}"
     ]
   expectSourceValue "one ordered presentation matches the ordered target"
     "x : 3, (b : 8; 2) ~> x : 3, (b : Nat; Nat)" $ \_ -> pure ()
@@ -874,15 +875,15 @@ testArgumentMapConcatenation = do
       AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
       _ -> False))
-    [ "x : 4, {b : 8, 2} ~> " <> target
-    , "x : 3, {c : 8, 2} ~> " <> target
-    , "x : 3, {b : $wrong, 2} ~> " <> target
+    [ "x : 4, {b : 8; 2} ~> " <> target
+    , "x : 3, {c : 8; 2} ~> " <> target
+    , "x : 3, {b : $wrong; 2} ~> " <> target
     , source <> " ~> x : 3, (b : Nat; Nat)"
     ]
 
 testArgumentMapTemplates :: IO ()
 testArgumentMapTemplates = do
-  let template = "\"%({a? : Nat, b? : Nat})\""
+  let template = "\"%({a? : Nat; b? : Nat})\""
   mapM_ (\member -> expectSourceValue "template accepts an argument ordering"
     (show member <> " of " <> template) $ \value ->
       assert "canonical argument presentation belongs to the template"
@@ -896,7 +897,7 @@ testArgumentMapTemplates = do
   let member = "\"(b : 8; 2)\""
       specification = member <> " ~> " <> template
       renderedSpecification =
-        member <> " ~> \"%({a? : from 0 up, b? : from 0 up})\""
+        member <> " ~> \"%({a? : from 0 up; b? : from 0 up})\""
   mapM_ (\expression -> expectSourceValue "template argument specification"
     expression $ \value ->
       assert "forward and reverse template specifications agree"
@@ -907,17 +908,17 @@ testArgumentMapTemplates = do
       assert "capture retains the source ordering and target argument map"
         (renderInterpretedValue value
           == "(b : 8; 2) ~> "
-            <> "{a? : from 0 up, b? : from 0 up}")
+            <> "{a? : from 0 up; b? : from 0 up}")
   expectSourceValue "argument template capture supports access and arithmetic"
     ("%(" <> specification <> ")[1][1] * 5") $ \value ->
       assert "captured unnamed argument remains numeric"
         (renderInterpretedValue value == "10")
   expectSourceValue "literal-delimited argument template"
-    "\"args=(2; b : 8)!\" of \"args=%({a? : Nat, b? : Nat})!\"" $ \value ->
+    "\"args=(2; b : 8)!\" of \"args=%({a? : Nat; b? : Nat})!\"" $ \value ->
       assert "template literals surround the whole argument-map capture"
         (renderInterpretedValue value == "true")
   expectSourceValue "argument template assigns required names positionally"
-    "\"(2; 8)\" of \"%({a : Nat, b : Nat})\"" $ \value ->
+    "\"(2; 8)\" of \"%({a : Nat; b : Nat})\"" $ \value ->
       assert "written order determines required-name template slots"
         (renderInterpretedValue value == "true")
 
@@ -938,13 +939,13 @@ testEval = do
       , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ( "\"x : 3, (b : 8; 2)\""
-      , "x : 3; {a? : Nat := 2, b? : Nat}"
+      , "x : 3; {a? : Nat := 2; b? : Nat}"
       , "x : 3, (b : 8; 2) ~> "
-          <> "(x : 3; {a? : from 0 up := 2, b? : from 0 up})"
+          <> "(x : 3; {a? : from 0 up := 2; b? : from 0 up})"
       )
     , ( "\"(2; 8)\""
-      , "{a : Nat, b : Nat}"
-      , "(2; 8) ~> {a : from 0 up, b : from 0 up}"
+      , "{a : Nat; b : Nat}"
+      , "(2; 8) ~> {a : from 0 up; b : from 0 up}"
       )
     ]
   mapM_ (\(source, target) ->
@@ -958,7 +959,7 @@ testEval = do
         _ -> False))
     [ ("\"nope\"", "Nat")
     , ("\"1 + 2\"", "Nat")
-    , ("\"(c : 8; 2)\"", "{a? : Nat, b? : Nat}")
+    , ("\"(c : 8; 2)\"", "{a? : Nat; b? : Nat}")
     , ("12", "Nat")
     ]
 
@@ -1070,7 +1071,7 @@ testBegin = do
     , "((begin a : 6 yield a) ~> Int) = (6 ~> Int)"
     , "(Int <~ (begin a : 6 yield a)) = (6 ~> Int)"
     , "(begin a? : Nat := 6 yield a) of Int"
-    , "(begin T : Nat yield {b : 8, 2} ~> {a? : T := 2, b? : T}) of {b? : Int, a? : Int}"
+    , "(begin T : Nat yield {b : 8; 2} ~> {a? : T := 2; b? : T}) of {b? : Int; a? : Int}"
     ]
 
 testCanonicalTypes :: IO ()
@@ -1168,9 +1169,9 @@ testBeginRejections = do
     , "begin a : a yield a"
     , "begin a : b; b : a yield a"
     , "begin (a : 1; b : 2) yield a"
-    , "begin {a : 1, b : 2} yield a"
+    , "begin {a : 1; b : 2} yield a"
     , "begin let (a : 1; b : a) yield 0"
-    , "begin let {a : 1, b : a} yield 0"
+    , "begin let {a : 1; b : a} yield 0"
     , "begin a : b yield begin b : 2 yield a"
     , "(begin a : 2 yield a), (begin yield a)"
     ]
@@ -1219,7 +1220,7 @@ testEvalBackedKeywords = do
     , "(2..3 ~> range 0 to 5) of range 0 to 8"
     , "(range 0 to 5 <~ 2..3) = (2..3 ~> range 0 to 5)"
     , "(2, b : 5) of (a? : from 0 to 8, b? : from 0 to 8)"
-    , "%(\"(b : 5; 2)\" ~> \"%({a? : from 0 to 8, b? : from 0 to 8})\")[1] of {b? : Int, a? : Int}"
+    , "%(\"(b : 5; 2)\" ~> \"%({a? : from 0 to 8; b? : from 0 to 8})\")[1] of {b? : Int; a? : Int}"
     , "(if true then 2 else (1 and false)) of from 0 to 5"
     , "((if false then (1 and false) else 2) ~> from 0 to 5) of Int"
     , "(from 0 to 5 <~ (if true then 2 else (1 and false))) = (2 ~> from 0 to 5)"
@@ -1237,6 +1238,20 @@ testEvalBackedKeywords = do
       AtlasMapFederationOperationRefuted
         AtlasMapFederationSpecificationHasNoMatchingMember -> True
       _ -> False)
+
+testSlotOrdinalDistinctness :: IO ()
+testSlotOrdinalDistinctness = do
+  let coalizedString = Coalization StringType
+      importAllDomain = AtlasMap
+        [AsciiStringLiteral "all", coalizedString]
+      unitFunction domain = FunctionType domain (AtlasMap [])
+  assert "different exact slot ordinals distinguish function alternatives"
+    (case interpretExpressionReason
+        (EitherType
+          (unitFunction importAllDomain)
+          (unitFunction coalizedString)) of
+      Right _ -> True
+      Left _ -> False)
 
 testStringTemplates :: IO ()
 testStringTemplates = do
@@ -4082,22 +4097,22 @@ testNamedAccess :: IO ()
 testNamedAccess = do
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
       assert (source <> " preserves the selected field") (renderInterpretedValue value == expected))
-    [ ("{a : Nat := 5, b : Str}.a", "a : from 0 up := 5")
-    , ("{b : Str, a : Nat := 5}.a", "a : from 0 up := 5")
-    , ("{a? : Nat := 5, b : Str}.a", "a : from 0 up := 5")
-    , ( "({b:8,2} ~> {a?:Nat:=2,b?:Nat}).b"
+    [ ("{a : Nat := 5; b : Str}.a", "a : from 0 up := 5")
+    , ("{b : Str; a : Nat := 5}.a", "a : from 0 up := 5")
+    , ("{a? : Nat := 5; b : Str}.a", "a : from 0 up := 5")
+    , ( "({b:8;2} ~> {a?:Nat:=2;b?:Nat}).b"
       , "b : from 0 up := 8"
       )
-    , ("{a:Nat:=5,b:Str}.a of (a:Nat)", "true")
-    , ( "{a:Nat:=5,b:Str}.a ~> (a:Int)"
+    , ("{a:Nat:=5;b:Str}.a of (a:Nat)", "true")
+    , ( "{a:Nat:=5;b:Str}.a ~> (a:Int)"
       , "a : " <> sourceIntType <> " := 5"
       )
-    , ("(x:3, {a:5,b:8}).b", "b : 8")
-    , ("{a:5,b:8}.a[1] * 2", "10")
+    , ("(x:3, {a:5;b:8}).b", "b : 8")
+    , ("{a:5;b:8}.a[1] * 2", "10")
     ]
   mapM_ (\(source, expected) ->
       expectSourceRejection source source (== NamedAccessFailed expected))
-    [ ("{a:2,b:3}.missing", Types.NamedFieldNotFound "missing")
-    , ("{a:2,a:3}.a", Types.NamedFieldAmbiguous "a")
+    [ ("{a:2;b:3}.missing", Types.NamedFieldNotFound "missing")
+    , ("{a:2;a:3}.a", Types.NamedFieldAmbiguous "a")
     , ("{}.a", Types.NamedFieldNotFound "a")
     ]

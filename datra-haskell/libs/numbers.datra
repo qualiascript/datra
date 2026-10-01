@@ -3,13 +3,13 @@ import all "std"
 yield Numbers := begin
 
   max := {Args IntLimit,} -> IntLimit? do
-    yield val it !? fun {candidate? : IntLimit, remaining? : List IntLimit} -> IntLimit do
+    yield val it !? fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
       yield if candidate = Infinity or remaining = () or
         candidate >= (next : this remaining[0; range 1 up]) then
           candidate else next
 
   min := {Args IntLimit,} -> IntLimit? do
-    yield val it !? fun {candidate? : IntLimit, remaining? : List IntLimit} -> IntLimit do
+    yield val it !? fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
       yield if candidate = -Infinity or remaining = () or
         candidate <= (next : this remaining[0; range 1 up]) then
           candidate else next

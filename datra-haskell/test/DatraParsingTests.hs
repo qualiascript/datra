@@ -71,12 +71,32 @@ main = defaultMain testTree
 testTree :: TestTree
 testTree =
   testGroup "Datra parser"
-    [ testCase "syntax regressions" regressionTests
+    [ testCase "brace separator semantics" testBraceSeparatorSemantics
+    , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
         , testProperty "natural maps parse in order" propNaturalMapParsing
         ]
     ]
+
+testBraceSeparatorSemantics :: IO ()
+testBraceSeparatorSemantics = do
+  assertAstOutput "comma concatenates inside braces"
+    "{1, 2}"
+    (MapConcatenation (natural 1) (natural 2))
+  assertAstOutput "semicolon sequences argument-map members"
+    "{1; 2}"
+    (ArgumentMap [natural 1, natural 2])
+  assertParsed "postfix comma remains inside argument-map syntax"
+    "{Args Int,}"
+    (ArgumentMap
+      [ MapConcatenation
+          (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])
+      ])
+  assertParsed "postfix comma is the same operator in parentheses"
+    "(Args Int,)"
+    (MapConcatenation
+      (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
 
 regressionTests :: IO ()
 regressionTests = do
@@ -358,8 +378,11 @@ regressionTests = do
     "(*, 3)"
     (MapConcatenation Skip (natural 3))
   assertAstOutput "skip composes in an argument map"
-    "{*, 3}"
+    "{*; 3}"
     (ArgumentMap [Skip, natural 3])
+  assertAstOutput "comma concatenates inside an argument map"
+    "{*, 3}"
+    (MapConcatenation Skip (natural 3))
   assertAstOutput "rank-zero formulation remains an ordinary value"
     "((...) ^ 0, 3)"
     (MapConcatenation
@@ -395,30 +418,37 @@ regressionTests = do
     "{b := 8; 2}"
     (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
   assertAstOutput "empty argument map" "{}" (AtlasMap [])
-  assertAstOutput "comma argument map exposes both members"
+  assertAstOutput "comma retains ordinary concatenation in braces"
     "{b := 8, 2}"
-    (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
+    (MapConcatenation
+      (AST.assignment "b" (natural 8) (natural 8))
+      (natural 2))
   assertAstOutput "parenthesized concatenation remains one argument"
-    "{(1, 2), 3}"
+    "{(1, 2); 3}"
     (ArgumentMap [MapConcatenation (natural 1) (natural 2), natural 3])
-  assertAstOutput "argument map permits a trailing comma"
-    "{1, 2,}" (ArgumentMap [natural 1, natural 2])
+  assertAstOutput "a trailing comma remains map concatenation"
+    "{1, 2,}"
+    (MapConcatenation
+      (MapConcatenation (natural 1) (natural 2)) (AtlasMap []))
   assertAstOutput "a unary trailing comma splices an argument federation"
     "{Args Int,}"
-    (ArgumentMapSplice (FunctionApplication (ref "Args") (ref "Int")))
+    (MapConcatenation
+      (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
   let implicitVariadicDomain = ArgumentMap
         [ ForBinding (IdentifierString "_T") False (ref "IntLimit")
-        , ArgumentMapSplice
-            (FunctionApplication (ref "Args") (ref "_T"))
+        , MapConcatenation
+            (FunctionApplication (ref "Args") (ref "_T")) (AtlasMap [])
         ]
   assertAstOutput
     "a trailing comma splices after a dependent binder"
     "{for _T of IntLimit; Args _T,}"
     implicitVariadicDomain
   assertAstOutput
-    "a comma after a dependent binder introduces the same splice"
+    "a comma after a dependent binder concatenates normally"
     "{for _T of IntLimit, Args _T}"
-    implicitVariadicDomain
+    (MapConcatenation
+      (ForBinding (IdentifierString "_T") False (ref "IntLimit"))
+      (FunctionApplication (ref "Args") (ref "_T")))
   let implicitVariadicFunction = MapSpecification
         (FunctionBody [] (ref "nothing"))
         (FunctionType implicitVariadicDomain
@@ -426,10 +456,6 @@ regressionTests = do
   assertAstOutput
     "a trailing splice composes through a function definition"
     "max := {for _T of IntLimit; Args _T,} -> _T? do yield nothing"
-    (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
-  assertAstOutput
-    "a separating comma produces the same function definition"
-    "max := {for _T of IntLimit, Args _T} -> _T? do yield nothing"
     (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
   assert "a dependent argument splice renders without nested braces"
     (renderSourceExpression implicitVariadicDomain
@@ -440,8 +466,8 @@ regressionTests = do
     (ArgumentMap
       [ ForBinding (IdentifierString "_T") False
           (MapConcatenation (ref "IntLimit") (ref "Nothing"))
-      , ArgumentMapSplice
-          (FunctionApplication (ref "Args") (ref "_T"))
+      , MapConcatenation
+          (FunctionApplication (ref "Args") (ref "_T")) (AtlasMap [])
       ])
   assertAstOutput "unary argument map" "{2}" (natural 2)
   assertAstOutput "argument map supports newline separators"
@@ -775,7 +801,7 @@ regressionTests = do
               ])
             (ref "IntLimit")))
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
-    ("val values !? fun {candidate? : IntLimit, "
+    ("val values !? fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
     (StripIdentifiers
       (MaybeThen
