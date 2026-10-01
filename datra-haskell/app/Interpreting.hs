@@ -135,11 +135,13 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
         standard <- defaultModuleSource
         moduleSyntaxRules standardLibraryFileName standard
       else Right [])
-  importedRules <- Bifunctor.first interpretingParseFailure
-    (traverse (\(requested, moduleSource) ->
-      (,) requested <$> moduleSyntaxRules requested moduleSource) modules)
   importInvocations <- sourceImportInvocations source
-  let explicitlyImportedRules = concat
+  let importedRules =
+        [ (requested, rules)
+        | (requested, moduleSource) <- modules
+        , Right rules <- [moduleSyntaxRules requested moduleSource]
+        ]
+      explicitlyImportedRules = concat
         [ maybe [] id (lookup requested importedRules)
         | (True, requested) <- importInvocations
         ]
@@ -186,18 +188,26 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    evaluatedCapture targetExpression = do
-      (scope, _, _) <- either (const Nothing) Just
-        (declareScope
-          (("\0imports", ModuleCatalog modules) : base)
-          (map syntaxValidationDeclaration scopedDeclarations))
-      let interpret = evalInScope scope []
-      if identifierCaptureIsSubtype
-          scope scopedDeclarations targetExpression captured
-        then Just captured
-        else case canonicalValueCapture interpret targetExpression captured of
-          Right canonical -> Just canonical
-          Left _ -> Nothing
+    evaluatedCapture targetExpression =
+      enclosingSyntaxCapture <|> scopedCapture
+      where
+        enclosing = ("\0imports", ModuleCatalog modules) : base
+        enclosingSyntaxCapture = do
+          target <- either (const Nothing) Just
+            (evalInScope enclosing [] targetExpression)
+          captureSyntaxExpression target captured
+        scopedCapture = do
+          (scope, _, _) <- either (const Nothing) Just
+            (declareScope enclosing
+              (map syntaxValidationDeclaration scopedDeclarations))
+          let interpret = evalInScope scope []
+          if identifierCaptureIsSubtype
+              scope scopedDeclarations targetExpression captured
+            then Just captured
+            else case canonicalValueCapture
+                interpret targetExpression captured of
+              Right canonical -> Just canonical
+              Left _ -> Nothing
     scopedDeclarations = declarations <> binderDeclarations previous
 
 binderDeclarations
@@ -1200,9 +1210,10 @@ declareScope enclosing entries = do
       makeBinding captured declaration =
         (declarationName declaration, DeferredBinding captured
           (declarationAnnotation declaration) (declarationValue declaration))
-      deferred = buildScopeBindings makeBinding
-        (("this", ScopeMembers names) : outer)
-        definitions
+      blockOuter = case lookup "this" outer of
+        Just SelfBinding {} -> outer
+        _ -> ("this", ScopeMembers names) : outer
+      deferred = buildScopeBindings makeBinding blockOuter definitions
   pure (deferred, [declarationName value | value <- definitions, declarationIsLet value], eagerEntries)
   where
     checkName declared declaration
@@ -2141,7 +2152,7 @@ importLoadedModule
 importLoadedModule scope allNames source = do
   (identity, namespace, value) <- loadedModuleValueWithBase [] source
   exportedValues <- if allNames
-    then exportedBindings value
+    then importAllBindings value
     else requireTotalModuleValue value >> pure []
   internal <- if allNames
     then moduleScopeWithBase [] source
@@ -2284,9 +2295,6 @@ scopeMemberNames :: Scope -> [String]
 scopeMemberNames scope = case lookup "this" scope of
   Just (ScopeMembers names) -> names
   _ -> []
-
-exportedBindings :: InterpretedValue -> Either InterpretingError Scope
-exportedBindings = namedBindings
 
 qualifyBindings :: String -> Scope -> Scope
 qualifyBindings namespace = map (\(name, binding) ->

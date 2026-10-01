@@ -3,6 +3,7 @@
 module FunctionInference (freeIdentifiers, inferParameters, inferBody) where
 
 import BlockScope
+import Control.Monad (foldM)
 import Data.List (nub)
 import DatraLanguage.AST
 import DatraTypes
@@ -244,20 +245,35 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         accessValues value position
       FunctionApplication function argument -> do
         callable <- recur function
-        case functionSignature callable of
-          Nothing -> Left (FunctionEvaluationFailed
-            InferredApplicationRequiresFunction)
-          Just (domain,codomain) -> do
-            actual <- recur argument
-            -- An inline fixed point is checked when it is actually called.
-            -- This permits guarded Nat recursion such as @n = 0@ followed by
-            -- @this (n - 1)@ without pretending subtraction is always Nat.
-            case (function, self) of
-              (IdentifierReference (IdentifierString "this"), Just _) -> pure ()
-              (IdentifierReference (IdentifierString name), _)
-                | name `elem` namedSelf -> pure ()
-              _ -> checkFunctionArgument argument actual domain
-            pure codomain
+        actual <- recur argument
+        let alternatives = functionAlternatives callable
+            recursiveCall = case (function, self) of
+              (IdentifierReference (IdentifierString "this"), Just _) -> True
+              (IdentifierReference (IdentifierString name), _) ->
+                name `elem` namedSelf
+              _ -> False
+            accepted
+              | recursiveCall = alternatives
+              | otherwise =
+                  [ alternative
+                  | alternative <- alternatives
+                  , Right () <-
+                      [checkFunctionArgument argument actual
+                        (functionDomain alternative)]
+                  ]
+        case accepted of
+          [] -> case alternatives of
+            [] -> Left (FunctionEvaluationFailed
+              InferredApplicationRequiresFunction)
+            [alternative] -> do
+              checkFunctionArgument argument actual
+                (functionDomain alternative)
+              pure (functionCodomain alternative)
+            _ -> Left (FunctionEvaluationFailed
+              NoApplicableFunctionAlternative)
+          alternative : remaining ->
+            foldM joinTypes (functionCodomain alternative)
+              (map functionCodomain remaining)
       IdentifierOperation (IdentifierString name) annotation given -> do
         target <- recur annotation
         requireCanonicalTypeAnnotation target

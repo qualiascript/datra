@@ -188,6 +188,8 @@ assert = assertBool
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
   let astType = External (AsciiStringLiteral "datra.AST")
+      expressionType = External (AsciiStringLiteral "datra.Expr")
+      blockType = External (AsciiStringLiteral "datra.Block")
       beginValue = SyntaxType
         (Extract (AsciiStringLiteral "begin $_Block yield $_Expr"))
         (FunctionType (AtlasMap [astType, astType]) astType)
@@ -198,7 +200,9 @@ testModuleSyntaxAlias = do
         (identifierReference "this")
       source = ModuleSource "alias-module.datra"
         (Program
-          [ binding "begin" beginValue
+          [ binding "_Expr" expressionType
+          , binding "_Block" blockType
+          , binding "begin" beginValue
           , binding "outerOnly" (natural 7)
           ]
           (binding "AliasModule" moduleBody))
@@ -227,7 +231,10 @@ testModuleSyntaxAlias = do
       ("module syntax discovery failed: " <> show failure)
   let shadowingSource = ModuleSource "shadowing-module.datra"
         (Program
-          [binding "begin" beginValue]
+          [ binding "_Expr" expressionType
+          , binding "_Block" blockType
+          , binding "begin" beginValue
+          ]
           (binding "ShadowingModule" (Begin
             [binding "begin" (natural 123)]
             (identifierReference "this"))))
@@ -240,7 +247,10 @@ testModuleSyntaxAlias = do
       ("shadowing module syntax discovery failed: " <> show failure)
   let preservingSource = ModuleSource "preserving-module.datra"
         (Program
-          [binding "begin" beginValue]
+          [ binding "_Expr" expressionType
+          , binding "_Block" blockType
+          , binding "begin" beginValue
+          ]
           (binding "PreservingModule" (Begin
             [ binding "_begin" (identifierReference "begin")
             , binding "begin" (natural 123)
@@ -1203,7 +1213,7 @@ testEvalBackedKeywords = do
     , ("range 5 to 2", "range 5 to 2")
     , ("range -2 up", "range -2 up")
     , ("range 2 down", "range 2 down")
-    , ("from # normalized source trivia\n -3 to\n4", "from -3 to 4")
+    , ("from -3 to # normalized source trivia\n4", "from -3 to 4")
     , ("if (true ~> Bool) then 7 else (1 and false)", "7")
     , ("if false then (1 and false) else 9", "9")
     , ("if false then (1 and false)", "()")

@@ -23,6 +23,7 @@ import DatraLanguage.SyntaxTemplate
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , declarationRules
+  , normalizeSyntaxExpansion
   , syntaxTemplateLiteralPrefix
   )
 import SyntaxTemplateMatching
@@ -212,14 +213,20 @@ rewriteWithTail
   -> Expression
   -> [Expression]
   -> Either SyntaxRewriteFailure (Expression, [Expression])
-rewriteWithTail allowNestedContinuation capture environment value trailing = do
-  blockMatch <- matchEmbeddedBlock capture environment value trailing
-  case blockMatch of
-    Just (rewritten, remaining) ->
-      rewriteAfterBlock allowNestedContinuation capture environment
-        rewritten remaining
-    Nothing -> rewriteAfterBlock allowNestedContinuation capture environment
-      value trailing
+rewriteWithTail allowNestedContinuation capture environment value trailing
+  | let (continued, remaining) =
+          continueIncompleteExpression environment value trailing
+  , length remaining < length trailing =
+      rewriteWithTail allowNestedContinuation capture environment
+        continued remaining
+  | otherwise = do
+      blockMatch <- matchEmbeddedBlock capture environment value trailing
+      case blockMatch of
+        Just (rewritten, remaining) ->
+          rewriteAfterBlock allowNestedContinuation capture environment
+            rewritten remaining
+        Nothing -> rewriteAfterBlock allowNestedContinuation capture environment
+          value trailing
 
 rewriteAfterBlock
   :: Bool
@@ -296,6 +303,34 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
                 (IdentifierTemplateOperation parts rewrittenAnnotation
                   (Just rewrittenValue))
                 remaining
+    FunctionApplication function argument
+      | containsBlockStart environment argument -> do
+          rewrittenFunction <- rewriteStandalone capture environment function
+          (rewrittenArgument, remaining) <-
+            rewriteWithTail True capture environment argument trailing
+          finish
+            (FunctionApplication rewrittenFunction rewrittenArgument)
+            remaining
+    MaybeThen optional branch
+      | allowNestedContinuation -> do
+          rewrittenOptional <- rewriteStandalone capture environment optional
+          (rewrittenBranch, remaining) <-
+            rewriteWithTail True capture environment branch trailing
+          finish (MaybeThen rewrittenOptional rewrittenBranch) remaining
+    FunctionApplication function argument
+      | allowNestedContinuation
+      , canReceiveFunctionBody function -> do
+          (rewrittenFunction, remaining) <-
+            rewriteWithTail True capture environment function trailing
+          if length remaining < length trailing
+              && containsFunctionImplementation rewrittenFunction
+            then do
+              rewrittenArgument <-
+                rewriteStandalone capture environment argument
+              finish
+                (FunctionApplication rewrittenFunction rewrittenArgument)
+                remaining
+            else finish value trailing
     ListUncons operand -> do
       rewrittenOperand <- rewriteStandalone capture environment operand
       finish (ListUncons rewrittenOperand) trailing
@@ -354,10 +389,15 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     finish expressionValue remaining = do
       attached <- attachTrailingFunctionBody capture environment expressionValue
       (matched, afterSyntax) <-
-        matchOrdinarySyntaxWithTail capture environment attached remaining
+        matchOrdinarySyntaxWithTail
+          False capture environment attached remaining
       rewrittenChildren <- rewriteChildren capture environment matched
-      final <- attachTrailingFunctionBody capture environment rewrittenChildren
-      pure (final, afterSyntax)
+      let normalizedChildren = normalizeSyntaxExpansion rewrittenChildren
+      (rematched, finalTrailing) <-
+        matchOrdinarySyntaxWithTail
+          True capture environment normalizedChildren afterSyntax
+      final <- attachTrailingFunctionBody capture environment rematched
+      pure (final, finalTrailing)
     boundaryValue (SyntaxBoundary inner) = inner
     boundaryValue inner = inner
 
@@ -536,50 +576,60 @@ acceptsFunctionBody SyntaxType {} = True
 acceptsFunctionBody _ = False
 
 containsBlockStart :: RewriteEnvironment -> Expression -> Bool
-containsBlockStart environment value = any starts (rewriteRules environment)
+containsBlockStart environment value = any containsStart
+  (value : concatMap descendants (expressionChildren value))
   where
-    starts rule = case blockShape rule of
-      Just (prefix, _) -> not (null (matchingStarts prefix (applicationPhrase value)))
+    descendants child = child : concatMap descendants (expressionChildren child)
+    containsStart expressionValue = any (starts expressionValue)
+      (rewriteRules environment)
+    starts expressionValue rule = case blockShape rule of
+      Just (prefix, _) -> not (null
+        (matchingStarts prefix (applicationPhrase expressionValue)))
       Nothing -> False
 
 matchOrdinarySyntaxWithTail
-  :: CaptureHole
+  :: Bool
+  -> CaptureHole
   -> RewriteEnvironment
   -> Expression
   -> [Expression]
   -> Either SyntaxRewriteFailure (Expression, [Expression])
-matchOrdinarySyntaxWithTail capture environment value trailing =
-  firstRule (rewriteRules environment)
+matchOrdinarySyntaxWithTail includeConcatenation
+    capture environment value trailing =
+  firstRule [] (rewriteRules environment)
   where
     captureInScope previous kind captured =
       capture (rewriteStrictCaptures environment)
         (rewriteDeclarations environment) previous kind captured
-    firstRule [] = Right (value, trailing)
-    firstRule (rule : remaining)
-      | not (ruleLiteralsPresent rule (applicationFrom (value : trailing))) =
-          firstRule remaining
+    firstRule _ [] = Right (value, trailing)
+    firstRule earlier (rule : remaining)
+      | not (ruleLiteralsPresent rule value) =
+          firstRule (rule : earlier) remaining
       | otherwise =
-          firstExtent rule [0 .. length trailing] >>= \case
-            Just matched -> Right matched
-            Nothing -> firstRule remaining
-    firstExtent _ [] = Right Nothing
-    firstExtent rule (consumed : remaining) =
-      let combined = applicationFrom
-            (value : take consumed trailing)
-      in firstCandidate rule (syntaxCandidates combined) >>= \case
-        Just rewritten -> Right (Just
-          (rewritten, drop consumed trailing))
-        Nothing -> firstExtent rule remaining
+          firstCandidate rule
+            (syntaxCandidates
+              (includeConcatenation || not (earlierPrefixPending earlier))
+              rule value) >>= \case
+            Just rewritten -> Right (rewritten, trailing)
+            Nothing -> firstRule (rule : earlier) remaining
     firstCandidate _ [] = Right Nothing
     firstCandidate rule (candidate : remaining) =
       case matchSyntaxRulesWith captureInScope [rule] candidate of
         Right rewritten -> Right (Just rewritten)
         Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
         Left failure -> Left (SyntaxRewriteMatchFailure failure)
+    earlierPrefixPending = any (\earlierRule ->
+      not (null (syntaxTemplateLiteralPrefix earlierRule))
+        && ruleLiteralsPresent earlierRule value)
 
-syntaxCandidates :: Expression -> [Expression]
-syntaxCandidates value = value : contextualClosure [value] [value]
+syntaxCandidates :: Bool -> SyntaxRule -> Expression -> [Expression]
+syntaxCandidates includeConcatenation rule value =
+  if includeConcatenation && holeLed
+    then concatenationBoundaryCandidates rule value <> ordinary
+    else ordinary
   where
+    ordinary = value : contextualClosure [value] [value]
+
     contextualClosure _ [] = []
     contextualClosure seen frontier =
       let fresh = filter (`notElem` seen)
@@ -587,7 +637,7 @@ syntaxCandidates value = value : contextualClosure [value] [value]
       in fresh <> contextualClosure (seen <> fresh) fresh
 
     contextualStep current = directCandidates current
-      <> oneChildCandidates directCandidates current
+      <> oneDescendantCandidates directCandidates current
 
     directCandidates current =
       signedArgumentCandidates current
@@ -595,6 +645,10 @@ syntaxCandidates value = value : contextualClosure [value] [value]
         <> rightApplicationCandidates current
         <> leftBoundaryCandidates current
         <> rightBoundaryCandidates current
+
+    holeLed = case syntaxTemplatePieces (syntaxTemplate rule) of
+      SyntaxHole {} : _ -> True
+      _ -> False
 
 ruleLiteralsPresent :: SyntaxRule -> Expression -> Bool
 ruleLiteralsPresent rule value = all (`elem` identifiers)
@@ -633,6 +687,20 @@ oneChildCandidates candidates value = changed
   where
     OneChild _ changed = traverseExpressionChildren
       (\child -> OneChild child (candidates child)) value
+
+-- Produce candidates which change exactly one descendant, regardless of its
+-- depth. Contextual closure then combines independent changes as needed.
+-- Merely descending does not itself add a candidate, so the search remains
+-- finite when no structural rewrite applies.
+oneDescendantCandidates
+  :: (Expression -> [Expression])
+  -> Expression
+  -> [Expression]
+oneDescendantCandidates candidates = descend
+  where
+    descend value = oneChildCandidates
+      (\child -> candidates child <> descend child)
+      value
 
 -- Provisional infix reassociation can leave a source-adjacent phrase on the
 -- right of an application. Promote that phrase back into the enclosing
@@ -873,6 +941,131 @@ rightInfixContext value = case value of
   SuperEllipsisRange left right -> Just (right, SuperEllipsisRange left)
   _ -> Nothing
 
+-- Concatenation is a contextual boundary only for hole-led syntax such as
+-- @$_Expr of $_Expr@. Prefix syntax must finish before a following comma; for
+-- example, @for T of Any, value@ binds @Any@ rather than the concatenation.
+concatenationBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
+concatenationBoundaryCandidates rule value = do
+  literal <- case
+      [ text
+      | SyntaxLiteral text <- syntaxTemplatePieces (syntaxTemplate rule)
+      ] of
+    first : _ -> [first]
+    [] -> []
+  (beforeComponents, component, afterComponents) <-
+    componentContexts (flattenConcatenation value)
+  (beforeLiteral, afterLiteral) <- case
+      directApplicationSplit literal component of
+    Just split -> [split]
+    Nothing -> []
+  left <- maybeToList (concatenationFrom
+    (beforeComponents <> maybe [] (: []) beforeLiteral))
+  right <- maybeToList (concatenationFrom
+    (maybe [] (: []) (applicationFromMaybe afterLiteral)
+      <> afterComponents))
+  pure (applicationFrom [left, literalExpression literal, right])
+  where
+    flattenConcatenation (MapConcatenation left right) =
+      flattenConcatenation left <> flattenConcatenation right
+    flattenConcatenation expressionValue = [expressionValue]
+
+    componentContexts [] = []
+    componentContexts (component : remaining) =
+      ([], component, remaining) :
+        [ (component : before, selected, after)
+        | (before, selected, after) <- componentContexts remaining
+        ]
+
+    concatenationFrom [] = Nothing
+    concatenationFrom (first : remaining) =
+      Just (foldl MapConcatenation first remaining)
+
+    maybeToList Nothing = []
+    maybeToList (Just result) = [result]
+
+-- Newline separation is provisional when the current line ends at an
+-- internal literal of a visible syntax template. Such a literal has syntax on
+-- both sides (for example @or@ or @then@), so the expression cannot yet be
+-- complete. Join the next parsed line at the open right edge and rebuild its
+-- operator context exactly as the neutral reader would have done without the
+-- newline. Leading literals remain complete ordinary identifiers here; block
+-- heads such as @do@ are handled by 'consumeBlock'.
+continueIncompleteExpression
+  :: RewriteEnvironment
+  -> Expression
+  -> [Expression]
+  -> (Expression, [Expression])
+continueIncompleteExpression environment = go
+  where
+    rules = rewriteRules environment
+    blockLiterals = nub
+      [ literal
+      | rule <- rules
+      , Just (prefix, delimiter) <- [blockShape rule]
+      , literal <- prefix <> [delimiter]
+      ]
+    go current (next : remaining)
+      | Just literal <- trailingIdentifier current
+      , any (continues current literal) rules =
+          go (continueLineExpression current next) remaining
+    go current remaining = (current, remaining)
+
+    continues current trailing rule = any applies
+      [ (literal, before)
+      | (before, SyntaxLiteral literal : after) <-
+          pieceContexts (syntaxTemplatePieces (syntaxTemplate rule))
+      , not (null before)
+      , not (null after)
+      , literal `notElem` blockLiterals
+      ]
+      where
+        identifiers = expressionIdentifiers current
+        applies (literal, before) =
+          literal == trailing && case
+              [ previous
+              | SyntaxLiteral previous <- before
+              ] of
+            [] -> current /= literalExpression literal
+            previous -> all (`elem` identifiers) previous
+    pieceContexts [] = []
+    pieceContexts (piece : remaining) =
+      ([], piece : remaining) :
+        [ (piece : before, suffix)
+        | (before, suffix) <- pieceContexts remaining
+        ]
+
+    expressionIdentifiers expressionValue = case expressionValue of
+      IdentifierReference (IdentifierString name) -> name : nested
+      _ -> nested
+      where
+        nested = concatMap expressionIdentifiers
+          (expressionChildren expressionValue)
+
+trailingIdentifier :: Expression -> Maybe String
+trailingIdentifier value = case value of
+  IdentifierReference (IdentifierString name) -> Just name
+  SyntaxBoundary _ -> Nothing
+  _ -> firstPresent
+    (map trailingIdentifier (reverse (expressionChildren value)))
+  where
+    firstPresent [] = Nothing
+    firstPresent (Just result : _) = Just result
+    firstPresent (Nothing : remaining) = firstPresent remaining
+
+continueLineExpression :: Expression -> Expression -> Expression
+continueLineExpression left right =
+  case leftInfixContext right of
+    Just (leading, rebuild) ->
+      rebuild (continueLineExpression left leading)
+    Nothing -> appendAtRightEdge left right
+
+appendAtRightEdge :: Expression -> Expression -> Expression
+appendAtRightEdge left right =
+  case rightInfixContext left of
+    Just (edge, rebuild) -> rebuild (appendAtRightEdge edge right)
+    Nothing -> applicationFrom
+      (applicationPhrase left <> applicationPhrase right)
+
 blockShape :: SyntaxRule -> Maybe ([String], String)
 blockShape rule =
   case break isBlockHole
@@ -962,6 +1155,7 @@ splitAtLiteral literal value =
     <|> splitInfix
     <|> splitDeclaration
     <|> splitOptional
+    <|> splitLet
   where
     splitInfix = do
       (left, rebuildRight) <- leftInfixContext value
@@ -1008,6 +1202,12 @@ splitAtLiteral literal value =
       OptionalType inner -> do
         (before, suffix) <- splitAtLiteral literal inner
         pure (OptionalType <$> before, suffix)
+      _ -> Nothing
+
+    splitLet = case value of
+      Let inner -> do
+        (before, suffix) <- splitAtLiteral literal inner
+        pure (Let <$> before, suffix)
       _ -> Nothing
 
 directApplicationSplit

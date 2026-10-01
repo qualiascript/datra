@@ -9,6 +9,7 @@ module SyntaxDefinitions
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , qualifySyntaxRule, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
+  , normalizeSyntaxExpansion
   ) where
 import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
@@ -39,11 +40,11 @@ syntaxFunctionBodyForSymbol :: String -> Maybe SyntaxFunctionBody
 syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
   [ ("datra.if", \case
       [condition, yes, no] -> Right
-        (conditionalWithBindings condition yes no)
+        (Conditional condition yes no)
       captures -> invalidBody symbol captures)
   , ("datra.ifThen", \case
       [condition, yes] -> Right
-        (conditionalWithBindings condition yes (AtlasMap []))
+        (Conditional condition yes (AtlasMap []))
       captures -> invalidBody symbol captures)
   , ("datra.begin", \case
       [entries, result] -> Right (Begin (blockEntries entries) result)
@@ -258,11 +259,12 @@ conditionalWithBindings
   -> Expression
   -> Expression
   -> Expression
-conditionalWithBindings condition yes no
+conditionalWithBindings rawCondition yes no
   | null (selectedConditionBindings condition yes no) =
       Conditional condition yes no
   | otherwise = lower condition yes no
   where
+    condition = normalizeExpression rawCondition
     lower (BooleanOr left right) consequent alternative =
       lower left consequent (lower right consequent alternative)
     lower (BooleanAnd left right) consequent alternative =
@@ -271,6 +273,15 @@ conditionalWithBindings condition yes no
       lower operand alternative consequent
     lower operand consequent alternative =
       lowerConditionAtom operand consequent alternative
+
+-- Syntax captures are themselves rewritten after their enclosing template is
+-- expanded. Re-run the shape-dependent part of a control expansion once those
+-- captures have reached their final AST form. This is an AST semantic pass,
+-- independent of which declaration supplied the surface spelling.
+normalizeSyntaxExpansion :: Expression -> Expression
+normalizeSyntaxExpansion (Conditional condition yes no) =
+  conditionalWithBindings condition yes no
+normalizeSyntaxExpansion value = value
 
 lowerConditionAtom :: Expression -> Expression -> Expression -> Expression
 lowerConditionAtom condition yes no =
