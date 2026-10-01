@@ -4,6 +4,7 @@ module Parsing
   ( ResourceEnvelope (..)
   , parseDatra
   , sourceImports
+  , sourceImportInvocations
   , parseDatraLocatedWithSyntaxImports
   , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
   , parseDatraRawLocatedWithSourceName
@@ -49,6 +50,7 @@ import DatraLanguage.AST
       , MapConcatenation
       , MapExpansion
       , MapSequence
+      , SyntaxBoundary
       , MapSpecification
       , Overload
       , SafeOverload
@@ -736,10 +738,13 @@ expressionWith operand = do
   target <- maybeThenExpressionWith operand
   maybeSource <-
     optional (continuedSymbol reverseSpecificationSymbol *> expressionWith operand)
+  preserveBoundary <- not . declarativeSyntaxEnabled <$> ask
   pure
     (case maybeSource of
       Nothing -> target
-      Just source -> MapSpecification source target)
+      Just source -> MapSpecification
+        (if preserveBoundary then SyntaxBoundary source else source)
+        target)
 
 -- Maybe sequencing is deliberately low-precedence and right-associative so
 -- its lazy branch can contain a complete function or map expression. The
@@ -801,6 +806,7 @@ acceptsFunctionBody :: Expression -> Bool
 acceptsFunctionBody FunctionType {} = True
 acceptsFunctionBody SyntaxType {} = True
 acceptsFunctionBody (Fun signature) = acceptsFunctionBody signature
+acceptsFunctionBody (SyntaxBoundary signature) = acceptsFunctionBody signature
 acceptsFunctionBody _ = False
 
 -- @fun@ is syntax, so its capture is parsed before a following function body
@@ -811,6 +817,8 @@ acceptsFunctionBody _ = False
 implementedFunction :: Expression -> Expression -> Expression
 implementedFunction body (Fun signature) =
   Fun (MapSpecification body signature)
+implementedFunction body (SyntaxBoundary signature) =
+  SyntaxBoundary (implementedFunction body signature)
 implementedFunction body signature =
   MapSpecification body signature
 
@@ -1094,17 +1102,22 @@ rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 term :: Parser Expression
 term = do
   function <- accessedTerm extractedTermAtom
-  arguments <- many (try applicationArgument)
+  arguments <- many (try (applicationArgument function))
   pure (foldl FunctionApplication function arguments)
   where
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
-    applicationArgument = accessedTerm (choice
+    applicationArgument function = accessedTerm (choice
       [ try identifierTemplateOperation
       , try identifierOperation
       , argumentMap
       , parenthesizedExpression
+      , valueOfExpression
+      , Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom)
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
+      , do
+          guard (not (acceptsFunctionBody function))
+          externalExpression
       , identifierReference
       ])
 
@@ -1149,15 +1162,18 @@ importExpression = do
 -- Scan import literals without interpreting strings as syntax. This allows the
 -- loader to resolve dependencies before parsing expressions using their names.
 sourceImports :: String -> Either ParseFailure [String]
-sourceImports source = Bifunctor.first (ParseFailure . errorBundlePretty) $
+sourceImports = fmap (map snd) . sourceImportInvocations
+
+sourceImportInvocations :: String -> Either ParseFailure [(Bool, String)]
+sourceImportInvocations source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan
     (ParserContext 0 False libraryRules libraryDeclarations [] False [] False))
     "<imports>" (Text.pack source)
   where
-    paths (Import _ path) = [path]
-    paths _ = []
+    invocations (Import allNames path) = [(allNames, path)]
+    invocations _ = []
     scan = concat <$> many item <* eof
-    item = try (paths <$> importExpression)
+    item = try (invocations <$> importExpression)
       <|> ([] <$ sourceStringTemplateToken)
       <|> ([] <$ lineComment)
       <|> ([] <$ anySingle)
@@ -1181,9 +1197,12 @@ functionDomainExpressionWith operand = do
   maybeSource <- optional
     (continuedSymbol reverseSpecificationSymbol *>
       functionDomainExpressionWith operand)
+  preserveBoundary <- not . declarativeSyntaxEnabled <$> ask
   pure (case maybeSource of
     Nothing -> target
-    Just source -> MapSpecification source target)
+    Just source -> MapSpecification
+      (if preserveBoundary then SyntaxBoundary source else source)
+      target)
 
 functionDomainMaybeThenExpressionWith :: Parser Expression -> Parser Expression
 functionDomainMaybeThenExpressionWith operand =
@@ -1515,10 +1534,13 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    (local
-      (\context -> context
-        { listMaybeThenStopped = False })
-      (sequenceExpression <$> elements))
+    (do
+      value <- local
+        (\context -> context
+          { listMaybeThenStopped = False })
+        (sequenceExpression <$> elements)
+      preserveBoundary <- not . declarativeSyntaxEnabled <$> ask
+      pure (if preserveBoundary then SyntaxBoundary value else value))
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]

@@ -51,14 +51,14 @@ standardLibraryTests =
         [ programCase "literal fixed point"
             "yield fun 5" "5"
         , programCase "recursive Nat function"
-            ("factorial := fun {n? : Nat} -> Nat yield "
+            ("factorial := fun {n? : Nat} -> Nat do yield "
               <> "if n = 0 then 1 else n * this (n - 1)\n"
               <> "yield factorial 5")
             "120"
         , programCase "fun and let factorials agree"
-            ("inlineFactorial := fun {n? : Int} -> Int yield "
+            ("inlineFactorial := fun {n? : Int} -> Int do yield "
               <> "if n = 0 then 1 else n * this (n - 1)\n"
-              <> "let boundFactorial := ({n? : Int} -> Int yield "
+              <> "let boundFactorial := ({n? : Int} -> Int do yield "
               <> "if n = 0 then 1 else n * boundFactorial (n - 1))\n"
               <> "assert inlineFactorial 6 = boundFactorial 6\n"
               <> "yield inlineFactorial 6")
@@ -88,7 +88,7 @@ standardLibraryTests =
         , programCase "fixed point subfederation"
             "yield (fun 5) of Nat" "true"
         , programCase "fixed point as an optional named argument"
-            ("apply := ({value? : Nat} -> Nat yield value + 1)\n"
+            ("apply := ({value? : Nat} -> Nat do yield value + 1)\n"
               <> "yield apply (fun 5)")
             "6"
         ]
@@ -131,11 +131,11 @@ standardLibraryTests =
         , programCase "further access selects from the retrieved value"
             "x := (5; 8)\nyield $~x[1]" "8"
         , programCase "optional names accept named and positional inputs"
-            ("f := ({x? : Nat} -> Nat yield $~x + 1)\n"
+            ("f := ({x? : Nat} -> Nat do yield $~x + 1)\n"
               <> "yield (f 5; f (x := 5))")
             "(6; 6)"
         , programCase "optional names retain defaults"
-            "f := ({x? : Nat := 5} -> Nat yield $~x + 1)\nyield f ()" "6"
+            "f := ({x? : Nat := 5} -> Nat do yield $~x + 1)\nyield f ()" "6"
         , programCase "specification accepts the retrieved value"
             "x := 5\nyield ($~x ~> Int) of Int" "true"
         , programCase "reverse specification accepts the retrieved value"
@@ -168,7 +168,7 @@ standardLibraryTests =
             "yield (>< (10; 20); 30)[0][1]"
             "20"
         , programCase "coalization occupies one function argument slot"
-            ( "f := ((>< (Nat; Nat); Str) -> Nat yield it[0][1])\n"
+            ( "f := ((>< (Nat; Nat); Str) -> Nat do yield it[0][1])\n"
                 <> "yield f((1; 2); \"x\")"
             )
             "2"
@@ -209,11 +209,11 @@ standardLibraryTests =
         ]
     , testGroup "contextual result inference"
         [ programCase "selects a uniquely matching user-defined sum member"
-            ("f := (() -> ($MyNothing | MyJust : Int) yield 5)\n"
+            ("f := (() -> ($MyNothing | MyJust : Int) do yield 5)\n"
               <> "yield f()")
             "MyJust : 5"
         , programFailureCase "rejects ambiguous user-defined sum members"
-            ("f := (() -> (Left : Int | Right : Int) yield 5)\n"
+            ("f := (() -> (Left : Int | Right : Int) do yield 5)\n"
               <> "yield f()")
             (SourceEvaluationFailure
               (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
@@ -267,7 +267,7 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "Maybe sequencing statically requires a Maybe left operand"
-            "yield (() -> Int? yield 1 ?? 2)"
+            "yield (() -> Int? do yield 1 ?? 2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional named matcher accepts split positional values"
@@ -348,8 +348,8 @@ standardLibraryTests =
             ]
         ]
     , testGroup "dependent List"
-        [ programCase "Str is List Char"
-            "yield Str = List Char" "true"
+        [ programCase "Str is coalized List Char"
+            "yield Str = >< (List Char)" "true"
         , programCase "an element is the singleton member of its List type"
             "yield 1 of List Nat" "true"
         , programCase "natural list uses semicolon members"
@@ -380,17 +380,17 @@ standardLibraryTests =
             )
             "true"
         , programCase "Args accepts every finite positional prefix"
-            ( "values := ({Args Int,} -> List Int yield val it)\n"
+            ( "values := ({Args Int,} -> List Int do yield val it)\n"
                 <> "yield values(1, 2, 3)"
             )
             "(1; 2; 3)"
         , programCase "Args reorders named and positional slots"
-            ( "values := ({Args Int,} -> List Int yield val it)\n"
+            ( "values := ({Args Int,} -> List Int do yield val it)\n"
                 <> "yield values(arg1 := 3, 0)"
             )
             "(0; 3)"
         , programFailureCase "Args rejects a gap in its finite prefix"
-            ( "values := ({Args Int,} -> List Int yield val it)\n"
+            ( "values := ({Args Int,} -> List Int do yield val it)\n"
                 <> "yield values(arg2 := 3, 0)"
             )
             (SourceEvaluationFailure
@@ -512,7 +512,7 @@ integerLimitTests =
                 <> "nothing | () | Just : $Complement))"
             )
         , programCase "unnamed NatLimit functions accept finite and limit values"
-            ( "identity := (NatLimit -> NatLimit yield it)\n"
+            ( "identity := (NatLimit -> NatLimit do yield it)\n"
                 <> "yield (identity 3; identity Infinity)"
             )
             "(3; Infinity)"
@@ -609,7 +609,7 @@ integerLimitTests =
             )
             "(true; true; true; true; true; true; true)"
         , programCase "a safe IntLimit function is inferred"
-            ( "increment := (IntLimit -> IntLimit yield it + 1)\n"
+            ( "increment := (IntLimit -> IntLimit do yield it + 1)\n"
                 <> "yield (increment Infinity; increment (-Infinity))"
             )
             "(Infinity; -Infinity)"
@@ -637,26 +637,26 @@ declaredPatternTests =
     [ programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
     , programCase "surface syntax name may differ from its binding"
-        ( "abc : %\"def $Nat next\" %> ({value?:Nat} -> Int)"
-            <> " := (do yield value+1)\n"
+        ( "abc := %\"def $Nat next\" %> ({value?:Nat} -> Int)"
+            <> " do yield value+1\n"
             <> "yield def 2 next"
         )
         "3"
     , programCase "the complete literal prefix is matched before its first hole"
-        ( "abc : %\"my name is $Nat\" %> ({value?:Nat} -> Int)"
-            <> " := (do yield value+1)\n"
+        ( "abc := %\"my name is $Nat\" %> ({value?:Nat} -> Int)"
+            <> " do yield value+1\n"
             <> "yield my name is 2"
         )
         "3"
     , programCase "a template may begin with a postfix operand hole"
-        ( "increment : %\"$Int++\" %> ({value?:Int} -> Int)"
-            <> " := (do yield value+1)\n"
+        ( "increment := %\"$Int++\" %> ({value?:Int} -> Int)"
+            <> " do yield value+1\n"
             <> "yield 2++"
         )
         "3"
     , programCase "one function accepts an inhabited list of templates"
-        ( "increment : %(\"$Int++\"; \"increment $Int\")"
-            <> " %> ({value?:Int} -> Int) := (do yield value+1)\n"
+        ( "increment := %(\"$Int++\"; \"increment $Int\")"
+            <> " %> ({value?:Int} -> Int) do yield value+1\n"
             <> "yield (2++; increment 2)"
         )
         "(3; 3)"
@@ -691,21 +691,21 @@ declaredPatternTests =
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "$Int syntax holes reject Infinity"
-        ( "finite : %\"finite $Int\" %> ({value?:Int} -> Int)"
-            <> " := (do yield value)\n"
+        ( "finite := %\"finite $Int\" %> ({value?:Int} -> Int)"
+            <> " do yield value\n"
             <> "yield finite Infinity"
         )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programCase "$IntLimit syntax holes accept Infinity"
-        ( "limit : %\"limit $IntLimit\" %> ({value?:IntLimit} -> IntLimit)"
-            <> " := (do yield value)\n"
+        ( "limit := %\"limit $IntLimit\" %> ({value?:IntLimit} -> IntLimit)"
+            <> " do yield value\n"
             <> "yield limit Infinity"
         )
         "Infinity"
     , programFailureCase "syntax captures must also inhabit the function domain"
-        ( "step : %\"step $Int next\" %> ({value?:Nat} -> Int)"
-            <> " := (do yield value+1)\n"
+        ( "step := %\"step $Int next\" %> ({value?:Nat} -> Int)"
+            <> " do yield value+1\n"
             <> "yield step (-1) next"
         )
         (SourceEvaluationFailure
@@ -717,33 +717,34 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((%\"step $Int next\" %> (Int -> Int) yield !$~\"datra.abs\")"
+        ( "step := ((%\"step $Int next\" %> (Int -> Int) !$~\"datra.abs\")"
             <> " | (%\"step $Int next\" %> (Int -> Int) do yield 2))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
-    , programCase "distinct literal syntax alternatives form a federation"
+    , programFailureCase
+        "distinct literal syntax alternatives still require distinct calls"
         ( "step := ((%\"step $Int left\" %> ({value?:Int} -> Int) do yield value)"
             <> " | (%\"step $Int right\" %> ({value?:Int} -> Int) do yield value))\n"
-            <> "yield step 3 right"
+            <> "yield step"
         )
-        "3"
+        (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((%\"step $Int left\" %> (Int -> Int) yield !$~\"datra.abs\")"
-            <> " | (%\"step $Int right\" %> (Int -> Int) yield !$~\"datra.abs\"))\n"
+        ( "step := ((%\"step $Int left\" %> (Int -> Int) !$~\"datra.abs\")"
+            <> " | (%\"step $Int right\" %> (Int -> Int) !$~\"datra.abs\"))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((%\"choose $Nat mark\" %> (Nat -> Int) yield !$~\"datra.abs\")"
-            <> " | (%\"choose $Int mark\" %> (Int -> Int) yield !$~\"datra.abs\"))\n"
+        ( "choose := ((%\"choose $Nat mark\" %> (Nat -> Int) !$~\"datra.abs\")"
+            <> " | (%\"choose $Int mark\" %> (Int -> Int) !$~\"datra.abs\"))\n"
             <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     ]
   where
     declaration =
-      "step : %\"step $Nat next\" %> ({value?:Nat} -> Int) := (do yield value+1)\n"
+      "step := %\"step $Nat next\" %> ({value?:Nat} -> Int) do yield value+1\n"
     ordinaryDeclaration =
-      "step : %\"step $Nat next\" %> ({value?:Int} -> Int) := (do yield value+1)\n"
+      "step := %\"step $Nat next\" %> ({value?:Int} -> Int) do yield value+1\n"

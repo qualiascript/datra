@@ -16,19 +16,19 @@ functionTests =
     , testGroup "application"
         [ programCase "it observes the complete given map"
             (unlines
-              [ "sum := (Nat, Nat -> Nat yield it[0] + it[1])"
+              [ "sum := (Nat, Nat -> Nat do yield it[0] + it[1])"
               , "assert sum (1, 2) = 3"
               ])
             "()"
         , programCase "sequenced Int annotations remain individual slots"
             (unlines
-              [ "sum := ((Int; Int) -> Int yield it[0] + it[1])"
+              [ "sum := ((Int; Int) -> Int do yield it[0] + it[1])"
               , "assert sum ((2 ~> Int); (5 ~> Int)) = 7"
               ])
             "()"
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
-              [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat yield it.base[1] ^ it.exponent[1])"
+              [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield it.base[1] ^ it.exponent[1])"
               , "assert my_pow (*, 3) = 8"
               ])
             "()"
@@ -62,13 +62,13 @@ functionTests =
             "5"
         , programCase "Any accepts a canonical argument value"
             (unlines
-              [ "identity := ({value?:Any} -> Any yield value)"
+              [ "identity := ({value?:Any} -> Any do yield value)"
               , "yield identity 5"
               ])
             "5"
         , programCase "Any accepts a canonical function argument value"
             (unlines
-              [ "identity := ({value?:Any} -> Any yield value)"
+              [ "identity := ({value?:Any} -> Any do yield value)"
               , "yield (identity (Nat -> Nat)) of (Nat -> Nat)"
               ])
             "true"
@@ -100,11 +100,11 @@ functionTests =
               , "assert f(3; 4; 5)"
               ]) "()"
         , programCase "named access contributes to inferred output types"
-            "f := ({abc? : Nat} -> Nat yield it.abc[1] + 1)\nyield f 6"
+            "f := ({abc? : Nat} -> Nat do yield it.abc[1] + 1)\nyield f 6"
             "7"
         , programCase "computed input schemas preserve names without special functions"
             (unlines
-              [ "Slots := (() -> Any yield (abc? : Nat; Nat))"
+              [ "Slots := (() -> Any do yield (abc? : Nat; Nat))"
               , "f := {Slots (),} -> Bool do"
               , "  yield it.abc[0] = $abc and it.abc[1] = 3 and it[1] = 4"
               , "assert f(3; 4)"
@@ -124,26 +124,26 @@ functionTests =
               [ "Slots := (for T? of Any) -> Any do"
               , "  slots := with i in Nat do \"field%(i)\"? : T"
               , "yield () | with n in Nat do slots[range 0 to n]"
-              , "f := {Slots Nat,} -> Nat yield it[0][1]"
+              , "f := {Slots Nat,} -> Nat do yield it[0][1]"
               , "assert f(3; 4) = 3"
-              , "pick := {Slots Nat,} -> Any yield it.field1[1]"
+              , "pick := {Slots Nat,} -> Any do yield it.field1[1]"
               , "assert pick(3; 4) = 4"
               ]) "()"
         , programCase "projected input maps retain names after returning"
             (unlines
-              [ "f := {Args Int,} -> Any yield it"
+              [ "f := {Args Int,} -> Any do yield it"
               , "assert (f(3; 4)).arg0[0] = $arg0"
               , "assert (f(arg1 := 4, 3)).arg1[1] = 4"
               ]) "()"
         , programCase "empty and singleton unnamed inputs keep their shape"
             (unlines
-              [ "emptyInput := (() -> Any yield it)"
-              , "single := (Nat -> Nat yield it)"
+              [ "emptyInput := (() -> Any do yield it)"
+              , "single := (Nat -> Nat do yield it)"
               , "assert emptyInput() = ()"
               , "assert single 8 = 8"
               ]) "()"
         , programCase "erasure supports mixed parameters during inference"
-            "f := ((abc? : Nat; Nat) -> (Nat; Nat) yield val it)\nyield f(3; 4)"
+            "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield val it)\nyield f(3; 4)"
             "(3; 4)"
         , programCase "erasure works through local bindings"
             "f := ({abc? : Nat} -> Nat do\n  args := it\nyield val args)\nyield f 7"
@@ -223,15 +223,15 @@ functionTests =
             "f := ({x?:Int;y?:Int} -> Int do yield x+y)\nyield f {2;3}"
             "5"
         , programFailureCase "private required names reject positional input"
-            "sum := ({_x:Int;_y:Int} -> Int yield _x+_y)\nyield sum (1,2)"
+            "sum := ({_x:Int;_y:Int} -> Int do yield _x+_y)\nyield sum (1,2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "private parameter slots reject named input"
-            "sum := ({_x:Int;_y:Int} -> Int yield _x+_y)\nyield sum (_x:1,_y:2)"
+            "sum := ({_x:Int;_y:Int} -> Int do yield _x+_y)\nyield sum (_x:1,_y:2)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "ambiguous reorder is reported structurally"
-            ( "f := ({a?:Int;b?:Str;c?:Str} -> Int yield a)\n"
+            ( "f := ({a?:Int;b?:Str;c?:Str} -> Int do yield a)\n"
                 <> "yield f ($x,$y,5)"
             )
             (SourceEvaluationFailure
@@ -270,7 +270,7 @@ functionTests =
             "node : (!$~\"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         , programCase "function parameter annotation is canonical"
-            "f := ({callback?:(Nat -> Nat)} -> Nat yield 0)\nyield f ({n?:Nat} -> Nat yield n)"
+            "f := ({callback?:(Nat -> Nat)} -> Nat do yield 0)\nyield f ({n?:Nat} -> Nat do yield n)"
             "0"
         ]
     , testGroup "dependent products"
@@ -278,60 +278,60 @@ functionTests =
             "yield ({for i? of from 0 to 2; i})[1]"
             "(0; 1; 2)"
         , programCase "optional binder accepts positional witnesses"
-            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
                 <> "yield identity (Nat; 5)"
             )
             "5"
         , programCase "optional binder accepts named assignment witnesses"
-            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
                 <> "yield identity {T := Nat; value := 5}"
             )
             "5"
         , programCase "required binder accepts only its named assignment form"
-            ( "identity := ({for T of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T of Any; value? : T} -> T do yield value)\n"
                 <> "yield identity {T := Nat; value := 5}"
             )
             "5"
         , programFailureCase "required binder rejects a positional witness"
-            ( "identity := ({for T of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T of Any; value? : T} -> T do yield value)\n"
                 <> "yield identity (Nat; 5)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "dependent value must inhabit its selected type"
-            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
                 <> "yield identity (Nat; \"bad\")"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "dependent binders scope sequentially"
-            ( "identity := ({for T? of Any; for U? of T; value? : U} -> U yield value)\n"
+            ( "identity := ({for T? of Any; for U? of T; value? : U} -> U do yield value)\n"
                 <> "yield identity (Any; Nat; 5)"
             )
             "5"
         , programCase "dependent product composes with of"
-            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
                 <> "yield identity of ({for T? of Any; value? : T} -> T)"
             )
             "true"
         , programCase "dependent product composes with specification"
-            ( "identity := ({for T? of Any; value? : T} -> T yield value)\n"
+            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
                 <> "yield (identity ~> ({for T? of Any; value? : T} -> T)) (Nat; 5)"
             )
             "5"
         , programFailureCase "ordinary parameters do not bind later annotations"
-            ( "bad := ({T? : Any; value? : T} -> Any yield value)\n"
+            ( "bad := ({T? : Any; value? : T} -> Any do yield value)\n"
                 <> "yield bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
         , programFailureCase "dependent products do not bind forwards"
-            ( "bad := ({value? : T; for T? of Any} -> Any yield value)\n"
+            ( "bad := ({value? : T; for T? of Any} -> Any do yield value)\n"
                 <> "yield bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
         , programFailureCase "function domains reject mixed dependent binders"
             ( "bad := ({for T? of Any; with U? of Any; value? : T} "
-                <> "-> Any yield value)\nyield bad"
+                <> "-> Any do yield value)\nyield bad"
             )
             (SourceEvaluationFailure MixedDependentBinders)
         ]
@@ -354,7 +354,7 @@ argumentSchemaMatrixTests =
   testGroup "shared argument-schema matrix"
     [ programCase (argumentCaseName testCase)
         ( "f := (" <> argumentCaseDomain testCase
-            <> " -> Int yield " <> argumentCaseBody testCase <> ")\n"
+            <> " -> Int do yield " <> argumentCaseBody testCase <> ")\n"
             <> "yield f " <> argumentCaseInput testCase
         )
         (argumentCaseExpected testCase)

@@ -76,21 +76,6 @@ alternativesAreDistinct left right
   | interpretedCanonicalResult left == interpretedCanonicalResult right = False
   | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
       alternativesAreDistinct (functionDomain a) (functionDomain b)
-  | Just leftSlots <- structuralSlotOrdinal left
-  , Just rightSlots <- structuralSlotOrdinal right
-  , leftSlots /= rightSlots = True
-  | ArgumentMapForm leftMembers _ <- interpretedForm left
-  , ArgumentMapForm rightMembers _ <- interpretedForm right =
-      length leftMembers /= length rightMembers
-        || or (zipWith alternativesAreDistinct leftMembers rightMembers)
-  | ArgumentMapForm _ _ <- interpretedForm left
-  , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
-  | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
-  , ArgumentMapForm _ _ <- interpretedForm right = True
-  | ArgumentMapForm _ underlying <- interpretedForm left =
-      alternativesAreDistinct underlying right
-  | ArgumentMapForm _ underlying <- interpretedForm right =
-      alternativesAreDistinct left underlying
   | AssignmentForm leftAssignment <- interpretedForm left =
       alternativesAreDistinct
         (evaluatedSpecificationTarget leftAssignment)
@@ -112,6 +97,21 @@ alternativesAreDistinct left right
       identifierAlternativesAreDistinct leftIdentifier rightIdentifier
   | DependentIdentifierTypeForm _ <- interpretedForm left = True
   | DependentIdentifierTypeForm _ <- interpretedForm right = True
+  | Just leftSlots <- structuralSlotOrdinal left
+  , Just rightSlots <- structuralSlotOrdinal right
+  , leftSlots /= rightSlots = True
+  | ArgumentMapForm leftMembers _ <- interpretedForm left
+  , ArgumentMapForm rightMembers _ <- interpretedForm right =
+      length leftMembers /= length rightMembers
+        || or (zipWith alternativesAreDistinct leftMembers rightMembers)
+  | ArgumentMapForm _ _ <- interpretedForm left
+  , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
+  | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
+  , ArgumentMapForm _ _ <- interpretedForm right = True
+  | ArgumentMapForm _ underlying <- interpretedForm left =
+      alternativesAreDistinct underlying right
+  | ArgumentMapForm _ underlying <- interpretedForm right =
+      alternativesAreDistinct left underlying
   | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm left
   , ValuedNaturalRangeForm _ <- interpretedForm right = True
   | ValuedNaturalRangeForm _ <- interpretedForm left
@@ -157,11 +157,12 @@ decideSyntaxFunctionAlternatives
   -> Decision ()
 decideSyntaxFunctionAlternatives
     leftFunction leftSyntax rightFunction rightSyntax
+  | ordinaryRoutesIdentical = DecisionRefuted
   | not syntaxRoutesDistinct =
       if functionSyntaxEquivalent leftSyntax rightSyntax
         then DecisionRefuted
         else DecisionUndecidable
-  | ordinaryRoutesOverlap = DecisionUndecidable
+  | ordinaryRoutesNotProvedDistinct = DecisionUndecidable
   | otherwise = DecisionProved ()
   where
     syntaxRoutesDistinct = and
@@ -173,7 +174,10 @@ decideSyntaxFunctionAlternatives
       | leftTemplate <- functionSyntaxTemplates leftSyntax
       , rightTemplate <- functionSyntaxTemplates rightSyntax
       ]
-    ordinaryRoutesOverlap = not (alternativesAreDistinct
+    ordinaryRoutesIdentical =
+      interpretedCanonicalResult (functionDomain leftFunction)
+        == interpretedCanonicalResult (functionDomain rightFunction)
+    ordinaryRoutesNotProvedDistinct = not (alternativesAreDistinct
       (functionDomain leftFunction)
       (functionDomain rightFunction))
 
@@ -214,15 +218,15 @@ structuralSlotOrdinal value
   | otherwise = case interpretedForm value of
       SequentialMapForm -> Just (finiteOrdinal
         (interpretedMapPageCardinality (interpretedMap value)))
+      MapForm -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      ConcatenatedMapForm _ _ -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      ExpansionMapForm _ _ -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
       ArgumentMapForm members _ ->
         Just (finiteOrdinal (fromIntegral (length members)))
-      BuiltinMetaTypeForm (ASTMetaType _) -> Just (finiteOrdinal 1)
-      _
-        | interpretedValueHasTotalMap value -> exactMapOrdinal
-        | otherwise -> Nothing
-  where
-    exactMapOrdinal = Just
-      (interpretedMapFinalOrderType (interpretedMap value))
+      _ -> Just (finiteOrdinal 1)
 
 isNumericalRange :: InterpretedValue -> Bool
 isNumericalRange value =

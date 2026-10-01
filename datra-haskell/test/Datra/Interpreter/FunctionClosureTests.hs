@@ -4,8 +4,13 @@ import Control.Monad (when)
 import Data.List (isInfixOf, isPrefixOf, tails)
 import Datra.TestSupport
 import DatraTypes
-import Interpreting (canonicalStringCodec, interpretClosedExpression)
-import Parsing (parseDatra)
+import Interpreting
+  ( canonicalStringCodec
+  , interpretClosedExpression
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  )
+import DatraLanguage.Diagnostics (locatedValue)
+import DatraLanguage.Diagnostics.Application (ParseFailure)
 import DatraLanguage.AST (Expression (FunctionApplication))
 import Rendering (renderInterpretedValue)
 import Test.Tasty (TestTree, testGroup)
@@ -21,10 +26,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "let factorial := ({n? : Int} -> Int do \"__fun\" : 0; yield if n = this.\"__fun\"[1] then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"
   , roundTrip "captured name matches generated root"
-      "_fun := 4\nyield ({n? : Int} -> Int yield n + _fun)"
+      "_fun := 4\nyield ({n? : Int} -> Int do yield n + _fun)"
       "3" "7"
   , roundTrip "quoted capture matches generated root"
-      "\"__fun\" := 4\nyield ({n? : Int} -> Int yield n + this.\"__fun\"[1])"
+      "\"__fun\" := 4\nyield ({n? : Int} -> Int do yield n + this.\"__fun\"[1])"
       "3" "7"
   , roundTrip "three dependency levels reconstruct independently" threeLevels "3" "7"
   , testCase "each dependency level uses the closure-local namespace" $ do
@@ -39,10 +44,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
         ["next", "step", "base"]
       assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
   , roundTrip "user value is distinct from the inline fixed point"
-      "userFun := 4\nyield ({n? : Int} -> Int yield n + userFun)"
+      "userFun := 4\nyield ({n? : Int} -> Int do yield n + userFun)"
       "3" "7"
   , roundTrip "outer user name cannot capture a nested fixed point"
-      "userFun := 4\ninc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield userFun + inc n)"
+      "userFun := 4\ninc := ({x? : Int} -> Int do yield x + 1)\nyield ({n? : Int} -> Int do yield userFun + inc n)"
       "3" "8"
   , testCase "user captures receive unique closure-local names" $ do
       value <- requireProgram underscoredCaptures
@@ -70,48 +75,48 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
       assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))
   , canonicalRoundTrip "transitive captured definitions"
-      "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
+      "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       "7" "11"
   , roundTrip "eager capture retains its definition"
-      "seed := 2\nlet offset := seed + 2\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
+      "seed := 2\nlet offset := seed + 2\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       "7" "11"
   , roundTrip "identifier erasure survives serialization"
-      "yield ({abc? : Nat} -> Nat yield val it)" "7" "7"
+      "yield ({abc? : Nat} -> Nat do yield val it)" "7" "7"
   , roundTrip "input names survive serialization"
-      "yield ({abc? : Nat} -> Nat yield it.abc[1])" "7" "7"
+      "yield ({abc? : Nat} -> Nat do yield it.abc[1])" "7" "7"
   , roundTrip "defaults survive serialization"
-      "f := ({base? : Nat := 2; exponent? : Nat} -> Nat yield base ^ exponent)\nyield f"
+      "f := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)\nyield f"
       "(*, 3)" "8"
   , roundTrip "local this is not polluted by dependency bindings"
       "offset := 4\nf := ({x? : Int} -> Int do local := x + offset; yield this.local[1])\nyield f"
       "7" "11"
   , roundTrip "higher-order captured value"
-      "inc := ({x? : Int} -> Int yield x + 1)\nf := ({n? : Int} -> Int yield inc n)\nyield f"
+      "inc := ({x? : Int} -> Int do yield x + 1)\nf := ({n? : Int} -> Int do yield inc n)\nyield f"
       "8" "9"
   , roundTrip "captured standard-library Boolean"
-      "flag := true\nf := ({x? : Int} -> Int yield if flag then x + 1 else x)\nyield f"
+      "flag := true\nf := ({x? : Int} -> Int do yield if flag then x + 1 else x)\nyield f"
       "7" "8"
   , roundTrip "quoted parameter reference"
-      "yield ({\"value with spaces\" : Int} -> Int yield this.\"value with spaces\"[1] + 1)"
+      "yield ({\"value with spaces\" : Int} -> Int do yield this.\"value with spaces\"[1] + 1)"
       "(\"value with spaces\" : 4)" "5"
   , roundTrip "value lookup in an optional named parameter"
-      "yield ({\"value with spaces\"? : Int} -> Int yield $~\"value with spaces\" + 1)"
+      "yield ({\"value with spaces\"? : Int} -> Int do yield $~\"value with spaces\" + 1)"
       "4" "5"
   , roundTrip "value lookup applies a captured function"
-      "inc := ({x? : Int} -> Int yield x + 1)\nyield ({n? : Int} -> Int yield $~inc ($~n))"
+      "inc := ({x? : Int} -> Int do yield x + 1)\nyield ({n? : Int} -> Int do yield $~inc ($~n))"
       "4" "5"
   , roundTrip "library inlining preserves a user _AST parameter"
-      "yield ({_AST : Int := 4} -> Int yield _AST + 1)" "()" "5"
+      "yield ({_AST : Int := 4} -> Int do yield _AST + 1)" "()" "5"
   , roundTrip "quoted captured identifier"
-      "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int yield x + this.\"name.with.dots\"[1])"
+      "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int do yield x + this.\"name.with.dots\"[1])"
       "7" "11"
   , roundTrip "captured computed this projection"
-      "x : 2\ny : 3\nz : this[y-x][1]\nyield ({n? : Int} -> Int yield n + z)"
+      "x : 2\ny : 3\nz : this[y-x][1]\nyield ({n? : Int} -> Int do yield n + z)"
       "4" "7"
   , roundTrip "computed this projection inside a function"
       "yield (() -> Int do x : 2; y : 3; z : this[y-x][1]; yield z)"
       "()" "3"
-  , roundTrip "nothing result" "yield (() -> nothing yield nothing)"
+  , roundTrip "nothing result" "yield (() -> nothing do yield nothing)"
       "()" "nothing"
   , roundTrip "inferred parameters" "yield (do yield a + b)" "(2, 3)" "5"
   , testCase "inferred signatures share one recursive dependency graph" $ do
@@ -121,23 +126,23 @@ functionClosureTests = testGroup "canonical function reconstruction"
         1
         (occurrences "let \"___from\" :=" text)
   , roundTripUsingStd "narrowed callable"
-      "f := ({x? : Int} -> Int yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
+      "f := ({x? : Int} -> Int do yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , mutualRecursiveDefinitions
   , roundTrip "registered native function" "yield !$~\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
-      "step : %\"step $Nat next\" %> ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
+      "step := %\"step $Nat next\" %> ({value? : Int} -> Int) do yield value + 1\nyield step"
       "4" "5"
   , testCase "closed syntax function retains only its map signature" $ do
       value <- requireProgram
-        "step : %\"step $Nat next\" %> ({value? : Int} -> Int) := (do yield value + 1)\nyield step"
+        "step := %\"step $Nat next\" %> ({value? : Int} -> Int) do yield value + 1\nyield step"
       let text = renderInterpretedValue value
       assertBool "consumed syntax annotation leaked into the closure"
         (not (" %> " `isInfixOf` text))
   , testCase "unused ambient bindings are absent" $ do
       value <- requireProgram
-        "unused := 987654321\noffset := 4\nf := ({x? : Int} -> Int yield x + offset)\nyield f"
+        "unused := 987654321\noffset := 4\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
@@ -146,13 +151,13 @@ functionClosureTests = testGroup "canonical function reconstruction"
         (not ("!$~\"datra.Int\"" `isInfixOf` text))
       assertBool "dependency selected through value lookup" ("$~\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
-      a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int yield x + offset)"
-      b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int yield x + offset)"
+      a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int do yield x + offset)"
+      b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int do yield x + offset)"
       assertBool "capture identity was erased"
         (interpretedCanonicalResult a /= interpretedCanonicalResult b)
   , testCase "only the selected module member is reconstructed" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import \"library_one\"\nyield ({n? : Int} -> Int yield LibraryOne.increment n)"
+        "import \"library_one\"\nyield ({n? : Int} -> Int do yield LibraryOne.increment n)"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "module filename is not a runtime dependency" (not ("import " `isInfixOf` text))
@@ -164,7 +169,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "private closure dependency survived" "11" (renderInterpretedValue result)
   , testCase "import-all dependency names retain their module origin" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import all \"library_one\"\nyield ({n? : Int} -> Int yield x + n)"
+        "import all \"library_one\"\nyield ({n? : Int} -> Int do yield x + n)"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "actual module provenance is retained"
@@ -175,7 +180,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "captured imported value" "10" (renderInterpretedValue result)
   , testCase "user name cannot collide with a nested module function" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import \"library_one\"\nuserFun := 4\nyield ({n? : Int} -> Int yield userFun + LibraryOne.increment n)"
+        "import \"library_one\"\nuserFun := 4\nyield ({n? : Int} -> Int do yield userFun + LibraryOne.increment n)"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       reconstructed <- requireExpression text
@@ -201,7 +206,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         (not ("values ~>" `isInfixOf` text))
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
   , programCase "functions can annotate named parameters"
-      "apply := ({callback? : (Nat -> Nat); value? : Nat} -> Nat yield callback value)\nyield apply (({n? : Nat} -> Nat yield n + 1), 4)"
+      "apply := ({callback? : (Nat -> Nat); value? : Nat} -> Nat do yield callback value)\nyield apply (({n? : Nat} -> Nat do yield n + 1), 4)"
       "5"
   ]
 
@@ -211,11 +216,11 @@ factorial = "let factorial := ({n? : Int} -> Int do\n yield if n = 0 then 1 else
 underscoredCaptures :: String
 underscoredCaptures =
   "abc := 1\n_abc := 2\n\"_____abc\" := 3\n\"__fun\" := 4\n\"___abc\" := 5\n\
-  \yield ({n? : Int} -> Int yield n + abc + _abc + this.\"_____abc\"[1] + this.\"__fun\"[1] + this.\"___abc\"[1])"
+  \yield ({n? : Int} -> Int do yield n + abc + _abc + this.\"_____abc\"[1] + this.\"__fun\"[1] + this.\"___abc\"[1])"
 
 threeLevels :: String
 threeLevels =
-  "base := 2\nstep := base + 1\nnext := step + 1\nyield ({n? : Int} -> Int yield n + next)"
+  "base := 2\nstep := base + 1\nnext := step + 1\nyield ({n? : Int} -> Int do yield n + next)"
 
 roundTrip :: String -> String -> String -> String -> TestTree
 roundTrip = roundTripWith True False
@@ -278,19 +283,24 @@ mutualRecursiveDefinitions = testCase "mutual recursive definitions" $ do
 
 mutualDefinitions :: String
 mutualDefinitions =
-  "let even := ({n? : Int} -> Bool yield if n = 0 then true else odd (n - 1))\n\
-  \let odd := ({n? : Int} -> Bool yield if n = 0 then false else even (n - 1))"
+  "let even := ({n? : Int} -> Bool do yield if n = 0 then true else odd (n - 1))\n\
+  \let odd := ({n? : Int} -> Bool do yield if n = 0 then false else even (n - 1))"
 
 assertClosedCall :: String -> String -> String -> IO ()
 assertClosedCall text argument expected = do
   closed <- either (assertFailure . show) pure
-    (parseDatra ("(" <> text <> "\n)"))
+    (parseProductionSource ("(" <> text <> "\n)"))
   input <- either (assertFailure . show) pure
-    (parseDatra ("(" <> argument <> ")"))
+    (parseProductionSource ("(" <> argument <> ")"))
   independent <- either (assertFailure . show) pure
     (interpretClosedExpression (FunctionApplication closed input))
   assertEqual "call needs no implicit Std or modules"
     expected (renderInterpretedValue independent)
+
+parseProductionSource :: String -> Either ParseFailure Expression
+parseProductionSource source =
+  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
+    True [] "<input>" source
 
 requireProgram :: String -> IO InterpretedValue
 requireProgram = either (assertFailure . show) pure . runProgram

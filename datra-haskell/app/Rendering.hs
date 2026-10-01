@@ -197,9 +197,8 @@ prettyNonKeywordCanonicalResult result =
         <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
-    CanonicalArgumentMap totalPages components ->
-      let separator = if totalPages then ", " else "; "
-      in "{" <> concatWith (\left right -> left <> separator <> right)
+    CanonicalArgumentMap _ components ->
+      "{" <> concatWith (\left right -> left <> "; " <> right)
         (map prettyArgumentMember components) <> "}"
     CanonicalSpecification source target ->
       case (source, target) of

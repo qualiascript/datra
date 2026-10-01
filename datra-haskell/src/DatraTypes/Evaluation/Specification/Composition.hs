@@ -61,6 +61,11 @@ selectFederationMember source target
         (evaluatedSpecificationSourceValue assignment)
         target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
+  | DependentSumForm dependent <- interpretedForm target =
+      case evaluatedDependentSumSpecify dependent source of
+        Right selected ->
+          DecisionProved (EvaluatedDependentSumMember selected)
+        Left _ -> DecisionRefuted
   | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
       case datraCanonicalType (interpretedDatraType source) of
         Just _ -> DecisionProved

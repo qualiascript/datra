@@ -82,6 +82,7 @@ import Parsing
   ( parseDatra
   , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
   , parseDatraRawLocatedWithSourceName
+  , sourceImportInvocations
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
@@ -138,13 +139,19 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
   importedRules <- Bifunctor.first interpretingParseFailure
     (traverse (\(requested, moduleSource) ->
       (,) requested <$> moduleSyntaxRules requested moduleSource) modules)
-  let capture = captureSyntaxHole base modules
+  importInvocations <- sourceImportInvocations source
+  let explicitlyImportedRules = concat
+        [ maybe [] id (lookup requested importedRules)
+        | (True, requested) <- importInvocations
+        ]
+      initialRules = standardRules <> explicitlyImportedRules
+      capture = captureSyntaxHole base modules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture standardRules [] importedRules
+          rewriteExplicitSyntax capture initialRules [] importedRules
             expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture standardRules [] importedRules entries
+          rewriteImplicitSyntax capture initialRules [] importedRules entries
         _ -> Left MissingImplicitBlockResult
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
   pure (Located sourceSpan expressionValue)
@@ -607,6 +614,7 @@ interpretNormalizedExpression scope resolving expressionValue =
       (interpretAtlasMapWith interpret expressions)
       (MapSequence expressions)
       expressions
+    SyntaxBoundary inner -> interpret inner
     MapExpansion left right ->
       interpretAtlasMapWithBuilder
         makeAtlasExpansion
@@ -2200,7 +2208,7 @@ moduleSyntaxRules requested source = do
       Nothing -> pure []
       Just (FunctionSyntax templates) -> do
         sourceTemplates <- traverse
-          (traverseSyntaxTemplate parseRuleExpression)
+          (traverseSyntaxTemplate parseScopedRuleExpression)
           templates
         signature <- parseRuleExpression (functionSignatureSource function)
         implementation <- maybe
@@ -2212,6 +2220,11 @@ moduleSyntaxRules requested source = do
               name template signature False (Just requested) implementation
           | template <- sourceTemplates
           ]
+    parseScopedRuleExpression sourceText = do
+      expressionValue <- parseRuleExpression sourceText
+      pure (case expressionValue of
+        AsciiStringLiteral {} -> expressionValue
+        _ -> InModule requested expressionValue)
     parseRuleExpression sourceText =
       case parseDatraLocatedWithSyntaxImportsAndStandardLibrary
           False [] "<module-syntax>" ("(" <> sourceText <> "\n)") of

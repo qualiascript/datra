@@ -94,6 +94,13 @@ extractTemplateHoles target member =
   case interpretedForm target of
     TemplateForm underlying ->
       extractTemplateHoles underlying member
+    CoalizationForm underlying ->
+      extractTemplateHoles underlying member
+    DependentSumForm _ ->
+      case member of
+        EvaluatedDependentSumMember selected ->
+          pure <$> specifyValues selected target
+        _ -> extractionExpected target
     ConcatenatedMapForm left right ->
       case member of
         EvaluatedConcatenatedAtlasMapMember [leftMember, rightMember] ->

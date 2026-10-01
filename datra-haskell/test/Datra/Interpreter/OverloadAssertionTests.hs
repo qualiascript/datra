@@ -119,76 +119,76 @@ defaultedFunctionTests =
   testGroup "defaulted function arguments"
     [ programCase "unparenthesized my_pow can assert a skipped default"
         (unlines
-          [ "my_pow := {base? : Nat := 2; exponent? : Nat} -> Nat yield base ^ exponent"
+          [ "my_pow := {base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent"
           , "assert my_pow (*, 3) = 8"
           ])
         "()"
     , programCase "positional-only my_pow skips its defaulted first argument"
         (unlines
-          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat yield base ^ exponent)"
+          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
           , "yield my_pow (*, 3)"
           ])
         "8"
     , programCase "positional-only my_pow accepts a skip in an argument map"
         (unlines
-          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat yield base ^ exponent)"
+          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
           , "yield my_pow {*; 3}"
           ])
         "8"
     , programCase "function call can skip a later default"
         (unlines
-          [ "add := ({x? : Nat; y? : Nat := 4} -> Nat yield x + y)"
+          [ "add := ({x? : Nat; y? : Nat := 4} -> Nat do yield x + y)"
           , "yield add (3, *)"
           ])
         "7"
     , programFailureCase "function call cannot skip a required argument"
         (unlines
-          [ "sum := ({x : Nat; y? : Nat} -> Nat yield x + y)"
+          [ "sum := ({x : Nat; y? : Nat} -> Nat do yield x + y)"
           , "yield sum (*, 3)"
           ])
         (SourceEvaluationFailure
           (OverloadError OverloadSkippedRequiredSlot))
     , programCase "a grouped singleton skip preserves a positional default"
         (unlines
-          [ "f := ({value? : Nat := 4} -> Nat yield value)"
+          [ "f := ({value? : Nat := 4} -> Nat do yield value)"
           , "yield f (*)"
           ])
         "4"
     , programFailureCase "function call does not treat an ordinal as skip"
         (unlines
-          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat yield base ^ exponent)"
+          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
           , "yield my_pow (..., 3)"
           ])
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programCase "empty argument uses the default"
         (unlines
-          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          [ "f := ({n? : Nat := 5} -> Nat do yield n + 1)"
           , "yield f ()"
           ])
         "6"
     , programCase "supplied argument overloads the default"
         (unlines
-          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          [ "f := ({n? : Nat := 5} -> Nat do yield n + 1)"
           , "yield f 8"
           ])
         "9"
     , programCase "partial named call preserves another default"
         (unlines
-          [ "f := ({a? : Nat := 3; b? : Nat := 4} -> Nat yield a + b)"
+          [ "f := ({a? : Nat := 3; b? : Nat := 4} -> Nat do yield a + b)"
           , "yield f (b : 8)"
           ])
         "11"
     , programCase "overload result can be passed directly"
         (unlines
-          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          [ "f := ({n? : Nat := 5} -> Nat do yield n + 1)"
           , "arguments := ({n? : Nat := 5} << 8)"
           , "yield f arguments"
           ])
         "9"
     , programCase "total annotation needs no explicit default"
         (unlines
-          [ "f := ({n? : 5} -> Nat yield n + 1)"
+          [ "f := ({n? : 5} -> Nat do yield n + 1)"
           , "yield f ()"
           ])
         "6"
@@ -233,7 +233,7 @@ functionBodySpellingTests :: TestTree
 functionBodySpellingTests =
   testGroup "function body spellings"
     [ programCase "yield without a block keyword"
-        "f := ({n? : Nat} -> Nat yield n + 1)\nyield f 4"
+        "f := ({n? : Nat} -> Nat do yield n + 1)\nyield f 4"
         "5"
     , programCase "do block"
         "f := ({n? : Nat} -> Nat do x := 1; yield n + x)\nyield f 4"

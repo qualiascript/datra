@@ -19,7 +19,7 @@ import Numeric.Natural (Natural)
 
 coalizeValue :: InterpretedValue -> InterpretedValue
 coalizeValue value
-  | CoalizationForm _ <- interpretedForm value = value
+  | valueIsCoalition value = value
   | otherwise =
       makeInterpretedValue
         (interpretedDatraType value)

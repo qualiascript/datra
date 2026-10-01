@@ -155,11 +155,15 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
   where
     collect key (EitherType a b) = collect key a <> collect key b
     collect key (MapSpecification body (SyntaxType templates signature)) =
+      rules key templates signature body
+    collect key (SyntaxType templates (MapSpecification body signature)) =
+      rules key templates signature body
+    collect _ _ = []
+    rules key templates signature body =
       [ SyntaxRule key template
           signature False Nothing body
       | template <- maybe [] id (syntaxTemplatesFromExpression templates)
       ]
-    collect _ _ = []
 declarationRules _ = []
 
 -- | The left operand of @%>@ is an ordinary inhabited list value. Rules must
@@ -174,6 +178,7 @@ syntaxTemplatesFromExpression (Extract templates) = templateValues templates
       (: []) <$> templateValue value
     templateValues value@StringTemplate {} =
       (: []) <$> templateValue value
+    templateValues (SyntaxBoundary value) = templateValues value
     templateValues (AtlasMap values)
       | not (null values) = traverse templateValue values
     templateValues _ = Nothing

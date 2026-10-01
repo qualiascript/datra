@@ -72,6 +72,9 @@ data Expression
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
   | MapSequence [Expression]
+  -- | A transient raw-parser boundary. Declarative syntax rewriting removes
+  -- it before the public/post-matching AST is exposed.
+  | SyntaxBoundary Expression
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
   | SuperEllipsisRangePlus Expression
@@ -301,6 +304,8 @@ normalizeExpression (ArgumentMap expressions) =
   normalizeSequence ArgumentMap expressions
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
+normalizeExpression (SyntaxBoundary expressionValue) =
+  normalizeExpression expressionValue
 normalizeExpression (MapExpansion left right) =
   normalizeExpansion
     (normalizeExpression left)
@@ -502,6 +507,7 @@ lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
 lower (ArgumentMap expressions) = Arguments (map lower expressions)
 lower (MapSequence expressions) = Sequential (map lower expressions)
+lower (SyntaxBoundary expressionValue) = lower expressionValue
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
   Range (lower lowerBound) (lower upperBound)
@@ -975,6 +981,7 @@ traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
+  SyntaxBoundary x -> SyntaxBoundary <$> visit x
   StripIdentifiers x -> StripIdentifiers <$> visit x
   Extract x -> Extract <$> visit x
   Plus x -> Plus <$> visit x

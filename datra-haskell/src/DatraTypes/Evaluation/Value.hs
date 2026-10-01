@@ -235,6 +235,7 @@ data EvaluatedAtlasMapFederationMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
   | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedDependentSumMember InterpretedValue
   | EvaluatedToStringMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember

@@ -443,7 +443,6 @@ charTypeValue = do
 -- language-level @fun@ operator; this helper only supplies the generic
 -- pointwise Atlas-map membership operation.
 listTypeValue :: String -> InterpretedValue -> InterpretedValue
-listTypeValue "Char" _ = stringTypeValue
 listTypeValue elementSource elementType = value
   where
     value = withDependentSumAccess project

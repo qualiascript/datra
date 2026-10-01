@@ -55,6 +55,7 @@ import Interpreting
   , matchesValueSyntaxHoleWith
   , moduleExportNames
   , moduleSyntaxRules
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
 import DatraLanguage.Diagnostics.Interpreter
   ( AtlasMapFederationOperation (..)
@@ -74,6 +75,7 @@ import DatraOrdinal
 import DatraLanguage.Diagnostics
   ( DatraError (DatraError)
   , Located (Located)
+  , locatedValue
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
@@ -90,7 +92,6 @@ import MapOperators.AccessOperator
       )
   )
 import Numeric.Natural (Natural)
-import Parsing (parseDatra)
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
   , SyntaxPiece (SyntaxHole, SyntaxLiteral)
@@ -113,7 +114,7 @@ import SuperEllipsisRange
   )
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
-import Test.Tasty.HUnit (assertBool, assertFailure, testCase)
+import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 
 main :: IO ()
 main = defaultMain testTree
@@ -488,7 +489,7 @@ expectValue label expressionValue check =
 
 expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
-  case parseDatra ("(" <> source <> "\n)") of
+  case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
       (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right expressionValue -> expectValue label expressionValue check
@@ -499,7 +500,7 @@ expectSourceRejection
   -> (InterpretingError -> Bool)
   -> IO ()
 expectSourceRejection label source matches =
-  case parseDatra ("(" <> source <> "\n)") of
+  case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
       (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right expressionValue ->
@@ -926,8 +927,8 @@ testEval :: IO ()
 testEval = do
   mapM_ (\(source, target, expected) ->
     expectInternalEvalValue source target $ \value ->
-      assert (source <> " decoded at " <> target)
-        (renderInterpretedValue value == expected))
+      assertEqual (source <> " decoded at " <> target)
+        expected (renderInterpretedValue value))
     [ ( "\"12\""
       , "Int"
       , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
@@ -998,7 +999,7 @@ expectInternalEvalRejection source target matches = do
 
 parseTestExpression :: String -> IO Expression
 parseTestExpression source =
-  case parseDatra ("(" <> source <> "\n)") of
+  case parseProductionSource ("(" <> source <> "\n)") of
     Left message -> fail
       ("test expression failed to parse: " <> parseFailureMessage message)
     Right expressionValue -> pure expressionValue
@@ -1059,6 +1060,7 @@ testBegin = do
     , ("begin a? : Nat := 6; b : 5 yield a + b", 11)
     , ("begin T : Nat; a : T := 6 yield a + 0", 6)
     , ("begin a : (begin b : 2 yield b + 1) yield a * 2", 6)
+    , ("begin a : 1 yield begin a : 2 yield a", 2)
     , ("begin yield 11", 11)
     , ("(begin a : 6 yield a) + 5", 11)
     , ("begin T : Int yield %(\"12\" ~> \"%(T)\")[1] + 0", 12)
@@ -1135,7 +1137,7 @@ testCanonicalTypes = do
 testPrograms :: IO ()
 testPrograms = do
   mapM_ (\(source, expected) ->
-    case parseDatra source of
+    case parseProductionSource source of
       Left message -> fail (parseFailureMessage message)
       Right expression -> expectValue source expression $ \value ->
         assert (source <> ": " <> renderInterpretedValue value)
@@ -1158,7 +1160,6 @@ testBeginRejections = do
     (\case IdentifierStringOverlap "a" -> True; _ -> False))
     [ "begin a : 1; a : 2 yield a"
     , "begin a : 1; let a : 2 yield a"
-    , "begin a : 1 yield begin a : 2 yield a"
     , "begin a? : Nat := 1; a : 2 yield a"
     ]
   mapM_ (\source -> expectSourceRejection source source
@@ -1497,10 +1498,9 @@ testStringTemplates = do
   expectSourceValue
       "extract treats percent Str as the whole-string hole"
       "%(\"%Str\" <~ \"hello world\")" $ \value ->
-    assert "Str identity extraction matches the holeless case"
-      ( renderInterpretedValue value
-          == "(\"hello world\"; \"hello world\" ~> Str)"
-      )
+    assertEqual "Str extraction retains its declarative canonical target"
+      "(\"hello world\"; \"hello world\" ~> >< (List Char))"
+      (renderInterpretedValue value)
   expectSourceValue
       "extract maps pointwise over a sequence of templates"
       "%(\"left\"; \"right\")" $ \value ->
@@ -1934,13 +1934,16 @@ testBooleansAndEither = do
       (AST.eitherType AST.naturalType StringType) $ \value ->
     assert "numeric and string Atlas maps are distinguishable"
       (renderInterpretedValue value == "from 0 up | Str")
-  assert "the same identifier does not distinguish overlapping alternatives"
-    (case interpretExpressionReason
-        (AST.eitherType
-          (AST.dependentIdentifierType "x" (natural 0))
-          (AST.dependentIdentifierType "x" AST.naturalType)) of
-      Left EitherAlternativesNotDistinct -> True
-      _ -> False)
+  case interpretExpressionReason
+      (AST.eitherType
+        (AST.dependentIdentifierType "x" (natural 0))
+        (AST.dependentIdentifierType "x" AST.naturalType)) of
+    Left failure -> assertEqual
+      "the same identifier does not distinguish overlapping alternatives"
+      EitherAlternativesNotDistinct failure
+    Right value -> assertFailure
+      ("overlapping alternatives unexpectedly produced "
+        <> renderInterpretedValue value)
   expectValue
       "Either source branches are included as federation members"
       (AST.subfederation
@@ -2484,7 +2487,7 @@ testRendering = do
           fail ("map construction was rejected: " <> show rejection)
         Right original ->
           let rendered = renderInterpretedValue original
-          in case parseDatra ("(" <> rendered <> "\n)") of
+          in case parseProductionSource ("(" <> rendered <> "\n)") of
               Left message ->
                 fail
                   ("canonical map did not parse: "
@@ -2504,6 +2507,11 @@ testRendering = do
                           == interpretedMapCardinality
                             (interpretedMap roundTripped)
                       )
+
+parseProductionSource :: String -> Either ParseFailure Expression
+parseProductionSource source =
+  locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
+    True [] "<input>" source
 
 testMaps :: IO ()
 testMaps = do

@@ -560,16 +560,16 @@ regressionTests = do
         (Extract (AsciiStringLiteral "handler $_Expr"))
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
-  assertParsed "inline external syntax adapters use an explicit yield"
-    "%\"handler $_Expr\" %> (Any -> Any) yield !$~\"datra.syntax.test\""
-    (MapSpecification syntaxAdapter syntaxAdapterType)
-  assertRejected "inline external syntax adapters require yield"
+  assertParsed "inline external syntax adapters use the external as their body"
     "%\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
-  assertParsed "typed external syntax adapters use an explicit yield"
-    "handler : %\"handler $_Expr\" %> (Any -> Any) := yield !$~\"datra.syntax.test\""
+    (MapSpecification syntaxAdapter syntaxAdapterType)
+  assertRejected "inline syntax adapters require a body"
+    "%\"handler $_Expr\" %> (Any -> Any)"
+  assertParsed "declared external syntax adapters use the function body form"
+    "handler := %\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
-  assertRejected "typed external syntax adapters require yield after assignment"
+  assertRejected "the obsolete typed syntax declaration form is rejected"
     "handler : %\"handler $_Expr\" %> (Any -> Any) := !$~\"datra.syntax.test\""
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique

@@ -10,7 +10,9 @@ module SyntaxRewriting
   , rewriteImplicitSyntax
   ) where
 
+import Control.Applicative ((<|>))
 import BlockScope (bindingNames)
+import Data.List (nub)
 import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
@@ -83,7 +85,7 @@ resolveImplicitBlock capture initial = go initial
         >>= \case
           Just expressionValue -> Right expressionValue
           Nothing -> case remaining of
-            [] -> Left MissingImplicitBlockResult
+            [] -> Right (Program rewrittenPrefix (AtlasMap []))
             entry : rest -> do
               (rewritten, trailing) <-
                 rewriteWithTail False capture environment entry rest
@@ -227,37 +229,74 @@ rewriteAfterBlock
   -> Either SyntaxRewriteFailure (Expression, [Expression])
 rewriteAfterBlock allowNestedContinuation capture environment value trailing =
   case value of
+    SyntaxBoundary inner -> do
+      rewritten <- rewriteStandalone capture environment inner
+      pure (rewritten, trailing)
+    MapSpecification source target
+      | canReceiveFunctionBody target -> do
+          let continuation = boundaryValue source : trailing
+          (candidate, remaining) <-
+            rewriteWithTail True capture environment target continuation
+          if length remaining < length continuation
+              && containsFunctionImplementation candidate
+            then finish candidate remaining
+            else finish value trailing
     IdentifierOperation name annotation given -> do
-      let selected = maybe annotation id given
-      (rewrittenValue, remaining) <-
-        if allowNestedContinuation
-          then rewriteWithTail True capture environment selected trailing
-          else rewriteDeclaredValue selected
-      let rewritten = case given of
-            Nothing -> IdentifierOperation name rewrittenValue Nothing
-            Just original
-              | original == annotation ->
-                  IdentifierOperation name rewrittenValue (Just rewrittenValue)
-              | otherwise -> IdentifierOperation name annotation
-                  (Just rewrittenValue)
-      finish rewritten remaining
+      let (rawAnnotation, rawGiven) =
+            normalizeTrailingAssignment annotation given
+      case rawGiven of
+        Nothing -> do
+          (rewrittenAnnotation, remaining) <-
+            rewriteDeclarationPart rawAnnotation
+          finish
+            (IdentifierOperation name rewrittenAnnotation Nothing)
+            remaining
+        Just original
+          | original == rawAnnotation -> do
+              (rewrittenValue, remaining) <-
+                rewriteDeclarationPart original
+              finish
+                (IdentifierOperation name rewrittenValue
+                  (Just rewrittenValue))
+                remaining
+          | otherwise -> do
+              rewrittenAnnotation <-
+                rewriteStandalone capture environment rawAnnotation
+              (rewrittenValue, remaining) <-
+                rewriteDeclarationPart original
+              finish
+                (IdentifierOperation name rewrittenAnnotation
+                  (Just rewrittenValue))
+                remaining
     IdentifierTemplateOperation parts annotation given -> do
-      let selected = maybe annotation id given
-      (rewrittenValue, remaining) <-
-        if allowNestedContinuation
-          then rewriteWithTail True capture environment selected trailing
-          else rewriteDeclaredValue selected
-      let rewritten = case given of
-            Nothing -> IdentifierTemplateOperation parts rewrittenValue Nothing
-            Just original
-              | original == annotation ->
-                  IdentifierTemplateOperation parts rewrittenValue
-                    (Just rewrittenValue)
-              | otherwise -> IdentifierTemplateOperation parts annotation
-                  (Just rewrittenValue)
-      finish rewritten remaining
+      let (rawAnnotation, rawGiven) =
+            normalizeTrailingAssignment annotation given
+      case rawGiven of
+        Nothing -> do
+          (rewrittenAnnotation, remaining) <-
+            rewriteDeclarationPart rawAnnotation
+          finish
+            (IdentifierTemplateOperation parts rewrittenAnnotation Nothing)
+            remaining
+        Just original
+          | original == rawAnnotation -> do
+              (rewrittenValue, remaining) <-
+                rewriteDeclarationPart original
+              finish
+                (IdentifierTemplateOperation parts rewrittenValue
+                  (Just rewrittenValue))
+                remaining
+          | otherwise -> do
+              rewrittenAnnotation <-
+                rewriteStandalone capture environment rawAnnotation
+              (rewrittenValue, remaining) <-
+                rewriteDeclarationPart original
+              finish
+                (IdentifierTemplateOperation parts rewrittenAnnotation
+                  (Just rewrittenValue))
+                remaining
     FunctionType domain codomain
-      | allowNestedContinuation -> do
+      | allowNestedContinuation || containsBlockStart environment codomain -> do
           rewrittenDomain <- rewriteStandalone capture environment domain
           (rewrittenCodomain, remaining) <-
             rewriteWithTail True capture environment codomain trailing
@@ -268,7 +307,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
             rewriteWithTail True capture environment signature trailing
           finish (Fun rewrittenSignature) remaining
     AtlasMap entries -> do
-      rewritten <- traverse (rewriteStandalone capture environment) entries
+      (rewritten, _) <- rewriteSequence capture environment entries
       finish (sequenceExpression rewritten) trailing
     ArgumentMap entries -> do
       rewritten <- traverse (rewriteStandalone capture environment) entries
@@ -290,6 +329,10 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       pure (Program rewrittenBindings rewrittenResult, trailing)
     _ -> finish value trailing
   where
+    rewriteDeclarationPart selected =
+      if allowNestedContinuation
+        then rewriteWithTail True capture environment selected trailing
+        else rewriteDeclaredValue selected
     rewriteDeclaredValue selected
       | canReceiveFunctionBody selected = do
           (candidate, remaining) <-
@@ -304,13 +347,27 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       pure (rewritten, trailing)
     finish expressionValue remaining = do
       attached <- attachTrailingFunctionBody capture environment expressionValue
-      matched <- matchOrdinarySyntax capture environment attached
+      (matched, afterSyntax) <-
+        matchOrdinarySyntaxWithTail capture environment attached remaining
       rewrittenChildren <- rewriteChildren capture environment matched
       final <- attachTrailingFunctionBody capture environment rewrittenChildren
-      pure (final, remaining)
+      pure (final, afterSyntax)
+    boundaryValue (SyntaxBoundary inner) = inner
+    boundaryValue inner = inner
+
+normalizeTrailingAssignment
+  :: Expression
+  -> Maybe Expression
+  -> (Expression, Maybe Expression)
+normalizeTrailingAssignment annotation Nothing =
+  case stripTrailingLiteralAssignment annotation of
+    (rewritten, given) : _ -> (rewritten, Just given)
+    [] -> (annotation, Nothing)
+normalizeTrailingAssignment annotation given = (annotation, given)
 
 canReceiveFunctionBody :: Expression -> Bool
 canReceiveFunctionBody FunctionType {} = True
+canReceiveFunctionBody SyntaxType {} = True
 canReceiveFunctionBody (Fun signature) = canReceiveFunctionBody signature
 canReceiveFunctionBody _ = False
 
@@ -378,6 +435,13 @@ trailingFunctionBody value =
       | not (null arguments)
       , body@FunctionBody {} <- last arguments ->
           Just (applicationFrom (function : init arguments), body)
+    (function, arguments)
+      | not (null arguments)
+      , Begin bindings result <- last arguments ->
+          Just
+            ( applicationFrom (function : init arguments)
+            , FunctionBody bindings result
+            )
     _ -> Nothing
 
 implementedFunction :: Expression -> Expression -> Maybe Expression
@@ -393,20 +457,223 @@ acceptsFunctionBody FunctionType {} = True
 acceptsFunctionBody SyntaxType {} = True
 acceptsFunctionBody _ = False
 
-matchOrdinarySyntax
+containsBlockStart :: RewriteEnvironment -> Expression -> Bool
+containsBlockStart environment value = any starts (rewriteRules environment)
+  where
+    starts rule = case blockShape rule of
+      Just (prefix, _) -> not (null (matchingStarts prefix (applicationPhrase value)))
+      Nothing -> False
+
+matchOrdinarySyntaxWithTail
   :: CaptureHole
   -> RewriteEnvironment
   -> Expression
-  -> Either SyntaxRewriteFailure Expression
-matchOrdinarySyntax capture environment value =
-  case matchSyntaxRulesWith captureInScope (rewriteRules environment) value of
-    Right rewritten -> Right rewritten
-    Left NoMatchingSyntaxTemplate -> Right value
-    Left failure -> Left (SyntaxRewriteMatchFailure failure)
+  -> [Expression]
+  -> Either SyntaxRewriteFailure (Expression, [Expression])
+matchOrdinarySyntaxWithTail capture environment value trailing =
+  firstRule (rewriteRules environment)
   where
     captureInScope kind captured =
       capture (rewriteStrictCaptures environment)
         (rewriteDeclarations environment) kind captured
+    firstRule [] = Right (value, trailing)
+    firstRule (rule : remaining)
+      | not (ruleLiteralsPresent rule (applicationFrom (value : trailing))) =
+          firstRule remaining
+      | otherwise =
+          firstExtent rule [0 .. length trailing] >>= \case
+            Just matched -> Right matched
+            Nothing -> firstRule remaining
+    firstExtent _ [] = Right Nothing
+    firstExtent rule (consumed : remaining) =
+      let combined = applicationFrom
+            (value : take consumed trailing)
+      in firstCandidate rule (syntaxCandidates combined) >>= \case
+        Just rewritten -> Right (Just
+          (rewritten, drop consumed trailing))
+        Nothing -> firstExtent rule remaining
+    firstCandidate _ [] = Right Nothing
+    firstCandidate rule (candidate : remaining) =
+      case matchSyntaxRulesWith captureInScope [rule] candidate of
+        Right rewritten -> Right (Just rewritten)
+        Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
+        Left failure -> Left (SyntaxRewriteMatchFailure failure)
+
+syntaxCandidates :: Expression -> [Expression]
+syntaxCandidates value = take 128 (value : contextualClosure [value] [value])
+  where
+    contextualClosure _ [] = []
+    contextualClosure seen frontier =
+      let fresh = filter (`notElem` seen)
+            (nub (concatMap contextualStep frontier))
+      in fresh <> contextualClosure (seen <> fresh) fresh
+
+    contextualStep current = directCandidates current
+      <> oneChildCandidates directCandidates current
+
+    directCandidates current =
+      signedArgumentCandidates current
+        <> declarationBoundaryCandidates current
+        <> rightApplicationCandidates current
+        <> leftBoundaryCandidates current
+        <> rightBoundaryCandidates current
+
+ruleLiteralsPresent :: SyntaxRule -> Expression -> Bool
+ruleLiteralsPresent rule value = all (`elem` identifiers)
+  [ literal
+  | SyntaxLiteral literal <- syntaxTemplatePieces (syntaxTemplate rule)
+  ]
+  where
+    identifiers = collect value
+    collect expressionValue = case expressionValue of
+      IdentifierReference (IdentifierString name) -> name : nested
+      _ -> nested
+      where
+        nested = concatMap collect (expressionChildren expressionValue)
+
+data OneChild a = OneChild a [a]
+
+instance Functor OneChild where
+  fmap function (OneChild original changed) =
+    OneChild (function original) (map function changed)
+
+instance Applicative OneChild where
+  pure value = OneChild value []
+  OneChild originalFunction changedFunctions
+      <*> OneChild originalValue changedValues =
+    OneChild
+      (originalFunction originalValue)
+      ( map ($ originalValue) changedFunctions
+          <> map originalFunction changedValues
+      )
+
+oneChildCandidates
+  :: (Expression -> [Expression])
+  -> Expression
+  -> [Expression]
+oneChildCandidates candidates value = changed
+  where
+    OneChild _ changed = traverseExpressionChildren
+      (\child -> OneChild child (candidates child)) value
+
+-- Provisional infix reassociation can leave a source-adjacent phrase on the
+-- right of an application. Promote that phrase back into the enclosing
+-- application spine so later template literals remain visible. An explicit
+-- parenthesized argument is still wrapped in 'SyntaxBoundary' at this stage
+-- and therefore cannot be flattened here.
+rightApplicationCandidates :: Expression -> [Expression]
+rightApplicationCandidates value = case value of
+  FunctionApplication function argument@FunctionApplication {} ->
+    [applicationFrom (applicationPhrase function <> applicationPhrase argument)]
+  _ -> []
+
+-- Once a literal syntax head has been read as an ordinary operand, a written
+-- signed argument is provisionally represented as binary addition or
+-- subtraction. Re-form that first right-hand phrase member as the unary value
+-- the template hole receives; matching the declaration still decides whether
+-- this interpretation is valid.
+signedArgumentCandidates :: Expression -> [Expression]
+signedArgumentCandidates value = binarySign <> embeddedSigns
+  where
+    binarySign = case value of
+      Addition left right -> withSign Plus left right
+      Subtraction left right -> withSign Minus left right
+      _ -> []
+    withSign sign left right = case applicationPhrase right of
+      first : remaining ->
+        [applicationFrom
+          (applicationPhrase left <> (sign first : remaining))]
+      [] -> []
+    phrase = applicationPhrase value
+    embeddedSigns =
+      [ applicationFrom (before <> (sign first : rest) <> after)
+      | (before, current, after) <- contexts phrase
+      , (sign, operand) <- case current of
+          Plus inner -> [(Plus, inner)]
+          Minus inner -> [(Minus, inner)]
+          _ -> []
+      , first : rest <- [applicationPhrase operand]
+      , not (null rest)
+      ]
+    contexts [] = []
+    contexts (current : after) = ([], current, after) :
+      [ (current : before, nested, remaining)
+      | (before, nested, remaining) <- contexts after
+      ]
+
+-- The neutral reader associates a trailing assignment with the final literal
+-- identifier in an annotation.  A declared syntax rule can prove that the
+-- identifier belongs to the annotation instead: in @a : from 0 up := 2@,
+-- @up@ is the final literal of @from $Int up@ and the assignment therefore
+-- belongs to @a@.  Re-form that boundary as a candidate; the template matcher
+-- still has to accept the stripped annotation, so this does not reserve any
+-- particular literal or syntax shape.
+declarationBoundaryCandidates :: Expression -> [Expression]
+declarationBoundaryCandidates value = case value of
+  IdentifierOperation name annotation Nothing ->
+    [ IdentifierOperation name rewritten (Just given)
+    | (rewritten, given) <- stripTrailingLiteralAssignment annotation
+    ]
+  IdentifierTemplateOperation parts annotation Nothing ->
+    [ IdentifierTemplateOperation parts rewritten (Just given)
+    | (rewritten, given) <- stripTrailingLiteralAssignment annotation
+    ]
+  _ -> []
+
+stripTrailingLiteralAssignment
+  :: Expression
+  -> [(Expression, Expression)]
+stripTrailingLiteralAssignment value = case value of
+  FunctionApplication function
+      (IdentifierOperation name annotation (Just given))
+    | annotation == given ->
+        [ ( FunctionApplication function (IdentifierReference name)
+          , given
+          )
+        ]
+  _ -> []
+
+-- A declarative template may begin inside the provisional left operand of an
+-- operator tree while its final hole extends to the enclosing expression
+-- boundary. Preserve the written prefix and move the remaining operator
+-- context into that final capture. Explicit container boundaries never reach
+-- this function, so reassociation remains local to one parsed expression.
+leftBoundaryCandidates :: Expression -> [Expression]
+leftBoundaryCandidates = descend id
+  where
+    descend wrap current =
+      case leftInfixContext current of
+        Just (left, rebuild) ->
+          reassociate (wrap . rebuild) left
+            <> descend (wrap . rebuild) left
+        Nothing -> []
+    reassociate wrap current =
+      let phrase = applicationPhrase current
+      in [ applicationFrom (prefix <> [wrap (applicationFrom suffix)])
+         | position <- [1 .. length phrase - 1]
+         , let (prefix, suffix) = splitAt position phrase
+         ]
+
+-- Conversely, a hole-led infix template such as @$_Expr of $_Expr@ may begin
+-- in the provisional right operand. Fold everything preceding its literal
+-- back into the first capture, which gives declarative word operators their
+-- precedence without teaching the parser their names.
+rightBoundaryCandidates :: Expression -> [Expression]
+rightBoundaryCandidates = descend id
+  where
+    descend wrap current =
+      case rightInfixContext current of
+        Just (right, rebuild) ->
+          reassociate (wrap . rebuild) right
+            <> descend (wrap . rebuild) right
+        Nothing -> []
+    reassociate wrap current =
+      let phrase = applicationPhrase current
+      in [ applicationFrom
+            (wrap (applicationFrom prefix) : suffix)
+         | position <- [1 .. length phrase - 1]
+         , let (prefix, suffix) = splitAt position phrase
+         ]
 
 matchEmbeddedBlock
   :: CaptureHole
@@ -425,10 +692,16 @@ matchEmbeddedBlock capture environment = matchWithResult id
         ]
       case direct of
         Just result -> Right (Just result)
-        Nothing -> case leftInfixContext value of
-          Just (left, rebuildResult) ->
-            matchWithResult (wrapResult . rebuildResult) left trailing
-          Nothing -> Right Nothing
+        Nothing -> case value of
+          MapSpecification (SyntaxBoundary source) target ->
+            matchWithResult id source trailing >>= \case
+              Just (rewritten, remaining) -> Right (Just
+                (wrapResult (MapSpecification rewritten target), remaining))
+              Nothing -> Right Nothing
+          _ -> case leftInfixContext value of
+            Just (left, rebuildResult) ->
+              matchWithResult (wrapResult . rebuildResult) left trailing
+            Nothing -> Right Nothing
 
     firstSuccessful [] = Right Nothing
     firstSuccessful (candidate : rest) = do
@@ -478,15 +751,12 @@ leftInfixContext value = case value of
   MaybeThen left right -> Just (left, (`MaybeThen` right))
   Addition left right -> Just (left, (`Addition` right))
   Subtraction left right -> Just (left, (`Subtraction` right))
-  Subfederation left right -> Just (left, (`Subfederation` right))
   Equality left right -> Just (left, (`Equality` right))
   Inequality left right -> Just (left, (`Inequality` right))
   LessThan left right -> Just (left, (`LessThan` right))
   LessThanOrEqual left right -> Just (left, (`LessThanOrEqual` right))
   GreaterThan left right -> Just (left, (`GreaterThan` right))
   GreaterThanOrEqual left right -> Just (left, (`GreaterThanOrEqual` right))
-  BooleanAnd left right -> Just (left, (`BooleanAnd` right))
-  BooleanOr left right -> Just (left, (`BooleanOr` right))
   Multiplication left right -> Just (left, (`Multiplication` right))
   Exponentiation left right -> Just (left, (`Exponentiation` right))
   MapConcatenation left right -> Just (left, (`MapConcatenation` right))
@@ -494,10 +764,31 @@ leftInfixContext value = case value of
   MapSpecification left right -> Just (left, (`MapSpecification` right))
   Overload left right -> Just (left, (`Overload` right))
   SafeOverload left right -> Just (left, (`SafeOverload` right))
-  MapExpansion left right -> Just (left, (`MapExpansion` right))
   SuperEllipsisRange left right -> Just (left, (`SuperEllipsisRange` right))
-  SyntaxType left right -> Just (left, (`SyntaxType` right))
-  FunctionType left right -> Just (left, (`FunctionType` right))
+  _ -> Nothing
+
+rightInfixContext
+  :: Expression
+  -> Maybe (Expression, Expression -> Expression)
+rightInfixContext value = case value of
+  EitherType left right -> Just (right, EitherType left)
+  MaybeThen left right -> Just (right, MaybeThen left)
+  Addition left right -> Just (right, Addition left)
+  Subtraction left right -> Just (right, Subtraction left)
+  Equality left right -> Just (right, Equality left)
+  Inequality left right -> Just (right, Inequality left)
+  LessThan left right -> Just (right, LessThan left)
+  LessThanOrEqual left right -> Just (right, LessThanOrEqual left)
+  GreaterThan left right -> Just (right, GreaterThan left)
+  GreaterThanOrEqual left right -> Just (right, GreaterThanOrEqual left)
+  Multiplication left right -> Just (right, Multiplication left)
+  Exponentiation left right -> Just (right, Exponentiation left)
+  MapConcatenation left right -> Just (right, MapConcatenation left)
+  MapAccess left right -> Just (right, MapAccess left)
+  MapSpecification left right -> Just (right, MapSpecification left)
+  Overload left right -> Just (right, Overload left)
+  SafeOverload left right -> Just (right, SafeOverload left)
+  SuperEllipsisRange left right -> Just (right, SuperEllipsisRange left)
   _ -> Nothing
 
 blockShape :: SyntaxRule -> Maybe ([String], String)
@@ -570,26 +861,85 @@ splitAtDelimiter literal = go []
   where
     go _ [] = Nothing
     go reversed (value : remaining) =
-      case stripLeadingLiteral literal value of
-        Just suffix -> Just (reverse reversed, suffix <> remaining)
+      case splitAtLiteral literal value of
+        Just (before, suffix) -> Just
+          (reverse reversed <> maybe [] (: []) before, suffix <> remaining)
         Nothing -> go (value : reversed) remaining
 
--- A delimiter begins a source expression even when the neutral reader has
--- already folded a following symbolic infix operator around it. Recovering
--- that left edge keeps block matching independent of the old operator
--- precedence tree; the operator itself remains around the captured result and
--- is interpreted only after the declarative syntax has been expanded.
-stripLeadingLiteral :: String -> Expression -> Maybe [Expression]
-stripLeadingLiteral literal value =
-  case applicationSpine value of
-    (IdentifierReference (IdentifierString name), arguments)
-      | name == literal -> Just arguments
-    _ -> do
-      (left, rebuild) <- leftInfixContext value
-      suffix <- stripLeadingLiteral literal left
-      case suffix of
-        [] -> Nothing
-        values -> Just [rebuild (applicationFrom values)]
+-- The neutral reader may place a template delimiter inside the right edge of
+-- the AST immediately before it. For example, @a : 5 yield a + 1@ initially
+-- has @yield@ inside the annotation of @a@. Split that source-order boundary
+-- structurally: retain the declaration before the delimiter and rebuild the
+-- provisional operator context around the expression after it.
+splitAtLiteral
+  :: String
+  -> Expression
+  -> Maybe (Maybe Expression, [Expression])
+splitAtLiteral literal value =
+  directApplicationSplit literal value
+    <|> splitInfix
+    <|> splitDeclaration
+    <|> splitOptional
+  where
+    splitInfix = do
+      (left, rebuildRight) <- leftInfixContext value
+      case splitAtLiteral literal left of
+        Just (before, suffix) -> Just
+          (before, [rebuildRight (applicationFrom suffix)])
+        Nothing -> do
+          (right, rebuildLeft) <- rightInfixContext value
+          (before, suffix) <- splitAtLiteral literal right
+          pure
+            ( rebuildLeft <$> before
+            , suffix
+            )
+
+    splitDeclaration = case value of
+      IdentifierOperation name annotation given ->
+        splitIdentifierOperation IdentifierOperation name annotation given
+      IdentifierTemplateOperation parts annotation given ->
+        splitIdentifierOperation IdentifierTemplateOperation
+          parts annotation given
+      _ -> Nothing
+
+    splitIdentifierOperation constructor name annotation given =
+      case given >>= splitAtLiteral literal of
+        Just (before, suffix) ->
+          let rewrittenAnnotation = case given of
+                Just original
+                  | original == annotation ->
+                      maybe annotation id before
+                _ -> annotation
+          in Just
+            ( Just (constructor name rewrittenAnnotation before)
+            , suffix
+            )
+        Nothing -> do
+          (before, suffix) <- splitAtLiteral literal annotation
+          pure
+            ( (\beforeAnnotation ->
+                constructor name beforeAnnotation given) <$> before
+            , suffix
+            )
+
+    splitOptional = case value of
+      OptionalType inner -> do
+        (before, suffix) <- splitAtLiteral literal inner
+        pure (OptionalType <$> before, suffix)
+      _ -> Nothing
+
+directApplicationSplit
+  :: String
+  -> Expression
+  -> Maybe (Maybe Expression, [Expression])
+directApplicationSplit literal value =
+  case break (isLiteral literal) (applicationPhrase value) of
+    (_, []) -> Nothing
+    (before, _ : after) -> Just (applicationFromMaybe before, after)
+  where
+    isLiteral expected expressionValue = case expressionValue of
+      IdentifierReference (IdentifierString actual) -> actual == expected
+      _ -> False
 
 introduceDeclaration :: RewriteEnvironment -> Expression -> RewriteEnvironment
 introduceDeclaration environment entry = environment
