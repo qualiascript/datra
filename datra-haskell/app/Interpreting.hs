@@ -535,6 +535,7 @@ type Scope = [(String, Binding)]
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
+  | ImplicitBinding InterpretedValue
   | SelfBinding Bool (Either InterpretingError InterpretedValue)
   | QualifiedBinding String Binding
   | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
@@ -542,6 +543,33 @@ data Binding
   | ModuleCatalog [(String, ModuleSource)]
   | ScopeMembers [String]
   | CanonicalNames [(String, String)]
+
+-- Implicit receiver bindings belong to their enclosing construct. A nested
+-- declaration may alias them, but cannot replace the name through which the
+-- construct exposes them.
+bindingAllowsShadowing :: Binding -> Bool
+bindingAllowsShadowing binding =
+  case binding of
+    ImplicitBinding {} -> False
+    SelfBinding {} -> False
+    ScopeMembers {} -> False
+    QualifiedBinding _ target -> bindingAllowsShadowing target
+    _ -> True
+
+rejectProtectedBindingNames
+  :: Scope -> [Expression] -> Either InterpretingError ()
+rejectProtectedBindingNames protected entries =
+  case
+      [ name
+      | declaration <- definitions
+      , let name = declarationName declaration
+      , Just binding <- [lookup name protected]
+      , not (bindingAllowsShadowing binding)
+      ] of
+    name : _ -> Left (NonShadowableIdentifier name)
+    [] -> Right ()
+  where
+    (definitions, _) = foldMap (bindingImports False) entries
 
 data RecursivePrefix
   = RecursiveConcatenation Expression
@@ -699,7 +727,7 @@ interpretNormalizedExpression scope resolving expressionValue =
         CanonicalAssignment "Nothing" _ _ -> pure nothingValue
         CanonicalAssignment "Just" _ _ -> do
           result <- evalInScope
-            (("it", EvaluatedBinding optionalResult) : scope)
+            (("it", ImplicitBinding optionalResult) : scope)
             resolving
             branch
           liftMaybeResult result
@@ -1072,6 +1100,7 @@ resolveIdentifier scope resolving name =
 
     resolve (QualifiedBinding _ binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
+    resolve (ImplicitBinding value) = Right value
     resolve (SelfBinding _ value) = value
     resolve (RetainedBinding _ annotation _ value) =
       Right (resolveInferredEitherAlias annotation value)
@@ -1108,10 +1137,33 @@ evaluateBindingDefinition captured resolving name annotation expressionValue
           evalInScope captured (resolutionKey : resolving) typeExpression
             >>= requireCanonicalTypeAnnotation
       resolveInferredEitherAlias annotation
-        <$> evalInScope captured (resolutionKey : resolving) expressionValue
+        <$> evaluateDefinition
   where
     resolutionKey = bindingKey name expressionValue
     resolutionName = takeWhile (/= ':')
+    evaluateDefinition =
+      case expressionValue of
+        IdentifierReference (IdentifierString reference)
+          | Just ScopeMembers {} <- lookup reference captured ->
+              declarationMap
+                (visibleScopeMembers reference captured)
+                (resolveIdentifier captured (resolutionKey : resolving))
+        _ -> evalInScope captured (resolutionKey : resolving) expressionValue
+
+-- A declaration-scope reference is a first-class value. When it is aliased,
+-- preserve the lexical snapshot at that declaration rather than exposing
+-- declarations that occur later in the same block. The binding constructor,
+-- not a particular identifier spelling, identifies this implicit reference.
+visibleScopeMembers :: String -> Scope -> [String]
+visibleScopeMembers reference scope =
+  case break isReferencedScope scope of
+    (visible, (_, ScopeMembers names) : _) ->
+      let visibleNames = map fst visible
+      in [name | name <- names, name `elem` visibleNames]
+    _ -> []
+  where
+    isReferencedScope (name, ScopeMembers {}) = name == reference
+    isReferencedScope _ = False
 
 resolveInferredEitherAlias
   :: Maybe Expression
@@ -1213,8 +1265,7 @@ scopeBuilder enclosing entries = do
   outer <- foldM importModule enclosing
     [ imported | Just imported <- map importInvocation entries ]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
-  _ <- foldM checkName [] definitions
-  let names = map declarationName definitions
+      names = map declarationName definitions
       blockOuter = case lookup "this" outer of
         Just SelfBinding {} -> outer
         _ -> ("this", ScopeMembers names) : outer
@@ -1229,6 +1280,8 @@ scopeBuilder enclosing entries = do
             (name, RetainedBinding captured annotation expressionValue value)
           Nothing ->
             (name, DeferredBinding captured annotation expressionValue)
+  rejectProtectedBindingNames blockOuter entries
+  _ <- foldM checkName [] definitions
   pure
     ( rebuild
     , [declarationName value | value <- definitions, declarationIsLet value]
@@ -1817,10 +1870,17 @@ createFunction captured resolving explicit bindings result = do
   schema <- compileParameters evaluate domainExpression
   let parameters = parameterBindings schema
       names = map fst parameters
+      protectedScope = ("it", ImplicitBinding anyTypeValue) : captured
   case [ name
        | name <- names
-       , name == "it"
-          || name `elem` map fst captured
+       , Just binding <- [lookup name protectedScope]
+       , not (bindingAllowsShadowing binding)
+       ] of
+    name : _ -> Left (NonShadowableIdentifier name)
+    [] -> pure ()
+  case [ name
+       | name <- names
+       , name `elem` map fst captured
           || length (filter (== name) names) > 1
        ] of
     name : _ -> Left (IdentifierStringOverlap name)
@@ -1834,6 +1894,9 @@ createFunction captured resolving explicit bindings result = do
       let erased = listTypeValue (renderInterpretedValue erasedElement) erasedElement
       pure (withIdentifierErasureType erased (argumentSchemaBodyDomain schema))
     Nothing -> pure (argumentSchemaBodyDomain schema)
+  rejectProtectedBindingNames
+    (("it", ImplicitBinding bodyInput) : captured)
+    bindings
   let (explicitSelf, selfIncludesDependencies) = case lookup "this" captured of
         Just (SelfBinding includesDependencies _) -> (True, includesDependencies)
         _ -> (False, False)
@@ -1885,7 +1948,7 @@ createFunction captured resolving explicit bindings result = do
         argumentValues <- parameterValues schema argument
         (imported, dependentScope) <- dependentBindings argument
         let localScope =
-              ("it", EvaluatedBinding argumentValues)
+              ("it", ImplicitBinding argumentValues)
                 : [(name, EvaluatedBinding value) | (name,value) <- imported]
                 <> captured
         bodyScope <- importScope localScope [] bindings

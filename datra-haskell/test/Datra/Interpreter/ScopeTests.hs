@@ -2,7 +2,10 @@ module Datra.Interpreter.ScopeTests (scopeTests) where
 
 import Datra.TestSupport
 import DatraTypes
-  ( InterpretingError (IdentifierStringOverlap, UnknownIdentifier)
+  ( InterpretingError
+      ( NonShadowableIdentifier
+      , UnknownIdentifier
+      )
   )
 import Test.Tasty (TestTree, testGroup)
 
@@ -25,6 +28,18 @@ scopeTests =
         , programCase "implicit begin sees earlier declarations"
             "a := 1\nb := a + 1\nyield b"
             "2"
+        , expressionCase "explicit begin aliases this"
+            "begin value := 4; my_this := this; yield my_this.value[1]"
+            "4 <~ begin value := 4; my_this := this; yield my_this.value[1]"
+        , programCase "implicit begin aliases this"
+            "value := 4\nmy_this := this\nyield my_this.value[1]"
+            "4"
+        , expressionFailureCase "explicit begin cannot shadow this"
+            "begin this := 23 yield this"
+            (SourceEvaluationFailure (NonShadowableIdentifier "this"))
+        , programFailureCase "implicit begin cannot shadow this"
+            "this := 23\nyield this"
+            (SourceEvaluationFailure (NonShadowableIdentifier "this"))
         , expressionFailureCase "explicit begin cannot see later declarations"
             "begin a := b; b := 1 yield a"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
@@ -38,13 +53,13 @@ scopeTests =
             "my_val := begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
             "5"
         , programCase "identifier specifies a begin block explicitly"
-            "my_val := 5 ~> begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
+            "my_val : 5 := begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
             "5"
         , programCase "optional identifier specifies a begin block"
-            "my_val? := 5 ~> begin\n a := 2\n b := 3\nyield a + b\nyield my_val"
+            "my_val? : 5 := (begin\n a := 2\n b := 3\nyield a + b)\nyield my_val"
             "5"
         , programCase "begin-block binding supports a federation annotation"
-            "my_val := Int ~> begin\n a := 2\n b := 3\nyield a + b\nyield my_val of Int"
+            "my_val : Int := begin\n a := 2\n b := 3\nyield a + b\nyield my_val of Int"
             "true"
         ]
     , testGroup "let block declarations"
@@ -65,12 +80,18 @@ scopeTests =
         , programCase "inferred do sees earlier declarations"
             "f := (do a := 1; b := a + 1; yield b)\nyield f ()"
             "2"
-        , programFailureCase "inferred do cannot see later declarations"
+        , programCase "inferred do treats a prior reference as a parameter"
             "f := (do a := b + 1; b := 1; yield a)\nyield f 5"
-            (SourceEvaluationFailure (IdentifierStringOverlap "b"))
+            "6"
         , programCase "let declarations are visible throughout do"
             "f := (() -> Int do a := x + 1; let x := 10; yield a)\nyield f ()"
             "11"
+        , programFailureCase "function input binding cannot be shadowed"
+            "f := (() -> Int do it := 23; yield it)\nyield f ()"
+            (SourceEvaluationFailure (NonShadowableIdentifier "it"))
+        , programFailureCase "recursive self binding cannot be shadowed"
+            "yield fun (() -> Int do this := 23; yield this)"
+            (SourceEvaluationFailure (NonShadowableIdentifier "this"))
         ]
     , testGroup "condition-local declarations"
         [ programCase "named comparison operand is available in a branch"
@@ -85,6 +106,12 @@ scopeTests =
         , programCase "and skips a condition-local declaration on its right"
             "yield if false and (unused : missing) then unused else 2"
             "2"
+        , programCase "Maybe branch aliases it"
+            "yield (1; 2; 3)! ?? begin my_it := it; yield (val my_it)[0]"
+            "Just : 1"
+        , programFailureCase "Maybe branch binding cannot be shadowed"
+            "yield (1; 2; 3)! ?? begin it := 23; yield it"
+            (SourceEvaluationFailure (NonShadowableIdentifier "it"))
         ]
     , testGroup "map members"
         [ programCase "quoted identifier remains valid in a map"
@@ -115,7 +142,7 @@ scopeTests =
             "begin {a : 1; b : 2} yield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         , expressionFailureCase "specified map members do not become block declarations"
-            "begin (a : Nat) ~> (a : Int) yield a"
+            "begin\n ((a : Nat) ~> (a : Int))\nyield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         ]
     ]

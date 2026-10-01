@@ -146,6 +146,10 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "assertion failed" []
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
+    NonShadowableIdentifier name ->
+      LocalizedMessage
+        "identifier cannot shadow a protected binding"
+        ["identifier: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identifier is not imported in this scope" ["identifier: " <> name]
     PrivateParameterCannotBeOptional name ->

@@ -255,14 +255,14 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       case rawGiven of
         Nothing -> do
           (rewrittenAnnotation, remaining) <-
-            rewriteDeclarationPart rawAnnotation
+            rewriteDeclarationPart (Just name) rawAnnotation
           finish
             (IdentifierOperation name rewrittenAnnotation Nothing)
             remaining
         Just original
           | original == rawAnnotation -> do
               (rewrittenValue, remaining) <-
-                rewriteDeclarationPart original
+                rewriteDeclarationPart (Just name) original
               finish
                 (IdentifierOperation name rewrittenValue
                   (Just rewrittenValue))
@@ -271,7 +271,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
               rewrittenAnnotation <-
                 rewriteStandalone capture environment rawAnnotation
               (rewrittenValue, remaining) <-
-                rewriteDeclarationPart original
+                rewriteDeclarationPart (Just name) original
               finish
                 (IdentifierOperation name rewrittenAnnotation
                   (Just rewrittenValue))
@@ -282,14 +282,14 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       case rawGiven of
         Nothing -> do
           (rewrittenAnnotation, remaining) <-
-            rewriteDeclarationPart rawAnnotation
+            rewriteDeclarationPart Nothing rawAnnotation
           finish
             (IdentifierTemplateOperation parts rewrittenAnnotation Nothing)
             remaining
         Just original
           | original == rawAnnotation -> do
               (rewrittenValue, remaining) <-
-                rewriteDeclarationPart original
+                rewriteDeclarationPart Nothing original
               finish
                 (IdentifierTemplateOperation parts rewrittenValue
                   (Just rewrittenValue))
@@ -298,7 +298,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
               rewrittenAnnotation <-
                 rewriteStandalone capture environment rawAnnotation
               (rewrittenValue, remaining) <-
-                rewriteDeclarationPart original
+                rewriteDeclarationPart Nothing original
               finish
                 (IdentifierTemplateOperation parts rewrittenAnnotation
                   (Just rewrittenValue))
@@ -370,19 +370,27 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       pure (Program rewrittenBindings rewrittenResult, trailing)
     _ -> finish value trailing
   where
-    rewriteDeclarationPart selected =
+    rewriteDeclarationPart declaredName selected =
       if allowNestedContinuation
         then rewriteWithTail True capture environment selected trailing
-        else rewriteDeclaredValue selected
-    rewriteDeclaredValue selected
-      | canReceiveFunctionBody selected = do
+        else rewriteDeclaredValue declaredName selected
+    rewriteDeclaredValue declaredName selected
+      | canReceiveFunctionBody selected
+          || ( not (directSelfAlias declaredName selected)
+                && startsBlockAtHead environment selected
+             ) = do
           (candidate, remaining) <-
             rewriteWithTail True capture environment selected trailing
           if length remaining < length trailing
-              && containsFunctionImplementation candidate
+              && ( containsFunctionImplementation candidate
+                    || startsBlockAtHead environment selected
+                 )
             then pure (candidate, remaining)
             else standalone selected
       | otherwise = standalone selected
+    directSelfAlias (Just declared) (IdentifierReference referenced) =
+      declared == referenced
+    directSelfAlias _ _ = False
     standalone selected = do
       rewritten <- rewriteStandalone capture environment selected
       pure (rewritten, trailing)
@@ -585,6 +593,15 @@ containsBlockStart environment value = any containsStart
     starts expressionValue rule = case blockShape rule of
       Just (prefix, _) -> not (null
         (matchingStarts prefix (applicationPhrase expressionValue)))
+      Nothing -> False
+
+startsBlockAtHead :: RewriteEnvironment -> Expression -> Bool
+startsBlockAtHead environment expressionValue = any starts
+  (rewriteRules environment)
+  where
+    starts rule = case blockShape rule of
+      Just (prefix, _) -> 0 `elem`
+        matchingStarts prefix (applicationPhrase expressionValue)
       Nothing -> False
 
 matchOrdinarySyntaxWithTail

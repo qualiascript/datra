@@ -144,6 +144,10 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
+    NonShadowableIdentifier name ->
+      LocalizedMessage
+        "identificatorul nu poate ascunde o legare protejată"
+        ["identificator: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identificatorul nu este importat în acest domeniu" ["identificator: " <> name]
     PrivateParameterCannotBeOptional name ->

@@ -19,6 +19,19 @@ import Test.Tasty.HUnit
 functionClosureTests :: TestTree
 functionClosureTests = testGroup "canonical function reconstruction"
   [ canonicalRoundTrip "recursive factorial" factorial "5" "120"
+  , canonicalRoundTrip "recursive self can be aliased"
+      ( "yield fun ({n? : Int} -> Int do "
+          <> "my_this := this; "
+          <> "yield if n = 0 then 1 else n * my_this (n - 1))"
+      )
+      "5"
+      "120"
+  , canonicalRoundTrip "function input can be aliased"
+      ( "yield ({n? : Nat} -> Nat do "
+          <> "my_it := it; yield val my_it)"
+      )
+      "7"
+      "7"
   , roundTrip "user local named _fun"
       "let factorial := ({n? : Int} -> Int do _fun : 0; yield if n = _fun then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"

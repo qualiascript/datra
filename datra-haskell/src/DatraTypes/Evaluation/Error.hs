@@ -140,6 +140,7 @@ data InterpretingError
   | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String
+  | NonShadowableIdentifier String
   | UnknownIdentifier String
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
