@@ -628,7 +628,13 @@ syntaxCandidates includeConcatenation rule value =
     then concatenationBoundaryCandidates rule value <> ordinary
     else ordinary
   where
-    ordinary = value : contextualClosure [value] [value]
+    -- Seed the search with every possible single deep rewrite, then combine
+    -- rewrites through local parent/child steps. Recomputing all descendant
+    -- rewrites at every frontier duplicates equivalent paths exponentially.
+    deepSeeds = filter (/= value)
+      (nub (oneDescendantCandidates directCandidates value))
+    initial = value : deepSeeds
+    ordinary = initial <> contextualClosure initial initial
 
     contextualClosure _ [] = []
     contextualClosure seen frontier =
@@ -637,7 +643,7 @@ syntaxCandidates includeConcatenation rule value =
       in fresh <> contextualClosure (seen <> fresh) fresh
 
     contextualStep current = directCandidates current
-      <> oneDescendantCandidates directCandidates current
+      <> oneChildCandidates directCandidates current
 
     directCandidates current =
       signedArgumentCandidates current

@@ -68,7 +68,11 @@ close mode depth ancestors occupied resolver self
     reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
-    (rewritten, collected) = runState (rewrite mode depth (rootText : reserved) active resolver [] expression) []
+    initiallyBound = ["this" | explicitSelf]
+    (rewritten, collected) = runState
+      (rewrite mode depth (rootText : reserved) active resolver
+        initiallyBound expression)
+      []
     definitions =
       [ Let (assigned name value)
       | (_, name, value) <- collected

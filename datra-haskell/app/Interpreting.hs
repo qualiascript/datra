@@ -127,14 +127,10 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
     includeStandardLibrary modules sourceName source = do
   (envelope, Located sourceSpan raw) <-
     parseDatraRawLocatedWithSourceName sourceName source
-  base <- Bifunctor.first interpretingParseFailure
-    (if includeStandardLibrary then defaultImportScope else Right [])
-  standardRules <- Bifunctor.first interpretingParseFailure
+  (base, standardRules) <- Bifunctor.first interpretingParseFailure
     (if includeStandardLibrary
-      then do
-        standard <- defaultModuleSource
-        moduleSyntaxRules standardLibraryFileName standard
-      else Right [])
+      then defaultModuleEnvironment
+      else Right ([], []))
   importInvocations <- sourceImportInvocations source
   let importedRules =
         [ (requested, rules)
@@ -356,11 +352,24 @@ interpretWithImportsInModeAndStandardLibrary
 
 
 defaultImportScope :: Either InterpretingError Scope
-defaultImportScope = do
+defaultImportScope = fst <$> defaultModuleEnvironment
+
+-- Parsing and evaluation consume two views of the same imported module.
+-- Build them from one module instance so syntax discovery cannot recursively
+-- instantiate Std independently of the scope used to evaluate those rules.
+defaultModuleEnvironment
+  :: Either InterpretingError (Scope, [SyntaxRule])
+defaultModuleEnvironment = do
   source <- defaultModuleSource
   let base = [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
-  importLoadedModule base True source
+  scope <- importLoadedModule base True source
+  namespace <- moduleName source
+  value <- case lookup namespace scope of
+    Just (ImportedBinding _ importedValue _) -> Right importedValue
+    _ -> Left (ModuleEvaluationFailed (ModuleNotLoaded standardLibraryFileName))
+  rules <- moduleSyntaxRulesFromValue standardLibraryFileName value
+  pure (scope, rules)
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -529,7 +538,7 @@ data Binding
   | SelfBinding Bool (Either InterpretingError InterpretedValue)
   | QualifiedBinding String Binding
   | RetainedBinding Scope (Maybe Expression) Expression InterpretedValue
-  | ImportedBinding FilePath InterpretedValue
+  | ImportedBinding FilePath InterpretedValue Scope
   | ModuleCatalog [(String, ModuleSource)]
   | ScopeMembers [String]
   | CanonicalNames [(String, String)]
@@ -752,8 +761,7 @@ interpretNormalizedExpression scope resolving expressionValue =
     WithBinding _ _ _ -> Left (DependentBinderOutsideContainer "with")
     ForBinding _ _ _ -> Left (DependentBinderOutsideContainer "for")
     InModule path body -> do
-      moduleSource <- lookupModule scope path
-      imported <- moduleScope moduleSource
+      imported <- lookupModuleDefinitionScope scope path
       evalInScope imported resolving body
     Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
     SyntaxType templates signature -> do
@@ -802,7 +810,7 @@ interpretNormalizedExpression scope resolving expressionValue =
     NamedAccess
         (IdentifierReference (IdentifierString namespace))
         (IdentifierString name)
-      | Just (ImportedBinding _ value) <- lookup namespace scope ->
+      | Just (ImportedBinding _ value _) <- lookup namespace scope ->
           case namedAccessValue value name of
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
@@ -1041,10 +1049,10 @@ rejectMixedDependentContainer container =
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
 resolveIdentifier scope resolving name =
-  case lookup name scope of
-    Just binding -> resolve binding
-    Nothing -> case canonicalAlias of
-      Just generated -> resolveIdentifier scope resolving generated
+  case canonicalAlias of
+    Just generated -> resolveIdentifier scope resolving generated
+    Nothing -> case lookup name scope of
+      Just binding -> resolve binding
       Nothing -> Left (UnknownIdentifier name)
   where
     canonicalAlias = unique exactAliases `orElse` unique qualifiedAliases
@@ -1067,39 +1075,54 @@ resolveIdentifier scope resolving name =
     resolve (SelfBinding _ value) = value
     resolve (RetainedBinding _ annotation _ value) =
       Right (resolveInferredEitherAlias annotation value)
-    resolve (ImportedBinding _ value) = Right value
+    resolve (ImportedBinding _ value _) = Right value
     resolve (ScopeMembers names) =
       declarationMap names (resolveIdentifier scope resolving)
     resolve CanonicalNames {} = Left (UnknownIdentifier name)
     resolve ModuleCatalog {} = Left (UnknownIdentifier name)
-    resolve (DeferredBinding captured annotation expressionValue)
-      | resolutionKey `elem` resolving =
-          case recursiveFunctionImplementation expressionValue of
-            Just implementation ->
-              evalInScope captured resolving implementation
-            Nothing -> Left (CyclicIdentifierReference
-              (reverse
-                (name : map resolutionName
-                  (takeWhile (/= resolutionKey) resolving))
-                <> [name]))
-      | otherwise = do
-          case annotation of
-            Nothing -> pure ()
-            Just typeExpression ->
-              evalInScope captured (resolutionKey : resolving) typeExpression
-                >>= requireCanonicalTypeAnnotation
-          resolveInferredEitherAlias annotation
-            <$> evalInScope captured (resolutionKey : resolving) expressionValue
-      where
-        resolutionKey = bindingKey name expressionValue
-        resolutionName = takeWhile (/= ':')
+    resolve (DeferredBinding captured annotation expressionValue) =
+      evaluateBindingDefinition
+        captured resolving name annotation expressionValue
 
-    resolveInferredEitherAlias Nothing value =
-      case stripOuterIdentifierType value of
-        Right underlying
-          | interpretedValueKind underlying == EitherValueKind -> underlying
-        _ -> value
-    resolveInferredEitherAlias (Just _) value = value
+evaluateBindingDefinition
+  :: Scope
+  -> [String]
+  -> String
+  -> Maybe Expression
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+evaluateBindingDefinition captured resolving name annotation expressionValue
+  | resolutionKey `elem` resolving =
+      case recursiveFunctionImplementation expressionValue of
+        Just implementation ->
+          evalInScope captured resolving implementation
+        Nothing -> Left (CyclicIdentifierReference
+          (reverse
+            (name : map resolutionName
+              (takeWhile (/= resolutionKey) resolving))
+            <> [name]))
+  | otherwise = do
+      case annotation of
+        Nothing -> pure ()
+        Just typeExpression ->
+          evalInScope captured (resolutionKey : resolving) typeExpression
+            >>= requireCanonicalTypeAnnotation
+      resolveInferredEitherAlias annotation
+        <$> evalInScope captured (resolutionKey : resolving) expressionValue
+  where
+    resolutionKey = bindingKey name expressionValue
+    resolutionName = takeWhile (/= ':')
+
+resolveInferredEitherAlias
+  :: Maybe Expression
+  -> InterpretedValue
+  -> InterpretedValue
+resolveInferredEitherAlias Nothing value =
+  case stripOuterIdentifierType value of
+    Right underlying
+      | interpretedValueKind underlying == EitherValueKind -> underlying
+    _ -> value
+resolveInferredEitherAlias (Just _) value = value
 
 -- A recursive let-bound function can be used while its public signature is
 -- being assembled. The unrefined implementation is the fixed-point seed;
@@ -1127,8 +1150,9 @@ recursiveFunctionImplementation expressionValue =
 -- the deferred definitions. Names are checked before evaluating any binding.
 importScope :: Scope -> [String] -> [Expression] -> Either InterpretingError Scope
 importScope enclosing resolving entries = do
-  (deferred, eagerNames, eagerEntries) <- declareScope enclosing entries
-  let forced =
+  (rebuild, eagerNames, eagerEntries) <- scopeBuilder enclosing entries
+  let deferred = rebuild []
+      forced =
         [ name
         | name <- eagerNames
         , maybe True (not . productiveRecursiveBinding name) (lookup name deferred)
@@ -1136,14 +1160,14 @@ importScope enclosing resolving entries = do
       (seeded, ordinary) = partition
         (maybe False bindingHasRecursiveFunctionSeed . (`lookup` deferred))
         forced
-  imported <- foldM retainLet deferred (seeded <> ordinary)
+      retainLet retained name = do
+        value <- resolveIdentifier (rebuild retained) resolving name
+        pure ((name, value) : retained)
+  retained <- foldM retainLet [] (seeded <> ordinary)
+  let imported = rebuild retained
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
-  where
-    retainLet current name = do
-      value <- resolveIdentifier current resolving name
-      pure (retainScopeValue name value current)
 
 bindingHasRecursiveFunctionSeed :: Binding -> Bool
 bindingHasRecursiveFunctionSeed binding =
@@ -1153,36 +1177,6 @@ bindingHasRecursiveFunctionSeed binding =
         Just _ -> True
         Nothing -> False
     Nothing -> False
-
--- Retaining a let value updates every deferred lexical snapshot in the
--- recursive scope. The rebuilt scopes are lazy immutable knots: later lets see
--- already evaluated peers while unresolved peers remain mutually recursive.
-retainScopeValue :: String -> InterpretedValue -> Scope -> Scope
-retainScopeValue retainedName retainedValue = map retainEntry
-  where
-    retainEntry (name, binding) = (name, retainBinding name binding)
-    retainBinding name binding = case binding of
-      DeferredBinding lexical annotation expressionValue
-        | name == retainedName ->
-            RetainedBinding
-              (retainScopeValue retainedName retainedValue lexical)
-              annotation
-              expressionValue
-              retainedValue
-        | otherwise ->
-            DeferredBinding
-              (retainScopeValue retainedName retainedValue lexical)
-              annotation
-              expressionValue
-      RetainedBinding lexical annotation expressionValue value ->
-        RetainedBinding
-          (retainScopeValue retainedName retainedValue lexical)
-          annotation
-          expressionValue
-          value
-      QualifiedBinding origin nested ->
-        QualifiedBinding origin (retainBinding name nested)
-      other -> other
 
 productiveRecursiveBinding :: String -> Binding -> Bool
 productiveRecursiveBinding name binding =
@@ -1202,19 +1196,44 @@ declareScope
   -> [Expression]
   -> Either InterpretingError (Scope, [String], [Expression])
 declareScope enclosing entries = do
+  (rebuild, eagerNames, eagerEntries) <- scopeBuilder enclosing entries
+  pure (rebuild [], eagerNames, eagerEntries)
+
+-- Rebuild a declaration scope from its finite source declarations whenever an
+-- eager let becomes available.  Recursive lets make their captured scopes
+-- cyclic; recursively walking those scopes to replace a binding can therefore
+-- black-hole.  Re-running 'buildScopeBindings' ties one fresh, shared knot and
+-- places retained values into every lexical snapshot without traversing it.
+scopeBuilder
+  :: Scope
+  -> [Expression]
+  -> Either InterpretingError
+      ([(String, InterpretedValue)] -> Scope, [String], [Expression])
+scopeBuilder enclosing entries = do
   outer <- foldM importModule enclosing
     [ imported | Just imported <- map importInvocation entries ]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
   _ <- foldM checkName [] definitions
   let names = map declarationName definitions
-      makeBinding captured declaration =
-        (declarationName declaration, DeferredBinding captured
-          (declarationAnnotation declaration) (declarationValue declaration))
       blockOuter = case lookup "this" outer of
         Just SelfBinding {} -> outer
         _ -> ("this", ScopeMembers names) : outer
-      deferred = buildScopeBindings makeBinding blockOuter definitions
-  pure (deferred, [declarationName value | value <- definitions, declarationIsLet value], eagerEntries)
+      rebuild retained = buildScopeBindings (makeBinding retained)
+        blockOuter definitions
+      makeBinding retained captured declaration =
+        let name = declarationName declaration
+            annotation = declarationAnnotation declaration
+            expressionValue = declarationValue declaration
+        in case lookup name retained of
+          Just value ->
+            (name, RetainedBinding captured annotation expressionValue value)
+          Nothing ->
+            (name, DeferredBinding captured annotation expressionValue)
+  pure
+    ( rebuild
+    , [declarationName value | value <- definitions, declarationIsLet value]
+    , eagerEntries
+    )
   where
     checkName declared declaration
       | name `elem` declared = Left (IdentifierStringOverlap name)
@@ -1881,10 +1900,8 @@ createFunction captured resolving explicit bindings result = do
       (renderCanonicalResult (interpretedCanonicalResult output)))
     Right
     specifiedOutput
-  signatureText <- case writtenOutput of
-    Just annotation -> pure (renderSourceExpression
-      (FunctionType writtenDomainExpression annotation))
-    Nothing -> signatureSource input output
+  let signatureText = renderSourceExpression
+        (FunctionType writtenDomainExpression outputExpression)
   let definition = MapSpecification (FunctionBody bindings result)
         (FunctionType writtenDomainExpression
           (maybe outputExpression id writtenOutput))
@@ -2038,7 +2055,9 @@ registeredExternal symbol = case symbol of
   "datra.Char" -> charTypeValue
   "datra.IdenStr" -> Right identifierValueTypeValue
   "datra.public" -> do
-    signatureText <- signatureSource anyTypeValue anyTypeValue
+    let anyExpression = External (AsciiStringLiteral "datra.Any")
+        signatureText = renderSourceExpression
+          (FunctionType anyExpression anyExpression)
     pure (makeFunctionValue (EvaluatedFunction
       anyTypeValue anyTypeValue Nothing Nothing
       (Just ("!$~" <> show symbol)) signatureText
@@ -2114,7 +2133,8 @@ registeredExternal symbol = case symbol of
             result <- implementation bindings
             _ <- specifyValues result output
             pure result
-      signatureText <- signatureSource input output
+      let signatureText = renderSourceExpression
+            (FunctionType domain codomain)
       pure (makeFunctionValue (EvaluatedFunction input output Nothing Nothing
         (Just ("!$~" <> show symbol)) signatureText
         (Just (prepareArguments schema)) (Just invoke) True))
@@ -2154,9 +2174,7 @@ importLoadedModule scope allNames source = do
   exportedValues <- if allNames
     then importAllBindings value
     else requireTotalModuleValue value >> pure []
-  internal <- if allNames
-    then moduleScopeWithBase [] source
-    else pure []
+  internal <- moduleScopeWithBase [] source
   let exported =
         [ (name, maybe evaluated (retainExportDefinition evaluated)
             (lookup name internal))
@@ -2164,8 +2182,8 @@ importLoadedModule scope allNames source = do
         ]
   (alreadyImported, namespaceScope) <- case lookup namespace scope of
     Nothing -> pure
-      (False, (namespace, ImportedBinding identity value) : scope)
-    Just (ImportedBinding previous _) | previous == identity ->
+      (False, (namespace, ImportedBinding identity value internal) : scope)
+    Just (ImportedBinding previous _ _) | previous == identity ->
       pure (True, scope)
     _ -> Left (IdentifierStringOverlap namespace)
   if allNames
@@ -2218,14 +2236,21 @@ moduleSyntaxRules
   -> Either InterpretingError [SyntaxRule]
 moduleSyntaxRules requested source = do
   (_, _, value) <- loadedModuleValue source
-  members <- case namedMembers value of
+  moduleSyntaxRulesFromValue requested value
+
+moduleSyntaxRulesFromValue
+  :: String
+  -> InterpretedValue
+  -> Either InterpretingError [SyntaxRule]
+moduleSyntaxRulesFromValue requested moduleValue = do
+  members <- case namedMembers moduleValue of
     Right named -> Right named
     Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) -> Right []
     Left failure -> Left failure
   concat <$> traverse memberRules members
   where
-    memberRules (name, value) = concat <$>
-      traverse (functionRules name) (functionAlternatives value)
+    memberRules (name, memberValue) = concat <$>
+      traverse (functionRules name) (functionAlternatives memberValue)
     functionRules name function = case functionSyntaxSource function of
       Nothing -> pure []
       Just (FunctionSyntax templates) -> do
@@ -2337,6 +2362,22 @@ lookupModule scope path
       ] = Right value
   | otherwise = Left (ModuleEvaluationFailed (ModuleNotLoaded path))
 
+-- Imported values and their definition scopes form one module instance.
+-- Re-evaluating a module to enter an 'InModule' expression would duplicate
+-- that instance and can recursively bootstrap the same module again.
+lookupModuleDefinitionScope
+  :: Scope
+  -> String
+  -> Either InterpretingError Scope
+lookupModuleDefinitionScope scope path =
+  case
+      [ imported
+      | (_, ImportedBinding identity _ imported) <- scope
+      , identity == path
+      ] of
+    imported : _ -> Right imported
+    [] -> lookupModule scope path >>= moduleScope
+
 moduleScope :: ModuleSource -> Either InterpretingError Scope
 moduleScope = moduleScopeWithBase []
 
@@ -2380,15 +2421,19 @@ closureResolver scope = resolver
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
       either (const Nothing) id (selectedDeclarationName (scopeMemberNames scope) index)
-    moduleResolver path = case lookupModule scope path >>= definitionModuleScope of
-      Right imported -> Just (closureResolver imported)
-      Left _ -> Nothing
+    moduleResolver path = case
+        [ imported
+        | (_, ImportedBinding identity _ imported) <- scope
+        , identity == path
+        ] of
+      imported : _ -> Just (closureResolver imported)
+      [] -> case lookupModuleDefinitionScope scope path of
+        Right imported -> Just (closureResolver imported)
+        Left _ -> Nothing
     resolve [] = Nothing
     resolve ["this", name] = resolve [name]
     resolve (name : fields@(_ : _))
-      | Just (ImportedBinding identity _) <- lookup name scope
-      , Just source <- moduleSourceByIdentity identity
-      , Right imported <- definitionModuleScope source
+      | Just (ImportedBinding identity _ imported) <- lookup name scope
       , Just dependency <- resolveDependency (closureResolver imported) fields =
           Just dependency
             { dependencyKey = identity <> ":" <> dependencyKey dependency
@@ -2416,15 +2461,6 @@ closureResolver scope = resolver
           (concat [names | (_, CanonicalNames names) <- scope]) = original
       | Just (QualifiedBinding origin _) <- lookup name scope = origin
       | otherwise = name
-    moduleSourceByIdentity identity = findModule
-      (concat [modules | (_, ModuleCatalog modules) <- scope])
-      where
-        findModule [] = Nothing
-        findModule ((_, source@(ModuleSource path _ dependencies)) : remaining)
-          | path == identity = Just source
-          | Just nested <- findModule dependencies = Just nested
-          | otherwise = findModule remaining
-
 emptyResolver :: Resolver
 emptyResolver = Resolver (const Nothing) (const Nothing) (const Nothing)
 
@@ -2447,13 +2483,4 @@ parsedSourceExpression text = do
   pure (normalizeExpression expressionValue)
 
 defaultDefinitionScope :: Either InterpretingError Scope
-defaultDefinitionScope =
-  defaultModuleSource >>= moduleScopeWithBase []
-
-definitionModuleScope :: ModuleSource -> Either InterpretingError Scope
-definitionModuleScope source = moduleScope source
-
--- Signatures themselves must not rely on implicit standard-library names.
-signatureSource :: InterpretedValue -> InterpretedValue -> Either InterpretingError String
-signatureSource input output = renderSourceExpression <$>
-  (FunctionType <$> valueExpression input <*> valueExpression output)
+defaultDefinitionScope = defaultModuleSource >>= moduleScopeWithBase []
