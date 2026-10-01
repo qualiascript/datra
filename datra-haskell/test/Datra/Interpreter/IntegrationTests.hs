@@ -31,7 +31,7 @@ integrationTests =
         "production omits soft assertions but retains hard integration checks"
         productionModeProgram
         "()"
-    , programFileCase 21
+    , programFileCase 20
         "composed language regression"
         "test/fixtures/integration/composed_features.datra"
         "()"

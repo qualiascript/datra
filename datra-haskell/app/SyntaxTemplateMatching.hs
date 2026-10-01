@@ -85,7 +85,11 @@ compileSyntaxTemplateFederation decide rules = do
         (syntaxTemplateLiteralPrefix right))
 
 type HoleMatches = SyntaxHoleKind Expression -> Expression -> Bool
-type CaptureHole = SyntaxHoleKind Expression -> Expression -> Maybe Expression
+type CaptureHole =
+  [(SyntaxHoleKind Expression, Expression)]
+  -> SyntaxHoleKind Expression
+  -> Expression
+  -> Maybe Expression
 
 data SuccessfulMatch = SuccessfulMatch
   { successfulRule :: SyntaxRule
@@ -110,7 +114,7 @@ matchSyntaxTemplates
 matchSyntaxTemplates holeMatches
     federation expressionValue =
   matchSyntaxTemplatesWith
-    (\kind value ->
+    (\_ kind value ->
       if holeMatches kind value then Just value else Nothing)
     federation expressionValue
 
@@ -129,7 +133,7 @@ matchSyntaxTemplatesWith captureHole
         , consumed <- reverse
             [minimumRequiredValues (rulePieces rule) .. length phrase]
         , let (candidate, remaining) = splitAt consumed phrase
-        , captures <- matchPieces captureHole (rulePieces rule) candidate
+        , captures <- matchPieces captureHole [] (rulePieces rule) candidate
         ]
   matched <- chooseSuccessful successful
   expanded <- either
@@ -190,9 +194,9 @@ canonicalSyntaxTemplate rule = unwords
   (map renderPiece (rulePieces rule))
   where
     renderPiece (SyntaxLiteral literal) = literal
-    renderPiece (SyntaxHole ExpressionSyntaxHole) = "$_Expr"
-    renderPiece (SyntaxHole BlockSyntaxHole) = "$_Block"
-    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole) = "$_IdenExp"
+    renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "$_Expr"
+    renderPiece (SyntaxHole BlockSyntaxHole {}) = "$_Block"
+    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "$_IdenExp"
     renderPiece (SyntaxHole (ValueSyntaxHole kind)) =
       case kind of
         IdentifierReference (IdentifierString name) -> '$' : name
@@ -215,22 +219,26 @@ applicationSpine = go []
 
 matchPieces
   :: CaptureHole
+  -> [(SyntaxHoleKind Expression, Expression)]
   -> [SyntaxPiece Expression]
   -> [Expression]
   -> [[Expression]]
-matchPieces _ [] [] = [[]]
-matchPieces _ [] _ = []
-matchPieces holeMatches (SyntaxLiteral literal : pieces) (value : values)
+matchPieces _ _ [] [] = [[]]
+matchPieces _ _ [] _ = []
+matchPieces holeMatches capturedValues
+    (SyntaxLiteral literal : pieces) (value : values)
   | matchesLiteralExpression literal value =
-      matchPieces holeMatches pieces values
-matchPieces _ (SyntaxLiteral _ : _) _ = []
-matchPieces holeMatches (SyntaxHole kind : pieces) values =
+      matchPieces holeMatches capturedValues pieces values
+matchPieces _ _ (SyntaxLiteral _ : _) _ = []
+matchPieces holeMatches capturedValues (SyntaxHole kind : pieces) values =
   [ matchedCapture : captures
   | count <- reverse [1 .. maximumCaptureLength pieces values]
   , let (captured, remaining) = splitAt count values
   , let capture = applicationFrom captured
-  , matchedCapture <- maybeToList (holeMatches kind capture)
-  , captures <- matchPieces holeMatches pieces remaining
+  , matchedCapture <- maybeToList
+      (holeMatches capturedValues kind capture)
+  , captures <- matchPieces holeMatches
+      (capturedValues <> [(kind, matchedCapture)]) pieces remaining
   ]
 
 maybeToList :: Maybe value -> [value]

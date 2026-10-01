@@ -14,9 +14,9 @@ module DatraLanguage.SyntaxTemplate
 import DatraLanguage.Identifier (isIdentifierCharacter)
 
 data SyntaxHoleKind value
-  = ExpressionSyntaxHole
-  | BlockSyntaxHole
-  | IdentifierExpressionSyntaxHole
+  = ExpressionSyntaxHole value
+  | BlockSyntaxHole value
+  | IdentifierExpressionSyntaxHole value
   | ValueSyntaxHole value
   deriving (Eq, Show)
 
@@ -47,9 +47,10 @@ parseSyntaxTemplate valueReference =
       let (literal, remaining) = break (== '$') token
       in SyntaxLiteral literal : tokenPieces remaining
 
-    hole "_Expr" = SyntaxHole ExpressionSyntaxHole
-    hole "_Block" = SyntaxHole BlockSyntaxHole
-    hole "_IdenExp" = SyntaxHole IdentifierExpressionSyntaxHole
+    hole "_Expr" = SyntaxHole (ExpressionSyntaxHole (valueReference "_Expr"))
+    hole "_Block" = SyntaxHole (BlockSyntaxHole (valueReference "_Block"))
+    hole "_IdenExp" =
+      SyntaxHole (IdentifierExpressionSyntaxHole (valueReference "_IdenExp"))
     hole kind = SyntaxHole (ValueSyntaxHole (valueReference kind))
 
 traverseSyntaxTemplate
@@ -61,12 +62,12 @@ traverseSyntaxTemplate transform (SyntaxTemplate pieces) =
   SyntaxTemplate <$> traverse traversePiece pieces
   where
     traversePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
-    traversePiece (SyntaxHole ExpressionSyntaxHole) =
-      pure (SyntaxHole ExpressionSyntaxHole)
-    traversePiece (SyntaxHole BlockSyntaxHole) =
-      pure (SyntaxHole BlockSyntaxHole)
-    traversePiece (SyntaxHole IdentifierExpressionSyntaxHole) =
-      pure (SyntaxHole IdentifierExpressionSyntaxHole)
+    traversePiece (SyntaxHole (ExpressionSyntaxHole value)) =
+      SyntaxHole . ExpressionSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (BlockSyntaxHole value)) =
+      SyntaxHole . BlockSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (IdentifierExpressionSyntaxHole value)) =
+      SyntaxHole . IdentifierExpressionSyntaxHole <$> transform value
     traversePiece (SyntaxHole (ValueSyntaxHole value)) =
       SyntaxHole . ValueSyntaxHole <$> transform value
 
@@ -75,7 +76,7 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
   unwords (map renderPiece pieces)
   where
     renderPiece (SyntaxLiteral literal) = literal
-    renderPiece (SyntaxHole ExpressionSyntaxHole) = "$_Expr"
-    renderPiece (SyntaxHole BlockSyntaxHole) = "$_Block"
-    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole) = "$_IdenExp"
+    renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "$_Expr"
+    renderPiece (SyntaxHole BlockSyntaxHole {}) = "$_Block"
+    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "$_IdenExp"
     renderPiece (SyntaxHole (ValueSyntaxHole value)) = '$' : renderValue value

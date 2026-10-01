@@ -19,6 +19,7 @@ module DatraTypes
   , coalizeValue
   , coalizeMapMemberAt
   , syntaxCategoryTypeValue
+  , captureSyntaxExpression
   , astTypeValue
   , functionAlternatives
   , templateTypeValue
@@ -207,6 +208,7 @@ import Evaluation.Construction
   , makeInteger
   )
 import Evaluation.Coalization (coalizeMapMemberAt, coalizeValue)
+import Evaluation.SyntaxCapture (captureSyntaxExpression)
 import Evaluation.Boolean
   ( booleanAndValues
   , booleanCondition

@@ -80,7 +80,6 @@ import DatraLanguage.SyntaxTemplate
 import DatraTypes
 import Parsing
   ( parseDatra
-  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
   , parseDatraRawLocatedWithSourceName
   , sourceImportInvocations
   , ResourceEnvelope (..)
@@ -148,10 +147,9 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
       capture = captureSyntaxHole base modules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture initialRules [] importedRules
-            expressionValue
+          rewriteExplicitSyntax capture initialRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture initialRules [] importedRules entries
+          rewriteImplicitSyntax capture initialRules [] entries
         _ -> Left MissingImplicitBlockResult
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
   pure (Located sourceSpan expressionValue)
@@ -164,22 +162,18 @@ captureSyntaxHole
   -> [(String, ModuleSource)]
   -> Bool
   -> [Expression]
+  -> [(SyntaxHoleKind Expression, Expression)]
   -> SyntaxHoleKind Expression
   -> Expression
   -> Maybe Expression
-captureSyntaxHole base modules strict declarations kind captured =
+captureSyntaxHole base modules strict declarations previous kind captured =
   case kind of
-    ExpressionSyntaxHole -> Just captured
-    BlockSyntaxHole -> case captured of
-      AtlasMap {} -> Just captured
-      _ -> Nothing
-    IdentifierExpressionSyntaxHole -> case captured of
-      IdentifierReference {} -> Just captured
-      OptionalType IdentifierReference {} -> Just captured
-      _ -> Nothing
+    ExpressionSyntaxHole target -> evaluatedCapture target
+    BlockSyntaxHole target -> evaluatedCapture target
+    IdentifierExpressionSyntaxHole target -> evaluatedCapture target
     ValueSyntaxHole target ->
       literalCapture target captured
-        <|> if strict then evaluatedCapture else tentativeCapture
+        <|> if strict then evaluatedCapture target else tentativeCapture
   where
     literalCapture (AsciiStringLiteral literal)
         (IdentifierReference (IdentifierString capturedLiteral))
@@ -192,34 +186,60 @@ captureSyntaxHole base modules strict declarations kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    evaluatedCapture = do
+    evaluatedCapture targetExpression = do
       (scope, _, _) <- either (const Nothing) Just
         (declareScope
           (("\0imports", ModuleCatalog modules) : base)
-          (map syntaxValidationDeclaration declarations))
+          (map syntaxValidationDeclaration scopedDeclarations))
       let interpret = evalInScope scope []
-      if identifierCaptureIsSubtype scope declarations kind captured
+      if identifierCaptureIsSubtype
+          scope scopedDeclarations targetExpression captured
         then Just captured
-        else case canonicalValueCapture interpret kind captured of
+        else case canonicalValueCapture interpret targetExpression captured of
           Right canonical -> Just canonical
           Left _ -> Nothing
+    scopedDeclarations = declarations <> binderDeclarations previous
+
+binderDeclarations
+  :: [(SyntaxHoleKind Expression, Expression)]
+  -> [Expression]
+binderDeclarations
+    ((IdentifierExpressionSyntaxHole {}, binder) : (_, bound) : remaining) =
+  maybe id (:) (binderDeclaration binder bound)
+    (binderDeclarations remaining)
+binderDeclarations (_ : remaining) = binderDeclarations remaining
+binderDeclarations [] = []
+
+binderDeclaration :: Expression -> Expression -> Maybe Expression
+binderDeclaration binder bound = case binder of
+  IdentifierReference name -> Just (IdentifierOperation name bound Nothing)
+  OptionalType (IdentifierReference name) ->
+    Just (IdentifierOperation name bound Nothing)
+  AsciiStringLiteral name
+    | isIdentifierValue name ->
+        Just (IdentifierOperation (IdentifierString name) bound Nothing)
+  OptionalType (AsciiStringLiteral name)
+    | isIdentifierValue name ->
+        Just (IdentifierOperation (IdentifierString name) bound Nothing)
+  _ -> Nothing
 
 canonicalValueCapture
   :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind Expression
+  -> Expression
   -> Expression
   -> Either InterpretingError Expression
-canonicalValueCapture interpret (ValueSyntaxHole targetExpression) captured = do
+canonicalValueCapture interpret targetExpression captured = do
   target <- interpret targetExpression
-  case interpret captured of
-    Right value -> captured <$ specifyValues value target
-    Left failure -> case captured of
-      IdentifierReference (IdentifierString name) -> do
-        source <- asciiStringValue name
-        _ <- evalValues canonicalStringCodec source target
-        Right (AsciiStringLiteral name)
-      _ -> Left failure
-canonicalValueCapture _ _ _ = Left NoCanonicalStringConversion
+  case captureSyntaxExpression target captured of
+    Just syntaxCapture -> Right syntaxCapture
+    Nothing -> case interpret captured of
+      Right value -> captured <$ specifyValues value target
+      Left failure -> case captured of
+        IdentifierReference (IdentifierString name) -> do
+          source <- asciiStringValue name
+          _ <- evalValues canonicalStringCodec source target
+          Right (AsciiStringLiteral name)
+        _ -> Left failure
 
 -- A recursive function body is the fixed-point seed already used by ordinary
 -- evaluation while its public signature is being assembled. Syntax-hole
@@ -237,11 +257,11 @@ syntaxValidationDeclaration declaration = case declaration of
 identifierCaptureIsSubtype
   :: Scope
   -> [Expression]
-  -> SyntaxHoleKind Expression
+  -> Expression
   -> Expression
   -> Bool
 identifierCaptureIsSubtype scope declarations
-    (ValueSyntaxHole target) (IdentifierReference (IdentifierString name)) =
+    target (IdentifierReference (IdentifierString name)) =
   case
       [ annotation
       | declaration <- reverse declarations
@@ -347,9 +367,9 @@ parsedDefaultModule = do
   let capture = captureSyntaxHole [] []
       rewritten = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture [] [] [] expressionValue
+          rewriteExplicitSyntax capture [] [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture [] [] [] entries
+          rewriteImplicitSyntax capture [] [] entries
         _ -> Left MissingImplicitBlockResult
   either
     (parseFailure . ParseFailure . show)
@@ -418,11 +438,12 @@ sourceFunctionSyntax templatesExpression = do
     fmapTemplate transform (SyntaxTemplate pieces) =
       SyntaxTemplate (map (fmapPiece transform) pieces)
     fmapPiece _ (SyntaxLiteral literal) = SyntaxLiteral literal
-    fmapPiece _ (SyntaxHole ExpressionSyntaxHole) =
-      SyntaxHole ExpressionSyntaxHole
-    fmapPiece _ (SyntaxHole BlockSyntaxHole) = SyntaxHole BlockSyntaxHole
-    fmapPiece _ (SyntaxHole IdentifierExpressionSyntaxHole) =
-      SyntaxHole IdentifierExpressionSyntaxHole
+    fmapPiece transform (SyntaxHole (ExpressionSyntaxHole value)) =
+      SyntaxHole (ExpressionSyntaxHole (transform value))
+    fmapPiece transform (SyntaxHole (BlockSyntaxHole value)) =
+      SyntaxHole (BlockSyntaxHole (transform value))
+    fmapPiece transform (SyntaxHole (IdentifierExpressionSyntaxHole value)) =
+      SyntaxHole (IdentifierExpressionSyntaxHole (transform value))
     fmapPiece transform (SyntaxHole (ValueSyntaxHole value)) =
       SyntaxHole (ValueSyntaxHole (transform value))
 
@@ -446,7 +467,8 @@ canonicalStringCandidates characters =
                   (renderInterpretedValue value) ->
                     [ candidate
                     | candidateExpression <-
-                        canonicalExpressionCandidates expressionValue
+                        canonicalExpressionCandidates
+                          (normalizeExpression expressionValue)
                     , Right candidate <-
                         [interpretExpressionReason candidateExpression]
                     ]
@@ -1192,21 +1214,7 @@ importInvocation :: Expression -> Maybe (Bool, String)
 importInvocation expressionValue =
   case expressionValue of
     Import allNames path -> Just (allNames, path)
-    FunctionApplication callable argument
-      | callableName callable == Just "import" ->
-          case argument of
-            AtlasMap [allCapture, pathCapture]
-              | capturedString allCapture == Just "all" ->
-                  (True,) <$> capturedString pathCapture
-            _ -> (False,) <$> capturedString argument
     _ -> Nothing
-  where
-    callableName (IdentifierReference (IdentifierString name)) = Just name
-    callableName (InModule _ value) = callableName value
-    callableName _ = Nothing
-    capturedString (AsciiStringLiteral value) = Just value
-    capturedString (MapSpecification value _) = capturedString value
-    capturedString _ = Nothing
 
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
@@ -2199,7 +2207,10 @@ moduleSyntaxRules
   -> Either InterpretingError [SyntaxRule]
 moduleSyntaxRules requested source = do
   (_, _, value) <- loadedModuleValue source
-  members <- namedMembers value
+  members <- case namedMembers value of
+    Right named -> Right named
+    Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) -> Right []
+    Left failure -> Left failure
   concat <$> traverse memberRules members
   where
     memberRules (name, value) = concat <$>
@@ -2226,9 +2237,8 @@ moduleSyntaxRules requested source = do
         AsciiStringLiteral {} -> expressionValue
         _ -> InModule requested expressionValue)
     parseRuleExpression sourceText =
-      case parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-          False [] "<module-syntax>" ("(" <> sourceText <> "\n)") of
-        Right (Located _ expressionValue) -> Right expressionValue
+      case parseDatra ("(" <> sourceText <> "\n)") of
+        Right expressionValue -> Right expressionValue
         Left _ -> Left NoCanonicalStringConversion
 
 moduleName :: ModuleSource -> Either InterpretingError String

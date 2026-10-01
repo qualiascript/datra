@@ -1,2 +1,4 @@
+import all "std"
+
 offset := 2
 yield AnswerWithBinding := offset + 40

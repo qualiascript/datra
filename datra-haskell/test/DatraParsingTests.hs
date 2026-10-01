@@ -9,6 +9,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , expressionChildren
   , normalizeExpression
   , renderExpression
   , toOperatorExpression
@@ -30,19 +31,18 @@ import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.SyntaxTemplate qualified as SyntaxTemplate
 import DatraLanguage.Diagnostics
-  ( Located (Located)
+  ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (parseFailureMessage) )
+import Interpreting
+  ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
 import Parsing
   ( ResourceEnvelope (..)
-  , parseDatra
   , parseDatraAst
-  , parseDatraLocated
-  , parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-  , parseDatraLocatedResourceWithSourceName
+  , parseDatraRawLocatedWithSourceName
   )
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
@@ -89,10 +89,8 @@ testBraceSeparatorSemantics = do
     (ArgumentMap [natural 1, natural 2])
   assertParsed "postfix comma remains inside argument-map syntax"
     "{Args Int,}"
-    (ArgumentMap
-      [ MapConcatenation
-          (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])
-      ])
+    (MapConcatenation
+      (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
   assertParsed "postfix comma is the same operator in parentheses"
     "(Args Int,)"
     (MapConcatenation
@@ -175,8 +173,8 @@ regressionTests = do
         == matchRules matchesNumericHole [correctFrom] fromPhrase
     )
   assert "syntax templates rewrite an AST after it is read"
-    (case parseDatraLocatedWithSyntaxImportsAndStandardLibrary
-        False [] "<syntax-template-test>" "(from 0 to Infinity)" of
+    (case parseSourceLocated False
+        "<syntax-template-test>" "(from 0 to Infinity)" of
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
           == matchRules matchesNumericHole [correctFrom] fromPhrase
@@ -231,12 +229,12 @@ regressionTests = do
             [ref "marker", natural 2, ref "after"])
       Left _ -> False)
   let rankedShort = syntaxFunction "ranked"
-        [SyntaxHole ExpressionSyntaxHole]
+        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
         "datra.ranked-short"
       rankedLong = syntaxFunction "ranked"
-        [ SyntaxHole ExpressionSyntaxHole
+        [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         , SyntaxLiteral "marker"
-        , SyntaxHole ExpressionSyntaxHole
+        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         ]
         "datra.ranked-long"
       rankedPhrase = foldl FunctionApplication (ref "ranked")
@@ -252,10 +250,10 @@ regressionTests = do
           == Right expected
       Left _ -> False)
   let tiedLeft = syntaxFunction "tied"
-        [SyntaxHole ExpressionSyntaxHole]
+        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
         "datra.tied-left"
       tiedRight = syntaxFunction "tied"
-        [SyntaxHole ExpressionSyntaxHole]
+        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
         "datra.tied-right"
   assert "overlapping templates are rejected before AST matching"
     (case compileSyntaxTemplateFederation
@@ -489,21 +487,33 @@ regressionTests = do
         , AST.assignment "b" (natural 3) (natural 3)
         ]
         (Addition (ref "a") (ref "b"))
-  assertParsed "assignment directly infers a begin block"
-    "my_val := begin\n a := 2\n b := 3\nyield a + b"
+  assertParsed "assignment infers a grouped begin block"
+    "my_val := (begin\n a := 2\n b := 3\nyield a + b)"
     (AST.assignment "my_val" assignedBlock assignedBlock)
-  assertParsed "assignment specifies a begin block after its annotation"
-    "my_val := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
+  assertParsed "assignment specifies a grouped begin block"
+    "my_val : 5 := (begin\n a := 2\n b := 3\nyield a + b)"
     (AST.assignment "my_val" (natural 5) assignedBlock)
-  assertParsed "optional assignment specifies a begin block"
-    "my_val? := 5 ~> begin\n a := 2\n b := 3\nyield a + b"
+  assertParsed "optional assignment specifies a grouped begin block"
+    "my_val? : 5 := (begin\n a := 2\n b := 3\nyield a + b)"
     (OptionalType
       (AST.assignment "my_val" (natural 5) assignedBlock))
-  assertRejected "a multiline assignment block requires begin"
+  assertParsed "an unmarked multiline sequence remains ordinary syntax"
     "my_val := 5 ~>\n a := 2\nyield a"
+    (AtlasMap
+      [ MapSpecification
+          (AST.assignment "my_val" (natural 5) (natural 5))
+          (AST.assignment "a" (natural 2) (natural 2))
+      , FunctionApplication (ref "yield") (ref "a")
+      ])
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
     (AST.dependentIdentifierType "module" (ref "Nat"))
+  assertParsed "declared qualified import lowers to the structural import AST"
+    "import \"library_one\""
+    (Import False "library_one")
+  assertParsed "declared import-all lowers to the same structural import AST"
+    "import all \"library_one\""
+    (Import True "library_one")
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x : 10 yield x"
@@ -511,32 +521,42 @@ regressionTests = do
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
     (MapConcatenation (Begin [AST.dependentIdentifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
-  assertRejected "let requires a block" "let x : 1"
-  assertRejected "begin requires yield" "begin x : 1"
-  assertRejected "function bodies require an explicit yield"
-    "f := ({n? : Nat} -> () do assert n of Nat)"
-  assertRejected "compact function yield stays on the signature line"
-    "f := ({n? : Nat} -> Nat\nyield n + 1)"
+  assertParsed "let accepts any declared expression" "let x : 1"
+    (Let (AST.dependentIdentifierType "x" (natural 1)))
+  assertParsed "an incomplete begin form remains ordinary application syntax"
+    "begin x : 1"
+    (FunctionApplication
+      (ref "begin")
+      (AST.dependentIdentifierType "x" (natural 1)))
+  assert "an incomplete do form is not expanded to a function body"
+    (case parseSource
+        "(f := ({n? : Nat} -> () do assert n of Nat)\n)" of
+      Right actual -> not (containsFunctionBody actual)
+      Left _ -> False)
+  assert "a newline after a signature does not create a function body"
+    (case parseSource "(f := ({n? : Nat} -> Nat\nyield n + 1)\n)" of
+      Right actual -> not (containsFunctionBody actual)
+      Left _ -> False)
   let identityBody = FunctionBody [] (ref "value")
-      optionalInput = ArgumentMap
-        [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
+      optionalInput =
+        OptionalType (AST.dependentIdentifierType "value" (ref "Any"))
       inferredFunction input = MapSpecification identityBody
         (FunctionType input (ref "Any"))
-  assertParsed "an arrow-less code block defaults its codomain to Any"
-    "{value? : Any} do yield value"
+  assertParsed "a function body follows an explicit function type"
+    "{value? : Any} -> Any do yield value"
     (inferredFunction optionalInput)
-  assertParsed "an unparenthesized declarative domain owns the following block"
-    "for T? of Any do yield value"
+  assertParsed "a declarative domain composes with an explicit function type"
+    "for T? of Any -> Any do yield value"
     (inferredFunction
       (ForBinding (IdentifierString "T") True (ref "Any")))
-  assertParsed "arrow-less code blocks accept forward specifications"
-    "(Nat ~> Any) do yield value"
+  assertParsed "function domains accept forward specifications"
+    "(Nat ~> Any) -> Any do yield value"
     (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
-  assertParsed "arrow-less code blocks accept reverse specifications"
-    "(Any <~ Nat) do yield value"
+  assertParsed "function domains accept reverse specifications"
+    "(Any <~ Nat) -> Any do yield value"
     (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
-  assertParsed "arrow-less code blocks accept subfederations"
-    "(Nat of Any) do yield value"
+  assertParsed "function domains accept subfederations"
+    "(Nat of Any) -> Any do yield value"
     (inferredFunction (Subfederation (ref "Nat") (ref "Any")))
   assertParsed "an explicit code-block codomain is preserved"
     "{value? : Any} -> Nat do yield value"
@@ -563,14 +583,40 @@ regressionTests = do
   assertParsed "inline external syntax adapters use the external as their body"
     "%\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
-  assertRejected "inline syntax adapters require a body"
+  assertParsed "a syntax type is an ordinary value without a body"
     "%\"handler $_Expr\" %> (Any -> Any)"
+    syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
     "handler := %\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
+    (AST.assignment "handler"
+      (MapSpecification syntaxAdapter syntaxAdapterType)
+      (MapSpecification syntaxAdapter syntaxAdapterType))
+  assertParsed "an explicit syntax type can annotate its implementation"
+    "handler : %\"handler $_Expr\" %> (Any -> Any) := !$~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
-  assertRejected "the obsolete typed syntax declaration form is rejected"
-    "handler : %\"handler $_Expr\" %> (Any -> Any) := !$~\"datra.syntax.test\""
+  assert "a category hole uses its declared type implementation" $ case
+      parseSource (unlines
+        [ "(_Expr := Int"
+        , "take := %\"take $_Expr\" %> (Int -> Int) !$~\"datra.val\""
+        , "take 7"
+        , "take Infinity)"
+        ]) of
+    Right (AtlasMap [_, _, StripIdentifiers (EllipsisNatural 7), final]) ->
+      final == FunctionApplication (ref "take") (ref "Infinity")
+    _ -> False
+  assert "an identifier capture is in scope for later typed captures" $ case
+      parseSource (unlines
+        [ "(_IdenExp := !$~\"datra.IdenExp\""
+        , "_Expr := !$~\"datra.Expr\""
+        , "gate := %\"gate $_IdenExp bound $_Expr body $Int\" %>"
+            <> " ((Any; Any; Int) -> Int) !$~\"test.gate\""
+        , "gate x bound Int body x)"
+        ]) of
+    Right (AtlasMap [_, _, _, rewritten]) ->
+      rewritten == FunctionApplication (ref "gate")
+        (AtlasMap [ref "x", ref "Int", ref "x"])
+    _ -> False
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1421,7 +1467,7 @@ regressionTests = do
     "\"literal % character\""
   assertAstOutput
     "string literals are members of Str"
-    "\"my_string\" of Str = true"
+    "(\"my_string\" of Str) = true"
     (AST.equal
       (AST.subfederation (AST.asciiString "my_string") (ref "Str"))
       (ref "true"))
@@ -1594,9 +1640,9 @@ regressionTests = do
         <@> natural 0
     )
   assertAstOutput
-    "natural range keywords continue across lines"
+    "declared syntax does not cross newline AST boundaries"
     "range\n2\nto\n5"
-    (rangeTo 2 5)
+    (AtlasMap [ref "range", natural 2, ref "to", natural 5])
   assertAstOutput
     "a prefix range greedily continues across a newline"
     "(..\n10)"
@@ -1660,15 +1706,13 @@ regressionTests = do
     "(1,\n2)"
     (natural 1 <.> natural 2)
   assertParsed
-    "a trailing comma is removed from an existing concatenation"
+    "a trailing comma appends an empty map to an existing concatenation"
     "(1, 2,)"
-    ((<.>)
-      (natural 1)
-      (natural 2))
+    ((natural 1 <.> natural 2) <.> AST.emptyMap)
   assertAstOutput
-    "an existing concatenation does not gain an empty map"
+    "an existing concatenation retains the postfix empty map"
     "(1, 2,)"
-    (natural 1 <.> natural 2)
+    ((natural 1 <.> natural 2) <.> AST.emptyMap)
   assertAstOutput
     "a trailing comma can precede a map separator"
     "(1,; 2)"
@@ -1889,7 +1933,7 @@ propNaturalMapParsing = H.property $ do
     (Gen.list (Range.linear 0 40) (Gen.integral (Range.linear 0 100000)))
   let source = "(" <> joinWith "; " (map show values) <> ")"
       expected = normalizeExpression (AtlasMap (map EllipsisNatural values))
-  parseDatra ("(" <> source <> "\n)") H.=== Right expected
+  parseSource ("(" <> source <> "\n)") H.=== Right expected
 
 genExpression :: H.Gen Expression
 genExpression =
@@ -2008,7 +2052,7 @@ assertAllHexadecimalAsciiEscapes = do
 
 assertLocatedParse :: IO ()
 assertLocatedParse =
-  case parseDatraLocated "(1; 2)" of
+  case parseSourceLocated True "<input>" "(1; 2)" of
     Left message -> fail
       ("located parse unexpectedly failed: " <> parseFailureMessage message)
     Right
@@ -2039,7 +2083,7 @@ assertResourceEnvelopes = do
     "(1) <~ (2)"
     ImplicitBlockEnvelope
   mapM_ (\(source, expected) ->
-    case parseDatra source of
+    case parseSource source of
       Right actual -> do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
@@ -2050,7 +2094,7 @@ assertResourceEnvelopes = do
     ]
   where
     assertEnvelope label source expected =
-      case parseDatraLocatedResourceWithSourceName "<input>" source of
+      case parseDatraRawLocatedWithSourceName "<input>" source of
         Left message -> fail
           (label <> ": unexpected failure: " <> parseFailureMessage message)
         Right (actual, _) -> assert label (actual == expected)
@@ -2101,18 +2145,18 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply-func (in-module $std (ref $from)) (<:> 2 5))"
+        == "(apply-func (in-module \"std.datra\" (ref $from)) (<:> 2 5))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply-func (in-module $std (ref $from)) (<:> 2 $up))"
+        == "(apply-func (in-module \"std.datra\" (ref $from)) (<:> 2 $up))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
 
 assertAstOutput :: String -> String -> Expression -> IO ()
 assertAstOutput label source expected =
-  case parseDatra ("(" <> source <> "\n)") of
+  case parseSource ("(" <> source <> "\n)") of
     Left message -> fail
       (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right actual
@@ -2149,14 +2193,14 @@ assertAstRoundTrip label renderedAst =
 
 assertRejected :: String -> String -> IO ()
 assertRejected label source =
-  case parseDatra ("(" <> source <> "\n)") of
+  case parseSource ("(" <> source <> "\n)") of
     Left _ -> pure ()
     Right actual ->
       fail (label <> ": unexpectedly parsed as " <> show actual)
 
 assertParsed :: String -> String -> Expression -> IO ()
 assertParsed label source expected =
-  case parseDatra ("(" <> source <> "\n)") of
+  case parseSource ("(" <> source <> "\n)") of
     Left message -> fail
       (label <> ": unexpected parse failure: " <> parseFailureMessage message)
     Right actual
@@ -2169,6 +2213,23 @@ assertParsed label source expected =
                 <> ", got "
                 <> show actual
             )
+
+parseSource :: String -> Either ParseFailure Expression
+parseSource source =
+  locatedValue <$> parseSourceLocated True "<input>" source
+
+parseSourceLocated
+  :: Bool
+  -> FilePath
+  -> String
+  -> Either ParseFailure (Located Expression)
+parseSourceLocated includeStandardLibrary =
+  parseDatraSourceLocatedWithImportsAndStandardLibrary
+    includeStandardLibrary []
+
+containsFunctionBody :: Expression -> Bool
+containsFunctionBody FunctionBody {} = True
+containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 
 -- Source expectations describe the emitted AST directly. Keep these independent
 -- of the parser's syntax expansion so they can catch changes in that expansion.
@@ -2185,7 +2246,7 @@ rangeTo start end = rangeCall "range" (integer start) (UpperBound (integer end))
 fromTo start end = rangeCall "from" (integer start) (UpperBound (integer end))
 
 intValRange :: Expression -> Expression
-intValRange value = MapSpecification value (InModule "std" (ref "IntValRange"))
+intValRange = id
 
 rangeUpwards, rangeDownwards, fromUpwards :: Integer -> Expression
 rangeUpwards start = rangeCall "range" (integer start) Upwards
@@ -2196,7 +2257,7 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
-  (InModule "std" (ref name))
+  (InModule "std.datra" (ref name))
   (AtlasMap [start, endpoint])
   where
     endpoint = case end of

@@ -92,6 +92,13 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
   , ("datra.assertHard", \case
       [_, condition] -> Right (Assert True condition)
       captures -> invalidBody symbol captures)
+  , ("datra.import", \case
+      [AsciiStringLiteral path] -> Right (Import False path)
+      captures -> invalidBody symbol captures)
+  , ("datra.importAll", \case
+      [AsciiStringLiteral "all", AsciiStringLiteral path] ->
+        Right (Import True path)
+      captures -> invalidBody symbol captures)
   ]
   where
     invalidBody name _ = Left (UnknownSyntaxControlAdapter name)
@@ -115,6 +122,9 @@ dependentBinder name constructor binder bound =
     AsciiStringLiteral identifier
       | isIdentifierValue identifier ->
           Right (constructor (IdentifierString identifier) False bound)
+    OptionalType (AsciiStringLiteral identifier)
+      | isIdentifierValue identifier ->
+          Right (constructor (IdentifierString identifier) True bound)
     _ -> Left (InvalidDependentBinder name)
 
 localDependentFamily

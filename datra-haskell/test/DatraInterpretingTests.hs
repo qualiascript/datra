@@ -215,9 +215,11 @@ testModuleSyntaxAlias = do
       assert "the retained rule keeps its declared literal"
         (syntaxTemplate rule == SyntaxTemplate
           [ SyntaxLiteral "begin"
-          , SyntaxHole BlockSyntaxHole
+          , SyntaxHole (BlockSyntaxHole
+              (InModule "alias-module" (identifierReference "_Block")))
           , SyntaxLiteral "yield"
-          , SyntaxHole ExpressionSyntaxHole
+          , SyntaxHole (ExpressionSyntaxHole
+              (InModule "alias-module" (identifierReference "_Expr")))
           ])
     Right rules -> assertFailure
       ("expected one exported syntax rule, got: " <> show rules)
@@ -251,9 +253,13 @@ testModuleSyntaxAlias = do
       (syntaxName rule == "_begin"
         && syntaxTemplate rule == SyntaxTemplate
           [ SyntaxLiteral "begin"
-          , SyntaxHole BlockSyntaxHole
+          , SyntaxHole (BlockSyntaxHole
+              (InModule "preserving-module"
+                (identifierReference "_Block")))
           , SyntaxLiteral "yield"
-          , SyntaxHole ExpressionSyntaxHole
+          , SyntaxHole (ExpressionSyntaxHole
+              (InModule "preserving-module"
+                (identifierReference "_Expr")))
           ])
     Right rules -> assertFailure
       ("expected only the preserved alias rule, got: " <> show rules)
@@ -934,7 +940,7 @@ testEval = do
       , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
       )
     , ("\"alco\"", "IdenStr", "$alco ~> IdenStr")
-    , ("\"hello world\"", "Str", "\"hello world\" ~> Str")
+    , ("\"hello world\"", "Str", "\"hello world\" ~> >< (List Char)")
     , ( "(\"1\", \"2\")"
       , "Int"
       , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"

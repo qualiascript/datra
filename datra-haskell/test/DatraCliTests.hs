@@ -159,13 +159,12 @@ testNoStandardLibrary = do
   (status, output, errors) <- runDatra
     [ "build"
     , "--no-std"
-    , "--source", "yield 7"
+    , "--source", "(7)"
     , "--ast-output", "-"
     , "--output", "-"
     ]
   assertEqual "exit status" ExitSuccess status
-  assertBool "canonical AST is still emitted" ("(program" `isInfixOf` output)
-  assertBool "interpreted value is emitted" ("7\n" `isInfixOf` output)
+  assertEqual "canonical AST and interpreted value are emitted" "7\n7\n" output
   assertEqual "stderr" "" errors
 
 testNoStandardLibraryNames :: Assertion
@@ -173,7 +172,7 @@ testNoStandardLibraryNames = do
   (status, _, errors) <- runDatra
     [ "build"
     , "--no-std"
-    , "--source", "yield Int"
+    , "--source", "(Int)"
     , "--ast-output", "-"
     , "--output", "-"
     ]

@@ -291,15 +291,23 @@ functionSyntaxEquivalent left right =
         (SyntaxHole leftHole) (SyntaxHole rightHole) =
       holeEquivalent leftHole rightHole
     pieceEquivalent _ _ = False
-    holeEquivalent ExpressionSyntaxHole ExpressionSyntaxHole = True
-    holeEquivalent BlockSyntaxHole BlockSyntaxHole = True
     holeEquivalent
-        IdentifierExpressionSyntaxHole IdentifierExpressionSyntaxHole = True
+        (ExpressionSyntaxHole leftValue)
+        (ExpressionSyntaxHole rightValue) = equivalent leftValue rightValue
+    holeEquivalent
+        (BlockSyntaxHole leftValue)
+        (BlockSyntaxHole rightValue) = equivalent leftValue rightValue
+    holeEquivalent
+        (IdentifierExpressionSyntaxHole leftValue)
+        (IdentifierExpressionSyntaxHole rightValue) =
+          equivalent leftValue rightValue
     holeEquivalent
         (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
+      equivalent leftValue rightValue
+    holeEquivalent _ _ = False
+    equivalent leftValue rightValue =
       interpretedCanonicalResult leftValue
         == interpretedCanonicalResult rightValue
-    holeEquivalent _ _ = False
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
 makeFunctionValue function = makeInterpretedValue functionDatraType
