@@ -64,12 +64,12 @@ standardLibraryTests =
               <> "yield inlineFactorial 6")
             "720"
         , programCase "finite access lazily unfolds recursive data"
-            ("name := fun \"hi:\", this\n"
+            ("name := fun (\"hi:\", this)\n"
               <> "k : Nat := 1\n"
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
         , programCase "recursive concatenation is not string-specific"
-            ("values := fun 1, this\n"
+            ("values := fun (1, this)\n"
               <> "yield values[from 0 to 3]")
             "(1; 1; 1; 1)"
         , programCase "recursive semicolon sequence uses map machinery"
@@ -77,7 +77,7 @@ standardLibraryTests =
               <> "yield values[from 0 to 5]")
             "(1; 2; 1; 2; 1; 2)"
         , programCase "let and fun share productive fixed-point access"
-            ("let name := \"hi:\", name\n"
+            ("let name := (\"hi:\", name)\n"
               <> "k : Nat := 1\n"
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
@@ -179,7 +179,7 @@ standardLibraryTests =
             "yield ((>< (1; 2)) ~> >< (Nat; Nat)) of >< (Nat; Nat)"
             "true"
         , programCase "coalized types concatenate positionally despite overlap"
-            "yield Int, Int"
+            "yield (Int, Int)"
             ( "((from 0 up; nothing | () | Just : $Complement); "
                 <> "(from 0 up; nothing | () | Just : $Complement))"
             )
@@ -234,7 +234,7 @@ standardLibraryTests =
             "yield ()! ?? missing" "nothing"
         , programCase "list sequencing applies a function to a nonempty split"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
-                <> "yield candidate)\n"
+                <> "do yield candidate)\n"
                 <> "yield (1; 2; 3) !? head"
             )
             "Just : 1"
@@ -242,15 +242,15 @@ standardLibraryTests =
             "yield () !? missing" "nothing"
         , programCase "list sequencing accepts an optional named parameter"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
-                <> "yield candidate)\n"
+                <> "do yield candidate)\n"
                 <> "apply := ({values? : List Int} -> Int? "
-                <> "yield values !? head)\n"
+                <> "do yield values !? head)\n"
                 <> "yield apply (4; 5)"
             )
             "Just : 4"
         , programCase "list sequencing result supports specification"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
-                <> "yield candidate)\n"
+                <> "do yield candidate)\n"
                 <> "yield ((1; 2) !? head) ~> Int?"
             )
             ( "(Just : 1) ~> (nothing | () | Just : >< "
@@ -258,7 +258,7 @@ standardLibraryTests =
             )
         , programCase "list sequencing result supports subfederation"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
-                <> "yield candidate)\n"
+                <> "do yield candidate)\n"
                 <> "yield ((1; 2) !? head) of Int?"
             )
             "true"
@@ -272,13 +272,13 @@ standardLibraryTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional named matcher accepts split positional values"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
-                <> "yield candidate)\n"
+                <> "do yield candidate)\n"
                 <> "yield (1; 2; 3)! ?? head it"
             )
             "Just : 1"
         , programFailureCase "required named matcher rejects split positional values"
             ( "head := ({candidate : Int; remaining : List Int} -> Int "
-                <> "yield candidate)\n"
+                <> "do yield candidate)\n"
                 <> "yield (1; 2; 3)! ?? head it"
             )
             (SourceEvaluationFailure

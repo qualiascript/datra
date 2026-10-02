@@ -14,6 +14,7 @@ import Control.Applicative ((<|>))
 import BlockScope (bindingNames)
 import Data.List (nub)
 import DatraLanguage.AST
+import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.Identifier (public)
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
@@ -663,7 +664,7 @@ syntaxCandidates includeConcatenation rule value =
       <> oneChildCandidates directCandidates current
 
     directCandidates current =
-      signedArgumentCandidates current
+      signedArgumentCandidates rule current
         <> declarationBoundaryCandidates current
         <> rightApplicationCandidates current
         <> leftBoundaryCandidates current
@@ -674,17 +675,14 @@ syntaxCandidates includeConcatenation rule value =
       _ -> False
 
 ruleLiteralsPresent :: SyntaxRule -> Expression -> Bool
-ruleLiteralsPresent rule value = all (`elem` identifiers)
+ruleLiteralsPresent rule value = all (`isPresentIn` value)
   [ literal
   | SyntaxLiteral literal <- syntaxTemplatePieces (syntaxTemplate rule)
   ]
   where
-    identifiers = collect value
-    collect expressionValue = case expressionValue of
-      IdentifierReference (IdentifierString name) -> name : nested
-      _ -> nested
-      where
-        nested = concatMap collect (expressionChildren expressionValue)
+    isPresentIn literal expressionValue =
+      renderSourceExpression expressionValue == literal
+        || any (isPresentIn literal) (expressionChildren expressionValue)
 
 data OneChild a = OneChild a [a]
 
@@ -741,18 +739,23 @@ rightApplicationCandidates value = case value of
 -- subtraction. Re-form that first right-hand phrase member as the unary value
 -- the template hole receives; matching the declaration still decides whether
 -- this interpretation is valid.
-signedArgumentCandidates :: Expression -> [Expression]
-signedArgumentCandidates value = binarySign <> embeddedSigns
+signedArgumentCandidates :: SyntaxRule -> Expression -> [Expression]
+signedArgumentCandidates rule value = binarySign <> embeddedSigns
   where
     binarySign = case value of
       Addition left right -> withSign Plus left right
       Subtraction left right -> withSign Minus left right
       _ -> []
-    withSign sign left right = case applicationPhrase right of
-      first : remaining ->
-        [applicationFrom
-          (applicationPhrase left <> (sign first : remaining))]
-      [] -> []
+    withSign sign left right
+      | length (applicationPhrase left) < templateArity =
+          case applicationPhrase right of
+            first : remaining ->
+              [applicationFrom
+                (applicationPhrase left <> (sign first : remaining))]
+            [] -> []
+      | otherwise = []
+    templateArity = length
+      (syntaxTemplatePieces (syntaxTemplate rule))
     phrase = applicationPhrase value
     embeddedSigns =
       [ applicationFrom (before <> (sign first : rest) <> after)

@@ -350,9 +350,11 @@ import Evaluation.Value
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , DependentSumStructure (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
+  , withDependentSumStructure
   , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
@@ -437,15 +439,18 @@ stringTypeValue = makeStringType
 charTypeValue :: Either InterpretingError InterpretedValue
 charTypeValue = do
   characters <- valuedNaturalRangeValue 0 255
-  pure (makeDependentSumValue "Char" characters $ \source -> do
-    _ <- specifyValues source characters
-    pure source)
+  pure
+    (withDependentSumStructure CharacterDependentSum
+      (makeDependentSumValue "Char" characters $ \source -> do
+        _ <- specifyValues source characters
+        pure source))
 
 -- | The semantic fixed point of @() | (T; this)@.  It is constructed by the
 -- language-level @fun@ operator; this helper only supplies the generic
 -- pointwise Atlas-map membership operation.
 listTypeValue :: String -> InterpretedValue -> InterpretedValue
-listTypeValue elementSource elementType = value
+listTypeValue elementSource elementType =
+  withDependentSumStructure (ListDependentSum elementType) value
   where
     value = withDependentSumAccess project
       (makeDependentSumValue presentation staticTarget validate)

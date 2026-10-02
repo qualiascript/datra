@@ -895,6 +895,7 @@ term = do
       , argumentMap
       , parenthesizedExpression
       , valueOfExpression
+      , prefixedApplicationArgument
       , Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom)
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , do
@@ -902,6 +903,15 @@ term = do
           externalExpression
       , identifierReference
       ])
+
+-- Prefix-only operators remain valid at the start of an application operand.
+-- Reading them here preserves that structural boundary for later declarative
+-- syntax matching; unlike @+@ and @-@, coalization has no competing infix
+-- interpretation at this position.
+prefixedApplicationArgument :: Parser Expression
+prefixedApplicationArgument =
+  Coalization
+    <$> (operatorToken AST.CoalizationOperator *> term)
 
 -- Extract binds to its primary operand before bracket access, so @%a[x]@
 -- means @(%a)[x]@. A larger specification operand remains available through

@@ -6,7 +6,7 @@ module Evaluation.TypeFamily.BuiltinMeta
 
 import Evaluation.Error (InterpretingError (ExpectedBuiltinType))
 import Evaluation.Specification.Decision (Decision (..))
-import Evaluation.Specification.String (federationProducesStrings)
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
 
 specifyBuiltinMetaType
@@ -28,6 +28,7 @@ decideBuiltinMetaSubfederation source target =
   if accepted then DecisionProved () else DecisionRefuted
   where
     accepted = case (interpretedForm source, target) of
+      (_, TemplateMetaType) -> valueProducesStrings source
       (CoalizationForm operand, expected) ->
         case decideBuiltinMetaSubfederation operand expected of
           DecisionProved () -> True
@@ -70,8 +71,6 @@ decideBuiltinMetaSubfederation source target =
         rangeWithInfinity alternatives NatValRangeMetaType
       (EitherForm alternatives, IntValRangeMetaType) ->
         rangeWithInfinity alternatives IntValRangeMetaType
-      (_, TemplateMetaType) ->
-        federationProducesStrings (interpretedAtlasMapFederation source)
       _ -> False
 
     rangeWithInfinity alternatives expected =

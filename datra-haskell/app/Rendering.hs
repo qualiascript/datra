@@ -174,6 +174,7 @@ prettyNonKeywordCanonicalResult result =
               parts)
         Nothing -> prettyCanonicalResult template
     CanonicalDependentSum source -> pretty source
+    CanonicalCharacterList -> "List Char"
     CanonicalSimpleIdentifierType identifierString typeAnnotation ->
       pretty (renderIdentifierString identifierString)
         <+> prettySourceSymbol DependentIdentifierTypeOperator
@@ -191,10 +192,13 @@ prettyNonKeywordCanonicalResult result =
         <+> "0"
     CanonicalAssignment identifierString typeAnnotation givenValue ->
       prettyAssignment identifierString typeAnnotation givenValue
-    CanonicalCoalization operand ->
-      prettySourceSymbol CoalizationOperator
-        <> " "
-        <> prettyCoalizationOperand operand
+    CanonicalCoalization operand
+      | isStructuralStringType result ->
+          reservedSymbolDoc Reserved.StringTypeSymbol
+      | otherwise ->
+          prettySourceSymbol CoalizationOperator
+            <> " "
+            <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
     CanonicalArgumentMap _ components ->
@@ -235,25 +239,25 @@ canonicalStringTemplateParts
   :: CanonicalResult
   -> Maybe [StringTemplatePart CanonicalResult]
 canonicalStringTemplateParts result =
-  case result of
-    CanonicalConcatenation members ->
-      concat <$> traverse canonicalStringTemplateParts members
-    CanonicalAsciiString value -> Just [StringTemplateLiteral value]
-    CanonicalStringType -> Just [StringTemplateInterpolation result]
-    CanonicalIdentifierValueType ->
-      Just [StringTemplateInterpolation result]
-    CanonicalToString source -> Just [StringTemplateInterpolation source]
-    CanonicalWeakToString source ->
-      Just [StringTemplateWeakInterpolation source]
-    CanonicalTemplate nested -> canonicalStringTemplateParts nested
-    CanonicalDependentSum "Str" ->
-      Just [StringTemplateInterpolation result]
-    _ -> Nothing
+  if isStringType result
+    then Just [StringTemplateInterpolation result]
+    else case result of
+      CanonicalConcatenation members ->
+        concat <$> traverse canonicalStringTemplateParts members
+      CanonicalAsciiString value -> Just [StringTemplateLiteral value]
+      CanonicalIdentifierValueType ->
+        Just [StringTemplateInterpolation result]
+      CanonicalToString source -> Just [StringTemplateInterpolation source]
+      CanonicalWeakToString source ->
+        Just [StringTemplateWeakInterpolation source]
+      CanonicalTemplate nested -> canonicalStringTemplateParts nested
+      CanonicalDependentSum "Str" ->
+        Just [StringTemplateInterpolation result]
+      _ -> Nothing
 
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
 compactCanonicalStringInterpolation result
-  | result == CanonicalStringType
-      || result == CanonicalDependentSum "Str" =
+  | isStringType result || result == CanonicalDependentSum "Str" =
       reserved Reserved.StringTypeSymbol
   | result == CanonicalIdentifierValueType =
       reserved Reserved.IdentifierValueTypeSymbol
@@ -320,6 +324,7 @@ isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
 isAtomicOptionalOperand CanonicalStringType = True
+isAtomicOptionalOperand operand | isStructuralStringType operand = True
 isAtomicOptionalOperand (CanonicalDependentSum "Str") = True
 isAtomicOptionalOperand CanonicalIdentifierValueType = True
 isAtomicOptionalOperand operand = isBooleanType operand
@@ -500,6 +505,7 @@ coalizationOperandNeedsParens operand =
     CanonicalConcatenation {} -> True
     CanonicalTemplate {} -> True
     CanonicalDependentSum {} -> True
+    CanonicalCharacterList -> True
     CanonicalSimpleIdentifierType {} -> True
     CanonicalDependentIdentifierType {} -> True
     CanonicalIdentifierStringProjection {} -> True
@@ -508,6 +514,15 @@ coalizationOperandNeedsParens operand =
     CanonicalMap 0 _ -> False
     CanonicalMap _ [_] -> True
     _ -> False
+
+isStringType :: CanonicalResult -> Bool
+isStringType CanonicalStringType = True
+isStringType value = isStructuralStringType value
+
+isStructuralStringType :: CanonicalResult -> Bool
+isStructuralStringType
+    (CanonicalCoalization CanonicalCharacterList) = True
+isStructuralStringType _ = False
 
 prettyRange :: SuperEllipsisRangeDescription -> Doc annotation
 prettyRange description =

@@ -19,7 +19,7 @@ import Evaluation.Error
   ( InterpretingError (EitherAlternativesNotDistinct) )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
-import Evaluation.Specification.String (federationProducesStrings)
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
 import Evaluation.Federation.Structure (sequenceOperands)
 import ValuedIntegerRange qualified
@@ -140,10 +140,10 @@ alternativesAreDistinct left right
   , sequenceRequiresMultipleSources right = True
   | interpretedValueHasTotalMap left = memberIsRefuted left right
   | interpretedValueHasTotalMap right = memberIsRefuted right left
-  | federationProducesStrings (interpretedAtlasMapFederation left)
+  | valueProducesStrings left
   , isNumericalRange right = True
   | isNumericalRange left
-  , federationProducesStrings (interpretedAtlasMapFederation right) = True
+  , valueProducesStrings right = True
   | otherwise = rangeAlternativesAreDistinct left right
 
 -- Declaration order makes structurally different templates deterministic for

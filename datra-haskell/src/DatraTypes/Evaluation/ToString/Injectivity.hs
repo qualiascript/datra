@@ -89,6 +89,7 @@ stringConversionProperties semantics
     WeakToStringSemantics _ -> unknownConversion
     TemplateSemantics source -> stringConversionProperties source
     DependentSumSemantics _ -> injectiveUnknownAlphabet
+    CharacterListSemantics -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]
     CoalizationSemantics operand -> structuralWrapperProperties operand

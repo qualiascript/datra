@@ -93,6 +93,7 @@ import Rendering (renderCanonicalResult, renderInterpretedValue)
 import SyntaxDefinitions
   ( SyntaxFunctionBody
   , SyntaxRule (..)
+  , qualifySyntaxRule
   , syntaxFunctionBodyForSymbol
   , syntaxTemplatesFromExpression
   )
@@ -133,15 +134,23 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
       else Right ([], []))
   importInvocations <- sourceImportInvocations source
   let importedRules =
-        [ (requested, rules)
+        [ (requested, namespace, rules)
         | (requested, moduleSource) <- modules
+        , Right namespace <- [moduleName moduleSource]
         , Right rules <- [moduleSyntaxRules requested moduleSource]
         ]
-      explicitlyImportedRules = concat
-        [ maybe [] id (lookup requested importedRules)
-        | (True, requested) <- importInvocations
+      qualifiedImportedRules = concat
+        [ map (qualifySyntaxRule namespace) rules
+        | (_, namespace, rules) <- importedRules
         ]
-      initialRules = standardRules <> explicitlyImportedRules
+      explicitlyImportedRules = concat
+        [ rules
+        | (True, requested) <- importInvocations
+        , (imported, _, rules) <- importedRules
+        , imported == requested
+        ]
+      initialRules =
+        standardRules <> qualifiedImportedRules <> explicitlyImportedRules
       capture = captureSyntaxHole base modules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
@@ -369,7 +378,7 @@ defaultModuleEnvironment = do
     Just (ImportedBinding _ importedValue _) -> Right importedValue
     _ -> Left (ModuleEvaluationFailed (ModuleNotLoaded standardLibraryFileName))
   rules <- moduleSyntaxRulesFromValue standardLibraryFileName value
-  pure (scope, rules)
+  pure (scope, rules <> map (qualifySyntaxRule namespace) rules)
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =

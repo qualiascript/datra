@@ -19,7 +19,7 @@ import Numeric.Natural (Natural)
 
 coalizeValue :: InterpretedValue -> InterpretedValue
 coalizeValue value
-  | valueIsCoalition value = value
+  | CoalizationForm _ <- interpretedForm value = value
   | otherwise =
       makeInterpretedValue
         (interpretedDatraType value)
@@ -29,8 +29,11 @@ coalizeValue value
         (CoalizedAtlasMapFederation
           (interpretedAtlasMapFederation value))
         totality
-        (CoalizationSemantics (interpretedSemantics value))
+        (CoalizationSemantics operandSemantics)
   where
+    operandSemantics
+      | valueIsCharacterList value = CharacterListSemantics
+      | otherwise = interpretedSemantics value
     operandMap = interpretedMap value
     coalizedMap = operandMap
       { interpretedMapPageCardinality = 1
@@ -39,6 +42,34 @@ coalizeValue value
     totality
       | interpretedValueHasTotalMap value = TotalInterpretedMap
       | otherwise = NonTotalInterpretedMap
+
+-- | The recursive list constructor and the character family retain explicit
+-- structural provenance.  Coalization uses that evidence for string
+-- behavior without replacing or unwrapping the coalization value itself.
+valueIsCharacterList :: InterpretedValue -> Bool
+valueIsCharacterList value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      case evaluatedDependentSumStructure dependent of
+        ListDependentSum elementType -> valueIsCharacterType elementType
+        _ -> False
+    SpecificationForm specification ->
+      valueIsCharacterList (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      valueIsCharacterList (evaluatedSpecificationTarget specification)
+    _ -> False
+  where
+    valueIsCharacterType elementType =
+      case interpretedForm elementType of
+        DependentSumForm dependent ->
+          case evaluatedDependentSumStructure dependent of
+            CharacterDependentSum -> True
+            _ -> False
+        SpecificationForm specification ->
+          valueIsCharacterType (evaluatedSpecificationTarget specification)
+        AssignmentForm specification ->
+          valueIsCharacterType (evaluatedSpecificationTarget specification)
+        _ -> False
 
 -- | Materialize the boundary previously inferred by canonical rendering: a
 -- map-valued member whose page reaches the surrounding page must be coalized

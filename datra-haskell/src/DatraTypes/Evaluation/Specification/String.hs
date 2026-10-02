@@ -1,6 +1,7 @@
 -- | Finite membership decisions for total strings against string federations.
 module Evaluation.Specification.String
   ( federationProducesStrings
+  , valueProducesStrings
   , federationUsesWeakToString
   , selectStringFederationMember
   ) where
@@ -15,6 +16,41 @@ import Evaluation.Specification.Decision
   )
 import Evaluation.Value
 import IdentifierValueType (isIdentifierValue)
+
+-- | Whether a value denotes only strings.  Most cases are visible directly
+-- in the federation expression.  A source-defined string type additionally
+-- has the structural shape @>< (List Char)@; the retained dependent-sum
+-- provenance lets that declaration work through aliases without consulting
+-- any identifier spelling.
+valueProducesStrings :: InterpretedValue -> Bool
+valueProducesStrings value =
+  federationProducesStrings (interpretedAtlasMapFederation value)
+    || case interpretedForm value of
+      CoalizationForm operand -> coalizedCharacterList operand
+      SpecificationForm specification ->
+        valueProducesStrings (evaluatedSpecificationTarget specification)
+      AssignmentForm specification ->
+        valueProducesStrings (evaluatedSpecificationTarget specification)
+      _ -> False
+  where
+    coalizedCharacterList operand =
+      case interpretedForm operand of
+        DependentSumForm dependent ->
+          case evaluatedDependentSumStructure dependent of
+            ListDependentSum elementType -> isCharacterType elementType
+            _ -> False
+        _ -> False
+    isCharacterType elementType =
+      case interpretedForm elementType of
+        DependentSumForm dependent ->
+          case evaluatedDependentSumStructure dependent of
+            CharacterDependentSum -> True
+            _ -> False
+        SpecificationForm specification ->
+          isCharacterType (evaluatedSpecificationTarget specification)
+        AssignmentForm specification ->
+          isCharacterType (evaluatedSpecificationTarget specification)
+        _ -> False
 
 -- | Whether every member described by a federation is an ASCII string.
 federationProducesStrings :: InterpretedAtlasMapFederation -> Bool

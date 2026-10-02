@@ -101,6 +101,7 @@ data ValueSemantics
   | WeakToStringSemantics ValueSemantics
   | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
+  | CharacterListSemantics
   | DependentIdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
@@ -145,6 +146,7 @@ data CanonicalResult
   | CanonicalWeakToString CanonicalResult
   | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
+  | CanonicalCharacterList
   | CanonicalSimpleIdentifierType
       { canonicalIdentifierString :: String
       , canonicalSimpleIdentifierTypeAnnotation :: CanonicalResult
@@ -197,6 +199,7 @@ canonicalResult semantics =
     TemplateSemantics source ->
       CanonicalTemplate (canonicalResult source)
     DependentSumSemantics source -> CanonicalDependentSum source
+    CharacterListSemantics -> CanonicalCharacterList
     DependentIdentifierTypeSemantics dependency underlying isTotal ->
       let underlyingResult = canonicalResult underlying
       in case dependency of

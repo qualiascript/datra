@@ -54,6 +54,7 @@ module Evaluation.Value
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
   , EvaluatedDependentIdentifierType (..)
+  , DependentSumStructure (..)
   , EvaluatedDependentSum (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
@@ -75,6 +76,7 @@ module Evaluation.Value
   , makeInterpretedValue
   , makeSingletonInterpretedValue
   , makeDependentSumValue
+  , withDependentSumStructure
   , withIdentifierErasureType
   , interpretedIdentifierErasureType
   , withDependentSumAccess
@@ -204,6 +206,15 @@ data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   , evaluatedIdentifierUnderlying :: InterpretedValue
   }
 
+-- | Structural provenance that remains meaningful after a source-level
+-- declaration has been evaluated.  This records constructors recognized by
+-- their ordinary expression shape; it does not retain or inspect a binding
+-- name from the standard library.
+data DependentSumStructure
+  = OrdinaryDependentSum
+  | CharacterDependentSum
+  | ListDependentSum InterpretedValue
+
 -- | A dependent sum keeps its ordinary structural approximation for map
 -- operations and its exact left-to-right membership procedure for typing.
 data EvaluatedDependentSum = EvaluatedDependentSum
@@ -213,6 +224,7 @@ data EvaluatedDependentSum = EvaluatedDependentSum
   , evaluatedDependentSumAccess
       :: Maybe
           (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedDependentSumStructure :: DependentSumStructure
   }
 
 -- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
@@ -548,12 +560,30 @@ makeDependentSumValue
 makeDependentSumValue source staticTarget specify =
   makeInterpretedValue
     structuralDatraType
-    (DependentSumForm (EvaluatedDependentSum staticTarget specify Nothing))
+    (DependentSumForm
+      (EvaluatedDependentSum
+        staticTarget specify Nothing OrdinaryDependentSum))
     (interpretedInsertionCapability staticTarget)
     (interpretedMap staticTarget)
     (interpretedAtlasMapFederation staticTarget)
     NonTotalInterpretedMap
     (DependentSumSemantics source)
+
+-- | Attach source-independent structure to a dependent sum.  Constructors
+-- such as recursive lists use this instead of making later consumers infer a
+-- standard-library identifier from rendered text.
+withDependentSumStructure
+  :: DependentSumStructure
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumStructure structure value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent { evaluatedDependentSumStructure = structure }
+        }
+    _ -> value
 
 -- | Retain a symbolic family's erased view for inference, without enumerating
 -- its unbounded collection of named slots.

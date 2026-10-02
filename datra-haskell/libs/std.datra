@@ -11,7 +11,6 @@ yield Std := begin
   Ordinal := !$~"datra.Ordinal"
   Char := !$~"datra.Char"
   Template := !$~"datra.Template"
-  _SyntaxTemplate := !$~"datra.SyntaxTemplate"
   IdenStr := !$~"datra.IdenStr"
 
   Infinity := $PosInf

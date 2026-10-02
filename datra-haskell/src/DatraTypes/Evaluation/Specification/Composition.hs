@@ -12,6 +12,7 @@ import AtlasMapFederationExpression
   )
 import Control.Monad (foldM)
 import BooleanType (DatraBoolean (..))
+import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
@@ -29,6 +30,7 @@ import Evaluation.Specification.Federation
   )
 import Evaluation.Specification.String
   ( selectStringFederationMember
+  , valueProducesStrings
   )
 import Evaluation.TypeFamily.BuiltinMeta qualified as BuiltinMeta
 import Evaluation.Value
@@ -217,8 +219,22 @@ selectCoalizationMember source operand =
         Just _ -> DecisionProved
           (EvaluatedSingletonAtlasMapMember
             (interpretedCanonicalResult source))
-        Nothing -> selectFederationMember source operand
-    Nothing -> selectFederationMember source operand
+        Nothing -> selectOrdinaryCoalition
+    Nothing -> selectOrdinaryCoalition
+  where
+    selectOrdinaryCoalition
+      | sourceRetainsCarrierBoundary =
+          selectFederationMember source operand
+      | otherwise = DecisionRefuted
+    sourceRetainsCarrierBoundary =
+      valueIsCoalition source
+        || valueProducesStrings source
+        || case interpretedForm source of
+          SequentialMapForm -> True
+          ExpansionMapForm _ _ -> True
+          ConcatenatedMapForm _ _ -> True
+          MapForm -> True
+          _ -> False
 
 coalizedIntegerSource :: InterpretedValue -> Maybe IntegerLimit
 coalizedIntegerSource source =
