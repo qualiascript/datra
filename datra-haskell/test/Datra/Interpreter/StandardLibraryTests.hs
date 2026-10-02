@@ -82,9 +82,9 @@ standardLibraryTests =
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
         , programCase "fixed point specification"
-            "yield (fun 5) ~> Nat" "5 ~> from 0 up"
+            "yield (fun 5) ~> Nat" "5 ~> Nat"
         , programCase "fixed point reverse specification"
-            "yield Nat <~ (fun 5)" "5 ~> from 0 up"
+            "yield Nat <~ (fun 5)" "5 ~> Nat"
         , programCase "fixed point subfederation"
             "yield (fun 5) of Nat" "true"
         , programCase "fixed point as an optional named argument"
@@ -101,16 +101,16 @@ standardLibraryTests =
               , "true"
               )
             , ( "yield public (_private:3;a:5) ~> (a?:Nat)"
-              , "a? : from 0 up := 5"
+              , "a? : Nat := 5"
               )
             , ("_private:=3\na:=5\nyield this._private", "_private : 3")
             , ("a:=5\nyield this.a of (a?:Nat)", "true")
-            , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : from 0 up := 5")
+            , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
             , ("a:=(b:2;c:3)\nyield a.(b,c)", "b : 2, c : 3")
             , ("a:=(b:2;c:3)\nyield a.(b,c) of (a.b,a.c)", "true")
             , ( "a:=(b:2;c:3)\n"
                   <> "yield a.(b,c) ~> (b?:Nat,c?:Nat)"
-              , "b? : from 0 up := 2, c? : from 0 up := 3"
+              , "b? : Nat := 2, c? : Nat := 3"
               )
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$up)", "from 2 up")
@@ -146,7 +146,7 @@ standardLibraryTests =
             "x := 5\nyield $~x of 6" "false"
         , programCase "lookup does not change optional-name specification"
             ("x := 5\nyield (x := $~x) ~> (x? : Nat)")
-            "x? : from 0 up := 5"
+            "x? : Nat := 5"
         ]
     , testGroup "mapped access"
         [ expressionCase "coalization is explicit and idempotent"
@@ -154,10 +154,10 @@ standardLibraryTests =
             ">< (20; 30)"
         , expressionCase "coalization preserves an Either boundary"
             ">< (Nat | Str)"
-            ">< (from 0 up | Str)"
+            ">< (Nat | Str)"
         , expressionCase "coalization preserves an identifier boundary"
             ">< (x : Nat)"
-            ">< (x : from 0 up)"
+            ">< (x : Nat)"
         , expressionCase "coalization preserves a map-valued member"
             "(10; >< (20; 30))"
             "(10; >< (20; 30))"
@@ -180,8 +180,8 @@ standardLibraryTests =
             "true"
         , programCase "coalized types concatenate positionally despite overlap"
             "yield (Int, Int)"
-            ( "((from 0 up; nothing | () | Just : $Complement); "
-                <> "(from 0 up; nothing | () | Just : $Complement))"
+            ( "((Nat; Maybe $Complement); "
+                <> "(Nat; Maybe $Complement))"
             )
         , programCase "function inference retains coalization"
             ( "f := (do yield >< (a + 1; a + 2))\n"
@@ -253,9 +253,7 @@ standardLibraryTests =
                 <> "do yield candidate)\n"
                 <> "yield ((1; 2) !? head) ~> Int?"
             )
-            ( "(Just : 1) ~> (nothing | () | Just : >< "
-                <> "(from 0 up; nothing | () | Just : $Complement))"
-            )
+            "(Just : 1) ~> Maybe Int"
         , programCase "list sequencing result supports subfederation"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
@@ -504,13 +502,10 @@ integerLimitTests =
   testGroup "integer limits and infinity"
     [ testGroup "types"
         [ programCase "Nat is the open upward range"
-            "yield Nat" "from 0 up"
+            "yield Nat" "Nat"
         , programCase "Int and IntLimit expose coalized source definitions"
             "yield (Int; IntLimit)"
-            ( "(>< (from 0 up; nothing | () | Just : $Complement); "
-                <> ">< (>< (from 0 up, Infinity); "
-                <> "nothing | () | Just : $Complement))"
-            )
+            "(Int; IntLimit)"
         , programCase "unnamed NatLimit functions accept finite and limit values"
             ( "identity := (NatLimit -> NatLimit do yield it)\n"
                 <> "yield (identity 3; identity Infinity)"

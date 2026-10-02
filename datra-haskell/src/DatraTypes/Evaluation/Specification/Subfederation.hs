@@ -27,7 +27,7 @@ decideValueSubfederation source target
         decideValueSubfederation
         source
         target
-  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+  | interpretedSemanticResult source == interpretedSemanticResult target =
       DecisionProved ()
   | DependentSumForm dependent <- interpretedForm target =
       case evaluatedDependentSumSpecify dependent source of

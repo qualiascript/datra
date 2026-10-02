@@ -50,7 +50,7 @@ specifyStructural specify decideSubfederation source target
       Left (FunctionEvaluationFailed ExpectedFunctionType)
   | federationUsesWeakToString (interpretedAtlasMapFederation target) =
       Left NoCanonicalStringConversion
-  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+  | interpretedSemanticResult source == interpretedSemanticResult target =
       Right source
   | otherwise =
       specifyValuesWithoutIdentity
@@ -160,6 +160,8 @@ identifierStringMismatch source target = do
         )
 
 simpleIdentifierStringFromSemantics :: ValueSemantics -> Maybe String
+simpleIdentifierStringFromSemantics (PresentedSemantics _ _ semantics) =
+  simpleIdentifierStringFromSemantics semantics
 simpleIdentifierStringFromSemantics semantics =
   case semantics of
     DependentIdentifierTypeSemantics
@@ -223,13 +225,13 @@ distinguishedAssignment
   -> InterpretedValue
   -> Maybe InterpretedValue
 distinguishedAssignment makeBoolean identifierString typeAnnotation givenValue
-  | interpretedCanonicalResult typeAnnotation
-      /= interpretedCanonicalResult givenValue = Nothing
+  | interpretedSemanticResult typeAnnotation
+      /= interpretedSemanticResult givenValue = Nothing
   | otherwise =
       case ( identifierString
            , interpretedValueKind givenValue
            , interpretedInteger givenValue
-           , interpretedCanonicalResult givenValue
+           , interpretedSemanticResult givenValue
            ) of
         ("False", NaturalValueKind, Just 0, _) ->
           Just (makeBoolean DatraFalse)
@@ -285,9 +287,9 @@ concreteOptionalAssignmentSource source = do
     case interpretedForm present of
       AssignmentForm value -> Just value
       _ -> Nothing
-  case interpretedCanonicalResult present of
+  case interpretedSemanticResult present of
     CanonicalAssignment _ typeAnnotation _
-      | typeAnnotation == interpretedCanonicalResult missing ->
+      | typeAnnotation == interpretedSemanticResult missing ->
           Just
             ( evaluatedSpecificationSourceValue assignment
             , evaluatedSpecificationSource assignment
@@ -301,9 +303,9 @@ widenSpecification
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 widenSpecification decideSubfederation source specification target =
-  if interpretedCanonicalResult
+  if interpretedSemanticResult
       (evaluatedSpecificationTarget specification)
-      == interpretedCanonicalResult target
+      == interpretedSemanticResult target
     then Right source
     else
       case decideSubfederation
@@ -360,7 +362,7 @@ specifiedValue sourceValue totalSource sourceCanonical target member =
 
 originalSpecificationSourceSemantics :: InterpretedValue -> ValueSemantics
 originalSpecificationSourceSemantics value =
-  case interpretedSemantics value of
+  case interpretedSemanticSemantics value of
     SpecificationSemantics source _ -> source
     AssignmentSemantics identifierString _ givenValueSemantics ->
       DependentIdentifierTypeSemantics

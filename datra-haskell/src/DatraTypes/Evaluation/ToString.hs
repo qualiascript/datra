@@ -89,12 +89,15 @@ weakToStringValue codec source =
     Left err -> Left err
 
 -- | Retain the ordinary concatenation result while recording that its members
--- are the pointwise outputs of one string template.
+-- are the pointwise outputs of one string template. A concrete string is
+-- already its own canonical template result; a string federation still needs
+-- the wrapper so its components render as interpolations rather than ordinary
+-- map concatenation.
 templateValue :: InterpretedValue -> InterpretedValue
 templateValue value =
-  if stringConversionIsIdentity value
-    then value
-    else
+  case interpretedForm value of
+    AsciiStringForm _ -> value
+    _ ->
       makeInterpretedValue
         (interpretedDatraType value)
         (TemplateForm value)

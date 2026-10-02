@@ -79,12 +79,13 @@ requireIntegerRangeEndpoint
   :: InterpretedValue
   -> Either InterpretingError IntegerRangeEndpoint
 requireIntegerRangeEndpoint value =
-  case rangeDirection (interpretedSemantics value) of
+  case rangeDirection (interpretedSemanticSemantics value) of
     Just True -> Right UpwardsEndpoint
     Just False -> Right DownwardsEndpoint
     Nothing -> FiniteEndpoint <$> requireIntegerLimit RightOperand value
 
 rangeDirection :: ValueSemantics -> Maybe Bool
+rangeDirection (PresentedSemantics _ _ semantics) = rangeDirection semantics
 rangeDirection semantics =
   case semantics of
     AsciiStringSemantics "up" -> Just True

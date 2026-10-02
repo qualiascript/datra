@@ -48,6 +48,8 @@ selectFederationMember source target
       selectFederationMember sourcePayload targetPayload
   | SkipForm _ <- interpretedForm source = DecisionRefuted
   | SkipForm _ <- interpretedForm target = DecisionRefuted
+  | TemplateForm underlying <- interpretedForm target =
+      selectFederationMember source underlying
   | CoalizationForm sourceOperand <- interpretedForm source
   , CoalizationForm targetOperand <- interpretedForm target =
       selectFederationMember sourceOperand targetOperand
@@ -71,12 +73,12 @@ selectFederationMember source target
   | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
       case datraCanonicalType (interpretedDatraType source) of
         Just _ -> DecisionProved
-          (EvaluatedCanonicalTypeMember (interpretedCanonicalResult source))
+          (EvaluatedCanonicalTypeMember (interpretedSemanticResult source))
         Nothing -> DecisionRefuted
   | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm target =
       case BuiltinMeta.decideBuiltinMetaSubfederation source OrdinalMetaType of
         DecisionProved () -> DecisionProved
-          (EvaluatedCanonicalTypeMember (interpretedCanonicalResult source))
+          (EvaluatedCanonicalTypeMember (interpretedSemanticResult source))
         DecisionRefuted -> DecisionRefuted
         DecisionUndecidable -> DecisionUndecidable
   | otherwise =
@@ -165,7 +167,7 @@ selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
   where
     sourceUnderlying = evaluatedIdentifierUnderlying sourceIdentifier
     targetUnderlying = evaluatedIdentifierUnderlying targetIdentifier
-    selectedCanonical = interpretedCanonicalResult sourceUnderlying
+    selectedCanonical = interpretedSemanticResult sourceUnderlying
     sourceString =
       identifierDependencyStringFor
         (evaluatedIdentifierDependency sourceIdentifier)
@@ -218,7 +220,7 @@ selectCoalizationMember source operand =
           | not includesInfinity -> DecisionRefuted
         Just _ -> DecisionProved
           (EvaluatedSingletonAtlasMapMember
-            (interpretedCanonicalResult source))
+            (interpretedSemanticResult source))
         Nothing -> selectOrdinaryCoalition
     Nothing -> selectOrdinaryCoalition
   where
@@ -241,7 +243,7 @@ coalizedIntegerSource source =
   case interpretedInteger source of
     Just integer -> Just (FiniteInteger integer)
     Nothing ->
-      case interpretedCanonicalResult source of
+      case interpretedSemanticResult source of
         CanonicalAsciiString "PosInf" -> Just PositiveInfinity
         CanonicalAsciiString "NegInf" -> Just NegativeInfinity
         _ -> Nothing

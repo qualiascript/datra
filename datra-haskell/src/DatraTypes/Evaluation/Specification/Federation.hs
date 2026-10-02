@@ -42,12 +42,12 @@ selectAtomicFederationMember source target =
       Just
         (if interpretedValueHasTotalMap source
               && interpretedValueHasTotalMap target
-              && interpretedCanonicalResult source
-                == interpretedCanonicalResult target
+              && interpretedSemanticResult source
+                == interpretedSemanticResult target
           then
             DecisionProved
               (EvaluatedSingletonAtlasMapMember
-                (interpretedCanonicalResult source))
+                (interpretedSemanticResult source))
           else DecisionRefuted)
     CoalizedAtlasMapFederation _ -> Nothing
     PrimitiveAtlasMapFederation
@@ -204,7 +204,7 @@ mapSubrange
   :: InterpretedValue
   -> Maybe NaturalRange.NaturalSubrangeDescription
 mapSubrange value =
-  case interpretedSemantics value of
+  case interpretedSemanticSemantics value of
     MapSemantics _ [RangeSemantics description] ->
       describedRangeSubrange 1 description
     MapSemantics _ [ExplicitSemantics level ordinalValue] -> do

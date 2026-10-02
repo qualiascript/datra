@@ -69,7 +69,9 @@ module Evaluation.Value
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
+  , PresentationDependency (..)
   , ValueSemantics (..)
+  , semanticValueSemantics
   , CanonicalResult (..)
   , InterpretedValue
   , InterpretedValueTotality (..)
@@ -91,6 +93,14 @@ module Evaluation.Value
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
   , interpretedCanonicalResult
+  , interpretedSemanticResult
+  , interpretedSemanticSemantics
+  , interpretedCanonicalPresentation
+  , interpretedCanonicalPresentations
+  , withCanonicalReference
+  , withCanonicalApplication
+  , withoutCanonicalPresentation
+  , withoutCanonicalDependencies
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedValueKind
@@ -318,8 +328,8 @@ functionSyntaxEquivalent left right =
       equivalent leftValue rightValue
     holeEquivalent _ _ = False
     equivalent leftValue rightValue =
-      interpretedCanonicalResult leftValue
-        == interpretedCanonicalResult rightValue
+      interpretedSemanticResult leftValue
+        == interpretedSemanticResult rightValue
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
 makeFunctionValue function = makeInterpretedValue functionDatraType
@@ -659,6 +669,61 @@ withEvaluationSource source value =
 
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
+
+-- | Presentation-free identity for type checks and semantic comparisons.
+interpretedSemanticResult :: InterpretedValue -> CanonicalResult
+interpretedSemanticResult = semanticCanonicalResult . interpretedSemantics
+
+-- | Runtime operations inspect the denoted value, never its retained name.
+interpretedSemanticSemantics :: InterpretedValue -> ValueSemantics
+interpretedSemanticSemantics = semanticValueSemantics . interpretedSemantics
+
+interpretedCanonicalPresentation
+  :: InterpretedValue
+  -> Maybe ([PresentationDependency], CanonicalResult)
+interpretedCanonicalPresentation = canonicalPresentation . interpretedSemantics
+
+interpretedCanonicalPresentations
+  :: InterpretedValue
+  -> [([PresentationDependency], CanonicalResult)]
+interpretedCanonicalPresentations = canonicalPresentations . interpretedSemantics
+
+withCanonicalReference
+  :: [PresentationDependency]
+  -> String
+  -> InterpretedValue
+  -> InterpretedValue
+withCanonicalReference dependencies name value = value
+  { interpretedSemantics = PresentedSemantics
+      dependencies
+      (CanonicalReference name)
+      (interpretedSemantics value)
+  }
+
+withCanonicalApplication
+  :: [PresentationDependency]
+  -> CanonicalResult
+  -> CanonicalResult
+  -> InterpretedValue
+  -> InterpretedValue
+withCanonicalApplication dependencies function argument value = value
+  { interpretedSemantics = PresentedSemantics
+      dependencies
+      (CanonicalApplication function argument)
+      (interpretedSemantics value)
+  }
+
+withoutCanonicalPresentation :: InterpretedValue -> InterpretedValue
+withoutCanonicalPresentation value = value
+  { interpretedSemantics = semanticValueSemantics (interpretedSemantics value) }
+
+withoutCanonicalDependencies
+  :: [PresentationDependency]
+  -> InterpretedValue
+  -> InterpretedValue
+withoutCanonicalDependencies dependencies value = value
+  { interpretedSemantics =
+      stripPresentedDependencies dependencies (interpretedSemantics value) }
 
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =

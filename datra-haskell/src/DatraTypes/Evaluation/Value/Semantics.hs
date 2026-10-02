@@ -8,9 +8,16 @@ module Evaluation.Value.Semantics
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
+  , PresentationDependency (..)
   , ValueSemantics (..)
   , CanonicalResult (..)
   , canonicalResult
+  , semanticCanonicalResult
+  , canonicalPresentation
+  , canonicalPresentations
+  , semanticValueSemantics
+  , mapValueSemanticsChildren
+  , stripPresentedDependencies
   ) where
 
 import DatraOrdinal (Ordinal)
@@ -73,11 +80,17 @@ identifierDependenciesCompatible left right =
         leftKey == rightKey
     _ -> False
 
+-- | Opaque identity of a lexical scope required by a retained presentation.
+newtype PresentationDependency = PresentationDependency String
+  deriving (Eq, Ord, Show)
+
 -- | Semantic provenance retained after existential Atlas witnesses have been
 -- erased. Evaluation modules inspect this structure; presentation is derived
 -- separately as 'CanonicalResult'.
 data ValueSemantics
-  = BuiltinMetaTypeSemantics BuiltinMetaType
+  = PresentedSemantics
+      [PresentationDependency] CanonicalResult ValueSemantics
+  | BuiltinMetaTypeSemantics BuiltinMetaType
   | FunctionSemantics
       ValueSemantics ValueSemantics (Maybe String)
   | ExplicitSemantics Natural Ordinal
@@ -100,7 +113,6 @@ data ValueSemantics
   | WeakToStringSemantics ValueSemantics
   | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
-  | CharacterListSemantics
   | DependentIdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
@@ -121,7 +133,9 @@ data ValueSemantics
 
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
-  = CanonicalBuiltinMetaType BuiltinMetaType
+  = CanonicalReference String
+  | CanonicalApplication CanonicalResult CanonicalResult
+  | CanonicalBuiltinMetaType BuiltinMetaType
   | CanonicalFunction
       CanonicalResult CanonicalResult (Maybe String)
   | CanonicalExplicit Natural Ordinal
@@ -144,7 +158,6 @@ data CanonicalResult
   | CanonicalWeakToString CanonicalResult
   | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
-  | CanonicalCharacterList
   | CanonicalSimpleIdentifierType
       { canonicalIdentifierString :: String
       , canonicalSimpleIdentifierTypeAnnotation :: CanonicalResult
@@ -163,12 +176,100 @@ data CanonicalResult
   deriving (Eq, Show)
 
 canonicalResult :: ValueSemantics -> CanonicalResult
-canonicalResult semantics =
+canonicalResult = canonicalResultWith True
+
+-- | The presentation-free normal form used for semantic comparisons. Named
+-- references never replace the value they denote; this view recursively
+-- discards presentation wrappers and exposes that underlying value.
+semanticCanonicalResult :: ValueSemantics -> CanonicalResult
+semanticCanonicalResult = canonicalResultWith False
+
+-- | Read only an explicitly retained presentation. Derived values without a
+-- binding or named application deliberately return 'Nothing'.
+canonicalPresentation
+  :: ValueSemantics
+  -> Maybe ([PresentationDependency], CanonicalResult)
+canonicalPresentation (PresentedSemantics dependencies presentation _) =
+  Just (dependencies, presentation)
+canonicalPresentation _ = Nothing
+
+-- | Presentations from the most local binding to the most deeply retained
+-- fallback. This ordering lets composed values keep the same lexical fallback
+-- behavior as direct aliases.
+canonicalPresentations
+  :: ValueSemantics
+  -> [([PresentationDependency], CanonicalResult)]
+canonicalPresentations
+    (PresentedSemantics dependencies presentation underlying) =
+  (dependencies, presentation) : canonicalPresentations underlying
+canonicalPresentations _ = []
+
+-- | Remove presentation at an operation boundary while retaining the full
+-- underlying semantic structure.
+semanticValueSemantics :: ValueSemantics -> ValueSemantics
+semanticValueSemantics (PresentedSemantics _ _ semantics) =
+  semanticValueSemantics semantics
+semanticValueSemantics semantics = semantics
+
+-- | Apply one transformation to every immediate recursive semantic child.
+-- Scope cleanup and future semantic rewrites share this constructor knowledge
+-- instead of each maintaining their own traversal.
+mapValueSemanticsChildren
+  :: (ValueSemantics -> ValueSemantics)
+  -> ValueSemantics
+  -> ValueSemantics
+mapValueSemanticsChildren recur semantics =
   case semantics of
+    PresentedSemantics dependencies presentation underlying ->
+      PresentedSemantics dependencies presentation (recur underlying)
+    FunctionSemantics input output body ->
+      FunctionSemantics (recur input) (recur output) body
+    EitherSemantics left right -> EitherSemantics (recur left) (recur right)
+    SkipSemantics payload -> SkipSemantics (recur payload)
+    ConcatenationSemantics members -> ConcatenationSemantics (map recur members)
+    ToStringSemantics source -> ToStringSemantics (recur source)
+    WeakToStringSemantics source -> WeakToStringSemantics (recur source)
+    TemplateSemantics source -> TemplateSemantics (recur source)
+    DependentIdentifierTypeSemantics dependency underlying isTotal ->
+      DependentIdentifierTypeSemantics dependency (recur underlying) isTotal
+    IdentifierStringProjectionSemantics dependency underlying isTotal ->
+      IdentifierStringProjectionSemantics dependency (recur underlying) isTotal
+    AssignmentSemantics identifierString typeAnnotation givenValue ->
+      AssignmentSemantics
+        identifierString (recur typeAnnotation) (recur givenValue)
+    CoalizationSemantics operand -> CoalizationSemantics (recur operand)
+    MapSemantics cardinality members -> MapSemantics cardinality (map recur members)
+    ArgumentMapSemantics total members ->
+      ArgumentMapSemantics total (map recur members)
+    SpecificationSemantics source target ->
+      SpecificationSemantics (recur source) (recur target)
+    _ -> semantics
+
+-- | Remove presentations owned by lexical scopes that have just expired.
+-- The denoted semantic value and presentations owned by enclosing scopes are
+-- retained unchanged.
+stripPresentedDependencies
+  :: [PresentationDependency]
+  -> ValueSemantics
+  -> ValueSemantics
+stripPresentedDependencies expired semantics =
+  case semantics of
+    PresentedSemantics dependencies _ underlying
+      | any (`elem` expired) dependencies -> recur underlying
+    _ -> mapValueSemanticsChildren recur semantics
+  where
+    recur = stripPresentedDependencies expired
+
+canonicalResultWith :: Bool -> ValueSemantics -> CanonicalResult
+canonicalResultWith retainPresentation semantics =
+  case semantics of
+    PresentedSemantics _ presentation underlying
+      | retainPresentation -> presentation
+      | otherwise -> canonicalResultWith False underlying
     BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
     FunctionSemantics input output body ->
       CanonicalFunction
-        (canonicalResult input) (canonicalResult output) body
+        (recur input) (recur output) body
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
     FormulationSemantics level -> CanonicalFormulation level
@@ -182,23 +283,22 @@ canonicalResult semantics =
       CanonicalValuedIntegerRange start target
     IntegerTypeSemantics -> CanonicalIntegerType
     EitherSemantics left right ->
-      CanonicalEither (canonicalResult left) (canonicalResult right)
-    SkipSemantics payload -> CanonicalSkip (canonicalResult payload)
+      CanonicalEither (recur left) (recur right)
+    SkipSemantics payload -> CanonicalSkip (recur payload)
     RangeConcatenationSemantics descriptions ->
       CanonicalRangeConcatenation descriptions
     ConcatenationSemantics members ->
-      CanonicalConcatenation (map canonicalResult members)
+      CanonicalConcatenation (map recur members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
-    ToStringSemantics source -> CanonicalToString (canonicalResult source)
+    ToStringSemantics source -> CanonicalToString (recur source)
     WeakToStringSemantics source ->
-      CanonicalWeakToString (canonicalResult source)
+      CanonicalWeakToString (recur source)
     TemplateSemantics source ->
-      CanonicalTemplate (canonicalResult source)
+      CanonicalTemplate (recur source)
     DependentSumSemantics source -> CanonicalDependentSum source
-    CharacterListSemantics -> CanonicalCharacterList
     DependentIdentifierTypeSemantics dependency underlying isTotal ->
-      let underlyingResult = canonicalResult underlying
+      let underlyingResult = recur underlying
       in case dependency of
         SimpleIdentifierDependency identifierString
           | isTotal ->
@@ -209,7 +309,7 @@ canonicalResult semantics =
         DependentIdentifierDependency familyKey _ ->
           CanonicalDependentIdentifierType familyKey underlyingResult
     IdentifierStringProjectionSemantics dependency underlying isTotal ->
-      let underlyingResult = canonicalResult underlying
+      let underlyingResult = recur underlying
       in if isTotal
         then CanonicalAsciiString
           (identifierDependencyRepresentativeString
@@ -220,18 +320,20 @@ canonicalResult semantics =
     AssignmentSemantics identifierString typeAnnotation givenValue ->
       CanonicalAssignment
         identifierString
-        (canonicalResult typeAnnotation)
-        (canonicalResult givenValue)
+        (recur typeAnnotation)
+        (recur givenValue)
     CoalizationSemantics operand ->
-      CanonicalCoalization (canonicalResult operand)
+      CanonicalCoalization (recur operand)
     MapSemantics cardinality components ->
-      CanonicalMap cardinality (map canonicalResult components)
+      CanonicalMap cardinality (map recur components)
     ArgumentMapSemantics totalPages members ->
-      CanonicalArgumentMap totalPages (map canonicalResult members)
+      CanonicalArgumentMap totalPages (map recur members)
     SpecificationSemantics source target ->
       canonicalSpecificationResult
-        (canonicalResult source)
-        (canonicalResult target)
+        (recur source)
+        (recur target)
+  where
+    recur = canonicalResultWith retainPresentation
 
 -- Specifications into optional identifier slots have an assignment
 -- presentation that carries the selected source values directly. This is the

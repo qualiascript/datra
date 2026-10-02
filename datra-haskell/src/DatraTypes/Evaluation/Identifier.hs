@@ -43,7 +43,7 @@ simpleIdentifierTypeValue
   -> InterpretedValue
   -> InterpretedValue
 simpleIdentifierTypeValue identifierString underlying
-  | interpretedCanonicalResult underlying == CanonicalMap 0 [] =
+  | interpretedSemanticResult underlying == CanonicalMap 0 [] =
       makeAsciiString identifierString
   | otherwise =
       makeDependentIdentifierTypeValue
@@ -72,7 +72,7 @@ identifierStringProjectionValue evaluated = value
   where
     dependency = evaluatedIdentifierDependency evaluated
     underlying = evaluatedIdentifierUnderlying evaluated
-    underlyingResult = interpretedCanonicalResult underlying
+    underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
     representativeString =
       identifierDependencyRepresentativeString
@@ -105,7 +105,7 @@ makeDependentIdentifierTypeValue
 makeDependentIdentifierTypeValue dependency underlying = value
   where
     evaluated = EvaluatedDependentIdentifierType dependency underlying
-    underlyingResult = interpretedCanonicalResult underlying
+    underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
     representativeString =
       identifierDependencyRepresentativeString

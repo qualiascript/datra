@@ -168,7 +168,15 @@ module DatraTypes
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
+  , PresentationDependency (..)
   , interpretedCanonicalResult
+  , interpretedSemanticResult
+  , interpretedCanonicalPresentation
+  , interpretedCanonicalPresentations
+  , withCanonicalReference
+  , withCanonicalApplication
+  , withoutCanonicalPresentation
+  , withoutCanonicalDependencies
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
@@ -371,10 +379,18 @@ import Evaluation.Value
   , functionSignature
   , callableFunction
   , interpretedFunction
+  , PresentationDependency (..)
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult
+  , interpretedSemanticResult
+  , interpretedCanonicalPresentation
+  , interpretedCanonicalPresentations
+  , withCanonicalReference
+  , withCanonicalApplication
+  , withoutCanonicalPresentation
+  , withoutCanonicalDependencies
   , interpretedDatraType
   , interpretedEvaluationSource
   , withEvaluationSource
@@ -449,7 +465,7 @@ listTypeValue elementSource elementType =
   where
     value = withDependentSumAccess project
       (makeDependentSumValue presentation staticTarget validate)
-    presentation = "List " <> elementSource
+    presentation = "fun (() | " <> elementSource <> "; this)"
     staticTarget = makeLazyMapValue omega (const (Just elementType))
     project insertion =
       case interpretedValueKind insertion of

@@ -51,8 +51,8 @@ identicalLoweredSyntaxFunction left right =
            ) of
         (Just leftSyntax, Just rightSyntax) ->
           functionSyntaxEquivalent leftSyntax rightSyntax
-            && interpretedCanonicalResult left
-              == interpretedCanonicalResult right
+            && interpretedSemanticResult left
+              == interpretedSemanticResult right
         _ -> False
     _ -> False
 
@@ -73,7 +73,7 @@ alternativesAreDistinct left right
         DecisionProved () -> True
         DecisionRefuted -> False
         DecisionUndecidable -> False
-  | interpretedCanonicalResult left == interpretedCanonicalResult right = False
+  | interpretedSemanticResult left == interpretedSemanticResult right = False
   | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
       alternativesAreDistinct (functionDomain a) (functionDomain b)
   | AssignmentForm leftAssignment <- interpretedForm left =
@@ -175,8 +175,8 @@ decideSyntaxFunctionAlternatives
       , rightTemplate <- functionSyntaxTemplates rightSyntax
       ]
     ordinaryRoutesIdentical =
-      interpretedCanonicalResult (functionDomain leftFunction)
-        == interpretedCanonicalResult (functionDomain rightFunction)
+      interpretedSemanticResult (functionDomain leftFunction)
+        == interpretedSemanticResult (functionDomain rightFunction)
     ordinaryRoutesNotProvedDistinct = not (alternativesAreDistinct
       (functionDomain leftFunction)
       (functionDomain rightFunction))
@@ -210,7 +210,7 @@ sequenceRequiresMultipleSources value =
     Just members -> length (filter (not . isLiteralUnit) members) > 1
   where
     isLiteralUnit member =
-      interpretedCanonicalResult member == CanonicalMap 0 []
+      interpretedSemanticResult member == CanonicalMap 0 []
 
 structuralSlotOrdinal :: InterpretedValue -> Maybe Ordinal
 structuralSlotOrdinal value

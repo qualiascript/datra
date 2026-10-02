@@ -469,7 +469,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
           case optionalArgumentSlot expected of
             Just (name, annotation) ->
               Right (Just (IdentifierString name), True, annotation)
-            Nothing -> case interpretedCanonicalResult expected of
+            Nothing -> case interpretedSemanticResult expected of
               CanonicalSimpleIdentifierType name _ -> do
                 underlying <- accessValues expected (naturalValue 1)
                 Right (Just (IdentifierString name), False, underlying)
@@ -509,14 +509,14 @@ lookupInferenceBinding name = go
 
 check :: InterpretedValue -> InterpretedValue -> Either InterpretingError ()
 check actual expected
-  | interpretedCanonicalResult actual
-      == interpretedCanonicalResult expected = Right ()
+  | interpretedSemanticResult actual
+      == interpretedSemanticResult expected = Right ()
   | otherwise = do
       accepted <- isSubtype actual expected
       if accepted then Right () else Left (FunctionEvaluationFailed
         (InferredTypeOutsideRequirement
-          (show (interpretedCanonicalResult actual))
-          (show (interpretedCanonicalResult expected))))
+          (show (interpretedSemanticResult actual))
+          (show (interpretedSemanticResult expected))))
 
 isSubtype :: InterpretedValue -> InterpretedValue -> Either InterpretingError Bool
 isSubtype source target = subfederationValues source target >>= booleanCondition

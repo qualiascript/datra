@@ -142,6 +142,8 @@ describedRangeSemantics described
     description = describedRangeDescription described
 
 semanticAccessSource :: ValueSemantics -> AccessSource
+semanticAccessSource (PresentedSemantics _ _ semantics) =
+  semanticAccessSource semantics
 semanticAccessSource semantics =
   case semantics of
     BuiltinMetaTypeSemantics _ -> ordinarySource []
@@ -189,7 +191,6 @@ semanticAccessSource semantics =
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
     DependentSumSemantics _ -> ordinarySource []
-    CharacterListSemantics -> ordinarySource []
     CoalizationSemantics operand -> semanticAccessSource operand
   where
     ordinarySource ranges = AccessSource ranges False Nothing

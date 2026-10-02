@@ -13,7 +13,7 @@ import AtlasMapFederationExpression
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.Error (InterpretingError)
 import Evaluation.Federation
-  ( decideFederationConcatenation
+  ( decideValueConcatenation
   , requireFederationDecision
   )
 import Evaluation.Construction (makeAsciiString)
@@ -112,9 +112,7 @@ concatenateNonUnitValues
   -> Either InterpretingError InterpretedValue
 concatenateNonUnitValues left right = do
   requireFederationDecision
-    (decideFederationConcatenation
-      (interpretedAtlasMapFederation left)
-      (interpretedAtlasMapFederation right))
+    (decideValueConcatenation left right)
   normalizedRanges <-
     traverse canonicalizeRanges (concatenatedRanges left right)
   let insertionCapability =
@@ -160,9 +158,10 @@ concatenateNonUnitValues left right = do
           _ -> semantics
       baseResultMap = InterpretedMap cardinality finalValues components
       resultFederation
-        | atlasMapFederationExpressionIsSingleton
+        | operandsAreTotal
+        , atlasMapFederationExpressionIsSingleton
             (interpretedAtlasMapFederation left)
-            && atlasMapFederationExpressionIsSingleton
+        , atlasMapFederationExpressionIsSingleton
               (interpretedAtlasMapFederation right) =
             SingletonAtlasMapFederation resultMap
         | otherwise =
@@ -233,7 +232,7 @@ isUnitValue value =
   case interpretedForm value of
     SequentialMapForm ->
       interpretedMapCardinality (interpretedMap value) == 0
-        && interpretedCanonicalResult value == CanonicalMap 0 []
+        && interpretedSemanticResult value == CanonicalMap 0 []
     _ -> False
 
 -- A specification retains the certified total map that originally selected
@@ -265,6 +264,8 @@ preservesConcatenationBoundary value =
     _ -> False
 
 semanticsContainsRange :: ValueSemantics -> Bool
+semanticsContainsRange (PresentedSemantics _ _ semantics) =
+  semanticsContainsRange semantics
 semanticsContainsRange (NaturalRangeSemantics _ _) = True
 semanticsContainsRange (ValuedNaturalRangeSemantics _ _) = True
 semanticsContainsRange (IntegerRangeSemantics _ _) = True

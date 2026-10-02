@@ -33,8 +33,8 @@ specifyFunction decideSubfederation specify source target =
           { functionSource = case functionSource original of
               Nothing -> Nothing
               Just sourceText
-                | interpretedCanonicalResult (functionDomain original) == interpretedCanonicalResult (functionDomain signature)
-                , interpretedCanonicalResult (functionCodomain original) == interpretedCanonicalResult (functionCodomain signature) -> Just sourceText
+                | interpretedSemanticResult (functionDomain original) == interpretedSemanticResult (functionDomain signature)
+                , interpretedSemanticResult (functionCodomain original) == interpretedSemanticResult (functionCodomain signature) -> Just sourceText
               Just sourceText -> Just
                 ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
           , functionPrepare = Just (\argument -> do
@@ -55,8 +55,8 @@ specifyFunction decideSubfederation specify source target =
           FunctionSignatureVarianceViolation)
         DecisionUndecidable -> Left (FunctionEvaluationFailed
           (FunctionSpecificationUndecidable
-            (show (interpretedCanonicalResult source))
-            (show (interpretedCanonicalResult target))))
+            (show (interpretedSemanticResult source))
+            (show (interpretedSemanticResult target))))
     _ -> Left (FunctionEvaluationFailed ExpectedFunctionValue)
 
 validateFunctionInput
@@ -85,8 +85,8 @@ decideFunctionSubfederation decideSubfederation source target
             (functionSyntax sourceFunction)
             (functionSyntax targetFunction))
         then DecisionRefuted
-      else if interpretedCanonicalResult source
-          == interpretedCanonicalResult target
+      else if interpretedSemanticResult source
+          == interpretedSemanticResult target
         then DecisionProved ()
       else case functionSource targetFunction of
         Just _ -> DecisionUndecidable
@@ -98,7 +98,7 @@ decideFunctionSubfederation decideSubfederation source target
               (functionCodomain sourceFunction)
               (functionCodomain targetFunction)
           ])
-  | interpretedCanonicalResult source == interpretedCanonicalResult target = DecisionProved ()
+  | interpretedSemanticResult source == interpretedSemanticResult target = DecisionProved ()
   | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | otherwise = DecisionRefuted
 

@@ -103,7 +103,10 @@ extractTemplateHoles target member =
     TemplateForm underlying ->
       extractTemplateHoles underlying member
     CoalizationForm underlying ->
-      extractTemplateHoles underlying member
+      case member of
+        EvaluatedDependentSumMember selected ->
+          pure <$> specifyValues selected target
+        _ -> extractTemplateHoles underlying member
     DependentSumForm _ ->
       case member of
         EvaluatedDependentSumMember selected ->

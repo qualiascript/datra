@@ -222,7 +222,7 @@ naturalRangeAccessResult
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
 naturalRangeAccessResult selected =
-  case interpretedSemantics selected of
+  case interpretedSemanticSemantics selected of
     MapSemantics 0 _ -> Right selected
     ExplicitSemantics _ value ->
       case naturalAtOrdinal value of
@@ -474,7 +474,7 @@ namedAccessValue source name = do
     _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
-      | matchesName (interpretedCanonicalResult value) = Right [value]
+      | matchesName (interpretedSemanticResult value) = Right [value]
       | otherwise = case interpretedForm value of
           DependentIdentifierTypeForm _ -> Right []
           AssignmentForm _ -> Right []

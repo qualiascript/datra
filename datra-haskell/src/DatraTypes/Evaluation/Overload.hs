@@ -117,8 +117,8 @@ preserveDefault slots (index, replacement) =
       case slotDefault =<< findSlot index slots of
         Nothing -> Right ()
         Just defaultValue
-          | interpretedCanonicalResult replacementValue
-              == interpretedCanonicalResult defaultValue -> Right ()
+          | interpretedSemanticResult replacementValue
+              == interpretedSemanticResult defaultValue -> Right ()
           | otherwise -> Left (OverloadError OverloadChangedDefault)
   where
     findSlot _ [] = Nothing
@@ -189,7 +189,7 @@ resolveReplacements template supplied
     sameReplacements left right = canonical left == canonical right
     canonical = sortOn fst . map
       (\(index, value) ->
-        (index, interpretedCanonicalResult <$> value))
+        (index, interpretedSemanticResult <$> value))
     inputOrders row
       | any hasName row = permutations row
       | otherwise = [row]
@@ -271,7 +271,7 @@ suppliedAsAssignment :: InterpretedValue -> Bool
 suppliedAsAssignment value =
   case interpretedForm value of
     AssignmentForm _ -> True
-    _ -> case interpretedCanonicalResult value of
+    _ -> case interpretedSemanticResult value of
       CanonicalAssignment {} -> True
       _ -> False
 
@@ -491,7 +491,7 @@ argumentSchemaDomain schema =
     EmptyArgumentSchema -> pure (makeAtlasMap 0 [])
   where
     sameValue left right =
-      interpretedCanonicalResult left == interpretedCanonicalResult right
+      interpretedSemanticResult left == interpretedSemanticResult right
     schemaPages current =
       case current of
         OrderedArgumentSchema _ entries ->
@@ -692,8 +692,8 @@ optionalNamedParts value = do
       _ -> Nothing
   parts@(_, annotation, _) <-
     namedParts (evaluatedEitherLeft alternatives)
-  if interpretedCanonicalResult annotation
-      == interpretedCanonicalResult (evaluatedEitherRight alternatives)
+  if interpretedSemanticResult annotation
+      == interpretedSemanticResult (evaluatedEitherRight alternatives)
     then Just parts
     else Nothing
 

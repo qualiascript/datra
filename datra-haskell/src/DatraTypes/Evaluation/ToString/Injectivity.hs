@@ -27,7 +27,8 @@ proveInjectiveToString
   -> InterpretedValue
   -> Maybe ProvenInjectiveToString
 proveInjectiveToString decodeCanonical source =
-  let properties = stringConversionProperties (interpretedSemantics source)
+  let properties = stringConversionProperties
+        (interpretedSemanticSemantics source)
   in if conversionIsInjective properties
       then
         Just
@@ -45,6 +46,8 @@ proveInjectiveToString decodeCanonical source =
 stringConversionProperties
   :: ValueSemantics
   -> StringConversionProperties
+stringConversionProperties (PresentedSemantics _ _ semantics) =
+  stringConversionProperties semantics
 stringConversionProperties semantics
   | Just includesInfinity <-
       complementedIntegerTypeIncludesInfinity semantics =
@@ -88,7 +91,6 @@ stringConversionProperties semantics
     WeakToStringSemantics _ -> unknownConversion
     TemplateSemantics source -> stringConversionProperties source
     DependentSumSemantics _ -> injectiveUnknownAlphabet
-    CharacterListSemantics -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]
     CoalizationSemantics operand -> structuralWrapperProperties operand
@@ -134,7 +136,7 @@ reservedConstructorString
   -> ValueSemantics
   -> Maybe String
 reservedConstructorString dependency underlying =
-  case (dependency, underlying) of
+  case (dependency, semanticValueSemantics underlying) of
     (SimpleIdentifierDependency "False", ExplicitSemantics 1 ordinalValue)
       | naturalAtOrdinal ordinalValue == Just 0 ->
           reserved Reserved.FalseSymbol

@@ -31,6 +31,9 @@ valueProducesStrings value =
         valueProducesStrings (evaluatedSpecificationTarget specification)
       AssignmentForm specification ->
         valueProducesStrings (evaluatedSpecificationTarget specification)
+      TemplateForm underlying -> valueProducesStrings underlying
+      ConcatenatedMapForm left right ->
+        valueProducesStrings left && valueProducesStrings right
       _ -> False
   where
     coalizedCharacterList operand =
@@ -100,7 +103,7 @@ selectStringFederationMember
   -> Maybe (Decision EvaluatedAtlasMapFederationMember)
 selectStringFederationMember selectMember source target = do
   characters <-
-    case interpretedCanonicalResult source of
+    case interpretedSemanticResult source of
       CanonicalAsciiString value -> Just value
       _ -> Nothing
   selectCharacters

@@ -326,10 +326,10 @@ matchSingleRule holeMatches rule expressionValue =
     Left _ -> Left NoMatchingSyntaxTemplate
 
 sourceNatType :: String
-sourceNatType = "from 0 up"
+sourceNatType = "Nat"
 
 sourceIntType :: String
-sourceIntType = ">< (from 0 up; nothing | () | Just : $Complement)"
+sourceIntType = "Int"
 
 maybeType :: Expression -> Expression
 maybeType = FunctionApplication
@@ -702,7 +702,7 @@ testLiteralsAndArithmetic = do
       )
   expectValue "Str type" AST.stringType $ \value ->
     assert "Str renders as the ASCII string federation"
-      ( interpretedValueKind value == AsciiStringValueKind
+      ( interpretedValueKind value == MapValueKind
         && renderInterpretedValue value == "Str"
       )
   expectValue
@@ -856,7 +856,7 @@ testArgumentMapConcatenation = do
       example = source <> " ~> " <> target
       renderedExample =
         source <> " ~> x : 3, "
-          <> "{a? : from 0 up := 2; b? : from 0 up}"
+          <> "{a? : Nat := 2; b? : Nat}"
   mapM_ (\expression -> expectSourceValue expression expression $ \value -> do
     assert "concatenated specification preserves the supplied presentation"
       (renderInterpretedValue value == renderedExample)
@@ -914,7 +914,7 @@ testArgumentMapTemplates = do
   let member = "\"(b : 8; 2)\""
       specification = member <> " ~> " <> template
       renderedSpecification =
-        member <> " ~> \"%({a? : from 0 up; b? : from 0 up})\""
+        member <> " ~> \"%({a? : Nat; b? : Nat})\""
   mapM_ (\expression -> expectSourceValue "template argument specification"
     expression $ \value ->
       assert "forward and reverse template specifications agree"
@@ -925,7 +925,7 @@ testArgumentMapTemplates = do
       assert "capture retains the source ordering and target argument map"
         (renderInterpretedValue value
           == "(b : 8; 2) ~> "
-            <> "{a? : from 0 up; b? : from 0 up}")
+            <> "{a? : Nat; b? : Nat}")
   expectSourceValue "argument template capture supports access and arithmetic"
     ("%(" <> specification <> ")[1][1] * 5") $ \value ->
       assert "captured unnamed argument remains numeric"
@@ -947,22 +947,22 @@ testEval = do
         expected (renderInterpretedValue value))
     [ ( "\"12\""
       , "Int"
-      , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
+      , "12 ~> Int"
       )
     , ("\"alco\"", "IdenStr", "$alco ~> IdenStr")
-    , ("\"hello world\"", "Str", "\"hello world\" ~> >< (List Char)")
+    , ("\"hello world\"", "Str", "\"hello world\" ~> Str")
     , ( "(\"1\", \"2\")"
       , "Int"
-      , "12 ~> >< (from 0 up; nothing | () | Just : $Complement)"
+      , "12 ~> Int"
       )
     , ( "\"x : 3, (b : 8; 2)\""
       , "x : 3; {a? : Nat := 2; b? : Nat}"
       , "x : 3, (b : 8; 2) ~> "
-          <> "(x : 3; {a? : from 0 up := 2; b? : from 0 up})"
+          <> "(x : 3; {a? : Nat := 2; b? : Nat})"
       )
     , ( "\"(2; 8)\""
       , "{a : Nat; b : Nat}"
-      , "(2; 8) ~> {a : from 0 up; b : from 0 up}"
+      , "(2; 8) ~> {a : Nat; b : Nat}"
       )
     ]
   mapM_ (\(source, target) ->
@@ -1224,13 +1224,13 @@ testEvalBackedKeywords = do
     , ("if false then (1 and false)", "()")
     , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
     , ( "%(\"from 2 to 5\" ~> \"from %Int to %Int\")[1]"
-      , "2 ~> >< (from 0 up; nothing | () | Just : $Complement)"
+      , "2 ~> Int"
       )
     , ( "%(\"from 2 to 5\" ~> \"from %Int to %Int\")[2]"
-      , "5 ~> >< (from 0 up; nothing | () | Just : $Complement)"
+      , "5 ~> Int"
       )
     , ( "%(\"range -3 down\" ~> \"range %Int down\")[1]"
-      , "-3 ~> >< (from 0 up; nothing | () | Just : $Complement)"
+      , "-3 ~> Int"
       )
     , ("%(\"if true then\" ~> \"if %Bool then\")[1]", "true ~> Bool")
     ]
@@ -1263,7 +1263,7 @@ testEvalBackedKeywords = do
 
 testSlotOrdinalDistinctness :: IO ()
 testSlotOrdinalDistinctness = do
-  let coalizedString = Coalization StringType
+  let coalizedString = Coalization AST.stringType
       importAllDomain = AtlasMap
         [AsciiStringLiteral "all", coalizedString]
       unitFunction domain = FunctionType domain (AtlasMap [])
@@ -1478,7 +1478,7 @@ testStringTemplates = do
     assert "extract follows the retained string-template selection witness"
       ( renderInterpretedValue value
           == "(\"alco 100\"; $alco ~> IdenStr; "
-            <> "100 ~> >< (from 0 up; nothing | () | Just : $Complement))"
+            <> "100 ~> Int)"
       )
   expectSourceValue
       "extract forgets a simple identifier assignment wrapper"
@@ -1486,7 +1486,7 @@ testStringTemplates = do
     assert "identifier extraction matches direct specification extraction"
       ( renderInterpretedValue value
           == "(\"alco 100\"; $alco ~> IdenStr; "
-            <> "100 ~> >< (from 0 up; nothing | () | Just : $Complement))"
+            <> "100 ~> Int)"
       )
   expectSourceValue
       "extract index zero selects the original string"
@@ -1503,7 +1503,7 @@ testStringTemplates = do
       "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [2]" $ \value ->
     assert "the third extracted component is the second typed hole"
       (renderInterpretedValue value
-        == "100 ~> >< (from 0 up; nothing | () | Just : $Complement)")
+        == "100 ~> Int")
   expectSourceValue
       "extracted numerical specifications participate in arithmetic"
       "%(my_val : \"%IdenStr %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
@@ -1520,7 +1520,7 @@ testStringTemplates = do
       "extract treats percent Str as the whole-string hole"
       "%(\"%Str\" <~ \"hello world\")" $ \value ->
     assertEqual "Str extraction retains its declarative canonical target"
-      "(\"hello world\"; \"hello world\" ~> >< (List Char))"
+      "(\"hello world\"; \"hello world\" ~> Str)"
       (renderInterpretedValue value)
   expectSourceValue
       "extract maps pointwise over a sequence of templates"
@@ -1646,7 +1646,7 @@ testStringTemplates = do
       (renderInterpretedValue value == "true")
   expectValue
       "delimited string template is a Str subfederation"
-      (AST.subfederation separatedNaturals StringType) $ \value ->
+      (AST.subfederation separatedNaturals AST.stringType) $ \value ->
     assert "every member produced by the template is a string"
       (renderInterpretedValue value == "true")
   let booleanTemplate =
@@ -1682,7 +1682,7 @@ testStringTemplates = do
         <> renderInterpretedValue value)
       ( interpretedValueKind value == SpecificationValueKind
         && renderInterpretedValue value
-          == "$nothing ~> \"%(nothing | () | Just : Int)\""
+          == "$nothing ~> \"%(Maybe Int)\""
       )
   expectValue
       "non-digit delimiter between natural interpolations"
@@ -1698,14 +1698,14 @@ testStringTemplates = do
       (StringTemplate
         [ StringTemplateInterpolation NaturalType
         , StringTemplateLiteral ":"
-        , StringTemplateInterpolation StringType
+        , StringTemplateInterpolation AST.stringType
         ]) $ \value ->
     assert "a delimiter excluded from the left side fixes the first split"
       (not (Types.interpretedValueHasTotalMap value))
   expectValue
       "arbitrary string then natural separated by a delimiter"
       (StringTemplate
-        [ StringTemplateInterpolation StringType
+        [ StringTemplateInterpolation AST.stringType
         , StringTemplateLiteral ":"
         , StringTemplateInterpolation NaturalType
         ]) $ \value ->
@@ -1754,17 +1754,17 @@ testStringTemplates = do
   assert "adjacent Str interpolations are ambiguous"
     (case interpretExpressionReason
         (StringTemplate
-          [ StringTemplateInterpolation StringType
-          , StringTemplateInterpolation StringType
+          [ StringTemplateInterpolation AST.stringType
+          , StringTemplateInterpolation AST.stringType
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
   assert "a delimiter cannot disambiguate arbitrary Str values"
     (case interpretExpressionReason
         (StringTemplate
-          [ StringTemplateInterpolation StringType
+          [ StringTemplateInterpolation AST.stringType
           , StringTemplateLiteral ":"
-          , StringTemplateInterpolation StringType
+          , StringTemplateInterpolation AST.stringType
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
@@ -1952,7 +1952,7 @@ testBooleansAndEither = do
         == "x : from 0 up | y : from 0 up")
   expectValue
       "disjoint primitive families form an Either federation"
-      (AST.eitherType AST.naturalType StringType) $ \value ->
+      (AST.eitherType AST.naturalType AST.stringType) $ \value ->
     assert "numeric and string Atlas maps are distinguishable"
       (renderInterpretedValue value == "from 0 up | Str")
   case interpretExpressionReason
@@ -2037,7 +2037,7 @@ testOptionalsAndConditionals = do
       (renderInterpretedValue value == "true")
   expectValue "Maybe Nat" (maybeType AST.naturalType) $ \value ->
     assert "Maybe evaluates to its source-defined federation"
-      (renderInterpretedValue value == "nothing | () | Just : from 0 up")
+      (renderInterpretedValue value == "Maybe (from 0 up)")
   expectValue
       "expanded optional equality"
       (AST.equal
@@ -2050,14 +2050,14 @@ testOptionalsAndConditionals = do
       (nothingValue ~> maybeType AST.naturalType) $ \value ->
     assert "absence selects the tagged optional alternative"
       (renderInterpretedValue value
-        == "nothing ~> (nothing | () | Just : from 0 up)")
+        == "nothing ~> Maybe (from 0 up)")
   expectValue
       "canonical Nothing identifier"
       (AST.dependentIdentifierType "Nothing" AST.emptyMap
         ~> maybeType AST.naturalType) $ \value ->
     assert "Nothing : () round-trips as the distinguished absence"
       (renderInterpretedValue value
-        == "nothing ~> (nothing | () | Just : from 0 up)")
+        == "nothing ~> Maybe (from 0 up)")
   expectValue
       "optional identifier"
       (AST.eitherType
@@ -2197,7 +2197,7 @@ testCombinedTypeSystems = do
       ) $ \value ->
     assert "Boolean equality and arithmetic compose into Maybe Int"
       (renderInterpretedValue value
-        == "(Just : -4) ~> (nothing | () | Just : Int)")
+        == "(Just : -4) ~> Maybe Int")
   expectValue
       "false branch optional specification"
       ( AST.conditional
@@ -2208,7 +2208,7 @@ testCombinedTypeSystems = do
       ) $ \value ->
     assert "a conditional absence composes through optional specification"
       (renderInterpretedValue value
-        == "nothing ~> (nothing | () | Just : Int)")
+        == "nothing ~> Maybe Int")
   expectValue
       "missing optional identifier path"
       ( AST.conditional
@@ -2271,7 +2271,7 @@ testCombinatorialNumericalSystems = do
       ) $ \value ->
     assert "descending numerical subtypes compose into optional Int"
       (renderInterpretedValue value
-        == "(Just : -1) ~> (nothing | () | Just : Int)")
+        == "(Just : -1) ~> Maybe Int")
   expectValue
       "conditional power and subtraction range check"
       ( AST.conditional
@@ -2285,7 +2285,7 @@ testCombinatorialNumericalSystems = do
       ) $ \value ->
     assert "range equality can guard signed arithmetic and optional subtyping"
       (renderInterpretedValue value
-        == "(Just : 7) ~> (nothing | () | Just : from -10 to 10)")
+        == "(Just : 7) ~> Maybe (from -10 to 10)")
   expectValue
       "optional numerical identifier equality"
       (AST.equal optionalIdentifierRange optionalIdentifierRange) $ \value ->
@@ -2354,7 +2354,7 @@ testRanges = do
       (renderInterpretedValue value == "from 2 up")
   expectSourceValue "Nat synonym" "Nat" $ \value ->
     assert "Nat is the open upward valued range"
-      (renderInterpretedValue value == "from 0 up")
+      (renderInterpretedValue value == "Nat")
   expectValue
       "bounded range"
       ((<..>) (natural 2) (natural 5)) $ \value ->
@@ -4126,11 +4126,11 @@ testNamedAccess :: IO ()
 testNamedAccess = do
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
       assert (source <> " preserves the selected field") (renderInterpretedValue value == expected))
-    [ ("{a : Nat := 5; b : Str}.a", "a : from 0 up := 5")
-    , ("{b : Str; a : Nat := 5}.a", "a : from 0 up := 5")
-    , ("{a? : Nat := 5; b : Str}.a", "a : from 0 up := 5")
+    [ ("{a : Nat := 5; b : Str}.a", "a : Nat := 5")
+    , ("{b : Str; a : Nat := 5}.a", "a : Nat := 5")
+    , ("{a? : Nat := 5; b : Str}.a", "a : Nat := 5")
     , ( "({b:8;2} ~> {a?:Nat:=2;b?:Nat}).b"
-      , "b : from 0 up := 8"
+      , "b : Nat := 8"
       )
     , ("{a:Nat:=5;b:Str}.a of (a:Nat)", "true")
     , ( "{a:Nat:=5;b:Str}.a ~> (a:Int)"

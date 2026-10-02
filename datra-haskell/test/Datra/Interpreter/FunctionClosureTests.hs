@@ -269,8 +269,8 @@ roundTripWith independentlyClosed checkCanonical
     assertEqual "canonical text is idempotent"
       text (renderInterpretedValue reconstructed)
     assertEqual "canonical identity survives"
-      (interpretedCanonicalResult original)
-      (interpretedCanonicalResult reconstructed)
+      (interpretedSemanticResult original)
+      (interpretedSemanticResult reconstructed)
     case toStringValue canonicalStringCodec original of
       Left failure -> assertFailure (show failure)
       Right _ -> pure ()
