@@ -436,7 +436,13 @@ orderedArgumentSchema :: Natural -> [ArgumentSchema] -> ArgumentSchema
 orderedArgumentSchema = OrderedArgumentSchema
 
 unorderedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
-unorderedArgumentSchema = UnorderedArgumentSchema
+unorderedArgumentSchema schemas =
+  case schemas of
+    -- A singleton projected family has no alternate argument-map ordering.
+    -- Keep the projection visible so its dependent fibres can prepare calls
+    -- and construct the named value exposed to the function body.
+    [projected@ProjectedArgumentSchema {}] -> projected
+    _ -> UnorderedArgumentSchema schemas
 
 concatenatedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
 concatenatedArgumentSchema schemas =
@@ -520,10 +526,12 @@ argumentSchemaDomain schema =
 argumentSchemaBodyDomain :: ArgumentSchema -> InterpretedValue
 argumentSchemaBodyDomain schema = case schema of
   ProjectedArgumentSchema target -> projectedBodyDomain target
-  _ -> makeAtlasMapPreservingSingleton 2
+  _ -> bodyAggregate normalized
     [ namedSlot (slotName slot, slotAnnotation slot)
-    | slot <- templateSlots (normalizeArgumentSchema schema)
+    | slot <- templateSlots normalized
     ]
+  where
+    normalized = normalizeArgumentSchema schema
 
 -- Projection selects ordinary schemas, including optional names. The body
 -- always sees their completed, named form, independently of library spelling.
@@ -547,12 +555,23 @@ argumentSchemaBodyValues
   :: ArgumentSchema -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 argumentSchemaBodyValues schema supplied = case schema of
-  ProjectedArgumentSchema target -> specifyValues supplied target
+  ProjectedArgumentSchema target -> do
+    selected <- specifyValues supplied target
+    argumentSchemaBodyValues (argumentSchemaFromValue selected) selected
   _ -> do
     let normalized = normalizeArgumentSchema schema
     replacements <- resolveReplacements normalized supplied
     completed <- traverse (completeSlot replacements) (templateSlots normalized)
-    pure (makeAtlasMapPreservingSingleton 2 (map namedSlot completed))
+    pure (bodyAggregate normalized (map namedSlot completed))
+
+-- A direct unnamed domain such as @Nat -> Nat@ exposes its sole value as
+-- @'it@. Named and structurally composite domains expose a positional Atlas
+-- map, so their singleton boundary remains meaningful.
+bodyAggregate :: ArgumentSchema -> [InterpretedValue] -> InterpretedValue
+bodyAggregate schema values =
+  case schema of
+    ArgumentSlotSchema _ Nothing _ _ _ _ -> makeAtlasMap 2 values
+    _ -> makeAtlasMapPreservingSingleton 2 values
 
 -- | Values-only view of the written slots, used to infer identifier erasure.
 argumentSchemaPositionalDomain
@@ -566,11 +585,9 @@ argumentSchemaPositionalDomain schema =
       | slot <- templateSlots (normalizeArgumentSchema schema)
       ]
 
--- | A projected argument federation is consumed as a positional variadic
--- sequence inside a function body.  Its first positional member determines
--- the homogeneous element view used by source-defined prefix families such
--- as @Args T@; exact finite-prefix membership remains with the projection's
--- own dependent-sum validator.
+-- | A projected finite-prefix family erases to the homogeneous sequence
+-- whose element is exposed by its first nonempty page. Exact call membership
+-- remains the responsibility of the projected family itself.
 argumentSchemaVariadicElementType
   :: ArgumentSchema
   -> Maybe InterpretedValue
@@ -643,43 +660,16 @@ overloadArgumentSchemaComplete
   -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
 overloadArgumentSchemaComplete schema supplied =
   case schema of
-    ProjectedArgumentSchema target -> do
-      prepared <- specifyValues supplied target
+    ProjectedArgumentSchema _ -> do
+      prepared <- argumentSchemaBodyValues schema supplied
       pure (prepared, [])
     _ -> do
       let normalized = normalizeArgumentSchema schema
       replacements <- resolveReplacements normalized supplied
       let slots = templateSlots normalized
       completed <- traverse (completeSlot replacements) slots
-      result <- buildCompletedTemplate
-        (zip (map slotIndex slots) completed)
-        normalized
-      pure (result, [(name, value) | (Just name, value) <- completed])
-
--- A completed call has selected one concrete branch for every optional name.
--- Retaining each slot's missing branch here can make an otherwise unambiguous
--- unordered call overlap with itself (notably @Int@ next to @List Int@).
-buildCompletedTemplate
-  :: [(Int, (Maybe String, InterpretedValue))]
-  -> ArgumentSchema
-  -> Either InterpretingError InterpretedValue
-buildCompletedTemplate completed schema =
-  case schema of
-    ArgumentSlotSchema index _ _ _ annotation _ ->
-      case lookup index completed of
-        Just slot -> Right (namedSlot slot)
-        Nothing -> Right annotation
-    OrderedArgumentSchema cardinality children ->
-      makeAtlasMap cardinality
-        <$> traverse (buildCompletedTemplate completed) children
-    UnorderedArgumentSchema children ->
-      traverse (buildCompletedTemplate completed) children >>= makeArgumentMap
-    ConcatenatedArgumentSchema left right -> do
-      leftValue <- buildCompletedTemplate completed left
-      rightValue <- buildCompletedTemplate completed right
-      concatenateValues leftValue rightValue
-    ProjectedArgumentSchema target -> Right target
-    EmptyArgumentSchema -> Right (makeAtlasMap 0 [])
+      let prepared = bodyAggregate normalized (map namedSlot completed)
+      pure (prepared, [(name, value) | (Just name, value) <- completed])
 
 finiteMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMembers value = do

@@ -22,6 +22,7 @@ module Evaluation.Value
   , datraTypeFamily
   , datraCanonicalType
   , datraStringRepresentation
+  , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
@@ -99,6 +100,7 @@ module Evaluation.Value
   , interpretedCanonicalPresentation
   , interpretedCanonicalPresentations
   , withCanonicalReference
+  , withCanonicalNamedAccess
   , withCanonicalApplication
   , withoutCanonicalPresentation
   , withoutCanonicalDependencies
@@ -280,6 +282,12 @@ data EvaluatedSpecification = EvaluatedSpecification
   , evaluatedSpecificationMember :: EvaluatedAtlasMapFederationMember
   }
 
+data PreparedFunctionArgument = PreparedFunctionArgument
+  { functionSuppliedArgument :: InterpretedValue
+  , functionPreparedArgument :: InterpretedValue
+  , functionPreparedBindings :: [(String, InterpretedValue)]
+  }
+
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
@@ -288,10 +296,10 @@ data EvaluatedFunction = EvaluatedFunction
   , functionSource :: Maybe String
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
-      (InterpretedValue -> Either InterpretingError InterpretedValue)
+      (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)
   , functionInvoke :: Maybe
       (ReductionContext
-        -> InterpretedValue
+        -> PreparedFunctionArgument
         -> Either InterpretingError InterpretedValue)
   , functionValidatesResult :: Bool
   }
@@ -709,6 +717,19 @@ withCanonicalReference dependencies name value = value
   { interpretedSemantics = PresentedSemantics
       dependencies
       (CanonicalReference name)
+      (interpretedSemantics value)
+  }
+
+withCanonicalNamedAccess
+  :: [PresentationDependency]
+  -> CanonicalResult
+  -> String
+  -> InterpretedValue
+  -> InterpretedValue
+withCanonicalNamedAccess dependencies operand name value = value
+  { interpretedSemantics = PresentedSemantics
+      dependencies
+      (CanonicalNamedAccess operand name)
       (interpretedSemantics value)
   }
 

@@ -6,7 +6,6 @@ module Evaluation.FunctionArguments
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
-  , parameterValues
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
@@ -111,12 +110,6 @@ parameterDomain = argumentSchemaDomain
 
 parameterPositionalDomain :: ArgumentSchema -> InterpretedValue
 parameterPositionalDomain = argumentSchemaPositionalDomain
-
-parameterValues
-  :: ArgumentSchema
-  -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
-parameterValues = argumentSchemaBodyValues
 
 prepareArguments
   :: ArgumentSchema

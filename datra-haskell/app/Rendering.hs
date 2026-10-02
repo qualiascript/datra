@@ -122,6 +122,9 @@ prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
 prettyNonKeywordCanonicalResult result =
   case result of
     CanonicalReference name -> pretty (renderIdentifierString name)
+    CanonicalNamedAccess operand name ->
+      prettyCanonicalAccessOperand operand
+        <> "." <> pretty (renderIdentifierString name)
     CanonicalApplication function argument ->
       prettyCanonicalApplicationOperand function
         <+> prettyCanonicalApplicationArgument argument
@@ -224,13 +227,22 @@ prettyCanonicalApplicationOperand :: CanonicalResult -> Doc annotation
 prettyCanonicalApplicationOperand operand =
   case operand of
     CanonicalReference {} -> prettyCanonicalResult operand
+    CanonicalNamedAccess {} -> prettyCanonicalResult operand
     CanonicalApplication {} -> prettyCanonicalResult operand
+    _ -> parens (prettyCanonicalResult operand)
+
+prettyCanonicalAccessOperand :: CanonicalResult -> Doc annotation
+prettyCanonicalAccessOperand operand =
+  case operand of
+    CanonicalReference {} -> prettyCanonicalResult operand
+    CanonicalNamedAccess {} -> prettyCanonicalResult operand
     _ -> parens (prettyCanonicalResult operand)
 
 prettyCanonicalApplicationArgument :: CanonicalResult -> Doc annotation
 prettyCanonicalApplicationArgument argument =
   case argument of
     CanonicalReference {} -> prettyCanonicalResult argument
+    CanonicalNamedAccess {} -> prettyCanonicalResult argument
     CanonicalBuiltinMetaType {} -> prettyCanonicalResult argument
     CanonicalExplicit {} -> prettyCanonicalResult argument
     CanonicalInteger {} -> prettyCanonicalResult argument
@@ -263,6 +275,8 @@ canonicalStringTemplateParts
 canonicalStringTemplateParts result =
   case result of
       CanonicalReference {} ->
+        Just [StringTemplateInterpolation result]
+      CanonicalNamedAccess {} ->
         Just [StringTemplateInterpolation result]
       CanonicalApplication {} ->
         Just [StringTemplateInterpolation result]
@@ -343,6 +357,7 @@ prettyMaybe operand =
 
 isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalReference {} = True
+isAtomicOptionalOperand CanonicalNamedAccess {} = True
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
 isAtomicOptionalOperand CanonicalIdentifierValueType = True

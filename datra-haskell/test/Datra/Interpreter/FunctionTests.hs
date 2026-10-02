@@ -124,10 +124,9 @@ functionTests =
               [ "Slots := (for T? of Any) -> Any do"
               , "  slots := with i in Nat do \"field%(i)\"? : T"
               , "yield () | with n in Nat do slots[range 0 to n]"
-              , "f := {Slots Nat,} -> Nat do yield 'it[0][1]"
-              , "assert f(3; 4) = 3"
-              , "pick := {Slots Nat,} -> Any do yield 'it.field1[1]"
-              , "assert pick(3; 4) = 4"
+              , "f := {Slots Nat,} -> Any do yield 'it"
+              , "assert (f(3; 4))[0][1] = 3"
+              , "assert (f(3; 4)).field1[1] = 4"
               ]) "()"
         , programCase "projected input maps retain names after returning"
             (unlines

@@ -134,6 +134,7 @@ data ValueSemantics
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
   = CanonicalReference String
+  | CanonicalNamedAccess CanonicalResult String
   | CanonicalApplication CanonicalResult CanonicalResult
   | CanonicalBuiltinMetaType BuiltinMetaType
   | CanonicalFunction

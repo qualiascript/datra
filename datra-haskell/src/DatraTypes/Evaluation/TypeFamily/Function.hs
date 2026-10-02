@@ -38,17 +38,18 @@ specifyFunction decideSubfederation specify source target =
               Just sourceText -> Just
                 ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
           , functionPrepare = Just (\argument -> do
-              prepared <- case functionPrepare original of
+              preparedCall <- case functionPrepare original of
                 Just prepare -> prepare argument
                 Nothing -> do
                   validateFunctionInput
                     decideSubfederation specify argument
                     (functionDomain original)
-                  pure argument
+                  pure (PreparedFunctionArgument argument argument [])
               validateFunctionInput
-                decideSubfederation specify prepared
+                decideSubfederation specify
+                (functionPreparedArgument preparedCall)
                 (functionDomain signature)
-              pure prepared)
+              pure preparedCall)
           , functionInvoke = functionInvoke original
           })
         DecisionRefuted -> Left (FunctionEvaluationFailed

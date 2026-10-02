@@ -44,7 +44,7 @@ standardLibraryTests =
             [ ("Std.if false then (1 + \"bad\") else 11", "11")
             , ("Std.from (1 + 1) to 5", "from 2 to 5")
             , ("Std.range 2 down", "range 2 down")
-            , ("Std.true", "true : true")
+            , ("Std.true", "Std.true")
             ]
         ]
     , testGroup "inline fixed points"
@@ -112,8 +112,8 @@ standardLibraryTests =
                   <> "yield a.(b,c) ~> (b?:Nat,c?:Nat)"
               , "b? : Nat := 2, c? : Nat := 3"
               )
-            , ("yield from (2,5)", "from 2 to 5")
-            , ("yield from (2,$up)", "from 2 up")
+            , ("yield 'from (2,5)", "from 2 to 5")
+            , ("yield 'from (2,$up)", "from 2 up")
             , ("f := !~\"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
@@ -571,11 +571,11 @@ integerLimitTests =
             )
             "(true; true; true; true; true; true; true)"
         , programFailureCase "from rejects a positive-infinite origin"
-            "yield from Infinity down"
+            "yield 'from (Infinity, $down)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "from rejects a negative-infinite origin"
-            "yield from -Infinity up"
+            "yield 'from (-Infinity, $up)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         ]

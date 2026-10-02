@@ -909,8 +909,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           case namedAccessValue value name of
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
-            result -> withCanonicalReference
-              [dependency] (namespace <> "." <> name)
+            result -> withCanonicalNamedAccess
+              [dependency] (CanonicalReference namespace) name
                 <$> (result >>= transparentEitherAlias)
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
@@ -1574,10 +1574,11 @@ linkExternalAdapter source target = do
   Just (Right (makeFunctionValue signature
       { functionSource = functionSource implementation
       , functionPrepare = Just (\argument -> do
-          prepared <- case functionPrepare implementation of
+          preparedCall <- case functionPrepare implementation of
             Just prepare -> prepare argument
-            Nothing -> pure argument
-          prepared <$ validateFunctionInput prepared (functionDomain signature))
+            Nothing -> pure (PreparedFunctionArgument argument argument [])
+          preparedCall <$ validateFunctionInput
+            (functionPreparedArgument preparedCall) (functionDomain signature))
       , functionInvoke = Just invoke
       , functionValidatesResult = True
       }))
@@ -2106,7 +2107,9 @@ createFunction reduction captured resolving explicit bindings result = do
             (renderInterpretedValue erasedElement)
             erasedElement
       pure (withIdentifierErasureType erased (argumentSchemaBodyDomain schema))
-    Nothing -> pure (argumentSchemaBodyDomain schema)
+    Nothing -> pure (withIdentifierErasureType
+      (argumentSchemaPositionalDomain schema)
+      (argumentSchemaBodyDomain schema))
   let (explicitSelf, selfIncludesDependencies) = case
         lookup "'this" captured >>= selfBinding of
         Just (includesDependencies, _) -> (True, includesDependencies)
@@ -2146,20 +2149,18 @@ createFunction reduction captured resolving explicit bindings result = do
         Right _ -> pure target
         Left _ -> Left (FunctionEvaluationFailed
           FunctionBodyOutsideDeclaredResult)
-  let dependentBindings argument = do
-        imported <- matchArguments schema argument
+  let prepare argument = do
+        (prepared, imported) <- overloadArgumentSchemaComplete schema argument
+        _ <- validateDependentArguments
+          captured resolving writtenDomainExpression imported
+        pure (PreparedFunctionArgument argument prepared imported)
+      invoke invocationReduction preparedCall = do
+        let argument = functionPreparedArgument preparedCall
+            imported = functionPreparedBindings preparedCall
         dependentScope <- validateDependentArguments
           captured resolving writtenDomainExpression imported
-        pure (imported, dependentScope)
-      prepare argument = do
-        prepared <- prepareArguments schema argument
-        _ <- dependentBindings argument
-        pure prepared
-      invoke invocationReduction argument = do
-        argumentValues <- parameterValues schema argument
-        (imported, dependentScope) <- dependentBindings argument
         let localScope =
-              scopeBinding "'it" (ImplicitBinding argumentValues)
+              scopeBinding "'it" (ImplicitBinding argument)
                 : [scopeBinding name
                     (if isPrivateIdentifier name
                       then PrivateParameterBinding value
@@ -2220,9 +2221,9 @@ applyFunction
   -> Either InterpretingError InterpretedValue
 applyFunction reduction callable input =
   case selectFunctionCandidate preparations of
-    Right (function, (argument, _)) | Just invoke <- functionInvoke function -> do
+    Right (function, preparedCall) | Just invoke <- functionInvoke function -> do
       nextReduction <- consumeReduction reduction
-      value <- invoke nextReduction argument
+      value <- invoke nextReduction preparedCall
       result <- if functionValidatesResult function
         then contextuallySpecify value (functionCodomain function)
         else pure value
@@ -2256,15 +2257,15 @@ applyFunction reduction callable input =
     present _ = id
     prepare function =
       case attempt input of
-        Right prepared -> Right (input, prepared)
+        Right prepared -> Right prepared
         Left original -> case stripOuterIdentifierValue input of
-          Right erased -> (erased,) <$> attempt erased
+          Right erased -> attempt erased
           Left _ -> Left original
       where
         attempt argument = case functionPrepare function of
           Just operation -> operation argument
-          Nothing -> argument <$ validateFunctionInput
-            argument (functionDomain function)
+          Nothing -> PreparedFunctionArgument argument argument []
+            <$ validateFunctionInput argument (functionDomain function)
 
 consumeReduction
   :: ReductionContext
@@ -2378,7 +2379,10 @@ registeredExternal symbol = case symbol of
     pure (makeFunctionValue (EvaluatedFunction
       anyTypeValue anyTypeValue Nothing Nothing
       (Just ("!~" <> show symbol)) signatureText
-      (Just Right) (Just (\_ -> publicValue)) False))
+      (Just (\argument -> Right
+        (PreparedFunctionArgument argument argument [])))
+      (Just (\_ preparedCall ->
+        publicValue (functionPreparedArgument preparedCall))) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
   "datra.IdenExp" -> Right (syntaxCategoryTypeValue "IdenExp")
@@ -2445,16 +2449,18 @@ registeredExternal symbol = case symbol of
       schema <- compileParameters evaluate domain
       input <- parameterDomain schema
       output <- evaluate codomain
-      let invoke _ argument = do
-            bindings <- matchArguments schema argument
-            result <- implementation bindings
+      let prepare argument = do
+            (prepared, bindings) <- overloadArgumentSchemaComplete schema argument
+            pure (PreparedFunctionArgument argument prepared bindings)
+          invoke _ preparedCall = do
+            result <- implementation (functionPreparedBindings preparedCall)
             _ <- specifyValues result output
             pure result
       let signatureText = renderSourceExpression
             (FunctionType domain codomain)
       pure (makeFunctionValue (EvaluatedFunction input output Nothing Nothing
         (Just ("!~" <> show symbol)) signatureText
-        (Just (prepareArguments schema)) (Just invoke) True))
+        (Just prepare) (Just invoke) True))
 
 unlinkedExternalFunction
   :: Int
@@ -2464,7 +2470,8 @@ unlinkedExternalFunction
 unlinkedExternalFunction arity symbol invoke =
   makeFunctionValue (EvaluatedFunction domain anyTypeValue Nothing Nothing
     (Just ("!~" <> show symbol)) signatureText Nothing
-    (Just (\_ -> invoke)) False)
+    (Just (\_ preparedCall -> invoke
+      (functionSuppliedArgument preparedCall))) False)
   where
     domain
       | arity == 1 = anyTypeValue

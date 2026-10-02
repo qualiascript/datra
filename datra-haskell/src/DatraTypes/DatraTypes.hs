@@ -9,6 +9,7 @@ module DatraTypes
   , StringRepresentation (..)
   , datraCanonicalType
   , datraStringRepresentation
+  , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
@@ -152,7 +153,6 @@ module DatraTypes
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
-  , parameterValues
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
@@ -175,6 +175,7 @@ module DatraTypes
   , interpretedCanonicalPresentation
   , interpretedCanonicalPresentations
   , withCanonicalReference
+  , withCanonicalNamedAccess
   , withCanonicalApplication
   , withoutCanonicalPresentation
   , withoutCanonicalDependencies
@@ -234,7 +235,6 @@ import Evaluation.FunctionArguments
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
-  , parameterValues
   , prepareArguments
   , selectFunctionCandidate
   )
@@ -356,6 +356,7 @@ import Evaluation.Value
   , StringRepresentation (..)
   , datraCanonicalType
   , datraStringRepresentation
+  , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , DependentSumStructure (..)
@@ -390,6 +391,7 @@ import Evaluation.Value
   , interpretedCanonicalPresentation
   , interpretedCanonicalPresentations
   , withCanonicalReference
+  , withCanonicalNamedAccess
   , withCanonicalApplication
   , withoutCanonicalPresentation
   , withoutCanonicalDependencies
