@@ -63,7 +63,6 @@ stringConversionProperties semantics
     ValuedIntegerRangeSemantics {} -> integerNumber
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
-    StringTypeSemantics -> injectiveUnknownAlphabet
     IdentifierValueTypeSemantics ->
       knownAlphabet identifierValueCharacterAlphabet
     EitherSemantics left right ->

@@ -479,10 +479,13 @@ testArgumentSchemas = do
   text <- expectRight "construct ASCII string" (Types.asciiStringValue "value")
   reordered <- expectRight "construct uniquely reorderable arguments"
     (Types.makeArgumentMap [text, Types.naturalValue 7])
+  characterType <- expectRight "construct Char" Types.charTypeValue
+  let stringType = Types.coalizeValue
+        (Types.listTypeValue "Char" characterType)
   let reorderSchema = Types.unorderedArgumentSchema
         [ Types.argumentSlotSchema (Just "x") True integerType Nothing
         , Types.argumentSlotSchema
-            (Just "label") True Types.stringTypeValue Nothing
+            (Just "label") True stringType Nothing
         ]
   (_, reorderedBindings) <- expectRight "uniquely reorder arguments"
     (Types.overloadArgumentSchemaComplete reorderSchema reordered)

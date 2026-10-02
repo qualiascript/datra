@@ -429,7 +429,6 @@ data ValueForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
-  | StringTypeForm
   | IdentifierValueTypeForm
   | ToStringForm
   | WeakToStringForm
@@ -484,7 +483,6 @@ data InterpretedAtlasMapFederationPrimitive
   | EitherAtlasMapFederation EvaluatedEither
   | DependentIdentifierTypeAtlasMapFederation EvaluatedDependentIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentIdentifierType
-  | StringTypeAtlasMapFederation
   | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
@@ -686,7 +684,6 @@ interpretedValueKind value =
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
-    StringTypeForm -> AsciiStringValueKind
     IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
     WeakToStringForm -> AsciiStringValueKind

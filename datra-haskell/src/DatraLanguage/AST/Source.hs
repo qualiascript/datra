@@ -125,7 +125,6 @@ source context expression =
     SkipValue -> atom
     AsciiStringValue _ -> atom
     NothingValue -> atom
-    StringTypeValue -> atom
     IdentifierValueTypeValue -> atom
     EmptyMap -> atom
     NaturalTypeValue -> atom

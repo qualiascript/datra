@@ -67,7 +67,6 @@ data Expression
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
-  | StringType
   | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
@@ -199,7 +198,6 @@ data OperatorExpression
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
-  | StringTypeValue
   | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
@@ -296,7 +294,6 @@ normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
-normalizeExpression StringType = StringType
 normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
@@ -500,7 +497,6 @@ lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
-lower StringType = StringTypeValue
 lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
@@ -644,7 +640,6 @@ prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
-prettyOperator StringTypeValue = reservedSymbolDoc Reserved.StringTypeSymbol
 prettyOperator IdentifierValueTypeValue =
   reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
@@ -947,7 +942,6 @@ compactOperatorStringInterpolation
 compactOperatorStringInterpolation expressionValue =
   case expressionValue of
     NothingValue -> reserved Reserved.NothingSymbol
-    StringTypeValue -> reserved Reserved.StringTypeSymbol
     IdentifierValueTypeValue ->
       reserved Reserved.IdentifierValueTypeSymbol
     NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol

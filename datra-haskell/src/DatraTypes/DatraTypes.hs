@@ -60,7 +60,6 @@ module DatraTypes
   , optionalUnderlying
   , nothingValue
   , asciiStringValue
-  , stringTypeValue
   , charTypeValue
   , listTypeValue
   , identifierValueTypeValue
@@ -201,7 +200,6 @@ import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction
   ( makeAsciiString
   , makeIdentifierValueType
-  , makeStringType
   , makeFormulation
   , makeSkip
   , makeNatural
@@ -432,9 +430,6 @@ asciiStringValue value =
   case find ((>= 256) . ord) value of
     Just character -> Left (InvalidAsciiStringCharacter character)
     Nothing -> Right (makeAsciiString value)
-
-stringTypeValue :: InterpretedValue
-stringTypeValue = makeStringType
 
 charTypeValue :: Either InterpretingError InterpretedValue
 charTypeValue = do

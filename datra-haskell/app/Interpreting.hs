@@ -252,7 +252,9 @@ canonicalValueCapture interpret targetExpression captured = do
       Left failure -> case captured of
         IdentifierReference (IdentifierString name) -> do
           source <- asciiStringValue name
-          _ <- evalValues canonicalStringCodec source target
+          stringType <- interpret
+            (IdentifierReference (IdentifierString "Str"))
+          _ <- evalValues canonicalStringCodec stringType source target
           Right (AsciiStringLiteral name)
         _ -> Left failure
 
@@ -678,7 +680,6 @@ interpretNormalizedExpression scope resolving expressionValue =
     AsciiStringLiteral value -> asciiStringValue value
     NothingLiteral -> Right nothingValue
     StringTemplate parts -> interpretStringTemplateWith interpret parts
-    StringType -> Right stringTypeValue
     IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions -> interpretContainer
       (interpretAtlasMapWith interpret expressions)
@@ -780,7 +781,10 @@ interpretNormalizedExpression scope resolving expressionValue =
     StripIdentifiers operand ->
       interpret operand >>= stripIdentifiersValue
     Extract operand ->
-      interpret operand >>= extractValue
+      do
+        stringType <- interpret
+          (IdentifierReference (IdentifierString "Str"))
+        interpret operand >>= extractValue stringType
     Fun operand ->
       case recursiveListElement operand of
         Just element -> do

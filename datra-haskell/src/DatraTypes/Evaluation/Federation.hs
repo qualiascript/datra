@@ -159,10 +159,6 @@ decidePrimitiveSubfederation
        AtlasMapFederationUncertainty
        ()
 decidePrimitiveSubfederation
-    StringTypeAtlasMapFederation
-    StringTypeAtlasMapFederation =
-  AtlasMapFederationProved ()
-decidePrimitiveSubfederation
     IdentifierValueTypeAtlasMapFederation
     IdentifierValueTypeAtlasMapFederation =
   AtlasMapFederationProved ()

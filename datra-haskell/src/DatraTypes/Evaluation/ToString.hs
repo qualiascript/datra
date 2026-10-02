@@ -16,6 +16,7 @@ import Data.List (isInfixOf, nub)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error
   ( InterpretingError (NonInjectiveStringInterpolation) )
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
 import IdentifierValueType (identifierValueCharacterAlphabet)
@@ -38,7 +39,7 @@ toStringValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 toStringValue codec source =
-  if stringConversionIsIdentity (interpretedForm source)
+  if stringConversionIsIdentity source
     then Right source
     else case datraStringRepresentation
         (interpretedDatraType source) of
@@ -91,7 +92,7 @@ weakToStringValue codec source =
 -- are the pointwise outputs of one string template.
 templateValue :: InterpretedValue -> InterpretedValue
 templateValue value =
-  if stringConversionIsIdentity (interpretedForm value)
+  if stringConversionIsIdentity value
     then value
     else
       makeInterpretedValue
@@ -105,16 +106,8 @@ templateValue value =
           else NonTotalInterpretedMap)
         (TemplateSemantics (interpretedSemantics value))
 
-stringConversionIsIdentity :: ValueForm -> Bool
-stringConversionIsIdentity form =
-  case form of
-    AsciiStringForm _ -> True
-    StringTypeForm -> True
-    IdentifierValueTypeForm -> True
-    ToStringForm -> True
-    WeakToStringForm -> True
-    TemplateForm _ -> True
-    _ -> False
+stringConversionIsIdentity :: InterpretedValue -> Bool
+stringConversionIsIdentity = valueProducesStrings
 
 -- | Decide the string-specific case omitted by generic Atlas federation
 -- concatenation: a fixed nonempty delimiter makes the product injective when
@@ -227,7 +220,6 @@ stringFederationExcludes delimiter federation =
               Nothing -> False
               Just alphabet -> any (`notElem` alphabet) delimiter
         WeakToStringAtlasMapFederation _ -> False
-        StringTypeAtlasMapFederation -> False
         IdentifierValueTypeAtlasMapFederation ->
           any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False

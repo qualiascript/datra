@@ -305,7 +305,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         -- but not its result type. Still infer every embedded expression so
         -- unknown names and invalid enclosing parameter uses are diagnosed.
         mapM_ inferTemplatePart parts
-        pure stringTypeValue
+        evaluate (IdentifierReference (IdentifierString "Str"))
       Begin entries value -> inferBlock Nothing scope entries value
       Program entries value -> inferBlock Nothing scope entries value
       -- Literals, primitive types and closed expressions have exact known types.

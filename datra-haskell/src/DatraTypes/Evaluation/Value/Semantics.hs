@@ -95,7 +95,6 @@ data ValueSemantics
   | RangeConcatenationSemantics [Range.SuperEllipsisRangeDescription]
   | ConcatenationSemantics [ValueSemantics]
   | AsciiStringSemantics String
-  | StringTypeSemantics
   | IdentifierValueTypeSemantics
   | ToStringSemantics ValueSemantics
   | WeakToStringSemantics ValueSemantics
@@ -140,7 +139,6 @@ data CanonicalResult
   | CanonicalRangeConcatenation [Range.SuperEllipsisRangeDescription]
   | CanonicalConcatenation [CanonicalResult]
   | CanonicalAsciiString String
-  | CanonicalStringType
   | CanonicalIdentifierValueType
   | CanonicalToString CanonicalResult
   | CanonicalWeakToString CanonicalResult
@@ -191,7 +189,6 @@ canonicalResult semantics =
     ConcatenationSemantics members ->
       CanonicalConcatenation (map canonicalResult members)
     AsciiStringSemantics characters -> CanonicalAsciiString characters
-    StringTypeSemantics -> CanonicalStringType
     IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
     ToStringSemantics source -> CanonicalToString (canonicalResult source)
     WeakToStringSemantics source ->

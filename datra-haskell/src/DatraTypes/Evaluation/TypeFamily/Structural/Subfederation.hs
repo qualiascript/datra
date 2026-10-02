@@ -100,8 +100,6 @@ decideNonEitherSubfederation
   -> Decision ()
 decideNonEitherSubfederation decideSubfederation source target =
   case targetFederation of
-    PrimitiveAtlasMapFederation StringTypeAtlasMapFederation
-      | federationProducesStrings sourceFederation -> DecisionProved ()
     ConcatenatedAtlasMapFederation _ _
       | not (isConcatenatedFederation sourceFederation)
       , not (isSequentialFederation sourceFederation) ->

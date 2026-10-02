@@ -62,7 +62,6 @@ federationProducesStrings federation =
         _ -> False
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        StringTypeAtlasMapFederation -> True
         IdentifierValueTypeAtlasMapFederation -> True
         ToStringAtlasMapFederation _ _ -> True
         WeakToStringAtlasMapFederation _ -> True
@@ -127,8 +126,6 @@ selectCharacters selectMember characters federation =
         _ -> Nothing
     PrimitiveAtlasMapFederation primitive ->
       case primitive of
-        StringTypeAtlasMapFederation ->
-          Just (DecisionProved (EvaluatedAsciiStringMember characters))
         IdentifierValueTypeAtlasMapFederation ->
           Just
             (if isIdentifierValue characters

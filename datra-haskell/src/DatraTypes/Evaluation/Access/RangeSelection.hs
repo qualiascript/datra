@@ -102,7 +102,6 @@ accessSource value =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    StringTypeForm -> ordinarySource []
     IdentifierValueTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
     WeakToStringForm -> ordinarySource []
@@ -179,7 +178,6 @@ semanticAccessSource semantics =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    StringTypeSemantics -> ordinarySource []
     IdentifierValueTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
     WeakToStringSemantics _ -> ordinarySource []

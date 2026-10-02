@@ -992,8 +992,11 @@ expectInternalEvalValue source target check = do
     (interpretExpressionReason sourceExpression)
   targetValue <- either (fail . show) pure
     (interpretExpressionReason targetExpression)
+  stringType <- either (fail . show) pure
+    (interpretExpressionReason
+      (IdentifierReference (IdentifierString "Str")))
   either (fail . show) check
-    (Types.evalValues canonicalStringCodec sourceValue targetValue)
+    (Types.evalValues canonicalStringCodec stringType sourceValue targetValue)
 
 expectInternalEvalRejection
   :: String
@@ -1006,7 +1009,9 @@ expectInternalEvalRejection source target matches = do
   case do
       sourceValue <- interpretExpressionReason sourceExpression
       targetValue <- interpretExpressionReason targetExpression
-      Types.evalValues canonicalStringCodec sourceValue targetValue of
+      stringType <- interpretExpressionReason
+        (IdentifierReference (IdentifierString "Str"))
+      Types.evalValues canonicalStringCodec stringType sourceValue targetValue of
     Left rejection
       | matches rejection -> pure ()
       | otherwise -> fail ("unexpected internal decode rejection: " <> show rejection)

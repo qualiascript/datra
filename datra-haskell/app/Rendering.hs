@@ -149,7 +149,6 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
-    CanonicalStringType -> reservedSymbolDoc Reserved.StringTypeSymbol
     CanonicalIdentifierValueType ->
       reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
     CanonicalToString source ->
@@ -323,7 +322,6 @@ prettyMaybe operand =
 isAtomicOptionalOperand :: CanonicalResult -> Bool
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
-isAtomicOptionalOperand CanonicalStringType = True
 isAtomicOptionalOperand operand | isStructuralStringType operand = True
 isAtomicOptionalOperand (CanonicalDependentSum "Str") = True
 isAtomicOptionalOperand CanonicalIdentifierValueType = True
@@ -516,8 +514,7 @@ coalizationOperandNeedsParens operand =
     _ -> False
 
 isStringType :: CanonicalResult -> Bool
-isStringType CanonicalStringType = True
-isStringType value = isStructuralStringType value
+isStringType = isStructuralStringType
 
 isStructuralStringType :: CanonicalResult -> Bool
 isStructuralStringType
