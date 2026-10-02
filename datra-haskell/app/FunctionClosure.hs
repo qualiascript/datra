@@ -11,6 +11,7 @@ module FunctionClosure
 import BlockScope (bindingNames)
 import Data.List (nub, stripPrefix)
 import DatraLanguage.AST
+import DatraLanguage.Identifier (requiresShadowingConsistency)
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
 
 -- Keys identify bindings during this traversal only; they never enter source.
@@ -104,6 +105,12 @@ rewrite mode depth reserved active resolver bound
         (IdentifierReference (IdentifierString name))
       pure (Begin [Let selector]
         (IdentifierOperation (IdentifierString name) value Nothing))
+rewrite _ _ _ _ _ bound expression
+  | Just path@(first : _) <- referencePath expression
+  , let lexicalName = case path of
+          ["\0this", name] -> name
+          _ -> first
+  , lexicalName `elem` bound = pure expression
 rewrite mode depth reserved active resolver bound expression
   | Just path@(first : _) <- referencePath expression
   , let lexicalName = case path of
@@ -132,6 +139,9 @@ rewrite mode depth reserved active resolver bound expression
               transitive <- get
               put (transitive <> [(dependencyKey dependency, name, value)])
               pure (IdentifierReference name)
+rewrite _ _ _ _ _ _ expression
+  | Just path <- referencePath expression
+  , referencePathRequiresShadowingConsistency path = pure expression
 
 rewrite mode depth reserved active resolver bound expression =
   case expression of
@@ -192,6 +202,16 @@ referencePath
 referencePath (IdentifierReference (IdentifierString name)) = Just [name]
 referencePath (NamedAccess source (IdentifierString name)) = (<> [name]) <$> referencePath source
 referencePath _ = Nothing
+
+-- A reference rooted in a shadowing-consistent binding is one stable lexical
+-- path. If the complete path cannot be captured, never reinterpret its root as
+-- a separate dependency. The sentinel is the exact internal expansion of a
+-- lookup rooted at the shadowing-consistent @'this@ binding.
+referencePathRequiresShadowingConsistency :: [String] -> Bool
+referencePathRequiresShadowingConsistency ("\0this" : _) = True
+referencePathRequiresShadowingConsistency (name : _) =
+  requiresShadowingConsistency name
+referencePathRequiresShadowingConsistency [] = False
 
 assigned :: IdentifierString -> Expression -> Expression
 assigned name expression = IdentifierOperation name expression (Just expression)

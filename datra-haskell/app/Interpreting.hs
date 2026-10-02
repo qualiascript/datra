@@ -612,6 +612,16 @@ scopeMembersBinding binding =
     QualifiedBinding _ target -> scopeMembersBinding target
     _ -> Nothing
 
+-- Whole recursive scope values do not have a finite semantic normal form that
+-- a proposed shadow can be reduced against. This is a property of the binding
+-- representation, independent of the identifier used to reach it.
+bindingHasNoFiniteShadowingNormalForm :: Binding -> Bool
+bindingHasNoFiniteShadowingNormalForm binding =
+  case (selfBinding binding, scopeMembersBinding binding) of
+    (Just _, _) -> True
+    (_, Just _) -> True
+    _ -> False
+
 data RecursivePrefix
   = RecursiveConcatenation Expression
   | RecursiveAtlasSequence [Expression]
@@ -1428,11 +1438,8 @@ scopeBuilder enclosing entries = do
         case lookup name blockOuter of
           -- Whole recursive scope values have no finite normal form to
           -- compare. Consistency cannot be established at this boundary.
-          Just binding
-            | Just _ <- selfBinding binding ->
-                Left (InconsistentShadowing name)
-            | Just _ <- scopeMembersBinding binding ->
-                Left (InconsistentShadowing name)
+          Just binding | bindingHasNoFiniteShadowingNormalForm binding ->
+            Left (InconsistentShadowing name)
           _ -> do
             let bounded = ShadowingConsistencyReduction
                   name shadowingConsistencyFuel
@@ -2057,6 +2064,24 @@ createFunction reduction captured resolving explicit bindings result = do
       names = map fst parameters
       consistencyScope =
         scopeBinding "'it" (ImplicitBinding anyTypeValue) : captured
+      bodyDeclarations =
+        [ declaration
+        | entry <- bindings
+        , Just declaration <- [blockDeclaration entry]
+        ]
+  -- Reject an unprovable recursive-scope shadow before body inference can
+  -- misclassify the shadowed reference as the function's result type. Finite
+  -- bindings still use the ordinary fixed-point comparison when the body is
+  -- invoked and its parameter values are available.
+  case [ name
+       | declaration <- bodyDeclarations
+       , let name = declarationName declaration
+       , Just binding <- [lookup name captured]
+       , not (bindingHasUnrestrictedShadowing binding)
+       , bindingHasNoFiniteShadowingNormalForm binding
+       ] of
+    name : _ -> Left (InconsistentShadowing name)
+    [] -> pure ()
   case [ name
        | name <- names
        , Just binding <- [lookup name consistencyScope]
@@ -2737,6 +2762,11 @@ closureResolver scope = resolver
         Right imported -> Just (closureResolver imported)
         Left _ -> Nothing
     resolve [] = Nothing
+    -- FunctionClosure tags the exact expansion of @~name@ so it remains
+    -- distinguishable from an ordinary @'this.name@ access. Both select the
+    -- named lexical binding here, but the tagged form must be resolved as one
+    -- dependency rather than traversed into and projected a second time.
+    resolve ["\0this", name] = resolve [name]
     resolve ["'this", name] = resolve [name]
     resolve (name : fields@(_ : _))
       | Just (ImportedBinding _ identity _ imported) <- lookup name scope

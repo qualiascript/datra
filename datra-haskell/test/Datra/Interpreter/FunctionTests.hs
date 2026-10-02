@@ -227,6 +227,11 @@ functionTests =
                 <> "yield f (_x:2)"
             )
             "3"
+        , programCase "private parameter remains in the positional argument aggregate"
+            ( "f := ((_x:Nat) -> Nat do yield 'it[0][1])\n"
+                <> "yield f (_x:2)"
+            )
+            "2"
         , programFailureCase
             "private parameter is not automatically reduced in the body"
             "f := ((_x:Int) -> Int do yield _x+1)\nyield f (_x:2)"

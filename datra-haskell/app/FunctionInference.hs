@@ -243,7 +243,13 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
             (IdentifierReference (IdentifierString "'this"))
             (IdentifierString name))
           (EllipsisNatural 1)
+        | Just binding <- lookupInferenceBinding name scope ->
+            case binding of
+              InferenceBinding _ value bindingMembers bindingScope ->
+                infer bindingScope bindingMembers value
+              InferenceValueBinding _ target -> Right target
         | Just target <- lookup name parameters -> Right target
+        | otherwise -> evaluate expression
       MapAccess (IdentifierReference (IdentifierString "'this")) index -> do
         position <- recur index
         projectDeclaration members (recur . IdentifierReference . IdentifierString) position

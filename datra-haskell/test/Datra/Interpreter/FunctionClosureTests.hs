@@ -137,7 +137,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertEqual "from is collected once for the complete signature"
         1
-        (occurrences "let \"___from\" :=" text)
+        (occurrences "let \"___'from\" :=" text)
   , roundTripUsingStd "narrowed callable"
       "f := ({x? : Int} -> Int do yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"

@@ -1,6 +1,7 @@
 -- | Atlas-map assembly and map/range concatenation.
 module Evaluation.Map
   ( makeAtlasMap
+  , makeAtlasMapPreservingSingleton
   , hasConcreteSource
   , makeAtlasExpansion
   , concatenateValues
@@ -28,8 +29,19 @@ import Numeric.Natural (Natural)
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
 makeAtlasMap _ [value] = value
 makeAtlasMap cardinality values =
+  makeAtlasMapPreservingSingleton cardinality values
+
+-- | Construct an Atlas map while retaining a singleton outer boundary.
+-- Function-body argument aggregates require this because @'it[0]@ selects the
+-- first written parameter even when it is the only parameter.
+makeAtlasMapPreservingSingleton
+  :: Natural
+  -> [InterpretedValue]
+  -> InterpretedValue
+makeAtlasMapPreservingSingleton cardinality values =
   makeProductMap
     SequentialProduct
+    True
     cardinality
     values
     SequentialAtlasMapFederation
@@ -41,6 +53,7 @@ makeAtlasExpansion
 makeAtlasExpansion cardinality values =
   makeProductMap
     ExpansionProduct
+    False
     cardinality
     values
     expansionFederation
@@ -55,12 +68,13 @@ data ProductForm
 
 makeProductMap
   :: ProductForm
+  -> Bool
   -> Natural
   -> [InterpretedValue]
   -> ([InterpretedAtlasMapFederation]
       -> InterpretedAtlasMapFederation)
   -> InterpretedValue
-makeProductMap productForm cardinality values productFederation = value
+makeProductMap productForm preserveSingleton cardinality values productFederation = value
   where
     -- Both sequence and expansion preserve every operand structurally.
     finalValues =
@@ -74,6 +88,8 @@ makeProductMap productForm cardinality values productFederation = value
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
     federation
+      | preserveSingleton
+      , [_] <- memberFederations = SingletonAtlasMapFederation valueMap
       | [memberFederation] <- memberFederations = memberFederation
       | all atlasMapFederationExpressionIsSingleton memberFederations =
           SingletonAtlasMapFederation valueMap

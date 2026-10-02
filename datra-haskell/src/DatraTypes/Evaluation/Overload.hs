@@ -45,7 +45,11 @@ import Evaluation.Error
   , OverloadFailure (..)
   )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
-import Evaluation.Map (concatenateValues, makeAtlasMap)
+import Evaluation.Map
+  ( concatenateValues
+  , makeAtlasMap
+  , makeAtlasMapPreservingSingleton
+  )
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
@@ -516,7 +520,7 @@ argumentSchemaDomain schema =
 argumentSchemaBodyDomain :: ArgumentSchema -> InterpretedValue
 argumentSchemaBodyDomain schema = case schema of
   ProjectedArgumentSchema target -> projectedBodyDomain target
-  _ -> makeAtlasMap 2
+  _ -> makeAtlasMapPreservingSingleton 2
     [ namedSlot (slotName slot, slotAnnotation slot)
     | slot <- templateSlots (normalizeArgumentSchema schema)
     ]
@@ -548,7 +552,7 @@ argumentSchemaBodyValues schema supplied = case schema of
     let normalized = normalizeArgumentSchema schema
     replacements <- resolveReplacements normalized supplied
     completed <- traverse (completeSlot replacements) (templateSlots normalized)
-    pure (makeAtlasMap 2 (map namedSlot completed))
+    pure (makeAtlasMapPreservingSingleton 2 (map namedSlot completed))
 
 -- | Values-only view of the written slots, used to infer identifier erasure.
 argumentSchemaPositionalDomain
