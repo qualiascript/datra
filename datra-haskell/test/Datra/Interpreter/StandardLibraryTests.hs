@@ -425,10 +425,10 @@ standardLibraryTests =
             "25"
         , programFailureCase "for without in rejects an ordinary range"
             "yield for i range 0 to 2 do i"
-            (SourceEvaluationFailure (ExpectedBuiltinType "IntValRange"))
+            (SourceEvaluationFailure (UnknownIdentifier "for"))
         , programFailureCase "with without in rejects an ordinary range"
             "yield with i range 0 to 2 do i"
-            (SourceEvaluationFailure (ExpectedBuiltinType "IntValRange"))
+            (SourceEvaluationFailure (UnknownIdentifier "with"))
         ]
     , testGroup "dependent sums"
         [ programCase "optional binder accepts positional witnesses"

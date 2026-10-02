@@ -18,7 +18,6 @@ import Evaluation.Numerical
   ( nonnegativeFederationInComplementedInteger )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
-import Evaluation.Specification.String (federationProducesStrings)
 import Evaluation.Value
 
 type SubfederationDecider =

@@ -206,9 +206,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertEqual "from has one shared dependency binding" 1
-        (occurrences "let \"___from\" :=" text)
+        (occurrences "let \"___'from\" :=" text)
       assertEqual "range has one shared dependency binding" 1
-        (occurrences "let \"___range\" :=" text)
+        (occurrences "let \"___'range\" :=" text)
       assertBool "the variadic input uses an anonymous compact split directly"
         ("val 'it !? fun" `isInfixOf` text
           && not ("values :=" `isInfixOf` text)
