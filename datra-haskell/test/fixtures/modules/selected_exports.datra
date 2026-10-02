@@ -4,4 +4,4 @@ yield SelectedExports := begin
   a := 1
   b := 2
   c := 3
-yield this.(a, b)
+yield 'this.(a, b)

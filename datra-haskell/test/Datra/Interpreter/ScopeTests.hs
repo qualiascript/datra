@@ -3,7 +3,8 @@ module Datra.Interpreter.ScopeTests (scopeTests) where
 import Datra.TestSupport
 import DatraTypes
   ( InterpretingError
-      ( NonShadowableIdentifier
+      ( InconsistentShadowing
+      , LetBindingCannotShadowConsistentIdentifier
       , UnknownIdentifier
       )
   )
@@ -14,13 +15,13 @@ scopeTests =
   testGroup "lexical scope"
     [ testGroup "ordinary block declarations"
         [ programCase "quoted identifier can name a block entry"
-            "value := begin\n \"~~~\" : 2\nyield this.\"~~~\"[1]\nyield value"
+            "value := begin\n \"~~~\" : 2\nyield 'this.\"~~~\"[1]\nyield value"
             "2"
         , programCase "computed this projection demands only its selected declaration"
-            "x : 2\ny : 3\nz : this[y-x][1]\nyield z"
+            "x : 2\ny : 3\nz : 'this[y-x][1]\nyield z"
             "3"
         , programCase "computed this name projection"
-            "x : 2\ny : 3\nz : this[y-x][0]\nyield z"
+            "x : 2\ny : 3\nz : 'this[y-x][0]\nyield z"
             "$y"
         , expressionCase "explicit begin sees earlier declarations"
             "begin a := 1; b := a + 1 yield b"
@@ -38,17 +39,49 @@ scopeTests =
             "begin Str := Str yield Str"
             "(Str) <~ begin Str := Str; yield Str"
         , expressionCase "explicit begin aliases this"
-            "begin value := 4; my_this := this; yield my_this.value[1]"
-            "4 <~ begin value := 4; my_this := this; yield my_this.value[1]"
+            "begin value := 4; my_this := 'this; yield my_this.value[1]"
+            "4 <~ begin value := 4; my_this := 'this; yield my_this.value[1]"
         , programCase "implicit begin aliases this"
-            "value := 4\nmy_this := this\nyield my_this.value[1]"
+            "value := 4\nmy_this := 'this\nyield my_this.value[1]"
             "4"
         , expressionFailureCase "explicit begin cannot shadow this"
-            "begin this := 23 yield this"
-            (SourceEvaluationFailure (NonShadowableIdentifier "this"))
+            "begin 'this := 23 yield 'this"
+            (SourceEvaluationFailure (InconsistentShadowing "'this"))
         , programFailureCase "implicit begin cannot shadow this"
+            "'this := 23\nyield 'this"
+            (SourceEvaluationFailure (InconsistentShadowing "'this"))
+        , programCase "ordinary this has no special shadowing behavior"
             "this := 23\nyield this"
-            (SourceEvaluationFailure (NonShadowableIdentifier "this"))
+            "23"
+        , programFailureCase "apostrophe names require shadowing consistency"
+            "'locked := 1\nyield begin 'locked := 2; yield 'locked"
+            (SourceEvaluationFailure (InconsistentShadowing "'locked"))
+        , programCase "an equal value is a consistent fixed point"
+            "'locked := 1\nyield begin 'locked := 1; yield 'locked"
+            "1"
+        , programFailureCase
+            "let cannot shadow a consistent binding even with an equal value"
+            "'locked := 1\nyield begin let 'locked := 1; yield 'locked"
+            (SourceEvaluationFailure
+              (LetBindingCannotShadowConsistentIdentifier "'locked"))
+        , programCase "a reducing expression may establish a fixed point"
+            ( "identity := ({x?:Int} -> Int do yield x)\n"
+                <> "'locked := 1\n"
+                <> "yield begin 'locked := identity 'locked; yield 'locked"
+            )
+            "1"
+        , programFailureCase "divergence cannot establish a fixed point"
+            ( "let loop := ({x?:Int} -> Int do yield loop x)\n"
+                <> "'locked := 1\n"
+                <> "yield begin 'locked := loop 'locked; yield 'locked"
+            )
+            (SourceEvaluationFailure (InconsistentShadowing "'locked"))
+        , programFailureCase "quoted apostrophe names require consistency"
+            ( "\"''not compact\" := 1\n"
+                <> "yield begin \"''not compact\" := 2; yield \"''not compact\""
+            )
+            (SourceEvaluationFailure
+              (InconsistentShadowing "''not compact"))
         , expressionFailureCase "explicit begin cannot see later declarations"
             "begin a := b; b := 1 yield a"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
@@ -96,11 +129,26 @@ scopeTests =
             "f := (() -> Int do a := x + 1; let x := 10; yield a)\nyield f ()"
             "11"
         , programFailureCase "function input binding cannot be shadowed"
+            "f := (() -> Int do 'it := 23; yield 'it)\nyield f ()"
+            (SourceEvaluationFailure (InconsistentShadowing "'it"))
+        , programCase "ordinary it has no special shadowing behavior"
             "f := (() -> Int do it := 23; yield it)\nyield f ()"
-            (SourceEvaluationFailure (NonShadowableIdentifier "it"))
+            "23"
+        , programFailureCase
+            "apostrophe domain binding is consistent within the body"
+            ( "f := ({'x:Int} -> Int do 'x := 2; yield 'x)\n"
+                <> "yield f ('x:1)"
+            )
+            (SourceEvaluationFailure (InconsistentShadowing "'x"))
+        , programCase
+            "apostrophe domain binding permits an equal body rebinding"
+            ( "f := ({'x:Int} -> Int do 'x := 'x; yield 'x)\n"
+                <> "yield f ('x:1)"
+            )
+            "1"
         , programFailureCase "recursive self binding cannot be shadowed"
-            "yield fun (() -> Int do this := 23; yield this)"
-            (SourceEvaluationFailure (NonShadowableIdentifier "this"))
+            "yield fun (() -> Int do 'this := 23; yield 'this)"
+            (SourceEvaluationFailure (InconsistentShadowing "'this"))
         ]
     , testGroup "condition-local declarations"
         [ programCase "named comparison operand is available in a branch"
@@ -116,11 +164,11 @@ scopeTests =
             "yield if false and (unused : missing) then unused else 2"
             "2"
         , programCase "Maybe branch aliases it"
-            "yield (1; 2; 3)! ?? begin my_it := it; yield (val my_it)[0]"
+            "yield (1; 2; 3)! ?? begin my_it := 'it; yield (val my_it)[0]"
             "Just : 1"
         , programFailureCase "Maybe branch binding cannot be shadowed"
-            "yield (1; 2; 3)! ?? begin it := 23; yield it"
-            (SourceEvaluationFailure (NonShadowableIdentifier "it"))
+            "yield (1; 2; 3)! ?? begin 'it := 23; yield 'it"
+            (SourceEvaluationFailure (InconsistentShadowing "'it"))
         ]
     , testGroup "map members"
         [ programCase "quoted identifier remains valid in a map"

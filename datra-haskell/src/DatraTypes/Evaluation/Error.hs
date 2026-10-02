@@ -140,7 +140,8 @@ data InterpretingError
   | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String
-  | NonShadowableIdentifier String
+  | InconsistentShadowing String
+  | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]

@@ -610,7 +610,7 @@ listMaybeThen values function =
     (ListUncons values)
     (FunctionApplication
       function
-      (IdentifierReference (IdentifierString "it")))
+      (IdentifierReference (IdentifierString "'it")))
 
 -- A trailing expression hole in declarative syntax binds before @!?@. This
 -- lets forms such as @val values !? function@ sequence the result of the
@@ -1056,7 +1056,7 @@ namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
         pure (first : rest)
 
 -- Like named access, the operand denotes names rather than evaluating them.
--- Subsequent selections apply to the retrieved value: @$~a[0]@ means
+-- Subsequent selections apply to the retrieved value: @~a[0]@ means
 -- @this.a[1][0]@. Keep this sugar in the core grammar so serialized closures
 -- can use it without importing a syntax declaration from Std.
 valueOfExpression :: Parser Expression
@@ -1067,7 +1067,7 @@ valueOfExpression = do
   notFollowedBy (operatorToken AST.ExponentiationOperator)
   pure (MapAccess
     (expandedNamedAccess names
-      (IdentifierReference (IdentifierString "this")))
+      (IdentifierReference (IdentifierString "'this")))
     (EllipsisNatural 1))
 
 namedAccessName :: Parser IdentifierString
@@ -1523,7 +1523,8 @@ operatorToken operator = lexeme $ try $ do
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
-    AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '$')
+    AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '~')
+    AST.ValueOfOperator -> notFollowedBy (char '>')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()

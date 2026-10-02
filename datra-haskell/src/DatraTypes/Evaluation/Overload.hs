@@ -71,6 +71,7 @@ data Slot = Slot
   , slotName :: Maybe String
   , slotOptionalName :: Bool
   , slotDependentBinder :: Bool
+  , slotAllowsPrivateName :: Bool
   , slotAnnotation :: InterpretedValue
   , slotDefault :: Maybe InterpretedValue
   }
@@ -234,6 +235,7 @@ matchSlot slot input = do
   case (slotName slot, inputName) of
     (Just expected, Just actual)
       | not (isPublicIdentifier expected)
+      , not (slotAllowsPrivateName slot)
       , not (slotDependentBinder slot) -> Nothing
       | expected == actual
       , not (slotDependentBinder slot) || suppliedAsAssignment input -> pure ()
@@ -276,38 +278,39 @@ suppliedAsAssignment value =
       _ -> False
 
 templateSlots :: ArgumentSchema -> [Slot]
-templateSlots template =
-  case template of
-    ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-      [Slot index name optional dependent annotation defaultValue]
-    OrderedArgumentSchema _ children -> concatMap templateSlots children
-    UnorderedArgumentSchema children -> concatMap templateSlots children
-    ConcatenatedArgumentSchema left right ->
-      templateSlots left <> templateSlots right
-    ProjectedArgumentSchema _ -> []
-    EmptyArgumentSchema -> []
+templateSlots = slots True
+  where
+    slots allowsPrivateName template = case template of
+      ArgumentSlotSchema index name optional dependent annotation defaultValue ->
+        [Slot index name optional dependent allowsPrivateName annotation defaultValue]
+      OrderedArgumentSchema _ children -> concatMap (slots True) children
+      UnorderedArgumentSchema children -> concatMap (slots False) children
+      ConcatenatedArgumentSchema left right ->
+        slots allowsPrivateName left <> slots allowsPrivateName right
+      ProjectedArgumentSchema _ -> []
+      EmptyArgumentSchema -> []
 
 -- Ordered maps retain one slot order. Argument maps contribute every member
 -- order, so unnamed values remain ambiguous while named values normalize to
 -- one replacement set. Concatenation preserves the order of its segments.
 templateSlotOrders :: ArgumentSchema -> [[Slot]]
-templateSlotOrders template =
-  case template of
-    ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-      [[Slot index name optional dependent annotation defaultValue]]
-    OrderedArgumentSchema _ children -> combine children
-    UnorderedArgumentSchema children ->
-      concatMap combine (permutations children)
-    ConcatenatedArgumentSchema left right ->
-      [leftSlots <> rightSlots
-      | leftSlots <- templateSlotOrders left
-      , rightSlots <- templateSlotOrders right
-      ]
-    ProjectedArgumentSchema _ -> [[]]
-    EmptyArgumentSchema -> [[]]
+templateSlotOrders = orders True
   where
-    combine children =
-      map concat (sequence (map templateSlotOrders children))
+    orders allowsPrivateName template = case template of
+      ArgumentSlotSchema index name optional dependent annotation defaultValue ->
+        [[Slot index name optional dependent allowsPrivateName annotation defaultValue]]
+      OrderedArgumentSchema _ children -> combine True children
+      UnorderedArgumentSchema children ->
+        concatMap (combine False) (permutations children)
+      ConcatenatedArgumentSchema left right ->
+        [leftSlots <> rightSlots
+        | leftSlots <- orders allowsPrivateName left
+        , rightSlots <- orders allowsPrivateName right
+        ]
+      ProjectedArgumentSchema _ -> [[]]
+      EmptyArgumentSchema -> [[]]
+    combine allowsPrivateName children =
+      map concat (sequence (map (orders allowsPrivateName) children))
 
 argumentSchemaFromValue :: InterpretedValue -> ArgumentSchema
 argumentSchemaFromValue value = fst (fromValue 0 value)

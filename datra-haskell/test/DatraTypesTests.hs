@@ -481,7 +481,7 @@ testArgumentSchemas = do
     (Types.makeArgumentMap [text, Types.naturalValue 7])
   characterType <- expectRight "construct Char" Types.charTypeValue
   let stringType = Types.coalizeValue
-        (Types.listTypeValue "Char" characterType)
+        (Types.listTypeValue "List Char" characterType)
   let reorderSchema = Types.unorderedArgumentSchema
         [ Types.argumentSlotSchema (Just "x") True integerType Nothing
         , Types.argumentSlotSchema

@@ -2,4 +2,4 @@ import all "std"
 
 yield LibraryTwo := begin
   x := 9
-yield public this
+yield public 'this

@@ -37,6 +37,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (parseFailureMessage) )
+import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
 import Parsing
@@ -83,14 +84,15 @@ testBraceSeparatorSemantics :: IO ()
 testBraceSeparatorSemantics = do
   assertAstOutput "comma concatenates inside braces"
     "{1, 2}"
-    (MapConcatenation (natural 1) (natural 2))
+    (ArgumentMap [MapConcatenation (natural 1) (natural 2)])
   assertAstOutput "semicolon sequences argument-map members"
     "{1; 2}"
     (ArgumentMap [natural 1, natural 2])
   assertParsed "postfix comma remains inside argument-map syntax"
     "{Args Int,}"
-    (MapConcatenation
-      (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
+    (ArgumentMap
+      [MapConcatenation
+        (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
   assertParsed "postfix comma is the same operator in parentheses"
     "(Args Int,)"
     (MapConcatenation
@@ -98,6 +100,22 @@ testBraceSeparatorSemantics = do
 
 regressionTests :: IO ()
 regressionTests = do
+  assert "private identifiers have no public shadowing-consistency policy"
+    ( Identifier.identifierPolicy "_private"
+        == Identifier.PrivateIdentifier
+    )
+  assert "apostrophe identifiers require shadowing consistency"
+    ( Identifier.identifierPolicy "'fixed"
+        == Identifier.PublicIdentifier Identifier.ConsistentShadowing
+    )
+  assert "quoted private names use the same policy as compact names"
+    ( Identifier.identifierPolicy "_ private"
+        == Identifier.PrivateIdentifier
+    )
+  assert "quoted apostrophe names require shadowing consistency"
+    ( Identifier.identifierPolicy "''not compact"
+        == Identifier.PublicIdentifier Identifier.ConsistentShadowing
+    )
   assert "a hole identifier ends before an adjacent literal operator"
     (SyntaxTemplate.parseSyntaxTemplate id "$Int++"
       == SyntaxTemplate
@@ -178,6 +196,24 @@ regressionTests = do
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
           == matchRules matchesNumericHole [correctFrom] fromPhrase
+      Left _ -> False)
+  let beginAliasBootstrap = unlines
+        [ "_AST := !~\"datra.AST\""
+        , "_Expr := !~\"datra.Expr\""
+        , "_Block := !~\"datra.Block\""
+        , "begin := %\"begin $_Block yield $_Expr\" %> (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "yield Example := begin"
+        , "  begin := begin"
+        , "yield begin"
+        ]
+      isBeginAlias expressionValue =
+        expressionValue == AST.assignment
+          "begin" (ref "begin") (ref "begin")
+          || any isBeginAlias (expressionChildren expressionValue)
+  assert "begin := begin remains a declaration beside its own template"
+    (case parseSourceLocated False
+        "<begin-alias-regression>" beginAliasBootstrap of
+      Right (Located _ parsed) -> isBeginAlias parsed
       Left _ -> False)
   let nestedTailPhrase = foldl FunctionApplication (ref "from")
         [natural 0, AtlasMap [ref "to", ref "Infinity"]]
@@ -380,7 +416,7 @@ regressionTests = do
     (ArgumentMap [Skip, natural 3])
   assertAstOutput "comma concatenates inside an argument map"
     "{*, 3}"
-    (MapConcatenation Skip (natural 3))
+    (ArgumentMap [MapConcatenation Skip (natural 3)])
   assertAstOutput "rank-zero formulation remains an ordinary value"
     "((...) ^ 0, 3)"
     (MapConcatenation
@@ -388,8 +424,8 @@ regressionTests = do
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import False "library_one", Import True "std"
-    , InModule "std" (ref "this")
-    , NamedAccess (ref "this") (IdentifierString "abc")
+    , InModule "std" (ref "'this")
+    , NamedAccess (ref "'this") (IdentifierString "abc")
     , SyntaxType (Extract (AsciiStringLiteral "$Int next"))
         (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
@@ -403,10 +439,10 @@ regressionTests = do
         (AST.assignment "Example"
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
-            (FunctionApplication (ref "public") (ref "this")))
+            (FunctionApplication (ref "public") (ref "'this")))
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
-            (FunctionApplication (ref "public") (ref "this"))))
+            (FunctionApplication (ref "public") (ref "'this"))))
     ]
   assertAstOutput "eval is available as an ordinary user identifier"
     "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
@@ -415,23 +451,26 @@ regressionTests = do
   assertAstOutput "argument map uses existing map arity"
     "{b := 8; 2}"
     (ArgumentMap [AST.assignment "b" (natural 8) (natural 8), natural 2])
-  assertAstOutput "empty argument map" "{}" (AtlasMap [])
+  assertAstOutput "empty argument map" "{}" (ArgumentMap [])
   assertAstOutput "comma retains ordinary concatenation in braces"
     "{b := 8, 2}"
-    (MapConcatenation
-      (AST.assignment "b" (natural 8) (natural 8))
-      (natural 2))
+    (ArgumentMap
+      [MapConcatenation
+        (AST.assignment "b" (natural 8) (natural 8))
+        (natural 2)])
   assertAstOutput "parenthesized concatenation remains one argument"
     "{(1, 2); 3}"
     (ArgumentMap [MapConcatenation (natural 1) (natural 2), natural 3])
   assertAstOutput "a trailing comma remains map concatenation"
     "{1, 2,}"
-    (MapConcatenation
-      (MapConcatenation (natural 1) (natural 2)) (AtlasMap []))
+    (ArgumentMap
+      [MapConcatenation
+        (MapConcatenation (natural 1) (natural 2)) (AtlasMap [])])
   assertAstOutput "a unary trailing comma splices an argument federation"
     "{Args Int,}"
-    (MapConcatenation
-      (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
+    (ArgumentMap
+      [MapConcatenation
+        (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
   let implicitVariadicDomain = ArgumentMap
         [ ForBinding (IdentifierString "_T") False (ref "IntLimit")
         , MapConcatenation
@@ -444,9 +483,11 @@ regressionTests = do
   assertAstOutput
     "a comma after a dependent binder concatenates normally"
     "{for _T of IntLimit, Args _T}"
-    (MapConcatenation
-      (ForBinding (IdentifierString "_T") False (ref "IntLimit"))
-      (FunctionApplication (ref "Args") (ref "_T")))
+    (ArgumentMap
+      [ MapConcatenation
+          (ForBinding (IdentifierString "_T") False (ref "IntLimit"))
+          (FunctionApplication (ref "Args") (ref "_T"))
+      ])
   let implicitVariadicFunction = MapSpecification
         (FunctionBody [] (ref "nothing"))
         (FunctionType implicitVariadicDomain
@@ -467,7 +508,7 @@ regressionTests = do
       , MapConcatenation
           (FunctionApplication (ref "Args") (ref "_T")) (AtlasMap [])
       ])
-  assertAstOutput "unary argument map" "{2}" (natural 2)
+  assertAstOutput "unary argument map" "{2}" (ArgumentMap [natural 2])
   assertAstOutput "argument map supports newline separators"
     "{1\n2}" (ArgumentMap [natural 1, natural 2])
   assertParsed "argument map AST round trip"
@@ -539,7 +580,8 @@ regressionTests = do
       Left _ -> False)
   let identityBody = FunctionBody [] (ref "value")
       optionalInput =
-        OptionalType (AST.dependentIdentifierType "value" (ref "Any"))
+        ArgumentMap
+          [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
       inferredFunction input = MapSpecification identityBody
         (FunctionType input (ref "Any"))
   assertParsed "a function body follows an explicit function type"
@@ -581,24 +623,24 @@ regressionTests = do
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use the external as their body"
-    "%\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
+    "%\"handler $_Expr\" %> (Any -> Any) !~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertParsed "a syntax type is an ordinary value without a body"
     "%\"handler $_Expr\" %> (Any -> Any)"
     syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
-    "handler := %\"handler $_Expr\" %> (Any -> Any) !$~\"datra.syntax.test\""
+    "handler := %\"handler $_Expr\" %> (Any -> Any) !~\"datra.syntax.test\""
     (AST.assignment "handler"
       (MapSpecification syntaxAdapter syntaxAdapterType)
       (MapSpecification syntaxAdapter syntaxAdapterType))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : %\"handler $_Expr\" %> (Any -> Any) := !$~\"datra.syntax.test\""
+    "handler : %\"handler $_Expr\" %> (Any -> Any) := !~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := %\"take $_Expr\" %> (Int -> Int) !$~\"datra.val\""
+        , "take := %\"take $_Expr\" %> (Int -> Int) !~\"datra.val\""
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -607,10 +649,10 @@ regressionTests = do
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_IdenExp := !$~\"datra.IdenExp\""
-        , "_Expr := !$~\"datra.Expr\""
+        [ "(_IdenExp := !~\"datra.IdenExp\""
+        , "_Expr := !~\"datra.Expr\""
         , "gate := %\"gate $_IdenExp bound $_Expr body $Int\" %>"
-            <> " ((Any; Any; Int) -> Int) !$~\"test.gate\""
+            <> " ((Any; Any; Int) -> Int) !~\"test.gate\""
         , "gate x bound Int body x)"
         ]) of
     Right (AtlasMap [_, _, _, rewritten]) ->
@@ -635,17 +677,17 @@ regressionTests = do
     "%Str[0]"
     (MapAccess (Extract (ref "Str")) (natural 0))
   assertParsed "val erases identifiers"
-    "val it" (StripIdentifiers (ref "it"))
+    "val 'it" (StripIdentifiers (ref "'it"))
   assertParsed "val captures bracket access"
-    "val it[0]" (StripIdentifiers (MapAccess (ref "it") (natural 0)))
+    "val 'it[0]" (StripIdentifiers (MapAccess (ref "'it") (natural 0)))
   assertParsed "identifier erasure coexists with exponentiation"
-    "(val it) ^ 2" (Exponentiation (StripIdentifiers (ref "it")) (natural 2))
+    "(val 'it) ^ 2" (Exponentiation (StripIdentifiers (ref "'it")) (natural 2))
   assertParsed "external escape constructs an External AST"
-    "!$~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
+    "!~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   assertParsed "identifier erasure source rendering preserves named access"
-    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "it") (IdentifierString "abc"))))
-    (StripIdentifiers (NamedAccess (ref "it") (IdentifierString "abc")))
+    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "'it") (IdentifierString "abc"))))
+    (StripIdentifiers (NamedAccess (ref "'it") (IdentifierString "abc")))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
@@ -814,26 +856,26 @@ regressionTests = do
   assertAstOutput "postfix list split"
     "values!" (ListUncons (ref "values"))
   assertAstOutput "Maybe sequencing binds after list split"
-    "values! ?? maximum it"
+    "values! ?? maximum 'it"
     (MaybeThen
       (ListUncons (ref "values"))
-      (FunctionApplication (ref "maximum") (ref "it")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   assertAstOutput "Maybe sequencing is distinct from an optional declaration"
-    "values ?? maximum it"
+    "values ?? maximum 'it"
     (MaybeThen
       (ref "values")
-      (FunctionApplication (ref "maximum") (ref "it")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   assertAstOutput "list sequencing combines split and Maybe application"
     "values !? maximum"
     (MaybeThen
       (ListUncons (ref "values"))
-      (FunctionApplication (ref "maximum") (ref "it")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   assertAstOutput "a terminal syntax hole greedily captures list sequencing"
     "val values !? maximum"
     (StripIdentifiers
       (MaybeThen
         (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (ref "it"))))
+        (FunctionApplication (ref "maximum") (ref "'it"))))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -852,12 +894,12 @@ regressionTests = do
     (StripIdentifiers
       (MaybeThen
         (ListUncons (ref "values"))
-        (FunctionApplication inlineLimitFunction (ref "it"))))
+        (FunctionApplication inlineLimitFunction (ref "'it"))))
   assert "source rendering groups val before outer list sequencing"
     ( renderSourceExpression
         (MaybeThen
           (ListUncons (StripIdentifiers (ref "values")))
-          (FunctionApplication (ref "maximum") (ref "it")))
+          (FunctionApplication (ref "maximum") (ref "'it")))
         == "(val values) !? maximum"
     )
   assertAstOutput "grouping keeps list sequencing inside val"
@@ -865,7 +907,7 @@ regressionTests = do
     (StripIdentifiers
       (MaybeThen
         (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (ref "it"))))
+        (FunctionApplication (ref "maximum") (ref "'it"))))
   assertAstOutput "list sequencing accepts an optional named left operand"
     "values? : List Int !? maximum"
     (MaybeThen
@@ -873,7 +915,7 @@ regressionTests = do
         (OptionalType
           (AST.dependentIdentifierType "values"
             (FunctionApplication (ref "List") (ref "Int")))))
-      (FunctionApplication (ref "maximum") (ref "it")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   assertAstOutput "list sequencing follows forward specification"
     "values ~> List Int !? maximum"
     (MaybeThen
@@ -881,7 +923,7 @@ regressionTests = do
         (MapSpecification
           (ref "values")
           (FunctionApplication (ref "List") (ref "Int"))))
-      (FunctionApplication (ref "maximum") (ref "it")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   assertAstOutput "subfederation greedily captures right-side sequencing"
     "values of List Int !? maximum"
     (Subfederation
@@ -889,7 +931,7 @@ regressionTests = do
       (MaybeThen
         (ListUncons
           (FunctionApplication (ref "List") (ref "Int")))
-        (FunctionApplication (ref "maximum") (ref "it"))))
+        (FunctionApplication (ref "maximum") (ref "'it"))))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
@@ -1218,12 +1260,26 @@ regressionTests = do
     "identifier operations reject dollar-prefixed left sides"
     "$x : Nat := 4"
   assertParsed "bare identifiers are references" "x" (IdentifierReference (IdentifierString "x"))
+  assertParsed "apostrophe-prefixed identifiers are references"
+    "'x" (IdentifierReference (IdentifierString "'x"))
+  assertParsed "apostrophe prefixes may be followed by a digit"
+    "'2x" (IdentifierReference (IdentifierString "'2x"))
+  assertParsed "underscore prefixes may be followed by a digit"
+    "_2x" (IdentifierReference (IdentifierString "_2x"))
   assertParsed "bare identifiers allow separated underscores"
     "my_pow" (IdentifierReference (IdentifierString "my_pow"))
   assertAstOutput "separated-underscore identifiers can be declared"
     "my_pow := 4" (AST.assignment "my_pow" (natural 4) (natural 4))
-  assertRejected "bare identifiers reject consecutive underscores" "my__pow"
-  assertRejected "bare identifiers reject a trailing underscore" "my_pow_"
+  assertParsed "bare identifiers allow consecutive underscores"
+    "my__pow" (IdentifierReference (IdentifierString "my__pow"))
+  assertParsed "bare identifiers allow a trailing underscore"
+    "my_pow_" (IdentifierReference (IdentifierString "my_pow_"))
+  assertRejected "a bare underscore requires an alphanumeric second character" "_"
+  assertRejected "a leading underscore cannot be followed by underscore" "__value"
+  assertRejected "a leading underscore cannot be followed by apostrophe" "_'value"
+  assertRejected "a bare apostrophe requires an alphanumeric second character" "'"
+  assertRejected "a leading apostrophe cannot be followed by underscore" "'_value"
+  assertRejected "a leading apostrophe cannot be followed by apostrophe" "''value"
   assertParsed
     "IdentifierString produces an ASCII string literal"
     "$text"
@@ -1247,20 +1303,22 @@ regressionTests = do
     "compact strings allow a single separating underscore"
     "$abc_def"
     (AST.asciiString "abc_def")
-  assertRejected
-    "compact strings reject consecutive underscores"
+  assertAstOutput
+    "compact strings allow consecutive underscores"
     "$abc__def"
-  assertRejected
-    "compact strings reject a trailing underscore"
+    (AST.asciiString "abc__def")
+  assertAstOutput
+    "compact strings allow a trailing underscore"
     "$abc_"
+    (AST.asciiString "abc_")
   assertRejected
     "compact strings reject doubled leading underscores"
     "$__abc"
   assertRejected
-    "a lone compact underscore is trailing and rejected"
+    "a lone compact underscore lacks an alphanumeric second character"
     "$_"
   assertAstOutput
-    "strings outside compact underscore syntax remain quoted"
+    "standard strings may contain a trailing underscore"
     "\"abc_\""
     (AST.asciiString "abc_")
   assertAstOutput
@@ -1539,55 +1597,55 @@ regressionTests = do
   assertRejected "named access lists require at least one name" "a.()"
   assertRejected "named access lists reject expressions" "a.(b + c)"
   let valueOf name =
-        MapAccess (NamedAccess (ref "this") (IdentifierString name)) (natural 1)
+        MapAccess (NamedAccess (ref "'this") (IdentifierString name)) (natural 1)
   assertRejected "legacy value lookup symbol is rejected" "^a"
   assertAstOutput "value lookup expands to the binding's value page"
-    "$~a" (valueOf "a")
+    "~a" (valueOf "a")
   assertAstOutput "value lookup accepts quoted names"
-    "$~\"name with spaces\"" (valueOf "name with spaces")
+    "~\"name with spaces\"" (valueOf "name with spaces")
   assertAstOutput "value lookup accepts reserved names"
-    "$~this" (valueOf "this")
+    "~this" (valueOf "this")
   assertAstOutput "value lookup binds before arithmetic"
-    "$~a + 2" (Addition (valueOf "a") (natural 2))
-  assertRejected "lookup before exponentiation requires parentheses" "$~a ^ 2"
-  assertRejected "lookup after exponentiation requires parentheses" "2 ^ $~a"
+    "~a + 2" (Addition (valueOf "a") (natural 2))
+  assertRejected "lookup before exponentiation requires parentheses" "~a ^ 2"
+  assertRejected "lookup after exponentiation requires parentheses" "2 ^ ~a"
   assertAstOutput "parenthesized lookup can be exponentiated"
-    "($~a) ^ 2" (Exponentiation (valueOf "a") (natural 2))
+    "(~a) ^ 2" (Exponentiation (valueOf "a") (natural 2))
   assertAstOutput "an exponent can be a parenthesized lookup"
-    "2 ^ ($~a)" (Exponentiation (natural 2) (valueOf "a"))
+    "2 ^ (~a)" (Exponentiation (natural 2) (valueOf "a"))
   assertAstOutput "value lookup precedes chained access"
-    "$~a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
+    "~a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
   assertAstOutput "value lookup can be a function"
-    "$~f 2" (FunctionApplication (valueOf "f") (natural 2))
+    "~f 2" (FunctionApplication (valueOf "f") (natural 2))
   assertAstOutput "value lookup can be an application argument"
-    "f ($~a)" (FunctionApplication (ref "f") (valueOf "a"))
+    "f (~a)" (FunctionApplication (ref "f") (valueOf "a"))
   assertAstOutput "postfix optional can follow value lookup"
-    "$~a?" (OptionalType (valueOf "a"))
+    "~a?" (OptionalType (valueOf "a"))
   assertAstOutput "Maybe accepts a looked-up value"
-    "Maybe ($~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
+    "Maybe (~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
   let nameList = MapAccess
         (MapConcatenation
-          (NamedAccess (ref "this") (IdentifierString "a"))
-          (NamedAccess (ref "this") (IdentifierString "b")))
+          (NamedAccess (ref "'this") (IdentifierString "a"))
+          (NamedAccess (ref "'this") (IdentifierString "b")))
         (natural 1)
   assertAstOutput "value lookup preserves named access list semantics"
-    "$~(a, \"b\")" nameList
-  assertRejected "value lookup needs a name" "$~"
-  assertRejected "value lookup rejects empty name lists" "$~()"
-  assertRejected "value lookup rejects computed names like named access" "$~(a + b)"
+    "~(a, \"b\")" nameList
+  assertRejected "value lookup needs a name" "~"
+  assertRejected "value lookup rejects empty name lists" "~()"
+  assertRejected "value lookup rejects computed names like named access" "~(a + b)"
   mapM_ (\(value, expected) -> do
       assert "source rendering uses value lookup sugar"
         (renderSourceExpression value == expected)
       assertAstOutput "rendered value lookup reparses" expected value)
-    [ (valueOf "a", "$~a")
-    , (valueOf "name with spaces", "$~\"name with spaces\"")
-    , (nameList, "$~(a, b)")
-    , (FunctionApplication (valueOf "f") (valueOf "a"), "$~f ($~a)")
-    , (MapAccess (valueOf "a") (natural 0), "$~a[0]")
-    , (NamedAccess (valueOf "a") (IdentifierString "b"), "$~a.b")
+    [ (valueOf "a", "~a")
+    , (valueOf "name with spaces", "~\"name with spaces\"")
+    , (nameList, "~(a, b)")
+    , (FunctionApplication (valueOf "f") (valueOf "a"), "~f (~a)")
+    , (MapAccess (valueOf "a") (natural 0), "~a[0]")
+    , (NamedAccess (valueOf "a") (IdentifierString "b"), "~a.b")
     , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
-        "x : $~\"type name\"")
-    , (MapAccess (NamedAccess (ref "this") (IdentifierString "a")) (natural 0), "this.a[0]")
+        "x : ~\"type name\"")
+    , (MapAccess (NamedAccess (ref "'this") (IdentifierString "a")) (natural 0), "'this.a[0]")
     , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
@@ -1600,7 +1658,7 @@ regressionTests = do
         (IdentifierString "x") alternatives (Just alternatives))
       == "x := $up | $down")
   assert "quoted identifier references render through value lookup"
-    (renderSourceExpression (ref "___Std.Int") == "$~\"___Std.Int\"")
+    (renderSourceExpression (ref "___Std.Int") == "~\"___Std.Int\"")
   assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"
@@ -1845,7 +1903,10 @@ regressionTests = do
     (natural 1 <:> natural 2)
   assertRejected "multiple trailing semicolons are rejected" "(1; 2;;)"
   assertRejected "IdentifierString rejects a missing body" "$"
-  assertRejected "IdentifierString rejects a leading apostrophe" "$'bad"
+  assertAstOutput "IdentifierString accepts a leading apostrophe"
+    "$'bad" (AST.asciiString "'bad")
+  assertRejected "IdentifierString rejects an apostrophe without a body" "$'"
+  assertRejected "IdentifierString requires alphanumeric after apostrophe" "$'_bad"
   assertParsed "a hyphen terminates a compact string and starts subtraction" "$bad-name"
     (Subtraction (AsciiStringLiteral "bad") (IdentifierReference (IdentifierString "name")))
   assertRejected "StandardString rejects unsupported escapes" "\"bad\\t\""
@@ -1950,7 +2011,7 @@ genExpression =
     , pure EllipsisLiteral
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
-    , pure (ref "this")
+    , pure (ref "'this")
     , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
@@ -2010,7 +2071,14 @@ genRangeExpression = rangeCall
 
 genIdentifierString :: H.Gen IdentifierString
 genIdentifierString = do
-  first <- Gen.element (['_'] <> ['a' .. 'z'] <> ['A' .. 'Z'])
+  prefix <- Gen.choice
+    [ (: []) <$> Gen.element (['a' .. 'z'] <> ['A' .. 'Z'])
+    , do
+        first <- Gen.element ['_', '\'']
+        second <- Gen.element
+          (['a' .. 'z'] <> ['A' .. 'Z'] <> ['0' .. '9'])
+        pure [first, second]
+    ]
   rest <-
     Gen.list
       (Range.linear 0 12)
@@ -2019,7 +2087,7 @@ genIdentifierString = do
           <> ['a' .. 'z']
           <> ['A' .. 'Z']
           <> ['0' .. '9']))
-  pure (IdentifierString (first : rest))
+  pure (IdentifierString (prefix <> rest))
 
 joinWith :: String -> [String] -> String
 joinWith _ [] = ""
@@ -2153,11 +2221,11 @@ assertAstSyntax = do
     (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
-        == "(apply-func (in-module \"std.datra\" (ref $from)) (<:> 2 5))"
+        == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 5))"
     )
   assert "directional from calls retain the private direction type"
     ( renderExpression (fromUpwards 2)
-        == "(apply-func (in-module \"std.datra\" (ref $from)) (<:> 2 $up))"
+        == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 $up))"
     )
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
@@ -2265,7 +2333,7 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
-  (InModule "std.datra" (ref name))
+  (InModule "std.datra" (ref ('\'' : name)))
   (AtlasMap [start, endpoint])
   where
     endpoint = case end of

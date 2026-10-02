@@ -144,9 +144,13 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
-    NonShadowableIdentifier name ->
+    InconsistentShadowing name ->
       LocalizedMessage
-        "identificatorul nu poate ascunde o legare protejată"
+        "ascunderea identificatorului nu este consecventă cu legarea existentă"
+        ["identificator: " <> name]
+    LetBindingCannotShadowConsistentIdentifier name ->
+      LocalizedMessage
+        "o legare let nu poate ascunde un identificator cu ascundere consecventă"
         ["identificator: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identificatorul nu este importat în acest domeniu" ["identificator: " <> name]

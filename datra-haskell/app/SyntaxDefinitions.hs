@@ -356,11 +356,11 @@ absorbFunSequence expressionValue =
   case expressionValue of
     MapSequence (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == IdentifierReference (IdentifierString "this") ->
+      , last remaining == IdentifierReference (IdentifierString "'this") ->
           EitherType (AtlasMap []) (MapSequence (headValue : remaining))
     AtlasMap (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == IdentifierReference (IdentifierString "this") ->
+      , last remaining == IdentifierReference (IdentifierString "'this") ->
           EitherType (AtlasMap []) (AtlasMap (headValue : remaining))
     _ -> expressionValue
 

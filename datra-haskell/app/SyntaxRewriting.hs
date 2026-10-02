@@ -1273,9 +1273,7 @@ sequenceExpression [value] = value
 sequenceExpression values = AtlasMap values
 
 argumentExpression :: [Expression] -> Expression
-argumentExpression [] = AtlasMap []
-argumentExpression [value] = value
-argumentExpression values = ArgumentMap values
+argumentExpression = ArgumentMap
 
 applicationPhrase :: Expression -> [Expression]
 applicationPhrase value =

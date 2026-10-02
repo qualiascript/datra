@@ -10,6 +10,7 @@ module DatraTypes
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
@@ -356,6 +357,7 @@ import Evaluation.Value
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , ReductionContext (..)
   , DependentSumStructure (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
@@ -456,16 +458,15 @@ charTypeValue = do
         _ <- specifyValues source characters
         pure source))
 
--- | The semantic fixed point of @() | (T; this)@.  It is constructed by the
--- language-level @fun@ operator; this helper only supplies the generic
--- pointwise Atlas-map membership operation.
+-- | A semantic recursive-list fixed point. The language layer supplies the
+-- canonical source of the evaluated @fun@ expression; this semantic helper
+-- has no knowledge of surface binders or standard-library names.
 listTypeValue :: String -> InterpretedValue -> InterpretedValue
-listTypeValue elementSource elementType =
+listTypeValue presentationSource elementType =
   withDependentSumStructure (ListDependentSum elementType) value
   where
     value = withDependentSumAccess project
-      (makeDependentSumValue presentation staticTarget validate)
-    presentation = "fun (() | " <> elementSource <> "; this)"
+      (makeDependentSumValue presentationSource staticTarget validate)
     staticTarget = makeLazyMapValue omega (const (Just elementType))
     project insertion =
       case interpretedValueKind insertion of

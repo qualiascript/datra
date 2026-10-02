@@ -298,7 +298,7 @@ normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentMap expressions) =
-  normalizeSequence ArgumentMap expressions
+  ArgumentMap (map normalizeExpression expressions)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
 normalizeExpression (SyntaxBoundary expressionValue) =
@@ -414,11 +414,6 @@ normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression 
 -- The payload of a scope identifier is its canonical reference spelling.
 -- It resolves the binding directly, including quoted names and captured names,
 -- without materializing the current block's declaration map.
-normalizeExpression
-    (MapAccess
-      (NamedAccess (IdentifierReference (IdentifierString "this")) name)
-      (EllipsisNatural 1)) =
-  IdentifierReference name
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -955,7 +950,7 @@ compactOperatorStringInterpolation expressionValue =
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =
-  isAsciiLetter character || character == '_'
+  isAsciiLetter character || character == '_' || character == '\''
 
 isCanonicalCharacter :: Char -> Bool
 isCanonicalCharacter character =

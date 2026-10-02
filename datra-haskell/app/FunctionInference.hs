@@ -6,6 +6,7 @@ import BlockScope
 import Control.Monad (foldM)
 import Data.List (nub)
 import DatraLanguage.AST
+import DatraLanguage.Identifier (isPrivateIdentifier)
 import DatraTypes
 
 data DependentBindingTag = ForBindingTag | WithBindingTag
@@ -26,7 +27,7 @@ freeIdentifiers = nub . free []
       Begin bindings result -> block bound bindings result
       Program bindings result -> block bound bindings result
       MaybeThen optional branch ->
-        free bound optional <> free ("it" : bound) branch
+        free bound optional <> free ("'it" : bound) branch
       _ -> concatMap (free bound) (children expression)
     dependentEntries bound tag = entries bound
       where
@@ -135,7 +136,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         (Just target, MaybeThen optional branch) -> do
           present <- inferMaybePresent scope members optional
           _ <- inferExpected
-            (InferenceValueBinding "it" present : scope)
+            (InferenceValueBinding "'it" present : scope)
             members
             (Just target)
             branch
@@ -156,7 +157,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
 
     infer scope members expression = case expression of
       IdentifierReference (IdentifierString name)
-        | name == "this" -> maybe
+        | name == "'this" -> maybe
             (declarationMap members
               (recur . IdentifierReference . IdentifierString))
             Right
@@ -166,7 +167,8 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
               InferenceBinding _ value bindingMembers bindingScope ->
                 infer bindingScope bindingMembers value
               InferenceValueBinding _ target -> Right target
-        | Just target <- lookup name parameters -> Right target
+        | Just target <- lookup name parameters
+        , not (isPrivateIdentifier name) -> Right target
         | otherwise -> evaluate expression
       Addition a b -> numeric "+" addValues False a b
       Multiplication a b -> numeric "*" multiplyValues False a b
@@ -203,7 +205,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
       MaybeThen optional branch -> do
         present <- inferMaybePresent scope members optional
         branchType <- infer
-          (InferenceValueBinding "it" present : scope)
+          (InferenceValueBinding "'it" present : scope)
           members
           branch
         optionalValue branchType
@@ -236,7 +238,13 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         check actual expected
         pure expected
       NamedAccess operand (IdentifierString name) -> recur operand >>= (`namedAccessValue` name)
-      MapAccess (IdentifierReference (IdentifierString "this")) index -> do
+      MapAccess
+          (NamedAccess
+            (IdentifierReference (IdentifierString "'this"))
+            (IdentifierString name))
+          (EllipsisNatural 1)
+        | Just target <- lookup name parameters -> Right target
+      MapAccess (IdentifierReference (IdentifierString "'this")) index -> do
         position <- recur index
         projectDeclaration members (recur . IdentifierReference . IdentifierString) position
       MapAccess operand index -> do
@@ -248,7 +256,7 @@ inferBody evaluate parameters self namedSelf declaredOutput bindings result =
         actual <- recur argument
         let alternatives = functionAlternatives callable
             recursiveCall = case (function, self) of
-              (IdentifierReference (IdentifierString "this"), Just _) -> True
+              (IdentifierReference (IdentifierString "'this"), Just _) -> True
               (IdentifierReference (IdentifierString name), _) ->
                 name `elem` namedSelf
               _ -> False

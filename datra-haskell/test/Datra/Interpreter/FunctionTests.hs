@@ -16,19 +16,19 @@ functionTests =
     , testGroup "application"
         [ programCase "it observes the complete given map"
             (unlines
-              [ "sum := (Nat, Nat -> Nat do yield it[0] + it[1])"
+              [ "sum := (Nat, Nat -> Nat do yield 'it[0] + 'it[1])"
               , "assert sum (1, 2) = 3"
               ])
             "()"
         , programCase "sequenced Int annotations remain individual slots"
             (unlines
-              [ "sum := ((Int; Int) -> Int do yield it[0] + it[1])"
+              [ "sum := ((Int; Int) -> Int do yield 'it[0] + 'it[1])"
               , "assert sum ((2 ~> Int); (5 ~> Int)) = 7"
               ])
             "()"
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
-              [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield it.base[1] ^ it.exponent[1])"
+              [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield 'it.base[1] ^ 'it.exponent[1])"
               , "assert my_pow (*, 3) = 8"
               ])
             "()"
@@ -55,7 +55,7 @@ functionTests =
             "11"
         , programCase "higher-order parameter"
             (unlines
-              [ "apply := (((Int -> Int), Int) -> Int do yield it[0] it[1])"
+              [ "apply := (((Int -> Int), Int) -> Int do yield 'it[0] 'it[1])"
               , "increment := ({n?:Int} -> Int do yield n+1)"
               , "yield apply (increment,4)"
               ])
@@ -89,64 +89,64 @@ functionTests =
         [ programCase "optional names survive positional calls"
             (unlines
               [ "f := {abc? : Nat; xyz? : Nat} -> Bool do"
-              , "  yield it.abc[0] = $abc and it.abc[1] = abc and it.xyz[0] = $xyz and it.xyz[1] = xyz"
+              , "  yield 'it.abc[0] = $abc and 'it.abc[1] = abc and 'it.xyz[0] = $xyz and 'it.xyz[1] = xyz"
               , "assert f(3, 4)"
               , "assert f(xyz := 4, abc := 3)"
               ]) "()"
         , programCase "mixed slots preserve their written positions"
             (unlines
               [ "f := (abc? : Nat; Nat; xyz? : Nat) -> Bool do"
-              , "  yield it[0][0] = $abc and it[0][1] = 3 and it[1] = 4 and it[2][0] = $xyz and it[2][1] = 5"
+              , "  yield 'it[0][0] = $abc and 'it[0][1] = 3 and 'it[1] = 4 and 'it[2][0] = $xyz and 'it[2][1] = 5"
               , "assert f(3; 4; 5)"
               ]) "()"
         , programCase "named access contributes to inferred output types"
-            "f := ({abc? : Nat} -> Nat do yield it.abc[1] + 1)\nyield f 6"
+            "f := ({abc? : Nat} -> Nat do yield 'it.abc[1] + 1)\nyield f 6"
             "7"
         , programCase "computed input schemas preserve names without special functions"
             (unlines
               [ "Slots := (() -> Any do yield (abc? : Nat; Nat))"
               , "f := {Slots (),} -> Bool do"
-              , "  yield it.abc[0] = $abc and it.abc[1] = 3 and it[1] = 4"
+              , "  yield 'it.abc[0] = $abc and 'it.abc[1] = 3 and 'it[1] = 4"
               , "assert f(3; 4)"
               ]) "()"
         , programCase "aliased schemas preserve names"
             (unlines
               [ "Schema := (abc? : Nat; Nat)"
               , "f := Schema -> Bool do"
-              , "  yield it.abc[1] = 3 and it[1] = 4"
+              , "  yield 'it.abc[1] = 3 and 'it[1] = 4"
               , "assert f(3; 4)"
               ]) "()"
         , programCase "inferred parameters also retain their names in it"
-            "f := (do yield abc + it.abc[1])\nyield f 7"
+            "f := (do yield abc + 'it.abc[1])\nyield f 7"
             "14"
         , programCase "projected schemas retain names inside the body"
             (unlines
               [ "Slots := (for T? of Any) -> Any do"
               , "  slots := with i in Nat do \"field%(i)\"? : T"
               , "yield () | with n in Nat do slots[range 0 to n]"
-              , "f := {Slots Nat,} -> Nat do yield it[0][1]"
+              , "f := {Slots Nat,} -> Nat do yield 'it[0][1]"
               , "assert f(3; 4) = 3"
-              , "pick := {Slots Nat,} -> Any do yield it.field1[1]"
+              , "pick := {Slots Nat,} -> Any do yield 'it.field1[1]"
               , "assert pick(3; 4) = 4"
               ]) "()"
         , programCase "projected input maps retain names after returning"
             (unlines
-              [ "f := {Args Int,} -> Any do yield it"
+              [ "f := {Args Int,} -> Any do yield 'it"
               , "assert (f(3; 4)).arg0[0] = $arg0"
               , "assert (f(arg1 := 4, 3)).arg1[1] = 4"
               ]) "()"
         , programCase "empty and singleton unnamed inputs keep their shape"
             (unlines
-              [ "emptyInput := (() -> Any do yield it)"
-              , "single := (Nat -> Nat do yield it)"
+              [ "emptyInput := (() -> Any do yield 'it)"
+              , "single := (Nat -> Nat do yield 'it)"
               , "assert emptyInput() = ()"
               , "assert single 8 = 8"
               ]) "()"
         , programCase "erasure supports mixed parameters during inference"
-            "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield val it)\nyield f(3; 4)"
+            "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield val 'it)\nyield f(3; 4)"
             "(3; 4)"
         , programCase "erasure works through local bindings"
-            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield val args)\nyield f 7"
+            "f := ({abc? : Nat} -> Nat do\n  args := 'it\nyield val args)\nyield f 7"
             "7"
         , expressionCase "erasure removes identifiers throughout nested maps"
             "val (a := (b := 2; 3); 4; c := 5)"
@@ -155,7 +155,7 @@ functionTests =
             "(val $abc; val (); val (1; 2); val 7)"
             "($abc; (); >< (1; 2); 7)"
         , programCase "erasure works on a block's declaration map"
-            "yield begin\n  abc := 2\n  def := 3\nyield val this"
+            "yield begin\n  abc := 2\n  def := 3\nyield val 'this"
             "(2; 3)"
         , expressionCase "prefix erasure and exponentiation remain distinct"
             "val (base := 2) ^ 3"
@@ -171,37 +171,37 @@ functionTests =
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"
-            "f := !$~\"datra.add\"\nyield f (b:5;6)"
+            "f := !~\"datra.add\"\nyield f (b:5;6)"
             "11"
         , programCase "structured external descriptor"
-            ("f := !$~(backend:\"haskell\";symbol:\"datra.add\")\n"
+            ("f := !~(backend:\"haskell\";symbol:\"datra.add\")\n"
               <> "yield f (b:5;6)")
             "11"
         , expressionFailureCase "unknown external backend"
-            "!$~(backend:\"missing\";symbol:\"datra.add\")"
+            "!~(backend:\"missing\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnsupportedExternalBackend "missing")))
         , expressionFailureCase "unknown external symbol"
-            "!$~(backend:\"haskell\";symbol:\"missing\")"
+            "!~(backend:\"haskell\";symbol:\"missing\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
         , expressionFailureCase "duplicate external descriptor field"
-            "!$~(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
+            "!~(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed DuplicateExternalDescriptorField))
         , expressionFailureCase "unknown external descriptor field"
-            "!$~(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
+            "!~(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalDescriptorFields ["extra"])))
         , expressionFailureCase "missing external descriptor field"
-            "!$~(backend:\"haskell\")"
+            "!~(backend:\"haskell\")"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (MissingExternalDescriptorField "symbol")))
         , expressionFailureCase "external descriptor requires string fields"
-            "!$~(1; 2)"
+            "!~(1; 2)"
             (SourceEvaluationFailure
               (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
         ]
@@ -222,12 +222,32 @@ functionTests =
         , programCase "written order resolves otherwise ambiguous arguments"
             "f := ({x?:Int;y?:Int} -> Int do yield x+y)\nyield f {2;3}"
             "5"
+        , programCase "ordinary-map private parameter accepts its written name"
+            ( "f := ((_x:Int) -> Int do yield ~\"_x\"+1)\n"
+                <> "yield f (_x:2)"
+            )
+            "3"
+        , programFailureCase
+            "private parameter is not automatically reduced in the body"
+            "f := ((_x:Int) -> Int do yield _x+1)\nyield f (_x:2)"
+            (SourceEvaluationFailure (UnknownIdentifier "_x"))
+        , programFailureCase
+            "singleton argument-map private parameter rejects its written name"
+            ( "f := ({_x:Int} -> Int do yield ~\"_x\"+1)\n"
+                <> "yield f (_x:2)"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "private required names reject positional input"
-            "sum := ({_x:Int;_y:Int} -> Int do yield _x+_y)\nyield sum (1,2)"
+            ( "sum := ({_x:Int;_y:Int} -> Int do "
+                <> "yield ~\"_x\"+~\"_y\")\nyield sum (1,2)"
+            )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "private parameter slots reject named input"
-            "sum := ({_x:Int;_y:Int} -> Int do yield _x+_y)\nyield sum (_x:1,_y:2)"
+            ( "sum := ({_x:Int;_y:Int} -> Int do "
+                <> "yield ~\"_x\"+~\"_y\")\nyield sum (_x:1,_y:2)"
+            )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "ambiguous reorder is reported structurally"
@@ -267,7 +287,7 @@ functionTests =
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : (!$~\"datra.AST\")"
+            "node : (!~\"datra.AST\")"
             (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat do yield 0)\nyield f ({n?:Nat} -> Nat do yield n)"

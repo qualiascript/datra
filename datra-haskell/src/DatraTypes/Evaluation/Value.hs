@@ -23,6 +23,7 @@ module Evaluation.Value
   , datraCanonicalType
   , datraStringRepresentation
   , EvaluatedFunction (..)
+  , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
   , syntaxCategoryTypeValue
@@ -288,9 +289,20 @@ data EvaluatedFunction = EvaluatedFunction
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError InterpretedValue)
-  , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , functionInvoke :: Maybe
+      (ReductionContext
+        -> InterpretedValue
+        -> Either InterpretingError InterpretedValue)
   , functionValidatesResult :: Bool
   }
+
+-- | Ordinary evaluation is unrestricted. Shadowing consistency is established
+-- with finite reduction fuel so a divergent proposed binding is rejected
+-- instead of preventing the surrounding scope from being evaluated.
+data ReductionContext
+  = UnrestrictedReduction
+  | ShadowingConsistencyReduction String Int
+  deriving (Eq, Show)
 
 functionSyntaxEquivalent
   :: FunctionSyntax InterpretedValue

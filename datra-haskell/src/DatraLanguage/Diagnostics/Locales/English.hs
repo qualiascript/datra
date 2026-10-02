@@ -146,9 +146,13 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "assertion failed" []
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
-    NonShadowableIdentifier name ->
+    InconsistentShadowing name ->
       LocalizedMessage
-        "identifier cannot shadow a protected binding"
+        "identifier shadowing is inconsistent with its existing binding"
+        ["identifier: " <> name]
+    LetBindingCannotShadowConsistentIdentifier name ->
+      LocalizedMessage
+        "let binding cannot shadow a shadowing-consistent identifier"
         ["identifier: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identifier is not imported in this scope" ["identifier: " <> name]

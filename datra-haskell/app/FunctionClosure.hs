@@ -68,7 +68,7 @@ close mode depth ancestors occupied resolver self
     reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
-    initiallyBound = ["this" | explicitSelf]
+    initiallyBound = ["'this" | explicitSelf]
     (rewritten, collected) = runState
       (rewrite mode depth (rootText : reserved) active resolver
         initiallyBound expression)
@@ -83,18 +83,18 @@ close mode depth ancestors occupied resolver self
     selfBound = explicitSelf || recursive
     selfRewritten
       | recursive = replaceReference root
-          (IdentifierReference (IdentifierString "this")) rewritten
+          (IdentifierReference (IdentifierString "'this")) rewritten
       | otherwise = rewritten
     selfDefinitions
       | recursive = map
-          (replaceReference root (IdentifierReference (IdentifierString "this")))
+          (replaceReference root (IdentifierReference (IdentifierString "'this")))
           definitions
       | otherwise = definitions
 
 rewrite :: DependencyMode -> Int -> [String] -> References -> Resolver -> [String]
   -> Expression -> State Collected Expression
 rewrite mode depth reserved active resolver bound
-    (MapAccess (IdentifierReference (IdentifierString "this")) index)
+    (MapAccess (IdentifierReference (IdentifierString "'this")) index)
   | Just name <- resolveScopeIndex resolver index = do
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
@@ -145,7 +145,7 @@ rewrite mode depth reserved active resolver bound expression =
       closedCodomain <- rewrite mode depth reserved active resolver
         (parameters <> bound) codomain
       body <- rewrite mode depth reserved active resolver
-        ("it" : parameters <> bound) (FunctionBody entries result)
+        ("'it" : parameters <> bound) (FunctionBody entries result)
       pure (MapSpecification body (FunctionType closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
@@ -185,7 +185,7 @@ referencePath :: Expression -> Maybe [String]
 referencePath
     (MapAccess
       (NamedAccess
-        (IdentifierReference (IdentifierString "this"))
+        (IdentifierReference (IdentifierString "'this"))
         (IdentifierString name))
       (EllipsisNatural 1)) =
   Just ["\0this", name]

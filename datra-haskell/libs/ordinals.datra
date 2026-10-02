@@ -4,14 +4,14 @@ yield Ordinals := begin
 
   OrdValue := Ordinal | Nat
 
-  sum := {x? : OrdValue; y? : OrdValue} -> OrdValue !$~"datra.ordinal.sum"
-  prod := {x? : OrdValue; y? : OrdValue} -> OrdValue !$~"datra.ordinal.prod"
-  minus := {x? : OrdValue; y? : OrdValue} -> OrdValue !$~"datra.ordinal.minus"
-  exp := {x? : OrdValue; power? : Nat} -> OrdValue !$~"datra.ordinal.exp"
+  sum := {x? : OrdValue; y? : OrdValue} -> OrdValue !~"datra.ordinal.sum"
+  prod := {x? : OrdValue; y? : OrdValue} -> OrdValue !~"datra.ordinal.prod"
+  minus := {x? : OrdValue; y? : OrdValue} -> OrdValue !~"datra.ordinal.minus"
+  exp := {x? : OrdValue; power? : Nat} -> OrdValue !~"datra.ordinal.exp"
 
-  lt := {x? : OrdValue; y? : OrdValue} -> Bool !$~"datra.ordinal.lt"
-  lte := {x? : OrdValue; y? : OrdValue} -> Bool !$~"datra.ordinal.lte"
-  gt := {x? : OrdValue; y? : OrdValue} -> Bool !$~"datra.ordinal.gt"
-  gte := {x? : OrdValue; y? : OrdValue} -> Bool !$~"datra.ordinal.gte"
+  lt := {x? : OrdValue; y? : OrdValue} -> Bool !~"datra.ordinal.lt"
+  lte := {x? : OrdValue; y? : OrdValue} -> Bool !~"datra.ordinal.lte"
+  gt := {x? : OrdValue; y? : OrdValue} -> Bool !~"datra.ordinal.gt"
+  gte := {x? : OrdValue; y? : OrdValue} -> Bool !~"datra.ordinal.gte"
 
-yield public this
+yield public 'this

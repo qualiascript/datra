@@ -23,7 +23,7 @@ standardLibraryTests =
         , programCase "AST can be a user binding"
             "AST := 2\nyield AST" "2"
         , programCase "AST external uses the private type spelling"
-            "yield !$~\"datra.AST\"" "_AST"
+            "yield !~\"datra.AST\"" "_AST"
         , programFailureCase "Expr is private to the library"
             "yield Expr" (SourceEvaluationFailure (UnknownIdentifier "Expr"))
         , programFailureCase "Block is private to the library"
@@ -36,7 +36,7 @@ standardLibraryTests =
             "yield _SyntaxTemplate"
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
         , programCase "SyntaxTemplate external uses the private type spelling"
-            "yield !$~\"datra.SyntaxTemplate\"" "_SyntaxTemplate"
+            "yield !~\"datra.SyntaxTemplate\"" "_SyntaxTemplate"
         ]
     , testGroup "qualified syntax"
         [ expressionCase source source expected
@@ -52,28 +52,28 @@ standardLibraryTests =
             "yield fun 5" "5"
         , programCase "recursive Nat function"
             ("factorial := fun {n? : Nat} -> Nat do yield "
-              <> "if n = 0 then 1 else n * this (n - 1)\n"
+              <> "if n = 0 then 1 else n * 'this (n - 1)\n"
               <> "yield factorial 5")
             "120"
         , programCase "fun and let factorials agree"
             ("inlineFactorial := fun {n? : Int} -> Int do yield "
-              <> "if n = 0 then 1 else n * this (n - 1)\n"
+              <> "if n = 0 then 1 else n * 'this (n - 1)\n"
               <> "let boundFactorial := ({n? : Int} -> Int do yield "
               <> "if n = 0 then 1 else n * boundFactorial (n - 1))\n"
               <> "assert inlineFactorial 6 = boundFactorial 6\n"
               <> "yield inlineFactorial 6")
             "720"
         , programCase "finite access lazily unfolds recursive data"
-            ("name := fun (\"hi:\", this)\n"
+            ("name := fun (\"hi:\", 'this)\n"
               <> "k : Nat := 1\n"
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
         , programCase "recursive concatenation is not string-specific"
-            ("values := fun (1, this)\n"
+            ("values := fun (1, 'this)\n"
               <> "yield values[from 0 to 3]")
             "(1; 1; 1; 1)"
         , programCase "recursive semicolon sequence uses map machinery"
-            ("values := fun (1; 2; this)\n"
+            ("values := fun (1; 2; 'this)\n"
               <> "yield values[from 0 to 5]")
             "(1; 2; 1; 2; 1; 2)"
         , programCase "let and fun share productive fixed-point access"
@@ -95,17 +95,17 @@ standardLibraryTests =
     , testGroup "scope values"
         [ programCase source source expected
         | (source, expected) <-
-            [ ("a:=5\nb:=8\nyield this.a", "a : 5")
-            , ("_private:=3\na:=5\nyield public this", "a : 5")
+            [ ("a:=5\nb:=8\nyield 'this.a", "a : 5")
+            , ("_private:=3\na:=5\nyield public 'this", "a : 5")
             , ( "yield public (_private:3;a:5) of (a?:Nat)"
               , "true"
               )
             , ( "yield public (_private:3;a:5) ~> (a?:Nat)"
               , "a? : Nat := 5"
               )
-            , ("_private:=3\na:=5\nyield this._private", "_private : 3")
-            , ("a:=5\nyield this.a of (a?:Nat)", "true")
-            , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
+            , ("_private:=3\na:=5\nyield 'this._private", "_private : 3")
+            , ("a:=5\nyield 'this.a of (a?:Nat)", "true")
+            , ("a:=5\nyield 'this.a ~> (a?:Nat)", "a? : Nat := 5")
             , ("a:=(b:2;c:3)\nyield a.(b,c)", "b : 2, c : 3")
             , ("a:=(b:2;c:3)\nyield a.(b,c) of (a.b,a.c)", "true")
             , ( "a:=(b:2;c:3)\n"
@@ -114,7 +114,7 @@ standardLibraryTests =
               )
             , ("yield from (2,5)", "from 2 to 5")
             , ("yield from (2,$up)", "from 2 up")
-            , ("f := !$~\"datra.add\"\nyield f (b:5;6)", "11")
+            , ("f := !~\"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
@@ -123,29 +123,29 @@ standardLibraryTests =
         ]
     , testGroup "value lookup"
         [ programCase "retrieves a named binding"
-            "x := 5\nyield $~x" "5"
+            "x := 5\nyield ~x" "5"
         , programCase "retrieves a quoted binding"
-            "\"value with spaces\" := 5\nyield $~\"value with spaces\"" "5"
+            "\"value with spaces\" := 5\nyield ~\"value with spaces\"" "5"
         , programCase "retrieves a private binding"
-            "_x := 5\nyield $~_x" "5"
+            "_x := 5\nyield ~\"_x\"" "5"
         , programCase "further access selects from the retrieved value"
-            "x := (5; 8)\nyield $~x[1]" "8"
+            "x := (5; 8)\nyield ~x[1]" "8"
         , programCase "optional names accept named and positional inputs"
-            ("f := ({x? : Nat} -> Nat do yield $~x + 1)\n"
+            ("f := ({x? : Nat} -> Nat do yield ~x + 1)\n"
               <> "yield (f 5; f (x := 5))")
             "(6; 6)"
         , programCase "optional names retain defaults"
-            "f := ({x? : Nat := 5} -> Nat do yield $~x + 1)\nyield f ()" "6"
+            "f := ({x? : Nat := 5} -> Nat do yield ~x + 1)\nyield f ()" "6"
         , programCase "specification accepts the retrieved value"
-            "x := 5\nyield ($~x ~> Int) of Int" "true"
+            "x := 5\nyield (~x ~> Int) of Int" "true"
         , programCase "reverse specification accepts the retrieved value"
-            "x := 5\nyield (Int <~ $~x) of Int" "true"
+            "x := 5\nyield (Int <~ ~x) of Int" "true"
         , programCase "subfederation checks the retrieved value"
-            "x := 5\nyield $~x of Nat" "true"
+            "x := 5\nyield ~x of Nat" "true"
         , programCase "subfederation rejects a different value"
-            "x := 5\nyield $~x of 6" "false"
+            "x := 5\nyield ~x of 6" "false"
         , programCase "lookup does not change optional-name specification"
-            ("x := 5\nyield (x := $~x) ~> (x? : Nat)")
+            ("x := 5\nyield (x := ~x) ~> (x? : Nat)")
             "x? : Nat := 5"
         ]
     , testGroup "mapped access"
@@ -168,7 +168,7 @@ standardLibraryTests =
             "yield (>< (10; 20); 30)[0][1]"
             "20"
         , programCase "coalization occupies one function argument slot"
-            ( "f := ((>< (Nat; Nat); Str) -> Nat do yield it[0][1])\n"
+            ( "f := ((>< (Nat; Nat); Str) -> Nat do yield 'it[0][1])\n"
                 <> "yield f((1; 2); \"x\")"
             )
             "2"
@@ -202,7 +202,7 @@ standardLibraryTests =
             "(10; 20; 30)"
         , programCase "semicolon access retains overlapping argument types"
             ( "split := ({Args Int,} -> (Int; List Int) do "
-                <> "yield (val it)[0; range 1 up])\n"
+                <> "yield (val 'it)[0; range 1 up])\n"
                 <> "yield split(10, 20, 30)"
             )
             "(10; >< (20; 30))"
@@ -228,7 +228,7 @@ standardLibraryTests =
         , programCase "nonempty list split preserves head and tail"
             "yield (1; 2; 3)!" "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing binds tagged it"
-            "yield (1; 2; 3)! ?? val it"
+            "yield (1; 2; 3)! ?? val 'it"
             "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing leaves the absent branch lazy"
             "yield ()! ?? missing" "nothing"
@@ -271,13 +271,13 @@ standardLibraryTests =
         , programCase "optional named matcher accepts split positional values"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield (1; 2; 3)! ?? head it"
+                <> "yield (1; 2; 3)! ?? head 'it"
             )
             "Just : 1"
         , programFailureCase "required named matcher rejects split positional values"
             ( "head := ({candidate : Int; remaining : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield (1; 2; 3)! ?? head it"
+                <> "yield (1; 2; 3)! ?? head 'it"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
@@ -288,7 +288,7 @@ standardLibraryTests =
         ]
     , testGroup "scope rejections"
         [ programFailureCase "duplicate scope member"
-            "a:=5\na:=8\nyield this"
+            "a:=5\na:=8\nyield 'this"
             (SourceEvaluationFailure (IdentifierStringOverlap "a"))
         , programFailureCase "specified function validates narrowed input"
             ("f := ({x?:Int} -> Int do yield x+1)\n"
@@ -296,7 +296,7 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "unknown external shorthand"
-            "yield !$~\"missing.symbol\""
+            "yield !~\"missing.symbol\""
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalSymbol "missing.symbol")))
@@ -313,8 +313,8 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "not ((!$~\"datra.AST\") of Any)"
-            , "not ((Nat; (!$~\"datra.AST\")) of Any)"
+            , "not ((!~\"datra.AST\") of Any)"
+            , "not ((Nat; (!~\"datra.AST\")) of Any)"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -332,10 +332,10 @@ standardLibraryTests =
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "(!$~\"datra.Expr\") of (!$~\"datra.AST\")"
-            , "(!$~\"datra.Block\") of (!$~\"datra.AST\")"
-            , "not ((!$~\"datra.Block\") of (!$~\"datra.Expr\"))"
-            , "((!$~\"datra.Expr\") ~> (!$~\"datra.AST\")) of (!$~\"datra.AST\")"
+            , "(!~\"datra.Expr\") of (!~\"datra.AST\")"
+            , "(!~\"datra.Block\") of (!~\"datra.AST\")"
+            , "not ((!~\"datra.Block\") of (!~\"datra.Expr\"))"
+            , "((!~\"datra.Expr\") ~> (!~\"datra.AST\")) of (!~\"datra.AST\")"
             , "\"%Any\" of Template"
             , "\"%Int %IdenStr\" of Template"
             , "(\"%Int %IdenStr\" ~> Template) of Template"
@@ -378,17 +378,17 @@ standardLibraryTests =
             )
             "true"
         , programCase "Args accepts every finite positional prefix"
-            ( "values := ({Args Int,} -> List Int do yield val it)\n"
+            ( "values := ({Args Int,} -> List Int do yield val 'it)\n"
                 <> "yield values(1, 2, 3)"
             )
             "(1; 2; 3)"
         , programCase "Args reorders named and positional slots"
-            ( "values := ({Args Int,} -> List Int do yield val it)\n"
+            ( "values := ({Args Int,} -> List Int do yield val 'it)\n"
                 <> "yield values(arg1 := 3, 0)"
             )
             "(0; 3)"
         , programFailureCase "Args rejects a gap in its finite prefix"
-            ( "values := ({Args Int,} -> List Int do yield val it)\n"
+            ( "values := ({Args Int,} -> List Int do yield val 'it)\n"
                 <> "yield values(arg2 := 3, 0)"
             )
             (SourceEvaluationFailure
@@ -397,7 +397,7 @@ standardLibraryTests =
             ( "MyArgs := (for T? of Any) -> Any do\n"
                 <> "  slots := with i in Nat do \"arg%(i)\"? : T\n"
                 <> "yield () | with n in Nat do slots[range 0 to n]\n"
-                <> "display := {MyArgs Int,} -> Str do yield \"%(val it)\"\n"
+                <> "display := {MyArgs Int,} -> Str do yield \"%(val 'it)\"\n"
                 <> "assert ((arg2 := 10, 4) of {MyArgs Int,}) = false\n"
                 <> "yield (display(); display(1); display(1, 2, 3); "
                 <> "display(arg1 := 10, 4))"
@@ -476,6 +476,9 @@ standardLibraryTests =
                 <> "yield (_T := Nat; value := 5) of Pair"
             )
             "true"
+        , programCase "private spelling remains structural in ordinary maps"
+            "yield (_a : Nat := 123) of (_a : Nat)"
+            "true"
         , programFailureCase "ordinary map names do not bind later members"
             ( "Bad := {T? : Any; value? : T}\n"
                 <> "yield Bad"
@@ -507,7 +510,7 @@ integerLimitTests =
             "yield (Int; IntLimit)"
             "(Int; IntLimit)"
         , programCase "unnamed NatLimit functions accept finite and limit values"
-            ( "identity := (NatLimit -> NatLimit do yield it)\n"
+            ( "identity := (NatLimit -> NatLimit do yield 'it)\n"
                 <> "yield (identity 3; identity Infinity)"
             )
             "(3; Infinity)"
@@ -604,7 +607,7 @@ integerLimitTests =
             )
             "(true; true; true; true; true; true; true)"
         , programCase "a safe IntLimit function is inferred"
-            ( "increment := (IntLimit -> IntLimit do yield it + 1)\n"
+            ( "increment := (IntLimit -> IntLimit do yield 'it + 1)\n"
                 <> "yield (increment Infinity; increment (-Infinity))"
             )
             "(Infinity; -Infinity)"
@@ -709,10 +712,10 @@ declaredPatternTests =
         (declaration <> "yield step 2")
         "3"
     , programFailureCase "duplicate syntax declaration"
-        (declaration <> declaration <> "yield this")
+        (declaration <> declaration <> "yield 'this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((%\"step $Int next\" %> (Int -> Int) !$~\"datra.abs\")"
+        ( "step := ((%\"step $Int next\" %> (Int -> Int) !~\"datra.abs\")"
             <> " | (%\"step $Int next\" %> (Int -> Int) do yield 2))\n"
             <> "yield step"
         )
@@ -726,14 +729,14 @@ declaredPatternTests =
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((%\"step $Int left\" %> (Int -> Int) !$~\"datra.abs\")"
-            <> " | (%\"step $Int right\" %> (Int -> Int) !$~\"datra.abs\"))\n"
+        ( "step := ((%\"step $Int left\" %> (Int -> Int) !~\"datra.abs\")"
+            <> " | (%\"step $Int right\" %> (Int -> Int) !~\"datra.abs\"))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((%\"choose $Nat mark\" %> (Nat -> Int) !$~\"datra.abs\")"
-            <> " | (%\"choose $Int mark\" %> (Int -> Int) !$~\"datra.abs\"))\n"
+        ( "choose := ((%\"choose $Nat mark\" %> (Nat -> Int) !~\"datra.abs\")"
+            <> " | (%\"choose $Int mark\" %> (Int -> Int) !~\"datra.abs\"))\n"
             <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)

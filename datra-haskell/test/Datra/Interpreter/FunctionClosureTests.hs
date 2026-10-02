@@ -21,14 +21,14 @@ functionClosureTests = testGroup "canonical function reconstruction"
   [ canonicalRoundTrip "recursive factorial" factorial "5" "120"
   , canonicalRoundTrip "recursive self can be aliased"
       ( "yield fun ({n? : Int} -> Int do "
-          <> "my_this := this; "
+          <> "my_this := 'this; "
           <> "yield if n = 0 then 1 else n * my_this (n - 1))"
       )
       "5"
       "120"
   , canonicalRoundTrip "function input can be aliased"
       ( "yield ({n? : Nat} -> Nat do "
-          <> "my_it := it; yield val my_it)"
+          <> "my_it := 'it; yield val my_it)"
       )
       "7"
       "7"
@@ -36,13 +36,13 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "let factorial := ({n? : Int} -> Int do _fun : 0; yield if n = _fun then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"
   , roundTrip "quoted local matches generated root"
-      "let factorial := ({n? : Int} -> Int do \"__fun\" : 0; yield if n = this.\"__fun\"[1] then 1 else n * factorial (n - 1))\nyield factorial"
+      "let factorial := ({n? : Int} -> Int do \"__fun\" : 0; yield if n = 'this.\"__fun\"[1] then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"
   , roundTrip "captured name matches generated root"
       "_fun := 4\nyield ({n? : Int} -> Int do yield n + _fun)"
       "3" "7"
   , roundTrip "quoted capture matches generated root"
-      "\"__fun\" := 4\nyield ({n? : Int} -> Int do yield n + this.\"__fun\"[1])"
+      "\"__fun\" := 4\nyield ({n? : Int} -> Int do yield n + 'this.\"__fun\"[1])"
       "3" "7"
   , roundTrip "three dependency levels reconstruct independently" threeLevels "3" "7"
   , testCase "each dependency level uses the closure-local namespace" $ do
@@ -53,7 +53,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :=") `isInfixOf` text)
         assertBool ("wrong dependency reference for " <> show userName)
-          (("$~" <> show dependency) `isInfixOf` text))
+          (("~" <> show dependency) `isInfixOf` text))
         ["next", "step", "base"]
       assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
   , roundTrip "user value is distinct from the inline fixed point"
@@ -69,7 +69,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded declaration for " <> show name)
           ((show encoded <> " :=") `isInfixOf` text)
         assertBool ("missing encoded reference for " <> show name)
-          (("$~" <> show encoded) `isInfixOf` text))
+          (("~" <> show encoded) `isInfixOf` text))
         [ ("abc", "___abc")
         , ("_abc", "____abc")
         , ("_____abc", "_____abc")
@@ -85,7 +85,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertBool "do scope is space-delimited"
         ("fun (do yield if " `isInfixOf` text)
       assertBool "closure yields an inline fixed point" ("yield fun " `isInfixOf` text)
-      assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
+      assertBool "recursive reference is 'this" ("'this (n - 1)" `isInfixOf` text)
       assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))
   , canonicalRoundTrip "transitive captured definitions"
       "seed := 2\noffset := seed + 2\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
@@ -94,14 +94,14 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "seed := 2\nlet offset := seed + 2\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       "7" "11"
   , roundTrip "identifier erasure survives serialization"
-      "yield ({abc? : Nat} -> Nat do yield val it)" "7" "7"
+      "yield ({abc? : Nat} -> Nat do yield val 'it)" "7" "7"
   , roundTrip "input names survive serialization"
-      "yield ({abc? : Nat} -> Nat do yield it.abc[1])" "7" "7"
+      "yield ({abc? : Nat} -> Nat do yield 'it.abc[1])" "7" "7"
   , roundTrip "defaults survive serialization"
       "f := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)\nyield f"
       "(*, 3)" "8"
   , roundTrip "local this is not polluted by dependency bindings"
-      "offset := 4\nf := ({x? : Int} -> Int do local := x + offset; yield this.local[1])\nyield f"
+      "offset := 4\nf := ({x? : Int} -> Int do local := x + offset; yield 'this.local[1])\nyield f"
       "7" "11"
   , roundTrip "higher-order captured value"
       "inc := ({x? : Int} -> Int do yield x + 1)\nf := ({n? : Int} -> Int do yield inc n)\nyield f"
@@ -110,24 +110,24 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "flag := true\nf := ({x? : Int} -> Int do yield if flag then x + 1 else x)\nyield f"
       "7" "8"
   , roundTrip "quoted parameter reference"
-      "yield ({\"value with spaces\" : Int} -> Int do yield this.\"value with spaces\"[1] + 1)"
+      "yield ({\"value with spaces\" : Int} -> Int do yield 'this.\"value with spaces\"[1] + 1)"
       "(\"value with spaces\" : 4)" "5"
   , roundTrip "value lookup in an optional named parameter"
-      "yield ({\"value with spaces\"? : Int} -> Int do yield $~\"value with spaces\" + 1)"
+      "yield ({\"value with spaces\"? : Int} -> Int do yield ~\"value with spaces\" + 1)"
       "4" "5"
   , roundTrip "value lookup applies a captured function"
-      "inc := ({x? : Int} -> Int do yield x + 1)\nyield ({n? : Int} -> Int do yield $~inc ($~n))"
+      "inc := ({x? : Int} -> Int do yield x + 1)\nyield ({n? : Int} -> Int do yield ~inc (~n))"
       "4" "5"
   , roundTrip "library inlining preserves a user _AST parameter"
-      "yield ({_AST : Int := 4} -> Int do yield _AST + 1)" "()" "5"
+      "yield ({_AST : Int := 4} -> Int do yield ~\"_AST\" + 1)" "()" "5"
   , roundTrip "quoted captured identifier"
-      "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int do yield x + this.\"name.with.dots\"[1])"
+      "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int do yield x + 'this.\"name.with.dots\"[1])"
       "7" "11"
   , roundTrip "captured computed this projection"
-      "x : 2\ny : 3\nz : this[y-x][1]\nyield ({n? : Int} -> Int do yield n + z)"
+      "x : 2\ny : 3\nz : 'this[y-x][1]\nyield ({n? : Int} -> Int do yield n + z)"
       "4" "7"
   , roundTrip "computed this projection inside a function"
-      "yield (() -> Int do x : 2; y : 3; z : this[y-x][1]; yield z)"
+      "yield (() -> Int do x : 2; y : 3; z : 'this[y-x][1]; yield z)"
       "()" "3"
   , roundTrip "nothing result" "yield (() -> nothing do yield nothing)"
       "()" "nothing"
@@ -142,7 +142,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "f := ({x? : Int} -> Int do yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , mutualRecursiveDefinitions
-  , roundTrip "registered native function" "yield !$~\"datra.add\""
+  , roundTrip "registered native function" "yield !~\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
       "step := %\"step $Nat next\" %> ({value? : Int} -> Int) do yield value + 1\nyield step"
@@ -159,10 +159,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("!$~\"datra.from\"" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("!~\"datra.from\"" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
-        (not ("!$~\"datra.Int\"" `isInfixOf` text))
-      assertBool "dependency selected through value lookup" ("$~\"___Std.Int\"" `isInfixOf` text)
+        (not ("!~\"datra.Int\"" `isInfixOf` text))
+      assertBool "dependency selected through value lookup" ("~\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int do yield x + offset)"
       b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int do yield x + offset)"
@@ -210,7 +210,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "range has one shared dependency binding" 1
         (occurrences "let \"___range\" :=" text)
       assertBool "the variadic input uses an anonymous compact split directly"
-        ("val it !? fun" `isInfixOf` text
+        ("val 'it !? fun" `isInfixOf` text
           && not ("values :=" `isInfixOf` text)
           && not ("maximum :=" `isInfixOf` text)
           && not ("minimum :=" `isInfixOf` text)
@@ -229,7 +229,7 @@ factorial = "let factorial := ({n? : Int} -> Int do\n yield if n = 0 then 1 else
 underscoredCaptures :: String
 underscoredCaptures =
   "abc := 1\n_abc := 2\n\"_____abc\" := 3\n\"__fun\" := 4\n\"___abc\" := 5\n\
-  \yield ({n? : Int} -> Int do yield n + abc + _abc + this.\"_____abc\"[1] + this.\"__fun\"[1] + this.\"___abc\"[1])"
+  \yield ({n? : Int} -> Int do yield n + abc + _abc + 'this.\"_____abc\"[1] + 'this.\"__fun\"[1] + 'this.\"___abc\"[1])"
 
 threeLevels :: String
 threeLevels =
@@ -287,9 +287,9 @@ mutualRecursiveDefinitions = testCase "mutual recursive definitions" $ do
   assertEqual "odd is collected once" 1
     (occurrences "let \"___odd\" :=" text)
   assertBool "even refers to its collected odd dependency"
-    ("else $~\"___odd\" (n - 1)" `isInfixOf` text)
+    ("else ~\"___odd\" (n - 1)" `isInfixOf` text)
   assertBool "odd's back-edge refers to the reconstructed even function"
-    ("else this (n - 1)" `isInfixOf` text)
+    ("else 'this (n - 1)" `isInfixOf` text)
   result <- requireProgram (mutualDefinitions <> "\nyield even 2")
   assertEqual "mutual call crosses both recursive definitions"
     "true" (renderInterpretedValue result)
