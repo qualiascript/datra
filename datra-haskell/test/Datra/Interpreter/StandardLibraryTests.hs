@@ -4,7 +4,9 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraTypes
-  ( ExternalFailure (..)
+  ( AtlasMapFederationRefutation
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
   )
@@ -183,8 +185,8 @@ standardLibraryTests =
             ( "((Nat; Maybe $Complement); "
                 <> "(Nat; Maybe $Complement))"
             )
-        , programCase "function inference retains coalization"
-            ( "f := (do yield >< (a + 1; a + 2))\n"
+        , programCase "function results retain coalization"
+            ( "f := ({a? : Int} -> >< (Int; Int) do yield >< (a + 1; a + 2))\n"
                 <> "yield f 3"
             )
             ">< (4; 5)"
@@ -207,7 +209,7 @@ standardLibraryTests =
             )
             "(10; >< (20; 30))"
         ]
-    , testGroup "contextual result inference"
+    , testGroup "contextual result specification"
         [ programCase "selects a uniquely matching user-defined sum member"
             ("f := (() -> ($MyNothing | MyJust : Int) do yield 5)\n"
               <> "yield f()")
@@ -216,7 +218,8 @@ standardLibraryTests =
             ("f := (() -> (Left : Int | Right : Int) do yield 5)\n"
               <> "yield f()")
             (SourceEvaluationFailure
-              (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
+              (AtlasMapFederationOperationRefuted
+                AtlasMapFederationSpecificationHasNoMatchingMember))
         ]
     , testGroup "Maybe and list operators"
         [ programCase "postfix optional aliases Maybe"
@@ -606,7 +609,7 @@ integerLimitTests =
                 <> "not (Infinity < Infinity); not (-Infinity > -Infinity))"
             )
             "(true; true; true; true; true; true; true)"
-        , programCase "a safe IntLimit function is inferred"
+        , programCase "an IntLimit function retains its declared result"
             ( "increment := (IntLimit -> IntLimit do yield 'it + 1)\n"
                 <> "yield (increment Infinity; increment (-Infinity))"
             )

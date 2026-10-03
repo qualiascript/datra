@@ -285,26 +285,10 @@ localizeInterpretingError reason =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    UnconstrainedInferredParameter name ->
-      LocalizedMessage "cannot infer an unconstrained function parameter"
-        ["parameter: " <> name, "provide an explicit input type"]
-    IncompatibleInferredParameterConstraints name ->
-      LocalizedMessage "function parameter has incompatible inferred constraints"
-        ["parameter: " <> name]
-    InferredApplicationRequiresFunction ->
-      LocalizedMessage "function inference found an application of a non-function" []
-    UnsupportedInferredExpression ->
-      LocalizedMessage "function result type cannot be inferred for this expression"
-        ["add a supported explicit specification"]
-    InferredTypeOutsideRequirement actual expected ->
-      LocalizedMessage "inferred type is outside the required type"
-        ["inferred: " <> actual, "required: " <> expected]
     AstPatternRequiresFunctionSignature ->
       LocalizedMessage "an AST pattern requires a function signature" []
     AstPatternRequiresFunctionImplementation ->
       LocalizedMessage "an AST pattern requires a function implementation" []
-    FunctionBodyOutsideDeclaredResult ->
-      LocalizedMessage "function body does not satisfy its declared output type" []
     ExternalAdapterRequiresAstCaptures ->
       LocalizedMessage "external syntax adapter requires unevaluated AST captures" []
     AmbiguousFunctionSumApplication ->

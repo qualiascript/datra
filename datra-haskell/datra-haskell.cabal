@@ -330,7 +330,6 @@ executable datra-haskell
         Interpreting
         RuntimeModules
         ModuleLoading
-        FunctionInference
         FunctionClosure
         BlockScope
         LibraryFiles
@@ -388,7 +387,6 @@ test-suite datra-parsing-test
     other-modules:
         Interpreting
         RuntimeModules
-        FunctionInference
         FunctionClosure
         Rendering
         Parsing
@@ -433,7 +431,6 @@ test-suite datra-interpreting-test
         Interpreting
         RuntimeModules
         ModuleLoading
-        FunctionInference
         FunctionClosure
         BlockScope
         LibraryFiles

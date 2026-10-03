@@ -47,7 +47,7 @@ specifyFunction decideSubfederation specify source target =
                   pure (PreparedFunctionArgument argument argument [])
               validateFunctionInput
                 decideSubfederation specify
-                (functionPreparedArgument preparedCall)
+                (functionSuppliedArgument preparedCall)
                 (functionDomain signature)
               pure preparedCall)
           , functionInvoke = functionInvoke original

@@ -44,7 +44,6 @@ import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, intercalate, partition)
 import BlockScope
 import FunctionClosure
-import FunctionInference
 import DatraLanguage.Identifier
   ( isPrivateIdentifier
   , public
@@ -878,8 +877,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       pure (makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing Nothing
           signatureText Nothing Nothing True))
-    FunctionBody bindings result ->
-      createFunction reduction scope resolving Nothing bindings result
+    FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication function argument -> do
       callable <- interpret function
       input <- interpret argument >>= functionArgumentValue
@@ -987,8 +985,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             Nothing -> Left (FunctionEvaluationFailed
               AstPatternRequiresFunctionImplementation)
     MapSpecification (FunctionBody bindings result) (FunctionType domain codomain) ->
-      createFunction reduction scope resolving
-        (Just (domain, codomain)) bindings result
+      createFunction reduction scope resolving domain codomain bindings result
     MapSpecification sourceOperand targetOperand ->
       interpretSpecificationWith interpret sourceOperand targetOperand
     IdentifierOperation
@@ -2040,26 +2037,14 @@ validateDependentArguments captured resolving domain supplied =
 
 
 createFunction :: ReductionContext -> Scope -> [String]
-  -> Maybe (Expression, Expression)
+  -> Expression -> Expression
   -> [Expression] -> Expression -> Either InterpretingError InterpretedValue
-createFunction reduction captured resolving explicit bindings result = do
-  (writtenDomainExpression, writtenOutput) <- case explicit of
-    Just (domain, codomain) -> Right (domain, Just codomain)
-    Nothing -> do
-      let body = FunctionBody bindings result
-          names = filter
-            (\name -> name /= "'it" && name `notElem` map fst captured)
-            (freeIdentifiers body)
-      inferred <- inferParameters names body
-      let parameter (name, target) = OptionalType
-            (IdentifierOperation (IdentifierString name) target Nothing)
-      domain <- parsedSourceExpression
-        (renderSourceExpression (AtlasMap (map parameter inferred)))
-      pure (domain, Nothing)
+createFunction reduction captured resolving
+    writtenDomainExpression writtenOutput bindings result = do
   rejectMixedDependentContainer writtenDomainExpression
   let (domainExpression, substitutions) =
         staticDependentDomain writtenDomainExpression
-      specifiedOutput = substituteDependent substitutions <$> writtenOutput
+      specifiedOutput = substituteDependent substitutions writtenOutput
   schema <- compileParameters evaluate domainExpression
   let parameters = parameterBindings schema
       names = map fst parameters
@@ -2070,10 +2055,9 @@ createFunction reduction captured resolving explicit bindings result = do
         | entry <- bindings
         , Just declaration <- [blockDeclaration entry]
         ]
-  -- Reject an unprovable recursive-scope shadow before body inference can
-  -- misclassify the shadowed reference as the function's result type. Finite
-  -- bindings still use the ordinary fixed-point comparison when the body is
-  -- invoked and its parameter values are available.
+  -- Reject an unprovable recursive-scope shadow before invocation. Finite
+  -- bindings still use the ordinary fixed-point comparison once parameter
+  -- values are available.
   case [ name
        | declaration <- bodyDeclarations
        , let name = declarationName declaration
@@ -2098,57 +2082,11 @@ createFunction reduction captured resolving explicit bindings result = do
     name : _ -> Left (IdentifierStringOverlap name)
     [] -> pure ()
   input <- parameterDomain schema
-  bodyInput <- case argumentSchemaVariadicElementType schema of
-    Just elementType -> do
-      let erasedElement = case stripOuterIdentifierType elementType of
-            Right underlying -> underlying
-            Left _ -> elementType
-      let erased = listTypeValue
-            (renderInterpretedValue erasedElement)
-            erasedElement
-      pure (withIdentifierErasureType erased (argumentSchemaBodyDomain schema))
-    Nothing -> pure (withIdentifierErasureType
-      (argumentSchemaPositionalDomain schema)
-      (argumentSchemaBodyDomain schema))
   let (explicitSelf, selfIncludesDependencies) = case
         lookup "'this" captured >>= selfBinding of
         Just (includesDependencies, _) -> (True, includesDependencies)
         _ -> (False, False)
-  selfForInference <- case (explicitSelf, explicit) of
-    (True, Just (domain, codomain)) -> Just <$> evaluate (FunctionType domain codomain)
-    _ -> pure Nothing
-  staticDeclaredOutput <- traverse evaluate specifiedOutput
-  let namedSelf = case writtenOutput of
-        Just codomain ->
-          [ name
-          | (name, binding) <- captured
-          , Just (_, _, expressionValue) <- [bindingDefinition binding]
-          , expressionValue == MapSpecification
-              (FunctionBody bindings result)
-              (FunctionType writtenDomainExpression codomain)
-          ]
-        Nothing -> []
-  inferredOutput <- case staticDeclaredOutput of
-    Just target
-      | interpretedSemanticResult target
-          == interpretedSemanticResult anyTypeValue -> pure target
-    _ -> inferBody
-      evaluateForInference
-      (("'it", bodyInput) : parameters)
-      selfForInference
-      namedSelf
-      staticDeclaredOutput
-      bindings
-      result
-  output <- case specifiedOutput of
-    Nothing -> pure inferredOutput
-    Just _ -> do
-      target <- maybe (Left (FunctionEvaluationFailed
-        FunctionBodyOutsideDeclaredResult)) Right staticDeclaredOutput
-      case contextuallySpecify inferredOutput target of
-        Right _ -> pure target
-        Left _ -> Left (FunctionEvaluationFailed
-          FunctionBodyOutsideDeclaredResult)
+  output <- evaluate specifiedOutput
   let prepare argument = do
         (prepared, imported) <- overloadArgumentSchemaComplete schema argument
         _ <- validateDependentArguments
@@ -2171,22 +2109,13 @@ createFunction reduction captured resolving explicit bindings result = do
         value <- evalInScopeWith invocationReduction bodyScope [] result
         let escaped = withoutCanonicalDependencies
               (maybe [] pure (scopePresentationDependency bodyScope)) value
-        dynamicOutput <- case writtenOutput of
-          Nothing -> Right output
-          Just annotation ->
-            evalInScopeWith invocationReduction
-              (dependentScope <> captured) resolving annotation
+        dynamicOutput <- evalInScopeWith invocationReduction
+          (dependentScope <> captured) resolving writtenOutput
         contextuallySpecify escaped dynamicOutput
-  outputExpression <- maybe
-    (parsedSourceExpression
-      (renderCanonicalResult (interpretedSemanticResult output)))
-    Right
-    specifiedOutput
   let signatureText = renderSourceExpression
-        (FunctionType writtenDomainExpression outputExpression)
+        (FunctionType writtenDomainExpression writtenOutput)
   let definition = MapSpecification (FunctionBody bindings result)
-        (FunctionType writtenDomainExpression
-          (maybe outputExpression id writtenOutput))
+        (FunctionType writtenDomainExpression writtenOutput)
       self = case [bindingKey name expressionValue
                   | (name, binding) <- captured
                   , Just (_, _, expressionValue) <- [bindingDefinition binding]
@@ -2204,15 +2133,6 @@ createFunction reduction captured resolving explicit bindings result = do
     (Just prepare) (Just invoke) False))
   where
     evaluate = evalInScopeWith reduction captured resolving
-    -- A recursive call is checked against its declared signature. Evaluating
-    -- the body here would demand the closure while it is still being checked.
-    -- Ordinary cyclic values still go through resolveIdentifier's cycle check.
-    evaluateForInference (IdentifierReference (IdentifierString name))
-      | Just (DeferredBinding lexical _
-          (MapSpecification (FunctionBody _ _) signature@FunctionType {})) <-
-            lookup name captured =
-          evalInScopeWith reduction lexical resolving signature
-    evaluateForInference expression = evaluate expression
 
 applyFunction
   :: ReductionContext

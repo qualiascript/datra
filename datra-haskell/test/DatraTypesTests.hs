@@ -301,20 +301,6 @@ testDiagnostics = do
           "parametrul privat al funcției nu poate fi opțional"
           ["identificator: _value"]
     )
-  assert "function failures are localized from semantic fields"
-    ( localizeDiagnostic English
-        (Types.FunctionEvaluationFailed
-          (Types.UnconstrainedInferredParameter "value"))
-        == LocalizedMessage
-          "cannot infer an unconstrained function parameter"
-          ["parameter: value", "provide an explicit input type"]
-      && localizeDiagnostic Romanian
-        (Types.FunctionEvaluationFailed
-          (Types.UnconstrainedInferredParameter "value"))
-        == LocalizedMessage
-          "nu se poate deduce un parametru de funcție fără constrângeri"
-          ["parametru: value", "furnizați un tip de intrare explicit"]
-    )
   assert "external failures are localized from semantic fields"
     ( localizeDiagnostic English
         (Types.ExternalEvaluationFailed

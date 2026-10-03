@@ -2,7 +2,9 @@ module Datra.Interpreter.FunctionTests (functionTests) where
 
 import Datra.TestSupport
 import DatraTypes
-  ( ExternalFailure (..)
+  ( AtlasMapFederationRefutation
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
   , InterpretedValueKind (..)
@@ -35,12 +37,10 @@ functionTests =
         , programCase "explicit unordered parameters"
             "f := ({a?:Int;b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
             "11"
-        , programCase "inferred parameters"
-            "f := (do yield a+b)\nyield f (6;5)"
-            "11"
-        , programCase "zero parameters"
+        , programFailureCase "standalone do requires a function type"
             "f := (do yield 3)\nyield f ()"
-            "3"
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed ExpectedFunctionType))
         , programCase "optional name accepts an unnamed value"
             "f := ({x?:Int} -> Int do yield x)\nyield f 2"
             "2"
@@ -50,9 +50,6 @@ functionTests =
         , programCase "optional value retains a required name"
             "f := ({x:Maybe Int} -> Maybe Int do yield x)\nyield f (x:nothing)"
             "nothing"
-        , programCase "lexical closure"
-            "offset:=3\nf := (do yield a+offset)\nyield f 8"
-            "11"
         , programCase "higher-order parameter"
             (unlines
               [ "apply := (((Int -> Int), Int) -> Int do yield 'it[0] 'it[1])"
@@ -99,7 +96,7 @@ functionTests =
               , "  yield 'it[0][0] = $abc and 'it[0][1] = 3 and 'it[1] = 4 and 'it[2][0] = $xyz and 'it[2][1] = 5"
               , "assert f(3; 4; 5)"
               ]) "()"
-        , programCase "named access contributes to inferred output types"
+        , programCase "named access satisfies a declared output type"
             "f := ({abc? : Nat} -> Nat do yield 'it.abc[1] + 1)\nyield f 6"
             "7"
         , programCase "computed input schemas preserve names without special functions"
@@ -116,9 +113,6 @@ functionTests =
               , "  yield 'it.abc[1] = 3 and 'it[1] = 4"
               , "assert f(3; 4)"
               ]) "()"
-        , programCase "inferred parameters also retain their names in it"
-            "f := (do yield abc + 'it.abc[1])\nyield f 7"
-            "14"
         , programCase "projected schemas retain names inside the body"
             (unlines
               [ "Slots := (for T? of Any) -> Any do"
@@ -141,7 +135,7 @@ functionTests =
               , "assert emptyInput() = ()"
               , "assert single 8 = 8"
               ]) "()"
-        , programCase "erasure supports mixed parameters during inference"
+        , programCase "erasure supports mixed parameters"
             "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield val 'it)\nyield f(3; 4)"
             "(3; 4)"
         , programCase "erasure works through local bindings"
@@ -261,29 +255,16 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed
                 AmbiguousFunctionArgumentBindings))
-        , programFailureCase "declared result rejects inferred body"
+        , programFailureCase "declared result rejects the returned value"
             "f := ({a?:Int} -> Str do yield a+1)\nyield f 5"
             (SourceEvaluationFailure
-              (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
+              (AtlasMapFederationOperationRefuted
+                AtlasMapFederationSpecificationHasNoMatchingMember))
         , programFailureCase "required Maybe parameter rejects positional absence"
             "f := ({x:Maybe Int} -> Maybe Int do yield x)\nyield f nothing"
             (SourceEvaluationFailure
-              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programFailureCase "unconstrained inferred parameter is structured"
-            "f := (do yield value)\nyield f"
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed
-                (UnconstrainedInferredParameter "value")))
-        , programFailureCase "incompatible inferred constraints are structured"
-            (unlines
-              [ "f := (do"
-              , "  assert value"
-              , "  yield value + 1)"
-              , "yield f"
-              ])
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed
-                (IncompatibleInferredParameterConstraints "value")))
+              (AtlasMapFederationOperationRefuted
+                AtlasMapFederationSpecificationHasNoMatchingMember))
         , programCase "function type annotates an identifier"
             "assert (callback : (Nat -> Nat)) of (callback : (Nat -> Nat))"
             "()"
@@ -437,7 +418,7 @@ recursionTests =
               , "yield factorial 0"
               ])
             (SourceEvaluationFailure
-              (FunctionEvaluationFailed FunctionBodyOutsideDeclaredResult))
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
          , programFailureCase "ordinary declarations cannot see later names"
             "a := b\nb := a\nyield a"
             (SourceEvaluationFailure

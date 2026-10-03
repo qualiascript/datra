@@ -78,14 +78,8 @@ overloadFailureIsAmbiguous failure =
     _ -> False
 
 data FunctionFailure
-  = UnconstrainedInferredParameter String
-  | IncompatibleInferredParameterConstraints String
-  | InferredApplicationRequiresFunction
-  | UnsupportedInferredExpression
-  | InferredTypeOutsideRequirement String String
-  | AstPatternRequiresFunctionSignature
+  = AstPatternRequiresFunctionSignature
   | AstPatternRequiresFunctionImplementation
-  | FunctionBodyOutsideDeclaredResult
   | ExternalAdapterRequiresAstCaptures
   | AmbiguousFunctionSumApplication
   | AmbiguousFunctionArgumentBindings

@@ -119,12 +119,6 @@ scopeTests =
         , programFailureCase "explicit do cannot see later declarations"
             "f := (() -> Int do a := b; b := 1; yield a)\nyield f ()"
             (SourceEvaluationFailure (UnknownIdentifier "b"))
-        , programCase "inferred do sees earlier declarations"
-            "f := (do a := 1; b := a + 1; yield b)\nyield f ()"
-            "2"
-        , programCase "inferred do treats a prior reference as a parameter"
-            "f := (do a := b + 1; b := 1; yield a)\nyield f 5"
-            "6"
         , programCase "let declarations are visible throughout do"
             "f := (() -> Int do a := x + 1; let x := 10; yield a)\nyield f ()"
             "11"
