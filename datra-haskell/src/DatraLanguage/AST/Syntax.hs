@@ -91,7 +91,7 @@ stringTemplate :: [StringTemplatePart Expression] -> Expression
 stringTemplate = StringTemplate
 
 stringType :: Expression
-stringType = StringType
+stringType = IdentifierReference (IdentifierString "Str")
 
 emptyMap :: Expression
 emptyMap = AtlasMap []

@@ -8,11 +8,18 @@ import AtlasMapFederationExpression
 import Data.List (nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (..)
+  , SyntaxPiece (..)
+  , SyntaxTemplate (..)
+  )
+import DatraOrdinal (Ordinal, finiteOrdinal)
+import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Error
   ( InterpretingError (EitherAlternativesNotDistinct) )
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
-import Evaluation.Specification.String (federationProducesStrings)
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
 import Evaluation.Federation.Structure (sequenceOperands)
 import ValuedIntegerRange qualified
@@ -39,11 +46,13 @@ identicalLoweredSyntaxFunction :: InterpretedValue -> InterpretedValue -> Bool
 identicalLoweredSyntaxFunction left right =
   case (interpretedFunction left, interpretedFunction right) of
     (Just leftFunction, Just rightFunction) ->
-      case ( functionSyntaxOrdinary leftFunction
-           , functionSyntaxOrdinary rightFunction
+      case ( functionSyntax leftFunction
+           , functionSyntax rightFunction
            ) of
-        (Just _, Just _) ->
-          interpretedCanonicalResult left == interpretedCanonicalResult right
+        (Just leftSyntax, Just rightSyntax) ->
+          functionSyntaxEquivalent leftSyntax rightSyntax
+            && interpretedSemanticResult left
+              == interpretedSemanticResult right
         _ -> False
     _ -> False
 
@@ -55,17 +64,18 @@ alternativesArePairwiseDistinct (member : remaining) =
 
 alternativesAreDistinct :: InterpretedValue -> InterpretedValue -> Bool
 alternativesAreDistinct left right
-  | interpretedCanonicalResult left == interpretedCanonicalResult right = False
+  | Just leftFunction <- interpretedFunction left
+  , Just rightFunction <- interpretedFunction right
+  , Just leftSyntax <- functionSyntax leftFunction
+  , Just rightSyntax <- functionSyntax rightFunction =
+      case decideSyntaxFunctionAlternatives
+          leftFunction leftSyntax rightFunction rightSyntax of
+        DecisionProved () -> True
+        DecisionRefuted -> False
+        DecisionUndecidable -> False
+  | interpretedSemanticResult left == interpretedSemanticResult right = False
   | Just a <- interpretedFunction left, Just b <- interpretedFunction right =
       alternativesAreDistinct (functionDomain a) (functionDomain b)
-  | ArgumentMapForm leftMembers _ <- interpretedForm left
-  , ArgumentMapForm rightMembers _ <- interpretedForm right =
-      length leftMembers /= length rightMembers
-        || or (zipWith alternativesAreDistinct leftMembers rightMembers)
-  | ArgumentMapForm _ underlying <- interpretedForm left =
-      alternativesAreDistinct underlying right
-  | ArgumentMapForm _ underlying <- interpretedForm right =
-      alternativesAreDistinct left underlying
   | AssignmentForm leftAssignment <- interpretedForm left =
       alternativesAreDistinct
         (evaluatedSpecificationTarget leftAssignment)
@@ -87,6 +97,21 @@ alternativesAreDistinct left right
       identifierAlternativesAreDistinct leftIdentifier rightIdentifier
   | DependentIdentifierTypeForm _ <- interpretedForm left = True
   | DependentIdentifierTypeForm _ <- interpretedForm right = True
+  | Just leftSlots <- structuralSlotOrdinal left
+  , Just rightSlots <- structuralSlotOrdinal right
+  , leftSlots /= rightSlots = True
+  | ArgumentMapForm leftMembers _ <- interpretedForm left
+  , ArgumentMapForm rightMembers _ <- interpretedForm right =
+      length leftMembers /= length rightMembers
+        || or (zipWith alternativesAreDistinct leftMembers rightMembers)
+  | ArgumentMapForm _ _ <- interpretedForm left
+  , BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm right = True
+  | BuiltinMetaTypeForm (ASTMetaType _) <- interpretedForm left
+  , ArgumentMapForm _ _ <- interpretedForm right = True
+  | ArgumentMapForm _ underlying <- interpretedForm left =
+      alternativesAreDistinct underlying right
+  | ArgumentMapForm _ underlying <- interpretedForm right =
+      alternativesAreDistinct left underlying
   | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm left
   , ValuedNaturalRangeForm _ <- interpretedForm right = True
   | ValuedNaturalRangeForm _ <- interpretedForm left
@@ -115,11 +140,63 @@ alternativesAreDistinct left right
   , sequenceRequiresMultipleSources right = True
   | interpretedValueHasTotalMap left = memberIsRefuted left right
   | interpretedValueHasTotalMap right = memberIsRefuted right left
-  | federationProducesStrings (interpretedAtlasMapFederation left)
+  | valueProducesStrings left
   , isNumericalRange right = True
   | isNumericalRange left
-  , federationProducesStrings (interpretedAtlasMapFederation right) = True
+  , valueProducesStrings right = True
   | otherwise = rangeAlternativesAreDistinct left right
+
+-- Declaration order makes structurally different templates deterministic for
+-- the declared spelling. Ordinary application is always available, so the
+-- domains must independently be disjoint as well.
+decideSyntaxFunctionAlternatives
+  :: EvaluatedFunction
+  -> FunctionSyntax InterpretedValue
+  -> EvaluatedFunction
+  -> FunctionSyntax InterpretedValue
+  -> Decision ()
+decideSyntaxFunctionAlternatives
+    leftFunction leftSyntax rightFunction rightSyntax
+  | ordinaryRoutesIdentical = DecisionRefuted
+  | not syntaxRoutesDistinct =
+      if functionSyntaxEquivalent leftSyntax rightSyntax
+        then DecisionRefuted
+        else DecisionUndecidable
+  | ordinaryRoutesNotProvedDistinct = DecisionUndecidable
+  | otherwise = DecisionProved ()
+  where
+    syntaxRoutesDistinct = and
+      [ templatePriority leftTemplate /= templatePriority rightTemplate
+          || alignedLiteralsConflict leftTemplate rightTemplate
+          || alternativesAreDistinct
+            (functionDomain leftFunction)
+            (functionDomain rightFunction)
+      | leftTemplate <- functionSyntaxTemplates leftSyntax
+      , rightTemplate <- functionSyntaxTemplates rightSyntax
+      ]
+    ordinaryRoutesIdentical =
+      interpretedSemanticResult (functionDomain leftFunction)
+        == interpretedSemanticResult (functionDomain rightFunction)
+    ordinaryRoutesNotProvedDistinct = not (alternativesAreDistinct
+      (functionDomain leftFunction)
+      (functionDomain rightFunction))
+
+templatePriority :: SyntaxTemplate value -> Int
+templatePriority (SyntaxTemplate pieces) = length pieces
+
+alignedLiteralsConflict
+  :: SyntaxTemplate left
+  -> SyntaxTemplate right
+  -> Bool
+alignedLiteralsConflict
+    (SyntaxTemplate leftPieces) (SyntaxTemplate rightPieces) =
+  length leftPieces == length rightPieces
+    && or (zipWith conflicts leftPieces rightPieces)
+  where
+    conflicts
+        (SyntaxLiteral leftLiteral) (SyntaxLiteral rightLiteral) =
+      leftLiteral /= rightLiteral
+    conflicts _ _ = False
 
 -- Literal unit components are neutral in a sequence. An atomic total value
 -- still supplies one structural component, so it cannot overlap a sequence
@@ -133,7 +210,23 @@ sequenceRequiresMultipleSources value =
     Just members -> length (filter (not . isLiteralUnit) members) > 1
   where
     isLiteralUnit member =
-      interpretedCanonicalResult member == CanonicalMap 0 []
+      interpretedSemanticResult member == CanonicalMap 0 []
+
+structuralSlotOrdinal :: InterpretedValue -> Maybe Ordinal
+structuralSlotOrdinal value
+  | valueIsCoalition value = Just (finiteOrdinal 1)
+  | otherwise = case interpretedForm value of
+      SequentialMapForm -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      MapForm -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      ConcatenatedMapForm _ _ -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      ExpansionMapForm _ _ -> Just (finiteOrdinal
+        (interpretedMapPageCardinality (interpretedMap value)))
+      ArgumentMapForm members _ ->
+        Just (finiteOrdinal (fromIntegral (length members)))
+      _ -> Just (finiteOrdinal 1)
 
 isNumericalRange :: InterpretedValue -> Bool
 isNumericalRange value =

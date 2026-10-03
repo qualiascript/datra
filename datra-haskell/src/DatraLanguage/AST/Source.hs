@@ -12,7 +12,6 @@ renderSourceExpression = source 0 . toOperatorExpression
 source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
-    ThisValue -> "this"
     FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
     WithBindingValue (IdentifierString name) optional bound -> wrapped 0
       ("with " <> binderName name optional <> " of " <> source 0 bound)
@@ -20,18 +19,19 @@ source context expression =
       ("for " <> binderName name optional <> " of " <> source 0 bound)
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
-    SyntaxTypeValue patternText ordinary signature -> wrapped 1 (renderAsciiStringLiteral patternText <> (if ordinary then " as? " else " as ") <> source 0 signature)
+    SyntaxTypeValue templates signature -> wrapped 1
+      (source 2 templates <> " %> " <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
-    ExternalValue descriptor -> wrapped 10 ("!$~" <> source 12 descriptor)
+    ExternalValue descriptor -> wrapped 10 ("!~" <> source 12 descriptor)
     ProgramValue bindings result -> source context (BeginValue bindings result)
     BeginValue bindings result -> wrapped 0 (block "begin" bindings result)
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
-      | otherwise -> "$~" <> renderIdentifierString name
+      | otherwise -> "~" <> renderIdentifierString name
     IdentifierOperationValue (IdentifierString name) annotation given ->
       identifierOperation
         (renderIdentifierString name) False annotation given
@@ -41,15 +41,14 @@ source context expression =
         False
         annotation
         given
-    ArgumentsSplice value -> "{" <> source 0 value <> ",}"
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
+    Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
     OverloadValue left right -> binary 1 "<<" left right
     SafeOverloadValue left right -> binary 1 "<<<" left right
-    EvalValue text target -> wrapped 0 ("eval " <> source 3 text <> " at " <> source 0 target)
     AssertValue hard condition -> wrapped 0
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
@@ -57,7 +56,7 @@ source context expression =
     MaybeThenValue
         (ListUnconsValue values)
         (FunctionApplicationValue function
-          (IdentifierReferenceValue (IdentifierString "it"))) ->
+          (IdentifierReferenceValue (IdentifierString "'it"))) ->
       listMaybeThen values function
     MaybeThenValue optional branch -> binary 1 "??" optional branch
     EitherValue left right -> binary 3 "|" left right
@@ -99,7 +98,7 @@ source context expression =
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->
-          "$~" <> case names of
+          "~" <> case names of
             [name] -> renderIdentifierString name
             _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     -- Access associates to the left, so a second page selection can continue
@@ -126,7 +125,6 @@ source context expression =
     SkipValue -> atom
     AsciiStringValue _ -> atom
     NothingValue -> atom
-    StringTypeValue -> atom
     IdentifierValueTypeValue -> atom
     EmptyMap -> atom
     NaturalTypeValue -> atom
@@ -145,8 +143,6 @@ source context expression =
       (listMaybeInput values <> " !? " <> listMaybeFunction function)
     listMaybeFunction function@FunValue {} = source 0 function
     listMaybeFunction function = source 2 function
-    listMaybeInput (StripIdentifiersValue operand) =
-      "val " <> source 0 operand
     listMaybeInput operand = source 2 operand
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
@@ -169,17 +165,15 @@ source context expression =
     assignedValue value = source 7 value
     block keyword bindings result = keyword <> " "
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
-    argumentMembers members =
-      case reverse members of
-        ArgumentsSplice value : reversedPrefix ->
-          intercalate "; "
-            (map (source 0) (reverse reversedPrefix)
-              <> [source 0 value <> ","])
-        _ -> intercalate "; " (map (source 0) members)
+    argumentMembers = intercalate "; " . map (source 0)
 
 -- Preserve the exact expansion of @this.(a, b)[1]@ when rendering name lists.
 scopeNames :: OperatorExpression -> Maybe [String]
-scopeNames (NamedAccessValue ThisValue (IdentifierString name)) = Just [name]
+scopeNames
+    (NamedAccessValue
+      (IdentifierReferenceValue (IdentifierString "'this"))
+      (IdentifierString name)) = Just [name]
+scopeNames (Concatenate left EmptyMap) = scopeNames left
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
 

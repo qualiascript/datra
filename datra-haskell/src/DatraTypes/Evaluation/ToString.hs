@@ -4,7 +4,7 @@ module Evaluation.ToString
   ( CanonicalStringCodec (..)
   , toStringValue
   , weakToStringValue
-  , stringTemplateValue
+  , templateValue
   , stringConversionIsIdentity
   , stringFederationConcatenationIsInjective
   ) where
@@ -16,6 +16,7 @@ import Data.List (isInfixOf, nub)
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error
   ( InterpretingError (NonInjectiveStringInterpolation) )
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
 import IdentifierValueType (identifierValueCharacterAlphabet)
@@ -38,7 +39,7 @@ toStringValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 toStringValue codec source =
-  if stringConversionIsIdentity (interpretedForm source)
+  if stringConversionIsIdentity source
     then Right source
     else case datraStringRepresentation
         (interpretedDatraType source) of
@@ -88,33 +89,28 @@ weakToStringValue codec source =
     Left err -> Left err
 
 -- | Retain the ordinary concatenation result while recording that its members
--- are the pointwise outputs of one string template.
-stringTemplateValue :: InterpretedValue -> InterpretedValue
-stringTemplateValue value =
-  if stringConversionIsIdentity (interpretedForm value)
-    then value
-    else
+-- are the pointwise outputs of one string template. A concrete string is
+-- already its own canonical template result; a string federation still needs
+-- the wrapper so its components render as interpolations rather than ordinary
+-- map concatenation.
+templateValue :: InterpretedValue -> InterpretedValue
+templateValue value =
+  case interpretedForm value of
+    AsciiStringForm _ -> value
+    _ ->
       makeInterpretedValue
         (interpretedDatraType value)
-        (StringTemplateForm value)
+        (TemplateForm value)
         (interpretedInsertionCapability value)
         (interpretedMap value)
         (interpretedAtlasMapFederation value)
         (if interpretedValueHasTotalMap value
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
-        (StringTemplateSemantics (interpretedSemantics value))
+        (TemplateSemantics (interpretedSemantics value))
 
-stringConversionIsIdentity :: ValueForm -> Bool
-stringConversionIsIdentity form =
-  case form of
-    AsciiStringForm _ -> True
-    StringTypeForm -> True
-    IdentifierValueTypeForm -> True
-    ToStringForm -> True
-    WeakToStringForm -> True
-    StringTemplateForm _ -> True
-    _ -> False
+stringConversionIsIdentity :: InterpretedValue -> Bool
+stringConversionIsIdentity = valueProducesStrings
 
 -- | Decide the string-specific case omitted by generic Atlas federation
 -- concatenation: a fixed nonempty delimiter makes the product injective when
@@ -227,7 +223,6 @@ stringFederationExcludes delimiter federation =
               Nothing -> False
               Just alphabet -> any (`notElem` alphabet) delimiter
         WeakToStringAtlasMapFederation _ -> False
-        StringTypeAtlasMapFederation -> False
         IdentifierValueTypeAtlasMapFederation ->
           any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False

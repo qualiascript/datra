@@ -27,7 +27,8 @@ proveInjectiveToString
   -> InterpretedValue
   -> Maybe ProvenInjectiveToString
 proveInjectiveToString decodeCanonical source =
-  let properties = stringConversionProperties (interpretedSemantics source)
+  let properties = stringConversionProperties
+        (interpretedSemanticSemantics source)
   in if conversionIsInjective properties
       then
         Just
@@ -45,12 +46,15 @@ proveInjectiveToString decodeCanonical source =
 stringConversionProperties
   :: ValueSemantics
   -> StringConversionProperties
+stringConversionProperties (PresentedSemantics _ _ semantics) =
+  stringConversionProperties semantics
 stringConversionProperties semantics
   | Just includesInfinity <-
       complementedIntegerTypeIncludesInfinity semantics =
       complementedIntegerProperties includesInfinity
   | otherwise = case semantics of
     BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
+    BuiltinMetaTypeSemantics TemplateMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
@@ -62,7 +66,6 @@ stringConversionProperties semantics
     ValuedIntegerRangeSemantics {} -> integerNumber
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
-    StringTypeSemantics -> injectiveUnknownAlphabet
     IdentifierValueTypeSemantics ->
       knownAlphabet identifierValueCharacterAlphabet
     EitherSemantics left right ->
@@ -86,7 +89,7 @@ stringConversionProperties semantics
     IdentifierStringProjectionSemantics {} -> unknownConversion
     ToStringSemantics source -> stringConversionProperties source
     WeakToStringSemantics _ -> unknownConversion
-    StringTemplateSemantics source -> stringConversionProperties source
+    TemplateSemantics source -> stringConversionProperties source
     DependentSumSemantics _ -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->
       compositeProperties [typeAnnotation, givenValue]
@@ -133,7 +136,7 @@ reservedConstructorString
   -> ValueSemantics
   -> Maybe String
 reservedConstructorString dependency underlying =
-  case (dependency, underlying) of
+  case (dependency, semanticValueSemantics underlying) of
     (SimpleIdentifierDependency "False", ExplicitSemantics 1 ordinalValue)
       | naturalAtOrdinal ordinalValue == Just 0 ->
           reserved Reserved.FalseSymbol

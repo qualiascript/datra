@@ -9,6 +9,24 @@ in a function type. These variables belong to the function interface: the
 interface uses them to match, infer, validate, and package values, while the
 function body receives only ordinary arguments.
 
+Generic typing is the language's sole type-level dependent binding mechanism.
+There is no `with` construct and no type-level `for` binder or independent
+dependent-container binding semantics. Product and sum polarity compose only
+through one ordered generic telescope, where `&` and `^` binders may alternate.
+
+The word `for` is reserved for comprehension shorthand. Its forms are:
+
+```datra
+for i in values do expression
+for i from 0 to 3 do expression
+```
+
+The second line represents the closely related form in which an integer valued
+range follows the binder directly; `from 0 to 3` is only one example. Both are
+surface syntax for a `for` type defined in terms of generic interfaces. `for`
+is not a second primitive dependent binder and requires no special dependent-
+type evaluator. There is no corresponding `with` form.
+
 The two prefixes select the dependent polarity:
 
 ```datra
@@ -28,7 +46,7 @@ An optional infix `::` clause constrains the generic's supertype:
 
 When the clause is absent, the supertype is `Any`.
 
-## Surface grammar
+## Preferred surface grammar
 
 Conceptually:
 
@@ -65,6 +83,46 @@ Box (^T :: Any)
 The right-hand side of `::` accepts the same annotation expression class as a
 function parameter type. Its extent ends at the enclosing expression's normal
 delimiter or precedence boundary.
+
+`for T of Bound` is not a grammar form, and `with` is not a keyword or
+construct. The comprehension spelling is recognized only by `in ... do` or by
+the valued-range-plus-`do` production; it never denotes a type-level binder.
+
+## Named functions and canonical lowering
+
+The symbolic generic operators have ordinary identifier names:
+
+| Surface operator | Function identifier | Meaning |
+| --- | --- | --- |
+| `&` | `forall` | dependent product / universal selection |
+| `^` | `some` | dependent sum / existential packaging |
+
+Program source should normally use the compact `&` and `^` forms. The names
+`forall` and `some` are the functions to which the generic string templates
+lower, following the same model as standard-library syntax such as `begin`.
+
+Schematically, after string-template expansion:
+
+```datra
+&T :: Int  ->  forall($T; Int)
+^T :: Int  ->  some($T; Int)
+```
+
+Here `$T` stands only for the generic identifier supplied as data to the named
+function. The string template should capture this argument through the existing
+`$_IdenExp` hole if that hole can represent all three generic name modes. If
+generic names require stricter recognition, the parser may add a dedicated
+identifier-expression hole with those rules instead. In either case, the
+captured value must preserve the private, required-public, and optionally named
+modes. An omitted bound is lowered by supplying `Any`.
+
+`forall` and `some` otherwise behave like normal functions: their explicit
+forms use normal application syntax, participate in ordinary name resolution,
+and are the forms retained in canonical function expressions after string
+templating has been resolved. The resulting generic introduction is still
+owned by the nearest function type and is normalized into the same
+`GenericBinder` representation regardless of whether it originated from a
+symbolic template or an explicit named application.
 
 ## Identifier modes
 
@@ -243,7 +301,7 @@ data FunctionType = FunctionType
   }
 ```
 
-The parser may temporarily represent the source occurrence as a
+Stage 1 operators and Stage 2 named applications both normalize to the same
 `GenericIntroduction`. Function-type resolution then:
 
 1. scans the outer domain and codomain for introductions in source order,
@@ -258,9 +316,10 @@ The parser may temporarily represent the source occurrence as a
 Binder identity, rather than identifier text alone, distinguishes shadowed
 generics in nested function types.
 
-Expression traversal, normalization, canonical rendering, free-identifier
-analysis, closure dependency collection, and specification must all preserve
-the generic binder and its references.
+Expression traversal, normalization, free-identifier analysis, closure
+dependency collection, and specification must all preserve the generic binder
+and its references. The resolved `FunctionType` stores the polarity and binder
+directly rather than retaining a surface spelling.
 
 ## Dependent product generics
 
@@ -496,37 +555,78 @@ sum-or-product classification for the whole function. Interface preparation
 processes each binder in order, carrying the resolved environment forward to
 the next binder.
 
-Each binder keeps its own boundary behavior:
+Mixed polarity is therefore not classified at the container level and has no
+mixed-binder rejection. The ordered telescope is the only place where product
+and sum binders are combined.
 
-- a product binder selects or infers a witness and specializes later types;
-- a domain sum binder opens dependent input evidence;
-- a codomain sum binder packages dependent output evidence; and
-- erasure projects all resolved witnesses away before the body runs.
+## Dependent family construction
 
-Escape analysis follows the nested telescope. A private sum witness may be
-used by later binders inside its scope, but any result that depends on it must
-preserve the package that owns its hidden evidence.
+Reusable dependent families are generic functions or type constructors.
+Dependent packages are introduced by `^` binders owned by a function type, not
+by standalone maps that declare binders. A type constructor that needs a
+selected witness to construct its result does so through generic
+specialization at the interface boundary, or through an internal primitive
+with exactly the same semantics. Generic evidence never becomes an ordinary
+body argument merely to make family construction possible.
 
-The current interpreter's `MixedDependentBinders` rejection represents an
-implementation gap. Generic function types replace that whole-container
-classification with ordered telescope evaluation. Existing explicit dependent
-containers can retain their current mixed-binder error until they acquire the
-same representation.
+## `for` comprehension type
 
-## Relationship to explicit dependent bindings
+The standard-library `for` type owns the generic interface needed to relate the
+input family, each selected member, and the resulting fibres. The two
+comprehension forms are syntax templates over that type, not distinct evaluator
+operations and not special cases in the generic constraint solver. Its
+definition uses no `for`-specific host primitive or privileged generic rule.
 
-Generic binders are part of a function interface and follow inference and
-erasure semantics. Explicit dependent bindings remain ordinary language-level
-bindings with their normal value and body visibility. The AST keeps these
-constructs distinct while allowing them to share constraint solving,
-specification, and dependent-value validation machinery.
+`for i in values do expression` supplies `values` to the generic `for` type and
+supplies the captured expression as its member transformation. Each selected
+member is available to that transformation as the ordinary lexical name `i`.
+Generic evidence used by the `for` type obeys the same inference, telescope,
+specialization, and erasure rules as every other generic function call.
+
+`for i <integer-valued-range> do expression` first normalizes the valued range
+as the source and otherwise lowers to the same `for` application. Finite
+sources produce finite comprehensions. Infinite sources retain lazy result
+construction and must not be enumerated eagerly.
+
+The source and transformation may themselves use generic functions and
+dependent packages. Those nested generics form their own function-owned
+scopes. The comprehension name remains an ordinary lexical name and cannot be
+confused with a generic declaration of the same spelling.
+
+## Delivery stages
+
+### Stage 1: core generic operators
+
+Implement `&`, `^`, and `::` as special parser and evaluator operators backed
+directly by `GenericIntroduction`, `GenericBinder`, and the ordered telescope.
+This stage establishes all generic scope, inference, specialization,
+packaging, erasure, escape, and mixed-polarity semantics without depending on
+the standard library or its string-template bootstrap.
+
+Stage 1 does not need `some` or `forall` bindings in `std.datra`, and it does
+not need to express the symbolic grammar through standard-library templates.
+The operator behavior must nevertheless match the named-function lowering
+specified for Stage 2 so that integration does not change generic semantics.
+
+### Stage 2: standard-library naming and templates
+
+Define the ordinary functions `forall` and `some`, attach the `&`/`^`/`::`
+string templates to them, and lower the preferred symbolic source syntax to
+normal applications of those functions. Canonical template-resolved function
+expressions then use the named applications, while function-type resolution
+continues to produce the same generic telescope as Stage 1.
+
+Stage 2 also defines the standard-library `for` type in terms of these generic
+interfaces and lowers both comprehension templates to ordinary `for`
+applications.
 
 ## Parser and scope-resolution plan
 
-1. Parse prefix `&` and `^` followed by the shared three-way identifier rule.
+1. In Stage 1, parse prefix `&` and `^` followed by the shared three-way
+   identifier rule as core syntax.
 2. Parse an optional `:: expression` bound, defaulting the bound to `Any`.
-3. Produce a `GenericIntroduction` containing polarity, name mode, bound, and
-   source location.
+3. Produce a `GenericIntroduction` directly containing polarity, name mode,
+   bound, and source location.
 4. Resolve introductions only while constructing a function type.
 5. Pre-scan the complete outer function signature, traversing its domain and
    codomain in source order while treating nested function types as separate
@@ -540,18 +640,42 @@ specification, and dependent-value validation machinery.
    types to reference generics from enclosing function scopes.
 10. Reject duplicate declarations, invalid generic names, unresolved generic
     references, and introductions without a function-type owner.
-11. Preserve the first-class representation through canonical AST round trips.
+11. Preserve the first-class semantic representation through AST round trips.
+12. In Stage 2, attach the `&`/`^`/`::` string templates to the ordinary
+    `forall` and `some` functions.
+13. Capture the generic identifier through `$_IdenExp`, or a stricter dedicated
+    identifier-expression hole if required, and make expansion produce normal
+    `forall` or `some` application with that identifier and the
+    explicit/defaulted bound as arguments.
+14. Normalize the named application to the same `GenericIntroduction` accepted
+    by function-type resolution, and use the named application as the canonical
+    template-resolved expression form.
+15. Parse `for identifier in expression do expression` and
+    `for identifier integer-valued-range do expression` as comprehension
+    templates that lower to the generic `for` type.
+16. Reject type-level `for ... of ...`; reserve no grammar production or
+    keyword role for `with`.
+17. Represent a comprehension as the ordinary application produced by its
+    syntax template; do not give it a dependent-binder AST node.
+18. Ensure the template-resolved expression AST and its canonical renderer
+    contain named generic applications and ordinary lowered comprehension
+    applications, but no `ForBinding` or `WithBinding` forms.
 
 Prefix parsing must remain compatible with surrounding operator precedence.
 In particular, grouping such as `Args (&_T :: IntLimit)` must make `Args` an
 application of the resolved generic reference, while the bound remains
 `IntLimit`.
 
+The parser must distinguish the `for` comprehension structurally,
+not merely by seeing the token `for`. A missing `in`/valued-range and `do`
+is a parse error, and invalid binder-like input cannot silently select another
+parse branch.
+
 ## Semantic implementation plan
 
 1. Add generic polarity, name mode, binder identity, and function generic
-   schema to the AST.
-2. Implement function-owned two-pass prefix collection and canonical rendering.
+   schema to the AST as the Stage 1 core.
+2. Implement function-owned two-pass prefix collection and semantic rendering.
 3. Extend function argument schemas with virtual generic witness slots that
    precede and remain distinct from body argument slots, recording the generic
    count explicitly.
@@ -566,14 +690,29 @@ application of the resolved generic reference, while the bound remains
 9. Add private-sum escape analysis.
 10. Replace whole-function mixed-polarity classification with ordered generic
     telescope evaluation, allowing `&` and `^` binders to alternate.
-11. Keep `MixedDependentBinders` for explicit dependent containers that have
-    not been converted to telescope evaluation.
-12. Reuse common specification and subfederation operations for specialized
+11. Reuse common specification and subfederation operations for specialized
     dependent values.
+12. In Stage 2, define ordinary `forall` and `some` functions whose applications
+    construct the product and sum generic introductions established in Stage 1.
+13. Define the symbolic string templates in terms of those functions and make
+    named applications the canonical expression form after template expansion.
+14. Define the standard-library `for` type entirely with generic interfaces and
+    implement both comprehension templates as ordinary applications of it,
+    including finite and lazy/infinite source behavior; add no `for`-specific
+    host primitive or evaluator branch.
+15. Express all standard-library and fixture dependencies through `&`/`^`,
+    generic type constructors, and the generic `for` type.
+16. Remove every parser, syntax, AST, evaluator, library, and diagnostic use of
+    `with`.
+17. Use generic telescope evaluation in place of binder-specific evaluation,
+    static substitution, validation, and container-kind classification.
+18. Remove `ForBinding`, `WithBinding`, `MixedDependentBinders`, and every
+    parser, renderer, evaluator, diagnostic, and test branch specific to them.
 
 The implementation should use one generic-binder descriptor and one scope
 resolver rather than duplicating polarity and identifier-mode logic across the
-parser, interpreter, and closure builder.
+parser, interpreter, and closure builder. The `for` type uses those public
+generic semantics through ordinary function construction and application.
 
 ## Regression test plan
 
@@ -582,6 +721,17 @@ parser, interpreter, and closure builder.
 - `&_T`, `&T`, and `&T?` produce the three product name modes.
 - `^_T`, `^T`, and `^T?` produce the three sum name modes.
 - Every form accepts an explicit `:: Bound`; an absent bound records `Any`.
+- Stage 1 parses and evaluates all symbolic forms without loading `std.datra`.
+- In Stage 2, every `&` form expands through `forall` and every `^` form expands
+  through `some`.
+- The generic template path captures `_T`, `T`, and `T?` and passes their name
+  modes through unchanged.
+- Explicit `forall` and `some` calls use ordinary function application syntax
+  and resolve through ordinary identifier lookup.
+- Symbolic and named forms normalize to identical polarity, name mode, bound,
+  binder ownership, and binder identity behavior.
+- Canonical function expressions after template expansion contain `forall` and
+  `some` applications rather than the symbolic template spelling.
 - `_T?` is rejected for both polarities.
 - `Args (&_T :: IntLimit)` parses the application and bound correctly.
 - Multiple introductions are collected into a generic prefix in
@@ -604,8 +754,28 @@ parser, interpreter, and closure builder.
 - Ordinary types in a nested function may reference enclosing generics, while
   marked introductions in that nested function belong to the nested function.
 - A generic introduction without a function-type owner is rejected.
-- Canonical AST rendering and parsing preserve polarity, identifier mode,
-  bound, binder identity, and ownership.
+- Canonical lowering, rendering, and parsing preserve polarity, identifier
+  mode, bound, binder identity, and ownership.
+- Type-level `for ... of ...` is rejected, and `with` has no grammar role.
+- Neither excluded spelling appears in canonical source output.
+
+### `for` comprehension semantics
+
+- `for i in values do expression` lowers to an application of the generic
+  `for` type and binds `i` only in the member transformation.
+- `for i <integer-valued-range> do expression` lowers to the same application
+  with a normalized valued-range source.
+- The `for` type passes its tests as an ordinary generic definition, without a
+  dedicated dependent-binder evaluator path or host primitive.
+- Its generic evidence is absent from ordinary projections and `it`.
+- Finite sources produce their fibres in source order.
+- Infinite valued ranges remain lazy and allow finite access without eager
+  enumeration.
+- Nested generic functions in the source and body own independent generic
+  scopes.
+- Reusing the same spelling for an iteration name and a nested generic does not
+  merge their binder identities.
+- `with` is not recognized as a comprehension keyword.
 
 ### Product semantics
 
@@ -619,6 +789,34 @@ parser, interpreter, and closure builder.
 - Domain specialization validates dependent arguments.
 - Codomain specialization validates the returned value.
 - `my_max` over `Args (from -128 to 127)` has the inferred range return type.
+
+### Standard-library generic targets
+
+The standard library is expressed entirely in terms of generic typing and the
+generic `for` comprehension type.
+
+- `forall` and `some` are the ordinary function identifiers for product and sum
+  generic introduction; the attached `&`/`^`/`::` templates lower to normal
+  applications of them. Authored source normally uses the symbols, while
+  canonical template-resolved expressions use the names.
+- `for` is an ordinary named type defined entirely through `&`/`^` generic
+  interfaces; the evaluator has no built-in knowledge of that name.
+- `List`, `InhabitedList`, `Just`, and `Maybe` are generic type constructors
+  whose element/type parameter is declared with `&`, with public name modes
+  matching their intended named and positional application interfaces.
+- `Args` is a generic type constructor over its element type. Its generated
+  numbered slots and length-indexed alternatives use the `for` comprehension;
+  neither stage uses a separate sum-binding construct.
+- Any standard-library dependent package uses `^` in an owning function type
+  and preserves sealed witness evidence through that generic interface.
+- Syntax declarations expose the symbolic generic templates and the two `for`
+  comprehension templates, but no type-level `for` or any `with` adapter.
+- Loaded library source, canonicalized library AST, fixtures, and generated
+  source contain no `ForBinding` or `WithBinding` node.
+
+Generic type constructors may use interface specialization or generic-aware
+intrinsics to construct their result type. Their witnesses remain absent from
+ordinary body arguments and body-visible `it`.
 
 ### Numbers module regression target
 
@@ -714,7 +912,17 @@ Cover both product and sum function types with:
 
 ## Completion criteria
 
-The feature is complete when:
+### Stage 1 core milestone
+
+Stage 1 is complete when the symbolic `&`, `^`, and `::` operators implement
+the full generic binder, telescope, inference, packaging, erasure, and escape
+semantics without loading `std.datra`. Standard-library `some`/`forall`
+functions, their string templates, and named canonical lowering are explicitly
+not prerequisites for this milestone.
+
+### Stage 2 full completion
+
+The full feature is complete when:
 
 1. both prefixes parse with private, required-public, and optionally named
    public identifiers;
@@ -734,5 +942,18 @@ The feature is complete when:
 11. cross-polarity dependencies resolve in source order;
 12. `~>`, `<~`, and `of` interactions pass for both polarities and mixed
     telescopes;
-13. focused parser, interpreter, and closure tests pass; and
-14. the full non-Liquid test suite passes once, serially, as final validation.
+13. `List`, `InhabitedList`, `Just`, `Maybe`, `Args`, and every other standard-
+    library dependent definition use generic typing;
+14. both `for` comprehension forms lower to the generic `for` type and preserve
+    finite and lazy/infinite behavior without a host primitive or evaluator
+    special case;
+15. type-level `for`, the `with` keyword, and their syntax adapters are absent;
+16. `ForBinding`, `WithBinding`, `MixedDependentBinders`, and their dedicated
+    parser, AST, evaluator, renderer, diagnostic, and test paths are absent;
+17. `forall` and `some` exist as ordinary standard-library function identifiers
+    for product and sum generic introduction;
+18. `&`/`^`/`::` string templates lower to those functions, explicit named calls
+    use normal application syntax, and canonical template-resolved function
+    expressions use the named forms;
+19. focused parser, interpreter, standard-library, and closure tests pass; and
+20. the full non-Liquid test suite passes once, serially, as final validation.

@@ -18,7 +18,6 @@ module DatraLanguage.AST
   , renderAsciiStringLiteral
   , renderStringTemplate
   , renderIdentifierString
-  , isReservedIdentifierString
   ) where
 
 import Data.Functor.Identity (Identity (..))
@@ -29,7 +28,6 @@ import DatraLanguage.AST.Operator
   , ellipsisSymbol
   , operatorCanonicalSymbol
   )
-import DatraLanguage.AST.Reserved (isReservedIdentifierString)
 import DatraLanguage.AST.Reserved qualified as Reserved
 import IdentifierValueType (isIdentifierValue)
 import Numeric.Natural (Natural)
@@ -69,12 +67,13 @@ data Expression
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
-  | StringType
   | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
-  | ArgumentMapSplice Expression
   | MapSequence [Expression]
+  -- | A transient raw-parser boundary. Declarative syntax rewriting removes
+  -- it before the public/post-matching AST is exposed.
+  | SyntaxBoundary Expression
   | MapExpansion Expression Expression
   | SuperEllipsisRange Expression Expression
   | SuperEllipsisRangePlus Expression
@@ -115,15 +114,13 @@ data Expression
   | Coalization Expression
   | StripIdentifiers Expression
   | Extract Expression
-  | Eval Expression Expression
   | Assert Bool Expression
-  | This
   | Fun Expression
   | WithBinding IdentifierString Bool Expression
   | ForBinding IdentifierString Bool Expression
   | InModule String Expression
   | Import Bool String
-  | SyntaxType String Bool Expression
+  | SyntaxType Expression Expression
   | FunctionType Expression Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
@@ -201,12 +198,10 @@ data OperatorExpression
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
-  | StringTypeValue
   | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
   | Arguments [OperatorExpression]
-  | ArgumentsSplice OperatorExpression
   | Expansion OperatorExpression OperatorExpression
   | Range OperatorExpression OperatorExpression
   | RangePlus OperatorExpression
@@ -250,15 +245,13 @@ data OperatorExpression
   | CoalizationValue OperatorExpression
   | StripIdentifiersValue OperatorExpression
   | ExtractValue OperatorExpression
-  | EvalValue OperatorExpression OperatorExpression
   | AssertValue Bool OperatorExpression
-  | ThisValue
   | FunValue OperatorExpression
   | WithBindingValue IdentifierString Bool OperatorExpression
   | ForBindingValue IdentifierString Bool OperatorExpression
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
-  | SyntaxTypeValue String Bool OperatorExpression
+  | SyntaxTypeValue OperatorExpression OperatorExpression
   | FunctionTypeValue OperatorExpression OperatorExpression
   | FunctionBodyValue [OperatorExpression] OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
@@ -301,16 +294,15 @@ normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
-normalizeExpression StringType = StringType
 normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
 normalizeExpression (ArgumentMap expressions) =
-  normalizeSequence ArgumentMap expressions
-normalizeExpression (ArgumentMapSplice expression) =
-  ArgumentMapSplice (normalizeExpression expression)
+  ArgumentMap (map normalizeExpression expressions)
 normalizeExpression (MapSequence expressions) =
   normalizeSequence MapSequence expressions
+normalizeExpression (SyntaxBoundary expressionValue) =
+  normalizeExpression expressionValue
 normalizeExpression (MapExpansion left right) =
   normalizeExpansion
     (normalizeExpression left)
@@ -389,11 +381,8 @@ normalizeExpression (StripIdentifiers operand) =
   StripIdentifiers (normalizeExpression operand)
 normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
-normalizeExpression (Eval source target) =
-  Eval (normalizeExpression source) (normalizeExpression target)
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
-normalizeExpression This = This
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (WithBinding name optional bound) =
   WithBinding name optional (normalizeExpression bound)
@@ -401,7 +390,10 @@ normalizeExpression (ForBinding name optional bound) =
   ForBinding name optional (normalizeExpression bound)
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
-normalizeExpression (SyntaxType patternText ordinary signature) = SyntaxType patternText ordinary (normalizeExpression signature)
+normalizeExpression (SyntaxType templates signature) =
+  SyntaxType
+    (normalizeExpression templates)
+    (normalizeExpression signature)
 normalizeExpression (FunctionType input output) = FunctionType (normalizeExpression input) (normalizeExpression output)
 normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
@@ -422,8 +414,6 @@ normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression 
 -- The payload of a scope identifier is its canonical reference spelling.
 -- It resolves the binding directly, including quoted names and captured names,
 -- without materializing the current block's declaration map.
-normalizeExpression (MapAccess (NamedAccess This name) (EllipsisNatural 1)) =
-  IdentifierReference name
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -502,14 +492,13 @@ lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
-lower StringType = StringTypeValue
 lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
   combineExpansions (map lowerSegment (segments expressions))
 lower (ArgumentMap expressions) = Arguments (map lower expressions)
-lower (ArgumentMapSplice expression) = ArgumentsSplice (lower expression)
 lower (MapSequence expressions) = Sequential (map lower expressions)
+lower (SyntaxBoundary expressionValue) = lower expressionValue
 lower (MapExpansion left right) = Expansion (lower left) (lower right)
 lower (SuperEllipsisRange lowerBound upperBound) =
   Range (lower lowerBound) (lower upperBound)
@@ -559,9 +548,7 @@ lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
 lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
-lower (Eval source target) = EvalValue (lower source) (lower target)
 lower (Assert hard condition) = AssertValue hard (lower condition)
-lower This = ThisValue
 lower (Fun operand) = FunValue (lower operand)
 lower (WithBinding name optional bound) =
   WithBindingValue name optional (lower bound)
@@ -569,7 +556,8 @@ lower (ForBinding name optional bound) =
   ForBindingValue name optional (lower bound)
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
-lower (SyntaxType patternText ordinary signature) = SyntaxTypeValue patternText ordinary (lower signature)
+lower (SyntaxType templates signature) =
+  SyntaxTypeValue (lower templates) (lower signature)
 lower (FunctionType input output) = FunctionTypeValue (lower input) (lower output)
 lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
@@ -647,7 +635,6 @@ prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
-prettyOperator StringTypeValue = reservedSymbolDoc Reserved.StringTypeSymbol
 prettyOperator IdentifierValueTypeValue =
   reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
@@ -657,8 +644,6 @@ prettyOperator (Sequential expressions) =
   prettyFormFor SequentialOperator (map prettyOperator expressions)
 prettyOperator (Arguments expressions) =
   prettyForm "{}" (map prettyOperator expressions)
-prettyOperator (ArgumentsSplice expression) =
-  prettyForm "{,}" [prettyOperator expression]
 prettyOperator (Expansion left right) =
   prettyBinary ExpansionOperator left right
 prettyOperator (Range lowerBound upperBound) =
@@ -760,12 +745,9 @@ prettyOperator (StripIdentifiersValue operand) =
   prettyUnary StripIdentifiersOperator operand
 prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
-prettyOperator (EvalValue source target) =
-  prettyBinary EvalOperator source target
 prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
-prettyOperator ThisValue = "this"
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
 prettyOperator (WithBindingValue (IdentifierString name) optional bound) =
   prettyForm "with"
@@ -779,7 +761,8 @@ prettyOperator (ForBindingValue (IdentifierString name) optional bound) =
     ]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
-prettyOperator (SyntaxTypeValue patternText ordinary signature) = prettyForm (if ordinary then "as?" else "as") [pretty (renderAsciiStringLiteral patternText), prettyOperator signature]
+prettyOperator (SyntaxTypeValue templates signature) =
+  prettyBinary SyntaxTypeOperator templates signature
 prettyOperator (FunctionTypeValue input output) = prettyBinary FunctionTypeOperator input output
 prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
@@ -878,13 +861,11 @@ renderAsciiStringLiteral value
   | isIdentifierValue value = '$' : value
 renderAsciiStringLiteral value = renderStandardStringLiteral value
 
--- | Render an identifier expression. Canonical non-reserved names use their
--- compact bare spelling; reserved or noncanonical names use a full string.
+-- | Render a canonical identifier expression with its compact bare spelling.
 renderIdentifierString :: String -> String
 renderIdentifierString value@(first : _)
   | isLeadingCanonicalCharacter first
-      && isIdentifierValue value
-      && not (isReservedIdentifierString value) = value
+      && isIdentifierValue value = value
 renderIdentifierString value = renderStandardStringLiteral value
 
 renderStandardStringLiteral :: String -> String
@@ -956,7 +937,6 @@ compactOperatorStringInterpolation
 compactOperatorStringInterpolation expressionValue =
   case expressionValue of
     NothingValue -> reserved Reserved.NothingSymbol
-    StringTypeValue -> reserved Reserved.StringTypeSymbol
     IdentifierValueTypeValue ->
       reserved Reserved.IdentifierValueTypeSymbol
     NaturalTypeValue -> reserved Reserved.NaturalTypeSymbol
@@ -970,7 +950,7 @@ compactOperatorStringInterpolation expressionValue =
 
 isLeadingCanonicalCharacter :: Char -> Bool
 isLeadingCanonicalCharacter character =
-  isAsciiLetter character || character == '_'
+  isAsciiLetter character || character == '_' || character == '\''
 
 isCanonicalCharacter :: Char -> Bool
 isCanonicalCharacter character =
@@ -989,8 +969,8 @@ traverseExpressionChildren :: Applicative f => (Expression -> f Expression) -> E
 traverseExpressionChildren visit expression = case expression of
   AtlasMap xs -> AtlasMap <$> traverse visit xs
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
-  ArgumentMapSplice x -> ArgumentMapSplice <$> visit x
   MapSequence xs -> MapSequence <$> traverse visit xs
+  SyntaxBoundary x -> SyntaxBoundary <$> visit x
   StripIdentifiers x -> StripIdentifiers <$> visit x
   Extract x -> Extract <$> visit x
   Plus x -> Plus <$> visit x
@@ -1018,7 +998,6 @@ traverseExpressionChildren visit expression = case expression of
   GreaterThanOrEqual a b -> GreaterThanOrEqual <$> visit a <*> visit b
   BooleanAnd a b -> BooleanAnd <$> visit a <*> visit b
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
-  Eval a b -> Eval <$> visit a <*> visit b
   Assert hard x -> Assert hard <$> visit x
   Fun x -> Fun <$> visit x
   WithBinding name optional bound ->
@@ -1029,7 +1008,8 @@ traverseExpressionChildren visit expression = case expression of
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
-  MapConcatenation a b -> MapConcatenation <$> visit a <*> visit b
+  MapConcatenation left right ->
+    MapConcatenation <$> visit left <*> visit right
   MapAccess a b -> MapAccess <$> visit a <*> visit b
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
   Overload a b -> Overload <$> visit a <*> visit b
@@ -1040,7 +1020,8 @@ traverseExpressionChildren visit expression = case expression of
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
   NamedAccess value name -> (`NamedAccess` name) <$> visit value
-  SyntaxType text ordinary signature -> SyntaxType text ordinary <$> visit signature
+  SyntaxType templates signature ->
+    SyntaxType <$> visit templates <*> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
   IdentifierTemplateOperation parts annotation given ->
     IdentifierTemplateOperation

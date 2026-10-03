@@ -21,22 +21,17 @@ identifierValue value
   | isIdentifierValue value = Just (IdentifierValue value)
   | otherwise = Nothing
 
--- | Compact strings start with an ASCII letter, digit, or underscore. Later
--- characters may additionally be apostrophes. Underscores may not be doubled
--- or trailing, and the complete string must contain at least one non-digit.
+-- | Compact strings start with an ASCII letter, digit, underscore, or
+-- apostrophe. A leading underscore or apostrophe requires an immediately
+-- following ASCII alphanumeric character. The complete string must contain at
+-- least one non-digit.
 isIdentifierValue :: String -> Bool
 isIdentifierValue [] = False
 isIdentifierValue value@(first : rest) =
   isIdentifierValueInitialCharacter first
     && all isIdentifierValueCharacter rest
     && any (not . isAsciiDigit) value
-    && last value /= '_'
-    && not (hasDoubledUnderscore value)
-  where
-    hasDoubledUnderscore ('_' : '_' : _) = True
-    hasDoubledUnderscore (_ : remaining) =
-      hasDoubledUnderscore remaining
-    hasDoubledUnderscore [] = False
+    && validSpecialPrefix value
 
 -- | Every character which can occur somewhere in an identifier value. This
 -- language fact lets template concatenation prove that delimiters such as a
@@ -50,8 +45,20 @@ isIdentifierValueCharacter character =
   character `elem` identifierValueCharacterAlphabet
 
 isIdentifierValueInitialCharacter :: Char -> Bool
-isIdentifierValueInitialCharacter character =
-  isIdentifierValueCharacter character && character /= '\''
+isIdentifierValueInitialCharacter = isIdentifierValueCharacter
+
+validSpecialPrefix :: String -> Bool
+validSpecialPrefix (prefix : following : _)
+  | prefix == '_' || prefix == '\'' = isAsciiAlphaNumeric following
+validSpecialPrefix [prefix]
+  | prefix == '_' || prefix == '\'' = False
+validSpecialPrefix _ = True
+
+isAsciiAlphaNumeric :: Char -> Bool
+isAsciiAlphaNumeric character =
+  ('a' <= character && character <= 'z')
+    || ('A' <= character && character <= 'Z')
+    || isAsciiDigit character
 
 isAsciiDigit :: Char -> Bool
 isAsciiDigit character = '0' <= character && character <= '9'

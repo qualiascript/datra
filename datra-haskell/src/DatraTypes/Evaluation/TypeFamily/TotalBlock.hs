@@ -18,7 +18,7 @@ specifyTotalBlock
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyTotalBlock source target
-  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+  | interpretedSemanticResult source == interpretedSemanticResult target =
       -- Prefer the block presentation so its canonical rendering continues
       -- to retain both the block and its yielded value.
       Right target
@@ -31,6 +31,6 @@ decideTotalBlockSubfederation
   -> InterpretedValue
   -> Decision ()
 decideTotalBlockSubfederation source target
-  | interpretedCanonicalResult source == interpretedCanonicalResult target =
+  | interpretedSemanticResult source == interpretedSemanticResult target =
       DecisionProved ()
   | otherwise = DecisionRefuted

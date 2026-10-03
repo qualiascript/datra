@@ -8,6 +8,7 @@ module DatraLanguage.AST.Operator
 
 data Operator
   = FunctionTypeOperator
+  | SyntaxTypeOperator
   | ApplicationOperator
   | DoOperator
   | ExternalOperator
@@ -33,7 +34,6 @@ data Operator
   | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
-  | EvalOperator
   | AssertOperator
   | BeginOperator
   | LetOperator
@@ -58,9 +58,10 @@ data Operator
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
-operatorCanonicalSymbol ApplicationOperator = "apply"
+operatorCanonicalSymbol SyntaxTypeOperator = "%>"
+operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
-operatorCanonicalSymbol ExternalOperator = "!$~"
+operatorCanonicalSymbol ExternalOperator = "!~"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ExpansionOperator = "<+>"
 operatorCanonicalSymbol RangeOperator = "<..>"
@@ -82,14 +83,13 @@ operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
 operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
-operatorCanonicalSymbol ValueOfOperator = "!"
-operatorCanonicalSymbol EvalOperator = "eval"
+operatorCanonicalSymbol ValueOfOperator = "~"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
-operatorCanonicalSymbol EitherOperator = "Either"
-operatorCanonicalSymbol OptionalOperator = "optional"
-operatorCanonicalSymbol ListUnconsOperator = "uncons"
+operatorCanonicalSymbol EitherOperator = "|"
+operatorCanonicalSymbol OptionalOperator = "?"
+operatorCanonicalSymbol ListUnconsOperator = "un-cons"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol ListMaybeThenOperator = "uncons-maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
@@ -108,9 +108,10 @@ operatorCanonicalSymbol AssignmentOperator = ":="
 -- Sequential and expansion structure comes from map separators and nesting.
 operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
+operatorSourceSymbol SyntaxTypeOperator = Just "%>"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
-operatorSourceSymbol ExternalOperator = Just "!$~"
+operatorSourceSymbol ExternalOperator = Just "!~"
 operatorSourceSymbol SequentialOperator = Nothing
 operatorSourceSymbol ExpansionOperator = Nothing
 operatorSourceSymbol RangeOperator = Just ".."
@@ -132,8 +133,7 @@ operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
 operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
-operatorSourceSymbol ValueOfOperator = Just "$~"
-operatorSourceSymbol EvalOperator = Just "eval"
+operatorSourceSymbol ValueOfOperator = Just "~"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"

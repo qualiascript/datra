@@ -61,7 +61,7 @@ moduleTests =
         "42"
     , moduleCase origin "explicit standard-library import is idempotent"
         ("import all \"std\"\n"
-          <> "yield Std.if true then 11 else (1+\"bad\")")
+          <> "yield if true then 11 else (1+\"bad\")")
         "11"
     , moduleCase origin "numbers max and min satisfy positional assertions"
         ( "import \"numbers\"\n"
@@ -98,16 +98,16 @@ moduleTests =
         (== ModuleEvaluationFailure (UnknownIdentifier "Numbers"))
     , moduleCase origin "ordinal arithmetic module"
         ( "import \"ordinals\"\n"
-            <> "yield (Ordinals.sum ... 2; "
-            <> "Ordinals.prod ... 2; "
-            <> "Ordinals.exp ... 2; "
-            <> "Ordinals.minus 2 3)"
+            <> "yield (Ordinals.sum(...; 2); "
+            <> "Ordinals.prod(...; 2); "
+            <> "Ordinals.exp(...; 2); "
+            <> "Ordinals.minus(2; 3))"
         )
         "(... + 2; ... * 2 + 0; ... ^ 2 + 0; 0)"
     , moduleCase origin "ordinal comparisons"
         ( "import \"ordinals\"\n"
-            <> "yield (Ordinals.lt 2 3; Ordinals.lte 3 3; "
-            <> "Ordinals.gt 3 2; Ordinals.gte 3 3)"
+            <> "yield (Ordinals.lt(2; 3); Ordinals.lte(3; 3); "
+            <> "Ordinals.gt(3; 2); Ordinals.gte(3; 3))"
         )
         "(true; true; true; true)"
     , moduleCase origin "ordinal operations accept x and y argument maps"
@@ -121,7 +121,7 @@ moduleTests =
         "(true; true; true)"
     , moduleCase origin "ordinal exponent uniquely reorders positional arguments"
         ( "import \"ordinals\"\n"
-            <> "yield (Ordinals.exp 2 ...; Ordinals.exp ... 2)"
+            <> "yield (Ordinals.exp(2; ...); Ordinals.exp(...; 2))"
         )
         "(... ^ 2 + 0; ... ^ 2 + 0)"
     , moduleFailureCase origin "qualified import does not leak names"

@@ -6,7 +6,6 @@ module Evaluation.FunctionArguments
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
-  , parameterValues
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
@@ -55,7 +54,7 @@ compileParameters evaluate = compile False
         ArgumentMap members -> do
           traverse_ validateArgumentMapName members
           unorderedArgumentSchema <$> traverse (compileMember False) members
-        ArgumentMapSplice member -> do
+        MapConcatenation member (AtlasMap []) ->
           projectedArgumentSchema <$> evaluate member
         MapConcatenation _ _ ->
           concatenatedArgumentSchema
@@ -111,12 +110,6 @@ parameterDomain = argumentSchemaDomain
 
 parameterPositionalDomain :: ArgumentSchema -> InterpretedValue
 parameterPositionalDomain = argumentSchemaPositionalDomain
-
-parameterValues
-  :: ArgumentSchema
-  -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
-parameterValues = argumentSchemaBodyValues
 
 prepareArguments
   :: ArgumentSchema

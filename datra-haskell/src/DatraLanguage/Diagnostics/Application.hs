@@ -21,11 +21,6 @@ data ModuleLoadFailure
 
 data SyntaxExpansionFailure
   = UnknownSyntaxControlAdapter String
-  | InvalidSyntaxControlCaptures
-      { syntaxControlAdapter :: String
-      , expectedSyntaxCaptureCount :: Int
-      , givenSyntaxCaptureCount :: Int
-      }
   | InvalidDependentBinder String
   deriving (Eq, Show)
 

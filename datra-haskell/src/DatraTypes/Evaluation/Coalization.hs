@@ -45,7 +45,7 @@ coalizeValue value
 -- to remain one operand when its source is parsed again.
 coalizeMapMemberAt :: Natural -> InterpretedValue -> InterpretedValue
 coalizeMapMemberAt outerCardinality value =
-  case interpretedSemantics value of
+  case interpretedSemanticSemantics value of
     MapSemantics memberCardinality _
       | memberCardinality >= outerCardinality -> coalizeValue value
     _ -> value

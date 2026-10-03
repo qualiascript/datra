@@ -37,7 +37,8 @@ data BuiltinMetaType
   | IntRangeMetaType
   | NatValRangeMetaType
   | IntValRangeMetaType
-  | StringTemplateMetaType
+  | TemplateMetaType
+  | SyntaxTemplateMetaType
   deriving (Eq, Show)
 
 -- | One family owns both fundamental typing operations. Keeping this as one
@@ -110,6 +111,8 @@ builtinMetaDatraType kind =
     AnyMetaType -> canonicalTypeAsDatraType
       (makeCanonicalType (BuiltinMetaTypeFamily kind))
     OrdinalMetaType -> canonicalTypeAsDatraType
+      (makeCanonicalType (BuiltinMetaTypeFamily kind))
+    TemplateMetaType -> canonicalTypeAsDatraType
       (makeCanonicalType (BuiltinMetaTypeFamily kind))
     _ -> makeNonCanonicalDatraType (BuiltinMetaTypeFamily kind)
 

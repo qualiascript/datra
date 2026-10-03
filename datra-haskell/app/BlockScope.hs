@@ -62,7 +62,8 @@ buildScopeBindings makeBinding enclosing declarations = foldl addOrdinary initia
 declarationMap :: [String] -> (String -> Either InterpretingError InterpretedValue)
   -> Either InterpretingError InterpretedValue
 declarationMap names resolve = makeAtlasMap 2 <$>
-  traverse (\name -> simpleIdentifierTypeValue name <$> resolve name) names
+  traverse (\name -> simpleIdentifierTypeValue name
+    . withoutCanonicalPresentation <$> resolve name) names
 
 -- Validate against the map shape before asking for any declaration values.
 -- This also bounds the Natural-to-Int conversion used to select the list entry.
@@ -82,5 +83,6 @@ projectDeclaration :: [String] -> (String -> Either InterpretingError Interprete
 projectDeclaration names resolve index = do
   selected <- selectedDeclarationName names index
   case selected of
-    Just name -> simpleIdentifierTypeValue name <$> resolve name
+    Just name -> simpleIdentifierTypeValue name
+      . withoutCanonicalPresentation <$> resolve name
     Nothing -> declarationMap names resolve >>= (`accessValues` index)

@@ -26,19 +26,19 @@ overloadTests =
   testGroup "overload operators"
     [ programCase "left overload replaces a default"
         "yield {a? : Nat := 3} << 5"
-        "a? : from 0 up := 5"
+        "a? : Nat := 5"
     , programCase "right overload reverses the operands"
         "yield 5 >> {a? : Nat := 3}"
-        "a? : from 0 up := 5"
+        "a? : Nat := 5"
     , programCase "named partial overload preserves other defaults"
-        "yield {a? : Nat := 3, b? : Nat := 4} << (b : 8)"
-        "{a? : from 0 up := 3, b? : from 0 up := 8}"
+        "yield {a? : Nat := 3; b? : Nat := 4} << (b : 8)"
+        "{a? : Nat := 3; b? : Nat := 8}"
     , programCase "concatenated argument and empty maps"
         "yield ({a? : Nat := 3}, (), {b? : Nat := 4}) << (b : 8)"
-        "a? : from 0 up := 3, b? : from 0 up := 8"
+        "a? : Nat := 3, b? : Nat := 8"
     , programCase "empty overload preserves defaults"
-        "yield {a? : Nat := 3, b? : Nat := 4} << ()"
-        "{a? : from 0 up := 3, b? : from 0 up := 4}"
+        "yield {a? : Nat := 3; b? : Nat := 4} << ()"
+        "{a? : Nat := 3; b? : Nat := 4}"
     , programCase "total annotation supplies its only value"
         "yield ({a? : 5} << ()) = {a? : 5}"
         "true"
@@ -47,55 +47,55 @@ overloadTests =
         "true"
     , programCase "overload result supports specification"
         "yield ({a? : Nat := 3} << 5) ~> (a? : Int)"
-        "a? : >< (from 0 up; nothing | () | Just : $Complement) := 5"
+        "a? : Int := 5"
     , programFailureCase "overload rejects an incompatible value"
         "yield {a? : Nat := 3} << true"
         (SourceEvaluationFailure
           (OverloadError OverloadNoMatch))
     , programCase "written order resolves a partial unnamed overload"
-        "yield {a? : Nat := 3, b? : Nat := 4} << 5"
-        "{a? : from 0 up := 5, b? : from 0 up := 4}"
+        "yield {a? : Nat := 3; b? : Nat := 4} << 5"
+        "{a? : Nat := 5; b? : Nat := 4}"
     , programCase "overload does not skip a compatible defaulted slot"
-        "yield {x? : Nat := 2, Nat} << 4"
-        "{x? : from 0 up := 4, from 0 up}"
+        "yield {x? : Nat := 2; Nat} << 4"
+        "{x? : Nat := 4; Nat}"
     , programCase "skip advances one positional overload slot"
-        "yield {x? : Nat, y? : Nat} << (*, 3)"
-        "{x? : from 0 up, y? : from 0 up := 3}"
+        "yield {x? : Nat; y? : Nat} << (*, 3)"
+        "{x? : Nat; y? : Nat := 3}"
     , programCase "skip composes through argument-map overload input"
-        "yield {x? : Nat, y? : Nat} << {*, 3}"
-        "{x? : from 0 up, y? : from 0 up := 3}"
+        "yield {x? : Nat; y? : Nat} << {*; 3}"
+        "{x? : Nat; y? : Nat := 3}"
     , programFailureCase "transfinite ordinal is not a skip"
-        "yield {x? : Nat, y? : Nat} << (..., 3)"
+        "yield {x? : Nat; y? : Nat} << (..., 3)"
         (SourceEvaluationFailure
           (OverloadError OverloadNoMatch))
     , programCase "safe overload fills a later compatible slot"
-        "yield {x? : Nat := 2, Str} <<< \"a\""
-        "{x? : from 0 up := 2, $a}"
+        "yield {x? : Nat := 2; Str} <<< \"a\""
+        "{x? : Nat := 2; $a}"
     , programCase "reverse safe overload reverses the operands"
-        "yield \"a\" >>> {x? : Nat := 2, Str}"
-        "{x? : from 0 up := 2, $a}"
+        "yield \"a\" >>> {x? : Nat := 2; Str}"
+        "{x? : Nat := 2; $a}"
     , programCase "safe overload accepts the existing default"
         "yield {x? : Nat := 2} <<< 2"
-        "x? : from 0 up := 2"
+        "x? : Nat := 2"
     , programFailureCase "safe overload rejects a changed default"
-        "yield {x? : Nat := 2, Nat} <<< 4"
+        "yield {x? : Nat := 2; Nat} <<< 4"
         (SourceEvaluationFailure
           (OverloadError OverloadChangedDefault))
     , programCase "safe overload result supports subfederation"
-        "yield ({x? : Nat := 2, Str} <<< \"a\") of {x? : Nat, Str}"
+        "yield ({x? : Nat := 2; Str} <<< \"a\") of {x? : Nat; Str}"
         "true"
     , programCase "safe overload result supports specification"
         "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"
-        "x? : >< (from 0 up; nothing | () | Just : $Complement) := 2"
+        "x? : Int := 2"
     , programCase "safe overload can leave a default skipped"
-        "yield {x? : Nat := 2, y? : Nat} <<< (*, 3)"
-        "{x? : from 0 up := 2, y? : from 0 up := 3}"
+        "yield {x? : Nat := 2; y? : Nat} <<< (*, 3)"
+        "{x? : Nat := 2; y? : Nat := 3}"
     , programCase "skip specifications match only skip positions"
         (unlines
           [ "assert (*, 3) of (*, Nat)"
-          , "assert {*, 3} of {*, Nat}"
+          , "assert {*; 3} of {*; Nat}"
           , "assert ((*, 3) ~> (*, Nat)) of (*, Nat)"
-          , "assert ({*, 3} ~> {*, Nat}) of {*, Nat}"
+          , "assert ({*; 3} ~> {*; Nat}) of {*; Nat}"
           , "assert not ((..., 3) of (*, Nat))"
           , "assert not ((*, 3) of (..., Nat))"
           ])
@@ -119,76 +119,76 @@ defaultedFunctionTests =
   testGroup "defaulted function arguments"
     [ programCase "unparenthesized my_pow can assert a skipped default"
         (unlines
-          [ "my_pow := {base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent"
+          [ "my_pow := {base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent"
           , "assert my_pow (*, 3) = 8"
           ])
         "()"
     , programCase "positional-only my_pow skips its defaulted first argument"
         (unlines
-          [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
+          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
           , "yield my_pow (*, 3)"
           ])
         "8"
     , programCase "positional-only my_pow accepts a skip in an argument map"
         (unlines
-          [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
-          , "yield my_pow {*, 3}"
+          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
+          , "yield my_pow {*; 3}"
           ])
         "8"
     , programCase "function call can skip a later default"
         (unlines
-          [ "add := ({x? : Nat, y? : Nat := 4} -> Nat yield x + y)"
+          [ "add := ({x? : Nat; y? : Nat := 4} -> Nat do yield x + y)"
           , "yield add (3, *)"
           ])
         "7"
     , programFailureCase "function call cannot skip a required argument"
         (unlines
-          [ "sum := ({x : Nat, y? : Nat} -> Nat yield x + y)"
+          [ "sum := ({x : Nat; y? : Nat} -> Nat do yield x + y)"
           , "yield sum (*, 3)"
           ])
         (SourceEvaluationFailure
           (OverloadError OverloadSkippedRequiredSlot))
     , programCase "a grouped singleton skip preserves a positional default"
         (unlines
-          [ "f := ({value? : Nat := 4} -> Nat yield value)"
+          [ "f := ({value? : Nat := 4} -> Nat do yield value)"
           , "yield f (*)"
           ])
         "4"
     , programFailureCase "function call does not treat an ordinal as skip"
         (unlines
-          [ "my_pow := ({base? : Nat := 2, exponent? : Nat} -> Nat yield base ^ exponent)"
+          [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
           , "yield my_pow (..., 3)"
           ])
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programCase "empty argument uses the default"
         (unlines
-          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          [ "f := ({n? : Nat := 5} -> Nat do yield n + 1)"
           , "yield f ()"
           ])
         "6"
     , programCase "supplied argument overloads the default"
         (unlines
-          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          [ "f := ({n? : Nat := 5} -> Nat do yield n + 1)"
           , "yield f 8"
           ])
         "9"
     , programCase "partial named call preserves another default"
         (unlines
-          [ "f := ({a? : Nat := 3, b? : Nat := 4} -> Nat yield a + b)"
+          [ "f := ({a? : Nat := 3; b? : Nat := 4} -> Nat do yield a + b)"
           , "yield f (b : 8)"
           ])
         "11"
     , programCase "overload result can be passed directly"
         (unlines
-          [ "f := ({n? : Nat := 5} -> Nat yield n + 1)"
+          [ "f := ({n? : Nat := 5} -> Nat do yield n + 1)"
           , "arguments := ({n? : Nat := 5} << 8)"
           , "yield f arguments"
           ])
         "9"
     , programCase "total annotation needs no explicit default"
         (unlines
-          [ "f := ({n? : 5} -> Nat yield n + 1)"
+          [ "f := ({n? : 5} -> Nat do yield n + 1)"
           , "yield f ()"
           ])
         "6"
@@ -233,15 +233,14 @@ functionBodySpellingTests :: TestTree
 functionBodySpellingTests =
   testGroup "function body spellings"
     [ programCase "yield without a block keyword"
-        "f := ({n? : Nat} -> Nat yield n + 1)\nyield f 4"
+        "f := ({n? : Nat} -> Nat do yield n + 1)\nyield f 4"
         "5"
     , programCase "do block"
         "f := ({n? : Nat} -> Nat do x := 1; yield n + x)\nyield f 4"
         "5"
-    , programCase "do begin block"
+    , programCase "multiline do block"
         (unlines
           [ "f := ({n? : Nat} -> Nat do"
-          , "begin"
           , "  x := 1"
           , "  yield n + x)"
           , "yield f 4"

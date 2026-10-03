@@ -121,6 +121,13 @@ prettyCanonicalResult result
 prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
 prettyNonKeywordCanonicalResult result =
   case result of
+    CanonicalReference name -> pretty (renderIdentifierString name)
+    CanonicalNamedAccess operand name ->
+      prettyCanonicalAccessOperand operand
+        <> "." <> pretty (renderIdentifierString name)
+    CanonicalApplication function argument ->
+      prettyCanonicalApplicationOperand function
+        <+> prettyCanonicalApplicationArgument argument
     CanonicalBuiltinMetaType kind -> pretty (builtinMetaTypeName kind)
     CanonicalFunction input output body ->
       let signature = parens (prettyCanonicalResult input) <+> "->" <+> parens (prettyCanonicalResult output)
@@ -149,7 +156,6 @@ prettyNonKeywordCanonicalResult result =
       concatWith (\left right -> left <> ", " <> right)
         (map prettyConcatenationMember members)
     CanonicalAsciiString value -> pretty (renderAsciiStringLiteral value)
-    CanonicalStringType -> reservedSymbolDoc Reserved.StringTypeSymbol
     CanonicalIdentifierValueType ->
       reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
     CanonicalToString source ->
@@ -164,7 +170,7 @@ prettyNonKeywordCanonicalResult result =
           renderCanonicalResult
           compactCanonicalStringInterpolation
           [StringTemplateWeakInterpolation source])
-    CanonicalStringTemplate template ->
+    CanonicalTemplate template ->
       case canonicalStringTemplateParts template of
         Just parts ->
           pretty
@@ -197,9 +203,8 @@ prettyNonKeywordCanonicalResult result =
         <> prettyCoalizationOperand operand
     CanonicalMap cardinality components ->
       prettyMap cardinality components
-    CanonicalArgumentMap totalPages components ->
-      let separator = if totalPages then ", " else "; "
-      in "{" <> concatWith (\left right -> left <> separator <> right)
+    CanonicalArgumentMap _ components ->
+      "{" <> concatWith (\left right -> left <> "; " <> right)
         (map prettyArgumentMember components) <> "}"
     CanonicalSpecification source target ->
       case (source, target) of
@@ -217,6 +222,38 @@ prettyNonKeywordCanonicalResult result =
           prettySpecificationOperand source
             <+> prettySourceSymbol SpecificationOperator
             <+> prettySpecificationOperand target
+
+prettyCanonicalApplicationOperand :: CanonicalResult -> Doc annotation
+prettyCanonicalApplicationOperand operand =
+  case operand of
+    CanonicalReference {} -> prettyCanonicalResult operand
+    CanonicalNamedAccess {} -> prettyCanonicalResult operand
+    CanonicalApplication {} -> prettyCanonicalResult operand
+    _ -> parens (prettyCanonicalResult operand)
+
+prettyCanonicalAccessOperand :: CanonicalResult -> Doc annotation
+prettyCanonicalAccessOperand operand =
+  case operand of
+    CanonicalReference {} -> prettyCanonicalResult operand
+    CanonicalNamedAccess {} -> prettyCanonicalResult operand
+    _ -> parens (prettyCanonicalResult operand)
+
+prettyCanonicalApplicationArgument :: CanonicalResult -> Doc annotation
+prettyCanonicalApplicationArgument argument =
+  case argument of
+    CanonicalReference {} -> prettyCanonicalResult argument
+    CanonicalNamedAccess {} -> prettyCanonicalResult argument
+    CanonicalBuiltinMetaType {} -> prettyCanonicalResult argument
+    CanonicalExplicit {} -> prettyCanonicalResult argument
+    CanonicalInteger {} -> prettyCanonicalResult argument
+    CanonicalFormulation {} -> prettyCanonicalResult argument
+    CanonicalNaturalType -> prettyCanonicalResult argument
+    CanonicalIntegerType -> prettyCanonicalResult argument
+    CanonicalIdentifierValueType -> prettyCanonicalResult argument
+    CanonicalDependentSum {} -> prettyCanonicalResult argument
+    CanonicalAsciiString {} -> prettyCanonicalResult argument
+    CanonicalArgumentMap {} -> prettyCanonicalResult argument
+    _ -> parens (prettyCanonicalResult argument)
 
 prettyConcatenationMember :: CanonicalResult -> Doc annotation
 prettyConcatenationMember member@CanonicalSpecification {} =
@@ -237,25 +274,26 @@ canonicalStringTemplateParts
   -> Maybe [StringTemplatePart CanonicalResult]
 canonicalStringTemplateParts result =
   case result of
-    CanonicalConcatenation members ->
-      concat <$> traverse canonicalStringTemplateParts members
-    CanonicalAsciiString value -> Just [StringTemplateLiteral value]
-    CanonicalStringType -> Just [StringTemplateInterpolation result]
-    CanonicalIdentifierValueType ->
-      Just [StringTemplateInterpolation result]
-    CanonicalToString source -> Just [StringTemplateInterpolation source]
-    CanonicalWeakToString source ->
-      Just [StringTemplateWeakInterpolation source]
-    CanonicalStringTemplate nested -> canonicalStringTemplateParts nested
-    CanonicalDependentSum "Str" ->
-      Just [StringTemplateInterpolation result]
-    _ -> Nothing
+      CanonicalReference {} ->
+        Just [StringTemplateInterpolation result]
+      CanonicalNamedAccess {} ->
+        Just [StringTemplateInterpolation result]
+      CanonicalApplication {} ->
+        Just [StringTemplateInterpolation result]
+      CanonicalConcatenation members ->
+        concat <$> traverse canonicalStringTemplateParts members
+      CanonicalAsciiString value -> Just [StringTemplateLiteral value]
+      CanonicalIdentifierValueType ->
+        Just [StringTemplateInterpolation result]
+      CanonicalToString source -> Just [StringTemplateInterpolation source]
+      CanonicalWeakToString source ->
+        Just [StringTemplateWeakInterpolation source]
+      CanonicalTemplate nested -> canonicalStringTemplateParts nested
+      _ -> Nothing
 
 compactCanonicalStringInterpolation :: CanonicalResult -> Maybe String
 compactCanonicalStringInterpolation result
-  | result == CanonicalStringType
-      || result == CanonicalDependentSum "Str" =
-      reserved Reserved.StringTypeSymbol
+  | CanonicalReference name <- result = Just name
   | result == CanonicalIdentifierValueType =
       reserved Reserved.IdentifierValueTypeSymbol
   | result == CanonicalNaturalType = reserved Reserved.NaturalTypeSymbol
@@ -318,10 +356,10 @@ prettyMaybe operand =
       | otherwise = parens (prettyCanonicalResult operand)
 
 isAtomicOptionalOperand :: CanonicalResult -> Bool
+isAtomicOptionalOperand CanonicalReference {} = True
+isAtomicOptionalOperand CanonicalNamedAccess {} = True
 isAtomicOptionalOperand CanonicalNaturalType = True
 isAtomicOptionalOperand CanonicalIntegerType = True
-isAtomicOptionalOperand CanonicalStringType = True
-isAtomicOptionalOperand (CanonicalDependentSum "Str") = True
 isAtomicOptionalOperand CanonicalIdentifierValueType = True
 isAtomicOptionalOperand operand = isBooleanType operand
 
@@ -495,11 +533,12 @@ prettyCoalizationOperand operand
 coalizationOperandNeedsParens :: CanonicalResult -> Bool
 coalizationOperandNeedsParens operand =
   case operand of
+    CanonicalApplication {} -> True
     CanonicalFunction {} -> True
     CanonicalEither {} -> True
     CanonicalRangeConcatenation {} -> True
     CanonicalConcatenation {} -> True
-    CanonicalStringTemplate {} -> True
+    CanonicalTemplate {} -> True
     CanonicalDependentSum {} -> True
     CanonicalSimpleIdentifierType {} -> True
     CanonicalDependentIdentifierType {} -> True

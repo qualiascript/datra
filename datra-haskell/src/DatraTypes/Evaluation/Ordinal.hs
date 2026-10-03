@@ -99,7 +99,7 @@ requireOrdinal
   -> InterpretedValue
   -> Either InterpretingError Ordinal
 requireOrdinal side value =
-  case ordinalProjection (interpretedSemantics value) of
+  case ordinalProjection (interpretedSemanticSemantics value) of
     Just (_, ordinalValue) -> Right ordinalValue
     Nothing -> Left
       (ExpectedNumericalOperand side (interpretedValueKind value))
@@ -109,7 +109,7 @@ requireExplicit
   -> InterpretedValue
   -> Either InterpretingError EvaluatedExplicit
 requireExplicit side value =
-  case ordinalProjection (interpretedSemantics value) of
+  case ordinalProjection (interpretedSemanticSemantics value) of
     Just (_, ordinalValue) ->
       Right (makeExplicitValue ComputedOrigin ordinalValue)
     Nothing -> Left
@@ -120,12 +120,13 @@ requireRangeUpperBoundary
   -> InterpretedValue
   -> Either InterpretingError (Natural, Ordinal)
 requireRangeUpperBoundary side value =
-  case ordinalProjection (interpretedSemantics value) of
+  case ordinalProjection (interpretedSemanticSemantics value) of
     Just boundary -> Right boundary
     Nothing -> Left
       (ExpectedNumericalOperand side (interpretedValueKind value))
 
 ordinalProjection :: ValueSemantics -> Maybe (Natural, Ordinal)
+ordinalProjection (PresentedSemantics _ _ semantics) = ordinalProjection semantics
 ordinalProjection semantics =
   case semantics of
     ExplicitSemantics level value -> Just (level, value)

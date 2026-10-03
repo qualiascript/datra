@@ -10,8 +10,7 @@ module RuntimeModules
 import DatraLanguage.AST (Expression (..), mapExpressionChildren)
 
 data ModuleSource
-  = StdLibModule
-  | ModuleSource FilePath Expression [(String, ModuleSource)]
+  = ModuleSource FilePath Expression [(String, ModuleSource)]
 
 data EvaluationMode
   = DevelopmentMode
@@ -33,7 +32,6 @@ modulesForMode
 modulesForMode mode = map transformNamed
   where
     transformNamed (name, source) = (name, transform source)
-    transform StdLibModule = StdLibModule
     transform (ModuleSource path expression dependencies) =
       ModuleSource
         path

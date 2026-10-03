@@ -5,6 +5,7 @@ module Evaluation.TypeFamily.Function
   , decideFunctionSubfederation
   ) where
 
+import DatraLanguage.SyntaxTemplate (FunctionSyntax)
 import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
@@ -32,30 +33,31 @@ specifyFunction decideSubfederation specify source target =
           { functionSource = case functionSource original of
               Nothing -> Nothing
               Just sourceText
-                | interpretedCanonicalResult (functionDomain original) == interpretedCanonicalResult (functionDomain signature)
-                , interpretedCanonicalResult (functionCodomain original) == interpretedCanonicalResult (functionCodomain signature) -> Just sourceText
+                | interpretedSemanticResult (functionDomain original) == interpretedSemanticResult (functionDomain signature)
+                , interpretedSemanticResult (functionCodomain original) == interpretedSemanticResult (functionCodomain signature) -> Just sourceText
               Just sourceText -> Just
                 ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
           , functionPrepare = Just (\argument -> do
-              prepared <- case functionPrepare original of
+              preparedCall <- case functionPrepare original of
                 Just prepare -> prepare argument
                 Nothing -> do
                   validateFunctionInput
                     decideSubfederation specify argument
                     (functionDomain original)
-                  pure argument
+                  pure (PreparedFunctionArgument argument argument [])
               validateFunctionInput
-                decideSubfederation specify prepared
+                decideSubfederation specify
+                (functionSuppliedArgument preparedCall)
                 (functionDomain signature)
-              pure prepared)
+              pure preparedCall)
           , functionInvoke = functionInvoke original
           })
         DecisionRefuted -> Left (FunctionEvaluationFailed
           FunctionSignatureVarianceViolation)
         DecisionUndecidable -> Left (FunctionEvaluationFailed
           (FunctionSpecificationUndecidable
-            (show (interpretedCanonicalResult source))
-            (show (interpretedCanonicalResult target))))
+            (show (interpretedSemanticResult source))
+            (show (interpretedSemanticResult target))))
     _ -> Left (FunctionEvaluationFailed ExpectedFunctionValue)
 
 validateFunctionInput
@@ -77,15 +79,17 @@ decideFunctionSubfederation
   -> InterpretedValue
   -> Decision ()
 decideFunctionSubfederation decideSubfederation source target
-  | interpretedCanonicalResult source == interpretedCanonicalResult target = DecisionProved ()
-  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just sourceFunction <- interpretedFunction source
   , Just targetFunction <- interpretedFunction target =
       if not
           (patternCompatible
-            (functionSyntaxOrdinary sourceFunction)
-            (functionSyntaxOrdinary targetFunction))
-        then DecisionRefuted else case functionSource targetFunction of
+            (functionSyntax sourceFunction)
+            (functionSyntax targetFunction))
+        then DecisionRefuted
+      else if interpretedSemanticResult source
+          == interpretedSemanticResult target
+        then DecisionProved ()
+      else case functionSource targetFunction of
         Just _ -> DecisionUndecidable
         Nothing -> mapDecision (const ()) (decideAll
           [ decideSubfederation
@@ -95,9 +99,15 @@ decideFunctionSubfederation decideSubfederation source target
               (functionCodomain sourceFunction)
               (functionCodomain targetFunction)
           ])
+  | interpretedSemanticResult source == interpretedSemanticResult target = DecisionProved ()
+  | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | otherwise = DecisionRefuted
 
-patternCompatible :: Maybe Bool -> Maybe Bool -> Bool
+patternCompatible
+  :: Maybe (FunctionSyntax InterpretedValue)
+  -> Maybe (FunctionSyntax InterpretedValue)
+  -> Bool
 patternCompatible _ Nothing = True
-patternCompatible (Just source) (Just target) = source == target
+patternCompatible (Just source) (Just target) =
+  functionSyntaxEquivalent source target
 patternCompatible Nothing (Just _) = False

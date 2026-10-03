@@ -102,11 +102,10 @@ accessSource value =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    StringTypeForm -> ordinarySource []
     IdentifierValueTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
     WeakToStringForm -> ordinarySource []
-    StringTemplateForm _ -> ordinarySource []
+    TemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
     DependentIdentifierTypeForm _ -> ordinarySource []
@@ -143,6 +142,8 @@ describedRangeSemantics described
     description = describedRangeDescription described
 
 semanticAccessSource :: ValueSemantics -> AccessSource
+semanticAccessSource (PresentedSemantics _ _ semantics) =
+  semanticAccessSource semantics
 semanticAccessSource semantics =
   case semantics of
     BuiltinMetaTypeSemantics _ -> ordinarySource []
@@ -179,11 +180,10 @@ semanticAccessSource semantics =
         (map
           (singletonDescribedRange 1 . finiteOrdinal . fromIntegral . ord)
           characters)
-    StringTypeSemantics -> ordinarySource []
     IdentifierValueTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
     WeakToStringSemantics _ -> ordinarySource []
-    StringTemplateSemantics _ -> ordinarySource []
+    TemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []

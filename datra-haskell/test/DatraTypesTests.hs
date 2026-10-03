@@ -82,7 +82,6 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (UnsupportedEvaluationMode)
   , ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
-  , SyntaxExpansionFailure (InvalidSyntaxControlCaptures)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -302,20 +301,6 @@ testDiagnostics = do
           "parametrul privat al funcției nu poate fi opțional"
           ["identificator: _value"]
     )
-  assert "function failures are localized from semantic fields"
-    ( localizeDiagnostic English
-        (Types.FunctionEvaluationFailed
-          (Types.UnconstrainedInferredParameter "value"))
-        == LocalizedMessage
-          "cannot infer an unconstrained function parameter"
-          ["parameter: value", "provide an explicit input type"]
-      && localizeDiagnostic Romanian
-        (Types.FunctionEvaluationFailed
-          (Types.UnconstrainedInferredParameter "value"))
-        == LocalizedMessage
-          "nu se poate deduce un parametru de funcție fără constrângeri"
-          ["parametru: value", "furnizați un tip de intrare explicit"]
-    )
   assert "external failures are localized from semantic fields"
     ( localizeDiagnostic English
         (Types.ExternalEvaluationFailed
@@ -410,24 +395,6 @@ testDiagnostics = do
       && localizeDiagnostic Romanian (CyclicModuleImport "cycle.datra")
         == LocalizedMessage "import ciclic de modul" ["modul: cycle.datra"]
     )
-  assert "syntax-expansion failures have exact bilingual localization"
-    ( localizeDiagnostic English
-        (InvalidSyntaxControlCaptures "datra.syntax.if" 3 2)
-        == LocalizedMessage
-          "syntax control adapter received invalid captures"
-          [ "adapter: datra.syntax.if"
-          , "expected captures: 3"
-          , "given captures: 2"
-          ]
-      && localizeDiagnostic Romanian
-        (InvalidSyntaxControlCaptures "datra.syntax.if" 3 2)
-        == LocalizedMessage
-          "adaptorul de control sintactic a primit capturi nevalide"
-          [ "adaptor: datra.syntax.if"
-          , "capturi așteptate: 3"
-          , "capturi primite: 2"
-          ]
-    )
   assert "CLI-option failures have exact bilingual localization"
     ( localizeDiagnostic English (UnsupportedEvaluationMode "fast")
         == LocalizedMessage
@@ -498,10 +465,13 @@ testArgumentSchemas = do
   text <- expectRight "construct ASCII string" (Types.asciiStringValue "value")
   reordered <- expectRight "construct uniquely reorderable arguments"
     (Types.makeArgumentMap [text, Types.naturalValue 7])
+  characterType <- expectRight "construct Char" Types.charTypeValue
+  let stringType = Types.coalizeValue
+        (Types.listTypeValue "List Char" characterType)
   let reorderSchema = Types.unorderedArgumentSchema
         [ Types.argumentSlotSchema (Just "x") True integerType Nothing
         , Types.argumentSlotSchema
-            (Just "label") True Types.stringTypeValue Nothing
+            (Just "label") True stringType Nothing
         ]
   (_, reorderedBindings) <- expectRight "uniquely reorder arguments"
     (Types.overloadArgumentSchemaComplete reorderSchema reordered)

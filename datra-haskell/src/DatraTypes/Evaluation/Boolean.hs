@@ -134,7 +134,7 @@ booleanCondition
   :: InterpretedValue
   -> Either InterpretingError Bool
 booleanCondition value =
-  case booleanFromSemantics (interpretedSemantics value) of
+  case booleanFromSemantics (interpretedSemanticSemantics value) of
     Just DatraFalse -> Right False
     Just DatraTrue -> Right True
     Nothing -> Left (ExpectedBooleanCondition (interpretedValueKind value))
@@ -144,11 +144,13 @@ requireBoolean
   -> InterpretedValue
   -> Either InterpretingError DatraBoolean
 requireBoolean side value =
-  case booleanFromSemantics (interpretedSemantics value) of
+  case booleanFromSemantics (interpretedSemanticSemantics value) of
     Just flag -> Right flag
     Nothing -> Left (ExpectedBooleanOperand side (interpretedValueKind value))
 
 booleanFromSemantics :: ValueSemantics -> Maybe DatraBoolean
+booleanFromSemantics (PresentedSemantics _ _ semantics) =
+  booleanFromSemantics semantics
 booleanFromSemantics semantics =
   case semantics of
     DependentIdentifierTypeSemantics

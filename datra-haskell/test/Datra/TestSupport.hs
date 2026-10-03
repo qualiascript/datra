@@ -26,12 +26,9 @@ import Interpreting
   , interpretExpressionReason
   , interpretWithImports
   , interpretWithImportsInMode
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
-import ModuleLoading (importSyntax, loadImports)
-import Parsing
-  ( parseDatra
-  , parseDatraLocatedWithSyntaxImports
-  )
+import ModuleLoading (loadImports)
 import Rendering (renderInterpretedValue)
 import Test.Tasty (TestName, TestTree)
 import Test.Tasty.HUnit
@@ -54,12 +51,16 @@ data ModuleFailure
 
 runExpression :: String -> Either SourceFailure InterpretedValue
 runExpression source = do
-  expression <- first SourceParseFailure (parseDatra ("(" <> source <> "\n)"))
+  expression <- first SourceParseFailure
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
+      True [] "<expression>" ("(" <> source <> "\n)"))
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
 runProgram :: String -> Either SourceFailure InterpretedValue
 runProgram source = do
-  expression <- first SourceParseFailure (parseDatra source)
+  expression <- first SourceParseFailure
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
+      True [] "<program>" source)
   first SourceEvaluationFailure (interpretExpressionReason expression)
 
 runProgramInMode
@@ -67,7 +68,9 @@ runProgramInMode
   -> String
   -> Either SourceFailure InterpretedValue
 runProgramInMode mode source = do
-  expression <- first SourceParseFailure (parseDatra source)
+  expression <- first SourceParseFailure
+    (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
+      True [] "<program>" source)
   first SourceEvaluationFailure
     (interpretWithImportsInMode mode [] expression)
 
@@ -77,8 +80,8 @@ runModuleProgram origin source = do
   case loaded of
     Left failure -> pure (Left (ModuleLoadingFailure failure))
     Right imports ->
-      case parseDatraLocatedWithSyntaxImports
-          (importSyntax imports) origin source of
+      case parseDatraSourceLocatedWithImportsAndStandardLibrary
+          True imports origin source of
         Left failure -> pure (Left (ModuleParseFailure failure))
         Right located ->
           pure

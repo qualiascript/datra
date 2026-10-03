@@ -88,12 +88,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "adaptorul de control sintactic nu este înregistrat"
         ["adaptor: " <> name]
-    InvalidSyntaxControlCaptures name expected given ->
-      LocalizedMessage "adaptorul de control sintactic a primit capturi nevalide"
-        [ "adaptor: " <> name
-        , "capturi așteptate: " <> show expected
-        , "capturi primite: " <> show given
-        ]
     InvalidDependentBinder name ->
       LocalizedMessage "legătura dependentă necesită un identificator"
         ["adaptor: " <> name]
@@ -150,6 +144,14 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
+    InconsistentShadowing name ->
+      LocalizedMessage
+        "ascunderea identificatorului nu este consecventă cu legarea existentă"
+        ["identificator: " <> name]
+    LetBindingCannotShadowConsistentIdentifier name ->
+      LocalizedMessage
+        "o legare let nu poate ascunde un identificator cu ascundere consecventă"
+        ["identificator: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identificatorul nu este importat în acest domeniu" ["identificator: " <> name]
     PrivateParameterCannotBeOptional name ->
@@ -283,26 +285,10 @@ localizeInterpretingError reason =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    UnconstrainedInferredParameter name ->
-      LocalizedMessage "nu se poate deduce un parametru de funcție fără constrângeri"
-        ["parametru: " <> name, "furnizați un tip de intrare explicit"]
-    IncompatibleInferredParameterConstraints name ->
-      LocalizedMessage "parametrul funcției are constrângeri deduse incompatibile"
-        ["parametru: " <> name]
-    InferredApplicationRequiresFunction ->
-      LocalizedMessage "deducerea a găsit aplicarea unei valori care nu este funcție" []
-    UnsupportedInferredExpression ->
-      LocalizedMessage "tipul rezultatului funcției nu poate fi dedus pentru această expresie"
-        ["adăugați o specificație explicită acceptată"]
-    InferredTypeOutsideRequirement actual expected ->
-      LocalizedMessage "tipul dedus este în afara tipului necesar"
-        ["dedus: " <> actual, "necesar: " <> expected]
     AstPatternRequiresFunctionSignature ->
       LocalizedMessage "un șablon AST necesită o semnătură de funcție" []
     AstPatternRequiresFunctionImplementation ->
       LocalizedMessage "un șablon AST necesită o implementare de funcție" []
-    FunctionBodyOutsideDeclaredResult ->
-      LocalizedMessage "corpul funcției nu satisface tipul de ieșire declarat" []
     ExternalAdapterRequiresAstCaptures ->
       LocalizedMessage "adaptorul extern de sintaxă necesită capturi AST neevaluate" []
     AmbiguousFunctionSumApplication ->

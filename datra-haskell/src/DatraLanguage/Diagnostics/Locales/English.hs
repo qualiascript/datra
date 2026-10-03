@@ -92,12 +92,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "syntax control adapter is not registered"
         ["adapter: " <> name]
-    InvalidSyntaxControlCaptures name expected given ->
-      LocalizedMessage "syntax control adapter received invalid captures"
-        [ "adapter: " <> name
-        , "expected captures: " <> show expected
-        , "given captures: " <> show given
-        ]
     InvalidDependentBinder name ->
       LocalizedMessage "dependent binder requires an identifier"
         ["adapter: " <> name]
@@ -152,6 +146,14 @@ localizeInterpretingError reason =
     AssertionFailed -> LocalizedMessage "assertion failed" []
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
+    InconsistentShadowing name ->
+      LocalizedMessage
+        "identifier shadowing is inconsistent with its existing binding"
+        ["identifier: " <> name]
+    LetBindingCannotShadowConsistentIdentifier name ->
+      LocalizedMessage
+        "let binding cannot shadow a shadowing-consistent identifier"
+        ["identifier: " <> name]
     UnknownIdentifier name ->
       LocalizedMessage "identifier is not imported in this scope" ["identifier: " <> name]
     PrivateParameterCannotBeOptional name ->
@@ -283,26 +285,10 @@ localizeInterpretingError reason =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    UnconstrainedInferredParameter name ->
-      LocalizedMessage "cannot infer an unconstrained function parameter"
-        ["parameter: " <> name, "provide an explicit input type"]
-    IncompatibleInferredParameterConstraints name ->
-      LocalizedMessage "function parameter has incompatible inferred constraints"
-        ["parameter: " <> name]
-    InferredApplicationRequiresFunction ->
-      LocalizedMessage "function inference found an application of a non-function" []
-    UnsupportedInferredExpression ->
-      LocalizedMessage "function result type cannot be inferred for this expression"
-        ["add a supported explicit specification"]
-    InferredTypeOutsideRequirement actual expected ->
-      LocalizedMessage "inferred type is outside the required type"
-        ["inferred: " <> actual, "required: " <> expected]
     AstPatternRequiresFunctionSignature ->
       LocalizedMessage "an AST pattern requires a function signature" []
     AstPatternRequiresFunctionImplementation ->
       LocalizedMessage "an AST pattern requires a function implementation" []
-    FunctionBodyOutsideDeclaredResult ->
-      LocalizedMessage "function body does not satisfy its declared output type" []
     ExternalAdapterRequiresAstCaptures ->
       LocalizedMessage "external syntax adapter requires unevaluated AST captures" []
     AmbiguousFunctionSumApplication ->

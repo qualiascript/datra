@@ -3,8 +3,6 @@ module LibraryFiles
   ( bundledLibrary
   , requiredBundledLibrarySource
   , standardLibraryFileName
-  , standardLibraryIdentity
-  , isStandardLibraryRequest
   ) where
 
 import Control.Exception (IOException, try)
@@ -13,17 +11,8 @@ import System.Directory (doesFileExist)
 import System.FilePath (takeExtension, takeFileName, (</>))
 import System.IO.Unsafe (unsafePerformIO)
 
-standardLibraryIdentity :: String
-standardLibraryIdentity = "std"
-
 standardLibraryFileName :: FilePath
 standardLibraryFileName = "std.datra"
-
-isStandardLibraryRequest :: FilePath -> Bool
-isStandardLibraryRequest requested =
-  requested == standardLibraryIdentity
-    || requested == standardLibraryFileName
-    || requested == "libs/" <> standardLibraryFileName
 
 -- | Resolve any shipped library by its bare name, filename, or @libs/@ path.
 -- The directory contents, rather than a Haskell registry, decide which

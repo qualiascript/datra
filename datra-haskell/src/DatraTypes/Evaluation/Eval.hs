@@ -10,7 +10,7 @@ import Evaluation.Specification (specifyValues)
 import Evaluation.ToString
   ( CanonicalStringCodec
   , stringConversionIsIdentity
-  , stringTemplateValue
+  , templateValue
   , toStringValue
   )
 import Evaluation.Value
@@ -20,14 +20,15 @@ evalValues
   :: CanonicalStringCodec
   -> InterpretedValue
   -> InterpretedValue
+  -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-evalValues codec source target
+evalValues codec stringType source target
   -- A string federation already describes the input text. Keep its entire
   -- specification, including every template capture, for subsequent extract.
-  | stringConversionIsIdentity (interpretedForm target) =
+  | stringConversionIsIdentity target =
       specifyValues source target
   | otherwise = do
       renderedTarget <- toStringValue codec target
-      matched <- specifyValues source (stringTemplateValue renderedTarget)
-      captured <- extractValue matched
+      matched <- specifyValues source (templateValue renderedTarget)
+      captured <- extractValue stringType matched
       accessValues captured (makeNatural 1)

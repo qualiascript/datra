@@ -78,14 +78,8 @@ overloadFailureIsAmbiguous failure =
     _ -> False
 
 data FunctionFailure
-  = UnconstrainedInferredParameter String
-  | IncompatibleInferredParameterConstraints String
-  | InferredApplicationRequiresFunction
-  | UnsupportedInferredExpression
-  | InferredTypeOutsideRequirement String String
-  | AstPatternRequiresFunctionSignature
+  = AstPatternRequiresFunctionSignature
   | AstPatternRequiresFunctionImplementation
-  | FunctionBodyOutsideDeclaredResult
   | ExternalAdapterRequiresAstCaptures
   | AmbiguousFunctionSumApplication
   | AmbiguousFunctionArgumentBindings
@@ -140,6 +134,8 @@ data InterpretingError
   | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String
+  | InconsistentShadowing String
+  | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]

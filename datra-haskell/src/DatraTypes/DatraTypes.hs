@@ -9,7 +9,10 @@ module DatraTypes
   , StringRepresentation (..)
   , datraCanonicalType
   , datraStringRepresentation
+  , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
+  , ReductionContext (..)
+  , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
   , withIdentifierErasureType
@@ -18,9 +21,11 @@ module DatraTypes
   , coalizeValue
   , coalizeMapMemberAt
   , syntaxCategoryTypeValue
+  , captureSyntaxExpression
   , astTypeValue
   , functionAlternatives
-  , stringTemplateTypeValue
+  , templateTypeValue
+  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
@@ -57,14 +62,13 @@ module DatraTypes
   , optionalUnderlying
   , nothingValue
   , asciiStringValue
-  , stringTypeValue
   , charTypeValue
   , listTypeValue
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
   , weakToStringValue
-  , stringTemplateValue
+  , templateValue
   , stripIdentifiersValue
   , stripIdentifiersType
   , stripOuterIdentifierValue
@@ -149,7 +153,6 @@ module DatraTypes
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
-  , parameterValues
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
@@ -166,7 +169,16 @@ module DatraTypes
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
+  , PresentationDependency (..)
   , interpretedCanonicalResult
+  , interpretedSemanticResult
+  , interpretedCanonicalPresentation
+  , interpretedCanonicalPresentations
+  , withCanonicalReference
+  , withCanonicalNamedAccess
+  , withCanonicalApplication
+  , withoutCanonicalPresentation
+  , withoutCanonicalDependencies
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
@@ -198,13 +210,13 @@ import Evaluation.Access (accessValues, namedAccessValue)
 import Evaluation.Construction
   ( makeAsciiString
   , makeIdentifierValueType
-  , makeStringType
   , makeFormulation
   , makeSkip
   , makeNatural
   , makeInteger
   )
 import Evaluation.Coalization (coalizeMapMemberAt, coalizeValue)
+import Evaluation.SyntaxCapture (captureSyntaxExpression)
 import Evaluation.Boolean
   ( booleanAndValues
   , booleanCondition
@@ -223,7 +235,6 @@ import Evaluation.FunctionArguments
   , parameterBindings
   , parameterDomain
   , parameterPositionalDomain
-  , parameterValues
   , prepareArguments
   , selectFunctionCandidate
   )
@@ -243,7 +254,7 @@ import Evaluation.Optional
   )
 import Evaluation.ToString
   ( CanonicalStringCodec (..)
-  , stringTemplateValue
+  , templateValue
   , toStringValue
   , weakToStringValue
   )
@@ -345,16 +356,22 @@ import Evaluation.Value
   , StringRepresentation (..)
   , datraCanonicalType
   , datraStringRepresentation
+  , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
+  , ReductionContext (..)
+  , DependentSumStructure (..)
+  , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
+  , withDependentSumStructure
   , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
-  , stringTemplateTypeValue
+  , templateTypeValue
+  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
@@ -365,10 +382,19 @@ import Evaluation.Value
   , functionSignature
   , callableFunction
   , interpretedFunction
+  , PresentationDependency (..)
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
   , interpretedCanonicalResult
+  , interpretedSemanticResult
+  , interpretedCanonicalPresentation
+  , interpretedCanonicalPresentations
+  , withCanonicalReference
+  , withCanonicalNamedAccess
+  , withCanonicalApplication
+  , withoutCanonicalPresentation
+  , withoutCanonicalDependencies
   , interpretedDatraType
   , interpretedEvaluationSource
   , withEvaluationSource
@@ -425,26 +451,24 @@ asciiStringValue value =
     Just character -> Left (InvalidAsciiStringCharacter character)
     Nothing -> Right (makeAsciiString value)
 
-stringTypeValue :: InterpretedValue
-stringTypeValue = makeStringType
-
 charTypeValue :: Either InterpretingError InterpretedValue
 charTypeValue = do
   characters <- valuedNaturalRangeValue 0 255
-  pure (makeDependentSumValue "Char" characters $ \source -> do
-    _ <- specifyValues source characters
-    pure source)
+  pure
+    (withDependentSumStructure CharacterDependentSum
+      (makeDependentSumValue "Char" characters $ \source -> do
+        _ <- specifyValues source characters
+        pure source))
 
--- | The semantic fixed point of @() | (T; this)@.  It is constructed by the
--- language-level @fun@ operator; this helper only supplies the generic
--- pointwise Atlas-map membership operation.
+-- | A semantic recursive-list fixed point. The language layer supplies the
+-- canonical source of the evaluated @fun@ expression; this semantic helper
+-- has no knowledge of surface binders or standard-library names.
 listTypeValue :: String -> InterpretedValue -> InterpretedValue
-listTypeValue "Char" _ = stringTypeValue
-listTypeValue elementSource elementType = value
+listTypeValue presentationSource elementType =
+  withDependentSumStructure (ListDependentSum elementType) value
   where
     value = withDependentSumAccess project
-      (makeDependentSumValue presentation staticTarget validate)
-    presentation = "List " <> elementSource
+      (makeDependentSumValue presentationSource staticTarget validate)
     staticTarget = makeLazyMapValue omega (const (Just elementType))
     project insertion =
       case interpretedValueKind insertion of

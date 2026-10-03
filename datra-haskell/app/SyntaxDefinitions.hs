@@ -1,34 +1,159 @@
+{-# LANGUAGE LambdaCase #-}
+
 -- | Declarative AST templates. External AST adapters preserve control semantics
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
-  ( SyntaxRule (..), SyntaxPiece (..), SyntaxHoleKind (..)
-  , declarationRules, expandSyntax
+  ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
+  , SyntaxFunctionBody, syntaxFunctionBodyForSymbol, applySyntaxFunctionBody
+  , declarationRules, syntaxTemplatesFromExpression
+  , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
+  , qualifySyntaxRule, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
+  , normalizeSyntaxExpansion
   ) where
-import Data.List (isPrefixOf)
 import DatraLanguage.AST
+import DatraLanguage.SyntaxTemplate
+  ( SyntaxHoleKind (..)
+  , SyntaxPiece (..)
+  , SyntaxTemplate (..)
+  , parseSyntaxTemplate
+  )
 import IdentifierValueType (isIdentifierValue)
 import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure (..))
 
-data SyntaxHoleKind
-  = ExpressionSyntaxHole
-  | BlockSyntaxHole
-  | IdentifierExpressionSyntaxHole
-  | ValueSyntaxHole String
-  deriving (Eq,Show)
-
-data SyntaxPiece
-  = SyntaxLiteral String
-  | SyntaxHole SyntaxHoleKind
-  deriving (Eq,Show)
 data SyntaxRule = SyntaxRule
-  { syntaxName :: String, syntaxPieces :: [SyntaxPiece]
-  , syntaxOrdinary :: Bool, syntaxSignature :: Expression
+  { syntaxName :: String, syntaxTemplate :: SyntaxTemplate Expression
+  , syntaxSignature :: Expression
   , syntaxRecursive :: Bool
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
   } deriving (Eq,Show)
+
+newtype SyntaxFunctionBody = SyntaxFunctionBody
+  { applySyntaxFunctionBody
+      :: [Expression]
+      -> Either SyntaxExpansionFailure Expression
+  }
+
+syntaxFunctionBodyForSymbol :: String -> Maybe SyntaxFunctionBody
+syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
+  [ ("datra.if", \case
+      [condition, yes, no] -> Right
+        (Conditional condition yes no)
+      captures -> invalidBody symbol captures)
+  , ("datra.ifThen", \case
+      [condition, yes] -> Right
+        (Conditional condition yes (AtlasMap []))
+      captures -> invalidBody symbol captures)
+  , ("datra.begin", \case
+      [entries, result] -> Right (Begin (blockEntries entries) result)
+      captures -> invalidBody symbol captures)
+  , ("datra.do", \case
+      [entries, result] -> Right (FunctionBody (blockEntries entries) result)
+      captures -> invalidBody symbol captures)
+  , ("datra.let", \case
+      [entry] -> Right (Let (absorbAssignedConcatenation entry))
+      captures -> invalidBody symbol captures)
+  , ("datra.fun", \case
+      [entry] -> Right (Fun (absorbFunSequence entry))
+      captures -> invalidBody symbol captures)
+  , ("datra.with", \case
+      [name, bound] -> dependentBinder "with" WithBinding name bound
+      captures -> invalidBody symbol captures)
+  , ("datra.for", \case
+      [name, bound] -> dependentBinder "for" ForBinding name bound
+      captures -> invalidBody symbol captures)
+  , ("datra.withIn", \case
+      [name, bound, body] ->
+        localDependentFamily "with" WithBinding name bound body
+      captures -> invalidBody symbol captures)
+  , ("datra.forIn", \case
+      [name, bound, body] ->
+        localDependentFamily "for" ForBinding name bound body
+      captures -> invalidBody symbol captures)
+  , ("datra.val", \case
+      [value] -> Right (StripIdentifiers value)
+      captures -> invalidBody symbol captures)
+  , ("datra.of", \case
+      [source, target] -> Right (Subfederation source target)
+      captures -> invalidBody symbol captures)
+  , ("datra.and", \case
+      [left, right] -> Right (BooleanAnd left right)
+      captures -> invalidBody symbol captures)
+  , ("datra.or", \case
+      [left, right] -> Right (BooleanOr left right)
+      captures -> invalidBody symbol captures)
+  , ("datra.not", \case
+      [value] -> Right (BooleanNot value)
+      captures -> invalidBody symbol captures)
+  , ("datra.assert", \case
+      [condition] -> Right (Assert False condition)
+      captures -> invalidBody symbol captures)
+  , ("datra.assertHard", \case
+      [_, condition] -> Right (Assert True condition)
+      captures -> invalidBody symbol captures)
+  , ("datra.import", \case
+      [AsciiStringLiteral path] -> Right (Import False path)
+      captures -> invalidBody symbol captures)
+  , ("datra.importAll", \case
+      [AsciiStringLiteral "all", AsciiStringLiteral path] ->
+        Right (Import True path)
+      captures -> invalidBody symbol captures)
+  ]
+  where
+    invalidBody name _ = Left (UnknownSyntaxControlAdapter name)
+
+blockEntries :: Expression -> [Expression]
+blockEntries (AtlasMap entries) = entries
+blockEntries value = [value]
+
+dependentBinder
+  :: String
+  -> (IdentifierString -> Bool -> Expression -> Expression)
+  -> Expression
+  -> Expression
+  -> Either SyntaxExpansionFailure Expression
+dependentBinder name constructor binder bound =
+  case binder of
+    IdentifierReference identifier ->
+      Right (constructor identifier False bound)
+    OptionalType (IdentifierReference identifier) ->
+      Right (constructor identifier True bound)
+    AsciiStringLiteral identifier
+      | isIdentifierValue identifier ->
+          Right (constructor (IdentifierString identifier) False bound)
+    OptionalType (AsciiStringLiteral identifier)
+      | isIdentifierValue identifier ->
+          Right (constructor (IdentifierString identifier) True bound)
+    _ -> Left (InvalidDependentBinder name)
+
+localDependentFamily
+  :: String
+  -> (IdentifierString -> Bool -> Expression -> Expression)
+  -> Expression
+  -> Expression
+  -> Expression
+  -> Either SyntaxExpansionFailure Expression
+localDependentFamily name constructor binder bound body = do
+  dependent <- dependentBinder name constructor binder bound
+  Right (MapAccess (AtlasMap [makeOptional dependent, body])
+    (EllipsisNatural 1))
+  where
+    makeOptional (WithBinding identifier _ value) =
+      WithBinding identifier True value
+    makeOptional (ForBinding identifier _ value) =
+      ForBinding identifier True value
+    makeOptional value = value
+
+absorbAssignedConcatenation :: Expression -> Expression
+absorbAssignedConcatenation value = case value of
+  MapConcatenation
+      (IdentifierOperation name annotation (Just given)) right
+    | annotation == given ->
+        let assignedValue = MapConcatenation given right
+        in IdentifierOperation name assignedValue (Just assignedValue)
+  _ -> value
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules (Let value) =
@@ -40,126 +165,87 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
   collect name (if annotation == implementation then implementation else MapSpecification implementation annotation)
   where
     collect key (EitherType a b) = collect key a <> collect key b
-    collect key (MapSpecification body (SyntaxType patternText ordinary signature)) =
-      [SyntaxRule key (map piece (words patternText)) ordinary signature False Nothing body]
+    collect key (MapSpecification body (SyntaxType templates signature)) =
+      rules key templates signature body
+    collect key (SyntaxType templates (MapSpecification body signature)) =
+      rules key templates signature body
     collect _ _ = []
-    -- These are parser-level AST categories. Every other hole names the
-    -- value type that its captured expression must inhabit.
-    piece "$_Expr" = SyntaxHole ExpressionSyntaxHole
-    piece "$_Block" = SyntaxHole BlockSyntaxHole
-    piece "$_IdenExp" = SyntaxHole IdentifierExpressionSyntaxHole
-    piece ('$':kind) = SyntaxHole (ValueSyntaxHole kind)
-    piece literal = SyntaxLiteral literal
+    rules key templates signature body =
+      [ SyntaxRule key template
+          signature False Nothing body
+      | template <- maybe [] id (syntaxTemplatesFromExpression templates)
+      ]
 declarationRules _ = []
 
+-- | The left operand of @%>@ is an ordinary inhabited list value. Rules must
+-- be available before evaluation, so each member is required to be an
+-- explicit extracted string at declaration time.
+syntaxTemplatesFromExpression
+  :: Expression
+  -> Maybe [SyntaxTemplate Expression]
+syntaxTemplatesFromExpression (Extract templates) = templateValues templates
+  where
+    templateValues value@AsciiStringLiteral {} =
+      (: []) <$> templateValue value
+    templateValues value@StringTemplate {} =
+      (: []) <$> templateValue value
+    templateValues (SyntaxBoundary value) = templateValues value
+    templateValues (AtlasMap values)
+      | not (null values) = traverse templateValue values
+    templateValues _ = Nothing
+    templateValue (AsciiStringLiteral patternText) =
+      Just (syntaxTemplateFromPattern patternText)
+    templateValue (StringTemplate parts) =
+      SyntaxTemplate . concat <$> traverse templatePart parts
+    templateValue _ = Nothing
+    templatePart (StringTemplateLiteral literal) =
+      Just (syntaxTemplatePieces (syntaxTemplateFromPattern literal))
+    templatePart (StringTemplateInterpolation value) =
+      Just [SyntaxHole (ValueSyntaxHole value)]
+    templatePart StringTemplateWeakInterpolation {} = Nothing
+syntaxTemplatesFromExpression _ = Nothing
+
+syntaxTemplateFromPattern :: String -> SyntaxTemplate Expression
+syntaxTemplateFromPattern = parseSyntaxTemplate
+  (IdentifierReference . IdentifierString)
+
+syntaxTemplateLiteralPrefix :: SyntaxRule -> [String]
+syntaxTemplateLiteralPrefix = foldr prefix []
+  . syntaxTemplatePieces . syntaxTemplate
+  where
+    prefix (SyntaxLiteral literal) rest = literal : rest
+    prefix (SyntaxHole _) _ = []
+
+-- | Qualify the callable binding and its independently declared surface head.
+-- They need not have the same unqualified spelling.
+qualifySyntaxRule :: String -> SyntaxRule -> SyntaxRule
+qualifySyntaxRule namespace rule = rule
+  { syntaxName = qualifiedName
+  , syntaxTemplate = qualifyTemplate (syntaxTemplate rule)
+  }
+  where
+    originalName = syntaxName rule
+    qualifiedName = namespace <> "." <> originalName
+    qualifyTemplate (SyntaxTemplate (SyntaxLiteral name : pieces)) =
+      SyntaxTemplate
+        (SyntaxLiteral (namespace <> "." <> name) : pieces)
+    qualifyTemplate template = template
+
+-- | Expand captures selected by one declared syntax template.
 expandSyntax
   :: SyntaxRule
   -> [Expression]
   -> Either SyntaxExpansionFailure Expression
-expandSyntax rule captures = case externalSymbol (syntaxImplementation rule) of
-  Just name | "datra.syntax." `isPrefixOf` name ->
-    control name captures
+expandSyntax rule captures = case
+    externalSymbol (syntaxImplementation rule) >>= syntaxFunctionBodyForSymbol of
+  Just body -> applySyntaxFunctionBody body captures
   _ -> Right (FunctionApplication
     callable
     (case captures of [value] -> value; _ -> AtlasMap captures))
   where
-    callable
-      | syntaxRecursive rule
-      , Nothing <- syntaxModule rule =
-          IdentifierReference (IdentifierString localName)
-      | otherwise = scoped
-          (MapSpecification (syntaxImplementation rule) (syntaxSignature rule))
+    callable = scoped (IdentifierReference (IdentifierString localName))
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
-    specifiedValueCaptures = zipWith specifyCapture
-      [kind | SyntaxHole kind <- syntaxPieces rule]
-    specifyCapture (ValueSyntaxHole kind) capture =
-      MapSpecification capture
-        (scoped (IdentifierReference (IdentifierString kind)))
-    specifyCapture _ capture = capture
-    block (AtlasMap entries) = entries
-    block value = [value]
-    control name values =
-      case controlArity name of
-        Nothing -> Left (UnknownSyntaxControlAdapter name)
-        Just expected
-          | length values /= expected ->
-              Left
-                (InvalidSyntaxControlCaptures
-                  name expected (length values))
-          | otherwise ->
-              controlWithValidCaptures name (specifiedValueCaptures values)
-    controlArity "datra.syntax.if" = Just 3
-    controlArity "datra.syntax.ifThen" = Just 2
-    controlArity "datra.syntax.begin" = Just 2
-    controlArity "datra.syntax.do" = Just 2
-    controlArity "datra.syntax.let" = Just 1
-    controlArity "datra.syntax.fun" = Just 1
-    controlArity "datra.syntax.with" = Just 2
-    controlArity "datra.syntax.for" = Just 2
-    controlArity "datra.syntax.withIn" = Just 3
-    controlArity "datra.syntax.forIn" = Just 3
-    controlArity "datra.syntax.val" = Just 1
-    controlArity _ = Nothing
-    controlWithValidCaptures "datra.syntax.if" [condition, yes, no] =
-      Right (conditionalWithBindings condition yes no)
-    controlWithValidCaptures "datra.syntax.ifThen" [condition, yes] =
-      Right (conditionalWithBindings condition yes (AtlasMap []))
-    controlWithValidCaptures "datra.syntax.begin" [entries,result] =
-      Right (Begin (block entries) result)
-    controlWithValidCaptures "datra.syntax.do" [entries,result] =
-      Right (FunctionBody (block entries) result)
-    controlWithValidCaptures "datra.syntax.let" [entry] =
-      Right (Let (absorbAssignedConcatenation entry))
-    controlWithValidCaptures "datra.syntax.fun" [entry] =
-      Right (Fun (absorbFunSequence entry))
-    controlWithValidCaptures "datra.syntax.with" [name,bound] =
-      dependentBinder "with" WithBinding name bound
-    controlWithValidCaptures "datra.syntax.for" [name,bound] =
-      dependentBinder "for" ForBinding name bound
-    controlWithValidCaptures "datra.syntax.withIn" [name,bound,body] =
-      localDependentFamily "with" WithBinding name bound body
-    controlWithValidCaptures "datra.syntax.forIn" [name,bound,body] =
-      localDependentFamily "for" ForBinding name bound body
-    controlWithValidCaptures "datra.syntax.val" [value] =
-      Right (StripIdentifiers value)
-    controlWithValidCaptures name _ = Left (UnknownSyntaxControlAdapter name)
-
-    dependentBinder name constructor binder bound =
-      case binder of
-        IdentifierReference identifier ->
-          Right (constructor identifier False bound)
-        OptionalType (IdentifierReference identifier) ->
-          Right (constructor identifier True bound)
-        AsciiStringLiteral identifier
-          | isIdentifierValue identifier ->
-              Right (constructor (IdentifierString identifier) False bound)
-        _ -> Left (InvalidDependentBinder name)
-
-    -- The witness is deliberately optional in the lowered representation:
-    -- projection discards page zero, so the source spelling needs only the
-    -- local identifier rather than the public argument-map binder form.
-    localDependentFamily name constructor binder bound body = do
-      dependent <- dependentBinder name constructor binder bound
-      Right (MapAccess (AtlasMap [makeOptional dependent, body])
-        (EllipsisNatural 1))
-      where
-        makeOptional (WithBinding identifier _ value) =
-          WithBinding identifier True value
-        makeOptional (ForBinding identifier _ value) =
-          ForBinding identifier True value
-        makeOptional value = value
-
-    -- @:=@ normally stops before a comma so declarations remain map members.
-    -- Inside @let@ the whole captured expression is one early binding, so a
-    -- following concatenation belongs to the assigned value.
-    absorbAssignedConcatenation value = case value of
-      MapConcatenation
-          (IdentifierOperation name annotation (Just given)) right
-        | annotation == given ->
-            let assignedValue = MapConcatenation given right
-            in IdentifierOperation name assignedValue (Just assignedValue)
-      _ -> value
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.
@@ -173,11 +259,12 @@ conditionalWithBindings
   -> Expression
   -> Expression
   -> Expression
-conditionalWithBindings condition yes no
+conditionalWithBindings rawCondition yes no
   | null (selectedConditionBindings condition yes no) =
       Conditional condition yes no
   | otherwise = lower condition yes no
   where
+    condition = normalizeExpression rawCondition
     lower (BooleanOr left right) consequent alternative =
       lower left consequent (lower right consequent alternative)
     lower (BooleanAnd left right) consequent alternative =
@@ -186,6 +273,15 @@ conditionalWithBindings condition yes no
       lower operand alternative consequent
     lower operand consequent alternative =
       lowerConditionAtom operand consequent alternative
+
+-- Syntax captures are themselves rewritten after their enclosing template is
+-- expanded. Re-run the shape-dependent part of a control expansion once those
+-- captures have reached their final AST form. This is an AST semantic pass,
+-- independent of which declaration supplied the surface spelling.
+normalizeSyntaxExpansion :: Expression -> Expression
+normalizeSyntaxExpansion (Conditional condition yes no) =
+  conditionalWithBindings condition yes no
+normalizeSyntaxExpansion value = value
 
 lowerConditionAtom :: Expression -> Expression -> Expression -> Expression
 lowerConditionAtom condition yes no =
@@ -244,7 +340,8 @@ externalSymbol (External descriptor) = findSymbol descriptor
   where
     findSymbol (IdentifierOperation (IdentifierString "symbol") (AsciiStringLiteral value) _) = Just value
     findSymbol (AtlasMap members) = first (map findSymbol members)
-    findSymbol (MapConcatenation a b) = first [findSymbol a,findSymbol b]
+    findSymbol (MapConcatenation left right) =
+      first [findSymbol left, findSymbol right]
     findSymbol _ = Nothing
     first [] = Nothing
     first (Just value:_) = Just value
@@ -259,11 +356,11 @@ absorbFunSequence expressionValue =
   case expressionValue of
     MapSequence (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == This ->
+      , last remaining == IdentifierReference (IdentifierString "'this") ->
           EitherType (AtlasMap []) (MapSequence (headValue : remaining))
     AtlasMap (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == This ->
+      , last remaining == IdentifierReference (IdentifierString "'this") ->
           EitherType (AtlasMap []) (AtlasMap (headValue : remaining))
     _ -> expressionValue
 

@@ -11,6 +11,7 @@ module Evaluation.Numerical
   , integerLimitProjection
   , requireIntegerLimit
   , complementedIntegerTypeIncludesInfinity
+  , nonnegativeFederationInComplementedInteger
   , makeIntegerLimit
   , requireFiniteInteger
   , requireNaturalExponent
@@ -280,9 +281,11 @@ data NumericalProjection
   | FormulationNumerical Natural
 
 integerLimitProjection :: InterpretedValue -> Maybe IntegerLimit
-integerLimitProjection = integerLimitSemantics . interpretedSemantics
+integerLimitProjection = integerLimitSemantics . interpretedSemanticSemantics
 
 integerLimitSemantics :: ValueSemantics -> Maybe IntegerLimit
+integerLimitSemantics (PresentedSemantics _ _ semantics) =
+  integerLimitSemantics semantics
 integerLimitSemantics semantics =
   case semantics of
     CoalizationSemantics operand -> integerLimitSemantics operand
@@ -320,6 +323,7 @@ integerLimitSemantics semantics =
               NegativeInfinity -> NegativeInfinity)
       | otherwise = Nothing
 
+    absentComplement (PresentedSemantics _ _ value) = absentComplement value
     absentComplement (MapSemantics 0 []) = True
     absentComplement
         (DependentIdentifierTypeSemantics
@@ -328,6 +332,7 @@ integerLimitSemantics semantics =
           True) = True
     absentComplement _ = False
 
+    presentComplement (PresentedSemantics _ _ value) = presentComplement value
     presentComplement
         (DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency "Just")
@@ -340,9 +345,11 @@ integerLimitSemantics semantics =
 -- range. Identifiers expose the same specification shape, which keeps named
 -- numerical values on this one coercion path.
 numericalProjection :: InterpretedValue -> Maybe NumericalProjection
-numericalProjection = numericalSemantics . interpretedSemantics
+numericalProjection = numericalSemantics . interpretedSemanticSemantics
 
 numericalSemantics :: ValueSemantics -> Maybe NumericalProjection
+numericalSemantics (PresentedSemantics _ _ semantics) =
+  numericalSemantics semantics
 numericalSemantics semantics =
   case semantics of
     CoalizationSemantics operand -> numericalSemantics operand
@@ -366,7 +373,7 @@ numericalSpecification
   :: ValueSemantics
   -> Maybe (ValueSemantics, ValueSemantics)
 numericalSpecification semantics =
-  case semantics of
+  case semanticValueSemantics semantics of
     DependentIdentifierTypeSemantics _ underlying True ->
       Just (underlying, underlying)
     AssignmentSemantics _ target source -> Just (source, target)
@@ -377,6 +384,8 @@ numericalSpecification semantics =
 -- corresponding unbounded valued ranges, and the empty map is their zero-size
 -- case. Index-only ranges deliberately do not appear here.
 isValuedNumericalTarget :: ValueSemantics -> Bool
+isValuedNumericalTarget (PresentedSemantics _ _ semantics) =
+  isValuedNumericalTarget semantics
 isValuedNumericalTarget semantics
   | Just _ <- complementedIntegerTypeIncludesInfinity semantics = True
   | otherwise = case semantics of
@@ -404,6 +413,8 @@ isValuedNumericalTarget semantics
 -- representation by structure so numerical behavior does not depend on a
 -- standard-library binding name.
 complementedIntegerTypeIncludesInfinity :: ValueSemantics -> Maybe Bool
+complementedIntegerTypeIncludesInfinity (PresentedSemantics _ _ semantics) =
+  complementedIntegerTypeIncludesInfinity semantics
 complementedIntegerTypeIncludesInfinity semantics =
   case semantics of
     CoalizationSemantics operand ->
@@ -413,7 +424,22 @@ complementedIntegerTypeIncludesInfinity semantics =
       , optionalComplement complement -> Just includesInfinity
     _ -> Nothing
 
+-- | Relate a nonnegative valued range to the source-defined complemented
+-- integer carrier. Both sides are recognized from retained semantics rather
+-- than library binding names. An infinity-extended magnitude is included only
+-- when the complemented target retains its infinity member too.
+nonnegativeFederationInComplementedInteger
+  :: ValueSemantics
+  -> ValueSemantics
+  -> Maybe Bool
+nonnegativeFederationInComplementedInteger source target = do
+  sourceIncludesInfinity <- nonnegativeMagnitude source
+  targetIncludesInfinity <- complementedIntegerTypeIncludesInfinity target
+  pure (not sourceIncludesInfinity || targetIncludesInfinity)
+
 nonnegativeMagnitude :: ValueSemantics -> Maybe Bool
+nonnegativeMagnitude (PresentedSemantics _ _ semantics) =
+  nonnegativeMagnitude semantics
 nonnegativeMagnitude semantics =
   case semantics of
     CoalizationSemantics operand -> nonnegativeMagnitude operand
@@ -425,6 +451,7 @@ nonnegativeMagnitude semantics =
           || nonnegativeMagnitude member == Just False) members -> Just True
     _ -> Nothing
   where
+    isPositiveInfinity (PresentedSemantics _ _ value) = isPositiveInfinity value
     isPositiveInfinity (AsciiStringSemantics "PosInf") = True
     isPositiveInfinity _ = False
 
@@ -435,11 +462,13 @@ optionalComplement semantics =
       && any isComplement alternatives
       && all (\member -> isAbsent member || isComplement member) alternatives
   where
+    flattenEither (PresentedSemantics _ _ value) = flattenEither value
     flattenEither (CoalizationSemantics operand) = flattenEither operand
     flattenEither (EitherSemantics left right) =
       flattenEither left <> flattenEither right
     flattenEither member = [member]
 
+    isAbsent (PresentedSemantics _ _ value) = isAbsent value
     isAbsent (MapSemantics 0 []) = True
     isAbsent
         (DependentIdentifierTypeSemantics
@@ -448,6 +477,7 @@ optionalComplement semantics =
           True) = True
     isAbsent _ = False
 
+    isComplement (PresentedSemantics _ _ value) = isComplement value
     isComplement
         (DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency "Just")

@@ -6,7 +6,7 @@ module Evaluation.TypeFamily.BuiltinMeta
 
 import Evaluation.Error (InterpretingError (ExpectedBuiltinType))
 import Evaluation.Specification.Decision (Decision (..))
-import Evaluation.Specification.String (federationProducesStrings)
+import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.Value
 
 specifyBuiltinMetaType
@@ -28,6 +28,7 @@ decideBuiltinMetaSubfederation source target =
   if accepted then DecisionProved () else DecisionRefuted
   where
     accepted = case (interpretedForm source, target) of
+      (_, TemplateMetaType) -> valueProducesStrings source
       (CoalizationForm operand, expected) ->
         case decideBuiltinMetaSubfederation operand expected of
           DecisionProved () -> True
@@ -70,8 +71,6 @@ decideBuiltinMetaSubfederation source target =
         rangeWithInfinity alternatives NatValRangeMetaType
       (EitherForm alternatives, IntValRangeMetaType) ->
         rangeWithInfinity alternatives IntValRangeMetaType
-      (_, StringTemplateMetaType) ->
-        federationProducesStrings (interpretedAtlasMapFederation source)
       _ -> False
 
     rangeWithInfinity alternatives expected =
@@ -81,11 +80,11 @@ decideBuiltinMetaSubfederation source target =
           || (isRange left expected && isInfinity right)
 
     isInfinity value =
-      interpretedCanonicalResult value == CanonicalAsciiString "PosInf"
-        || interpretedCanonicalResult value == CanonicalAsciiString "NegInf"
+      interpretedSemanticResult value == CanonicalAsciiString "PosInf"
+        || interpretedSemanticResult value == CanonicalAsciiString "NegInf"
 
     isPositiveInfinity value =
-      interpretedCanonicalResult value == CanonicalAsciiString "PosInf"
+      interpretedSemanticResult value == CanonicalAsciiString "PosInf"
 
     isRange value expected =
       case (interpretedForm value, expected) of
@@ -114,6 +113,8 @@ decideBuiltinMetaSubfederation source target =
         _ -> False
 
 isTransfiniteOrdinal :: ValueSemantics -> Bool
+isTransfiniteOrdinal (PresentedSemantics _ _ semantics) =
+  isTransfiniteOrdinal semantics
 isTransfiniteOrdinal semantics = case semantics of
   ExplicitSemantics level _ -> level > 1
   FormulationSemantics level -> level > 0

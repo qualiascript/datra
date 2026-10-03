@@ -11,6 +11,7 @@ module FunctionClosure
 import BlockScope (bindingNames)
 import Data.List (nub, stripPrefix)
 import DatraLanguage.AST
+import DatraLanguage.Identifier (requiresShadowingConsistency)
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
 
 -- Keys identify bindings during this traversal only; they never enter source.
@@ -68,7 +69,11 @@ close mode depth ancestors occupied resolver self
     reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
-    (rewritten, collected) = runState (rewrite mode depth (rootText : reserved) active resolver [] expression) []
+    initiallyBound = ["'this" | explicitSelf]
+    (rewritten, collected) = runState
+      (rewrite mode depth (rootText : reserved) active resolver
+        initiallyBound expression)
+      []
     definitions =
       [ Let (assigned name value)
       | (_, name, value) <- collected
@@ -78,15 +83,19 @@ close mode depth ancestors occupied resolver self
     recursive = recursiveInBody || recursiveInDefinitions
     selfBound = explicitSelf || recursive
     selfRewritten
-      | recursive = replaceReference root This rewritten
+      | recursive = replaceReference root
+          (IdentifierReference (IdentifierString "'this")) rewritten
       | otherwise = rewritten
     selfDefinitions
-      | recursive = map (replaceReference root This) definitions
+      | recursive = map
+          (replaceReference root (IdentifierReference (IdentifierString "'this")))
+          definitions
       | otherwise = definitions
 
 rewrite :: DependencyMode -> Int -> [String] -> References -> Resolver -> [String]
   -> Expression -> State Collected Expression
-rewrite mode depth reserved active resolver bound (MapAccess This index)
+rewrite mode depth reserved active resolver bound
+    (MapAccess (IdentifierReference (IdentifierString "'this")) index)
   | Just name <- resolveScopeIndex resolver index = do
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
@@ -96,6 +105,12 @@ rewrite mode depth reserved active resolver bound (MapAccess This index)
         (IdentifierReference (IdentifierString name))
       pure (Begin [Let selector]
         (IdentifierOperation (IdentifierString name) value Nothing))
+rewrite _ _ _ _ _ bound expression
+  | Just path@(first : _) <- referencePath expression
+  , let lexicalName = case path of
+          ["\0this", name] -> name
+          _ -> first
+  , lexicalName `elem` bound = pure expression
 rewrite mode depth reserved active resolver bound expression
   | Just path@(first : _) <- referencePath expression
   , let lexicalName = case path of
@@ -124,6 +139,9 @@ rewrite mode depth reserved active resolver bound expression
               transitive <- get
               put (transitive <> [(dependencyKey dependency, name, value)])
               pure (IdentifierReference name)
+rewrite _ _ _ _ _ _ expression
+  | Just path <- referencePath expression
+  , referencePathRequiresShadowingConsistency path = pure expression
 
 rewrite mode depth reserved active resolver bound expression =
   case expression of
@@ -137,7 +155,7 @@ rewrite mode depth reserved active resolver bound expression =
       closedCodomain <- rewrite mode depth reserved active resolver
         (parameters <> bound) codomain
       body <- rewrite mode depth reserved active resolver
-        ("it" : parameters <> bound) (FunctionBody entries result)
+        ("'it" : parameters <> bound) (FunctionBody entries result)
       pure (MapSpecification body (FunctionType closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
@@ -148,8 +166,8 @@ rewrite mode depth reserved active resolver bound expression =
             (FunctionApplication
               (IdentifierReference (IdentifierString "Maybe"))
               operand)
-    SyntaxType _ _ signature -> recur signature
-    MapSpecification implementation (SyntaxType _ _ signature) ->
+    SyntaxType _ signature -> recur signature
+    MapSpecification implementation (SyntaxType _ signature) ->
       recur (MapSpecification implementation signature)
     _ -> traverseExpressionChildren recur expression
   where
@@ -174,11 +192,26 @@ transparentDependencyBlock definitions result =
     (EllipsisNatural 1)
 
 referencePath :: Expression -> Maybe [String]
-referencePath (MapAccess (NamedAccess This (IdentifierString name)) (EllipsisNatural 1)) =
+referencePath
+    (MapAccess
+      (NamedAccess
+        (IdentifierReference (IdentifierString "'this"))
+        (IdentifierString name))
+      (EllipsisNatural 1)) =
   Just ["\0this", name]
 referencePath (IdentifierReference (IdentifierString name)) = Just [name]
 referencePath (NamedAccess source (IdentifierString name)) = (<> [name]) <$> referencePath source
 referencePath _ = Nothing
+
+-- A reference rooted in a shadowing-consistent binding is one stable lexical
+-- path. If the complete path cannot be captured, never reinterpret its root as
+-- a separate dependency. The sentinel is the exact internal expansion of a
+-- lookup rooted at the shadowing-consistent @'this@ binding.
+referencePathRequiresShadowingConsistency :: [String] -> Bool
+referencePathRequiresShadowingConsistency ("\0this" : _) = True
+referencePathRequiresShadowingConsistency (name : _) =
+  requiresShadowingConsistency name
+referencePathRequiresShadowingConsistency [] = False
 
 assigned :: IdentifierString -> Expression -> Expression
 assigned name expression = IdentifierOperation name expression (Just expression)

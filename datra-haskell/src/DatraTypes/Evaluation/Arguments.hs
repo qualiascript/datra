@@ -59,7 +59,7 @@ makeDistinctUnion values =
     first : rest -> foldM makeEitherValue first rest
   where
     sameValue left right =
-      interpretedCanonicalResult left == interpretedCanonicalResult right
+      interpretedSemanticResult left == interpretedSemanticResult right
 
 argumentAlternatives :: InterpretedValue -> [InterpretedValue]
 argumentAlternatives value =
@@ -80,9 +80,9 @@ concreteOptionalArgument value = do
       _ -> Nothing
   let present = evaluatedEitherLeft alternatives
       missing = evaluatedEitherRight alternatives
-  case interpretedCanonicalResult present of
+  case interpretedSemanticResult present of
     CanonicalAssignment _ annotation _
-      | annotation == interpretedCanonicalResult missing -> Just present
+      | annotation == interpretedSemanticResult missing -> Just present
     _ -> Nothing
 
 argumentInputAlternatives :: InterpretedValue -> [InterpretedValue]

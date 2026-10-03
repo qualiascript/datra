@@ -61,14 +61,15 @@ standardLibraryTypeExamples =
   , canonical "Str" "Str"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , weak "AST" "!$~\"datra.AST\""
-  , weak "private Expr primitive" "!$~\"datra.Expr\""
-  , weak "private Block primitive" "!$~\"datra.Block\""
+  , weak "AST" "!~\"datra.AST\""
+  , weak "private Expr primitive" "!~\"datra.Expr\""
+  , weak "private Block primitive" "!~\"datra.Block\""
   , weak "NatRange" "NatRange"
   , weak "IntRange" "IntRange"
   , weak "NatValRange" "NatValRange"
   , weak "IntValRange" "IntValRange"
-  , weak "StrTempl" "StrTempl"
+  , canonical "Template" "Template"
+  , weak "private SyntaxTemplate primitive" "!~\"datra.SyntaxTemplate\""
   ]
 
 compositeTypeExamples :: [DatraTypeExample]
@@ -81,7 +82,7 @@ compositeTypeExamples =
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
-  , weak "map containing a noncanonical type" "(Nat; (!$~\"datra.AST\"))"
+  , weak "map containing a noncanonical type" "(Nat; (!~\"datra.AST\"))"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 

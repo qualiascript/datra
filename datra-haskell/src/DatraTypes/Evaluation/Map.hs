@@ -1,6 +1,7 @@
 -- | Atlas-map assembly and map/range concatenation.
 module Evaluation.Map
   ( makeAtlasMap
+  , makeAtlasMapPreservingSingleton
   , hasConcreteSource
   , makeAtlasExpansion
   , concatenateValues
@@ -13,7 +14,7 @@ import AtlasMapFederationExpression
 import DatraOrdinal (finiteOrdinal)
 import Evaluation.Error (InterpretingError)
 import Evaluation.Federation
-  ( decideFederationConcatenation
+  ( decideValueConcatenation
   , requireFederationDecision
   )
 import Evaluation.Construction (makeAsciiString)
@@ -28,8 +29,19 @@ import Numeric.Natural (Natural)
 makeAtlasMap :: Natural -> [InterpretedValue] -> InterpretedValue
 makeAtlasMap _ [value] = value
 makeAtlasMap cardinality values =
+  makeAtlasMapPreservingSingleton cardinality values
+
+-- | Construct an Atlas map while retaining a singleton outer boundary.
+-- Function-body argument aggregates require this because @'it[0]@ selects the
+-- first written parameter even when it is the only parameter.
+makeAtlasMapPreservingSingleton
+  :: Natural
+  -> [InterpretedValue]
+  -> InterpretedValue
+makeAtlasMapPreservingSingleton cardinality values =
   makeProductMap
     SequentialProduct
+    True
     cardinality
     values
     SequentialAtlasMapFederation
@@ -41,6 +53,7 @@ makeAtlasExpansion
 makeAtlasExpansion cardinality values =
   makeProductMap
     ExpansionProduct
+    False
     cardinality
     values
     expansionFederation
@@ -55,12 +68,13 @@ data ProductForm
 
 makeProductMap
   :: ProductForm
+  -> Bool
   -> Natural
   -> [InterpretedValue]
   -> ([InterpretedAtlasMapFederation]
       -> InterpretedAtlasMapFederation)
   -> InterpretedValue
-makeProductMap productForm cardinality values productFederation = value
+makeProductMap productForm preserveSingleton cardinality values productFederation = value
   where
     -- Both sequence and expansion preserve every operand structurally.
     finalValues =
@@ -74,6 +88,8 @@ makeProductMap productForm cardinality values productFederation = value
     valueMap = InterpretedMap cardinality finalValues components
     memberFederations = map interpretedAtlasMapFederation values
     federation
+      | preserveSingleton
+      , [_] <- memberFederations = SingletonAtlasMapFederation valueMap
       | [memberFederation] <- memberFederations = memberFederation
       | all atlasMapFederationExpressionIsSingleton memberFederations =
           SingletonAtlasMapFederation valueMap
@@ -112,9 +128,7 @@ concatenateNonUnitValues
   -> Either InterpretingError InterpretedValue
 concatenateNonUnitValues left right = do
   requireFederationDecision
-    (decideFederationConcatenation
-      (interpretedAtlasMapFederation left)
-      (interpretedAtlasMapFederation right))
+    (decideValueConcatenation left right)
   normalizedRanges <-
     traverse canonicalizeRanges (concatenatedRanges left right)
   let insertionCapability =
@@ -160,9 +174,10 @@ concatenateNonUnitValues left right = do
           _ -> semantics
       baseResultMap = InterpretedMap cardinality finalValues components
       resultFederation
-        | atlasMapFederationExpressionIsSingleton
+        | operandsAreTotal
+        , atlasMapFederationExpressionIsSingleton
             (interpretedAtlasMapFederation left)
-            && atlasMapFederationExpressionIsSingleton
+        , atlasMapFederationExpressionIsSingleton
               (interpretedAtlasMapFederation right) =
             SingletonAtlasMapFederation resultMap
         | otherwise =
@@ -233,7 +248,7 @@ isUnitValue value =
   case interpretedForm value of
     SequentialMapForm ->
       interpretedMapCardinality (interpretedMap value) == 0
-        && interpretedCanonicalResult value == CanonicalMap 0 []
+        && interpretedSemanticResult value == CanonicalMap 0 []
     _ -> False
 
 -- A specification retains the certified total map that originally selected
@@ -256,16 +271,17 @@ preservesConcatenationBoundary value =
   case interpretedForm value of
     EitherForm _ -> True
     DependentIdentifierTypeForm _ -> True
-    StringTypeForm -> True
     IdentifierValueTypeForm -> True
     ToStringForm -> True
     WeakToStringForm -> True
-    StringTemplateForm _ -> True
+    TemplateForm _ -> True
     AssignmentForm _ -> True
     SpecificationForm _ -> True
     _ -> False
 
 semanticsContainsRange :: ValueSemantics -> Bool
+semanticsContainsRange (PresentedSemantics _ _ semantics) =
+  semanticsContainsRange semantics
 semanticsContainsRange (NaturalRangeSemantics _ _) = True
 semanticsContainsRange (ValuedNaturalRangeSemantics _ _) = True
 semanticsContainsRange (IntegerRangeSemantics _ _) = True

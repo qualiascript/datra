@@ -22,13 +22,17 @@ module Evaluation.Value
   , datraTypeFamily
   , datraCanonicalType
   , datraStringRepresentation
+  , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
+  , ReductionContext (..)
+  , functionSyntaxEquivalent
   , makeFunctionValue
   , syntaxCategoryTypeValue
   , astTypeValue
   , functionAlternatives
   , isFunctionFamily
-  , stringTemplateTypeValue
+  , templateTypeValue
+  , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
@@ -52,6 +56,7 @@ module Evaluation.Value
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
   , EvaluatedDependentIdentifierType (..)
+  , DependentSumStructure (..)
   , EvaluatedDependentSum (..)
   , InterpretedTotalAtlasMap (..)
   , EvaluatedAtlasMapFederationMember (..)
@@ -66,13 +71,16 @@ module Evaluation.Value
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
+  , PresentationDependency (..)
   , ValueSemantics (..)
+  , semanticValueSemantics
   , CanonicalResult (..)
   , InterpretedValue
   , InterpretedValueTotality (..)
   , makeInterpretedValue
   , makeSingletonInterpretedValue
   , makeDependentSumValue
+  , withDependentSumStructure
   , withIdentifierErasureType
   , interpretedIdentifierErasureType
   , withDependentSumAccess
@@ -87,6 +95,15 @@ module Evaluation.Value
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
   , interpretedCanonicalResult
+  , interpretedSemanticResult
+  , interpretedSemanticSemantics
+  , interpretedCanonicalPresentation
+  , interpretedCanonicalPresentations
+  , withCanonicalReference
+  , withCanonicalNamedAccess
+  , withCanonicalApplication
+  , withoutCanonicalPresentation
+  , withoutCanonicalDependencies
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedValueKind
@@ -117,6 +134,12 @@ import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
+import DatraLanguage.SyntaxTemplate
+  ( FunctionSyntax (..)
+  , SyntaxHoleKind (..)
+  , SyntaxPiece (..)
+  , SyntaxTemplate (..)
+  )
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
 import Evaluation.DatraType
@@ -196,6 +219,15 @@ data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   , evaluatedIdentifierUnderlying :: InterpretedValue
   }
 
+-- | Structural provenance that remains meaningful after a source-level
+-- declaration has been evaluated.  This records constructors recognized by
+-- their ordinary expression shape; it does not retain or inspect a binding
+-- name from the standard library.
+data DependentSumStructure
+  = OrdinaryDependentSum
+  | CharacterDependentSum
+  | ListDependentSum InterpretedValue
+
 -- | A dependent sum keeps its ordinary structural approximation for map
 -- operations and its exact left-to-right membership procedure for typing.
 data EvaluatedDependentSum = EvaluatedDependentSum
@@ -205,6 +237,7 @@ data EvaluatedDependentSum = EvaluatedDependentSum
   , evaluatedDependentSumAccess
       :: Maybe
           (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedDependentSumStructure :: DependentSumStructure
   }
 
 -- | Runtime erasure of the proof-bearing 'TotalAtlasMap'.  This certificate
@@ -227,6 +260,7 @@ data EvaluatedAtlasMapFederationMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
   | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedDependentSumMember InterpretedValue
   | EvaluatedToStringMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
@@ -248,17 +282,74 @@ data EvaluatedSpecification = EvaluatedSpecification
   , evaluatedSpecificationMember :: EvaluatedAtlasMapFederationMember
   }
 
+data PreparedFunctionArgument = PreparedFunctionArgument
+  { functionSuppliedArgument :: InterpretedValue
+  , functionPreparedArgument :: InterpretedValue
+  , functionPreparedBindings :: [(String, InterpretedValue)]
+  }
+
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
-  , functionSyntaxOrdinary :: Maybe Bool
+  , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
+  , functionSyntaxSource :: Maybe (FunctionSyntax String)
   , functionSource :: Maybe String
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
-      (InterpretedValue -> Either InterpretingError InterpretedValue)
-  , functionInvoke :: Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
+      (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)
+  , functionInvoke :: Maybe
+      (ReductionContext
+        -> PreparedFunctionArgument
+        -> Either InterpretingError InterpretedValue)
   , functionValidatesResult :: Bool
   }
+
+-- | Ordinary evaluation is unrestricted. Shadowing consistency is established
+-- with finite reduction fuel so a divergent proposed binding is rejected
+-- instead of preventing the surrounding scope from being evaluated.
+data ReductionContext
+  = UnrestrictedReduction
+  | ShadowingConsistencyReduction String Int
+  deriving (Eq, Show)
+
+functionSyntaxEquivalent
+  :: FunctionSyntax InterpretedValue
+  -> FunctionSyntax InterpretedValue
+  -> Bool
+functionSyntaxEquivalent left right =
+  let leftTemplates = functionSyntaxTemplates left
+      rightTemplates = functionSyntaxTemplates right
+  in length leftTemplates == length rightTemplates
+    && and (zipWith templateEquivalent leftTemplates rightTemplates)
+  where
+    templateEquivalent
+        (SyntaxTemplate leftPieces) (SyntaxTemplate rightPieces) =
+      length leftPieces == length rightPieces
+        && and (zipWith pieceEquivalent leftPieces rightPieces)
+    pieceEquivalent
+        (SyntaxLiteral leftLiteral) (SyntaxLiteral rightLiteral) =
+      leftLiteral == rightLiteral
+    pieceEquivalent
+        (SyntaxHole leftHole) (SyntaxHole rightHole) =
+      holeEquivalent leftHole rightHole
+    pieceEquivalent _ _ = False
+    holeEquivalent
+        (ExpressionSyntaxHole leftValue)
+        (ExpressionSyntaxHole rightValue) = equivalent leftValue rightValue
+    holeEquivalent
+        (BlockSyntaxHole leftValue)
+        (BlockSyntaxHole rightValue) = equivalent leftValue rightValue
+    holeEquivalent
+        (IdentifierExpressionSyntaxHole leftValue)
+        (IdentifierExpressionSyntaxHole rightValue) =
+          equivalent leftValue rightValue
+    holeEquivalent
+        (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
+      equivalent leftValue rightValue
+    holeEquivalent _ _ = False
+    equivalent leftValue rightValue =
+      interpretedSemanticResult leftValue
+        == interpretedSemanticResult rightValue
 
 makeFunctionValue :: EvaluatedFunction -> InterpretedValue
 makeFunctionValue function = makeInterpretedValue functionDatraType
@@ -266,7 +357,7 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap
   (FunctionSemantics (interpretedSemantics (functionDomain function))
     (interpretedSemantics (functionCodomain function))
-    (functionSyntaxOrdinary function) (Just canonicalSource))
+    (Just canonicalSource))
   where
     signature = functionSignatureSource function
     canonicalSource = maybe signature id (functionSource function)
@@ -321,7 +412,8 @@ builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
 builtinMetaTypeName IntValRangeMetaType = "IntValRange"
-builtinMetaTypeName StringTemplateMetaType = "StrTempl"
+builtinMetaTypeName TemplateMetaType = "Template"
+builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
 builtinMetaTypeValue kind = makeInterpretedValue
@@ -331,7 +423,7 @@ builtinMetaTypeValue kind = makeInterpretedValue
 
 anyTypeValue, ordinalTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
   naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
-  stringTemplateTypeValue :: InterpretedValue
+  templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
 anyTypeValue = builtinMetaTypeValue AnyMetaType
 ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
 astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
@@ -339,7 +431,8 @@ naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
 naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
 integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
-stringTemplateTypeValue = builtinMetaTypeValue StringTemplateMetaType
+templateTypeValue = builtinMetaTypeValue TemplateMetaType
+syntaxTemplateTypeValue = builtinMetaTypeValue SyntaxTemplateMetaType
 
 syntaxCategoryTypeValue :: String -> InterpretedValue
 syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType . Just
@@ -366,11 +459,10 @@ data ValueForm
       [EvaluatedRange]
       (Maybe (InterpretedValue, InterpretedValue))
   | AsciiStringForm String
-  | StringTypeForm
   | IdentifierValueTypeForm
   | ToStringForm
   | WeakToStringForm
-  | StringTemplateForm InterpretedValue
+  | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
   | DependentIdentifierTypeForm EvaluatedDependentIdentifierType
@@ -421,7 +513,6 @@ data InterpretedAtlasMapFederationPrimitive
   | EitherAtlasMapFederation EvaluatedEither
   | DependentIdentifierTypeAtlasMapFederation EvaluatedDependentIdentifierType
   | IdentifierStringProjectionAtlasMapFederation EvaluatedDependentIdentifierType
-  | StringTypeAtlasMapFederation
   | IdentifierValueTypeAtlasMapFederation
   | ToStringAtlasMapFederation
       InterpretedValue
@@ -497,12 +588,30 @@ makeDependentSumValue
 makeDependentSumValue source staticTarget specify =
   makeInterpretedValue
     structuralDatraType
-    (DependentSumForm (EvaluatedDependentSum staticTarget specify Nothing))
+    (DependentSumForm
+      (EvaluatedDependentSum
+        staticTarget specify Nothing OrdinaryDependentSum))
     (interpretedInsertionCapability staticTarget)
     (interpretedMap staticTarget)
     (interpretedAtlasMapFederation staticTarget)
     NonTotalInterpretedMap
     (DependentSumSemantics source)
+
+-- | Attach source-independent structure to a dependent sum.  Constructors
+-- such as recursive lists use this instead of making later consumers infer a
+-- standard-library identifier from rendered text.
+withDependentSumStructure
+  :: DependentSumStructure
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumStructure structure value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent { evaluatedDependentSumStructure = structure }
+        }
+    _ -> value
 
 -- | Retain a symbolic family's erased view for inference, without enumerating
 -- its unbounded collection of named slots.
@@ -581,11 +690,79 @@ withEvaluationSource source value =
 interpretedCanonicalResult :: InterpretedValue -> CanonicalResult
 interpretedCanonicalResult = canonicalResult . interpretedSemantics
 
+-- | Presentation-free identity for type checks and semantic comparisons.
+interpretedSemanticResult :: InterpretedValue -> CanonicalResult
+interpretedSemanticResult = semanticCanonicalResult . interpretedSemantics
+
+-- | Runtime operations inspect the denoted value, never its retained name.
+interpretedSemanticSemantics :: InterpretedValue -> ValueSemantics
+interpretedSemanticSemantics = semanticValueSemantics . interpretedSemantics
+
+interpretedCanonicalPresentation
+  :: InterpretedValue
+  -> Maybe ([PresentationDependency], CanonicalResult)
+interpretedCanonicalPresentation = canonicalPresentation . interpretedSemantics
+
+interpretedCanonicalPresentations
+  :: InterpretedValue
+  -> [([PresentationDependency], CanonicalResult)]
+interpretedCanonicalPresentations = canonicalPresentations . interpretedSemantics
+
+withCanonicalReference
+  :: [PresentationDependency]
+  -> String
+  -> InterpretedValue
+  -> InterpretedValue
+withCanonicalReference dependencies name value = value
+  { interpretedSemantics = PresentedSemantics
+      dependencies
+      (CanonicalReference name)
+      (interpretedSemantics value)
+  }
+
+withCanonicalNamedAccess
+  :: [PresentationDependency]
+  -> CanonicalResult
+  -> String
+  -> InterpretedValue
+  -> InterpretedValue
+withCanonicalNamedAccess dependencies operand name value = value
+  { interpretedSemantics = PresentedSemantics
+      dependencies
+      (CanonicalNamedAccess operand name)
+      (interpretedSemantics value)
+  }
+
+withCanonicalApplication
+  :: [PresentationDependency]
+  -> CanonicalResult
+  -> CanonicalResult
+  -> InterpretedValue
+  -> InterpretedValue
+withCanonicalApplication dependencies function argument value = value
+  { interpretedSemantics = PresentedSemantics
+      dependencies
+      (CanonicalApplication function argument)
+      (interpretedSemantics value)
+  }
+
+withoutCanonicalPresentation :: InterpretedValue -> InterpretedValue
+withoutCanonicalPresentation value = value
+  { interpretedSemantics = semanticValueSemantics (interpretedSemantics value) }
+
+withoutCanonicalDependencies
+  :: [PresentationDependency]
+  -> InterpretedValue
+  -> InterpretedValue
+withoutCanonicalDependencies dependencies value = value
+  { interpretedSemantics =
+      stripPresentedDependencies dependencies (interpretedSemantics value) }
+
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
     BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
-    BuiltinMetaTypeForm StringTemplateMetaType -> AsciiStringValueKind
+    BuiltinMetaTypeForm TemplateMetaType -> AsciiStringValueKind
     BuiltinMetaTypeForm _ -> RangeValueKind
     FunctionForm _ -> FunctionValueKind
     ExplicitForm (EvaluatedExplicit _ NaturalOrigin _) -> NaturalValueKind
@@ -605,11 +782,10 @@ interpretedValueKind value =
     FederationSpecificationForm _ _ _ -> SpecificationValueKind
     RangeConcatenationForm _ _ -> RangeConcatenationValueKind
     AsciiStringForm _ -> AsciiStringValueKind
-    StringTypeForm -> AsciiStringValueKind
     IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
     WeakToStringForm -> AsciiStringValueKind
-    StringTemplateForm _ -> AsciiStringValueKind
+    TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
     DependentIdentifierTypeForm _ -> DependentIdentifierTypeValueKind

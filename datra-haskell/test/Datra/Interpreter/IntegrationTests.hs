@@ -31,7 +31,7 @@ integrationTests =
         "production omits soft assertions but retains hard integration checks"
         productionModeProgram
         "()"
-    , programFileCase 21
+    , programFileCase 20
         "composed language regression"
         "test/fixtures/integration/composed_features.datra"
         "()"
@@ -40,7 +40,6 @@ integrationTests =
 recursiveDefaultProgram :: String
 recursiveDefaultProgram = unlines
   [ "let factorial := ({n? : Int := 5} -> Int do"
-  , "begin"
   , "  assert n of Int"
   , "  yield if n = 0 then 1 else n * factorial (n - 1))"
   , "arguments := ({n? : Int := 5} << 6)"
@@ -57,10 +56,9 @@ recursiveDefaultProgram = unlines
 
 templateBackedProgram :: String
 templateBackedProgram = unlines
-  [ "successor : \"$Nat next\" as ({value? : Int} -> Int) := (do"
-  , "begin"
+  [ "successor := %\"successor $Nat next\" %> ({value? : Int} -> Int) do"
   , "  assert value of Nat"
-  , "  yield value + 1)"
+  , "  yield value + 1"
   , "assert successor 4 next = 5"
   , "assert successor of ({value? : Nat} -> Int)"
   , "assert %(\"from 2 to 5\" ~> \"from %Int to %Int\")[1] of Int"
@@ -71,7 +69,7 @@ scopedAssertionProgram :: String
 scopedAssertionProgram = unlines
   [ "before := seed + 1"
   , "let seed := 10"
-  , "check := (() -> () do begin"
+  , "check := (() -> () do"
   , "  local := before + seed"
   , "  assert local = 21"
   , "  yield ())"
