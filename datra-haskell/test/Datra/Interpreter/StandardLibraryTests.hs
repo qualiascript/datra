@@ -267,8 +267,8 @@ standardLibraryTests =
             "yield 1 ?? 2"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programFailureCase "Maybe sequencing statically requires a Maybe left operand"
-            "yield (() -> Int? do yield 1 ?? 2)"
+        , programFailureCase "Maybe sequencing rejects a non-Maybe operand when called"
+            "f := (() -> Int? do yield 1 ?? 2)\nyield f()"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional named matcher accepts split positional values"

@@ -569,6 +569,9 @@ trailingFunctionBody value =
             ( applicationFrom (function : init arguments)
             , FunctionBody bindings result
             )
+    _ | Coalization inner <- value -> do
+          (resultType, body) <- trailingFunctionBody inner
+          pure (Coalization resultType, body)
     _ -> Nothing
 
 implementedFunction :: Expression -> Expression -> Maybe Expression

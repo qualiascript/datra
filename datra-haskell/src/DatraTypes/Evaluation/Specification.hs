@@ -14,8 +14,13 @@ import Evaluation.Arguments (argumentAlternatives)
 import Evaluation.Boolean (makeBoolean)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
-  ( FunctionFailure (..)
-  , InterpretingError (FunctionEvaluationFailed)
+  ( AtlasMapFederationRefutation
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , FunctionFailure (..)
+  , InterpretingError
+      ( AtlasMapFederationOperationRefuted
+      , FunctionEvaluationFailed
+      )
   )
 import Evaluation.Identifier (inferredIdentifierAssignmentValue)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
@@ -105,7 +110,8 @@ contextuallySpecifyValues source target =
                   [contextuallySpecifyValues source alternative]
               ] of
             [prepared] -> Right prepared
-            _ -> Left original
+            _ -> Left (AtlasMapFederationOperationRefuted
+              AtlasMapFederationSpecificationHasNoMatchingMember)
         _ -> Left original
 
 sourceHasNoIdentifier :: InterpretedValue -> Bool

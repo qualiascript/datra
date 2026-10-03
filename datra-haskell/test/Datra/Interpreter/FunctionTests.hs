@@ -260,11 +260,10 @@ functionTests =
             (SourceEvaluationFailure
               (AtlasMapFederationOperationRefuted
                 AtlasMapFederationSpecificationHasNoMatchingMember))
-        , programFailureCase "required Maybe parameter rejects positional absence"
+        , programFailureCase "required named Maybe parameter rejects an unnamed value"
             "f := ({x:Maybe Int} -> Maybe Int do yield x)\nyield f nothing"
             (SourceEvaluationFailure
-              (AtlasMapFederationOperationRefuted
-                AtlasMapFederationSpecificationHasNoMatchingMember))
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "function type annotates an identifier"
             "assert (callback : (Nat -> Nat)) of (callback : (Nat -> Nat))"
             "()"
