@@ -608,6 +608,13 @@ regressionTests = do
     (MapSpecification identityBody
       (SyntaxType (Extract (AsciiStringLiteral "step $Int next"))
         (FunctionType (ref "Int") (ref "Int"))))
+  let optionalIntInput = ArgumentMap
+        [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
+  assertParsed "a declared syntax signature accepts a multiline body"
+    "%\"step $Nat next\" %> ({value?:Int} -> Int) do\n  yield value"
+    (MapSpecification identityBody
+      (SyntaxType (Extract (AsciiStringLiteral "step $Nat next"))
+        (FunctionType optionalIntInput (ref "Int"))))
   assertParsed "%> accepts an ordinary inhabited template list"
     "%(\"$Int++\"; \"increment $Int\") %> (Int -> Int)"
     (SyntaxType

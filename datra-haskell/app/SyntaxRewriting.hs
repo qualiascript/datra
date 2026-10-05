@@ -885,6 +885,11 @@ matchEmbeddedBlock capture environment = matchWithResult id
               Just (rewritten, remaining) -> Right (Just
                 (FunctionType domain rewritten, remaining))
               Nothing -> Right Nothing
+          SyntaxType templates signature ->
+            matchWithResult wrapResult signature trailing >>= \case
+              Just (rewritten, remaining) -> Right (Just
+                (SyntaxType templates rewritten, remaining))
+              Nothing -> Right Nothing
           MapSpecification (SyntaxBoundary source) target ->
             matchWithResult id source trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
