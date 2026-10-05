@@ -216,20 +216,21 @@ syntaxTemplateLiteralPrefix = foldr prefix []
     prefix (SyntaxLiteral literal) rest = literal : rest
     prefix (SyntaxHole _) _ = []
 
--- | Qualify the callable binding and its independently declared surface head.
--- They need not have the same unqualified spelling.
-qualifySyntaxRule :: String -> SyntaxRule -> SyntaxRule
-qualifySyntaxRule namespace rule = rule
-  { syntaxName = qualifiedName
-  , syntaxTemplate = qualifyTemplate (syntaxTemplate rule)
-  }
+-- | Qualify a literal-headed syntax declaration. A hole-led declaration has
+-- no surface head to qualify, so exposing it through a qualified import would
+-- silently duplicate its unqualified spelling (and change declaration-order
+-- precedence for an accompanying @import all@).
+qualifySyntaxRule :: String -> SyntaxRule -> Maybe SyntaxRule
+qualifySyntaxRule namespace rule = case syntaxTemplate rule of
+  SyntaxTemplate (SyntaxLiteral name : pieces) -> Just rule
+    { syntaxName = qualifiedName
+    , syntaxTemplate = SyntaxTemplate
+        (SyntaxLiteral (namespace <> "." <> name) : pieces)
+    }
+  _ -> Nothing
   where
     originalName = syntaxName rule
     qualifiedName = namespace <> "." <> originalName
-    qualifyTemplate (SyntaxTemplate (SyntaxLiteral name : pieces)) =
-      SyntaxTemplate
-        (SyntaxLiteral (namespace <> "." <> name) : pieces)
-    qualifyTemplate template = template
 
 -- | Expand captures selected by one declared syntax template.
 expandSyntax
