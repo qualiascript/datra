@@ -122,6 +122,12 @@ regressionTests = do
         [ SyntaxHole (ValueSyntaxHole "Int")
         , SyntaxLiteral "++"
         ])
+  assert "the neutral reader retains an unknown postfix symbolic literal"
+    (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
+      Right (_, Located _ parsed) ->
+        parsed == SyntaxBoundary
+          (FunctionApplication (natural 2) (ref "++"))
+      Left _ -> False)
   let syntaxControl implementation = SyntaxRule
         { syntaxName = "test-control"
         , syntaxTemplate = SyntaxTemplate []

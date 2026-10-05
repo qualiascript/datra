@@ -894,6 +894,7 @@ term = do
       , do
           guard (not (acceptsFunctionBody function))
           externalExpression
+      , symbolicSyntaxLiteral
       , identifierReference
       ])
 
@@ -936,6 +937,38 @@ termAtom =
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
+
+-- Declarative syntax is discovered only after the complete resource has been
+-- read, so the neutral reader must retain symbolic words that are not core
+-- operators when they follow an already-parsed operand. Maximal-munch keeps
+-- an adjacent spelling such as @2++@ as the application phrase @2 ++@; the
+-- later syntax pass alone decides whether a visible postfix/infix template
+-- gives that phrase meaning. Exact core tokens remain owned by their ordinary
+-- grammar paths, and unknown prefix symbols remain parse errors.
+symbolicSyntaxLiteral :: Parser Expression
+symbolicSyntaxLiteral = lexeme . try $ do
+  literal <- some (satisfy isSymbolicSyntaxCharacter)
+  guard (literal `notElem` coreSymbolicTokens)
+  pure (IdentifierReference (IdentifierString literal))
+
+isSymbolicSyntaxCharacter :: Char -> Bool
+isSymbolicSyntaxCharacter character =
+  isAsciiCharacter character
+    && not (isIdentifierCharacter character)
+    -- Symbolic template operators currently cannot contain whitespace; map or
+    -- grouping delimiters @(){}[];@; comma or dot; string introducers @"$@;
+    -- the comment marker @#@; or backslash. Comma and dot in particular remain
+    -- structural even when repeated, because accepting them here would turn
+    -- malformed concatenations, accesses, and ranges into declarative calls.
+    && character `notElem` (" \t\r\n(){}[];,.\"#$\\" :: String)
+
+coreSymbolicTokens :: [String]
+coreSymbolicTokens = AST.ellipsisSymbol : "<~" :
+  [ symbolText
+  | operator <- [minBound .. maxBound]
+  , Just symbolText <- [AST.operatorSourceSymbol operator]
+  , any (not . isIdentifierCharacter) symbolText
+  ]
 
 -- The skip atom and multiplication share @*@. A bare skip can participate in
 -- every unambiguous expression position, but multiplication requires explicit

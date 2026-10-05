@@ -701,7 +701,8 @@ ruleLiteralsPresent rule value = all (`isPresentIn` value)
   ]
   where
     isPresentIn literal expressionValue =
-      renderSourceExpression expressionValue == literal
+      matchesLiteral literal expressionValue
+        || renderSourceExpression expressionValue == literal
         || any (isPresentIn literal) (expressionChildren expressionValue)
 
 data OneChild a = OneChild a [a]
