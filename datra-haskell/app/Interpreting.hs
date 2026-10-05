@@ -2121,7 +2121,11 @@ createFunction reduction captured resolving
         bodyScope <- importScope localScope [] bindings
         value <- evalInScopeWith invocationReduction bodyScope [] result
         let escaped = withoutCanonicalDependencies
-              (maybe [] pure (scopePresentationDependency bodyScope)) value
+              ( nub
+                  ( scopePresentationDependencies bodyScope
+                      <> scopePresentationDependencies captured)
+              )
+              value
         dynamicOutput <- evalInScopeWith invocationReduction
           (dependentScope <> captured) resolving writtenOutput
         contextuallySpecify escaped dynamicOutput
