@@ -17,7 +17,7 @@ yield Std := begin
   SignedInfinity := Infinity | $NegInf
   false := (False : 0)
   true := (True : 1)
-  nothing := $Nothing
+  nothing := (Nothing? : ())
   Bool := false | true
   _Direction := $up | $down
 
@@ -81,7 +81,7 @@ yield Std := begin
   List := (for T? of Any) -> Any do yield fun (() | T; 'this)
   InhabitedList := (for T? of Any) -> Any do yield (T; List T)
   Just := (for T? of Any) -> Any do yield Just : T
-  Maybe := (for T? of Any) -> Any do yield (Nothing? : ()) | Just T
+  Maybe := (for T? of Any) -> Any do yield nothing | Just T
   let Str := >< (List Char)
   public := !~"datra.public"
 
