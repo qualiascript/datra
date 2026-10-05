@@ -870,12 +870,11 @@ regressionTests = do
     (MaybeThen
       (ListUncons (ref "values"))
       (FunctionApplication (ref "maximum") (ref "'it")))
-  assertAstOutput "a terminal syntax hole greedily captures list sequencing"
+  assertAstOutput "list sequencing binds after val without grouping"
     "val values !? maximum"
-    (StripIdentifiers
-      (MaybeThen
-        (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (ref "'it"))))
+    (MaybeThen
+      (ListUncons (StripIdentifiers (ref "values")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -891,16 +890,15 @@ regressionTests = do
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
     ("val values !? fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
-    (StripIdentifiers
-      (MaybeThen
-        (ListUncons (ref "values"))
-        (FunctionApplication inlineLimitFunction (ref "'it"))))
-  assert "source rendering groups val before outer list sequencing"
+    (MaybeThen
+      (ListUncons (StripIdentifiers (ref "values")))
+      (FunctionApplication inlineLimitFunction (ref "'it")))
+  assert "list sequencing source rendering keeps the compact val form"
     ( renderSourceExpression
         (MaybeThen
           (ListUncons (StripIdentifiers (ref "values")))
           (FunctionApplication (ref "maximum") (ref "'it")))
-        == "(val values) !? maximum"
+        == "val values !? maximum"
     )
   assertAstOutput "grouping keeps list sequencing inside val"
     "val (values !? maximum)"

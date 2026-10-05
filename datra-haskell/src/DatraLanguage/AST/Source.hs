@@ -78,8 +78,6 @@ source context expression =
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
-    -- Declarative syntax holes capture a complete expression. Parenthesize a
-    -- nested @val@ application so a following operator stays outside it.
     StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)
     ExtractValue operand -> unary "%" operand
     OptionalValue
@@ -143,6 +141,8 @@ source context expression =
       (listMaybeInput values <> " !? " <> listMaybeFunction function)
     listMaybeFunction function@FunValue {} = source 0 function
     listMaybeFunction function = source 2 function
+    listMaybeInput (StripIdentifiersValue operand) =
+      "val " <> source 0 operand
     listMaybeInput operand = source 2 operand
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand

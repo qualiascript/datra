@@ -790,14 +790,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     MaybeThen optional branch -> do
       optionalResult <- interpret optional
       case interpretedSemanticResult optionalResult of
-        CanonicalAssignment "Nothing" _ _ -> pure nothingValue
         CanonicalAssignment "Just" _ _ -> do
           result <- evalInScopeWith reduction
             (scopeBinding "'it" (ImplicitBinding optionalResult) : scope)
             resolving
             branch
           liftMaybeResult result
-        _ -> Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
+        _ -> do
+          absent <- isStandardNothing optionalResult
+          if absent
+            then standardNothingValue
+            else Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
     Conditional condition consequent alternative -> do
       conditionValue <- interpret condition
       conditionFlag <- booleanCondition conditionValue
@@ -1081,9 +1084,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       ordering <- compareIntegerLimitValues leftValue rightValue
       pure (booleanValue (predicate ordering))
     liftMaybeResult result = case interpretedSemanticResult result of
-      CanonicalAssignment "Nothing" _ _ -> pure result
       CanonicalAssignment "Just" _ _ -> pure result
-      _ -> optionalValue result >>= contextuallySpecify result
+      _ -> do
+        absent <- isStandardNothing result
+        if absent
+          then standardNothingValue
+          else standardOptionalValue result >>= contextuallySpecify result
     unconsList value = do
       count <- maybe
         (Left (FunctionEvaluationFailed FunctionArgumentsRequireFinitePages))
@@ -1091,14 +1097,23 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap value)))
       if count == 0
-        then pure nothingValue
+        then standardNothingValue
         else do
           headValue <- accessValues value (naturalValue 0)
           tailRange <- naturalRangeUpwardsValue 1
           tailValue <- accessValues value tailRange
           let pair = makeAtlasMap 2
                 (map (coalizeMapMemberAt 2) [headValue, tailValue])
-          optionalValue pair >>= contextuallySpecify pair
+          standardOptionalValue pair >>= contextuallySpecify pair
+    standardNothingValue =
+      interpret (IdentifierReference (IdentifierString "nothing"))
+    isStandardNothing value = do
+      target <- standardNothingValue
+      subfederationValues value target >>= booleanCondition
+    standardOptionalValue value = do
+      constructor <- interpret (IdentifierReference (IdentifierString "Maybe"))
+      input <- functionArgumentValue value
+      applyFunction reduction constructor input
     evaluateBlock source bindings result = do
       let origins = canonicalDependencyNames bindings result
           reconstructionScope = if null origins then scope

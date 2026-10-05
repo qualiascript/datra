@@ -670,7 +670,7 @@ syntaxCandidates includeConcatenation rule value =
       signedArgumentCandidates rule current
         <> declarationBoundaryCandidates current
         <> rightApplicationCandidates current
-        <> leftBoundaryCandidates current
+        <> leftBoundaryCandidates rule current
         <> rightBoundaryCandidates current
 
     holeLed = case syntaxTemplatePieces (syntaxTemplate rule) of
@@ -811,11 +811,15 @@ stripTrailingLiteralAssignment value = case value of
 -- A declarative template may begin inside the provisional left operand of an
 -- operator tree while its final hole extends to the enclosing expression
 -- boundary. Preserve the written prefix and move the remaining operator
--- context into that final capture. Explicit container boundaries never reach
--- this function, so reassociation remains local to one parsed expression.
-leftBoundaryCandidates :: Expression -> [Expression]
-leftBoundaryCandidates = descend id
+-- context into that final capture. List-Maybe sequencing is a syntax boundary:
+-- a completed prefix form on its left is sequenced, rather than its final hole
+-- absorbing @!?@. Explicit container boundaries never reach this function, so
+-- reassociation remains local to one parsed expression.
+leftBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
+leftBoundaryCandidates rule = descend id
   where
+    descend _ MaybeThen {}
+      | literalLed = []
     descend wrap current =
       case leftInfixContext current of
         Just (left, rebuild) ->
@@ -828,6 +832,9 @@ leftBoundaryCandidates = descend id
          | position <- [1 .. length phrase - 1]
          , let (prefix, suffix) = splitAt position phrase
          ]
+    literalLed = case syntaxTemplatePieces (syntaxTemplate rule) of
+      SyntaxLiteral {} : _ -> True
+      _ -> False
 
 -- Conversely, a hole-led infix template such as @$_Expr of $_Expr@ may begin
 -- in the provisional right operand. Fold everything preceding its literal

@@ -157,9 +157,7 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 -- Lexical parser context is scoped with ReaderT, so backtracking cannot leak
 -- block references or interpolation comment boundaries into surrounding code.
 data ParserContext = ParserContext
-  { interpolationDepth :: Int
-  , listMaybeThenStopped :: Bool
-  }
+  { interpolationDepth :: Int }
 
 type Parser = ReaderT ParserContext (Parsec Void Text)
 
@@ -197,7 +195,7 @@ parseDatraRawLocatedWithSourceName
 parseDatraRawLocatedWithSourceName resourceName source =
   Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
     (runReaderT locatedRawResourceWithEnvelope
-      (ParserContext 0 False))
+      (ParserContext 0))
     resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
@@ -226,7 +224,7 @@ runDatraParser
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
   runParser (runReaderT parser
-    (ParserContext 0 False))
+    (ParserContext 0))
     resourceName source
 
 locatedRawResourceWithEnvelope
@@ -595,7 +593,7 @@ maybeThenExpressionFrom operand = do
   continuation <- optional $ do
     constructor <-
       MaybeThen <$ continuedOperator AST.MaybeThenOperator
-        <|> listMaybeThen <$ unstoppedListMaybeThenOperator
+        <|> listMaybeThen <$ continuedOperator AST.ListMaybeThenOperator
     branch <- maybeThenExpressionFrom operand
     pure (constructor, branch)
   pure (case continuation of
@@ -611,15 +609,6 @@ listMaybeThen values function =
     (FunctionApplication
       function
       (IdentifierReference (IdentifierString "'it")))
-
--- A trailing expression hole in declarative syntax binds before @!?@. This
--- lets forms such as @val values !? function@ sequence the result of the
--- syntax application instead of capturing the sequencing inside its hole.
-unstoppedListMaybeThenOperator :: Parser Text
-unstoppedListMaybeThenOperator = do
-  stopped <- listMaybeThenStopped <$> ask
-  guard (not stopped)
-  continuedOperator AST.ListMaybeThenOperator
 
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
@@ -957,7 +946,7 @@ sourceImports = fmap (map snd) . sourceImportInvocations
 sourceImportInvocations :: String -> Either ParseFailure [(Bool, String)]
 sourceImportInvocations source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan
-    (ParserContext 0 False))
+    (ParserContext 0))
     "<imports>" (Text.pack source)
   where
     invocations (Import allNames path) = [(allNames, path)]
@@ -1136,12 +1125,7 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    (do
-      value <- local
-        (\context -> context
-          { listMaybeThenStopped = False })
-        (sequenceExpression <$> elements)
-      pure (SyntaxBoundary value))
+    (SyntaxBoundary . sequenceExpression <$> elements)
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]

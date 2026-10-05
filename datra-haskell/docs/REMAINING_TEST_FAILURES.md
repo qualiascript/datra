@@ -1,6 +1,6 @@
 # Remaining Test Failures
 
-This document records the 13 failures that remained after fixing imported
+This document records the 12 failures that remain after fixing imported
 standard-library syntax precedence, import-all value resolution, and the CLI
 canonical-AST golden file. The failures are listed in test-suite order.
 
@@ -40,26 +40,7 @@ The reconstructed function is invoked with `()`.
 AtlasMapFederationOperationRefuted AtlasMapFederationSpecificationHasNoMatchingMember
 ```
 
-## 2. Optional number closure avoids nested module reconstruction
-
-**Test:** `canonical function reconstruction / optional number closure avoids nested module reconstruction`
-
-**Input:**
-
-```datra
-import "numbers"
-yield Numbers.max
-```
-
-**Expected output:** The rendered closure contains `val 'it !? fun` directly,
-contains one shared binding each for `'from` and `'range`, and contains none of
-the obsolete `values`, `maximum`, `minimum`, or `next` assignments.
-
-**Actual output:** The shared dependency assertions pass, but the closure
-contains `(val 'it) !? fun`. The extra parentheses cause the compact-split
-assertion to fail.
-
-## 3. Recursive result type mismatch
+## 2. Recursive result type mismatch
 
 **Test:** `functions / recursion / recursive result type mismatch`
 
@@ -83,7 +64,7 @@ SourceEvaluationFailure (FunctionEvaluationFailed NoApplicableFunctionAlternativ
 SourceEvaluationFailure (AtlasMapFederationOperationRefuted AtlasMapFederationSpecificationHasNoMatchingMember)
 ```
 
-## 4. Coercion does not erase skip typing identity
+## 3. Coercion does not erase skip typing identity
 
 **Test:** `Datra type laws / skip numerical coercion / coercion does not erase skip typing identity`
 
@@ -109,7 +90,7 @@ expecting "!?", "%>", "->", "<<", "<<<", "<=", "<~", "=/=", ">=", ">>",
 '?', '@', '[', '^', '|', or end of line
 ```
 
-## 5. A total block's yielded value is its only member
+## 4. A total block's yielded value is its only member
 
 **Test:** `Datra type laws / total begin/yield blocks / its yielded value is its only member`
 
@@ -131,7 +112,7 @@ true
 SourceEvaluationFailure (ExpectedBooleanOperand RightOperand FunctionValueKind)
 ```
 
-## 6. Standard-library syntax and string-template decoding
+## 5. Standard-library syntax and string-template decoding
 
 **Test:** `cross-feature regression programs / standard-library syntax and string-template decoding`
 
@@ -159,7 +140,7 @@ assert %("from 2 to 5" ~> "from %Int to %Int")[2] of Int
 SourceEvaluationFailure (UnknownIdentifier "value")
 ```
 
-## 7. Right overload reverses the operands
+## 6. Right overload reverses the operands
 
 **Test:** `overloading and assertions / overload operators / right overload reverses the operands`
 
@@ -181,7 +162,7 @@ a? : Nat := 5
 5
 ```
 
-## 8. Reverse safe overload reverses the operands
+## 7. Reverse safe overload reverses the operands
 
 **Test:** `overloading and assertions / overload operators / reverse safe overload reverses the operands`
 
@@ -203,7 +184,7 @@ yield "a" >>> {x? : Nat := 2; Str}
 $a
 ```
 
-## 9. Fixed-point reverse specification
+## 8. Fixed-point reverse specification
 
 **Test:** `standard library and declarative syntax / inline fixed points / fixed point reverse specification`
 
@@ -225,7 +206,7 @@ yield Nat <~ (fun 5)
 Nat
 ```
 
-## 10. Unnamed `NatLimit` functions accept finite and limit values
+## 9. Unnamed `NatLimit` functions accept finite and limit values
 
 **Test:** `standard library and declarative syntax / integer limits and infinity / types / unnamed NatLimit functions accept finite and limit values`
 
@@ -248,7 +229,7 @@ yield (identity 3; identity Infinity)
 SourceEvaluationFailure (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 ```
 
-## 11. Finite and infinite values inhabit their limit types
+## 10. Finite and infinite values inhabit their limit types
 
 **Test:** `standard library and declarative syntax / integer limits and infinity / types / finite and infinite values inhabit their limit types`
 
@@ -276,7 +257,7 @@ yield (0 of Nat; 23 of Nat; not (-1 of Nat);
 
 Only the fourth result differs: `0 of NatLimit` evaluates to `false`.
 
-## 12. A template may begin with a postfix operand hole
+## 11. A template may begin with a postfix operand hole
 
 **Test:** `standard library and declarative syntax / declared patterns / a template may begin with a postfix operand hole`
 
@@ -300,7 +281,7 @@ unexpected end of input
 expecting "!~", "...", '"', '$', '%', '(', '*', '{', '~', or integer
 ```
 
-## 13. One function accepts an inhabited list of templates
+## 12. One function accepts an inhabited list of templates
 
 **Test:** `standard library and declarative syntax / declared patterns / one function accepts an inhabited list of templates`
 
