@@ -824,6 +824,13 @@ regressionTests = do
       (AST.and (ref "false") (AST.not (ref "true")))
       (ref "true"))
   assertAstOutput
+    "parenthesized blocks stay inside a nested Boolean operand"
+    "(5 of (begin yield 5)) and not (6 of (begin yield 5))"
+    (AST.and
+      (AST.subfederation (natural 5) (Begin [] (natural 5)))
+      (AST.not
+        (AST.subfederation (natural 6) (Begin [] (natural 5)))))
+  assertAstOutput
     "federation equality"
     "1 = 1"
     (AST.equal (natural 1) (natural 1))

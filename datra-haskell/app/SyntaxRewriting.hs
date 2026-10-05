@@ -593,6 +593,9 @@ containsBlockStart :: RewriteEnvironment -> Expression -> Bool
 containsBlockStart environment value = any containsStart
   (value : concatMap descendants (expressionChildren value))
   where
+    -- Parentheses are an explicit syntax boundary. A block nested inside them
+    -- is the enclosed operand, not a continuation of the surrounding spine.
+    descendants boundary@SyntaxBoundary {} = [boundary]
     descendants child = child : concatMap descendants (expressionChildren child)
     containsStart expressionValue = any (starts expressionValue)
       (rewriteRules environment)
