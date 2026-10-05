@@ -143,7 +143,10 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
         , Right rules <- [moduleSyntaxRules requested moduleSource]
         ]
       qualifiedImportedRules = concat
-        [ map (qualifySyntaxRule namespace) rules
+        [ [ qualified
+          | rule <- rules
+          , Just qualified <- [qualifySyntaxRule namespace rule]
+          ]
         | (_, namespace, rules) <- importedRules
         ]
       explicitlyImportedRules = concat
@@ -383,7 +386,12 @@ defaultModuleEnvironment = do
     Just (ImportedBinding _ _ importedValue _) -> Right importedValue
     _ -> Left (ModuleEvaluationFailed (ModuleNotLoaded standardLibraryFileName))
   rules <- moduleSyntaxRulesFromValue standardLibraryFileName value
-  pure (scope, rules <> map (qualifySyntaxRule namespace) rules)
+  let qualifiedRules =
+        [ qualified
+        | rule <- rules
+        , Just qualified <- [qualifySyntaxRule namespace rule]
+        ]
+  pure (scope, rules <> qualifiedRules)
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
