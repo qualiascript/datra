@@ -35,6 +35,7 @@ import SyntaxTemplateMatching
 data SyntaxRewriteFailure
   = MissingImplicitBlockResult
   | InvalidPrivateOptionalArgumentName
+  | AmbiguousBareSkipApplication
   | SyntaxRewriteMatchFailure SyntaxTemplateMatchFailure
   deriving (Eq, Show)
 
@@ -455,6 +456,7 @@ rewriteChildren capture environment value =
         Just rewritten -> pure (rebuild rewritten)
         Nothing -> traverseExpressionChildren
           (rewriteStandalone capture environment) value
+    FunctionApplication _ Skip -> Left AmbiguousBareSkipApplication
     FunctionApplication {} -> do
       embedded <- rewriteEmbeddedApplication capture environment value
       case embedded of

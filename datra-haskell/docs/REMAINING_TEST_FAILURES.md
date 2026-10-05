@@ -1,6 +1,6 @@
 # Remaining Test Failures
 
-This document records the 10 failures that remain after fixing imported
+This document records the 9 failures that remain after fixing imported
 standard-library syntax precedence, import-all value resolution, and the CLI
 canonical-AST golden file. The failures are listed in test-suite order.
 
@@ -16,33 +16,7 @@ the `numbers` module are resolved. The two CLI golden-file failures were also
 resolved separately and passed focused retesting. The following failures are
 still outstanding.
 
-## 1. Coercion does not erase skip typing identity
-
-**Test:** `Datra type laws / skip numerical coercion / coercion does not erase skip typing identity`
-
-**Input:**
-
-```datra
-not (* of Nat) and not (1 of *)
-```
-
-**Expected output:**
-
-```text
-true
-```
-
-**Actual output:** A source parse failure at line 1, column 25, on the opening
-parenthesis after the second `not`:
-
-```text
-unexpected '('
-expecting "!?", "%>", "->", "<<", "<<<", "<=", "<~", "=/=", ">=", ">>",
-">>>", "??", "~>", '!', ')', '*', '+', ',', '-', '.', ';', '<', '=', '>',
-'?', '@', '[', '^', '|', or end of line
-```
-
-## 2. A total block's yielded value is its only member
+## 1. A total block's yielded value is its only member
 
 **Test:** `Datra type laws / total begin/yield blocks / its yielded value is its only member`
 
@@ -64,7 +38,7 @@ true
 SourceEvaluationFailure (ExpectedBooleanOperand RightOperand FunctionValueKind)
 ```
 
-## 3. Standard-library syntax and string-template decoding
+## 2. Standard-library syntax and string-template decoding
 
 **Test:** `cross-feature regression programs / standard-library syntax and string-template decoding`
 
@@ -92,7 +66,7 @@ assert %("from 2 to 5" ~> "from %Int to %Int")[2] of Int
 SourceEvaluationFailure (UnknownIdentifier "value")
 ```
 
-## 4. Right overload reverses the operands
+## 3. Right overload reverses the operands
 
 **Test:** `overloading and assertions / overload operators / right overload reverses the operands`
 
@@ -114,7 +88,7 @@ a? : Nat := 5
 5
 ```
 
-## 5. Reverse safe overload reverses the operands
+## 4. Reverse safe overload reverses the operands
 
 **Test:** `overloading and assertions / overload operators / reverse safe overload reverses the operands`
 
@@ -136,7 +110,7 @@ yield "a" >>> {x? : Nat := 2; Str}
 $a
 ```
 
-## 6. Fixed-point reverse specification
+## 5. Fixed-point reverse specification
 
 **Test:** `standard library and declarative syntax / inline fixed points / fixed point reverse specification`
 
@@ -158,7 +132,7 @@ yield Nat <~ (fun 5)
 Nat
 ```
 
-## 7. Unnamed `NatLimit` functions accept finite and limit values
+## 6. Unnamed `NatLimit` functions accept finite and limit values
 
 **Test:** `standard library and declarative syntax / integer limits and infinity / types / unnamed NatLimit functions accept finite and limit values`
 
@@ -181,7 +155,7 @@ yield (identity 3; identity Infinity)
 SourceEvaluationFailure (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 ```
 
-## 8. Finite and infinite values inhabit their limit types
+## 7. Finite and infinite values inhabit their limit types
 
 **Test:** `standard library and declarative syntax / integer limits and infinity / types / finite and infinite values inhabit their limit types`
 
@@ -209,7 +183,7 @@ yield (0 of Nat; 23 of Nat; not (-1 of Nat);
 
 Only the fourth result differs: `0 of NatLimit` evaluates to `false`.
 
-## 9. A template may begin with a postfix operand hole
+## 8. A template may begin with a postfix operand hole
 
 **Test:** `standard library and declarative syntax / declared patterns / a template may begin with a postfix operand hole`
 
@@ -233,7 +207,7 @@ unexpected end of input
 expecting "!~", "...", '"', '$', '%', '(', '*', '{', '~', or integer
 ```
 
-## 10. One function accepts an inhabited list of templates
+## 9. One function accepts an inhabited list of templates
 
 **Test:** `standard library and declarative syntax / declared patterns / one function accepts an inhabited list of templates`
 

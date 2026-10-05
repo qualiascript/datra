@@ -832,6 +832,10 @@ regressionTests = do
     "1 of Int"
     (AST.subfederation (natural 1) (ref "Int"))
   assertAstOutput
+    "a trailing skip can be a declared syntax operand"
+    "1 of *"
+    (AST.subfederation (natural 1) Skip)
+  assertAstOutput
     "equality binds inside a subfederation check"
     "1 of Int = true"
     (AST.subfederation

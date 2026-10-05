@@ -884,6 +884,7 @@ term = do
       , argumentMap
       , parenthesizedExpression
       , valueOfExpression
+      , trailingApplicationSkip
       , prefixedApplicationArgument
       , Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom)
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -892,6 +893,16 @@ term = do
           externalExpression
       , identifierReference
       ])
+
+-- At an expression boundary, a bare @*@ cannot be multiplication because it
+-- has no right operand. Keep it in the neutral application spine so declared
+-- syntax such as @value of *@ can capture it as an expression hole. Ambiguous
+-- arithmetic positions continue to require the grouped skip spelling @(*)@.
+trailingApplicationSkip :: Parser Expression
+trailingApplicationSkip = try $ do
+  _ <- symbol "*"
+  lookAhead (expressionEnd <|> void eol)
+  pure Skip
 
 -- Prefix-only operators remain valid at the start of an application operand.
 -- Reading them here preserves that structural boundary for later declarative
