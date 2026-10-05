@@ -53,7 +53,7 @@ data Operator
   | ReverseSafeOverloadOperator
   | DependentIdentifierTypeOperator
   | AssignmentOperator
-  deriving (Eq, Show)
+  deriving (Bounded, Enum, Eq, Show)
 
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String

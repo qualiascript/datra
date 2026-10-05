@@ -175,9 +175,13 @@ rewrite mode depth reserved active resolver bound expression =
     block constructor entries result = do
       let names = concatMap bindingNames entries
           -- Source validity and declaration ordering have already been checked
-          -- by the evaluator; bound names must never become captured imports.
+          -- by the evaluator. Every block also binds its declaration map as
+          -- @'this@ unless an explicit fixed point already occupies that name;
+          -- either way it is local to the reconstructed expression and must
+          -- never become a captured import.
           inside = rewrite mode depth reserved active
-            resolver { resolveScopeIndex = const Nothing } (names <> bound)
+            resolver { resolveScopeIndex = const Nothing }
+            ("'this" : names <> bound)
       constructor <$> traverse inside entries <*> inside result
 
 -- A retained begin block is itself a singleton type.  Selecting the result

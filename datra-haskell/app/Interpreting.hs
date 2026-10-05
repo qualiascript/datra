@@ -380,7 +380,8 @@ defaultModuleEnvironment = do
   source <- defaultModuleSource
   let base = [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
-  scope <- importLoadedModule base True source
+  importedScope <- importLoadedModule base True source
+  let scope = map retainImplicitStandardPresentation importedScope
   namespace <- moduleName source
   value <- case lookup namespace scope of
     Just (ImportedBinding _ _ importedValue _) -> Right importedValue
@@ -392,6 +393,19 @@ defaultModuleEnvironment = do
         , Just qualified <- [qualifySyntaxRule namespace rule]
         ]
   pure (scope, rules <> qualifiedRules)
+
+-- Explicit @import all@ exposes values transparently, but the implicitly
+-- available standard library also defines the language's canonical source
+-- spellings. Retain its inner named binding so annotations and specifications
+-- reconstruct as @Nat@ or @Int@ rather than their expanded definitions.
+retainImplicitStandardPresentation :: (String, Binding) -> (String, Binding)
+retainImplicitStandardPresentation (name, binding) =
+  (name, retain binding)
+  where
+    retain (QualifiedBinding _ target) = target
+    retain (ShadowingConsistentBinding target) =
+      ShadowingConsistentBinding (retain target)
+    retain target = target
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -750,6 +764,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       (MapSequence expressions)
       expressions
     SyntaxBoundary inner -> interpret inner
+    ReverseMapSpecification target source ->
+      interpret (MapSpecification source target)
+    ReverseOverload supplied defaults ->
+      interpret (Overload defaults supplied)
+    ReverseSafeOverload supplied defaults ->
+      interpret (SafeOverload defaults supplied)
     MapExpansion left right ->
       interpretAtlasMapWithBuilder
         makeAtlasExpansion
@@ -790,14 +810,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     MaybeThen optional branch -> do
       optionalResult <- interpret optional
       case interpretedSemanticResult optionalResult of
-        CanonicalAssignment "Nothing" _ _ -> pure nothingValue
         CanonicalAssignment "Just" _ _ -> do
           result <- evalInScopeWith reduction
             (scopeBinding "'it" (ImplicitBinding optionalResult) : scope)
             resolving
             branch
           liftMaybeResult result
-        _ -> Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
+        _ -> do
+          absent <- isStandardNothing optionalResult
+          if absent
+            then standardNothingValue
+            else Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
     Conditional condition consequent alternative -> do
       conditionValue <- interpret condition
       conditionFlag <- booleanCondition conditionValue
@@ -1081,9 +1104,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       ordering <- compareIntegerLimitValues leftValue rightValue
       pure (booleanValue (predicate ordering))
     liftMaybeResult result = case interpretedSemanticResult result of
-      CanonicalAssignment "Nothing" _ _ -> pure result
       CanonicalAssignment "Just" _ _ -> pure result
-      _ -> optionalValue result >>= contextuallySpecify result
+      _ -> do
+        absent <- isStandardNothing result
+        if absent
+          then standardNothingValue
+          else standardOptionalValue result >>= contextuallySpecify result
     unconsList value = do
       count <- maybe
         (Left (FunctionEvaluationFailed FunctionArgumentsRequireFinitePages))
@@ -1091,14 +1117,23 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap value)))
       if count == 0
-        then pure nothingValue
+        then standardNothingValue
         else do
           headValue <- accessValues value (naturalValue 0)
           tailRange <- naturalRangeUpwardsValue 1
           tailValue <- accessValues value tailRange
           let pair = makeAtlasMap 2
                 (map (coalizeMapMemberAt 2) [headValue, tailValue])
-          optionalValue pair >>= contextuallySpecify pair
+          standardOptionalValue pair >>= contextuallySpecify pair
+    standardNothingValue =
+      interpret (IdentifierReference (IdentifierString "nothing"))
+    isStandardNothing value = do
+      target <- standardNothingValue
+      subfederationValues value target >>= booleanCondition
+    standardOptionalValue value = do
+      constructor <- interpret (IdentifierReference (IdentifierString "Maybe"))
+      input <- functionArgumentValue value
+      applyFunction reduction constructor input
     evaluateBlock source bindings result = do
       let origins = canonicalDependencyNames bindings result
           reconstructionScope = if null origins then scope
@@ -1211,7 +1246,12 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
 
     resolve (NamedBinding dependency binding) =
       withCanonicalReference [dependency] name <$> resolve binding
-    resolve (QualifiedBinding _ binding) = resolve binding
+    -- An import-all binding keeps its qualified origin for dependency
+    -- reconstruction, but ordinary unqualified lookup denotes the exported
+    -- value itself. Retaining the nested NamedBinding presentation here makes
+    -- @yield x@ render as @x@ instead of the value exported by the module.
+    resolve (QualifiedBinding _ binding) =
+      withoutCanonicalPresentation <$> resolve binding
     resolve (ShadowingConsistentBinding binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
     resolve (ImplicitBinding value) = Right value
@@ -2116,7 +2156,11 @@ createFunction reduction captured resolving
         bodyScope <- importScope localScope [] bindings
         value <- evalInScopeWith invocationReduction bodyScope [] result
         let escaped = withoutCanonicalDependencies
-              (maybe [] pure (scopePresentationDependency bodyScope)) value
+              ( nub
+                  ( scopePresentationDependencies bodyScope
+                      <> scopePresentationDependencies captured)
+              )
+              value
         dynamicOutput <- evalInScopeWith invocationReduction
           (dependentScope <> captured) resolving writtenOutput
         contextuallySpecify escaped dynamicOutput

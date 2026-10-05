@@ -122,6 +122,12 @@ regressionTests = do
         [ SyntaxHole (ValueSyntaxHole "Int")
         , SyntaxLiteral "++"
         ])
+  assert "the neutral reader retains an unknown postfix symbolic literal"
+    (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
+      Right (_, Located _ parsed) ->
+        parsed == SyntaxBoundary
+          (FunctionApplication (natural 2) (ref "++"))
+      Left _ -> False)
   let syntaxControl implementation = SyntaxRule
         { syntaxName = "test-control"
         , syntaxTemplate = SyntaxTemplate []
@@ -608,6 +614,13 @@ regressionTests = do
     (MapSpecification identityBody
       (SyntaxType (Extract (AsciiStringLiteral "step $Int next"))
         (FunctionType (ref "Int") (ref "Int"))))
+  let optionalIntInput = ArgumentMap
+        [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
+  assertParsed "a declared syntax signature accepts a multiline body"
+    "%\"step $Nat next\" %> ({value?:Int} -> Int) do\n  yield value"
+    (MapSpecification identityBody
+      (SyntaxType (Extract (AsciiStringLiteral "step $Nat next"))
+        (FunctionType optionalIntInput (ref "Int"))))
   assertParsed "%> accepts an ordinary inhabited template list"
     "%(\"$Int++\"; \"increment $Int\") %> (Int -> Int)"
     (SyntaxType
@@ -824,6 +837,13 @@ regressionTests = do
       (AST.and (ref "false") (AST.not (ref "true")))
       (ref "true"))
   assertAstOutput
+    "parenthesized blocks stay inside a nested Boolean operand"
+    "(5 of (begin yield 5)) and not (6 of (begin yield 5))"
+    (AST.and
+      (AST.subfederation (natural 5) (Begin [] (natural 5)))
+      (AST.not
+        (AST.subfederation (natural 6) (Begin [] (natural 5)))))
+  assertAstOutput
     "federation equality"
     "1 = 1"
     (AST.equal (natural 1) (natural 1))
@@ -831,6 +851,10 @@ regressionTests = do
     "subfederation morphism check"
     "1 of Int"
     (AST.subfederation (natural 1) (ref "Int"))
+  assertAstOutput
+    "a trailing skip can be a declared syntax operand"
+    "1 of *"
+    (AST.subfederation (natural 1) Skip)
   assertAstOutput
     "equality binds inside a subfederation check"
     "1 of Int = true"
@@ -870,12 +894,11 @@ regressionTests = do
     (MaybeThen
       (ListUncons (ref "values"))
       (FunctionApplication (ref "maximum") (ref "'it")))
-  assertAstOutput "a terminal syntax hole greedily captures list sequencing"
+  assertAstOutput "list sequencing binds after val without grouping"
     "val values !? maximum"
-    (StripIdentifiers
-      (MaybeThen
-        (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (ref "'it"))))
+    (MaybeThen
+      (ListUncons (StripIdentifiers (ref "values")))
+      (FunctionApplication (ref "maximum") (ref "'it")))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -891,16 +914,15 @@ regressionTests = do
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
     ("val values !? fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
-    (StripIdentifiers
-      (MaybeThen
-        (ListUncons (ref "values"))
-        (FunctionApplication inlineLimitFunction (ref "'it"))))
-  assert "source rendering groups val before outer list sequencing"
+    (MaybeThen
+      (ListUncons (StripIdentifiers (ref "values")))
+      (FunctionApplication inlineLimitFunction (ref "'it")))
+  assert "list sequencing source rendering keeps the compact val form"
     ( renderSourceExpression
         (MaybeThen
           (ListUncons (StripIdentifiers (ref "values")))
           (FunctionApplication (ref "maximum") (ref "'it")))
-        == "(val values) !? maximum"
+        == "val values !? maximum"
     )
   assertAstOutput "grouping keeps list sequencing inside val"
     "val (values !? maximum)"
@@ -2165,6 +2187,26 @@ assertResourceEnvelopes = do
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail (parseFailureMessage message))
     [ ("a : 6\nyield a", Program [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    , ( "yield 5 >> {a? : Nat := 3}"
+      , Program []
+          (Overload
+            (ArgumentMap
+              [OptionalType (AST.assignment "a" (ref "Nat") (natural 3))])
+            (natural 5))
+      )
+    , ( "yield \"a\" >>> {x? : Nat := 2; Str}"
+      , Program []
+          (SafeOverload
+            (ArgumentMap
+              [ OptionalType
+                  (AST.assignment "x" (ref "Nat") (natural 2))
+              , ref "Str"
+              ])
+            (AST.asciiString "a"))
+      )
+    , ( "yield Nat <~ (fun 5)"
+      , Program [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
+      )
     , ("a : 6", Program [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
     , ("", Program [] (AtlasMap []))
     ]

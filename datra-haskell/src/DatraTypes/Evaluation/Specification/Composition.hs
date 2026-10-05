@@ -231,6 +231,12 @@ selectCoalizationMember source operand =
     sourceRetainsCarrierBoundary =
       valueIsCoalition source
         || valueProducesStrings source
+        -- Coalization keeps a semicolon sequence as one positional value, but
+        -- a comma concatenation still denotes the union of its carriers. This
+        -- is how @from 0 to Infinity@ admits both its finite range and limit.
+        || case interpretedForm operand of
+          ConcatenatedMapForm _ _ -> True
+          _ -> False
         || case interpretedForm source of
           SequentialMapForm -> True
           ExpansionMapForm _ _ -> True

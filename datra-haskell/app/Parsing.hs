@@ -45,6 +45,9 @@ import DatraLanguage.AST
       , MapSpecification
       , Overload
       , SafeOverload
+      , ReverseMapSpecification
+      , ReverseOverload
+      , ReverseSafeOverload
       , IdentifierOperation
       , IdentifierTemplateOperation
       , Multiplication
@@ -157,9 +160,7 @@ import Text.Megaparsec.Char.Lexer qualified as Lexer
 -- Lexical parser context is scoped with ReaderT, so backtracking cannot leak
 -- block references or interpolation comment boundaries into surrounding code.
 data ParserContext = ParserContext
-  { interpolationDepth :: Int
-  , listMaybeThenStopped :: Bool
-  }
+  { interpolationDepth :: Int }
 
 type Parser = ReaderT ParserContext (Parsec Void Text)
 
@@ -197,7 +198,7 @@ parseDatraRawLocatedWithSourceName
 parseDatraRawLocatedWithSourceName resourceName source =
   Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
     (runReaderT locatedRawResourceWithEnvelope
-      (ParserContext 0 False))
+      (ParserContext 0))
     resourceName (Text.pack source))
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
@@ -226,7 +227,7 @@ runDatraParser
   -> Either (ParseErrorBundle Text Void) value
 runDatraParser parser resourceName source =
   runParser (runReaderT parser
-    (ParserContext 0 False))
+    (ParserContext 0))
     resourceName source
 
 locatedRawResourceWithEnvelope
@@ -577,9 +578,9 @@ expressionWith operand = do
   pure
     (case maybeSource of
       Nothing -> target
-      Just source -> MapSpecification
-        (SyntaxBoundary source)
-        target)
+      Just source -> ReverseMapSpecification
+        target
+        (SyntaxBoundary source))
 
 -- Maybe sequencing is deliberately low-precedence and right-associative so
 -- its lazy branch can contain a complete function or map expression. The
@@ -595,7 +596,7 @@ maybeThenExpressionFrom operand = do
   continuation <- optional $ do
     constructor <-
       MaybeThen <$ continuedOperator AST.MaybeThenOperator
-        <|> listMaybeThen <$ unstoppedListMaybeThenOperator
+        <|> listMaybeThen <$ continuedOperator AST.ListMaybeThenOperator
     branch <- maybeThenExpressionFrom operand
     pure (constructor, branch)
   pure (case continuation of
@@ -611,15 +612,6 @@ listMaybeThen values function =
     (FunctionApplication
       function
       (IdentifierReference (IdentifierString "'it")))
-
--- A trailing expression hole in declarative syntax binds before @!?@. This
--- lets forms such as @val values !? function@ sequence the result of the
--- syntax application instead of capturing the sequencing inside its hole.
-unstoppedListMaybeThenOperator :: Parser Text
-unstoppedListMaybeThenOperator = do
-  stopped <- listMaybeThenStopped <$> ask
-  guard (not stopped)
-  continuedOperator AST.ListMaybeThenOperator
 
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
@@ -895,14 +887,26 @@ term = do
       , argumentMap
       , parenthesizedExpression
       , valueOfExpression
+      , trailingApplicationSkip
       , prefixedApplicationArgument
       , Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom)
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , do
           guard (not (acceptsFunctionBody function))
           externalExpression
+      , symbolicSyntaxLiteral
       , identifierReference
       ])
+
+-- At an expression boundary, a bare @*@ cannot be multiplication because it
+-- has no right operand. Keep it in the neutral application spine so declared
+-- syntax such as @value of *@ can capture it as an expression hole. Ambiguous
+-- arithmetic positions continue to require the grouped skip spelling @(*)@.
+trailingApplicationSkip :: Parser Expression
+trailingApplicationSkip = try $ do
+  _ <- symbol "*"
+  lookAhead (expressionEnd <|> void eol)
+  pure Skip
 
 -- Prefix-only operators remain valid at the start of an application operand.
 -- Reading them here preserves that structural boundary for later declarative
@@ -934,6 +938,38 @@ termAtom =
     , identifierReference
     ]
 
+-- Declarative syntax is discovered only after the complete resource has been
+-- read, so the neutral reader must retain symbolic words that are not core
+-- operators when they follow an already-parsed operand. Maximal-munch keeps
+-- an adjacent spelling such as @2++@ as the application phrase @2 ++@; the
+-- later syntax pass alone decides whether a visible postfix/infix template
+-- gives that phrase meaning. Exact core tokens remain owned by their ordinary
+-- grammar paths, and unknown prefix symbols remain parse errors.
+symbolicSyntaxLiteral :: Parser Expression
+symbolicSyntaxLiteral = lexeme . try $ do
+  literal <- some (satisfy isSymbolicSyntaxCharacter)
+  guard (literal `notElem` coreSymbolicTokens)
+  pure (IdentifierReference (IdentifierString literal))
+
+isSymbolicSyntaxCharacter :: Char -> Bool
+isSymbolicSyntaxCharacter character =
+  isAsciiCharacter character
+    && not (isIdentifierCharacter character)
+    -- Symbolic template operators currently cannot contain whitespace; map or
+    -- grouping delimiters @(){}[];@; comma or dot; string introducers @"$@;
+    -- the comment marker @#@; or backslash. Comma and dot in particular remain
+    -- structural even when repeated, because accepting them here would turn
+    -- malformed concatenations, accesses, and ranges into declarative calls.
+    && character `notElem` (" \t\r\n(){}[];,.\"#$\\" :: String)
+
+coreSymbolicTokens :: [String]
+coreSymbolicTokens = AST.ellipsisSymbol : "<~" :
+  [ symbolText
+  | operator <- [minBound .. maxBound]
+  , Just symbolText <- [AST.operatorSourceSymbol operator]
+  , any (not . isIdentifierCharacter) symbolText
+  ]
+
 -- The skip atom and multiplication share @*@. A bare skip can participate in
 -- every unambiguous expression position, but multiplication requires explicit
 -- grouping on each skip side: @(*) * 7@ and @7 * (*)@.
@@ -957,7 +993,7 @@ sourceImports = fmap (map snd) . sourceImportInvocations
 sourceImportInvocations :: String -> Either ParseFailure [(Bool, String)]
 sourceImportInvocations source = Bifunctor.first (ParseFailure . errorBundlePretty) $
   runParser (runReaderT scan
-    (ParserContext 0 False))
+    (ParserContext 0))
     "<imports>" (Text.pack source)
   where
     invocations (Import allNames path) = [(allNames, path)]
@@ -1136,12 +1172,7 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    (do
-      value <- local
-        (\context -> context
-          { listMaybeThenStopped = False })
-        (sequenceExpression <$> elements)
-      pure (SyntaxBoundary value))
+    (SyntaxBoundary . sequenceExpression <$> elements)
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
@@ -1223,9 +1254,11 @@ mapAccessAndSpecificationOperators =
   [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
   , InfixL (SafeOverload <$ continuedOperator AST.SafeOverloadOperator)
   , InfixL
-      (flip SafeOverload <$ continuedOperator AST.ReverseSafeOverloadOperator)
+      (ReverseSafeOverload
+        <$ continuedOperator AST.ReverseSafeOverloadOperator)
   , InfixL (Overload <$ continuedOperator AST.OverloadOperator)
-  , InfixL (flip Overload <$ continuedOperator AST.ReverseOverloadOperator)
+  , InfixL
+      (ReverseOverload <$ continuedOperator AST.ReverseOverloadOperator)
   , InfixL
       (MapSpecification <$ continuedOperator AST.SpecificationOperator)
   ]

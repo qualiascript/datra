@@ -417,7 +417,8 @@ recursionTests =
               , "yield factorial 0"
               ])
             (SourceEvaluationFailure
-              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+              (AtlasMapFederationOperationRefuted
+                AtlasMapFederationSpecificationHasNoMatchingMember))
          , programFailureCase "ordinary declarations cannot see later names"
             "a := b\nb := a\nyield a"
             (SourceEvaluationFailure

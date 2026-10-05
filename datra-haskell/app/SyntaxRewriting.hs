@@ -35,6 +35,7 @@ import SyntaxTemplateMatching
 data SyntaxRewriteFailure
   = MissingImplicitBlockResult
   | InvalidPrivateOptionalArgumentName
+  | AmbiguousBareSkipApplication
   | SyntaxRewriteMatchFailure SyntaxTemplateMatchFailure
   deriving (Eq, Show)
 
@@ -439,6 +440,18 @@ rewriteChildren
   -> Either SyntaxRewriteFailure Expression
 rewriteChildren capture environment value =
   case value of
+    ReverseMapSpecification target source ->
+      MapSpecification
+        <$> rewriteStandalone capture environment source
+        <*> rewriteStandalone capture environment target
+    ReverseOverload supplied defaults ->
+      Overload
+        <$> rewriteStandalone capture environment defaults
+        <*> rewriteStandalone capture environment supplied
+    ReverseSafeOverload supplied defaults ->
+      SafeOverload
+        <$> rewriteStandalone capture environment defaults
+        <*> rewriteStandalone capture environment supplied
     MapAccess (AtlasMap [binder, body]) insertion
       | Just declaration <- dependentBinderDeclaration binder -> do
           rewrittenBinder <- rewriteStandalone capture environment binder
@@ -455,6 +468,7 @@ rewriteChildren capture environment value =
         Just rewritten -> pure (rebuild rewritten)
         Nothing -> traverseExpressionChildren
           (rewriteStandalone capture environment) value
+    FunctionApplication _ Skip -> Left AmbiguousBareSkipApplication
     FunctionApplication {} -> do
       embedded <- rewriteEmbeddedApplication capture environment value
       case embedded of
@@ -591,6 +605,9 @@ containsBlockStart :: RewriteEnvironment -> Expression -> Bool
 containsBlockStart environment value = any containsStart
   (value : concatMap descendants (expressionChildren value))
   where
+    -- Parentheses are an explicit syntax boundary. A block nested inside them
+    -- is the enclosed operand, not a continuation of the surrounding spine.
+    descendants boundary@SyntaxBoundary {} = [boundary]
     descendants child = child : concatMap descendants (expressionChildren child)
     containsStart expressionValue = any (starts expressionValue)
       (rewriteRules environment)
@@ -670,7 +687,7 @@ syntaxCandidates includeConcatenation rule value =
       signedArgumentCandidates rule current
         <> declarationBoundaryCandidates current
         <> rightApplicationCandidates current
-        <> leftBoundaryCandidates current
+        <> leftBoundaryCandidates rule current
         <> rightBoundaryCandidates current
 
     holeLed = case syntaxTemplatePieces (syntaxTemplate rule) of
@@ -684,7 +701,8 @@ ruleLiteralsPresent rule value = all (`isPresentIn` value)
   ]
   where
     isPresentIn literal expressionValue =
-      renderSourceExpression expressionValue == literal
+      matchesLiteral literal expressionValue
+        || renderSourceExpression expressionValue == literal
         || any (isPresentIn literal) (expressionChildren expressionValue)
 
 data OneChild a = OneChild a [a]
@@ -811,11 +829,15 @@ stripTrailingLiteralAssignment value = case value of
 -- A declarative template may begin inside the provisional left operand of an
 -- operator tree while its final hole extends to the enclosing expression
 -- boundary. Preserve the written prefix and move the remaining operator
--- context into that final capture. Explicit container boundaries never reach
--- this function, so reassociation remains local to one parsed expression.
-leftBoundaryCandidates :: Expression -> [Expression]
-leftBoundaryCandidates = descend id
+-- context into that final capture. List-Maybe sequencing is a syntax boundary:
+-- a completed prefix form on its left is sequenced, rather than its final hole
+-- absorbing @!?@. Explicit container boundaries never reach this function, so
+-- reassociation remains local to one parsed expression.
+leftBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
+leftBoundaryCandidates rule = descend id
   where
+    descend _ MaybeThen {}
+      | literalLed = []
     descend wrap current =
       case leftInfixContext current of
         Just (left, rebuild) ->
@@ -828,6 +850,9 @@ leftBoundaryCandidates = descend id
          | position <- [1 .. length phrase - 1]
          , let (prefix, suffix) = splitAt position phrase
          ]
+    literalLed = case syntaxTemplatePieces (syntaxTemplate rule) of
+      SyntaxLiteral {} : _ -> True
+      _ -> False
 
 -- Conversely, a hole-led infix template such as @$_Expr of $_Expr@ may begin
 -- in the provisional right operand. Fold everything preceding its literal
@@ -872,6 +897,11 @@ matchEmbeddedBlock capture environment = matchWithResult id
             matchWithResult wrapResult codomain trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
                 (FunctionType domain rewritten, remaining))
+              Nothing -> Right Nothing
+          SyntaxType templates signature ->
+            matchWithResult wrapResult signature trailing >>= \case
+              Just (rewritten, remaining) -> Right (Just
+                (SyntaxType templates rewritten, remaining))
               Nothing -> Right Nothing
           MapSpecification (SyntaxBoundary source) target ->
             matchWithResult id source trailing >>= \case
@@ -944,6 +974,11 @@ leftInfixContext value = case value of
   MapSpecification left right -> Just (left, (`MapSpecification` right))
   Overload left right -> Just (left, (`Overload` right))
   SafeOverload left right -> Just (left, (`SafeOverload` right))
+  ReverseMapSpecification left right ->
+    Just (left, (`ReverseMapSpecification` right))
+  ReverseOverload left right -> Just (left, (`ReverseOverload` right))
+  ReverseSafeOverload left right ->
+    Just (left, (`ReverseSafeOverload` right))
   SuperEllipsisRange left right -> Just (left, (`SuperEllipsisRange` right))
   _ -> Nothing
 
@@ -967,6 +1002,11 @@ rightInfixContext value = case value of
   MapSpecification left right -> Just (right, MapSpecification left)
   Overload left right -> Just (right, Overload left)
   SafeOverload left right -> Just (right, SafeOverload left)
+  ReverseMapSpecification left right ->
+    Just (right, ReverseMapSpecification left)
+  ReverseOverload left right -> Just (right, ReverseOverload left)
+  ReverseSafeOverload left right ->
+    Just (right, ReverseSafeOverload left)
   SuperEllipsisRange left right -> Just (right, SuperEllipsisRange left)
   _ -> Nothing
 

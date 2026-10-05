@@ -137,6 +137,11 @@ data Expression
   | MapSpecification Expression Expression
   | Overload Expression Expression
   | SafeOverload Expression Expression
+  -- | Transient raw-parser forms retain written operand order until syntax
+  -- rewriting has found source-order block delimiters such as @yield@.
+  | ReverseMapSpecification Expression Expression
+  | ReverseOverload Expression Expression
+  | ReverseSafeOverload Expression Expression
   | IdentifierOperation
       { identifierOperationString :: IdentifierString
       , identifierOperationTypeAnnotation :: Expression
@@ -422,6 +427,12 @@ normalizeExpression (Overload left right) =
   Overload (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (SafeOverload left right) =
   SafeOverload (normalizeExpression left) (normalizeExpression right)
+normalizeExpression (ReverseMapSpecification target source) =
+  MapSpecification (normalizeExpression source) (normalizeExpression target)
+normalizeExpression (ReverseOverload supplied defaults) =
+  Overload (normalizeExpression defaults) (normalizeExpression supplied)
+normalizeExpression (ReverseSafeOverload supplied defaults) =
+  SafeOverload (normalizeExpression defaults) (normalizeExpression supplied)
 normalizeExpression
     (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperation
@@ -575,6 +586,12 @@ lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (Overload left right) = OverloadValue (lower left) (lower right)
 lower (SafeOverload left right) = SafeOverloadValue (lower left) (lower right)
+lower (ReverseMapSpecification target source) =
+  Specify (lower source) (lower target)
+lower (ReverseOverload supplied defaults) =
+  OverloadValue (lower defaults) (lower supplied)
+lower (ReverseSafeOverload supplied defaults) =
+  SafeOverloadValue (lower defaults) (lower supplied)
 lower (IdentifierOperation identifierString typeAnnotation givenValue) =
   IdentifierOperationValue
     identifierString
@@ -1014,6 +1031,10 @@ traverseExpressionChildren visit expression = case expression of
   MapSpecification a b -> MapSpecification <$> visit a <*> visit b
   Overload a b -> Overload <$> visit a <*> visit b
   SafeOverload a b -> SafeOverload <$> visit a <*> visit b
+  ReverseMapSpecification a b ->
+    ReverseMapSpecification <$> visit a <*> visit b
+  ReverseOverload a b -> ReverseOverload <$> visit a <*> visit b
+  ReverseSafeOverload a b -> ReverseSafeOverload <$> visit a <*> visit b
   Program xs y -> Program <$> traverse visit xs <*> visit y
   Begin xs y -> Begin <$> traverse visit xs <*> visit y
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
