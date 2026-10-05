@@ -1211,7 +1211,12 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
 
     resolve (NamedBinding dependency binding) =
       withCanonicalReference [dependency] name <$> resolve binding
-    resolve (QualifiedBinding _ binding) = resolve binding
+    -- An import-all binding keeps its qualified origin for dependency
+    -- reconstruction, but ordinary unqualified lookup denotes the exported
+    -- value itself. Retaining the nested NamedBinding presentation here makes
+    -- @yield x@ render as @x@ instead of the value exported by the module.
+    resolve (QualifiedBinding _ binding) =
+      withoutCanonicalPresentation <$> resolve binding
     resolve (ShadowingConsistentBinding binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
     resolve (ImplicitBinding value) = Right value
