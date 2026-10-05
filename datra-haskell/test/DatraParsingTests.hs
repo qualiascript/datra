@@ -2181,6 +2181,26 @@ assertResourceEnvelopes = do
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail (parseFailureMessage message))
     [ ("a : 6\nyield a", Program [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    , ( "yield 5 >> {a? : Nat := 3}"
+      , Program []
+          (Overload
+            (ArgumentMap
+              [OptionalType (AST.assignment "a" (ref "Nat") (natural 3))])
+            (natural 5))
+      )
+    , ( "yield \"a\" >>> {x? : Nat := 2; Str}"
+      , Program []
+          (SafeOverload
+            (ArgumentMap
+              [ OptionalType
+                  (AST.assignment "x" (ref "Nat") (natural 2))
+              , ref "Str"
+              ])
+            (AST.asciiString "a"))
+      )
+    , ( "yield Nat <~ (fun 5)"
+      , Program [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
+      )
     , ("a : 6", Program [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
     , ("", Program [] (AtlasMap []))
     ]

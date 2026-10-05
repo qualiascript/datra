@@ -53,6 +53,7 @@ yield Std := begin
       (_AST, _AST, _AST -> _AST) !~"datra.if") |
     (%"if $_Expr then $_Expr" %>
       (_AST, _AST -> _AST) !~"datra.ifThen")
+  #NOTE: missing syntax for importing with renaming, which is the behavior of implicit import all
   'import :=
     (%"import %("all") $Str" %>
       (($all; Str) -> ()) !~"datra.importAll") |

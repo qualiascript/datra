@@ -1,6 +1,6 @@
 # Remaining Test Failures
 
-This document records the 7 failures that remain after fixing imported
+This document records the 4 failures that remain after fixing imported
 standard-library syntax precedence, import-all value resolution, and the CLI
 canonical-AST golden file. The failures are listed in test-suite order.
 
@@ -16,73 +16,7 @@ the `numbers` module are resolved. The two CLI golden-file failures were also
 resolved separately and passed focused retesting. The following failures are
 still outstanding.
 
-## 1. Right overload reverses the operands
-
-**Test:** `overloading and assertions / overload operators / right overload reverses the operands`
-
-**Input:**
-
-```datra
-yield 5 >> {a? : Nat := 3}
-```
-
-**Expected output:**
-
-```text
-a? : Nat := 5
-```
-
-**Actual output:**
-
-```text
-5
-```
-
-## 2. Reverse safe overload reverses the operands
-
-**Test:** `overloading and assertions / overload operators / reverse safe overload reverses the operands`
-
-**Input:**
-
-```datra
-yield "a" >>> {x? : Nat := 2; Str}
-```
-
-**Expected output:**
-
-```text
-{x? : Nat := 2; $a}
-```
-
-**Actual output:**
-
-```text
-$a
-```
-
-## 3. Fixed-point reverse specification
-
-**Test:** `standard library and declarative syntax / inline fixed points / fixed point reverse specification`
-
-**Input:**
-
-```datra
-yield Nat <~ (fun 5)
-```
-
-**Expected output:**
-
-```text
-5 ~> Nat
-```
-
-**Actual output:**
-
-```text
-Nat
-```
-
-## 4. Unnamed `NatLimit` functions accept finite and limit values
+## 1. Unnamed `NatLimit` functions accept finite and limit values
 
 **Test:** `standard library and declarative syntax / integer limits and infinity / types / unnamed NatLimit functions accept finite and limit values`
 
@@ -105,7 +39,7 @@ yield (identity 3; identity Infinity)
 SourceEvaluationFailure (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 ```
 
-## 5. Finite and infinite values inhabit their limit types
+## 2. Finite and infinite values inhabit their limit types
 
 **Test:** `standard library and declarative syntax / integer limits and infinity / types / finite and infinite values inhabit their limit types`
 
@@ -133,7 +67,7 @@ yield (0 of Nat; 23 of Nat; not (-1 of Nat);
 
 Only the fourth result differs: `0 of NatLimit` evaluates to `false`.
 
-## 6. A template may begin with a postfix operand hole
+## 3. A template may begin with a postfix operand hole
 
 **Test:** `standard library and declarative syntax / declared patterns / a template may begin with a postfix operand hole`
 
@@ -157,7 +91,7 @@ unexpected end of input
 expecting "!~", "...", '"', '$', '%', '(', '*', '{', '~', or integer
 ```
 
-## 7. One function accepts an inhabited list of templates
+## 4. One function accepts an inhabited list of templates
 
 **Test:** `standard library and declarative syntax / declared patterns / one function accepts an inhabited list of templates`
 

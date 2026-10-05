@@ -440,6 +440,18 @@ rewriteChildren
   -> Either SyntaxRewriteFailure Expression
 rewriteChildren capture environment value =
   case value of
+    ReverseMapSpecification target source ->
+      MapSpecification
+        <$> rewriteStandalone capture environment source
+        <*> rewriteStandalone capture environment target
+    ReverseOverload supplied defaults ->
+      Overload
+        <$> rewriteStandalone capture environment defaults
+        <*> rewriteStandalone capture environment supplied
+    ReverseSafeOverload supplied defaults ->
+      SafeOverload
+        <$> rewriteStandalone capture environment defaults
+        <*> rewriteStandalone capture environment supplied
     MapAccess (AtlasMap [binder, body]) insertion
       | Just declaration <- dependentBinderDeclaration binder -> do
           rewrittenBinder <- rewriteStandalone capture environment binder
@@ -961,6 +973,11 @@ leftInfixContext value = case value of
   MapSpecification left right -> Just (left, (`MapSpecification` right))
   Overload left right -> Just (left, (`Overload` right))
   SafeOverload left right -> Just (left, (`SafeOverload` right))
+  ReverseMapSpecification left right ->
+    Just (left, (`ReverseMapSpecification` right))
+  ReverseOverload left right -> Just (left, (`ReverseOverload` right))
+  ReverseSafeOverload left right ->
+    Just (left, (`ReverseSafeOverload` right))
   SuperEllipsisRange left right -> Just (left, (`SuperEllipsisRange` right))
   _ -> Nothing
 
@@ -984,6 +1001,11 @@ rightInfixContext value = case value of
   MapSpecification left right -> Just (right, MapSpecification left)
   Overload left right -> Just (right, Overload left)
   SafeOverload left right -> Just (right, SafeOverload left)
+  ReverseMapSpecification left right ->
+    Just (right, ReverseMapSpecification left)
+  ReverseOverload left right -> Just (right, ReverseOverload left)
+  ReverseSafeOverload left right ->
+    Just (right, ReverseSafeOverload left)
   SuperEllipsisRange left right -> Just (right, SuperEllipsisRange left)
   _ -> Nothing
 

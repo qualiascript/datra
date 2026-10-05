@@ -45,6 +45,9 @@ import DatraLanguage.AST
       , MapSpecification
       , Overload
       , SafeOverload
+      , ReverseMapSpecification
+      , ReverseOverload
+      , ReverseSafeOverload
       , IdentifierOperation
       , IdentifierTemplateOperation
       , Multiplication
@@ -575,9 +578,9 @@ expressionWith operand = do
   pure
     (case maybeSource of
       Nothing -> target
-      Just source -> MapSpecification
-        (SyntaxBoundary source)
-        target)
+      Just source -> ReverseMapSpecification
+        target
+        (SyntaxBoundary source))
 
 -- Maybe sequencing is deliberately low-precedence and right-associative so
 -- its lazy branch can contain a complete function or map expression. The
@@ -1218,9 +1221,11 @@ mapAccessAndSpecificationOperators =
   [ InfixL (MapAccess <$ continuedOperator AST.AccessOperator)
   , InfixL (SafeOverload <$ continuedOperator AST.SafeOverloadOperator)
   , InfixL
-      (flip SafeOverload <$ continuedOperator AST.ReverseSafeOverloadOperator)
+      (ReverseSafeOverload
+        <$ continuedOperator AST.ReverseSafeOverloadOperator)
   , InfixL (Overload <$ continuedOperator AST.OverloadOperator)
-  , InfixL (flip Overload <$ continuedOperator AST.ReverseOverloadOperator)
+  , InfixL
+      (ReverseOverload <$ continuedOperator AST.ReverseOverloadOperator)
   , InfixL
       (MapSpecification <$ continuedOperator AST.SpecificationOperator)
   ]

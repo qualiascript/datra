@@ -380,7 +380,8 @@ defaultModuleEnvironment = do
   source <- defaultModuleSource
   let base = [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
-  scope <- importLoadedModule base True source
+  importedScope <- importLoadedModule base True source
+  let scope = map retainImplicitStandardPresentation importedScope
   namespace <- moduleName source
   value <- case lookup namespace scope of
     Just (ImportedBinding _ _ importedValue _) -> Right importedValue
@@ -392,6 +393,19 @@ defaultModuleEnvironment = do
         , Just qualified <- [qualifySyntaxRule namespace rule]
         ]
   pure (scope, rules <> qualifiedRules)
+
+-- Explicit @import all@ exposes values transparently, but the implicitly
+-- available standard library also defines the language's canonical source
+-- spellings. Retain its inner named binding so annotations and specifications
+-- reconstruct as @Nat@ or @Int@ rather than their expanded definitions.
+retainImplicitStandardPresentation :: (String, Binding) -> (String, Binding)
+retainImplicitStandardPresentation (name, binding) =
+  (name, retain binding)
+  where
+    retain (QualifiedBinding _ target) = target
+    retain (ShadowingConsistentBinding target) =
+      ShadowingConsistentBinding (retain target)
+    retain target = target
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -750,6 +764,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       (MapSequence expressions)
       expressions
     SyntaxBoundary inner -> interpret inner
+    ReverseMapSpecification target source ->
+      interpret (MapSpecification source target)
+    ReverseOverload supplied defaults ->
+      interpret (Overload defaults supplied)
+    ReverseSafeOverload supplied defaults ->
+      interpret (SafeOverload defaults supplied)
     MapExpansion left right ->
       interpretAtlasMapWithBuilder
         makeAtlasExpansion
