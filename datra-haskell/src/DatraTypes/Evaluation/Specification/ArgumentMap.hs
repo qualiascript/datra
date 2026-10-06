@@ -5,15 +5,20 @@
 -- federation selector is injected so this policy remains independent of the
 -- recursive composition dispatcher.
 module Evaluation.Specification.ArgumentMap
-  ( selectArgumentMapMember ) where
+  ( prepareArgumentMapSource
+  , selectArgumentMapMember
+  ) where
 
 import BooleanType (DatraBoolean (..))
 import Data.List (permutations, sortOn)
 import Evaluation.Coalization (coalizeValue)
+import DatraOrdinal (Ordinal, addOrdinals, finiteOrdinal)
+import Evaluation.Construction (makeExplicit)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , sequenceOperands
   )
+import Evaluation.Map (isEmptyMap, makeAtlasMap)
 import Evaluation.Specification.Decision
 import Evaluation.Value
 
@@ -40,16 +45,43 @@ selectArgumentMapMember select source writtenMembers alternatives =
         DecisionRefuted -> DecisionRefuted
         DecisionUndecidable -> DecisionUndecidable
   where
-    reservations = namedReservationFlags
-      (maybe [source] id (sourceComponents source))
-      writtenMembers
+    reservations = argumentReservations source writtenMembers
     -- Optional slots already expand into the argument map's alternative
     -- federation. Running the explicit permutation validator as well repeats
     -- the same search and can turn branch count into factorial work.
     isAlternativeMember member =
       case interpretedForm member of
         EitherForm _ -> True
+        ConcatenatedMapForm _ _ -> True
         _ -> False
+
+prepareArgumentMapSource
+  :: FederationSelector
+  -> InterpretedValue
+  -> [InterpretedValue]
+  -> InterpretedValue
+  -> InterpretedValue
+prepareArgumentMapSource select source writtenMembers underlying =
+  case select source underlying of
+    DecisionProved _ -> source
+    _ -> positionalArgumentSource
+      (argumentReservations source writtenMembers)
+      source
+
+argumentReservations
+  :: InterpretedValue
+  -> [InterpretedValue]
+  -> [Bool]
+argumentReservations source writtenMembers =
+  namedReservationFlags sourceMembers targetSlots
+  where
+    sourceMembers = maybe [source] id (sourceComponents source)
+    targetSlots = concatMap
+      (argumentTargetSlots
+        (addOrdinals
+          (interpretedMapFinalOrderType (interpretedMap source))
+          (finiteOrdinal 1)))
+      writtenMembers
 
 selectPositionalAlternative
   :: FederationSelector
@@ -83,8 +115,40 @@ selectPositionalAlternative select reservations source target =
                     reservations
                     sourceMembers
                     targetMembers))
-        _ -> selectPositionalSlot
-          select (or reservations) source target
+        _ -> select
+          (positionalArgumentSource reservations source)
+          target
+
+positionalArgumentSource :: [Bool] -> InterpretedValue -> InterpretedValue
+positionalArgumentSource reservations source =
+  case sourceComponents source of
+    Just members
+      | length members == length reservations ->
+          makeAtlasMap
+            (interpretedMapCardinality (interpretedMap source))
+            (zipWith positionalMember reservations members)
+    _ -> positionalMember (or reservations) source
+  where
+    positionalMember reserved member
+      | reserved = member
+      | Just (_, payload) <- sourceIdentifierParts member = payload
+      | otherwise = member
+
+argumentTargetSlots :: Ordinal -> InterpretedValue -> [InterpretedValue]
+argumentTargetSlots probe target
+  | isEmptyMap target = []
+  | otherwise =
+      case interpretedForm target of
+        ConcatenatedMapForm left right ->
+          argumentTargetSlots probe left <> argumentTargetSlots probe right
+        CoalizationForm operand ->
+          maybe [target] id (sequenceOperands operand)
+        DependentSumForm dependent
+          | Just access <- evaluatedDependentSumAccess dependent ->
+              case access (makeExplicit ComputedOrigin probe) of
+                Right projected -> argumentTargetSlots probe projected
+                Left _ -> [target]
+        _ -> maybe [target] id (sequenceOperands target)
 
 -- The named pass is ordered and consumptive: the first source identifier
 -- that is admitted by a remaining target slot claims that slot. Additional

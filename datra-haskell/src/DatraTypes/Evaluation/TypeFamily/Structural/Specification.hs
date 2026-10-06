@@ -27,6 +27,7 @@ import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues)
 import Evaluation.Optional (makeNothing)
 import Evaluation.Specification.Composition (selectFederationMember)
+import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.String (federationUsesWeakToString)
 import Evaluation.Value
@@ -50,6 +51,12 @@ specifyStructural specify decideSubfederation source target
       Left (FunctionEvaluationFailed ExpectedFunctionType)
   | federationUsesWeakToString (interpretedAtlasMapFederation target) =
       Left NoCanonicalStringConversion
+  | ArgumentMapForm writtenMembers underlying <- interpretedForm target
+  , let prepared = ArgumentMap.prepareArgumentMapSource
+          selectFederationMember source writtenMembers underlying
+  , interpretedSemanticResult prepared /= interpretedSemanticResult source =
+      specifyValuesWithoutIdentity
+        specify decideSubfederation prepared target
   | interpretedSemanticResult source == interpretedSemanticResult target =
       Right source
   | otherwise =

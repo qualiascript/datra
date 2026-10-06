@@ -2408,11 +2408,14 @@ contextuallySpecify
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 contextuallySpecify source target = do
-  included <- if interpretedSemanticResult source
+  let prepared = contextualSpecificationSource source target
+  included <- if interpretedSemanticResult prepared
       == interpretedSemanticResult target
     then Right True
-    else subfederationValues source target >>= booleanCondition
-  if included then Right source else contextuallySpecifyValues source target
+    else subfederationValues prepared target >>= booleanCondition
+  if included
+    then Right prepared
+    else contextuallySpecifyValues prepared target
 
 externalValue
   :: Scope

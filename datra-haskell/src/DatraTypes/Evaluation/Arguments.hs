@@ -36,7 +36,7 @@ makeArgumentMapPreservingSingleton
   :: [InterpretedValue]
   -> Either InterpretingError InterpretedValue
 makeArgumentMapPreservingSingleton [] = Right (makeAtlasMap 0 [])
-makeArgumentMapPreservingSingleton members = do
+makeArgumentMapPreservingSingleton originalMembers = do
   union <- makeDistinctUnion
     [ makeAtlasMap 2 ordering
     | choices <- sequence (map argumentAlternatives members)
@@ -55,9 +55,29 @@ makeArgumentMapPreservingSingleton members = do
       (ArgumentMapSemantics
         (all totalPage members) (map interpretedSemantics members)))
   where
+    members = concatMap flattenFiniteConcatenation originalMembers
     totalPage member =
       hasConcreteSource member
         || valueIsCoalition member
+
+flattenFiniteConcatenation :: InterpretedValue -> [InterpretedValue]
+flattenFiniteConcatenation value =
+  case interpretedForm value of
+    ConcatenatedMapForm _ _
+      | not (containsDependentFamily value)
+      , Right [row] <- argumentRows value -> row
+    _ -> [value]
+  where
+    containsDependentFamily current =
+      case interpretedForm current of
+        DependentSumForm _ -> True
+        EitherForm alternatives ->
+          containsDependentFamily (evaluatedEitherLeft alternatives)
+            || containsDependentFamily (evaluatedEitherRight alternatives)
+        ConcatenatedMapForm left right ->
+          containsDependentFamily left || containsDependentFamily right
+        CoalizationForm operand -> containsDependentFamily operand
+        _ -> False
 
 -- The existing Either constructor still checks separation between different
 -- members. Only identical alternatives are removed here.
@@ -121,8 +141,8 @@ argumentPresentations value = case interpretedForm value of
 argumentRows :: InterpretedValue -> Either InterpretingError [[InterpretedValue]]
 argumentRows value = case interpretedForm value of
   ConcatenatedMapForm left right -> do
-    lefts <- argumentRows left
-    rights <- argumentRows right
+    lefts <- concatenationOperandRows left
+    rights <- concatenationOperandRows right
     pure [a <> b | a <- lefts, b <- rights]
   ArgumentMapForm _ underlying ->
     concat <$> traverse argumentRows (argumentInputAlternatives underlying)
@@ -142,6 +162,14 @@ argumentRows value = case interpretedForm value of
           Right
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
         (if count == 0 then [] else [0 .. count - 1])
+
+concatenationOperandRows
+  :: InterpretedValue
+  -> Either InterpretingError [[InterpretedValue]]
+concatenationOperandRows value =
+  case interpretedForm value of
+    CoalizationForm operand -> argumentRows operand
+    _ -> argumentRows value
 
 -- | Overload matching preserves ordinary argument rows but turns the tagged
 -- skip sentinel into an explicit positional hole. Its rank-zero payload is

@@ -125,6 +125,7 @@ module DatraTypes
   , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
+  , isEmptyMap
   , makeArgumentMap
   , makeArgumentMapPreservingSingleton
   , argumentRows
@@ -165,6 +166,7 @@ module DatraTypes
   , validateFunctionInput
   , specifyValues
   , contextuallySpecifyValues
+  , contextualSpecificationSource
   , interpretedValueKind
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -268,6 +270,7 @@ import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
+  , isEmptyMap
   , makeAtlasExpansion
   , makeAtlasMap
   )
@@ -347,6 +350,7 @@ import Evaluation.Identifier
   )
 import Evaluation.Specification
   ( assignIdentifierValues
+  , contextualSpecificationSource
   , contextuallySpecifyValues
   , validateFunctionInput
   , specifyValues

@@ -48,6 +48,7 @@ import Evaluation.Error
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map
   ( concatenateValues
+  , isEmptyMap
   , makeAtlasMap
   , makeAtlasMapPreservingSingleton
   )
@@ -360,11 +361,13 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
     fromComposite next current =
       case interpretedForm current of
         ArgumentMapForm members _ ->
-          mapChildren UnorderedArgumentSchema next members
+          mapChildren unorderedArgumentSchema next members
         ConcatenatedMapForm left right ->
-          let (leftTemplate, afterLeft) = fromValue next left
-              (rightTemplate, afterRight) = fromValue afterLeft right
-          in (ConcatenatedArgumentSchema leftTemplate rightTemplate, afterRight)
+          let (leftTemplate, afterLeft) = fromProjected next left
+              (rightTemplate, afterRight) = fromProjected afterLeft right
+          in ( concatenatedArgumentSchema [leftTemplate, rightTemplate]
+             , afterRight
+             )
         SequentialMapForm -> fromFiniteMap next current
         MapForm -> fromFiniteMap next current
         _ -> slot current next
@@ -381,6 +384,13 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
         Nothing -> slot current next
     slot current next =
       (ArgumentSlotSchema next Nothing False False current Nothing, next + 1)
+    fromProjected next current
+      | isEmptyMap current = (EmptyArgumentSchema, next)
+      | CoalizationForm operand <- interpretedForm current =
+          fromValue next operand
+      | hasDependentArgumentFamily current =
+          (ProjectedArgumentSchema current, next)
+      | otherwise = fromValue next current
     mapChildren constructor start members =
       let (children, afterChildren) = schemasFromValues start members
       in (constructor children, afterChildren)
@@ -469,21 +479,26 @@ unorderedArgumentSchema schemas =
     _ -> UnorderedArgumentSchema schemas
 
 concatenatedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
-concatenatedArgumentSchema schemas =
-  case schemas of
-    [] -> EmptyArgumentSchema
-    first : remaining -> foldl ConcatenatedArgumentSchema first remaining
+concatenatedArgumentSchema = foldl append EmptyArgumentSchema
+  where
+    append EmptyArgumentSchema right = right
+    append left EmptyArgumentSchema = left
+    append left right = ConcatenatedArgumentSchema left right
 
 projectedArgumentSchema :: InterpretedValue -> ArgumentSchema
 projectedArgumentSchema target
-  | hasDependentFamily target = ProjectedArgumentSchema target
+  | CoalizationForm operand <- interpretedForm target =
+      argumentSchemaFromValue operand
+  | hasDependentArgumentFamily target = ProjectedArgumentSchema target
   | otherwise = argumentSchemaFromValue target
-  where
-    hasDependentFamily value = case interpretedForm value of
-      DependentSumForm _ -> True
-      EitherForm alternatives -> hasDependentFamily (evaluatedEitherLeft alternatives)
-        || hasDependentFamily (evaluatedEitherRight alternatives)
-      _ -> False
+
+hasDependentArgumentFamily :: InterpretedValue -> Bool
+hasDependentArgumentFamily value = case interpretedForm value of
+  DependentSumForm _ -> True
+  EitherForm alternatives ->
+    hasDependentArgumentFamily (evaluatedEitherLeft alternatives)
+      || hasDependentArgumentFamily (evaluatedEitherRight alternatives)
+  _ -> False
 
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =

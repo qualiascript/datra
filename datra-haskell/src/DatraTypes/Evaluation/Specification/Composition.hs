@@ -50,11 +50,6 @@ selectFederationMember source target
   | SkipForm _ <- interpretedForm target = DecisionRefuted
   | TemplateForm underlying <- interpretedForm target =
       selectFederationMember source underlying
-  | DependentIdentifierTypeForm sourceIdentifier <- interpretedForm source
-  , not (identifierReservedByTarget sourceIdentifier target) =
-      selectFederationMember
-        (evaluatedIdentifierUnderlying sourceIdentifier)
-        target
   | CoalizationForm sourceOperand <- interpretedForm source
   , CoalizationForm targetOperand <- interpretedForm target =
       selectFederationMember sourceOperand targetOperand
@@ -181,42 +176,6 @@ selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
       identifierDependencyStringFor
         (evaluatedIdentifierDependency targetIdentifier)
         selectedCanonical
-
--- Positional structural matching may discard a source label only when the
--- target has no identifier candidate that admits it.  This lets an argument
--- map flow into an unnamed structural target such as @List T@ while ensuring
--- that a matching identifier candidate remains authoritative even when its
--- payload later fails to match.
-identifierReservedByTarget
-  :: EvaluatedDependentIdentifierType
-  -> InterpretedValue
-  -> Bool
-identifierReservedByTarget source = any compatible . identifierCandidates
-  where
-    compatible target =
-      identifierDependenciesCompatible
-        (evaluatedIdentifierDependency source)
-        (evaluatedIdentifierDependency target)
-
-identifierCandidates
-  :: InterpretedValue
-  -> [EvaluatedDependentIdentifierType]
-identifierCandidates value =
-  case interpretedForm value of
-    DependentIdentifierTypeForm identifier -> [identifier]
-    IdentifierStringProjectionForm identifier -> [identifier]
-    AssignmentForm specification ->
-      identifierCandidates (evaluatedSpecificationTarget specification)
-    SpecificationForm specification ->
-      identifierCandidates (evaluatedSpecificationTarget specification)
-    EitherForm alternatives ->
-      identifierCandidates (evaluatedEitherLeft alternatives)
-        <> identifierCandidates (evaluatedEitherRight alternatives)
-    ConcatenatedMapForm left right ->
-      identifierCandidates left <> identifierCandidates right
-    CoalizationForm operand -> identifierCandidates operand
-    ArgumentMapForm members _ -> concatMap identifierCandidates members
-    _ -> []
 
 selectSequentialMember
   :: InterpretedValue
