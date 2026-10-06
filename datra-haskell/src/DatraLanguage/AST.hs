@@ -4,6 +4,8 @@ module DatraLanguage.AST
   ( IdentifierString (..)
   , StringTemplatePart (..)
   , Expression (..)
+  , contextualAccess
+  , isContextualAccessOf
   , OperatorExpression (..)
   , toOperatorExpression
   , traverseExpressionChildren
@@ -155,6 +157,15 @@ data Expression
       , identifierTemplateGivenValue :: Maybe Expression
       }
   deriving (Eq, Show)
+
+-- | Apply a private contextual function at depth zero. Its native closure
+-- delegates to @_inner_this@ or @_inner_it@ at the same index.
+contextualAccess :: IdentifierString -> Expression
+contextualAccess name =
+  FunctionApplication (IdentifierReference name) (EllipsisNatural 0)
+
+isContextualAccessOf :: IdentifierString -> Expression -> Bool
+isContextualAccessOf name expression = expression == contextualAccess name
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that

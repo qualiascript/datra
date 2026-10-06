@@ -9,6 +9,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , contextualAccess
   , expressionChildren
   , normalizeExpression
   , renderExpression
@@ -115,6 +116,22 @@ regressionTests = do
   assert "quoted apostrophe names require shadowing consistency"
     ( Identifier.identifierPolicy "''not compact"
         == Identifier.PublicIdentifier Identifier.ConsistentShadowing
+    )
+  assertParsed "surface this applies the contextual function at depth zero"
+    "this" (contextualAccess (IdentifierString "_this"))
+  assertParsed "surface it applies the contextual function at depth zero"
+    "it" (contextualAccess (IdentifierString "_it"))
+  assertParsed "explicit contextual depth remains an ordinary application"
+    "_this 2"
+    (FunctionApplication
+      (IdentifierReference (IdentifierString "_this"))
+      (EllipsisNatural 2))
+  assert "only contextual depth zero renders with surface syntax"
+    ( renderSourceExpression
+        (FunctionApplication
+          (IdentifierReference (IdentifierString "_this"))
+          (EllipsisNatural 2))
+        == "_this 2"
     )
   assert "a hole identifier ends before an adjacent literal operator"
     (SyntaxTemplate.parseSyntaxTemplate id "$Int++"
@@ -433,8 +450,8 @@ regressionTests = do
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import False "library_one", Import True "std"
-    , InModule "std" (ref "'this")
-    , NamedAccess (ref "'this") (IdentifierString "abc")
+    , InModule "std" (ref "_this")
+    , NamedAccess (ref "_this") (IdentifierString "abc")
     , SyntaxType (Extract (AsciiStringLiteral "$Int next"))
         (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
@@ -448,10 +465,10 @@ regressionTests = do
         (AST.assignment "Example"
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
-            (FunctionApplication (ref "public") (ref "'this")))
+            (FunctionApplication (ref "public") (ref "_this")))
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
-            (FunctionApplication (ref "public") (ref "'this"))))
+            (FunctionApplication (ref "public") (ref "_this"))))
     ]
   assertAstOutput "eval is available as an ordinary user identifier"
     "eval : Nat" (AST.dependentIdentifierType "eval" (ref "Nat"))
@@ -701,17 +718,17 @@ regressionTests = do
     "%Str[0]"
     (MapAccess (Extract (ref "Str")) (natural 0))
   assertParsed "val erases identifiers"
-    "val 'it" (StripIdentifiers (ref "'it"))
+    "val _it" (StripIdentifiers (ref "_it"))
   assertParsed "val captures bracket access"
-    "val 'it[0]" (StripIdentifiers (MapAccess (ref "'it") (natural 0)))
+    "val _it[0]" (StripIdentifiers (MapAccess (ref "_it") (natural 0)))
   assertParsed "identifier erasure coexists with exponentiation"
-    "(val 'it) ^ 2" (Exponentiation (StripIdentifiers (ref "'it")) (natural 2))
+    "(val _it) ^ 2" (Exponentiation (StripIdentifiers (ref "_it")) (natural 2))
   assertParsed "external escape constructs an External AST"
     "!~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   assertParsed "identifier erasure source rendering preserves named access"
-    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "'it") (IdentifierString "abc"))))
-    (StripIdentifiers (NamedAccess (ref "'it") (IdentifierString "abc")))
+    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "_it") (IdentifierString "abc"))))
+    (StripIdentifiers (NamedAccess (ref "_it") (IdentifierString "abc")))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
@@ -891,25 +908,25 @@ regressionTests = do
   assertAstOutput "postfix list split"
     "values!" (ListUncons (ref "values"))
   assertAstOutput "Maybe sequencing binds after list split"
-    "values! ?? maximum 'it"
+    "values! ?? maximum _it"
     (MaybeThen
       (ListUncons (ref "values"))
-      (FunctionApplication (ref "maximum") (ref "'it")))
+      (FunctionApplication (ref "maximum") (ref "_it")))
   assertAstOutput "Maybe sequencing is distinct from an optional declaration"
-    "values ?? maximum 'it"
+    "values ?? maximum _it"
     (MaybeThen
       (ref "values")
-      (FunctionApplication (ref "maximum") (ref "'it")))
+      (FunctionApplication (ref "maximum") (ref "_it")))
   assertAstOutput "list sequencing combines split and Maybe application"
     "values !? maximum"
     (MaybeThen
       (ListUncons (ref "values"))
-      (FunctionApplication (ref "maximum") (ref "'it")))
+      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   assertAstOutput "list sequencing binds after val without grouping"
     "val values !? maximum"
     (MaybeThen
       (ListUncons (StripIdentifiers (ref "values")))
-      (FunctionApplication (ref "maximum") (ref "'it")))
+      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -927,12 +944,12 @@ regressionTests = do
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
     (MaybeThen
       (ListUncons (StripIdentifiers (ref "values")))
-      (FunctionApplication inlineLimitFunction (ref "'it")))
+      (FunctionApplication inlineLimitFunction (contextualAccess (IdentifierString "_it"))))
   assert "list sequencing source rendering keeps the compact val form"
     ( renderSourceExpression
         (MaybeThen
           (ListUncons (StripIdentifiers (ref "values")))
-          (FunctionApplication (ref "maximum") (ref "'it")))
+          (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
         == "val values !? maximum"
     )
   assertAstOutput "grouping keeps list sequencing inside val"
@@ -940,7 +957,7 @@ regressionTests = do
     (StripIdentifiers
       (MaybeThen
         (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (ref "'it"))))
+        (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it")))))
   assertAstOutput "list sequencing accepts an optional named left operand"
     "values? : List Int !? maximum"
     (MaybeThen
@@ -948,7 +965,7 @@ regressionTests = do
         (OptionalType
           (AST.dependentIdentifierType "values"
             (FunctionApplication (ref "List") (ref "Int")))))
-      (FunctionApplication (ref "maximum") (ref "'it")))
+      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   assertAstOutput "list sequencing follows forward specification"
     "values ~> List Int !? maximum"
     (MaybeThen
@@ -956,7 +973,7 @@ regressionTests = do
         (MapSpecification
           (ref "values")
           (FunctionApplication (ref "List") (ref "Int"))))
-      (FunctionApplication (ref "maximum") (ref "'it")))
+      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   assertAstOutput "subfederation greedily captures right-side sequencing"
     "values of List Int !? maximum"
     (Subfederation
@@ -964,7 +981,7 @@ regressionTests = do
       (MaybeThen
         (ListUncons
           (FunctionApplication (ref "List") (ref "Int")))
-        (FunctionApplication (ref "maximum") (ref "'it"))))
+        (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it")))))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
@@ -1630,7 +1647,11 @@ regressionTests = do
   assertRejected "named access lists require at least one name" "a.()"
   assertRejected "named access lists reject expressions" "a.(b + c)"
   let valueOf name =
-        MapAccess (NamedAccess (ref "'this") (IdentifierString name)) (natural 1)
+        MapAccess
+          (NamedAccess
+            (contextualAccess (IdentifierString "_this"))
+            (IdentifierString name))
+          (natural 1)
   assertRejected "legacy value lookup symbol is rejected" "^a"
   assertAstOutput "value lookup expands to the binding's value page"
     "~a" (valueOf "a")
@@ -1658,8 +1679,12 @@ regressionTests = do
     "Maybe (~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
   let nameList = MapAccess
         (MapConcatenation
-          (NamedAccess (ref "'this") (IdentifierString "a"))
-          (NamedAccess (ref "'this") (IdentifierString "b")))
+          (NamedAccess
+            (contextualAccess (IdentifierString "_this"))
+            (IdentifierString "a"))
+          (NamedAccess
+            (contextualAccess (IdentifierString "_this"))
+            (IdentifierString "b")))
         (natural 1)
   assertAstOutput "value lookup preserves named access list semantics"
     "~(a, \"b\")" nameList
@@ -1678,7 +1703,7 @@ regressionTests = do
     , (NamedAccess (valueOf "a") (IdentifierString "b"), "~a.b")
     , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
         "x : ~\"type name\"")
-    , (MapAccess (NamedAccess (ref "'this") (IdentifierString "a")) (natural 0), "'this.a[0]")
+    , (MapAccess (NamedAccess (ref "_this") (IdentifierString "a")) (natural 0), "_this.a[0]")
     , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
@@ -2044,7 +2069,7 @@ genExpression =
     , pure EllipsisLiteral
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
-    , pure (ref "'this")
+    , pure (ref "_this")
     , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral

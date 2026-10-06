@@ -13,6 +13,7 @@ import Data.List (nub, stripPrefix)
 import DatraLanguage.AST
 import DatraLanguage.Identifier (requiresShadowingConsistency)
 import Control.Monad.Trans.State.Strict (State, get, put, runState)
+import Numeric.Natural (Natural)
 
 -- Keys identify bindings during this traversal only; they never enter source.
 -- The resolver belongs to the definition's original environment.
@@ -27,6 +28,7 @@ data Resolver = Resolver
   { resolveDependency :: [String] -> Maybe Dependency
   , resolveDependencyModule :: String -> Maybe Resolver
   , resolveScopeIndex :: Expression -> Maybe String
+  , resolveContextualDepth :: String -> Natural -> Maybe Dependency
   }
 
 data DependencyMode = BindDependencies | InlineDependencies deriving (Eq)
@@ -69,7 +71,9 @@ close mode depth ancestors occupied resolver self
     reserved = occupied <> declaredNames expression
     root@(IdentifierString rootText) = fresh (functionName depth) reserved
     active = maybe ancestors (\key -> (key, root) : ancestors) self
-    initiallyBound = ["'this" | explicitSelf]
+    initiallyBound
+      | explicitSelf = [fixedThisMarker, contextualMarker "_this", "_this"]
+      | otherwise = []
     (rewritten, collected) = runState
       (rewrite mode depth (rootText : reserved) active resolver
         initiallyBound expression)
@@ -84,19 +88,20 @@ close mode depth ancestors occupied resolver self
     selfBound = explicitSelf || recursive
     selfRewritten
       | recursive = replaceReference root
-          (IdentifierReference (IdentifierString "'this")) rewritten
+          (contextualAccess (IdentifierString "_this")) rewritten
       | otherwise = rewritten
     selfDefinitions
       | recursive = map
-          (replaceReference root (IdentifierReference (IdentifierString "'this")))
+          (replaceReference root (contextualAccess (IdentifierString "_this")))
           definitions
       | otherwise = definitions
 
 rewrite :: DependencyMode -> Int -> [String] -> References -> Resolver -> [String]
   -> Expression -> State Collected Expression
 rewrite mode depth reserved active resolver bound
-    (MapAccess (IdentifierReference (IdentifierString "'this")) index)
-  | Just name <- resolveScopeIndex resolver index = do
+    (MapAccess thisValue index)
+  | isContextualAccessOf (IdentifierString "_this") thisValue
+  , Just name <- resolveScopeIndex resolver index = do
       -- Pure captured selectors have a fixed result. Retain the calculation's
       -- dependencies as well as the selected declaration, without rebuilding
       -- unrelated entries of the original scope map.
@@ -105,6 +110,19 @@ rewrite mode depth reserved active resolver bound
         (IdentifierReference (IdentifierString name))
       pure (Begin [Let selector]
         (IdentifierOperation (IdentifierString name) value Nothing))
+rewrite mode depth reserved active resolver bound expression
+  | FunctionApplication
+      (IdentifierReference (IdentifierString name))
+      (EllipsisNatural requestedDepth) <- expression
+  , name == "_this" || name == "_it"
+  , let localDepth = contextualBoundDepth name bound =
+      if requestedDepth < localDepth
+        then pure expression
+        else case resolveContextualDepth resolver name
+            (requestedDepth - localDepth) of
+          Just dependency -> collectDependency
+            mode depth reserved active dependency
+          Nothing -> pure expression
 rewrite _ _ _ _ _ bound expression
   | Just path@(first : _) <- referencePath expression
   , let lexicalName = case path of
@@ -118,27 +136,7 @@ rewrite mode depth reserved active resolver bound expression
           _ -> first
   , lexicalName `notElem` bound
   , Just dependency <- resolveDependency resolver path = do
-      case lookup (dependencyKey dependency) active of
-        Just name -> pure (IdentifierReference name)
-        Nothing -> do
-          collected <- get
-          case [(name, value) | (key, name, value) <- collected, key == dependencyKey dependency] of
-            (name, _) : _ -> pure (IdentifierReference name)
-            [] -> do
-              let name = fresh
-                    ("___" <> dependencyName dependency)
-                    (reserved <> [text | (_, IdentifierString text, _) <- collected])
-                  occupied = reserved
-                    <> [text | (_, IdentifierString text, _) <- collected]
-                    <> [nameText name]
-              value <- rewrite mode (depth + 1) occupied
-                ((dependencyKey dependency, name) : active)
-                (dependencyResolver dependency)
-                []
-                (dependencyExpression dependency)
-              transitive <- get
-              put (transitive <> [(dependencyKey dependency, name, value)])
-              pure (IdentifierReference name)
+      collectDependency mode depth reserved active dependency
 rewrite _ _ _ _ _ _ expression
   | Just path <- referencePath expression
   , referencePathRequiresShadowingConsistency path = pure expression
@@ -155,7 +153,8 @@ rewrite mode depth reserved active resolver bound expression =
       closedCodomain <- rewrite mode depth reserved active resolver
         (parameters <> bound) codomain
       body <- rewrite mode depth reserved active resolver
-        ("'it" : parameters <> bound) (FunctionBody entries result)
+        (contextualMarker "_it" : "_it" : parameters <> bound)
+        (FunctionBody entries result)
       pure (MapSpecification body (FunctionType closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
@@ -176,13 +175,60 @@ rewrite mode depth reserved active resolver bound expression =
       let names = concatMap bindingNames entries
           -- Source validity and declaration ordering have already been checked
           -- by the evaluator. Every block also binds its declaration map as
-          -- @'this@ unless an explicit fixed point already occupies that name;
+          -- @_this@ unless an explicit fixed point already occupies that name;
           -- either way it is local to the reconstructed expression and must
           -- never become a captured import.
+          contextualBound
+            | fixedThisMarker `elem` bound = names <> bound
+            | otherwise =
+                contextualMarker "_this" : "_this" : names <> bound
           inside = rewrite mode depth reserved active
             resolver { resolveScopeIndex = const Nothing }
-            ("'this" : names <> bound)
+            contextualBound
       constructor <$> traverse inside entries <*> inside result
+
+collectDependency
+  :: DependencyMode
+  -> Int
+  -> [String]
+  -> References
+  -> Dependency
+  -> State Collected Expression
+collectDependency mode depth reserved active dependency =
+  case lookup (dependencyKey dependency) active of
+    Just name -> pure (IdentifierReference name)
+    Nothing -> do
+      collected <- get
+      case [ (name, value)
+           | (key, name, value) <- collected
+           , key == dependencyKey dependency
+           ] of
+        (name, _) : _ -> pure (IdentifierReference name)
+        [] -> do
+          let name = fresh
+                ("___" <> dependencyName dependency)
+                (reserved <> [text | (_, IdentifierString text, _) <- collected])
+              occupied = reserved
+                <> [text | (_, IdentifierString text, _) <- collected]
+                <> [nameText name]
+          value <- rewrite mode (depth + 1) occupied
+            ((dependencyKey dependency, name) : active)
+            (dependencyResolver dependency)
+            []
+            (dependencyExpression dependency)
+          transitive <- get
+          put (transitive <> [(dependencyKey dependency, name, value)])
+          pure (IdentifierReference name)
+
+contextualMarker :: String -> String
+contextualMarker = ("\0context:" <>)
+
+fixedThisMarker :: String
+fixedThisMarker = "\0context:fixed-this"
+
+contextualBoundDepth :: String -> [String] -> Natural
+contextualBoundDepth name =
+  fromIntegral . length . filter (== contextualMarker name)
 
 -- A retained begin block is itself a singleton type.  Selecting the result
 -- from an ordered pair outside that block recovers the yielded value's own
@@ -199,10 +245,17 @@ referencePath :: Expression -> Maybe [String]
 referencePath
     (MapAccess
       (NamedAccess
-        (IdentifierReference (IdentifierString "'this"))
+        thisValue
         (IdentifierString name))
       (EllipsisNatural 1)) =
-  Just ["\0this", name]
+  if isContextualAccessOf (IdentifierString "_this") thisValue
+    then Just ["\0this", name]
+    else Nothing
+referencePath expression
+  | FunctionApplication
+      (IdentifierReference (IdentifierString name))
+      (EllipsisNatural 0)
+      <- expression = Just [name]
 referencePath (IdentifierReference (IdentifierString name)) = Just [name]
 referencePath (NamedAccess source (IdentifierString name)) = (<> [name]) <$> referencePath source
 referencePath _ = Nothing
@@ -210,7 +263,7 @@ referencePath _ = Nothing
 -- A reference rooted in a shadowing-consistent binding is one stable lexical
 -- path. If the complete path cannot be captured, never reinterpret its root as
 -- a separate dependency. The sentinel is the exact internal expansion of a
--- lookup rooted at the shadowing-consistent @'this@ binding.
+-- lookup rooted at the contextual @_this@ binding.
 referencePathRequiresShadowingConsistency :: [String] -> Bool
 referencePathRequiresShadowingConsistency ("\0this" : _) = True
 referencePathRequiresShadowingConsistency (name : _) =

@@ -2,4 +2,4 @@ import all "std"
 
 yield CycleA := begin
   import "cycle_b"
-yield public 'this
+yield public this

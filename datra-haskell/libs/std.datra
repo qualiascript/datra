@@ -79,7 +79,7 @@ yield Std := begin
   of := %"$_Expr of $_Expr" %> (_AST, _AST -> _AST) !~"datra.of"
   not := %"not $_Expr" %> (_AST -> _AST) !~"datra.not"
 
-  List := (for T? of Any) -> Any do yield fun (() | T; 'this)
+  List := (for T? of Any) -> Any do yield fun (() | T; this)
   InhabitedList := (for T? of Any) -> Any do yield (T; List T)
   Just := (for T? of Any) -> Any do yield Just : T
   Maybe := (for T? of Any) -> Any do yield nothing | Just T
@@ -95,4 +95,4 @@ yield Std := begin
     slots := with i in Nat do "arg%(i)"? : T
   yield () | with n in Nat do slots[range 0 to n]
 
-yield public modular 'this
+yield public modular this

@@ -106,6 +106,7 @@ import DatraLanguage.AST
       , StringTemplateLiteral
       , StringTemplateWeakInterpolation
       )
+  , contextualAccess
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -613,7 +614,7 @@ listMaybeThen values function =
     (ListUncons values)
     (FunctionApplication
       function
-      (IdentifierReference (IdentifierString "'it")))
+      (contextualAccess (IdentifierString "_it")))
 
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
@@ -1112,7 +1113,7 @@ valueOfExpression = do
   notFollowedBy (operatorToken AST.ExponentiationOperator)
   pure (MapAccess
     (expandedNamedAccess names
-      (IdentifierReference (IdentifierString "'this")))
+      (contextualAccess (IdentifierString "_this")))
     (EllipsisNatural 1))
 
 namedAccessName :: Parser IdentifierString

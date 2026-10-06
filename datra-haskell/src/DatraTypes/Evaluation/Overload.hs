@@ -565,7 +565,7 @@ argumentSchemaBodyValues schema supplied = case schema of
     pure (bodyAggregate normalized (map namedSlot completed))
 
 -- A direct unnamed domain such as @Nat -> Nat@ exposes its sole value as
--- @'it@. Named and structurally composite domains expose a positional Atlas
+-- @_it@. Named and structurally composite domains expose a positional Atlas
 -- map, so their singleton boundary remains meaningful.
 bodyAggregate :: ArgumentSchema -> [InterpretedValue] -> InterpretedValue
 bodyAggregate schema values =

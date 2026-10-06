@@ -70,6 +70,7 @@ import DatraLanguage.AST
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
+  , isContextualAccessOf
   , mapExpressionChildren
   , yieldedIdentifier
   )
@@ -97,6 +98,7 @@ import Rendering (renderCanonicalResult, renderInterpretedValue)
 import SyntaxDefinitions
   ( SyntaxFunctionBody
   , SyntaxRule (..)
+  , contextualSyntaxRules
   , qualifySyntaxRule
   , syntaxFunctionBodyForSymbol
   , syntaxTemplatesFromExpression
@@ -157,7 +159,8 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
         , imported == requested
         ]
       initialRules =
-        standardRules <> qualifiedImportedRules <> explicitlyImportedRules
+        contextualSyntaxRules
+          <> standardRules <> qualifiedImportedRules <> explicitlyImportedRules
       capture = captureSyntaxHole base modules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
@@ -413,9 +416,9 @@ parsedDefaultModule = do
   let capture = captureSyntaxHole [] []
       rewritten = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture [] [] expressionValue
+          rewriteExplicitSyntax capture contextualSyntaxRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture [] [] entries
+          rewriteImplicitSyntax capture contextualSyntaxRules [] entries
         _ -> Left MissingImplicitBlockResult
   either
     (parseFailure . ParseFailure . show)
@@ -592,9 +595,8 @@ type Scope = [(String, Binding)]
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
-  | ImplicitBinding InterpretedValue
   | PrivateParameterBinding InterpretedValue
-  | SelfBinding Bool
+  | ContextualBinding String Bool
       (ReductionContext -> Either InterpretingError InterpretedValue)
   | ShadowingConsistentBinding Binding
   | NamedBinding PresentationDependency Binding
@@ -632,20 +634,136 @@ bindingHasUnrestrictedShadowing binding =
     QualifiedBinding _ target -> bindingHasUnrestrictedShadowing target
     _ -> True
 
-selfBinding
+contextualBinding
   :: Binding
   -> Maybe
       ( Bool
       , ReductionContext -> Either InterpretingError InterpretedValue
       )
-selfBinding binding =
+contextualBinding binding =
   case binding of
-    SelfBinding includesDependencies value ->
+    ContextualBinding _ includesDependencies value ->
       Just (includesDependencies, value)
-    ShadowingConsistentBinding target -> selfBinding target
-    NamedBinding _ target -> selfBinding target
-    QualifiedBinding _ target -> selfBinding target
+    ShadowingConsistentBinding target -> contextualBinding target
+    NamedBinding _ target -> contextualBinding target
+    QualifiedBinding _ target -> contextualBinding target
     _ -> Nothing
+
+contextualBindings
+  :: String
+  -> Bool
+  -> (ReductionContext -> Either InterpretingError InterpretedValue)
+  -> Scope
+contextualBindings surface includesDependencies value =
+  [scopeBinding ("_" <> surface)
+    (ContextualBinding surface includesDependencies value)]
+
+constantContextualBindings :: String -> InterpretedValue -> Scope
+constantContextualBindings surface value =
+  contextualBindings surface False (const (Right value))
+
+type ContextualLevel =
+  (Bool, ReductionContext -> Either InterpretingError InterpretedValue)
+
+-- | A contextual function's private, coalized map. Its name is @_inner_this@
+-- or @_inner_it@, but it lives only in the native function closure and never
+-- enters a Datra lexical scope.
+data ContextualMap = ContextualMap String [ContextualLevel]
+
+-- | Collect same-kind contextual bindings from current to outermost.  The
+-- environment retained for a declaration-scope level begins at the previous
+-- same-kind boundary, so declarations belonging to that outer scope remain
+-- visible. Scopes which introduce no binding of this kind add no hole.
+contextualLevels
+  :: Bool
+  -> [String]
+  -> String
+  -> Scope
+  -> [ContextualLevel]
+contextualLevels includesPrivate resolving surface scope = go scope scope
+  where
+    key = "_" <> surface
+
+    go _ [] = []
+    go environment ((name, binding) : remaining)
+      | name == key
+      , Just level <- contextualLevel environment binding =
+          level : go remaining remaining
+      | otherwise = go environment remaining
+
+    contextualLevel environment binding =
+      case binding of
+        ContextualBinding _ includesDependencies value ->
+          Just (includesDependencies, value)
+        ScopeMembers names ->
+          Just (False, \reduction -> declarationMap names
+            (resolveIdentifierAccess
+              includesPrivate reduction environment resolving))
+        ShadowingConsistentBinding target ->
+          contextualLevel environment target
+        NamedBinding dependency target -> do
+          (includesDependencies, value) <- contextualLevel environment target
+          pure (includesDependencies, \reduction ->
+            withCanonicalReference [dependency] key <$> value reduction)
+        QualifiedBinding _ target -> do
+          (includesDependencies, value) <- contextualLevel environment target
+          pure (includesDependencies, \reduction ->
+            withoutCanonicalPresentation <$> value reduction)
+        _ -> Nothing
+
+-- | A contextual function has the exact valued-natural domain of its
+-- available same-kind lexical levels. @_this n@ and @_it n@ lower inside the
+-- native closure to @_inner_this @ n@ and @_inner_it @ n@ respectively.
+contextualFunction
+  :: String
+  -> [ContextualLevel]
+  -> Either InterpretingError InterpretedValue
+contextualFunction surface levels@(_ : _) = do
+  domain <- valuedNaturalRangeValue 0 maximumDepth
+  pure (makeFunctionValue (EvaluatedFunction
+    domain
+    anyTypeValue
+    (Just valueSyntax)
+    (Just sourceSyntax)
+    Nothing
+    signatureSource
+    Nothing
+    (Just invoke)
+    False))
+  where
+    maximumDepth = fromIntegral (length levels - 1)
+    domainExpression = ValuedNaturalRange 0 maximumDepth
+    signatureSource = renderSourceExpression
+      (FunctionType domainExpression (External (AsciiStringLiteral "datra.Any")))
+    innerMap = ContextualMap ("_inner_" <> surface) levels
+
+    invoke reduction prepared = do
+      depth <- requireFiniteInteger LeftOperand
+        (functionPreparedArgument prepared)
+      accessContextualMap reduction depth innerMap
+
+    valueSyntax :: FunctionSyntax InterpretedValue
+    valueSyntax = FunctionSyntax [SyntaxTemplate [SyntaxLiteral surface]]
+    sourceSyntax :: FunctionSyntax String
+    sourceSyntax = FunctionSyntax [SyntaxTemplate [SyntaxLiteral surface]]
+contextualFunction surface [] = Left (UnknownIdentifier ("_" <> surface))
+
+-- | Access the closure-local @_inner_this@ or @_inner_it@ map without forcing
+-- unrelated recursive levels.
+accessContextualMap
+  :: ReductionContext
+  -> Integer
+  -> ContextualMap
+  -> Either InterpretingError InterpretedValue
+accessContextualMap reduction depth (ContextualMap _ levels)
+  | depth < 0 = unavailable
+  | otherwise = select depth levels
+  where
+    select _ [] = unavailable
+    select 0 ((_, value) : _) = value reduction
+    select remaining (_ : outer) = select (remaining - 1) outer
+    unavailable = Left
+      (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
 scopeMembersBinding :: Binding -> Maybe [String]
 scopeMembersBinding binding =
@@ -661,7 +779,7 @@ scopeMembersBinding binding =
 -- representation, independent of the identifier used to reach it.
 bindingHasNoFiniteShadowingNormalForm :: Binding -> Bool
 bindingHasNoFiniteShadowingNormalForm binding =
-  case (selfBinding binding, scopeMembersBinding binding) of
+  case (contextualBinding binding, scopeMembersBinding binding) of
     (Just _, _) -> True
     (_, Just _) -> True
     _ -> False
@@ -677,14 +795,14 @@ data RecursivePrefix
 lazyRecursivePrefix :: Scope -> Expression -> Maybe (Scope, RecursivePrefix)
 lazyRecursivePrefix scope expression = case expression of
   Fun value -> (scope,) <$> recursivePrefixFor
-    (== IdentifierReference (IdentifierString "'this")) value
+    (isContextualAccessOf (IdentifierString "_this")) value
   IdentifierReference (IdentifierString name) -> do
     binding <- lookup name scope
     (captured, _, definition) <- bindingDefinition binding
     let isSelf value = value == IdentifierReference (IdentifierString name)
     prefix <- case definition of
       Fun value -> recursivePrefixFor
-        (== IdentifierReference (IdentifierString "'this")) value
+        (isContextualAccessOf (IdentifierString "_this")) value
       value -> recursivePrefixFor isSelf value
     pure (captured, prefix)
   _ -> Nothing
@@ -835,7 +953,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       case interpretedSemanticResult optionalResult of
         CanonicalAssignment "Just" _ _ -> do
           result <- evalInScopeWith reduction
-            (scopeBinding "'it" (ImplicitBinding optionalResult) : scope)
+            (constantContextualBindings "it" optionalResult <> scope)
             resolving
             branch
           liftMaybeResult result
@@ -900,9 +1018,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         Nothing -> recursive reduction
       where
         recursive activeReduction = evalInScopeWith activeReduction
-          (scopeBinding "'this" (SelfBinding
+          (contextualBindings "this"
             (case operand of Begin {} -> True; _ -> False)
-            recursive) : scope)
+            recursive <> scope)
           resolving
           operand
     WithBinding _ _ _ -> Left (DependentBinderOutsideContainer "with")
@@ -976,31 +1094,35 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
     NamedAccess
-        (IdentifierReference (IdentifierString "'this"))
+        thisValue
         (IdentifierString name)
-      | Just (_, value) <- lookup "'this" scope >>= selfBinding ->
+      | isContextualAccessOf (IdentifierString "_this") thisValue
+      , Just (_, value) <- lookup "_this" scope >>= contextualBinding ->
           value reduction >>= (`namedAccessValue` name)
-      | Just names <- lookup "'this" scope >>= scopeMembersBinding
+      | isContextualAccessOf (IdentifierString "_this") thisValue
+      , Just names <- lookup "_this" scope >>= scopeMembersBinding
       , name `elem` names ->
           simpleIdentifierTypeValue name
             <$> resolveIdentifierWith reduction scope resolving name
     NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
     MapAccess
         (NamedAccess
-          (IdentifierReference (IdentifierString "'this"))
+          thisValue
           (IdentifierString name))
-        (EllipsisNatural 1) ->
-      resolveIdentifierIncludingPrivate reduction scope resolving name
+        (EllipsisNatural 1)
+      | isContextualAccessOf (IdentifierString "_this") thisValue ->
+          resolveIdentifierIncludingPrivate reduction scope resolving name
     MapAccess
-        (IdentifierReference (IdentifierString "'this"))
-      insertionOperand -> do
-      insertion <- interpret insertionOperand
-      case lookup "'this" scope >>= selfBinding of
-        Just (_, value) -> value reduction >>= (`accessValues` insertion)
-        _ -> projectDeclaration
-          (scopeMemberNames scope)
-          (resolveIdentifierWith reduction scope resolving)
-          insertion
+        thisValue
+        insertionOperand
+      | isContextualAccessOf (IdentifierString "_this") thisValue -> do
+          insertion <- interpret insertionOperand
+          case lookup "_this" scope >>= contextualBinding of
+            Just (_, value) -> value reduction >>= (`accessValues` insertion)
+            _ -> projectDeclaration
+              (scopeMemberNames scope)
+              (resolveIdentifierWith reduction scope resolving)
+              insertion
     MapAccess mapOperand insertionOperand ->
       case lazyRecursivePrefix scope mapOperand of
         Just (captured, prefix) -> do
@@ -1286,20 +1408,20 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
       withoutCanonicalPresentation <$> resolve binding
     resolve (ShadowingConsistentBinding binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
-    resolve (ImplicitBinding value) = Right value
     resolve (PrivateParameterBinding value)
       | includesPrivate = Right value
       | otherwise = Left (UnknownIdentifier name)
-    resolve (SelfBinding _ value) =
-      consumeReduction reduction >>= value
+    resolve (ContextualBinding surface _ _) =
+      contextualFunction surface
+        (contextualLevels includesPrivate resolving surface scope)
     resolve (RetainedBinding captured annotation _ value) =
       Right (withCanonicalReference (scopePresentationDependencies captured) name
         (resolveInferredEitherAlias annotation value))
     resolve (ImportedBinding dependency _ value _) =
       Right (withCanonicalReference [dependency] name value)
-    resolve (ScopeMembers names) =
-      declarationMap names
-        (resolveIdentifierAccess includesPrivate reduction scope resolving)
+    resolve ScopeMembers {} =
+      contextualFunction "this"
+        (contextualLevels includesPrivate resolving "this" scope)
     resolve CanonicalNames {} = Left (UnknownIdentifier name)
     resolve ModuleCatalog {} = Left (UnknownIdentifier name)
     resolve LexicalScope {} = Left (UnknownIdentifier name)
@@ -1340,6 +1462,13 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
     resolutionName = takeWhile (/= ':')
     evaluateDefinition =
       case expressionValue of
+        contextual
+          | isContextualAccessOf (IdentifierString "_this") contextual
+          , Just _ <- lookup "_this" captured >>= scopeMembersBinding ->
+              declarationMap
+                (visibleScopeMembers "_this" captured)
+                (resolveIdentifierWith reduction captured
+                  (resolutionKey : resolving))
         IdentifierReference (IdentifierString reference)
           | Just _ <- lookup reference captured >>= scopeMembersBinding ->
               declarationMap
@@ -1496,10 +1625,10 @@ scopeBuilder enclosing entries = do
     [ imported | Just imported <- map importInvocation entries ]
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
       names = map declarationName definitions
-      blockOuter = case lookup "'this" outer >>= selfBinding of
+      blockOuter = case lookup "_this" outer >>= contextualBinding of
         Just _ -> outer
         Nothing ->
-          scopeBinding "'this" (ScopeMembers names) : outer
+          scopeBinding "_this" (ScopeMembers names) : outer
       rebuild retained = buildScopeBindings (makeBinding retained)
         blockOuter definitions
       consistencyNames =
@@ -1792,24 +1921,28 @@ recursiveListElement :: Expression -> Maybe Expression
 recursiveListElement expressionValue =
   case expressionValue of
     EitherType (AtlasMap [])
-        (MapConcatenation element
-          (IdentifierReference (IdentifierString "'this"))) ->
+        (MapConcatenation element self)
+      | isSelf self ->
       Just element
     EitherType (AtlasMap [])
-        (MapSequence [element, IdentifierReference (IdentifierString "'this")]) ->
+        (MapSequence [element, self])
+      | isSelf self ->
       Just element
     EitherType (AtlasMap [])
-        (AtlasMap [element, IdentifierReference (IdentifierString "'this")]) ->
+        (AtlasMap [element, self])
+      | isSelf self ->
       Just element
     MapSequence
         [ EitherType (AtlasMap []) element
-        , IdentifierReference (IdentifierString "'this")
-        ] -> Just element
+        , self
+        ] | isSelf self -> Just element
     AtlasMap
         [ EitherType (AtlasMap []) element
-        , IdentifierReference (IdentifierString "'this")
-        ] -> Just element
+        , self
+        ] | isSelf self -> Just element
     _ -> Nothing
+  where
+    isSelf = isContextualAccessOf (IdentifierString "_this")
 
 -- Dependent binders are scoped by their enclosing domain and are introduced
 -- strictly from left to right.  Static checking uses each binder's upper
@@ -2129,7 +2262,7 @@ createFunction reduction captured resolving
   let parameters = parameterBindings schema
       names = map fst parameters
       consistencyScope =
-        scopeBinding "'it" (ImplicitBinding anyTypeValue) : captured
+        constantContextualBindings "it" anyTypeValue <> captured
       bodyDeclarations =
         [ declaration
         | entry <- bindings
@@ -2163,7 +2296,7 @@ createFunction reduction captured resolving
     [] -> pure ()
   input <- parameterDomain schema
   let (explicitSelf, selfIncludesDependencies) = case
-        lookup "'this" captured >>= selfBinding of
+        lookup "_this" captured >>= contextualBinding of
         Just (includesDependencies, _) -> (True, includesDependencies)
         _ -> (False, False)
   output <- evaluate specifiedOutput
@@ -2178,8 +2311,8 @@ createFunction reduction captured resolving
         dependentScope <- validateDependentArguments
           captured resolving writtenDomainExpression imported
         let localScope =
-              scopeBinding "'it" (ImplicitBinding argument)
-                : [scopeBinding name
+              constantContextualBindings "it" argument
+                <> [scopeBinding name
                     (if isPrivateIdentifier name
                       then PrivateParameterBinding value
                       else EvaluatedBinding value)
@@ -2665,7 +2798,7 @@ importAllBindings value
       ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
 
 scopeMemberNames :: Scope -> [String]
-scopeMemberNames scope = case lookup "'this" scope of
+scopeMemberNames scope = case lookup "_this" scope of
   Just binding | Just names <- scopeMembersBinding binding -> names
   _ -> []
 
@@ -2798,7 +2931,7 @@ bindingKey name expressionValue = name <> ":" <> show expressionValue
 closureResolver :: Scope -> Resolver
 closureResolver scope = resolver
   where
-    resolver = Resolver resolve moduleResolver scopeIndex
+    resolver = Resolver resolve moduleResolver scopeIndex contextualDepth
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
       either (const Nothing) id (selectedDeclarationName (scopeMemberNames scope) index)
@@ -2811,13 +2944,24 @@ closureResolver scope = resolver
       [] -> case lookupModuleDefinitionScope scope path of
         Right imported -> Just (closureResolver imported)
         Left _ -> Nothing
+    contextualDepth name depth = do
+      let selected = FunctionApplication
+            (IdentifierReference (IdentifierString name))
+            (EllipsisNatural depth)
+      value <- either (const Nothing) Just (evalInScope scope [] selected)
+      expressionValue <- either (const Nothing) Just (valueExpression value)
+      pure (Dependency
+        (name <> ":" <> show depth <> ":" <> show expressionValue)
+        (dropWhile (== '_') name <> "_" <> show depth)
+        expressionValue
+        emptyResolver)
     resolve [] = Nothing
     -- FunctionClosure tags the exact expansion of @~name@ so it remains
-    -- distinguishable from an ordinary @'this.name@ access. Both select the
+    -- distinguishable from an ordinary @_this.name@ access. Both select the
     -- named lexical binding here, but the tagged form must be resolved as one
     -- dependency rather than traversed into and projected a second time.
     resolve ["\0this", name] = resolve [name]
-    resolve ["'this", name] = resolve [name]
+    resolve ["_this", name] = resolve [name]
     resolve (name : fields@(_ : _))
       | Just (ImportedBinding _ identity _ imported) <- lookup name scope
       , Just dependency <- resolveDependency (closureResolver imported) fields =
@@ -2855,7 +2999,11 @@ closureResolver scope = resolver
       qualifiedBindingOrigin target
     qualifiedBindingOrigin _ = Nothing
 emptyResolver :: Resolver
-emptyResolver = Resolver (const Nothing) (const Nothing) (const Nothing)
+emptyResolver = Resolver
+  (const Nothing)
+  (const Nothing)
+  (const Nothing)
+  (\_ _ -> Nothing)
 
 -- Render/parse remains the bridge from evaluated values to the shared AST.
 -- Resolve library spellings from the library source, using the same lexical

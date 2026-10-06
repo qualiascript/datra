@@ -2,4 +2,4 @@ import all "std"
 
 yield DeclaredName := begin
   x := 12
-yield public 'this
+yield public this
