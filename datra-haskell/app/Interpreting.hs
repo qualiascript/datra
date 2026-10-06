@@ -78,6 +78,7 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , invalidSyntaxTemplateCharacter
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -402,10 +403,20 @@ retainImplicitStandardPresentation :: (String, Binding) -> (String, Binding)
 retainImplicitStandardPresentation (name, binding) =
   (name, retain binding)
   where
-    retain (QualifiedBinding _ target) = target
+    -- Keep the qualified origin available to closure reconstruction, while
+    -- leaving the exported name as the outer presentation used by ordinary
+    -- source rendering.  Resolving the nested QualifiedBinding erases its
+    -- presentation before NamedBinding restores the canonical short name.
+    retain (QualifiedBinding origin target) = retainQualified origin target
     retain (ShadowingConsistentBinding target) =
       ShadowingConsistentBinding (retain target)
     retain target = target
+
+    retainQualified origin (NamedBinding dependency target) =
+      NamedBinding dependency (QualifiedBinding origin target)
+    retainQualified origin (ShadowingConsistentBinding target) =
+      ShadowingConsistentBinding (retainQualified origin target)
+    retainQualified origin target = QualifiedBinding origin target
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -474,10 +485,7 @@ evaluateFunctionSyntax
   -> Expression
   -> Either InterpretingError (FunctionSyntax InterpretedValue)
 evaluateFunctionSyntax interpret templatesExpression = do
-  templates <- maybe
-    (Left (ExpectedStringTemplateSpecification MapValueKind))
-    Right
-    (syntaxTemplatesFromExpression templatesExpression)
+  templates <- validatedSyntaxTemplates templatesExpression
   FunctionSyntax <$> traverse
     (traverseSyntaxTemplate interpret)
     templates
@@ -486,10 +494,7 @@ sourceFunctionSyntax
   :: Expression
   -> Either InterpretingError (FunctionSyntax String)
 sourceFunctionSyntax templatesExpression = do
-  templates <- maybe
-    (Left (ExpectedStringTemplateSpecification MapValueKind))
-    Right
-    (syntaxTemplatesFromExpression templatesExpression)
+  templates <- validatedSyntaxTemplates templatesExpression
   pure (FunctionSyntax (map
     (fmapTemplate renderSourceExpression)
     templates))
@@ -505,6 +510,22 @@ sourceFunctionSyntax templatesExpression = do
       SyntaxHole (IdentifierExpressionSyntaxHole (transform value))
     fmapPiece transform (SyntaxHole (ValueSyntaxHole value)) =
       SyntaxHole (ValueSyntaxHole (transform value))
+
+validatedSyntaxTemplates
+  :: Expression
+  -> Either InterpretingError [SyntaxTemplate Expression]
+validatedSyntaxTemplates templatesExpression = do
+  templates <- maybe
+    (Left (ExpectedStringTemplateSpecification MapValueKind))
+    Right
+    (syntaxTemplatesFromExpression templatesExpression)
+  case
+      [ invalid
+      | template <- templates
+      , Just invalid <- [invalidSyntaxTemplateCharacter template]
+      ] of
+    invalid : _ -> Left (InvalidSyntaxTemplateCharacter invalid)
+    [] -> Right templates
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =
@@ -528,10 +549,27 @@ canonicalStringCandidates characters =
                     | candidateExpression <-
                         canonicalExpressionCandidates
                           (normalizeExpression expressionValue)
-                    , Right candidate <-
+                    , Right interpreted <-
                         [interpretExpressionReason candidateExpression]
+                    , candidate <- evaluatedIdentifierCandidates
+                        candidateExpression interpreted
                     ]
             _ -> []
+
+    -- A canonical identifier can name a non-total value.  Its parsed AST then
+    -- has no Either node to split, unlike explicit optional/Either syntax.
+    -- Expand only that identifier case: explicit structural expressions
+    -- already retain the selected-branch witness needed by specification.
+    evaluatedIdentifierCandidates (IdentifierReference _) interpreted =
+      case argumentPresentations interpreted of
+        Right alternatives ->
+          [ alternative
+          | alternative <- alternatives
+          , canonicalSpelling characters
+              (renderInterpretedValue alternative)
+          ]
+        Left _ -> []
+    evaluatedIdentifierCandidates _ interpreted = [interpreted]
 
     -- Parentheses are canonical when a rendered value is embedded as one
     -- component of a larger expression. No other alternate spelling is
@@ -2774,8 +2812,15 @@ closureResolver scope = resolver
     originName name
       | Just original <- lookup name
           (concat [names | (_, CanonicalNames names) <- scope]) = original
-      | Just (QualifiedBinding origin _) <- lookup name scope = origin
+      | Just binding <- lookup name scope
+      , Just origin <- qualifiedBindingOrigin binding = origin
       | otherwise = name
+    qualifiedBindingOrigin (QualifiedBinding origin _) = Just origin
+    qualifiedBindingOrigin (NamedBinding _ target) =
+      qualifiedBindingOrigin target
+    qualifiedBindingOrigin (ShadowingConsistentBinding target) =
+      qualifiedBindingOrigin target
+    qualifiedBindingOrigin _ = Nothing
 emptyResolver :: Resolver
 emptyResolver = Resolver (const Nothing) (const Nothing) (const Nothing)
 

@@ -9,9 +9,15 @@ module DatraLanguage.SyntaxTemplate
   , parseSyntaxTemplate
   , traverseSyntaxTemplate
   , renderSyntaxTemplate
+  , invalidSyntaxTemplateCharacter
+  , isSymbolicSyntaxCharacter
   ) where
 
-import DatraLanguage.Identifier (isIdentifierCharacter)
+import Data.Maybe (listToMaybe)
+import DatraLanguage.Identifier
+  ( isAsciiCharacter
+  , isIdentifierCharacter
+  )
 
 data SyntaxHoleKind value
   = ExpressionSyntaxHole value
@@ -52,6 +58,29 @@ parseSyntaxTemplate valueReference =
     hole "_IdenExp" =
       SyntaxHole (IdentifierExpressionSyntaxHole (valueReference "_IdenExp"))
     hole kind = SyntaxHole (ValueSyntaxHole (valueReference kind))
+
+-- | Return the first literal character that the neutral source parser cannot
+-- retain as part of a declared syntax phrase. This validation is intentionally
+-- separate from 'parseSyntaxTemplate': template strings remain ordinary valid
+-- values until a syntax type operator asks to install one as surface syntax.
+invalidSyntaxTemplateCharacter :: SyntaxTemplate value -> Maybe Char
+invalidSyntaxTemplateCharacter (SyntaxTemplate pieces) = listToMaybe
+  [ character
+  | SyntaxLiteral literal <- pieces
+  , character <- literal
+  , not
+      (isIdentifierCharacter character
+        || isSymbolicSyntaxCharacter character)
+  ]
+
+isSymbolicSyntaxCharacter :: Char -> Bool
+isSymbolicSyntaxCharacter character =
+  isAsciiCharacter character
+    && not (isIdentifierCharacter character)
+    -- These characters are structural delimiters, string/comment introducers,
+    -- or escapes in source. The neutral reader cannot preserve them as an
+    -- opaque symbolic literal for the later declared-syntax pass.
+    && character `notElem` (" \t\r\n(){}[];,.\"#$\\" :: String)
 
 traverseSyntaxTemplate
   :: Applicative f

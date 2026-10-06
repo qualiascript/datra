@@ -269,6 +269,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "extract necesită o specificație concretă de șablon de șir"
         ["tipul valorii date: " <> valueKind kind]
+    InvalidSyntaxTemplateCharacter character ->
+      LocalizedMessage
+        "șablonul sintactic conține un caracter literal nevalid"
+        [ "caracter: " <> show character
+        , "%> poate instala doar literali păstrați de analizorul neutru al sursei"
+        ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "alternativele Either nu sunt hărți Atlas diferențiabile"

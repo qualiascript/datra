@@ -128,6 +128,9 @@ regressionTests = do
         parsed == SyntaxBoundary
           (FunctionApplication (natural 2) (ref "++"))
       Left _ -> False)
+  assertParsed "compact signed skips remain numerical operands"
+    "assert -* = +*"
+    (Assert False (Equality (Minus Skip) (Plus Skip)))
   let syntaxControl implementation = SyntaxRule
         { syntaxName = "test-control"
         , syntaxTemplate = SyntaxTemplate []
@@ -628,6 +631,14 @@ regressionTests = do
         [ AsciiStringLiteral "$Int++"
         , AsciiStringLiteral "increment $Int"
         ]))
+      (FunctionType (ref "Int") (ref "Int")))
+  assertParsed "grouping characters remain valid in ordinary template values"
+    "%\"call ($Int)\""
+    (Extract (AsciiStringLiteral "call ($Int)"))
+  assertParsed "%> remains syntax rather than performing parser validation"
+    "%\"call ($Int)\" %> (Int -> Int)"
+    (SyntaxType
+      (Extract (AsciiStringLiteral "call ($Int)"))
       (FunctionType (ref "Int") (ref "Int")))
   assertRejected "a syntax signature requires an explicit Template operand"
     "\"step $Int next\" %> (Int -> Int) do yield value"

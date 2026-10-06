@@ -227,14 +227,14 @@ standardLibraryTests =
         , programCase "parenthesized postfix optional nests"
             "yield (Int?)? = Maybe (Maybe Int)" "true"
         , programCase "empty list split is nothing"
-            "yield ()!" "Nothing? : ()"
+            "yield ()!" "nothing"
         , programCase "nonempty list split preserves head and tail"
             "yield (1; 2; 3)!" "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing binds tagged it"
             "yield (1; 2; 3)! ?? val 'it"
             "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing leaves the absent branch lazy"
-            "yield ()! ?? missing" "Nothing? : ()"
+            "yield ()! ?? missing" "nothing"
         , programCase "list sequencing applies a function to a nonempty split"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
@@ -242,7 +242,7 @@ standardLibraryTests =
             )
             "Just : 1"
         , programCase "list sequencing leaves an empty split lazy"
-            "yield () !? missing" "Nothing? : ()"
+            "yield () !? missing" "nothing"
         , programCase "list sequencing uses the standard nothing value"
             "yield (() !? missing) = nothing" "true"
         , programCase "list sequencing accepts an optional named parameter"
@@ -258,8 +258,7 @@ standardLibraryTests =
                 <> "do yield candidate)\n"
                 <> "yield ((1; 2) !? head) ~> Int?"
             )
-            ("(Just : 1) ~> (nothing | () | Just : >< (from 0 up; "
-              <> "nothing | () | Just : $Complement))")
+            "(Just : 1) ~> Maybe Int"
         , programCase "list sequencing result supports subfederation"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
@@ -667,6 +666,14 @@ declaredPatternTests =
             <> "yield (2++; increment 2)"
         )
         "(3; 3)"
+    , programFailureCase
+        "%> rejects an opening grouping character in a syntax template"
+        "yield (%\"call ($Int)\" %> (Int -> Int))"
+        (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter '('))
+    , programFailureCase
+        "%> rejects a closing grouping character in a syntax template"
+        "yield (%\"call $Int)\" %> (Int -> Int))"
+        (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter ')'))
     , programCase "syntax annotation canonicalizes as an explicit function"
         "yield (%\"step $Int next\" %> (Int -> Int))" "(Int -> Int)"
     , programCase "ordinary spelling"

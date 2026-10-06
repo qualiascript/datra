@@ -383,6 +383,21 @@ testDiagnostics = do
           "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
           []
     )
+  assert "invalid syntax-template characters have an explicit bilingual diagnostic"
+    ( localizeDiagnostic English (Types.InvalidSyntaxTemplateCharacter '(')
+        == LocalizedMessage
+          "syntax template contains an invalid literal character"
+          [ "character: '('"
+          , "%> can only install literals retained by the neutral source parser"
+          ]
+      && localizeDiagnostic Romanian
+          (Types.InvalidSyntaxTemplateCharacter '(')
+        == LocalizedMessage
+          "șablonul sintactic conține un caracter literal nevalid"
+          [ "caracter: '('"
+          , "%> poate instala doar literali păstrați de analizorul neutru al sursei"
+          ]
+    )
   assert "parser failures have exact bilingual localization"
     ( localizeDiagnostic English (ParseFailure "bad token")
         == LocalizedMessage "source could not be parsed" ["bad token"]

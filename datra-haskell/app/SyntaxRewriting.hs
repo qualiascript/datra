@@ -908,6 +908,12 @@ matchEmbeddedBlock capture environment = matchWithResult id
               Just (rewritten, remaining) -> Right (Just
                 (wrapResult (MapSpecification rewritten target), remaining))
               Nothing -> Right Nothing
+          ReverseMapSpecification target (SyntaxBoundary source) ->
+            matchWithResult id source trailing >>= \case
+              Just (rewritten, remaining) -> Right (Just
+                (wrapResult
+                  (ReverseMapSpecification target rewritten), remaining))
+              Nothing -> Right Nothing
           _ -> case leftInfixContext value of
             Just (left, rebuildResult) ->
               matchWithResult (wrapResult . rebuildResult) left trailing

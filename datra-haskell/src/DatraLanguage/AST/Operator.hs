@@ -4,6 +4,7 @@ module DatraLanguage.AST.Operator
   , operatorCanonicalSymbol
   , operatorSourceSymbol
   , ellipsisSymbol
+  , skipSourceSymbol
   ) where
 
 data Operator
@@ -142,7 +143,7 @@ operatorSourceSymbol OptionalOperator = Just "?"
 operatorSourceSymbol ListUnconsOperator = Just "!"
 operatorSourceSymbol MaybeThenOperator = Just "??"
 operatorSourceSymbol ListMaybeThenOperator = Just "!?"
-operatorSourceSymbol MultiplicationOperator = Just "*"
+operatorSourceSymbol MultiplicationOperator = Just skipSourceSymbol
 operatorSourceSymbol ExponentiationOperator = Just "^"
 operatorSourceSymbol ConcatenationOperator = Just ","
 operatorSourceSymbol AccessOperator = Just "@"
@@ -156,3 +157,9 @@ operatorSourceSymbol AssignmentOperator = Just ":="
 
 ellipsisSymbol :: String
 ellipsisSymbol = "..."
+
+-- | The skip atom deliberately shares its spelling with multiplication.
+-- Keeping that spelling here lets parsing and rendering agree without making
+-- skip pretend to be an operator of its own.
+skipSourceSymbol :: String
+skipSourceSymbol = "*"

@@ -119,6 +119,8 @@ import DatraLanguage.Identifier
   , isIdentifierCharacter
   , isLeadingIdentifierCharacter
   )
+import DatraLanguage.SyntaxTemplate
+  ( isSymbolicSyntaxCharacter )
 import SyntaxDefinitions (syntaxTemplatesFromExpression)
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
@@ -277,7 +279,7 @@ astEmptyMap = AtlasMap [] <$ astSymbol "()"
 
 astAtom :: Parser Expression
 astAtom = astLexeme
-  (Skip <$ chunk "*"
+  (Skip <$ chunk (Text.pack AST.skipSourceSymbol)
     <|> atomicExpressionToken astStringTemplateToken
     <|> astNamedAtom)
 
@@ -904,7 +906,7 @@ term = do
 -- arithmetic positions continue to require the grouped skip spelling @(*)@.
 trailingApplicationSkip :: Parser Expression
 trailingApplicationSkip = try $ do
-  _ <- symbol "*"
+  _ <- symbol (Text.pack AST.skipSourceSymbol)
   lookAhead (expressionEnd <|> void eol)
   pure Skip
 
@@ -945,29 +947,36 @@ termAtom =
 -- later syntax pass alone decides whether a visible postfix/infix template
 -- gives that phrase meaning. Exact core tokens remain owned by their ordinary
 -- grammar paths, and unknown prefix symbols remain parse errors.
+--
+-- A deeper parser cleanup should move neutral symbolic syntax beneath the
+-- ordinary expression grammar. Then a successful core parse would naturally
+-- win before an opaque symbolic literal, and this fallback would no longer
+-- need to reserve compact core expressions explicitly.
 symbolicSyntaxLiteral :: Parser Expression
 symbolicSyntaxLiteral = lexeme . try $ do
   literal <- some (satisfy isSymbolicSyntaxCharacter)
-  guard (literal `notElem` coreSymbolicTokens)
+  guard (literal `notElem` reservedCoreSymbolicRuns)
   pure (IdentifierReference (IdentifierString literal))
 
-isSymbolicSyntaxCharacter :: Char -> Bool
-isSymbolicSyntaxCharacter character =
-  isAsciiCharacter character
-    && not (isIdentifierCharacter character)
-    -- Symbolic template operators currently cannot contain whitespace; map or
-    -- grouping delimiters @(){}[];@; comma or dot; string introducers @"$@;
-    -- the comment marker @#@; or backslash. Comma and dot in particular remain
-    -- structural even when repeated, because accepting them here would turn
-    -- malformed concatenations, accesses, and ranges into declarative calls.
-    && character `notElem` (" \t\r\n(){}[];,.\"#$\\" :: String)
-
 coreSymbolicTokens :: [String]
-coreSymbolicTokens = AST.ellipsisSymbol : "<~" :
+coreSymbolicTokens = AST.ellipsisSymbol : Text.unpack reverseSpecificationSymbol :
   [ symbolText
   | operator <- [minBound .. maxBound]
   , Just symbolText <- [AST.operatorSourceSymbol operator]
   , any (not . isIdentifierCharacter) symbolText
+  ]
+
+-- Prefix operators and skip are separate tokens, but their compact forms are
+-- complete core expressions. Derive those runs from the same prefix table
+-- used by the arithmetic parser so new prefix operators cannot be forgotten.
+reservedCoreSymbolicRuns :: [String]
+reservedCoreSymbolicRuns = coreSymbolicTokens <> compactPrefixSkipRuns
+
+compactPrefixSkipRuns :: [String]
+compactPrefixSkipRuns =
+  [ prefix <> AST.skipSourceSymbol
+  | (operator, _) <- arithmeticPrefixOperators
+  , Just prefix <- [AST.operatorSourceSymbol operator]
   ]
 
 -- The skip atom and multiplication share @*@. A bare skip can participate in
@@ -975,7 +984,7 @@ coreSymbolicTokens = AST.ellipsisSymbol : "<~" :
 -- grouping on each skip side: @(*) * 7@ and @7 * (*)@.
 bareSkip :: Parser Expression
 bareSkip = do
-  _ <- symbol "*"
+  _ <- symbol (Text.pack AST.skipSourceSymbol)
   notFollowedBy (operatorToken AST.MultiplicationOperator)
   pure Skip
 
@@ -1188,14 +1197,20 @@ arithmeticOperatorTableWith
   -> [[Operator Parser Expression]]
 arithmeticOperatorTableWith infixOperator =
   [ [InfixR (Exponentiation <$ exponentiationOperator infixOperator)]
-  , [ Prefix (Plus <$ operatorToken AST.AdditionOperator)
-    , Prefix (Minus <$ operatorToken AST.MinusOperator)
-    , Prefix (Coalization <$ operatorToken AST.CoalizationOperator)
+  , [ Prefix (constructor <$ operatorToken operator)
+    | (operator, constructor) <- arithmeticPrefixOperators
     ]
   , [InfixL (Multiplication <$ multiplicationOperator infixOperator)]
   , [ InfixL (Addition <$ infixOperator AST.AdditionOperator)
     , InfixL (Subtraction <$ infixOperator AST.SubtractionOperator)
     ]
+  ]
+
+arithmeticPrefixOperators :: [(AST.Operator, Expression -> Expression)]
+arithmeticPrefixOperators =
+  [ (AST.AdditionOperator, Plus)
+  , (AST.MinusOperator, Minus)
+  , (AST.CoalizationOperator, Coalization)
   ]
 
 -- Parentheses make transitions between prefix value lookup and infix

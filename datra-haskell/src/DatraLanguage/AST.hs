@@ -27,6 +27,7 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
+  , skipSourceSymbol
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import IdentifierValueType (isIdentifierValue)
@@ -646,7 +647,7 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
-prettyOperator SkipValue = "*"
+prettyOperator SkipValue = pretty skipSourceSymbol
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
 prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)

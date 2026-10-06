@@ -13,6 +13,7 @@ import DatraLanguage.AST.Operator
   , ellipsisSymbol
   , operatorCanonicalSymbol
   , operatorSourceSymbol
+  , skipSourceSymbol
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST
@@ -138,7 +139,7 @@ prettyNonKeywordCanonicalResult result =
     CanonicalInteger value ->
       prettySourceSymbol MinusOperator <> pretty (negate value)
     CanonicalFormulation level -> prettyFormulation level
-    CanonicalSkip _ -> "*"
+    CanonicalSkip _ -> pretty skipSourceSymbol
     CanonicalRange description -> prettyRange description
     CanonicalNaturalRange origin target -> prettyNaturalRange origin target
     CanonicalValuedNaturalRange origin target ->

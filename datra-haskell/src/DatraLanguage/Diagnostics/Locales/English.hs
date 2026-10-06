@@ -269,6 +269,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "extract expects a concrete string-template specification"
         ["given value kind: " <> valueKind kind]
+    InvalidSyntaxTemplateCharacter character ->
+      LocalizedMessage
+        "syntax template contains an invalid literal character"
+        [ "character: " <> show character
+        , "%> can only install literals retained by the neutral source parser"
+        ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "Either alternatives are not distinguishable Atlas maps"

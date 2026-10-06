@@ -170,6 +170,7 @@ data InterpretingError
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
   | ExpectedStringTemplateSpecification InterpretedValueKind
+  | InvalidSyntaxTemplateCharacter Char
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
   | InvalidAsciiStringCharacter Char
