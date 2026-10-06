@@ -75,6 +75,9 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
   , ("datra.val", \case
       [value] -> Right (StripIdentifiers value)
       captures -> invalidBody symbol captures)
+  , ("datra.modular", \case
+      [value] -> Right (Modular value)
+      captures -> invalidBody symbol captures)
   , ("datra.of", \case
       [source, target] -> Right (Subfederation source target)
       captures -> invalidBody symbol captures)

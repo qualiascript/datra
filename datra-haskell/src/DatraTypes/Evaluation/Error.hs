@@ -112,6 +112,8 @@ data ModuleEvaluationFailure
   | ImportedModuleRequiresSimpleIdentifierType
   | ImportedModuleRequiresTotalValue
   | ImportAllRequiresTotalMapOfSimpleIdentifierTypes
+  | ModularRequiresTotalMapOfSimpleIdentifierTypes
+  | ModularIdentifierAlreadyMarked String
   | ImportedModuleRequiresNamedExports
   | ModuleExportRequiresIdentifier
   | ModuleNotLoaded String

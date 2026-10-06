@@ -79,6 +79,7 @@ source context expression =
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)
+    ModularValue operand -> wrapped 0 ("modular " <> source 0 operand)
     ExtractValue operand -> unary "%" operand
     OptionalValue
         (IdentifierOperationValue (IdentifierString name) annotation given) ->

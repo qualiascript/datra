@@ -9,13 +9,28 @@ import DatraTypes
   , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
+  , ModuleEvaluationFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
 standardLibraryTests :: TestTree
 standardLibraryTests =
   testGroup "standard library and declarative syntax"
-    [ testGroup "private AST implementation type"
+    [ testGroup "modular exports"
+        [ programCase "marker is appended at the final identifier index"
+            "x := 7\nyield (modular 'this).x[2]" "$Modular"
+        , programCase "the empty map may be marked repeatedly"
+            "yield modular (modular ())" "()"
+        , programFailureCase "modular rejects unnamed values"
+            "yield modular (1; 2)"
+            (SourceEvaluationFailure (ModuleEvaluationFailed
+              ModularRequiresTotalMapOfSimpleIdentifierTypes))
+        , programFailureCase "modular rejects an existing marker"
+            "x := 7\nyield modular (modular 'this)"
+            (SourceEvaluationFailure (ModuleEvaluationFailed
+              (ModularIdentifierAlreadyMarked "x")))
+        ]
+    , testGroup "private AST implementation type"
         [ programFailureCase "AST is no longer implicitly imported"
             "yield AST" (SourceEvaluationFailure (UnknownIdentifier "AST"))
         , programFailureCase "_AST is private to the library"

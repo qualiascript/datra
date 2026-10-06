@@ -381,8 +381,7 @@ defaultModuleEnvironment = do
   source <- defaultModuleSource
   let base = [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
-  importedScope <- importLoadedModule base True source
-  let scope = map retainImplicitStandardPresentation importedScope
+  scope <- importLoadedModule base True source
   namespace <- moduleName source
   value <- case lookup namespace scope of
     Just (ImportedBinding _ _ importedValue _) -> Right importedValue
@@ -394,29 +393,6 @@ defaultModuleEnvironment = do
         , Just qualified <- [qualifySyntaxRule namespace rule]
         ]
   pure (scope, rules <> qualifiedRules)
-
--- Explicit @import all@ exposes values transparently, but the implicitly
--- available standard library also defines the language's canonical source
--- spellings. Retain its inner named binding so annotations and specifications
--- reconstruct as @Nat@ or @Int@ rather than their expanded definitions.
-retainImplicitStandardPresentation :: (String, Binding) -> (String, Binding)
-retainImplicitStandardPresentation (name, binding) =
-  (name, retain binding)
-  where
-    -- Keep the qualified origin available to closure reconstruction, while
-    -- leaving the exported name as the outer presentation used by ordinary
-    -- source rendering.  Resolving the nested QualifiedBinding erases its
-    -- presentation before NamedBinding restores the canonical short name.
-    retain (QualifiedBinding origin target) = retainQualified origin target
-    retain (ShadowingConsistentBinding target) =
-      ShadowingConsistentBinding (retain target)
-    retain target = target
-
-    retainQualified origin (NamedBinding dependency target) =
-      NamedBinding dependency (QualifiedBinding origin target)
-    retainQualified origin (ShadowingConsistentBinding target) =
-      ShadowingConsistentBinding (retainQualified origin target)
-    retainQualified origin target = QualifiedBinding origin target
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -630,6 +606,15 @@ data Binding
   | ScopeMembers [String]
   | CanonicalNames [(String, String)]
   | LexicalScope PresentationDependency
+
+data ImportPresentation
+  = TransparentImportPresentation
+  | ModularImportPresentation
+
+data ModuleExport = ModuleExport String ImportPresentation Binding
+
+moduleExportName :: ModuleExport -> String
+moduleExportName (ModuleExport name _ _) = name
 
 scopeBinding :: String -> Binding -> (String, Binding)
 scopeBinding name binding =
@@ -900,6 +885,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         >>= stripIdentifiersValue
     StripIdentifiers operand ->
       interpret operand >>= stripIdentifiersValue
+    Modular operand -> interpret operand >>= modularValue
     Extract operand ->
       do
         stringType <- interpret
@@ -972,13 +958,21 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     NamedAccess
         (IdentifierReference (IdentifierString namespace))
         (IdentifierString name)
-      | Just (ImportedBinding dependency _ value _) <- lookup namespace scope ->
+      | Just (ImportedBinding dependency identity value _) <- lookup namespace scope ->
           case namedAccessValue value name of
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
-            result -> withCanonicalNamedAccess
-              [dependency] (CanonicalReference namespace) name
-                <$> (result >>= transparentEitherAlias)
+            result -> do
+              selected <- result
+              if hasTrailingIdentifierMarker modularMarker selected
+                then do
+                  payload <- accessValues selected (naturalValue 1)
+                  pure (withCanonicalNamedAccess
+                    [modularPresentationDependency identity]
+                    (CanonicalReference namespace) name payload)
+                else withCanonicalNamedAccess
+                  [dependency] (CanonicalReference namespace) name
+                    <$> transparentEitherAlias selected
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
     NamedAccess
@@ -2511,16 +2505,24 @@ importLoadedModule scope allNames source = do
     else requireTotalModuleValue value >> pure []
   internal <- moduleScopeWithBase [] source
   let exported =
-        [ (name, maybe evaluated (retainExportDefinition evaluated)
-            (lookup name internal))
-        | (name, evaluated) <- exportedValues
+        [ ModuleExport name presentation
+            (maybe evaluated (retainExportDefinition evaluated)
+              (lookup name internal))
+        | ModuleExport name presentation evaluated <- exportedValues
         ]
       dependency = case scopePresentationDependency scope of
         Just current -> current
         Nothing -> PresentationDependency ("import:" <> identity)
       namedExports =
-        [ scopeBinding name (NamedBinding dependency binding)
-        | (name, binding) <- exported
+        [ scopeBinding name
+            (case presentation of
+              ModularImportPresentation -> NamedBinding
+                (modularPresentationDependency identity)
+                (QualifiedBinding (namespace <> "." <> name) binding)
+              TransparentImportPresentation -> QualifiedBinding
+                (namespace <> "." <> name)
+                (NamedBinding dependency binding))
+        | ModuleExport name presentation binding <- exported
         ]
   (alreadyImported, namespaceScope) <- case lookup namespace scope of
     Nothing -> pure
@@ -2531,7 +2533,7 @@ importLoadedModule scope allNames source = do
     _ -> Left (IdentifierStringOverlap namespace)
   if allNames
     then foldM (insertExport alreadyImported) namespaceScope
-      (qualifyBindings namespace namedExports)
+      namedExports
     else pure namespaceScope
   where
     insertExport alreadyImported values entry@(name,_) = case lookup name values of
@@ -2574,7 +2576,7 @@ moduleExportNames :: ModuleSource -> Either InterpretingError [String]
 moduleExportNames source = do
   (_, _, value) <- loadedModuleValue source
   exported <- importAllBindings value
-  pure (map fst exported)
+  pure (map moduleExportName exported)
 
 moduleSyntaxRules
   :: String
@@ -2643,7 +2645,7 @@ requireTotalModuleValue value
 
 importAllBindings
   :: InterpretedValue
-  -> Either InterpretingError Scope
+  -> Either InterpretingError [ModuleExport]
 importAllBindings value
   | not (interpretedTypeIsTotal value) = invalid
   | not (all isSimpleIdentifier members) = invalid
@@ -2667,10 +2669,6 @@ scopeMemberNames scope = case lookup "'this" scope of
   Just binding | Just names <- scopeMembersBinding binding -> names
   _ -> []
 
-qualifyBindings :: String -> Scope -> Scope
-qualifyBindings namespace = map (\(name, binding) ->
-  (name, QualifiedBinding (namespace <> "." <> name) binding))
-
 publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 publicValue value = do
   members <- namedMembers value
@@ -2692,12 +2690,47 @@ namedMembers value = case interpretedSemanticResult value of
       (name,) <$> namedAccessValue value name
     field _ = Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
 
-namedBindings :: InterpretedValue -> Either InterpretingError Scope
+namedBindings
+  :: InterpretedValue
+  -> Either InterpretingError [ModuleExport]
 namedBindings value = namedMembers value >>= traverse field
   where
     field (name, selected) = do
       payload <- accessValues selected (naturalValue 1)
-      pure (name, EvaluatedBinding payload)
+      pure (ModuleExport
+        name
+        (if hasTrailingIdentifierMarker modularMarker selected
+          then ModularImportPresentation
+          else TransparentImportPresentation)
+        (EvaluatedBinding payload))
+
+modularMarker :: String
+modularMarker = "Modular"
+
+-- A modular name is owned by the exporting module, rather than by the lexical
+-- scope that happened to import it. Keeping those dependencies distinct makes
+-- the canonical spelling survive both explicit and implicit imports.
+modularPresentationDependency :: FilePath -> PresentationDependency
+modularPresentationDependency identity =
+  PresentationDependency ("modular:" <> identity)
+
+modularValue :: InterpretedValue -> Either InterpretingError InterpretedValue
+modularValue value = do
+  members <- either (const invalid) Right (namedMembers value)
+  case
+      [ name
+      | (name, member) <- members
+      , hasTrailingIdentifierMarker modularMarker member
+      ] of
+    name : _ -> Left (ModuleEvaluationFailed
+      (ModularIdentifierAlreadyMarked name))
+    [] -> pure (makeAtlasMap 2
+      [ withTrailingIdentifierMarker modularMarker member
+      | (_, member) <- members
+      ])
+  where
+    invalid = Left (ModuleEvaluationFailed
+      ModularRequiresTotalMapOfSimpleIdentifierTypes)
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path

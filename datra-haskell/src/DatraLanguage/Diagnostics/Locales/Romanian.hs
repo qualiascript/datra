@@ -381,6 +381,12 @@ localizeModuleFailure failure =
     ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "import all necesită o hartă totală de tipuri de identificator simplu" []
+    ModularRequiresTotalMapOfSimpleIdentifierTypes ->
+      LocalizedMessage
+        "modular necesită o hartă totală de tipuri de identificator simplu" []
+    ModularIdentifierAlreadyMarked name ->
+      LocalizedMessage "modular nu poate marca un identificator de mai multe ori"
+        ["identificator: " <> name]
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "modulul importat trebuie să producă un domeniu sau o hartă denumită"
         ["folosiți yield this pentru a exporta domeniul"]

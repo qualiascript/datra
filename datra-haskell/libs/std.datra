@@ -53,11 +53,11 @@ yield Std := begin
       (_AST, _AST, _AST -> _AST) !~"datra.if") |
     (%"if $_Expr then $_Expr" %>
       (_AST, _AST -> _AST) !~"datra.ifThen")
-  #NOTE: missing syntax for importing with renaming, which is the behavior of implicit import all
   'import :=
     (%"import %("all") $Str" %>
       (($all; Str) -> ()) !~"datra.importAll") |
     (%"import $Str" %> (Str -> ()) !~"datra.import")
+  'modular := %"modular $_Expr" %> (_AST -> _AST) !~"datra.modular"
   let 'range :=
     (%"range $IntLimit to $IntLimit" %>
       ({origin : IntLimit; target : IntLimit} -> IntRange) !~"datra.range") |
@@ -95,4 +95,4 @@ yield Std := begin
     slots := with i in Nat do "arg%(i)"? : T
   yield () | with n in Nat do slots[range 0 to n]
 
-yield public 'this
+yield public modular 'this
