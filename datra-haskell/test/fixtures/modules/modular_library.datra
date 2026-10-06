@@ -1,0 +1,7 @@
+import all "std"
+
+yield ModularLibrary := begin
+  x := 7
+  typed : Int := 7
+  identity := ({value? : Int} -> Int do yield value)
+yield public modular this

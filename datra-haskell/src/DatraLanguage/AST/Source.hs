@@ -22,6 +22,12 @@ source context expression =
     SyntaxTypeValue templates signature -> wrapped 1
       (source 2 templates <> " %> " <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
+    FunctionApplicationValue
+        (IdentifierReferenceValue (IdentifierString "_this"))
+        (NaturalValue 0) -> "this"
+    FunctionApplicationValue
+        (IdentifierReferenceValue (IdentifierString "_it"))
+        (NaturalValue 0) -> "it"
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
@@ -56,7 +62,9 @@ source context expression =
     MaybeThenValue
         (ListUnconsValue values)
         (FunctionApplicationValue function
-          (IdentifierReferenceValue (IdentifierString "'it"))) ->
+          (FunctionApplicationValue
+            (IdentifierReferenceValue (IdentifierString "_it"))
+            (NaturalValue 0))) ->
       listMaybeThen values function
     MaybeThenValue optional branch -> binary 1 "??" optional branch
     EitherValue left right -> binary 3 "|" left right
@@ -79,6 +87,7 @@ source context expression =
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     StripIdentifiersValue operand -> wrapped 0 ("val " <> source 0 operand)
+    ModularValue operand -> wrapped 0 ("modular " <> source 0 operand)
     ExtractValue operand -> unary "%" operand
     OptionalValue
         (IdentifierOperationValue (IdentifierString name) annotation given) ->
@@ -171,7 +180,9 @@ source context expression =
 scopeNames :: OperatorExpression -> Maybe [String]
 scopeNames
     (NamedAccessValue
-      (IdentifierReferenceValue (IdentifierString "'this"))
+      (FunctionApplicationValue
+        (IdentifierReferenceValue (IdentifierString "_this"))
+        (NaturalValue 0))
       (IdentifierString name)) = Just [name]
 scopeNames (Concatenate left EmptyMap) = scopeNames left
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right

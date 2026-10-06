@@ -4,6 +4,8 @@ module Evaluation.Identifier
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
+  , withTrailingIdentifierMarker
+  , hasTrailingIdentifierMarker
   , requireCanonicalTypeAnnotation
   ) where
 
@@ -17,6 +19,7 @@ import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error
   ( InterpretingError (NonCanonicalIdentifierTypeAnnotation) )
 import Evaluation.Value
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 
 -- | Identifier annotations participate in canonical source syntax. A weak
 -- Datra type can still be named as a value, but cannot define the annotated
@@ -64,6 +67,46 @@ inferredIdentifierAssignmentValue identifierString underlying =
         (interpretedSemantics underlying)
         (interpretedSemantics underlying)
     }
+
+-- | Append compiler-owned metadata to an identifier's map view without
+-- changing the identifier's denotation, callable form, or federation. The
+-- metadata lives at the final index so import code can inspect it without
+-- relying on rendered canonical syntax.
+withTrailingIdentifierMarker :: String -> InterpretedValue -> InterpretedValue
+withTrailingIdentifierMarker marker value
+  | hasTrailingIdentifierMarker marker value = value
+  | otherwise = value
+      { interpretedMap = markedMap
+      , interpretedTotalAtlasMap =
+          case interpretedTotalAtlasMap value of
+            Just _ -> Just (InterpretedTotalAtlasMap markedMap)
+            Nothing -> Nothing
+      }
+  where
+    markerValue = makeAsciiString marker
+    sourceMap = interpretedMap value
+    markedMap = sourceMap
+      { interpretedMapPageCardinality =
+          interpretedMapPageCardinality sourceMap + 1
+      , interpretedMapFinalValues = appendOrdinalOrderedValues
+          (interpretedMapFinalValues sourceMap)
+          (singletonOrdinalOrderedValues markerValue)
+      , interpretedMapComponents =
+          interpretedMapComponents sourceMap
+            <> [interpretedSemantics markerValue]
+      }
+
+hasTrailingIdentifierMarker :: String -> InterpretedValue -> Bool
+hasTrailingIdentifierMarker marker value =
+  case naturalAtOrdinal (interpretedMapFinalOrderType valueMap) of
+    Just count
+      | count > 0
+      , Just finalValue <- interpretedMapValueAt
+          valueMap (finiteOrdinal (count - 1)) ->
+          interpretedSemanticResult finalValue == CanonicalAsciiString marker
+    _ -> False
+  where
+    valueMap = interpretedMap value
 
 identifierStringProjectionValue
   :: EvaluatedDependentIdentifierType

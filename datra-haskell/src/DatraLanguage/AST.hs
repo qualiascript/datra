@@ -4,6 +4,8 @@ module DatraLanguage.AST
   ( IdentifierString (..)
   , StringTemplatePart (..)
   , Expression (..)
+  , contextualAccess
+  , isContextualAccessOf
   , OperatorExpression (..)
   , toOperatorExpression
   , traverseExpressionChildren
@@ -27,6 +29,7 @@ import DatraLanguage.AST.Operator
   ( Operator (..)
   , ellipsisSymbol
   , operatorCanonicalSymbol
+  , skipSourceSymbol
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
 import IdentifierValueType (isIdentifierValue)
@@ -113,6 +116,7 @@ data Expression
   | BooleanNot Expression
   | Coalization Expression
   | StripIdentifiers Expression
+  | Modular Expression
   | Extract Expression
   | Assert Bool Expression
   | Fun Expression
@@ -153,6 +157,15 @@ data Expression
       , identifierTemplateGivenValue :: Maybe Expression
       }
   deriving (Eq, Show)
+
+-- | Apply a private contextual function at depth zero. Its native closure
+-- delegates to @_inner_this@ or @_inner_it@ at the same index.
+contextualAccess :: IdentifierString -> Expression
+contextualAccess name =
+  FunctionApplication (IdentifierReference name) (EllipsisNatural 0)
+
+isContextualAccessOf :: IdentifierString -> Expression -> Bool
+isContextualAccessOf name expression = expression == contextualAccess name
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that
@@ -249,6 +262,7 @@ data OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
   | StripIdentifiersValue OperatorExpression
+  | ModularValue OperatorExpression
   | ExtractValue OperatorExpression
   | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
@@ -384,6 +398,8 @@ normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
 normalizeExpression (StripIdentifiers operand) =
   StripIdentifiers (normalizeExpression operand)
+normalizeExpression (Modular operand) =
+  Modular (normalizeExpression operand)
 normalizeExpression (Extract operand) =
   Extract (normalizeExpression operand)
 normalizeExpression (Assert hard condition) =
@@ -558,6 +574,7 @@ lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
 lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
+lower (Modular operand) = ModularValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
@@ -646,7 +663,7 @@ combineExpansions (firstExpression : rest) =
 prettyOperator :: OperatorExpression -> Doc annotation
 prettyOperator (NaturalValue value) = pretty value
 prettyOperator EllipsisValue = pretty ellipsisSymbol
-prettyOperator SkipValue = "*"
+prettyOperator SkipValue = pretty skipSourceSymbol
 prettyOperator (AsciiStringValue value) = pretty (renderAsciiStringLiteral value)
 prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
@@ -760,6 +777,8 @@ prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
 prettyOperator (StripIdentifiersValue operand) =
   prettyUnary StripIdentifiersOperator operand
+prettyOperator (ModularValue operand) =
+  prettyForm "modular" [prettyOperator operand]
 prettyOperator (ExtractValue operand) =
   prettyUnary ExtractOperator operand
 prettyOperator (AssertValue hard condition) =
@@ -989,6 +1008,7 @@ traverseExpressionChildren visit expression = case expression of
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
   StripIdentifiers x -> StripIdentifiers <$> visit x
+  Modular x -> Modular <$> visit x
   Extract x -> Extract <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x

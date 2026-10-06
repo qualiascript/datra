@@ -17,6 +17,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , contextualAccess
   )
 import DatraLanguage.AST.Syntax
   ( natural
@@ -232,7 +233,7 @@ testModuleSyntaxAlias = do
         (IdentifierString name) value (Just value)
       moduleBody = Begin
         [binding "begin" (identifierReference "begin")]
-        (identifierReference "'this")
+        (contextualAccess (IdentifierString "_this"))
       source = ModuleSource "alias-module.datra"
         (Program
           [ binding "_Expr" expressionType
@@ -272,7 +273,7 @@ testModuleSyntaxAlias = do
           ]
           (binding "ShadowingModule" (Begin
             [binding "begin" (natural 123)]
-            (identifierReference "'this"))))
+            (contextualAccess (IdentifierString "_this")))))
         []
   case moduleSyntaxRules "shadowing-module" shadowingSource of
     Right [] -> pure ()
@@ -290,7 +291,7 @@ testModuleSyntaxAlias = do
             [ binding "_begin" (identifierReference "begin")
             , binding "begin" (natural 123)
             ]
-            (identifierReference "'this"))))
+            (contextualAccess (IdentifierString "_this")))))
         []
   case moduleSyntaxRules "preserving-module" preservingSource of
     Right [rule] -> assert
@@ -315,7 +316,7 @@ testModuleSyntaxAlias = do
           [ binding "abc" (natural 123)
           , binding "abc" (natural 456)
           ]
-          (identifierReference "'this"))))
+          (contextualAccess (IdentifierString "_this")))))
         []
   case moduleExportNames duplicateSource of
     Left (IdentifierStringOverlap "abc") -> pure ()
@@ -323,7 +324,7 @@ testModuleSyntaxAlias = do
       ("same-block redeclaration was not rejected: " <> show result)
   let isolatedBody = Begin
         [binding "x" (identifierReference "Int")]
-        (identifierReference "'this")
+        (contextualAccess (IdentifierString "_this"))
       isolatedSource = ModuleSource "isolated-module.datra"
         (Program [] (binding "IsolatedModule" isolatedBody)) []
   case moduleExportNames isolatedSource of
@@ -333,7 +334,7 @@ testModuleSyntaxAlias = do
   let explicitStd = ModuleSource "std.datra"
         (Program [] (binding "Std" (Begin
           [binding "Int" (natural 7)]
-          (identifierReference "'this"))))
+          (contextualAccess (IdentifierString "_this")))))
         []
       importingSource = ModuleSource "importing-module.datra"
         (Program
@@ -1063,7 +1064,7 @@ parseTestExpression source =
 testBegin :: IO ()
 testBegin = do
   expectSourceValue "retained block canonicalizes value lookup"
-    "begin \"value with spaces\" : 5; yield 'this.\"value with spaces\"[1] + 1" $ \value -> do
+    "begin \"value with spaces\" : 5; yield this.\"value with spaces\"[1] + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block uses the symbolic lookup operator"
         (rendered == "6 <~ begin \"value with spaces\" : 5; yield ~\"value with spaces\" + 1")

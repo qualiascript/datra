@@ -14,4 +14,4 @@ yield Ordinals := begin
   gt := {x? : OrdValue; y? : OrdValue} -> Bool !~"datra.ordinal.gt"
   gte := {x? : OrdValue; y? : OrdValue} -> Bool !~"datra.ordinal.gte"
 
-yield public 'this
+yield public this

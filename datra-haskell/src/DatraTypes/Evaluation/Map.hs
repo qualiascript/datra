@@ -32,7 +32,7 @@ makeAtlasMap cardinality values =
   makeAtlasMapPreservingSingleton cardinality values
 
 -- | Construct an Atlas map while retaining a singleton outer boundary.
--- Function-body argument aggregates require this because @'it[0]@ selects the
+-- Function-body argument aggregates require this because @_it[0]@ selects the
 -- first written parameter even when it is the only parameter.
 makeAtlasMapPreservingSingleton
   :: Natural

@@ -112,6 +112,8 @@ data ModuleEvaluationFailure
   | ImportedModuleRequiresSimpleIdentifierType
   | ImportedModuleRequiresTotalValue
   | ImportAllRequiresTotalMapOfSimpleIdentifierTypes
+  | ModularRequiresTotalMapOfSimpleIdentifierTypes
+  | ModularIdentifierAlreadyMarked String
   | ImportedModuleRequiresNamedExports
   | ModuleExportRequiresIdentifier
   | ModuleNotLoaded String
@@ -170,6 +172,7 @@ data InterpretingError
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
   | ExpectedStringTemplateSpecification InterpretedValueKind
+  | InvalidSyntaxTemplateCharacter Char
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
   | InvalidAsciiStringCharacter Char

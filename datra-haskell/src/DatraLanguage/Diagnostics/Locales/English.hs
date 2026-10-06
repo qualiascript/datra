@@ -269,6 +269,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "extract expects a concrete string-template specification"
         ["given value kind: " <> valueKind kind]
+    InvalidSyntaxTemplateCharacter character ->
+      LocalizedMessage
+        "syntax template contains an invalid literal character"
+        [ "character: " <> show character
+        , "%> can only install literals retained by the neutral source parser"
+        ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "Either alternatives are not distinguishable Atlas maps"
@@ -375,6 +381,12 @@ localizeModuleFailure failure =
     ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "import all requires a total map of simple identifier types" []
+    ModularRequiresTotalMapOfSimpleIdentifierTypes ->
+      LocalizedMessage
+        "modular requires a total map of simple identifier types" []
+    ModularIdentifierAlreadyMarked name ->
+      LocalizedMessage "modular cannot mark an identifier more than once"
+        ["identifier: " <> name]
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "imported module must yield a scope or named map"
         ["use yield this to export its scope"]

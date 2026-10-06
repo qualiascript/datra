@@ -269,6 +269,12 @@ localizeInterpretingError reason =
       LocalizedMessage
         "extract necesită o specificație concretă de șablon de șir"
         ["tipul valorii date: " <> valueKind kind]
+    InvalidSyntaxTemplateCharacter character ->
+      LocalizedMessage
+        "șablonul sintactic conține un caracter literal nevalid"
+        [ "caracter: " <> show character
+        , "%> poate instala doar literali păstrați de analizorul neutru al sursei"
+        ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
         "alternativele Either nu sunt hărți Atlas diferențiabile"
@@ -375,6 +381,12 @@ localizeModuleFailure failure =
     ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "import all necesită o hartă totală de tipuri de identificator simplu" []
+    ModularRequiresTotalMapOfSimpleIdentifierTypes ->
+      LocalizedMessage
+        "modular necesită o hartă totală de tipuri de identificator simplu" []
+    ModularIdentifierAlreadyMarked name ->
+      LocalizedMessage "modular nu poate marca un identificator de mai multe ori"
+        ["identificator: " <> name]
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "modulul importat trebuie să producă un domeniu sau o hartă denumită"
         ["folosiți yield this pentru a exporta domeniul"]

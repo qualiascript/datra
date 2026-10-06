@@ -123,6 +123,8 @@ module DatraTypes
   , dependentIdentifierTypeValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
+  , withTrailingIdentifierMarker
+  , hasTrailingIdentifierMarker
   , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
@@ -340,8 +342,10 @@ import Evaluation.LimitRange
   )
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , hasTrailingIdentifierMarker
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
+  , withTrailingIdentifierMarker
   , requireCanonicalTypeAnnotation
   )
 import Evaluation.Specification

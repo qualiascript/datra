@@ -38,7 +38,7 @@ accessDependentIdentifierType original identifier insertionValue = do
     (validateAccessSelection
       (omegaPower (someSuperEllipsisInsertionRank insertion))
       insertionOrderType
-      (finiteOrdinal 2)
+      sourceOrderType
       (someSuperEllipsisInsertionPositionAt insertion))
   case naturalAtOrdinal insertionOrderType of
     Nothing ->
@@ -58,20 +58,30 @@ accessDependentIdentifierType original identifier insertionValue = do
           identifierStringProjectionValue identifier
 
     accessPositions [] = Right (makeAtlasMap 0 [])
-    accessPositions [position]
-      | position == finiteOrdinal 0 = Right identifierStringValue
-      | position == finiteOrdinal 1 = Right underlying
+    accessPositions [position] = maybe
+      (Right (makeAtlasMap 0 []))
+      Right
+      (valueAt position)
     accessPositions positions
-      | positions == [finiteOrdinal 0, finiteOrdinal 1] = Right original
+      | positions == map finiteOrdinal (finitePositions sourceCardinality) =
+          Right original
       | otherwise =
           Right
             (makeAtlasMap
               2
-              (map valueAt positions))
+              [ value
+              | position <- positions
+              , Just value <- [valueAt position]
+              ])
 
     valueAt position
-      | position == finiteOrdinal 0 = identifierStringValue
-      | otherwise = underlying
+      | position == finiteOrdinal 0 = Just identifierStringValue
+      | position == finiteOrdinal 1 = Just underlying
+      | otherwise = interpretedMapValueAt sourceMap position
+
+    sourceMap = interpretedMap original
+    sourceOrderType = interpretedMapFinalOrderType sourceMap
+    sourceCardinality = maybe 0 id (naturalAtOrdinal sourceOrderType)
 
 selectedPosition
   :: SomeSuperEllipsisInsertion

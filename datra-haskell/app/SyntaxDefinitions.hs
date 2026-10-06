@@ -6,6 +6,7 @@ module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
   , SyntaxFunctionBody, syntaxFunctionBodyForSymbol, applySyntaxFunctionBody
   , declarationRules, syntaxTemplatesFromExpression
+  , contextualSyntaxRules
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , qualifySyntaxRule, expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
@@ -29,6 +30,26 @@ data SyntaxRule = SyntaxRule
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
   } deriving (Eq,Show)
+
+-- | Contextual bindings are supplied by their enclosing evaluator scopes,
+-- not by Std. These zero-hole templates are ordinary syntax-function rules:
+-- each surface word applies its private contextual function to literal @0@.
+contextualSyntaxRules :: [SyntaxRule]
+contextualSyntaxRules = map rule
+  [ ("_this", "this")
+  , ("_it", "it")
+  ]
+  where
+    rule (binding, surface) = SyntaxRule
+      binding
+      (syntaxTemplateFromPattern surface)
+      signature
+      False
+      Nothing
+      (IdentifierReference (IdentifierString binding))
+    signature = FunctionType
+      (EllipsisNatural 0)
+      (External (AsciiStringLiteral "datra.Any"))
 
 newtype SyntaxFunctionBody = SyntaxFunctionBody
   { applySyntaxFunctionBody
@@ -74,6 +95,9 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
       captures -> invalidBody symbol captures)
   , ("datra.val", \case
       [value] -> Right (StripIdentifiers value)
+      captures -> invalidBody symbol captures)
+  , ("datra.modular", \case
+      [value] -> Right (Modular value)
       captures -> invalidBody symbol captures)
   , ("datra.of", \case
       [source, target] -> Right (Subfederation source target)
@@ -240,13 +264,19 @@ expandSyntax
 expandSyntax rule captures = case
     externalSymbol (syntaxImplementation rule) >>= syntaxFunctionBodyForSymbol of
   Just body -> applySyntaxFunctionBody body captures
-  _ -> Right (FunctionApplication
-    callable
-    (case captures of [value] -> value; _ -> AtlasMap captures))
+  _ -> Right (FunctionApplication callable (applicationInput captures))
   where
     callable = scoped (IdentifierReference (IdentifierString localName))
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
+    -- A zero-hole syntax function receives the singleton value written as its
+    -- domain. Thus @%"this" %> (0 -> Any)@ applies its function to @0@ using
+    -- the same expansion path as any other declared template.
+    applicationInput [] = case syntaxSignature rule of
+      FunctionType domain _ -> domain
+      _ -> AtlasMap []
+    applicationInput [value] = value
+    applicationInput values = AtlasMap values
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.
@@ -357,11 +387,11 @@ absorbFunSequence expressionValue =
   case expressionValue of
     MapSequence (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == IdentifierReference (IdentifierString "'this") ->
+      , isContextualAccessOf (IdentifierString "_this") (last remaining) ->
           EitherType (AtlasMap []) (MapSequence (headValue : remaining))
     AtlasMap (EitherType (AtlasMap []) headValue : remaining)
       | not (null remaining)
-      , last remaining == IdentifierReference (IdentifierString "'this") ->
+      , isContextualAccessOf (IdentifierString "_this") (last remaining) ->
           EitherType (AtlasMap []) (AtlasMap (headValue : remaining))
     _ -> expressionValue
 
