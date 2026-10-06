@@ -449,6 +449,26 @@ standardLibraryTests =
             ("(\"()\"; \"arg0 : 1\"; "
               <> "\"(arg0 : 1; arg1 : 2; arg2 : 3)\"; "
               <> "\"(arg0 : 4; arg1 : 10)\")")
+        , programCase "only argument maps erase unmatched identifiers"
+            ( "assert not ((arg0 : 1; arg1 : 2) of List Int)\n"
+                <> "assert ((arg0 : 1; arg1 : 2) of {List Int,})\n"
+                <> "yield ()"
+            )
+            "()"
+        , programCase "Args convert to lists through argument map matching"
+            ( "ArgsInt := {Args Int,}\n"
+                <> "ListInt := List Int\n"
+                <> "display := ArgsInt -> \"$(ListInt)\" do\n"
+                <> "  toList := ArgsInt -> {ListInt,} do yield it\n"
+                <> "  yield \"%(toList it)\"\n"
+                <> "assert display() = \"()\"\n"
+                <> "assert display(1) = \"1\"\n"
+                <> "assert display(1, 2, 3) = \"(1; 2; 3)\"\n"
+                <> "assert display(arg1 := 10, 4) = \"(4; 10)\"\n"
+                <> "assert ((arg2 := 10, 4) of ArgsInt) = false\n"
+                <> "yield ()"
+            )
+            "()"
         ]
     , testGroup "dependent family sugar"
         [ programCase "with-in-do builds an indexed sum family"

@@ -37,13 +37,17 @@ yield with n in Nat do slots[0..n]
 For example:
 
 ```datra
-display := {Args Int,} -> Str do yield "%(it)"
+ArgsInt := {Args Int,}
+ListInt := List Int
+display := ArgsInt -> "$(ListInt)" do
+  toList := ArgsInt -> {ListInt,} do yield it
+  yield "%(toList it)"
 
 assert display() = "()"
-assert display(1) = "arg0 : 1"
-assert display(1, 2, 3) = "(arg0 : 1; arg1 : 2; arg2 : 3)"
-assert display(arg1 := 10, 4) = "(arg0 : 4; arg1 : 10)"
-assert ((arg2 := 10, 4) of {Args Int,}) = false # missing argument: `arg1`
+assert display(1) = "1"
+assert display(1, 2, 3) = "(1; 2; 3)"
+assert display(arg1 := 10, 4) = "(4; 10)"
+assert ((arg2 := 10, 4) of ArgsInt) = false # missing argument: `arg1`
 ```
 
 See the [Haskell implementation README](datra-haskell/README.md) for Docker
