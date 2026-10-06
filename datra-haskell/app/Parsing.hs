@@ -1060,6 +1060,7 @@ rangeEndpointAtom =
     , AsciiStringLiteral <$> identifierString
     , stringExpression
     , ellipsisNatural
+    , identifierReference
     ]
 
 -- Bracket access is a postfix part of the primary expression, so it binds

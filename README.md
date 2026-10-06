@@ -31,7 +31,7 @@ type defined entirely in the standard library:
 ```datra
 Args := (for T? of Any) -> Any do
   slots := with i in Nat do "arg%(i)"? : T
-yield () | with n in Nat do slots[range 0 to n]
+yield with n in Nat do slots[0..n]
 ```
 
 For example:

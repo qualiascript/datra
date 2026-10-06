@@ -1730,6 +1730,10 @@ regressionTests = do
     "$a[1..]"
     (AST.asciiString "a" <@> (natural 1 ..+))
   assertAstOutput
+    "bracket insertion accepts a range with an identifier boundary"
+    "$a[0..n]"
+    (AST.asciiString "a" <@> (natural 0 <..> ref "n"))
+  assertAstOutput
     "bracket insertion accepts an explicitly constructed map"
     "$a[(1; 2)]"
     (AST.asciiString "a" <@> (natural 1 <:> natural 2))

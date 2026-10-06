@@ -88,9 +88,7 @@ import DatraLanguage.Diagnostics.Localization
   )
 import MapOperators.AccessOperator
   ( AccessError
-      ( AccessInsertionRankExceedsMap
-      , AccessPositionOutOfBounds
-      )
+      ( AccessPositionOutOfBounds )
   )
 import Numeric.Natural (Natural)
 import SyntaxDefinitions
@@ -2803,6 +2801,7 @@ testAccess = do
         (<.>)
           (natural 1)
           ((<.>) (natural 2) (natural 3))
+      fiveValues = AtlasMap (map natural [0 .. 4])
       sequenceSpecification =
         (~>)
           (AtlasMap [natural 2, natural 3])
@@ -2851,6 +2850,31 @@ testAccess = do
     assert "natural range access always has its empty federation member"
       (renderInterpretedValue value == "()")
   expectValue
+      "concrete range access clips its upper boundary"
+      ((<@>) fiveValues ((<..>) (natural 3) (natural 10))) $ \value ->
+    assert "only existing ascending positions remain"
+      (renderInterpretedValue value == "(3; 4)")
+  expectValue
+      "descending concrete range access clips its origin"
+      ((<@>) fiveValues ((<..>) (natural 10) (natural 2))) $ \value ->
+    assert "descending traversal order survives clipping"
+      (renderInterpretedValue value == "(4; 3)")
+  expectValue
+      "wholly out-of-bounds concrete range access is empty"
+      ((<@>) fiveValues ((..+) (natural 10))) $ \value ->
+    assert "an absent concrete tail clips to empty"
+      (renderInterpretedValue value == "()")
+  expectValue
+      "every concrete range clips against an empty source"
+      ((<@>) (AtlasMap []) ((..+) (natural 0))) $ \value ->
+    assert "an empty source produces an empty result"
+      (renderInterpretedValue value == "()")
+  assert "valued ranges remain exact access insertions"
+    (case interpretExpressionReason
+        ((<@>) fiveValues (ValuedNaturalRange 3 10)) of
+      Left (AccessRejected (AccessPositionOutOfBounds _ _)) -> True
+      _ -> False)
+  expectValue
       "a sequential selector map preserves separate access results"
       ((<@>)
         threeValues
@@ -2866,12 +2890,62 @@ testAccess = do
           Nothing -> False
       )
   expectValue
+      "an empty clipped sequence component keeps its position"
+      ((<@>)
+        (AtlasMap [natural 1])
+        (AtlasMap [natural 0, ((..+) (natural 1))])) $ \value ->
+    assert "head and empty tail remain two sequence positions"
+      ( renderInterpretedValue value == "(1; >< ())"
+        && case interpretedMapValueAt
+            (interpretedMap value) (finiteOrdinal 1) of
+          Just member ->
+            case Types.interpretedCanonicalResult member of
+              Types.CanonicalCoalization _ -> True
+              _ -> False
+          Nothing -> False
+      )
+  expectValue
+      "overlapping sequence selectors clip independently"
+      ((<@>)
+        threeValues
+        (AtlasMap
+          [ ((<..>) (natural 0) (natural 2))
+          , ((<..>) (natural 1) (natural 10))
+          ])) $ \value ->
+    assert "sequence overlap preserves both coalition results"
+      (renderInterpretedValue value == "(>< (1; 2); >< (2; 3))")
+  expectValue
       "a concatenated selector map concatenates access results"
       ((<@>)
         threeValues
         ((<.>) (natural 0) (NaturalRangeUpwards 1))) $ \value ->
     assert "comma access flattens the selected head and tail"
       (renderInterpretedValue value == "(1; 2; 3)")
+  expectValue
+      "concrete head and tail selectors clip and flatten"
+      ((<@>)
+        threeValues
+        ((<.>)
+          ((<..>) (natural 0) (natural 1))
+          ((..+) (natural 1)))) $ \value ->
+    assert "concrete comma selectors preserve selector order"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  expectValue
+      "range-federation head and tail selectors clip and flatten"
+      ((<@>)
+        threeValues
+        ((<.>) (NaturalRange 0 0) (NaturalRangeUpwards 1))) $ \value ->
+    assert "range comma selectors preserve selector order"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  assert "an exact leaf rejects a mixed selector concatenation"
+    (case interpretExpressionReason
+        ((<@>)
+          threeValues
+          ((<.>)
+            ((<..>) (natural 0) (natural 1))
+            (ValuedNaturalRange 1 10))) of
+      Left (AccessRejected (AccessPositionOutOfBounds _ _)) -> True
+      _ -> False)
   let stableConcatenationPrefix =
         (<.>)
           (natural 1)
@@ -3134,6 +3208,28 @@ testAccess = do
       (selected == map Just [2 .. 7] <> [Nothing])
     assert "finite access renders its selected result values"
       (renderInterpretedValue value == "(2; 3; 4; 5; 6; 7)")
+  assert "range overlap is rejected before clipping"
+    (case interpretExpressionReason
+        ((<@>)
+          (AtlasMap [natural 0])
+          ((<.>)
+            ((<..>) (natural 3) (natural 10))
+            ((<..>) (natural 4) (natural 12)))) of
+      Left
+          (RangeConcatenationRejected
+            (SuperEllipsisRangesOverlap _ _ _ _)) -> True
+      _ -> False)
+  let computedConcatenation =
+        (<@>)
+          ((<.>)
+            ((<..>) (natural 0) (natural 2))
+            ((<..>) (natural 4) (natural 6)))
+          ((..+) (natural 0))
+  expectValue
+      "computed concatenated ranges retain their clipping policies"
+      ((<@>) (AtlasMap (map natural [0 .. 4])) computedConcatenation) $ \value ->
+    assert "each computed selector leaf clips independently"
+      (renderInterpretedValue value == "(0; 1; 4)")
   expectValue
       "empty access"
       ((<@>)
@@ -3172,16 +3268,13 @@ testAccess = do
         (NaturalRangeUpwards 0)) $ \value ->
     assert "sequence access returns the range operand without flattening it"
       (renderInterpretedValue value == "2..")
-  assert "an infinite insertion cannot enter a sequence operand"
-    (case interpretExpressionReason
-        ((<@>)
-          (AtlasMap [natural 42, ((..+) (natural 2))])
-          ((..+) (natural 5))) of
-      Left
-          (AccessRejected
-            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
-        insertionLimit == omega && mapOrderType == finiteOrdinal 2
-      _ -> False)
+  expectValue
+      "an open selector beyond a finite sequence clips to empty"
+      ((<@>)
+        (AtlasMap [natural 42, ((..+) (natural 2))])
+        ((..+) (natural 5))) $ \value ->
+    assert "a concrete open range is no longer a strict infinite insertion"
+      (renderInterpretedValue value == "()")
   expectValue
       "NaturalRange accessed by NaturalRange"
       ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
@@ -3213,11 +3306,16 @@ testAccess = do
         ((<..>) (natural 0) (natural 0))) $ \value ->
     assert "empty selection succeeds on every federation member"
       (renderInterpretedValue value == "()")
-  assert "nonempty ordinary access is refuted by the empty member"
+  expectValue
+      "clipped concrete access is total over NaturalRange"
+      ((<@>)
+        (NaturalRange 2 10)
+        ((<..>) (natural 0) (natural 1))) $ \value ->
+    assert "the empty and singleton pointwise results form a NaturalRange"
+      (renderInterpretedValue value == "range 2 to 2")
+  assert "exact valued-range access still sees the empty counterexample"
     (case interpretExpressionReason
-        ((<@>)
-          (NaturalRange 2 10)
-          ((<..>) (natural 0) (natural 1))) of
+        ((<@>) (NaturalRange 2 10) (ValuedNaturalRange 0 0)) of
       Left
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationAccessHasEmptyCounterexample) -> True
@@ -3231,13 +3329,12 @@ testAccess = do
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationAccessHasEmptyCounterexample) -> True
       _ -> False)
-  assert "NaturalRange access into concatenated NaturalRanges is refuted explicitly"
-    (case interpretExpressionReason
-        ((<@>) concatenatedNaturalRanges (NaturalRangeUpwards 0)) of
-      Left
-          (AtlasMapFederationOperationRefuted
-            AtlasMapFederationAccessHasEmptyCounterexample) -> True
-      _ -> False)
+  expectValue
+      "whole-range access is total over concatenated NaturalRanges"
+      ((<@>) concatenatedNaturalRanges (NaturalRangeUpwards 0)) $ \value ->
+    assert "every source member is preserved pointwise"
+      (renderInterpretedValue value
+        == "range 1 to 10, range 20 to 30")
   expectValue
       "empty access into concatenated NaturalRanges still succeeds"
       ((<@>)
@@ -3948,18 +4045,15 @@ testTypedRejections = do
           (ordinalSum (...) (natural 0))) of
       Left (ExpectedNaturalExponent ExplicitOrdinalValueKind) -> True
       _ -> False)
-  assert "out-of-bounds access reports the first invalid position"
-    (case interpretExpressionReason
-        ((<@>)
-          (AtlasMap (map natural [0 .. 2]))
-          ((<..>)
-            (natural 2)
-            (natural 5))) of
-      Left
-          (AccessRejected
-            (AccessPositionOutOfBounds position orderType)) ->
-        position == finiteOrdinal 3 && orderType == finiteOrdinal 3
-      _ -> False)
+  expectValue
+      "out-of-bounds concrete range access clips"
+      ((<@>)
+        (AtlasMap (map natural [0 .. 2]))
+        ((<..>)
+          (natural 2)
+          (natural 5))) $ \value ->
+    assert "the existing suffix remains"
+      (renderInterpretedValue value == "2")
   assert "infinite-rank access reports the map order type"
     (case interpretExpressionReason
         ((<@>)
@@ -3970,18 +4064,15 @@ testTypedRejections = do
             (AccessPositionOutOfBounds position mapOrderType)) ->
         position == omega && mapOrderType == finiteOrdinal 3
       _ -> False)
-  assert "ordinary open ranges still fail instead of clipping"
-    (case interpretExpressionReason
-        ((<@>)
-          ((<.>)
-            (natural 1)
-            ((<.>) (natural 2) (natural 3)))
-          ((..+) (natural 1))) of
-      Left
-          (AccessRejected
-            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
-        insertionLimit == omega && mapOrderType == finiteOrdinal 3
-      _ -> False)
+  expectValue
+      "ordinary open ranges clip against finite maps"
+      ((<@>)
+        ((<.>)
+          (natural 1)
+          ((<.>) (natural 2) (natural 3)))
+        ((..+) (natural 1))) $ \value ->
+    assert "the available tail is selected"
+      (renderInterpretedValue value == "(2; 3)")
   assert "overlapping access ranges retain the exact overlap rejection"
     (case interpretExpressionReason
         ((<@>)

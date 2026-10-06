@@ -45,6 +45,7 @@ module Evaluation.Value
   , interpretedFunction
   , ExplicitOrigin (..)
   , EvaluatedExplicit (..)
+  , RangeAccessPolicy (..)
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
   , EvaluatedValuedNaturalRange (..)
@@ -118,8 +119,10 @@ module Evaluation.Value
   , explicitInsertion
   , rangeDescription
   , evaluatedRangeLevel
+  , evaluatedRangeAccessPolicy
   , rangeInsertion
   , naturalRangeAsEvaluatedRange
+  , valuedNaturalRangeAsEvaluatedRange
   , valueRanges
   , emptyInterpretedMap
   , singletonMap
@@ -180,9 +183,19 @@ data EvaluatedExplicit where
     -> SuperEllipsisValue target scope
     -> EvaluatedExplicit
 
+-- | The behavior retained by a range when it is later used as an access
+-- selector.  Range values share a normalized insertion representation, but
+-- their surface families deliberately do not share access semantics.
+data RangeAccessPolicy
+  = ClippableConcreteRange
+  | ClippableRangeFederation
+  | ExactRangeInsertion
+  deriving (Eq)
+
 data EvaluatedRange where
   EvaluatedRange
     :: Natural
+    -> RangeAccessPolicy
     -> Range.SuperEllipsisRange target scope
     -> EvaluatedRange
 
@@ -871,20 +884,26 @@ explicitInsertion (EvaluatedExplicit _ _ value) =
 rangeDescription
   :: EvaluatedRange
   -> Range.SuperEllipsisRangeDescription
-rangeDescription (EvaluatedRange _ valueRange) =
+rangeDescription (EvaluatedRange _ _ valueRange) =
   Range.describeSuperEllipsisRange valueRange
 
 evaluatedRangeLevel :: EvaluatedRange -> Natural
-evaluatedRangeLevel (EvaluatedRange level _) = level
+evaluatedRangeLevel (EvaluatedRange level _ _) = level
+
+evaluatedRangeAccessPolicy :: EvaluatedRange -> RangeAccessPolicy
+evaluatedRangeAccessPolicy (EvaluatedRange _ policy _) = policy
 
 rangeInsertion :: EvaluatedRange -> SomeSuperEllipsisInsertion
-rangeInsertion (EvaluatedRange _ valueRange) =
+rangeInsertion (EvaluatedRange _ _ valueRange) =
   eraseSuperEllipsisInsertion
     (Range.superEllipsisRangeInsertion valueRange)
 
 naturalRangeAsEvaluatedRange :: EvaluatedNaturalRange -> EvaluatedRange
 naturalRangeAsEvaluatedRange (EvaluatedNaturalRange valueRange) =
-  EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
+  EvaluatedRange
+    1
+    ClippableRangeFederation
+    (NaturalRange.naturalRangeEllipsisRange valueRange)
 
 valuedNaturalRangeAsEvaluatedRange
   :: EvaluatedValuedNaturalRange
@@ -893,6 +912,7 @@ valuedNaturalRangeAsEvaluatedRange
     (EvaluatedValuedNaturalRange valueRange) =
   EvaluatedRange
     1
+    ExactRangeInsertion
     (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
 
 valueRanges :: InterpretedValue -> Maybe [EvaluatedRange]

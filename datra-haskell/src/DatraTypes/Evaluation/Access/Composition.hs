@@ -22,6 +22,7 @@ import Evaluation.Access.Federation
 import Evaluation.Access.RangeSelection
   ( DescribedRange (describedRangeDescription)
   , accessSelection
+  , clippableSelectionRange
   )
 import Evaluation.Error
 import Evaluation.Value
@@ -71,11 +72,16 @@ decideFlattenedFederationAccess
   -> SomeSuperEllipsisInsertion
   -> Either InterpretingError FederationAccess
 decideFlattenedFederationAccess mapValue insertionValue insertion
+  | Just selectionRange <- clippableSelectionRange insertionValue
+  , Just _ <- accessLayoutFixedOrderType layout =
+      Right (ClippedRangeSelectionAccess selectionRange)
   | federationHasKnownEmptyMap
       (interpretedAtlasMapFederation mapValue) =
-      emptyMapAccessCounterexample
+      case clippableSelectionRange insertionValue of
+        Just _ -> undecidableAccess
+        Nothing -> emptyMapAccessCounterexample
   | selectionCoveredByRegions
-      (accessLayoutAccessibleRegions (accessLayout mapValue))
+      (accessLayoutAccessibleRegions layout)
       insertionValue
       insertion =
       case naturalRangeFederation insertionValue of
@@ -83,6 +89,8 @@ decideFlattenedFederationAccess mapValue insertionValue insertion
           Right (NaturalRangeSelectionAccess selectionRange)
         Nothing -> Right (SingletonFederationAccess insertion)
   | otherwise = undecidableAccess
+  where
+    layout = accessLayout mapValue
 
 -- | Compose atomic layouts through retained evaluation structure. This is the
 -- single lifting point for flattened access: extending 'atomicAccessLayout'

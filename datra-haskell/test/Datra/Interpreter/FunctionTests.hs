@@ -117,7 +117,7 @@ functionTests =
             (unlines
               [ "Slots := (for T? of Any) -> Any do"
               , "  slots := with i in Nat do \"field%(i)\"? : T"
-              , "yield () | with n in Nat do slots[range 0 to n]"
+              , "yield with n in Nat do slots[0..n]"
               , "f := {Slots Nat,} -> Any do yield it"
               , "assert (f(3; 4))[0][1] = 3"
               , "assert (f(3; 4)).field1[1] = 4"

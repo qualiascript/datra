@@ -209,7 +209,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertEqual "from has one shared dependency binding" 1
         (occurrences "let \"___'from\" :=" text)
-      assertEqual "range has one shared dependency binding" 1
+      assertEqual "concrete range syntax needs no range dependency binding" 0
         (occurrences "let \"___'range\" :=" text)
       assertBool "the variadic input uses an anonymous compact split directly"
         ("val it !? fun" `isInfixOf` text
