@@ -7,7 +7,6 @@ import DatraTypes
   , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
-  , InterpretedValueKind (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
@@ -135,32 +134,24 @@ functionTests =
               , "assert emptyInput() = ()"
               , "assert single 8 = 8"
               ]) "()"
-        , programCase "erasure supports mixed parameters"
-            "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield val it)\nyield f(3; 4)"
+        , programCase "mixed parameters can be returned positionally"
+            "f := ((abc? : Nat; Nat) -> (Nat; Nat) do yield (abc; it[1]))\nyield f(3; 4)"
             "(3; 4)"
-        , programCase "erasure works through local bindings"
-            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield val args)\nyield f 7"
+        , programCase "named input access works through local bindings"
+            "f := ({abc? : Nat} -> Nat do\n  args := it\nyield args.abc[1])\nyield f 7"
             "7"
-        , expressionCase "erasure removes identifiers throughout nested maps"
-            "val (a := (b := 2; 3); 4; c := 5)"
-            "(>< (2; 3); 4; 5)"
-        , expressionCase "erasure preserves ordinary strings and empty maps"
-            "(val $abc; val (); val (1; 2); val 7)"
-            "($abc; (); >< (1; 2); 7)"
-        , programCase "erasure works on a block's declaration map"
-            "yield begin\n  abc := 2\n  def := 3\nyield val this"
-            "(2; 3)"
-        , expressionCase "prefix erasure and exponentiation remain distinct"
-            "val (base := 2) ^ 3"
-            "8"
-        , expressionCase "erasure removes Boolean identifiers too"
-            "(val true; val false)" "(1; 0)"
-        , expressionCase "erasure is idempotent"
-            "val val (abc := 7; 8)"
-            "(7; 8)"
-        , expressionFailureCase "erasure requires a total map"
-            "val (abc : Nat)"
-            (SourceEvaluationFailure (ExpectedTotalAtlasMap DependentIdentifierTypeValueKind))
+        , programCase "unmatched identifiers match argument slots positionally"
+            "yield (my_val : 3) of {value : Int}"
+            "true"
+        , programCase "matching identifiers reserve their candidate"
+            "yield (my_val : 3) of {value : Int, my_val : Str}"
+            "false"
+        , programCase "reserved identifiers do not fill other required slots"
+            "yield (my_val : 3) of {value : Str; my_val : Int}"
+            "false"
+        , programCase "identifier maps inhabit unnamed recursive lists"
+            "yield (arg0 : 1; arg1 : 2; arg2 : 3) of List Int"
+            "true"
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"

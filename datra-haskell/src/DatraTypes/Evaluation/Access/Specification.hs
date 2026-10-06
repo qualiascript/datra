@@ -4,7 +4,7 @@ module Evaluation.Access.Specification
   ) where
 
 import Evaluation.Error (InterpretingError)
-import Evaluation.Specification (specifyValues)
+import Evaluation.Specification (contextuallySpecifyValues)
 import Evaluation.Value
 import BooleanType (DatraBoolean (..))
 
@@ -31,7 +31,7 @@ accessSpecification access specification insertion = do
         (evaluatedSpecificationTarget specification)
         (evaluatedSpecificationMember specification))
       insertion
-  specifyValues sourceFiber targetFiber
+  contextuallySpecifyValues sourceFiber targetFiber
 
 -- An argument-map specification records which ordered target alternative
 -- matched this source. Fiber access follows that alternative, retaining the

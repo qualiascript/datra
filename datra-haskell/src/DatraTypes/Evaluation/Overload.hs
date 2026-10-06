@@ -38,6 +38,7 @@ import Evaluation.Arguments
   , overloadArgumentRows
   )
 import Evaluation.Access (accessValues)
+import Evaluation.Coalization (coalizeValue)
 import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
@@ -149,12 +150,17 @@ resolveReplacements
 resolveReplacements template supplied
   | [slot] <- templateSlots template
   , not (isSkip supplied)
-  , Just value <- matchSlot slot supplied =
+  , Just value <- matchSlot (slotNames [slot]) slot supplied =
       Right [(slotIndex slot, Just value)]
   | otherwise = do
-      rows <- overloadArgumentRows supplied
+      let targetNames = slotNames (templateSlots template)
+          rowSource = case suppliedValue supplied of
+            (Just name, underlying)
+              | name `notElem` targetNames -> underlying
+            _ -> supplied
+      rows <- overloadArgumentRows rowSource
       writtenRows <-
-        case interpretedForm supplied of
+        case interpretedForm rowSource of
           ArgumentMapForm members _ ->
             overloadArgumentRows (makeAtlasMap 2 members)
           _ -> pure rows
@@ -205,37 +211,47 @@ resolveReplacements template supplied
         _ -> False
 
 matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
-matchInputs _ [] = [[]]
-matchInputs [] _ = []
-matchInputs [slot] inputs
-  | length inputs > 1
-  , Just values <- sequence inputs
-  , all unnamed values
-  , Just grouped <- matchSlot slot (makeAtlasMap 2 values) =
-      [[(slotIndex slot, Just grouped)]]
+matchInputs slots = match (slotNames slots) slots
   where
-    unnamed value = case suppliedValue value of
-      (Nothing, _) -> True
-      _ -> False
-matchInputs (slot : remainingSlots) (Nothing : remainingInputs) =
-  [ (slotIndex slot, Nothing) : later
-  | later <- matchInputs remainingSlots remainingInputs
-  ]
-matchInputs (slot : remainingSlots)
-    inputs@(Just input : remainingInputs) =
-  case matchSlot slot input of
-    Just value ->
-      [ (slotIndex slot, Just value) : later
-      | later <- matchInputs remainingSlots remainingInputs
+    match _ _ [] = [[]]
+    match _ [] _ = []
+    match targetNames [slot] inputs
+      | length inputs > 1
+      , Just values <- sequence inputs
+      , all unnamed values
+      , Just grouped <- matchSlot
+          targetNames slot (makeAtlasMap 2 values) =
+          [[(slotIndex slot, Just grouped)]]
+      where
+        unnamed value = case suppliedValue value of
+          (Nothing, _) -> True
+          _ -> False
+    match targetNames (slot : remainingSlots)
+        (Nothing : remainingInputs) =
+      [ (slotIndex slot, Nothing) : later
+      | later <- match targetNames remainingSlots remainingInputs
       ]
-    Nothing -> matchInputs remainingSlots inputs
+    match targetNames (slot : remainingSlots)
+        inputs@(Just input : remainingInputs) =
+      case matchSlot targetNames slot input of
+        Just value ->
+          [ (slotIndex slot, Just value) : later
+          | later <- match targetNames remainingSlots remainingInputs
+          ]
+        Nothing -> match targetNames remainingSlots inputs
 
-matchSlot :: Slot -> InterpretedValue -> Maybe InterpretedValue
-matchSlot slot input = do
-  let (inputName, inputValue) =
+slotNames :: [Slot] -> [String]
+slotNames = foldr (maybe id (:) . slotName) []
+
+matchSlot :: [String] -> Slot -> InterpretedValue -> Maybe InterpretedValue
+matchSlot targetNames slot input = do
+  let (suppliedName, inputValue) =
         case slotName slot of
           Nothing -> (Nothing, input)
           Just _ -> suppliedValue input
+      inputName = case suppliedName of
+        Just name | name `notElem` targetNames -> Nothing
+        _ -> suppliedName
   case (slotName slot, inputName) of
     (Just expected, Just actual)
       | not (isPublicIdentifier expected)
@@ -265,13 +281,21 @@ isPublicIdentifier identifier =
 
 suppliedValue :: InterpretedValue -> (Maybe String, InterpretedValue)
 suppliedValue value =
-  case optionalNamedParts value of
-    Just (name, _, Just supplied) -> (Just name, supplied)
-    _ ->
-      case namedParts value of
-        Just (name, annotation, supplied) ->
-          (Just name, maybe annotation id supplied)
-        Nothing -> (Nothing, value)
+  case interpretedForm value of
+    CoalizationForm operand ->
+      case suppliedValue operand of
+        (Just name, supplied) -> (Just name, coalizeValue supplied)
+        _ -> ordinary
+    _ -> ordinary
+  where
+    ordinary =
+      case optionalNamedParts value of
+        Just (name, _, Just supplied) -> (Just name, supplied)
+        _ ->
+          case namedParts value of
+            Just (name, annotation, supplied) ->
+              (Just name, maybe annotation id supplied)
+            Nothing -> (Nothing, value)
 
 suppliedAsAssignment :: InterpretedValue -> Bool
 suppliedAsAssignment value =

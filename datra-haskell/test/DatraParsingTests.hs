@@ -681,11 +681,11 @@ regressionTests = do
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := %\"take $_Expr\" %> (Int -> Int) !~\"datra.val\""
+        , "take := %\"take $_Expr\" %> (Int -> Int) !~\"datra.modular\""
         , "take 7"
         , "take Infinity)"
         ]) of
-    Right (AtlasMap [_, _, StripIdentifiers (EllipsisNatural 7), final]) ->
+    Right (AtlasMap [_, _, Modular (EllipsisNatural 7), final]) ->
       final == FunctionApplication (ref "take") (ref "Infinity")
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
@@ -717,18 +717,11 @@ regressionTests = do
     "extract binds before bracket access"
     "%Str[0]"
     (MapAccess (Extract (ref "Str")) (natural 0))
-  assertParsed "val erases identifiers"
-    "val _it" (StripIdentifiers (ref "_it"))
-  assertParsed "val captures bracket access"
-    "val _it[0]" (StripIdentifiers (MapAccess (ref "_it") (natural 0)))
-  assertParsed "identifier erasure coexists with exponentiation"
-    "(val _it) ^ 2" (Exponentiation (StripIdentifiers (ref "_it")) (natural 2))
+  assertParsed "val is available as an ordinary identifier"
+    "val _it" (FunctionApplication (ref "val") (ref "_it"))
   assertParsed "external escape constructs an External AST"
     "!~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
-  assertParsed "identifier erasure source rendering preserves named access"
-    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "_it") (IdentifierString "abc"))))
-    (StripIdentifiers (NamedAccess (ref "_it") (IdentifierString "abc")))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
@@ -922,11 +915,6 @@ regressionTests = do
     (MaybeThen
       (ListUncons (ref "values"))
       (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-  assertAstOutput "list sequencing binds after val without grouping"
-    "val values !? maximum"
-    (MaybeThen
-      (ListUncons (StripIdentifiers (ref "values")))
-      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -940,24 +928,18 @@ regressionTests = do
               ])
             (ref "IntLimit")))
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
-    ("val values !? fun {candidate? : IntLimit; "
+    ("values !? fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
     (MaybeThen
-      (ListUncons (StripIdentifiers (ref "values")))
+      (ListUncons (ref "values"))
       (FunctionApplication inlineLimitFunction (contextualAccess (IdentifierString "_it"))))
-  assert "list sequencing source rendering keeps the compact val form"
+  assert "list sequencing source rendering keeps the compact form"
     ( renderSourceExpression
         (MaybeThen
-          (ListUncons (StripIdentifiers (ref "values")))
+          (ListUncons (ref "values"))
           (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-        == "val values !? maximum"
+        == "values !? maximum"
     )
-  assertAstOutput "grouping keeps list sequencing inside val"
-    "val (values !? maximum)"
-    (StripIdentifiers
-      (MaybeThen
-        (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it")))))
   assertAstOutput "list sequencing accepts an optional named left operand"
     "values? : List Int !? maximum"
     (MaybeThen
@@ -2110,7 +2092,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
-    , Gen.subterm genExpression StripIdentifiers
     , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess

@@ -21,7 +21,7 @@ The immediate design target is to express `Numbers.max` without `if`:
 
 ```datra
 max := {Args IntLimit,} -> IntLimit? do
-  yield val it !? fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
+  yield it !? fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
     yield when it
       in Infinity; *
       in *; ()

@@ -28,7 +28,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "120"
   , canonicalRoundTrip "function input can be aliased"
       ( "yield ({n? : Nat} -> Nat do "
-          <> "my_it := it; yield val my_it)"
+          <> "my_it := it; yield my_it.n[1])"
       )
       "7"
       "7"
@@ -93,8 +93,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "eager capture retains its definition"
       "seed := 2\nlet offset := seed + 2\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       "7" "11"
-  , roundTrip "identifier erasure survives serialization"
-      "yield ({abc? : Nat} -> Nat do yield val it)" "7" "7"
+  , roundTrip "named input access survives serialization"
+      "yield ({abc? : Nat} -> Nat do yield abc)" "7" "7"
   , roundTrip "input names survive serialization"
       "yield ({abc? : Nat} -> Nat do yield it.abc[1])" "7" "7"
   , roundTrip "outer it depth is captured by an escaping function"
@@ -212,7 +212,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "concrete range syntax needs no range dependency binding" 0
         (occurrences "let \"___'range\" :=" text)
       assertBool "the variadic input uses an anonymous compact split directly"
-        ("val it !? fun" `isInfixOf` text
+        ("it !? fun" `isInfixOf` text
           && not ("values :=" `isInfixOf` text)
           && not ("maximum :=" `isInfixOf` text)
           && not ("minimum :=" `isInfixOf` text)

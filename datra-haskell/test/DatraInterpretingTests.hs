@@ -801,6 +801,8 @@ testArgumentMaps = do
     , "{b := 8; 2} of {a? : Nat := 2; b? : Nat}"
     , "{2; b := 8} of {b? : Nat; a? : Nat}"
     , "{2; 8} of {a? : Nat; b? : Nat}"
+    , "{c := 8; 2} of {a? : Nat; b? : Nat}"
+    , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{a := 2; b := 8} of {a : Nat; b : Nat}"
     , "(2; 8) of {a : Nat; b : Nat}"
     , "{a? : Nat; b? : Nat} of {b? : Int; a? : Int}"
@@ -810,10 +812,8 @@ testArgumentMaps = do
   mapM_ (\source -> expectSourceValue source source $ \value ->
     assert "invalid argument-map relation is rejected"
       (renderInterpretedValue value == "false"))
-    [ "{c := 8; 2} of {a? : Nat; b? : Nat}"
-    , "{b := $wrong; 2} of {a? : Nat; b? : Nat}"
+    [ "{b := $wrong; 2} of {a? : Nat; b? : Nat}"
     , "{2; 8} of {a : Nat; b : Nat}"
-    , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
     ]
   expectSourceRejection
@@ -876,12 +876,18 @@ testArgumentMaps = do
     , "{(a : Nat; b : Nat); 3}"
     , "{(1 ~> Nat); b := 8}"
     ]
-  expectSourceRejection "argument specification checks every supplied name"
-    "{c := 8; 2} ~> {a? : Nat; b? : Nat}"
-    (\case
-      AtlasMapFederationOperationRefuted
-        AtlasMapFederationSpecificationHasNoMatchingMember -> True
-      _ -> False)
+  expectSourceValue "unreserved argument names match positionally"
+      "{c := 8; 2} ~> {a? : Nat; b? : Nat}" $ \value ->
+    assert "the unrelated source name is retained in the specification"
+      (renderInterpretedValue value
+        == "{c : 8; 2} ~> {a? : " <> sourceNatType
+          <> "; b? : " <> sourceNatType <> "}")
+  expectSourceValue "duplicate names fall through after the named pass"
+      "{b := 8; b := 2} ~> {a? : Nat; b? : Nat}" $ \value ->
+    assert "the first b claims b and the remaining b matches a positionally"
+      (renderInterpretedValue value
+        == "{b : 8; b : 2} ~> {a? : " <> sourceNatType
+          <> "; b? : " <> sourceNatType <> "}")
 
 testArgumentMapConcatenation :: IO ()
 testArgumentMapConcatenation = do
@@ -914,6 +920,7 @@ testArgumentMapConcatenation = do
     [ "{b : 8; 2}, x : 3 ~> {a? : Nat; b? : Nat}, x : Nat"
     , "x : 3, {b : 8; 2}, y : 4 ~> x : Nat, {a? : Nat; b? : Nat}, y : Nat"
     , "{b : 8; 2}, {d : 6; 4} ~> {a? : Nat; b? : Nat}, {c? : Nat; d? : Nat}"
+    , "x : 3, {c : 8; 2} ~> " <> target
     , "(" <> example <> ") ~> x : Int, {b? : Int; a? : Int}"
     ]
   expectSourceValue "one ordered presentation matches the ordered target"
@@ -927,7 +934,6 @@ testArgumentMapConcatenation = do
         (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
       _ -> False))
     [ "x : 4, {b : 8; 2} ~> " <> target
-    , "x : 3, {c : 8; 2} ~> " <> target
     , "x : 3, {b : $wrong; 2} ~> " <> target
     , source <> " ~> x : 3, (b : Nat; Nat)"
     ]
@@ -939,12 +945,12 @@ testArgumentMapTemplates = do
     (show member <> " of " <> template) $ \value ->
       assert "canonical argument presentation belongs to the template"
         (renderInterpretedValue value == "true"))
-    [ "(b : 8; 2)", "(2; b : 8)", "(2; 8)" ]
+    [ "(b : 8; 2)", "(c : 8; 2)", "(2; b : 8)", "(2; 8)" ]
   mapM_ (\member -> expectSourceValue "template rejects incompatible arguments"
     (show member <> " of " <> template) $ \value ->
-      assert "wrong names, types, and arities are outside the template"
+      assert "reserved-name type errors and wrong arities are outside the template"
         (renderInterpretedValue value == "false"))
-    [ "(c : 8; 2)", "(b : $wrong; 2)", "(b : 8; 2; 3)" ]
+    [ "(b : $wrong; 2)", "(b : 8; 2; 3)" ]
   let member = "\"(b : 8; 2)\""
       specification = member <> " ~> " <> template
       renderedSpecification =
@@ -998,6 +1004,10 @@ testEval = do
       , "{a : Nat; b : Nat}"
       , "(2; 8) ~> {a : Nat; b : Nat}"
       )
+    , ( "\"(c : 8; 2)\""
+      , "{a? : Nat; b? : Nat}"
+      , "(c : 8; 2) ~> {a? : Nat; b? : Nat}"
+      )
     ]
   mapM_ (\(source, target) ->
     expectInternalEvalRejection source target
@@ -1010,7 +1020,6 @@ testEval = do
         _ -> False))
     [ ("\"nope\"", "Nat")
     , ("\"1 + 2\"", "Nat")
-    , ("\"(c : 8; 2)\"", "{a? : Nat; b? : Nat}")
     , ("12", "Nat")
     ]
 

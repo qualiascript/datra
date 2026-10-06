@@ -897,7 +897,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       (AtlasMap expressions)
       expressions
     ArgumentMap expressions -> interpretContainer
-      (traverse interpret expressions >>= makeArgumentMap)
+      (traverse interpret expressions >>= makeArgumentMapPreservingSingleton)
       (ArgumentMap expressions)
       expressions
     MapSequence expressions -> interpretContainer
@@ -998,11 +998,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     BooleanNot operand ->
       interpret operand >>= booleanNotValue
     Coalization operand -> coalizeValue <$> interpret operand
-    StripIdentifiers (IdentifierReference (IdentifierString name)) ->
-      resolveIdentifierIncludingPrivate reduction scope resolving name
-        >>= stripIdentifiersValue
-    StripIdentifiers operand ->
-      interpret operand >>= stripIdentifiersValue
     Modular operand -> interpret operand >>= modularValue
     Extract operand ->
       do

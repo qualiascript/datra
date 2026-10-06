@@ -7,6 +7,7 @@ module Evaluation.Arguments
   , functionArgumentValue
   , argumentPresentations
   , makeArgumentMap
+  , makeArgumentMapPreservingSingleton
   , makeDistinctUnion
   , argumentAlternatives
   ) where
@@ -26,7 +27,16 @@ import Evaluation.Value
 makeArgumentMap :: [InterpretedValue] -> Either InterpretingError InterpretedValue
 makeArgumentMap [] = Right (makeAtlasMap 0 [])
 makeArgumentMap [value] = Right value
-makeArgumentMap members = do
+makeArgumentMap members = makeArgumentMapPreservingSingleton members
+
+-- Surface argument-map syntax retains its written singleton slot so matching
+-- can distinguish its candidate name. Internal reconstruction keeps the
+-- historical scalar result of 'makeArgumentMap'.
+makeArgumentMapPreservingSingleton
+  :: [InterpretedValue]
+  -> Either InterpretingError InterpretedValue
+makeArgumentMapPreservingSingleton [] = Right (makeAtlasMap 0 [])
+makeArgumentMapPreservingSingleton members = do
   union <- makeDistinctUnion
     [ makeAtlasMap 2 ordering
     | choices <- sequence (map argumentAlternatives members)

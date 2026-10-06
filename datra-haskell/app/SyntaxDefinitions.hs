@@ -93,9 +93,6 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
       [name, bound, body] ->
         localDependentFamily "for" ForBinding name bound body
       captures -> invalidBody symbol captures)
-  , ("datra.val", \case
-      [value] -> Right (StripIdentifiers value)
-      captures -> invalidBody symbol captures)
   , ("datra.modular", \case
       [value] -> Right (Modular value)
       captures -> invalidBody symbol captures)

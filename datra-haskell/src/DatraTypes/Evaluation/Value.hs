@@ -82,8 +82,6 @@ module Evaluation.Value
   , makeSingletonInterpretedValue
   , makeDependentSumValue
   , withDependentSumStructure
-  , withIdentifierErasureType
-  , interpretedIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
   , interpretedForm
@@ -545,7 +543,6 @@ data InterpretedValue = InterpretedValue
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
   , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
   , interpretedSemantics :: ValueSemantics
-  , interpretedIdentifierErasureType :: Maybe InterpretedValue
   , interpretedEvaluationSource :: Maybe String
   }
 
@@ -572,7 +569,6 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
           TotalInterpretedMap -> Just (InterpretedTotalAtlasMap valueMap)
           NonTotalInterpretedMap -> Nothing
     , interpretedSemantics = semantics
-    , interpretedIdentifierErasureType = Nothing
     , interpretedEvaluationSource = Nothing
     }
 
@@ -625,12 +621,6 @@ withDependentSumStructure structure value =
             dependent { evaluatedDependentSumStructure = structure }
         }
     _ -> value
-
--- | Retain a symbolic family's erased view for inference, without enumerating
--- its unbounded collection of named slots.
-withIdentifierErasureType :: InterpretedValue -> InterpretedValue -> InterpretedValue
-withIdentifierErasureType erased value = value
-  { interpretedIdentifierErasureType = Just erased }
 
 -- | Attach the exact access map of a dependent family.  The structural
 -- target remains available for ordinary static reasoning, while projection

@@ -32,7 +32,6 @@ data Operator
   | BooleanOrOperator
   | BooleanNotOperator
   | CoalizationOperator
-  | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
   | AssertOperator
@@ -82,7 +81,6 @@ operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
-operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol ValueOfOperator = "~"
 operatorCanonicalSymbol AssertOperator = "assert"
@@ -132,7 +130,6 @@ operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
-operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol ValueOfOperator = Just "~"
 operatorSourceSymbol AssertOperator = Just "assert"

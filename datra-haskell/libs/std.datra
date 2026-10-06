@@ -63,7 +63,6 @@ yield Std := begin
       ({origin : IntLimit; target : IntLimit} -> IntRange) !~"datra.range") |
     (%"range $IntLimit $_Direction" %>
       ({origin : IntLimit; direction : _Direction} -> IntRange) !~"datra.range")
-  'val := %"val $_Expr" %> (_AST -> _AST) !~"datra.val"
   'with :=
     (%"with $_IdenExp of $_Expr" %>
       (_AST, _AST -> _AST) !~"datra.with") |

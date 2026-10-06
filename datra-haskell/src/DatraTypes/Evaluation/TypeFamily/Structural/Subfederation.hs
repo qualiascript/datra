@@ -55,14 +55,13 @@ decideStructuralSubfederation decideSubfederation source target
       decideAnyEitherAlternative decideSubfederation source targetEither
   | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just _ <- interpretedFunction source = DecisionRefuted
-  | ArgumentMapForm _ underlying <- interpretedForm source =
-      decideSubfederation underlying target
-  | ArgumentMapForm members _ <- interpretedForm target
-  , all isNonAlternativeMember members
+  | ArgumentMapForm _ _ <- interpretedForm target
   , interpretedValueHasTotalMap source =
       mapDecision (const ()) (selectFederationMember source target)
   | ArgumentMapForm _ underlying <- interpretedForm target =
       decideSubfederation source underlying
+  | ArgumentMapForm _ underlying <- interpretedForm source =
+      decideSubfederation underlying target
   | FederationSpecificationForm _ previousTarget _ <- interpretedForm source =
       decideSubfederation previousTarget target
   | SpecificationForm specification <- interpretedForm source =
@@ -278,9 +277,3 @@ decideSequenceSubfederation decideSubfederation sources
           , decideSequenceSubfederation
               decideSubfederation sources remainingTargets
           ])
-
-isNonAlternativeMember :: InterpretedValue -> Bool
-isNonAlternativeMember member =
-  case interpretedForm member of
-    EitherForm _ -> False
-    _ -> True

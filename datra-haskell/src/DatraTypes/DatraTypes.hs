@@ -15,7 +15,6 @@ module DatraTypes
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
-  , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
   , coalizeValue
@@ -69,8 +68,6 @@ module DatraTypes
   , toStringValue
   , weakToStringValue
   , templateValue
-  , stripIdentifiersValue
-  , stripIdentifiersType
   , stripOuterIdentifierValue
   , stripOuterIdentifierType
   , extractValue
@@ -129,6 +126,7 @@ module DatraTypes
   , assignIdentifierValues
   , makeAtlasMap
   , makeArgumentMap
+  , makeArgumentMapPreservingSingleton
   , argumentRows
   , overloadArgumentRows
   , functionArgumentValue
@@ -245,6 +243,7 @@ import Evaluation.Arguments
   , argumentRows
   , functionArgumentValue
   , makeArgumentMap
+  , makeArgumentMapPreservingSingleton
   , overloadArgumentRows
   )
 import Evaluation.Optional
@@ -261,9 +260,7 @@ import Evaluation.ToString
   , weakToStringValue
   )
 import Evaluation.IdentifierErasure
-  ( stripIdentifiersValue
-  , stripIdentifiersType
-  , stripOuterIdentifierValue
+  ( stripOuterIdentifierValue
   , stripOuterIdentifierType
   )
 import Extract (extractValue)
@@ -368,7 +365,6 @@ import Evaluation.Value
   , makeFunctionValue
   , makeDependentSumValue
   , withDependentSumStructure
-  , withIdentifierErasureType
   , withDependentSumAccess
   , makeLazyMapValue
   , syntaxCategoryTypeValue

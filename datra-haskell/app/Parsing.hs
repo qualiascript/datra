@@ -84,7 +84,6 @@ import DatraLanguage.AST
       , BooleanNot
       , Coalization
       , Extract
-      , StripIdentifiers
       , Assert
       , Begin
       , Program
@@ -346,7 +345,6 @@ astForm =
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.CoalizationOperator Coalization
-      , astUnary AST.StripIdentifiersOperator StripIdentifiers
       , astUnary AST.ExtractOperator Extract
       , astBlock "begin" Begin
       , astBlock "program" Program
