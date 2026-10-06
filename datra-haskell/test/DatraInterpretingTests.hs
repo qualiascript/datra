@@ -225,7 +225,7 @@ testModuleSyntaxAlias = do
       expressionType = External (AsciiStringLiteral "datra.Expr")
       blockType = External (AsciiStringLiteral "datra.Block")
       beginValue = SyntaxType
-        (Extract (AsciiStringLiteral "begin $_Block yield $_Expr"))
+        (AsciiStringLiteral "begin $_Block yield $_Expr")
         (FunctionType (AtlasMap [astType, astType]) astType)
       binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
@@ -1321,7 +1321,7 @@ testSlotOrdinalDistinctness = do
 testStringTemplates :: IO ()
 testStringTemplates = do
   case interpretExpressionReason
-      (SyntaxType (Extract (AsciiStringLiteral "choose $Int mark"))
+      (SyntaxType (AsciiStringLiteral "choose $Int mark")
         (FunctionType IntegerType IntegerType)) of
     Right value -> do
       assert "syntax annotations are erased from canonical function rendering"

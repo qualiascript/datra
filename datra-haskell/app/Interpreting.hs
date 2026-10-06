@@ -79,7 +79,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
-  , invalidSyntaxTemplateCharacter
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -98,10 +97,11 @@ import Rendering (renderCanonicalResult, renderInterpretedValue)
 import SyntaxDefinitions
   ( SyntaxFunctionBody
   , SyntaxRule (..)
+  , SyntaxTemplateCompilationFailure (..)
+  , compileSyntaxTemplatesFromExpression
   , contextualSyntaxRules
   , qualifySyntaxRule
   , syntaxFunctionBodyForSymbol
-  , syntaxTemplatesFromExpression
   )
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -493,18 +493,13 @@ sourceFunctionSyntax templatesExpression = do
 validatedSyntaxTemplates
   :: Expression
   -> Either InterpretingError [SyntaxTemplate Expression]
-validatedSyntaxTemplates templatesExpression = do
-  templates <- maybe
-    (Left (ExpectedStringTemplateSpecification MapValueKind))
-    Right
-    (syntaxTemplatesFromExpression templatesExpression)
-  case
-      [ invalid
-      | template <- templates
-      , Just invalid <- [invalidSyntaxTemplateCharacter template]
-      ] of
-    invalid : _ -> Left (InvalidSyntaxTemplateCharacter invalid)
-    [] -> Right templates
+validatedSyntaxTemplates templatesExpression =
+  case compileSyntaxTemplatesFromExpression templatesExpression of
+    Left ExpectedSyntaxTemplateOperand ->
+      Left InvalidSyntaxTemplateOperand
+    Left (ForbiddenSyntaxTemplateCharacter invalid) ->
+      Left (InvalidSyntaxTemplateCharacter invalid)
+    Right templates -> Right templates
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =

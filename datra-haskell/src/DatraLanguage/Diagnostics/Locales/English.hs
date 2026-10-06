@@ -269,11 +269,15 @@ localizeInterpretingError reason =
       LocalizedMessage
         "extract expects a concrete string-template specification"
         ["given value kind: " <> valueKind kind]
+    InvalidSyntaxTemplateOperand ->
+      LocalizedMessage
+        "~% expects a compile-time string or total map of strings"
+        []
     InvalidSyntaxTemplateCharacter character ->
       LocalizedMessage
         "syntax template contains an invalid literal character"
         [ "character: " <> show character
-        , "%> can only install literals retained by the neutral source parser"
+        , "~% can only install literals retained by the neutral source parser"
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage

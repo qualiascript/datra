@@ -58,7 +58,7 @@ data Operator
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
-operatorCanonicalSymbol SyntaxTypeOperator = "%>"
+operatorCanonicalSymbol SyntaxTypeOperator = "~%"
 operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
 operatorCanonicalSymbol ExternalOperator = "!~"
@@ -107,7 +107,7 @@ operatorCanonicalSymbol AssignmentOperator = ":="
 -- Sequential and expansion structure comes from map separators and nesting.
 operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
-operatorSourceSymbol SyntaxTypeOperator = Just "%>"
+operatorSourceSymbol SyntaxTypeOperator = Just "~%"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
 operatorSourceSymbol ExternalOperator = Just "!~"

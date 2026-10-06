@@ -227,7 +227,7 @@ regressionTests = do
         [ "_AST := !~\"datra.AST\""
         , "_Expr := !~\"datra.Expr\""
         , "_Block := !~\"datra.Block\""
-        , "begin := %\"begin $_Block yield $_Expr\" %> (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "begin := \"begin $_Block yield $_Expr\" ~% (_AST, _AST -> _AST) !~\"datra.begin\""
         , "yield Example := begin"
         , "  begin := begin"
         , "yield begin"
@@ -452,7 +452,7 @@ regressionTests = do
     [ Import False "library_one", Import True "std"
     , InModule "std" (ref "_this")
     , NamedAccess (ref "_this") (IdentifierString "abc")
-    , SyntaxType (Extract (AsciiStringLiteral "$Int next"))
+    , SyntaxType (AsciiStringLiteral "$Int next")
         (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
@@ -630,58 +630,58 @@ regressionTests = do
     "{value? : Any} -> Nat do yield value"
     (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
   assertParsed "a declared syntax signature is not a shorthand function domain"
-    "%\"step $Int next\" %> (Int -> Int) do yield value"
+    "\"step $Int next\" ~% (Int -> Int) do yield value"
     (MapSpecification identityBody
-      (SyntaxType (Extract (AsciiStringLiteral "step $Int next"))
+      (SyntaxType (AsciiStringLiteral "step $Int next")
         (FunctionType (ref "Int") (ref "Int"))))
   let optionalIntInput = ArgumentMap
         [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
   assertParsed "a declared syntax signature accepts a multiline body"
-    "%\"step $Nat next\" %> ({value?:Int} -> Int) do\n  yield value"
+    "\"step $Nat next\" ~% ({value?:Int} -> Int) do\n  yield value"
     (MapSpecification identityBody
-      (SyntaxType (Extract (AsciiStringLiteral "step $Nat next"))
+      (SyntaxType (AsciiStringLiteral "step $Nat next")
         (FunctionType optionalIntInput (ref "Int"))))
-  assertParsed "%> accepts an ordinary inhabited template list"
-    "%(\"$Int++\"; \"increment $Int\") %> (Int -> Int)"
+  assertAstOutput "~% accepts an inhabited total map of template strings"
+    "(\"$Int++\"; \"increment $Int\") ~% (Int -> Int)"
     (SyntaxType
-      (Extract (AtlasMap
+      (AtlasMap
         [ AsciiStringLiteral "$Int++"
         , AsciiStringLiteral "increment $Int"
-        ]))
+        ])
       (FunctionType (ref "Int") (ref "Int")))
   assertParsed "grouping characters remain valid in ordinary template values"
     "%\"call ($Int)\""
     (Extract (AsciiStringLiteral "call ($Int)"))
-  assertParsed "%> remains syntax rather than performing parser validation"
-    "%\"call ($Int)\" %> (Int -> Int)"
+  assertParsed "~% remains syntax rather than performing parser validation"
+    "\"call ($Int)\" ~% (Int -> Int)"
     (SyntaxType
-      (Extract (AsciiStringLiteral "call ($Int)"))
+      (AsciiStringLiteral "call ($Int)")
       (FunctionType (ref "Int") (ref "Int")))
-  assertRejected "a syntax signature requires an explicit Template operand"
+  assertRejected "the legacy syntax-type operator is rejected"
     "\"step $Int next\" %> (Int -> Int) do yield value"
   let syntaxAdapterType = SyntaxType
-        (Extract (AsciiStringLiteral "handler $_Expr"))
+        (AsciiStringLiteral "handler $_Expr")
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use the external as their body"
-    "%\"handler $_Expr\" %> (Any -> Any) !~\"datra.syntax.test\""
+    "\"handler $_Expr\" ~% (Any -> Any) !~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertParsed "a syntax type is an ordinary value without a body"
-    "%\"handler $_Expr\" %> (Any -> Any)"
+    "\"handler $_Expr\" ~% (Any -> Any)"
     syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
-    "handler := %\"handler $_Expr\" %> (Any -> Any) !~\"datra.syntax.test\""
+    "handler := \"handler $_Expr\" ~% (Any -> Any) !~\"datra.syntax.test\""
     (AST.assignment "handler"
       (MapSpecification syntaxAdapter syntaxAdapterType)
       (MapSpecification syntaxAdapter syntaxAdapterType))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : %\"handler $_Expr\" %> (Any -> Any) := !~\"datra.syntax.test\""
+    "handler : \"handler $_Expr\" ~% (Any -> Any) := !~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := %\"take $_Expr\" %> (Int -> Int) !~\"datra.modular\""
+        , "take := \"take $_Expr\" ~% (Int -> Int) !~\"datra.modular\""
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -692,7 +692,7 @@ regressionTests = do
       parseSource (unlines
         [ "(_IdenExp := !~\"datra.IdenExp\""
         , "_Expr := !~\"datra.Expr\""
-        , "gate := %\"gate $_IdenExp bound $_Expr body $Int\" %>"
+        , "gate := \"gate $_IdenExp bound $_Expr body $Int\" ~%"
             <> " ((Any; Any; Int) -> Int) !~\"test.gate\""
         , "gate x bound Int body x)"
         ]) of
@@ -2071,7 +2071,7 @@ genExpression =
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression
-        (SyntaxType (Extract (AsciiStringLiteral "$Int next")))
+        (SyntaxType (AsciiStringLiteral "$Int next"))
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Program [binding] result)
