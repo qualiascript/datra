@@ -247,7 +247,7 @@ specifyTotalAtlasMap
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyTotalAtlasMap source target = do
-  (selectionSource, totalSource) <-
+  (selectionSource, _) <-
     case concreteOptionalAssignmentSource source of
       Just concreteSource -> Right concreteSource
       Nothing ->
@@ -258,7 +258,7 @@ specifyTotalAtlasMap source target = do
     DecisionProved member -> do
       let selectedSource = case member of
             EvaluatedArgumentMapMember prepared _ -> prepared
-            _ -> source
+            _ -> selectionSource
       selectedTotal <- maybe
         (Left (ExpectedTotalAtlasMap
           (interpretedValueKind selectedSource)))

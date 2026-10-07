@@ -6,11 +6,14 @@
 -- recursive composition dispatcher.
 module Evaluation.Specification.ArgumentMap
   ( selectArgumentMapMember
+  , argumentReservations
+  , positionalArgumentSource
   ) where
 
 import BooleanType (DatraBoolean (..))
 import Data.List (permutations, sortOn)
 import Evaluation.Coalization (coalizeValue)
+import Evaluation.Construction (makeAsciiString)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , sequenceOperands
@@ -31,11 +34,16 @@ selectArgumentMapMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectArgumentMapMember select source writtenMembers alternatives =
-  mapDecision attachPreparedSource selection
+  case argumentReservations select source writtenMembers of
+    DecisionProved reservations ->
+      let selected = selection reservations
+      in mapDecision
+          (attachPreparedSource reservations)
+          selected
+    DecisionRefuted -> DecisionRefuted
+    DecisionUndecidable -> DecisionUndecidable
   where
-    reservations = argumentReservations source writtenMembers
-    positionalSource = positionalArgumentSource reservations source
-    selection =
+    selection reservations =
       if any isAlternativeMember writtenMembers
         then selectPositionalAlternative
           select reservations source alternatives
@@ -46,9 +54,11 @@ selectArgumentMapMember select source writtenMembers alternatives =
                 select reservations source alternatives
             DecisionRefuted -> DecisionRefuted
             DecisionUndecidable -> DecisionUndecidable
-    attachPreparedSource member =
+    attachPreparedSource reservations member =
       EvaluatedArgumentMapMember
-        (selectedDependentSource positionalSource member)
+        (selectedDependentSource
+          (positionalArgumentSource reservations source)
+          member)
         member
     -- Optional slots already expand into the argument map's alternative
     -- federation. Running the explicit permutation validator as well repeats
@@ -73,11 +83,12 @@ selectedDependentSource fallback member =
     _ -> fallback
 
 argumentReservations
-  :: InterpretedValue
+  :: FederationSelector
+  -> InterpretedValue
   -> [InterpretedValue]
-  -> [Bool]
-argumentReservations source writtenMembers =
-  namedReservationFlags sourceMembers targetSlots
+  -> Decision [Bool]
+argumentReservations select source writtenMembers =
+  namedReservationFlags select sourceMembers targetSlots
   where
     sourceMembers = maybe [source] id (sourceComponents source)
     targetSlots = concatMap argumentTargetSlots writtenMembers
@@ -105,21 +116,27 @@ selectPositionalAlternative select reservations source target =
       case select source target of
         DecisionProved member -> DecisionProved member
         _ ->
-          case (sourceComponents source, sequenceOperands target) of
-            (Just sourceMembers, Just targetMembers)
+          case sequenceOperands target of
+            Just targetMembers
               | length sourceMembers == length targetMembers
               , length reservations == length sourceMembers ->
-                  mapDecision
-                    EvaluatedSequentialAtlasMapMember
-                    (decideAll
-                      (zipWith3
-                        (selectPositionalSlot select)
-                        reservations
-                        sourceMembers
-                        targetMembers))
+                  mapDecision EvaluatedSequentialAtlasMapMember
+                    (selectSlots select sourceMembers targetMembers)
+            Nothing
+              | length sourceMembers == 1
+              , length reservations == 1 ->
+                  singletonSelection
+                    (selectSlots select sourceMembers [target])
             _ -> select
               (positionalArgumentSource reservations source)
               target
+          where
+            sourceMembers = maybe [source] id (sourceComponents source)
+            singletonSelection decision = case decision of
+              DecisionProved [member] -> DecisionProved member
+              DecisionProved _ -> DecisionRefuted
+              DecisionRefuted -> DecisionRefuted
+              DecisionUndecidable -> DecisionUndecidable
 
 positionalArgumentSource :: [Bool] -> InterpretedValue -> InterpretedValue
 positionalArgumentSource reservations source =
@@ -151,16 +168,22 @@ argumentTargetSlots target
 -- that is admitted by a remaining target slot claims that slot. Additional
 -- occurrences of the same identifier are left for positional matching.
 namedReservationFlags
-  :: [InterpretedValue]
+  :: FederationSelector
   -> [InterpretedValue]
-  -> [Bool]
-namedReservationFlags sources targets = go sources (zip [0 :: Int ..] targets)
+  -> [InterpretedValue]
+  -> Decision [Bool]
+namedReservationFlags select sources targets =
+  go sources (zip [0 :: Int ..] targets)
   where
-    go [] _ = []
+    go [] _ = DecisionProved []
     go (source:remainingSources) remainingTargets =
-      case removeNamedTarget source remainingTargets of
-        Just (_, laterTargets) -> True : go remainingSources laterTargets
-        Nothing -> False : go remainingSources remainingTargets
+      case removeNamedTarget select source remainingTargets of
+        DecisionProved (Just (_, laterTargets)) ->
+          mapDecision (True :) (go remainingSources laterTargets)
+        DecisionProved Nothing ->
+          mapDecision (False :) (go remainingSources remainingTargets)
+        DecisionRefuted -> DecisionRefuted
+        DecisionUndecidable -> DecisionUndecidable
 
 -- Match identifiers first and remove both matched slots. Only the remaining
 -- source and target slots participate in the positional pass.
@@ -190,31 +213,47 @@ selectSlots select sources targets
       (reverse positionalInputs, remaining, selected)
     selectNamed ((sourceIndex, source):remainingSources) remainingTargets
         positionalInputs selected =
-      case removeNamedTarget source remainingTargets of
-        Just ((_, target), laterTargets) ->
+      case removeNamedTarget select source remainingTargets of
+        DecisionProved (Just ((_, target), laterTargets)) ->
           selectNamed remainingSources laterTargets positionalInputs
             ( ( sourceIndex
               , selectPositionalSlot select True source target
               ) : selected
             )
-        Nothing ->
+        DecisionProved Nothing ->
           selectNamed remainingSources remainingTargets
             ((sourceIndex, source) : positionalInputs) selected
+        DecisionRefuted ->
+          (reverse positionalInputs, remainingTargets,
+            (sourceIndex, DecisionRefuted) : selected)
+        DecisionUndecidable ->
+          (reverse positionalInputs, remainingTargets,
+            (sourceIndex, DecisionUndecidable) : selected)
 
 removeNamedTarget
-  :: InterpretedValue
+  :: FederationSelector
+  -> InterpretedValue
   -> [(Int, InterpretedValue)]
-  -> Maybe
-      ( (Int, InterpretedValue)
-      , [(Int, InterpretedValue)]
-      )
-removeNamedTarget source targets = do
-  (sourceIdentifier, _) <- sourceIdentifierParts source
-  case break
-      (identifierMatchesTarget sourceIdentifier . snd)
-      targets of
-    (_, []) -> Nothing
-    (before, matched:after) -> Just (matched, before <> after)
+  -> Decision
+      (Maybe
+        ( (Int, InterpretedValue)
+        , [(Int, InterpretedValue)]
+        ))
+removeNamedTarget select source targets =
+  case sourceIdentifierParts source of
+    Nothing -> DecisionProved Nothing
+    Just (sourceIdentifier, _) -> findTarget sourceIdentifier [] targets
+  where
+    findTarget _ _ [] = DecisionProved Nothing
+    findTarget sourceIdentifier before (target:remaining) =
+      case identifierMatchesTarget select sourceIdentifier (snd target) of
+        DecisionProved True ->
+          DecisionProved (Just (target, reverse before <> remaining))
+        DecisionProved False ->
+          findTarget sourceIdentifier (target : before) remaining
+        DecisionRefuted ->
+          findTarget sourceIdentifier (target : before) remaining
+        DecisionUndecidable -> DecisionUndecidable
 
 selectPositionalSlot
   :: FederationSelector
@@ -239,22 +278,21 @@ selectPositionalSlot select identifierIsReserved source target =
         ]
     _ -> case sourceIdentifierParts source of
       Just (sourceIdentifier, sourcePayload) ->
-        case interpretedForm target of
-          DependentIdentifierTypeForm targetIdentifier
-            | privateSimpleIdentifier targetIdentifier -> DecisionRefuted
-            | identifierDependenciesCompatible
-                (evaluatedIdentifierDependency sourceIdentifier)
-                (evaluatedIdentifierDependency targetIdentifier) ->
-                  select source target
-            | identifierIsReserved -> DecisionRefuted
-            | otherwise ->
-                mapDecision
-                  EvaluatedDependentIdentifierTypeMember
-                  (select sourcePayload
-                    (evaluatedIdentifierUnderlying targetIdentifier))
-          _
-            | identifierIsReserved -> DecisionRefuted
-            | otherwise -> select sourcePayload target
+        if identifierIsReserved
+          then case identifierMatchesTarget select sourceIdentifier target of
+            DecisionProved True -> select source target
+            DecisionProved False -> DecisionRefuted
+            DecisionRefuted -> DecisionRefuted
+            DecisionUndecidable -> DecisionUndecidable
+          else case interpretedForm target of
+            DependentIdentifierTypeForm targetIdentifier
+              | privateSimpleIdentifier targetIdentifier -> DecisionRefuted
+              | otherwise ->
+                  mapDecision
+                    EvaluatedDependentIdentifierTypeMember
+                    (select sourcePayload
+                      (evaluatedIdentifierUnderlying targetIdentifier))
+            _ -> select sourcePayload target
       Nothing ->
         case interpretedForm target of
           DependentIdentifierTypeForm targetIdentifier ->
@@ -357,14 +395,32 @@ privateSimpleIdentifier identifier =
     _ -> False
 
 identifierMatchesTarget
-  :: EvaluatedDependentIdentifierType
+  :: FederationSelector
+  -> EvaluatedDependentIdentifierType
   -> InterpretedValue
-  -> Bool
-identifierMatchesTarget source = any
-  (identifierDependenciesCompatible
-    (evaluatedIdentifierDependency source)
-    . evaluatedIdentifierDependency)
-  . identifierCandidates
+  -> Decision Bool
+identifierMatchesTarget select source target =
+  case map (identifierAdmitsSource select source)
+      (identifierCandidates target) of
+    [] -> DecisionRefuted
+    decisions -> mapDecision (const True) (decideAny decisions)
+
+identifierAdmitsSource
+  :: FederationSelector
+  -> EvaluatedDependentIdentifierType
+  -> EvaluatedDependentIdentifierType
+  -> Decision ()
+identifierAdmitsSource select source target
+  | identifierDependenciesCompatible
+      (evaluatedIdentifierDependency source)
+      (evaluatedIdentifierDependency target) = DecisionProved ()
+  | SimpleIdentifierDependency sourceName <-
+      evaluatedIdentifierDependency source
+  , Just nameFederation <- evaluatedIdentifierNameFederation target =
+      mapDecision
+        (const ())
+        (select (makeAsciiString sourceName) nameFederation)
+  | otherwise = DecisionRefuted
 
 -- Simple identifiers reduce this relation to string equality.  Dependent
 -- identifiers use their stable family dependency, which is the identifier
@@ -385,7 +441,13 @@ identifierCandidates value =
       identifierCandidates (evaluatedEitherLeft alternatives)
         <> identifierCandidates (evaluatedEitherRight alternatives)
     DependentSumForm dependent ->
-      identifierCandidates (evaluatedDependentSumStaticTarget dependent)
+      identifierCandidates
+        (maybe
+          (evaluatedDependentSumStaticTarget dependent)
+          id
+          (evaluatedDependentSumReservationTarget dependent))
+    SequentialMapForm ->
+      maybe [] (concatMap identifierCandidates) (sequenceOperands value)
     ConcatenatedMapForm left right ->
       identifierCandidates left <> identifierCandidates right
     CoalizationForm operand -> identifierCandidates operand

@@ -805,6 +805,7 @@ testArgumentMaps = do
     , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{a := 2; b := 8} of {a : Nat; b : Nat}"
     , "(2; 8) of {a : Nat; b : Nat}"
+    , "{2; 8} of {a : Nat; b : Nat}"
     , "{a? : Nat; b? : Nat} of {b? : Int; a? : Int}"
     , "{1; 2}[0] = (1 | 2)"
     , "\"(b : 8; 2)\" of \"%({a? : Nat; b? : Nat})\""
@@ -813,7 +814,6 @@ testArgumentMaps = do
     assert "invalid argument-map relation is rejected"
       (renderInterpretedValue value == "false"))
     [ "{b := $wrong; 2} of {a? : Nat; b? : Nat}"
-    , "{2; 8} of {a : Nat; b : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
     ]
   expectSourceRejection
@@ -1006,7 +1006,7 @@ testEval = do
       )
     , ( "\"(c : 8; 2)\""
       , "{a? : Nat; b? : Nat}"
-      , "(c : 8; 2) ~> {a? : Nat; b? : Nat}"
+      , "(8; 2) ~> {a? : Nat; b? : Nat}"
       )
     ]
   mapM_ (\(source, target) ->

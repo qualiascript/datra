@@ -8,6 +8,7 @@ import DatraLanguage.Diagnostics.Application
 import DatraTypes
   ( InterpretingError (..)
   , ModuleEvaluationFailure (..)
+  , OverloadFailure (OverloadMissingRequiredSlot)
   )
 import System.FilePath (takeFileName)
 import Test.Tasty (TestTree, testGroup)
@@ -104,8 +105,12 @@ moduleTests =
         )
         "(Just : -3; Just : -20)"
     , moduleCase origin "numbers max matches unmatched names positionally"
-        "import \"numbers\"\nyield Numbers.max(arg2 := 3, 0)"
+        "import \"numbers\"\nyield Numbers.max(my_arg := 3, 0)"
         "Just : 3"
+    , moduleFailureCase origin "numbers max reserves admitted Args names"
+        "import \"numbers\"\nyield Numbers.max(arg2 := 3, 0)"
+        (== ModuleEvaluationFailure
+          (OverloadError OverloadMissingRequiredSlot))
     , moduleFailureCase origin "numbers is not imported by default"
         "yield Numbers.max(1, 2)"
         (== ModuleEvaluationFailure (UnknownIdentifier "Numbers"))

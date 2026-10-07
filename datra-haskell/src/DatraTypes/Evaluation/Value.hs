@@ -83,6 +83,8 @@ module Evaluation.Value
   , makeDependentSumValue
   , withDependentSumStructure
   , withDependentSumAccess
+  , withDependentSumFamily
+  , withDependentSumReservationTarget
   , makeLazyMapValue
   , interpretedForm
   , interpretedInsertionCapability
@@ -108,6 +110,8 @@ module Evaluation.Value
   , interpretedValueKind
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
+  , interpretedFederationSpecificationBranches
+  , interpretedFederationSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -229,6 +233,7 @@ data EvaluatedEither = EvaluatedEither
 data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
+  , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
   }
 
 -- | Structural provenance that remains meaningful after a source-level
@@ -249,6 +254,11 @@ data EvaluatedDependentSum = EvaluatedDependentSum
   , evaluatedDependentSumAccess
       :: Maybe
           (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedDependentSumDomain :: Maybe InterpretedValue
+  , evaluatedDependentSumFibreAt
+      :: Maybe
+          (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedDependentSumReservationTarget :: Maybe InterpretedValue
   , evaluatedDependentSumStructure :: DependentSumStructure
   }
 
@@ -603,7 +613,7 @@ makeDependentSumValue source staticTarget specify =
     structuralDatraType
     (DependentSumForm
       (EvaluatedDependentSum
-        staticTarget specify Nothing OrdinaryDependentSum))
+        staticTarget specify Nothing Nothing Nothing Nothing OrdinaryDependentSum))
     (interpretedInsertionCapability staticTarget)
     (interpretedMap staticTarget)
     (interpretedAtlasMapFederation staticTarget)
@@ -639,6 +649,43 @@ withDependentSumAccess access value =
       value
         { interpretedForm = DependentSumForm
             dependent { evaluatedDependentSumAccess = Just access }
+        }
+    _ -> value
+
+-- | Retain the indexing family and exact fibre constructor of a dependent
+-- sum.  Selection can then instantiate a candidate from its dependency
+-- witness instead of reconstructing an index from the candidate's shape.
+withDependentSumFamily
+  :: InterpretedValue
+  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumFamily domain fibreAt value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent
+              { evaluatedDependentSumDomain = Just domain
+              , evaluatedDependentSumFibreAt = Just fibreAt
+              }
+        }
+    _ -> value
+
+-- | Retain a structural target that contains every identifier admitted by
+-- the dependent family.  Nested projections use this for the named argument
+-- pass before selecting one concrete fibre.
+withDependentSumReservationTarget
+  :: InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumReservationTarget target value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent
+              { evaluatedDependentSumReservationTarget = Just target }
         }
     _ -> value
 
@@ -819,6 +866,22 @@ interpretedSpecificationSourceValue value =
   case interpretedForm value of
     SpecificationForm specification ->
       Just (evaluatedSpecificationSourceValue specification)
+    _ -> Nothing
+
+interpretedFederationSpecificationBranches
+  :: InterpretedValue
+  -> Maybe [InterpretedValue]
+interpretedFederationSpecificationBranches value =
+  case interpretedForm value of
+    FederationSpecificationForm _ _ branches -> Just branches
+    _ -> Nothing
+
+interpretedFederationSpecificationSourceValue
+  :: InterpretedValue
+  -> Maybe InterpretedValue
+interpretedFederationSpecificationSourceValue value =
+  case interpretedForm value of
+    FederationSpecificationForm source _ _ -> Just source
     _ -> Nothing
 
 interpretedInteger :: InterpretedValue -> Maybe Integer

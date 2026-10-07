@@ -8,6 +8,7 @@ module Evaluation.Arguments
   , argumentPresentations
   , makeArgumentMap
   , makeArgumentMapPreservingSingleton
+  , argumentSourceHasConcreteMembers
   , makeDistinctUnion
   , argumentAlternatives
   ) where
@@ -57,8 +58,19 @@ makeArgumentMapPreservingSingleton originalMembers = do
   where
     members = concatMap flattenFiniteConcatenation originalMembers
     totalPage member =
-      hasConcreteSource member
-        || valueIsCoalition member
+      hasConcreteSource member || valueIsCoalition member
+
+argumentSourceHasConcreteMembers :: InterpretedValue -> Bool
+argumentSourceHasConcreteMembers value =
+  case interpretedForm value of
+    ArgumentMapForm members _ ->
+      all hasConcreteSource members
+    DependentIdentifierTypeForm identifier ->
+      hasConcreteSource (evaluatedIdentifierUnderlying identifier)
+    IdentifierStringProjectionForm identifier ->
+      hasConcreteSource (evaluatedIdentifierUnderlying identifier)
+    CoalizationForm operand -> argumentSourceHasConcreteMembers operand
+    _ -> hasConcreteSource value
 
 flattenFiniteConcatenation :: InterpretedValue -> [InterpretedValue]
 flattenFiniteConcatenation value =

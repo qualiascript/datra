@@ -128,7 +128,9 @@ accessRangeConcatenation mapValue insertionValue ranges = do
     traverse
       (accessValues mapValue . RangeEvaluation.interpretedRangeValue)
       ranges
-  foldM concatenateValues (makeAtlasMap 0 []) selected
+  case selected of
+    first : remaining -> foldM concatenateValues first remaining
+    [] -> Right (makeAtlasMap 0 [])
 
 -- A map of selectors preserves the map's own structure. In particular,
 -- @source[first; rest]@ is a two-page map whose second page may itself be a

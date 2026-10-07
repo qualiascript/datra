@@ -1,6 +1,7 @@
 -- | Evaluated dependent and constant identifier types.
 module Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , identifierTemplateTypeValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
@@ -40,6 +41,20 @@ dependentIdentifierTypeValue
 dependentIdentifierTypeValue familyKey identifierStringFor =
   makeDependentIdentifierTypeValue
     (DependentIdentifierDependency familyKey identifierStringFor)
+    Nothing
+
+-- | An identifier whose spelling is selected from an ordinary string
+-- federation.  The federation is retained for name admission and inversion;
+-- its rendered source remains the stable dependency key.
+identifierTemplateTypeValue
+  :: String
+  -> InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+identifierTemplateTypeValue familyKey nameFederation =
+  makeDependentIdentifierTypeValue
+    (DependentIdentifierDependency familyKey (const familyKey))
+    (Just nameFederation)
 
 simpleIdentifierTypeValue
   :: String
@@ -51,6 +66,7 @@ simpleIdentifierTypeValue identifierString underlying
   | otherwise =
       makeDependentIdentifierTypeValue
         (SimpleIdentifierDependency identifierString)
+        Nothing
         underlying
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
@@ -143,11 +159,13 @@ identifierStringProjectionValue evaluated = value
 
 makeDependentIdentifierTypeValue
   :: IdentifierDependency
+  -> Maybe InterpretedValue
   -> InterpretedValue
   -> InterpretedValue
-makeDependentIdentifierTypeValue dependency underlying = value
+makeDependentIdentifierTypeValue dependency nameFederation underlying = value
   where
-    evaluated = EvaluatedDependentIdentifierType dependency underlying
+    evaluated = EvaluatedDependentIdentifierType
+      dependency underlying nameFederation
     underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
     representativeString =

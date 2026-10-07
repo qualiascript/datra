@@ -6,6 +6,7 @@ module Evaluation.Specification.Subfederation
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
+import Evaluation.Error (InterpretingError (..))
 import Evaluation.Specification.Decision
 import Evaluation.TypeFamily
   ( TypeFamilyOperations (decideTypeFamilySubfederation)
@@ -39,6 +40,8 @@ decideValueSubfederation source target
   | DependentSumForm dependent <- interpretedForm target =
       case evaluatedDependentSumSpecify dependent source of
         Right _ -> DecisionProved ()
+        Left (AtlasMapFederationOperationUndecidable _) ->
+          DecisionUndecidable
         Left _ -> DecisionRefuted
   | EitherForm alternatives <- interpretedForm target
   , eitherContainsDependentSum alternatives =

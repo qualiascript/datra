@@ -149,9 +149,9 @@ functionTests =
         , programCase "reserved identifiers do not fill other required slots"
             "yield (my_val : 3) of {value : Str; my_val : Int}"
             "false"
-        , programCase "identifier maps inhabit unnamed recursive lists"
+        , programCase "identifier maps do not inhabit unnamed recursive lists"
             "yield (arg0 : 1; arg1 : 2; arg2 : 3) of List Int"
-            "true"
+            "false"
         ]
     , testGroup "externals"
         [ programCase "short external descriptor"

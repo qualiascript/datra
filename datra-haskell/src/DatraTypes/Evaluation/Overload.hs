@@ -19,6 +19,7 @@ module Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
+  , omegaArgumentValuesComplete
   , overloadArgumentSchemaComplete
   , overloadValues
   , safeOverloadValues
@@ -29,7 +30,13 @@ import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import Data.Foldable (traverse_)
 import Data.List (nubBy, permutations, sortOn)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal
+  ( finiteOrdinal
+  , naturalAtOrdinal
+  , omega
+  , ordinalGT
+  , ordinalGTE
+  )
 import DatraLanguage.Identifier (public)
 import Evaluation.Arguments
   ( argumentRows
@@ -42,7 +49,12 @@ import Evaluation.Coalization (coalizeValue)
 import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
-  ( InterpretingError (..)
+  ( AtlasMapFederationOperation (AtlasMapFederationSpecification)
+  , AtlasMapFederationRefutation
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , AtlasMapFederationUncertainty
+      (NoAtlasMapFederationDecisionProcedure)
+  , InterpretingError (..)
   , OverloadFailure (..)
   )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
@@ -53,7 +65,9 @@ import Evaluation.Map
   , makeAtlasMapPreservingSingleton
   )
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
-import Evaluation.Specification.Decision (Decision (DecisionProved))
+import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
+import Evaluation.Specification.Composition (selectFederationMember)
+import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -175,25 +189,26 @@ resolveReplacements template supplied
               ]
           routes =
             [ concat
-                [ matchInputs slots orderedInputs
+                [ matchInputs slots row
                 | slots <- slotOrders
-                , orderedInputs <- inputOrders row
                 ]
             | row <- rows
             ]
-      if any null routes
-        then Left (OverloadError OverloadNoMatch)
-        else case writtenRoutes of
-          -- Written order is the canonical positional interpretation. Prefer
-          -- it even when equal annotations admit other permutations.
-          [replacements] -> Right replacements
-          [] ->
-            case nubBy sameReplacements (concat routes) of
-              [] -> Left (OverloadError OverloadNoMatch)
-              [replacements] -> Right replacements
-              _ -> Left (OverloadError
-                OverloadAmbiguousWithoutWrittenOrder)
-          _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
+      let routeResult =
+            if any null routes
+              then Left (OverloadError OverloadNoMatch)
+              else case writtenRoutes of
+                -- Written order is the canonical positional interpretation.
+                -- Prefer it even when equal annotations admit permutations.
+                [replacements] -> Right replacements
+                [] ->
+                  case nubBy sameReplacements (concat routes) of
+                    [] -> Left (OverloadError OverloadNoMatch)
+                    [replacements] -> Right replacements
+                    _ -> Left (OverloadError
+                      OverloadAmbiguousWithoutWrittenOrder)
+                _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
+      routeResult
   where
     isSkip value = case interpretedForm value of
       SkipForm _ -> True
@@ -202,51 +217,100 @@ resolveReplacements template supplied
     canonical = sortOn fst . map
       (\(index, value) ->
         (index, interpretedSemanticResult <$> value))
-    inputOrders row
-      | any hasName row = permutations row
-      | otherwise = [row]
-    hasName Nothing = False
-    hasName (Just value) =
-      case suppliedValue value of
-        (Just _, _) -> True
-        _ -> False
 
 matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
-matchInputs slots = match (slotNames slots) slots
+matchInputs slots inputs =
+  case matchNamed slots inputs [] [] of
+    Nothing -> []
+    Just (remainingSlots, positionalInputs, named) ->
+      map (reverse named <>)
+        (matchPositional remainingSlots (reverse positionalInputs))
   where
-    match _ _ [] = [[]]
-    match _ [] _ = []
-    match targetNames [slot] inputs
-      | length inputs > 1
-      , Just values <- sequence inputs
-      , all unnamed values
+    targetNames = slotNames slots
+
+    matchNamed remaining [] positional named =
+      Just (remaining, positional, named)
+    matchNamed remaining (input : laterInputs) positional named =
+      case admittedInputName input of
+        Nothing ->
+          matchNamed remaining laterInputs (input : positional) named
+        Just name ->
+          case removeNamedSlot name remaining of
+            Nothing ->
+              matchNamed remaining laterInputs (input : positional) named
+            Just (slot, laterSlots) -> do
+              value <- input >>= matchSlot targetNames slot
+              matchNamed laterSlots laterInputs positional
+                ((slotIndex slot, Just value) : named)
+
+    admittedInputName Nothing = Nothing
+    admittedInputName (Just value) =
+      case suppliedValue value of
+        (Just name, _) | name `elem` targetNames -> Just name
+        _ -> Nothing
+
+    removeNamedSlot _ [] = Nothing
+    removeNamedSlot name (slot : remaining)
+      | slotName slot == Just name = Just (slot, remaining)
+      | otherwise = do
+          (selected, later) <- removeNamedSlot name remaining
+          pure (selected, slot : later)
+
+    matchPositional _ [] = [[]]
+    matchPositional [] _ = []
+    matchPositional [slot] positional
+      | length positional > 1
+      , Just values <- traverse
+          (>>= positionalInput targetNames)
+          positional
       , Just grouped <- matchSlot
           targetNames slot (makeAtlasMap 2 values) =
           [[(slotIndex slot, Just grouped)]]
-      where
-        unnamed value = case suppliedValue value of
-          (Nothing, _) -> True
-          _ -> False
-    match targetNames (slot : remainingSlots)
+    matchPositional (slot : remainingSlots)
         (Nothing : remainingInputs) =
       [ (slotIndex slot, Nothing) : later
-      | later <- match targetNames remainingSlots remainingInputs
+      | later <- matchPositional remainingSlots remainingInputs
       ]
-    match targetNames (slot : remainingSlots)
-        inputs@(Just input : remainingInputs) =
+    matchPositional (slot : remainingSlots)
+        positional@(Just input : remainingInputs) =
       case matchSlot targetNames slot input of
         Just value ->
           [ (slotIndex slot, Just value) : later
-          | later <- match targetNames remainingSlots remainingInputs
+          | later <- matchPositional remainingSlots remainingInputs
           ]
-        Nothing -> match targetNames remainingSlots inputs
+        Nothing -> matchPositional remainingSlots positional
+
+-- An identifier not admitted by any target slot participates in the
+-- positional pass.  Erase it before collecting several remaining inputs into
+-- one variadic slot; otherwise the grouped value still carries labels and
+-- cannot inhabit an ordinary sequence such as @List T@.
+positionalInput :: [String] -> InterpretedValue -> Maybe InterpretedValue
+positionalInput targetNames input =
+  case suppliedValue input of
+    (Nothing, value) -> positionalContents targetNames value
+    (Just name, value)
+      | name `notElem` targetNames -> positionalContents targetNames value
+      | otherwise -> Nothing
+
+positionalContents :: [String] -> InterpretedValue -> Maybe InterpretedValue
+positionalContents targetNames value =
+  case interpretedForm value of
+    CoalizationForm operand -> positionalContents targetNames operand
+    ArgumentMapForm members _ ->
+      makeAtlasMap 2 <$> traverse (positionalInput targetNames) members
+    SequentialMapForm -> do
+      members <- finiteMembers value
+      makeAtlasMap
+        (interpretedMapCardinality (interpretedMap value))
+        <$> traverse (positionalInput targetNames) members
+    _ -> Just value
 
 slotNames :: [Slot] -> [String]
 slotNames = foldr (maybe id (:) . slotName) []
 
 matchSlot :: [String] -> Slot -> InterpretedValue -> Maybe InterpretedValue
 matchSlot targetNames slot input = do
-  let (suppliedName, inputValue) =
+  let (suppliedName, suppliedInput) =
         case slotName slot of
           Nothing -> (Nothing, input)
           Just _ -> suppliedValue input
@@ -266,15 +330,27 @@ matchSlot targetNames slot input = do
       | otherwise -> Nothing
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
-  case specifyValues inputValue (slotAnnotation slot) of
-    Right prepared
-      | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
-          Just prepared
-      | DecisionProved () <-
-          decideValueSubfederation inputValue (slotAnnotation slot) ->
-          Just inputValue
-      | otherwise -> Just prepared
-    Left _ -> Nothing
+  case
+      [ matched
+      | inputValue <- suppliedInput : positionalFallback inputName
+      , Just matched <- [matchInputValue inputValue]
+      ] of
+    matched : _ -> Just matched
+    [] -> Nothing
+  where
+    positionalFallback Nothing =
+      maybe [] (:[]) (positionalInput targetNames input)
+    positionalFallback (Just _) = []
+    matchInputValue inputValue =
+      case specifyValues inputValue (slotAnnotation slot) of
+        Right prepared
+          | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
+              Just prepared
+          | DecisionProved () <-
+              decideValueSubfederation inputValue (slotAnnotation slot) ->
+              Just inputValue
+          | otherwise -> Just prepared
+        Left _ -> Nothing
 
 isPublicIdentifier :: String -> Bool
 isPublicIdentifier identifier =
@@ -692,6 +768,85 @@ argumentValuesComplete
   -> Either InterpretingError InterpretedValue
 argumentValuesComplete template =
   argumentSchemaBodyValues (argumentSchemaFromValue template)
+
+-- | Select one argument-map fibre from a dependent federation whose index
+-- order is at most omega.  Candidate indices come exclusively from the
+-- retained dependent domain; source arity is used only to prove that a failed
+-- candidate and every later, strictly larger candidate cannot fit.
+omegaArgumentValuesComplete
+  :: InterpretedValue
+  -> InterpretedValue
+  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+omegaArgumentValuesComplete domain staticTarget fibreAt supplied = do
+  let candidateOrder =
+        interpretedMapFinalOrderType (interpretedMap domain)
+  if ordinalGT candidateOrder omega
+    then undecidable
+    else do
+      reservations <- decisionEither
+        (ArgumentMap.argumentReservations
+          selectFederationMember
+          supplied
+          [staticTarget])
+      let positional =
+            ArgumentMap.positionalArgumentSource reservations supplied
+      suppliedOrder <- argumentOrder supplied
+      search candidateOrder reservations positional suppliedOrder Nothing 0
+  where
+    search familyOrder reservations positional suppliedOrder previousOrder position
+      | Just count <- naturalAtOrdinal familyOrder
+      , position >= count = refuted
+      | otherwise = do
+          witness <- maybe undecidable Right
+            (interpretedMapValueAt
+              (interpretedMap domain)
+              (finiteOrdinal position))
+          candidate <- fibreAt witness
+          orderType <- argumentOrder candidate
+          candidateReservations <- decisionEither
+            (ArgumentMap.argumentReservations
+              selectFederationMember
+              supplied
+              [candidate])
+          let admitsReserved = and
+                (zipWith
+                  (\reserved admitted -> not reserved || admitted)
+                  reservations
+                  candidateReservations)
+              later = search familyOrder reservations positional
+                suppliedOrder (Just orderType) (position + 1)
+          if not admitsReserved
+            then later
+            else case argumentValuesComplete candidate positional of
+              Right selected -> Right selected
+              Left failure
+                | ordinalGTE orderType suppliedOrder -> Left failure
+                | Just previous <- previousOrder
+                , not (ordinalGT orderType previous) -> undecidable
+                | otherwise -> later
+
+    argumentOrder value = do
+      rows <- argumentRows value
+      case nubBy (==)
+          [finiteOrdinal (fromIntegral (length row)) | row <- rows] of
+        [orderType] -> Right orderType
+        _ -> undecidable
+
+    decisionEither decision =
+      case decision of
+        DecisionProved value -> Right value
+        DecisionRefuted -> refuted
+        DecisionUndecidable -> undecidable
+
+    refuted = Left
+      (AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember)
+    undecidable = Left
+      (AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure
+          AtlasMapFederationSpecification))
 
 overloadArgumentSchemaComplete
   :: ArgumentSchema

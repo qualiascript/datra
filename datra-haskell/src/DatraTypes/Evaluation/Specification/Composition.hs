@@ -13,6 +13,7 @@ import AtlasMapFederationExpression
 import Control.Monad (foldM)
 import BooleanType (DatraBoolean (..))
 import Evaluation.Coalization (valueIsCoalition)
+import Evaluation.Error (InterpretingError (..))
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , expansionOperands
@@ -69,6 +70,8 @@ selectFederationMember source target
       case evaluatedDependentSumSpecify dependent source of
         Right selected ->
           DecisionProved (EvaluatedDependentSumMember selected)
+        Left (AtlasMapFederationOperationUndecidable _) ->
+          DecisionUndecidable
         Left _ -> DecisionRefuted
   | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
       case datraCanonicalType (interpretedDatraType source) of

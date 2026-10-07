@@ -7,6 +7,7 @@ import AtlasMapFederationExpression
   ( AtlasMapFederationDecision (..)
   , AtlasMapFederationExpression (..)
   )
+import Evaluation.Arguments (argumentSourceHasConcreteMembers)
 import Evaluation.Federation (decidePrimitiveSubfederation)
 import Evaluation.Federation.Structure
   ( concatenationOperands
@@ -55,11 +56,10 @@ decideStructuralSubfederation decideSubfederation source target
       decideAnyEitherAlternative decideSubfederation source targetEither
   | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just _ <- interpretedFunction source = DecisionRefuted
-  | ArgumentMapForm _ _ <- interpretedForm target
-  , interpretedValueHasTotalMap source =
-      mapDecision (const ()) (selectFederationMember source target)
   | ArgumentMapForm _ underlying <- interpretedForm target =
-      decideSubfederation source underlying
+      if argumentSourceHasConcreteMembers source
+        then mapDecision (const ()) (selectFederationMember source target)
+        else decideSubfederation source underlying
   | ArgumentMapForm _ underlying <- interpretedForm source =
       decideSubfederation underlying target
   | FederationSpecificationForm _ previousTarget _ <- interpretedForm source =

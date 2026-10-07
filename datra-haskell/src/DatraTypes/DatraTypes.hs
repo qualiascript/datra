@@ -16,6 +16,8 @@ module DatraTypes
   , makeFunctionValue
   , makeDependentSumValue
   , withDependentSumAccess
+  , withDependentSumFamily
+  , withDependentSumReservationTarget
   , makeLazyMapValue
   , coalizeValue
   , coalizeMapMemberAt
@@ -118,6 +120,7 @@ module DatraTypes
   , integerLimitRangeValue
   , integerTypeValue
   , dependentIdentifierTypeValue
+  , identifierTemplateTypeValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -149,6 +152,7 @@ module DatraTypes
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
+  , omegaArgumentValuesComplete
   , compileParameters
   , compileDependentParameter
   , parameterBindings
@@ -184,6 +188,8 @@ module DatraTypes
   , withEvaluationSource
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
+  , interpretedFederationSpecificationBranches
+  , interpretedFederationSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -285,6 +291,7 @@ import Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
+  , omegaArgumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
   , projectedArgumentSchema
@@ -342,6 +349,7 @@ import Evaluation.LimitRange
   )
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , identifierTemplateTypeValue
   , hasTrailingIdentifierMarker
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
@@ -369,6 +377,8 @@ import Evaluation.Value
   , makeDependentSumValue
   , withDependentSumStructure
   , withDependentSumAccess
+  , withDependentSumFamily
+  , withDependentSumReservationTarget
   , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
@@ -403,6 +413,8 @@ import Evaluation.Value
   , withEvaluationSource
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
+  , interpretedFederationSpecificationBranches
+  , interpretedFederationSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
