@@ -39,7 +39,7 @@ For example:
 ```datra
 ArgsInt := {Args Int,}
 ListInt := List Int
-display := ArgsInt -> "$(ListInt)" do
+display := ArgsInt -> "%ListInt" do
   toList := ArgsInt -> {ListInt,} do yield it
   yield "%(toList it)"
 

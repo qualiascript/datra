@@ -458,7 +458,7 @@ standardLibraryTests =
         , programCase "Args convert to lists through argument map matching"
             ( "ArgsInt := {Args Int,}\n"
                 <> "ListInt := List Int\n"
-                <> "display := ArgsInt -> \"$(ListInt)\" do\n"
+                <> "display := ArgsInt -> \"%ListInt\" do\n"
                 <> "  toList := ArgsInt -> {ListInt,} do yield it\n"
                 <> "  yield \"%(toList it)\"\n"
                 <> "assert display() = \"()\"\n"

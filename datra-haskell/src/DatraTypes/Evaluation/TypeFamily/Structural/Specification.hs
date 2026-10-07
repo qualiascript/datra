@@ -27,7 +27,6 @@ import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map (concatenateValues)
 import Evaluation.Optional (makeNothing)
 import Evaluation.Specification.Composition (selectFederationMember)
-import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
 import Evaluation.Specification.Decision
 import Evaluation.Specification.String (federationUsesWeakToString)
 import Evaluation.Value
@@ -51,12 +50,6 @@ specifyStructural specify decideSubfederation source target
       Left (FunctionEvaluationFailed ExpectedFunctionType)
   | federationUsesWeakToString (interpretedAtlasMapFederation target) =
       Left NoCanonicalStringConversion
-  | ArgumentMapForm writtenMembers underlying <- interpretedForm target
-  , let prepared = ArgumentMap.prepareArgumentMapSource
-          selectFederationMember source writtenMembers underlying
-  , interpretedSemanticResult prepared /= interpretedSemanticResult source =
-      specifyValuesWithoutIdentity
-        specify decideSubfederation prepared target
   | interpretedSemanticResult source == interpretedSemanticResult target =
       Right source
   | otherwise =
@@ -262,12 +255,20 @@ specifyTotalAtlasMap source target = do
           Just totalMap -> Right (source, totalMap)
           Nothing -> Left (ExpectedTotalAtlasMap (interpretedValueKind source))
   case selectFederationMember selectionSource target of
-    DecisionProved member ->
+    DecisionProved member -> do
+      let selectedSource = case member of
+            EvaluatedArgumentMapMember prepared _ -> prepared
+            _ -> source
+      selectedTotal <- maybe
+        (Left (ExpectedTotalAtlasMap
+          (interpretedValueKind selectedSource)))
+        Right
+        (interpretedTotalAtlasMap selectedSource)
       Right
         (specifiedValue
-          source
-          totalSource
-          (interpretedSemantics source)
+          selectedSource
+          selectedTotal
+          (interpretedSemantics selectedSource)
           target
           member)
     DecisionRefuted ->

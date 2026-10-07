@@ -270,6 +270,9 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedEitherMember
       DatraBoolean
       EvaluatedAtlasMapFederationMember
+  | EvaluatedArgumentMapMember
+      InterpretedValue
+      EvaluatedAtlasMapFederationMember
   | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
   | EvaluatedToStringMember

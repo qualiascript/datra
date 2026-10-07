@@ -166,7 +166,6 @@ module DatraTypes
   , validateFunctionInput
   , specifyValues
   , contextuallySpecifyValues
-  , contextualSpecificationSource
   , interpretedValueKind
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -350,7 +349,6 @@ import Evaluation.Identifier
   )
 import Evaluation.Specification
   ( assignIdentifierValues
-  , contextualSpecificationSource
   , contextuallySpecifyValues
   , validateFunctionInput
   , specifyValues

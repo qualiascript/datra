@@ -5,15 +5,12 @@
 -- federation selector is injected so this policy remains independent of the
 -- recursive composition dispatcher.
 module Evaluation.Specification.ArgumentMap
-  ( prepareArgumentMapSource
-  , selectArgumentMapMember
+  ( selectArgumentMapMember
   ) where
 
 import BooleanType (DatraBoolean (..))
 import Data.List (permutations, sortOn)
 import Evaluation.Coalization (coalizeValue)
-import DatraOrdinal (Ordinal, addOrdinals, finiteOrdinal)
-import Evaluation.Construction (makeExplicit)
 import Evaluation.Federation.Structure
   ( concatenationOperands
   , sequenceOperands
@@ -34,18 +31,25 @@ selectArgumentMapMember
   -> InterpretedValue
   -> Decision EvaluatedAtlasMapFederationMember
 selectArgumentMapMember select source writtenMembers alternatives =
-  if any isAlternativeMember writtenMembers
-    then selectPositionalAlternative
-      select reservations source alternatives
-    else
-      case argumentPermutationDecision select source writtenMembers of
-        DecisionProved () ->
-          selectPositionalAlternative
-            select reservations source alternatives
-        DecisionRefuted -> DecisionRefuted
-        DecisionUndecidable -> DecisionUndecidable
+  mapDecision attachPreparedSource selection
   where
     reservations = argumentReservations source writtenMembers
+    positionalSource = positionalArgumentSource reservations source
+    selection =
+      if any isAlternativeMember writtenMembers
+        then selectPositionalAlternative
+          select reservations source alternatives
+        else
+          case argumentPermutationDecision select source writtenMembers of
+            DecisionProved () ->
+              selectPositionalAlternative
+                select reservations source alternatives
+            DecisionRefuted -> DecisionRefuted
+            DecisionUndecidable -> DecisionUndecidable
+    attachPreparedSource member =
+      EvaluatedArgumentMapMember
+        (selectedDependentSource positionalSource member)
+        member
     -- Optional slots already expand into the argument map's alternative
     -- federation. Running the explicit permutation validator as well repeats
     -- the same search and can turn branch count into factorial work.
@@ -55,18 +59,18 @@ selectArgumentMapMember select source writtenMembers alternatives =
         ConcatenatedMapForm _ _ -> True
         _ -> False
 
-prepareArgumentMapSource
-  :: FederationSelector
+selectedDependentSource
+  :: InterpretedValue
+  -> EvaluatedAtlasMapFederationMember
   -> InterpretedValue
-  -> [InterpretedValue]
-  -> InterpretedValue
-  -> InterpretedValue
-prepareArgumentMapSource select source writtenMembers underlying =
-  case select source underlying of
-    DecisionProved _ -> source
-    _ -> positionalArgumentSource
-      (argumentReservations source writtenMembers)
-      source
+selectedDependentSource fallback member =
+  case member of
+    EvaluatedEitherMember _ selected ->
+      selectedDependentSource fallback selected
+    EvaluatedDependentIdentifierTypeMember selected ->
+      selectedDependentSource fallback selected
+    EvaluatedDependentSumMember selected -> selected
+    _ -> fallback
 
 argumentReservations
   :: InterpretedValue
@@ -76,12 +80,7 @@ argumentReservations source writtenMembers =
   namedReservationFlags sourceMembers targetSlots
   where
     sourceMembers = maybe [source] id (sourceComponents source)
-    targetSlots = concatMap
-      (argumentTargetSlots
-        (addOrdinals
-          (interpretedMapFinalOrderType (interpretedMap source))
-          (finiteOrdinal 1)))
-      writtenMembers
+    targetSlots = concatMap argumentTargetSlots writtenMembers
 
 selectPositionalAlternative
   :: FederationSelector
@@ -103,21 +102,24 @@ selectPositionalAlternative select reservations source target =
               select reservations source (evaluatedEitherRight alternatives))
         ]
     _ ->
-      case (sourceComponents source, sequenceOperands target) of
-        (Just sourceMembers, Just targetMembers)
-          | length sourceMembers == length targetMembers
-          , length reservations == length sourceMembers ->
-              mapDecision
-                EvaluatedSequentialAtlasMapMember
-                (decideAll
-                  (zipWith3
-                    (selectPositionalSlot select)
-                    reservations
-                    sourceMembers
-                    targetMembers))
-        _ -> select
-          (positionalArgumentSource reservations source)
-          target
+      case select source target of
+        DecisionProved member -> DecisionProved member
+        _ ->
+          case (sourceComponents source, sequenceOperands target) of
+            (Just sourceMembers, Just targetMembers)
+              | length sourceMembers == length targetMembers
+              , length reservations == length sourceMembers ->
+                  mapDecision
+                    EvaluatedSequentialAtlasMapMember
+                    (decideAll
+                      (zipWith3
+                        (selectPositionalSlot select)
+                        reservations
+                        sourceMembers
+                        targetMembers))
+            _ -> select
+              (positionalArgumentSource reservations source)
+              target
 
 positionalArgumentSource :: [Bool] -> InterpretedValue -> InterpretedValue
 positionalArgumentSource reservations source =
@@ -134,20 +136,15 @@ positionalArgumentSource reservations source =
       | Just (_, payload) <- sourceIdentifierParts member = payload
       | otherwise = member
 
-argumentTargetSlots :: Ordinal -> InterpretedValue -> [InterpretedValue]
-argumentTargetSlots probe target
+argumentTargetSlots :: InterpretedValue -> [InterpretedValue]
+argumentTargetSlots target
   | isEmptyMap target = []
   | otherwise =
       case interpretedForm target of
         ConcatenatedMapForm left right ->
-          argumentTargetSlots probe left <> argumentTargetSlots probe right
+          argumentTargetSlots left <> argumentTargetSlots right
         CoalizationForm operand ->
           maybe [target] id (sequenceOperands operand)
-        DependentSumForm dependent
-          | Just access <- evaluatedDependentSumAccess dependent ->
-              case access (makeExplicit ComputedOrigin probe) of
-                Right projected -> argumentTargetSlots probe projected
-                Left _ -> [target]
         _ -> maybe [target] id (sequenceOperands target)
 
 -- The named pass is ordered and consumptive: the first source identifier
@@ -387,7 +384,10 @@ identifierCandidates value =
     EitherForm alternatives ->
       identifierCandidates (evaluatedEitherLeft alternatives)
         <> identifierCandidates (evaluatedEitherRight alternatives)
+    DependentSumForm dependent ->
+      identifierCandidates (evaluatedDependentSumStaticTarget dependent)
     ConcatenatedMapForm left right ->
       identifierCandidates left <> identifierCandidates right
+    CoalizationForm operand -> identifierCandidates operand
     ArgumentMapForm members _ -> concatMap identifierCandidates members
     _ -> []

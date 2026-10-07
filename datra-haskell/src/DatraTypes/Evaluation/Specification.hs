@@ -6,7 +6,6 @@ module Evaluation.Specification
   ( validateFunctionInput
   , specifyValues
   , contextuallySpecifyValues
-  , contextualSpecificationSource
   , assignIdentifierValues
   ) where
 
@@ -25,8 +24,6 @@ import Evaluation.Error
   )
 import Evaluation.Identifier (inferredIdentifierAssignmentValue)
 import Evaluation.Specification.Decision (Decision (DecisionProved))
-import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
-import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Subfederation
   ( decideValueSubfederation
   )
@@ -116,17 +113,6 @@ contextuallySpecifyValues source target =
             _ -> Left (AtlasMapFederationOperationRefuted
               AtlasMapFederationSpecificationHasNoMatchingMember)
         _ -> Left original
-
-contextualSpecificationSource
-  :: InterpretedValue
-  -> InterpretedValue
-  -> InterpretedValue
-contextualSpecificationSource source target =
-  case interpretedForm target of
-    ArgumentMapForm writtenMembers underlying ->
-      ArgumentMap.prepareArgumentMapSource
-        selectFederationMember source writtenMembers underlying
-    _ -> source
 
 sourceHasNoIdentifier :: InterpretedValue -> Bool
 sourceHasNoIdentifier source =
