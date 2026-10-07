@@ -14,21 +14,18 @@ import Evaluation.ToString
   , toStringValue
   )
 import Evaluation.Value
-import Extract (extractValue)
 
 evalValues
   :: CanonicalStringCodec
   -> InterpretedValue
   -> InterpretedValue
-  -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-evalValues codec stringType source target
+evalValues codec source target
   -- A string federation already describes the input text. Keep its entire
-  -- specification, including every template capture, for subsequent extract.
+  -- specification, including every retained template selection.
   | stringConversionIsIdentity target =
       specifyValues source target
   | otherwise = do
       renderedTarget <- toStringValue codec target
       matched <- specifyValues source (templateValue renderedTarget)
-      captured <- extractValue stringType matched
-      accessValues captured (makeNatural 1)
+      accessValues matched (makeNatural 1)

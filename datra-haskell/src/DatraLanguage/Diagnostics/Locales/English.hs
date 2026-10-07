@@ -271,19 +271,15 @@ localizeInterpretingError reason =
       LocalizedMessage
         "value does not have a canonical string conversion"
         ["only injective, round-trippable string conversions are accepted"]
-    ExpectedStringTemplateSpecification kind ->
-      LocalizedMessage
-        "extract expects a concrete string-template specification"
-        ["given value kind: " <> valueKind kind]
     InvalidSyntaxTemplateOperand ->
       LocalizedMessage
-        "%% expects a compile-time string or total map of strings"
+        "% expects a compile-time string or total map of strings"
         []
     InvalidSyntaxTemplateCharacter character ->
       LocalizedMessage
         "syntax template contains an invalid literal character"
         [ "character: " <> show character
-        , "%% can only install literals retained by the neutral source parser"
+        , "% can only install literals retained by the neutral source parser"
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage

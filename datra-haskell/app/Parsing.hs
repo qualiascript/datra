@@ -18,7 +18,7 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (find)
+import Data.List (find, isPrefixOf)
 import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -82,7 +82,6 @@ import DatraLanguage.AST
       , BooleanOr
       , BooleanNot
       , Coalization
-      , Extract
       , Assert
       , Begin
       , Program
@@ -342,7 +341,6 @@ astForm =
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.CoalizationOperator Coalization
-      , astUnary AST.ExtractOperator Extract
       , astBlock "begin" Begin
       , astBlock "program" Program
       , astUnary AST.LetOperator Let
@@ -654,7 +652,7 @@ functionImplementation _ = externalExpression
 
 externalExpression :: Parser Expression
 externalExpression =
-  External <$> (operatorToken AST.ExternalOperator *> extractedTermAtom)
+  External <$> (operatorToken AST.ExternalOperator *> externalTermAtom)
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
 arrowExpressionWith = arrowExpressionWithLayer eitherExpressionWith
@@ -872,7 +870,7 @@ rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
 term = do
-  function <- accessedTerm extractedTermAtom
+  function <- accessedTerm externalTermAtom
   arguments <- many (try (applicationArgument function))
   pure (foldl FunctionApplication function arguments)
   where
@@ -886,7 +884,6 @@ term = do
       , valueOfExpression
       , trailingApplicationSkip
       , prefixedApplicationArgument
-      , Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom)
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , do
           guard (not (acceptsFunctionBody function))
@@ -914,13 +911,9 @@ prefixedApplicationArgument =
   Coalization
     <$> (operatorToken AST.CoalizationOperator *> term)
 
--- Extract binds to its primary operand before bracket access, so @%a[x]@
--- means @(%a)[x]@. A larger specification operand remains available through
--- ordinary parentheses.
-extractedTermAtom :: Parser Expression
-extractedTermAtom =
-  (Extract <$> (operatorToken AST.ExtractOperator *> extractedTermAtom))
-    <|> externalExpression
+externalTermAtom :: Parser Expression
+externalTermAtom =
+  externalExpression
     <|> termAtom
 
 termAtom :: Parser Expression
@@ -951,7 +944,10 @@ symbolicSyntaxLiteral :: Parser Expression
 symbolicSyntaxLiteral = lexeme . try $ do
   literal <- some (satisfy isSymbolicSyntaxCharacter)
   guard (literal `notElem` reservedCoreSymbolicRuns)
+  guard (all (`notPrefixOf` literal) reservedCoreSymbolicPrefixes)
   pure (IdentifierReference (IdentifierString literal))
+  where
+    notPrefixOf prefix value = not (prefix `isPrefixOf` value)
 
 coreSymbolicTokens :: [String]
 coreSymbolicTokens = AST.ellipsisSymbol : Text.unpack reverseSpecificationSymbol :
@@ -966,6 +962,16 @@ coreSymbolicTokens = AST.ellipsisSymbol : Text.unpack reverseSpecificationSymbol
 -- used by the arithmetic parser so new prefix operators cannot be forgotten.
 reservedCoreSymbolicRuns :: [String]
 reservedCoreSymbolicRuns = coreSymbolicTokens <> compactPrefixSkipRuns
+
+-- Percent owns interpolation inside strings and syntax attachment between
+-- expressions. Do not let longer unrecognized percent runs escape into the
+-- declarative-symbol fallback as ordinary identifiers.
+reservedCoreSymbolicPrefixes :: [String]
+reservedCoreSymbolicPrefixes =
+  [ symbolText
+  | operator <- [AST.SyntaxTypeOperator]
+  , Just symbolText <- [AST.operatorSourceSymbol operator]
+  ]
 
 compactPrefixSkipRuns :: [String]
 compactPrefixSkipRuns =
@@ -1564,7 +1570,7 @@ operatorToken operator = lexeme $ try $ do
     AST.OptionalOperator -> notFollowedBy (char '?')
     AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '~')
     AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%')
-    AST.ExtractOperator -> notFollowedBy (char '%')
+    AST.SyntaxTypeOperator -> notFollowedBy (char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()

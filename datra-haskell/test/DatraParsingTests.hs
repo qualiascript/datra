@@ -228,7 +228,7 @@ regressionTests = do
         [ "_AST := !~\"datra.AST\""
         , "_Expr := !~\"datra.Expr\""
         , "_Block := !~\"datra.Block\""
-        , "begin := \"begin %_Block yield %_Expr\" %% (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "begin := \"begin %_Block yield %_Expr\" % (_AST, _AST -> _AST) !~\"datra.begin\""
         , "yield Example := begin"
         , "  begin := begin"
         , "yield begin"
@@ -655,7 +655,7 @@ regressionTests = do
     "{value? : Any} -> Nat do yield value"
     (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
   assertParsed "a declared syntax signature is not a shorthand function domain"
-    "\"step %Int next\" %% (Int -> Int) do yield value"
+    "\"step %Int next\" % (Int -> Int) do yield value"
     (MapSpecification identityBody
       (SyntaxType (StringTemplate
         [ StringTemplateLiteral "step "
@@ -666,7 +666,7 @@ regressionTests = do
   let optionalIntInput = ArgumentMap
         [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
   assertParsed "a declared syntax signature accepts a multiline body"
-    "\"step %Nat next\" %% ({value?:Int} -> Int) do\n  yield value"
+    "\"step %Nat next\" % ({value?:Int} -> Int) do\n  yield value"
     (MapSpecification identityBody
       (SyntaxType (StringTemplate
         [ StringTemplateLiteral "step "
@@ -674,8 +674,8 @@ regressionTests = do
         , StringTemplateLiteral " next"
         ])
         (FunctionType optionalIntInput (ref "Int"))))
-  assertAstOutput "%% accepts an inhabited total map of template strings"
-    "(\"%Int++\"; \"increment %Int\") %% (Int -> Int)"
+  assertAstOutput "% accepts an inhabited total map of template strings"
+    "(\"%Int++\"; \"increment %Int\") % (Int -> Int)"
     (SyntaxType
       (AtlasMap
         [ StringTemplate
@@ -688,15 +688,8 @@ regressionTests = do
             ]
         ])
       (FunctionType (ref "Int") (ref "Int")))
-  assertParsed "grouping characters remain valid in ordinary template values"
-    "%\"call (%Int)\""
-    (Extract (StringTemplate
-      [ StringTemplateLiteral "call ("
-      , StringTemplateInterpolation (ref "Int")
-      , StringTemplateLiteral ")"
-      ]))
-  assertParsed "%% remains syntax rather than performing parser validation"
-    "\"call (%Int)\" %% (Int -> Int)"
+  assertParsed "% remains syntax rather than performing parser validation"
+    "\"call (%Int)\" % (Int -> Int)"
     (SyntaxType
       (StringTemplate
         [ StringTemplateLiteral "call ("
@@ -706,6 +699,10 @@ regressionTests = do
       (FunctionType (ref "Int") (ref "Int")))
   assertRejected "the obsolete percent-arrow syntax-type operator is rejected"
     "\"step %Int next\" %> (Int -> Int) do yield value"
+  assertRejected "the old doubled-percent syntax-type operator is rejected"
+    "\"step %Int next\" %% (Int -> Int) do yield value"
+  assertRejected "prefix percent extraction is rejected"
+    "%\"call (%Int)\""
   let syntaxAdapterType = SyntaxType
         (StringTemplate
           [ StringTemplateLiteral "handler "
@@ -714,24 +711,24 @@ regressionTests = do
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use the external as their body"
-    "\"handler %_Expr\" %% (Any -> Any) !~\"datra.syntax.test\""
+    "\"handler %_Expr\" % (Any -> Any) !~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertParsed "a syntax type is an ordinary value without a body"
-    "\"handler %_Expr\" %% (Any -> Any)"
+    "\"handler %_Expr\" % (Any -> Any)"
     syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
-    "handler := \"handler %_Expr\" %% (Any -> Any) !~\"datra.syntax.test\""
+    "handler := \"handler %_Expr\" % (Any -> Any) !~\"datra.syntax.test\""
     (AST.assignment "handler"
       (MapSpecification syntaxAdapter syntaxAdapterType)
       (MapSpecification syntaxAdapter syntaxAdapterType))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : \"handler %_Expr\" %% (Any -> Any) := !~\"datra.syntax.test\""
+    "handler : \"handler %_Expr\" % (Any -> Any) := !~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take %_Expr\" %% (Int -> Int) !~\"datra.modular\""
+        , "take := \"take %_Expr\" % (Int -> Int) !~\"datra.modular\""
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -742,7 +739,7 @@ regressionTests = do
       parseSource (unlines
         [ "(Capture := !~\"datra.Expr\""
         , "CaptureAlias := Capture"
-        , "take := \"take %CaptureAlias\" %% (Any -> Any) !~\"datra.modular\""
+        , "take := \"take %CaptureAlias\" % (Any -> Any) !~\"datra.modular\""
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -753,7 +750,7 @@ regressionTests = do
       parseSource (unlines
         [ "(_IdenExp := !~\"datra.IdenExp\""
         , "_Expr := !~\"datra.Expr\""
-        , "gate := \"gate %_IdenExp bound %_Expr body %Int\" %%"
+        , "gate := \"gate %_IdenExp bound %_Expr body %Int\" %"
             <> " ((Any; Any; Int) -> Int) !~\"test.gate\""
         , "gate x bound Int body x)"
         ]) of
@@ -769,7 +766,7 @@ regressionTests = do
   assert "an identifier capture accepts a dependent string expression" $ case
       parseSource (unlines
         [ "(_IdenExp := !~\"datra.IdenExp\""
-        , "capture := \"capture %_IdenExp\" %%"
+        , "capture := \"capture %_IdenExp\" %"
             <> " (Any -> Any) !~\"datra.modular\""
         , "capture \"abc%(it)\")"
         ]) of
@@ -779,7 +776,7 @@ regressionTests = do
   assert "an identifier capture accepts an optional dependent string expression" $
     case parseSource (unlines
       [ "(_IdenExp := !~\"datra.IdenExp\""
-      , "capture := \"capture %_IdenExp\" %%"
+      , "capture := \"capture %_IdenExp\" %"
           <> " (Any -> Any) !~\"datra.modular\""
       , "capture \"abc%(it)\"?)"
       ]) of
@@ -788,21 +785,6 @@ regressionTests = do
       _ -> False
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
-  assertAstOutput
-    "extract applies to a parenthesized reverse specification"
-    "%(\"%IdenStr %Int\" <~ \"alco 100\")"
-    (Extract
-      (MapSpecification
-        (AsciiStringLiteral "alco 100")
-        (StringTemplate
-          [ StringTemplateInterpolation (ref "IdenStr")
-          , StringTemplateLiteral " "
-          , StringTemplateInterpolation (ref "Int")
-          ])))
-  assertParsed
-    "extract binds before bracket access"
-    "%Str[0]"
-    (MapAccess (Extract (ref "Str")) (natural 0))
   assertParsed "val is available as an ordinary identifier"
     "val _it" (FunctionApplication (ref "val") (ref "_it"))
   assertParsed "external escape constructs an External AST"
@@ -2173,7 +2155,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
-    , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
@@ -2356,8 +2337,11 @@ assertAstSyntax = do
         (((natural 2 <..> natural 5) ~> ref "Nat"))
         == "(~> (<..> 2 5) (ref $Nat))"
     )
-  assert "the extract operator retains its percent AST symbol"
-    (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
+  assert "the syntax-type operator uses the percent AST symbol"
+    ( renderExpression
+        (SyntaxType (ref "Template") (FunctionType (ref "Int") (ref "Int")))
+        == "(% (ref $Template) (-> (ref $Int) (ref $Int)))"
+    )
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
         == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 5))"

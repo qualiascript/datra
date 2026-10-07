@@ -4,5 +4,5 @@ yield LibraryOne := begin
   let _offset := 4
   x := 7
   increment := ({value? : Int} -> Int do yield value + _offset)
-  shift := "shift %Int" %% ({value? : Int} -> Int) do yield value + _offset
+  shift := "shift %Int" % ({value? : Int} -> Int) do yield value + _offset
 yield public this

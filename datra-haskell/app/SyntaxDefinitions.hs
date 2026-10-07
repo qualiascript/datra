@@ -215,7 +215,7 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
       ]
 declarationRules _ = []
 
--- | The left operand of @%%@ is either one string template or an inhabited
+-- | The left operand of @%@ is either one string template or an inhabited
 -- compile-time total map of string templates. Rules must be available before
 -- evaluation, so every map member must be explicit at declaration time.
 compileSyntaxTemplatesFromExpression
@@ -292,7 +292,7 @@ expandSyntax rule captures = case
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     -- A zero-hole syntax function receives the singleton value written as its
-    -- domain. Thus @"this" %% (0 -> Any)@ applies its function to @0@ using
+    -- domain. Thus @"this" % (0 -> Any)@ applies its function to @0@ using
     -- the same expansion path as any other declared template.
     applicationInput [] = case syntaxSignature rule of
       FunctionType domain _ -> domain

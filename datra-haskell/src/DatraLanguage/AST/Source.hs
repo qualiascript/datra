@@ -20,7 +20,7 @@ source context expression =
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue templates signature -> wrapped 1
-      (source 2 templates <> " %% " <> source 0 signature)
+      (source 2 templates <> " % " <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_this"))
@@ -87,7 +87,6 @@ source context expression =
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     ModularValue operand -> wrapped 0 ("modular " <> source 0 operand)
-    ExtractValue operand -> unary "%" operand
     OptionalValue
         (IdentifierOperationValue (IdentifierString name) annotation given) ->
       identifierOperation

@@ -282,9 +282,7 @@ canonicalValueCapture interpret targetExpression captured = do
       Left failure -> case captured of
         IdentifierReference (IdentifierString name) -> do
           source <- asciiStringValue name
-          stringType <- interpret
-            (IdentifierReference (IdentifierString "Str"))
-          _ <- evalValues canonicalStringCodec stringType source target
+          _ <- evalValues canonicalStringCodec source target
           Right (AsciiStringLiteral name)
         _ -> Left failure
 
@@ -1018,11 +1016,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       interpret operand >>= booleanNotValue
     Coalization operand -> coalizeValue <$> interpret operand
     Modular operand -> interpret operand >>= modularValue
-    Extract operand ->
-      do
-        stringType <- interpret
-          (IdentifierReference (IdentifierString "Str"))
-        interpret operand >>= extractValue stringType
     Fun operand ->
       case recursiveListElement operand of
         Just element -> do

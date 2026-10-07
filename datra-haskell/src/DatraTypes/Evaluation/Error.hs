@@ -179,7 +179,6 @@ data InterpretingError
   | AtlasMapFederationOperationUndecidable AtlasMapFederationUncertainty
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
-  | ExpectedStringTemplateSpecification InterpretedValueKind
   | InvalidSyntaxTemplateOperand
   | InvalidSyntaxTemplateCharacter Char
   | EitherAlternativesNotDistinct

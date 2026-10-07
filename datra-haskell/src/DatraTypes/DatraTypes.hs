@@ -72,7 +72,6 @@ module DatraTypes
   , templateValue
   , stripOuterIdentifierValue
   , stripOuterIdentifierType
-  , extractValue
   , evalValues
   , requireFiniteInteger
   , IntegerLimit (..)
@@ -275,7 +274,6 @@ import Evaluation.IdentifierErasure
   ( stripOuterIdentifierValue
   , stripOuterIdentifierType
   )
-import Extract (extractValue)
 import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map

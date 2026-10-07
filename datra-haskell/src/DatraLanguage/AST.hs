@@ -115,7 +115,6 @@ data Expression
   | BooleanNot Expression
   | Coalization Expression
   | Modular Expression
-  | Extract Expression
   | Assert Bool Expression
   | Fun Expression
   | WithBinding IdentifierString Bool Expression
@@ -260,7 +259,6 @@ data OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
   | ModularValue OperatorExpression
-  | ExtractValue OperatorExpression
   | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
   | WithBindingValue IdentifierString Bool OperatorExpression
@@ -395,8 +393,6 @@ normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
 normalizeExpression (Modular operand) =
   Modular (normalizeExpression operand)
-normalizeExpression (Extract operand) =
-  Extract (normalizeExpression operand)
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
@@ -567,7 +563,6 @@ lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
 lower (Modular operand) = ModularValue (lower operand)
-lower (Extract operand) = ExtractValue (lower operand)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
 lower (WithBinding name optional bound) =
@@ -767,8 +762,6 @@ prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
 prettyOperator (ModularValue operand) =
   prettyForm "modular" [prettyOperator operand]
-prettyOperator (ExtractValue operand) =
-  prettyUnary ExtractOperator operand
 prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
@@ -994,7 +987,6 @@ traverseExpressionChildren visit expression = case expression of
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
   Modular x -> Modular <$> visit x
-  Extract x -> Extract <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x

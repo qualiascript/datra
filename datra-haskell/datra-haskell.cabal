@@ -250,11 +250,11 @@ library
         Evaluation.TypeFamily.Structural.Specification
         Evaluation.TypeFamily.Structural.Subfederation
         Evaluation.TypeFamily.TotalBlock
+        Evaluation.Specification.Projection
         Evaluation.Value
         Evaluation.Value.Semantics
         Evaluation.Arguments
         Evaluation.Eval
-        Extract
         DatraLanguage.Diagnostics.Locales.Rendering
     build-depends:
         base >= 4.14 && < 5,

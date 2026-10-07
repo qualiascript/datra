@@ -208,7 +208,7 @@ absence of an unmatched path means there is no implicit unit-valued result.
 
 The declarative syntax system compiles templates from a direct string template
 or from a compile-time-materializable inhabited total map of string templates
-supplied to `%%`. Ordinary `%` interpolation denotes a typed syntax hole, so
+supplied to `%`. Ordinary `%` interpolation denotes a typed syntax hole, so
 `"if %_Expr then %_Expr else %_Expr"` uses exactly the same interpolation
 syntax as any other string. The value interpolated into a hole owns its capture
 behavior; AST-category capabilities are not inferred from identifier names.
@@ -222,7 +222,7 @@ if condition then consequent else alternative
 ```
 
 but a `when` contains any positive number of tests and arms. It should be a
-design target for expanding `%%` from "compile these linear templates" to
+design target for expanding `%` from "compile these linear templates" to
 "compile the syntax language represented by this federation of templates."
 
 Abstractly, the `when` syntax language contains recursive choice and

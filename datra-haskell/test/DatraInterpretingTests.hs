@@ -966,13 +966,13 @@ testArgumentMapTemplates = do
         (renderInterpretedValue value == renderedSpecification))
     [ specification, template <> " <~ " <> member ]
   expectSourceValue "template captures the typed argument map"
-    ("%(" <> specification <> ")[1]") $ \value ->
+    ("(" <> specification <> ")[1]") $ \value ->
       assert "capture retains the source ordering and target argument map"
         (renderInterpretedValue value
           == "(b : 8; 2) ~> "
             <> "{a? : Nat; b? : Nat}")
   expectSourceValue "argument template capture supports access and arithmetic"
-    ("%(" <> specification <> ")[1][1] * 5") $ \value ->
+    ("(" <> specification <> ")[1][1] * 5") $ \value ->
       assert "captured unnamed argument remains numeric"
         (renderInterpretedValue value == "10")
   expectSourceValue "literal-delimited argument template"
@@ -1040,11 +1040,8 @@ expectInternalEvalValue source target check = do
     (interpretExpressionReason sourceExpression)
   targetValue <- either (fail . show) pure
     (interpretExpressionReason targetExpression)
-  stringType <- either (fail . show) pure
-    (interpretExpressionReason
-      (IdentifierReference (IdentifierString "Str")))
   either (fail . show) check
-    (Types.evalValues canonicalStringCodec stringType sourceValue targetValue)
+    (Types.evalValues canonicalStringCodec sourceValue targetValue)
 
 expectInternalEvalRejection
   :: String
@@ -1057,9 +1054,7 @@ expectInternalEvalRejection source target matches = do
   case do
       sourceValue <- interpretExpressionReason sourceExpression
       targetValue <- interpretExpressionReason targetExpression
-      stringType <- interpretExpressionReason
-        (IdentifierReference (IdentifierString "Str"))
-      Types.evalValues canonicalStringCodec stringType sourceValue targetValue of
+      Types.evalValues canonicalStringCodec sourceValue targetValue of
     Left rejection
       | matches rejection -> pure ()
       | otherwise -> fail ("unexpected internal decode rejection: " <> show rejection)
@@ -1132,8 +1127,8 @@ testBegin = do
     , ("begin a : 1 yield begin a : 2 yield a", 2)
     , ("begin yield 11", 11)
     , ("(begin a : 6 yield a) + 5", 11)
-    , ("begin T : Int yield %(\"12\" ~> \"%(T)\")[1] + 0", 12)
-    , ("begin a : 6 yield %(\"%Nat\" <~ \"6\")[1] + a", 12)
+    , ("begin T : Int yield (\"12\" ~> \"%(T)\")[1] + 0", 12)
+    , ("begin a : 6 yield (\"%Nat\" <~ \"6\")[1] + a", 12)
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
     assert (source <> ": " <> renderInterpretedValue value)
@@ -1271,16 +1266,16 @@ testEvalBackedKeywords = do
     , ("if false then (1 and false) else 9", "9")
     , ("if false then (1 and false)", "()")
     , ("if true then (if false then (1 and false) else 4) else (1 and false)", "4")
-    , ( "%(\"from 2 to 5\" ~> \"from %Int to %Int\")[1]"
+    , ( "(\"from 2 to 5\" ~> \"from %Int to %Int\")[1]"
       , "2 ~> Int"
       )
-    , ( "%(\"from 2 to 5\" ~> \"from %Int to %Int\")[2]"
+    , ( "(\"from 2 to 5\" ~> \"from %Int to %Int\")[2]"
       , "5 ~> Int"
       )
-    , ( "%(\"range -3 down\" ~> \"range %Int down\")[1]"
+    , ( "(\"range -3 down\" ~> \"range %Int down\")[1]"
       , "-3 ~> Int"
       )
-    , ("%(\"if true then\" ~> \"if %Bool then\")[1]", "true ~> Bool")
+    , ("(\"if true then\" ~> \"if %Bool then\")[1]", "true ~> Bool")
     ]
   mapM_ (\source -> expectSourceValue source source $ \value ->
     assert ("keyword forms compose with identifiers, specification, and inclusion: " <> source)
@@ -1290,7 +1285,7 @@ testEvalBackedKeywords = do
     , "(2..3 ~> range 0 to 5) of range 0 to 8"
     , "(range 0 to 5 <~ 2..3) = (2..3 ~> range 0 to 5)"
     , "(2, b : 5) of (a? : from 0 to 8, b? : from 0 to 8)"
-    , "%(\"(b : 5; 2)\" ~> \"%({a? : from 0 to 8; b? : from 0 to 8})\")[1] of {b? : Int; a? : Int}"
+    , "(\"(b : 5; 2)\" ~> \"%({a? : from 0 to 8; b? : from 0 to 8})\")[1] of {b? : Int; a? : Int}"
     , "(if true then 2 else (1 and false)) of from 0 to 5"
     , "((if false then (1 and false) else 2) ~> from 0 to 5) of Int"
     , "(from 0 to 5 <~ (if true then 2 else (1 and false))) = (2 ~> from 0 to 5)"
@@ -1530,62 +1525,51 @@ testStringTemplates = do
     assert "the string-valued alternative retains identity conversion"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "extract returns the source string and typed template holes"
-      "%(\"%IdenStr %Int\" <~ \"alco 100\")" $ \value ->
-    assert "extract follows the retained string-template selection witness"
-      ( renderInterpretedValue value
-          == "(\"alco 100\"; $alco ~> IdenStr; "
-            <> "100 ~> Int)"
-      )
-  expectSourceValue
-      "extract forgets a simple identifier assignment wrapper"
-      "%(a : \"%IdenStr %Int\" := \"alco 100\")" $ \value ->
-    assert "identifier extraction matches direct specification extraction"
-      ( renderInterpretedValue value
-          == "(\"alco 100\"; $alco ~> IdenStr; "
-            <> "100 ~> Int)"
-      )
-  expectSourceValue
-      "extract index zero selects the original string"
-      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [0]" $ \value ->
-    assert "the first extracted component is always the source string"
+      "template specification index zero selects the complete source string"
+      "(my_val : \"%IdenStr %Int\" := \"alco 100\") [0]" $ \value ->
+    assert "the first match projection is always the source string"
       (renderInterpretedValue value == "\"alco 100\"")
   expectSourceValue
-      "extract index one selects the IdenStr hole"
-      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [1]" $ \value ->
-    assert "the second extracted component is the first typed hole"
+      "template specification index one selects the IdenStr hole"
+      "(my_val : \"%IdenStr %Int\" := \"alco 100\") [1]" $ \value ->
+    assert "the second match projection is the first typed hole"
       (renderInterpretedValue value == "$alco ~> IdenStr")
   expectSourceValue
-      "extract index two selects the Int hole"
-      "%(my_val : \"%IdenStr %Int\" := \"alco 100\") [2]" $ \value ->
-    assert "the third extracted component is the second typed hole"
+      "template specification index two selects the Int hole"
+      "(my_val : \"%IdenStr %Int\" := \"alco 100\") [2]" $ \value ->
+    assert "the third match projection is the second typed hole"
       (renderInterpretedValue value
         == "100 ~> Int")
   expectSourceValue
-      "extracted numerical specifications participate in arithmetic"
-      "%(my_val : \"%IdenStr %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
+      "projected numerical specifications participate in arithmetic"
+      "(my_val : \"%IdenStr %Int\" := \"alco 12\") [2] * 5 = 60" $ \value ->
     assert "a specification with a valued-range target coerces to its source"
       (renderInterpretedValue value == "true")
   expectSourceValue
-      "extract treats a literal template as one Str hole"
-      "%(\"hello world\" <~ \"hello world\")" $ \value ->
-    assert "a holeless template retains its source and synthesized hole"
-      ( renderInterpretedValue value
-          == "(\"hello world\"; \"hello world\" ~> Str)"
-      )
+      "a projected capture participates in subfederation"
+      "((\"%Int\" <~ \"5\")[1]) of Int" $ \value ->
+    assert "projection retains the capture's type relationship"
+      (renderInterpretedValue value == "true")
   expectSourceValue
-      "extract treats percent Str as the whole-string hole"
-      "%(\"%Str\" <~ \"hello world\")" $ \value ->
-    assertEqual "Str extraction retains its declarative canonical target"
-      "(\"hello world\"; \"hello world\" ~> Str)"
-      (renderInterpretedValue value)
+      "a projected capture participates in specification"
+      "((\"%Int\" <~ \"5\")[1]) ~> Int" $ \value ->
+    assert "projection composes through ordinary specification"
+      (renderInterpretedValue value == "5 ~> Int")
   expectSourceValue
-      "extract maps pointwise over a sequence of templates"
-      "%(\"left\"; \"right\")" $ \value ->
-    assert "each template retains its ordinary extraction result"
-      ( renderInterpretedValue value
-          == "(($left; $left ~> Str); ($right; $right ~> Str))"
-      )
+      "a whole-string interpolation exposes its source at index zero"
+      "(\"%Str\" <~ \"hello world\") [0]" $ \value ->
+    assertEqual "the source remains the complete matched string"
+      "\"hello world\"" (renderInterpretedValue value)
+  expectSourceValue
+      "a whole-string interpolation exposes its selection at index one"
+      "(\"%Str\" <~ \"hello world\") [1]" $ \value ->
+    assertEqual "the capture retains its declarative target"
+      "\"hello world\" ~> Str" (renderInterpretedValue value)
+  expectSourceValue
+      "a holeless string specification keeps ordinary string indexing"
+      "(\"hello world\" <~ \"hello world\") [0]" $ \value ->
+    assert "no synthetic Str capture is introduced"
+      (renderInterpretedValue value == "$h")
   let template = StringTemplate
         [ StringTemplateLiteral "example"
         , StringTemplateInterpolation
@@ -3741,10 +3725,25 @@ testIdentifiers = do
     \value -> assert "reverse specification retains the dependent name witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
-      "dependent identifier extraction uses its retained name witness"
-      "%((\"n5\" : 5) ~> (\"n%(it)\" : Nat))" $ \value ->
-    assert "identifier names use the ordinary template extraction path"
-      (renderInterpretedValue value == "($n5; $n5 ~> Str)")
+      "dependent identifier specification index zero is the complete name"
+      "((\"n5\" : 5) ~> (\"n%(it)\" : Nat)) [0]" $ \value ->
+    assert "the name projection uses the retained dependent-name witness"
+      (renderInterpretedValue value == "$n5")
+  expectSourceValue
+      "dependent identifier specification index one is the underlying witness"
+      "((\"n5\" : 5) ~> (\"n%(it)\" : Nat)) [1]" $ \value ->
+    assert "the payload projection retains the underlying specification"
+      (renderInterpretedValue value == "5 ~> Nat")
+  expectSourceValue
+      "reverse dependent specification has the same name projection"
+      "((\"n%(it)\" : Nat) <~ (\"n5\" : 5)) [0]" $ \value ->
+    assert "projection is independent of specification spelling direction"
+      (renderInterpretedValue value == "$n5")
+  expectSourceValue
+      "reverse dependent specification has the same payload projection"
+      "((\"n%(it)\" : Nat) <~ (\"n5\" : 5)) [1]" $ \value ->
+    assert "reverse spelling retains the underlying specification"
+      (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
       "an optional dependent identifier accepts its named branch"
       "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
@@ -3760,6 +3759,16 @@ testIdentifiers = do
       "(\"n5\" : 5) ~> (\"n%(it)\"? : Nat)" $
     \value -> assert "the named optional branch retains a specification witness"
       (interpretedValueKind value == SpecificationValueKind)
+  expectSourceValue
+      "a named optional dependent specification exposes its complete name"
+      "((\"n5\" : 5) ~> (\"n%(it)\"? : Nat)) [0]" $ \value ->
+    assert "the selected named branch retains its name witness"
+      (renderInterpretedValue value == "$n5")
+  expectSourceValue
+      "a named optional dependent specification exposes its payload"
+      "((\"n5\" : 5) ~> (\"n%(it)\"? : Nat)) [1]" $ \value ->
+    assert "the selected named branch retains its underlying witness"
+      (renderInterpretedValue value == "5 ~> Nat")
   expectSourceValue
       "an optional dependent identifier specifies its unnamed branch"
       "5 ~> (\"n%(it)\"? : Nat)" $
