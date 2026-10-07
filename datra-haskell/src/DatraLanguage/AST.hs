@@ -115,7 +115,6 @@ data Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Coalization Expression
-  | StripIdentifiers Expression
   | Modular Expression
   | Extract Expression
   | Assert Bool Expression
@@ -261,7 +260,6 @@ data OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
-  | StripIdentifiersValue OperatorExpression
   | ModularValue OperatorExpression
   | ExtractValue OperatorExpression
   | AssertValue Bool OperatorExpression
@@ -396,8 +394,6 @@ normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
 normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
-normalizeExpression (StripIdentifiers operand) =
-  StripIdentifiers (normalizeExpression operand)
 normalizeExpression (Modular operand) =
   Modular (normalizeExpression operand)
 normalizeExpression (Extract operand) =
@@ -573,7 +569,6 @@ lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
-lower (StripIdentifiers operand) = StripIdentifiersValue (lower operand)
 lower (Modular operand) = ModularValue (lower operand)
 lower (Extract operand) = ExtractValue (lower operand)
 lower (Assert hard condition) = AssertValue hard (lower condition)
@@ -775,8 +770,6 @@ prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
 prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
-prettyOperator (StripIdentifiersValue operand) =
-  prettyUnary StripIdentifiersOperator operand
 prettyOperator (ModularValue operand) =
   prettyForm "modular" [prettyOperator operand]
 prettyOperator (ExtractValue operand) =
@@ -1007,7 +1000,6 @@ traverseExpressionChildren visit expression = case expression of
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
-  StripIdentifiers x -> StripIdentifiers <$> visit x
   Modular x -> Modular <$> visit x
   Extract x -> Extract <$> visit x
   Plus x -> Plus <$> visit x

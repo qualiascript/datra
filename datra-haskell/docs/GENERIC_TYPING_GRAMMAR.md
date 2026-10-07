@@ -826,15 +826,15 @@ recursive function directly to the nonempty variadic split:
 
 ```datra
 max := {Args (&_T :: IntLimit),} -> _T? do
-  yield val it !? fun {candidate? : _T, remaining? : List _T} -> _T do
+  yield it !? fun {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = Infinity or remaining = () or
-      candidate >= (next : this remaining[0; range 1 up]) then
+      candidate >= (next : this remaining[0; 1..]) then
         candidate else next
 
 min := {Args (&_T :: IntLimit),} -> _T? do
-  yield val it !? fun {candidate? : _T, remaining? : List _T} -> _T do
+  yield it !? fun {candidate? : _T, remaining? : List _T} -> _T do
     yield if candidate = -Infinity or remaining = () or
-      candidate <= (next : this remaining[0; range 1 up]) then
+      candidate <= (next : this remaining[0; 1..]) then
         candidate else next
 ```
 

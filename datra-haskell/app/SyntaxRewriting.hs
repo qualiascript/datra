@@ -889,6 +889,7 @@ matchEmbeddedBlock capture environment = matchWithResult id
         | rule <- rewriteRules environment
         , Just (prefix, _) <- [blockShape rule]
         , start <- matchingStarts prefix (applicationPhrase value)
+        , not (ordinarySyntaxPrecedesBlock value start prefix)
         ]
       case direct of
         Just result -> Right (Just result)
@@ -918,6 +919,28 @@ matchEmbeddedBlock capture environment = matchWithResult id
             Just (left, rebuildResult) ->
               matchWithResult (wrapResult . rebuildResult) left trailing
             Nothing -> Right Nothing
+
+    -- An inline ordinary form owns a shared delimiter before that delimiter
+    -- can begin an embedded block.  This keeps @with ... do expression@ on
+    -- one source line from consuming the following line as a @do ... yield@
+    -- body while leaving genuine block starts unchanged.
+    ordinarySyntaxPrecedesBlock expressionValue blockStart blockPrefix =
+      any precedes (rewriteRules environment)
+      where
+        precedes rule
+          | Just _ <- blockShape rule = False
+          | not (ruleLiteralsPresent rule expressionValue) = False
+          | not (all (`elem` ruleLiterals) blockPrefix) = False
+          | otherwise = any (< blockStart)
+              (matchingStarts
+                (syntaxTemplateLiteralPrefix rule)
+                (applicationPhrase expressionValue))
+          where
+            ruleLiterals =
+              [ literal
+              | SyntaxLiteral literal <-
+                  syntaxTemplatePieces (syntaxTemplate rule)
+              ]
 
     firstSuccessful [] = Right Nothing
     firstSuccessful (candidate : rest) = do

@@ -227,7 +227,7 @@ regressionTests = do
         [ "_AST := !~\"datra.AST\""
         , "_Expr := !~\"datra.Expr\""
         , "_Block := !~\"datra.Block\""
-        , "begin := %\"begin $_Block yield $_Expr\" %> (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "begin := \"begin $_Block yield $_Expr\" ~% (_AST, _AST -> _AST) !~\"datra.begin\""
         , "yield Example := begin"
         , "  begin := begin"
         , "yield begin"
@@ -452,7 +452,7 @@ regressionTests = do
     [ Import False "library_one", Import True "std"
     , InModule "std" (ref "_this")
     , NamedAccess (ref "_this") (IdentifierString "abc")
-    , SyntaxType (Extract (AsciiStringLiteral "$Int next"))
+    , SyntaxType (AsciiStringLiteral "$Int next")
         (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
@@ -630,69 +630,69 @@ regressionTests = do
     "{value? : Any} -> Nat do yield value"
     (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
   assertParsed "a declared syntax signature is not a shorthand function domain"
-    "%\"step $Int next\" %> (Int -> Int) do yield value"
+    "\"step $Int next\" ~% (Int -> Int) do yield value"
     (MapSpecification identityBody
-      (SyntaxType (Extract (AsciiStringLiteral "step $Int next"))
+      (SyntaxType (AsciiStringLiteral "step $Int next")
         (FunctionType (ref "Int") (ref "Int"))))
   let optionalIntInput = ArgumentMap
         [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
   assertParsed "a declared syntax signature accepts a multiline body"
-    "%\"step $Nat next\" %> ({value?:Int} -> Int) do\n  yield value"
+    "\"step $Nat next\" ~% ({value?:Int} -> Int) do\n  yield value"
     (MapSpecification identityBody
-      (SyntaxType (Extract (AsciiStringLiteral "step $Nat next"))
+      (SyntaxType (AsciiStringLiteral "step $Nat next")
         (FunctionType optionalIntInput (ref "Int"))))
-  assertParsed "%> accepts an ordinary inhabited template list"
-    "%(\"$Int++\"; \"increment $Int\") %> (Int -> Int)"
+  assertAstOutput "~% accepts an inhabited total map of template strings"
+    "(\"$Int++\"; \"increment $Int\") ~% (Int -> Int)"
     (SyntaxType
-      (Extract (AtlasMap
+      (AtlasMap
         [ AsciiStringLiteral "$Int++"
         , AsciiStringLiteral "increment $Int"
-        ]))
+        ])
       (FunctionType (ref "Int") (ref "Int")))
   assertParsed "grouping characters remain valid in ordinary template values"
     "%\"call ($Int)\""
     (Extract (AsciiStringLiteral "call ($Int)"))
-  assertParsed "%> remains syntax rather than performing parser validation"
-    "%\"call ($Int)\" %> (Int -> Int)"
+  assertParsed "~% remains syntax rather than performing parser validation"
+    "\"call ($Int)\" ~% (Int -> Int)"
     (SyntaxType
-      (Extract (AsciiStringLiteral "call ($Int)"))
+      (AsciiStringLiteral "call ($Int)")
       (FunctionType (ref "Int") (ref "Int")))
-  assertRejected "a syntax signature requires an explicit Template operand"
+  assertRejected "the legacy syntax-type operator is rejected"
     "\"step $Int next\" %> (Int -> Int) do yield value"
   let syntaxAdapterType = SyntaxType
-        (Extract (AsciiStringLiteral "handler $_Expr"))
+        (AsciiStringLiteral "handler $_Expr")
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use the external as their body"
-    "%\"handler $_Expr\" %> (Any -> Any) !~\"datra.syntax.test\""
+    "\"handler $_Expr\" ~% (Any -> Any) !~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertParsed "a syntax type is an ordinary value without a body"
-    "%\"handler $_Expr\" %> (Any -> Any)"
+    "\"handler $_Expr\" ~% (Any -> Any)"
     syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
-    "handler := %\"handler $_Expr\" %> (Any -> Any) !~\"datra.syntax.test\""
+    "handler := \"handler $_Expr\" ~% (Any -> Any) !~\"datra.syntax.test\""
     (AST.assignment "handler"
       (MapSpecification syntaxAdapter syntaxAdapterType)
       (MapSpecification syntaxAdapter syntaxAdapterType))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : %\"handler $_Expr\" %> (Any -> Any) := !~\"datra.syntax.test\""
+    "handler : \"handler $_Expr\" ~% (Any -> Any) := !~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := %\"take $_Expr\" %> (Int -> Int) !~\"datra.val\""
+        , "take := \"take $_Expr\" ~% (Int -> Int) !~\"datra.modular\""
         , "take 7"
         , "take Infinity)"
         ]) of
-    Right (AtlasMap [_, _, StripIdentifiers (EllipsisNatural 7), final]) ->
+    Right (AtlasMap [_, _, Modular (EllipsisNatural 7), final]) ->
       final == FunctionApplication (ref "take") (ref "Infinity")
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
         [ "(_IdenExp := !~\"datra.IdenExp\""
         , "_Expr := !~\"datra.Expr\""
-        , "gate := %\"gate $_IdenExp bound $_Expr body $Int\" %>"
+        , "gate := \"gate $_IdenExp bound $_Expr body $Int\" ~%"
             <> " ((Any; Any; Int) -> Int) !~\"test.gate\""
         , "gate x bound Int body x)"
         ]) of
@@ -717,18 +717,11 @@ regressionTests = do
     "extract binds before bracket access"
     "%Str[0]"
     (MapAccess (Extract (ref "Str")) (natural 0))
-  assertParsed "val erases identifiers"
-    "val _it" (StripIdentifiers (ref "_it"))
-  assertParsed "val captures bracket access"
-    "val _it[0]" (StripIdentifiers (MapAccess (ref "_it") (natural 0)))
-  assertParsed "identifier erasure coexists with exponentiation"
-    "(val _it) ^ 2" (Exponentiation (StripIdentifiers (ref "_it")) (natural 2))
+  assertParsed "val is available as an ordinary identifier"
+    "val _it" (FunctionApplication (ref "val") (ref "_it"))
   assertParsed "external escape constructs an External AST"
     "!~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
-  assertParsed "identifier erasure source rendering preserves named access"
-    (renderSourceExpression (StripIdentifiers (NamedAccess (ref "_it") (IdentifierString "abc"))))
-    (StripIdentifiers (NamedAccess (ref "_it") (IdentifierString "abc")))
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
     ["Nat", "Int", "Str", "IdenStr", "Bool", "true", "false", "nothing"]
@@ -922,11 +915,6 @@ regressionTests = do
     (MaybeThen
       (ListUncons (ref "values"))
       (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-  assertAstOutput "list sequencing binds after val without grouping"
-    "val values !? maximum"
-    (MaybeThen
-      (ListUncons (StripIdentifiers (ref "values")))
-      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   let inlineLimitFunction = Fun
         (MapSpecification
           (FunctionBody [] (ref "candidate"))
@@ -940,24 +928,18 @@ regressionTests = do
               ])
             (ref "IntLimit")))
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
-    ("val values !? fun {candidate? : IntLimit; "
+    ("values !? fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
     (MaybeThen
-      (ListUncons (StripIdentifiers (ref "values")))
+      (ListUncons (ref "values"))
       (FunctionApplication inlineLimitFunction (contextualAccess (IdentifierString "_it"))))
-  assert "list sequencing source rendering keeps the compact val form"
+  assert "list sequencing source rendering keeps the compact form"
     ( renderSourceExpression
         (MaybeThen
-          (ListUncons (StripIdentifiers (ref "values")))
+          (ListUncons (ref "values"))
           (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-        == "val values !? maximum"
+        == "values !? maximum"
     )
-  assertAstOutput "grouping keeps list sequencing inside val"
-    "val (values !? maximum)"
-    (StripIdentifiers
-      (MaybeThen
-        (ListUncons (ref "values"))
-        (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it")))))
   assertAstOutput "list sequencing accepts an optional named left operand"
     "values? : List Int !? maximum"
     (MaybeThen
@@ -1730,6 +1712,10 @@ regressionTests = do
     "$a[1..]"
     (AST.asciiString "a" <@> (natural 1 ..+))
   assertAstOutput
+    "bracket insertion accepts a range with an identifier boundary"
+    "$a[0..n]"
+    (AST.asciiString "a" <@> (natural 0 <..> ref "n"))
+  assertAstOutput
     "bracket insertion accepts an explicitly constructed map"
     "$a[(1; 2)]"
     (AST.asciiString "a" <@> (natural 1 <:> natural 2))
@@ -2085,7 +2071,7 @@ genExpression =
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression
-        (SyntaxType (Extract (AsciiStringLiteral "$Int next")))
+        (SyntaxType (AsciiStringLiteral "$Int next"))
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Program [binding] result)
@@ -2106,7 +2092,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
-    , Gen.subterm genExpression StripIdentifiers
     , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess

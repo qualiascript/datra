@@ -21,7 +21,7 @@ The immediate design target is to express `Numbers.max` without `if`:
 
 ```datra
 max := {Args IntLimit,} -> IntLimit? do
-  yield val it !? fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
+  yield it !? fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
     yield when it
       in Infinity; *
       in *; ()
@@ -206,17 +206,19 @@ absence of an unmatched path means there is no implicit unit-valued result.
 
 ## String-template grammar integration
 
-The current declarative syntax system extracts flat templates from individual
-strings and from an explicit nonempty list of strings. Each template becomes
-a linear sequence of literals and holes. That representation is sufficient
-for fixed-arity forms such as:
+The declarative syntax system compiles flat templates from a direct string or
+from a compile-time-materializable inhabited total map of strings supplied to
+`~%`. Every string is checked for literal characters that the neutral parser
+cannot retain before the syntax rules are installed. Each template becomes a
+linear sequence of literals and holes. That representation is sufficient for
+fixed-arity forms such as:
 
 ```datra
 if condition then consequent else alternative
 ```
 
 but a `when` contains any positive number of tests and arms. It should be a
-design target for expanding `%` from "extract these flat strings" to "extract
+design target for expanding `~%` from "compile these flat strings" to "compile
 the syntax language represented by this federation of strings."
 
 Abstractly, the `when` syntax language contains recursive choice and

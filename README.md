@@ -31,19 +31,23 @@ type defined entirely in the standard library:
 ```datra
 Args := (for T? of Any) -> Any do
   slots := with i in Nat do "arg%(i)"? : T
-yield () | with n in Nat do slots[range 0 to n]
+yield with n in Nat do slots[0..n]
 ```
 
 For example:
 
 ```datra
-display := {Args Int,} -> Str do yield "%(val it)"
+ArgsIntMap := {Args Int,}
+ListInt := List Int
+display := ArgsIntMap -> "%ListInt" do
+  toList := ArgsIntMap -> {ListInt,} do yield it
+  yield "%(toList it)"
 
 assert display() = "()"
 assert display(1) = "1"
 assert display(1, 2, 3) = "(1; 2; 3)"
 assert display(arg1 := 10, 4) = "(4; 10)"
-assert ((arg2 := 10, 4) of {Args Int,}) = false # missing argument: `arg1`
+assert ((arg2 := 10, 4) of ArgsIntMap) = false # missing argument: `arg1`
 ```
 
 See the [Haskell implementation README](datra-haskell/README.md) for Docker

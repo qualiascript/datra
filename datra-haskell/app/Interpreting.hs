@@ -79,7 +79,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
-  , invalidSyntaxTemplateCharacter
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -98,10 +97,11 @@ import Rendering (renderCanonicalResult, renderInterpretedValue)
 import SyntaxDefinitions
   ( SyntaxFunctionBody
   , SyntaxRule (..)
+  , SyntaxTemplateCompilationFailure (..)
+  , compileSyntaxTemplatesFromExpression
   , contextualSyntaxRules
   , qualifySyntaxRule
   , syntaxFunctionBodyForSymbol
-  , syntaxTemplatesFromExpression
   )
 import DatraLanguage.Diagnostics
   ( DatraError
@@ -112,7 +112,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (..) )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega, ordinalGT)
 
 interpretExpression
   :: Expression
@@ -493,18 +493,13 @@ sourceFunctionSyntax templatesExpression = do
 validatedSyntaxTemplates
   :: Expression
   -> Either InterpretingError [SyntaxTemplate Expression]
-validatedSyntaxTemplates templatesExpression = do
-  templates <- maybe
-    (Left (ExpectedStringTemplateSpecification MapValueKind))
-    Right
-    (syntaxTemplatesFromExpression templatesExpression)
-  case
-      [ invalid
-      | template <- templates
-      , Just invalid <- [invalidSyntaxTemplateCharacter template]
-      ] of
-    invalid : _ -> Left (InvalidSyntaxTemplateCharacter invalid)
-    [] -> Right templates
+validatedSyntaxTemplates templatesExpression =
+  case compileSyntaxTemplatesFromExpression templatesExpression of
+    Left ExpectedSyntaxTemplateOperand ->
+      Left InvalidSyntaxTemplateOperand
+    Left (ForbiddenSyntaxTemplateCharacter invalid) ->
+      Left (InvalidSyntaxTemplateCharacter invalid)
+    Right templates -> Right templates
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =
@@ -897,7 +892,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       (AtlasMap expressions)
       expressions
     ArgumentMap expressions -> interpretContainer
-      (traverse interpret expressions >>= makeArgumentMap)
+      (traverse interpret expressions >>= makeArgumentMapPreservingSingleton)
       (ArgumentMap expressions)
       expressions
     MapSequence expressions -> interpretContainer
@@ -998,11 +993,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     BooleanNot operand ->
       interpret operand >>= booleanNotValue
     Coalization operand -> coalizeValue <$> interpret operand
-    StripIdentifiers (IdentifierReference (IdentifierString name)) ->
-      resolveIdentifierIncludingPrivate reduction scope resolving name
-        >>= stripIdentifiersValue
-    StripIdentifiers operand ->
-      interpret operand >>= stripIdentifiersValue
     Modular operand -> interpret operand >>= modularValue
     Extract operand ->
       do
@@ -1199,8 +1189,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             -- annotation.  Exact fibre evaluation below supplies the witness
             -- and constructs the concrete identifier normally.
             Nothing -> Right
-              (simpleIdentifierTypeValue
+              (identifierTemplateTypeValue
                 (renderInterpretedValue identifier)
+                identifier
                 typeAnnotation)
             Just givenExpression -> do
               given <- interpret givenExpression
@@ -2038,12 +2029,26 @@ createDependentSum captured resolving written = do
         Right target -> pure
           (target, \source -> source <$ specifyValues source target)
         Left _ -> Left symbolicFailure
-  let dependent = makeDependentSumValue
-        (renderSourceExpression written) staticTarget specify
-      project insertion =
+  domain <- dependentSumDomain captured resolving written
+  let project insertion =
         projectDependentSum
           captured resolving written staticTarget insertion
-  pure (withDependentSumAccess project dependent)
+      dependent = makeDependentSumValue
+        (renderSourceExpression written) staticTarget specify
+  pure
+    (withDependentSumFamily domain project
+      (withDependentSumAccess project dependent))
+
+dependentSumDomain
+  :: Scope
+  -> [String]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+dependentSumDomain captured resolving written =
+  case domainEntries written of
+    WithBinding _ _ boundExpression : _ ->
+      evalInScope captured resolving boundExpression
+    _ -> Left (DependentBinderOutsideContainer "with")
 
 -- | Interpret a dependent product as its indexed Atlas family. Page zero is
 -- the index domain and page one is a lazy map of fibres, so the surface
@@ -2121,6 +2126,23 @@ projectDependentSum captured resolving written staticTarget insertion =
   case domainEntries written of
     WithBinding (IdentifierString name) _ boundExpression : entries -> do
       bound <- evalInScope captured resolving boundExpression
+      reservationTarget <-
+        case instantiateDependentEntries
+            captured resolving name bound entries of
+          Right values -> Right (makeAtlasMap 2 values)
+          Left _
+            | not (ordinalGT
+                (interpretedMapFinalOrderType (interpretedMap bound))
+                omega)
+            , Right values <- instantiateDependentEntries
+                captured resolving name bound
+                (map (dependentFamilyEnvelope name) entries) ->
+                  Right (makeAtlasMap 2 values)
+          Left _ -> Right staticTarget
+      let memberAt witness = do
+            values <- instantiateDependentEntries
+              captured resolving name witness entries
+            pure (makeAtlasMap 2 (witness : values))
       let orderType = interpretedMapFinalOrderType (interpretedMap bound)
           fibreAtOrdinal position = do
             witness <- maybe
@@ -2128,37 +2150,38 @@ projectDependentSum captured resolving written staticTarget insertion =
                 (FunctionArgumentPageUnavailable 0)))
               Right
               (interpretedMapValueAt (interpretedMap bound) position)
-            values <- instantiateDependentEntries
-              captured resolving name witness entries
-            accessValues (makeAtlasMap 2 (witness : values)) insertion
+            memberAt witness >>= (`accessValues` insertion)
           lazyMap = makeLazyMapValue orderType
             (either (const Nothing) Just . fibreAtOrdinal)
-          prepare source = do
-            rows <- overloadArgumentRows source
-            let candidateSizes = nub (map (fromIntegral . length) rows)
-                candidateIndices = nub
-                  [ index
-                  | size <- candidateSizes
-                  , index <- [0 .. size]
-                  ]
-                attempts =
-                  [ fibreAtOrdinal (finiteOrdinal size)
-                      >>= (`argumentValuesComplete` source)
-                  | size <- candidateIndices
-                  ]
-            firstSuccessful attempts
+          projectedMemberAt witness =
+            memberAt witness >>= (`accessValues` insertion)
           projection = makeDependentSumValue
             (renderSourceExpression written
               <> "[" <> renderInterpretedValue insertion <> "]")
             lazyMap
-            prepare
-      pure (withDependentSumAccess (accessValues lazyMap) projection)
+            (omegaArgumentValuesComplete
+              bound reservationTarget projectedMemberAt)
+      pure
+        (withDependentSumReservationTarget reservationTarget
+          (withDependentSumFamily bound projectedMemberAt
+            (withDependentSumAccess (accessValues lazyMap) projection)))
     _ -> accessValues staticTarget insertion
-  where
-    firstSuccessful attempts =
-      case [value | Right value <- attempts] of
-        value : _ -> Right value
-        [] -> Left (OverloadError OverloadNoMatch)
+
+-- | The empty prefix is an exact candidate and therefore has no identifier
+-- slots.  For the family-wide named pass, however, a bounded prefix whose
+-- upper endpoint is the dependent witness has the ordinary open prefix as
+-- its envelope.  This retains the projected dependency without attributing
+-- any of its identifiers to the empty candidate itself.
+dependentFamilyEnvelope :: String -> Expression -> Expression
+dependentFamilyEnvelope name expressionValue =
+  case expressionValue of
+    SuperEllipsisRange lower
+        (IdentifierReference (IdentifierString upperName))
+      | upperName == name ->
+          SuperEllipsisRangePlus (dependentFamilyEnvelope name lower)
+    _ -> mapExpressionChildren
+      (dependentFamilyEnvelope name)
+      expressionValue
 
 instantiateDependentEntries
   :: Scope
@@ -2417,12 +2440,28 @@ contextuallySpecify
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-contextuallySpecify source target = do
-  included <- if interpretedSemanticResult source
-      == interpretedSemanticResult target
-    then Right True
-    else subfederationValues source target >>= booleanCondition
-  if included then Right source else contextuallySpecifyValues source target
+contextuallySpecify source target =
+  contextuallySpecifyValues source target >>= contextualSpecificationValue
+
+contextualSpecificationValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
+contextualSpecificationValue value =
+  case interpretedFederationSpecificationBranches value of
+    Just branches -> do
+      selected <- traverse contextualSpecificationValue branches
+      case selected of
+        first : rest -> do
+          materialized <- foldM eitherValue first rest
+          pure
+            (case interpretedFederationSpecificationSourceValue value of
+              Just source
+                | interpretedSemanticResult source
+                    == interpretedSemanticResult materialized -> source
+              _ -> materialized)
+        [] -> Right value
+    Nothing -> maybe (Right value) contextualSpecificationValue
+      (interpretedSpecificationSourceValue value)
 
 externalValue
   :: Scope

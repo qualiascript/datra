@@ -88,9 +88,7 @@ import DatraLanguage.Diagnostics.Localization
   )
 import MapOperators.AccessOperator
   ( AccessError
-      ( AccessInsertionRankExceedsMap
-      , AccessPositionOutOfBounds
-      )
+      ( AccessPositionOutOfBounds )
   )
 import Numeric.Natural (Natural)
 import SyntaxDefinitions
@@ -227,7 +225,7 @@ testModuleSyntaxAlias = do
       expressionType = External (AsciiStringLiteral "datra.Expr")
       blockType = External (AsciiStringLiteral "datra.Block")
       beginValue = SyntaxType
-        (Extract (AsciiStringLiteral "begin $_Block yield $_Expr"))
+        (AsciiStringLiteral "begin $_Block yield $_Expr")
         (FunctionType (AtlasMap [astType, astType]) astType)
       binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
@@ -803,8 +801,11 @@ testArgumentMaps = do
     , "{b := 8; 2} of {a? : Nat := 2; b? : Nat}"
     , "{2; b := 8} of {b? : Nat; a? : Nat}"
     , "{2; 8} of {a? : Nat; b? : Nat}"
+    , "{c := 8; 2} of {a? : Nat; b? : Nat}"
+    , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
     , "{a := 2; b := 8} of {a : Nat; b : Nat}"
     , "(2; 8) of {a : Nat; b : Nat}"
+    , "{2; 8} of {a : Nat; b : Nat}"
     , "{a? : Nat; b? : Nat} of {b? : Int; a? : Int}"
     , "{1; 2}[0] = (1 | 2)"
     , "\"(b : 8; 2)\" of \"%({a? : Nat; b? : Nat})\""
@@ -812,10 +813,7 @@ testArgumentMaps = do
   mapM_ (\source -> expectSourceValue source source $ \value ->
     assert "invalid argument-map relation is rejected"
       (renderInterpretedValue value == "false"))
-    [ "{c := 8; 2} of {a? : Nat; b? : Nat}"
-    , "{b := $wrong; 2} of {a? : Nat; b? : Nat}"
-    , "{2; 8} of {a : Nat; b : Nat}"
-    , "{b := 8; b := 2} of {a? : Nat; b? : Nat}"
+    [ "{b := $wrong; 2} of {a? : Nat; b? : Nat}"
     , "{1; 2; 3} of {a? : Nat; b? : Nat}"
     ]
   expectSourceRejection
@@ -878,12 +876,18 @@ testArgumentMaps = do
     , "{(a : Nat; b : Nat); 3}"
     , "{(1 ~> Nat); b := 8}"
     ]
-  expectSourceRejection "argument specification checks every supplied name"
-    "{c := 8; 2} ~> {a? : Nat; b? : Nat}"
-    (\case
-      AtlasMapFederationOperationRefuted
-        AtlasMapFederationSpecificationHasNoMatchingMember -> True
-      _ -> False)
+  expectSourceValue "unreserved argument names match positionally"
+      "{c := 8; 2} ~> {a? : Nat; b? : Nat}" $ \value ->
+    assert "the unrelated source name is retained in the specification"
+      (renderInterpretedValue value
+        == "{c : 8; 2} ~> {a? : " <> sourceNatType
+          <> "; b? : " <> sourceNatType <> "}")
+  expectSourceValue "duplicate names fall through after the named pass"
+      "{b := 8; b := 2} ~> {a? : Nat; b? : Nat}" $ \value ->
+    assert "the first b claims b and the remaining b matches a positionally"
+      (renderInterpretedValue value
+        == "{b : 8; b : 2} ~> {a? : " <> sourceNatType
+          <> "; b? : " <> sourceNatType <> "}")
 
 testArgumentMapConcatenation :: IO ()
 testArgumentMapConcatenation = do
@@ -916,6 +920,7 @@ testArgumentMapConcatenation = do
     [ "{b : 8; 2}, x : 3 ~> {a? : Nat; b? : Nat}, x : Nat"
     , "x : 3, {b : 8; 2}, y : 4 ~> x : Nat, {a? : Nat; b? : Nat}, y : Nat"
     , "{b : 8; 2}, {d : 6; 4} ~> {a? : Nat; b? : Nat}, {c? : Nat; d? : Nat}"
+    , "x : 3, {c : 8; 2} ~> " <> target
     , "(" <> example <> ") ~> x : Int, {b? : Int; a? : Int}"
     ]
   expectSourceValue "one ordered presentation matches the ordered target"
@@ -929,7 +934,6 @@ testArgumentMapConcatenation = do
         (NoAtlasMapFederationDecisionProcedure AtlasMapFederationSpecification) -> True
       _ -> False))
     [ "x : 4, {b : 8; 2} ~> " <> target
-    , "x : 3, {c : 8; 2} ~> " <> target
     , "x : 3, {b : $wrong; 2} ~> " <> target
     , source <> " ~> x : 3, (b : Nat; Nat)"
     ]
@@ -941,12 +945,12 @@ testArgumentMapTemplates = do
     (show member <> " of " <> template) $ \value ->
       assert "canonical argument presentation belongs to the template"
         (renderInterpretedValue value == "true"))
-    [ "(b : 8; 2)", "(2; b : 8)", "(2; 8)" ]
+    [ "(b : 8; 2)", "(c : 8; 2)", "(2; b : 8)", "(2; 8)" ]
   mapM_ (\member -> expectSourceValue "template rejects incompatible arguments"
     (show member <> " of " <> template) $ \value ->
-      assert "wrong names, types, and arities are outside the template"
+      assert "reserved-name type errors and wrong arities are outside the template"
         (renderInterpretedValue value == "false"))
-    [ "(c : 8; 2)", "(b : $wrong; 2)", "(b : 8; 2; 3)" ]
+    [ "(b : $wrong; 2)", "(b : 8; 2; 3)" ]
   let member = "\"(b : 8; 2)\""
       specification = member <> " ~> " <> template
       renderedSpecification =
@@ -1000,6 +1004,10 @@ testEval = do
       , "{a : Nat; b : Nat}"
       , "(2; 8) ~> {a : Nat; b : Nat}"
       )
+    , ( "\"(c : 8; 2)\""
+      , "{a? : Nat; b? : Nat}"
+      , "(8; 2) ~> {a? : Nat; b? : Nat}"
+      )
     ]
   mapM_ (\(source, target) ->
     expectInternalEvalRejection source target
@@ -1012,7 +1020,6 @@ testEval = do
         _ -> False))
     [ ("\"nope\"", "Nat")
     , ("\"1 + 2\"", "Nat")
-    , ("\"(c : 8; 2)\"", "{a? : Nat; b? : Nat}")
     , ("12", "Nat")
     ]
 
@@ -1314,7 +1321,7 @@ testSlotOrdinalDistinctness = do
 testStringTemplates :: IO ()
 testStringTemplates = do
   case interpretExpressionReason
-      (SyntaxType (Extract (AsciiStringLiteral "choose $Int mark"))
+      (SyntaxType (AsciiStringLiteral "choose $Int mark")
         (FunctionType IntegerType IntegerType)) of
     Right value -> do
       assert "syntax annotations are erased from canonical function rendering"
@@ -2803,6 +2810,7 @@ testAccess = do
         (<.>)
           (natural 1)
           ((<.>) (natural 2) (natural 3))
+      fiveValues = AtlasMap (map natural [0 .. 4])
       sequenceSpecification =
         (~>)
           (AtlasMap [natural 2, natural 3])
@@ -2851,6 +2859,31 @@ testAccess = do
     assert "natural range access always has its empty federation member"
       (renderInterpretedValue value == "()")
   expectValue
+      "concrete range access clips its upper boundary"
+      ((<@>) fiveValues ((<..>) (natural 3) (natural 10))) $ \value ->
+    assert "only existing ascending positions remain"
+      (renderInterpretedValue value == "(3; 4)")
+  expectValue
+      "descending concrete range access clips its origin"
+      ((<@>) fiveValues ((<..>) (natural 10) (natural 2))) $ \value ->
+    assert "descending traversal order survives clipping"
+      (renderInterpretedValue value == "(4; 3)")
+  expectValue
+      "wholly out-of-bounds concrete range access is empty"
+      ((<@>) fiveValues ((..+) (natural 10))) $ \value ->
+    assert "an absent concrete tail clips to empty"
+      (renderInterpretedValue value == "()")
+  expectValue
+      "every concrete range clips against an empty source"
+      ((<@>) (AtlasMap []) ((..+) (natural 0))) $ \value ->
+    assert "an empty source produces an empty result"
+      (renderInterpretedValue value == "()")
+  assert "valued ranges remain exact access insertions"
+    (case interpretExpressionReason
+        ((<@>) fiveValues (ValuedNaturalRange 3 10)) of
+      Left (AccessRejected (AccessPositionOutOfBounds _ _)) -> True
+      _ -> False)
+  expectValue
       "a sequential selector map preserves separate access results"
       ((<@>)
         threeValues
@@ -2866,12 +2899,62 @@ testAccess = do
           Nothing -> False
       )
   expectValue
+      "an empty clipped sequence component keeps its position"
+      ((<@>)
+        (AtlasMap [natural 1])
+        (AtlasMap [natural 0, ((..+) (natural 1))])) $ \value ->
+    assert "head and empty tail remain two sequence positions"
+      ( renderInterpretedValue value == "(1; >< ())"
+        && case interpretedMapValueAt
+            (interpretedMap value) (finiteOrdinal 1) of
+          Just member ->
+            case Types.interpretedCanonicalResult member of
+              Types.CanonicalCoalization _ -> True
+              _ -> False
+          Nothing -> False
+      )
+  expectValue
+      "overlapping sequence selectors clip independently"
+      ((<@>)
+        threeValues
+        (AtlasMap
+          [ ((<..>) (natural 0) (natural 2))
+          , ((<..>) (natural 1) (natural 10))
+          ])) $ \value ->
+    assert "sequence overlap preserves both coalition results"
+      (renderInterpretedValue value == "(>< (1; 2); >< (2; 3))")
+  expectValue
       "a concatenated selector map concatenates access results"
       ((<@>)
         threeValues
         ((<.>) (natural 0) (NaturalRangeUpwards 1))) $ \value ->
     assert "comma access flattens the selected head and tail"
       (renderInterpretedValue value == "(1; 2; 3)")
+  expectValue
+      "concrete head and tail selectors clip and flatten"
+      ((<@>)
+        threeValues
+        ((<.>)
+          ((<..>) (natural 0) (natural 1))
+          ((..+) (natural 1)))) $ \value ->
+    assert "concrete comma selectors preserve selector order"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  expectValue
+      "range-federation head and tail selectors clip and flatten"
+      ((<@>)
+        threeValues
+        ((<.>) (NaturalRange 0 0) (NaturalRangeUpwards 1))) $ \value ->
+    assert "range comma selectors preserve selector order"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  assert "an exact leaf rejects a mixed selector concatenation"
+    (case interpretExpressionReason
+        ((<@>)
+          threeValues
+          ((<.>)
+            ((<..>) (natural 0) (natural 1))
+            (ValuedNaturalRange 1 10))) of
+      Left (AccessRejected (AccessPositionOutOfBounds _ _)) -> True
+      _ -> False)
   let stableConcatenationPrefix =
         (<.>)
           (natural 1)
@@ -3134,6 +3217,28 @@ testAccess = do
       (selected == map Just [2 .. 7] <> [Nothing])
     assert "finite access renders its selected result values"
       (renderInterpretedValue value == "(2; 3; 4; 5; 6; 7)")
+  assert "range overlap is rejected before clipping"
+    (case interpretExpressionReason
+        ((<@>)
+          (AtlasMap [natural 0])
+          ((<.>)
+            ((<..>) (natural 3) (natural 10))
+            ((<..>) (natural 4) (natural 12)))) of
+      Left
+          (RangeConcatenationRejected
+            (SuperEllipsisRangesOverlap _ _ _ _)) -> True
+      _ -> False)
+  let computedConcatenation =
+        (<@>)
+          ((<.>)
+            ((<..>) (natural 0) (natural 2))
+            ((<..>) (natural 4) (natural 6)))
+          ((..+) (natural 0))
+  expectValue
+      "computed concatenated ranges retain their clipping policies"
+      ((<@>) (AtlasMap (map natural [0 .. 4])) computedConcatenation) $ \value ->
+    assert "each computed selector leaf clips independently"
+      (renderInterpretedValue value == "(0; 1; 4)")
   expectValue
       "empty access"
       ((<@>)
@@ -3172,16 +3277,13 @@ testAccess = do
         (NaturalRangeUpwards 0)) $ \value ->
     assert "sequence access returns the range operand without flattening it"
       (renderInterpretedValue value == "2..")
-  assert "an infinite insertion cannot enter a sequence operand"
-    (case interpretExpressionReason
-        ((<@>)
-          (AtlasMap [natural 42, ((..+) (natural 2))])
-          ((..+) (natural 5))) of
-      Left
-          (AccessRejected
-            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
-        insertionLimit == omega && mapOrderType == finiteOrdinal 2
-      _ -> False)
+  expectValue
+      "an open selector beyond a finite sequence clips to empty"
+      ((<@>)
+        (AtlasMap [natural 42, ((..+) (natural 2))])
+        ((..+) (natural 5))) $ \value ->
+    assert "a concrete open range is no longer a strict infinite insertion"
+      (renderInterpretedValue value == "()")
   expectValue
       "NaturalRange accessed by NaturalRange"
       ((<@>) (NaturalRange 2 10) (NaturalRangeUpwards 1)) $ \value ->
@@ -3213,11 +3315,16 @@ testAccess = do
         ((<..>) (natural 0) (natural 0))) $ \value ->
     assert "empty selection succeeds on every federation member"
       (renderInterpretedValue value == "()")
-  assert "nonempty ordinary access is refuted by the empty member"
+  expectValue
+      "clipped concrete access is total over NaturalRange"
+      ((<@>)
+        (NaturalRange 2 10)
+        ((<..>) (natural 0) (natural 1))) $ \value ->
+    assert "the empty and singleton pointwise results form a NaturalRange"
+      (renderInterpretedValue value == "range 2 to 2")
+  assert "exact valued-range access still sees the empty counterexample"
     (case interpretExpressionReason
-        ((<@>)
-          (NaturalRange 2 10)
-          ((<..>) (natural 0) (natural 1))) of
+        ((<@>) (NaturalRange 2 10) (ValuedNaturalRange 0 0)) of
       Left
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationAccessHasEmptyCounterexample) -> True
@@ -3231,13 +3338,12 @@ testAccess = do
           (AtlasMapFederationOperationRefuted
             AtlasMapFederationAccessHasEmptyCounterexample) -> True
       _ -> False)
-  assert "NaturalRange access into concatenated NaturalRanges is refuted explicitly"
-    (case interpretExpressionReason
-        ((<@>) concatenatedNaturalRanges (NaturalRangeUpwards 0)) of
-      Left
-          (AtlasMapFederationOperationRefuted
-            AtlasMapFederationAccessHasEmptyCounterexample) -> True
-      _ -> False)
+  expectValue
+      "whole-range access is total over concatenated NaturalRanges"
+      ((<@>) concatenatedNaturalRanges (NaturalRangeUpwards 0)) $ \value ->
+    assert "every source member is preserved pointwise"
+      (renderInterpretedValue value
+        == "range 1 to 10, range 20 to 30")
   expectValue
       "empty access into concatenated NaturalRanges still succeeds"
       ((<@>)
@@ -3948,18 +4054,15 @@ testTypedRejections = do
           (ordinalSum (...) (natural 0))) of
       Left (ExpectedNaturalExponent ExplicitOrdinalValueKind) -> True
       _ -> False)
-  assert "out-of-bounds access reports the first invalid position"
-    (case interpretExpressionReason
-        ((<@>)
-          (AtlasMap (map natural [0 .. 2]))
-          ((<..>)
-            (natural 2)
-            (natural 5))) of
-      Left
-          (AccessRejected
-            (AccessPositionOutOfBounds position orderType)) ->
-        position == finiteOrdinal 3 && orderType == finiteOrdinal 3
-      _ -> False)
+  expectValue
+      "out-of-bounds concrete range access clips"
+      ((<@>)
+        (AtlasMap (map natural [0 .. 2]))
+        ((<..>)
+          (natural 2)
+          (natural 5))) $ \value ->
+    assert "the existing suffix remains"
+      (renderInterpretedValue value == "2")
   assert "infinite-rank access reports the map order type"
     (case interpretExpressionReason
         ((<@>)
@@ -3970,18 +4073,15 @@ testTypedRejections = do
             (AccessPositionOutOfBounds position mapOrderType)) ->
         position == omega && mapOrderType == finiteOrdinal 3
       _ -> False)
-  assert "ordinary open ranges still fail instead of clipping"
-    (case interpretExpressionReason
-        ((<@>)
-          ((<.>)
-            (natural 1)
-            ((<.>) (natural 2) (natural 3)))
-          ((..+) (natural 1))) of
-      Left
-          (AccessRejected
-            (AccessInsertionRankExceedsMap insertionLimit mapOrderType)) ->
-        insertionLimit == omega && mapOrderType == finiteOrdinal 3
-      _ -> False)
+  expectValue
+      "ordinary open ranges clip against finite maps"
+      ((<@>)
+        ((<.>)
+          (natural 1)
+          ((<.>) (natural 2) (natural 3)))
+        ((..+) (natural 1))) $ \value ->
+    assert "the available tail is selected"
+      (renderInterpretedValue value == "(2; 3)")
   assert "overlapping access ranges retain the exact overlap rejection"
     (case interpretExpressionReason
         ((<@>)

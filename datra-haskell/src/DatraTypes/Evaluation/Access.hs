@@ -11,6 +11,7 @@ import DatraOrdinal
   , ordinalLT
   )
 import Data.Bifunctor qualified as Bifunctor
+import Control.Monad (foldM)
 import Evaluation.Error
   ( InterpretingError (..)
   , NamedAccessFailure (..)
@@ -21,7 +22,12 @@ import Evaluation.Access.Composition
   , accessMapFor
   , decideFederationAccess
   )
-import Evaluation.Coalization (coalizeMapMemberAt, valueIsCoalition)
+import Evaluation.Access.Federation (requireInsertion)
+import Evaluation.Coalization
+  ( coalizeMapMemberAt
+  , coalizeValue
+  , valueIsCoalition
+  )
 import Evaluation.Access.Specification (accessSpecification)
 import Evaluation.Access.Identifier (accessDependentIdentifierType)
 import Evaluation.Map
@@ -36,6 +42,8 @@ import Evaluation.Access.RangeSelection
   , DescribedRange (..)
   , accessSelection
   , accessSource
+  , clippableSelectionRange
+  , clipDescribedRangeToOrderType
   , describedRangeSemantics
   , evaluatedDescribedRange
   , pureOmegaPowerLevel
@@ -49,7 +57,6 @@ import Evaluation.Arguments
   , makeDistinctUnion
   )
 import Evaluation.Specification (specifyValues)
-import NaturalRange qualified
 import MapOperators.AccessOperator
   ( validateAccessSelection )
 import Numeric.Natural (Natural)
@@ -75,25 +82,55 @@ accessUncoerced
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 accessUncoerced mapValue insertionValue =
-  case interpretedForm insertionValue of
-    SequentialMapForm ->
-      accessMappedMembers makeAtlasMap mapValue insertionValue
-    MapForm ->
-      accessMappedMembers makeAtlasMap mapValue insertionValue
-    ExpansionMapForm left right -> do
-      selectedLeft <- accessValues mapValue left
-      selectedRight <- accessValues mapValue right
-      pure
-        (makeAtlasExpansion
-          (interpretedMapCardinality (interpretedMap insertionValue))
-          [selectedLeft, selectedRight])
-    ConcatenatedMapForm left right -> do
-      selectedLeft <- accessValues mapValue left
-      selectedRight <- accessValues mapValue right
-      concatenateValues selectedLeft selectedRight
-    ArgumentMapForm members _ ->
-      traverse (accessValues mapValue) members >>= makeArgumentMap
-    _ -> accessSingleValue mapValue insertionValue
+  if isWholeSourceSelector insertionValue
+    then Right mapValue
+    else case interpretedForm insertionValue of
+      SequentialMapForm ->
+        accessMappedMembers makeAtlasMap mapValue insertionValue
+      MapForm ->
+        accessMappedMembers makeAtlasMap mapValue insertionValue
+      ExpansionMapForm left right -> do
+        selectedLeft <- accessValues mapValue left
+        selectedRight <- accessValues mapValue right
+        pure
+          (makeAtlasExpansion
+            (interpretedMapCardinality (interpretedMap insertionValue))
+            [selectedLeft, selectedRight])
+      ConcatenatedMapForm left right -> do
+        selectedLeft <- accessValues mapValue left
+        selectedRight <- accessValues mapValue right
+        concatenateValues selectedLeft selectedRight
+      RangeConcatenationForm ranges _ ->
+        accessRangeConcatenation mapValue insertionValue ranges
+      ArgumentMapForm members _ ->
+        traverse (accessValues mapValue) members >>= makeArgumentMap
+      _ -> accessSingleValue mapValue insertionValue
+
+isWholeSourceSelector :: InterpretedValue -> Bool
+isWholeSourceSelector value =
+  case clippableSelectionRange value of
+    Just valueRange ->
+      let description = rangeDescription valueRange
+      in Range.describedRangeStart description == finiteOrdinal 0
+          && Range.describedRangeTarget description == Range.PlusSign
+    Nothing -> False
+
+accessRangeConcatenation
+  :: InterpretedValue
+  -> InterpretedValue
+  -> [EvaluatedRange]
+  -> Either InterpretingError InterpretedValue
+accessRangeConcatenation mapValue insertionValue ranges = do
+  -- Reject overlap and other invalid concatenations before source-dependent
+  -- clipping can erase the counterexample.
+  _ <- requireInsertion insertionValue
+  selected <-
+    traverse
+      (accessValues mapValue . RangeEvaluation.interpretedRangeValue)
+      ranges
+  case selected of
+    first : remaining -> foldM concatenateValues first remaining
+    [] -> Right (makeAtlasMap 0 [])
 
 -- A map of selectors preserves the map's own structure. In particular,
 -- @source[first; rest]@ is a two-page map whose second page may itself be a
@@ -109,7 +146,19 @@ accessMappedMembers build mapValue selectors =
     Just members -> do
       let cardinality = interpretedMapCardinality (interpretedMap selectors)
       selected <- traverse (accessValues mapValue) members
-      pure (build cardinality (map (coalizeMapMemberAt cardinality) selected))
+      pure
+        (build cardinality
+          (zipWith (preserveSelectorBoundary cardinality) members selected))
+
+preserveSelectorBoundary
+  :: Natural
+  -> InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+preserveSelectorBoundary outerCardinality selector selected =
+  case clippableSelectionRange selector of
+    Just _ -> coalizeValue selected
+    Nothing -> coalizeMapMemberAt outerCardinality selected
 
 finiteMapMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMapMembers value = do
@@ -187,6 +236,11 @@ accessFederationValues mapValue insertionValue =
       accessNaturalRanges mapValue sourceRange selectionRange
     Right (NaturalRangeSelectionAccess naturalRange) ->
       accessNaturalRange mapValue naturalRange
+    Right (ClippedRangeFederationAccess selectionRange) -> do
+      selected <- accessClippedRange mapValue selectionRange
+      naturalRangeAccessResult selected
+    Right (ClippedRangeSelectionAccess selectionRange) ->
+      accessClippedRange mapValue selectionRange
     Right EmptyFederationAccess ->
       finishAccess mapValue emptyInterpretedMap
     Right (SingletonFederationAccess insertion) ->
@@ -256,19 +310,29 @@ accessNaturalRange
   -> EvaluatedNaturalRange
   -> Either InterpretingError InterpretedValue
 accessNaturalRange mapValue (EvaluatedNaturalRange valueRange) =
-  case NaturalRange.naturalSubrangeEllipsisRange selectedRange $ \range ->
-      accessWithRange mapValue (EvaluatedRange 1 range) of
-    Just result -> result
+  accessClippedRange
+    mapValue
+    (naturalRangeAsEvaluatedRange (EvaluatedNaturalRange valueRange))
+
+accessClippedRange
+  :: InterpretedValue
+  -> EvaluatedRange
+  -> Either InterpretingError InterpretedValue
+accessClippedRange mapValue selectionRange =
+  case clipDescribedRangeToOrderType
+      (interpretedMapFinalOrderType (accessMapFor mapValue))
+      (evaluatedDescribedRange selectionRange) of
     Nothing -> finishAccess mapValue emptyInterpretedMap
-  where
-    sourceOrderType =
-      interpretedMapFinalOrderType (accessMapFor mapValue)
-    selectedRange =
-      case naturalAtOrdinal sourceOrderType of
-        Just finiteLimit ->
-          NaturalRange.naturalRangeLargestSubrangeBelow
-            valueRange finiteLimit
-        Nothing -> NaturalRange.naturalRangeFullSubrange valueRange
+    Just clipped -> do
+      clippedRange <-
+        RangeEvaluation.makeEvaluatedRangeAtWithPolicy
+          (describedRangeAccessPolicy clipped)
+          (describedRangeLevel clipped)
+          (Range.describedRangeStart
+            (describedRangeDescription clipped))
+          (Range.describedRangeTarget
+            (describedRangeDescription clipped))
+      accessWithRange mapValue clippedRange
 
 accessWithRange
   :: InterpretedValue
@@ -415,7 +479,8 @@ rangeAccessResult sourceIsTotal selected describedRanges = do
   where
     descriptions = map describedRangeDescription describedRanges
     makeRange described =
-      RangeEvaluation.makeEvaluatedRangeAt
+      RangeEvaluation.makeEvaluatedRangeAtWithPolicy
+        (describedRangeAccessPolicy described)
         (describedRangeLevel described)
         (Range.describedRangeStart (describedRangeDescription described))
         (Range.describedRangeTarget (describedRangeDescription described))

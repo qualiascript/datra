@@ -210,7 +210,7 @@ scopeTests =
             "yield if false and (unused : missing) then unused else 2"
             "2"
         , programCase "Maybe branch aliases it"
-            "yield (1; 2; 3)! ?? begin my_it := it; yield (val my_it)[0]"
+            "yield (1; 2; 3)! ?? begin my_it := it; yield my_it[1][0]"
             "Just : 1"
         , programCase "Maybe branch binding may be shadowed privately"
             "yield (1; 2; 3)! ?? begin _it := 23; yield _it"

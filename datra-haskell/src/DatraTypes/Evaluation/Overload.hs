@@ -19,6 +19,7 @@ module Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
+  , omegaArgumentValuesComplete
   , overloadArgumentSchemaComplete
   , overloadValues
   , safeOverloadValues
@@ -29,7 +30,13 @@ import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import Data.Foldable (traverse_)
 import Data.List (nubBy, permutations, sortOn)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal
+  ( finiteOrdinal
+  , naturalAtOrdinal
+  , omega
+  , ordinalGT
+  , ordinalGTE
+  )
 import DatraLanguage.Identifier (public)
 import Evaluation.Arguments
   ( argumentRows
@@ -38,20 +45,29 @@ import Evaluation.Arguments
   , overloadArgumentRows
   )
 import Evaluation.Access (accessValues)
+import Evaluation.Coalization (coalizeValue)
 import Evaluation.Construction (makeNatural)
 import Evaluation.Either (makeEitherValue)
 import Evaluation.Error
-  ( InterpretingError (..)
+  ( AtlasMapFederationOperation (AtlasMapFederationSpecification)
+  , AtlasMapFederationRefutation
+      (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , AtlasMapFederationUncertainty
+      (NoAtlasMapFederationDecisionProcedure)
+  , InterpretingError (..)
   , OverloadFailure (..)
   )
 import Evaluation.Identifier (simpleIdentifierTypeValue)
 import Evaluation.Map
   ( concatenateValues
+  , isEmptyMap
   , makeAtlasMap
   , makeAtlasMapPreservingSingleton
   )
 import Evaluation.Specification (assignIdentifierValues, specifyValues)
-import Evaluation.Specification.Decision (Decision (DecisionProved))
+import Evaluation.Specification.ArgumentMap qualified as ArgumentMap
+import Evaluation.Specification.Composition (selectFederationMember)
+import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
 import Numeric.Natural (Natural)
@@ -149,12 +165,17 @@ resolveReplacements
 resolveReplacements template supplied
   | [slot] <- templateSlots template
   , not (isSkip supplied)
-  , Just value <- matchSlot slot supplied =
+  , Just value <- matchSlot (slotNames [slot]) slot supplied =
       Right [(slotIndex slot, Just value)]
   | otherwise = do
-      rows <- overloadArgumentRows supplied
+      let targetNames = slotNames (templateSlots template)
+          rowSource = case suppliedValue supplied of
+            (Just name, underlying)
+              | name `notElem` targetNames -> underlying
+            _ -> supplied
+      rows <- overloadArgumentRows rowSource
       writtenRows <-
-        case interpretedForm supplied of
+        case interpretedForm rowSource of
           ArgumentMapForm members _ ->
             overloadArgumentRows (makeAtlasMap 2 members)
           _ -> pure rows
@@ -168,25 +189,26 @@ resolveReplacements template supplied
               ]
           routes =
             [ concat
-                [ matchInputs slots orderedInputs
+                [ matchInputs slots row
                 | slots <- slotOrders
-                , orderedInputs <- inputOrders row
                 ]
             | row <- rows
             ]
-      if any null routes
-        then Left (OverloadError OverloadNoMatch)
-        else case writtenRoutes of
-          -- Written order is the canonical positional interpretation. Prefer
-          -- it even when equal annotations admit other permutations.
-          [replacements] -> Right replacements
-          [] ->
-            case nubBy sameReplacements (concat routes) of
-              [] -> Left (OverloadError OverloadNoMatch)
-              [replacements] -> Right replacements
-              _ -> Left (OverloadError
-                OverloadAmbiguousWithoutWrittenOrder)
-          _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
+      let routeResult =
+            if any null routes
+              then Left (OverloadError OverloadNoMatch)
+              else case writtenRoutes of
+                -- Written order is the canonical positional interpretation.
+                -- Prefer it even when equal annotations admit permutations.
+                [replacements] -> Right replacements
+                [] ->
+                  case nubBy sameReplacements (concat routes) of
+                    [] -> Left (OverloadError OverloadNoMatch)
+                    [replacements] -> Right replacements
+                    _ -> Left (OverloadError
+                      OverloadAmbiguousWithoutWrittenOrder)
+                _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
+      routeResult
   where
     isSkip value = case interpretedForm value of
       SkipForm _ -> True
@@ -195,47 +217,106 @@ resolveReplacements template supplied
     canonical = sortOn fst . map
       (\(index, value) ->
         (index, interpretedSemanticResult <$> value))
-    inputOrders row
-      | any hasName row = permutations row
-      | otherwise = [row]
-    hasName Nothing = False
-    hasName (Just value) =
-      case suppliedValue value of
-        (Just _, _) -> True
-        _ -> False
 
 matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
-matchInputs _ [] = [[]]
-matchInputs [] _ = []
-matchInputs [slot] inputs
-  | length inputs > 1
-  , Just values <- sequence inputs
-  , all unnamed values
-  , Just grouped <- matchSlot slot (makeAtlasMap 2 values) =
-      [[(slotIndex slot, Just grouped)]]
+matchInputs slots inputs =
+  case matchNamed slots inputs [] [] of
+    Nothing -> []
+    Just (remainingSlots, positionalInputs, named) ->
+      map (reverse named <>)
+        (matchPositional remainingSlots (reverse positionalInputs))
   where
-    unnamed value = case suppliedValue value of
-      (Nothing, _) -> True
-      _ -> False
-matchInputs (slot : remainingSlots) (Nothing : remainingInputs) =
-  [ (slotIndex slot, Nothing) : later
-  | later <- matchInputs remainingSlots remainingInputs
-  ]
-matchInputs (slot : remainingSlots)
-    inputs@(Just input : remainingInputs) =
-  case matchSlot slot input of
-    Just value ->
-      [ (slotIndex slot, Just value) : later
-      | later <- matchInputs remainingSlots remainingInputs
-      ]
-    Nothing -> matchInputs remainingSlots inputs
+    targetNames = slotNames slots
 
-matchSlot :: Slot -> InterpretedValue -> Maybe InterpretedValue
-matchSlot slot input = do
-  let (inputName, inputValue) =
+    matchNamed remaining [] positional named =
+      Just (remaining, positional, named)
+    matchNamed remaining (input : laterInputs) positional named =
+      case admittedInputName input of
+        Nothing ->
+          matchNamed remaining laterInputs (input : positional) named
+        Just name ->
+          case removeNamedSlot name remaining of
+            Nothing ->
+              matchNamed remaining laterInputs (input : positional) named
+            Just (slot, laterSlots) -> do
+              value <- input >>= matchSlot targetNames slot
+              matchNamed laterSlots laterInputs positional
+                ((slotIndex slot, Just value) : named)
+
+    admittedInputName Nothing = Nothing
+    admittedInputName (Just value) =
+      case suppliedValue value of
+        (Just name, _) | name `elem` targetNames -> Just name
+        _ -> Nothing
+
+    removeNamedSlot _ [] = Nothing
+    removeNamedSlot name (slot : remaining)
+      | slotName slot == Just name = Just (slot, remaining)
+      | otherwise = do
+          (selected, later) <- removeNamedSlot name remaining
+          pure (selected, slot : later)
+
+    matchPositional _ [] = [[]]
+    matchPositional [] _ = []
+    matchPositional [slot] positional
+      | length positional > 1
+      , Just values <- traverse
+          (>>= positionalInput targetNames)
+          positional
+      , Just grouped <- matchSlot
+          targetNames slot (makeAtlasMap 2 values) =
+          [[(slotIndex slot, Just grouped)]]
+    matchPositional (slot : remainingSlots)
+        (Nothing : remainingInputs) =
+      [ (slotIndex slot, Nothing) : later
+      | later <- matchPositional remainingSlots remainingInputs
+      ]
+    matchPositional (slot : remainingSlots)
+        positional@(Just input : remainingInputs) =
+      case matchSlot targetNames slot input of
+        Just value ->
+          [ (slotIndex slot, Just value) : later
+          | later <- matchPositional remainingSlots remainingInputs
+          ]
+        Nothing -> matchPositional remainingSlots positional
+
+-- An identifier not admitted by any target slot participates in the
+-- positional pass.  Erase it before collecting several remaining inputs into
+-- one variadic slot; otherwise the grouped value still carries labels and
+-- cannot inhabit an ordinary sequence such as @List T@.
+positionalInput :: [String] -> InterpretedValue -> Maybe InterpretedValue
+positionalInput targetNames input =
+  case suppliedValue input of
+    (Nothing, value) -> positionalContents targetNames value
+    (Just name, value)
+      | name `notElem` targetNames -> positionalContents targetNames value
+      | otherwise -> Nothing
+
+positionalContents :: [String] -> InterpretedValue -> Maybe InterpretedValue
+positionalContents targetNames value =
+  case interpretedForm value of
+    CoalizationForm operand -> positionalContents targetNames operand
+    ArgumentMapForm members _ ->
+      makeAtlasMap 2 <$> traverse (positionalInput targetNames) members
+    SequentialMapForm -> do
+      members <- finiteMembers value
+      makeAtlasMap
+        (interpretedMapCardinality (interpretedMap value))
+        <$> traverse (positionalInput targetNames) members
+    _ -> Just value
+
+slotNames :: [Slot] -> [String]
+slotNames = foldr (maybe id (:) . slotName) []
+
+matchSlot :: [String] -> Slot -> InterpretedValue -> Maybe InterpretedValue
+matchSlot targetNames slot input = do
+  let (suppliedName, suppliedInput) =
         case slotName slot of
           Nothing -> (Nothing, input)
           Just _ -> suppliedValue input
+      inputName = case suppliedName of
+        Just name | name `notElem` targetNames -> Nothing
+        _ -> suppliedName
   case (slotName slot, inputName) of
     (Just expected, Just actual)
       | not (isPublicIdentifier expected)
@@ -249,15 +330,27 @@ matchSlot slot input = do
       | otherwise -> Nothing
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
-  case specifyValues inputValue (slotAnnotation slot) of
-    Right prepared
-      | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
-          Just prepared
-      | DecisionProved () <-
-          decideValueSubfederation inputValue (slotAnnotation slot) ->
-          Just inputValue
-      | otherwise -> Just prepared
-    Left _ -> Nothing
+  case
+      [ matched
+      | inputValue <- suppliedInput : positionalFallback inputName
+      , Just matched <- [matchInputValue inputValue]
+      ] of
+    matched : _ -> Just matched
+    [] -> Nothing
+  where
+    positionalFallback Nothing =
+      maybe [] (:[]) (positionalInput targetNames input)
+    positionalFallback (Just _) = []
+    matchInputValue inputValue =
+      case specifyValues inputValue (slotAnnotation slot) of
+        Right prepared
+          | DependentSumForm _ <- interpretedForm (slotAnnotation slot) ->
+              Just prepared
+          | DecisionProved () <-
+              decideValueSubfederation inputValue (slotAnnotation slot) ->
+              Just inputValue
+          | otherwise -> Just prepared
+        Left _ -> Nothing
 
 isPublicIdentifier :: String -> Bool
 isPublicIdentifier identifier =
@@ -265,13 +358,21 @@ isPublicIdentifier identifier =
 
 suppliedValue :: InterpretedValue -> (Maybe String, InterpretedValue)
 suppliedValue value =
-  case optionalNamedParts value of
-    Just (name, _, Just supplied) -> (Just name, supplied)
-    _ ->
-      case namedParts value of
-        Just (name, annotation, supplied) ->
-          (Just name, maybe annotation id supplied)
-        Nothing -> (Nothing, value)
+  case interpretedForm value of
+    CoalizationForm operand ->
+      case suppliedValue operand of
+        (Just name, supplied) -> (Just name, coalizeValue supplied)
+        _ -> ordinary
+    _ -> ordinary
+  where
+    ordinary =
+      case optionalNamedParts value of
+        Just (name, _, Just supplied) -> (Just name, supplied)
+        _ ->
+          case namedParts value of
+            Just (name, annotation, supplied) ->
+              (Just name, maybe annotation id supplied)
+            Nothing -> (Nothing, value)
 
 suppliedAsAssignment :: InterpretedValue -> Bool
 suppliedAsAssignment value =
@@ -336,11 +437,13 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
     fromComposite next current =
       case interpretedForm current of
         ArgumentMapForm members _ ->
-          mapChildren UnorderedArgumentSchema next members
+          mapChildren unorderedArgumentSchema next members
         ConcatenatedMapForm left right ->
-          let (leftTemplate, afterLeft) = fromValue next left
-              (rightTemplate, afterRight) = fromValue afterLeft right
-          in (ConcatenatedArgumentSchema leftTemplate rightTemplate, afterRight)
+          let (leftTemplate, afterLeft) = fromProjected next left
+              (rightTemplate, afterRight) = fromProjected afterLeft right
+          in ( concatenatedArgumentSchema [leftTemplate, rightTemplate]
+             , afterRight
+             )
         SequentialMapForm -> fromFiniteMap next current
         MapForm -> fromFiniteMap next current
         _ -> slot current next
@@ -357,6 +460,13 @@ argumentSchemaFromValue value = fst (fromValue 0 value)
         Nothing -> slot current next
     slot current next =
       (ArgumentSlotSchema next Nothing False False current Nothing, next + 1)
+    fromProjected next current
+      | isEmptyMap current = (EmptyArgumentSchema, next)
+      | CoalizationForm operand <- interpretedForm current =
+          fromValue next operand
+      | hasDependentArgumentFamily current =
+          (ProjectedArgumentSchema current, next)
+      | otherwise = fromValue next current
     mapChildren constructor start members =
       let (children, afterChildren) = schemasFromValues start members
       in (constructor children, afterChildren)
@@ -445,21 +555,26 @@ unorderedArgumentSchema schemas =
     _ -> UnorderedArgumentSchema schemas
 
 concatenatedArgumentSchema :: [ArgumentSchema] -> ArgumentSchema
-concatenatedArgumentSchema schemas =
-  case schemas of
-    [] -> EmptyArgumentSchema
-    first : remaining -> foldl ConcatenatedArgumentSchema first remaining
+concatenatedArgumentSchema = foldl append EmptyArgumentSchema
+  where
+    append EmptyArgumentSchema right = right
+    append left EmptyArgumentSchema = left
+    append left right = ConcatenatedArgumentSchema left right
 
 projectedArgumentSchema :: InterpretedValue -> ArgumentSchema
 projectedArgumentSchema target
-  | hasDependentFamily target = ProjectedArgumentSchema target
+  | CoalizationForm operand <- interpretedForm target =
+      argumentSchemaFromValue operand
+  | hasDependentArgumentFamily target = ProjectedArgumentSchema target
   | otherwise = argumentSchemaFromValue target
-  where
-    hasDependentFamily value = case interpretedForm value of
-      DependentSumForm _ -> True
-      EitherForm alternatives -> hasDependentFamily (evaluatedEitherLeft alternatives)
-        || hasDependentFamily (evaluatedEitherRight alternatives)
-      _ -> False
+
+hasDependentArgumentFamily :: InterpretedValue -> Bool
+hasDependentArgumentFamily value = case interpretedForm value of
+  DependentSumForm _ -> True
+  EitherForm alternatives ->
+    hasDependentArgumentFamily (evaluatedEitherLeft alternatives)
+      || hasDependentArgumentFamily (evaluatedEitherRight alternatives)
+  _ -> False
 
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =
@@ -653,6 +768,85 @@ argumentValuesComplete
   -> Either InterpretingError InterpretedValue
 argumentValuesComplete template =
   argumentSchemaBodyValues (argumentSchemaFromValue template)
+
+-- | Select one argument-map fibre from a dependent federation whose index
+-- order is at most omega.  Candidate indices come exclusively from the
+-- retained dependent domain; source arity is used only to prove that a failed
+-- candidate and every later, strictly larger candidate cannot fit.
+omegaArgumentValuesComplete
+  :: InterpretedValue
+  -> InterpretedValue
+  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+omegaArgumentValuesComplete domain staticTarget fibreAt supplied = do
+  let candidateOrder =
+        interpretedMapFinalOrderType (interpretedMap domain)
+  if ordinalGT candidateOrder omega
+    then undecidable
+    else do
+      reservations <- decisionEither
+        (ArgumentMap.argumentReservations
+          selectFederationMember
+          supplied
+          [staticTarget])
+      let positional =
+            ArgumentMap.positionalArgumentSource reservations supplied
+      suppliedOrder <- argumentOrder supplied
+      search candidateOrder reservations positional suppliedOrder Nothing 0
+  where
+    search familyOrder reservations positional suppliedOrder previousOrder position
+      | Just count <- naturalAtOrdinal familyOrder
+      , position >= count = refuted
+      | otherwise = do
+          witness <- maybe undecidable Right
+            (interpretedMapValueAt
+              (interpretedMap domain)
+              (finiteOrdinal position))
+          candidate <- fibreAt witness
+          orderType <- argumentOrder candidate
+          candidateReservations <- decisionEither
+            (ArgumentMap.argumentReservations
+              selectFederationMember
+              supplied
+              [candidate])
+          let admitsReserved = and
+                (zipWith
+                  (\reserved admitted -> not reserved || admitted)
+                  reservations
+                  candidateReservations)
+              later = search familyOrder reservations positional
+                suppliedOrder (Just orderType) (position + 1)
+          if not admitsReserved
+            then later
+            else case argumentValuesComplete candidate positional of
+              Right selected -> Right selected
+              Left failure
+                | ordinalGTE orderType suppliedOrder -> Left failure
+                | Just previous <- previousOrder
+                , not (ordinalGT orderType previous) -> undecidable
+                | otherwise -> later
+
+    argumentOrder value = do
+      rows <- argumentRows value
+      case nubBy (==)
+          [finiteOrdinal (fromIntegral (length row)) | row <- rows] of
+        [orderType] -> Right orderType
+        _ -> undecidable
+
+    decisionEither decision =
+      case decision of
+        DecisionProved value -> Right value
+        DecisionRefuted -> refuted
+        DecisionUndecidable -> undecidable
+
+    refuted = Left
+      (AtlasMapFederationOperationRefuted
+        AtlasMapFederationSpecificationHasNoMatchingMember)
+    undecidable = Left
+      (AtlasMapFederationOperationUndecidable
+        (NoAtlasMapFederationDecisionProcedure
+          AtlasMapFederationSpecification))
 
 overloadArgumentSchemaComplete
   :: ArgumentSchema

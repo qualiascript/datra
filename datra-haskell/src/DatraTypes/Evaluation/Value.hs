@@ -45,6 +45,7 @@ module Evaluation.Value
   , interpretedFunction
   , ExplicitOrigin (..)
   , EvaluatedExplicit (..)
+  , RangeAccessPolicy (..)
   , EvaluatedRange (..)
   , EvaluatedNaturalRange (..)
   , EvaluatedValuedNaturalRange (..)
@@ -81,9 +82,9 @@ module Evaluation.Value
   , makeSingletonInterpretedValue
   , makeDependentSumValue
   , withDependentSumStructure
-  , withIdentifierErasureType
-  , interpretedIdentifierErasureType
   , withDependentSumAccess
+  , withDependentSumFamily
+  , withDependentSumReservationTarget
   , makeLazyMapValue
   , interpretedForm
   , interpretedInsertionCapability
@@ -108,6 +109,9 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedExplicitOrdinal
+  , interpretedSpecificationSourceValue
+  , interpretedFederationSpecificationBranches
+  , interpretedFederationSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -118,8 +122,10 @@ module Evaluation.Value
   , explicitInsertion
   , rangeDescription
   , evaluatedRangeLevel
+  , evaluatedRangeAccessPolicy
   , rangeInsertion
   , naturalRangeAsEvaluatedRange
+  , valuedNaturalRangeAsEvaluatedRange
   , valueRanges
   , emptyInterpretedMap
   , singletonMap
@@ -180,9 +186,19 @@ data EvaluatedExplicit where
     -> SuperEllipsisValue target scope
     -> EvaluatedExplicit
 
+-- | The behavior retained by a range when it is later used as an access
+-- selector.  Range values share a normalized insertion representation, but
+-- their surface families deliberately do not share access semantics.
+data RangeAccessPolicy
+  = ClippableConcreteRange
+  | ClippableRangeFederation
+  | ExactRangeInsertion
+  deriving (Eq)
+
 data EvaluatedRange where
   EvaluatedRange
     :: Natural
+    -> RangeAccessPolicy
     -> Range.SuperEllipsisRange target scope
     -> EvaluatedRange
 
@@ -217,6 +233,7 @@ data EvaluatedEither = EvaluatedEither
 data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
+  , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
   }
 
 -- | Structural provenance that remains meaningful after a source-level
@@ -237,6 +254,11 @@ data EvaluatedDependentSum = EvaluatedDependentSum
   , evaluatedDependentSumAccess
       :: Maybe
           (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedDependentSumDomain :: Maybe InterpretedValue
+  , evaluatedDependentSumFibreAt
+      :: Maybe
+          (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedDependentSumReservationTarget :: Maybe InterpretedValue
   , evaluatedDependentSumStructure :: DependentSumStructure
   }
 
@@ -258,6 +280,9 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedAsciiStringMember String
   | EvaluatedEitherMember
       DatraBoolean
+      EvaluatedAtlasMapFederationMember
+  | EvaluatedArgumentMapMember
+      InterpretedValue
       EvaluatedAtlasMapFederationMember
   | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
@@ -532,7 +557,6 @@ data InterpretedValue = InterpretedValue
   , interpretedAtlasMapFederation :: InterpretedAtlasMapFederation
   , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
   , interpretedSemantics :: ValueSemantics
-  , interpretedIdentifierErasureType :: Maybe InterpretedValue
   , interpretedEvaluationSource :: Maybe String
   }
 
@@ -559,7 +583,6 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
           TotalInterpretedMap -> Just (InterpretedTotalAtlasMap valueMap)
           NonTotalInterpretedMap -> Nothing
     , interpretedSemantics = semantics
-    , interpretedIdentifierErasureType = Nothing
     , interpretedEvaluationSource = Nothing
     }
 
@@ -590,7 +613,7 @@ makeDependentSumValue source staticTarget specify =
     structuralDatraType
     (DependentSumForm
       (EvaluatedDependentSum
-        staticTarget specify Nothing OrdinaryDependentSum))
+        staticTarget specify Nothing Nothing Nothing Nothing OrdinaryDependentSum))
     (interpretedInsertionCapability staticTarget)
     (interpretedMap staticTarget)
     (interpretedAtlasMapFederation staticTarget)
@@ -613,12 +636,6 @@ withDependentSumStructure structure value =
         }
     _ -> value
 
--- | Retain a symbolic family's erased view for inference, without enumerating
--- its unbounded collection of named slots.
-withIdentifierErasureType :: InterpretedValue -> InterpretedValue -> InterpretedValue
-withIdentifierErasureType erased value = value
-  { interpretedIdentifierErasureType = Just erased }
-
 -- | Attach the exact access map of a dependent family.  The structural
 -- target remains available for ordinary static reasoning, while projection
 -- is delayed until a concrete insertion is supplied.
@@ -632,6 +649,43 @@ withDependentSumAccess access value =
       value
         { interpretedForm = DependentSumForm
             dependent { evaluatedDependentSumAccess = Just access }
+        }
+    _ -> value
+
+-- | Retain the indexing family and exact fibre constructor of a dependent
+-- sum.  Selection can then instantiate a candidate from its dependency
+-- witness instead of reconstructing an index from the candidate's shape.
+withDependentSumFamily
+  :: InterpretedValue
+  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumFamily domain fibreAt value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent
+              { evaluatedDependentSumDomain = Just domain
+              , evaluatedDependentSumFibreAt = Just fibreAt
+              }
+        }
+    _ -> value
+
+-- | Retain a structural target that contains every identifier admitted by
+-- the dependent family.  Nested projections use this for the named argument
+-- pass before selecting one concrete fibre.
+withDependentSumReservationTarget
+  :: InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+withDependentSumReservationTarget target value =
+  case interpretedForm value of
+    DependentSumForm dependent ->
+      value
+        { interpretedForm = DependentSumForm
+            dependent
+              { evaluatedDependentSumReservationTarget = Just target }
         }
     _ -> value
 
@@ -805,6 +859,31 @@ interpretedExplicitOrdinal value =
     ExplicitForm explicitValue -> Just (explicitOrdinal explicitValue)
     _ -> Nothing
 
+interpretedSpecificationSourceValue
+  :: InterpretedValue
+  -> Maybe InterpretedValue
+interpretedSpecificationSourceValue value =
+  case interpretedForm value of
+    SpecificationForm specification ->
+      Just (evaluatedSpecificationSourceValue specification)
+    _ -> Nothing
+
+interpretedFederationSpecificationBranches
+  :: InterpretedValue
+  -> Maybe [InterpretedValue]
+interpretedFederationSpecificationBranches value =
+  case interpretedForm value of
+    FederationSpecificationForm _ _ branches -> Just branches
+    _ -> Nothing
+
+interpretedFederationSpecificationSourceValue
+  :: InterpretedValue
+  -> Maybe InterpretedValue
+interpretedFederationSpecificationSourceValue value =
+  case interpretedForm value of
+    FederationSpecificationForm source _ _ -> Just source
+    _ -> Nothing
+
 interpretedInteger :: InterpretedValue -> Maybe Integer
 interpretedInteger value =
   case interpretedForm value of
@@ -871,20 +950,26 @@ explicitInsertion (EvaluatedExplicit _ _ value) =
 rangeDescription
   :: EvaluatedRange
   -> Range.SuperEllipsisRangeDescription
-rangeDescription (EvaluatedRange _ valueRange) =
+rangeDescription (EvaluatedRange _ _ valueRange) =
   Range.describeSuperEllipsisRange valueRange
 
 evaluatedRangeLevel :: EvaluatedRange -> Natural
-evaluatedRangeLevel (EvaluatedRange level _) = level
+evaluatedRangeLevel (EvaluatedRange level _ _) = level
+
+evaluatedRangeAccessPolicy :: EvaluatedRange -> RangeAccessPolicy
+evaluatedRangeAccessPolicy (EvaluatedRange _ policy _) = policy
 
 rangeInsertion :: EvaluatedRange -> SomeSuperEllipsisInsertion
-rangeInsertion (EvaluatedRange _ valueRange) =
+rangeInsertion (EvaluatedRange _ _ valueRange) =
   eraseSuperEllipsisInsertion
     (Range.superEllipsisRangeInsertion valueRange)
 
 naturalRangeAsEvaluatedRange :: EvaluatedNaturalRange -> EvaluatedRange
 naturalRangeAsEvaluatedRange (EvaluatedNaturalRange valueRange) =
-  EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
+  EvaluatedRange
+    1
+    ClippableRangeFederation
+    (NaturalRange.naturalRangeEllipsisRange valueRange)
 
 valuedNaturalRangeAsEvaluatedRange
   :: EvaluatedValuedNaturalRange
@@ -893,6 +978,7 @@ valuedNaturalRangeAsEvaluatedRange
     (EvaluatedValuedNaturalRange valueRange) =
   EvaluatedRange
     1
+    ExactRangeInsertion
     (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
 
 valueRanges :: InterpretedValue -> Maybe [EvaluatedRange]

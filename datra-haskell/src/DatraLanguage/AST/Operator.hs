@@ -32,7 +32,6 @@ data Operator
   | BooleanOrOperator
   | BooleanNotOperator
   | CoalizationOperator
-  | StripIdentifiersOperator
   | ExtractOperator
   | ValueOfOperator
   | AssertOperator
@@ -59,7 +58,7 @@ data Operator
 -- | Canonical notation used when rendering an AST.
 operatorCanonicalSymbol :: Operator -> String
 operatorCanonicalSymbol FunctionTypeOperator = "->"
-operatorCanonicalSymbol SyntaxTypeOperator = "%>"
+operatorCanonicalSymbol SyntaxTypeOperator = "~%"
 operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
 operatorCanonicalSymbol ExternalOperator = "!~"
@@ -82,7 +81,6 @@ operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
-operatorCanonicalSymbol StripIdentifiersOperator = "strip-identifiers"
 operatorCanonicalSymbol ExtractOperator = "%"
 operatorCanonicalSymbol ValueOfOperator = "~"
 operatorCanonicalSymbol AssertOperator = "assert"
@@ -109,7 +107,7 @@ operatorCanonicalSymbol AssignmentOperator = ":="
 -- Sequential and expansion structure comes from map separators and nesting.
 operatorSourceSymbol :: Operator -> Maybe String
 operatorSourceSymbol FunctionTypeOperator = Just "->"
-operatorSourceSymbol SyntaxTypeOperator = Just "%>"
+operatorSourceSymbol SyntaxTypeOperator = Just "~%"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
 operatorSourceSymbol ExternalOperator = Just "!~"
@@ -132,7 +130,6 @@ operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
-operatorSourceSymbol StripIdentifiersOperator = Nothing
 operatorSourceSymbol ExtractOperator = Just "%"
 operatorSourceSymbol ValueOfOperator = Just "~"
 operatorSourceSymbol AssertOperator = Just "assert"

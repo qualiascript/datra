@@ -3,6 +3,7 @@ module Evaluation.Map
   ( makeAtlasMap
   , makeAtlasMapPreservingSingleton
   , hasConcreteSource
+  , isEmptyMap
   , makeAtlasExpansion
   , concatenateValues
   ) where
@@ -117,16 +118,7 @@ concatenateValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-concatenateValues left right
-  | isUnitValue left = Right right
-  | isUnitValue right = Right left
-  | otherwise = concatenateNonUnitValues left right
-
-concatenateNonUnitValues
-  :: InterpretedValue
-  -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
-concatenateNonUnitValues left right = do
+concatenateValues left right = do
   requireFederationDecision
     (decideValueConcatenation left right)
   normalizedRanges <-
@@ -185,7 +177,9 @@ concatenateNonUnitValues left right = do
               (interpretedAtlasMapFederation left)
               (interpretedAtlasMapFederation right)
       preserveFederationSyntax =
-        semanticsContainsRange
+        isEmptyMap left
+          || isEmptyMap right
+          || semanticsContainsRange
           (interpretedSemantics left)
           || semanticsContainsRange
             (interpretedSemantics right)
@@ -243,8 +237,8 @@ concatenateInsertionCapabilities left right =
     (_, RejectedInsertion rejection) -> RejectedInsertion rejection
     _ -> NoInsertion
 
-isUnitValue :: InterpretedValue -> Bool
-isUnitValue value =
+isEmptyMap :: InterpretedValue -> Bool
+isEmptyMap value =
   case interpretedForm value of
     SequentialMapForm ->
       interpretedMapCardinality (interpretedMap value) == 0

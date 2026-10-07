@@ -4,8 +4,9 @@
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
+  , SyntaxTemplateCompilationFailure (..)
   , SyntaxFunctionBody, syntaxFunctionBodyForSymbol, applySyntaxFunctionBody
-  , declarationRules, syntaxTemplatesFromExpression
+  , declarationRules, compileSyntaxTemplatesFromExpression
   , contextualSyntaxRules
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , qualifySyntaxRule, expandSyntax
@@ -17,6 +18,7 @@ import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , invalidSyntaxTemplateCharacter
   , parseSyntaxTemplate
   )
 import IdentifierValueType (isIdentifierValue)
@@ -30,6 +32,11 @@ data SyntaxRule = SyntaxRule
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
   } deriving (Eq,Show)
+
+data SyntaxTemplateCompilationFailure
+  = ExpectedSyntaxTemplateOperand
+  | ForbiddenSyntaxTemplateCharacter Char
+  deriving (Eq, Show)
 
 -- | Contextual bindings are supplied by their enclosing evaluator scopes,
 -- not by Std. These zero-hole templates are ordinary syntax-function rules:
@@ -92,9 +99,6 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
   , ("datra.forIn", \case
       [name, bound, body] ->
         localDependentFamily "for" ForBinding name bound body
-      captures -> invalidBody symbol captures)
-  , ("datra.val", \case
-      [value] -> Right (StripIdentifiers value)
       captures -> invalidBody symbol captures)
   , ("datra.modular", \case
       [value] -> Right (Modular value)
@@ -197,17 +201,29 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
     rules key templates signature body =
       [ SyntaxRule key template
           signature False Nothing body
-      | template <- maybe [] id (syntaxTemplatesFromExpression templates)
+      | template <- either (const []) id
+          (compileSyntaxTemplatesFromExpression templates)
       ]
 declarationRules _ = []
 
--- | The left operand of @%>@ is an ordinary inhabited list value. Rules must
--- be available before evaluation, so each member is required to be an
--- explicit extracted string at declaration time.
-syntaxTemplatesFromExpression
+-- | The left operand of @~%@ is either one string template or an inhabited
+-- compile-time total map of string templates. Rules must be available before
+-- evaluation, so every map member must be explicit at declaration time.
+compileSyntaxTemplatesFromExpression
   :: Expression
-  -> Maybe [SyntaxTemplate Expression]
-syntaxTemplatesFromExpression (Extract templates) = templateValues templates
+  -> Either SyntaxTemplateCompilationFailure [SyntaxTemplate Expression]
+compileSyntaxTemplatesFromExpression templates = do
+  compiled <- maybe
+    (Left ExpectedSyntaxTemplateOperand)
+    Right
+    (templateValues templates)
+  case
+      [ invalid
+      | template <- compiled
+      , Just invalid <- [invalidSyntaxTemplateCharacter template]
+      ] of
+    invalid : _ -> Left (ForbiddenSyntaxTemplateCharacter invalid)
+    [] -> Right compiled
   where
     templateValues value@AsciiStringLiteral {} =
       (: []) <$> templateValue value
@@ -227,7 +243,6 @@ syntaxTemplatesFromExpression (Extract templates) = templateValues templates
     templatePart (StringTemplateInterpolation value) =
       Just [SyntaxHole (ValueSyntaxHole value)]
     templatePart StringTemplateWeakInterpolation {} = Nothing
-syntaxTemplatesFromExpression _ = Nothing
 
 syntaxTemplateFromPattern :: String -> SyntaxTemplate Expression
 syntaxTemplateFromPattern = parseSyntaxTemplate
@@ -270,7 +285,7 @@ expandSyntax rule captures = case
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
     -- A zero-hole syntax function receives the singleton value written as its
-    -- domain. Thus @%"this" %> (0 -> Any)@ applies its function to @0@ using
+    -- domain. Thus @"this" ~% (0 -> Any)@ applies its function to @0@ using
     -- the same expansion path as any other declared template.
     applicationInput [] = case syntaxSignature rule of
       FunctionType domain _ -> domain

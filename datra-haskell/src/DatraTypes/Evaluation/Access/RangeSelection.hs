@@ -6,6 +6,8 @@ module Evaluation.Access.RangeSelection
   , accessSelection
   , describedRangeSemantics
   , evaluatedDescribedRange
+  , clippableSelectionRange
+  , clipDescribedRangeToOrderType
   , pureOmegaPowerLevel
   , rangeAccessDescriptions
   ) where
@@ -33,6 +35,7 @@ import SuperEllipsisRange.Description qualified as RangeDescription
 
 data DescribedRange = DescribedRange
   { describedRangeLevel :: Natural
+  , describedRangeAccessPolicy :: RangeAccessPolicy
   , describedRangeDescription :: Range.SuperEllipsisRangeDescription
   }
 
@@ -53,11 +56,10 @@ accessSource value =
       rangeSource
         [evaluatedDescribedRange
           (naturalRangeAsEvaluatedRange valueRange)]
-    ValuedNaturalRangeForm _ ->
-      case interpretedRangeDescription value of
-        Just description ->
-          rangeSource [describedRangeFromDescription description]
-        Nothing -> rangeSource []
+    ValuedNaturalRangeForm valueRange ->
+      rangeSource
+        [evaluatedDescribedRange
+          (valuedNaturalRangeAsEvaluatedRange valueRange)]
     IntegerForm _ -> ordinarySource []
     IntegerRangeForm _ -> rangeSource []
     ValuedIntegerRangeForm _ -> rangeSource []
@@ -131,6 +133,13 @@ accessSelection value =
       Just [formulationDescribedRange (someSuperEllipsisLevel formulation)]
     _ -> map evaluatedDescribedRange <$> valueRanges value
 
+clippableSelectionRange :: InterpretedValue -> Maybe EvaluatedRange
+clippableSelectionRange value = do
+  [valueRange] <- valueRanges value
+  case evaluatedRangeAccessPolicy valueRange of
+    ExactRangeInsertion -> Nothing
+    _ -> Just valueRange
+
 describedRangeSemantics :: DescribedRange -> ValueSemantics
 describedRangeSemantics described
   | RangeDescription.rangeDescriptionOrderType description == finiteOrdinal 1 =
@@ -162,7 +171,9 @@ semanticAccessSource semantics =
     NaturalRangeSemantics start target ->
       rangeSource [naturalDescribedRange start target]
     ValuedNaturalRangeSemantics start target ->
-      rangeSource [naturalDescribedRange start target]
+      rangeSource
+        [naturalDescribedRangeWithPolicy
+          ExactRangeInsertion start target]
     NaturalTypeSemantics ->
       rangeSource [naturalDescribedRange 0 NaturalRange.UpwardsTarget]
     IntegerRangeSemantics _ _ -> rangeSource []
@@ -211,6 +222,7 @@ evaluatedDescribedRange :: EvaluatedRange -> DescribedRange
 evaluatedDescribedRange valueRange =
   DescribedRange
     (evaluatedRangeLevel valueRange)
+    (evaluatedRangeAccessPolicy valueRange)
     (rangeDescription valueRange)
 
 describedRangeFromDescription
@@ -220,12 +232,14 @@ describedRangeFromDescription description =
   DescribedRange
     (fromMaybe 1
       (pureOmegaPowerLevel (Range.describedRangeRankLimit description)))
+    ClippableConcreteRange
     description
 
 formulationDescribedRange :: Natural -> DescribedRange
 formulationDescribedRange level =
   DescribedRange
     level
+    ExactRangeInsertion
     (Range.SuperEllipsisRangeDescription
       rankLimit
       (finiteOrdinal 0)
@@ -237,6 +251,7 @@ singletonDescribedRange :: Natural -> Ordinal -> DescribedRange
 singletonDescribedRange level value =
   DescribedRange
     level
+    ExactRangeInsertion
     (Range.SuperEllipsisRangeDescription
       (omegaPower level)
       value
@@ -247,8 +262,17 @@ naturalDescribedRange
   -> NaturalRange.NaturalRangeTarget
   -> DescribedRange
 naturalDescribedRange start target =
+  naturalDescribedRangeWithPolicy ClippableRangeFederation start target
+
+naturalDescribedRangeWithPolicy
+  :: RangeAccessPolicy
+  -> Natural
+  -> NaturalRange.NaturalRangeTarget
+  -> DescribedRange
+naturalDescribedRangeWithPolicy policy start target =
   DescribedRange
     1
+    policy
     (Range.SuperEllipsisRangeDescription
       (omegaPower 1)
       (finiteOrdinal start)
@@ -264,6 +288,7 @@ pureOmegaPowerLevel value =
 
 data OrdinalRangeSegment = OrdinalRangeSegment
   { segmentLevel :: Natural
+  , segmentAccessPolicy :: RangeAccessPolicy
   , segmentStart :: Ordinal
   , segmentLowerBound :: Ordinal
   , segmentUpperBound :: Ordinal
@@ -291,10 +316,57 @@ rangeAccessDescriptions sourceRanges selectionRanges =
     locatedSources = locateSourceSegments (map ordinalSegment sourceRanges)
     selectionSegments = map ordinalSegment selectionRanges
 
+-- | Restrict a range selector to positions that exist in a source order
+-- type.  This is the single arithmetic path shared by concrete @..@ and
+-- range-federation selectors; access policy is retained on the result.
+clipDescribedRangeToOrderType
+  :: Ordinal
+  -> DescribedRange
+  -> Maybe DescribedRange
+clipDescribedRangeToOrderType sourceOrderType described = do
+  let segment = ordinalSegment described
+  (lower, upper) <-
+    intersectBounds
+      (segmentLowerBound segment, segmentUpperBound segment)
+      (finiteOrdinal 0, sourceOrderType)
+  pure
+    (DescribedRange
+      (describedRangeLevel described)
+      (describedRangeAccessPolicy described)
+      (descriptionForClippedPositions segment lower upper))
+
+descriptionForClippedPositions
+  :: OrdinalRangeSegment
+  -> Ordinal
+  -> Ordinal
+  -> Range.SuperEllipsisRangeDescription
+descriptionForClippedPositions segment lower upper =
+  Range.SuperEllipsisRangeDescription
+    (segmentRankLimit segment)
+    firstPosition
+    target
+  where
+    ascending =
+      segmentDirection segment == RangeDescription.AscendingRange
+    firstPosition
+      | ascending = lower
+      | otherwise = RangeDescription.ordinalPredecessor upper
+    target
+      | ascending
+      , segmentIsOpen segment
+      , upper == segmentRankLimit segment = Range.PlusSign
+      | ascending = Range.GivenTarget upper
+      | finiteTail == 0 = Range.MinusSign
+      | otherwise =
+          Range.GivenTarget
+            (addOrdinals finiteBase (finiteOrdinal (finiteTail - 1)))
+    (finiteBase, finiteTail) = splitFiniteTail lower
+
 ordinalSegment :: DescribedRange -> OrdinalRangeSegment
 ordinalSegment describedRange =
   OrdinalRangeSegment
     { segmentLevel = describedRangeLevel describedRange
+    , segmentAccessPolicy = describedRangeAccessPolicy describedRange
     , segmentStart = Range.describedRangeStart description
     , segmentLowerBound = lowerBound
     , segmentUpperBound = upperBound
@@ -378,6 +450,7 @@ descriptionForSlice
 descriptionForSlice source selectionAscending lower upper =
   DescribedRange
     (segmentLevel segment)
+    (segmentAccessPolicy segment)
     (Range.SuperEllipsisRangeDescription
       (segmentRankLimit segment)
       firstValue
@@ -438,12 +511,18 @@ mergeAdjacentDescriptions = foldl appendDescription []
           case Range.analyzeSuperEllipsisRangeDescriptions
             (describedRangeDescription previous)
             (describedRangeDescription description) of
-              Range.RangeConcatCanonical merged ->
+              Range.RangeConcatCanonical merged
+                | describedRangeAccessPolicy previous
+                    == describedRangeAccessPolicy description ->
                 let level
                       | Range.describedRangeRankLimit merged
                           == Range.describedRangeRankLimit
                             (describedRangeDescription previous) =
                           describedRangeLevel previous
                       | otherwise = describedRangeLevel description
-                in reverse reversedPrefix <> [DescribedRange level merged]
+                in reverse reversedPrefix
+                    <> [DescribedRange
+                          level
+                          (describedRangeAccessPolicy previous)
+                          merged]
               _ -> descriptions <> [description]

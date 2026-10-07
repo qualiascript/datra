@@ -247,7 +247,7 @@ specifyTotalAtlasMap
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyTotalAtlasMap source target = do
-  (selectionSource, totalSource) <-
+  (selectionSource, _) <-
     case concreteOptionalAssignmentSource source of
       Just concreteSource -> Right concreteSource
       Nothing ->
@@ -255,12 +255,20 @@ specifyTotalAtlasMap source target = do
           Just totalMap -> Right (source, totalMap)
           Nothing -> Left (ExpectedTotalAtlasMap (interpretedValueKind source))
   case selectFederationMember selectionSource target of
-    DecisionProved member ->
+    DecisionProved member -> do
+      let selectedSource = case member of
+            EvaluatedArgumentMapMember prepared _ -> prepared
+            _ -> selectionSource
+      selectedTotal <- maybe
+        (Left (ExpectedTotalAtlasMap
+          (interpretedValueKind selectedSource)))
+        Right
+        (interpretedTotalAtlasMap selectedSource)
       Right
         (specifiedValue
-          source
-          totalSource
-          (interpretedSemantics source)
+          selectedSource
+          selectedTotal
+          (interpretedSemantics selectedSource)
           target
           member)
     DecisionRefuted ->

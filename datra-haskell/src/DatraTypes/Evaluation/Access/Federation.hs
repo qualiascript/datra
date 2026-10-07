@@ -16,6 +16,7 @@ import AtlasMapFederationExpression
   )
 import DatraOrdinal (Ordinal, finiteOrdinal)
 import Evaluation.Error
+import Evaluation.Access.RangeSelection (clippableSelectionRange)
 import Evaluation.Value
 import SuperEllipsisInsertion
   ( someSuperEllipsisInsertionOrderType
@@ -26,6 +27,8 @@ data FederationAccess
       EvaluatedNaturalRange
       EvaluatedNaturalRange
   | NaturalRangeSelectionAccess EvaluatedNaturalRange
+  | ClippedRangeFederationAccess EvaluatedRange
+  | ClippedRangeSelectionAccess EvaluatedRange
   | EmptyFederationAccess
   | SingletonFederationAccess SomeSuperEllipsisInsertion
 
@@ -141,11 +144,15 @@ decideNaturalRangeAccess sourceRange insertionValue =
   case naturalRangeFederation insertionValue of
     Just selectionRange ->
       Right (NaturalRangeFederationAccess sourceRange selectionRange)
-    Nothing -> do
-      insertion <- requireInsertion insertionValue
-      if insertionIsEmpty insertion
-        then Right EmptyFederationAccess
-        else emptyMapAccessCounterexample
+    Nothing ->
+      case clippableSelectionRange insertionValue of
+        Just selectionRange ->
+          Right (ClippedRangeFederationAccess selectionRange)
+        Nothing -> do
+          insertion <- requireInsertion insertionValue
+          if insertionIsEmpty insertion
+            then Right EmptyFederationAccess
+            else emptyMapAccessCounterexample
 
 decideDirectFederationAccess
   :: InterpretedValue
@@ -153,12 +160,16 @@ decideDirectFederationAccess
 decideDirectFederationAccess insertionValue =
   case naturalRangeFederation insertionValue of
     Just selectionRange -> Right (NaturalRangeSelectionAccess selectionRange)
-    Nothing -> do
-      insertion <- requireInsertion insertionValue
-      Right
-        (if insertionIsEmpty insertion
-          then EmptyFederationAccess
-          else SingletonFederationAccess insertion)
+    Nothing ->
+      case clippableSelectionRange insertionValue of
+        Just selectionRange ->
+          Right (ClippedRangeSelectionAccess selectionRange)
+        Nothing -> do
+          insertion <- requireInsertion insertionValue
+          Right
+            (if insertionIsEmpty insertion
+              then EmptyFederationAccess
+              else SingletonFederationAccess insertion)
 
 emptyMapAccessCounterexample :: Either InterpretingError result
 emptyMapAccessCounterexample =

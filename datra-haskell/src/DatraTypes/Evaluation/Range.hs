@@ -21,6 +21,7 @@ module Evaluation.Range
   , integerTypeValue
   , interpretedRangeValue
   , makeEvaluatedRangeAt
+  , makeEvaluatedRangeAtWithPolicy
   , canonicalizeRanges
   , concatenateRangeCapability
   ) where
@@ -238,7 +239,10 @@ interpretedNaturalRangeValue valueRange =
   where
     evaluatedNaturalRange = EvaluatedNaturalRange valueRange
     evaluated =
-      EvaluatedRange 1 (NaturalRange.naturalRangeEllipsisRange valueRange)
+      EvaluatedRange
+        1
+        ClippableRangeFederation
+        (NaturalRange.naturalRangeEllipsisRange valueRange)
     insertion = rangeInsertion evaluated
     valueMap = mapFromInsertion insertion [semantics]
     semantics =
@@ -265,6 +269,7 @@ interpretedValuedNaturalRangeValue semantics valueRange =
     evaluated =
       EvaluatedRange
         1
+        ExactRangeInsertion
         (ValuedNaturalRange.valuedNaturalRangeEllipsisRange valueRange)
     insertion = rangeInsertion evaluated
     valueMap = mapFromInsertion insertion [semantics]
@@ -319,7 +324,8 @@ interpretedNaturalRangeFallback
   -> Either InterpretingError InterpretedValue
 interpretedNaturalRangeFallback start target = do
   evaluated <-
-    makeEvaluatedRangeAt
+    makeEvaluatedRangeAtWithPolicy
+      ClippableRangeFederation
       1
       (finiteOrdinal start)
       (case target of
@@ -372,10 +378,19 @@ makeEvaluatedRangeAt
   -> Ordinal
   -> Range.SuperEllipsisRangeTarget
   -> Either InterpretingError EvaluatedRange
-makeEvaluatedRangeAt level start target =
+makeEvaluatedRangeAt =
+  makeEvaluatedRangeAtWithPolicy ClippableConcreteRange
+
+makeEvaluatedRangeAtWithPolicy
+  :: RangeAccessPolicy
+  -> Natural
+  -> Ordinal
+  -> Range.SuperEllipsisRangeTarget
+  -> Either InterpretingError EvaluatedRange
+makeEvaluatedRangeAtWithPolicy policy level start target =
   withRank level $ \valueRank ->
     case Range.superEllipsisRangeEither valueRank start target $ \valueRange ->
-        EvaluatedRange level valueRange of
+        EvaluatedRange level policy valueRange of
       Left rejection -> Left (RangeConstructionRejected rejection)
       Right value -> Right value
 
@@ -406,9 +421,12 @@ canonicalizeRanges (firstRange : rest) = go [firstRange] rest
         [] -> go [] nextRanges
         previousRange : reversedPrefix ->
           case analyzeRangePair previousRange nextRange of
-            Range.RangeConcatCanonical description -> do
+            Range.RangeConcatCanonical description
+              | evaluatedRangeAccessPolicy previousRange
+                  == evaluatedRangeAccessPolicy nextRange -> do
               merged <-
-                makeEvaluatedRangeAt
+                makeEvaluatedRangeAtWithPolicy
+                  (evaluatedRangeAccessPolicy previousRange)
                   (canonicalRangeLevel
                     previousRange nextRange description)
                   (Range.describedRangeStart description)

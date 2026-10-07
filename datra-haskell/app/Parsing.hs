@@ -19,7 +19,6 @@ import Control.Monad.Combinators.Expr
   )
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (find)
-import Data.Maybe (isJust)
 import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -84,7 +83,6 @@ import DatraLanguage.AST
       , BooleanNot
       , Coalization
       , Extract
-      , StripIdentifiers
       , Assert
       , Begin
       , Program
@@ -122,7 +120,6 @@ import DatraLanguage.Identifier
   )
 import DatraLanguage.SyntaxTemplate
   ( isSymbolicSyntaxCharacter )
-import SyntaxDefinitions (syntaxTemplatesFromExpression)
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -346,7 +343,6 @@ astForm =
       , astBinary AST.BooleanOrOperator BooleanOr
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.CoalizationOperator Coalization
-      , astUnary AST.StripIdentifiersOperator StripIdentifiers
       , astUnary AST.ExtractOperator Extract
       , astBlock "begin" Begin
       , astBlock "program" Program
@@ -680,7 +676,6 @@ syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
 syntaxTypeSuffix input signature = do
   syntaxSignature <- optional . try $ do
     _ <- continuedOperator AST.SyntaxTypeOperator
-    guard (isJust (syntaxTemplatesFromExpression input))
     SyntaxType input <$> signature
   pure (maybe input id syntaxSignature)
 
@@ -1060,6 +1055,7 @@ rangeEndpointAtom =
     , AsciiStringLiteral <$> identifierString
     , stringExpression
     , ellipsisNatural
+    , identifierReference
     ]
 
 -- Bracket access is a postfix part of the primary expression, so it binds
@@ -1573,7 +1569,7 @@ operatorToken operator = lexeme $ try $ do
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
     AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '~')
-    AST.ValueOfOperator -> notFollowedBy (char '>')
+    AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()

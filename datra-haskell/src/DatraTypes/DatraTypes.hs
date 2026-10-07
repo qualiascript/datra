@@ -15,8 +15,9 @@ module DatraTypes
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
-  , withIdentifierErasureType
   , withDependentSumAccess
+  , withDependentSumFamily
+  , withDependentSumReservationTarget
   , makeLazyMapValue
   , coalizeValue
   , coalizeMapMemberAt
@@ -69,8 +70,6 @@ module DatraTypes
   , toStringValue
   , weakToStringValue
   , templateValue
-  , stripIdentifiersValue
-  , stripIdentifiersType
   , stripOuterIdentifierValue
   , stripOuterIdentifierType
   , extractValue
@@ -121,6 +120,7 @@ module DatraTypes
   , integerLimitRangeValue
   , integerTypeValue
   , dependentIdentifierTypeValue
+  , identifierTemplateTypeValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -128,7 +128,9 @@ module DatraTypes
   , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
+  , isEmptyMap
   , makeArgumentMap
+  , makeArgumentMapPreservingSingleton
   , argumentRows
   , overloadArgumentRows
   , functionArgumentValue
@@ -150,6 +152,7 @@ module DatraTypes
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
+  , omegaArgumentValuesComplete
   , compileParameters
   , compileDependentParameter
   , parameterBindings
@@ -184,6 +187,9 @@ module DatraTypes
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
+  , interpretedSpecificationSourceValue
+  , interpretedFederationSpecificationBranches
+  , interpretedFederationSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -245,6 +251,7 @@ import Evaluation.Arguments
   , argumentRows
   , functionArgumentValue
   , makeArgumentMap
+  , makeArgumentMapPreservingSingleton
   , overloadArgumentRows
   )
 import Evaluation.Optional
@@ -261,9 +268,7 @@ import Evaluation.ToString
   , weakToStringValue
   )
 import Evaluation.IdentifierErasure
-  ( stripIdentifiersValue
-  , stripIdentifiersType
-  , stripOuterIdentifierValue
+  ( stripOuterIdentifierValue
   , stripOuterIdentifierType
   )
 import Extract (extractValue)
@@ -271,6 +276,7 @@ import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
+  , isEmptyMap
   , makeAtlasExpansion
   , makeAtlasMap
   )
@@ -285,6 +291,7 @@ import Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
+  , omegaArgumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
   , projectedArgumentSchema
@@ -342,6 +349,7 @@ import Evaluation.LimitRange
   )
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , identifierTemplateTypeValue
   , hasTrailingIdentifierMarker
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
@@ -368,8 +376,9 @@ import Evaluation.Value
   , makeFunctionValue
   , makeDependentSumValue
   , withDependentSumStructure
-  , withIdentifierErasureType
   , withDependentSumAccess
+  , withDependentSumFamily
+  , withDependentSumReservationTarget
   , makeLazyMapValue
   , syntaxCategoryTypeValue
   , astTypeValue
@@ -403,6 +412,9 @@ import Evaluation.Value
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
+  , interpretedSpecificationSourceValue
+  , interpretedFederationSpecificationBranches
+  , interpretedFederationSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap

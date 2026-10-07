@@ -28,7 +28,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "120"
   , canonicalRoundTrip "function input can be aliased"
       ( "yield ({n? : Nat} -> Nat do "
-          <> "my_it := it; yield val my_it)"
+          <> "my_it := it; yield my_it.n[1])"
       )
       "7"
       "7"
@@ -93,8 +93,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "eager capture retains its definition"
       "seed := 2\nlet offset := seed + 2\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
       "7" "11"
-  , roundTrip "identifier erasure survives serialization"
-      "yield ({abc? : Nat} -> Nat do yield val it)" "7" "7"
+  , roundTrip "named input access survives serialization"
+      "yield ({abc? : Nat} -> Nat do yield abc)" "7" "7"
   , roundTrip "input names survive serialization"
       "yield ({abc? : Nat} -> Nat do yield it.abc[1])" "7" "7"
   , roundTrip "outer it depth is captured by an escaping function"
@@ -147,14 +147,14 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "registered native function" "yield !~\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
-      "step := %\"step $Nat next\" %> ({value? : Int} -> Int) do yield value + 1\nyield step"
+      "step := \"step $Nat next\" ~% ({value? : Int} -> Int) do yield value + 1\nyield step"
       "4" "5"
   , testCase "closed syntax function retains only its map signature" $ do
       value <- requireProgram
-        "step := %\"step $Nat next\" %> ({value? : Int} -> Int) do yield value + 1\nyield step"
+        "step := \"step $Nat next\" ~% ({value? : Int} -> Int) do yield value + 1\nyield step"
       let text = renderInterpretedValue value
       assertBool "consumed syntax annotation leaked into the closure"
-        (not (" %> " `isInfixOf` text))
+        (not (" ~% " `isInfixOf` text))
   , testCase "unused ambient bindings are absent" $ do
       value <- requireProgram
         "unused := 987654321\noffset := 4\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"
@@ -209,10 +209,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertEqual "from has one shared dependency binding" 1
         (occurrences "let \"___'from\" :=" text)
-      assertEqual "range has one shared dependency binding" 1
+      assertEqual "concrete range syntax needs no range dependency binding" 0
         (occurrences "let \"___'range\" :=" text)
       assertBool "the variadic input uses an anonymous compact split directly"
-        ("val it !? fun" `isInfixOf` text
+        ("it !? fun" `isInfixOf` text
           && not ("values :=" `isInfixOf` text)
           && not ("maximum :=" `isInfixOf` text)
           && not ("minimum :=" `isInfixOf` text)
