@@ -25,7 +25,7 @@ max := {Args IntLimit,} -> IntLimit? do
     yield when it
       in Infinity; *
       in *; ()
-      candidate >= (next := this remaining[0; from 1 up])
+      candidate >= (next := this remaining[0; 1..])
         then candidate
       else next
 ```
