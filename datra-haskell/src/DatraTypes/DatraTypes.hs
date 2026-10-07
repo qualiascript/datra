@@ -183,6 +183,7 @@ module DatraTypes
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
+  , interpretedSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -401,6 +402,7 @@ import Evaluation.Value
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedExplicitOrdinal
+  , interpretedSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap

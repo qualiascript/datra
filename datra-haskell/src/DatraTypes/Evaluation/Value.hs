@@ -107,6 +107,7 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedExplicitOrdinal
+  , interpretedSpecificationSourceValue
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedRangeDescription
@@ -809,6 +810,15 @@ interpretedExplicitOrdinal
 interpretedExplicitOrdinal value =
   case interpretedForm value of
     ExplicitForm explicitValue -> Just (explicitOrdinal explicitValue)
+    _ -> Nothing
+
+interpretedSpecificationSourceValue
+  :: InterpretedValue
+  -> Maybe InterpretedValue
+interpretedSpecificationSourceValue value =
+  case interpretedForm value of
+    SpecificationForm specification ->
+      Just (evaluatedSpecificationSourceValue specification)
     _ -> Nothing
 
 interpretedInteger :: InterpretedValue -> Maybe Integer

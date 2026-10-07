@@ -2123,32 +2123,13 @@ projectDependentSum captured resolving written staticTarget insertion =
             accessValues (makeAtlasMap 2 (witness : values)) insertion
           lazyMap = makeLazyMapValue orderType
             (either (const Nothing) Just . fibreAtOrdinal)
-          prepare source = do
-            rows <- overloadArgumentRows source
-            let candidateSizes = nub (map (fromIntegral . length) rows)
-                candidateIndices = nub
-                  [ index
-                  | size <- candidateSizes
-                  , index <- [0 .. size]
-                  ]
-                attempts =
-                  [ fibreAtOrdinal (finiteOrdinal size)
-                      >>= (`argumentValuesComplete` source)
-                  | size <- candidateIndices
-                  ]
-            firstSuccessful attempts
           projection = makeDependentSumValue
             (renderSourceExpression written
               <> "[" <> renderInterpretedValue insertion <> "]")
             lazyMap
-            prepare
+            (\source -> source <$ specifyValues source lazyMap)
       pure (withDependentSumAccess (accessValues lazyMap) projection)
     _ -> accessValues staticTarget insertion
-  where
-    firstSuccessful attempts =
-      case [value | Right value <- attempts] of
-        value : _ -> Right value
-        [] -> Left (OverloadError OverloadNoMatch)
 
 instantiateDependentEntries
   :: Scope
@@ -2408,16 +2389,12 @@ contextuallySpecify
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 contextuallySpecify source target = do
-  included <- if interpretedSemanticResult source
-      == interpretedSemanticResult target
-    then Right True
-    else subfederationValues source target >>= booleanCondition
-  if included
-    then
-      if interpretedValueHasTotalMap source
-        then contextuallySpecifyValues source target
-        else Right source
-    else contextuallySpecifyValues source target
+  prepared <- contextuallySpecifyValues source target
+  Right (contextualSpecificationValue prepared)
+
+contextualSpecificationValue :: InterpretedValue -> InterpretedValue
+contextualSpecificationValue value =
+  maybe value id (interpretedSpecificationSourceValue value)
 
 externalValue
   :: Scope
