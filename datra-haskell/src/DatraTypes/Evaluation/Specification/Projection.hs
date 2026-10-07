@@ -12,6 +12,10 @@ import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Map (makeAtlasMapPreservingSingleton)
 import Evaluation.Specification (specifyValues)
 import Evaluation.Value
+import DatraLanguage.SyntaxTemplate
+  ( TemplateSelection (..)
+  , templateSelectionProjection
+  )
 
 -- | Present retained matching evidence as an ordinary finite map. String
 -- templates expose the complete source string followed by their interpolation
@@ -45,7 +49,8 @@ projectionFor source target member =
         underlying <- specifyValues
           supplied
           (evaluatedIdentifierUnderlying targetIdentifier)
-        pure (Just (projectionMap [sourceName, underlying]))
+        pure (Just (selectionProjection
+          (TemplateSelection sourceName [underlying])))
     ( DependentIdentifierTypeForm sourceIdentifier
       , DependentIdentifierTypeForm targetIdentifier
       , EvaluatedDependentIdentifierTypeMember
@@ -68,13 +73,14 @@ projectionFor source target member =
       pure $ do
         holes <- maybeHoles
         sourceString <- concreteString source
-        if null holes
-          then Nothing
-          else Just (projectionMap (sourceString : holes))
+        pure (selectionProjection (TemplateSelection sourceString holes))
     _ -> pure Nothing
 
-projectionMap :: [InterpretedValue] -> InterpretedValue
-projectionMap = makeAtlasMapPreservingSingleton 2
+selectionProjection
+  :: TemplateSelection InterpretedValue InterpretedValue
+  -> InterpretedValue
+selectionProjection =
+  makeAtlasMapPreservingSingleton 2 . templateSelectionProjection
 
 concreteString
   :: InterpretedValue

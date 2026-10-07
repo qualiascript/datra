@@ -727,7 +727,17 @@ integerLimitTests =
 declaredPatternTests :: TestTree
 declaredPatternTests =
   testGroup "declared patterns"
-    [ programCase "syntax pattern call"
+    [ programCase "zero-hole syntax completes a total domain"
+        ( "answer := \"the answer\" % (42 -> Nat) do yield it\n"
+            <> "yield the answer"
+        )
+        "42"
+    , programCase "value holes evaluate expressions before selection"
+        ( "double := \"double %Nat\" % (Nat -> Nat) do yield it * 2\n"
+            <> "yield double (2 + 2)"
+        )
+        "8"
+    , programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
     , programCase "surface syntax name may differ from its binding"
         ( "abc := \"def %Nat next\" % ({value?:Nat} -> Int)"

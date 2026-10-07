@@ -155,14 +155,18 @@ data Expression
       }
   deriving (Eq, Show)
 
--- | Apply a private contextual function at depth zero. Its native closure
--- delegates to @_inner_this@ or @_inner_it@ at the same index.
+-- | Apply a private contextual function with its depth omitted. The function
+-- domain supplies the ordinary depth-zero default; an explicit depth remains
+-- an ordinary argument.
 contextualAccess :: IdentifierString -> Expression
 contextualAccess name =
-  FunctionApplication (IdentifierReference name) (EllipsisNatural 0)
+  FunctionApplication (IdentifierReference name) (AtlasMap [])
 
 isContextualAccessOf :: IdentifierString -> Expression -> Bool
-isContextualAccessOf name expression = expression == contextualAccess name
+isContextualAccessOf name expression = case expression of
+  FunctionApplication (IdentifierReference actual) argument
+    | actual == name -> argument == EllipsisNatural 0 || argument == AtlasMap []
+  _ -> False
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that

@@ -37,7 +37,6 @@ module Interpreting
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , canonicalStringCodec
-  , matchesValueSyntaxHoleWith
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
@@ -177,6 +176,10 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
     interpretingParseFailure = ParseFailure . show
     rewriteParseFailure = ParseFailure . show
 
+-- Every syntax hole follows evaluation followed by selection. For AST
+-- categories the evaluator is the identity function and selection validates
+-- the unchanged syntax node; ordinary value holes use lexical evaluation
+-- before specification.
 captureSyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
@@ -188,12 +191,12 @@ captureSyntaxHole
   -> Maybe Expression
 captureSyntaxHole base modules strict declarations previous kind captured =
   case kind of
-    ExpressionSyntaxHole target -> evaluatedCapture target
-    BlockSyntaxHole target -> evaluatedCapture target
-    IdentifierExpressionSyntaxHole target -> evaluatedCapture target
+    ExpressionSyntaxHole target -> identityEvaluationCapture target
+    BlockSyntaxHole target -> identityEvaluationCapture target
+    IdentifierExpressionSyntaxHole target -> identityEvaluationCapture target
     ValueSyntaxHole target ->
       literalCapture target captured
-        <|> if strict then evaluatedCapture target else tentativeCapture
+        <|> if strict then valueEvaluationCapture target else tentativeCapture
   where
     literalCapture (AsciiStringLiteral literal)
         (IdentifierReference (IdentifierString capturedLiteral))
@@ -206,7 +209,21 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    evaluatedCapture targetExpression =
+    identityEvaluationCapture = captureInScopes $ \_ target ->
+      captureSyntaxExpression target captured
+    valueEvaluationCapture targetExpression =
+      captureInScopes selectValue targetExpression
+      where
+        selectValue scope _ =
+          let interpret = evalInScope scope []
+          in if identifierCaptureIsSubtype
+              scope scopedDeclarations targetExpression captured
+            then Just captured
+            else case canonicalValueCapture
+                interpret targetExpression captured of
+              Right canonical -> Just canonical
+              Left _ -> Nothing
+    captureInScopes select targetExpression =
       enclosingSyntaxCapture <|> scopedCapture
       where
         enclosing = ("\0imports", ModuleCatalog modules) : base
@@ -218,14 +235,9 @@ captureSyntaxHole base modules strict declarations previous kind captured =
           (scope, _, _) <- either (const Nothing) Just
             (declareScope enclosing
               (map syntaxValidationDeclaration scopedDeclarations))
-          let interpret = evalInScope scope []
-          if identifierCaptureIsSubtype
-              scope scopedDeclarations targetExpression captured
-            then Just captured
-            else case canonicalValueCapture
-                interpret targetExpression captured of
-              Right canonical -> Just canonical
-              Left _ -> Nothing
+          target <- either (const Nothing) Just
+            (evalInScope scope [] targetExpression)
+          select scope target
     scopedDeclarations = declarations <> binderDeclarations previous
 
 classifySyntaxHole
@@ -460,25 +472,6 @@ canonicalStringCodec =
     { renderCanonicalString = renderInterpretedValue
     , decodeCanonicalString = canonicalStringCandidates
     }
-
--- | Decide a declared @$T@ syntax hole by evaluating the captured AST and
--- checking its value directly against @T@. Canonical-string decoding is only
--- needed by the production capture path for otherwise-unbound identifier
--- literals. Parser-level AST categories such as @_Expr@ remain outside this
--- function.
-matchesValueSyntaxHoleWith
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind Expression
-  -> Expression
-  -> Bool
-matchesValueSyntaxHoleWith interpret (ValueSyntaxHole targetExpression) captured =
-  case do
-      capturedValue <- interpret captured
-      target <- interpret targetExpression
-      specifyValues capturedValue target of
-    Right _ -> True
-    Left _ -> False
-matchesValueSyntaxHoleWith _ _ _ = False
 
 evaluateFunctionSyntax
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -737,6 +730,7 @@ contextualFunction
   -> Either InterpretingError InterpretedValue
 contextualFunction surface levels@(_ : _) = do
   domain <- valuedNaturalRangeValue 0 maximumDepth
+  let schema = argumentSlotSchema Nothing False domain (Just (naturalValue 0))
   pure (makeFunctionValue (EvaluatedFunction
     domain
     anyTypeValue
@@ -744,7 +738,7 @@ contextualFunction surface levels@(_ : _) = do
     (Just sourceSyntax)
     Nothing
     signatureSource
-    Nothing
+    (Just (prepare schema))
     (Just invoke)
     False))
   where
@@ -753,6 +747,13 @@ contextualFunction surface levels@(_ : _) = do
     signatureSource = renderSourceExpression
       (FunctionType domainExpression (External (AsciiStringLiteral "datra.Any")))
     innerMap = ContextualMap ("_inner_" <> surface) levels
+
+    -- The surface spelling has no holes and therefore supplies the empty map.
+    -- Contextual depth zero is the function's ordinary default; explicit
+    -- @_this n@ and @_it n@ calls overload that default with @n@.
+    prepare schema supplied = do
+      (depth, bindings) <- overloadArgumentSchemaComplete schema supplied
+      pure (PreparedFunctionArgument supplied depth bindings)
 
     invoke reduction prepared = do
       depth <- requireFiniteInteger LeftOperand

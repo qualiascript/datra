@@ -4,6 +4,7 @@
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
+  , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
   , SyntaxFunctionBody, syntaxFunctionBodyForSymbol, applySyntaxFunctionBody
   , declarationRules, compileSyntaxTemplatesFromExpression
@@ -18,6 +19,7 @@ import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , TemplateSelection (..)
   , invalidSyntaxTemplateCharacter
   , literalSyntaxTemplate
   )
@@ -40,7 +42,8 @@ data SyntaxTemplateCompilationFailure
 
 -- | Contextual bindings are supplied by their enclosing evaluator scopes,
 -- not by Std. These zero-hole templates are ordinary syntax-function rules:
--- each surface word applies its private contextual function to literal @0@.
+-- each surface word omits the argument whose domain has depth @0@ as its
+-- default.
 contextualSyntaxRules :: [SyntaxRule]
 contextualSyntaxRules = map rule
   [ ("_this", "this")
@@ -281,24 +284,24 @@ qualifySyntaxRule namespace rule = case syntaxTemplate rule of
 -- | Expand captures selected by one declared syntax template.
 expandSyntax
   :: SyntaxRule
-  -> [Expression]
+  -> TemplateSelection Expression Expression
   -> Either SyntaxExpansionFailure Expression
-expandSyntax rule captures = case
+expandSyntax rule selection = case
     externalSymbol (syntaxImplementation rule) >>= syntaxFunctionBodyForSymbol of
   Just body -> applySyntaxFunctionBody body captures
-  _ -> Right (FunctionApplication callable (applicationInput captures))
+  _ -> Right (FunctionApplication callable suppliedInput)
   where
+    captures = templateSelectionCaptures selection
     callable = scoped (IdentifierReference (IdentifierString localName))
     localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
     scoped value = maybe value (`InModule` value) (syntaxModule rule)
-    -- A zero-hole syntax function receives the singleton value written as its
-    -- domain. Thus @"this" % (0 -> Any)@ applies its function to @0@ using
-    -- the same expansion path as any other declared template.
-    applicationInput [] = case syntaxSignature rule of
-      FunctionType domain _ -> domain
-      _ -> AtlasMap []
-    applicationInput [value] = value
-    applicationInput values = AtlasMap values
+    suppliedInput = case captures of
+      [] -> AtlasMap []
+      [value] -> value
+      values -> AtlasMap values
+    -- Function preparation overloads this supplied tail onto the declared
+    -- domain. Empty, singleton, and multi-capture syntax therefore follows the
+    -- same call path as an ordinary partial argument map.
 
 -- A named subexpression in a condition becomes a condition-local declaration
 -- when its name is used elsewhere in that condition or in either branch.

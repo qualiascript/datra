@@ -8,6 +8,8 @@ module DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   , FunctionSyntax (..)
+  , TemplateSelection (..)
+  , templateSelectionProjection
   , literalSyntaxTemplate
   , traverseSyntaxTemplate
   , renderSyntaxTemplate
@@ -57,6 +59,18 @@ newtype SyntaxTemplate value = SyntaxTemplate
 newtype FunctionSyntax value = FunctionSyntax
   { functionSyntaxTemplates :: [SyntaxTemplate value]
   } deriving (Eq, Show)
+
+-- | The evidence retained by any successful dependent presentation match.
+-- Position zero is the complete presented value; the remaining positions are
+-- the payload selected by its interpolation holes.
+data TemplateSelection whole capture = TemplateSelection
+  { templateSelectionWhole :: whole
+  , templateSelectionCaptures :: [capture]
+  } deriving (Eq, Show)
+
+templateSelectionProjection :: TemplateSelection value value -> [value]
+templateSelectionProjection selection =
+  templateSelectionWhole selection : templateSelectionCaptures selection
 
 -- | Split one literal chunk into the whitespace-delimited pieces consumed by
 -- declared-syntax matching. Holes are represented by source string

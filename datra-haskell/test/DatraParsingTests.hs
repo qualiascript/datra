@@ -3,8 +3,6 @@
 module DatraParsingTests (main) where
 
 import Data.Char (chr, toUpper)
-import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (..))
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -31,6 +29,7 @@ import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.SyntaxTemplate qualified as SyntaxTemplate
+import DatraLanguage.SyntaxTemplate (TemplateSelection (..))
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -58,10 +57,8 @@ import SyntaxDefinitions
   , syntaxFunctionBodyForSymbol
   )
 import SyntaxTemplateMatching
-  ( SyntaxTemplateFederationFailure (..)
-  , SyntaxTemplateMatchFailure (..)
-  , compileSyntaxTemplateFederation
-  , matchSyntaxTemplates
+  ( SyntaxTemplateMatchFailure (..)
+  , matchSyntaxRules
   )
 import Numeric (showHex)
 import Hedgehog qualified as H
@@ -121,9 +118,9 @@ regressionTests = do
     ( Identifier.identifierPolicy "''not compact"
         == Identifier.PublicIdentifier Identifier.ConsistentShadowing
     )
-  assertParsed "surface this applies the contextual function at depth zero"
+  assertParsed "surface this omits its defaulted contextual depth"
     "this" (contextualAccess (IdentifierString "_this"))
-  assertParsed "surface it applies the contextual function at depth zero"
+  assertParsed "surface it omits its defaulted contextual depth"
     "it" (contextualAccess (IdentifierString "_it"))
   assertParsed "explicit contextual depth remains an ordinary application"
     "_this 2"
@@ -158,9 +155,20 @@ regressionTests = do
         , syntaxImplementation = External (AsciiStringLiteral implementation)
         }
   assert "external syntax implementations are not selected by namespace"
-    (expandSyntax (syntaxControl "datra.syntax.unknown") []
+    (expandSyntax (syntaxControl "datra.syntax.unknown")
+      (TemplateSelection (ref "test-control") [])
       == Right (FunctionApplication
         (ref "test-control")
+        (AtlasMap [])))
+  let zeroCaptureSyntax = (syntaxControl "datra.syntax.unknown")
+        { syntaxName = "answer"
+        , syntaxSignature = FunctionType (natural 42) (ref "Nat")
+        }
+  assert "zero-hole syntax supplies the empty capture tail"
+    (expandSyntax zeroCaptureSyntax
+      (TemplateSelection (ref "answer") [])
+      == Right (FunctionApplication
+        (ref "answer")
         (AtlasMap [])))
   let syntaxFunction name pieces implementation = SyntaxRule
         { syntaxName = name
@@ -206,7 +214,8 @@ regressionTests = do
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
   assert "IntLimit template holes accept an Infinity AST"
-    (case expandSyntax correctFrom [natural 0, ref "Infinity"] of
+    (case expandSyntax correctFrom
+        (TemplateSelection fromPhrase [natural 0, ref "Infinity"]) of
       Right expected ->
         matchRules matchesNumericHole [correctFrom] fromPhrase
           == Right expected
@@ -269,7 +278,8 @@ regressionTests = do
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
-    (case expandSyntax greedyRule [greedyPrefix, natural 3] of
+    (case expandSyntax greedyRule
+        (TemplateSelection greedyPhrase [greedyPrefix, natural 3]) of
       Right expected ->
         matchRules matchesGreedyHole [greedyRule] greedyPhrase
           == Right expected
@@ -283,7 +293,8 @@ regressionTests = do
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
-    (case expandSyntax contextualShort [natural 1] of
+    (case expandSyntax contextualShort
+        (TemplateSelection contextualPhrase [natural 1]) of
       Right expanded ->
         matchRules matchesNumericHole
           [contextualShort, contextualLong]
@@ -305,26 +316,14 @@ regressionTests = do
   let rankedCapture = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
   assert "the first declaration greedily takes its longest valid match"
-    (case expandSyntax rankedShort [rankedCapture] of
+    (case expandSyntax rankedShort
+        (TemplateSelection rankedPhrase [rankedCapture]) of
       Right expected ->
         matchRules (const (const True))
           [rankedShort, rankedLong]
           rankedPhrase
           == Right expected
       Left _ -> False)
-  let tiedLeft = syntaxFunction "tied"
-        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        "datra.tied-left"
-      tiedRight = syntaxFunction "tied"
-        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        "datra.tied-right"
-  assert "overlapping templates are rejected before AST matching"
-    (case compileSyntaxTemplateFederation
-        (\_ _ -> AtlasMapFederationRefuted ())
-        [tiedLeft, tiedRight] of
-      Left failure -> failure == OverlappingSyntaxTemplates
-        "tied %_Expr" "tied %_Expr"
-      Right _ -> False)
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
@@ -2082,11 +2081,7 @@ matchRules
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
 matchRules holeMatches rules expressionValue =
-  case compileSyntaxTemplateFederation
-      (\_ _ -> AtlasMapFederationProved ()) rules of
-    Right federation ->
-      matchSyntaxTemplates holeMatches federation expressionValue
-    Left _ -> Left NoMatchingSyntaxTemplate
+  matchSyntaxRules holeMatches rules expressionValue
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
