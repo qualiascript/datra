@@ -10,6 +10,7 @@ import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error
   ( InterpretingError (ExpectedStringTemplateSpecification) )
 import Evaluation.Federation.Structure (sequenceOperands)
+import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Map (makeAtlasMap)
 import Evaluation.Specification (specifyValues)
 import Evaluation.Value
@@ -54,13 +55,21 @@ extractContext stringType source target member =
   case (interpretedForm source, interpretedForm target, member) of
     ( DependentIdentifierTypeForm sourceIdentifier
       , DependentIdentifierTypeForm targetIdentifier
-      , EvaluatedDependentIdentifierTypeMember underlyingMember
-      ) ->
-        extractContext
-          stringType
-          (evaluatedIdentifierUnderlying sourceIdentifier)
-          (evaluatedIdentifierUnderlying targetIdentifier)
-          underlyingMember
+      , EvaluatedDependentIdentifierTypeMember
+          maybeNameMember underlyingMember
+      ) -> do
+        case maybeNameMember of
+          Nothing ->
+            extractContext
+              stringType
+              (evaluatedIdentifierUnderlying sourceIdentifier)
+              (evaluatedIdentifierUnderlying targetIdentifier)
+              underlyingMember
+          Just nameMember -> do
+            let supplied = evaluatedIdentifierUnderlying sourceIdentifier
+            sourceName <- identifierNameFederationFor sourceIdentifier supplied
+            targetName <- identifierNameFederationFor targetIdentifier supplied
+            extractContext stringType sourceName targetName nameMember
     _ -> do
       sourceString <- requireConcreteString source
       holes <- extractTemplateHoles target member

@@ -45,7 +45,6 @@ hasDeterminateMapLength form =
     FunctionForm {} -> False
     IdentifierValueTypeForm -> False
     ToStringForm -> False
-    WeakToStringForm -> False
     TemplateForm {} -> False
     DependentSumForm {} -> False
     IdentifierStringProjectionForm {} -> False

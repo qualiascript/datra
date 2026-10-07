@@ -118,7 +118,7 @@ isTransfiniteOrdinal (PresentedSemantics _ _ semantics) =
 isTransfiniteOrdinal semantics = case semantics of
   ExplicitSemantics level _ -> level > 1
   FormulationSemantics level -> level > 0
-  DependentIdentifierTypeSemantics _ underlying _ ->
+  DependentIdentifierTypeSemantics _ underlying _ _ ->
     isTransfiniteOrdinal underlying
   AssignmentSemantics _ _ given -> isTransfiniteOrdinal given
   SpecificationSemantics source _ -> isTransfiniteOrdinal source

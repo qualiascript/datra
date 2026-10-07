@@ -37,6 +37,7 @@ makeBoolean flag = value
             DatraTrue -> "True"))
         (interpretedSemantics underlying)
         True
+        True
     value =
       makeSingletonInterpretedValue
         structuralDatraType
@@ -156,7 +157,8 @@ booleanFromSemantics semantics =
     DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency identifierString)
         underlying
-        True ->
+        True
+        _ ->
       case underlying of
         ExplicitSemantics 1 ordinalValue
           | identifierString == falseIdentifier

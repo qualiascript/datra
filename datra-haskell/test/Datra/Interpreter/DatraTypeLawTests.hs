@@ -8,14 +8,11 @@ import DatraTypes
       (AtlasMapFederationSpecificationHasNoMatchingMember)
   , InterpretedValue
   , InterpretingError (..)
-  , StringRepresentation (..)
   , datraCanonicalType
-  , datraStringRepresentation
   , interpretedCanonicalResult
   , interpretedDatraType
   , interpretedTypeIsTotal
   , toStringValue
-  , weakToStringValue
   )
 import Interpreting (canonicalStringCodec)
 import Rendering (renderInterpretedValue)
@@ -30,7 +27,7 @@ import Test.Tasty.HUnit
 
 data ExpectedStringCapability
   = CanonicalString
-  | WeakStringOnly
+  | NonCanonicalString
 
 data DatraTypeExample = DatraTypeExample
   { exampleName :: String
@@ -61,15 +58,15 @@ standardLibraryTypeExamples =
   , canonical "Str" "Str"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , weak "AST" "!~\"datra.AST\""
-  , weak "private Expr primitive" "!~\"datra.Expr\""
-  , weak "private Block primitive" "!~\"datra.Block\""
-  , weak "NatRange" "NatRange"
-  , weak "IntRange" "IntRange"
-  , weak "NatValRange" "NatValRange"
-  , weak "IntValRange" "IntValRange"
+  , noncanonical "AST" "!~\"datra.AST\""
+  , noncanonical "private Expr primitive" "!~\"datra.Expr\""
+  , noncanonical "private Block primitive" "!~\"datra.Block\""
+  , noncanonical "NatRange" "NatRange"
+  , noncanonical "IntRange" "IntRange"
+  , noncanonical "NatValRange" "NatValRange"
+  , noncanonical "IntValRange" "IntValRange"
   , canonical "Template" "Template"
-  , weak "private SyntaxTemplate primitive" "!~\"datra.SyntaxTemplate\""
+  , noncanonical "private SyntaxTemplate primitive" "!~\"datra.SyntaxTemplate\""
   ]
 
 compositeTypeExamples :: [DatraTypeExample]
@@ -82,15 +79,15 @@ compositeTypeExamples =
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
-  , weak "map containing a noncanonical type" "(Nat; (!~\"datra.AST\"))"
+  , noncanonical "map containing a noncanonical type" "(Nat; (!~\"datra.AST\"))"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 
 canonical :: String -> String -> DatraTypeExample
 canonical name source = DatraTypeExample name source CanonicalString
 
-weak :: String -> String -> DatraTypeExample
-weak name source = DatraTypeExample name source WeakStringOnly
+noncanonical :: String -> String -> DatraTypeExample
+noncanonical name source = DatraTypeExample name source NonCanonicalString
 
 datraTypeExampleTests :: DatraTypeExample -> TestTree
 datraTypeExampleTests example =
@@ -120,33 +117,23 @@ assertStringCapability expected value =
         (case datraCanonicalType (interpretedDatraType value) of
           Just _ -> True
           Nothing -> False)
-      assertEqual "canonical string capability"
-        CanonicalStringRepresentation
-        (datraStringRepresentation (interpretedDatraType value))
       case toStringValue canonicalStringCodec value of
         Left rejection ->
           assertFailure ("canonical toString failed: " <> show rejection)
         Right _ -> assertCanonicalRoundTrip value
-    WeakStringOnly -> do
-      assertBool "weak-only value is still a DatraType"
+    NonCanonicalString -> do
+      assertBool "noncanonical value is still a DatraType"
         (case datraCanonicalType (interpretedDatraType value) of
           Nothing -> True
           Just _ -> False)
-      assertEqual "weak string capability"
-        WeakStringRepresentation
-        (datraStringRepresentation (interpretedDatraType value))
       case toStringValue canonicalStringCodec value of
         Left NonInjectiveStringInterpolation -> pure ()
         Left rejection ->
           assertFailure ("unexpected canonical toString failure: "
             <> show rejection)
         Right rendered ->
-          assertFailure ("weak-only value gained canonical toString: "
+          assertFailure ("noncanonical value gained canonical toString: "
             <> renderInterpretedValue rendered)
-      case weakToStringValue canonicalStringCodec value of
-        Left rejection ->
-          assertFailure ("weakToString failed: " <> show rejection)
-        Right _ -> pure ()
 
 assertCanonicalRoundTrip :: InterpretedValue -> Assertion
 assertCanonicalRoundTrip original = do

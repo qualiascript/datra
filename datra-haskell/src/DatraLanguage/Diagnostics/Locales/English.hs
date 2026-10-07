@@ -264,9 +264,7 @@ localizeInterpretingError reason =
     NoCanonicalStringConversion ->
       LocalizedMessage
         "value does not have a canonical string conversion"
-        [ "weakToString can render the value, but specification requires "
-            <> "an injective canonical conversion"
-        ]
+        ["only injective, round-trippable string conversions are accepted"]
     ExpectedStringTemplateSpecification kind ->
       LocalizedMessage
         "extract expects a concrete string-template specification"

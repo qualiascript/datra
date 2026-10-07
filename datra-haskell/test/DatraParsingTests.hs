@@ -736,6 +736,31 @@ regressionTests = do
       rewritten == FunctionApplication (ref "gate")
         (AtlasMap [ref "x", ref "Int", ref "x"])
     _ -> False
+  let dependentIdentifierTemplate = StringTemplate
+        [ StringTemplateLiteral "abc"
+        , StringTemplateInterpolation
+            (contextualAccess (IdentifierString "_it"))
+        ]
+  assert "an identifier capture accepts a dependent string expression" $ case
+      parseSource (unlines
+        [ "(_IdenExp := !~\"datra.IdenExp\""
+        , "capture := \"capture %_IdenExp\" %%"
+            <> " (Any -> Any) !~\"datra.modular\""
+        , "capture \"abc%(it)\")"
+        ]) of
+    Right (AtlasMap [_, _, Modular captured]) ->
+      captured == dependentIdentifierTemplate
+    _ -> False
+  assert "an identifier capture accepts an optional dependent string expression" $
+    case parseSource (unlines
+      [ "(_IdenExp := !~\"datra.IdenExp\""
+      , "capture := \"capture %_IdenExp\" %%"
+          <> " (Any -> Any) !~\"datra.modular\""
+      , "capture \"abc%(it)\"?)"
+      ]) of
+      Right (AtlasMap [_, _, Modular captured]) ->
+        captured == OptionalType dependentIdentifierTemplate
+      _ -> False
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
   assertAstOutput
@@ -1474,16 +1499,9 @@ regressionTests = do
         [ StringTemplateInterpolation (ref "Nat")
         , StringTemplateLiteral "'"
         ]))
-  assertParsed
-    "weak interpolation has explicit compact syntax"
+  assertRejected
+    "the removed weak interpolation marker is rejected"
     "\"%!Str\""
-    (StringTemplate [StringTemplateWeakInterpolation (ref "Str")])
-  assertParsed
-    "weak interpolation supports compound expressions"
-    "\"%!(Nat | Nat)\""
-    (StringTemplate
-      [StringTemplateWeakInterpolation
-        (EitherType (ref "Nat") (ref "Nat"))])
   assertParsed
     "a question mark after simple interpolation is literal text"
     "\"%Int?\""
@@ -2116,7 +2134,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression (\binding result -> Program [binding] result)
     , Gen.subterm genExpression Let
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
-    , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateWeakInterpolation)
     , Gen.subterm2 genExpression genExpression MapExpansion
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
     , Gen.subterm genExpression SuperEllipsisRangePlus
@@ -2291,11 +2308,6 @@ assertAstSyntax = do
           , StringTemplateLiteral "?"
           ])
         == "\"%((ref $Int))?\""
-    )
-  assert "weak template interpolation retains its marker"
-    ( renderExpression
-        (StringTemplate [StringTemplateWeakInterpolation (ref "Str")])
-        == "\"%!((ref $Str))\""
     )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression

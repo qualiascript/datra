@@ -77,7 +77,7 @@ selectedDependentSource fallback member =
   case member of
     EvaluatedEitherMember _ selected ->
       selectedDependentSource fallback selected
-    EvaluatedDependentIdentifierTypeMember selected ->
+    EvaluatedDependentIdentifierTypeMember _ selected ->
       selectedDependentSource fallback selected
     EvaluatedDependentSumMember selected -> selected
     _ -> fallback
@@ -289,7 +289,7 @@ selectPositionalSlot select identifierIsReserved source target =
               | privateSimpleIdentifier targetIdentifier -> DecisionRefuted
               | otherwise ->
                   mapDecision
-                    EvaluatedDependentIdentifierTypeMember
+                    (EvaluatedDependentIdentifierTypeMember Nothing)
                     (select sourcePayload
                       (evaluatedIdentifierUnderlying targetIdentifier))
             _ -> select sourcePayload target
@@ -299,7 +299,7 @@ selectPositionalSlot select identifierIsReserved source target =
             case evaluatedIdentifierDependency targetIdentifier of
               SimpleIdentifierDependency _ ->
                 mapDecision
-                  EvaluatedDependentIdentifierTypeMember
+                  (EvaluatedDependentIdentifierTypeMember Nothing)
                   (select source (evaluatedIdentifierUnderlying targetIdentifier))
               DependentIdentifierDependency {} -> select source target
           _ -> select source target

@@ -187,6 +187,7 @@ makeNothing = value
         (SimpleIdentifierDependency "Nothing")
         unitSemantics
         True
+        True
     value =
       makeSingletonInterpretedValue
         structuralDatraType

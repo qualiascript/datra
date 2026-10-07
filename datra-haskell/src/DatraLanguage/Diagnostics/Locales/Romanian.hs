@@ -264,9 +264,7 @@ localizeInterpretingError reason =
     NoCanonicalStringConversion ->
       LocalizedMessage
         "valoarea nu are o conversie canonică în șir"
-        [ "weakToString poate reda valoarea, dar specificarea necesită "
-            <> "o conversie canonică injectivă"
-        ]
+        ["sunt acceptate doar conversii în șir injective și reversibile"]
     ExpectedStringTemplateSpecification kind ->
       LocalizedMessage
         "extract necesită o specificație concretă de șablon de șir"

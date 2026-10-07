@@ -9,20 +9,16 @@ module Evaluation.Value
   , CanonicalType
   , DatraType
   , DatraTypeFamily (..)
-  , StringRepresentation (..)
   , makeCanonicalType
   , canonicalTypeAsDatraType
   , makeNonCanonicalDatraType
   , structuralDatraType
-  , weakStructuralDatraType
-  , structuralDatraTypeWith
   , composedStructuralDatraType
   , functionDatraType
   , builtinMetaDatraType
   , totalBlockDatraType
   , datraTypeFamily
   , datraCanonicalType
-  , datraStringRepresentation
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
@@ -235,6 +231,9 @@ data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
   , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
+  , evaluatedIdentifierNameFamily :: Maybe
+      (InterpretedValue -> Either InterpretingError InterpretedValue)
+  , evaluatedIdentifierIsCanonical :: Bool
   }
 
 -- | Structural provenance that remains meaningful after a source-level
@@ -285,7 +284,9 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedArgumentMapMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
-  | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedDependentIdentifierTypeMember
+      (Maybe EvaluatedAtlasMapFederationMember)
+      EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
   | EvaluatedToStringMember
       InterpretedValue
@@ -491,7 +492,6 @@ data ValueForm
   | AsciiStringForm String
   | IdentifierValueTypeForm
   | ToStringForm
-  | WeakToStringForm
   | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
@@ -534,7 +534,7 @@ data ProvenInjectiveToString = ProvenInjectiveToString
 
 -- | Primitive Atlas-map federation kinds understood by the interpreter.
 -- The injective string primitive carries the language facts and inverse that
--- justified its construction; the explicitly weak primitive does not.
+-- justified its construction.
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
@@ -547,7 +547,6 @@ data InterpretedAtlasMapFederationPrimitive
   | ToStringAtlasMapFederation
       InterpretedValue
       ProvenInjectiveToString
-  | WeakToStringAtlasMapFederation InterpretedValue
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -843,7 +842,6 @@ interpretedValueKind value =
     AsciiStringForm _ -> AsciiStringValueKind
     IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
-    WeakToStringForm -> AsciiStringValueKind
     TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind

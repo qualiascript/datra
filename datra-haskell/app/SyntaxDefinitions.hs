@@ -242,7 +242,6 @@ compileSyntaxTemplatesFromExpression templates = do
       Just (syntaxTemplatePieces (syntaxTemplateFromPattern literal))
     templatePart (StringTemplateInterpolation value) =
       Just [SyntaxHole (ValueSyntaxHole value)]
-    templatePart StringTemplateWeakInterpolation {} = Nothing
 
 syntaxTemplateFromPattern :: String -> SyntaxTemplate Expression
 syntaxTemplateFromPattern = literalSyntaxTemplate

@@ -95,7 +95,6 @@ selectAtomicFederationMember source target =
       Nothing
     PrimitiveAtlasMapFederation (EitherAtlasMapFederation _) -> Nothing
     PrimitiveAtlasMapFederation (ToStringAtlasMapFederation _ _) -> Nothing
-    PrimitiveAtlasMapFederation (WeakToStringAtlasMapFederation _) -> Nothing
     SequentialAtlasMapFederation _ -> Nothing
     ConcatenatedAtlasMapFederation _ _ -> Nothing
     ExpansionAtlasMapFederation _ _ -> Nothing

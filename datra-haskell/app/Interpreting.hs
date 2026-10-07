@@ -1197,32 +1197,46 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         parts
         typeAnnotationExpression
         maybeGivenValueExpression -> do
-      identifier <- interpretStringTemplateWith interpret parts
-      case interpretedSemanticResult identifier of
-        CanonicalAsciiString identifierString
-          | isIdentifierValue identifierString ->
+      typeAnnotation <- interpret typeAnnotationExpression
+      requireCanonicalTypeAnnotation typeAnnotation
+      let identifierExpression = StringTemplate parts
+          familyKey = renderSourceExpression identifierExpression
+          nameFamily supplied =
+            interpretStringTemplateWith
+              (evalInScopeWith reduction
+                (constantContextualBindings "it" supplied <> scope)
+                resolving)
+              parts
+      identifier <- nameFamily typeAnnotation
+      case datraCanonicalType (interpretedDatraType identifier) of
+        Just _ -> pure ()
+        Nothing -> Left NoCanonicalStringConversion
+      case asciiStringFromInterpretedMap (interpretedMap identifier) of
+        Just identifierString
+          | interpretedValueHasTotalMap identifier
+          , isIdentifierValue identifierString ->
           interpretIdentifierOperation
             identifierString typeAnnotationExpression maybeGivenValueExpression
-        _ -> do
-          typeAnnotation <- interpret typeAnnotationExpression
-          requireCanonicalTypeAnnotation typeAnnotation
-          case maybeGivenValueExpression of
-            -- A name template is not a dependent identifier: only its name
-            -- awaits the surrounding dependent witness.  Static evaluation
-            -- therefore erases the unavailable name but retains the ordinary
-            -- annotation.  Exact fibre evaluation below supplies the witness
-            -- and constructs the concrete identifier normally.
-            Nothing -> Right
-              (identifierTemplateTypeValue
-                (renderInterpretedValue identifier)
-                identifier
-                typeAnnotation)
+        _ ->
+          let target = dependentIdentifierTemplateTypeValue
+                familyKey identifier nameFamily typeAnnotation
+          in case maybeGivenValueExpression of
+            Nothing -> Right target
             Just givenExpression -> do
               given <- interpret givenExpression
-              assignIdentifierValues
-                (renderInterpretedValue identifier)
-                given
-                typeAnnotation
+              _ <- specifyValues given typeAnnotation
+              givenIdentifier <- nameFamily given
+              case asciiStringFromInterpretedMap
+                  (interpretedMap givenIdentifier) of
+                Just identifierString
+                  | interpretedValueHasTotalMap givenIdentifier
+                  , isIdentifierValue identifierString ->
+                      assignIdentifierValues
+                        identifierString typeAnnotation given
+                _ ->
+                  let source = dependentIdentifierTemplateTypeValue
+                        familyKey givenIdentifier nameFamily given
+                  in specifyValues source target
 
   where
     interpret = evalInScopeWith reduction scope resolving
@@ -1736,9 +1750,6 @@ interpretStringTemplateWith interpret parts = do
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpret expressionValue
       toStringValue canonicalStringCodec value
-    interpretPart (StringTemplateWeakInterpolation expressionValue) = do
-      value <- interpret expressionValue
-      weakToStringValue canonicalStringCodec value
 
     concatenateTemplateValues left right =
       case concatenateValues left right of

@@ -1432,6 +1432,11 @@ testStringTemplates = do
     assert "the interpolated arithmetic result equals the expected string"
       (renderInterpretedValue value == "true")
   expectSourceValue
+      "comma-composed interpolations of distinct bindings"
+      "begin x := 2; y := 5 yield (\"%(x)\",\"%(y)\")" $ \value ->
+    assert "the composed total interpolations produce a Str value"
+      (interpretedValueKind value == AsciiStringValueKind)
+  expectSourceValue
       "IdenStr template accepts a compact-string value"
       "\"My name is alco\" ~> \"My name is %IdenStr\"" $ \value ->
     assert "a compact name matches IdenStr"
@@ -1820,14 +1825,10 @@ testStringTemplates = do
           ]) of
       Left AmbiguousStringTemplate -> True
       _ -> False)
-  case (Types.naturalTypeValue, Types.asciiStringValue "1") of
-    (Right naturals, Right oneString) -> do
+  case Types.naturalTypeValue of
+    Right naturals -> do
       let dependentIdentifier =
             Types.dependentIdentifierTypeValue "n" (const "same") naturals
-      assert "widest dependent identifier type is weakToString-only"
-        (Types.datraStringRepresentation
-          (Types.interpretedDatraType dependentIdentifier)
-            == Types.WeakStringRepresentation)
       assert "widest dependent identifier is not a CanonicalType"
         (case Types.datraCanonicalType
             (Types.interpretedDatraType dependentIdentifier) of
@@ -1838,35 +1839,8 @@ testStringTemplates = do
             canonicalStringCodec dependentIdentifier of
           Left NonInjectiveStringInterpolation -> True
           _ -> False)
-      case Types.weakToStringValue
-          canonicalStringCodec dependentIdentifier of
-        Left rejection ->
-          fail
-            ("dependent weakToString was rejected: " <> show rejection)
-        Right weakConversion -> do
-          assert "dependent identifier type retains the explicit weak marker"
-            (renderInterpretedValue weakConversion
-              == "\"%!(n : from 0 up)\"")
-          assert "dependent weakToString is rejected by specification"
-            (case Types.specifyValues oneString weakConversion of
-              Left NoCanonicalStringConversion -> True
-              _ -> False)
-    (Left rejection, _) ->
+    Left rejection ->
       fail ("Nat construction was rejected: " <> show rejection)
-    (_, Left rejection) ->
-      fail ("string construction was rejected: " <> show rejection)
-  expectValue
-      "weak interpolation normalizes when toString is injective"
-      (StringTemplate [StringTemplateWeakInterpolation NaturalType]) $ \value ->
-    assert "the proven strong form is canonical"
-      (renderInterpretedValue value == "\"%(from 0 up)\"")
-  expectValue
-      "weak and strong interpolation agree when toString is injective"
-      (AST.equal
-        (StringTemplate [StringTemplateWeakInterpolation NaturalType])
-        (StringTemplate [StringTemplateInterpolation NaturalType])) $ \value ->
-    assert "%!x equals %x when the strong proof exists"
-      (renderInterpretedValue value == "true")
   expectValue
       "interpolated output is not reparsed"
       (StringTemplate
@@ -3718,6 +3692,81 @@ testSpecification = do
 
 testIdentifiers :: IO ()
 testIdentifiers = do
+  expectSourceValue
+      "dependent identifier matching uses the supplied specification"
+      "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+    \value -> assert "the matching name belongs to the instantiated name fiber"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "one supplied specification can admit another matching identifier"
+      "(\"abc5..20\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+    \value -> assert "the dependent name fiber may contain multiple names"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "a name outside the instantiated dependent fiber is rejected"
+      "(\"abc0..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
+    \value -> assert "name matching uses the supplied specification's image"
+      (renderInterpretedValue value == "false")
+  expectSourceValue
+      "a dependent identifier has a canonical source representation"
+      "\"abc%(it)\" : range 0 up" $ \value ->
+    assert "the canonical form retains the identifier expression and annotation"
+      ( case Types.datraCanonicalType (Types.interpretedDatraType value) of
+          Just _ -> renderInterpretedValue value
+            == "\"abc%(it)\" : range 0 up"
+          Nothing -> False
+      )
+  expectSourceValue
+      "dependent identifier name access instantiates the name expression"
+      "(\"abc%(it)\" : range 0 up) [0]" $ \value ->
+    assert "the zero fiber is the name federation at the annotation"
+      (renderInterpretedValue value == "\"abc%(range 0 up)\"")
+  expectSourceValue
+      "a dependent identifier assignment renders its selected name"
+      "\"n%(it)\" : Nat := 5" $ \value ->
+    assert "the assignment binds it after validating the given value"
+      (renderInterpretedValue value == "n5 : Nat := 5")
+  expectSourceValue
+      "dependent identifiers participate in specification"
+      "(\"n5\" : 5) ~> (\"n%(it)\" : Nat)" $
+    \value -> assert "dependent identifier specification retains a witness"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceValue
+      "dependent identifier extraction uses its retained name witness"
+      "%((\"n5\" : 5) ~> (\"n%(it)\" : Nat))" $ \value ->
+    assert "identifier names use the ordinary template extraction path"
+      (renderInterpretedValue value == "($n5; $n5 ~> Str)")
+  expectSourceValue
+      "an optional dependent identifier accepts its named branch"
+      "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
+    \value -> assert "the named optional branch matches dependently"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "an optional dependent identifier accepts its unnamed branch"
+      "(range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
+    \value -> assert "the unnamed optional branch remains the annotation"
+      (renderInterpretedValue value == "true")
+  let contextualIt = contextualAccess (IdentifierString "_it")
+      directName = IdentifierTemplateOperation
+        [ StringTemplateLiteral "x"
+        , StringTemplateInterpolation contextualIt
+        ]
+        NaturalType
+        Nothing
+      nestedEquivalentName = IdentifierTemplateOperation
+        [ StringTemplateInterpolation
+            (StringTemplate
+              [ StringTemplateLiteral "x"
+              , StringTemplateInterpolation contextualIt
+              ])
+        ]
+        NaturalType
+        Nothing
+  assert "different dependent expressions are not assumed disjoint"
+    (case interpretExpressionReason
+        (AST.eitherType directName nestedEquivalentName) of
+      Left EitherAlternativesNotDistinct -> True
+      _ -> False)
   mapM_ (\name -> mapM_ (\source ->
       expectSourceValue source source $ \value ->
         assert source (renderInterpretedValue value == "true"))

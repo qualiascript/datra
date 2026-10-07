@@ -20,6 +20,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues, makeAtlasMap)
+import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Numerical
   ( IntegerLimit (..)
   , complementedIntegerTypeIncludesInfinity
@@ -161,12 +162,31 @@ selectMatchingIdentifierMember
   -> EvaluatedDependentIdentifierType
   -> Decision EvaluatedAtlasMapFederationMember
 selectMatchingIdentifierMember sourceIdentifier targetIdentifier =
-  if sourceString /= targetString
-    then DecisionRefuted
-    else
-      mapDecision
-        EvaluatedDependentIdentifierTypeMember
-        (selectFederationMember sourceUnderlying targetUnderlying)
+  case ( evaluatedIdentifierNameFamily sourceIdentifier
+       , evaluatedIdentifierNameFamily targetIdentifier
+       ) of
+    (Nothing, Nothing) ->
+      if sourceString /= targetString
+        then DecisionRefuted
+        else
+          mapDecision
+            (EvaluatedDependentIdentifierTypeMember Nothing)
+            (selectFederationMember sourceUnderlying targetUnderlying)
+    _ ->
+      case selectFederationMember sourceUnderlying targetUnderlying of
+        DecisionProved underlyingMember ->
+          case ( identifierNameFederationFor sourceIdentifier sourceUnderlying
+               , identifierNameFederationFor targetIdentifier sourceUnderlying
+               ) of
+            (Right sourceName, Right targetName) ->
+              mapDecision
+                (\nameMember ->
+                  EvaluatedDependentIdentifierTypeMember
+                    (Just nameMember) underlyingMember)
+                (selectFederationMember sourceName targetName)
+            _ -> DecisionUndecidable
+        DecisionRefuted -> DecisionRefuted
+        DecisionUndecidable -> DecisionUndecidable
   where
     sourceUnderlying = evaluatedIdentifierUnderlying sourceIdentifier
     targetUnderlying = evaluatedIdentifierUnderlying targetIdentifier

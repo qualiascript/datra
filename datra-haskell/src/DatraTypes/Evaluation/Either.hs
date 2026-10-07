@@ -244,10 +244,13 @@ identifierAlternativesAreDistinct
   -> EvaluatedDependentIdentifierType
   -> Bool
 identifierAlternativesAreDistinct left right
+  | SimpleIdentifierDependency leftName <- evaluatedIdentifierDependency left
+  , SimpleIdentifierDependency rightName <- evaluatedIdentifierDependency right
+  , leftName /= rightName = True
   | not
       (identifierDependenciesCompatible
         (evaluatedIdentifierDependency left)
-        (evaluatedIdentifierDependency right)) = True
+        (evaluatedIdentifierDependency right)) = False
   | otherwise =
       alternativesAreDistinct
         (evaluatedIdentifierUnderlying left)

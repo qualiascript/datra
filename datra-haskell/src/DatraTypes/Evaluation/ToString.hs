@@ -3,7 +3,6 @@
 module Evaluation.ToString
   ( CanonicalStringCodec (..)
   , toStringValue
-  , weakToStringValue
   , templateValue
   , stringConversionIsIdentity
   , stringFederationConcatenationIsInjective
@@ -41,10 +40,9 @@ toStringValue
 toStringValue codec source =
   if stringConversionIsIdentity source
     then Right source
-    else case datraStringRepresentation
-        (interpretedDatraType source) of
-      WeakStringRepresentation -> Left NonInjectiveStringInterpolation
-      CanonicalStringRepresentation ->
+    else case datraCanonicalType (interpretedDatraType source) of
+      Nothing -> Left NonInjectiveStringInterpolation
+      Just _ ->
         if interpretedTypeIsTotal source
         then
           Right
@@ -65,28 +63,6 @@ toStringValue codec source =
           (ToStringAtlasMapFederation source proof))
         NonTotalInterpretedMap
         (ToStringSemantics (interpretedSemantics source))
-
--- | Use the ordinary injective conversion whenever it is available. Only an
--- unprovable conversion constructs the explicitly non-invertible weak form.
-weakToStringValue
-  :: CanonicalStringCodec
-  -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
-weakToStringValue codec source =
-  case toStringValue codec source of
-    Right value -> Right value
-    Left NonInjectiveStringInterpolation ->
-      Right
-        (makeInterpretedValue
-          weakStructuralDatraType
-          WeakToStringForm
-          NoInsertion
-          emptyInterpretedMap
-          (PrimitiveAtlasMapFederation
-            (WeakToStringAtlasMapFederation source))
-          NonTotalInterpretedMap
-          (WeakToStringSemantics (interpretedSemantics source)))
-    Left err -> Left err
 
 -- | Retain the ordinary concatenation result while recording that its members
 -- are the pointwise outputs of one string template. A concrete string is
@@ -164,7 +140,6 @@ federationExactStrings federation =
       case primitive of
         ToStringAtlasMapFederation _ proof ->
           injectiveToStringExactStrings proof
-        WeakToStringAtlasMapFederation _ -> Nothing
         _ -> Nothing
     CoalizedAtlasMapFederation operand ->
       federationExactStrings operand
@@ -222,7 +197,6 @@ stringFederationExcludes delimiter federation =
             || case injectiveToStringCharacterAlphabet proof of
               Nothing -> False
               Just alphabet -> any (`notElem` alphabet) delimiter
-        WeakToStringAtlasMapFederation _ -> False
         IdentifierValueTypeAtlasMapFederation ->
           any (`notElem` identifierValueCharacterAlphabet) delimiter
         _ -> False

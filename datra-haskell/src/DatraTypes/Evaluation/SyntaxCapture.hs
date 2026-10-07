@@ -5,7 +5,13 @@ module Evaluation.SyntaxCapture
   ) where
 
 import DatraLanguage.AST
-  ( Expression (AsciiStringLiteral, AtlasMap, IdentifierReference, OptionalType)
+  ( Expression
+      ( AsciiStringLiteral
+      , AtlasMap
+      , IdentifierReference
+      , OptionalType
+      , StringTemplate
+      )
   )
 import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
 import Evaluation.Value
@@ -15,7 +21,6 @@ import Evaluation.Value
   , ValueForm (BuiltinMetaTypeForm)
   , interpretedForm
   )
-import IdentifierValueType (isIdentifierValue)
 
 captureSyntaxExpression
   :: InterpretedValue
@@ -35,11 +40,9 @@ captureSyntaxExpression target captured =
   where
     identifierExpression value = case value of
       IdentifierReference {} -> Just value
-      OptionalType IdentifierReference {} -> Just value
-      AsciiStringLiteral name
-        | isIdentifierValue name -> Just value
-      OptionalType (AsciiStringLiteral name)
-        | isIdentifierValue name -> Just value
+      AsciiStringLiteral {} -> Just value
+      StringTemplate {} -> Just value
+      OptionalType inner -> OptionalType <$> identifierExpression inner
       _ -> Nothing
 
 -- | Give a typed interpolation the parser capability owned by its evaluated

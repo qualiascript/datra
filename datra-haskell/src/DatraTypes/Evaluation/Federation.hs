@@ -88,14 +88,15 @@ decideFederationConcatenation
   case decideFederationConcatenation first right of
     AtlasMapFederationProved () -> decideFederationConcatenation second right
     rejection -> rejection
--- Distinct identifier families occupy disjoint named positions. This also
--- makes a sequence's canonical comma spelling interpretable when nested.
+-- Distinct constant names occupy disjoint named positions. A source-level
+-- dependent name family is not nominal: different expressions may still
+-- produce a common name, so differing family keys alone prove no separation.
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation left))
     (PrimitiveAtlasMapFederation (DependentIdentifierTypeAtlasMapFederation right))
-  | not (identifierDependenciesCompatible
-      (evaluatedIdentifierDependency left)
-      (evaluatedIdentifierDependency right)) = AtlasMapFederationProved ()
+  | SimpleIdentifierDependency leftName <- evaluatedIdentifierDependency left
+  , SimpleIdentifierDependency rightName <- evaluatedIdentifierDependency right
+  , leftName /= rightName = AtlasMapFederationProved ()
 decideFederationConcatenation
     (PrimitiveAtlasMapFederation
       (NaturalRangeAtlasMapFederation

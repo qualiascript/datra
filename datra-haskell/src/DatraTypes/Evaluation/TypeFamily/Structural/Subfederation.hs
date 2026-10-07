@@ -15,6 +15,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (makeAtlasMap)
+import Evaluation.Identifier (identifierNameFederationFor)
 import Evaluation.Numerical
   ( nonnegativeFederationInComplementedInteger )
 import Evaluation.Specification.Composition (selectFederationMember)
@@ -203,7 +204,29 @@ decideIdentifierSubfederation decideSubfederation source target
         decideSubfederation
           (evaluatedIdentifierUnderlying source)
           (evaluatedIdentifierUnderlying target)
-  | otherwise = DecisionRefuted
+  | SimpleIdentifierDependency {} <- evaluatedIdentifierDependency source
+  , Just _ <- evaluatedIdentifierNameFamily target =
+      case decideSubfederation sourceUnderlying targetUnderlying of
+        DecisionProved () ->
+          case ( identifierNameFederationFor source sourceUnderlying
+               , identifierNameFederationFor target sourceUnderlying
+               ) of
+            (Right sourceName, Right targetName) ->
+              mapDecision
+                (const ())
+                (selectFederationMember sourceName targetName)
+            _ -> DecisionUndecidable
+        DecisionRefuted -> DecisionRefuted
+        DecisionUndecidable -> DecisionUndecidable
+  | SimpleIdentifierDependency {} <- evaluatedIdentifierDependency source
+  , SimpleIdentifierDependency {} <- evaluatedIdentifierDependency target =
+      DecisionRefuted
+  | SimpleIdentifierDependency {} <- evaluatedIdentifierDependency source =
+      DecisionRefuted
+  | otherwise = DecisionUndecidable
+  where
+    sourceUnderlying = evaluatedIdentifierUnderlying source
+    targetUnderlying = evaluatedIdentifierUnderlying target
 
 decideExpansionSubfederation
   :: SubfederationDecider

@@ -102,7 +102,6 @@ import DatraLanguage.AST
   , StringTemplatePart
       ( StringTemplateInterpolation
       , StringTemplateLiteral
-      , StringTemplateWeakInterpolation
       )
   , contextualAccess
   )
@@ -1400,12 +1399,7 @@ stringTemplateToken compoundInterpolation simpleInterpolation =
   where
     stringInterpolation = do
       _ <- char '%'
-      interpolationConstructor <-
-        maybe
-          StringTemplateInterpolation
-          (const StringTemplateWeakInterpolation)
-          <$> optional (char '!')
-      ParsedStringTemplateInterpolation . interpolationConstructor
+      ParsedStringTemplateInterpolation . StringTemplateInterpolation
         <$> (parenthesizedInterpolation <|> simpleInterpolation)
 
     parenthesizedInterpolation = do

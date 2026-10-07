@@ -7,9 +7,7 @@ module DatraTypes
   ( ASTMetaCategory (..)
   , CanonicalType
   , DatraType
-  , StringRepresentation (..)
   , datraCanonicalType
-  , datraStringRepresentation
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
@@ -71,7 +69,6 @@ module DatraTypes
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
-  , weakToStringValue
   , templateValue
   , stripOuterIdentifierValue
   , stripOuterIdentifierType
@@ -123,6 +120,7 @@ module DatraTypes
   , integerLimitRangeValue
   , integerTypeValue
   , dependentIdentifierTypeValue
+  , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
@@ -198,6 +196,7 @@ module DatraTypes
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMap
+  , asciiStringFromInterpretedMap
   , interpretedMapCardinality
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
@@ -271,7 +270,6 @@ import Evaluation.ToString
   ( CanonicalStringCodec (..)
   , templateValue
   , toStringValue
-  , weakToStringValue
   )
 import Evaluation.IdentifierErasure
   ( stripOuterIdentifierValue
@@ -356,6 +354,7 @@ import Evaluation.LimitRange
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , hasTrailingIdentifierMarker
   , simpleIdentifierTypeValue
@@ -373,9 +372,7 @@ import Evaluation.Value
   ( ASTMetaCategory (..)
   , CanonicalType
   , DatraType
-  , StringRepresentation (..)
   , datraCanonicalType
-  , datraStringRepresentation
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
@@ -426,6 +423,7 @@ import Evaluation.Value
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
+  , asciiStringFromInterpretedMap
   , interpretedMapCardinality
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
