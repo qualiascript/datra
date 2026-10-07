@@ -40,7 +40,7 @@ decideBuiltinMetaSubfederation source target =
       (_, OrdinalMetaType) -> isTransfiniteOrdinal
         (interpretedSemantics source)
       (BuiltinMetaTypeForm actual, expected) | actual == expected -> True
-      (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType Nothing) -> True
+      (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType AnyAST) -> True
       (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True
       (BuiltinMetaTypeForm NatValRangeMetaType, IntValRangeMetaType) -> True
       (_, NatRangeMetaType) | isPositiveInfinity source -> True

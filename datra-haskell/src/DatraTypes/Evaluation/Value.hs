@@ -4,7 +4,8 @@
 -- Constructors stay internal; the public 'DatraTypes' module exposes only the
 -- observations and checked operations needed by the AST interpreter.
 module Evaluation.Value
-  ( BuiltinMetaType (..)
+  ( ASTMetaCategory (..)
+  , BuiltinMetaType (..)
   , CanonicalType
   , DatraType
   , DatraTypeFamily (..)
@@ -432,7 +433,11 @@ isFunctionFamily value =
 builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName AnyMetaType = "Any"
 builtinMetaTypeName OrdinalMetaType = "Ordinal"
-builtinMetaTypeName (ASTMetaType name) = maybe "_AST" id name
+builtinMetaTypeName (ASTMetaType category) = case category of
+  AnyAST -> "_AST"
+  ExpressionAST -> "Expr"
+  BlockAST -> "Block"
+  IdentifierExpressionAST -> "IdenExp"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
@@ -451,7 +456,7 @@ anyTypeValue, ordinalTypeValue, astTypeValue, naturalRangeTypeValue, integerRang
   templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
 anyTypeValue = builtinMetaTypeValue AnyMetaType
 ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
-astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
+astTypeValue = builtinMetaTypeValue (ASTMetaType AnyAST)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
 naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
@@ -459,8 +464,8 @@ integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
 templateTypeValue = builtinMetaTypeValue TemplateMetaType
 syntaxTemplateTypeValue = builtinMetaTypeValue SyntaxTemplateMetaType
 
-syntaxCategoryTypeValue :: String -> InterpretedValue
-syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType . Just
+syntaxCategoryTypeValue :: ASTMetaCategory -> InterpretedValue
+syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType
 
 data ValueForm
   = BuiltinMetaTypeForm BuiltinMetaType

@@ -3,10 +3,12 @@
 -- evaluated form carries the corresponding resolved Datra values.
 module DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
+  , syntaxHoleValue
+  , mapSyntaxHoleKind
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   , FunctionSyntax (..)
-  , parseSyntaxTemplate
+  , literalSyntaxTemplate
   , traverseSyntaxTemplate
   , renderSyntaxTemplate
   , invalidSyntaxTemplateCharacter
@@ -26,6 +28,23 @@ data SyntaxHoleKind value
   | ValueSyntaxHole value
   deriving (Eq, Show)
 
+syntaxHoleValue :: SyntaxHoleKind value -> value
+syntaxHoleValue (ExpressionSyntaxHole value) = value
+syntaxHoleValue (BlockSyntaxHole value) = value
+syntaxHoleValue (IdentifierExpressionSyntaxHole value) = value
+syntaxHoleValue (ValueSyntaxHole value) = value
+
+mapSyntaxHoleKind
+  :: (source -> target)
+  -> SyntaxHoleKind source
+  -> SyntaxHoleKind target
+mapSyntaxHoleKind transform kind = case kind of
+  ExpressionSyntaxHole value -> ExpressionSyntaxHole (transform value)
+  BlockSyntaxHole value -> BlockSyntaxHole (transform value)
+  IdentifierExpressionSyntaxHole value ->
+    IdentifierExpressionSyntaxHole (transform value)
+  ValueSyntaxHole value -> ValueSyntaxHole (transform value)
+
 data SyntaxPiece value
   = SyntaxLiteral String
   | SyntaxHole (SyntaxHoleKind value)
@@ -39,29 +58,16 @@ newtype FunctionSyntax value = FunctionSyntax
   { functionSyntaxTemplates :: [SyntaxTemplate value]
   } deriving (Eq, Show)
 
-parseSyntaxTemplate :: (String -> value) -> String -> SyntaxTemplate value
-parseSyntaxTemplate valueReference =
-  SyntaxTemplate . concatMap tokenPieces . words
-  where
-    tokenPieces [] = []
-    tokenPieces ('$' : remaining)
-      | not (null holeName) = hole holeName : tokenPieces suffix
-      | otherwise = SyntaxLiteral "$" : tokenPieces remaining
-      where
-        (holeName, suffix) = span isIdentifierCharacter remaining
-    tokenPieces token =
-      let (literal, remaining) = break (== '$') token
-      in SyntaxLiteral literal : tokenPieces remaining
-
-    hole "_Expr" = SyntaxHole (ExpressionSyntaxHole (valueReference "_Expr"))
-    hole "_Block" = SyntaxHole (BlockSyntaxHole (valueReference "_Block"))
-    hole "_IdenExp" =
-      SyntaxHole (IdentifierExpressionSyntaxHole (valueReference "_IdenExp"))
-    hole kind = SyntaxHole (ValueSyntaxHole (valueReference kind))
+-- | Split one literal chunk into the whitespace-delimited pieces consumed by
+-- declared-syntax matching. Holes are represented by source string
+-- interpolation nodes and are therefore compiled separately from literal
+-- text; in particular, an escaped percent sign can never become a hole here.
+literalSyntaxTemplate :: String -> SyntaxTemplate value
+literalSyntaxTemplate = SyntaxTemplate . map SyntaxLiteral . words
 
 -- | Return the first literal character that the neutral source parser cannot
 -- retain as part of a declared syntax phrase. This validation is intentionally
--- separate from 'parseSyntaxTemplate': template strings remain ordinary valid
+-- separate from 'literalSyntaxTemplate': template strings remain ordinary valid
 -- values until a syntax type operator asks to install one as surface syntax.
 invalidSyntaxTemplateCharacter :: SyntaxTemplate value -> Maybe Char
 invalidSyntaxTemplateCharacter (SyntaxTemplate pieces) = listToMaybe
@@ -105,7 +111,7 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
   unwords (map renderPiece pieces)
   where
     renderPiece (SyntaxLiteral literal) = literal
-    renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "$_Expr"
-    renderPiece (SyntaxHole BlockSyntaxHole {}) = "$_Block"
-    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "$_IdenExp"
-    renderPiece (SyntaxHole (ValueSyntaxHole value)) = '$' : renderValue value
+    renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "%_Expr"
+    renderPiece (SyntaxHole BlockSyntaxHole {}) = "%_Block"
+    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "%_IdenExp"
+    renderPiece (SyntaxHole (ValueSyntaxHole value)) = '%' : renderValue value

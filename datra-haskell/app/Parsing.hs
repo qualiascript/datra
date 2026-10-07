@@ -1570,6 +1570,7 @@ operatorToken operator = lexeme $ try $ do
     AST.OptionalOperator -> notFollowedBy (char '?')
     AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '~')
     AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%')
+    AST.ExtractOperator -> notFollowedBy (char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()

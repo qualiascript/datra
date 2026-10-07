@@ -194,12 +194,12 @@ canonicalSyntaxTemplate rule = unwords
   (map renderPiece (rulePieces rule))
   where
     renderPiece (SyntaxLiteral literal) = literal
-    renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "$_Expr"
-    renderPiece (SyntaxHole BlockSyntaxHole {}) = "$_Block"
-    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "$_IdenExp"
+    renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "%_Expr"
+    renderPiece (SyntaxHole BlockSyntaxHole {}) = "%_Block"
+    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "%_IdenExp"
     renderPiece (SyntaxHole (ValueSyntaxHole kind)) =
       case kind of
-        IdentifierReference (IdentifierString name) -> '$' : name
+        IdentifierReference (IdentifierString name) -> '%' : name
         _ -> "%(" <> renderSourceExpression kind <> ")"
 
 rulePieces :: SyntaxRule -> [SyntaxPiece Expression]

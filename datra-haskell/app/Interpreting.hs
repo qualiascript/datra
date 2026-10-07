@@ -79,6 +79,8 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , mapSyntaxHoleKind
+  , syntaxHoleValue
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -161,12 +163,13 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
       initialRules =
         contextualSyntaxRules
           <> standardRules <> qualifiedImportedRules <> explicitlyImportedRules
+      classify = classifySyntaxHole base modules
       capture = captureSyntaxHole base modules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture initialRules [] expressionValue
+          rewriteExplicitSyntax classify capture initialRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture initialRules [] entries
+          rewriteImplicitSyntax classify capture initialRules [] entries
         _ -> Left MissingImplicitBlockResult
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
   pure (Located sourceSpan expressionValue)
@@ -224,6 +227,23 @@ captureSyntaxHole base modules strict declarations previous kind captured =
               Right canonical -> Just canonical
               Left _ -> Nothing
     scopedDeclarations = declarations <> binderDeclarations previous
+
+classifySyntaxHole
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> SyntaxHoleKind Expression
+  -> SyntaxHoleKind Expression
+classifySyntaxHole base modules declarations kind =
+  case kind of
+    ValueSyntaxHole target ->
+      either (const kind) (`specializeSyntaxHoleKind` kind) $ do
+        (scope, _, _) <- declareScope enclosing
+          (map syntaxValidationDeclaration declarations)
+        evalInScope scope [] target
+    _ -> kind
+  where
+    enclosing = ("\0imports", ModuleCatalog modules) : base
 
 binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
@@ -414,11 +434,14 @@ parsedDefaultModule = do
     (parseDatraRawLocatedWithSourceName standardLibraryFileName
       (requiredBundledLibrarySource standardLibraryFileName))
   let capture = captureSyntaxHole [] []
+      classify = classifySyntaxHole [] []
       rewritten = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture contextualSyntaxRules [] expressionValue
+          rewriteExplicitSyntax
+            classify capture contextualSyntaxRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture contextualSyntaxRules [] entries
+          rewriteImplicitSyntax
+            classify capture contextualSyntaxRules [] entries
         _ -> Left MissingImplicitBlockResult
   either
     (parseFailure . ParseFailure . show)
@@ -465,30 +488,31 @@ evaluateFunctionSyntax
   -> Either InterpretingError (FunctionSyntax InterpretedValue)
 evaluateFunctionSyntax interpret templatesExpression = do
   templates <- validatedSyntaxTemplates templatesExpression
-  FunctionSyntax <$> traverse
-    (traverseSyntaxTemplate interpret)
-    templates
+  evaluated <- traverse (traverseSyntaxTemplate interpret) templates
+  pure (FunctionSyntax (map specializeTemplate evaluated))
+  where
+    specializeTemplate (SyntaxTemplate pieces) =
+      SyntaxTemplate (map specializePiece pieces)
+    specializePiece (SyntaxHole kind@(ValueSyntaxHole target)) =
+      SyntaxHole (specializeSyntaxHoleKind target kind)
+    specializePiece piece = piece
 
 sourceFunctionSyntax
-  :: Expression
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> Expression
   -> Either InterpretingError (FunctionSyntax String)
-sourceFunctionSyntax templatesExpression = do
+sourceFunctionSyntax interpret templatesExpression = do
   templates <- validatedSyntaxTemplates templatesExpression
-  pure (FunctionSyntax (map
-    (fmapTemplate renderSourceExpression)
-    templates))
+  FunctionSyntax <$> traverse sourceTemplate templates
   where
-    fmapTemplate transform (SyntaxTemplate pieces) =
-      SyntaxTemplate (map (fmapPiece transform) pieces)
-    fmapPiece _ (SyntaxLiteral literal) = SyntaxLiteral literal
-    fmapPiece transform (SyntaxHole (ExpressionSyntaxHole value)) =
-      SyntaxHole (ExpressionSyntaxHole (transform value))
-    fmapPiece transform (SyntaxHole (BlockSyntaxHole value)) =
-      SyntaxHole (BlockSyntaxHole (transform value))
-    fmapPiece transform (SyntaxHole (IdentifierExpressionSyntaxHole value)) =
-      SyntaxHole (IdentifierExpressionSyntaxHole (transform value))
-    fmapPiece transform (SyntaxHole (ValueSyntaxHole value)) =
-      SyntaxHole (ValueSyntaxHole (transform value))
+    sourceTemplate (SyntaxTemplate pieces) =
+      SyntaxTemplate <$> traverse sourcePiece pieces
+    sourcePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
+    sourcePiece (SyntaxHole kind) = do
+      target <- interpret (syntaxHoleValue kind)
+      pure (SyntaxHole
+        (mapSyntaxHoleKind renderSourceExpression
+          (specializeSyntaxHoleKind target kind)))
 
 validatedSyntaxTemplates
   :: Expression
@@ -1021,7 +1045,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
     SyntaxType templates signature -> do
       syntax <- evaluateFunctionSyntax interpret templates
-      sourceSyntax <- sourceFunctionSyntax templates
+      sourceSyntax <- sourceFunctionSyntax interpret templates
       value <- interpret signature
       case interpretedFunction value of
         Just function -> pure (makeFunctionValue function
@@ -1125,7 +1149,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           interpretSpecificationWith interpret implementation syntaxType
       | External descriptorExpression <- implementation -> do
           syntax <- evaluateFunctionSyntax interpret templates
-          sourceSyntax <- sourceFunctionSyntax templates
+          sourceSyntax <- sourceFunctionSyntax interpret templates
           descriptor <- interpret descriptorExpression
           target <- interpret signature
           value <- resolveExternal scope descriptor
@@ -1150,7 +1174,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               AstPatternRequiresFunctionImplementation)
       | otherwise -> do
           syntax <- evaluateFunctionSyntax interpret templates
-          sourceSyntax <- sourceFunctionSyntax templates
+          sourceSyntax <- sourceFunctionSyntax interpret templates
           value <- interpret (MapSpecification implementation signature)
           case interpretedFunction value of
             Just function -> pure (makeFunctionValue function
@@ -2560,9 +2584,9 @@ registeredExternal symbol = case symbol of
       (Just (\_ preparedCall ->
         publicValue (functionPreparedArgument preparedCall))) False))
   "datra.AST" -> Right astTypeValue
-  "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
-  "datra.IdenExp" -> Right (syntaxCategoryTypeValue "IdenExp")
-  "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
+  "datra.Expr" -> Right (syntaxCategoryTypeValue ExpressionAST)
+  "datra.IdenExp" -> Right (syntaxCategoryTypeValue IdentifierExpressionAST)
+  "datra.Block" -> Right (syntaxCategoryTypeValue BlockAST)
   "datra.Template" -> Right templateTypeValue
   "datra.SyntaxTemplate" -> Right syntaxTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue

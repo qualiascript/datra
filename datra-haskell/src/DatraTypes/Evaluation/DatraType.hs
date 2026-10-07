@@ -6,7 +6,8 @@
 -- tying the runtime representation to the current Haskell evaluator: a future
 -- self-hosted standard library can select the same capabilities declaratively.
 module Evaluation.DatraType
-  ( BuiltinMetaType (..)
+  ( ASTMetaCategory (..)
+  , BuiltinMetaType (..)
   , CanonicalType
   , DatraType
   , DatraTypeFamily (..)
@@ -29,10 +30,17 @@ module Evaluation.DatraType
 -- | Host-provided primitive families exposed through declarations in
 -- @libs/std.datra@.  These names are capabilities, not language-level
 -- bindings; the standard library remains responsible for publishing them.
+data ASTMetaCategory
+  = AnyAST
+  | ExpressionAST
+  | BlockAST
+  | IdentifierExpressionAST
+  deriving (Eq, Show)
+
 data BuiltinMetaType
   = AnyMetaType
   | OrdinalMetaType
-  | ASTMetaType (Maybe String)
+  | ASTMetaType ASTMetaCategory
   | NatRangeMetaType
   | IntRangeMetaType
   | NatValRangeMetaType

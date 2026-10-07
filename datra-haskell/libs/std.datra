@@ -3,7 +3,7 @@ _Expr := !~"datra.Expr"
 _IdenExp := !~"datra.IdenExp"
 _Block := !~"datra.Block"
 
-'begin := "begin $_Block yield $_Expr" ~% (_AST, _AST -> _AST) !~"datra.begin"
+'begin := "begin %_Block yield %_Expr" %% (_AST, _AST -> _AST) !~"datra.begin"
 
 yield Std := begin
 
@@ -27,57 +27,57 @@ yield Std := begin
   IntValRange := !~"datra.IntValRange"
 
   # These bindings introduce parsing rules.
-  'let := "let $_Expr" ~% (_AST -> _AST) !~"datra.let"
+  'let := "let %_Expr" %% (_AST -> _AST) !~"datra.let"
   'assert :=
-    ("assert %("hard") $_Expr" ~%
+    ("assert %("hard") %_Expr" %%
       (($hard; _AST) -> _AST) !~"datra.assertHard") |
-    ("assert $_Expr" ~% (_AST -> _AST) !~"datra.assert")
+    ("assert %_Expr" %% (_AST -> _AST) !~"datra.assert")
   'begin := 'begin
-  'do := "do $_Block yield $_Expr" ~% (_AST, _AST -> _AST) !~"datra.do"
+  'do := "do %_Block yield %_Expr" %% (_AST, _AST -> _AST) !~"datra.do"
   'for :=
-    ("for $_IdenExp of $_Expr" ~%
+    ("for %_IdenExp of %_Expr" %%
       (_AST, _AST -> _AST) !~"datra.for") |
     ((
-        "for $_IdenExp in $_Expr do $_Expr"
-        "for $_IdenExp $IntValRange do $_Expr"
-      ) ~%
+        "for %_IdenExp in %_Expr do %_Expr"
+        "for %_IdenExp %IntValRange do %_Expr"
+      ) %%
       (_AST, _AST, _AST -> _AST) !~"datra.forIn")
   let 'from :=
-    ("from $Int to $IntLimit" ~%
+    ("from %Int to %IntLimit" %%
       ({origin : Int; target : IntLimit} -> IntValRange) !~"datra.from") |
-    ("from $Int $_Direction" ~%
+    ("from %Int %_Direction" %%
       ({origin : Int; direction : _Direction} -> IntValRange) !~"datra.from")
-  'fun := "fun $_Expr" ~% (_AST -> _AST) !~"datra.fun"
+  'fun := "fun %_Expr" %% (_AST -> _AST) !~"datra.fun"
   'if :=
-    ("if $_Expr then $_Expr else $_Expr" ~%
+    ("if %_Expr then %_Expr else %_Expr" %%
       (_AST, _AST, _AST -> _AST) !~"datra.if") |
-    ("if $_Expr then $_Expr" ~%
+    ("if %_Expr then %_Expr" %%
       (_AST, _AST -> _AST) !~"datra.ifThen")
   'import :=
-    ("import %("all") $Str" ~%
+    ("import %("all") %Str" %%
       (($all; Str) -> ()) !~"datra.importAll") |
-    ("import $Str" ~% (Str -> ()) !~"datra.import")
-  'len := "len $_Expr" ~% (Any -> NatLimit) !~"datra.len"
-  'modular := "modular $_Expr" ~% (_AST -> _AST) !~"datra.modular"
+    ("import %Str" %% (Str -> ()) !~"datra.import")
+  'len := "len %_Expr" %% (Any -> NatLimit) !~"datra.len"
+  'modular := "modular %_Expr" %% (_AST -> _AST) !~"datra.modular"
   let 'range :=
-    ("range $IntLimit to $IntLimit" ~%
+    ("range %IntLimit to %IntLimit" %%
       ({origin : IntLimit; target : IntLimit} -> IntRange) !~"datra.range") |
-    ("range $IntLimit $_Direction" ~%
+    ("range %IntLimit %_Direction" %%
       ({origin : IntLimit; direction : _Direction} -> IntRange) !~"datra.range")
   'with :=
-    ("with $_IdenExp of $_Expr" ~%
+    ("with %_IdenExp of %_Expr" %%
       (_AST, _AST -> _AST) !~"datra.with") |
     ((
-        "with $_IdenExp in $_Expr do $_Expr"
-        "with $_IdenExp $IntValRange do $_Expr"
-      ) ~%
+        "with %_IdenExp in %_Expr do %_Expr"
+        "with %_IdenExp %IntValRange do %_Expr"
+      ) %%
       (_AST, _AST, _AST -> _AST) !~"datra.withIn")
 
   # These parsing rules are ordered from lower to higher precedence.
-  or := "$_Expr or $_Expr" ~% (_AST, _AST -> _AST) !~"datra.or"
-  and := "$_Expr and $_Expr" ~% (_AST, _AST -> _AST) !~"datra.and"
-  of := "$_Expr of $_Expr" ~% (_AST, _AST -> _AST) !~"datra.of"
-  not := "not $_Expr" ~% (_AST -> _AST) !~"datra.not"
+  or := "%_Expr or %_Expr" %% (_AST, _AST -> _AST) !~"datra.or"
+  and := "%_Expr and %_Expr" %% (_AST, _AST -> _AST) !~"datra.and"
+  of := "%_Expr of %_Expr" %% (_AST, _AST -> _AST) !~"datra.of"
+  not := "not %_Expr" %% (_AST -> _AST) !~"datra.not"
 
   List := (for T? of Any) -> Any do yield fun (() | T; this)
   InhabitedList := (for T? of Any) -> Any do yield (T; List T)

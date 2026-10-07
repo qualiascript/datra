@@ -4,7 +4,8 @@
 -- checked construction, canonicalization, access validation, and their
 -- strongly typed failures belong here.
 module DatraTypes
-  ( CanonicalType
+  ( ASTMetaCategory (..)
+  , CanonicalType
   , DatraType
   , StringRepresentation (..)
   , datraCanonicalType
@@ -23,6 +24,7 @@ module DatraTypes
   , coalizeMapMemberAt
   , syntaxCategoryTypeValue
   , captureSyntaxExpression
+  , specializeSyntaxHoleKind
   , astTypeValue
   , functionAlternatives
   , templateTypeValue
@@ -227,7 +229,8 @@ import Evaluation.Construction
   , makeInteger
   )
 import Evaluation.Coalization (coalizeMapMemberAt, coalizeValue)
-import Evaluation.SyntaxCapture (captureSyntaxExpression)
+import Evaluation.SyntaxCapture
+  ( captureSyntaxExpression, specializeSyntaxHoleKind )
 import Evaluation.Boolean
   ( booleanAndValues
   , booleanCondition
@@ -367,7 +370,8 @@ import Evaluation.Specification
   , specifyValues
   )
 import Evaluation.Value
-  ( CanonicalType
+  ( ASTMetaCategory (..)
+  , CanonicalType
   , DatraType
   , StringRepresentation (..)
   , datraCanonicalType

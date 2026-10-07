@@ -273,13 +273,13 @@ localizeInterpretingError reason =
         ["tipul valorii date: " <> valueKind kind]
     InvalidSyntaxTemplateOperand ->
       LocalizedMessage
-        "~% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
+        "%% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
         []
     InvalidSyntaxTemplateCharacter character ->
       LocalizedMessage
         "șablonul sintactic conține un caracter literal nevalid"
         [ "caracter: " <> show character
-        , "~% poate instala doar literali păstrați de analizorul neutru al sursei"
+        , "%% poate instala doar literali păstrați de analizorul neutru al sursei"
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage

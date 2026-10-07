@@ -147,14 +147,14 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "registered native function" "yield !~\"datra.add\""
       "(2, 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
-      "step := \"step $Nat next\" ~% ({value? : Int} -> Int) do yield value + 1\nyield step"
+      "step := \"step %Nat next\" %% ({value? : Int} -> Int) do yield value + 1\nyield step"
       "4" "5"
   , testCase "closed syntax function retains only its map signature" $ do
       value <- requireProgram
-        "step := \"step $Nat next\" ~% ({value? : Int} -> Int) do yield value + 1\nyield step"
+        "step := \"step %Nat next\" %% ({value? : Int} -> Int) do yield value + 1\nyield step"
       let text = renderInterpretedValue value
       assertBool "consumed syntax annotation leaked into the closure"
-        (not (" ~% " `isInfixOf` text))
+        (not (" %% " `isInfixOf` text))
   , testCase "unused ambient bindings are absent" $ do
       value <- requireProgram
         "unused := 987654321\noffset := 4\nf := ({x? : Int} -> Int do yield x + offset)\nyield f"

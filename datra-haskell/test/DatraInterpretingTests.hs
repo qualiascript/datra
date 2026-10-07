@@ -225,7 +225,12 @@ testModuleSyntaxAlias = do
       expressionType = External (AsciiStringLiteral "datra.Expr")
       blockType = External (AsciiStringLiteral "datra.Block")
       beginValue = SyntaxType
-        (AsciiStringLiteral "begin $_Block yield $_Expr")
+        (StringTemplate
+          [ StringTemplateLiteral "begin "
+          , StringTemplateInterpolation (identifierReference "_Block")
+          , StringTemplateLiteral " yield "
+          , StringTemplateInterpolation (identifierReference "_Expr")
+          ])
         (FunctionType (AtlasMap [astType, astType]) astType)
       binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
@@ -1321,7 +1326,11 @@ testSlotOrdinalDistinctness = do
 testStringTemplates :: IO ()
 testStringTemplates = do
   case interpretExpressionReason
-      (SyntaxType (AsciiStringLiteral "choose $Int mark")
+      (SyntaxType (StringTemplate
+        [ StringTemplateLiteral "choose "
+        , StringTemplateInterpolation (identifierReference "Int")
+        , StringTemplateLiteral " mark"
+        ])
         (FunctionType IntegerType IntegerType)) of
     Right value -> do
       assert "syntax annotations are erased from canonical function rendering"
@@ -1405,7 +1414,7 @@ testStringTemplates = do
         , overlappingRule (identifierReference "Int") "datra.choose-int"
         ] of
       Left failure -> failure == OverlappingSyntaxTemplates
-        "choose $Nat mark" "choose $Int mark"
+        "choose %Nat mark" "choose %Int mark"
       Right _ -> False)
   expectSourceValue
       "Int template excludes Infinity"

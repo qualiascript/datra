@@ -1,11 +1,16 @@
 -- | AST capture supplied by explicitly declared syntax-category types.
-module Evaluation.SyntaxCapture (captureSyntaxExpression) where
+module Evaluation.SyntaxCapture
+  ( captureSyntaxExpression
+  , specializeSyntaxHoleKind
+  ) where
 
 import DatraLanguage.AST
   ( Expression (AsciiStringLiteral, AtlasMap, IdentifierReference, OptionalType)
   )
+import DatraLanguage.SyntaxTemplate (SyntaxHoleKind (..))
 import Evaluation.Value
-  ( BuiltinMetaType (ASTMetaType)
+  ( ASTMetaCategory (..)
+  , BuiltinMetaType (ASTMetaType)
   , InterpretedValue
   , ValueForm (BuiltinMetaTypeForm)
   , interpretedForm
@@ -18,13 +23,13 @@ captureSyntaxExpression
   -> Maybe Expression
 captureSyntaxExpression target captured =
   case interpretedForm target of
-    BuiltinMetaTypeForm (ASTMetaType Nothing) -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType (Just "Expr")) -> Just captured
-    BuiltinMetaTypeForm (ASTMetaType (Just "Block")) ->
+    BuiltinMetaTypeForm (ASTMetaType AnyAST) -> Just captured
+    BuiltinMetaTypeForm (ASTMetaType ExpressionAST) -> Just captured
+    BuiltinMetaTypeForm (ASTMetaType BlockAST) ->
       case captured of
         AtlasMap {} -> Just captured
         _ -> Nothing
-    BuiltinMetaTypeForm (ASTMetaType (Just "IdenExp")) ->
+    BuiltinMetaTypeForm (ASTMetaType IdentifierExpressionAST) ->
       identifierExpression captured
     _ -> Nothing
   where
@@ -36,3 +41,22 @@ captureSyntaxExpression target captured =
       OptionalType (AsciiStringLiteral name)
         | isIdentifierValue name -> Just value
       _ -> Nothing
+
+-- | Give a typed interpolation the parser capability owned by its evaluated
+-- target type. Ordinary types remain value captures; AST category types carry
+-- the few structural capabilities required by syntax rewriting.
+specializeSyntaxHoleKind
+  :: InterpretedValue
+  -> SyntaxHoleKind value
+  -> SyntaxHoleKind value
+specializeSyntaxHoleKind target hole = case (interpretedForm target, hole) of
+  (BuiltinMetaTypeForm (ASTMetaType AnyAST), ValueSyntaxHole value) ->
+    ExpressionSyntaxHole value
+  (BuiltinMetaTypeForm (ASTMetaType ExpressionAST), ValueSyntaxHole value) ->
+    ExpressionSyntaxHole value
+  (BuiltinMetaTypeForm (ASTMetaType BlockAST), ValueSyntaxHole value) ->
+    BlockSyntaxHole value
+  ( BuiltinMetaTypeForm (ASTMetaType IdentifierExpressionAST)
+    , ValueSyntaxHole value
+    ) -> IdentifierExpressionSyntaxHole value
+  _ -> hole
