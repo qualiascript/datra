@@ -7,6 +7,7 @@ module Evaluation.Error
   , ExternalFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   , OperandSide (..)
@@ -15,6 +16,7 @@ module Evaluation.Error
   , AtlasMapFederationUncertainty (..)
   ) where
 
+import DatraOrdinal (Ordinal)
 import MapOperators.AccessOperator (AccessError)
 import Numeric.Natural (Natural)
 import SuperEllipsisRange
@@ -126,8 +128,14 @@ data NamedAccessFailure
   | NamedAccessRequiresFiniteMap
   deriving (Eq, Show)
 
+data MapLengthFailure
+  = IndeterminateMapLength
+  | MapLengthExceedsNaturalLimit Ordinal
+  deriving (Eq, Show)
+
 data InterpretingError
   = NamedAccessFailed NamedAccessFailure
+  | MapLengthFailed MapLengthFailure
   | FunctionEvaluationFailed FunctionFailure
   | ExternalEvaluationFailed ExternalFailure
   | ModuleEvaluationFailed ModuleEvaluationFailure

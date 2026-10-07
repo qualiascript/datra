@@ -2580,6 +2580,7 @@ registeredExternal symbol = case symbol of
     value <- lookupArgument "value" arguments
     integer <- requireFiniteInteger LeftOperand value
     pure (integerValue (abs integer))
+  "datra.len" -> Right (unlinkedExternalFunction 1 symbol mapLengthValue)
   "datra.ordinal.sum" -> ordinalBinaryNative ordinalOperandType ordinalSumValues
   "datra.ordinal.prod" -> ordinalBinaryNative ordinalOperandType ordinalProductValues
   "datra.ordinal.minus" -> ordinalBinaryNative ordinalOperandType ordinalMinusValues

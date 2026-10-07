@@ -46,6 +46,7 @@ module DatraTypes
   , ExternalFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   , OperandSide (..)
@@ -137,6 +138,7 @@ module DatraTypes
   , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , mapLengthValue
   , ArgumentSchema
   , argumentSlotSchema
   , orderedArgumentSchema
@@ -208,6 +210,7 @@ import Evaluation.Error
   , FunctionFailure (..)
   , InterpretedValueKind (..)
   , InterpretingError (..)
+  , MapLengthFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
   , OverloadFailure (..)
@@ -347,6 +350,7 @@ import Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
   )
+import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , identifierTemplateTypeValue

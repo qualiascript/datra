@@ -28,6 +28,7 @@ import Evaluation.Error
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
@@ -132,6 +133,7 @@ localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
     NamedAccessFailed failure -> localizeNamedAccessFailure failure
+    MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
     ExternalEvaluationFailed failure -> localizeExternalFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
@@ -342,6 +344,16 @@ localizeNamedAccessFailure failure =
       LocalizedMessage "field map cannot be inspected" []
     NamedAccessRequiresFiniteMap ->
       LocalizedMessage "named access requires a finite map" []
+
+localizeMapLengthFailure :: MapLengthFailure -> LocalizedMessage
+localizeMapLengthFailure failure =
+  case failure of
+    IndeterminateMapLength ->
+      LocalizedMessage "object does not have a determinate final-page length" []
+    MapLengthExceedsNaturalLimit orderType ->
+      LocalizedMessage
+        "object's final-page length is not representable by NatLimit"
+        ["final-page order type: " <> renderOrdinal orderType]
 
 localizeExternalFailure :: ExternalFailure -> LocalizedMessage
 localizeExternalFailure failure =

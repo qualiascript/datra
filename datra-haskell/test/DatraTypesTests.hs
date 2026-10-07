@@ -151,6 +151,7 @@ testTree =
         [ testCase "ordinal inspection" testOrdinalInspection
         , testCase "diagnostics" testDiagnostics
         , testCase "evaluation boundary" testEvaluationBoundary
+        , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
         , testCase "ASCII string" testAsciiString
         , testCase "access operator" testAccessOperator
@@ -216,6 +217,35 @@ testEvaluationBoundary = do
             (SuperRange.SuperEllipsisRangeInvalidDescendingBounds
               start target)) ->
         start == omega && target == finiteOrdinal 2
+      _ -> False)
+
+testMapLength :: IO ()
+testMapLength = do
+  let finiteMap = Types.makeAtlasMap
+        2
+        [Types.naturalValue 0, Types.naturalValue 1, Types.naturalValue 2]
+      omegaMap = Types.makeLazyMapValue omega (const Nothing)
+      aboveOmega = addOrdinals omega (finiteOrdinal 1)
+      aboveOmegaMap = Types.makeLazyMapValue aboveOmega (const Nothing)
+  assert "finite final-page length is a natural"
+    (case Types.mapLengthValue finiteMap of
+      Right value -> Types.interpretedInteger value == Just 3
+      Left _ -> False)
+  assert "omega final-page length is positive infinity"
+    (case Types.mapLengthValue omegaMap of
+      Right value ->
+        Types.integerLimitProjection value == Just Types.PositiveInfinity
+      Left _ -> False)
+  assert "host meta-types have indeterminate map length"
+    (case Types.mapLengthValue Types.anyTypeValue of
+      Left (Types.MapLengthFailed Types.IndeterminateMapLength) -> True
+      _ -> False)
+  assert "ordered lengths above omega are not collapsed to Infinity"
+    (case Types.mapLengthValue aboveOmegaMap of
+      Left
+          (Types.MapLengthFailed
+            (Types.MapLengthExceedsNaturalLimit actual)) ->
+        actual == aboveOmega
       _ -> False)
 
 testDependentTypes :: IO ()
@@ -314,6 +344,20 @@ testDiagnostics = do
         == LocalizedMessage
           "backendul extern nu este acceptat"
           ["backend: native"]
+    )
+  assert "map-length failures have bilingual structured diagnostics"
+    ( localizeDiagnostic English
+        (Types.MapLengthFailed
+          (Types.MapLengthExceedsNaturalLimit
+            (addOrdinals omega (finiteOrdinal 1))))
+        == LocalizedMessage
+          "object's final-page length is not representable by NatLimit"
+          ["final-page order type: (...) + 1"]
+      && localizeDiagnostic Romanian
+        (Types.MapLengthFailed Types.IndeterminateMapLength)
+        == LocalizedMessage
+          "obiectul nu are o lungime determinată a paginii finale"
+          []
     )
   assert "module failures are localized from semantic fields"
     ( localizeDiagnostic English

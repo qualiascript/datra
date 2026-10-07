@@ -224,6 +224,7 @@ library
         Evaluation.FunctionArguments
         Evaluation.Identifier
         Evaluation.IdentifierErasure
+        Evaluation.Length
         Evaluation.LimitRange
         Evaluation.Map
         Evaluation.Numerical

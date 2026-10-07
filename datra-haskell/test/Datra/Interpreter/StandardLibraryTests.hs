@@ -9,6 +9,7 @@ import DatraTypes
   , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
+  , MapLengthFailure (..)
   , ModuleEvaluationFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
@@ -54,6 +55,34 @@ standardLibraryTests =
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
         , programCase "SyntaxTemplate external uses the private type spelling"
             "yield !~\"datra.SyntaxTemplate\"" "_SyntaxTemplate"
+        ]
+    , testGroup "final-page length"
+        [ programCase "finite lengths use the final page"
+            ( "yield (len (); len 5; len (1; 2; 3); "
+                <> "len ((1; 2); (3; 4)); len \"abc\")"
+            )
+            "(0; 1; 3; 2; 3)"
+        , programCase "omega length is positive infinity"
+            "yield len (from 0 up)"
+            "Infinity"
+        , programCase "ordinary and qualified calls remain available"
+            "yield ('len (1; 2; 3); Std.len (4; 5))"
+            "(3; 2)"
+        , programCase "optional named values retain their map extent"
+            ( "measure := ({value? : Any} -> NatLimit do yield len value)\n"
+                <> "yield measure (value := (1; 2; 3))"
+            )
+            "3"
+        , programCase "length results compose with specification and subfederation"
+            ( "yield (((len (1; 2)) ~> Nat) of Nat; "
+                <> "(Nat <~ (len (1; 2))) of Nat; "
+                <> "(len (1; 2)) of NatLimit)"
+            )
+            "(true; true; true)"
+        , programFailureCase "host meta-types have indeterminate length"
+            "yield len Any"
+            (SourceEvaluationFailure
+              (MapLengthFailed IndeterminateMapLength))
         ]
     , testGroup "qualified syntax"
         [ expressionCase source source expected

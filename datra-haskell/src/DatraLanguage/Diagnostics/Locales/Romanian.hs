@@ -25,6 +25,7 @@ import Evaluation.Error
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
@@ -130,6 +131,7 @@ localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
     NamedAccessFailed failure -> localizeNamedAccessFailure failure
+    MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
     ExternalEvaluationFailed failure -> localizeExternalFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
@@ -342,6 +344,17 @@ localizeNamedAccessFailure failure =
       LocalizedMessage "harta de câmpuri nu poate fi inspectată" []
     NamedAccessRequiresFiniteMap ->
       LocalizedMessage "accesul prin nume necesită o hartă finită" []
+
+localizeMapLengthFailure :: MapLengthFailure -> LocalizedMessage
+localizeMapLengthFailure failure =
+  case failure of
+    IndeterminateMapLength ->
+      LocalizedMessage
+        "obiectul nu are o lungime determinată a paginii finale" []
+    MapLengthExceedsNaturalLimit orderType ->
+      LocalizedMessage
+        "lungimea paginii finale a obiectului nu poate fi reprezentată de NatLimit"
+        ["tipul de ordine al paginii finale: " <> renderOrdinal orderType]
 
 localizeExternalFailure :: ExternalFailure -> LocalizedMessage
 localizeExternalFailure failure =
