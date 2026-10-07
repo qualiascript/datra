@@ -329,7 +329,8 @@ integerLimitSemantics semantics =
         (DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency "Nothing")
           (MapSemantics 0 [])
-          True) = True
+          True
+          _) = True
     absentComplement _ = False
 
     presentComplement (PresentedSemantics _ _ value) = presentComplement value
@@ -337,6 +338,7 @@ integerLimitSemantics semantics =
         (DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency "Just")
           (AsciiStringSemantics "Complement")
+          _
           _) = True
     presentComplement _ = False
 
@@ -374,7 +376,7 @@ numericalSpecification
   -> Maybe (ValueSemantics, ValueSemantics)
 numericalSpecification semantics =
   case semanticValueSemantics semantics of
-    DependentIdentifierTypeSemantics _ underlying True ->
+    DependentIdentifierTypeSemantics _ underlying True _ ->
       Just (underlying, underlying)
     AssignmentSemantics _ target source -> Just (source, target)
     SpecificationSemantics source target -> Just (source, target)
@@ -402,7 +404,7 @@ isValuedNumericalTarget semantics
     ValuedIntegerRangeSemantics _ _ -> True
     IntegerTypeSemantics -> True
     MapSemantics 0 [] -> True
-    DependentIdentifierTypeSemantics _ underlying True ->
+    DependentIdentifierTypeSemantics _ underlying True _ ->
       isValuedNumericalTarget underlying
     AssignmentSemantics _ target _ -> isValuedNumericalTarget target
     SpecificationSemantics _ target -> isValuedNumericalTarget target
@@ -474,7 +476,8 @@ optionalComplement semantics =
         (DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency "Nothing")
           (MapSemantics 0 [])
-          True) = True
+          True
+          _) = True
     isAbsent _ = False
 
     isComplement (PresentedSemantics _ _ value) = isComplement value
@@ -482,6 +485,7 @@ optionalComplement semantics =
         (DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency "Just")
           (AsciiStringSemantics "Complement")
+          _
           _) = True
     isComplement _ = False
 

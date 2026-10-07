@@ -55,7 +55,10 @@ accessDependentIdentifierType original identifier insertionValue = do
         SimpleIdentifierDependency identifierString ->
           makeAsciiString identifierString
         DependentIdentifierDependency _ _ ->
-          identifierStringProjectionValue identifier
+          maybe
+            (identifierStringProjectionValue identifier)
+            id
+            (evaluatedIdentifierNameFederation identifier)
 
     accessPositions [] = Right (makeAtlasMap 0 [])
     accessPositions [position] = maybe

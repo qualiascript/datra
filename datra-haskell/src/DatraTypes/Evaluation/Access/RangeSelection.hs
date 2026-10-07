@@ -106,7 +106,6 @@ accessSource value =
           characters)
     IdentifierValueTypeForm -> ordinarySource []
     ToStringForm -> ordinarySource []
-    WeakToStringForm -> ordinarySource []
     TemplateForm _ -> ordinarySource []
     SpecificationForm _ -> ordinarySource []
     AssignmentForm _ -> ordinarySource []
@@ -193,12 +192,11 @@ semanticAccessSource semantics =
           characters)
     IdentifierValueTypeSemantics -> ordinarySource []
     ToStringSemantics _ -> ordinarySource []
-    WeakToStringSemantics _ -> ordinarySource []
     TemplateSemantics _ -> ordinarySource []
     MapSemantics _ components ->
       combineAccessSources (map semanticAccessSource components)
     SpecificationSemantics _ _ -> ordinarySource []
-    DependentIdentifierTypeSemantics _ _ _ -> ordinarySource []
+    DependentIdentifierTypeSemantics _ _ _ _ -> ordinarySource []
     IdentifierStringProjectionSemantics _ _ _ -> ordinarySource []
     AssignmentSemantics _ _ _ -> ordinarySource []
     DependentSumSemantics _ -> ordinarySource []

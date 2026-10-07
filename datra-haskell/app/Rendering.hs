@@ -165,12 +165,6 @@ prettyNonKeywordCanonicalResult result =
           renderCanonicalResult
           compactCanonicalStringInterpolation
           [StringTemplateInterpolation source])
-    CanonicalWeakToString source ->
-      pretty
-        (renderStringTemplate
-          renderCanonicalResult
-          compactCanonicalStringInterpolation
-          [StringTemplateWeakInterpolation source])
     CanonicalTemplate template ->
       case canonicalStringTemplateParts template of
         Just parts ->
@@ -186,12 +180,12 @@ prettyNonKeywordCanonicalResult result =
         <+> prettySourceSymbol DependentIdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalDependentIdentifierType familyKey typeAnnotation ->
-      pretty (renderIdentifierString familyKey)
+      pretty familyKey
         <+> prettySourceSymbol DependentIdentifierTypeOperator
         <+> prettyCanonicalResult typeAnnotation
     CanonicalIdentifierStringProjection familyKey typeAnnotation ->
       parens
-        (pretty (renderIdentifierString familyKey)
+        (pretty familyKey
           <+> prettySourceSymbol DependentIdentifierTypeOperator
           <+> prettyCanonicalResult typeAnnotation)
         <+> prettySourceSymbol AccessOperator
@@ -287,8 +281,6 @@ canonicalStringTemplateParts result =
       CanonicalIdentifierValueType ->
         Just [StringTemplateInterpolation result]
       CanonicalToString source -> Just [StringTemplateInterpolation source]
-      CanonicalWeakToString source ->
-        Just [StringTemplateWeakInterpolation source]
       CanonicalTemplate nested -> canonicalStringTemplateParts nested
       _ -> Nothing
 

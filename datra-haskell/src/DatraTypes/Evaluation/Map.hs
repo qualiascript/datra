@@ -267,7 +267,6 @@ preservesConcatenationBoundary value =
     DependentIdentifierTypeForm _ -> True
     IdentifierValueTypeForm -> True
     ToStringForm -> True
-    WeakToStringForm -> True
     TemplateForm _ -> True
     AssignmentForm _ -> True
     SpecificationForm _ -> True

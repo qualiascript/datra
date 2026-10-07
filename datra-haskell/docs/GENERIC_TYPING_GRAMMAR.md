@@ -110,7 +110,7 @@ Schematically, after string-template expansion:
 
 Here `$T` stands only for the generic identifier supplied as data to the named
 function. The string template should capture this argument through the existing
-`$_IdenExp` hole if that hole can represent all three generic name modes. If
+`%_IdenExp` hole if that hole can represent all three generic name modes. If
 generic names require stricter recognition, the parser may add a dedicated
 identifier-expression hole with those rules instead. In either case, the
 captured value must preserve the private, required-public, and optionally named
@@ -643,7 +643,7 @@ applications.
 11. Preserve the first-class semantic representation through AST round trips.
 12. In Stage 2, attach the `&`/`^`/`::` string templates to the ordinary
     `forall` and `some` functions.
-13. Capture the generic identifier through `$_IdenExp`, or a stricter dedicated
+13. Capture the generic identifier through `%_IdenExp`, or a stricter dedicated
     identifier-expression hole if required, and make expansion produce normal
     `forall` or `some` application with that identifier and the
     explicit/defaulted bound as arguments.

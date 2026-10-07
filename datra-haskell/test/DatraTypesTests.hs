@@ -82,6 +82,7 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (UnsupportedEvaluationMode)
   , ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
+  , SyntaxExpansionFailure (UndecidableDependentBinder)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -151,6 +152,7 @@ testTree =
         [ testCase "ordinal inspection" testOrdinalInspection
         , testCase "diagnostics" testDiagnostics
         , testCase "evaluation boundary" testEvaluationBoundary
+        , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
         , testCase "ASCII string" testAsciiString
         , testCase "access operator" testAccessOperator
@@ -216,6 +218,35 @@ testEvaluationBoundary = do
             (SuperRange.SuperEllipsisRangeInvalidDescendingBounds
               start target)) ->
         start == omega && target == finiteOrdinal 2
+      _ -> False)
+
+testMapLength :: IO ()
+testMapLength = do
+  let finiteMap = Types.makeAtlasMap
+        2
+        [Types.naturalValue 0, Types.naturalValue 1, Types.naturalValue 2]
+      omegaMap = Types.makeLazyMapValue omega (const Nothing)
+      aboveOmega = addOrdinals omega (finiteOrdinal 1)
+      aboveOmegaMap = Types.makeLazyMapValue aboveOmega (const Nothing)
+  assert "finite final-page length is a natural"
+    (case Types.mapLengthValue finiteMap of
+      Right value -> Types.interpretedInteger value == Just 3
+      Left _ -> False)
+  assert "omega final-page length is positive infinity"
+    (case Types.mapLengthValue omegaMap of
+      Right value ->
+        Types.integerLimitProjection value == Just Types.PositiveInfinity
+      Left _ -> False)
+  assert "host meta-types have indeterminate map length"
+    (case Types.mapLengthValue Types.anyTypeValue of
+      Left (Types.MapLengthFailed Types.IndeterminateMapLength) -> True
+      _ -> False)
+  assert "ordered lengths above omega are not collapsed to Infinity"
+    (case Types.mapLengthValue aboveOmegaMap of
+      Left
+          (Types.MapLengthFailed
+            (Types.MapLengthExceedsNaturalLimit actual)) ->
+        actual == aboveOmega
       _ -> False)
 
 testDependentTypes :: IO ()
@@ -315,6 +346,20 @@ testDiagnostics = do
           "backendul extern nu este acceptat"
           ["backend: native"]
     )
+  assert "map-length failures have bilingual structured diagnostics"
+    ( localizeDiagnostic English
+        (Types.MapLengthFailed
+          (Types.MapLengthExceedsNaturalLimit
+            (addOrdinals omega (finiteOrdinal 1))))
+        == LocalizedMessage
+          "object's final-page length is not representable by NatLimit"
+          ["final-page order type: (...) + 1"]
+      && localizeDiagnostic Romanian
+        (Types.MapLengthFailed Types.IndeterminateMapLength)
+        == LocalizedMessage
+          "obiectul nu are o lungime determinată a paginii finale"
+          []
+    )
   assert "module failures are localized from semantic fields"
     ( localizeDiagnostic English
         (Types.ModuleEvaluationFailed (Types.ModuleNotLoaded "missing"))
@@ -373,6 +418,20 @@ testDiagnostics = do
           "adnotarea de tip a identificatorului nu este canonică"
           ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
     )
+  assert "undecidable dependent binders have a bilingual diagnostic"
+    ( localizeDiagnostic English (UndecidableDependentBinder "with")
+        == LocalizedMessage
+          "dependent binder expression cannot be decided statically"
+          [ "adapter: with"
+          , "a single lexical identifier is currently required"
+          ]
+      && localizeDiagnostic Romanian (UndecidableDependentBinder "with")
+        == LocalizedMessage
+          "expresia legăturii dependente nu poate fi decisă static"
+          [ "adaptor: with"
+          , "în prezent este necesar un singur identificator lexical"
+          ]
+    )
   assert "mixed dependent binders have an explicit bilingual diagnostic"
     ( localizeDiagnostic English Types.MixedDependentBinders
       == LocalizedMessage
@@ -388,24 +447,24 @@ testDiagnostics = do
         == LocalizedMessage
           "syntax template contains an invalid literal character"
           [ "character: '('"
-          , "~% can only install literals retained by the neutral source parser"
+          , "% can only install literals retained by the neutral source parser"
           ]
       && localizeDiagnostic Romanian
           (Types.InvalidSyntaxTemplateCharacter '(')
         == LocalizedMessage
           "șablonul sintactic conține un caracter literal nevalid"
           [ "caracter: '('"
-          , "~% poate instala doar literali păstrați de analizorul neutru al sursei"
+          , "% poate instala doar literali păstrați de analizorul neutru al sursei"
           ]
     )
   assert "invalid syntax-template operands have an explicit bilingual diagnostic"
     ( localizeDiagnostic English Types.InvalidSyntaxTemplateOperand
         == LocalizedMessage
-          "~% expects a compile-time string or total map of strings"
+          "% expects a compile-time string or total map of strings"
           []
       && localizeDiagnostic Romanian Types.InvalidSyntaxTemplateOperand
         == LocalizedMessage
-          "~% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
+          "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
           []
     )
   assert "parser failures have exact bilingual localization"

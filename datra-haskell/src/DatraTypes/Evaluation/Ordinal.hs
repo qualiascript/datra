@@ -132,7 +132,7 @@ ordinalProjection semantics =
     ExplicitSemantics level value -> Just (level, value)
     FormulationSemantics level -> Just (level, omegaPower level)
     MapSemantics 0 [] -> Just (1, finiteOrdinal 0)
-    DependentIdentifierTypeSemantics _ underlying _ ->
+    DependentIdentifierTypeSemantics _ underlying _ _ ->
       ordinalProjection underlying
     AssignmentSemantics _ _ given -> ordinalProjection given
     SpecificationSemantics source _ -> ordinalProjection source

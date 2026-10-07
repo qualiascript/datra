@@ -58,7 +58,6 @@ newtype IdentifierString = IdentifierString
 data StringTemplatePart expression
   = StringTemplateLiteral String
   | StringTemplateInterpolation expression
-  | StringTemplateWeakInterpolation expression
   deriving (Eq, Show)
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
@@ -116,7 +115,6 @@ data Expression
   | BooleanNot Expression
   | Coalization Expression
   | Modular Expression
-  | Extract Expression
   | Assert Bool Expression
   | Fun Expression
   | WithBinding IdentifierString Bool Expression
@@ -157,14 +155,18 @@ data Expression
       }
   deriving (Eq, Show)
 
--- | Apply a private contextual function at depth zero. Its native closure
--- delegates to @_inner_this@ or @_inner_it@ at the same index.
+-- | Apply a private contextual function with its depth omitted. The function
+-- domain supplies the ordinary depth-zero default; an explicit depth remains
+-- an ordinary argument.
 contextualAccess :: IdentifierString -> Expression
 contextualAccess name =
-  FunctionApplication (IdentifierReference name) (EllipsisNatural 0)
+  FunctionApplication (IdentifierReference name) (AtlasMap [])
 
 isContextualAccessOf :: IdentifierString -> Expression -> Bool
-isContextualAccessOf name expression = expression == contextualAccess name
+isContextualAccessOf name expression = case expression of
+  FunctionApplication (IdentifierReference actual) argument
+    | actual == name -> argument == EllipsisNatural 0 || argument == AtlasMap []
+  _ -> False
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that
@@ -261,7 +263,6 @@ data OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
   | ModularValue OperatorExpression
-  | ExtractValue OperatorExpression
   | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
   | WithBindingValue IdentifierString Bool OperatorExpression
@@ -396,8 +397,6 @@ normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
 normalizeExpression (Modular operand) =
   Modular (normalizeExpression operand)
-normalizeExpression (Extract operand) =
-  Extract (normalizeExpression operand)
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
@@ -465,8 +464,6 @@ normalizeStringTemplatePart (StringTemplateLiteral value) =
   StringTemplateLiteral value
 normalizeStringTemplatePart (StringTemplateInterpolation expressionValue) =
   StringTemplateInterpolation (normalizeExpression expressionValue)
-normalizeStringTemplatePart (StringTemplateWeakInterpolation expressionValue) =
-  StringTemplateWeakInterpolation (normalizeExpression expressionValue)
 
 -- | Empty maps are neutral sequence members and a one-member sequence adds no
 -- genuine Atlas page: beyond an Atlas's finite presentation its final page is
@@ -570,7 +567,6 @@ lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
 lower (Modular operand) = ModularValue (lower operand)
-lower (Extract operand) = ExtractValue (lower operand)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
 lower (WithBinding name optional bound) =
@@ -622,8 +618,6 @@ lowerStringTemplatePart (StringTemplateLiteral value) =
   StringTemplateLiteral value
 lowerStringTemplatePart (StringTemplateInterpolation expressionValue) =
   StringTemplateInterpolation (lower expressionValue)
-lowerStringTemplatePart (StringTemplateWeakInterpolation expressionValue) =
-  StringTemplateWeakInterpolation (lower expressionValue)
 
 data Segment
   = ExpressionSegment [Expression]
@@ -772,8 +766,6 @@ prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
 prettyOperator (ModularValue operand) =
   prettyForm "modular" [prettyOperator operand]
-prettyOperator (ExtractValue operand) =
-  prettyUnary ExtractOperator operand
 prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
@@ -943,8 +935,6 @@ renderStringTemplate renderExpressionValue compactInterpolation parts =
       renderStringLiteralContents value <> rest
     renderPart (StringTemplateInterpolation expressionValue) rest =
       renderInterpolation "%" expressionValue rest
-    renderPart (StringTemplateWeakInterpolation expressionValue) rest =
-      renderInterpolation "%!" expressionValue rest
 
     renderInterpolation prefix expressionValue rest =
       case compactInterpolation expressionValue of
@@ -1001,7 +991,6 @@ traverseExpressionChildren visit expression = case expression of
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
   Modular x -> Modular <$> visit x
-  Extract x -> Extract <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x
@@ -1066,7 +1055,6 @@ traverseExpressionChildren visit expression = case expression of
   where
     part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
     part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
-    part (StringTemplateWeakInterpolation value) = StringTemplateWeakInterpolation <$> visit value
 
 mapExpressionChildren :: (Expression -> Expression) -> Expression -> Expression
 mapExpressionChildren visit = runIdentity . traverseExpressionChildren (Identity . visit)

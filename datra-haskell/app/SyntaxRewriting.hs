@@ -43,7 +43,13 @@ data RewriteEnvironment = RewriteEnvironment
   { rewriteRules :: [SyntaxRule]
   , rewriteDeclarations :: [Expression]
   , rewriteStrictCaptures :: Bool
+  , rewriteClassifyHole :: ClassifyHole
   }
+
+type ClassifyHole =
+  [Expression]
+  -> SyntaxHoleKind Expression
+  -> SyntaxHoleKind Expression
 
 type CaptureHole =
   Bool
@@ -54,27 +60,29 @@ type CaptureHole =
   -> Maybe Expression
 
 rewriteExplicitSyntax
-  :: CaptureHole
+  :: ClassifyHole
+  -> CaptureHole
   -> [SyntaxRule]
   -> [Expression]
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-rewriteExplicitSyntax capture initialRules initialDeclarations value =
+rewriteExplicitSyntax classify capture initialRules initialDeclarations value =
   rewriteStandalone capture environment value
   where
     environment = RewriteEnvironment
-      initialRules initialDeclarations True
+      initialRules initialDeclarations True classify
 
 rewriteImplicitSyntax
-  :: CaptureHole
+  :: ClassifyHole
+  -> CaptureHole
   -> [SyntaxRule]
   -> [Expression]
   -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax capture initialRules initialDeclarations entries = do
+rewriteImplicitSyntax classify capture initialRules initialDeclarations entries = do
   resolveImplicitBlock capture initial [] entries
   where
-    initial = RewriteEnvironment initialRules initialDeclarations True
+    initial = RewriteEnvironment initialRules initialDeclarations True classify
 
 resolveImplicitBlock
   :: CaptureHole
@@ -854,7 +862,7 @@ leftBoundaryCandidates rule = descend id
       SyntaxLiteral {} : _ -> True
       _ -> False
 
--- Conversely, a hole-led infix template such as @$_Expr of $_Expr@ may begin
+-- Conversely, a hole-led infix template such as @%_Expr of %_Expr@ may begin
 -- in the provisional right operand. Fold everything preceding its literal
 -- back into the first capture, which gives declarative word operators their
 -- precedence without teaching the parser their names.
@@ -1040,7 +1048,7 @@ rightInfixContext value = case value of
   _ -> Nothing
 
 -- Concatenation is a contextual boundary only for hole-led syntax such as
--- @$_Expr of $_Expr@. Prefix syntax must finish before a following comma; for
+-- @%_Expr of %_Expr@. Prefix syntax must finish before a following comma; for
 -- example, @for T of Any, value@ binds @Any@ rather than the concatenation.
 concatenationBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
 concatenationBoundaryCandidates rule value = do
@@ -1327,10 +1335,19 @@ introduceDeclaration environment entry = environment
     names = bindingNames entry
     retained = filter ((`notElem` names) . syntaxName)
       (rewriteRules environment)
-    introduced = declarationRules entry <> aliasRules entry
+    introduced = map specializeRule (declarationRules entry) <> aliasRules entry
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)
+    specializeRule rule = rule
+      { syntaxTemplate = specializeTemplate (syntaxTemplate rule) }
+    specializeTemplate (SyntaxTemplate pieces) = SyntaxTemplate
+      [ case piece of
+          SyntaxHole kind -> SyntaxHole
+            (rewriteClassifyHole environment retainedDeclarations kind)
+          SyntaxLiteral {} -> piece
+      | piece <- pieces
+      ]
     aliasRules expressionValue = case expressionValue of
       IdentifierOperation (IdentifierString name) _ (Just
           (IdentifierReference (IdentifierString target))) ->

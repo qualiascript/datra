@@ -20,14 +20,16 @@ source context expression =
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue templates signature -> wrapped 1
-      (source 2 templates <> " ~% " <> source 0 signature)
+      (source 2 templates <> " % " <> source 0 signature)
     FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_this"))
-        (NaturalValue 0) -> "this"
+        argument
+      | isDefaultContextualArgument argument -> "this"
     FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_it"))
-        (NaturalValue 0) -> "it"
+        argument
+      | isDefaultContextualArgument argument -> "it"
     FunctionApplicationValue function input -> wrapped 11
       (source 11 function <> " " <> applicationInput input)
     FunctionBodyValue bindings result -> wrapped 0 (block "do" bindings result)
@@ -64,7 +66,8 @@ source context expression =
         (FunctionApplicationValue function
           (FunctionApplicationValue
             (IdentifierReferenceValue (IdentifierString "_it"))
-            (NaturalValue 0))) ->
+            argument))
+      | isDefaultContextualArgument argument ->
       listMaybeThen values function
     MaybeThenValue optional branch -> binary 1 "??" optional branch
     EitherValue left right -> binary 3 "|" left right
@@ -87,7 +90,6 @@ source context expression =
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
     ModularValue operand -> wrapped 0 ("modular " <> source 0 operand)
-    ExtractValue operand -> unary "%" operand
     OptionalValue
         (IdentifierOperationValue (IdentifierString name) annotation given) ->
       identifierOperation
@@ -179,11 +181,17 @@ scopeNames
     (NamedAccessValue
       (FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_this"))
-        (NaturalValue 0))
-      (IdentifierString name)) = Just [name]
+        argument)
+      (IdentifierString name))
+  | isDefaultContextualArgument argument = Just [name]
 scopeNames (Concatenate left EmptyMap) = scopeNames left
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
+
+isDefaultContextualArgument :: OperatorExpression -> Bool
+isDefaultContextualArgument (NaturalValue 0) = True
+isDefaultContextualArgument EmptyMap = True
+isDefaultContextualArgument _ = False
 
 valueLookupNames :: OperatorExpression -> Maybe [String]
 valueLookupNames (Access operand (NaturalValue 1)) = scopeNames operand

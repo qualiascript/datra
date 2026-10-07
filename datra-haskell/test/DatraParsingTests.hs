@@ -3,8 +3,6 @@
 module DatraParsingTests (main) where
 
 import Data.Char (chr, toUpper)
-import AtlasMapFederationExpression
-  ( AtlasMapFederationDecision (..))
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -31,13 +29,16 @@ import DatraLanguage.AST.Syntax qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.SyntaxTemplate qualified as SyntaxTemplate
+import DatraLanguage.SyntaxTemplate (TemplateSelection (..))
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( ParseFailure (parseFailureMessage)
+  , SyntaxExpansionFailure (..)
+  )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
@@ -47,17 +48,17 @@ import Parsing
   , parseDatraRawLocatedWithSourceName
   )
 import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
+  ( SyntaxFunctionBody (applySyntaxFunctionBody)
+  , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxRule (..)
   , SyntaxTemplate (..)
   , expandSyntax
+  , syntaxFunctionBodyForSymbol
   )
 import SyntaxTemplateMatching
-  ( SyntaxTemplateFederationFailure (..)
-  , SyntaxTemplateMatchFailure (..)
-  , compileSyntaxTemplateFederation
-  , matchSyntaxTemplates
+  ( SyntaxTemplateMatchFailure (..)
+  , matchSyntaxRules
   )
 import Numeric (showHex)
 import Hedgehog qualified as H
@@ -117,9 +118,9 @@ regressionTests = do
     ( Identifier.identifierPolicy "''not compact"
         == Identifier.PublicIdentifier Identifier.ConsistentShadowing
     )
-  assertParsed "surface this applies the contextual function at depth zero"
+  assertParsed "surface this omits its defaulted contextual depth"
     "this" (contextualAccess (IdentifierString "_this"))
-  assertParsed "surface it applies the contextual function at depth zero"
+  assertParsed "surface it omits its defaulted contextual depth"
     "it" (contextualAccess (IdentifierString "_it"))
   assertParsed "explicit contextual depth remains an ordinary application"
     "_this 2"
@@ -133,12 +134,9 @@ regressionTests = do
           (EllipsisNatural 2))
         == "_this 2"
     )
-  assert "a hole identifier ends before an adjacent literal operator"
-    (SyntaxTemplate.parseSyntaxTemplate id "$Int++"
-      == SyntaxTemplate
-        [ SyntaxHole (ValueSyntaxHole "Int")
-        , SyntaxLiteral "++"
-        ])
+  assert "literal template text cannot manufacture interpolation holes"
+    ((SyntaxTemplate.literalSyntaxTemplate "%Int++" :: SyntaxTemplate ())
+      == SyntaxTemplate [SyntaxLiteral "%Int++"])
   assert "the neutral reader retains an unknown postfix symbolic literal"
     (case parseDatraRawLocatedWithSourceName "<postfix-syntax>" "(2++)" of
       Right (_, Located _ parsed) ->
@@ -157,9 +155,20 @@ regressionTests = do
         , syntaxImplementation = External (AsciiStringLiteral implementation)
         }
   assert "external syntax implementations are not selected by namespace"
-    (expandSyntax (syntaxControl "datra.syntax.unknown") []
+    (expandSyntax (syntaxControl "datra.syntax.unknown")
+      (TemplateSelection (ref "test-control") [])
       == Right (FunctionApplication
         (ref "test-control")
+        (AtlasMap [])))
+  let zeroCaptureSyntax = (syntaxControl "datra.syntax.unknown")
+        { syntaxName = "answer"
+        , syntaxSignature = FunctionType (natural 42) (ref "Nat")
+        }
+  assert "zero-hole syntax supplies the empty capture tail"
+    (expandSyntax zeroCaptureSyntax
+      (TemplateSelection (ref "answer") [])
+      == Right (FunctionApplication
+        (ref "answer")
         (AtlasMap [])))
   let syntaxFunction name pieces implementation = SyntaxRule
         { syntaxName = name
@@ -205,7 +214,8 @@ regressionTests = do
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
   assert "IntLimit template holes accept an Infinity AST"
-    (case expandSyntax correctFrom [natural 0, ref "Infinity"] of
+    (case expandSyntax correctFrom
+        (TemplateSelection fromPhrase [natural 0, ref "Infinity"]) of
       Right expected ->
         matchRules matchesNumericHole [correctFrom] fromPhrase
           == Right expected
@@ -227,7 +237,7 @@ regressionTests = do
         [ "_AST := !~\"datra.AST\""
         , "_Expr := !~\"datra.Expr\""
         , "_Block := !~\"datra.Block\""
-        , "begin := \"begin $_Block yield $_Expr\" ~% (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "begin := \"begin %_Block yield %_Expr\" % (_AST, _AST -> _AST) !~\"datra.begin\""
         , "yield Example := begin"
         , "  begin := begin"
         , "yield begin"
@@ -268,7 +278,8 @@ regressionTests = do
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
-    (case expandSyntax greedyRule [greedyPrefix, natural 3] of
+    (case expandSyntax greedyRule
+        (TemplateSelection greedyPhrase [greedyPrefix, natural 3]) of
       Right expected ->
         matchRules matchesGreedyHole [greedyRule] greedyPhrase
           == Right expected
@@ -282,7 +293,8 @@ regressionTests = do
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
-    (case expandSyntax contextualShort [natural 1] of
+    (case expandSyntax contextualShort
+        (TemplateSelection contextualPhrase [natural 1]) of
       Right expanded ->
         matchRules matchesNumericHole
           [contextualShort, contextualLong]
@@ -304,26 +316,14 @@ regressionTests = do
   let rankedCapture = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
   assert "the first declaration greedily takes its longest valid match"
-    (case expandSyntax rankedShort [rankedCapture] of
+    (case expandSyntax rankedShort
+        (TemplateSelection rankedPhrase [rankedCapture]) of
       Right expected ->
         matchRules (const (const True))
           [rankedShort, rankedLong]
           rankedPhrase
           == Right expected
       Left _ -> False)
-  let tiedLeft = syntaxFunction "tied"
-        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        "datra.tied-left"
-      tiedRight = syntaxFunction "tied"
-        [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        "datra.tied-right"
-  assert "overlapping templates are rejected before AST matching"
-    (case compileSyntaxTemplateFederation
-        (\_ _ -> AtlasMapFederationRefuted ())
-        [tiedLeft, tiedRight] of
-      Left failure -> failure == OverlappingSyntaxTemplates
-        "tied $_Expr" "tied $_Expr"
-      Right _ -> False)
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
@@ -388,6 +388,27 @@ regressionTests = do
         , ref "i"
         ])
       (natural 1))
+  let dynamicBinder = StringTemplate
+        [ StringTemplateLiteral "item"
+        , StringTemplateInterpolation (ref "index")
+        ]
+      optionalDynamicBinder = OptionalType dynamicBinder
+      assertUndecidableBinder symbol adapter captures =
+        case syntaxFunctionBodyForSymbol symbol of
+          Nothing -> fail ("missing syntax adapter: " <> symbol)
+          Just body -> assert
+            (adapter <> " reports a dynamic binder as undecidable")
+            ( applySyntaxFunctionBody body captures
+                == Left (UndecidableDependentBinder adapter)
+            )
+  assertUndecidableBinder
+    "datra.with" "with" [dynamicBinder, ref "Any"]
+  assertUndecidableBinder
+    "datra.for" "for" [optionalDynamicBinder, ref "Any"]
+  assertUndecidableBinder
+    "datra.withIn" "with" [dynamicBinder, ref "Any", ref "index"]
+  assertUndecidableBinder
+    "datra.forIn" "for" [optionalDynamicBinder, ref "Any", ref "index"]
   assertAstOutput "dependent sum family sugar can omit in before from"
     "with i from 0 to 3 do i * 2"
     (MapAccess
@@ -452,7 +473,10 @@ regressionTests = do
     [ Import False "library_one", Import True "std"
     , InModule "std" (ref "_this")
     , NamedAccess (ref "_this") (IdentifierString "abc")
-    , SyntaxType (AsciiStringLiteral "$Int next")
+    , SyntaxType (StringTemplate
+        [ StringTemplateInterpolation (ref "Int")
+        , StringTemplateLiteral " next"
+        ])
         (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
@@ -630,69 +654,102 @@ regressionTests = do
     "{value? : Any} -> Nat do yield value"
     (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
   assertParsed "a declared syntax signature is not a shorthand function domain"
-    "\"step $Int next\" ~% (Int -> Int) do yield value"
+    "\"step %Int next\" % (Int -> Int) do yield value"
     (MapSpecification identityBody
-      (SyntaxType (AsciiStringLiteral "step $Int next")
+      (SyntaxType (StringTemplate
+        [ StringTemplateLiteral "step "
+        , StringTemplateInterpolation (ref "Int")
+        , StringTemplateLiteral " next"
+        ])
         (FunctionType (ref "Int") (ref "Int"))))
   let optionalIntInput = ArgumentMap
         [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
   assertParsed "a declared syntax signature accepts a multiline body"
-    "\"step $Nat next\" ~% ({value?:Int} -> Int) do\n  yield value"
+    "\"step %Nat next\" % ({value?:Int} -> Int) do\n  yield value"
     (MapSpecification identityBody
-      (SyntaxType (AsciiStringLiteral "step $Nat next")
+      (SyntaxType (StringTemplate
+        [ StringTemplateLiteral "step "
+        , StringTemplateInterpolation (ref "Nat")
+        , StringTemplateLiteral " next"
+        ])
         (FunctionType optionalIntInput (ref "Int"))))
-  assertAstOutput "~% accepts an inhabited total map of template strings"
-    "(\"$Int++\"; \"increment $Int\") ~% (Int -> Int)"
+  assertAstOutput "% accepts an inhabited total map of template strings"
+    "(\"%Int++\"; \"increment %Int\") % (Int -> Int)"
     (SyntaxType
       (AtlasMap
-        [ AsciiStringLiteral "$Int++"
-        , AsciiStringLiteral "increment $Int"
+        [ StringTemplate
+            [ StringTemplateInterpolation (ref "Int")
+            , StringTemplateLiteral "++"
+            ]
+        , StringTemplate
+            [ StringTemplateLiteral "increment "
+            , StringTemplateInterpolation (ref "Int")
+            ]
         ])
       (FunctionType (ref "Int") (ref "Int")))
-  assertParsed "grouping characters remain valid in ordinary template values"
-    "%\"call ($Int)\""
-    (Extract (AsciiStringLiteral "call ($Int)"))
-  assertParsed "~% remains syntax rather than performing parser validation"
-    "\"call ($Int)\" ~% (Int -> Int)"
+  assertParsed "% remains syntax rather than performing parser validation"
+    "\"call (%Int)\" % (Int -> Int)"
     (SyntaxType
-      (AsciiStringLiteral "call ($Int)")
+      (StringTemplate
+        [ StringTemplateLiteral "call ("
+        , StringTemplateInterpolation (ref "Int")
+        , StringTemplateLiteral ")"
+        ])
       (FunctionType (ref "Int") (ref "Int")))
-  assertRejected "the legacy syntax-type operator is rejected"
-    "\"step $Int next\" %> (Int -> Int) do yield value"
+  assertRejected "the obsolete percent-arrow syntax-type operator is rejected"
+    "\"step %Int next\" %> (Int -> Int) do yield value"
+  assertRejected "the old doubled-percent syntax-type operator is rejected"
+    "\"step %Int next\" %% (Int -> Int) do yield value"
+  assertRejected "prefix percent extraction is rejected"
+    "%\"call (%Int)\""
   let syntaxAdapterType = SyntaxType
-        (AsciiStringLiteral "handler $_Expr")
+        (StringTemplate
+          [ StringTemplateLiteral "handler "
+          , StringTemplateInterpolation (ref "_Expr")
+          ])
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use the external as their body"
-    "\"handler $_Expr\" ~% (Any -> Any) !~\"datra.syntax.test\""
+    "\"handler %_Expr\" % (Any -> Any) !~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertParsed "a syntax type is an ordinary value without a body"
-    "\"handler $_Expr\" ~% (Any -> Any)"
+    "\"handler %_Expr\" % (Any -> Any)"
     syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
-    "handler := \"handler $_Expr\" ~% (Any -> Any) !~\"datra.syntax.test\""
+    "handler := \"handler %_Expr\" % (Any -> Any) !~\"datra.syntax.test\""
     (AST.assignment "handler"
       (MapSpecification syntaxAdapter syntaxAdapterType)
       (MapSpecification syntaxAdapter syntaxAdapterType))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : \"handler $_Expr\" ~% (Any -> Any) := !~\"datra.syntax.test\""
+    "handler : \"handler %_Expr\" % (Any -> Any) := !~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take $_Expr\" ~% (Int -> Int) !~\"datra.modular\""
+        , "take := \"take %_Expr\" % (Int -> Int) !~\"datra.modular\""
         , "take 7"
         , "take Infinity)"
         ]) of
     Right (AtlasMap [_, _, Modular (EllipsisNatural 7), final]) ->
       final == FunctionApplication (ref "take") (ref "Infinity")
     _ -> False
+  assert "AST capture behavior follows the interpolated value's type" $ case
+      parseSource (unlines
+        [ "(Capture := !~\"datra.Expr\""
+        , "CaptureAlias := Capture"
+        , "take := \"take %CaptureAlias\" % (Any -> Any) !~\"datra.modular\""
+        , "take Infinity)"
+        ]) of
+    Right (AtlasMap values) -> case reverse values of
+      Modular captured : _ -> captured == ref "Infinity"
+      _ -> False
+    _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
         [ "(_IdenExp := !~\"datra.IdenExp\""
         , "_Expr := !~\"datra.Expr\""
-        , "gate := \"gate $_IdenExp bound $_Expr body $Int\" ~%"
+        , "gate := \"gate %_IdenExp bound %_Expr body %Int\" %"
             <> " ((Any; Any; Int) -> Int) !~\"test.gate\""
         , "gate x bound Int body x)"
         ]) of
@@ -700,23 +757,33 @@ regressionTests = do
       rewritten == FunctionApplication (ref "gate")
         (AtlasMap [ref "x", ref "Int", ref "x"])
     _ -> False
+  let dependentIdentifierTemplate = StringTemplate
+        [ StringTemplateLiteral "abc"
+        , StringTemplateInterpolation
+            (contextualAccess (IdentifierString "_it"))
+        ]
+  assert "an identifier capture accepts a dependent string expression" $ case
+      parseSource (unlines
+        [ "(_IdenExp := !~\"datra.IdenExp\""
+        , "capture := \"capture %_IdenExp\" %"
+            <> " (Any -> Any) !~\"datra.modular\""
+        , "capture \"abc%(it)\")"
+        ]) of
+    Right (AtlasMap [_, _, Modular captured]) ->
+      captured == dependentIdentifierTemplate
+    _ -> False
+  assert "an identifier capture accepts an optional dependent string expression" $
+    case parseSource (unlines
+      [ "(_IdenExp := !~\"datra.IdenExp\""
+      , "capture := \"capture %_IdenExp\" %"
+          <> " (Any -> Any) !~\"datra.modular\""
+      , "capture \"abc%(it)\"?)"
+      ]) of
+      Right (AtlasMap [_, _, Modular captured]) ->
+        captured == OptionalType dependentIdentifierTemplate
+      _ -> False
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
-  assertAstOutput
-    "extract applies to a parenthesized reverse specification"
-    "%(\"%IdenStr %Int\" <~ \"alco 100\")"
-    (Extract
-      (MapSpecification
-        (AsciiStringLiteral "alco 100")
-        (StringTemplate
-          [ StringTemplateInterpolation (ref "IdenStr")
-          , StringTemplateLiteral " "
-          , StringTemplateInterpolation (ref "Int")
-          ])))
-  assertParsed
-    "extract binds before bracket access"
-    "%Str[0]"
-    (MapAccess (Extract (ref "Str")) (natural 0))
   assertParsed "val is available as an ordinary identifier"
     "val _it" (FunctionApplication (ref "val") (ref "_it"))
   assertParsed "external escape constructs an External AST"
@@ -1438,16 +1505,9 @@ regressionTests = do
         [ StringTemplateInterpolation (ref "Nat")
         , StringTemplateLiteral "'"
         ]))
-  assertParsed
-    "weak interpolation has explicit compact syntax"
+  assertRejected
+    "the removed weak interpolation marker is rejected"
     "\"%!Str\""
-    (StringTemplate [StringTemplateWeakInterpolation (ref "Str")])
-  assertParsed
-    "weak interpolation supports compound expressions"
-    "\"%!(Nat | Nat)\""
-    (StringTemplate
-      [StringTemplateWeakInterpolation
-        (EitherType (ref "Nat") (ref "Nat"))])
   assertParsed
     "a question mark after simple interpolation is literal text"
     "\"%Int?\""
@@ -2021,11 +2081,7 @@ matchRules
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
 matchRules holeMatches rules expressionValue =
-  case compileSyntaxTemplateFederation
-      (\_ _ -> AtlasMapFederationProved ()) rules of
-    Right federation ->
-      matchSyntaxTemplates holeMatches federation expressionValue
-    Left _ -> Left NoMatchingSyntaxTemplate
+  matchSyntaxRules holeMatches rules expressionValue
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
@@ -2071,13 +2127,15 @@ genExpression =
     , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression
-        (SyntaxType (AsciiStringLiteral "$Int next"))
+        (SyntaxType (StringTemplate
+          [ StringTemplateInterpolation (ref "Int")
+          , StringTemplateLiteral " next"
+          ]))
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Program [binding] result)
     , Gen.subterm genExpression Let
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
-    , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateWeakInterpolation)
     , Gen.subterm2 genExpression genExpression MapExpansion
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
     , Gen.subterm genExpression SuperEllipsisRangePlus
@@ -2092,7 +2150,6 @@ genExpression =
     , Gen.subterm2 genExpression genExpression Equality
     , Gen.subterm2 genExpression genExpression Inequality
     , Gen.subterm2 genExpression genExpression EitherType
-    , Gen.subterm genExpression Extract
     , Gen.subterm2 genExpression genExpression MapConcatenation
     , Gen.subterm2 genExpression genExpression MapAccess
     , Gen.subterm2 genExpression genExpression MapSpecification
@@ -2253,11 +2310,6 @@ assertAstSyntax = do
           ])
         == "\"%((ref $Int))?\""
     )
-  assert "weak template interpolation retains its marker"
-    ( renderExpression
-        (StringTemplate [StringTemplateWeakInterpolation (ref "Str")])
-        == "\"%!((ref $Str))\""
-    )
   assert "sequential and expansion symbols construct canonical AST nodes"
     ( renderExpression
         ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4))
@@ -2280,8 +2332,11 @@ assertAstSyntax = do
         (((natural 2 <..> natural 5) ~> ref "Nat"))
         == "(~> (<..> 2 5) (ref $Nat))"
     )
-  assert "the extract operator retains its percent AST symbol"
-    (renderExpression (Extract (ref "Str")) == "(% (ref $Str))")
+  assert "the syntax-type operator uses the percent AST symbol"
+    ( renderExpression
+        (SyntaxType (ref "Template") (FunctionType (ref "Int") (ref "Int")))
+        == "(% (ref $Template) (-> (ref $Int) (ref $Int)))"
+    )
   assert "bounded from calls retain their scoped signature and checked captures"
     ( renderExpression (fromTo 2 5)
         == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 5))"

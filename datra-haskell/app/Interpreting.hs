@@ -37,7 +37,6 @@ module Interpreting
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
   , canonicalStringCodec
-  , matchesValueSyntaxHoleWith
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
@@ -79,6 +78,8 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , mapSyntaxHoleKind
+  , syntaxHoleValue
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -161,12 +162,13 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
       initialRules =
         contextualSyntaxRules
           <> standardRules <> qualifiedImportedRules <> explicitlyImportedRules
+      classify = classifySyntaxHole base modules
       capture = captureSyntaxHole base modules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture initialRules [] expressionValue
+          rewriteExplicitSyntax classify capture initialRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture initialRules [] entries
+          rewriteImplicitSyntax classify capture initialRules [] entries
         _ -> Left MissingImplicitBlockResult
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
   pure (Located sourceSpan expressionValue)
@@ -174,6 +176,10 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
     interpretingParseFailure = ParseFailure . show
     rewriteParseFailure = ParseFailure . show
 
+-- Every syntax hole follows evaluation followed by selection. For AST
+-- categories the evaluator is the identity function and selection validates
+-- the unchanged syntax node; ordinary value holes use lexical evaluation
+-- before specification.
 captureSyntaxHole
   :: Scope
   -> [(String, ModuleSource)]
@@ -185,12 +191,12 @@ captureSyntaxHole
   -> Maybe Expression
 captureSyntaxHole base modules strict declarations previous kind captured =
   case kind of
-    ExpressionSyntaxHole target -> evaluatedCapture target
-    BlockSyntaxHole target -> evaluatedCapture target
-    IdentifierExpressionSyntaxHole target -> evaluatedCapture target
+    ExpressionSyntaxHole target -> identityEvaluationCapture target
+    BlockSyntaxHole target -> identityEvaluationCapture target
+    IdentifierExpressionSyntaxHole target -> identityEvaluationCapture target
     ValueSyntaxHole target ->
       literalCapture target captured
-        <|> if strict then evaluatedCapture target else tentativeCapture
+        <|> if strict then valueEvaluationCapture target else tentativeCapture
   where
     literalCapture (AsciiStringLiteral literal)
         (IdentifierReference (IdentifierString capturedLiteral))
@@ -203,7 +209,21 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    evaluatedCapture targetExpression =
+    identityEvaluationCapture = captureInScopes $ \_ target ->
+      captureSyntaxExpression target captured
+    valueEvaluationCapture targetExpression =
+      captureInScopes selectValue targetExpression
+      where
+        selectValue scope _ =
+          let interpret = evalInScope scope []
+          in if identifierCaptureIsSubtype
+              scope scopedDeclarations targetExpression captured
+            then Just captured
+            else case canonicalValueCapture
+                interpret targetExpression captured of
+              Right canonical -> Just canonical
+              Left _ -> Nothing
+    captureInScopes select targetExpression =
       enclosingSyntaxCapture <|> scopedCapture
       where
         enclosing = ("\0imports", ModuleCatalog modules) : base
@@ -215,15 +235,27 @@ captureSyntaxHole base modules strict declarations previous kind captured =
           (scope, _, _) <- either (const Nothing) Just
             (declareScope enclosing
               (map syntaxValidationDeclaration scopedDeclarations))
-          let interpret = evalInScope scope []
-          if identifierCaptureIsSubtype
-              scope scopedDeclarations targetExpression captured
-            then Just captured
-            else case canonicalValueCapture
-                interpret targetExpression captured of
-              Right canonical -> Just canonical
-              Left _ -> Nothing
+          target <- either (const Nothing) Just
+            (evalInScope scope [] targetExpression)
+          select scope target
     scopedDeclarations = declarations <> binderDeclarations previous
+
+classifySyntaxHole
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> SyntaxHoleKind Expression
+  -> SyntaxHoleKind Expression
+classifySyntaxHole base modules declarations kind =
+  case kind of
+    ValueSyntaxHole target ->
+      either (const kind) (`specializeSyntaxHoleKind` kind) $ do
+        (scope, _, _) <- declareScope enclosing
+          (map syntaxValidationDeclaration declarations)
+        evalInScope scope [] target
+    _ -> kind
+  where
+    enclosing = ("\0imports", ModuleCatalog modules) : base
 
 binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
@@ -262,9 +294,7 @@ canonicalValueCapture interpret targetExpression captured = do
       Left failure -> case captured of
         IdentifierReference (IdentifierString name) -> do
           source <- asciiStringValue name
-          stringType <- interpret
-            (IdentifierReference (IdentifierString "Str"))
-          _ <- evalValues canonicalStringCodec stringType source target
+          _ <- evalValues canonicalStringCodec source target
           Right (AsciiStringLiteral name)
         _ -> Left failure
 
@@ -414,11 +444,14 @@ parsedDefaultModule = do
     (parseDatraRawLocatedWithSourceName standardLibraryFileName
       (requiredBundledLibrarySource standardLibraryFileName))
   let capture = captureSyntaxHole [] []
+      classify = classifySyntaxHole [] []
       rewritten = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
-          rewriteExplicitSyntax capture contextualSyntaxRules [] expressionValue
+          rewriteExplicitSyntax
+            classify capture contextualSyntaxRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
-          rewriteImplicitSyntax capture contextualSyntaxRules [] entries
+          rewriteImplicitSyntax
+            classify capture contextualSyntaxRules [] entries
         _ -> Left MissingImplicitBlockResult
   either
     (parseFailure . ParseFailure . show)
@@ -440,55 +473,37 @@ canonicalStringCodec =
     , decodeCanonicalString = canonicalStringCandidates
     }
 
--- | Decide a declared @$T@ syntax hole by evaluating the captured AST and
--- checking its value directly against @T@. Canonical-string decoding is only
--- needed by the production capture path for otherwise-unbound identifier
--- literals. Parser-level AST categories such as @_Expr@ remain outside this
--- function.
-matchesValueSyntaxHoleWith
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind Expression
-  -> Expression
-  -> Bool
-matchesValueSyntaxHoleWith interpret (ValueSyntaxHole targetExpression) captured =
-  case do
-      capturedValue <- interpret captured
-      target <- interpret targetExpression
-      specifyValues capturedValue target of
-    Right _ -> True
-    Left _ -> False
-matchesValueSyntaxHoleWith _ _ _ = False
-
 evaluateFunctionSyntax
   :: (Expression -> Either InterpretingError InterpretedValue)
   -> Expression
   -> Either InterpretingError (FunctionSyntax InterpretedValue)
 evaluateFunctionSyntax interpret templatesExpression = do
   templates <- validatedSyntaxTemplates templatesExpression
-  FunctionSyntax <$> traverse
-    (traverseSyntaxTemplate interpret)
-    templates
+  evaluated <- traverse (traverseSyntaxTemplate interpret) templates
+  pure (FunctionSyntax (map specializeTemplate evaluated))
+  where
+    specializeTemplate (SyntaxTemplate pieces) =
+      SyntaxTemplate (map specializePiece pieces)
+    specializePiece (SyntaxHole kind@(ValueSyntaxHole target)) =
+      SyntaxHole (specializeSyntaxHoleKind target kind)
+    specializePiece piece = piece
 
 sourceFunctionSyntax
-  :: Expression
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> Expression
   -> Either InterpretingError (FunctionSyntax String)
-sourceFunctionSyntax templatesExpression = do
+sourceFunctionSyntax interpret templatesExpression = do
   templates <- validatedSyntaxTemplates templatesExpression
-  pure (FunctionSyntax (map
-    (fmapTemplate renderSourceExpression)
-    templates))
+  FunctionSyntax <$> traverse sourceTemplate templates
   where
-    fmapTemplate transform (SyntaxTemplate pieces) =
-      SyntaxTemplate (map (fmapPiece transform) pieces)
-    fmapPiece _ (SyntaxLiteral literal) = SyntaxLiteral literal
-    fmapPiece transform (SyntaxHole (ExpressionSyntaxHole value)) =
-      SyntaxHole (ExpressionSyntaxHole (transform value))
-    fmapPiece transform (SyntaxHole (BlockSyntaxHole value)) =
-      SyntaxHole (BlockSyntaxHole (transform value))
-    fmapPiece transform (SyntaxHole (IdentifierExpressionSyntaxHole value)) =
-      SyntaxHole (IdentifierExpressionSyntaxHole (transform value))
-    fmapPiece transform (SyntaxHole (ValueSyntaxHole value)) =
-      SyntaxHole (ValueSyntaxHole (transform value))
+    sourceTemplate (SyntaxTemplate pieces) =
+      SyntaxTemplate <$> traverse sourcePiece pieces
+    sourcePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
+    sourcePiece (SyntaxHole kind) = do
+      target <- interpret (syntaxHoleValue kind)
+      pure (SyntaxHole
+        (mapSyntaxHoleKind renderSourceExpression
+          (specializeSyntaxHoleKind target kind)))
 
 validatedSyntaxTemplates
   :: Expression
@@ -715,6 +730,7 @@ contextualFunction
   -> Either InterpretingError InterpretedValue
 contextualFunction surface levels@(_ : _) = do
   domain <- valuedNaturalRangeValue 0 maximumDepth
+  let schema = argumentSlotSchema Nothing False domain (Just (naturalValue 0))
   pure (makeFunctionValue (EvaluatedFunction
     domain
     anyTypeValue
@@ -722,7 +738,7 @@ contextualFunction surface levels@(_ : _) = do
     (Just sourceSyntax)
     Nothing
     signatureSource
-    Nothing
+    (Just (prepare schema))
     (Just invoke)
     False))
   where
@@ -731,6 +747,13 @@ contextualFunction surface levels@(_ : _) = do
     signatureSource = renderSourceExpression
       (FunctionType domainExpression (External (AsciiStringLiteral "datra.Any")))
     innerMap = ContextualMap ("_inner_" <> surface) levels
+
+    -- The surface spelling has no holes and therefore supplies the empty map.
+    -- Contextual depth zero is the function's ordinary default; explicit
+    -- @_this n@ and @_it n@ calls overload that default with @n@.
+    prepare schema supplied = do
+      (depth, bindings) <- overloadArgumentSchemaComplete schema supplied
+      pure (PreparedFunctionArgument supplied depth bindings)
 
     invoke reduction prepared = do
       depth <- requireFiniteInteger LeftOperand
@@ -994,11 +1017,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       interpret operand >>= booleanNotValue
     Coalization operand -> coalizeValue <$> interpret operand
     Modular operand -> interpret operand >>= modularValue
-    Extract operand ->
-      do
-        stringType <- interpret
-          (IdentifierReference (IdentifierString "Str"))
-        interpret operand >>= extractValue stringType
     Fun operand ->
       case recursiveListElement operand of
         Just element -> do
@@ -1021,7 +1039,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
     SyntaxType templates signature -> do
       syntax <- evaluateFunctionSyntax interpret templates
-      sourceSyntax <- sourceFunctionSyntax templates
+      sourceSyntax <- sourceFunctionSyntax interpret templates
       value <- interpret signature
       case interpretedFunction value of
         Just function -> pure (makeFunctionValue function
@@ -1125,7 +1143,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           interpretSpecificationWith interpret implementation syntaxType
       | External descriptorExpression <- implementation -> do
           syntax <- evaluateFunctionSyntax interpret templates
-          sourceSyntax <- sourceFunctionSyntax templates
+          sourceSyntax <- sourceFunctionSyntax interpret templates
           descriptor <- interpret descriptorExpression
           target <- interpret signature
           value <- resolveExternal scope descriptor
@@ -1150,7 +1168,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               AstPatternRequiresFunctionImplementation)
       | otherwise -> do
           syntax <- evaluateFunctionSyntax interpret templates
-          sourceSyntax <- sourceFunctionSyntax templates
+          sourceSyntax <- sourceFunctionSyntax interpret templates
           value <- interpret (MapSpecification implementation signature)
           case interpretedFunction value of
             Just function -> pure (makeFunctionValue function
@@ -1173,32 +1191,46 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         parts
         typeAnnotationExpression
         maybeGivenValueExpression -> do
-      identifier <- interpretStringTemplateWith interpret parts
-      case interpretedSemanticResult identifier of
-        CanonicalAsciiString identifierString
-          | isIdentifierValue identifierString ->
+      typeAnnotation <- interpret typeAnnotationExpression
+      requireCanonicalTypeAnnotation typeAnnotation
+      let identifierExpression = StringTemplate parts
+          familyKey = renderSourceExpression identifierExpression
+          nameFamily supplied =
+            interpretStringTemplateWith
+              (evalInScopeWith reduction
+                (constantContextualBindings "it" supplied <> scope)
+                resolving)
+              parts
+      identifier <- nameFamily typeAnnotation
+      case datraCanonicalType (interpretedDatraType identifier) of
+        Just _ -> pure ()
+        Nothing -> Left NoCanonicalStringConversion
+      case asciiStringFromInterpretedMap (interpretedMap identifier) of
+        Just identifierString
+          | interpretedValueHasTotalMap identifier
+          , isIdentifierValue identifierString ->
           interpretIdentifierOperation
             identifierString typeAnnotationExpression maybeGivenValueExpression
-        _ -> do
-          typeAnnotation <- interpret typeAnnotationExpression
-          requireCanonicalTypeAnnotation typeAnnotation
-          case maybeGivenValueExpression of
-            -- A name template is not a dependent identifier: only its name
-            -- awaits the surrounding dependent witness.  Static evaluation
-            -- therefore erases the unavailable name but retains the ordinary
-            -- annotation.  Exact fibre evaluation below supplies the witness
-            -- and constructs the concrete identifier normally.
-            Nothing -> Right
-              (identifierTemplateTypeValue
-                (renderInterpretedValue identifier)
-                identifier
-                typeAnnotation)
+        _ ->
+          let target = dependentIdentifierTemplateTypeValue
+                familyKey identifier nameFamily typeAnnotation
+          in case maybeGivenValueExpression of
+            Nothing -> Right target
             Just givenExpression -> do
               given <- interpret givenExpression
-              assignIdentifierValues
-                (renderInterpretedValue identifier)
-                given
-                typeAnnotation
+              _ <- specifyValues given typeAnnotation
+              givenIdentifier <- nameFamily given
+              case asciiStringFromInterpretedMap
+                  (interpretedMap givenIdentifier) of
+                Just identifierString
+                  | interpretedValueHasTotalMap givenIdentifier
+                  , isIdentifierValue identifierString ->
+                      assignIdentifierValues
+                        identifierString typeAnnotation given
+                _ ->
+                  let source = dependentIdentifierTemplateTypeValue
+                        familyKey givenIdentifier nameFamily given
+                  in specifyValues source target
 
   where
     interpret = evalInScopeWith reduction scope resolving
@@ -1712,9 +1744,6 @@ interpretStringTemplateWith interpret parts = do
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpret expressionValue
       toStringValue canonicalStringCodec value
-    interpretPart (StringTemplateWeakInterpolation expressionValue) = do
-      value <- interpret expressionValue
-      weakToStringValue canonicalStringCodec value
 
     concatenateTemplateValues left right =
       case concatenateValues left right of
@@ -2560,9 +2589,9 @@ registeredExternal symbol = case symbol of
       (Just (\_ preparedCall ->
         publicValue (functionPreparedArgument preparedCall))) False))
   "datra.AST" -> Right astTypeValue
-  "datra.Expr" -> Right (syntaxCategoryTypeValue "Expr")
-  "datra.IdenExp" -> Right (syntaxCategoryTypeValue "IdenExp")
-  "datra.Block" -> Right (syntaxCategoryTypeValue "Block")
+  "datra.Expr" -> Right (syntaxCategoryTypeValue ExpressionAST)
+  "datra.IdenExp" -> Right (syntaxCategoryTypeValue IdentifierExpressionAST)
+  "datra.Block" -> Right (syntaxCategoryTypeValue BlockAST)
   "datra.Template" -> Right templateTypeValue
   "datra.SyntaxTemplate" -> Right syntaxTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
@@ -2580,6 +2609,7 @@ registeredExternal symbol = case symbol of
     value <- lookupArgument "value" arguments
     integer <- requireFiniteInteger LeftOperand value
     pure (integerValue (abs integer))
+  "datra.len" -> Right (unlinkedExternalFunction 1 symbol mapLengthValue)
   "datra.ordinal.sum" -> ordinalBinaryNative ordinalOperandType ordinalSumValues
   "datra.ordinal.prod" -> ordinalBinaryNative ordinalOperandType ordinalProductValues
   "datra.ordinal.minus" -> ordinalBinaryNative ordinalOperandType ordinalMinusValues

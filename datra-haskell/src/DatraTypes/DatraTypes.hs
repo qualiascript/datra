@@ -4,11 +4,10 @@
 -- checked construction, canonicalization, access validation, and their
 -- strongly typed failures belong here.
 module DatraTypes
-  ( CanonicalType
+  ( ASTMetaCategory (..)
+  , CanonicalType
   , DatraType
-  , StringRepresentation (..)
   , datraCanonicalType
-  , datraStringRepresentation
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
@@ -23,6 +22,7 @@ module DatraTypes
   , coalizeMapMemberAt
   , syntaxCategoryTypeValue
   , captureSyntaxExpression
+  , specializeSyntaxHoleKind
   , astTypeValue
   , functionAlternatives
   , templateTypeValue
@@ -46,6 +46,7 @@ module DatraTypes
   , ExternalFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   , OperandSide (..)
@@ -68,11 +69,9 @@ module DatraTypes
   , identifierValueTypeValue
   , CanonicalStringCodec (..)
   , toStringValue
-  , weakToStringValue
   , templateValue
   , stripOuterIdentifierValue
   , stripOuterIdentifierType
-  , extractValue
   , evalValues
   , requireFiniteInteger
   , IntegerLimit (..)
@@ -120,6 +119,7 @@ module DatraTypes
   , integerLimitRangeValue
   , integerTypeValue
   , dependentIdentifierTypeValue
+  , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
@@ -137,6 +137,7 @@ module DatraTypes
   , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , mapLengthValue
   , ArgumentSchema
   , argumentSlotSchema
   , orderedArgumentSchema
@@ -194,6 +195,7 @@ module DatraTypes
   , interpretedFormulationLevel
   , interpretedRangeDescription
   , interpretedMap
+  , asciiStringFromInterpretedMap
   , interpretedMapCardinality
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
@@ -208,6 +210,7 @@ import Evaluation.Error
   , FunctionFailure (..)
   , InterpretedValueKind (..)
   , InterpretingError (..)
+  , MapLengthFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
   , OverloadFailure (..)
@@ -224,7 +227,8 @@ import Evaluation.Construction
   , makeInteger
   )
 import Evaluation.Coalization (coalizeMapMemberAt, coalizeValue)
-import Evaluation.SyntaxCapture (captureSyntaxExpression)
+import Evaluation.SyntaxCapture
+  ( captureSyntaxExpression, specializeSyntaxHoleKind )
 import Evaluation.Boolean
   ( booleanAndValues
   , booleanCondition
@@ -265,13 +269,11 @@ import Evaluation.ToString
   ( CanonicalStringCodec (..)
   , templateValue
   , toStringValue
-  , weakToStringValue
   )
 import Evaluation.IdentifierErasure
   ( stripOuterIdentifierValue
   , stripOuterIdentifierType
   )
-import Extract (extractValue)
 import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map
@@ -347,8 +349,10 @@ import Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
   )
+import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , hasTrailingIdentifierMarker
   , simpleIdentifierTypeValue
@@ -363,11 +367,10 @@ import Evaluation.Specification
   , specifyValues
   )
 import Evaluation.Value
-  ( CanonicalType
+  ( ASTMetaCategory (..)
+  , CanonicalType
   , DatraType
-  , StringRepresentation (..)
   , datraCanonicalType
-  , datraStringRepresentation
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
@@ -418,6 +421,7 @@ import Evaluation.Value
   , interpretedInteger
   , interpretedFormulationLevel
   , interpretedMap
+  , asciiStringFromInterpretedMap
   , interpretedMapCardinality
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType

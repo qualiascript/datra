@@ -10,8 +10,8 @@ ordinary ASCII string literal that already exists.
 ```text
 StringTemplate  ::= '"' TemplatePart* '"'
 TemplatePart    ::= LiteralCharacter | Escape | StringComment | Interpolation
-Interpolation   ::= '%' '!'? SimpleExpression '?'?
-                  | '%' '!'? '(' Expression ')'
+Interpolation   ::= '%' SimpleExpression '?'?
+                  | '%' '(' Expression ')'
 ```
 
 `SimpleExpression` is one atomic Datra expression. It includes numeric values,
@@ -25,11 +25,8 @@ place literal question-mark text immediately after a compact interpolation,
 escape it: `"%Int\?"` interpolates
 `Int` and then appends `?`.
 
-The ordinary `%` form requires the internal `toString` conversion to be
-injective. `%!` requests `weakToString`, which also permits a non-injective
-conversion. If the ordinary proof exists, `%!x` is definitionally equal to
-`%x` and canonicalizes to `%x`; the `!` remains in canonical output only when
-the weak form actually widens the accepted conversion.
+Interpolation requires the internal `toString` conversion to be injective.
+There is no non-injective interpolation form.
 
 Examples:
 
@@ -109,18 +106,6 @@ the rendered language facts and its partial inverse. String specification uses
 that inverse generically instead of reimplementing canonical parsing for each
 type.
 
-`weakToString` uses the same conversion when that certificate can be built. If
-it cannot, it constructs a separate weak string federation without an inverse.
-Such a value can be rendered and composed where ordinary federation operations
-permit it, but specification into it is explicitly rejected rather than
-guessing which source member produced a string.
-
-The evaluator currently uses the canonical-AST-only `UnsafeEither` constructor
-to exercise this non-injective path in tests. Once Datra functions exist, a
-non-injective function should replace that fixture and `UnsafeEither` should be
-removed from the AST. Ordinary `|` cannot construct the fixture because it
-only accepts alternatives proved to be distinct Atlas maps.
-
 ## Template totality and concatenation
 
 A successfully constructed template is total exactly when every interpolation
@@ -160,6 +145,5 @@ Parsing fails for an unescaped literal `%`, a missing simple expression after
 Evaluation failures from the interpolated expression propagate unchanged.
 Failure to prove `toString` injectivity or any template concatenation boundary
 produces the dedicated `AmbiguousStringTemplate` interpreter error.
-Failure to prove an individual ordinary interpolation injective instead
-produces `NonInjectiveStringInterpolation`; `%!` is the explicit opt-in for
-that case.
+Failure to prove an individual interpolation injective instead produces
+`NonInjectiveStringInterpolation`.

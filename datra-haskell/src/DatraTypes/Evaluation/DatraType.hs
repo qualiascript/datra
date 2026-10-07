@@ -6,33 +6,37 @@
 -- tying the runtime representation to the current Haskell evaluator: a future
 -- self-hosted standard library can select the same capabilities declaratively.
 module Evaluation.DatraType
-  ( BuiltinMetaType (..)
+  ( ASTMetaCategory (..)
+  , BuiltinMetaType (..)
   , CanonicalType
   , DatraType
   , DatraTypeFamily (..)
-  , StringRepresentation (..)
   , makeCanonicalType
   , canonicalTypeAsDatraType
   , makeNonCanonicalDatraType
   , structuralDatraType
-  , weakStructuralDatraType
   , functionDatraType
   , builtinMetaDatraType
   , totalBlockDatraType
-  , structuralDatraTypeWith
   , composedStructuralDatraType
   , datraTypeFamily
   , datraCanonicalType
-  , datraStringRepresentation
   ) where
 
 -- | Host-provided primitive families exposed through declarations in
 -- @libs/std.datra@.  These names are capabilities, not language-level
 -- bindings; the standard library remains responsible for publishing them.
+data ASTMetaCategory
+  = AnyAST
+  | ExpressionAST
+  | BlockAST
+  | IdentifierExpressionAST
+  deriving (Eq, Show)
+
 data BuiltinMetaType
   = AnyMetaType
   | OrdinalMetaType
-  | ASTMetaType (Maybe String)
+  | ASTMetaType ASTMetaCategory
   | NatRangeMetaType
   | IntRangeMetaType
   | NatValRangeMetaType
@@ -49,15 +53,6 @@ data DatraTypeFamily
   | FunctionTypeFamily
   | BuiltinMetaTypeFamily BuiltinMetaType
   | TotalBlockTypeFamily
-  deriving (Eq, Show)
-
--- | Canonical string conversion is injective and can participate in
--- specification.  Weak conversion is display-only.  Both are legitimate
--- Datra types; this capability records the distinction without demoting the
--- weak-only family to an invalid type.
-data StringRepresentation
-  = CanonicalStringRepresentation
-  | WeakStringRepresentation
   deriving (Eq, Show)
 
 newtype TypeImplementations = TypeImplementations
@@ -81,26 +76,13 @@ structuralDatraType :: DatraType
 structuralDatraType = canonicalTypeAsDatraType
   (makeCanonicalType StructuralTypeFamily)
 
-weakStructuralDatraType :: DatraType
-weakStructuralDatraType = makeNonCanonicalDatraType StructuralTypeFamily
-
-structuralDatraTypeWith
-  :: StringRepresentation
-  -> DatraType
-structuralDatraTypeWith representation =
-  case representation of
-    CanonicalStringRepresentation -> structuralDatraType
-    WeakStringRepresentation -> weakStructuralDatraType
-
 composedStructuralDatraType
   :: [DatraType]
   -> DatraType
 composedStructuralDatraType components =
-  structuralDatraTypeWith
-    (if all ((== CanonicalStringRepresentation)
-          . datraStringRepresentation) components
-      then CanonicalStringRepresentation
-      else WeakStringRepresentation)
+  if all (maybe False (const True) . datraCanonicalType) components
+    then structuralDatraType
+    else makeNonCanonicalDatraType StructuralTypeFamily
 
 functionDatraType :: DatraType
 functionDatraType = canonicalTypeAsDatraType (makeCanonicalType FunctionTypeFamily)
@@ -151,12 +133,6 @@ datraCanonicalType datraType =
   case datraType of
     CanonicalDatraType canonical -> Just canonical
     NonCanonicalDatraType _ -> Nothing
-
-datraStringRepresentation :: DatraType -> StringRepresentation
-datraStringRepresentation datraType =
-  case datraCanonicalType datraType of
-    Just _ -> CanonicalStringRepresentation
-    Nothing -> WeakStringRepresentation
 
 datraTypeImplementations :: DatraType -> TypeImplementations
 datraTypeImplementations datraType =

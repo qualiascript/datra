@@ -1,7 +1,9 @@
 -- | Evaluated dependent and constant identifier types.
 module Evaluation.Identifier
   ( dependentIdentifierTypeValue
+  , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
+  , identifierNameFederationFor
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
@@ -22,9 +24,9 @@ import Evaluation.Error
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 
--- | Identifier annotations participate in canonical source syntax. A weak
--- Datra type can still be named as a value, but cannot define the annotated
--- member family of an identifier.
+-- | Identifier annotations participate in canonical source syntax. A
+-- noncanonical Datra type can still be named as a value, but cannot define
+-- the annotated member family of an identifier.
 requireCanonicalTypeAnnotation
   :: InterpretedValue
   -> Either InterpretingError ()
@@ -42,6 +44,25 @@ dependentIdentifierTypeValue familyKey identifierStringFor =
   makeDependentIdentifierTypeValue
     (DependentIdentifierDependency familyKey identifierStringFor)
     Nothing
+    Nothing
+    False
+
+-- | A source-level identifier string expression evaluated with its supplied
+-- specification as contextual @it@.  The already-instantiated federation is
+-- retained for ordinary map access; the family evaluator is retained for
+-- matching against narrower supplied specifications.
+dependentIdentifierTemplateTypeValue
+  :: String
+  -> InterpretedValue
+  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
+  -> InterpretedValue
+dependentIdentifierTemplateTypeValue familyKey nameFederation nameFamily =
+  makeDependentIdentifierTypeValue
+    (DependentIdentifierDependency familyKey (const familyKey))
+    (Just nameFederation)
+    (Just nameFamily)
+    True
 
 -- | An identifier whose spelling is selected from an ordinary string
 -- federation.  The federation is retained for name admission and inversion;
@@ -55,6 +76,24 @@ identifierTemplateTypeValue familyKey nameFederation =
   makeDependentIdentifierTypeValue
     (DependentIdentifierDependency familyKey (const familyKey))
     (Just nameFederation)
+    (Just (const (Right nameFederation)))
+    True
+
+-- | Instantiate an identifier's name federation at the supplied
+-- specification.  Constant identifiers and host-defined dependent identifiers
+-- use the same interface as source-level string-expression families.
+identifierNameFederationFor
+  :: EvaluatedDependentIdentifierType
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+identifierNameFederationFor identifier supplied =
+  case evaluatedIdentifierNameFamily identifier of
+    Just nameFamily -> nameFamily supplied
+    Nothing ->
+      Right (makeAsciiString
+        (identifierDependencyStringFor
+          (evaluatedIdentifierDependency identifier)
+          (interpretedSemanticResult supplied)))
 
 simpleIdentifierTypeValue
   :: String
@@ -67,6 +106,8 @@ simpleIdentifierTypeValue identifierString underlying
       makeDependentIdentifierTypeValue
         (SimpleIdentifierDependency identifierString)
         Nothing
+        Nothing
+        True
         underlying
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
@@ -150,29 +191,36 @@ identifierStringProjectionValue evaluated = value
       makeEvaluatedIdentifierValue
         (if isTotal
           then structuralDatraType
-          else weakStructuralDatraType)
+          else makeNonCanonicalDatraType StructuralTypeFamily)
         (IdentifierStringProjectionForm evaluated)
         (IdentifierStringProjectionAtlasMapFederation evaluated)
-        underlying
+        isTotal
         resultMap
         semantics
 
 makeDependentIdentifierTypeValue
   :: IdentifierDependency
   -> Maybe InterpretedValue
+  -> Maybe (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> Bool
   -> InterpretedValue
   -> InterpretedValue
-makeDependentIdentifierTypeValue dependency nameFederation underlying = value
+makeDependentIdentifierTypeValue
+    dependency nameFederation nameFamily isCanonical underlying = value
   where
     evaluated = EvaluatedDependentIdentifierType
-      dependency underlying nameFederation
+      dependency underlying nameFederation nameFamily
     underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
+      && maybe True interpretedValueHasTotalMap nameFederation
     representativeString =
       identifierDependencyRepresentativeString
         dependency
         (if isTotal then Just underlyingResult else Nothing)
-    identifierStringValue = makeAsciiString representativeString
+    identifierStringValue = maybe
+      (makeAsciiString representativeString)
+      id
+      nameFederation
     finalValues =
       appendOrdinalOrderedValues
         (singletonOrdinalOrderedValues identifierStringValue)
@@ -182,6 +230,7 @@ makeDependentIdentifierTypeValue dependency nameFederation underlying = value
         dependency
         (interpretedSemantics underlying)
         isTotal
+        isCanonical
     valueMap =
       InterpretedMap
         2
@@ -194,32 +243,36 @@ makeDependentIdentifierTypeValue dependency nameFederation underlying = value
         canonicalType
         (DependentIdentifierTypeForm evaluated)
         (DependentIdentifierTypeAtlasMapFederation evaluated)
-        underlying
+        isTotal
         valueMap
         semantics
     canonicalType
       | isTotal = structuralDatraType
+      | isCanonical =
+          structuralTypeWithCanonicalityOf underlying
       | otherwise =
           case dependency of
             SimpleIdentifierDependency _ ->
-              structuralDatraTypeWith
-                (datraStringRepresentation
-                  (interpretedDatraType underlying))
+              structuralTypeWithCanonicalityOf underlying
             DependentIdentifierDependency {} ->
-              weakStructuralDatraType
+              makeNonCanonicalDatraType StructuralTypeFamily
+    structuralTypeWithCanonicalityOf source =
+      case datraCanonicalType (interpretedDatraType source) of
+        Just _ -> structuralDatraType
+        Nothing -> makeNonCanonicalDatraType StructuralTypeFamily
 
--- | Identifier types and their string projections preserve the totality of
--- the underlying value. This is also the exact boundary between their
+-- | Totality is established by the caller from every component of the
+-- identifier's two-position map. This is also the exact boundary between its
 -- singleton and primitive federation representations.
 makeEvaluatedIdentifierValue
   :: DatraType
   -> ValueForm
   -> InterpretedAtlasMapFederationPrimitive
-  -> InterpretedValue
+  -> Bool
   -> InterpretedMap
   -> ValueSemantics
   -> InterpretedValue
-makeEvaluatedIdentifierValue canonicalType form primitive underlying valueMap semantics =
+makeEvaluatedIdentifierValue canonicalType form primitive isTotal valueMap semantics =
   makeInterpretedValue
     canonicalType
     form
@@ -232,5 +285,3 @@ makeEvaluatedIdentifierValue canonicalType form primitive underlying valueMap se
       then TotalInterpretedMap
       else NonTotalInterpretedMap)
     semantics
-  where
-    isTotal = interpretedValueHasTotalMap underlying

@@ -28,6 +28,7 @@ import Evaluation.Error
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
@@ -95,6 +96,12 @@ localizeSyntaxExpansionFailure failure =
     InvalidDependentBinder name ->
       LocalizedMessage "dependent binder requires an identifier"
         ["adapter: " <> name]
+    UndecidableDependentBinder name ->
+      LocalizedMessage
+        "dependent binder expression cannot be decided statically"
+        [ "adapter: " <> name
+        , "a single lexical identifier is currently required"
+        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -132,6 +139,7 @@ localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
     NamedAccessFailed failure -> localizeNamedAccessFailure failure
+    MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
     ExternalEvaluationFailed failure -> localizeExternalFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
@@ -262,22 +270,16 @@ localizeInterpretingError reason =
     NoCanonicalStringConversion ->
       LocalizedMessage
         "value does not have a canonical string conversion"
-        [ "weakToString can render the value, but specification requires "
-            <> "an injective canonical conversion"
-        ]
-    ExpectedStringTemplateSpecification kind ->
-      LocalizedMessage
-        "extract expects a concrete string-template specification"
-        ["given value kind: " <> valueKind kind]
+        ["only injective, round-trippable string conversions are accepted"]
     InvalidSyntaxTemplateOperand ->
       LocalizedMessage
-        "~% expects a compile-time string or total map of strings"
+        "% expects a compile-time string or total map of strings"
         []
     InvalidSyntaxTemplateCharacter character ->
       LocalizedMessage
         "syntax template contains an invalid literal character"
         [ "character: " <> show character
-        , "~% can only install literals retained by the neutral source parser"
+        , "% can only install literals retained by the neutral source parser"
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
@@ -342,6 +344,16 @@ localizeNamedAccessFailure failure =
       LocalizedMessage "field map cannot be inspected" []
     NamedAccessRequiresFiniteMap ->
       LocalizedMessage "named access requires a finite map" []
+
+localizeMapLengthFailure :: MapLengthFailure -> LocalizedMessage
+localizeMapLengthFailure failure =
+  case failure of
+    IndeterminateMapLength ->
+      LocalizedMessage "object does not have a determinate final-page length" []
+    MapLengthExceedsNaturalLimit orderType ->
+      LocalizedMessage
+        "object's final-page length is not representable by NatLimit"
+        ["final-page order type: " <> renderOrdinal orderType]
 
 localizeExternalFailure :: ExternalFailure -> LocalizedMessage
 localizeExternalFailure failure =

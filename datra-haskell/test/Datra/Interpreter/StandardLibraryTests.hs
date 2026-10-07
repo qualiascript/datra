@@ -9,6 +9,7 @@ import DatraTypes
   , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
+  , MapLengthFailure (..)
   , ModuleEvaluationFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
@@ -54,6 +55,34 @@ standardLibraryTests =
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
         , programCase "SyntaxTemplate external uses the private type spelling"
             "yield !~\"datra.SyntaxTemplate\"" "_SyntaxTemplate"
+        ]
+    , testGroup "final-page length"
+        [ programCase "finite lengths use the final page"
+            ( "yield (len (); len 5; len (1; 2; 3); "
+                <> "len ((1; 2); (3; 4)); len \"abc\")"
+            )
+            "(0; 1; 3; 2; 3)"
+        , programCase "omega length is positive infinity"
+            "yield len (from 0 up)"
+            "Infinity"
+        , programCase "ordinary and qualified calls remain available"
+            "yield ('len (1; 2; 3); Std.len (4; 5))"
+            "(3; 2)"
+        , programCase "optional named values retain their map extent"
+            ( "measure := ({value? : Any} -> NatLimit do yield len value)\n"
+                <> "yield measure (value := (1; 2; 3))"
+            )
+            "3"
+        , programCase "length results compose with specification and subfederation"
+            ( "yield (((len (1; 2)) ~> Nat) of Nat; "
+                <> "(Nat <~ (len (1; 2))) of Nat; "
+                <> "(len (1; 2)) of NatLimit)"
+            )
+            "(true; true; true)"
+        , programFailureCase "host meta-types have indeterminate length"
+            "yield len Any"
+            (SourceEvaluationFailure
+              (MapLengthFailed IndeterminateMapLength))
         ]
     , testGroup "qualified syntax"
         [ expressionCase source source expected
@@ -698,72 +727,79 @@ integerLimitTests =
 declaredPatternTests :: TestTree
 declaredPatternTests =
   testGroup "declared patterns"
-    [ programCase "syntax pattern call"
+    [ programCase "zero-hole syntax completes a total domain"
+        ( "answer := \"the answer\" % (42 -> Nat) do yield it\n"
+            <> "yield the answer"
+        )
+        "42"
+    , programCase "value holes evaluate expressions before selection"
+        ( "double := \"double %Nat\" % (Nat -> Nat) do yield it * 2\n"
+            <> "yield double (2 + 2)"
+        )
+        "8"
+    , programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
     , programCase "surface syntax name may differ from its binding"
-        ( "abc := \"def $Nat next\" ~% ({value?:Nat} -> Int)"
+        ( "abc := \"def %Nat next\" % ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield def 2 next"
         )
         "3"
     , programCase "the complete literal prefix is matched before its first hole"
-        ( "abc := \"my name is $Nat\" ~% ({value?:Nat} -> Int)"
+        ( "abc := \"my name is %Nat\" % ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield my name is 2"
         )
         "3"
     , programCase "a template may begin with a postfix operand hole"
-        ( "increment := \"$Int++\" ~% ({value?:Int} -> Int)"
+        ( "increment := \"%Int++\" % ({value?:Int} -> Int)"
             <> " do yield value+1\n"
             <> "yield 2++"
         )
         "3"
     , programCase "one function accepts an inhabited total map of templates"
-        ( "increment := (\"$Int++\"; \"increment $Int\")"
-            <> " ~% ({value?:Int} -> Int) do yield value+1\n"
+        ( "increment := (\"%Int++\"; \"increment %Int\")"
+            <> " % ({value?:Int} -> Int) do yield value+1\n"
             <> "yield (2++; increment 2)"
         )
         "(3; 3)"
     , programFailureCase
-        "~% rejects an opening grouping character in a syntax template"
-        "yield (\"call ($Int)\" ~% (Int -> Int))"
+        "% rejects an opening grouping character in a syntax template"
+        "yield (\"call (%Int)\" % (Int -> Int))"
         (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter '('))
     , programFailureCase
-        "~% rejects a closing grouping character in a syntax template"
-        "yield (\"call $Int)\" ~% (Int -> Int))"
+        "% rejects a closing grouping character in a syntax template"
+        "yield (\"call %Int)\" % (Int -> Int))"
         (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter ')'))
     , programFailureCase
         "one forbidden member rejects a complete template map"
-        "yield ((\"step $Int\"; \"call ($Int)\") ~% (Int -> Int))"
+        "yield ((\"step %Int\"; \"call (%Int)\") % (Int -> Int))"
         (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter '('))
-    , programFailureCase "~% rejects a non-string map member"
-        "yield ((\"step $Int\"; 1) ~% (Int -> Int))"
+    , programFailureCase "% rejects a non-string map member"
+        "yield ((\"step %Int\"; 1) % (Int -> Int))"
         (SourceEvaluationFailure InvalidSyntaxTemplateOperand)
-    , programFailureCase "~% rejects an empty total map"
-        "yield (() ~% (Int -> Int))"
-        (SourceEvaluationFailure InvalidSyntaxTemplateOperand)
-    , programFailureCase "~% does not accept an extracted string"
-        "yield (%\"step $Int\" ~% (Int -> Int))"
+    , programFailureCase "% rejects an empty total map"
+        "yield (() % (Int -> Int))"
         (SourceEvaluationFailure InvalidSyntaxTemplateOperand)
     , programCase "syntax annotation canonicalizes as an explicit function"
-        "yield (\"step $Int next\" ~% (Int -> Int))" "(Int -> Int)"
+        "yield (\"step %Int next\" % (Int -> Int))" "(Int -> Int)"
     , programCase "ordinary spelling"
         (ordinaryDeclaration <> "yield step (value:2)") "3"
     , programCase "syntax function subfederation"
         (declaration <> "yield step of ({value?:Nat} -> Int)") "true"
     , programCase "identical syntax attachments are subfederations"
-        ( "yield ((\"step $Int mark\" ~% (Int -> Int))"
-            <> " of (\"step $Int mark\" ~% (Int -> Int)))"
+        ( "yield ((\"step %Int mark\" % (Int -> Int))"
+            <> " of (\"step %Int mark\" % (Int -> Int)))"
         )
         "true"
     , programCase "distinct syntax attachments are not subfederations"
-        ( "yield ((\"step $Int left\" ~% (Int -> Int))"
-            <> " of (\"step $Int right\" ~% (Int -> Int)))"
+        ( "yield ((\"step %Int left\" % (Int -> Int))"
+            <> " of (\"step %Int right\" % (Int -> Int)))"
         )
         "false"
     , programFailureCase "specification preserves syntax attachment identity"
-        ( "yield ((\"step $Int left\" ~% (Int -> Int))"
-            <> " ~> (\"step $Int right\" ~% (Int -> Int)))"
+        ( "yield ((\"step %Int left\" % (Int -> Int))"
+            <> " ~> (\"step %Int right\" % (Int -> Int)))"
         )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed FunctionSignatureVarianceViolation))
@@ -775,21 +811,21 @@ declaredPatternTests =
         (declaration <> "yield step (-1) next")
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-    , programFailureCase "$Int syntax holes reject Infinity"
-        ( "finite := \"finite $Int\" ~% ({value?:Int} -> Int)"
+    , programFailureCase "%Int syntax holes reject Infinity"
+        ( "finite := \"finite %Int\" % ({value?:Int} -> Int)"
             <> " do yield value\n"
             <> "yield finite Infinity"
         )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-    , programCase "$IntLimit syntax holes accept Infinity"
-        ( "limit := \"limit $IntLimit\" ~% ({value?:IntLimit} -> IntLimit)"
+    , programCase "%IntLimit syntax holes accept Infinity"
+        ( "limit := \"limit %IntLimit\" % ({value?:IntLimit} -> IntLimit)"
             <> " do yield value\n"
             <> "yield limit Infinity"
         )
         "Infinity"
     , programFailureCase "syntax captures must also inhabit the function domain"
-        ( "step := \"step $Int next\" ~% ({value?:Nat} -> Int)"
+        ( "step := \"step %Int next\" % ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield step (-1) next"
         )
@@ -802,34 +838,34 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"step $Int next\" ~% (Int -> Int) !~\"datra.abs\")"
-            <> " | (\"step $Int next\" ~% (Int -> Int) do yield 2))\n"
+        ( "step := ((\"step %Int next\" % (Int -> Int) !~\"datra.abs\")"
+            <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "distinct literal syntax alternatives still require distinct calls"
-        ( "step := ((\"step $Int left\" ~% ({value?:Int} -> Int) do yield value)"
-            <> " | (\"step $Int right\" ~% ({value?:Int} -> Int) do yield value))\n"
+        ( "step := ((\"step %Int left\" % ({value?:Int} -> Int) do yield value)"
+            <> " | (\"step %Int right\" % ({value?:Int} -> Int) do yield value))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((\"step $Int left\" ~% (Int -> Int) !~\"datra.abs\")"
-            <> " | (\"step $Int right\" ~% (Int -> Int) !~\"datra.abs\"))\n"
+        ( "step := ((\"step %Int left\" % (Int -> Int) !~\"datra.abs\")"
+            <> " | (\"step %Int right\" % (Int -> Int) !~\"datra.abs\"))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((\"choose $Nat mark\" ~% (Nat -> Int) !~\"datra.abs\")"
-            <> " | (\"choose $Int mark\" ~% (Int -> Int) !~\"datra.abs\"))\n"
+        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) !~\"datra.abs\")"
+            <> " | (\"choose %Int mark\" % (Int -> Int) !~\"datra.abs\"))\n"
             <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     ]
   where
     declaration =
-      "step := \"step $Nat next\" ~% ({value?:Nat} -> Int) do yield value+1\n"
+      "step := \"step %Nat next\" % ({value?:Nat} -> Int) do yield value+1\n"
     ordinaryDeclaration =
-      "step := \"step $Nat next\" ~% ({value?:Int} -> Int) do yield value+1\n"
+      "step := \"step %Nat next\" % ({value?:Int} -> Int) do yield value+1\n"

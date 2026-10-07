@@ -110,12 +110,12 @@ data ValueSemantics
   | AsciiStringSemantics String
   | IdentifierValueTypeSemantics
   | ToStringSemantics ValueSemantics
-  | WeakToStringSemantics ValueSemantics
   | TemplateSemantics ValueSemantics
   | DependentSumSemantics String
   | DependentIdentifierTypeSemantics
       IdentifierDependency
       ValueSemantics
+      Bool
       Bool
   | IdentifierStringProjectionSemantics
       IdentifierDependency
@@ -156,7 +156,6 @@ data CanonicalResult
   | CanonicalAsciiString String
   | CanonicalIdentifierValueType
   | CanonicalToString CanonicalResult
-  | CanonicalWeakToString CanonicalResult
   | CanonicalTemplate CanonicalResult
   | CanonicalDependentSum String
   | CanonicalSimpleIdentifierType
@@ -229,10 +228,11 @@ mapValueSemanticsChildren recur semantics =
     SkipSemantics payload -> SkipSemantics (recur payload)
     ConcatenationSemantics members -> ConcatenationSemantics (map recur members)
     ToStringSemantics source -> ToStringSemantics (recur source)
-    WeakToStringSemantics source -> WeakToStringSemantics (recur source)
     TemplateSemantics source -> TemplateSemantics (recur source)
-    DependentIdentifierTypeSemantics dependency underlying isTotal ->
-      DependentIdentifierTypeSemantics dependency (recur underlying) isTotal
+    DependentIdentifierTypeSemantics
+        dependency underlying isTotal isCanonical ->
+      DependentIdentifierTypeSemantics
+        dependency (recur underlying) isTotal isCanonical
     IdentifierStringProjectionSemantics dependency underlying isTotal ->
       IdentifierStringProjectionSemantics dependency (recur underlying) isTotal
     AssignmentSemantics identifierString typeAnnotation givenValue ->
@@ -293,12 +293,10 @@ canonicalResultWith retainPresentation semantics =
     AsciiStringSemantics characters -> CanonicalAsciiString characters
     IdentifierValueTypeSemantics -> CanonicalIdentifierValueType
     ToStringSemantics source -> CanonicalToString (recur source)
-    WeakToStringSemantics source ->
-      CanonicalWeakToString (recur source)
     TemplateSemantics source ->
       CanonicalTemplate (recur source)
     DependentSumSemantics source -> CanonicalDependentSum source
-    DependentIdentifierTypeSemantics dependency underlying isTotal ->
+    DependentIdentifierTypeSemantics dependency underlying isTotal _ ->
       let underlyingResult = recur underlying
       in case dependency of
         SimpleIdentifierDependency identifierString

@@ -108,7 +108,6 @@ atomicFederationAccess value =
     PrimitiveAtlasMapFederation IdentifierValueTypeAtlasMapFederation ->
       Nothing
     PrimitiveAtlasMapFederation (ToStringAtlasMapFederation _ _) -> Nothing
-    PrimitiveAtlasMapFederation (WeakToStringAtlasMapFederation _) -> Nothing
     SequentialAtlasMapFederation _ -> Nothing
     ExpansionAtlasMapFederation _ _ -> Nothing
     ConcatenatedAtlasMapFederation _ _ -> Nothing

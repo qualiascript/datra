@@ -28,7 +28,6 @@ import Evaluation.Map (concatenateValues)
 import Evaluation.Optional (makeNothing)
 import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision
-import Evaluation.Specification.String (federationUsesWeakToString)
 import Evaluation.Value
 
 type Specifier =
@@ -48,8 +47,6 @@ specifyStructural
 specifyStructural specify decideSubfederation source target
   | Just _ <- interpretedFunction source =
       Left (FunctionEvaluationFailed ExpectedFunctionType)
-  | federationUsesWeakToString (interpretedAtlasMapFederation target) =
-      Left NoCanonicalStringConversion
   | interpretedSemanticResult source == interpretedSemanticResult target =
       Right source
   | otherwise =
@@ -165,7 +162,7 @@ simpleIdentifierStringFromSemantics (PresentedSemantics _ _ semantics) =
 simpleIdentifierStringFromSemantics semantics =
   case semantics of
     DependentIdentifierTypeSemantics
-        (SimpleIdentifierDependency identifierString) _ _ ->
+        (SimpleIdentifierDependency identifierString) _ _ _ ->
           Just identifierString
     AssignmentSemantics identifierString _ _ -> Just identifierString
     SpecificationSemantics source target -> do
@@ -376,5 +373,6 @@ originalSpecificationSourceSemantics value =
       DependentIdentifierTypeSemantics
         (SimpleIdentifierDependency identifierString)
         givenValueSemantics
+        True
         True
     semantics -> semantics

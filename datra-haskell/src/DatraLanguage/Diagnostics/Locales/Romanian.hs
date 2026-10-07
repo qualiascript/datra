@@ -25,6 +25,7 @@ import Evaluation.Error
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
+  , MapLengthFailure (..)
   , OverloadFailure (..)
   , OperandSide (..)
   , AtlasMapFederationOperation (..)
@@ -91,6 +92,12 @@ localizeSyntaxExpansionFailure failure =
     InvalidDependentBinder name ->
       LocalizedMessage "legătura dependentă necesită un identificator"
         ["adaptor: " <> name]
+    UndecidableDependentBinder name ->
+      LocalizedMessage
+        "expresia legăturii dependente nu poate fi decisă static"
+        [ "adaptor: " <> name
+        , "în prezent este necesar un singur identificator lexical"
+        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -130,6 +137,7 @@ localizeInterpretingError :: InterpretingError -> LocalizedMessage
 localizeInterpretingError reason =
   case reason of
     NamedAccessFailed failure -> localizeNamedAccessFailure failure
+    MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
     ExternalEvaluationFailed failure -> localizeExternalFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
@@ -262,22 +270,16 @@ localizeInterpretingError reason =
     NoCanonicalStringConversion ->
       LocalizedMessage
         "valoarea nu are o conversie canonică în șir"
-        [ "weakToString poate reda valoarea, dar specificarea necesită "
-            <> "o conversie canonică injectivă"
-        ]
-    ExpectedStringTemplateSpecification kind ->
-      LocalizedMessage
-        "extract necesită o specificație concretă de șablon de șir"
-        ["tipul valorii date: " <> valueKind kind]
+        ["sunt acceptate doar conversii în șir injective și reversibile"]
     InvalidSyntaxTemplateOperand ->
       LocalizedMessage
-        "~% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
+        "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
         []
     InvalidSyntaxTemplateCharacter character ->
       LocalizedMessage
         "șablonul sintactic conține un caracter literal nevalid"
         [ "caracter: " <> show character
-        , "~% poate instala doar literali păstrați de analizorul neutru al sursei"
+        , "% poate instala doar literali păstrați de analizorul neutru al sursei"
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
@@ -342,6 +344,17 @@ localizeNamedAccessFailure failure =
       LocalizedMessage "harta de câmpuri nu poate fi inspectată" []
     NamedAccessRequiresFiniteMap ->
       LocalizedMessage "accesul prin nume necesită o hartă finită" []
+
+localizeMapLengthFailure :: MapLengthFailure -> LocalizedMessage
+localizeMapLengthFailure failure =
+  case failure of
+    IndeterminateMapLength ->
+      LocalizedMessage
+        "obiectul nu are o lungime determinată a paginii finale" []
+    MapLengthExceedsNaturalLimit orderType ->
+      LocalizedMessage
+        "lungimea paginii finale a obiectului nu poate fi reprezentată de NatLimit"
+        ["tipul de ordine al paginii finale: " <> renderOrdinal orderType]
 
 localizeExternalFailure :: ExternalFailure -> LocalizedMessage
 localizeExternalFailure failure =

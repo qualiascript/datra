@@ -75,20 +75,23 @@ stringConversionProperties semantics
     SkipSemantics _ -> exactStrings ["*"]
     RangeConcatenationSemantics {} -> injectiveUnknownAlphabet
     ConcatenationSemantics members -> compositeProperties members
-    DependentIdentifierTypeSemantics dependency underlying True
+    DependentIdentifierTypeSemantics dependency underlying True _
       | Just rendered <- reservedConstructorString dependency underlying ->
           exactStrings [rendered]
     DependentIdentifierTypeSemantics
-        (SimpleIdentifierDependency _) underlying _ ->
+        (SimpleIdentifierDependency _) underlying _ _ ->
       structuralWrapperProperties underlying
-    DependentIdentifierTypeSemantics (DependentIdentifierDependency {}) _ _ ->
+    DependentIdentifierTypeSemantics
+        (DependentIdentifierDependency {}) underlying _ True ->
+      structuralWrapperProperties underlying
+    DependentIdentifierTypeSemantics
+        (DependentIdentifierDependency {}) _ _ False ->
       unknownConversion
     -- A projection may erase the underlying member entirely: a constant
     -- identifier family maps every member to the same string, and a dependent
     -- family needs its own future proof that generated names are distinct.
     IdentifierStringProjectionSemantics {} -> unknownConversion
     ToStringSemantics source -> stringConversionProperties source
-    WeakToStringSemantics _ -> unknownConversion
     TemplateSemantics source -> stringConversionProperties source
     DependentSumSemantics _ -> injectiveUnknownAlphabet
     AssignmentSemantics _ typeAnnotation givenValue ->

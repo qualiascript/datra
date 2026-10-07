@@ -2,7 +2,6 @@
 module Evaluation.Specification.String
   ( federationProducesStrings
   , valueProducesStrings
-  , federationUsesWeakToString
   , selectStringFederationMember
   ) where
 
@@ -67,7 +66,6 @@ federationProducesStrings federation =
       case primitive of
         IdentifierValueTypeAtlasMapFederation -> True
         ToStringAtlasMapFederation _ _ -> True
-        WeakToStringAtlasMapFederation _ -> True
         _ -> False
     CoalizedAtlasMapFederation operand ->
       federationProducesStrings operand
@@ -75,23 +73,6 @@ federationProducesStrings federation =
       federationProducesStrings left && federationProducesStrings right
     SequentialAtlasMapFederation _ -> False
     ExpansionAtlasMapFederation _ _ -> False
-
-federationUsesWeakToString :: InterpretedAtlasMapFederation -> Bool
-federationUsesWeakToString federation =
-  case federation of
-    SingletonAtlasMapFederation _ -> False
-    PrimitiveAtlasMapFederation primitive ->
-      case primitive of
-        WeakToStringAtlasMapFederation _ -> True
-        _ -> False
-    CoalizedAtlasMapFederation operand ->
-      federationUsesWeakToString operand
-    ConcatenatedAtlasMapFederation left right ->
-      federationUsesWeakToString left || federationUsesWeakToString right
-    SequentialAtlasMapFederation members ->
-      any federationUsesWeakToString members
-    ExpansionAtlasMapFederation left right ->
-      federationUsesWeakToString left || federationUsesWeakToString right
 
 -- | Select a concrete string by traversing the retained string-federation
 -- expression. Concatenations are split only at the finitely many character
@@ -145,7 +126,6 @@ selectCharacters selectMember characters federation =
                   | candidate <- candidates
                   ]
               ToStringInverseRejected -> DecisionRefuted)
-        WeakToStringAtlasMapFederation _ -> Just DecisionUndecidable
         _ -> Nothing
     CoalizedAtlasMapFederation operand ->
       selectCharacters selectMember characters operand

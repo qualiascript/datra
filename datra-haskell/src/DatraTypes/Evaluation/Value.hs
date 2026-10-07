@@ -4,24 +4,21 @@
 -- Constructors stay internal; the public 'DatraTypes' module exposes only the
 -- observations and checked operations needed by the AST interpreter.
 module Evaluation.Value
-  ( BuiltinMetaType (..)
+  ( ASTMetaCategory (..)
+  , BuiltinMetaType (..)
   , CanonicalType
   , DatraType
   , DatraTypeFamily (..)
-  , StringRepresentation (..)
   , makeCanonicalType
   , canonicalTypeAsDatraType
   , makeNonCanonicalDatraType
   , structuralDatraType
-  , weakStructuralDatraType
-  , structuralDatraTypeWith
   , composedStructuralDatraType
   , functionDatraType
   , builtinMetaDatraType
   , totalBlockDatraType
   , datraTypeFamily
   , datraCanonicalType
-  , datraStringRepresentation
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
@@ -234,6 +231,8 @@ data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   { evaluatedIdentifierDependency :: IdentifierDependency
   , evaluatedIdentifierUnderlying :: InterpretedValue
   , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
+  , evaluatedIdentifierNameFamily :: Maybe
+      (InterpretedValue -> Either InterpretingError InterpretedValue)
   }
 
 -- | Structural provenance that remains meaningful after a source-level
@@ -284,7 +283,9 @@ data EvaluatedAtlasMapFederationMember
   | EvaluatedArgumentMapMember
       InterpretedValue
       EvaluatedAtlasMapFederationMember
-  | EvaluatedDependentIdentifierTypeMember EvaluatedAtlasMapFederationMember
+  | EvaluatedDependentIdentifierTypeMember
+      (Maybe EvaluatedAtlasMapFederationMember)
+      EvaluatedAtlasMapFederationMember
   | EvaluatedDependentSumMember InterpretedValue
   | EvaluatedToStringMember
       InterpretedValue
@@ -432,7 +433,11 @@ isFunctionFamily value =
 builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName AnyMetaType = "Any"
 builtinMetaTypeName OrdinalMetaType = "Ordinal"
-builtinMetaTypeName (ASTMetaType name) = maybe "_AST" id name
+builtinMetaTypeName (ASTMetaType category) = case category of
+  AnyAST -> "_AST"
+  ExpressionAST -> "Expr"
+  BlockAST -> "Block"
+  IdentifierExpressionAST -> "IdenExp"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
@@ -451,7 +456,7 @@ anyTypeValue, ordinalTypeValue, astTypeValue, naturalRangeTypeValue, integerRang
   templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
 anyTypeValue = builtinMetaTypeValue AnyMetaType
 ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
-astTypeValue = builtinMetaTypeValue (ASTMetaType Nothing)
+astTypeValue = builtinMetaTypeValue (ASTMetaType AnyAST)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
 naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType
@@ -459,8 +464,8 @@ integerValuedRangeTypeValue = builtinMetaTypeValue IntValRangeMetaType
 templateTypeValue = builtinMetaTypeValue TemplateMetaType
 syntaxTemplateTypeValue = builtinMetaTypeValue SyntaxTemplateMetaType
 
-syntaxCategoryTypeValue :: String -> InterpretedValue
-syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType . Just
+syntaxCategoryTypeValue :: ASTMetaCategory -> InterpretedValue
+syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType
 
 data ValueForm
   = BuiltinMetaTypeForm BuiltinMetaType
@@ -486,7 +491,6 @@ data ValueForm
   | AsciiStringForm String
   | IdentifierValueTypeForm
   | ToStringForm
-  | WeakToStringForm
   | TemplateForm InterpretedValue
   | SpecificationForm EvaluatedSpecification
   | AssignmentForm EvaluatedSpecification
@@ -529,7 +533,7 @@ data ProvenInjectiveToString = ProvenInjectiveToString
 
 -- | Primitive Atlas-map federation kinds understood by the interpreter.
 -- The injective string primitive carries the language facts and inverse that
--- justified its construction; the explicitly weak primitive does not.
+-- justified its construction.
 data InterpretedAtlasMapFederationPrimitive
   = NaturalRangeAtlasMapFederation EvaluatedNaturalRange
   | ValuedNaturalRangeAtlasMapFederation EvaluatedValuedNaturalRange
@@ -542,7 +546,6 @@ data InterpretedAtlasMapFederationPrimitive
   | ToStringAtlasMapFederation
       InterpretedValue
       ProvenInjectiveToString
-  | WeakToStringAtlasMapFederation InterpretedValue
 
 type InterpretedAtlasMapFederation =
   AtlasMapFederationExpression
@@ -838,7 +841,6 @@ interpretedValueKind value =
     AsciiStringForm _ -> AsciiStringValueKind
     IdentifierValueTypeForm -> AsciiStringValueKind
     ToStringForm -> AsciiStringValueKind
-    WeakToStringForm -> AsciiStringValueKind
     TemplateForm _ -> AsciiStringValueKind
     SpecificationForm _ -> SpecificationValueKind
     AssignmentForm _ -> SpecificationValueKind
