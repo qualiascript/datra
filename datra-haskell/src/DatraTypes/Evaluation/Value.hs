@@ -233,7 +233,6 @@ data EvaluatedDependentIdentifierType = EvaluatedDependentIdentifierType
   , evaluatedIdentifierNameFederation :: Maybe InterpretedValue
   , evaluatedIdentifierNameFamily :: Maybe
       (InterpretedValue -> Either InterpretingError InterpretedValue)
-  , evaluatedIdentifierIsCanonical :: Bool
   }
 
 -- | Structural provenance that remains meaningful after a source-level

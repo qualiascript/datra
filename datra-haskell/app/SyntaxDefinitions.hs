@@ -154,7 +154,16 @@ dependentBinder name constructor binder bound =
     OptionalType (AsciiStringLiteral identifier)
       | isIdentifierValue identifier ->
           Right (constructor (IdentifierString identifier) True bound)
+    value
+      | dynamicIdentifierExpression value ->
+          Left (UndecidableDependentBinder name)
     _ -> Left (InvalidDependentBinder name)
+  where
+    dynamicIdentifierExpression value =
+      case value of
+        StringTemplate {} -> True
+        OptionalType underlying -> dynamicIdentifierExpression underlying
+        _ -> False
 
 localDependentFamily
   :: String

@@ -92,6 +92,12 @@ localizeSyntaxExpansionFailure failure =
     InvalidDependentBinder name ->
       LocalizedMessage "legătura dependentă necesită un identificator"
         ["adaptor: " <> name]
+    UndecidableDependentBinder name ->
+      LocalizedMessage
+        "expresia legăturii dependente nu poate fi decisă static"
+        [ "adaptor: " <> name
+        , "în prezent este necesar un singur identificator lexical"
+        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure

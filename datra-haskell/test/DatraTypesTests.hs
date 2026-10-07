@@ -82,6 +82,7 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (UnsupportedEvaluationMode)
   , ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
+  , SyntaxExpansionFailure (UndecidableDependentBinder)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -416,6 +417,20 @@ testDiagnostics = do
         == LocalizedMessage
           "adnotarea de tip a identificatorului nu este canonică"
           ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
+    )
+  assert "undecidable dependent binders have a bilingual diagnostic"
+    ( localizeDiagnostic English (UndecidableDependentBinder "with")
+        == LocalizedMessage
+          "dependent binder expression cannot be decided statically"
+          [ "adapter: with"
+          , "a single lexical identifier is currently required"
+          ]
+      && localizeDiagnostic Romanian (UndecidableDependentBinder "with")
+        == LocalizedMessage
+          "expresia legăturii dependente nu poate fi decisă static"
+          [ "adaptor: with"
+          , "în prezent este necesar un singur identificator lexical"
+          ]
     )
   assert "mixed dependent binders have an explicit bilingual diagnostic"
     ( localizeDiagnostic English Types.MixedDependentBinders

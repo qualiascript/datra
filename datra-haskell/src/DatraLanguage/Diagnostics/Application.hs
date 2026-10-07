@@ -22,6 +22,7 @@ data ModuleLoadFailure
 data SyntaxExpansionFailure
   = UnknownSyntaxControlAdapter String
   | InvalidDependentBinder String
+  | UndecidableDependentBinder String
   deriving (Eq, Show)
 
 data CommandLineOptionFailure

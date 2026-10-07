@@ -209,7 +209,7 @@ makeDependentIdentifierTypeValue
     dependency nameFederation nameFamily isCanonical underlying = value
   where
     evaluated = EvaluatedDependentIdentifierType
-      dependency underlying nameFederation nameFamily isCanonical
+      dependency underlying nameFederation nameFamily
     underlyingResult = interpretedSemanticResult underlying
     isTotal = interpretedValueHasTotalMap underlying
       && maybe True interpretedValueHasTotalMap nameFederation

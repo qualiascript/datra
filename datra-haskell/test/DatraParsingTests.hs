@@ -37,7 +37,9 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage) )
+  ( ParseFailure (parseFailureMessage)
+  , SyntaxExpansionFailure (..)
+  )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
@@ -47,11 +49,13 @@ import Parsing
   , parseDatraRawLocatedWithSourceName
   )
 import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
+  ( SyntaxFunctionBody (applySyntaxFunctionBody)
+  , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxRule (..)
   , SyntaxTemplate (..)
   , expandSyntax
+  , syntaxFunctionBodyForSymbol
   )
 import SyntaxTemplateMatching
   ( SyntaxTemplateFederationFailure (..)
@@ -385,6 +389,27 @@ regressionTests = do
         , ref "i"
         ])
       (natural 1))
+  let dynamicBinder = StringTemplate
+        [ StringTemplateLiteral "item"
+        , StringTemplateInterpolation (ref "index")
+        ]
+      optionalDynamicBinder = OptionalType dynamicBinder
+      assertUndecidableBinder symbol adapter captures =
+        case syntaxFunctionBodyForSymbol symbol of
+          Nothing -> fail ("missing syntax adapter: " <> symbol)
+          Just body -> assert
+            (adapter <> " reports a dynamic binder as undecidable")
+            ( applySyntaxFunctionBody body captures
+                == Left (UndecidableDependentBinder adapter)
+            )
+  assertUndecidableBinder
+    "datra.with" "with" [dynamicBinder, ref "Any"]
+  assertUndecidableBinder
+    "datra.for" "for" [optionalDynamicBinder, ref "Any"]
+  assertUndecidableBinder
+    "datra.withIn" "with" [dynamicBinder, ref "Any", ref "index"]
+  assertUndecidableBinder
+    "datra.forIn" "for" [optionalDynamicBinder, ref "Any", ref "index"]
   assertAstOutput "dependent sum family sugar can omit in before from"
     "with i from 0 to 3 do i * 2"
     (MapAccess

@@ -3716,6 +3716,10 @@ testIdentifiers = do
             == "\"abc%(it)\" : range 0 up"
           Nothing -> False
       )
+  expectSourceRejection
+    "repeated dependent-name holes retain ordinary template ambiguity"
+    "\"%(it)%(it)\" : Nat"
+    (== AmbiguousStringTemplate)
   expectSourceValue
       "dependent identifier name access instantiates the name expression"
       "(\"abc%(it)\" : range 0 up) [0]" $ \value ->
@@ -3732,6 +3736,11 @@ testIdentifiers = do
     \value -> assert "dependent identifier specification retains a witness"
       (interpretedValueKind value == SpecificationValueKind)
   expectSourceValue
+      "dependent identifiers participate in reverse specification"
+      "(\"n%(it)\" : Nat) <~ (\"n5\" : 5)" $
+    \value -> assert "reverse specification retains the dependent name witness"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceValue
       "dependent identifier extraction uses its retained name witness"
       "%((\"n5\" : 5) ~> (\"n%(it)\" : Nat))" $ \value ->
     assert "identifier names use the ordinary template extraction path"
@@ -3746,6 +3755,16 @@ testIdentifiers = do
       "(range 1 to 30) of (\"abc%(it)\"? : range 0 up)" $
     \value -> assert "the unnamed optional branch remains the annotation"
       (renderInterpretedValue value == "true")
+  expectSourceValue
+      "an optional dependent identifier specifies its named branch"
+      "(\"n5\" : 5) ~> (\"n%(it)\"? : Nat)" $
+    \value -> assert "the named optional branch retains a specification witness"
+      (interpretedValueKind value == SpecificationValueKind)
+  expectSourceValue
+      "an optional dependent identifier specifies its unnamed branch"
+      "5 ~> (\"n%(it)\"? : Nat)" $
+    \value -> assert "the unnamed optional branch retains a specification witness"
+      (interpretedValueKind value == SpecificationValueKind)
   let contextualIt = contextualAccess (IdentifierString "_it")
       directName = IdentifierTemplateOperation
         [ StringTemplateLiteral "x"

@@ -96,6 +96,12 @@ localizeSyntaxExpansionFailure failure =
     InvalidDependentBinder name ->
       LocalizedMessage "dependent binder requires an identifier"
         ["adapter: " <> name]
+    UndecidableDependentBinder name ->
+      LocalizedMessage
+        "dependent binder expression cannot be decided statically"
+        [ "adapter: " <> name
+        , "a single lexical identifier is currently required"
+        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
