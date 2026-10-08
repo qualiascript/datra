@@ -151,14 +151,10 @@ rewrite mode depth reserved active resolver bound expression =
       let parameters = parameterNames domain
       closedGenerics <- traverse
         (\binder -> do
-          closedIdentifier <- rewrite mode depth reserved active resolver bound
-            (genericBinderIdentifier binder)
           closedBound <- rewrite mode depth reserved active resolver bound
             (genericBinderBound binder)
           pure binder
-            { genericBinderIdentifier = closedIdentifier
-            , genericBinderBound = closedBound
-            })
+            { genericBinderBound = closedBound })
         generics
       closedDomain <- rewrite mode depth reserved active resolver
         (parameters <> bound) domain

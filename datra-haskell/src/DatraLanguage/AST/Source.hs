@@ -26,13 +26,13 @@ restoreGenericSurface = restore []
             Just binder ->
               case genericReferenceRole reference of
                 GenericUseReference -> restore enclosing
-                  (requiredIdentifierExpression
+                  (genericIdentifierReference
                     (genericBinderIdentifier binder))
                 GenericDeclarationReference ->
                   GenericIntroductionExpression
                     (GenericIntroduction
                       (genericBinderPolarity binder)
-                      (restore enclosing (genericBinderIdentifier binder))
+                      (genericBinderIdentifier binder)
                       (restore enclosing (genericBinderBound binder))
                       (genericBinderSource binder))
             Nothing -> GenericReferenceExpression reference
@@ -43,8 +43,8 @@ restoreGenericSurface = restore []
       | genericBinderId binder == identity = Just binder
       | otherwise = lookupBinder identity remaining
 
-    requiredIdentifierExpression (OptionalType identifier) = identifier
-    requiredIdentifierExpression identifier = identifier
+    genericIdentifierReference =
+      IdentifierReference . genericIdentifierName
 
 -- Parenthesize nested operations conservatively, while leaving each block
 -- entry and the yield expression readable at their own expression boundary.
@@ -54,7 +54,8 @@ source context expression =
     FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
     GenericIntroductionValue introduction -> wrapped 0
       (genericPolarity introduction
-        <> source 10 (genericIntroductionIdentifier introduction)
+        <> renderGenericIdentifier
+          (genericIntroductionIdentifier introduction)
         <> genericBound introduction)
     GenericReferenceValue {} -> atom
     WithBindingValue (IdentifierString name) optional bound -> wrapped 0
@@ -207,6 +208,10 @@ source context expression =
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     binderName name optional =
       renderIdentifierString name <> if optional then "?" else ""
+    renderGenericIdentifier identifier =
+      binderName
+        (identifierStringText (genericIdentifierName identifier))
+        (genericIdentifierNameOptional identifier)
     genericPolarity introduction =
       case genericIntroductionPolarity introduction of
         GenericProduct -> "&"

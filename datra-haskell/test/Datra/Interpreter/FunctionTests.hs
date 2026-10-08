@@ -40,6 +40,12 @@ functionTests =
             "f := (do yield 3)\nyield f ()"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed ExpectedFunctionType))
+        , programFailureCase "generic identifiers cannot repeat in one domain"
+            (unlines
+              [ "f := ({a? : &T; b? : ^T?} -> T do yield a)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure (DuplicateGenericIdentifier "T"))
         , programCase "optional name accepts an unnamed value"
             "f := ({x?:Int} -> Int do yield x)\nyield f 2"
             "2"

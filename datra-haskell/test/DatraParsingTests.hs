@@ -8,6 +8,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , GenericBinder (..)
   , GenericBinderId (..)
+  , GenericIdentifier (..)
   , GenericIntroduction (..)
   , GenericPolarity (..)
   , GenericReference (..)
@@ -53,6 +54,7 @@ import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
 import Parsing
   ( ResourceEnvelope (..)
+  , parseDatra
   , parseDatraAst
   , parseDatraRawLocatedWithSourceName
   )
@@ -85,6 +87,7 @@ testTree =
   testGroup "Datra parser"
     [ testCase "brace separator semantics" testBraceSeparatorSemantics
     , testCase "generic AST representation" testGenericAstRepresentation
+    , testCase "generic source parsing" testGenericSourceParsing
     , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
@@ -98,7 +101,7 @@ testGenericAstRepresentation = do
       binder = GenericBinder
         { genericBinderId = binderIdentity
         , genericBinderPolarity = GenericProduct
-        , genericBinderIdentifier = ref "_T"
+        , genericBinderIdentifier = genericIdentifier "_T" False
         , genericBinderBound = ref "IntLimit"
         , genericBinderSource = Nothing
         }
@@ -114,29 +117,16 @@ testGenericAstRepresentation = do
         reference
       rawIntroduction = GenericIntroductionExpression (GenericIntroduction
         GenericSum
-        (OptionalType (ref "T"))
-        (ref "Any")
-        Nothing)
-      dependentIntroduction = GenericIntroductionExpression
-        (GenericIntroduction
-          GenericProduct
-          (OptionalType (StringTemplate
-            [ StringTemplateLiteral "Type"
-            , StringTemplateInterpolation
-                (contextualAccess (IdentifierString "_it"))
-            ]))
+        (genericIdentifier "T" True)
           (ref "Any")
           Nothing)
   assert "raw generic introductions retain polarity and optional public names"
     (renderSourceExpression rawIntroduction == "^T?")
-  assert "generic identifiers retain dependent IdenExp structure"
-    (renderSourceExpression dependentIntroduction == "&\"Type%(it)\"?")
   assert "resolved function types reconstruct the declaration anchor"
     (renderSourceExpression signature == "Args (&_T :: IntLimit) -> _T")
   assert "function types own binder bounds as immediate AST children"
     (expressionChildren signature
-      == [ ref "_T"
-         , ref "IntLimit"
+      == [ ref "IntLimit"
          , FunctionApplication (ref "Args") declaration
          , reference
          ])
@@ -146,6 +136,124 @@ testGenericAstRepresentation = do
     "canonical AST rendering preserves binder identity and occurrence role"
     "(generic-function-type (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-reference 0 declaration)) (generic-reference 0 use))"
     (renderExpression signature)
+  assertAstRoundTrip "generic function AST" (renderExpression signature)
+
+testGenericSourceParsing :: IO ()
+testGenericSourceParsing = do
+  unowned <- parseGenericSource "&T?"
+  case unowned of
+    GenericIntroductionExpression introduction ->
+      assert "an unowned introduction remains a raw AST node"
+        ( genericIntroductionPolarity introduction == GenericProduct
+          && genericIntroductionIdentifier introduction
+            == genericIdentifier "T" True
+        )
+    other -> fail ("unexpected raw generic introduction: " <> show other)
+
+  parsed <- parseGenericSource
+    "{value? : &T? :: Any} -> T"
+  case parsed of
+    FunctionTypeExpression [binder]
+        (ArgumentMap
+          [OptionalType
+            (IdentifierOperation (IdentifierString "value") declaration Nothing)])
+        reference -> do
+      assert "optional generic name is stored on the simple identifier"
+        ( genericBinderPolarity binder == GenericProduct
+          && genericBinderIdentifier binder == genericIdentifier "T" True
+        )
+      assert "the marked occurrence becomes the declaration reference"
+        (declaration == genericReference binder GenericDeclarationReference)
+      assert "the codomain occurrence becomes a use reference"
+        (reference == genericReference binder GenericUseReference)
+      assert "optional naming does not wrap the declaration as an optional value"
+        (case declaration of OptionalType {} -> False; _ -> True)
+    other -> fail ("unexpected optional generic AST: " <> show other)
+
+  privateParsed <- parseGenericSource
+    "{Args (&_T :: IntLimit),} -> _T"
+  case privateParsed of
+    FunctionTypeExpression [binder] _ reference -> do
+      assert "private generic identifiers retain ordinary privacy spelling"
+        (genericBinderIdentifier binder == genericIdentifier "_T" False)
+      assert "private generic codomain references use binder identity"
+        (reference == genericReference binder GenericUseReference)
+    other -> fail ("unexpected private generic AST: " <> show other)
+
+  sumParsed <- parseGenericSource
+    "{value? : ^T? :: Any} -> Any"
+  case sumParsed of
+    FunctionTypeExpression [binder] _ _ ->
+      assert "sum generics use the same optional-name representation"
+        ( genericBinderPolarity binder == GenericSum
+          && genericBinderIdentifier binder == genericIdentifier "T" True
+        )
+    other -> fail ("unexpected sum generic AST: " <> show other)
+
+  quoted <- parseGenericSource
+    "{value? : &\"T-name\"?} -> Any"
+  case quoted of
+    FunctionTypeExpression [binder] _ _ ->
+      assert "quoted simple identifiers remain valid generic names"
+        (genericBinderIdentifier binder == genericIdentifier "T-name" True)
+    other -> fail ("unexpected quoted generic AST: " <> show other)
+
+  assertGenericRejected "parenthesized generic identifier is rejected"
+    "{value? : &(T?)} -> T"
+  assertGenericRejected "dependent generic identifier is rejected"
+    "{value? : &\"Type%(it)\"?} -> Any"
+  assertGenericRejected "private optional generic name is rejected"
+    "{value? : &_T?} -> Any"
+  duplicate <- parseGenericSource
+    "{a? : &T; b? : ^T?} -> T"
+  case duplicate of
+    FunctionTypeExpression [first, second] _ _ ->
+      assert "duplicate generic declarations remain available to compilation"
+        ( genericBinderIdentifier first == genericIdentifier "T" False
+          && genericBinderIdentifier second == genericIdentifier "T" True
+          && genericBinderPolarity first == GenericProduct
+          && genericBinderPolarity second == GenericSum
+          && genericBinderId first /= genericBinderId second
+        )
+    other -> fail ("duplicate generic declarations were not retained: "
+      <> show other)
+
+  nested <- parseGenericSource
+    "{outer? : &T; inner? : ({value? : &T} -> T)} -> T"
+  case nested of
+    FunctionTypeExpression [outerBinder] domain _ ->
+      case
+          [ innerBinder
+          | FunctionTypeExpression [innerBinder] _ _ <- descendants domain
+          ] of
+        [innerBinder] -> assert "nested function domains may shadow a generic"
+          (genericBinderId outerBinder /= genericBinderId innerBinder)
+        _ -> fail ("nested generic function was not preserved: " <> show domain)
+    other -> fail ("unexpected nested generic AST: " <> show other)
+  where
+    genericReference binder role =
+      GenericReferenceExpression
+        (GenericReference (genericBinderId binder) role)
+    descendants expressionValue =
+      expressionValue : concatMap descendants (expressionChildren expressionValue)
+
+genericIdentifier :: String -> Bool -> GenericIdentifier
+genericIdentifier name optionalName =
+  GenericIdentifier (IdentifierString name) optionalName
+
+parseGenericSource :: String -> IO Expression
+parseGenericSource source =
+  case parseDatra ("(" <> source <> "\n)") of
+    Left failure -> fail
+      ("unexpected generic parse failure: " <> parseFailureMessage failure)
+    Right expressionValue -> pure expressionValue
+
+assertGenericRejected :: String -> String -> IO ()
+assertGenericRejected label source =
+  case parseDatra ("(" <> source <> "\n)") of
+    Left _ -> pure ()
+    Right expressionValue ->
+      fail (label <> ": unexpectedly parsed as " <> show expressionValue)
 
 testBraceSeparatorSemantics :: IO ()
 testBraceSeparatorSemantics = do
@@ -1759,7 +1867,6 @@ regressionTests = do
             (contextualAccess (IdentifierString "_this"))
             (IdentifierString name))
           (natural 1)
-  assertRejected "legacy value lookup symbol is rejected" "^a"
   assertAstOutput "value lookup expands to the binding's value page"
     "~a" (valueOf "a")
   assertAstOutput "value lookup accepts quoted names"

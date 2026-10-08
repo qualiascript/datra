@@ -67,6 +67,8 @@ import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.AST
   ( Expression (..)
   , pattern FunctionType
+  , GenericBinder (..)
+  , GenericIdentifier (..)
   , GenericIntroduction (..)
   , GenericPolarity (..)
   , IdentifierString (IdentifierString)
@@ -1070,6 +1072,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       pure (makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing Nothing
           signatureText Nothing Nothing True))
+    FunctionTypeExpression generics _ _
+      | Just name <- duplicateGenericIdentifier generics ->
+          Left (DuplicateGenericIdentifier name)
     FunctionTypeExpression _ _ _ ->
       Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
@@ -1195,6 +1200,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (FunctionBody bindings result)
         (FunctionTypeExpression [] domain codomain) ->
       createFunction reduction scope resolving domain codomain bindings result
+    MapSpecification (FunctionBody {})
+        (FunctionTypeExpression generics _ _)
+      | Just name <- duplicateGenericIdentifier generics ->
+          Left (DuplicateGenericIdentifier name)
     MapSpecification (FunctionBody {}) FunctionTypeExpression {} ->
       Left (FunctionEvaluationFailed ExpectedFunctionType)
     MapSpecification sourceOperand targetOperand ->
@@ -1365,6 +1374,19 @@ data DependentBindingsKind
   | SumDependentBindings
   | ProductDependentBindings
   | MixedDependentBindings
+
+duplicateGenericIdentifier
+  :: [GenericBinder Expression]
+  -> Maybe String
+duplicateGenericIdentifier = go []
+  where
+    go _ [] = Nothing
+    go seen (binder : remaining)
+      | name `elem` seen = Just name
+      | otherwise = go (name : seen) remaining
+      where
+        GenericIdentifier (IdentifierString name) _ =
+          genericBinderIdentifier binder
 
 dependentBindingsKind :: [Expression] -> DependentBindingsKind
 dependentBindingsKind expressions =

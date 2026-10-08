@@ -4,6 +4,7 @@
 module DatraLanguage.AST
   ( IdentifierString (..)
   , GenericPolarity (..)
+  , GenericIdentifier (..)
   , GenericBinderId (..)
   , GenericReferenceRole (..)
   , GenericIntroduction (..)
@@ -68,6 +69,15 @@ data GenericPolarity
   | GenericSum
   deriving (Eq, Show)
 
+-- | The simple identifier accepted by a generic introduction. Privacy remains
+-- a property of the ordinary identifier spelling; the Boolean is the existing
+-- optional-name marker and does not make the generic value optional.
+data GenericIdentifier = GenericIdentifier
+  { genericIdentifierName :: IdentifierString
+  , genericIdentifierNameOptional :: Bool
+  }
+  deriving (Eq, Show)
+
 -- | Identity allocated by function-type scope resolution. Identifier text is
 -- presentation; this identity distinguishes shadowed binders.
 newtype GenericBinderId = GenericBinderId Natural
@@ -80,26 +90,23 @@ data GenericReferenceRole
   | GenericUseReference
   deriving (Eq, Show)
 
--- | Raw generic syntax before its nearest function type has collected it. The
--- identifier retains the language's complete @IdenExp@ representation:
--- privacy comes from its identifier policy and optional naming from an
--- 'OptionalType' wrapper, while dependent string templates remain possible.
--- The parser supplies @Any@ as the bound when the @::@ clause is omitted.
+-- | Raw generic syntax before its nearest function type has collected it.
+-- Generic identifiers are deliberately simple: dependent identifier
+-- expressions cannot inhabit this representation. The parser supplies @Any@
+-- as the bound when the @::@ clause is omitted.
 data GenericIntroduction expression = GenericIntroduction
   { genericIntroductionPolarity :: GenericPolarity
-  , genericIntroductionIdentifier :: expression
+  , genericIntroductionIdentifier :: GenericIdentifier
   , genericIntroductionBound :: expression
   , genericIntroductionSource :: Maybe SourceSpan
   }
   deriving (Eq, Show)
 
--- | One entry in a resolved function type's ordered generic telescope. Its
--- identifier remains an expression so resolution does not erase @IdenExp@
--- structure merely because a stable semantic identity has been allocated.
+-- | One entry in a resolved function type's ordered generic telescope.
 data GenericBinder expression = GenericBinder
   { genericBinderId :: GenericBinderId
   , genericBinderPolarity :: GenericPolarity
-  , genericBinderIdentifier :: expression
+  , genericBinderIdentifier :: GenericIdentifier
   , genericBinderBound :: expression
   , genericBinderSource :: Maybe SourceSpan
   }
@@ -488,9 +495,7 @@ normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
 normalizeExpression (GenericIntroductionExpression introduction) =
   GenericIntroductionExpression
     introduction
-      { genericIntroductionIdentifier =
-          normalizeExpression (genericIntroductionIdentifier introduction)
-      , genericIntroductionBound =
+      { genericIntroductionBound =
           normalizeExpression (genericIntroductionBound introduction)
       }
 normalizeExpression (GenericReferenceExpression reference) =
@@ -508,9 +513,7 @@ normalizeExpression (SyntaxType templates signature) =
 normalizeExpression (FunctionTypeExpression generics input output) =
   FunctionTypeExpression
     [ binder
-        { genericBinderIdentifier =
-            normalizeExpression (genericBinderIdentifier binder)
-        , genericBinderBound =
+        { genericBinderBound =
             normalizeExpression (genericBinderBound binder)
         }
     | binder <- generics
@@ -678,9 +681,7 @@ lower (Fun operand) = FunValue (lower operand)
 lower (GenericIntroductionExpression introduction) =
   GenericIntroductionValue
     introduction
-      { genericIntroductionIdentifier =
-          lower (genericIntroductionIdentifier introduction)
-      , genericIntroductionBound =
+      { genericIntroductionBound =
           lower (genericIntroductionBound introduction)
       }
 lower (GenericReferenceExpression reference) =
@@ -696,8 +697,7 @@ lower (SyntaxType templates signature) =
 lower (FunctionTypeExpression generics input output) =
   FunctionTypeValue
     [ binder
-        { genericBinderIdentifier = lower (genericBinderIdentifier binder)
-        , genericBinderBound = lower (genericBinderBound binder)
+        { genericBinderBound = lower (genericBinderBound binder)
         }
     | binder <- generics
     ]
@@ -899,7 +899,8 @@ prettyOperator (GenericIntroductionValue introduction) =
   prettyForm "generic-introduction"
     [ pretty (genericPolaritySymbol
         (genericIntroductionPolarity introduction))
-    , prettyOperator (genericIntroductionIdentifier introduction)
+    , prettyGenericIdentifier
+        (genericIntroductionIdentifier introduction)
     , prettyOperator (genericIntroductionBound introduction)
     ]
 prettyOperator (GenericReferenceValue reference) =
@@ -1018,9 +1019,18 @@ prettyGenericBinder binder =
   prettyForm "generic-binder"
     [ pretty (genericBinderIdNatural (genericBinderId binder))
     , pretty (genericPolaritySymbol (genericBinderPolarity binder))
-    , prettyOperator (genericBinderIdentifier binder)
+    , prettyGenericIdentifier (genericBinderIdentifier binder)
     , prettyOperator (genericBinderBound binder)
     ]
+
+prettyGenericIdentifier :: GenericIdentifier -> Doc annotation
+prettyGenericIdentifier identifier =
+  prettyOperator
+    (if genericIdentifierNameOptional identifier
+      then OptionalValue reference
+      else reference)
+  where
+    reference = IdentifierReferenceValue (genericIdentifierName identifier)
 
 genericBinderIdNatural :: GenericBinderId -> Natural
 genericBinderIdNatural (GenericBinderId value) = value
@@ -1187,13 +1197,11 @@ traverseExpressionChildren visit expression = case expression of
   Assert hard x -> Assert hard <$> visit x
   Fun x -> Fun <$> visit x
   GenericIntroductionExpression introduction ->
-    (\identifier bound -> GenericIntroductionExpression
+    (\bound -> GenericIntroductionExpression
       introduction
-        { genericIntroductionIdentifier = identifier
-        , genericIntroductionBound = bound
+        { genericIntroductionBound = bound
         })
-      <$> visit (genericIntroductionIdentifier introduction)
-      <*> visit (genericIntroductionBound introduction)
+      <$> visit (genericIntroductionBound introduction)
   GenericReferenceExpression reference ->
     pure (GenericReferenceExpression reference)
   WithBinding name optional bound ->
@@ -1236,12 +1244,10 @@ traverseExpressionChildren visit expression = case expression of
   _ -> pure expression
   where
     visitBinder binder =
-      (\identifier bound -> binder
-        { genericBinderIdentifier = identifier
-        , genericBinderBound = bound
+      (\bound -> binder
+        { genericBinderBound = bound
         })
-        <$> visit (genericBinderIdentifier binder)
-        <*> visit (genericBinderBound binder)
+        <$> visit (genericBinderBound binder)
     part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
     part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
 

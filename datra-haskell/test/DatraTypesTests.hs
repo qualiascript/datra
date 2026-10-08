@@ -442,6 +442,17 @@ testDiagnostics = do
           "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
           []
     )
+  assert "duplicate generic identifiers have an explicit bilingual diagnostic"
+    ( localizeDiagnostic English (Types.DuplicateGenericIdentifier "T")
+      == LocalizedMessage
+          "generic identifier is introduced more than once in one function domain"
+          ["identifier: T"]
+      && localizeDiagnostic Romanian
+          (Types.DuplicateGenericIdentifier "T")
+      == LocalizedMessage
+          "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
+          ["identificator: T"]
+    )
   assert "invalid syntax-template characters have an explicit bilingual diagnostic"
     ( localizeDiagnostic English (Types.InvalidSyntaxTemplateCharacter '(')
         == LocalizedMessage
