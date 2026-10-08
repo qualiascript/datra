@@ -20,7 +20,7 @@ The two polarities differ in how their values may be observed:
 - `&` introduces a product value. A product that does not depend on a sum is
   ordinary and may participate in the codomain.
 - `^` introduces a sum value whose concrete representation is available only
-  in the dynamic scopes authorized to observe it.
+  while the label of its introducing scope remains on the active scope stack.
 - An `&` value that transitively depends on a `^` value has the same protected
   observation behavior as that `^` value.
 
@@ -224,7 +224,7 @@ dependency analysis.
 2. Evaluating a later generic bound, selection, or construction through that
    value invokes universal protection lifting.
 3. The resulting `&` or ordinary prepared value is therefore protected with
-   the appropriate authority intersection.
+   the label of the scope in which that derived value is introduced.
 4. Values whose evaluation never touches protected evidence remain ordinary.
 
 Consequently, an `&` binder may be either unprotected or domain-protected:
@@ -250,18 +250,23 @@ codomain-specific dependency mechanism.
 2. Introduce every `^` witness as protected to the domain scope. An `&` witness
    becomes protected automatically if evaluating it touches a domain-protected
    value.
-3. Evaluate the codomain in its own fresh scope. Bind into that scope every
+3. While the domain scope is active, allocate the future function-body label
+   and prepare body copies of domain-protected values. Each copy is a newly
+   introduced protected value carrying only that body label.
+4. Leave the domain scope and evaluate the codomain in its own fresh scope.
+   Bind into that scope every
    `&` identifier whose value is not protected to the domain scope. Do not
-   delegate domain-protected values to the codomain scope.
-4. After the type boundary has been prepared, enter the function-body scope.
-   Bind all ordinary arguments and all generic identifiers there, delegating
-   protected values from the still-authorized domain preparation into the new
-   body scope.
+   copy domain-protected values into the codomain scope.
+5. After the type boundary has been prepared, enter the preallocated
+   function-body scope. Bind all ordinary arguments and all generic
+   identifiers there, using the body-labeled protected copies prepared during
+   the authorized domain handoff.
 
-The handoff allocates the body identity and extends accessible protected
-values while the domain scope is still current. The domain and codomain scopes
-are then removed before body evaluation begins, so they do not appear as the
-receiving outer block at `yield`.
+The handoff replaces a domain-labeled wrapper with a newly introduced
+body-labeled wrapper; it does not append another passcode. The domain and
+codomain labels are absent from the active stack before body evaluation begins,
+so neither can accidentally authorize observation or appear in the receiving
+outer stack at `yield`.
 
 The domain and codomain scopes are implementation scopes for the function
 type, not user-facing maps. The codomain receives no contextual bindings. Its
@@ -333,8 +338,8 @@ evaluation.
 
 ## Sum semantics
 
-A `^` binder introduces concrete evidence that may be observed only by its
-authorized dynamic scopes.
+A `^` binder introduces concrete evidence that may be observed only while its
+introducing label occurs in the active scope stack.
 
 ```datra
 {
@@ -348,11 +353,11 @@ The function body may use `T`, `x`, and `render` together. Their concrete
 relationship is valid inside that activation. Values whose preparation
 depends on `T`, including `x` and `render`, begin protected as well.
 
-The codomain cannot refer to `T`, because its separate scope is not authorized
-for the domain-protected witness. A result derived from `T` may be computed in
-the body, but `yield` checks it using the enclosing block's scope identity
-rather than the body's identity. If the enclosing block is not authorized, the
-candidate result becomes `Never` before codomain validation.
+The codomain cannot refer to `T`, because the domain label is absent from the
+codomain's stack and no binding for `T` is installed there. A result derived
+from `T` may be computed in the body, but `yield` checks its label against the
+receiving outer stack after removing the body scopes. If the label is absent,
+the candidate result becomes `Never` before codomain validation.
 
 Public/private/optional-name behavior is inherited from the same identifier
 expression rules used by products. The polarity changes scope protection, not
@@ -399,72 +404,81 @@ ordinary operation runs. Thus comparing two inaccessible protected values
 does not reveal that their fallbacks are the same; the comparison result is
 itself `Never`.
 
-## Dynamic scope identities
+## Dynamic scope labels
 
-Every dynamic scope introduction receives a fresh internal natural number.
-The counter starts at zero for an evaluation and increases monotonically each
-time evaluation enters a new scope. The interpreter maintains the active
-identities as a stack: entering a scope allocates and pushes its identity;
-leaving the scope pops it. Function calls are one source of scopes, but they
-are not privileged: blocks, type-domain evaluation, type-codomain evaluation,
-closure activations, and every other runtime scope use the same allocator.
+Every dynamic scope introduction receives a fresh internal natural-number
+label. The counter starts at zero for an evaluation and increases
+monotonically. The interpreter maintains all currently active labels as an
+ordered stack: entering a scope pushes its label and leaving the scope pops it.
+A scope whose label must be attached during an authorized handoff may reserve
+that fresh label immediately before it is entered. Function calls are one
+source of scopes, but they are not privileged: blocks, type-domain evaluation,
+type-codomain evaluation, closure activations, and every other runtime scope
+use the same allocator.
 
-These identities:
+These labels:
 
-- are dynamic activation identities, not lexical source locations;
+- identify dynamic activations, not lexical source locations;
 - are never rendered or otherwise exposed to Datra code;
 - are never reused during one evaluation; and
 - cannot be forged or compared by user code.
 
-Re-entering the same function or closure creates a new identity. Retaining a
+Re-entering the same function or closure creates a new label. Retaining a
 closure cannot reactivate an expired activation merely because it originated
 from the same lexical body.
 
-The stack is required at scope-crossing operations. Ordinary evaluation uses
-the top identity. `yield` deliberately checks the yielded value against the
-next enclosing block identity instead, because that is the scope which would
-receive the value.
-
 ## Protected values
 
-A scope-protected value stores:
+A scope-protected value stores exactly:
 
 ```text
 actual value
-authorized scope identities
+introducing scope label
 ```
 
-It does not store a custom fallback. The fallback is always `Never`.
+It does not store an authorization set or a custom fallback. The fallback is
+always `Never`. Keeping the complete active-label stack in the interpreter
+makes a per-value set redundant.
+
+A protected value is accessible exactly when its one introducing label occurs
+anywhere in the current active-label stack. Descendant scopes therefore retain
+access automatically while their introducing ancestor remains active; no
+child-label delegation or passcode copying is necessary. Once that scope is
+popped, the value may still physically exist, but observing it produces
+`Never`.
+
+Conceptually, ordinary observation is only:
+
+```text
+observe(activeStack, Protected(actual, passcode)) =
+  if passcode is in activeStack then actual else Never
+```
+
+`yield` uses the receiving stack computed for the boundary in place of the
+current stack, but otherwise performs the same membership test.
 
 When `^T` is introduced in the function-type domain scope, its actual witness
-is protected with that scope's identity. Products and ordinary prepared values
-derived from it acquire protection through universal lifting. The body handoff
-then adds the body identity to those existing wrappers.
-
-When an accessible protected value is deliberately bound, passed, or captured
-into a child scope, the child identity is added to its authorization set.
-Only a currently authorized scope can delegate access. Copying a wrapper from
-an unrelated scope cannot grant authority.
-
-The wrapper may physically cross a scope boundary while preserving its actual
-value and authorization set. The actual value is used only when the current
-scope identity is authorized. An unauthorized observation produces `Never`.
+is paired with the domain label. Products and ordinary prepared values derived
+from it acquire the label of the scope where the derived value is introduced.
+The explicit domain-to-body handoff creates new protected body copies carrying
+only the preallocated body label.
 
 ## Universal protection lifting
 
 Every evaluator operation follows one rule:
 
 1. If none of its operands is protected, evaluate normally.
-2. If every protected operand authorizes the current scope, evaluate the
-   ordinary operation using their actual values.
-3. Protect the result with the intersection of the protected operands'
-   authorization sets.
-4. If any protected operand does not authorize the current scope, do not run
-   the ordinary operation; return `Never`.
+2. For every protected operand, look up its introducing label in the complete
+   active-label stack.
+3. If every lookup succeeds, evaluate the ordinary operation using the actual
+   operand values and protect any derived result with the current scope's top
+   label.
+4. If any lookup fails, do not run the ordinary operation; return `Never`.
 
-The current scope is in every operand set during an authorized multi-operand
-operation, so the intersection remains usable there. Intersection prevents a
-result from gaining authority that one of its inputs did not possess.
+Multiple protected operands require no label intersection. Because every
+operand label must already occur in the one active stack before evaluation,
+the newly derived result needs only the current scope's label. That label is
+the unique passcode for the result's own lifetime.
 
 This rule applies to all value-producing and value-observing operations,
 including:
@@ -478,8 +492,9 @@ including:
 - rendering or other final observation.
 
 No operation needs its own fallback-type calculation. Operations continue to
-implement only their ordinary behavior; a shared evaluator boundary unwraps
-authorized operands and wraps the result.
+implement only their ordinary behavior; a shared evaluator boundary checks
+label membership, unwraps accessible operands, and wraps a derived result with
+the current label.
 
 Aliasing is therefore not a special case:
 
@@ -488,7 +503,8 @@ actual := T
 ```
 
 Evaluating `T` and binding the result creates a new protected value with the
-same actual value and effective authority. Nothing is unwrapped permanently.
+same actual value and the binding scope's label. Nothing is unwrapped
+permanently, and no additional label is stored alongside it.
 
 Control flow follows the same rule:
 
@@ -496,9 +512,10 @@ Control flow follows the same rule:
 actual := if T of Nat then "Nat" else "NotNat"
 ```
 
-Inside an authorized scope, the actual `T` selects the branch and `actual`
-becomes a protected string. Outside an authorized scope, attempting the
-operation produces `Never`. There is no need to calculate
+While `T`'s label is present in the stack, the actual `T` selects the branch
+and `actual` becomes a protected string carrying the current scope's label.
+After the input label has left the stack, attempting the operation produces
+`Never`. There is no need to calculate
 `"Nat" | "NotNat"` as a fallback.
 
 Function application is also ordinary lifting. Given protected values:
@@ -508,9 +525,10 @@ x : T
 render : T -> Str
 ```
 
-`render x` is valid in an authorized scope and produces a protected `Str`.
-That result may be used in authorized descendant scopes. Unauthorized
-observation produces `Never`.
+`render x` is valid while both operand labels occur in the stack and produces a
+protected `Str` carrying the current scope label. That result may be used in
+descendant scopes while that label remains in their stack. Observation after
+the label has been popped produces `Never`.
 
 ## `yield` boundary
 
@@ -518,10 +536,10 @@ observation produces `Never`.
 yielding. Its boundary algorithm is:
 
 1. evaluate the result expression normally in the current scope;
-2. find the receiving outer block's identity on the scope stack;
-3. attempt to observe the candidate using that outer identity;
-4. use the actual value when that identity is authorized, otherwise use
-   `Never`; and
+2. form the receiving stack by removing the scopes that end at this boundary;
+3. test whether the candidate's one introducing label occurs in that receiving
+   stack;
+4. use the actual value when membership succeeds, otherwise use `Never`; and
 5. validate that observed candidate against the function codomain.
 
 A value protected only to the current function-body scope therefore cannot be
@@ -529,10 +547,11 @@ returned as its actual value. It normally produces a codomain error after
 becoming `Never`. If the declared codomain accepts `Never`, the yield succeeds
 with `Never`; the protected payload still does not cross the boundary.
 
-Values protected to both the current scope and the receiving outer block can
-cross normally. This can occur when authority was inherited from that outer
-block and preserved by intersection. The check is about authorization, not
-whether the value happens to be wrapped.
+A protected value can cross normally only when its one introducing label is
+still present in the receiving stack—for example, a value introduced by an
+outer scope and passed through without deriving a new protected result. A
+value introduced in the function body carries the body label, which disappears
+from the receiving stack and therefore becomes `Never`.
 
 ## Required AST representation
 
@@ -660,20 +679,19 @@ values which depend on those witnesses. Evaluate the codomain in a separate
 scope containing direct bindings for only the unprotected products. Do not
 synthesize contextual bindings in that scope.
 
-### 7. Add dynamic scope identities and protected values
+### 7. Add dynamic scope labels and protected values
 
 Thread a fresh-scope counter and active-label stack through evaluation. Add a
-runtime protected-value form containing an actual `InterpretedValue` and an
-authorization set. Protect sums in the domain scope and use ordinary lifting
-to protect products and ordinary values which depend on them.
-
-Centralize child-scope delegation so captures, arguments, and bindings add a
-fresh child identity only when the parent scope is authorized.
+runtime protected-value form containing an actual `InterpretedValue` and one
+introducing scope label. Protect sums with the domain label and use ordinary
+lifting to protect products and ordinary values which depend on them. During
+the authorized domain-to-body handoff, replace each protected domain wrapper
+with a body wrapper carrying only the preallocated body label.
 
 ### 8. Lift evaluator operations
 
-Put authorization checking, operand unwrapping, result wrapping, and authority
-intersection at the common evaluator-operation boundary. Individual
+Put active-stack membership checking, operand unwrapping, and current-label
+result wrapping at the common evaluator-operation boundary. Individual
 operations keep their existing implementation and receive ordinary actual
 values only after the common check succeeds.
 
@@ -684,13 +702,13 @@ cannot accidentally execute an actual payload in an unauthorized scope.
 
 Bind every generic prefix member and every ordinary domain member in the
 function body. Construct body `it` from the complete prepared domain map.
-Preserve and delegate wrappers already produced by domain evaluation rather
-than deleting or widening any members.
+Preserve unprotected members and use the body-labeled wrappers produced by the
+authorized domain handoff rather than deleting or widening protected members.
 
-At `yield`, select the receiving outer block label from the scope stack and
-observe the result with that label before codomain validation. Replace an
-unauthorized candidate with `Never`; report the ordinary codomain mismatch
-unless the codomain accepts that value.
+At `yield`, derive the receiving outer stack by removing the scopes which end
+at that boundary, then test the result's introducing label for membership
+before codomain validation. Replace an inaccessible candidate with `Never`;
+report the ordinary codomain mismatch unless the codomain accepts that value.
 
 ### 10. Remove bootstrap duplication
 
@@ -771,27 +789,30 @@ Unauthorized runtime observation is not a bespoke escape error. Its value is
 
 ### Scope protection
 
-- Allocate distinct identities for repeated activations of the same lexical
+- Allocate distinct labels for repeated activations of the same lexical
   scope.
-- Push and pop those identities on an interpreter scope stack.
-- Delegate an accessible protected value to an entered child scope.
-- Refuse delegation from an unauthorized scope.
+- Push and pop those labels on an interpreter scope stack.
+- Store only the introducing scope label on each protected value.
+- Let descendants access a protected value by finding that label anywhere in
+  the active stack, without adding child labels to the value.
+- Refuse observation after the introducing label has been popped.
 - Preserve protection through `actual := T` without a special alias branch.
 - Protect conditional, arithmetic, comparison, map, access, function, and
   closure results whenever any operand is protected.
-- Use authority intersection for operations with multiple protected operands.
+- Require every protected operand's label to occur in the active stack, then
+  label the derived result only with the current scope label.
 - Return `Never` without running the underlying operation when any protected
-  operand is unauthorized.
+  operand's label is absent from the active stack.
 - Keep lazy and captured computations from observing payloads after their
-  authority expires.
-- At `yield`, check authorization with the receiving outer block label rather
-  than the current block label.
+  introducing labels have been popped.
+- At `yield`, remove the ending scopes and check the result label against the
+  complete receiving outer stack rather than the current stack.
 - Reject a body-only protected result when the codomain does not accept
   `Never`.
 - Permit that yield only when the codomain accepts `Never`, without exposing
   the actual protected payload.
-- Permit a protected result whose authority already includes the receiving
-  outer block.
+- Permit a protected result whose introducing label remains in the receiving
+  outer stack.
 
 ### `Never` laws
 
@@ -832,8 +853,8 @@ The bootstrap is complete when:
    as direct identifier bindings;
 7. the body receives all prefix and ordinary members through names and full
    `it`;
-8. a stack of dynamic scope identities and delegation control access to
-   protected actual values;
+8. a stack of dynamic scope labels controls access to protected actual values,
+   while every protected value stores only its one introducing label;
 9. every evaluator operation propagates protection through the common lifting
    rule;
 10. inaccessible observation produces the canonical `Never` value, and
