@@ -271,7 +271,7 @@ The codomain and body are different scopes:
 - A direct codomain reference to an excluded generic is unresolved because no
   binding for it exists in the codomain scope. If a protected wrapper reaches
   codomain evaluation through another in-scope value, ordinary protection
-  still reduces an unauthorized observation to `Absurd`.
+  still reduces an unauthorized observation to `Never`.
 - The function body receives all prepared prefix members and all ordinary
   domain members.
 - Body `it` is the complete prepared domain map: generic prefix first,
@@ -332,15 +332,15 @@ The codomain cannot refer to `T`, because its separate scope is not authorized
 for the domain-protected witness. A result derived from `T` may be computed in
 the body, but `yield` checks it using the enclosing block's scope identity
 rather than the body's identity. If the enclosing block is not authorized, the
-candidate result becomes `Absurd` before codomain validation.
+candidate result becomes `Never` before codomain validation.
 
 Public/private/optional-name behavior is inherited from the same identifier
 expression rules used by products. The polarity changes scope protection, not
 identifier parsing.
 
-## `Absurd`
+## `Never`
 
-`Absurd` is the empty federation: conceptually, an `Either` with zero
+`Never` is the empty federation: conceptually, an `Either` with zero
 alternatives. It has no ordinary inhabitants and is a subfederation of every
 type.
 
@@ -348,36 +348,36 @@ The surface language currently cannot spell an empty `Either`, so the
 implementation must add:
 
 ```datra
-Absurd := !~"datra.absurd"
+Never := !~"datra.never"
 ```
 
-to `std.datra`, together with the external symbol `datra.absurd` that produces
+to `std.datra`, together with the external symbol `datra.never` that produces
 the canonical empty-federation value.
 
-`Absurd` is the single fallback for every inaccessible protected value. There
+`Never` is the single fallback for every inaccessible protected value. There
 is no per-value widened fallback and no need to calculate a union of possible
 results. In particular, an inaccessible `Number`, `Str`, or function does not
-appear as its declared upper bound; it appears as `Absurd`.
+appear as its declared upper bound; it appears as `Never`.
 
 The empty federation being a subfederation of a codomain is not the same as
-the `Absurd` value being accepted as that codomain's returned value. Result
-validation normally rejects an `Absurd` candidate unless that particular
+the `Never` value being accepted as that codomain's returned value. Result
+validation normally rejects a `Never` candidate unless that particular
 codomain accepts it. This distinction lets subfederation retain the ordinary
 bottom law without turning every protected `yield` into a successful return.
 
 The type laws must include:
 
-- `Absurd of X` for every `X`;
-- no ordinary value specifies to `Absurd`;
-- `Absurd` has no selectable member;
-- `X | Absurd` canonicalizes to `X`; and
-- rendering and canonicalization preserve the name `Absurd` without exposing
+- `Never of X` for every `X`;
+- no ordinary value specifies to `Never`;
+- `Never` has no selectable member;
+- `X | Never` canonicalizes to `X`; and
+- rendering and canonicalization preserve the name `Never` without exposing
   an internal encoding.
 
-An operation on an unauthorized protected value returns `Absurd` before the
+An operation on an unauthorized protected value returns `Never` before the
 ordinary operation runs. Thus comparing two inaccessible protected values
 does not reveal that their fallbacks are the same; the comparison result is
-itself `Absurd`.
+itself `Never`.
 
 ## Dynamic scope identities
 
@@ -414,7 +414,7 @@ actual value
 authorized scope identities
 ```
 
-It does not store a custom fallback. The fallback is always `Absurd`.
+It does not store a custom fallback. The fallback is always `Never`.
 
 When `^T` is introduced in the function-type domain scope, its actual witness
 is protected with that scope's identity. Products and ordinary prepared values
@@ -428,7 +428,7 @@ an unrelated scope cannot grant authority.
 
 The wrapper may physically cross a scope boundary while preserving its actual
 value and authorization set. The actual value is used only when the current
-scope identity is authorized. An unauthorized observation produces `Absurd`.
+scope identity is authorized. An unauthorized observation produces `Never`.
 
 ## Universal protection lifting
 
@@ -440,7 +440,7 @@ Every evaluator operation follows one rule:
 3. Protect the result with the intersection of the protected operands'
    authorization sets.
 4. If any protected operand does not authorize the current scope, do not run
-   the ordinary operation; return `Absurd`.
+   the ordinary operation; return `Never`.
 
 The current scope is in every operand set during an authorized multi-operand
 operation, so the intersection remains usable there. Intersection prevents a
@@ -478,7 +478,7 @@ actual := if T of Nat then "Nat" else "NotNat"
 
 Inside an authorized scope, the actual `T` selects the branch and `actual`
 becomes a protected string. Outside an authorized scope, attempting the
-operation produces `Absurd`. There is no need to calculate
+operation produces `Never`. There is no need to calculate
 `"Nat" | "NotNat"` as a fallback.
 
 Function application is also ordinary lifting. Given protected values:
@@ -490,7 +490,7 @@ render : T -> Str
 
 `render x` is valid in an authorized scope and produces a protected `Str`.
 That result may be used in authorized descendant scopes. Unauthorized
-observation produces `Absurd`.
+observation produces `Never`.
 
 ## `yield` boundary
 
@@ -501,13 +501,13 @@ yielding. Its boundary algorithm is:
 2. find the receiving outer block's identity on the scope stack;
 3. attempt to observe the candidate using that outer identity;
 4. use the actual value when that identity is authorized, otherwise use
-   `Absurd`; and
+   `Never`; and
 5. validate that observed candidate against the function codomain.
 
 A value protected only to the current function-body scope therefore cannot be
 returned as its actual value. It normally produces a codomain error after
-becoming `Absurd`. If the declared codomain accepts `Absurd`, the yield succeeds
-with `Absurd`; the protected payload still does not cross the boundary.
+becoming `Never`. If the declared codomain accepts `Never`, the yield succeeds
+with `Never`; the protected payload still does not cross the boundary.
 
 Values protected to both the current scope and the receiving outer block can
 cross normally. This can occur when authority was inherited from that outer
@@ -573,8 +573,8 @@ reference role and the owning function's telescope.
 
 ### 1. Add the bottom value
 
-Implement the zero-alternative federation as `datra.absurd`, bind it as
-`Absurd` in `std.datra`, and add its specification, subfederation, projection,
+Implement the zero-alternative federation as `datra.never`, bind it as
+`Never` in `std.datra`, and add its specification, subfederation, projection,
 canonicalization, and rendering laws. This value is required before protected
 fallback behavior can be tested.
 
@@ -665,7 +665,7 @@ than deleting or widening any members.
 
 At `yield`, select the receiving outer block label from the scope stack and
 observe the result with that label before codomain validation. Replace an
-unauthorized candidate with `Absurd`; report the ordinary codomain mismatch
+unauthorized candidate with `Never`; report the ordinary codomain mismatch
 unless the codomain accepts that value.
 
 ### 10. Remove bootstrap duplication
@@ -689,7 +689,7 @@ Required structured failures include:
 - a dependent or otherwise invalid generic identifier expression.
 
 Unauthorized runtime observation is not a bespoke escape error. Its value is
-`Absurd`, and subsequent behavior follows the ordinary bottom-type laws.
+`Never`, and subsequent behavior follows the ordinary bottom-type laws.
 
 ## Test plan
 
@@ -747,29 +747,29 @@ Unauthorized runtime observation is not a bespoke escape error. Its value is
 - Protect conditional, arithmetic, comparison, map, access, function, and
   closure results whenever any operand is protected.
 - Use authority intersection for operations with multiple protected operands.
-- Return `Absurd` without running the underlying operation when any protected
+- Return `Never` without running the underlying operation when any protected
   operand is unauthorized.
 - Keep lazy and captured computations from observing payloads after their
   authority expires.
 - At `yield`, check authorization with the receiving outer block label rather
   than the current block label.
 - Reject a body-only protected result when the codomain does not accept
-  `Absurd`.
-- Permit that yield only when the codomain accepts `Absurd`, without exposing
+  `Never`.
+- Permit that yield only when the codomain accepts `Never`, without exposing
   the actual protected payload.
 - Permit a protected result whose authority already includes the receiving
   outer block.
 
-### `Absurd` laws
+### `Never` laws
 
-- Resolve `Absurd` from `std.datra` and `datra.absurd` directly.
+- Resolve `Never` from `std.datra` and `datra.never` directly.
 - Prove it is a subfederation of representative scalar, map, function, union,
   and meta types.
-- Refute attempts to supply an ordinary inhabitant of `Absurd`.
-- Refute projection of any member from `Absurd`.
-- Render the canonical value as `Absurd`.
+- Refute attempts to supply an ordinary inhabitant of `Never`.
+- Refute projection of any member from `Never`.
+- Render the canonical value as `Never`.
 - Ensure equality or another operation on inaccessible protected values
-  produces `Absurd` instead of leaking fallback equality.
+  produces `Never` instead of leaking fallback equality.
 
 ### Required language interactions
 
@@ -802,9 +802,9 @@ The bootstrap is complete when:
    protected actual values;
 9. every evaluator operation propagates protection through the common lifting
    rule;
-10. inaccessible observation produces the canonical `Absurd` value, and
+10. inaccessible observation produces the canonical `Never` value, and
     `yield` observes using the receiving outer block before codomain checking;
-11. `Absurd` is available as `datra.absurd` and from `std.datra` and obeys the
+11. `Never` is available as `datra.never` and from `std.datra` and obeys the
     empty-federation laws;
 12. `~>`, `<~`, `of`, optional names, nested scopes, closures, recursion, lazy
     evaluation, and mixed telescopes have focused regression coverage; and
