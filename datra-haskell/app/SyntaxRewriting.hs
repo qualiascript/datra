@@ -344,12 +344,14 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     ListUncons operand -> do
       rewrittenOperand <- rewriteStandalone capture environment operand
       finish (ListUncons rewrittenOperand) trailing
-    FunctionType domain codomain
+    FunctionTypeExpression generics domain codomain
       | allowNestedContinuation || containsBlockStart environment codomain -> do
           rewrittenDomain <- rewriteStandalone capture environment domain
           (rewrittenCodomain, remaining) <-
             rewriteWithTail True capture environment codomain trailing
-          finish (FunctionType rewrittenDomain rewrittenCodomain) remaining
+          finish
+            (FunctionTypeExpression generics rewrittenDomain rewrittenCodomain)
+            remaining
     Fun signature
       | allowNestedContinuation -> do
           (rewrittenSignature, remaining) <-
@@ -430,7 +432,7 @@ normalizeTrailingAssignment annotation Nothing =
 normalizeTrailingAssignment annotation given = (annotation, given)
 
 canReceiveFunctionBody :: Expression -> Bool
-canReceiveFunctionBody FunctionType {} = True
+canReceiveFunctionBody FunctionTypeExpression {} = True
 canReceiveFunctionBody SyntaxType {} = True
 canReceiveFunctionBody (Fun signature) = canReceiveFunctionBody signature
 canReceiveFunctionBody _ = False
@@ -545,17 +547,20 @@ attachTrailingFunctionBody capture environment value =
     MapSpecification body (Fun signature)
       | acceptsFunctionBody signature ->
           pure (Fun (MapSpecification body signature))
-    MapSpecification body (FunctionType (Fun domain) codomain) ->
-      pure (Fun (MapSpecification body (FunctionType domain codomain)))
-    FunctionType (Fun domain) codomain ->
-      pure (Fun (FunctionType domain codomain))
+    MapSpecification body
+        (FunctionTypeExpression generics (Fun domain) codomain) ->
+      pure (Fun (MapSpecification body
+        (FunctionTypeExpression generics domain codomain)))
+    FunctionTypeExpression generics (Fun domain) codomain ->
+      pure (Fun (FunctionTypeExpression generics domain codomain))
     SyntaxType templates (MapSpecification body signature)
       | isFunctionImplementation body ->
           pure (MapSpecification body (SyntaxType templates signature))
-    FunctionType domain codomain ->
+    FunctionTypeExpression generics domain codomain ->
       case trailingFunctionBody codomain of
         Just (resultType, body) ->
-          pure (MapSpecification body (FunctionType domain resultType))
+          pure (MapSpecification body
+            (FunctionTypeExpression generics domain resultType))
         Nothing -> pure value
     Fun signature -> Fun <$>
       attachTrailingFunctionBody capture environment signature
@@ -605,7 +610,7 @@ implementedFunction body signature
 implementedFunction _ _ = Nothing
 
 acceptsFunctionBody :: Expression -> Bool
-acceptsFunctionBody FunctionType {} = True
+acceptsFunctionBody FunctionTypeExpression {} = True
 acceptsFunctionBody SyntaxType {} = True
 acceptsFunctionBody _ = False
 
@@ -902,10 +907,10 @@ matchEmbeddedBlock capture environment = matchWithResult id
       case direct of
         Just result -> Right (Just result)
         Nothing -> case value of
-          FunctionType domain codomain ->
+          FunctionTypeExpression generics domain codomain ->
             matchWithResult wrapResult codomain trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
-                (FunctionType domain rewritten, remaining))
+                (FunctionTypeExpression generics domain rewritten, remaining))
               Nothing -> Right Nothing
           SyntaxType templates signature ->
             matchWithResult wrapResult signature trailing >>= \case

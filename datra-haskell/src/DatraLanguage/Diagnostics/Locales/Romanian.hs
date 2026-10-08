@@ -177,6 +177,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
         []
+    DuplicateGenericIdentifier name ->
+      LocalizedMessage
+        "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
+        ["identificator: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie numeric")

@@ -179,6 +179,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "dependent sums and products cannot be mixed in one type container"
         []
+    DuplicateGenericIdentifier name ->
+      LocalizedMessage
+        "generic identifier is introduced more than once in one function domain"
+        ["identifier: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         (operandSide side <> " operand must be numerical")

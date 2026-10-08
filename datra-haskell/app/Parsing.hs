@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Parsing
   ( ResourceEnvelope (..)
@@ -13,6 +14,7 @@ module Parsing
 import Control.Applicative (empty, optional, some, (<|>))
 import Control.Monad (guard, void)
 import Control.Monad.Trans.Reader (ReaderT, ask, local, runReaderT)
+import Control.Monad.Trans.State.Strict (State, evalState, get, put)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixR, Postfix, Prefix)
   , makeExprParser
@@ -25,6 +27,16 @@ import Data.Text qualified as Text
 import Data.Void (Void)
 import DatraLanguage.AST
   ( IdentifierString (IdentifierString)
+  , GenericPolarity (GenericProduct, GenericSum)
+  , GenericIdentifier (..)
+  , GenericBinderId (..)
+  , GenericReferenceRole
+      ( GenericDeclarationReference
+      , GenericUseReference
+      )
+  , GenericIntroduction (..)
+  , GenericBinder (..)
+  , GenericReference (..)
   , Expression
       ( Addition
       , AsciiStringLiteral
@@ -85,24 +97,29 @@ import DatraLanguage.AST
       , Assert
       , Begin
       , Program
-      , FunctionType
       , SyntaxType
       , Fun
+      , GenericIntroductionExpression
+      , GenericReferenceExpression
       , WithBinding
       , ForBinding
       , InModule
       , Import
+      , FunctionTypeExpression
       , FunctionBody
       , FunctionApplication
       , External
       , Let
       , IdentifierReference
       )
+  , pattern FunctionType
   , StringTemplatePart
       ( StringTemplateInterpolation
       , StringTemplateLiteral
       )
   , contextualAccess
+  , expressionChildren
+  , traverseExpressionChildren
   )
 import DatraLanguage.AST.Operator qualified as AST
 import DatraLanguage.AST.Reserved qualified as Reserved
@@ -129,6 +146,7 @@ import IdentifierValueType
   ( isIdentifierValue
   , isIdentifierValueCharacter
   )
+import Numeric.Natural (Natural)
 import Text.Megaparsec
   ( Parsec
   , ParseErrorBundle
@@ -193,11 +211,154 @@ parseDatraRawLocatedWithSourceName
   :: FilePath
   -> String
   -> Either ParseFailure (ResourceEnvelope, Located Expression)
-parseDatraRawLocatedWithSourceName resourceName source =
-  Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
-    (runReaderT locatedRawResourceWithEnvelope
-      (ParserContext 0))
-    resourceName (Text.pack source))
+parseDatraRawLocatedWithSourceName resourceName source = do
+  (envelope, Located sourceSpan expressionValue) <-
+    Bifunctor.first (ParseFailure . errorBundlePretty) (runParser
+      (runReaderT locatedRawResourceWithEnvelope
+        (ParserContext 0))
+      resourceName (Text.pack source))
+  pure (envelope, Located sourceSpan
+    (resolveGenericFunctionTypes expressionValue))
+
+type GenericScope = [(String, GenericBinderId)]
+type GenericResolution = State Natural
+
+-- Generic declarations are collected after the neutral expression parser has
+-- established arrow ownership. This gives every binder a globally unique AST
+-- identity while keeping nested function domains independent.
+resolveGenericFunctionTypes :: Expression -> Expression
+resolveGenericFunctionTypes expressionValue =
+  evalState (resolveGenericExpression [] expressionValue) 0
+
+resolveGenericExpression
+  :: GenericScope
+  -> Expression
+  -> GenericResolution Expression
+resolveGenericExpression enclosing expressionValue =
+  case expressionValue of
+    FunctionTypeExpression [] domain codomain ->
+      resolveNewGenericFunctionType enclosing domain codomain
+    FunctionTypeExpression generics domain codomain -> do
+      let localScope =
+            [ (genericIdentifierText (genericBinderIdentifier binder)
+              , genericBinderId binder)
+            | binder <- generics
+            ]
+          visibleScope = localScope <> enclosing
+      resolvedGenerics <- traverse
+        (\binder -> do
+          bound <- resolveGenericExpression enclosing
+            (genericBinderBound binder)
+          pure binder { genericBinderBound = bound })
+        generics
+      resolvedDomain <- resolveGenericExpression visibleScope domain
+      resolvedCodomain <- resolveGenericExpression visibleScope codomain
+      pure (FunctionTypeExpression
+        resolvedGenerics resolvedDomain resolvedCodomain)
+    GenericIntroductionExpression introduction -> do
+      bound <- resolveGenericExpression enclosing
+        (genericIntroductionBound introduction)
+      pure (GenericIntroductionExpression
+        introduction { genericIntroductionBound = bound })
+    IdentifierReference (IdentifierString name) ->
+      pure (case lookup name enclosing of
+        Nothing -> expressionValue
+        Just binderIdentity ->
+          GenericReferenceExpression
+            (GenericReference binderIdentity GenericUseReference))
+    _ -> traverseExpressionChildren
+      (resolveGenericExpression enclosing)
+      expressionValue
+
+resolveNewGenericFunctionType
+  :: GenericScope
+  -> Expression
+  -> Expression
+  -> GenericResolution Expression
+resolveNewGenericFunctionType enclosing domain codomain = do
+  let introductions = collectOwnedGenericIntroductions domain
+  identities <- traverse (const freshGenericBinderId) introductions
+  let declarations = zip introductions identities
+      localScope =
+        [ (genericIdentifierText (genericIntroductionIdentifier introduction)
+          , identity)
+        | (introduction, identity) <- declarations
+        ]
+      visibleScope = localScope <> enclosing
+  binders <- resolveGenericBinders enclosing [] declarations
+  resolvedDomain <- resolveOwnedGenericDomain
+    visibleScope declarations domain
+  resolvedCodomain <- resolveGenericExpression visibleScope codomain
+  pure (FunctionTypeExpression binders resolvedDomain resolvedCodomain)
+
+resolveGenericBinders
+  :: GenericScope
+  -> GenericScope
+  -> [(GenericIntroduction Expression, GenericBinderId)]
+  -> GenericResolution [GenericBinder Expression]
+resolveGenericBinders _ _ [] = pure []
+resolveGenericBinders enclosing earlier
+    ((introduction, identity) : remaining) = do
+  bound <- resolveGenericExpression
+    (earlier <> enclosing)
+    (genericIntroductionBound introduction)
+  let identifier = genericIntroductionIdentifier introduction
+      binder = GenericBinder
+        { genericBinderId = identity
+        , genericBinderPolarity = genericIntroductionPolarity introduction
+        , genericBinderIdentifier = identifier
+        , genericBinderBound = bound
+        , genericBinderSource = genericIntroductionSource introduction
+        }
+      current = (genericIdentifierText identifier, identity)
+  later <- resolveGenericBinders enclosing (current : earlier) remaining
+  pure (binder : later)
+
+resolveOwnedGenericDomain
+  :: GenericScope
+  -> [(GenericIntroduction Expression, GenericBinderId)]
+  -> Expression
+  -> GenericResolution Expression
+resolveOwnedGenericDomain visible declarations expressionValue =
+  case expressionValue of
+    FunctionTypeExpression {} ->
+      resolveGenericExpression visible expressionValue
+    GenericIntroductionExpression introduction ->
+      case lookup introduction declarations of
+        Nothing -> resolveGenericExpression visible expressionValue
+        Just binderIdentity ->
+          pure (GenericReferenceExpression
+            (GenericReference binderIdentity GenericDeclarationReference))
+    IdentifierReference (IdentifierString name) ->
+      pure (case lookup name visible of
+        Nothing -> expressionValue
+        Just binderIdentity ->
+          GenericReferenceExpression
+            (GenericReference binderIdentity GenericUseReference))
+    _ -> traverseExpressionChildren
+      (resolveOwnedGenericDomain visible declarations)
+      expressionValue
+
+collectOwnedGenericIntroductions
+  :: Expression
+  -> [GenericIntroduction Expression]
+collectOwnedGenericIntroductions expressionValue =
+  case expressionValue of
+    FunctionTypeExpression {} -> []
+    GenericIntroductionExpression introduction -> [introduction]
+    _ -> concatMap collectOwnedGenericIntroductions
+      (expressionChildren expressionValue)
+
+freshGenericBinderId :: GenericResolution GenericBinderId
+freshGenericBinderId = do
+  next <- get
+  put (next + 1)
+  pure (GenericBinderId next)
+
+genericIdentifierText :: GenericIdentifier -> String
+genericIdentifierText
+    (GenericIdentifier (IdentifierString name) _) = name
+
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either ParseFailure Expression
@@ -307,6 +468,9 @@ astForm =
       , Assert True <$> (astSymbol "assert-hard" *> astExpression)
       , astUnary AST.AssertOperator (Assert False)
       , astUnaryForm "fun" Fun
+      , astGenericIntroduction
+      , astGenericReference
+      , astGenericFunctionType
       , astDependentBinder "with" WithBinding
       , astDependentBinder "for" ForBinding
       , astBinary AST.SyntaxTypeOperator SyntaxType
@@ -359,6 +523,70 @@ astForm =
       , astBinary AST.SafeOverloadOperator SafeOverload
       , astBinary AST.OverloadOperator Overload
       ])
+
+astGenericIntroduction :: Parser Expression
+astGenericIntroduction = do
+  _ <- astSymbol "generic-introduction"
+  polarity <- astGenericPolarity
+  identifier <- astExpression >>= astGenericIdentifier
+  bound <- astExpression
+  pure (GenericIntroductionExpression
+    (GenericIntroduction polarity identifier bound Nothing))
+
+astGenericReference :: Parser Expression
+astGenericReference = do
+  _ <- astSymbol "generic-reference"
+  identity <- GenericBinderId <$> astLexeme Lexer.decimal
+  role <- choice
+    [ GenericDeclarationReference <$ astSymbol "declaration"
+    , GenericUseReference <$ astSymbol "use"
+    ]
+  pure (GenericReferenceExpression (GenericReference identity role))
+
+astGenericFunctionType :: Parser Expression
+astGenericFunctionType = do
+  _ <- astSymbol "generic-function-type"
+  generics <- between (astSymbol "(") (astSymbol ")") $ do
+    _ <- astSymbol "generic-prefix"
+    many astGenericBinder
+  FunctionTypeExpression generics
+    <$> astExpression
+    <*> astExpression
+
+astGenericBinder :: Parser (GenericBinder Expression)
+astGenericBinder = between (astSymbol "(") (astSymbol ")") $ do
+  _ <- astSymbol "generic-binder"
+  identity <- GenericBinderId <$> astLexeme Lexer.decimal
+  polarity <- astGenericPolarity
+  identifier <- astExpression >>= astGenericIdentifier
+  bound <- astExpression
+  pure GenericBinder
+    { genericBinderId = identity
+    , genericBinderPolarity = polarity
+    , genericBinderIdentifier = identifier
+    , genericBinderBound = bound
+    , genericBinderSource = Nothing
+    }
+
+astGenericPolarity :: Parser GenericPolarity
+astGenericPolarity = choice
+  [ GenericProduct <$ astSymbol "&"
+  , GenericSum <$ astSymbol "^"
+  ]
+
+astGenericIdentifier :: Expression -> Parser GenericIdentifier
+astGenericIdentifier expressionValue = do
+  identifier <- case expressionValue of
+    IdentifierReference name -> pure (GenericIdentifier name False)
+    OptionalType (IdentifierReference name) ->
+      pure (GenericIdentifier name True)
+    _ -> empty
+  guard
+    (not
+      (genericIdentifierNameOptional identifier
+        && null (public
+          [(genericIdentifierText identifier, ())])))
+  pure identifier
 
 astDependentBinder
   :: Text
@@ -626,7 +854,7 @@ attachFunctionImplementation signature = do
     Just body -> implementedFunction body signature)
 
 acceptsFunctionBody :: Expression -> Bool
-acceptsFunctionBody FunctionType {} = True
+acceptsFunctionBody FunctionTypeExpression {} = True
 acceptsFunctionBody SyntaxType {} = True
 acceptsFunctionBody (Fun signature) = acceptsFunctionBody signature
 acceptsFunctionBody (SyntaxBoundary signature) = acceptsFunctionBody signature
@@ -920,6 +1148,7 @@ termAtom :: Parser Expression
 termAtom =
   choice
     [ bareSkip
+    , genericIntroduction
     , valueOfExpression
     , argumentMap
     , try parenthesizedReverseSpecification
@@ -927,6 +1156,34 @@ termAtom =
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
     , identifierReference
     ]
+
+genericIntroduction :: Parser Expression
+genericIntroduction = do
+  (sourceSpan, (polarity, identifier, bound)) <- spanned $ do
+    polarity <- choice
+      [ GenericProduct <$ lexeme (char '&')
+      , GenericSum <$ operatorToken AST.ExponentiationOperator
+      ]
+    spelling <- identifierExpression
+    name <- validateIdentifierSpelling spelling
+    optionalName <- maybe False (const True) <$> optional
+      (operatorToken AST.OptionalOperator)
+    guard
+      (not
+        (optionalName
+          && null (public [(name, ())])))
+    bound <- maybe
+      (IdentifierReference (IdentifierString "Any"))
+      id
+      <$> optional
+        (try (continuedSymbol "::" *> identifierValueExpression))
+    pure
+      ( polarity
+      , GenericIdentifier (IdentifierString name) optionalName
+      , bound
+      )
+  pure (GenericIntroductionExpression
+    (GenericIntroduction polarity identifier bound (Just sourceSpan)))
 
 -- Declarative syntax is discovered only after the complete resource has been
 -- read, so the neutral reader must retain symbolic words that are not core
@@ -950,7 +1207,7 @@ symbolicSyntaxLiteral = lexeme . try $ do
     notPrefixOf prefix value = not (prefix `isPrefixOf` value)
 
 coreSymbolicTokens :: [String]
-coreSymbolicTokens = AST.ellipsisSymbol : Text.unpack reverseSpecificationSymbol :
+coreSymbolicTokens = "&" : AST.ellipsisSymbol : Text.unpack reverseSpecificationSymbol :
   [ symbolText
   | operator <- [minBound .. maxBound]
   , Just symbolText <- [AST.operatorSourceSymbol operator]

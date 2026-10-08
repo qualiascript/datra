@@ -5,7 +5,46 @@ import Data.List (intercalate)
 import DatraLanguage.AST
 
 renderSourceExpression :: Expression -> String
-renderSourceExpression = source 0 . toOperatorExpression
+renderSourceExpression =
+  source 0 . toOperatorExpression . restoreGenericSurface
+
+-- Resolved function types retain their telescope separately from the marked
+-- declaration occurrence. Reconstruct surface introductions only for source
+-- rendering; the semantic AST remains binder-identity based.
+restoreGenericSurface :: Expression -> Expression
+restoreGenericSurface = restore []
+  where
+    restore enclosing expressionValue =
+      case expressionValue of
+        FunctionTypeExpression generics domain codomain ->
+          let visible = generics <> enclosing
+          in FunctionTypeExpression generics
+              (restore visible domain)
+              (restore visible codomain)
+        GenericReferenceExpression reference ->
+          case lookupBinder (genericReferenceBinderId reference) enclosing of
+            Just binder ->
+              case genericReferenceRole reference of
+                GenericUseReference -> restore enclosing
+                  (genericIdentifierReference
+                    (genericBinderIdentifier binder))
+                GenericDeclarationReference ->
+                  GenericIntroductionExpression
+                    (GenericIntroduction
+                      (genericBinderPolarity binder)
+                      (genericBinderIdentifier binder)
+                      (restore enclosing (genericBinderBound binder))
+                      (genericBinderSource binder))
+            Nothing -> GenericReferenceExpression reference
+        _ -> mapExpressionChildren (restore enclosing) expressionValue
+
+    lookupBinder _ [] = Nothing
+    lookupBinder identity (binder : remaining)
+      | genericBinderId binder == identity = Just binder
+      | otherwise = lookupBinder identity remaining
+
+    genericIdentifierReference =
+      IdentifierReference . genericIdentifierName
 
 -- Parenthesize nested operations conservatively, while leaving each block
 -- entry and the yield expression readable at their own expression boundary.
@@ -13,6 +52,12 @@ source :: Int -> OperatorExpression -> String
 source context expression =
   case expression of
     FunValue operand -> wrapped 0 ("fun " <> source 0 operand)
+    GenericIntroductionValue introduction -> wrapped 0
+      (genericPolarity introduction
+        <> renderGenericIdentifier
+          (genericIntroductionIdentifier introduction)
+        <> genericBound introduction)
+    GenericReferenceValue {} -> atom
     WithBindingValue (IdentifierString name) optional bound -> wrapped 0
       ("with " <> binderName name optional <> " of " <> source 0 bound)
     ForBindingValue (IdentifierString name) optional bound -> wrapped 0
@@ -21,7 +66,8 @@ source context expression =
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue templates signature -> wrapped 1
       (source 2 templates <> " % " <> source 0 signature)
-    FunctionTypeValue input output -> wrapped 1 (source 2 input <> " -> " <> source 1 output)
+    FunctionTypeValue _ input output -> wrapped 1
+      (source 2 input <> " -> " <> source 1 output)
     FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_this"))
         argument
@@ -162,6 +208,18 @@ source context expression =
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     binderName name optional =
       renderIdentifierString name <> if optional then "?" else ""
+    renderGenericIdentifier identifier =
+      binderName
+        (identifierStringText (genericIdentifierName identifier))
+        (genericIdentifierNameOptional identifier)
+    genericPolarity introduction =
+      case genericIntroductionPolarity introduction of
+        GenericProduct -> "&"
+        GenericSum -> "^"
+    genericBound introduction =
+      case genericIntroductionBound introduction of
+        IdentifierReferenceValue (IdentifierString "Any") -> ""
+        bound -> " :: " <> source 0 bound
     identifierOperation name optional annotation given = wrapped 1
       (name <> (if optional then "?" else "") <> case given of
         Just value | value == annotation -> " := " <> assignedValue value

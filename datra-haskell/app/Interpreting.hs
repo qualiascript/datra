@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 -- | Recursive interpretation of the parsed Datra AST.
 --
 -- This module deliberately owns syntax traversal only. Checked semantic
@@ -64,6 +66,11 @@ import Control.Monad (foldM)
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.AST
   ( Expression (..)
+  , pattern FunctionType
+  , GenericBinder (..)
+  , GenericIdentifier (..)
+  , GenericIntroduction (..)
+  , GenericPolarity (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , namedBeginBlock
@@ -1033,6 +1040,13 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           operand
     WithBinding _ _ _ -> Left (DependentBinderOutsideContainer "with")
     ForBinding _ _ _ -> Left (DependentBinderOutsideContainer "for")
+    GenericIntroductionExpression introduction ->
+      Left (DependentBinderOutsideContainer
+        (case genericIntroductionPolarity introduction of
+          GenericProduct -> "&"
+          GenericSum -> "^"))
+    GenericReferenceExpression {} ->
+      Left (FunctionEvaluationFailed ExpectedFunctionType)
     InModule path body -> do
       imported <- lookupModuleDefinitionScope scope path
       evalInScopeWith reduction imported resolving body
@@ -1048,7 +1062,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           })
         Nothing -> Left (FunctionEvaluationFailed
           AstPatternRequiresFunctionSignature)
-    FunctionType domain codomain -> do
+    FunctionTypeExpression [] domain codomain -> do
       rejectMixedDependentContainer domain
       let (staticDomain, substitutions) = staticDependentDomain domain
           staticCodomain = substituteDependent substitutions codomain
@@ -1058,6 +1072,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       pure (makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing Nothing
           signatureText Nothing Nothing True))
+    FunctionTypeExpression generics _ _
+      | Just name <- duplicateGenericIdentifier generics ->
+          Left (DuplicateGenericIdentifier name)
+    FunctionTypeExpression _ _ _ ->
+      Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication function argument -> do
       callable <- interpret function
@@ -1177,8 +1196,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               })
             Nothing -> Left (FunctionEvaluationFailed
               AstPatternRequiresFunctionImplementation)
-    MapSpecification (FunctionBody bindings result) (FunctionType domain codomain) ->
+    MapSpecification
+        (FunctionBody bindings result)
+        (FunctionTypeExpression [] domain codomain) ->
       createFunction reduction scope resolving domain codomain bindings result
+    MapSpecification (FunctionBody {})
+        (FunctionTypeExpression generics _ _)
+      | Just name <- duplicateGenericIdentifier generics ->
+          Left (DuplicateGenericIdentifier name)
+    MapSpecification (FunctionBody {}) FunctionTypeExpression {} ->
+      Left (FunctionEvaluationFailed ExpectedFunctionType)
     MapSpecification sourceOperand targetOperand ->
       interpretSpecificationWith interpret sourceOperand targetOperand
     IdentifierOperation
@@ -1347,6 +1374,19 @@ data DependentBindingsKind
   | SumDependentBindings
   | ProductDependentBindings
   | MixedDependentBindings
+
+duplicateGenericIdentifier
+  :: [GenericBinder Expression]
+  -> Maybe String
+duplicateGenericIdentifier = go []
+  where
+    go _ [] = Nothing
+    go seen (binder : remaining)
+      | name `elem` seen = Just name
+      | otherwise = go (name : seen) remaining
+      where
+        GenericIdentifier (IdentifierString name) _ =
+          genericBinderIdentifier binder
 
 dependentBindingsKind :: [Expression] -> DependentBindingsKind
 dependentBindingsKind expressions =
@@ -1538,7 +1578,7 @@ recursiveFunctionImplementation :: Expression -> Maybe Expression
 recursiveFunctionImplementation expressionValue =
   case expressionValue of
     MapSpecification implementation SyntaxType {} -> Just implementation
-    MapSpecification implementation FunctionType {}
+    MapSpecification implementation FunctionTypeExpression {}
       | External {} <- implementation -> Just implementation
     Begin _ result -> recursiveFunctionImplementation result
     Program _ result -> recursiveFunctionImplementation result

@@ -152,6 +152,7 @@ data InterpretingError
   | LetOutsideBegin
   | DependentBinderOutsideContainer String
   | MixedDependentBinders
+  | DuplicateGenericIdentifier String
   | ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind

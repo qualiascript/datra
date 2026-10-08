@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE PostfixOperators #-}
 
 module DatraInterpretingTests (main) where
@@ -15,6 +16,7 @@ import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , pattern FunctionType
   , contextualAccess
   )
 import DatraLanguage.AST.Syntax
