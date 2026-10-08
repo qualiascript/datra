@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Parsing
   ( ResourceEnvelope (..)
@@ -85,19 +86,20 @@ import DatraLanguage.AST
       , Assert
       , Begin
       , Program
-      , FunctionType
       , SyntaxType
       , Fun
       , WithBinding
       , ForBinding
       , InModule
       , Import
+      , FunctionTypeExpression
       , FunctionBody
       , FunctionApplication
       , External
       , Let
       , IdentifierReference
       )
+  , pattern FunctionType
   , StringTemplatePart
       ( StringTemplateInterpolation
       , StringTemplateLiteral
@@ -626,7 +628,7 @@ attachFunctionImplementation signature = do
     Just body -> implementedFunction body signature)
 
 acceptsFunctionBody :: Expression -> Bool
-acceptsFunctionBody FunctionType {} = True
+acceptsFunctionBody FunctionTypeExpression {} = True
 acceptsFunctionBody SyntaxType {} = True
 acceptsFunctionBody (Fun signature) = acceptsFunctionBody signature
 acceptsFunctionBody (SyntaxBoundary signature) = acceptsFunctionBody signature

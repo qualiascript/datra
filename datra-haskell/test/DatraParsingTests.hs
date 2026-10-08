@@ -1,12 +1,21 @@
 {-# LANGUAGE PostfixOperators #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module DatraParsingTests (main) where
 
 import Data.Char (chr, toUpper)
 import DatraLanguage.AST
   ( Expression (..)
+  , GenericBinder (..)
+  , GenericBinderId (..)
+  , GenericIntroduction (..)
+  , GenericPolarity (..)
+  , GenericReference (..)
+  , GenericReferenceRole (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , pattern FunctionType
+  , pattern GenericFunctionType
   , contextualAccess
   , expressionChildren
   , normalizeExpression
@@ -66,7 +75,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
-import Test.Tasty.HUnit (assertBool, testCase)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 main :: IO ()
 main = defaultMain testTree
@@ -75,12 +84,68 @@ testTree :: TestTree
 testTree =
   testGroup "Datra parser"
     [ testCase "brace separator semantics" testBraceSeparatorSemantics
+    , testCase "generic AST representation" testGenericAstRepresentation
     , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
         , testProperty "natural maps parse in order" propNaturalMapParsing
         ]
     ]
+
+testGenericAstRepresentation :: IO ()
+testGenericAstRepresentation = do
+  let binderIdentity = GenericBinderId 0
+      binder = GenericBinder
+        { genericBinderId = binderIdentity
+        , genericBinderPolarity = GenericProduct
+        , genericBinderIdentifier = ref "_T"
+        , genericBinderBound = ref "IntLimit"
+        , genericBinderSource = Nothing
+        }
+      declaration = GenericReferenceExpression (GenericReference
+        binderIdentity
+        GenericDeclarationReference)
+      reference = GenericReferenceExpression (GenericReference
+        binderIdentity
+        GenericUseReference)
+      signature = GenericFunctionType
+        [binder]
+        (FunctionApplication (ref "Args") declaration)
+        reference
+      rawIntroduction = GenericIntroductionExpression (GenericIntroduction
+        GenericSum
+        (OptionalType (ref "T"))
+        (ref "Any")
+        Nothing)
+      dependentIntroduction = GenericIntroductionExpression
+        (GenericIntroduction
+          GenericProduct
+          (OptionalType (StringTemplate
+            [ StringTemplateLiteral "Type"
+            , StringTemplateInterpolation
+                (contextualAccess (IdentifierString "_it"))
+            ]))
+          (ref "Any")
+          Nothing)
+  assert "raw generic introductions retain polarity and optional public names"
+    (renderSourceExpression rawIntroduction == "^T?")
+  assert "generic identifiers retain dependent IdenExp structure"
+    (renderSourceExpression dependentIntroduction == "&\"Type%(it)\"?")
+  assert "resolved function types reconstruct the declaration anchor"
+    (renderSourceExpression signature == "Args (&_T :: IntLimit) -> _T")
+  assert "function types own binder bounds as immediate AST children"
+    (expressionChildren signature
+      == [ ref "_T"
+         , ref "IntLimit"
+         , FunctionApplication (ref "Args") declaration
+         , reference
+         ])
+  assert "normalization preserves the ordered generic prefix"
+    (normalizeExpression signature == signature)
+  assertEqual
+    "canonical AST rendering preserves binder identity and occurrence role"
+    "(generic-function-type (generic-prefix (generic-binder 0 & (ref $_T) (ref $IntLimit))) (apply-func (ref $Args) (generic-reference 0 declaration)) (generic-reference 0 use))"
+    (renderExpression signature)
 
 testBraceSeparatorSemantics :: IO ()
 testBraceSeparatorSemantics = do

@@ -146,8 +146,20 @@ rewrite mode depth reserved active resolver bound expression =
     InModule path body
       | Just imported <- resolveDependencyModule resolver path ->
           rewrite mode (depth + 1) reserved active imported bound body
-    MapSpecification (FunctionBody entries result) (FunctionType domain codomain) -> do
+    MapSpecification (FunctionBody entries result)
+        (FunctionTypeExpression generics domain codomain) -> do
       let parameters = parameterNames domain
+      closedGenerics <- traverse
+        (\binder -> do
+          closedIdentifier <- rewrite mode depth reserved active resolver bound
+            (genericBinderIdentifier binder)
+          closedBound <- rewrite mode depth reserved active resolver bound
+            (genericBinderBound binder)
+          pure binder
+            { genericBinderIdentifier = closedIdentifier
+            , genericBinderBound = closedBound
+            })
+        generics
       closedDomain <- rewrite mode depth reserved active resolver
         (parameters <> bound) domain
       closedCodomain <- rewrite mode depth reserved active resolver
@@ -155,7 +167,8 @@ rewrite mode depth reserved active resolver bound expression =
       body <- rewrite mode depth reserved active resolver
         (contextualMarker "_it" : "_it" : parameters <> bound)
         (FunctionBody entries result)
-      pure (MapSpecification body (FunctionType closedDomain closedCodomain))
+      pure (MapSpecification body
+        (FunctionTypeExpression closedGenerics closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
     Program entries result -> block Program entries result
@@ -312,7 +325,8 @@ canonicalDependencyNames entries result
   where
     isClosedFunctionResult (Fun value) = isFunction value
     isClosedFunctionResult value = isFunction value
-    isFunction (MapSpecification (FunctionBody {}) (FunctionType {})) = True
+    isFunction
+      (MapSpecification (FunctionBody {}) FunctionTypeExpression {}) = True
     isFunction _ = False
 
 nameText :: IdentifierString -> String

@@ -37,7 +37,7 @@ blockDeclaration = declaration False
 
     annotationToCheck annotation (Just implementation)
       | annotation == implementation = Nothing
-    annotationToCheck FunctionType {} (Just FunctionBody {}) = Nothing
+    annotationToCheck FunctionTypeExpression {} (Just FunctionBody {}) = Nothing
     annotationToCheck SyntaxType {} (Just _) = Nothing
     annotationToCheck annotation _ = Just annotation
 

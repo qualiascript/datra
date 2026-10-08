@@ -1,9 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module DatraLanguage.AST
   ( IdentifierString (..)
+  , GenericPolarity (..)
+  , GenericBinderId (..)
+  , GenericReferenceRole (..)
+  , GenericIntroduction (..)
+  , GenericBinder (..)
+  , GenericReference (..)
   , StringTemplatePart (..)
   , Expression (..)
+  , pattern FunctionType
+  , pattern GenericFunctionType
   , contextualAccess
   , isContextualAccessOf
   , OperatorExpression (..)
@@ -32,6 +41,7 @@ import DatraLanguage.AST.Operator
   , skipSourceSymbol
   )
 import DatraLanguage.AST.Reserved qualified as Reserved
+import DatraLanguage.Diagnostics (SourceSpan)
 import IdentifierValueType (isIdentifierValue)
 import Numeric.Natural (Natural)
 import Numeric (showHex)
@@ -49,6 +59,58 @@ import Prettyprinter.Render.String (renderString)
 -- its spelling, and an arbitrary expression can never inhabit this field.
 newtype IdentifierString = IdentifierString
   { identifierStringText :: String
+  }
+  deriving (Eq, Show)
+
+-- | The quantifier-like polarity of a function-owned generic binder.
+data GenericPolarity
+  = GenericProduct
+  | GenericSum
+  deriving (Eq, Show)
+
+-- | Identity allocated by function-type scope resolution. Identifier text is
+-- presentation; this identity distinguishes shadowed binders.
+newtype GenericBinderId = GenericBinderId Natural
+  deriving (Eq, Ord, Show)
+
+-- | The declaration occurrence is the marked source position that introduced
+-- a binder. Every other occurrence is an ordinary reference to that binder.
+data GenericReferenceRole
+  = GenericDeclarationReference
+  | GenericUseReference
+  deriving (Eq, Show)
+
+-- | Raw generic syntax before its nearest function type has collected it. The
+-- identifier retains the language's complete @IdenExp@ representation:
+-- privacy comes from its identifier policy and optional naming from an
+-- 'OptionalType' wrapper, while dependent string templates remain possible.
+-- The parser supplies @Any@ as the bound when the @::@ clause is omitted.
+data GenericIntroduction expression = GenericIntroduction
+  { genericIntroductionPolarity :: GenericPolarity
+  , genericIntroductionIdentifier :: expression
+  , genericIntroductionBound :: expression
+  , genericIntroductionSource :: Maybe SourceSpan
+  }
+  deriving (Eq, Show)
+
+-- | One entry in a resolved function type's ordered generic telescope. Its
+-- identifier remains an expression so resolution does not erase @IdenExp@
+-- structure merely because a stable semantic identity has been allocated.
+data GenericBinder expression = GenericBinder
+  { genericBinderId :: GenericBinderId
+  , genericBinderPolarity :: GenericPolarity
+  , genericBinderIdentifier :: expression
+  , genericBinderBound :: expression
+  , genericBinderSource :: Maybe SourceSpan
+  }
+  deriving (Eq, Show)
+
+-- | A resolved occurrence uses binder identity rather than duplicating its
+-- identifier expression. Rendering and diagnostics recover that expression
+-- from the owning function telescope.
+data GenericReference = GenericReference
+  { genericReferenceBinderId :: GenericBinderId
+  , genericReferenceRole :: GenericReferenceRole
   }
   deriving (Eq, Show)
 
@@ -117,12 +179,14 @@ data Expression
   | Modular Expression
   | Assert Bool Expression
   | Fun Expression
+  | GenericIntroductionExpression (GenericIntroduction Expression)
+  | GenericReferenceExpression GenericReference
   | WithBinding IdentifierString Bool Expression
   | ForBinding IdentifierString Bool Expression
   | InModule String Expression
   | Import Bool String
   | SyntaxType Expression Expression
-  | FunctionType Expression Expression
+  | FunctionTypeExpression [GenericBinder Expression] Expression Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
   | External Expression
@@ -154,6 +218,21 @@ data Expression
       , identifierTemplateGivenValue :: Maybe Expression
       }
   deriving (Eq, Show)
+
+-- | Compatibility pattern for an ordinary function type. Generic-aware code
+-- must match 'FunctionTypeExpression' or 'GenericFunctionType' explicitly, so
+-- a transformation cannot silently discard a non-empty telescope.
+pattern FunctionType :: Expression -> Expression -> Expression
+pattern FunctionType domain codomain = FunctionTypeExpression [] domain codomain
+
+-- | Construct or inspect the first-class generic prefix of a function type.
+pattern GenericFunctionType
+  :: [GenericBinder Expression]
+  -> Expression
+  -> Expression
+  -> Expression
+pattern GenericFunctionType generics domain codomain =
+  FunctionTypeExpression generics domain codomain
 
 -- | Apply a private contextual function with its depth omitted. The function
 -- domain supplies the ordinary depth-zero default; an explicit depth remains
@@ -265,12 +344,18 @@ data OperatorExpression
   | ModularValue OperatorExpression
   | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
+  | GenericIntroductionValue
+      (GenericIntroduction OperatorExpression)
+  | GenericReferenceValue GenericReference
   | WithBindingValue IdentifierString Bool OperatorExpression
   | ForBindingValue IdentifierString Bool OperatorExpression
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
   | SyntaxTypeValue OperatorExpression OperatorExpression
-  | FunctionTypeValue OperatorExpression OperatorExpression
+  | FunctionTypeValue
+      [GenericBinder OperatorExpression]
+      OperatorExpression
+      OperatorExpression
   | FunctionBodyValue [OperatorExpression] OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
   | ExternalValue OperatorExpression
@@ -400,6 +485,16 @@ normalizeExpression (Modular operand) =
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
+normalizeExpression (GenericIntroductionExpression introduction) =
+  GenericIntroductionExpression
+    introduction
+      { genericIntroductionIdentifier =
+          normalizeExpression (genericIntroductionIdentifier introduction)
+      , genericIntroductionBound =
+          normalizeExpression (genericIntroductionBound introduction)
+      }
+normalizeExpression (GenericReferenceExpression reference) =
+  GenericReferenceExpression reference
 normalizeExpression (WithBinding name optional bound) =
   WithBinding name optional (normalizeExpression bound)
 normalizeExpression (ForBinding name optional bound) =
@@ -410,7 +505,18 @@ normalizeExpression (SyntaxType templates signature) =
   SyntaxType
     (normalizeExpression templates)
     (normalizeExpression signature)
-normalizeExpression (FunctionType input output) = FunctionType (normalizeExpression input) (normalizeExpression output)
+normalizeExpression (FunctionTypeExpression generics input output) =
+  FunctionTypeExpression
+    [ binder
+        { genericBinderIdentifier =
+            normalizeExpression (genericBinderIdentifier binder)
+        , genericBinderBound =
+            normalizeExpression (genericBinderBound binder)
+        }
+    | binder <- generics
+    ]
+    (normalizeExpression input)
+    (normalizeExpression output)
 normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
 normalizeExpression (External descriptor) = External (normalizeExpression descriptor)
@@ -569,6 +675,16 @@ lower (Coalization operand) = CoalizationValue (lower operand)
 lower (Modular operand) = ModularValue (lower operand)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
+lower (GenericIntroductionExpression introduction) =
+  GenericIntroductionValue
+    introduction
+      { genericIntroductionIdentifier =
+          lower (genericIntroductionIdentifier introduction)
+      , genericIntroductionBound =
+          lower (genericIntroductionBound introduction)
+      }
+lower (GenericReferenceExpression reference) =
+  GenericReferenceValue reference
 lower (WithBinding name optional bound) =
   WithBindingValue name optional (lower bound)
 lower (ForBinding name optional bound) =
@@ -577,7 +693,16 @@ lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
 lower (SyntaxType templates signature) =
   SyntaxTypeValue (lower templates) (lower signature)
-lower (FunctionType input output) = FunctionTypeValue (lower input) (lower output)
+lower (FunctionTypeExpression generics input output) =
+  FunctionTypeValue
+    [ binder
+        { genericBinderIdentifier = lower (genericBinderIdentifier binder)
+        , genericBinderBound = lower (genericBinderBound binder)
+        }
+    | binder <- generics
+    ]
+    (lower input)
+    (lower output)
 lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
 lower (External descriptor) = ExternalValue (lower descriptor)
@@ -770,6 +895,20 @@ prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
 prettyOperator (FunValue operand) = prettyForm "fun" [prettyOperator operand]
+prettyOperator (GenericIntroductionValue introduction) =
+  prettyForm "generic-introduction"
+    [ pretty (genericPolaritySymbol
+        (genericIntroductionPolarity introduction))
+    , prettyOperator (genericIntroductionIdentifier introduction)
+    , prettyOperator (genericIntroductionBound introduction)
+    ]
+prettyOperator (GenericReferenceValue reference) =
+  prettyForm "generic-reference"
+    [ pretty (genericBinderIdNatural
+        (genericReferenceBinderId reference))
+    , pretty (genericReferenceRoleName
+        (genericReferenceRole reference))
+    ]
 prettyOperator (WithBindingValue (IdentifierString name) optional bound) =
   prettyForm "with"
     [ pretty (renderIdentifierString name <> if optional then "?" else "")
@@ -784,7 +923,14 @@ prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (rend
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
 prettyOperator (SyntaxTypeValue templates signature) =
   prettyBinary SyntaxTypeOperator templates signature
-prettyOperator (FunctionTypeValue input output) = prettyBinary FunctionTypeOperator input output
+prettyOperator (FunctionTypeValue [] input output) =
+  prettyBinary FunctionTypeOperator input output
+prettyOperator (FunctionTypeValue generics input output) =
+  prettyForm "generic-function-type"
+    [ prettyForm "generic-prefix" (map prettyGenericBinder generics)
+    , prettyOperator input
+    , prettyOperator output
+    ]
 prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
 prettyOperator (ExternalValue descriptor) = prettyUnary ExternalOperator descriptor
@@ -864,6 +1010,28 @@ prettyFormFor operator = prettyForm (operatorCanonicalSymbol operator)
 prettyForm :: String -> [Doc annotation] -> Doc annotation
 prettyForm headName operands =
   parens (hsep (pretty headName : operands))
+
+prettyGenericBinder
+  :: GenericBinder OperatorExpression
+  -> Doc annotation
+prettyGenericBinder binder =
+  prettyForm "generic-binder"
+    [ pretty (genericBinderIdNatural (genericBinderId binder))
+    , pretty (genericPolaritySymbol (genericBinderPolarity binder))
+    , prettyOperator (genericBinderIdentifier binder)
+    , prettyOperator (genericBinderBound binder)
+    ]
+
+genericBinderIdNatural :: GenericBinderId -> Natural
+genericBinderIdNatural (GenericBinderId value) = value
+
+genericPolaritySymbol :: GenericPolarity -> String
+genericPolaritySymbol GenericProduct = "&"
+genericPolaritySymbol GenericSum = "^"
+
+genericReferenceRoleName :: GenericReferenceRole -> String
+genericReferenceRoleName GenericDeclarationReference = "declaration"
+genericReferenceRoleName GenericUseReference = "use"
 
 prettyInteger :: Integer -> Doc annotation
 prettyInteger = pretty
@@ -1018,11 +1186,25 @@ traverseExpressionChildren visit expression = case expression of
   BooleanOr a b -> BooleanOr <$> visit a <*> visit b
   Assert hard x -> Assert hard <$> visit x
   Fun x -> Fun <$> visit x
+  GenericIntroductionExpression introduction ->
+    (\identifier bound -> GenericIntroductionExpression
+      introduction
+        { genericIntroductionIdentifier = identifier
+        , genericIntroductionBound = bound
+        })
+      <$> visit (genericIntroductionIdentifier introduction)
+      <*> visit (genericIntroductionBound introduction)
+  GenericReferenceExpression reference ->
+    pure (GenericReferenceExpression reference)
   WithBinding name optional bound ->
     WithBinding name optional <$> visit bound
   ForBinding name optional bound ->
     ForBinding name optional <$> visit bound
-  FunctionType a b -> FunctionType <$> visit a <*> visit b
+  FunctionTypeExpression generics domain codomain ->
+    FunctionTypeExpression
+      <$> traverse visitBinder generics
+      <*> visit domain
+      <*> visit codomain
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
@@ -1053,6 +1235,13 @@ traverseExpressionChildren visit expression = case expression of
   StringTemplate parts -> StringTemplate <$> traverse part parts
   _ -> pure expression
   where
+    visitBinder binder =
+      (\identifier bound -> binder
+        { genericBinderIdentifier = identifier
+        , genericBinderBound = bound
+        })
+        <$> visit (genericBinderIdentifier binder)
+        <*> visit (genericBinderBound binder)
     part (StringTemplateLiteral text) = pure (StringTemplateLiteral text)
     part (StringTemplateInterpolation value) = StringTemplateInterpolation <$> visit value
 
