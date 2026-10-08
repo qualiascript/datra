@@ -111,6 +111,26 @@ Each simple name may be introduced only once in a function telescope:
 repetitions are semantic errors even if they use different polarities, bounds,
 or optional-name forms.
 
+Generic names must also be disjoint from every other identifier name introduced
+in their function type's domain and codomain scopes. This is checked after
+collection against both complete scopes, so moving a generic to the prefix
+cannot introduce a name collision that was absent from the written order. The
+rule applies to both `&` and `^`, even though a `^` binding is unavailable in
+the codomain. The optional-name marker is not part of the name: `T` and `T?`
+overlap.
+
+For an ordinary simple identifier, disjointness is the existing identifier-
+string overlap check. For a dependent identifier, the check is quantified over
+its entire fiber domain: the generic's singleton identifier-string value must
+not subtype the dependent identifier's string value at any fiber. Checking
+only the fiber selected by one invocation is insufficient. If disjointness
+cannot be established for every fiber, the function type is rejected. Ambient
+outer bindings and function-body-local declarations are not part of this
+collision set; their ordinary lexical shadowing rules remain separate. A
+nested function type starts a new ownership boundary, so its locally
+introduced names are checked against its own domain and codomain rather than
+the enclosing function type's scopes.
+
 ## Prefix normalization
 
 Before domain evaluation, collect every `&` and `^` introduction owned by the
@@ -592,11 +612,15 @@ While constructing a function type:
    function types;
 2. allocate stable binder IDs in source order;
 3. retain every declaration occurrence so semantic validation can diagnose a
-   repeated simple name, regardless of polarity or name optionality;
+   repeated or overlapping name, regardless of polarity or name optionality;
 4. replace marked occurrences with binder references;
 5. insert the binders as real prefix members of the domain map;
-6. resolve bounds from left to right; and
-7. resolve ordinary domain entries against the complete collected prefix.
+6. validate every generic name against all other simple and dependent
+   identifier names introduced in the completed domain and codomain scopes,
+   rejecting a dependent identifier whenever the generic name subtypes its
+   string value at any fiber;
+7. resolve bounds from left to right; and
+8. resolve ordinary domain entries against the complete collected prefix.
 
 Apply the transformation to both `AtlasMap` and `ArgumentMap`. Record enough
 layout information to preserve prefix positions through matching and body
@@ -681,6 +705,9 @@ Errors should identify the binder identity and source location when possible.
 Required structured failures include:
 
 - a repeated simple generic name in one function telescope;
+- a generic name overlapping an ordinary identifier or any string-valued
+  fiber of a dependent identifier in the same function type's domain or
+  codomain scope;
 - a bound that refers forward or forms a dependency cycle;
 - a required public generic that was not supplied;
 - failed, ambiguous, or conflicting private inference;
@@ -704,6 +731,12 @@ Unauthorized runtime observation is not a bespoke escape error. Its value is
 - Preserve repeated generic names in the parsed telescope, then reject them
   during semantic compilation with a localized structured diagnostic,
   including repetitions with a different polarity or optional-name wrapper.
+- Reject a generic name that overlaps an ordinary identifier introduced in
+  either the domain or codomain scope, treating optional and required
+  spellings of the same name as overlapping.
+- For each dependent identifier in either scope, test the generic name against
+  every fiber's string value and reject the function type if the generic name
+  subtypes any one of them or if all-fiber disjointness cannot be established.
 - Collect introductions without crossing nested function types.
 - Normalize both regular and argument maps to a real generic prefix.
 - Verify `(a : _T; b : &_T)` has prepared order `[_T; a; b]`.
@@ -788,7 +821,8 @@ Exercise clean and protected generics with:
 The bootstrap is complete when:
 
 1. `&` and `^` accept only unique simple identifiers parsed through the shared
-   IdenExp rules;
+   IdenExp rules, and those names are disjoint from every simple or dependent
+   identifier introduced in the function type's domain and codomain scopes;
 2. every owned generic becomes a real, ordered domain-prefix member;
 3. mixed product/sum prefixes evaluate through one dependent-map engine;
 4. private/public/optional-name matching follows the existing map rules;
