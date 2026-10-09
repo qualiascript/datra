@@ -24,10 +24,13 @@ The two polarities differ in how their values may be observed:
 - An `&` value that transitively depends on a `^` value has the same protected
   observation behavior as that `^` value.
 
-Scope protection is a general evaluator property. Any operation involving a
-protected value produces a protected result. It is not implemented as a list
-of special cases for aliasing, conditionals, functions, or individual
-operators.
+Scope protection is a general evaluator property. An operation involving a
+protected value normally produces a protected result. The one general
+exception is existential elimination: a typed operation may consume protected
+operands and produce an ordinary result when its checked result contract proves
+that the hidden representation cannot occur in that result. This decision is
+part of the common evaluator operation cycle, not a list of special cases for
+individual operators.
 
 ## Surface grammar
 
@@ -222,10 +225,13 @@ dependency analysis.
 1. Every `^` binder is created as a value protected to the function-type
    domain scope.
 2. Evaluating a later generic bound, selection, or construction through that
-   value invokes universal protection lifting.
-3. The resulting `&` or ordinary prepared value is therefore protected with
-   the label of the scope in which that derived value is introduced.
+   value invokes the common protection-lifting cycle.
+3. The resulting `&` or ordinary prepared value is protected with the label of
+   the scope in which that derived value is introduced unless a typed
+   operation eliminates the existential through a protection-erasing result
+   contract.
 4. Values whose evaluation never touches protected evidence remain ordinary.
+   Values returned by valid existential elimination are ordinary as well.
 
 Consequently, an `&` binder may be either unprotected or domain-protected:
 
@@ -249,7 +255,7 @@ codomain-specific dependency mechanism.
    does not synthesize `it` or `this` bindings.
 2. Introduce every `^` witness as protected to the domain scope. An `&` witness
    becomes protected automatically if evaluating it touches a domain-protected
-   value.
+   value and no qualifying operation eliminates that dependency.
 3. While the domain scope is active, allocate the future function-body label
    and prepare body copies of domain-protected values. Each copy is a newly
    introduced protected value carrying only that body label.
@@ -274,8 +280,9 @@ only domain-derived bindings are the unprotected `&` identifiers.
 
 This makes codomain visibility a direct consequence of scope protection. A
 clean product is an ordinary value and can be rebound in the codomain scope. A
-sum, or a product derived from a sum, remains protected to the domain scope and
-cannot be observed from the codomain scope.
+sum, or a product derived from a sum without valid existential elimination,
+remains protected to the domain scope and cannot be observed from the codomain
+scope.
 
 ## Scope table
 
@@ -285,7 +292,7 @@ cannot be observed from the codomain scope.
 | clean `&` | yes | yes | yes | yes |
 | domain-protected `&` | yes, protected | no | yes, protected | yes, protected |
 | `^` | yes, protected | no | yes, protected | yes, protected |
-| ordinary value dependent on protection | yes, protected | no | yes, protected | yes, protected |
+| non-eliminated value derived from protection | yes, protected | no | yes, protected | yes, protected |
 
 The codomain and body are different scopes:
 
@@ -333,8 +340,8 @@ max := {Args (&_T :: IntLimit),} -> _T do
 
 During codomain evaluation, `_T` is available directly. During body
 evaluation, `_T` is an ordinary unprotected value unless its own bound,
-selection, or construction became protected through ordinary domain
-evaluation.
+selection, or construction became protected through domain evaluation without
+subsequent existential elimination.
 
 ## Sum semantics
 
@@ -355,9 +362,12 @@ depends on `T`, including `x` and `render`, begin protected as well.
 
 The codomain cannot refer to `T`, because the domain label is absent from the
 codomain's stack and no binding for `T` is installed there. A result derived
-from `T` may be computed in the body, but `yield` checks its label against the
-receiving outer stack after removing the body scopes. If the label is absent,
-the candidate result becomes `Never` before codomain validation.
+from `T` normally remains protected, but a suitable typed operator or function
+may eliminate the existential and return an ordinary value. For example,
+`render x` may return an ordinary `Str` because the checked `Str` result cannot
+retain `T`. A protected result which has not been eliminated is still checked
+by `yield` against the receiving outer stack and becomes `Never` when its label
+is absent.
 
 Public/private/optional-name behavior is inherited from the same identifier
 expression rules used by products. The polarity changes scope protection, not
@@ -463,24 +473,69 @@ from it acquire the label of the scope where the derived value is introduced.
 The explicit domain-to-body handoff creates new protected body copies carrying
 only the preallocated body label.
 
-## Universal protection lifting
+## Universal protection lifting and existential elimination
 
-Every evaluator operation follows one rule:
+Every evaluator operation uses one shared evaluation cycle:
 
-1. If none of its operands is protected, evaluate normally.
+1. Record whether any operand is protected.
 2. For every protected operand, look up its introducing label in the complete
    active-label stack.
-3. If every lookup succeeds, evaluate the ordinary operation using the actual
-   operand values and protect any derived result with the current scope's top
-   label.
-4. If any lookup fails, do not run the ordinary operation; return `Never`.
+3. If any lookup fails, do not run the ordinary operation; return `Never`.
+4. Unwrap every authorized operand and run the ordinary operation using the
+   actual values.
+5. Obtain the operation's optional checked result contract. Function
+   application uses the evaluated function codomain; a typed primitive
+   operator supplies its semantic result type. An operation with no such
+   contract supplies no elimination evidence.
+6. If no operand was protected, return the ordinary result.
+7. If an operand was protected and the result contract is protection-erasing,
+   validate and normalize the result against that contract while all operand
+   labels remain active, then return the validated result as an ordinary value.
+8. Otherwise, protect the result with the current scope's top label.
 
-Multiple protected operands require no label intersection. Because every
-operand label must already occur in the one active stack before evaluation,
-the newly derived result needs only the current scope's label. That label is
-the unique passcode for the result's own lifetime.
+Steps 7 and 8 are the result-protection decision. Universal lifting is the
+default in step 8; existential elimination is the checked exception in step 7.
+Individual ordinary operation implementations do not unwrap values, inspect
+scope labels, remove protection, or choose fallbacks.
 
-This rule applies to all value-producing and value-observing operations,
+Multiple protected operands require no label intersection. Every operand label
+must occur in the one active stack before the operation runs. A lifted result
+needs only the current scope's label, which is the unique passcode for that
+result's own lifetime. An eliminating operation may return an ordinary result
+only after every protected operand has passed the same authorization check.
+
+### Protection-erasing result contracts
+
+A result contract is protection-erasing only when all of the following hold:
+
+- the contract evaluates to an ordinary, unprotected value;
+- the contract is independent of every protected generic binder consumed by
+  the operation, and its own construction did not observe protected evidence;
+- the contract is closed and concrete enough to constrain the complete result
+  to a public representation which cannot retain an arbitrary protected
+  payload; and
+- the produced result successfully validates and normalizes against the
+  contract before protection is removed.
+
+The initial implementation is deliberately conservative. `Any`, open or
+dependent containers, function and closure results, lazy or deferred results,
+and contracts containing protected members are not protection-erasing. Merely
+specifying to an ineligible contract is insufficient: for example, `T -> Any`
+must not expose a protected `T` under a wider name.
+
+Protection-erasing eligibility belongs to the semantic result contract, not
+to an allowlist of operator names. A protected callable may therefore be used
+as an eliminator while it is authorized if its evaluated codomain qualifies.
+A primitive operator may eliminate only when it exposes the same kind of
+checked result contract. Operations without a contract automatically use
+ordinary lifting.
+
+Existential elimination adds no surface syntax, AST node, authorization set,
+or additional field to a protected value. It reuses the result contract already
+carried by an evaluated function or typed primitive and changes only the final
+classification performed by the common operation boundary.
+
+This cycle applies to all value-producing and value-observing operations,
 including:
 
 - assignment and identifier evaluation;
@@ -493,8 +548,15 @@ including:
 
 No operation needs its own fallback-type calculation. Operations continue to
 implement only their ordinary behavior; a shared evaluator boundary checks
-label membership, unwraps accessible operands, and wraps a derived result with
-the current label.
+label membership, unwraps accessible operands, and applies the common
+result-protection decision.
+
+Assignment, aliasing, annotations, map construction, and `yield` are not
+existential eliminators merely because a target type accepts their value. They
+continue to lift protection unless they are themselves implemented as typed
+operations with a qualifying result contract. In particular, an annotation of
+`Any` cannot be used to discharge protection, and `yield` cannot infer
+elimination after the operation which produced a value has been forgotten.
 
 Aliasing is therefore not a special case:
 
@@ -518,17 +580,24 @@ After the input label has left the stack, attempting the operation produces
 `Never`. There is no need to calculate
 `"Nat" | "NotNat"` as a fallback.
 
-Function application is also ordinary lifting. Given protected values:
+Function application uses the same evaluation cycle. Given protected values:
 
 ```datra
 x : T
 render : T -> Str
 ```
 
-`render x` is valid while both operand labels occur in the stack and produces a
-protected `Str` carrying the current scope label. That result may be used in
-descendant scopes while that label remains in their stack. Observation after
-the label has been popped produces `Never`.
+`render x` is valid while both operand labels occur in the stack. Application
+uses the evaluated codomain `Str` as its result contract. Because that contract
+is ordinary, binder-independent, concrete, and unable to retain the protected
+payload, successful result validation eliminates the existential and produces
+an ordinary `Str`.
+
+By contrast, an identity function with codomain `T`, or a function with
+codomain `Any`, does not have a protection-erasing contract. Its application
+therefore produces a protected result carrying the current scope label. The
+same is true for a function or lazy result which could retain an authorized
+operand for later observation.
 
 ## `yield` boundary
 
@@ -546,6 +615,11 @@ A value protected only to the current function-body scope therefore cannot be
 returned as its actual value. It normally produces a codomain error after
 becoming `Never`. If the declared codomain accepts `Never`, the yield succeeds
 with `Never`; the protected payload still does not cross the boundary.
+
+An ordinary value produced earlier by existential elimination needs no special
+`yield` behavior and crosses this boundary normally. `yield` itself never
+removes a protection wrapper: eligibility is decided at the typed operation
+boundary, while the result contract and authorized operands are still known.
 
 A protected value can cross normally only when its one introducing label is
 still present in the receiving stack—for example, a value introduced by an
@@ -688,12 +762,19 @@ lifting to protect products and ordinary values which depend on them. During
 the authorized domain-to-body handoff, replace each protected domain wrapper
 with a body wrapper carrying only the preallocated body label.
 
-### 8. Lift evaluator operations
+### 8. Lift evaluator operations and eliminate safe results
 
-Put active-stack membership checking, operand unwrapping, and current-label
-result wrapping at the common evaluator-operation boundary. Individual
-operations keep their existing implementation and receive ordinary actual
-values only after the common check succeeds.
+Put active-stack membership checking, operand unwrapping, result-contract
+inspection, and the result-protection decision at the common evaluator-
+operation boundary. Function application contributes its evaluated codomain;
+typed primitive operators contribute their semantic result type; operations
+without a checked result contract contribute no elimination evidence.
+
+After ordinary evaluation, validate a result against a qualifying protection-
+erasing contract before returning it without a wrapper. Otherwise wrap the
+derived result with the current label. Individual operations keep their
+existing implementation and receive ordinary actual values only after the
+common authorization check succeeds.
 
 Audit lazy values and closures so deferred evaluation retains protection and
 cannot accidentally execute an actual payload in an unauthorized scope.
@@ -709,6 +790,8 @@ At `yield`, derive the receiving outer stack by removing the scopes which end
 at that boundary, then test the result's introducing label for membership
 before codomain validation. Replace an inaccessible candidate with `Never`;
 report the ordinary codomain mismatch unless the codomain accepts that value.
+An already ordinary result produced by existential elimination crosses without
+special treatment; `yield` never performs elimination itself.
 
 ### 10. Remove bootstrap duplication
 
@@ -735,6 +818,10 @@ Required structured failures include:
 
 Unauthorized runtime observation is not a bespoke escape error. Its value is
 `Never`, and subsequent behavior follows the ordinary bottom-type laws.
+An ineligible result contract is not itself an error; it simply provides no
+elimination evidence, so the result remains protected. If a contract is
+eligible but the produced value does not validate against it, report the
+ordinary result-type mismatch before any protection could be removed.
 
 ## Test plan
 
@@ -785,7 +872,7 @@ Unauthorized runtime observation is not a bespoke escape error. Its value is
 - Expose all generic and ordinary identifiers in the body.
 - Construct body `it` as the full prepared map, with prefix first.
 - Protect sums in the domain scope and verify that ordinary lifting protects
-  dependent products and ordinary prepared values.
+  non-eliminated dependent products and ordinary prepared values.
 
 ### Scope protection
 
@@ -797,10 +884,12 @@ Unauthorized runtime observation is not a bespoke escape error. Its value is
   the active stack, without adding child labels to the value.
 - Refuse observation after the introducing label has been popped.
 - Preserve protection through `actual := T` without a special alias branch.
-- Protect conditional, arithmetic, comparison, map, access, function, and
-  closure results whenever any operand is protected.
+- Protect conditional, map, access, function, closure, and other results when
+  a protected operand is used and no protection-erasing result contract is
+  available.
 - Require every protected operand's label to occur in the active stack, then
-  label the derived result only with the current scope label.
+  either eliminate through a qualifying result contract or label the derived
+  result only with the current scope label.
 - Return `Never` without running the underlying operation when any protected
   operand's label is absent from the active stack.
 - Keep lazy and captured computations from observing payloads after their
@@ -813,6 +902,32 @@ Unauthorized runtime observation is not a bespoke escape error. Its value is
   the actual protected payload.
 - Permit a protected result whose introducing label remains in the receiving
   outer stack.
+
+### Existential elimination
+
+- Return an ordinary `Str` for authorized application of a protected
+  `render : T -> Str` to a protected `x : T`, and permit that result to cross
+  `yield` normally.
+- Return ordinary `Bool` and concrete numeric results from typed comparison,
+  equality, and arithmetic operators whose semantic result contracts qualify.
+- Eliminate only after all protected operands, including operands with
+  different active labels, have passed authorization.
+- Permit a protected callable to eliminate through its ordinary qualifying
+  codomain while the callable's label is active.
+- Keep the result of `identity : T -> T` protected.
+- Keep the result of `T -> Any` protected even when its actual value happens
+  to specify to `Any`.
+- Reject protection-erasing eligibility for a contract which is itself
+  protected or depends on a protected binder.
+- Reject protection-erasing eligibility for open or dependent containers,
+  functions, closures, lazy results, and values with protected members.
+- Confirm that aliasing, assignment, a target annotation, map construction,
+  and `yield` do not eliminate protection by themselves.
+- Use ordinary lifting for an operator which has no checked result contract.
+- Validate and normalize the produced value against the eligible contract
+  before returning it as ordinary.
+- Keep an ineligible result protected so that it still becomes `Never` at an
+  unauthorized `yield` boundary.
 
 ### `Never` laws
 
@@ -834,8 +949,9 @@ Exercise clean and protected generics with:
 - subfederation using `of`;
 - optional names independently from optional values;
 - regular maps and argument maps;
-- nested closures and recursive calls; and
-- mixed product/sum telescopes.
+- nested closures and recursive calls;
+- mixed product/sum telescopes; and
+- protected function application and typed primitive existential elimination.
 
 ## Completion criteria
 
@@ -855,12 +971,17 @@ The bootstrap is complete when:
    `it`;
 8. a stack of dynamic scope labels controls access to protected actual values,
    while every protected value stores only its one introducing label;
-9. every evaluator operation propagates protection through the common lifting
-   rule;
-10. inaccessible observation produces the canonical `Never` value, and
+9. every evaluator operation authorizes and unwraps protected operands through
+   the common operation cycle, then either lifts or eliminates protection in
+   the shared result-protection decision;
+10. function application and typed primitive operators eliminate protection
+    only through a validated protection-erasing result contract, while `Any`,
+    dependent or open containers, closures, lazy results, annotations, and
+    untyped operations cannot become escape paths;
+11. inaccessible observation produces the canonical `Never` value, and
     `yield` observes using the receiving outer block before codomain checking;
-11. `Never` is available as `datra.never` and from `std.datra` and obeys the
+12. `Never` is available as `datra.never` and from `std.datra` and obeys the
     empty-federation laws;
-12. `~>`, `<~`, `of`, optional names, nested scopes, closures, recursion, lazy
+13. `~>`, `<~`, `of`, optional names, nested scopes, closures, recursion, lazy
     evaluation, and mixed telescopes have focused regression coverage; and
-13. the full non-Liquid test suite passes serially.
+14. the full non-Liquid test suite passes serially.
