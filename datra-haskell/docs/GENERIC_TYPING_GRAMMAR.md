@@ -25,12 +25,13 @@ The two polarities differ in how their values may be observed:
   observation behavior as that `^` value.
 
 Scope protection is a general evaluator property. An operation involving a
-protected value normally produces a protected result. The one general
-exception is existential elimination: a typed operation may consume protected
-operands and produce an ordinary result when its checked result contract proves
-that the hidden representation cannot occur in that result. This decision is
-part of the common evaluator operation cycle, not a list of special cases for
-individual operators.
+protected value normally produces a protected result. The generic-sum policy
+adds a checked exception: existential elimination may consume protected
+operands and produce an ordinary result when its result contract proves that
+the hidden representation cannot occur in that result. Other protection
+policies need not permit that exception. The decision is made through the
+common evaluator operation cycle, not by special cases in individual
+operators.
 
 ## Surface grammar
 
@@ -373,6 +374,31 @@ Public/private/optional-name behavior is inherited from the same identifier
 expression rules used by products. The polarity changes scope protection, not
 identifier parsing.
 
+## Two protection layers
+
+Dynamic scope protection is a reusable runtime facility, not the definition
+of existential generics. Keep these two layers explicit:
+
+1. The **scope-protection substrate** owns dynamic labels, the active-label
+   stack, authorization, actual-value unwrapping, and `Never` as the universal
+   result of unauthorized observation.
+2. A **protection policy** decides which values enter that substrate, how
+   protection propagates through authorized operations, which checked
+   operations may return an ordinary result, and whether or how a value may be
+   transferred across a scope boundary.
+
+Generic sums use an existential protection policy. Introducing `^T` protects
+its witness, values derived from it lift that policy, and a qualifying closed
+result contract may eliminate it. These are rules of the generic-sum policy,
+not rules built into `ScopeProtected` itself.
+
+This distinction leaves room for other dynamically scoped facilities. A
+future mutable-region policy might share label authorization and the `Never`
+fallback while forbidding existential-style elimination, requiring an
+explicit ownership transfer, or imposing a stricter boundary rule. The exact
+mutable-state policy need not be decided now; the substrate must merely avoid
+assuming that every protected value follows generic-sum escape rules.
+
 ## `Never`
 
 `Never` is the empty federation: conceptually, an `Either` with zero
@@ -437,18 +463,41 @@ Re-entering the same function or closure creates a new label. Retaining a
 closure cannot reactivate an expired activation merely because it originated
 from the same lexical body.
 
-## Protected values
+## Scope-protection substrate
 
-A scope-protected value stores exactly:
+A scope-protected value has a policy-neutral runtime wrapper:
 
 ```text
 actual value
 introducing scope label
+nonempty protection policy set
 ```
 
-It does not store an authorization set or a custom fallback. The fallback is
-always `Never`. Keeping the complete active-label stack in the interpreter
-makes a per-value set redundant.
+In implementation terms this can be an internal `ScopeProtected` value form:
+
+```haskell
+data ScopeProtected = ScopeProtected
+  { scopeProtectedActual :: InterpretedValue
+  , scopeProtectedLabel :: DynamicScopeLabel
+  , scopeProtectedPolicies :: NonEmpty ScopeProtectionPolicy
+  }
+
+data ScopeProtectionPolicy
+  = GenericExistentialProtection
+  -- Future policies, such as mutable-region protection, belong here.
+```
+
+The normalized nonempty policy set is semantic data interpreted by centralized
+protection operations; it is not a collection of function closures stored
+inside each value. Initial protection uses a singleton set. A result derived
+from values governed by different policies carries their normalized union
+unless every policy approves another disposition. A future policy may acquire
+small opaque policy-specific metadata if its semantics requires it, but
+authorization still uses the one introducing label.
+
+`ScopeProtected` does not store an authorization set or a custom fallback.
+The fallback is always `Never`. Keeping the complete active-label stack in the
+interpreter makes a per-value set redundant.
 
 A protected value is accessible exactly when its one introducing label occurs
 anywhere in the current active-label stack. Descendant scopes therefore retain
@@ -457,27 +506,59 @@ child-label delegation or passcode copying is necessary. Once that scope is
 popped, the value may still physically exist, but observing it produces
 `Never`.
 
-Conceptually, ordinary observation is only:
+Conceptually, substrate-level observation is only:
 
 ```text
-observe(activeStack, Protected(actual, passcode)) =
+observe(activeStack, ScopeProtected(actual, passcode, policies)) =
   if passcode is in activeStack then actual else Never
 ```
 
 `yield` uses the receiving stack computed for the boundary in place of the
-current stack, but otherwise performs the same membership test.
+current stack, but otherwise performs the same membership test. The substrate
+does not decide that an authorized value should become permanently ordinary,
+move to another label, or remain protected; it asks every policy carried by
+the value.
+
+The substrate exposes a small internal interface:
+
+- authorize and unwrap operands against an active stack;
+- return `Never` without evaluating the underlying operation when
+  authorization fails;
+- combine the policies of authorized operands for a derived result;
+- ask those policies whether a checked result may become ordinary;
+- rewrap a non-eliminated result with the current scope label; and
+- ask every carried policy whether an authorized handoff may replace the label
+  before a boundary is crossed.
+
+If several policies occur in one operation, every policy must authorize the
+operation and agree to any declassification or transfer. Until explicit
+cross-policy composition rules exist, the conservative result remains
+scope-protected.
+
+## Generic-sum existential policy
 
 When `^T` is introduced in the function-type domain scope, its actual witness
-is paired with the domain label. Products and ordinary prepared values derived
-from it acquire the label of the scope where the derived value is introduced.
-The explicit domain-to-body handoff creates new protected body copies carrying
-only the preallocated body label.
+is wrapped as `ScopeProtected` with the singleton
+`GenericExistentialProtection` policy set and the domain label. Products and
+ordinary prepared values derived from it acquire that policy and the label of
+the scope where the derived value is introduced.
 
-## Universal protection lifting and existential elimination
+In particular, product polarity does not imply that a witness is unprotected.
+Given a telescope such as `^T; &U :: T`, evaluating and validating `U` consumes
+the protected `T`, so the resulting `U` witness is protected by the generic
+existential policy as well. The same rule applies transitively to later
+products, sums, and ordinary domain members. This propagation comes from the
+shared authorized-operation cycle; it is not a special syntactic dependency
+walk over product binders.
+
+The explicit domain-to-body handoff is a policy-authorized transfer which
+creates protected body copies carrying only the preallocated body label.
+
+## Shared operation cycle and policy-specific results
 
 Every evaluator operation uses one shared evaluation cycle:
 
-1. Record whether any operand is protected.
+1. Record every protection policy carried by the operands.
 2. For every protected operand, look up its introducing label in the complete
    active-label stack.
 3. If any lookup fails, do not run the ordinary operation; return `Never`.
@@ -488,25 +569,37 @@ Every evaluator operation uses one shared evaluation cycle:
    operator supplies its semantic result type. An operation with no such
    contract supplies no elimination evidence.
 6. If no operand was protected, return the ordinary result.
-7. If an operand was protected and the result contract is protection-erasing,
-   validate and normalize the result against that contract while all operand
-   labels remain active, then return the validated result as an ordinary value.
-8. Otherwise, protect the result with the current scope's top label.
+7. Ask the participating policies whether the checked operation and result
+   contract permit an ordinary result or another policy-specific disposition.
+8. If every policy permits an ordinary result, validate and normalize the
+   result against the contract while all operand labels remain active, then
+   return the validated result without a wrapper.
+9. Otherwise, combine the participating policies conservatively and protect
+   the result with the current scope's top label.
 
-Steps 7 and 8 are the result-protection decision. Universal lifting is the
-default in step 8; existential elimination is the checked exception in step 7.
-Individual ordinary operation implementations do not unwrap values, inspect
-scope labels, remove protection, or choose fallbacks.
+Steps 7 through 9 are the policy-specific result decision. Protection lifting
+is the substrate default; existential elimination is one policy's checked
+exception. Individual ordinary operation implementations do not unwrap
+values, inspect scope labels, remove protection, select a policy, or choose
+fallbacks.
 
 Multiple protected operands require no label intersection. Every operand label
 must occur in the one active stack before the operation runs. A lifted result
 needs only the current scope's label, which is the unique passcode for that
-result's own lifetime. An eliminating operation may return an ordinary result
-only after every protected operand has passed the same authorization check.
+result's own lifetime. A policy may permit an ordinary or transferred result
+only after every protected operand has passed the same authorization check and
+every participating policy approves that disposition.
 
-### Protection-erasing result contracts
+For `GenericExistentialProtection`, the default result decision is universal
+lifting and the exception is existential elimination. Other policies are not
+required to expose either rule. In particular, the existence of a qualifying
+public result contract must not automatically declassify a future mutable or
+linear resource.
 
-A result contract is protection-erasing only when all of the following hold:
+### Generic existential protection-erasing contracts
+
+For the generic-sum existential policy, a result contract is
+protection-erasing only when all of the following hold:
 
 - the contract evaluates to an ordinary, unprotected value;
 - the contract is independent of every protected generic binder consumed by
@@ -601,31 +694,43 @@ operand for later observation.
 
 ## `yield` boundary
 
-`yield` is an observation by the enclosing block, not by the block that is
-yielding. Its boundary algorithm is:
+`yield` is a boundary observed by the enclosing block, not by the block that
+is yielding. Its substrate-level algorithm is:
 
 1. evaluate the result expression normally in the current scope;
 2. form the receiving stack by removing the scopes that end at this boundary;
-3. test whether the candidate's one introducing label occurs in that receiving
-   stack;
-4. use the actual value when membership succeeds, otherwise use `Never`; and
-5. validate that observed candidate against the function codomain.
+3. while the introducing label is still authorized, ask every carried policy
+   whether this boundary permits the wrapper to cross unchanged or authorizes
+   an explicit transfer to a receiving label;
+4. test the resulting wrapper's introducing label against the receiving stack;
+5. use `Never` when membership fails or a policy rejects the crossing;
+6. otherwise observe the actual value temporarily for codomain validation,
+   while preserving the wrapper in the returned value; and
+7. validate the observed candidate against the function codomain.
 
-A value protected only to the current function-body scope therefore cannot be
-returned as its actual value. It normally produces a codomain error after
-becoming `Never`. If the declared codomain accepts `Never`, the yield succeeds
-with `Never`; the protected payload still does not cross the boundary.
+The substrate therefore supplies authorization, transfer plumbing, and the
+`Never` fallback, but it does not define one universal escape rule. A policy
+may allow an unchanged still-authorized wrapper, define a particular transfer,
+or reject the boundary. No policy may expose the actual payload merely because
+its source label is absent from the receiving stack.
+
+For `GenericExistentialProtection`, a value protected only to the current
+function-body scope has no `yield` transfer and therefore cannot be returned as
+its actual value. It normally produces a codomain error after becoming
+`Never`. If the declared codomain accepts `Never`, the yield succeeds with
+`Never`; the protected payload still does not cross the boundary.
 
 An ordinary value produced earlier by existential elimination needs no special
 `yield` behavior and crosses this boundary normally. `yield` itself never
 removes a protection wrapper: eligibility is decided at the typed operation
 boundary, while the result contract and authorized operands are still known.
 
-A protected value can cross normally only when its one introducing label is
-still present in the receiving stack—for example, a value introduced by an
-outer scope and passed through without deriving a new protected result. A
-value introduced in the function body carries the body label, which disappears
-from the receiving stack and therefore becomes `Never`.
+Under the generic existential policy, a protected value can cross unchanged
+when its introducing label is still present in the receiving stack—for
+example, a value introduced by an outer scope and passed through without
+deriving a new protected result. It remains wrapped, so later observation is
+still checked. A value introduced in the function body carries the body label,
+which disappears from the receiving stack and therefore becomes `Never`.
 
 ## Required AST representation
 
@@ -773,24 +878,30 @@ the family is a concatenated argument segment, as in `{Args (&_T :: Nat),}`.
 Without concatenation the projected value occupies one ordinary slot and
 therefore contributes only that slot's value.
 
-### 6. Establish the codomain scope
+### 6. Add the scope-protection substrate
+
+Thread a fresh-scope counter and active-label stack through evaluation. Add
+the policy-neutral `ScopeProtected` runtime form containing an actual
+`InterpretedValue`, one introducing label, and a normalized nonempty policy
+set. Implement authorization, temporary unwrapping, conservative policy-set
+combination, explicit label-transfer plumbing, and `Never` fallback without
+embedding any generic-sum elimination or escape rule in this layer.
+
+### 7. Install the generic-sum existential policy
 
 Evaluate the prepared domain in its own scope and protect every sum witness
-there. Let universal protection propagation mark later products and ordinary
-values which depend on those witnesses. Evaluate the codomain in a separate
-scope containing direct bindings for only the unprotected products. Do not
-synthesize contextual bindings in that scope.
+there with `GenericExistentialProtection`. Let ordinary policy lifting protect
+later products—including dependent products whose bounds or validation consume
+a protected sum—and ordinary values derived from protected evidence. Evaluate
+the codomain in a separate scope containing direct bindings for only the
+unprotected products. Do not synthesize contextual bindings in that scope.
 
-### 7. Add dynamic scope labels and protected values
+During the policy-authorized domain-to-body handoff, replace each protected
+domain wrapper with a body wrapper carrying only the preallocated body label.
+This handoff is a rule of the generic existential policy rather than a general
+capability of every `ScopeProtected` value.
 
-Thread a fresh-scope counter and active-label stack through evaluation. Add a
-runtime protected-value form containing an actual `InterpretedValue` and one
-introducing scope label. Protect sums with the domain label and use ordinary
-lifting to protect products and ordinary values which depend on them. During
-the authorized domain-to-body handoff, replace each protected domain wrapper
-with a body wrapper carrying only the preallocated body label.
-
-### 8. Lift evaluator operations and eliminate safe results
+### 8. Route evaluator operations through protection policies
 
 Put active-stack membership checking, operand unwrapping, result-contract
 inspection, and the result-protection decision at the common evaluator-
@@ -798,11 +909,13 @@ operation boundary. Function application contributes its evaluated codomain;
 typed primitive operators contribute their semantic result type; operations
 without a checked result contract contribute no elimination evidence.
 
-After ordinary evaluation, validate a result against a qualifying protection-
-erasing contract before returning it without a wrapper. Otherwise wrap the
-derived result with the current label. Individual operations keep their
-existing implementation and receive ordinary actual values only after the
-common authorization check succeeds.
+After ordinary evaluation, ask every participating policy for the result
+disposition. The generic existential policy validates a result against a
+qualifying protection-erasing contract before returning it without a wrapper;
+otherwise the policies are combined and the derived result is wrapped with
+the current label. Individual operations keep their existing implementation
+and receive ordinary actual values only after the common authorization check
+succeeds.
 
 Audit lazy values and closures so deferred evaluation retains protection and
 cannot accidentally execute an actual payload in an unauthorized scope.
@@ -815,11 +928,13 @@ Preserve unprotected members and use the body-labeled wrappers produced by the
 authorized domain handoff rather than deleting or widening protected members.
 
 At `yield`, derive the receiving outer stack by removing the scopes which end
-at that boundary, then test the result's introducing label for membership
-before codomain validation. Replace an inaccessible candidate with `Never`;
-report the ordinary codomain mismatch unless the codomain accepts that value.
-An already ordinary result produced by existential elimination crosses without
-special treatment; `yield` never performs elimination itself.
+at that boundary, consult every carried policy's boundary rule, then test the
+result's introducing label for membership before codomain validation. Preserve
+an accepted wrapper, apply an explicitly authorized transfer, or replace an
+inaccessible/rejected candidate with `Never`. Report the ordinary codomain
+mismatch unless the codomain accepts that value. An already ordinary result
+produced by existential elimination crosses without special treatment;
+`yield` never performs elimination itself.
 
 ### 10. Remove bootstrap duplication
 
@@ -845,10 +960,11 @@ Required structured failures include:
 
 Unauthorized runtime observation is not a bespoke escape error. Its value is
 `Never`, and subsequent behavior follows the ordinary bottom-type laws.
-An ineligible result contract is not itself an error; it simply provides no
-elimination evidence, so the result remains protected. If a contract is
-eligible but the produced value does not validate against it, report the
-ordinary result-type mismatch before any protection could be removed.
+Under the generic existential policy, an ineligible result contract is not
+itself an error; it simply provides no elimination evidence, so the result
+remains protected. If a contract is eligible but the produced value does not
+validate against it, report the ordinary result-type mismatch before any
+protection could be removed.
 
 ## Test plan
 
@@ -905,26 +1021,42 @@ ordinary result-type mismatch before any protection could be removed.
 - Protect sums in the domain scope and verify that ordinary lifting protects
   non-eliminated dependent products and ordinary prepared values.
 
-### Scope protection
+### Scope-protection substrate
 
 - Allocate distinct labels for repeated activations of the same lexical
   scope.
 - Push and pop those labels on an interpreter scope stack.
-- Store only the introducing scope label on each protected value.
+- Store the actual value, one introducing scope label, and a normalized
+  nonempty policy set in each `ScopeProtected` value.
 - Let descendants access a protected value by finding that label anywhere in
   the active stack, without adding child labels to the value.
 - Refuse observation after the introducing label has been popped.
+- Return `Never` without running the underlying operation when any protected
+  operand's label is absent from the active stack.
+- Combine different policy sets conservatively and require every participating
+  policy to approve declassification or label transfer.
+- Preserve an accepted wrapper across a boundary instead of permanently
+  unwrapping it merely because its label remains active.
+- Exercise a dummy non-existential policy to prove that the substrate does not
+  grant generic-sum elimination or handoff behavior automatically.
+- Keep lazy and captured computations from observing payloads after their
+  introducing labels have been popped.
+
+### Generic-sum existential protection
+
+- Protect every generic sum witness with
+  `GenericExistentialProtection` in the domain scope.
 - Preserve protection through `actual := T` without a special alias branch.
 - Protect conditional, map, access, function, closure, and other results when
   a protected operand is used and no protection-erasing result contract is
   available.
+- Protect a dependent product such as `&U :: T` when evaluating or validating
+  it consumes a protected `^T`; propagate that policy transitively through
+  later telescope members.
+- Confirm that product polarity alone does not protect an independent product.
 - Require every protected operand's label to occur in the active stack, then
   either eliminate through a qualifying result contract or label the derived
   result only with the current scope label.
-- Return `Never` without running the underlying operation when any protected
-  operand's label is absent from the active stack.
-- Keep lazy and captured computations from observing payloads after their
-  introducing labels have been popped.
 - At `yield`, remove the ending scopes and check the result label against the
   complete receiving outer stack rather than the current stack.
 - Reject a body-only protected result when the codomain does not accept
@@ -934,7 +1066,7 @@ ordinary result-type mismatch before any protection could be removed.
 - Permit a protected result whose introducing label remains in the receiving
   outer stack.
 
-### Existential elimination
+### Generic existential elimination
 
 - Return an ordinary `Str` for authorized application of a protected
   `render : T -> Str` to a protected `x : T`, and permit that result to cross
@@ -994,25 +1126,32 @@ The bootstrap is complete when:
 2. every owned generic becomes a real, ordered domain-prefix member;
 3. mixed product/sum prefixes evaluate through one dependent-map engine;
 4. private/public/optional-name matching follows the existing map rules;
-5. domain evaluation and universal lifting correctly distinguish unprotected
-   and protected products without a separate dependency pass;
+5. domain evaluation through the shared operation cycle leaves independent
+   products ordinary and protects products whose bounds or witnesses consume
+   a protected sum, without a separate dependency pass;
 6. the codomain runs in its own scope and receives only unprotected products
    as direct identifier bindings;
 7. the body receives all prefix and ordinary members through names and full
    `it`;
-8. a stack of dynamic scope labels controls access to protected actual values,
-   while every protected value stores only its one introducing label;
+8. the policy-neutral `ScopeProtected` substrate stores an actual value, one
+   introducing label, and a normalized nonempty policy set, while the active
+   label stack alone controls authorization and `Never` is the common fallback;
 9. every evaluator operation authorizes and unwraps protected operands through
-   the common operation cycle, then either lifts or eliminates protection in
-   the shared result-protection decision;
-10. function application and typed primitive operators eliminate protection
-    only through a validated protection-erasing result contract, while `Any`,
-    dependent or open containers, closures, lazy results, annotations, and
-    untyped operations cannot become escape paths;
-11. inaccessible observation produces the canonical `Never` value, and
-    `yield` observes using the receiving outer block before codomain checking;
-12. `Never` is available as `datra.never` and from `std.datra` and obeys the
+   the common operation cycle, combines their policies conservatively, and
+   asks every policy to approve declassification or transfer;
+10. the generic existential policy protects `^` witnesses and all values
+    derived from them, authorizes the domain-to-body handoff, and permits
+    function application or typed primitive operators to eliminate that
+    protection only through a validated protection-erasing result contract;
+11. `Any`, dependent or open containers, closures, lazy results, annotations,
+    and untyped operations cannot become generic-existential escape paths, and
+    no generic-existential rule is implicitly granted to another policy;
+12. inaccessible observation produces the canonical `Never` value, and
+    `yield` consults every carried policy using the receiving outer stack
+    before codomain checking, preserving or transferring wrappers only when
+    those policies permit it;
+13. `Never` is available as `datra.never` and from `std.datra` and obeys the
     empty-federation laws;
-13. `~>`, `<~`, `of`, optional names, nested scopes, closures, recursion, lazy
+14. `~>`, `<~`, `of`, optional names, nested scopes, closures, recursion, lazy
     evaluation, and mixed telescopes have focused regression coverage; and
-14. the full non-Liquid test suite passes serially.
+15. the full non-Liquid test suite passes serially.
