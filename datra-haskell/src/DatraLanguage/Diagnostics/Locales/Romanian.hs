@@ -173,14 +173,16 @@ localizeInterpretingError reason =
     DependentBinderOutsideContainer binder ->
       LocalizedMessage "legătura dependentă necesită un container de tip exterior"
         ["legătură: " <> binder]
-    MixedDependentBinders ->
-      LocalizedMessage
-        "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
-        []
     DuplicateGenericIdentifier name ->
       LocalizedMessage
         "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
         ["identificator: " <> name]
+    ForwardGenericBoundReference owner referenced ->
+      LocalizedMessage
+        "limita generică se referă la o legătură care nu este încă disponibilă"
+        [ "identificator generic: " <> owner
+        , "identificator indisponibil: " <> referenced
+        ]
     GenericIdentifierOverlap name ->
       LocalizedMessage
         "identificatorul generic se suprapune cu alt identificator din tipul funcției sale"

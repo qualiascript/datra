@@ -151,8 +151,8 @@ data InterpretingError
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
   | DependentBinderOutsideContainer String
-  | MixedDependentBinders
   | DuplicateGenericIdentifier String
+  | ForwardGenericBoundReference String String
   | GenericIdentifierOverlap String
   | GenericIdentifierDisjointnessUndecidable String
   | ExpectedNumericalOperand OperandSide InterpretedValueKind

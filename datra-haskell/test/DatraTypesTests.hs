@@ -434,16 +434,6 @@ testDiagnostics = do
           , "în prezent este necesar un singur identificator lexical"
           ]
     )
-  assert "mixed dependent binders have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English Types.MixedDependentBinders
-      == LocalizedMessage
-          "dependent sums and products cannot be mixed in one type container"
-          []
-      && localizeDiagnostic Romanian Types.MixedDependentBinders
-      == LocalizedMessage
-          "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
-          []
-    )
   assert "duplicate generic identifiers have an explicit bilingual diagnostic"
     ( localizeDiagnostic English (Types.DuplicateGenericIdentifier "T")
       == LocalizedMessage
@@ -454,6 +444,22 @@ testDiagnostics = do
       == LocalizedMessage
           "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
           ["identificator: T"]
+    )
+  assert "forward generic bounds have an explicit bilingual diagnostic"
+    ( localizeDiagnostic English
+        (Types.ForwardGenericBoundReference "T" "U")
+      == LocalizedMessage
+          "generic bound refers to a binder that is not yet available"
+          [ "generic identifier: T"
+          , "unavailable identifier: U"
+          ]
+      && localizeDiagnostic Romanian
+          (Types.ForwardGenericBoundReference "T" "U")
+      == LocalizedMessage
+          "limita generică se referă la o legătură care nu este încă disponibilă"
+          [ "identificator generic: T"
+          , "identificator indisponibil: U"
+          ]
     )
   assert "generic identifier collisions have explicit bilingual diagnostics"
     ( localizeDiagnostic English (Types.GenericIdentifierOverlap "T")

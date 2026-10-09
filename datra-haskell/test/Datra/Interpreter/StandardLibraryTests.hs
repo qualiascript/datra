@@ -584,12 +584,16 @@ standardLibraryTests =
                 <> "yield Bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
-        , programFailureCase "argument maps reject mixed dependent binders"
-            "yield {with T? of Any; for U? of Any; value? : T}"
-            (SourceEvaluationFailure MixedDependentBinders)
-        , programFailureCase "ordered maps reject mixed dependent binders"
-            "yield (for T? of Any; with U? of Any; value? : T)"
-            (SourceEvaluationFailure MixedDependentBinders)
+        , programCase "argument maps accept mixed dependent binders"
+            ( "Mixed := {with T? of Any; for U? of T; value? : U}\n"
+                <> "yield {T := Any; U := Nat; value := 5} of Mixed"
+            )
+            "true"
+        , programCase "ordered maps accept mixed dependent binders"
+            ( "assert (for T? of from 0 to 1; "
+                <> "with U? of Any; U) of Any"
+            )
+            "()"
         ]
     , integerLimitTests
     , declaredPatternTests

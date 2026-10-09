@@ -92,7 +92,10 @@ import DatraLanguage.SyntaxTemplate
 import DatraTypes
 import Parsing
   ( FunctionTypeIdentifier (..)
+  , forwardGenericBoundReference
   , functionTypeIdentifiers
+  , prepareFunctionDomainExpression
+  , prepareGenericExpression
   , parseDatra
   , parseDatraRawLocatedWithSourceName
   , sourceImportInvocations
@@ -1065,18 +1068,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         Nothing -> Left (FunctionEvaluationFailed
           AstPatternRequiresFunctionSignature)
     FunctionTypeExpression [] domain codomain -> do
-      rejectMixedDependentContainer domain
-      let (staticDomain, substitutions) = staticDependentDomain domain
-          staticCodomain = substituteDependent substitutions codomain
-      input <- compileParameters interpret staticDomain >>= parameterDomain
-      output <- interpret staticCodomain
-      let signatureText = renderSourceExpression (FunctionType domain codomain)
-      pure (makeFunctionValue
-        (EvaluatedFunction input output Nothing Nothing Nothing
-          signatureText Nothing Nothing True))
+      evaluateFunctionType expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
       validateGenericFunctionType interpret generics domain codomain
-      Left (FunctionEvaluationFailed ExpectedFunctionType)
+      let preparedDomain = prepareFunctionDomainExpression generics domain
+          preparedCodomain = prepareGenericExpression generics codomain
+      evaluateFunctionType expressionValue preparedDomain preparedCodomain
     FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication function argument -> do
       callable <- interpret function
@@ -1347,31 +1344,50 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           (maybe [] pure (scopePresentationDependency imported)) value))
 
     interpretContainer ordinary container expressions =
-      case dependentBindingsKind expressions of
-        NoDependentBindings -> ordinary
-        SumDependentBindings -> createDependentSum scope resolving container
-        ProductDependentBindings ->
-          createDependentProduct scope resolving container
-        MixedDependentBindings -> Left MixedDependentBinders
+      case firstDependentBindingPolarity expressions of
+        Nothing -> ordinary
+        Just GenericSum -> createDependentSum scope resolving container
+        Just GenericProduct -> createDependentProduct scope resolving container
+    evaluateFunctionType written preparedDomain preparedCodomain = do
+      let (staticDomain, substitutions) =
+            staticDependentDomain preparedDomain
+          staticCodomain = substituteDependent substitutions preparedCodomain
+      input <- compileParameters interpret staticDomain >>= parameterDomain
+      output <- interpret staticCodomain
+      let signatureText = renderSourceExpression written
+      pure (makeFunctionValue
+        (EvaluatedFunction input output Nothing Nothing Nothing
+          signatureText Nothing Nothing True))
 
 syntaxImplementationExpression :: Expression -> Bool
 syntaxImplementationExpression FunctionBody {} = True
 syntaxImplementationExpression External {} = True
 syntaxImplementationExpression _ = False
 
-isWithBinding :: Expression -> Bool
-isWithBinding WithBinding {} = True
-isWithBinding _ = False
+data DependentBinding = DependentBinding
+  { dependentBindingPolarity :: GenericPolarity
+  , dependentBindingName :: IdentifierString
+  , dependentBindingOptional :: Bool
+  , dependentBindingBound :: Expression
+  }
 
-isForBinding :: Expression -> Bool
-isForBinding ForBinding {} = True
-isForBinding _ = False
+dependentBinding :: Expression -> Maybe DependentBinding
+dependentBinding expressionValue =
+  case expressionValue of
+    WithBinding name optional bound ->
+      Just (DependentBinding GenericSum name optional bound)
+    ForBinding name optional bound ->
+      Just (DependentBinding GenericProduct name optional bound)
+    _ -> Nothing
 
-data DependentBindingsKind
-  = NoDependentBindings
-  | SumDependentBindings
-  | ProductDependentBindings
-  | MixedDependentBindings
+firstDependentBindingPolarity
+  :: [Expression]
+  -> Maybe GenericPolarity
+firstDependentBindingPolarity [] = Nothing
+firstDependentBindingPolarity (entry : remaining) =
+  case dependentBinding entry of
+    Just binder -> Just (dependentBindingPolarity binder)
+    Nothing -> firstDependentBindingPolarity remaining
 
 duplicateGenericIdentifier
   :: [GenericBinder Expression]
@@ -1396,6 +1412,10 @@ validateGenericFunctionType evaluate generics domain codomain = do
   case duplicateGenericIdentifier generics of
     Just name -> Left (DuplicateGenericIdentifier name)
     Nothing -> pure ()
+  case forwardGenericBoundReference generics of
+    Just (IdentifierString owner, IdentifierString referenced) ->
+      Left (ForwardGenericBoundReference owner referenced)
+    Nothing -> pure ()
   let introduced =
         functionTypeIdentifiers domain <> functionTypeIdentifiers codomain
   mapM_ (validateBinder introduced) generics
@@ -1418,29 +1438,6 @@ validateGenericFunctionType evaluate generics domain codomain = do
               Left (GenericIdentifierOverlap genericName)
             IdentifierNameDisjointnessUndecidable ->
               Left (GenericIdentifierDisjointnessUndecidable genericName)
-
-dependentBindingsKind :: [Expression] -> DependentBindingsKind
-dependentBindingsKind expressions =
-  case (any isWithBinding expressions, any isForBinding expressions) of
-    (False, False) -> NoDependentBindings
-    (True, False) -> SumDependentBindings
-    (False, True) -> ProductDependentBindings
-    (True, True) -> MixedDependentBindings
-
-rejectMixedDependentContainer
-  :: Expression
-  -> Either InterpretingError ()
-rejectMixedDependentContainer container =
-  case container of
-    ArgumentMap expressions -> reject expressions
-    AtlasMap expressions -> reject expressions
-    MapSequence expressions -> reject expressions
-    _ -> Right ()
-  where
-    reject expressions =
-      case dependentBindingsKind expressions of
-        MixedDependentBindings -> Left MixedDependentBinders
-        _ -> Right ()
 
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
@@ -2059,13 +2056,16 @@ staticDependentDomain expressionValue =
             staticEntries afterEntry remaining
       in (staticValue : staticRemaining, finalSubstitutions)
     staticEntry substitutions entry =
-      case entry of
-        ForBinding (IdentifierString name) optional bound ->
+      case dependentBinding entry of
+        Just binder ->
           let staticBound = substituteDependent substitutions bound
+              IdentifierString name = dependentBindingName binder
+              optional = dependentBindingOptional binder
+              bound = dependentBindingBound binder
           in ( ForBinding (IdentifierString name) optional staticBound
              , (name, staticBound) : substitutions
              )
-        _ -> (substituteDependent substitutions entry, substitutions)
+        Nothing -> (substituteDependent substitutions entry, substitutions)
 
 substituteDependent :: [(String, Expression)] -> Expression -> Expression
 substituteDependent substitutions expressionValue =
@@ -2085,29 +2085,6 @@ domainEntries expressionValue =
     MapConcatenation left right -> domainEntries left <> domainEntries right
     _ -> [expressionValue]
 
-staticDependentSumExpression :: Expression -> Expression
-staticDependentSumExpression expressionValue =
-  case expressionValue of
-    ArgumentMap entries -> ArgumentMap (fst (staticEntries [] entries))
-    AtlasMap entries -> AtlasMap (fst (staticEntries [] entries))
-    MapSequence entries -> MapSequence (fst (staticEntries [] entries))
-    _ -> fst (staticEntry [] expressionValue)
-  where
-    staticEntries substitutions [] = ([], substitutions)
-    staticEntries substitutions (entry : remaining) =
-      let (staticValue, afterEntry) = staticEntry substitutions entry
-          (staticRemaining, finalSubstitutions) =
-            staticEntries afterEntry remaining
-      in (staticValue : staticRemaining, finalSubstitutions)
-    staticEntry substitutions entry =
-      case entry of
-        WithBinding (IdentifierString name) optional bound ->
-          let staticBound = substituteDependent substitutions bound
-          in ( ForBinding (IdentifierString name) optional staticBound
-             , (name, staticBound) : substitutions
-             )
-        _ -> (substituteDependent substitutions entry, substitutions)
-
 createDependentSum
   :: Scope
   -> [String]
@@ -2115,14 +2092,14 @@ createDependentSum
   -> Either InterpretingError InterpretedValue
 createDependentSum captured resolving written = do
   let evaluate = evalInScope captured resolving
-      staticExpression = staticDependentSumExpression written
+      staticExpression = fst (staticDependentDomain written)
       compiledSchema = compileParameters evaluate staticExpression
   (staticTarget, specify) <- case compiledSchema of
     Right schema -> do
       target <- parameterDomain schema
       pure (target, \source -> do
         supplied <- matchArguments schema source
-        _ <- validateWithArguments captured resolving written supplied
+        _ <- validateDependentMapArguments captured resolving written supplied
         pure source)
     Left symbolicFailure ->
       case representativeDependentTarget captured resolving written of
@@ -2171,7 +2148,7 @@ createDependentProduct captured resolving written =
               Right
               (interpretedMapValueAt (interpretedMap bound) position)
             values <- instantiateDependentEntries
-              captured resolving name witness entries
+              captured resolving written name witness entries
             case values of
               [] -> Right (makeAtlasMap 0 [])
               [value] -> Right value
@@ -2206,7 +2183,7 @@ representativeDependentTarget captured resolving written =
           (interpretedMap bound)
           (finiteOrdinal 0))
       values <- instantiateDependentEntries
-        captured resolving name witness entries
+        captured resolving written name witness entries
       pure (makeAtlasMap 2 (witness : values))
     _ -> Left (OverloadError OverloadNoMatch)
 
@@ -2228,20 +2205,20 @@ projectDependentSum captured resolving written staticTarget insertion =
       bound <- evalInScope captured resolving boundExpression
       reservationTarget <-
         case instantiateDependentEntries
-            captured resolving name bound entries of
+            captured resolving written name bound entries of
           Right values -> Right (makeAtlasMap 2 values)
           Left _
             | not (ordinalGT
                 (interpretedMapFinalOrderType (interpretedMap bound))
                 omega)
             , Right values <- instantiateDependentEntries
-                captured resolving name bound
+                captured resolving written name bound
                 (map (dependentFamilyEnvelope name) entries) ->
                   Right (makeAtlasMap 2 values)
           Left _ -> Right staticTarget
       let memberAt witness = do
             values <- instantiateDependentEntries
-              captured resolving name witness entries
+              captured resolving written name witness entries
             pure (makeAtlasMap 2 (witness : values))
       let orderType = interpretedMapFinalOrderType (interpretedMap bound)
           fibreAtOrdinal position = do
@@ -2286,84 +2263,68 @@ dependentFamilyEnvelope name expressionValue =
 instantiateDependentEntries
   :: Scope
   -> [String]
+  -> Expression
   -> String
   -> InterpretedValue
   -> [Expression]
   -> Either InterpretingError [InterpretedValue]
-instantiateDependentEntries captured resolving name witness =
+instantiateDependentEntries captured resolving written name witness =
   go [scopeBinding name (EvaluatedBinding witness)]
   where
     go _ [] = Right []
-    go dependentScope (entry : remaining) = do
-      value <- evalInScope (dependentScope <> captured) resolving entry
-      later <- go dependentScope remaining
-      pure (value : later)
+    go dependentScope pending@(entry : remaining) =
+      case dependentBinding entry of
+        Just _ -> do
+          value <- evalInScope (dependentScope <> captured) resolving
+            (withDomainEntries written pending)
+          pure [value]
+        Nothing -> do
+          value <- evalInScope (dependentScope <> captured) resolving entry
+          later <- go dependentScope remaining
+          pure (value : later)
 
-validateWithArguments
+withDomainEntries :: Expression -> [Expression] -> Expression
+withDomainEntries written entries =
+  case written of
+    ArgumentMap _ -> ArgumentMap entries
+    MapSequence _ -> MapSequence entries
+    _ -> AtlasMap entries
+
+-- | Validate every dependent binder with the same left-to-right scope,
+-- independently of whether an entry is a sum or product. Polarity affects
+-- the value constructed from the map, not telescope name resolution.
+validateDependentMapArguments
   :: Scope
   -> [String]
   -> Expression
   -> [(String, InterpretedValue)]
   -> Either InterpretingError Scope
-validateWithArguments captured resolving domain supplied =
+validateDependentMapArguments captured resolving domain supplied =
   go [] (domainEntries domain)
   where
     go dependentScope [] = Right dependentScope
     go dependentScope (entry : remaining) =
-      case entry of
-        WithBinding (IdentifierString name) _ bound -> do
+      case dependentBinding entry of
+        Just binder -> do
+          let IdentifierString name = dependentBindingName binder
+              bound = dependentBindingBound binder
           witness <- maybe (Left (UnknownIdentifier name)) Right
             (lookup name supplied)
           target <- evalInScope (dependentScope <> captured) resolving bound
           _ <- specifyValues witness target
           go (scopeBinding name (EvaluatedBinding witness) : dependentScope)
             remaining
-        IdentifierOperation (IdentifierString name) annotation _ -> do
-          validateNamed dependentScope name annotation
-          go dependentScope remaining
-        optional
-          | Just
-              (IdentifierOperation (IdentifierString name) annotation _, _)
-              <- optionalIdentifierExpression optional -> do
-              validateNamed dependentScope name annotation
-              go dependentScope remaining
-        _ -> go dependentScope remaining
-    validateNamed dependentScope name annotation =
-      case lookup name supplied of
-        Nothing -> Right ()
-        Just value -> do
-          target <- evalInScope (dependentScope <> captured) resolving annotation
-          () <$ specifyValues value target
-
-validateDependentArguments
-  :: Scope
-  -> [String]
-  -> Expression
-  -> [(String, InterpretedValue)]
-  -> Either InterpretingError Scope
-validateDependentArguments captured resolving domain supplied =
-  go [] (domainEntries domain)
-  where
-    go dependentScope [] = Right dependentScope
-    go dependentScope (entry : remaining) =
-      case entry of
-        ForBinding (IdentifierString name) _ bound -> do
-          witness <- maybe (Left (UnknownIdentifier name)) Right
-            (lookup name supplied)
-          target <- evalInScope (dependentScope <> captured) resolving bound
-          _ <- specifyValues witness target
-          go (scopeBinding name (EvaluatedBinding witness) : dependentScope)
-            remaining
-        IdentifierOperation (IdentifierString name) annotation _ -> do
-          validateNamed dependentScope name annotation
-          go dependentScope remaining
-        optional
-          | Just
-              (IdentifierOperation (IdentifierString name) annotation _, _)
-              <- optionalIdentifierExpression optional -> do
-              validateNamed dependentScope name annotation
-              go dependentScope remaining
-        _ -> go dependentScope remaining
+        Nothing -> case entry of
+          IdentifierOperation (IdentifierString name) annotation _ -> do
+            validateNamed dependentScope name annotation
+            go dependentScope remaining
+          optional
+            | Just
+                (IdentifierOperation (IdentifierString name) annotation _, _)
+                <- optionalIdentifierExpression optional -> do
+                validateNamed dependentScope name annotation
+                go dependentScope remaining
+          _ -> go dependentScope remaining
     validateNamed dependentScope name annotation =
       case lookup name supplied of
         Nothing -> Right ()
@@ -2377,7 +2338,6 @@ createFunction :: ReductionContext -> Scope -> [String]
   -> [Expression] -> Expression -> Either InterpretingError InterpretedValue
 createFunction reduction captured resolving
     writtenDomainExpression writtenOutput bindings result = do
-  rejectMixedDependentContainer writtenDomainExpression
   let (domainExpression, substitutions) =
         staticDependentDomain writtenDomainExpression
       specifiedOutput = substituteDependent substitutions writtenOutput
@@ -2425,13 +2385,13 @@ createFunction reduction captured resolving
   output <- evaluate specifiedOutput
   let prepare argument = do
         (prepared, imported) <- overloadArgumentSchemaComplete schema argument
-        _ <- validateDependentArguments
+        _ <- validateDependentMapArguments
           captured resolving writtenDomainExpression imported
         pure (PreparedFunctionArgument argument prepared imported)
       invoke invocationReduction preparedCall = do
         let argument = functionPreparedArgument preparedCall
             imported = functionPreparedBindings preparedCall
-        dependentScope <- validateDependentArguments
+        dependentScope <- validateDependentMapArguments
           captured resolving writtenDomainExpression imported
         let localScope =
               constantContextualBindings "it" argument

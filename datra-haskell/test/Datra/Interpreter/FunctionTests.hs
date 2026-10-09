@@ -46,6 +46,32 @@ functionTests =
               , "yield f"
               ])
             (SourceEvaluationFailure (DuplicateGenericIdentifier "T"))
+        , programFailureCase "generic bounds cannot refer to later binders"
+            (unlines
+              [ "f := ({a? : &T :: U; b? : &U} -> Any do yield a)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure
+              (ForwardGenericBoundReference "T" "U"))
+        , programFailureCase "generic bounds cannot refer to themselves"
+            (unlines
+              [ "f := ({a? : &T :: T} -> Any do yield a)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure
+              (ForwardGenericBoundReference "T" "T"))
+        , programFailureCase "generic bounds may refer to earlier binders"
+            (unlines
+              [ "f := ({a? : &T; b? : &U :: T} -> Any do yield a)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed ExpectedFunctionType))
+        , programCase "generic function types compile their prepared prefix"
+            ( "assert ((x : T; y : ^T) -> Any) of "
+                <> "((T : Any; x : Any; y : Any) -> Any)"
+            )
+            "()"
         , programFailureCase "generic names cannot overlap domain names"
             (unlines
               [ "f := ({T? : Any; marker? : &T} -> Any do yield marker)"
@@ -377,11 +403,12 @@ functionTests =
                 <> "yield bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
-        , programFailureCase "function domains reject mixed dependent binders"
-            ( "bad := ({for T? of Any; with U? of Any; value? : T} "
-                <> "-> Any do yield value)\nyield bad"
+        , programCase "mixed dependent binders scope sequentially"
+            ( "identity := ({for T? of Any; with U? of T; value? : U} "
+                <> "-> U do yield value)\n"
+                <> "yield identity (Any; Nat; 5)"
             )
-            (SourceEvaluationFailure MixedDependentBinders)
+            "5"
         ]
     , recursionTests
     ]

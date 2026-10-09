@@ -175,14 +175,16 @@ localizeInterpretingError reason =
     DependentBinderOutsideContainer binder ->
       LocalizedMessage "dependent binder requires an enclosing type container"
         ["binder: " <> binder]
-    MixedDependentBinders ->
-      LocalizedMessage
-        "dependent sums and products cannot be mixed in one type container"
-        []
     DuplicateGenericIdentifier name ->
       LocalizedMessage
         "generic identifier is introduced more than once in one function domain"
         ["identifier: " <> name]
+    ForwardGenericBoundReference owner referenced ->
+      LocalizedMessage
+        "generic bound refers to a binder that is not yet available"
+        [ "generic identifier: " <> owner
+        , "unavailable identifier: " <> referenced
+        ]
     GenericIdentifierOverlap name ->
       LocalizedMessage
         "generic identifier overlaps another identifier in its function type"

@@ -54,8 +54,13 @@ import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
 import Parsing
   ( FunctionTypeIdentifier (..)
+  , PreparedFunctionDomain (..)
+  , PreparedFunctionDomainKind (..)
+  , PreparedFunctionDomainMember (..)
   , ResourceEnvelope (..)
   , functionTypeIdentifiers
+  , prepareFunctionDomain
+  , prepareFunctionDomainExpression
   , parseDatra
   , parseDatraAst
   , parseDatraRawLocatedWithSourceName
@@ -175,12 +180,69 @@ testGenericSourceParsing = do
   privateParsed <- parseGenericSource
     "{Args (&_T :: IntLimit),} -> _T"
   case privateParsed of
-    FunctionTypeExpression [binder] _ reference -> do
+    FunctionTypeExpression [binder] domain reference -> do
       assert "private generic identifiers retain ordinary privacy spelling"
         (genericBinderIdentifier binder == genericIdentifier "_T" False)
       assert "private generic codomain references use binder identity"
         (reference == genericReference binder GenericUseReference)
+      case prepareFunctionDomain [binder] domain of
+        PreparedFunctionDomain PreparedArgumentFunctionDomain
+            [ PreparedGenericFunctionDomainMember preparedBinder
+            , PreparedOrdinaryFunctionDomainMember _
+            ] ->
+          assert "argument domains expose generic binders as real prefix members"
+            (preparedBinder == binder)
+        prepared -> fail ("unexpected prepared argument domain: " <> show prepared)
     other -> fail ("unexpected private generic AST: " <> show other)
+
+  ordered <- parseGenericSource
+    "(a : _T; b : &_T) -> _T"
+  case ordered of
+    FunctionTypeExpression [binder] domain _ ->
+      case prepareFunctionDomain [binder] domain of
+        PreparedFunctionDomain PreparedOrderedFunctionDomain
+            [ PreparedGenericFunctionDomainMember preparedBinder
+            , PreparedOrdinaryFunctionDomainMember _
+            , PreparedOrdinaryFunctionDomainMember _
+            ] ->
+          assert "ordered domains retain generic prefix position"
+            (preparedBinder == binder)
+        prepared -> fail ("unexpected prepared ordered domain: " <> show prepared)
+    other -> fail ("unexpected ordered generic AST: " <> show other)
+
+  forwardDomainUse <- parseGenericSource
+    "(x : T; y : ^T) -> Any"
+  case forwardDomainUse of
+    FunctionTypeExpression [binder]
+        domain@(SyntaxBoundary
+          (AtlasMap
+            [ IdentifierOperation (IdentifierString "x") firstUse Nothing
+            , IdentifierOperation (IdentifierString "y") declaration Nothing
+            ])) _ -> do
+      assert "ordinary entries may use a generic before its written marker"
+        ( firstUse == genericReference binder GenericUseReference
+          && declaration
+            == genericReference binder GenericDeclarationReference
+        )
+      case prepareFunctionDomain [binder] domain of
+        PreparedFunctionDomain PreparedOrderedFunctionDomain
+            [ PreparedGenericFunctionDomainMember _
+            , PreparedOrdinaryFunctionDomainMember _
+            , PreparedOrdinaryFunctionDomainMember _
+            ] -> pure ()
+        prepared -> fail
+          ("unexpected prepared forward-use domain: " <> show prepared)
+      case prepareFunctionDomainExpression [binder] domain of
+        AtlasMap
+            [ WithBinding (IdentifierString "T") False _
+            , IdentifierOperation (IdentifierString "x")
+                (IdentifierReference (IdentifierString "T")) Nothing
+            , IdentifierOperation (IdentifierString "y")
+                (IdentifierReference (IdentifierString "T")) Nothing
+            ] -> pure ()
+        prepared -> fail
+          ("unexpected lowered forward-use domain: " <> show prepared)
+    other -> fail ("unexpected forward generic use AST: " <> show other)
 
   sumParsed <- parseGenericSource
     "{value? : ^T? :: Any} -> Any"
@@ -191,6 +253,31 @@ testGenericSourceParsing = do
           && genericBinderIdentifier binder == genericIdentifier "T" True
         )
     other -> fail ("unexpected sum generic AST: " <> show other)
+
+  mixed <- parseGenericSource
+    "{a? : ^S; b? : &T; c? : ^U} -> Any"
+  case mixed of
+    FunctionTypeExpression binders domain _ -> do
+      assert "mixed generic prefixes retain source polarity order"
+        (map genericBinderPolarity binders
+          == [GenericSum, GenericProduct, GenericSum])
+      case prepareFunctionDomain binders domain of
+        PreparedFunctionDomain PreparedArgumentFunctionDomain members ->
+          assert "mixed generic binders precede every ordinary domain member"
+            ( map preparedPolarity (take 3 members)
+                == map Just [GenericSum, GenericProduct, GenericSum]
+              && all isOrdinary (drop 3 members)
+            )
+        prepared -> fail ("unexpected prepared mixed domain: " <> show prepared)
+      case prepareFunctionDomainExpression binders domain of
+        ArgumentMap
+            ( WithBinding (IdentifierString "S") False _
+            : ForBinding (IdentifierString "T") False _
+            : WithBinding (IdentifierString "U") False _
+            : _
+            ) -> pure ()
+        prepared -> fail ("unexpected lowered mixed domain: " <> show prepared)
+    other -> fail ("unexpected mixed generic AST: " <> show other)
 
   quoted <- parseGenericSource
     "{value? : &\"T-name\"?} -> Any"
@@ -261,6 +348,13 @@ testGenericSourceParsing = do
         (GenericReference (genericBinderId binder) role)
     descendants expressionValue =
       expressionValue : concatMap descendants (expressionChildren expressionValue)
+    preparedPolarity member =
+      case member of
+        PreparedGenericFunctionDomainMember binder ->
+          Just (genericBinderPolarity binder)
+        PreparedOrdinaryFunctionDomainMember _ -> Nothing
+    isOrdinary PreparedOrdinaryFunctionDomainMember {} = True
+    isOrdinary _ = False
 
 genericIdentifier :: String -> Bool -> GenericIdentifier
 genericIdentifier name optionalName =
