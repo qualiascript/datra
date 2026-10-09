@@ -155,6 +155,7 @@ module DatraTypes
   , argumentValuesComplete
   , omegaArgumentValuesComplete
   , compileParameters
+  , compileParametersWithInferred
   , compileDependentParameter
   , parameterBindings
   , parameterDomain
@@ -163,6 +164,7 @@ module DatraTypes
   , matchArguments
   , selectFunctionCandidate
   , overloadArgumentSchemaComplete
+  , overloadArgumentSchemaCompleteWithInferred
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -244,6 +246,7 @@ import Evaluation.Boolean
 import Evaluation.Either (makeEitherValue)
 import Evaluation.FunctionArguments
   ( compileParameters
+  , compileParametersWithInferred
   , compileDependentParameter
   , matchArguments
   , parameterBindings
@@ -301,6 +304,7 @@ import Evaluation.Overload
   , projectedArgumentSchema
   , orderedArgumentSchema
   , overloadArgumentSchemaComplete
+  , overloadArgumentSchemaCompleteWithInferred
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete

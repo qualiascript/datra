@@ -6,6 +6,7 @@ module Evaluation.Overload
   , argumentSchemaFromValue
   , argumentSlotSchema
   , dependentArgumentSlotSchema
+  , inferredArgumentSlotSchema
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
@@ -21,6 +22,7 @@ module Evaluation.Overload
   , argumentValuesComplete
   , omegaArgumentValuesComplete
   , overloadArgumentSchemaComplete
+  , overloadArgumentSchemaCompleteWithInferred
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -80,6 +82,7 @@ data ArgumentSchema
       Bool
       InterpretedValue
       (Maybe InterpretedValue)
+  | InferredArgumentSlotSchema Int String InterpretedValue
   | OrderedArgumentSchema Natural [ArgumentSchema]
   | UnorderedArgumentSchema [ArgumentSchema]
   | ConcatenatedArgumentSchema ArgumentSchema ArgumentSchema
@@ -91,6 +94,7 @@ data Slot = Slot
   , slotName :: Maybe String
   , slotOptionalName :: Bool
   , slotDependentBinder :: Bool
+  , slotInferred :: Bool
   , slotAllowsPrivateName :: Bool
   , slotAnnotation :: InterpretedValue
   , slotDefault :: Maybe InterpretedValue
@@ -163,12 +167,12 @@ resolveReplacements
   -> InterpretedValue
   -> Either InterpretingError Replacements
 resolveReplacements template supplied
-  | [slot] <- templateSlots template
+  | [slot] <- suppliedSlots
   , not (isSkip supplied)
   , Just value <- matchSlot (slotNames [slot]) slot supplied =
       Right [(slotIndex slot, Just value)]
   | otherwise = do
-      let targetNames = slotNames (templateSlots template)
+      let targetNames = slotNames suppliedSlots
           rowSource = case suppliedValue supplied of
             (Just name, underlying)
               | name `notElem` targetNames -> underlying
@@ -179,7 +183,7 @@ resolveReplacements template supplied
           ArgumentMapForm members _ ->
             overloadArgumentRows (makeAtlasMap 2 members)
           _ -> pure rows
-      let writtenOrder = templateSlots template
+      let writtenOrder = suppliedSlots
           slotOrders = templateSlotOrders template
           writtenRoutes =
             nubBy sameReplacements
@@ -210,6 +214,7 @@ resolveReplacements template supplied
                 _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
       routeResult
   where
+    suppliedSlots = filter (not . slotInferred) (templateSlots template)
     isSkip value = case interpretedForm value of
       SkipForm _ -> True
       _ -> False
@@ -387,7 +392,10 @@ templateSlots = slots True
   where
     slots allowsPrivateName template = case template of
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-        [Slot index name optional dependent allowsPrivateName annotation defaultValue]
+        [Slot index name optional dependent False allowsPrivateName annotation defaultValue]
+      InferredArgumentSlotSchema index name annotation ->
+        [Slot index (Just name) False True True allowsPrivateName annotation
+          (Just annotation)]
       OrderedArgumentSchema _ children -> concatMap (slots True) children
       UnorderedArgumentSchema children -> concatMap (slots False) children
       ConcatenatedArgumentSchema left right ->
@@ -403,7 +411,8 @@ templateSlotOrders = orders True
   where
     orders allowsPrivateName template = case template of
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-        [[Slot index name optional dependent allowsPrivateName annotation defaultValue]]
+        [[Slot index name optional dependent False allowsPrivateName annotation defaultValue]]
+      InferredArgumentSlotSchema {} -> [[]]
       OrderedArgumentSchema _ children -> combine True children
       UnorderedArgumentSchema children ->
         concatMap (combine False) (permutations children)
@@ -505,6 +514,8 @@ normalizeArgumentSchema schema = fst (go 0 schema)
           ( ArgumentSlotSchema next name optional dependent annotation defaultValue
           , next + 1
           )
+        InferredArgumentSlotSchema _ name annotation ->
+          (InferredArgumentSlotSchema next name annotation, next + 1)
         OrderedArgumentSchema cardinality children ->
           let (normalized, afterChildren) = normalizeChildren next children
           in (OrderedArgumentSchema cardinality normalized, afterChildren)
@@ -541,6 +552,13 @@ dependentArgumentSlotSchema
   -> ArgumentSchema
 dependentArgumentSlotSchema name optional annotation =
   ArgumentSlotSchema 0 (Just name) optional True annotation Nothing
+
+inferredArgumentSlotSchema
+  :: String
+  -> InterpretedValue
+  -> ArgumentSchema
+inferredArgumentSlotSchema name annotation =
+  InferredArgumentSlotSchema 0 name annotation
 
 orderedArgumentSchema :: Natural -> [ArgumentSchema] -> ArgumentSchema
 orderedArgumentSchema = OrderedArgumentSchema
@@ -581,6 +599,7 @@ argumentSchemaBindings schema =
   case schema of
     ArgumentSlotSchema _ (Just name) _ _ annotation _ -> [(name, annotation)]
     ArgumentSlotSchema _ Nothing _ _ _ _ -> []
+    InferredArgumentSlotSchema _ name annotation -> [(name, annotation)]
     OrderedArgumentSchema _ children -> concatMap argumentSchemaBindings children
     UnorderedArgumentSchema children -> concatMap argumentSchemaBindings children
     ConcatenatedArgumentSchema left right ->
@@ -597,6 +616,8 @@ argumentSchemaDomain schema =
     ArgumentSlotSchema _ (Just name) optional _ annotation _ -> do
       let named = simpleIdentifierTypeValue name annotation
       if optional then makeEitherValue named annotation else pure named
+    InferredArgumentSlotSchema _ name annotation ->
+      pure (simpleIdentifierTypeValue name annotation)
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse argumentSchemaDomain children
     UnorderedArgumentSchema children -> do
@@ -852,7 +873,14 @@ overloadArgumentSchemaComplete
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
-overloadArgumentSchemaComplete schema supplied =
+overloadArgumentSchemaComplete = overloadArgumentSchemaCompleteWithInferred []
+
+overloadArgumentSchemaCompleteWithInferred
+  :: [(String, InterpretedValue)]
+  -> ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
+overloadArgumentSchemaCompleteWithInferred inferred schema supplied =
   case schema of
     ProjectedArgumentSchema _ -> do
       prepared <- argumentSchemaBodyValues schema supplied
@@ -861,9 +889,20 @@ overloadArgumentSchemaComplete schema supplied =
       let normalized = normalizeArgumentSchema schema
       replacements <- resolveReplacements normalized supplied
       let slots = templateSlots normalized
-      completed <- traverse (completeSlot replacements) slots
+      completed <- traverse (completeSlotWithInferred inferred replacements) slots
       let prepared = bodyAggregate normalized (map namedSlot completed)
       pure (prepared, [(name, value) | (Just name, value) <- completed])
+
+completeSlotWithInferred
+  :: [(String, InterpretedValue)]
+  -> Replacements
+  -> Slot
+  -> Either InterpretingError (Maybe String, InterpretedValue)
+completeSlotWithInferred inferred replacements slot
+  | slotInferred slot
+  , Just name <- slotName slot
+  , Just value <- lookup name inferred = Right (Just name, value)
+  | otherwise = completeSlot replacements slot
 
 finiteMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMembers value = do
@@ -951,6 +990,8 @@ buildTemplate replacements template =
     ArgumentSlotSchema index name optional dependent annotation defaultValue ->
       buildSlot name optional dependent annotation
         (replacementAt index replacements <|> defaultValue)
+    InferredArgumentSlotSchema _ name annotation ->
+      buildSlot (Just name) False True annotation (Just annotation)
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse (buildTemplate replacements) children
     UnorderedArgumentSchema children ->

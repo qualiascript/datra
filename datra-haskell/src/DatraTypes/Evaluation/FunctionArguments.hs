@@ -2,6 +2,7 @@
 -- argument schema used by both function calls and overload operators.
 module Evaluation.FunctionArguments
   ( compileParameters
+  , compileParametersWithInferred
   , compileDependentParameter
   , parameterBindings
   , parameterDomain
@@ -28,7 +29,14 @@ compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
   -> Expression
   -> Either InterpretingError ArgumentSchema
-compileParameters evaluate = compile False
+compileParameters = compileParametersWithInferred []
+
+compileParametersWithInferred
+  :: [String]
+  -> (Expression -> Either InterpretingError InterpretedValue)
+  -> Expression
+  -> Either InterpretingError ArgumentSchema
+compileParametersWithInferred inferredNames evaluate = compile False
   where
     compile = compileWith False
     compileMember = compileWith True
@@ -38,7 +46,11 @@ compileParameters evaluate = compile False
           validateOptionalName allowPrivateOptional name optional
           annotationValue <- evaluate bound
           requireCanonicalTypeAnnotation annotationValue
-          pure (dependentArgumentSlotSchema name optional annotationValue)
+          pure
+            (if name `elem` inferredNames
+              then inferredArgumentSlotSchema name annotationValue
+              else dependentArgumentSlotSchema name
+                (optional || allowPrivateOptional) annotationValue)
         IdentifierOperation (IdentifierString name) annotation given ->
           parameterSlot (Just name) False annotation given
         optional

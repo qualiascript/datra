@@ -742,6 +742,22 @@ inference for argument maps, insert inferred values into the prepared prefix,
 and require non-optional public products explicitly. Open sum evidence into
 the same prepared prefix.
 
+Private product inference is constructive, not a search among candidate
+witnesses. Matching a completed dependent argument contributes its evidence
+to the private binder it depends on. The inferred witness is the federation
+of that binder's evidence, with duplicate and subsumed alternatives removed.
+This federation is the unique least value containing all of the evidence, so
+private product inference has neither a "no minimal inference" case nor an
+"ambiguous inference" case.
+
+The declaration occurrence itself is a dependent domain member, so a
+successfully completed call supplies evidence for every private product.
+Defaults participate after completion just like explicitly supplied values.
+If a required dependent member is absent, an input does not satisfy the
+binder's bound, or the completed domain is inconsistent, report the ordinary
+map-matching, specification, or bound error responsible for that condition.
+Do not introduce a separate generic-inference failure category.
+
 All witness checks use ordinary specification and subfederation operations.
 Bounds and dependent entries are evaluated in telescope order.
 
@@ -811,7 +827,6 @@ Required structured failures include:
   codomain scope;
 - a bound that refers forward or forms a dependency cycle;
 - a required public generic that was not supplied;
-- failed, ambiguous, or conflicting private inference;
 - a supplied witness outside its bound;
 - a codomain attempt to use a generic unavailable in its scope; and
 - a dependent or otherwise invalid generic identifier expression.
@@ -852,6 +867,10 @@ ordinary result-type mismatch before any protection could be removed.
 ### Identifier and matching behavior
 
 - Infer a private product in an argument map and insert it into the prefix.
+- Infer the unique federation of all evidence for a private product; do not
+  search for candidate witnesses or diagnose phantom inference ambiguity.
+- Route missing values, out-of-bound evidence, and inconsistent dependent
+  members through their ordinary matching and specification diagnostics.
 - Require `&T`; accept `&T?` by position and by name.
 - Keep every generic member positional in a regular ordered map, including
   identifiers beginning with `_`.

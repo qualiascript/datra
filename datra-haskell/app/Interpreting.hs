@@ -42,7 +42,7 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, intercalate, partition)
+import Data.List (nub, nubBy, intercalate, partition)
 import BlockScope
 import FunctionClosure
 import DatraLanguage.Identifier
@@ -78,6 +78,7 @@ import DatraLanguage.AST
   , optionalIdentifierExpression
   , isContextualAccessOf
   , mapExpressionChildren
+  , expressionChildren
   , yieldedIdentifier
   )
 import DatraLanguage.SyntaxTemplate
@@ -92,8 +93,11 @@ import DatraLanguage.SyntaxTemplate
 import DatraTypes
 import Parsing
   ( FunctionTypeIdentifier (..)
+  , PreparedFunctionDomain (..)
+  , PreparedFunctionDomainKind (..)
   , forwardGenericBoundReference
   , functionTypeIdentifiers
+  , prepareFunctionDomain
   , prepareFunctionDomainExpression
   , prepareGenericExpression
   , parseDatra
@@ -1195,12 +1199,19 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               AstPatternRequiresFunctionImplementation)
     MapSpecification
         (FunctionBody bindings result)
-        (FunctionTypeExpression [] domain codomain) ->
-      createFunction reduction scope resolving domain codomain bindings result
-    MapSpecification (FunctionBody {})
-        (FunctionTypeExpression generics domain codomain) -> do
+        signature@(FunctionTypeExpression [] domain codomain) ->
+      createFunction reduction scope resolving signature
+        domain codomain bindings result
+    MapSpecification
+        (FunctionBody bindings result)
+        signature@(FunctionTypeExpression generics domain codomain) -> do
       validateGenericFunctionType interpret generics domain codomain
-      Left (FunctionEvaluationFailed ExpectedFunctionType)
+      let preparedDomain = prepareFunctionDomainExpression generics domain
+          preparedCodomain = prepareGenericExpression generics codomain
+          inferredNames = privateProductGenericNames generics domain
+      createFunctionWithGenericInference reduction scope resolving
+        signature preparedDomain preparedCodomain bindings result
+        inferredNames
     MapSpecification sourceOperand targetOperand ->
       interpretSpecificationWith interpret sourceOperand targetOperand
     IdentifierOperation
@@ -1438,6 +1449,22 @@ validateGenericFunctionType evaluate generics domain codomain = do
               Left (GenericIdentifierOverlap genericName)
             IdentifierNameDisjointnessUndecidable ->
               Left (GenericIdentifierDisjointnessUndecidable genericName)
+
+privateProductGenericNames
+  :: [GenericBinder Expression]
+  -> Expression
+  -> [String]
+privateProductGenericNames generics domain =
+  case prepareFunctionDomain generics domain of
+    PreparedFunctionDomain PreparedArgumentFunctionDomain _ ->
+      [ name
+      | binder <- generics
+      , genericBinderPolarity binder == GenericProduct
+      , let GenericIdentifier (IdentifierString name) _ =
+              genericBinderIdentifier binder
+      , isPrivateIdentifier name
+      ]
+    _ -> []
 
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
@@ -2332,16 +2359,144 @@ validateDependentMapArguments captured resolving domain supplied =
           target <- evalInScope (dependentScope <> captured) resolving annotation
           () <$ specifyValues value target
 
+inferPrivateGenericArguments
+  :: Scope
+  -> [String]
+  -> Expression
+  -> [String]
+  -> InterpretedValue
+  -> [(String, InterpretedValue)]
+  -> Either InterpretingError [(String, InterpretedValue)]
+inferPrivateGenericArguments captured resolving domain names argument provisional =
+  foldM inferOne [] names
+  where
+    inferOne inferred name = do
+      evidence <- genericInferenceEvidence name domain argument provisional
+      boundExpression <- maybe
+        (Left (UnknownIdentifier name))
+        Right
+        (dependentBound name (domainEntries domain))
+      let currentBindings = replaceBindings inferred provisional
+          currentScope =
+            [scopeBinding bindingName (EvaluatedBinding value)
+            | (bindingName, value) <- currentBindings]
+              <> captured
+      bound <- evalInScope currentScope resolving boundExpression
+      admissible <- keepSuccessful (`specifyValues` bound) evidence
+      witness <- case admissible of
+        [] -> Left (OverloadError OverloadNoMatch)
+        first : remaining -> foldM combineInferenceEvidence first remaining
+      pure ((name, witness) : inferred)
+
+    dependentBound _ [] = Nothing
+    dependentBound target (entry : remaining) =
+      case dependentBinding entry of
+        Just binder
+          | dependentBindingName binder == IdentifierString target ->
+              Just (dependentBindingBound binder)
+        _ -> dependentBound target remaining
+
+    keepSuccessful operation = go
+      where
+        go [] = Right []
+        go (value : remaining) = do
+          later <- go remaining
+          pure (case operation value of
+            Right _ -> value : later
+            Left _ -> later)
+
+    isSubfederation source target =
+      case subfederationValues source target >>= booleanCondition of
+        Right included -> Right included
+        Left _ -> Right False
+
+    combineInferenceEvidence left right = do
+      leftInRight <- isSubfederation left right
+      rightInLeft <- isSubfederation right left
+      if leftInRight
+        then Right right
+        else if rightInLeft
+          then Right left
+          else eitherValue left right
+
+    replaceBindings replacements bindings =
+      replacements
+        <> [ binding
+           | binding@(name, _) <- bindings
+           , name `notElem` map fst replacements
+           ]
+
+genericInferenceEvidence
+  :: String
+  -> Expression
+  -> InterpretedValue
+  -> [(String, InterpretedValue)]
+  -> Either InterpretingError [InterpretedValue]
+genericInferenceEvidence genericName domain argument provisional =
+  case directEvidence of
+    [] -> eraseRows <$> argumentRows argument
+    values -> pure (unique (map eraseIdentifier values))
+  where
+    directEvidence =
+      [ value
+      | entry <- domainEntries domain
+      , Just (name, annotation) <- [namedAnnotation entry]
+      , expressionReferences genericName annotation
+      , Just value <- [lookup name provisional]
+      ]
+    namedAnnotation expressionValue =
+      case expressionValue of
+        IdentifierOperation (IdentifierString name) annotation _ ->
+          Just (name, annotation)
+        optional -> do
+          (IdentifierOperation (IdentifierString name) annotation _, _) <-
+            optionalIdentifierExpression optional
+          pure (name, annotation)
+    expressionReferences target expressionValue =
+      case expressionValue of
+        IdentifierReference (IdentifierString name) -> name == target
+        _ -> any (expressionReferences target)
+          (expressionChildren expressionValue)
+    eraseRows rows = unique
+      [ eraseIdentifier value
+      | row <- rows
+      , value <- row
+      ]
+    eraseIdentifier value =
+      case stripOuterIdentifierValue value of
+        Right underlying -> eraseIdentifier underlying
+        Left _ -> value
+    unique = nubBy sameInterpretedValue
+    sameInterpretedValue left right =
+      interpretedSemanticResult left == interpretedSemanticResult right
+
 
 createFunction :: ReductionContext -> Scope -> [String]
-  -> Expression -> Expression
+  -> Expression -> Expression -> Expression
   -> [Expression] -> Expression -> Either InterpretingError InterpretedValue
 createFunction reduction captured resolving
-    writtenDomainExpression writtenOutput bindings result = do
+    signature writtenDomainExpression writtenOutput bindings result =
+  createFunctionWithGenericInference reduction captured resolving
+    signature writtenDomainExpression writtenOutput bindings result []
+
+createFunctionWithGenericInference
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> Expression
+  -> Expression
+  -> Expression
+  -> [Expression]
+  -> Expression
+  -> [String]
+  -> Either InterpretingError InterpretedValue
+createFunctionWithGenericInference reduction captured resolving
+    signature writtenDomainExpression writtenOutput bindings result
+    inferredNames = do
   let (domainExpression, substitutions) =
         staticDependentDomain writtenDomainExpression
       specifiedOutput = substituteDependent substitutions writtenOutput
-  schema <- compileParameters evaluate domainExpression
+  schema <- compileParametersWithInferred inferredNames evaluate domainExpression
   let parameters = parameterBindings schema
       names = map fst parameters
       consistencyScope =
@@ -2384,10 +2539,16 @@ createFunction reduction captured resolving
         _ -> (False, False)
   output <- evaluate specifiedOutput
   let prepare argument = do
-        (prepared, imported) <- overloadArgumentSchemaComplete schema argument
+        (_, provisional) <- overloadArgumentSchemaComplete schema argument
+        inferred <- inferPrivateGenericArguments
+          captured resolving writtenDomainExpression inferredNames
+          argument provisional
+        (prepared, imported) <- overloadArgumentSchemaCompleteWithInferred
+          inferred schema argument
         _ <- validateDependentMapArguments
           captured resolving writtenDomainExpression imported
-        pure (PreparedFunctionArgument argument prepared imported)
+        let supplied = if null inferredNames then argument else prepared
+        pure (PreparedFunctionArgument supplied prepared imported)
       invoke invocationReduction preparedCall = do
         let argument = functionPreparedArgument preparedCall
             imported = functionPreparedBindings preparedCall
@@ -2412,10 +2573,9 @@ createFunction reduction captured resolving
         dynamicOutput <- evalInScopeWith invocationReduction
           (dependentScope <> captured) resolving writtenOutput
         contextuallySpecify escaped dynamicOutput
-  let signatureText = renderSourceExpression
-        (FunctionType writtenDomainExpression writtenOutput)
+  let signatureText = renderSourceExpression signature
   let definition = MapSpecification (FunctionBody bindings result)
-        (FunctionType writtenDomainExpression writtenOutput)
+        signature
       self = case [bindingKey name expressionValue
                   | (name, binding) <- captured
                   , Just (_, _, expressionValue) <- [bindingDefinition binding]

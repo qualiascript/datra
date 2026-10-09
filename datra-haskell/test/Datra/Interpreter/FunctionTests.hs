@@ -60,13 +60,12 @@ functionTests =
               ])
             (SourceEvaluationFailure
               (ForwardGenericBoundReference "T" "T"))
-        , programFailureCase "generic bounds may refer to earlier binders"
+        , programCase "generic bounds may refer to earlier binders"
             (unlines
               [ "f := ({a? : &T; b? : &U :: T} -> Any do yield a)"
-              , "yield f"
+              , "yield ()"
               ])
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed ExpectedFunctionType))
+            "()"
         , programCase "generic function types compile their prepared prefix"
             ( "assert ((x : T; y : ^T) -> Any) of "
                 <> "((T : Any; x : Any; y : Any) -> Any)"
@@ -97,28 +96,75 @@ functionTests =
               , "yield f"
               ])
             (SourceEvaluationFailure (GenericIdentifierOverlap "T"))
-        , programFailureCase
+        , programCase
             "subfederation operands do not introduce function-scope names"
             (unlines
               [ "f := ({marker? : &T; ((T : Nat) of (value : Nat))} -> Any do yield marker)"
-              , "yield f"
+              , "yield ()"
               ])
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed ExpectedFunctionType))
+            "()"
         , programFailureCase "generic names test every dependent-name fibre"
             (unlines
               [ "f := ({marker? : &n5; \"n%(it)\"? : Nat} -> Any do yield marker)"
               , "yield f"
               ])
             (SourceEvaluationFailure (GenericIdentifierOverlap "n5"))
-        , programFailureCase
+        , programCase
             "nested function names are outside an outer generic collision scope"
             (unlines
               [ "f := ({marker? : &T; inner? : ({T? : Any} -> Any)} -> Any do yield marker)"
-              , "yield f"
+              , "yield ()"
+              ])
+            "()"
+        , programCase "required public product accepts a named witness"
+            (unlines
+              [ "identity := ({marker? : &T; value? : T} -> T do yield value)"
+              , "yield identity {T := Nat; marker := 3; value := 5}"
+              ])
+            "5"
+        , programFailureCase "required public product rejects a positional witness"
+            (unlines
+              [ "identity := ({marker? : &T; value? : T} -> T do yield value)"
+              , "yield identity (Nat; 3; 5)"
               ])
             (SourceEvaluationFailure
-              (FunctionEvaluationFailed ExpectedFunctionType))
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programCase "optional-name public product accepts a positional witness"
+            (unlines
+              [ "identity := ({marker? : &T?; value? : T} -> T do yield value)"
+              , "yield identity (Nat; 3; 5)"
+              ])
+            "5"
+        , programCase "optional-name public product accepts a named witness"
+            (unlines
+              [ "identity := ({marker? : &T?; value? : T} -> T do yield value)"
+              , "yield identity {T := Nat; marker := 3; value := 5}"
+              ])
+            "5"
+        , programCase "private product is inferred from consistent arguments"
+            (unlines
+              [ "genericPrivate := ({marker? : &_T; value? : _T} -> _T do yield value)"
+              , "yield genericPrivate {marker := 3; value := 5}"
+              ])
+            "5"
+        , programCase "private product is inserted into the body prefix"
+            (unlines
+              [ "genericPrefix := ({marker? : &_T; value? : _T} -> Any do yield it[0])"
+              , "yield genericPrefix {marker := 3; value := 5}"
+              ])
+            "_T : 3 | 5"
+        , programCase "unrelated arguments do not widen private inference"
+            (unlines
+              [ "genericEvidence := ({marker? : &_T; unrelated? : Any} -> Any do yield it[0])"
+              , "yield genericEvidence {marker := 3; unrelated := 5}"
+              ])
+            "_T : 3"
+        , programCase "private product remains positional in an ordered map"
+            (unlines
+              [ "orderedGeneric := ((marker : &_T; value : _T) -> _T do yield value)"
+              , "yield orderedGeneric (Nat; marker := 3; value := 5)"
+              ])
+            "5"
         , programCase "optional name accepts an unnamed value"
             "f := ({x?:Int} -> Int do yield x)\nyield f 2"
             "2"
