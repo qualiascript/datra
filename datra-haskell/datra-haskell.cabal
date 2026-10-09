@@ -233,6 +233,7 @@ library
         Evaluation.Overload
         Evaluation.DatraType
         Evaluation.Range
+        Evaluation.ResultContract
         Evaluation.Specification
         Evaluation.Specification.ArgumentMap
         Evaluation.Specification.Composition

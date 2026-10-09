@@ -4,6 +4,8 @@ import Datra.TestSupport
 import Data.List.NonEmpty (NonEmpty (..))
 import DatraTypes
   ( DynamicScopeLabel (..)
+  , Decision (..)
+  , EvaluatedFunction (..)
   , FunctionFailure (NoApplicableFunctionAlternative)
   , ScopeProtection (..)
   , ScopeProtectionPolicy (..)
@@ -13,7 +15,11 @@ import DatraTypes
       , LetBindingCannotShadowConsistentIdentifier
       , UnknownIdentifier
       )
+  , anyTypeValue
+  , decideClosedPublicResultContract
   , interpretedScopeProtection
+  , makeAtlasMap
+  , makeFunctionValue
   , naturalValue
   , neverValue
   )
@@ -315,6 +321,60 @@ scopeProtectionTests =
                   [GenericExistentialProtection]
                   (case scopeProtectionPolicies protection of
                     first :| remaining -> first : remaining)
+    , testCase "eligible result contracts remove protection after validation" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            result = runProtectedOperationWithContract child
+              (\_ _ -> DecisionProved ())
+              (\actual _ -> Right actual)
+              [protected]
+              (\_ -> Right (naturalValue 4, Just (naturalValue 4)))
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value -> do
+            assertEqual "validated result" "4" (renderInterpretedValue value)
+            assertEqual "removed protection" Nothing
+              (interpretedScopeProtection value)
+    , testCase "undecidable result contracts conservatively retain protection" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            result = runProtectedOperationWithContract child
+              (\_ _ -> DecisionUndecidable)
+              (\_ _ -> error "undecidable contract was validated")
+              [protected]
+              (\_ -> Right (naturalValue 4, Just (naturalValue 4)))
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value -> assertBool "missing retained protection"
+            (valueIsScopeProtected value)
+    , testCase "closed maps are eligible only when every member is eligible" $ do
+        let closed = makeAtlasMap 2 [naturalValue 2, naturalValue 3]
+            containingAny = makeAtlasMap 2 [naturalValue 2, anyTypeValue]
+        assertEqual "closed map"
+          (DecisionProved ())
+          (decideClosedPublicResultContract closed)
+        assertEqual "map containing Any"
+          DecisionRefuted
+          (decideClosedPublicResultContract containingAny)
+    , testCase "function result contracts are ineligible" $ do
+        let function = makeFunctionValue (EvaluatedFunction
+              (naturalValue 0) (naturalValue 1) Nothing Nothing Nothing
+              "Nat -> Nat" Nothing Nothing False)
+        assertEqual "function contract"
+          DecisionRefuted
+          (decideClosedPublicResultContract function)
+    , testCase "bounded contract analysis reports undecidable" $ do
+        let deeplyNested = foldr
+              (\_ nested -> makeAtlasMap 2 [naturalValue 0, nested])
+              (naturalValue 1)
+              [1 :: Int .. 257]
+        assertEqual "analysis budget"
+          DecisionUndecidable
+          (decideClosedPublicResultContract deeplyNested)
     , testCase "handoff preserves an ancestor-protected wrapper" $ do
         let root = initialScopeActivation (0 :: Int)
             child = enterScopeActivation (1 :: Int) root

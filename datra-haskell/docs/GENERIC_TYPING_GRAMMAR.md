@@ -619,12 +619,15 @@ Every evaluator operation uses one shared evaluation cycle:
    contract supplies no elimination evidence.
 6. If no operand was protected, return the ordinary result.
 7. Ask the participating policies whether the checked operation and result
-   contract permit an ordinary result or another policy-specific disposition.
+   contract permit an ordinary result. Each policy decision is three-way:
+   permit, retain protection, or undecidable.
 8. If every policy permits an ordinary result, validate and normalize the
    result against the contract while all operand labels remain active, then
    return the validated result without a wrapper.
-9. Otherwise, combine the participating policies conservatively and protect
-   the result with the current scope's top label.
+9. If any policy retains protection or cannot decide, combine the
+   participating policies conservatively and protect the result with the
+   current scope's top label. Undecidability is not an evaluation error and
+   never grants permission to remove protection.
 
 Steps 7 through 9 are the policy-specific result decision. Protection lifting
 is the substrate default; existential elimination is one policy's checked
@@ -659,11 +662,31 @@ protection-erasing only when all of the following hold:
 - the produced result successfully validates and normalizes against the
   contract before protection is removed.
 
-The initial implementation is deliberately conservative. `Any`, open or
-dependent containers, function and closure results, lazy or deferred results,
-and contracts containing protected members are not protection-erasing. Merely
-specifying to an ineligible contract is insufficient: for example, `T -> Any`
-must not expose a protected `T` under a wider name.
+The initial implementation is deliberately conservative. Closed finite
+ordered maps and argument maps are protection-erasing when every member is
+recursively protection-erasing; fixed names and map ordering do not prevent
+eligibility. `Any`, open or dependent containers, function and closure
+results, lazy or deferred results, and contracts containing protected or
+ineligible members are not protection-erasing. Merely specifying to an
+ineligible contract is insufficient: for example, `T -> Any` must not expose
+a protected `T` under a wider name.
+
+Contract classification reuses the evaluator's shared three-way `Decision ()`
+type:
+
+- **proved** means that the complete result representation is eligible and
+  public;
+- **refuted** means that the contract is ineligible because it may retain
+  hidden representation;
+- **undecidable** means that the bounded semantic analysis could establish
+  neither result, for example because recursive structural inspection
+  exhausted its analysis budget.
+
+Only `DecisionProved ()` supplies elimination evidence. `DecisionRefuted` and
+`DecisionUndecidable` both conservatively retain protection, but remain
+distinct so a future policy or analysis can refine uncertainty without
+confusing it with a negative proof. Neither outcome introduces a user-facing
+runtime error.
 
 Protection-erasing eligibility belongs to the semantic result contract, not
 to an allowlist of operator names. A protected callable may therefore be used
@@ -973,12 +996,13 @@ typed primitive operators contribute their semantic result type; operations
 without a checked result contract contribute no elimination evidence.
 
 After ordinary evaluation, ask every participating policy for the result
-disposition. The generic existential policy validates a result against a
+disposition: remove protection, retain it, or report the decision
+undecidable. The generic existential policy validates a result against a
 qualifying protection-erasing contract before returning it without a wrapper;
-otherwise the policies are combined and the derived result is wrapped with
-the current label. Individual operations keep their existing implementation
-and receive ordinary actual values only after the common authorization check
-succeeds.
+an ineligible or undecidable decision instead combines the policies and wraps
+the derived result with the current label. Individual operations keep their
+existing implementation and receive ordinary actual values only after the
+common authorization check succeeds.
 
 Audit lazy values and closures so deferred evaluation retains protection and
 cannot accidentally execute an actual payload in an unauthorized scope.
@@ -1028,6 +1052,11 @@ itself an error; it simply provides no elimination evidence, so the result
 remains protected. If a contract is eligible but the produced value does not
 validate against it, report the ordinary result-type mismatch before any
 protection could be removed.
+
+An undecidable result-contract classification follows the same conservative
+runtime path as an ineligible contract, but remains a distinct internal
+outcome. It is not a new source-language diagnostic and must never remove
+protection merely because analysis ran out of fuel.
 
 ## Test plan
 
@@ -1157,6 +1186,12 @@ protection could be removed.
   protected or depends on a protected binder.
 - Reject protection-erasing eligibility for open or dependent containers,
   functions, closures, lazy results, and values with protected members.
+- Accept finite ordered maps and argument maps exactly when every member's
+  result contract is recursively eligible; reject maps containing `Any` or
+  another ineligible member.
+- Preserve the distinction between an ineligible contract and an undecidable
+  classification, and conservatively retain protection for both without
+  reporting a new runtime error.
 - Confirm that aliasing, assignment, a target annotation, map construction,
   and `yield` do not eliminate protection by themselves.
 - Use ordinary lifting for an operator which has no checked result contract.

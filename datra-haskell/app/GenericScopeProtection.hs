@@ -3,6 +3,7 @@
 -- future operations may eliminate it.
 module GenericScopeProtection
   ( protectGenericExistential
+  , genericOperationResultDecision
   , genericContinuationHandoff
   , genericDomainToBodyHandoff
   , genericFunctionReturnHandoff
@@ -18,6 +19,13 @@ protectGenericExistential
   -> InterpretedValue
 protectGenericExistential label =
   protectInterpretedValue label (GenericExistentialProtection :| [])
+
+genericOperationResultDecision
+  :: ScopeProtectionPolicy
+  -> InterpretedValue
+  -> Decision ()
+genericOperationResultDecision GenericExistentialProtection =
+  decideClosedPublicResultContract
 
 genericContinuationHandoff
   :: ScopeProtectionPolicy

@@ -9,6 +9,7 @@ module DatraTypes
   , DatraType
   , datraCanonicalType
   , PreparedFunctionArgument (..)
+  , EvaluatedFunctionInvocation (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
@@ -42,6 +43,7 @@ module DatraTypes
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
   , ScopeProtection (..)
+  , Decision (..)
   , neverValue
   , interpretedScopeProtection
   , protectInterpretedValue
@@ -216,6 +218,7 @@ module DatraTypes
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , decideClosedPublicResultContract
   ) where
 
 import Evaluation.Error
@@ -392,6 +395,9 @@ import Evaluation.Specification.Subfederation
   ( IdentifierNameDisjointness (..)
   , identifierNameDisjointness
   )
+import Evaluation.Specification.Decision (Decision (..))
+import Evaluation.ResultContract
+  ( decideClosedPublicResultContract )
 import Evaluation.Value
   ( ASTMetaCategory (..)
   , CanonicalType
@@ -399,6 +405,7 @@ import Evaluation.Value
   , datraCanonicalType
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
+  , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)
   , DependentSumStructure (..)
   , functionSyntaxEquivalent

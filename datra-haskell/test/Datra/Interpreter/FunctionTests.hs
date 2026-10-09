@@ -253,6 +253,101 @@ functionTests =
               , "yield identity of ({marker? : ^T; value? : T} -> Never)"
               ])
             "true"
+        , programCase "string rendering eliminates generic protection"
+            (unlines
+              [ "render := ({marker? : ^T; value? : T} -> Str do yield \"%(value)\")"
+              , "yield render {T := Nat; marker := 3; value := 5}"
+              ])
+            "\"5\""
+        , programCase "equality eliminates generic protection to Bool"
+            (unlines
+              [ "compare := ({marker? : ^T; value? : T} -> Bool do yield value = value)"
+              , "yield compare {T := Nat; marker := 3; value := 5}"
+              ])
+            "true"
+        , programCase "arithmetic eliminates generic protection to Nat"
+            (unlines
+              [ "increment := ({marker? : ^T :: Nat; value? : T} -> Nat do yield value + 1)"
+              , "yield increment {T := Nat; marker := 3; value := 5}"
+              ])
+            "6"
+        , programCase "a protected callable eliminates through its Str codomain"
+            (unlines
+              [ "eliminate := ({marker? : ^T; value? : T} -> Str do"
+              , "  render := (T -> Str do yield \"%(it)\")"
+              , "yield render value)"
+              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              ])
+            "\"5\""
+        , programCase "a closed ordered-map codomain eliminates recursively"
+            (unlines
+              [ "eliminate := ({marker? : ^T; value? : T} -> (Str; Bool) do"
+              , "  pair := (T -> (Str; Bool) do yield (\"%(it)\"; it = it))"
+              , "yield pair value)"
+              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              ])
+            "(\"5\"; true)"
+        , programCase "a closed argument-map codomain eliminates recursively"
+            (unlines
+              [ "eliminate := ({marker? : ^T; value? : T} -> {text? : Str; valid? : Bool} do"
+              , "  pair := (T -> {text? : Str; valid? : Bool} do"
+              , "    yield {text : \"%(it)\"; valid : (it = it)})"
+              , "yield pair value)"
+              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              ])
+            "(text : \"5\"; valid : true) | (valid : true; text : \"5\")"
+        , programCase "of eliminates generic protection to Bool"
+            (unlines
+              [ "inspect := ({marker? : ^T; value? : T} -> Bool do yield value of Nat)"
+              , "yield inspect {T := Nat; marker := 3; value := 5}"
+              ])
+            "true"
+        , programCase "optional-name sums eliminate through a public result"
+            (unlines
+              [ "render := ({marker? : ^T?; value? : T} -> Str do yield \"%(value)\")"
+              , "yield render (Nat; 3; 5)"
+              ])
+            "\"5\""
+        , programCase "forward-specified eliminators retain their checked codomain"
+            (unlines
+              [ "eliminate := ({marker? : ^T; value? : T} -> Str do"
+              , "  render := (T -> Str do yield \"%(it)\")"
+              , "yield (render ~> (T -> Str)) value)"
+              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              ])
+            "\"5\""
+        , programCase "reverse-specified eliminators retain their checked codomain"
+            (unlines
+              [ "eliminate := ({marker? : ^T; value? : T} -> Str do"
+              , "  render := (T -> Str do yield \"%(it)\")"
+              , "yield ((T -> Str) <~ render) value)"
+              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              ])
+            "\"5\""
+        , programCase "Any cannot launder a protected generic result"
+            (unlines
+              [ "escape := ({marker? : ^T; value? : T} -> Never do"
+              , "  identity := (T -> Any do yield it)"
+              , "yield identity value)"
+              , "yield escape {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
+        , programCase "an identity codomain cannot eliminate generic protection"
+            (unlines
+              [ "escape := ({marker? : ^T; value? : T} -> Never do"
+              , "  identity := (T -> T do yield it)"
+              , "yield identity value)"
+              , "yield escape {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
+        , programCase "untyped map construction does not eliminate protection"
+            (unlines
+              [ "escape := ({marker? : ^T; value? : T} -> Never do"
+              , "  yield (\"public\"; value)"
+              , ")"
+              , "yield escape {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
         , programFailureCase
             "a mixed telescope does not expose its final sum to the codomain"
             (unlines

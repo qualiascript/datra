@@ -20,6 +20,7 @@ module Evaluation.Value
   , datraTypeFamily
   , datraCanonicalType
   , PreparedFunctionArgument (..)
+  , EvaluatedFunctionInvocation (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
@@ -325,6 +326,15 @@ data PreparedFunctionArgument = PreparedFunctionArgument
   , functionPreparedBindings :: [(String, InterpretedValue)]
   }
 
+-- | The value produced by one invocation and the checked semantic contract
+-- which governed that result.  Generic functions may evaluate their codomain
+-- per call, so this cannot in general be recovered from the function's static
+-- summary after invocation has completed.
+data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
+  { functionInvocationValue :: InterpretedValue
+  , functionInvocationContract :: Maybe InterpretedValue
+  }
+
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
@@ -338,7 +348,7 @@ data EvaluatedFunction = EvaluatedFunction
       (ScopeActivation
         -> ReductionContext
         -> PreparedFunctionArgument
-        -> Either InterpretingError InterpretedValue)
+        -> Either InterpretingError EvaluatedFunctionInvocation)
   , functionValidatesResult :: Bool
   }
 

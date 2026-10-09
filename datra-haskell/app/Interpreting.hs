@@ -866,7 +866,8 @@ contextualFunction surface levels@(_ : _) = do
     invoke _ reduction prepared = do
       depth <- requireFiniteInteger LeftOperand
         (functionPreparedArgument prepared)
-      accessContextualMap reduction depth innerMap
+      value <- accessContextualMap reduction depth innerMap
+      pure (EvaluatedFunctionInvocation value Nothing)
 
     valueSyntax :: FunctionSyntax InterpretedValue
     valueSyntax = FunctionSyntax [SyntaxTemplate [SyntaxLiteral surface]]
@@ -1055,11 +1056,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         makeAtlasExpansion
         [ensureMapLevel left, ensureMapLevel right]
     SuperEllipsisRange lower upper ->
-      binary boundedRangeValue lower upper
+      checkedBinary boundedRangeValue lower upper
     SuperEllipsisRangePlus lower ->
-      unary openPlusRangeValue lower
+      checkedUnary openPlusRangeValue lower
     SuperEllipsisRangeMinus upper ->
-      unary openMinusRangeValue upper
+      checkedUnary openMinusRangeValue upper
     NaturalRange origin target -> naturalRangeValue origin target
     NaturalRangeUpwards origin -> naturalRangeUpwardsValue origin
     ValuedNaturalRange origin target -> valuedNaturalRangeValue origin target
@@ -1111,25 +1112,24 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             interpret (if conditionFlag then consequent else alternative)
           _ -> Right neverValue
     Addition left right ->
-      binary addValues left right
+      checkedBinary addValues left right
     Subtraction left right ->
-      binary subtractValues left right
-    Plus operand -> unary plusValue operand
-    Minus operand -> unary minusValue operand
+      checkedBinary subtractValues left right
+    Plus operand -> checkedUnary plusValue operand
+    Minus operand -> checkedUnary minusValue operand
     Multiplication left right ->
-      binary multiplyValues left right
+      checkedBinary multiplyValues left right
     Exponentiation base exponentValue ->
-      binary exponentiateValues base exponentValue
+      checkedBinary exponentiateValues base exponentValue
     Subfederation source target ->
-      binary subfederationValues source target
+      checkedBinary subfederationValues source target
     Equality left right ->
-      binary equalValues left right
-    Inequality left right -> do
-      equal <- binary equalValues left right
-      runProtectedOperation protection [equal] $ \actuals ->
-        case actuals of
-          [actual] -> booleanNotValue actual
-          _ -> Right neverValue
+      checkedBinary equalValues left right
+    Inequality left right ->
+      checkedBinary
+        (\actualLeft actualRight ->
+          equalValues actualLeft actualRight >>= booleanNotValue)
+        left right
     LessThan left right ->
       binaryComparison (== LT) left right
     LessThanOrEqual left right ->
@@ -1139,10 +1139,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     GreaterThanOrEqual left right ->
       binaryComparison (/= LT) left right
     BooleanAnd left right ->
-      binary booleanAndValues left right
+      checkedBinary booleanAndValues left right
     BooleanOr left right ->
-      binary booleanOrValues left right
-    BooleanNot operand -> unary booleanNotValue operand
+      checkedBinary booleanOrValues left right
+    BooleanNot operand -> checkedUnary booleanNotValue operand
     Coalization operand -> unary (Right . coalizeValue) operand
     Modular operand -> unary modularValue operand
     Fun operand ->
@@ -1201,12 +1201,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     FunctionApplication function argument -> do
       callable <- interpret function
       supplied <- interpret argument
-      runProtectedOperation protection [callable, supplied] $ \actuals ->
+      runProtectedOperationWithContract
+        protection
+        genericOperationResultDecision
+        contextuallySpecify
+        [callable, supplied] $ \actuals ->
         case actuals of
           [actualCallable, actualSupplied] -> do
             input <- functionArgumentValue actualSupplied
             applyFunction (scopeActivation scope) reduction actualCallable input
-          _ -> Right neverValue
+          _ -> Right (neverValue, Nothing)
     External descriptor -> unary (externalValue scope) descriptor
     Program bindings result -> evaluateBlock Nothing bindings result
     Begin bindings result ->
@@ -1472,6 +1476,31 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         case actuals of
           [actualLeft, actualRight] -> operation actualLeft actualRight
           _ -> Right neverValue
+    checkedUnary operation operand = do
+      value <- interpret operand
+      runProtectedOperationWithContract
+        protection
+        genericOperationResultDecision
+        contextuallySpecify
+        [value] $ \actuals ->
+          case actuals of
+            [actual] -> checkedResult (operation actual)
+            _ -> Right (neverValue, Nothing)
+    checkedBinary operation left right = do
+      leftValue <- interpret left
+      rightValue <- interpret right
+      runProtectedOperationWithContract
+        protection
+        genericOperationResultDecision
+        contextuallySpecify
+        [leftValue, rightValue] $ \actuals ->
+          case actuals of
+            [actualLeft, actualRight] ->
+              checkedResult (operation actualLeft actualRight)
+            _ -> Right (neverValue, Nothing)
+    checkedResult operation = do
+      result <- operation
+      pure (result, Just result)
     interpretProtectedValues expressions operation = do
       values <- traverse interpret expressions
       runProtectedOperation protection values operation
@@ -1482,12 +1511,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     binaryComparison predicate left right = do
       leftValue <- interpret left
       rightValue <- interpret right
-      runProtectedOperation protection [leftValue, rightValue] $ \actuals ->
-        case actuals of
-          [actualLeft, actualRight] -> do
-            ordering <- compareIntegerLimitValues actualLeft actualRight
-            pure (booleanValue (predicate ordering))
-          _ -> Right neverValue
+      runProtectedOperationWithContract
+        protection
+        genericOperationResultDecision
+        contextuallySpecify
+        [leftValue, rightValue] $ \actuals ->
+          case actuals of
+            [actualLeft, actualRight] -> checkedResult $ do
+              ordering <- compareIntegerLimitValues actualLeft actualRight
+              pure (booleanValue (predicate ordering))
+            _ -> Right (neverValue, Nothing)
     liftMaybeResult result = case interpretedSemanticResult result of
       CanonicalAssignment "Just" _ _ -> pure result
       _ -> do
@@ -1517,8 +1550,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       subfederationValues value target >>= booleanCondition
     standardOptionalValue value = do
       constructor <- interpret (IdentifierReference (IdentifierString "Maybe"))
-      input <- functionArgumentValue value
-      applyFunction (scopeActivation scope) reduction constructor input
+      runProtectedOperationWithContract
+        protection
+        genericOperationResultDecision
+        contextuallySpecify
+        [constructor, value] $ \actuals ->
+          case actuals of
+            [actualConstructor, actualValue] -> do
+              input <- functionArgumentValue actualValue
+              applyFunction
+                (scopeActivation scope) reduction actualConstructor input
+            _ -> Right (neverValue, Nothing)
     evaluateBlock source bindings result = do
       let origins = canonicalDependencyNames bindings result
           reconstructionScope = if null origins then scope
@@ -2057,24 +2099,40 @@ interpretStringTemplateWith protection interpret parts = do
     [] -> asciiStringValue ""
     firstValue : remaining -> do
       result <- foldM concatenateTemplateValues firstValue remaining
-      pure (templateValue result)
+      runProtectedOperation protection [result] $ \actuals ->
+        case actuals of
+          [actual] -> Right (templateValue actual)
+          _ -> Right neverValue
   where
     interpretPart (StringTemplateLiteral value) = asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpret expressionValue
-      runProtectedOperation protection [value] $ \actuals ->
-        case actuals of
-          [actual] -> toStringValue canonicalStringCodec actual
-          _ -> Right neverValue
+      runProtectedOperationWithContract
+        protection
+        genericOperationResultDecision
+        contextuallySpecify
+        [value] $ \actuals ->
+          case actuals of
+            [actual] -> checkedString
+              (toStringValue canonicalStringCodec actual)
+            _ -> Right (neverValue, Nothing)
 
     concatenateTemplateValues left right =
-      case runProtectedOperation protection [left, right] $ \actuals ->
+      case runProtectedOperationWithContract
+          protection
+          genericOperationResultDecision
+          contextuallySpecify
+          [left, right] $ \actuals ->
           case actuals of
-            [actualLeft, actualRight] ->
-              concatenateValues actualLeft actualRight
-            _ -> Right neverValue of
+            [actualLeft, actualRight] -> checkedString
+              (concatenateValues actualLeft actualRight)
+            _ -> Right (neverValue, Nothing) of
         Right value -> Right value
         Left _ -> Left AmbiguousStringTemplate
+
+    checkedString operation = do
+      result <- operation
+      pure (result, Just result)
 
 interpretSpecificationWith
   :: ScopeActivation
@@ -2793,7 +2851,8 @@ createFunctionWithGenerics reduction captured resolving
           codomainEvaluationScope resolving writtenOutput
         let handedOutput = handoffScopeValue
               codomainEvaluationScope dynamicOutput
-        contextuallySpecify handed handedOutput
+        specified <- contextuallySpecify handed handedOutput
+        pure (EvaluatedFunctionInvocation specified (Just handedOutput))
   let signatureText = renderSourceExpression signature
   let definition = MapSpecification (FunctionBody bindings result)
         signature
@@ -2904,15 +2963,19 @@ applyFunction
   -> ReductionContext
   -> InterpretedValue
   -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
+  -> Either InterpretingError
+      (InterpretedValue, Maybe InterpretedValue)
 applyFunction activation reduction callable input =
   case selectFunctionCandidate preparations of
     Right (function, preparedCall) | Just invoke <- functionInvoke function -> do
       nextReduction <- consumeReduction reduction
-      value <- invoke activation nextReduction preparedCall
-      result <- if functionValidatesResult function
-        then contextuallySpecify value (functionCodomain function)
-        else pure value
+      invocation <- invoke activation nextReduction preparedCall
+      let value = functionInvocationValue invocation
+      (result, contract) <- if functionValidatesResult function
+        then do
+          checked <- contextuallySpecify value (functionCodomain function)
+          pure (checked, Just (functionCodomain function))
+        else pure (value, functionInvocationContract invocation)
       -- A syntax-backed call has its own surface form, and its result semantics
       -- already carries the canonical value produced by that form. Recasting
       -- it as ordinary juxtaposition would invent source such as
@@ -2929,9 +2992,12 @@ applyFunction activation reduction callable input =
             | (functionDependencies, functionPresentation) <- callablePresentations
             , (inputDependencies, inputPresentation) <- inputPresentations
             ]
-      pure (if interpretedTypeIsTotal result
-        then result
-        else foldr present result applications)
+      pure
+        ( if interpretedTypeIsTotal result
+            then result
+            else foldr present result applications
+        , contract
+        )
     Right _ -> Left (FunctionEvaluationFailed
       ExternalAdapterRequiresAstCaptures)
     Left failure -> Left failure
@@ -3084,8 +3150,9 @@ registeredExternal symbol = case symbol of
       (Just ("!~" <> show symbol)) signatureText
       (Just (\argument -> Right
         (PreparedFunctionArgument argument argument [])))
-      (Just (\_ _ preparedCall ->
-        publicValue (functionPreparedArgument preparedCall))) False))
+      (Just (\_ _ preparedCall -> do
+        value <- publicValue (functionPreparedArgument preparedCall)
+        pure (EvaluatedFunctionInvocation value Nothing))) False))
   "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue ExpressionAST)
   "datra.IdenExp" -> Right (syntaxCategoryTypeValue IdentifierExpressionAST)
@@ -3159,7 +3226,7 @@ registeredExternal symbol = case symbol of
           invoke _ _ preparedCall = do
             result <- implementation (functionPreparedBindings preparedCall)
             _ <- specifyValues result output
-            pure result
+            pure (EvaluatedFunctionInvocation result Nothing)
       let signatureText = renderSourceExpression
             (FunctionType domain codomain)
       pure (makeFunctionValue (EvaluatedFunction input output Nothing Nothing
@@ -3174,8 +3241,9 @@ unlinkedExternalFunction
 unlinkedExternalFunction arity symbol invoke =
   makeFunctionValue (EvaluatedFunction domain anyTypeValue Nothing Nothing
     (Just ("!~" <> show symbol)) signatureText Nothing
-    (Just (\_ _ preparedCall -> invoke
-      (functionSuppliedArgument preparedCall))) False)
+    (Just (\_ _ preparedCall -> do
+      value <- invoke (functionSuppliedArgument preparedCall)
+      pure (EvaluatedFunctionInvocation value Nothing))) False)
   where
     domain
       | arity == 1 = anyTypeValue

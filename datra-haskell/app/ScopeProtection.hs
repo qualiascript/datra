@@ -4,6 +4,7 @@ module ScopeProtection
   , currentScopeLabel
   , authorizeProtectedValue
   , runProtectedOperation
+  , runProtectedOperationWithContract
   , protectWithPoliciesOf
   , valueIsScopeProtected
   , ScopeHandoffDecision (..)
@@ -67,13 +68,54 @@ runProtectedOperation
   -> ([InterpretedValue] -> Either InterpretingError InterpretedValue)
   -> Either InterpretingError InterpretedValue
 runProtectedOperation context operands operation =
+  runProtectedOperationWithContract
+    context
+    (\_ _ -> DecisionRefuted)
+    (\result _ -> Right result)
+    operands
+    (\actuals -> do
+      result <- operation actuals
+      Right (result, Nothing))
+
+-- | Run an operation with temporarily authorized operands.  A checked result
+-- contract is evidence only when every carried policy proves removal safe; the
+-- validated result is then returned without a wrapper.  Otherwise all
+-- operand and result policies are combined on the current scope label.
+runProtectedOperationWithContract
+  :: ScopeActivation
+  -> (ScopeProtectionPolicy -> InterpretedValue -> Decision ())
+  -> (InterpretedValue
+      -> InterpretedValue
+      -> Either InterpretingError InterpretedValue)
+  -> [InterpretedValue]
+  -> ([InterpretedValue]
+      -> Either InterpretingError
+          (InterpretedValue, Maybe InterpretedValue))
+  -> Either InterpretingError InterpretedValue
+runProtectedOperationWithContract
+    context decide validate operands operation =
   case traverse (authorizeProtectedValue context) operands of
     Left inaccessible -> Right inaccessible
     Right actuals -> do
-      result <- operation actuals
-      pure (case normalizedPolicies operands of
-        [] -> result
-        _ -> protectWithPoliciesOf context (result : operands) result)
+      (result, contract) <- operation actuals
+      case normalizedPolicies (result : operands) of
+        [] -> Right result
+        policies ->
+          case authorizeProtectedValue context result of
+            Left inaccessible -> Right inaccessible
+            Right actualResult ->
+              case contract of
+                Just checked
+                  | all
+                      isProved
+                      [decide policy checked | policy <- policies] ->
+                        validate actualResult checked
+                _ -> Right (protectWithPoliciesOf
+                  context (result : operands) actualResult)
+  where
+    isProved (DecisionProved ()) = True
+    isProved DecisionRefuted = False
+    isProved DecisionUndecidable = False
 
 protectWithPoliciesOf
   :: ScopeActivation
