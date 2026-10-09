@@ -71,11 +71,18 @@ module Evaluation.Value
   , InterpretedAtlasMapFederation
   , PresentationDependency (..)
   , ValueSemantics (..)
+  , DynamicScopeLabel (..)
+  , ScopeProtectionPolicy (..)
+  , ScopeProtection (..)
   , semanticValueSemantics
   , CanonicalResult (..)
   , InterpretedValue
   , InterpretedValueTotality (..)
   , makeInterpretedValue
+  , neverValue
+  , interpretedScopeProtection
+  , protectInterpretedValue
+  , withoutScopeProtection
   , makeSingletonInterpretedValue
   , makeDependentSumValue
   , withDependentSumStructure
@@ -137,6 +144,8 @@ import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (..)
   , SyntaxHoleKind (..)
@@ -468,7 +477,8 @@ syntaxCategoryTypeValue :: ASTMetaCategory -> InterpretedValue
 syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType
 
 data ValueForm
-  = BuiltinMetaTypeForm BuiltinMetaType
+  = NeverForm
+  | BuiltinMetaTypeForm BuiltinMetaType
   | FunctionForm EvaluatedFunction
   | ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
@@ -561,7 +571,21 @@ data InterpretedValue = InterpretedValue
   , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
   , interpretedSemantics :: ValueSemantics
   , interpretedEvaluationSource :: Maybe String
+  , interpretedScopeProtection :: Maybe ScopeProtection
   }
+
+newtype DynamicScopeLabel = DynamicScopeLabel Natural
+  deriving (Eq, Ord, Show)
+
+data ScopeProtectionPolicy
+  = GenericExistentialProtection
+  deriving (Eq, Ord, Show)
+
+data ScopeProtection = ScopeProtection
+  { scopeProtectionLabel :: DynamicScopeLabel
+  , scopeProtectionPolicies :: NonEmpty ScopeProtectionPolicy
+  }
+  deriving (Eq, Show)
 
 data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
 
@@ -587,7 +611,39 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
           NonTotalInterpretedMap -> Nothing
     , interpretedSemantics = semantics
     , interpretedEvaluationSource = Nothing
+    , interpretedScopeProtection = Nothing
     }
+
+neverValue :: InterpretedValue
+neverValue =
+  makeInterpretedValue
+    structuralDatraType
+    NeverForm
+    NoInsertion
+    emptyInterpretedMap
+    (SingletonAtlasMapFederation emptyInterpretedMap)
+    NonTotalInterpretedMap
+    NeverSemantics
+
+protectInterpretedValue
+  :: DynamicScopeLabel
+  -> NonEmpty ScopeProtectionPolicy
+  -> InterpretedValue
+  -> InterpretedValue
+protectInterpretedValue label policies value = value
+  { interpretedScopeProtection = Just
+      (ScopeProtection label (normalizePolicies policies))
+  }
+  where
+    normalizePolicies (first NonEmpty.:| remaining) =
+      first NonEmpty.:| foldr add [] remaining
+      where
+        add policy accumulated
+          | policy == first || policy `elem` accumulated = accumulated
+          | otherwise = policy : accumulated
+
+withoutScopeProtection :: InterpretedValue -> InterpretedValue
+withoutScopeProtection value = value { interpretedScopeProtection = Nothing }
 
 makeSingletonInterpretedValue
   :: DatraType
@@ -818,6 +874,7 @@ withoutCanonicalDependencies dependencies value = value
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
+    NeverForm -> MapValueKind
     BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
     BuiltinMetaTypeForm TemplateMetaType -> AsciiStringValueKind
     BuiltinMetaTypeForm _ -> RangeValueKind

@@ -332,6 +332,7 @@ executable datra-haskell
         RuntimeModules
         ModuleLoading
         FunctionClosure
+        GenericScopeProtection
         BlockScope
         LibraryFiles
         SyntaxDefinitions
@@ -339,6 +340,7 @@ executable datra-haskell
         SyntaxRewriting
         Parsing
         Rendering
+        ScopeProtection
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -389,7 +391,9 @@ test-suite datra-parsing-test
         Interpreting
         RuntimeModules
         FunctionClosure
+        GenericScopeProtection
         Rendering
+        ScopeProtection
         Parsing
         BlockScope
         LibraryFiles
@@ -433,6 +437,7 @@ test-suite datra-interpreting-test
         RuntimeModules
         ModuleLoading
         FunctionClosure
+        GenericScopeProtection
         BlockScope
         LibraryFiles
         SyntaxDefinitions
@@ -440,6 +445,7 @@ test-suite datra-interpreting-test
         SyntaxRewriting
         Parsing
         Rendering
+        ScopeProtection
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell

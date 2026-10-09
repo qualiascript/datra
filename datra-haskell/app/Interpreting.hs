@@ -107,6 +107,8 @@ import SyntaxRewriting
   , rewriteImplicitSyntax
   )
 import Rendering (renderCanonicalResult, renderInterpretedValue)
+import GenericScopeProtection
+import ScopeProtection
 import SyntaxDefinitions
   ( SyntaxFunctionBody
   , SyntaxRule (..)
@@ -904,34 +906,47 @@ evalInScope :: Scope -> [String] -> Interpreter
 evalInScope = evalInScopeWith UnrestrictedReduction
 
 evalInScopeWith :: ReductionContext -> Scope -> [String] -> Interpreter
-evalInScopeWith reduction scope resolving =
-  interpretNormalizedExpressionWith reduction scope resolving
-    . normalizeExpression
+evalInScopeWith reduction scope resolving expressionValue =
+  evalInScopeWithProtection
+    (initialProtectionContext expressionValue)
+    reduction scope resolving expressionValue
 
-interpretNormalizedExpressionWith
-  :: ReductionContext
+evalInScopeWithProtection
+  :: EvaluationProtectionContext
+  -> ReductionContext
   -> Scope
   -> [String]
   -> Interpreter
-interpretNormalizedExpressionWith reduction scope resolving expressionValue =
+evalInScopeWithProtection protection reduction scope resolving =
+  interpretNormalizedExpressionWith protection reduction scope resolving
+    . normalizeExpression
+
+interpretNormalizedExpressionWith
+  :: EvaluationProtectionContext
+  -> ReductionContext
+  -> Scope
+  -> [String]
+  -> Interpreter
+interpretNormalizedExpressionWith protection reduction scope resolving expressionValue =
   case expressionValue of
     EllipsisNatural value -> Right (naturalValue value)
     EllipsisLiteral -> Right (formulationValue 1)
     Skip -> Right skipValue
     AsciiStringLiteral value -> asciiStringValue value
     NothingLiteral -> Right nothingValue
-    StringTemplate parts -> interpretStringTemplateWith interpret parts
+    StringTemplate parts ->
+      interpretStringTemplateWith protection interpret parts
     IdentifierValueType -> Right identifierValueTypeValue
     AtlasMap expressions -> interpretContainer
-      (interpretAtlasMapWith interpret expressions)
+      (interpretProtectedAtlasMap makeAtlasMap expressions)
       (AtlasMap expressions)
       expressions
     ArgumentMap expressions -> interpretContainer
-      (traverse interpret expressions >>= makeArgumentMapPreservingSingleton)
+      (interpretProtectedValues expressions makeArgumentMapPreservingSingleton)
       (ArgumentMap expressions)
       expressions
     MapSequence expressions -> interpretContainer
-      (interpretAtlasMapWith interpret expressions)
+      (interpretProtectedAtlasMap makeAtlasMap expressions)
       (MapSequence expressions)
       expressions
     SyntaxBoundary inner -> interpret inner
@@ -942,18 +957,15 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     ReverseSafeOverload supplied defaults ->
       interpret (SafeOverload defaults supplied)
     MapExpansion left right ->
-      interpretAtlasMapWithBuilder
+      interpretProtectedAtlasMap
         makeAtlasExpansion
-        interpret
         [ensureMapLevel left, ensureMapLevel right]
-    SuperEllipsisRange lower upper -> do
-      lowerValue <- interpret lower
-      upperValue <- interpret upper
-      boundedRangeValue lowerValue upperValue
+    SuperEllipsisRange lower upper ->
+      binary boundedRangeValue lower upper
     SuperEllipsisRangePlus lower ->
-      interpret lower >>= openPlusRangeValue
+      unary openPlusRangeValue lower
     SuperEllipsisRangeMinus upper ->
-      interpret upper >>= openMinusRangeValue
+      unary openMinusRangeValue upper
     NaturalRange origin target -> naturalRangeValue origin target
     NaturalRangeUpwards origin -> naturalRangeUpwardsValue origin
     ValuedNaturalRange origin target -> valuedNaturalRangeValue origin target
@@ -977,31 +989,40 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           (FunctionApplication
             (IdentifierReference (IdentifierString "Maybe"))
             operand)
-    ListUncons operand -> interpret operand >>= unconsList
+    ListUncons operand -> unary unconsList operand
     MaybeThen optional branch -> do
       optionalResult <- interpret optional
-      case interpretedSemanticResult optionalResult of
-        CanonicalAssignment "Just" _ _ -> do
-          result <- evalInScopeWith reduction
-            (constantContextualBindings "it" optionalResult <> scope)
-            resolving
-            branch
-          liftMaybeResult result
-        _ -> do
-          absent <- isStandardNothing optionalResult
-          if absent
-            then standardNothingValue
-            else Left (FunctionEvaluationFailed NoApplicableFunctionAlternative)
+      runProtectedOperation protection [optionalResult] $ \actuals ->
+        case actuals of
+          [actualOptional] ->
+            case interpretedSemanticResult actualOptional of
+              CanonicalAssignment "Just" _ _ -> do
+                result <- evalInScopeWithProtection protection reduction
+                  (constantContextualBindings "it" actualOptional <> scope)
+                  resolving
+                  branch
+                liftMaybeResult result
+              _ -> do
+                absent <- isStandardNothing actualOptional
+                if absent
+                  then standardNothingValue
+                  else Left (FunctionEvaluationFailed
+                    NoApplicableFunctionAlternative)
+          _ -> Right neverValue
     Conditional condition consequent alternative -> do
       conditionValue <- interpret condition
-      conditionFlag <- booleanCondition conditionValue
-      interpret (if conditionFlag then consequent else alternative)
+      runProtectedOperation protection [conditionValue] $ \actuals ->
+        case actuals of
+          [actualCondition] -> do
+            conditionFlag <- booleanCondition actualCondition
+            interpret (if conditionFlag then consequent else alternative)
+          _ -> Right neverValue
     Addition left right ->
       binary addValues left right
     Subtraction left right ->
       binary subtractValues left right
-    Plus operand -> interpret operand >>= plusValue
-    Minus operand -> interpret operand >>= minusValue
+    Plus operand -> unary plusValue operand
+    Minus operand -> unary minusValue operand
     Multiplication left right ->
       binary multiplyValues left right
     Exponentiation base exponentValue ->
@@ -1012,7 +1033,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       binary equalValues left right
     Inequality left right -> do
       equal <- binary equalValues left right
-      booleanNotValue equal
+      runProtectedOperation protection [equal] $ \actuals ->
+        case actuals of
+          [actual] -> booleanNotValue actual
+          _ -> Right neverValue
     LessThan left right ->
       binaryComparison (== LT) left right
     LessThanOrEqual left right ->
@@ -1025,19 +1049,21 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       binary booleanAndValues left right
     BooleanOr left right ->
       binary booleanOrValues left right
-    BooleanNot operand ->
-      interpret operand >>= booleanNotValue
-    Coalization operand -> coalizeValue <$> interpret operand
-    Modular operand -> interpret operand >>= modularValue
+    BooleanNot operand -> unary booleanNotValue operand
+    Coalization operand -> unary (Right . coalizeValue) operand
+    Modular operand -> unary modularValue operand
     Fun operand ->
       case recursiveListElement operand of
         Just element -> do
           elementType <- interpret element
-          pure (listTypeValue
-            (renderSourceExpression expressionValue) elementType)
+          runProtectedOperation protection [elementType] $ \actuals ->
+            case actuals of
+              [actualElement] -> pure (listTypeValue
+                (renderSourceExpression expressionValue) actualElement)
+              _ -> Right neverValue
         Nothing -> recursive reduction
       where
-        recursive activeReduction = evalInScopeWith activeReduction
+        recursive activeReduction = evalInScopeWithProtection protection activeReduction
           (contextualBindings "this"
             (case operand of Begin {} -> True; _ -> False)
             recursive <> scope)
@@ -1054,19 +1080,22 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       Left (FunctionEvaluationFailed ExpectedFunctionType)
     InModule path body -> do
       imported <- lookupModuleDefinitionScope scope path
-      evalInScopeWith reduction imported resolving body
+      evalInScopeWithProtection protection reduction imported resolving body
     Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
     SyntaxType templates signature -> do
       syntax <- evaluateFunctionSyntax interpret templates
       sourceSyntax <- sourceFunctionSyntax interpret templates
       value <- interpret signature
-      case interpretedFunction value of
-        Just function -> pure (makeFunctionValue function
-          { functionSyntax = Just syntax
-          , functionSyntaxSource = Just sourceSyntax
-          })
-        Nothing -> Left (FunctionEvaluationFailed
-          AstPatternRequiresFunctionSignature)
+      runProtectedOperation protection [value] $ \actuals ->
+        case actuals of
+          [actualValue] -> case interpretedFunction actualValue of
+            Just function -> pure (makeFunctionValue function
+              { functionSyntax = Just syntax
+              , functionSyntaxSource = Just sourceSyntax
+              })
+            Nothing -> Left (FunctionEvaluationFailed
+              AstPatternRequiresFunctionSignature)
+          _ -> Right neverValue
     FunctionTypeExpression [] domain codomain -> do
       evaluateFunctionType expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -1077,9 +1106,14 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication function argument -> do
       callable <- interpret function
-      input <- interpret argument >>= functionArgumentValue
-      applyFunction reduction callable input
-    External descriptor -> interpret descriptor >>= externalValue scope
+      supplied <- interpret argument
+      runProtectedOperation protection [callable, supplied] $ \actuals ->
+        case actuals of
+          [actualCallable, actualSupplied] -> do
+            input <- functionArgumentValue actualSupplied
+            applyFunction reduction actualCallable input
+          _ -> Right neverValue
+    External descriptor -> unary (externalValue scope) descriptor
     Program bindings result -> evaluateBlock Nothing bindings result
     Begin bindings result ->
       evaluateBlock (Just (renderSourceExpression expressionValue)) bindings result
@@ -1087,10 +1121,15 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
     Assert _ condition -> do
-      accepted <- interpret condition >>= booleanCondition
-      if accepted
-        then Right (makeAtlasMap 0 [])
-        else Left AssertionFailed
+      conditionValue <- interpret condition
+      runProtectedOperation protection [conditionValue] $ \actuals ->
+        case actuals of
+          [actualCondition] -> do
+            accepted <- booleanCondition actualCondition
+            if accepted
+              then Right (makeAtlasMap 0 [])
+              else Left AssertionFailed
+          _ -> Right neverValue
     MapConcatenation left right ->
       binary concatenateValues left right
     Overload defaults supplied ->
@@ -1122,13 +1161,18 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (IdentifierString name)
       | isContextualAccessOf (IdentifierString "_this") thisValue
       , Just (_, value) <- lookup "_this" scope >>= contextualBinding ->
-          value reduction >>= (`namedAccessValue` name)
+          value reduction >>= \contextual ->
+            runProtectedOperation protection [contextual] $ \actuals ->
+              case actuals of
+                [actual] -> namedAccessValue actual name
+                _ -> Right neverValue
       | isContextualAccessOf (IdentifierString "_this") thisValue
       , Just names <- lookup "_this" scope >>= scopeMembersBinding
       , name `elem` names ->
           simpleIdentifierTypeValue name
             <$> resolveIdentifierWith reduction scope resolving name
-    NamedAccess operand (IdentifierString name) -> interpret operand >>= (`namedAccessValue` name)
+    NamedAccess operand (IdentifierString name) ->
+      unary (`namedAccessValue` name) operand
     MapAccess
         (NamedAccess
           thisValue
@@ -1142,7 +1186,14 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       | isContextualAccessOf (IdentifierString "_this") thisValue -> do
           insertion <- interpret insertionOperand
           case lookup "_this" scope >>= contextualBinding of
-            Just (_, value) -> value reduction >>= (`accessValues` insertion)
+            Just (_, value) -> do
+              contextual <- value reduction
+              runProtectedOperation
+                protection [contextual, insertion] $ \actuals ->
+                  case actuals of
+                    [actualContextual, actualInsertion] ->
+                      accessValues actualContextual actualInsertion
+                    _ -> Right neverValue
             _ -> projectDeclaration
               (scopeMemberNames scope)
               (resolveIdentifierWith reduction scope resolving)
@@ -1156,7 +1207,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     MapSpecification implementation syntaxType@(SyntaxType
         templates signature)
       | not (syntaxImplementationExpression implementation) ->
-          interpretSpecificationWith interpret implementation syntaxType
+          interpretSpecificationWith protection interpret implementation syntaxType
       | External descriptorExpression <- implementation -> do
           syntax <- evaluateFunctionSyntax interpret templates
           sourceSyntax <- sourceFunctionSyntax interpret templates
@@ -1196,7 +1247,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     MapSpecification
         (FunctionBody bindings result)
         signature@(FunctionTypeExpression [] domain codomain) ->
-      createFunction reduction scope resolving signature
+      createFunction protection reduction scope resolving signature
         domain codomain bindings result
     MapSpecification
         (FunctionBody bindings result)
@@ -1204,11 +1255,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       validateGenericFunctionType interpret generics domain codomain
       let preparedDomain = prepareFunctionDomainExpression generics domain
           preparedCodomain = prepareGenericExpression generics codomain
-      createFunctionWithGenerics reduction scope resolving
+      createFunctionWithGenerics protection reduction scope resolving
         signature preparedDomain preparedCodomain bindings result
         generics
     MapSpecification sourceOperand targetOperand ->
-      interpretSpecificationWith interpret sourceOperand targetOperand
+      interpretSpecificationWith protection interpret sourceOperand targetOperand
     IdentifierOperation
         (IdentifierString identifierString)
         typeAnnotationExpression
@@ -1224,8 +1275,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       let identifierExpression = StringTemplate parts
           familyKey = renderSourceExpression identifierExpression
           nameFamily supplied =
-            interpretStringTemplateWith
-              (evalInScopeWith reduction
+            interpretStringTemplateWith protection
+              (evalInScopeWithProtection protection reduction
                 (constantContextualBindings "it" supplied <> scope)
                 resolving)
               parts
@@ -1261,7 +1312,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   in specifyValues source target
 
   where
-    interpret = evalInScopeWith reduction scope resolving
+    interpret = evalInScopeWithProtection protection reduction scope resolving
     transparentEitherAlias value =
       case stripOuterIdentifierType value of
         Right underlying
@@ -1270,44 +1321,78 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     interpretIdentifierOperation
         identifierString typeAnnotationExpression maybeGivenValueExpression = do
       typeAnnotation <- interpret typeAnnotationExpression
-      requireCanonicalTypeAnnotation typeAnnotation
       case maybeGivenValueExpression of
-        Nothing
-          | identifierString == "False"
-          , interpretedValueKind typeAnnotation == NaturalValueKind
-          , interpretedInteger typeAnnotation == Just 0 ->
-              Right (booleanValue False)
-        Nothing
-          | identifierString == "True"
-          , interpretedValueKind typeAnnotation == NaturalValueKind
-          , interpretedInteger typeAnnotation == Just 1 ->
-              Right (booleanValue True)
         Nothing ->
-          Right (simpleIdentifierTypeValue identifierString typeAnnotation)
+          runProtectedOperation protection [typeAnnotation] $ \actuals ->
+            case actuals of
+              [actualAnnotation] -> do
+                requireCanonicalTypeAnnotation actualAnnotation
+                if identifierString == "False"
+                    && interpretedValueKind actualAnnotation
+                      == NaturalValueKind
+                    && interpretedInteger actualAnnotation == Just 0
+                  then Right (booleanValue False)
+                  else if identifierString == "True"
+                    && interpretedValueKind actualAnnotation
+                      == NaturalValueKind
+                    && interpretedInteger actualAnnotation == Just 1
+                  then Right (booleanValue True)
+                  else Right (simpleIdentifierTypeValue
+                    identifierString actualAnnotation)
+              _ -> Right neverValue
         Just givenValueExpression -> do
           givenValue <- interpret givenValueExpression
-          case assignIdentifierValues
-              identifierString typeAnnotation givenValue of
-            Left _
-              | typeAnnotationExpression == givenValueExpression ->
-                  Right (inferredIdentifierAssignmentValue
-                    identifierString givenValue)
-            Left
-                (AtlasMapFederationOperationRefuted
-                  AtlasMapFederationSpecificationHasNoMatchingMember) ->
-              Left
-                (GivenValueOutsideTypeAnnotation
-                  { expectedTypeAnnotation =
-                      renderInterpretedValue typeAnnotation
-                  , givenValue = renderInterpretedValue givenValue
-                  })
-            result -> result
-    binary = interpretBinaryWith interpret
+          runProtectedOperation
+            protection [typeAnnotation, givenValue] $ \actuals ->
+              case actuals of
+                [actualAnnotation, actualGiven] -> do
+                  requireCanonicalTypeAnnotation actualAnnotation
+                  case assignIdentifierValues
+                      identifierString actualAnnotation actualGiven of
+                    Left _
+                      | typeAnnotationExpression == givenValueExpression ->
+                          Right (inferredIdentifierAssignmentValue
+                            identifierString actualGiven)
+                    Left
+                        (AtlasMapFederationOperationRefuted
+                          AtlasMapFederationSpecificationHasNoMatchingMember) ->
+                      Left
+                        (GivenValueOutsideTypeAnnotation
+                          { expectedTypeAnnotation =
+                              renderInterpretedValue actualAnnotation
+                          , givenValue = renderInterpretedValue actualGiven
+                          })
+                    result -> result
+                _ -> Right neverValue
+    unary operation operand = do
+      value <- interpret operand
+      runProtectedOperation protection [value] $ \actuals ->
+        case actuals of
+          [actual] -> operation actual
+          _ -> Right neverValue
+    binary operation left right = do
+      leftValue <- interpret left
+      rightValue <- interpret right
+      runProtectedOperation protection [leftValue, rightValue] $ \actuals ->
+        case actuals of
+          [actualLeft, actualRight] -> operation actualLeft actualRight
+          _ -> Right neverValue
+    interpretProtectedValues expressions operation = do
+      values <- traverse interpret expressions
+      runProtectedOperation protection values operation
+    interpretProtectedAtlasMap buildMap expressions = do
+      values <- traverse interpret expressions
+      runProtectedOperation protection values $ \actuals ->
+        Right (buildAtlasMapFromValues buildMap expressions actuals)
     binaryComparison predicate left right = do
       leftValue <- interpret left
       rightValue <- interpret right
-      ordering <- compareIntegerLimitValues leftValue rightValue
-      pure (booleanValue (predicate ordering))
+      runProtectedOperation protection [leftValue, rightValue] $ \actuals ->
+        case actuals of
+          [actualLeft, actualRight] -> do
+            ordering <- compareIntegerLimitValues actualLeft actualRight
+            pure (booleanValue (predicate ordering))
+          _ -> Right neverValue
     liftMaybeResult result = case interpretedSemanticResult result of
       CanonicalAssignment "Just" _ _ -> pure result
       _ -> do
@@ -1344,7 +1429,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           reconstructionScope = if null origins then scope
             else ("\0canonical", CanonicalNames origins) : scope
       imported <- importScope reconstructionScope resolving bindings
-      value <- evalInScopeWith reduction imported resolving result
+      value <- evalInScopeWithProtection protection reduction imported resolving result
       pure (withEvaluationSource source
         (withoutCanonicalDependencies
           (maybe [] pure (scopePresentationDependency imported)) value))
@@ -1361,9 +1446,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       input <- compileParameters interpret staticDomain >>= parameterDomain
       output <- interpret staticCodomain
       let signatureText = renderSourceExpression written
-      pure (makeFunctionValue
-        (EvaluatedFunction input output Nothing Nothing Nothing
-          signatureText Nothing Nothing True))
+      runProtectedOperation protection [input, output] $ \actuals ->
+        case actuals of
+          [actualInput, actualOutput] -> pure (makeFunctionValue
+            (EvaluatedFunction actualInput actualOutput Nothing Nothing Nothing
+              signatureText Nothing Nothing True))
+          _ -> Right neverValue
 
 syntaxImplementationExpression :: Expression -> Bool
 syntaxImplementationExpression FunctionBody {} = True
@@ -1803,10 +1891,11 @@ bindingImports strict expressionValue =
       _ -> ([], [expressionValue | strict])
 
 interpretStringTemplateWith
-  :: Interpreter
+  :: EvaluationProtectionContext
+  -> Interpreter
   -> [StringTemplatePart Expression]
   -> Either InterpretingError InterpretedValue
-interpretStringTemplateWith interpret parts = do
+interpretStringTemplateWith protection interpret parts = do
   values <- traverse interpretPart parts
   case values of
     [] -> asciiStringValue ""
@@ -1817,26 +1906,38 @@ interpretStringTemplateWith interpret parts = do
     interpretPart (StringTemplateLiteral value) = asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpret expressionValue
-      toStringValue canonicalStringCodec value
+      runProtectedOperation protection [value] $ \actuals ->
+        case actuals of
+          [actual] -> toStringValue canonicalStringCodec actual
+          _ -> Right neverValue
 
     concatenateTemplateValues left right =
-      case concatenateValues left right of
+      case runProtectedOperation protection [left, right] $ \actuals ->
+          case actuals of
+            [actualLeft, actualRight] ->
+              concatenateValues actualLeft actualRight
+            _ -> Right neverValue of
         Right value -> Right value
         Left _ -> Left AmbiguousStringTemplate
 
 interpretSpecificationWith
-  :: Interpreter
+  :: EvaluationProtectionContext
+  -> Interpreter
   -> Expression
   -> Expression
   -> Either InterpretingError InterpretedValue
-interpretSpecificationWith interpret sourceExpression targetExpression = do
+interpretSpecificationWith protection interpret sourceExpression targetExpression = do
   source <- interpret sourceExpression
   target <- interpret targetExpression
-  let operation = case sourceExpression of
-        External _ -> case linkExternalAdapter source target of
-          Just linked -> linked
-          Nothing -> specifyValues source target
-        _ -> specifyValues source target
+  let operation = runProtectedOperation protection [source, target] $ \actuals ->
+        case actuals of
+          [actualSource, actualTarget] ->
+            case sourceExpression of
+              External _ -> case linkExternalAdapter actualSource actualTarget of
+                Just linked -> linked
+                Nothing -> specifyValues actualSource actualTarget
+              _ -> specifyValues actualSource actualTarget
+          _ -> Right neverValue
   case operation of
     Left
         (AtlasMapFederationOperationRefuted
@@ -1950,34 +2051,12 @@ identifierIntermediateValue result =
       identifierExpectedValue intermediate
     _ -> Nothing
 
-interpretBinaryWith
-  :: Interpreter
-  -> ( InterpretedValue
-       -> InterpretedValue
-       -> Either InterpretingError InterpretedValue
-     )
-  -> Expression
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-interpretBinaryWith interpret operation left right = do
-  leftValue <- interpret left
-  rightValue <- interpret right
-  operation leftValue rightValue
-
-interpretAtlasMapWith
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> [Expression]
-  -> Either InterpretingError InterpretedValue
-interpretAtlasMapWith interpret expressions = do
-  interpretAtlasMapWithBuilder makeAtlasMap interpret expressions
-
-interpretAtlasMapWithBuilder
+buildAtlasMapFromValues
   :: (Natural -> [InterpretedValue] -> InterpretedValue)
-  -> (Expression -> Either InterpretingError InterpretedValue)
   -> [Expression]
-  -> Either InterpretingError InterpretedValue
-interpretAtlasMapWithBuilder buildMap interpret expressions = do
-  values <- traverse interpret expressions
+  -> [InterpretedValue]
+  -> InterpretedValue
+buildAtlasMapFromValues buildMap expressions values =
   let nestingDepths =
         zipWith expressionNestingDepth expressions values
       mapDepth
@@ -1986,7 +2065,7 @@ interpretAtlasMapWithBuilder buildMap interpret expressions = do
       cardinality
         | mapDepth == 0 = 0
         | otherwise = mapDepth + 1
-  pure (buildMap cardinality (map (coalizeMapMemberAt cardinality) values))
+  in buildMap cardinality (map (coalizeMapMemberAt cardinality) values)
 
 expressionNestingDepth :: Expression -> InterpretedValue -> Natural
 expressionNestingDepth expressionValue value =
@@ -2409,16 +2488,17 @@ inferGenericArgument captured resolving domain binder _ evidence prior = do
           else eitherValue left right
 
 
-createFunction :: ReductionContext -> Scope -> [String]
+createFunction :: EvaluationProtectionContext -> ReductionContext -> Scope -> [String]
   -> Expression -> Expression -> Expression
   -> [Expression] -> Expression -> Either InterpretingError InterpretedValue
-createFunction reduction captured resolving
+createFunction protection reduction captured resolving
     signature writtenDomainExpression writtenOutput bindings result =
-  createFunctionWithGenerics reduction captured resolving
+  createFunctionWithGenerics protection reduction captured resolving
     signature writtenDomainExpression writtenOutput bindings result []
 
 createFunctionWithGenerics
-  :: ReductionContext
+  :: EvaluationProtectionContext
+  -> ReductionContext
   -> Scope
   -> [String]
   -> Expression
@@ -2428,7 +2508,7 @@ createFunctionWithGenerics
   -> Expression
   -> [GenericBinder Expression]
   -> Either InterpretingError InterpretedValue
-createFunctionWithGenerics reduction captured resolving
+createFunctionWithGenerics protection reduction captured resolving
     signature writtenDomainExpression writtenOutput bindings result
     generics = do
   let (domainExpression, substitutions) =
@@ -2493,6 +2573,28 @@ createFunctionWithGenerics reduction captured resolving
             imported = functionPreparedBindings preparedCall
         dependentScope <- validateDependentMapArgumentsExcept
           inferredGenericNames captured resolving writtenDomainExpression imported
+        (_, protectedGenerics) <- prepareProtectedGenericDomain
+          protection captured resolving generics writtenDomainExpression imported
+        let genericNames =
+              [ name
+              | binder <- generics
+              , let GenericIdentifier (IdentifierString name) _ =
+                      genericBinderIdentifier binder
+              ]
+            ordinaryDependentScope =
+              [ binding
+              | binding@(name, _) <- dependentScope
+              , name `notElem` genericNames
+              ]
+            codomainScope = ordinaryDependentScope <>
+              [ scopeBinding name (EvaluatedBinding value)
+              | binder <- generics
+              , genericBinderPolarity binder == GenericProduct
+              , let GenericIdentifier (IdentifierString name) _ =
+                      genericBinderIdentifier binder
+              , Just value <- [lookup name protectedGenerics]
+              , not (valueIsScopeProtected value)
+              ]
         let localScope =
               constantContextualBindings "it" argument
                 <> [scopeBinding name
@@ -2502,15 +2604,19 @@ createFunctionWithGenerics reduction captured resolving
                   | (name,value) <- imported]
                 <> captured
         bodyScope <- importScope localScope [] bindings
-        value <- evalInScopeWith invocationReduction bodyScope [] result
+        value <- evalInScopeWithProtection
+          protection invocationReduction bodyScope [] result
         let escaped = withoutCanonicalDependencies
               ( nub
                   ( scopePresentationDependencies bodyScope
                       <> scopePresentationDependencies captured)
               )
               value
-        dynamicOutput <- evalInScopeWith invocationReduction
-          (dependentScope <> captured) resolving writtenOutput
+        let (_, codomainProtection) =
+              enterProtectionScope preparedCall protection
+        dynamicOutput <- evalInScopeWithProtection
+          codomainProtection invocationReduction
+          (codomainScope <> captured) resolving writtenOutput
         contextuallySpecify escaped dynamicOutput
   let signatureText = renderSourceExpression signature
   let definition = MapSpecification (FunctionBody bindings result)
@@ -2531,7 +2637,58 @@ createFunctionWithGenerics reduction captured resolving
     (Just (renderSourceExpression closed)) signatureText
     (Just prepare) (Just invoke) False))
   where
-    evaluate = evalInScopeWith reduction captured resolving
+    evaluate = evalInScopeWithProtection protection reduction captured resolving
+
+prepareProtectedGenericDomain
+  :: EvaluationProtectionContext
+  -> Scope
+  -> [String]
+  -> [GenericBinder Expression]
+  -> Expression
+  -> [(String, InterpretedValue)]
+  -> Either InterpretingError
+      (EvaluationProtectionContext, [(String, InterpretedValue)])
+prepareProtectedGenericDomain
+    parent captured resolving generics domain supplied =
+  go domainProtection [] generics
+  where
+    (domainLabel, domainProtection) =
+      enterProtectionScope supplied parent
+
+    go context prepared [] = Right (context, reverse prepared)
+    go context prepared (binder : remaining) = do
+      let GenericIdentifier (IdentifierString name) _ =
+            genericBinderIdentifier binder
+          dependentScope =
+            [ scopeBinding preparedName (EvaluatedBinding value)
+            | (preparedName, value) <- prepared
+            ]
+      witness <- maybe (Left (UnknownIdentifier name)) Right
+        (lookup name supplied)
+      boundExpression <- maybe (Left (UnknownIdentifier name)) Right
+        (dependentBound name (domainEntries domain))
+      target <- evalInScopeWithProtection
+        context UnrestrictedReduction
+        (dependentScope <> captured) resolving boundExpression
+      specified <- runProtectedOperation context [witness, target] $ \actuals ->
+        case actuals of
+          [actualWitness, actualTarget] ->
+            specifyValues actualWitness actualTarget
+          _ -> Right neverValue
+      let protectedWitness =
+            case genericBinderPolarity binder of
+              GenericSum -> protectGenericExistential domainLabel witness
+              GenericProduct ->
+                protectWithPoliciesOf context [target, specified] witness
+      go context ((name, protectedWitness) : prepared) remaining
+
+    dependentBound _ [] = Nothing
+    dependentBound target (entry : remaining) =
+      case dependentBinding entry of
+        Just dependent
+          | dependentBindingName dependent == IdentifierString target ->
+              Just (dependentBindingBound dependent)
+        _ -> dependentBound target remaining
 
 applyFunction
   :: ReductionContext
@@ -2702,6 +2859,7 @@ resolveExternal scope descriptor =
 registeredExternal :: String -> Either InterpretingError InterpretedValue
 registeredExternal symbol = case symbol of
   "datra.Any" -> Right anyTypeValue
+  "datra.never" -> Right neverValue
   "datra.Ordinal" -> Right ordinalTypeValue
   "datra.Nat" -> naturalTypeValue
   "datra.Int" -> integerTypeValue

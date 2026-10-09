@@ -1,21 +1,33 @@
 module Datra.Interpreter.ScopeTests (scopeTests) where
 
 import Datra.TestSupport
+import Data.List.NonEmpty (NonEmpty (..))
 import DatraTypes
-  ( FunctionFailure (NoApplicableFunctionAlternative)
+  ( DynamicScopeLabel (..)
+  , FunctionFailure (NoApplicableFunctionAlternative)
+  , ScopeProtection (..)
+  , ScopeProtectionPolicy (..)
   , InterpretingError
       ( InconsistentShadowing
       , FunctionEvaluationFailed
       , LetBindingCannotShadowConsistentIdentifier
       , UnknownIdentifier
       )
+  , interpretedScopeProtection
+  , naturalValue
+  , neverValue
   )
+import Rendering (renderInterpretedValue)
+import GenericScopeProtection
+import ScopeProtection
 import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 scopeTests :: TestTree
 scopeTests =
   testGroup "lexical scope"
-    [ testGroup "contextual depth"
+    [ scopeProtectionTests
+    , testGroup "contextual depth"
         [ programCase "this selects current and outer declaration scopes"
             ( "outer := 10\n"
                 <> "yield begin middle := 20; "
@@ -248,4 +260,56 @@ scopeTests =
             "begin\n ((a : Nat) ~> (a : Int))\nyield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         ]
+    ]
+
+scopeProtectionTests :: TestTree
+scopeProtectionTests =
+  testGroup "scope-protection substrate"
+    [ testCase "fresh nested scopes receive distinct monotonic labels" $ do
+        let root = initialProtectionContext (0 :: Int)
+            (DynamicScopeLabel first, child) =
+              enterProtectionScope (1 :: Int) root
+            (DynamicScopeLabel second, _) =
+              enterProtectionScope (2 :: Int) child
+        assertBool "the second label follows the first" (second > first)
+    , testCase "an active ancestor label authorizes observation" $ do
+        let root = initialProtectionContext (0 :: Int)
+            (label, child) = enterProtectionScope (1 :: Int) root
+            protected = protectGenericExistential label (naturalValue 3)
+        case authorizeProtectedValue child protected of
+          Left inaccessible ->
+            assertEqual "authorized value became inaccessible"
+              "3" (renderInterpretedValue inaccessible)
+          Right actual ->
+            assertEqual "authorized value did not unwrap temporarily"
+              "3" (renderInterpretedValue actual)
+    , testCase "an expired label produces Never without running the operation" $ do
+        let root = initialProtectionContext (0 :: Int)
+            (label, _) = enterProtectionScope (1 :: Int) root
+            protected = protectGenericExistential label (naturalValue 3)
+            result = runProtectedOperation root [protected]
+              (\_ -> error "inaccessible operation was evaluated")
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value -> assertEqual "inaccessible observation"
+            (renderInterpretedValue neverValue)
+            (renderInterpretedValue value)
+    , testCase "derived results retain normalized policy metadata" $ do
+        let root = initialProtectionContext (0 :: Int)
+            (label, child) = enterProtectionScope (1 :: Int) root
+            protected = protectGenericExistential label (naturalValue 3)
+            result = runProtectedOperation child [protected]
+              (const (Right (naturalValue 4)))
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value ->
+            case interpretedScopeProtection value of
+              Nothing -> assertBool "missing protection" False
+              Just protection -> do
+                assertEqual "derived label"
+                  label (scopeProtectionLabel protection)
+                assertEqual "derived policies"
+                  [GenericExistentialProtection]
+                  (case scopeProtectionPolicies protection of
+                    first :| remaining -> first : remaining)
     ]

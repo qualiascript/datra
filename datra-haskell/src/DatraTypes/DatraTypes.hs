@@ -38,6 +38,13 @@ module DatraTypes
   , callableFunction
   , interpretedFunction
   , InterpretedValue
+  , DynamicScopeLabel (..)
+  , ScopeProtectionPolicy (..)
+  , ScopeProtection (..)
+  , neverValue
+  , interpretedScopeProtection
+  , protectInterpretedValue
+  , withoutScopeProtection
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
@@ -420,6 +427,13 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , DynamicScopeLabel (..)
+  , ScopeProtectionPolicy (..)
+  , ScopeProtection (..)
+  , neverValue
+  , interpretedScopeProtection
+  , protectInterpretedValue
+  , withoutScopeProtection
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation

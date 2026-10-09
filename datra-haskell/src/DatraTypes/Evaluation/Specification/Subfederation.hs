@@ -72,6 +72,8 @@ decideValueSubfederation
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | NeverForm <- interpretedForm source = DecisionProved ()
+  | NeverForm <- interpretedForm target = DecisionRefuted
   | productFederationFormsConflict source target = DecisionRefuted
   | Just _ <- interpretedFunction source
   , Just _ <- interpretedFunction target =

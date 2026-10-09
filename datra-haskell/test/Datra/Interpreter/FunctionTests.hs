@@ -167,7 +167,7 @@ functionTests =
             "5"
         , programCase "required public sum accepts a named witness"
             (unlines
-              [ "identity := ({marker? : ^T; value? : T} -> T do yield value)"
+              [ "identity := ({marker? : ^T; value? : T} -> Any do yield value)"
               , "yield identity {T := Nat; marker := 3; value := 5}"
               ])
             "5"
@@ -180,19 +180,19 @@ functionTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional-name public sum accepts a positional witness"
             (unlines
-              [ "identity := ({marker? : ^T?; value? : T} -> T do yield value)"
+              [ "identity := ({marker? : ^T?; value? : T} -> Any do yield value)"
               , "yield identity (Nat; 3; 5)"
               ])
             "5"
         , programCase "optional-name public sum accepts a named witness"
             (unlines
-              [ "identity := ({marker? : ^T?; value? : T} -> T do yield value)"
+              [ "identity := ({marker? : ^T?; value? : T} -> Any do yield value)"
               , "yield identity {T := Nat; marker := 3; value := 5}"
               ])
             "5"
         , programCase "private sum is inferred from consistent arguments"
             (unlines
-              [ "genericPrivate := ({marker? : ^_T; value? : _T} -> _T do yield value)"
+              [ "genericPrivate := ({marker? : ^_T; value? : _T} -> Any do yield value)"
               , "yield genericPrivate {marker := 3; value := 5}"
               ])
             "5"
@@ -202,18 +202,51 @@ functionTests =
               , "yield genericPrefix {marker := 3; value := 5}"
               ])
             "_T : 3 | 5"
-        , programCase "private sum remains positional in an ordered map"
+        , programCase "private sum matching remains positional in an ordered map"
+            (unlines
+              [ "orderedGeneric := ((marker : ^_T; value : _T) -> Any do yield value)"
+              , "yield orderedGeneric (Nat; marker := 3; value := 5)"
+              ])
+            "5"
+        , programFailureCase
+            "private sum remains unavailable to the codomain"
             (unlines
               [ "orderedGeneric := ((marker : ^_T; value : _T) -> _T do yield value)"
               , "yield orderedGeneric (Nat; marker := 3; value := 5)"
               ])
+            (SourceEvaluationFailure (UnknownIdentifier "_T"))
+        , programCase "mixed generic matching respects telescope order"
+            (unlines
+              [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> Any do yield value)"
+              , "yield mixed (Nat; Nat; Nat; a := 1; b := 3; c := 5; value := 5)"
+              ])
             "5"
-        , programCase "mixed generic prefixes respect telescope order"
+        , programFailureCase
+            "a mixed telescope does not expose its final sum to the codomain"
             (unlines
               [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> U do yield value)"
               , "yield mixed (Nat; Nat; Nat; a := 1; b := 3; c := 5; value := 5)"
               ])
-            "5"
+            (SourceEvaluationFailure (UnknownIdentifier "U"))
+        , programFailureCase "sum generic is unavailable in the codomain"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> T do yield value)"
+              , "yield identity {T := Nat; marker := 3; value := 5}"
+              ])
+            (SourceEvaluationFailure (UnknownIdentifier "T"))
+        , programCase "independent product remains available in the codomain"
+            (unlines
+              [ "identity := ({sumMarker? : ^T; productMarker? : &U} -> U do yield productMarker)"
+              , "yield identity {T := Str; U := Nat; sumMarker := \"x\"; productMarker := 3}"
+              ])
+            "3"
+        , programFailureCase
+            "product depending on a protected sum is unavailable in the codomain"
+            (unlines
+              [ "identity := ({sumMarker? : ^T; productMarker? : &U :: T} -> U do yield productMarker)"
+              , "yield identity {T := Any; U := Nat; sumMarker := 3; productMarker := 3}"
+              ])
+            (SourceEvaluationFailure (UnknownIdentifier "U"))
         , programCase "variadic Args contributes private generic evidence"
             (unlines
               [ "genericArgs := ({Args (&_T :: Nat),} -> Any do yield it[0])"

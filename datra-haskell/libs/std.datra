@@ -8,6 +8,7 @@ _Block := !~"datra.Block"
 yield Std := begin
 
   Any := !~"datra.Any"
+  Never := !~"datra.never"
   Ordinal := !~"datra.Ordinal"
   Char := !~"datra.Char"
   Template := !~"datra.Template"

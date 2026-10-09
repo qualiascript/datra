@@ -33,10 +33,18 @@ makeEitherValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 makeEitherValue left right =
-  if alternativesArePairwiseDistinct (NonEmpty.toList members)
-    then Right (buildEither members)
-    else Left EitherAlternativesNotDistinct
+  case filter (not . isNever)
+      (NonEmpty.toList members) of
+    [] -> Right neverValue
+    first : remaining ->
+      let retained = first :| remaining
+      in if alternativesArePairwiseDistinct (NonEmpty.toList retained)
+          then Right (buildEither retained)
+          else Left EitherAlternativesNotDistinct
   where
+    isNever value = case interpretedForm value of
+      NeverForm -> True
+      _ -> False
     members = case nubBy identicalLoweredSyntaxFunction
         (NonEmpty.toList (eitherMembers left <> eitherMembers right)) of
       first : remaining -> first :| remaining

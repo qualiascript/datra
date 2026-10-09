@@ -40,6 +40,12 @@ specifyValues
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 specifyValues source target
+  | NeverForm <- interpretedForm source
+  , NeverForm <- interpretedForm target = Right neverValue
+  | NeverForm <- interpretedForm source = Left
+      (FunctionEvaluationFailed NoApplicableFunctionAlternative)
+  | NeverForm <- interpretedForm target = Left
+      (FunctionEvaluationFailed NoApplicableFunctionAlternative)
   | DependentSumForm dependent <- interpretedForm target =
       evaluatedDependentSumSpecify dependent source
   | EitherForm _ <- interpretedForm target
