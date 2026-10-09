@@ -742,6 +742,13 @@ inference for argument maps, insert inferred values into the prepared prefix,
 and require non-optional public products explicitly. Open sum evidence into
 the same prepared prefix.
 
+The runtime argument schema retains each prefix member's binder identity,
+polarity, identifier optionality/privacy, and evaluated bound. Ordinary slots
+also retain the binder identities referenced by their written annotations, so
+evidence is produced by completed matching rather than by rescanning the AST.
+This metadata does not yet create protected body values; protection remains a
+separate later phase.
+
 Private product inference is constructive, not a search among candidate
 witnesses. Matching a completed dependent argument contributes its evidence
 to the private binder it depends on. The inferred witness is the federation
@@ -760,6 +767,11 @@ Do not introduce a separate generic-inference failure category.
 
 All witness checks use ordinary specification and subfederation operations.
 Bounds and dependent entries are evaluated in telescope order.
+
+A projected family contributes one evidence value per expanded slot only when
+the family is a concatenated argument segment, as in `{Args (&_T :: Nat),}`.
+Without concatenation the projected value occupies one ordinary slot and
+therefore contributes only that slot's value.
 
 ### 6. Establish the codomain scope
 

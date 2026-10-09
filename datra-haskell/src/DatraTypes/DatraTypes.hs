@@ -155,7 +155,7 @@ module DatraTypes
   , argumentValuesComplete
   , omegaArgumentValuesComplete
   , compileParameters
-  , compileParametersWithInferred
+  , compileParametersWithGenerics
   , compileDependentParameter
   , parameterBindings
   , parameterDomain
@@ -163,8 +163,12 @@ module DatraTypes
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
+  , GenericArgumentBinder (..)
   , overloadArgumentSchemaComplete
-  , overloadArgumentSchemaCompleteWithInferred
+  , overloadArgumentSchemaCompleteWithGenerics
+  , argumentSchemaHasInferredGenerics
+  , argumentSchemaInferredGenericNames
+  , argumentSchemaValidationArgument
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -246,7 +250,7 @@ import Evaluation.Boolean
 import Evaluation.Either (makeEitherValue)
 import Evaluation.FunctionArguments
   ( compileParameters
-  , compileParametersWithInferred
+  , compileParametersWithGenerics
   , compileDependentParameter
   , matchArguments
   , parameterBindings
@@ -289,6 +293,7 @@ import Evaluation.Map
   )
 import Evaluation.Overload
   ( ArgumentSchema
+  , GenericArgumentBinder (..)
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaBodyDomain
@@ -304,7 +309,10 @@ import Evaluation.Overload
   , projectedArgumentSchema
   , orderedArgumentSchema
   , overloadArgumentSchemaComplete
-  , overloadArgumentSchemaCompleteWithInferred
+  , overloadArgumentSchemaCompleteWithGenerics
+  , argumentSchemaHasInferredGenerics
+  , argumentSchemaInferredGenericNames
+  , argumentSchemaValidationArgument
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete

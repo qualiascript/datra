@@ -165,6 +165,61 @@ functionTests =
               , "yield orderedGeneric (Nat; marker := 3; value := 5)"
               ])
             "5"
+        , programCase "required public sum accepts a named witness"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> T do yield value)"
+              , "yield identity {T := Nat; marker := 3; value := 5}"
+              ])
+            "5"
+        , programFailureCase "required public sum rejects a positional witness"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> T do yield value)"
+              , "yield identity (Nat; 3; 5)"
+              ])
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programCase "optional-name public sum accepts a positional witness"
+            (unlines
+              [ "identity := ({marker? : ^T?; value? : T} -> T do yield value)"
+              , "yield identity (Nat; 3; 5)"
+              ])
+            "5"
+        , programCase "optional-name public sum accepts a named witness"
+            (unlines
+              [ "identity := ({marker? : ^T?; value? : T} -> T do yield value)"
+              , "yield identity {T := Nat; marker := 3; value := 5}"
+              ])
+            "5"
+        , programCase "private sum is inferred from consistent arguments"
+            (unlines
+              [ "genericPrivate := ({marker? : ^_T; value? : _T} -> _T do yield value)"
+              , "yield genericPrivate {marker := 3; value := 5}"
+              ])
+            "5"
+        , programCase "private sum is inserted into the body prefix"
+            (unlines
+              [ "genericPrefix := ({marker? : ^_T; value? : _T} -> Any do yield it[0])"
+              , "yield genericPrefix {marker := 3; value := 5}"
+              ])
+            "_T : 3 | 5"
+        , programCase "private sum remains positional in an ordered map"
+            (unlines
+              [ "orderedGeneric := ((marker : ^_T; value : _T) -> _T do yield value)"
+              , "yield orderedGeneric (Nat; marker := 3; value := 5)"
+              ])
+            "5"
+        , programCase "mixed generic prefixes respect telescope order"
+            (unlines
+              [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> U do yield value)"
+              , "yield mixed (Nat; Nat; Nat; a := 1; b := 3; c := 5; value := 5)"
+              ])
+            "5"
+        , programCase "variadic Args contributes private generic evidence"
+            (unlines
+              [ "genericArgs := ({Args (&_T :: Nat),} -> Any do yield it[0])"
+              , "yield genericArgs (3, 5)"
+              ])
+            "_T : 3 | 5"
         , programCase "optional name accepts an unnamed value"
             "f := ({x?:Int} -> Int do yield x)\nyield f 2"
             "2"
