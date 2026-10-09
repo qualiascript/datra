@@ -20,7 +20,7 @@ The two polarities differ in how their values may be observed:
 - `&` introduces a product value. A product that does not depend on a sum is
   ordinary and may participate in the codomain.
 - `^` introduces a sum value whose concrete representation is available only
-  while the label of its introducing scope remains on the active scope stack.
+  while its introducing scope activation remains in the active scope chain.
 - An `&` value that transitively depends on a `^` value has the same protected
   observation behavior as that `^` value.
 
@@ -249,31 +249,32 @@ products and excludes domain-protected products.
 
 ## Function-type evaluation scopes
 
-Function-type evaluation uses ordinary scope protection rather than a second
-codomain-specific dependency mechanism.
+Function-type evaluation uses the interpreter's ordinary scope abstraction.
+A scope introduces both bindings and one fresh activation label when it is
+entered; there is no separate protection-scope stack alongside lexical scope.
 
 1. Evaluate and match the prepared domain in a fresh domain scope. This scope
    does not synthesize `it` or `this` bindings.
 2. Introduce every `^` witness as protected to the domain scope. An `&` witness
    becomes protected automatically if evaluating it touches a domain-protected
    value and no qualifying operation eliminates that dependency.
-3. While the domain scope is active, allocate the future function-body label
-   and prepare body copies of domain-protected values. Each copy is a newly
-   introduced protected value carrying only that body label.
+3. Prepare the function-body scope activation and install the domain scope's
+   handoff stage. While the domain is still active, that stage asks the carried
+   policies whether each protected binding may transfer to the body scope.
 4. Leave the domain scope and evaluate the codomain in its own fresh scope.
    Bind into that scope every
    `&` identifier whose value is not protected to the domain scope. Do not
    copy domain-protected values into the codomain scope.
-5. After the type boundary has been prepared, enter the preallocated
-   function-body scope. Bind all ordinary arguments and all generic
-   identifiers there, using the body-labeled protected copies prepared during
-   the authorized domain handoff.
+5. Enter the prepared function-body scope. Bind all ordinary arguments and all
+   generic identifiers there, using the body-labeled protected copies produced
+   by the authorized domain handoff.
 
 The handoff replaces a domain-labeled wrapper with a newly introduced
-body-labeled wrapper; it does not append another passcode. The domain and
-codomain labels are absent from the active stack before body evaluation begins,
-so neither can accidentally authorize observation or appear in the receiving
-outer stack at `yield`.
+body-labeled wrapper; it does not append another passcode. Preparing a target
+scope may reserve its fresh label for a handoff, but that label becomes active
+only when evaluation enters the target scope. The domain and codomain scopes
+are not ancestors of the body scope, so their labels cannot authorize body
+evaluation or appear in the receiving scope chain when the body exits.
 
 The domain and codomain scopes are implementation scopes for the function
 type, not user-facing maps. The codomain receives no contextual bindings. Its
@@ -347,7 +348,7 @@ subsequent existential elimination.
 ## Sum semantics
 
 A `^` binder introduces concrete evidence that may be observed only while its
-introducing label occurs in the active scope stack.
+introducing scope occurs in the active scope ancestry.
 
 ```datra
 {
@@ -361,14 +362,14 @@ The function body may use `T`, `x`, and `render` together. Their concrete
 relationship is valid inside that activation. Values whose preparation
 depends on `T`, including `x` and `render`, begin protected as well.
 
-The codomain cannot refer to `T`, because the domain label is absent from the
-codomain's stack and no binding for `T` is installed there. A result derived
+The codomain cannot refer to `T`, because the domain scope is not an ancestor
+of the codomain and no binding for `T` is installed there. A result derived
 from `T` normally remains protected, but a suitable typed operator or function
 may eliminate the existential and return an ordinary value. For example,
 `render x` may return an ordinary `Str` because the checked `Str` result cannot
 retain `T`. A protected result which has not been eliminated is still checked
-by `yield` against the receiving outer stack and becomes `Never` when its label
-is absent.
+by the function-body handoff against the caller ancestry and becomes `Never`
+when its introducing scope is absent.
 
 Public/private/optional-name behavior is inherited from the same identifier
 expression rules used by products. The polarity changes scope protection, not
@@ -379,9 +380,10 @@ identifier parsing.
 Dynamic scope protection is a reusable runtime facility, not the definition
 of existential generics. Keep these two layers explicit:
 
-1. The **scope-protection substrate** owns dynamic labels, the active-label
-   stack, authorization, actual-value unwrapping, and `Never` as the universal
-   result of unauthorized observation.
+1. The **scope-protection substrate** reads activation labels from the
+   interpreter's active scope chain and owns authorization, actual-value
+   unwrapping, generic handoff mechanics, and `Never` as the universal result
+   of unauthorized observation. It does not maintain a second scope stack.
 2. A **protection policy** decides which values enter that substrate, how
    protection propagates through authorized operations, which checked
    operations may return an ordinary result, and whether or how a value may be
@@ -440,17 +442,32 @@ ordinary operation runs. Thus comparing two inaccessible protected values
 does not reveal that their fallbacks are the same; the comparison result is
 itself `Never`.
 
-## Dynamic scope labels
+## Unified scope activations and handoff
 
-Every dynamic scope introduction receives a fresh internal natural-number
-label. The counter starts at zero for an evaluation and increases
-monotonically. The interpreter maintains all currently active labels as an
-ordered stack: entering a scope pushes its label and leaving the scope pops it.
-A scope whose label must be attached during an authorized handoff may reserve
-that fresh label immediately before it is entered. Function calls are one
-source of scopes, but they are not privileged: blocks, type-domain evaluation,
-type-codomain evaluation, closure activations, and every other runtime scope
-use the same allocator.
+`Scope` is the interpreter's single runtime scope abstraction. Each activation
+contains:
+
+```text
+bindings introduced by this scope
+one fresh activation label
+its active parent scope, if any
+an optional handoff stage
+presentation and source metadata
+```
+
+Entering a lexical scope creates one activation and allocates its fresh
+internal natural-number label. Leaving that scope removes the same activation,
+so lexical visibility and protection authority cannot diverge. Authorization
+derives the ordered label chain by walking active scope parents; the evaluator
+must not carry a separate active-label stack or create protection-only scopes.
+
+The label counter starts at zero for an evaluation and increases monotonically.
+A target scope whose label is needed by an authorized handoff may reserve its
+activation before its body begins evaluation, but the reserved label is not
+part of the active chain until that target is entered. Function calls are one
+source of activations, but they are not privileged: blocks, type-domain
+evaluation, type-codomain evaluation, closure calls, modules, and every other
+runtime scope use the same constructor.
 
 These labels:
 
@@ -460,8 +477,36 @@ These labels:
 - cannot be forged or compared by user code.
 
 Re-entering the same function or closure creates a new label. Retaining a
-closure cannot reactivate an expired activation merely because it originated
-from the same lexical body.
+closure retains its lexical bindings but not the active status of the scopes
+in which it was created. Calling it creates a new activation beneath the
+caller's current scope; it cannot reactivate an expired activation merely
+because it originated from the same lexical body.
+
+Every scope may install a handoff stage for values or bindings which leave it.
+A handoff names a receiving scope activation and gives each carried protection
+policy the opportunity to choose one of three dispositions:
+
+- preserve the existing wrapper and introducing label;
+- transfer the wrapper to the receiving scope's label; or
+- reject the crossing, producing `Never`.
+
+The source scope remains active while the policies decide, so its protected
+payloads can be authorized without being exposed. All policies on a value must
+agree on a compatible disposition. Preservation succeeds only when the old
+introducing scope remains in the receiver's active ancestry. Transfer creates
+one wrapper carrying only the receiving label; it never adds a second label.
+An unprotected value passes through unchanged.
+
+Without an installed stage, scope exit is conservative: unprotected values
+pass, and a protected wrapper can only be preserved unchanged when its
+introducing scope is already present in the receiving ancestry. No label
+transfer or boundary-specific validation is implied.
+
+Handoff is a generic scope-exit facility, not syntax attached specifically to
+`yield`. Ordinary nested scopes, the type-domain-to-body transition, function
+return, and future resource scopes all use the same mechanism while installing
+different policy decisions and optional validation stages. A scope with no
+handoff stage does not implicitly grant transfer authority.
 
 ## Scope-protection substrate
 
@@ -496,39 +541,39 @@ small opaque policy-specific metadata if its semantics requires it, but
 authorization still uses the one introducing label.
 
 `ScopeProtected` does not store an authorization set or a custom fallback.
-The fallback is always `Never`. Keeping the complete active-label stack in the
-interpreter makes a per-value set redundant.
+The fallback is always `Never`. The active scope ancestry already determines
+the complete authorization label chain, so a per-value set is redundant.
 
 A protected value is accessible exactly when its one introducing label occurs
-anywhere in the current active-label stack. Descendant scopes therefore retain
+anywhere in the current active scope chain. Descendant scopes therefore retain
 access automatically while their introducing ancestor remains active; no
 child-label delegation or passcode copying is necessary. Once that scope is
-popped, the value may still physically exist, but observing it produces
+exited, the value may still physically exist, but observing it produces
 `Never`.
 
 Conceptually, substrate-level observation is only:
 
 ```text
-observe(activeStack, ScopeProtected(actual, passcode, policies)) =
-  if passcode is in activeStack then actual else Never
+observe(activeScope, ScopeProtected(actual, passcode, policies)) =
+  if passcode is in labels(activeScope) then actual else Never
 ```
 
-`yield` uses the receiving stack computed for the boundary in place of the
-current stack, but otherwise performs the same membership test. The substrate
-does not decide that an authorized value should become permanently ordinary,
-move to another label, or remain protected; it asks every policy carried by
-the value.
+A handoff checks the receiving scope's ancestry rather than the source scope's
+ancestry after the policies have selected preservation, transfer, or rejection.
+The substrate does not decide that an authorized value should become
+permanently ordinary, move to another label, or remain protected; it asks every
+policy carried by the value.
 
 The substrate exposes a small internal interface:
 
-- authorize and unwrap operands against an active stack;
+- authorize and unwrap operands against an active scope chain;
 - return `Never` without evaluating the underlying operation when
   authorization fails;
 - combine the policies of authorized operands for a derived result;
 - ask those policies whether a checked result may become ordinary;
 - rewrap a non-eliminated result with the current scope label; and
-- ask every carried policy whether an authorized handoff may replace the label
-  before a boundary is crossed.
+- run a scope's optional handoff stage and ask every carried policy whether the
+  wrapper is preserved, transferred to the receiving scope, or rejected.
 
 If several policies occur in one operation, every policy must authorize the
 operation and agree to any declassification or transfer. Until explicit
@@ -551,8 +596,12 @@ products, sums, and ordinary domain members. This propagation comes from the
 shared authorized-operation cycle; it is not a special syntactic dependency
 walk over product binders.
 
-The explicit domain-to-body handoff is a policy-authorized transfer which
-creates protected body copies carrying only the preallocated body label.
+The generic existential policy authorizes transfer for the domain-to-body
+handoff, creating protected body copies carrying only the prepared body label.
+It also authorizes transfer from an ordinary nested continuation scope back to
+an enclosing scope which remains inside the same existential lifetime. It does
+not authorize a function-body result to transfer into the caller merely because
+that result is being yielded.
 
 ## Shared operation cycle and policy-specific results
 
@@ -560,7 +609,7 @@ Every evaluator operation uses one shared evaluation cycle:
 
 1. Record every protection policy carried by the operands.
 2. For every protected operand, look up its introducing label in the complete
-   active-label stack.
+   label chain derived from the current scope activation.
 3. If any lookup fails, do not run the ordinary operation; return `Never`.
 4. Unwrap every authorized operand and run the ordinary operation using the
    actual values.
@@ -584,11 +633,11 @@ values, inspect scope labels, remove protection, select a policy, or choose
 fallbacks.
 
 Multiple protected operands require no label intersection. Every operand label
-must occur in the one active stack before the operation runs. A lifted result
-needs only the current scope's label, which is the unique passcode for that
-result's own lifetime. A policy may permit an ordinary or transferred result
-only after every protected operand has passed the same authorization check and
-every participating policy approves that disposition.
+must occur in the ancestry of the current scope before the operation runs. A
+lifted result needs only the current scope's label, which is the unique passcode
+for that result's own lifetime. A policy may permit an ordinary or transferred
+result only after every protected operand has passed the same authorization
+check and every participating policy approves that disposition.
 
 For `GenericExistentialProtection`, the default result decision is universal
 lifting and the exception is existential elimination. Other policies are not
@@ -667,10 +716,10 @@ Control flow follows the same rule:
 actual := if T of Nat then "Nat" else "NotNat"
 ```
 
-While `T`'s label is present in the stack, the actual `T` selects the branch
-and `actual` becomes a protected string carrying the current scope's label.
-After the input label has left the stack, attempting the operation produces
-`Never`. There is no need to calculate
+While `T`'s introducing scope is present in the current ancestry, the actual
+`T` selects the branch and `actual` becomes a protected string carrying the
+current scope's label. After that introducing scope has exited, attempting the
+operation produces `Never`. There is no need to calculate
 `"Nat" | "NotNat"` as a fallback.
 
 Function application uses the same evaluation cycle. Given protected values:
@@ -680,11 +729,11 @@ x : T
 render : T -> Str
 ```
 
-`render x` is valid while both operand labels occur in the stack. Application
-uses the evaluated codomain `Str` as its result contract. Because that contract
-is ordinary, binder-independent, concrete, and unable to retain the protected
-payload, successful result validation eliminates the existential and produces
-an ordinary `Str`.
+`render x` is valid while both operand labels occur in the current scope
+ancestry. Application uses the evaluated codomain `Str` as its result contract.
+Because that contract is ordinary, binder-independent, concrete, and unable to
+retain the protected payload, successful result validation eliminates the
+existential and produces an ordinary `Str`.
 
 By contrast, an identity function with codomain `T`, or a function with
 codomain `Any`, does not have a protection-erasing contract. Its application
@@ -692,33 +741,38 @@ therefore produces a protected result carrying the current scope label. The
 same is true for a function or lazy result which could retain an authorized
 operand for later observation.
 
-## `yield` boundary
+## Function-body handoff and `yield`
 
-`yield` is a boundary observed by the enclosing block, not by the block that
-is yielding. Its substrate-level algorithm is:
+`yield` does not implement a separate protection boundary. It evaluates the
+result expression normally and completes the current function-body scope. That
+scope's handoff stage targets the caller scope and composes protection-policy
+decisions with ordinary codomain validation.
 
-1. evaluate the result expression normally in the current scope;
-2. form the receiving stack by removing the scopes that end at this boundary;
-3. while the introducing label is still authorized, ask every carried policy
-   whether this boundary permits the wrapper to cross unchanged or authorizes
-   an explicit transfer to a receiving label;
-4. test the resulting wrapper's introducing label against the receiving stack;
-5. use `Never` when membership fails or a policy rejects the crossing;
-6. otherwise observe the actual value temporarily for codomain validation,
-   while preserving the wrapper in the returned value; and
-7. validate the observed candidate against the function codomain.
+The generic scope-handoff algorithm is:
 
-The substrate therefore supplies authorization, transfer plumbing, and the
-`Never` fallback, but it does not define one universal escape rule. A policy
-may allow an unchanged still-authorized wrapper, define a particular transfer,
-or reject the boundary. No policy may expose the actual payload merely because
-its source label is absent from the receiving stack.
+1. evaluate the result expression in the source scope;
+2. while the source scope remains active, authorize every protection wrapper
+   and ask every carried policy for preserve, transfer, or reject;
+3. combine those decisions conservatively, producing `Never` on rejection or
+   disagreement;
+4. for preservation, retain the original wrapper only if its introducing
+   scope occurs in the receiving scope's ancestry;
+5. for transfer, replace the source label with the receiving scope's label;
+6. leave the source scope; and
+7. run any validation stage installed on the handoff, such as function
+   codomain validation.
 
-For `GenericExistentialProtection`, a value protected only to the current
-function-body scope has no `yield` transfer and therefore cannot be returned as
-its actual value. It normally produces a codomain error after becoming
-`Never`. If the declared codomain accepts `Never`, the yield succeeds with
-`Never`; the protected payload still does not cross the boundary.
+The substrate supplies authorization, transfer plumbing, and the `Never`
+fallback, but it does not define one universal escape rule. A policy may allow
+an unchanged still-authorized wrapper, define a particular transfer, or reject
+the boundary. No policy may expose the actual payload merely because its source
+scope is absent from the receiving ancestry.
+
+For `GenericExistentialProtection`, the function-body handoff does not offer a
+transfer into the caller. A value protected only to the current body scope
+therefore becomes `Never`. It normally produces a codomain error; if the
+declared codomain accepts `Never`, the handoff succeeds with `Never`. The
+protected payload still does not cross the boundary.
 
 An ordinary value produced earlier by existential elimination needs no special
 `yield` behavior and crosses this boundary normally. `yield` itself never
@@ -726,11 +780,11 @@ removes a protection wrapper: eligibility is decided at the typed operation
 boundary, while the result contract and authorized operands are still known.
 
 Under the generic existential policy, a protected value can cross unchanged
-when its introducing label is still present in the receiving stack—for
+when its introducing scope remains an ancestor of the receiving scope—for
 example, a value introduced by an outer scope and passed through without
 deriving a new protected result. It remains wrapped, so later observation is
 still checked. A value introduced in the function body carries the body label,
-which disappears from the receiving stack and therefore becomes `Never`.
+which is absent from the caller ancestry and therefore becomes `Never`.
 
 ## Required AST representation
 
@@ -880,12 +934,19 @@ therefore contributes only that slot's value.
 
 ### 6. Add the scope-protection substrate
 
-Thread a fresh-scope counter and active-label stack through evaluation. Add
-the policy-neutral `ScopeProtected` runtime form containing an actual
+Make the interpreter's lexical `Scope` the only runtime scope abstraction.
+Every entered scope owns its bindings, fresh activation label, active parent,
+and optional handoff stage. Derive authorization labels from that parent chain;
+do not thread a parallel protection context or label stack through evaluation.
+
+Add the policy-neutral `ScopeProtected` runtime form containing an actual
 `InterpretedValue`, one introducing label, and a normalized nonempty policy
 set. Implement authorization, temporary unwrapping, conservative policy-set
-combination, explicit label-transfer plumbing, and `Never` fallback without
-embedding any generic-sum elimination or escape rule in this layer.
+combination, generic handoff plumbing, and `Never` fallback without embedding
+any generic-sum elimination or escape rule in this layer. Function invocation
+must activate its body beneath the caller's current scope rather than retaining
+the active authority of the function's defining scope. Closures retain lexical
+bindings, not expired activations.
 
 ### 7. Install the generic-sum existential policy
 
@@ -896,15 +957,17 @@ a protected sum—and ordinary values derived from protected evidence. Evaluate
 the codomain in a separate scope containing direct bindings for only the
 unprotected products. Do not synthesize contextual bindings in that scope.
 
-During the policy-authorized domain-to-body handoff, replace each protected
-domain wrapper with a body wrapper carrying only the preallocated body label.
-This handoff is a rule of the generic existential policy rather than a general
-capability of every `ScopeProtected` value.
+Install a domain-scope handoff targeting the prepared body scope. During that
+policy-authorized handoff, replace each protected domain wrapper with a body
+wrapper carrying only the body label. This transfer is a rule of the generic
+existential policy rather than a general capability of every `ScopeProtected`
+value. Ordinary nested continuation scopes may install an analogous transfer
+back into an enclosing scope that remains within the same existential lifetime.
 
 ### 8. Route evaluator operations through protection policies
 
-Put active-stack membership checking, operand unwrapping, result-contract
-inspection, and the result-protection decision at the common evaluator-
+Put active-scope-ancestry checking, operand unwrapping, result-contract
+inspection, and the result-protection decision at the common evaluator
 operation boundary. Function application contributes its evaluated codomain;
 typed primitive operators contribute their semantic result type; operations
 without a checked result contract contribute no elimination evidence.
@@ -927,14 +990,14 @@ function body. Construct body `it` from the complete prepared domain map.
 Preserve unprotected members and use the body-labeled wrappers produced by the
 authorized domain handoff rather than deleting or widening protected members.
 
-At `yield`, derive the receiving outer stack by removing the scopes which end
-at that boundary, consult every carried policy's boundary rule, then test the
-result's introducing label for membership before codomain validation. Preserve
-an accepted wrapper, apply an explicitly authorized transfer, or replace an
-inaccessible/rejected candidate with `Never`. Report the ordinary codomain
-mismatch unless the codomain accepts that value. An already ordinary result
-produced by existential elimination crosses without special treatment;
-`yield` never performs elimination itself.
+Install the function return behavior as the body scope's generic handoff stage
+targeting the caller scope. The stage consults every carried policy, preserves
+only wrappers whose introducing scope remains in the caller ancestry, applies
+only explicitly authorized transfers, and otherwise produces `Never`. Compose
+ordinary codomain validation after that protection handoff. `yield` only
+supplies the body's result expression; it does not contain its own label-stack
+or existential-elimination algorithm. An already ordinary result produced by
+existential elimination crosses without special treatment.
 
 ### 10. Remove bootstrap duplication
 
@@ -1025,22 +1088,30 @@ protection could be removed.
 
 - Allocate distinct labels for repeated activations of the same lexical
   scope.
-- Push and pop those labels on an interpreter scope stack.
+- Give every entered lexical scope exactly one activation label and derive the
+  active label chain from scope ancestry, with no separate protection stack.
+- Confirm that blocks, function bodies, domain and codomain evaluation,
+  modules, and closure calls all use the same scope activation constructor.
+- Confirm that function calls activate beneath the caller scope and that a
+  captured lexical environment cannot reactivate an expired defining scope.
 - Store the actual value, one introducing scope label, and a normalized
   nonempty policy set in each `ScopeProtected` value.
 - Let descendants access a protected value by finding that label anywhere in
-  the active stack, without adding child labels to the value.
-- Refuse observation after the introducing label has been popped.
+  their active scope ancestry, without adding child labels to the value.
+- Refuse observation after the introducing scope has exited.
 - Return `Never` without running the underlying operation when any protected
-  operand's label is absent from the active stack.
+  operand's label is absent from the current scope ancestry.
 - Combine different policy sets conservatively and require every participating
   policy to approve declassification or label transfer.
 - Preserve an accepted wrapper across a boundary instead of permanently
   unwrapping it merely because its label remains active.
+- Exercise the generic handoff stage with preservation, transfer, rejection,
+  policy disagreement, an unprotected value, and an inaccessible source value.
+- Confirm that a scope with no handoff stage grants no implicit transfer.
 - Exercise a dummy non-existential policy to prove that the substrate does not
   grant generic-sum elimination or handoff behavior automatically.
 - Keep lazy and captured computations from observing payloads after their
-  introducing labels have been popped.
+  introducing scopes have exited.
 
 ### Generic-sum existential protection
 
@@ -1054,17 +1125,19 @@ protection could be removed.
   it consumes a protected `^T`; propagate that policy transitively through
   later telescope members.
 - Confirm that product polarity alone does not protect an independent product.
-- Require every protected operand's label to occur in the active stack, then
-  either eliminate through a qualifying result contract or label the derived
-  result only with the current scope label.
-- At `yield`, remove the ending scopes and check the result label against the
-  complete receiving outer stack rather than the current stack.
+- Require every protected operand's label to occur in the current scope
+  ancestry, then either eliminate through a qualifying result contract or
+  label the derived result only with the current scope label.
+- Implement function return through the body scope's ordinary handoff stage
+  and check preserved labels against the caller scope ancestry.
+- Transfer protected results from ordinary nested continuation scopes back to
+  an enclosing scope within the same existential lifetime.
 - Reject a body-only protected result when the codomain does not accept
   `Never`.
 - Permit that yield only when the codomain accepts `Never`, without exposing
   the actual protected payload.
-- Permit a protected result whose introducing label remains in the receiving
-  outer stack.
+- Permit a protected result whose introducing scope remains in the caller
+  ancestry.
 
 ### Generic existential elimination
 
@@ -1090,7 +1163,7 @@ protection could be removed.
 - Validate and normalize the produced value against the eligible contract
   before returning it as ordinary.
 - Keep an ineligible result protected so that it still becomes `Never` at an
-  unauthorized `yield` boundary.
+  unauthorized function-body handoff.
 
 ### `Never` laws
 
@@ -1133,9 +1206,11 @@ The bootstrap is complete when:
    as direct identifier bindings;
 7. the body receives all prefix and ordinary members through names and full
    `it`;
-8. the policy-neutral `ScopeProtected` substrate stores an actual value, one
-   introducing label, and a normalized nonempty policy set, while the active
-   label stack alone controls authorization and `Never` is the common fallback;
+8. lexical scope activation is the interpreter's only runtime scope mechanism:
+   every active scope owns its bindings, label, parent, and optional handoff,
+   and authorization derives from that scope ancestry rather than a parallel
+   protection stack; each `ScopeProtected` value stores one actual value, one
+   introducing label, and one normalized nonempty policy set;
 9. every evaluator operation authorizes and unwraps protected operands through
    the common operation cycle, combines their policies conservatively, and
    asks every policy to approve declassification or transfer;
@@ -1146,10 +1221,10 @@ The bootstrap is complete when:
 11. `Any`, dependent or open containers, closures, lazy results, annotations,
     and untyped operations cannot become generic-existential escape paths, and
     no generic-existential rule is implicitly granted to another policy;
-12. inaccessible observation produces the canonical `Never` value, and
-    `yield` consults every carried policy using the receiving outer stack
-    before codomain checking, preserving or transferring wrappers only when
-    those policies permit it;
+12. inaccessible observation produces the canonical `Never` value, and the
+    function-body scope's generic handoff stage consults every carried policy
+    against the caller ancestry before codomain checking, preserving or
+    transferring wrappers only when those policies permit it;
 13. `Never` is available as `datra.never` and from `std.datra` and obeys the
     empty-federation laws;
 14. `~>`, `<~`, `of`, optional names, nested scopes, closures, recursion, lazy
