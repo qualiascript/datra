@@ -3,6 +3,8 @@
 
 module Parsing
   ( ResourceEnvelope (..)
+  , FunctionTypeIdentifier (..)
+  , functionTypeIdentifiers
   , parseDatra
   , sourceImports
   , sourceImportInvocations
@@ -185,6 +187,14 @@ data ResourceEnvelope
   | ImplicitBlockEnvelope
   deriving (Eq, Show)
 
+-- | One identifier introduced into a completed function-type domain or
+-- codomain scope. Simple identifiers can be compared lexically; dependent
+-- identifiers retain their expression for the semantic all-fibre proof.
+data FunctionTypeIdentifier
+  = SimpleFunctionTypeIdentifier IdentifierString
+  | DependentFunctionTypeIdentifier Expression
+  deriving (Eq, Show)
+
 -- | Parse an in-memory Datra resource without associating it with a real
 -- filesystem path. This is the entry point used by tests and other callers
 -- that already have the source contents.
@@ -359,6 +369,39 @@ genericIdentifierText :: GenericIdentifier -> String
 genericIdentifierText
     (GenericIdentifier (IdentifierString name) _) = name
 
+-- Identifier declarations buried in a domain combinator still contribute to
+-- that function type's completed scope. An identifier declaration owns its
+-- annotation, so names nested inside that annotation are not members of the
+-- surrounding scope. Nested function types likewise establish a fresh
+-- ownership boundary.
+functionTypeIdentifiers :: Expression -> [FunctionTypeIdentifier]
+functionTypeIdentifiers expressionValue =
+  case expressionValue of
+    FunctionTypeExpression {} -> []
+    IdentifierOperation name _ _ ->
+      [SimpleFunctionTypeIdentifier name]
+    dependent@IdentifierTemplateOperation {} ->
+      [DependentFunctionTypeIdentifier dependent]
+    ForBinding name _ _ -> [SimpleFunctionTypeIdentifier name]
+    WithBinding name _ _ -> [SimpleFunctionTypeIdentifier name]
+    SyntaxBoundary value -> functionTypeIdentifiers value
+    OptionalType value -> functionTypeIdentifiers value
+    EitherType left right -> both left right
+    AtlasMap entries -> entriesOf entries
+    ArgumentMap entries -> entriesOf entries
+    MapSequence entries -> entriesOf entries
+    MapConcatenation left right -> both left right
+    MapSpecification _ target -> functionTypeIdentifiers target
+    ReverseMapSpecification target _ -> functionTypeIdentifiers target
+    Overload defaults supplied -> both defaults supplied
+    ReverseOverload supplied defaults -> both defaults supplied
+    SafeOverload defaults supplied -> both defaults supplied
+    ReverseSafeOverload supplied defaults -> both defaults supplied
+    _ -> []
+  where
+    entriesOf = concatMap functionTypeIdentifiers
+    both left right =
+      functionTypeIdentifiers left <> functionTypeIdentifiers right
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either ParseFailure Expression

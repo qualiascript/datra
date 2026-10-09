@@ -181,6 +181,14 @@ localizeInterpretingError reason =
       LocalizedMessage
         "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
         ["identificator: " <> name]
+    GenericIdentifierOverlap name ->
+      LocalizedMessage
+        "identificatorul generic se suprapune cu alt identificator din tipul funcției sale"
+        ["identificator: " <> name]
+    GenericIdentifierDisjointnessUndecidable name ->
+      LocalizedMessage
+        "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
+        ["identificator: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         ("operandul " <> operandSide side <> " trebuie să fie numeric")

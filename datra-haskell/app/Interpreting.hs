@@ -91,7 +91,9 @@ import DatraLanguage.SyntaxTemplate
   )
 import DatraTypes
 import Parsing
-  ( parseDatra
+  ( FunctionTypeIdentifier (..)
+  , functionTypeIdentifiers
+  , parseDatra
   , parseDatraRawLocatedWithSourceName
   , sourceImportInvocations
   , ResourceEnvelope (..)
@@ -1072,10 +1074,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       pure (makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing Nothing
           signatureText Nothing Nothing True))
-    FunctionTypeExpression generics _ _
-      | Just name <- duplicateGenericIdentifier generics ->
-          Left (DuplicateGenericIdentifier name)
-    FunctionTypeExpression _ _ _ ->
+    FunctionTypeExpression generics domain codomain -> do
+      validateGenericFunctionType interpret generics domain codomain
       Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication function argument -> do
@@ -1201,10 +1201,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (FunctionTypeExpression [] domain codomain) ->
       createFunction reduction scope resolving domain codomain bindings result
     MapSpecification (FunctionBody {})
-        (FunctionTypeExpression generics _ _)
-      | Just name <- duplicateGenericIdentifier generics ->
-          Left (DuplicateGenericIdentifier name)
-    MapSpecification (FunctionBody {}) FunctionTypeExpression {} ->
+        (FunctionTypeExpression generics domain codomain) -> do
+      validateGenericFunctionType interpret generics domain codomain
       Left (FunctionEvaluationFailed ExpectedFunctionType)
     MapSpecification sourceOperand targetOperand ->
       interpretSpecificationWith interpret sourceOperand targetOperand
@@ -1387,6 +1385,39 @@ duplicateGenericIdentifier = go []
       where
         GenericIdentifier (IdentifierString name) _ =
           genericBinderIdentifier binder
+
+validateGenericFunctionType
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> [GenericBinder Expression]
+  -> Expression
+  -> Expression
+  -> Either InterpretingError ()
+validateGenericFunctionType evaluate generics domain codomain = do
+  case duplicateGenericIdentifier generics of
+    Just name -> Left (DuplicateGenericIdentifier name)
+    Nothing -> pure ()
+  let introduced =
+        functionTypeIdentifiers domain <> functionTypeIdentifiers codomain
+  mapM_ (validateBinder introduced) generics
+  where
+    validateBinder introduced binder =
+      mapM_ (validateIdentifier name) introduced
+      where
+        GenericIdentifier (IdentifierString name) _ =
+          genericBinderIdentifier binder
+    validateIdentifier genericName introduced =
+      case introduced of
+        SimpleFunctionTypeIdentifier (IdentifierString name)
+          | name == genericName -> Left (GenericIdentifierOverlap genericName)
+          | otherwise -> pure ()
+        DependentFunctionTypeIdentifier expressionValue -> do
+          identifier <- evaluate expressionValue
+          case identifierNameDisjointness genericName identifier of
+            IdentifierNameDisjoint -> pure ()
+            IdentifierNameOverlap ->
+              Left (GenericIdentifierOverlap genericName)
+            IdentifierNameDisjointnessUndecidable ->
+              Left (GenericIdentifierDisjointnessUndecidable genericName)
 
 dependentBindingsKind :: [Expression] -> DependentBindingsKind
 dependentBindingsKind expressions =

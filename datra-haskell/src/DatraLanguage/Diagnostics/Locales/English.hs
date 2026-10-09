@@ -183,6 +183,14 @@ localizeInterpretingError reason =
       LocalizedMessage
         "generic identifier is introduced more than once in one function domain"
         ["identifier: " <> name]
+    GenericIdentifierOverlap name ->
+      LocalizedMessage
+        "generic identifier overlaps another identifier in its function type"
+        ["identifier: " <> name]
+    GenericIdentifierDisjointnessUndecidable name ->
+      LocalizedMessage
+        "generic identifier cannot be proven disjoint from a dependent identifier"
+        ["identifier: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage
         (operandSide side <> " operand must be numerical")

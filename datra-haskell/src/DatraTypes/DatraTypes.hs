@@ -171,6 +171,8 @@ module DatraTypes
   , validateFunctionInput
   , specifyValues
   , contextuallySpecifyValues
+  , IdentifierNameDisjointness (..)
+  , identifierNameDisjointness
   , interpretedValueKind
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -365,6 +367,10 @@ import Evaluation.Specification
   , contextuallySpecifyValues
   , validateFunctionInput
   , specifyValues
+  )
+import Evaluation.Specification.Subfederation
+  ( IdentifierNameDisjointness (..)
+  , identifierNameDisjointness
   )
 import Evaluation.Value
   ( ASTMetaCategory (..)

@@ -153,6 +153,8 @@ data InterpretingError
   | DependentBinderOutsideContainer String
   | MixedDependentBinders
   | DuplicateGenericIdentifier String
+  | GenericIdentifierOverlap String
+  | GenericIdentifierDisjointnessUndecidable String
   | ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind

@@ -46,6 +46,53 @@ functionTests =
               , "yield f"
               ])
             (SourceEvaluationFailure (DuplicateGenericIdentifier "T"))
+        , programFailureCase "generic names cannot overlap domain names"
+            (unlines
+              [ "f := ({T? : Any; marker? : &T} -> Any do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure (GenericIdentifierOverlap "T"))
+        , programFailureCase "optional generic names overlap required codomain names"
+            (unlines
+              [ "f := ({marker? : &T?} -> (T : Any) do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure (GenericIdentifierOverlap "T"))
+        , programFailureCase "generic collisions inspect specification targets"
+            (unlines
+              [ "f := ({marker? : &T; ((value : Nat := 1) ~> (T : Nat))} -> Any do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure (GenericIdentifierOverlap "T"))
+        , programFailureCase
+            "generic collisions inspect reverse specification targets"
+            (unlines
+              [ "f := ({marker? : &T; ((T : Nat) <~ (value : Nat := 1))} -> Any do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure (GenericIdentifierOverlap "T"))
+        , programFailureCase
+            "subfederation operands do not introduce function-scope names"
+            (unlines
+              [ "f := ({marker? : &T; ((T : Nat) of (value : Nat))} -> Any do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed ExpectedFunctionType))
+        , programFailureCase "generic names test every dependent-name fibre"
+            (unlines
+              [ "f := ({marker? : &n5; \"n%(it)\"? : Nat} -> Any do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure (GenericIdentifierOverlap "n5"))
+        , programFailureCase
+            "nested function names are outside an outer generic collision scope"
+            (unlines
+              [ "f := ({marker? : &T; inner? : ({T? : Any} -> Any)} -> Any do yield marker)"
+              , "yield f"
+              ])
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed ExpectedFunctionType))
         , programCase "optional name accepts an unnamed value"
             "f := ({x?:Int} -> Int do yield x)\nyield f 2"
             "2"

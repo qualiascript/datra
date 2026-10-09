@@ -53,7 +53,9 @@ import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
 import Parsing
-  ( ResourceEnvelope (..)
+  ( FunctionTypeIdentifier (..)
+  , ResourceEnvelope (..)
+  , functionTypeIdentifiers
   , parseDatra
   , parseDatraAst
   , parseDatraRawLocatedWithSourceName
@@ -216,6 +218,29 @@ testGenericSourceParsing = do
           && genericBinderId first /= genericBinderId second
         )
     other -> fail ("duplicate generic declarations were not retained: "
+      <> show other)
+
+  collision <- parseGenericSource
+    "{T? : Any; marker? : &T} -> (T : Any)"
+  case collision of
+    FunctionTypeExpression [_]
+        domain@(ArgumentMap
+          [ OptionalType (IdentifierOperation domainName _ Nothing)
+          , OptionalType (IdentifierOperation _ _ Nothing)
+          ])
+        codomain@(SyntaxBoundary
+          (IdentifierOperation codomainName _ Nothing)) -> do
+      assert "ordinary collision candidates remain declarations for semantic validation"
+        ( domainName == IdentifierString "T"
+          && codomainName == IdentifierString "T"
+        )
+      assertEqual "parsing classifies complete function-type scope identifiers"
+        [ SimpleFunctionTypeIdentifier (IdentifierString "T")
+        , SimpleFunctionTypeIdentifier (IdentifierString "marker")
+        , SimpleFunctionTypeIdentifier (IdentifierString "T")
+        ]
+        (functionTypeIdentifiers domain <> functionTypeIdentifiers codomain)
+    other -> fail ("generic collision candidates were not retained: "
       <> show other)
 
   nested <- parseGenericSource

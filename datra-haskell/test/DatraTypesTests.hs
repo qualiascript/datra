@@ -151,6 +151,8 @@ testTree =
     [ testGroup "examples"
         [ testCase "ordinal inspection" testOrdinalInspection
         , testCase "diagnostics" testDiagnostics
+        , testCase "generic identifier disjointness"
+            testGenericIdentifierDisjointness
         , testCase "evaluation boundary" testEvaluationBoundary
         , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
@@ -453,6 +455,26 @@ testDiagnostics = do
           "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
           ["identificator: T"]
     )
+  assert "generic identifier collisions have explicit bilingual diagnostics"
+    ( localizeDiagnostic English (Types.GenericIdentifierOverlap "T")
+      == LocalizedMessage
+          "generic identifier overlaps another identifier in its function type"
+          ["identifier: T"]
+      && localizeDiagnostic Romanian (Types.GenericIdentifierOverlap "T")
+      == LocalizedMessage
+          "identificatorul generic se suprapune cu alt identificator din tipul funcției sale"
+          ["identificator: T"]
+      && localizeDiagnostic English
+          (Types.GenericIdentifierDisjointnessUndecidable "T")
+      == LocalizedMessage
+          "generic identifier cannot be proven disjoint from a dependent identifier"
+          ["identifier: T"]
+      && localizeDiagnostic Romanian
+          (Types.GenericIdentifierDisjointnessUndecidable "T")
+      == LocalizedMessage
+          "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
+          ["identificator: T"]
+    )
   assert "invalid syntax-template characters have an explicit bilingual diagnostic"
     ( localizeDiagnostic English (Types.InvalidSyntaxTemplateCharacter '(')
         == LocalizedMessage
@@ -504,6 +526,30 @@ testDiagnostics = do
           , "se așteaptă dev, development, prod sau production"
           ]
     )
+
+testGenericIdentifierDisjointness :: IO ()
+testGenericIdentifierDisjointness = do
+  first <- expectRight "construct first identifier name"
+    (Types.asciiStringValue "T")
+  second <- expectRight "construct second identifier name"
+    (Types.asciiStringValue "U")
+  names <- expectRight "construct identifier-name federation"
+    (Types.eitherValue first second)
+  naturalType <- expectRight "construct dependent identifier bound"
+    Types.naturalTypeValue
+  let family = Types.identifierTemplateTypeValue
+        "generic-disjointness-test" names naturalType
+      opaque = Types.dependentIdentifierTypeValue
+        "opaque-generic-disjointness-test" (const "T") naturalType
+  assert "a generic is rejected when any dependent-name fibre overlaps"
+    (Types.identifierNameDisjointness "T" family
+      == Types.IdentifierNameOverlap)
+  assert "a generic is accepted when the complete name federation is disjoint"
+    (Types.identifierNameDisjointness "V" family
+      == Types.IdentifierNameDisjoint)
+  assert "an open family without an all-fibre name proof stays undecidable"
+    (Types.identifierNameDisjointness "T" opaque
+      == Types.IdentifierNameDisjointnessUndecidable)
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
