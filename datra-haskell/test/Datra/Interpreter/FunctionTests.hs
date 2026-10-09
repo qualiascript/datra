@@ -167,7 +167,7 @@ functionTests =
             "5"
         , programCase "required public sum accepts a named witness"
             (unlines
-              [ "identity := ({marker? : ^T; value? : T} -> Any do yield value)"
+              [ "identity := ({marker? : ^T; value? : T} -> Any do yield 5)"
               , "yield identity {T := Nat; marker := 3; value := 5}"
               ])
             "5"
@@ -180,31 +180,31 @@ functionTests =
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional-name public sum accepts a positional witness"
             (unlines
-              [ "identity := ({marker? : ^T?; value? : T} -> Any do yield value)"
+              [ "identity := ({marker? : ^T?; value? : T} -> Any do yield 5)"
               , "yield identity (Nat; 3; 5)"
               ])
             "5"
         , programCase "optional-name public sum accepts a named witness"
             (unlines
-              [ "identity := ({marker? : ^T?; value? : T} -> Any do yield value)"
+              [ "identity := ({marker? : ^T?; value? : T} -> Any do yield 5)"
               , "yield identity {T := Nat; marker := 3; value := 5}"
               ])
             "5"
         , programCase "private sum is inferred from consistent arguments"
             (unlines
-              [ "genericPrivate := ({marker? : ^_T; value? : _T} -> Any do yield value)"
+              [ "genericPrivate := ({marker? : ^_T; value? : _T} -> Any do yield 5)"
               , "yield genericPrivate {marker := 3; value := 5}"
               ])
             "5"
-        , programCase "private sum is inserted into the body prefix"
+        , programCase "private sum is protected in the body prefix"
             (unlines
-              [ "genericPrefix := ({marker? : ^_T; value? : _T} -> Any do yield it[0])"
+              [ "genericPrefix := ({marker? : ^_T; value? : _T} -> Never do yield it[0])"
               , "yield genericPrefix {marker := 3; value := 5}"
               ])
-            "_T : 3 | 5"
+            "Never"
         , programCase "private sum matching remains positional in an ordered map"
             (unlines
-              [ "orderedGeneric := ((marker : ^_T; value : _T) -> Any do yield value)"
+              [ "orderedGeneric := ((marker : ^_T; value : _T) -> Any do yield 5)"
               , "yield orderedGeneric (Nat; marker := 3; value := 5)"
               ])
             "5"
@@ -217,10 +217,42 @@ functionTests =
             (SourceEvaluationFailure (UnknownIdentifier "_T"))
         , programCase "mixed generic matching respects telescope order"
             (unlines
-              [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> Any do yield value)"
+              [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> Any do yield 5)"
               , "yield mixed (Nat; Nat; Nat; a := 1; b := 3; c := 5; value := 5)"
               ])
             "5"
+        , programCase "body-protected generic evidence becomes Never at return"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
+              , "yield identity {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
+        , programCase "a closure cannot retain an expired generic activation"
+            (unlines
+              [ "capture := ({marker? : ^T; value? : T} -> Never do"
+              , "  yield (Any -> Any do yield value)"
+              , ")"
+              , "yield capture {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
+        , programCase "scope-protected generic composes with specification"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
+              , "yield (identity ~> ({marker? : ^T; value? : T} -> Never)) {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
+        , programCase "scope-protected generic composes with reverse specification"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
+              , "yield (({marker? : ^T; value? : T} -> Never) <~ identity) {T := Nat; marker := 3; value := 5}"
+              ])
+            "Never"
+        , programCase "scope-protected generic composes with of"
+            (unlines
+              [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
+              , "yield identity of ({marker? : ^T; value? : T} -> Never)"
+              ])
+            "true"
         , programFailureCase
             "a mixed telescope does not expose its final sum to the codomain"
             (unlines

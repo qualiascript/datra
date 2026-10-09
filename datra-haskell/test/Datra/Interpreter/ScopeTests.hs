@@ -266,15 +266,16 @@ scopeProtectionTests :: TestTree
 scopeProtectionTests =
   testGroup "scope-protection substrate"
     [ testCase "fresh nested scopes receive distinct monotonic labels" $ do
-        let root = initialProtectionContext (0 :: Int)
-            (DynamicScopeLabel first, child) =
-              enterProtectionScope (1 :: Int) root
-            (DynamicScopeLabel second, _) =
-              enterProtectionScope (2 :: Int) child
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            grandchild = enterScopeActivation (2 :: Int) child
+            DynamicScopeLabel first = currentScopeLabel child
+            DynamicScopeLabel second = currentScopeLabel grandchild
         assertBool "the second label follows the first" (second > first)
     , testCase "an active ancestor label authorizes observation" $ do
-        let root = initialProtectionContext (0 :: Int)
-            (label, child) = enterProtectionScope (1 :: Int) root
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            label = currentScopeLabel child
             protected = protectGenericExistential label (naturalValue 3)
         case authorizeProtectedValue child protected of
           Left inaccessible ->
@@ -284,8 +285,9 @@ scopeProtectionTests =
             assertEqual "authorized value did not unwrap temporarily"
               "3" (renderInterpretedValue actual)
     , testCase "an expired label produces Never without running the operation" $ do
-        let root = initialProtectionContext (0 :: Int)
-            (label, _) = enterProtectionScope (1 :: Int) root
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            label = currentScopeLabel child
             protected = protectGenericExistential label (naturalValue 3)
             result = runProtectedOperation root [protected]
               (\_ -> error "inaccessible operation was evaluated")
@@ -295,8 +297,9 @@ scopeProtectionTests =
             (renderInterpretedValue neverValue)
             (renderInterpretedValue value)
     , testCase "derived results retain normalized policy metadata" $ do
-        let root = initialProtectionContext (0 :: Int)
-            (label, child) = enterProtectionScope (1 :: Int) root
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            label = currentScopeLabel child
             protected = protectGenericExistential label (naturalValue 3)
             result = runProtectedOperation child [protected]
               (const (Right (naturalValue 4)))
@@ -312,4 +315,36 @@ scopeProtectionTests =
                   [GenericExistentialProtection]
                   (case scopeProtectionPolicies protection of
                     first :| remaining -> first : remaining)
+    , testCase "handoff preserves an ancestor-protected wrapper" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel root) (naturalValue 3)
+            handed = handoffProtectedValue child root
+              (const PreserveScopeProtection) protected
+        assertEqual "preserved protection"
+          (interpretedScopeProtection protected)
+          (interpretedScopeProtection handed)
+    , testCase "handoff transfers protection to the receiver" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            handed = handoffProtectedValue child root
+              (const TransferScopeProtection) protected
+        case interpretedScopeProtection handed of
+          Nothing -> assertBool "missing transferred protection" False
+          Just protection -> assertEqual "receiver label"
+            (currentScopeLabel root)
+            (scopeProtectionLabel protection)
+    , testCase "handoff rejection produces Never" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            handed = handoffProtectedValue child root
+              (const RejectScopeProtection) protected
+        assertEqual "rejected handoff"
+          (renderInterpretedValue neverValue)
+          (renderInterpretedValue handed)
     ]

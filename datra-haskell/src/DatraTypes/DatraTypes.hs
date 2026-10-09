@@ -39,6 +39,7 @@ module DatraTypes
   , interpretedFunction
   , InterpretedValue
   , DynamicScopeLabel (..)
+  , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
   , ScopeProtection (..)
   , neverValue
@@ -428,6 +429,7 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , DynamicScopeLabel (..)
+  , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
   , ScopeProtection (..)
   , neverValue

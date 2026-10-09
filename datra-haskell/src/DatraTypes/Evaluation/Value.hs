@@ -72,6 +72,7 @@ module Evaluation.Value
   , PresentationDependency (..)
   , ValueSemantics (..)
   , DynamicScopeLabel (..)
+  , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
   , ScopeProtection (..)
   , semanticValueSemantics
@@ -144,6 +145,7 @@ import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
+import Data.IORef (IORef)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.SyntaxTemplate
@@ -333,7 +335,8 @@ data EvaluatedFunction = EvaluatedFunction
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)
   , functionInvoke :: Maybe
-      (ReductionContext
+      (ScopeActivation
+        -> ReductionContext
         -> PreparedFunctionArgument
         -> Either InterpretingError InterpretedValue)
   , functionValidatesResult :: Bool
@@ -576,6 +579,15 @@ data InterpretedValue = InterpretedValue
 
 newtype DynamicScopeLabel = DynamicScopeLabel Natural
   deriving (Eq, Ord, Show)
+
+-- | Runtime identity for one active lexical-scope chain.  The supply belongs
+-- to the complete evaluation; the labels are obtained from the active scope
+-- ancestry rather than from a separate protection-only stack.
+data ScopeActivation = ScopeActivation
+  { scopeActivationLabelSupply :: IORef Natural
+  , scopeActivationLabel :: DynamicScopeLabel
+  , scopeActivationParent :: Maybe ScopeActivation
+  }
 
 data ScopeProtectionPolicy
   = GenericExistentialProtection

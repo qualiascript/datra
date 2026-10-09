@@ -1,67 +1,55 @@
 module ScopeProtection
-  ( EvaluationProtectionContext
-  , initialProtectionContext
-  , enterProtectionScope
-  , currentProtectionLabel
+  ( initialScopeActivation
+  , enterScopeActivation
+  , currentScopeLabel
   , authorizeProtectedValue
   , runProtectedOperation
   , protectWithPoliciesOf
   , valueIsScopeProtected
+  , ScopeHandoffDecision (..)
+  , handoffProtectedValue
   ) where
 
-import Data.IORef
+import Data.IORef (atomicModifyIORef', newIORef)
 import Data.List (nub, sort)
 import Data.List.NonEmpty (NonEmpty (..))
-import Numeric.Natural (Natural)
 import System.IO.Unsafe (unsafePerformIO)
 
 import DatraTypes
 
-data EvaluationProtectionContext = EvaluationProtectionContext
-  { protectionLabelSupply :: IORef Natural
-  , activeProtectionLabels :: NonEmpty DynamicScopeLabel
-  }
-
 -- Labels are evaluator-internal and never affect canonical identity.  Each
--- top-level pure evaluation owns one private monotonic supply; the small local
--- reference avoids threading allocation state through every existing checked
--- DatraTypes operation.
-initialProtectionContext :: salt -> EvaluationProtectionContext
-initialProtectionContext salt = unsafePerformIO $ do
+-- top-level pure evaluation owns one private monotonic supply.  Activated
+-- lexical scopes carry the resulting ancestry; the local reference only
+-- allocates fresh labels without imposing an evaluator-wide state monad.
+initialScopeActivation :: salt -> ScopeActivation
+initialScopeActivation salt = unsafePerformIO $ do
   salt `seq` pure ()
   supply <- newIORef 1
-  pure (EvaluationProtectionContext supply (DynamicScopeLabel 0 :| []))
-{-# NOINLINE initialProtectionContext #-}
+  pure (ScopeActivation supply (DynamicScopeLabel 0) Nothing)
+{-# NOINLINE initialScopeActivation #-}
 
-enterProtectionScope
+enterScopeActivation
   :: salt
-  -> EvaluationProtectionContext
-  -> (DynamicScopeLabel, EvaluationProtectionContext)
-enterProtectionScope salt context = unsafePerformIO $ do
+  -> ScopeActivation
+  -> ScopeActivation
+enterScopeActivation salt activation = unsafePerformIO $ do
   salt `seq` pure ()
-  next <- atomicModifyIORef' (protectionLabelSupply context)
+  next <- atomicModifyIORef' (scopeActivationLabelSupply activation)
     (\label -> (label + 1, label))
   let label = DynamicScopeLabel next
-  pure
-    ( label
-    , context
-        { activeProtectionLabels =
-            label :| toList (activeProtectionLabels context)
-        }
-    )
-  where
-    toList (first :| remaining) = first : remaining
-{-# NOINLINE enterProtectionScope #-}
+  pure (ScopeActivation
+    (scopeActivationLabelSupply activation)
+    label
+    (Just activation))
+{-# NOINLINE enterScopeActivation #-}
 
-currentProtectionLabel
-  :: EvaluationProtectionContext
+currentScopeLabel
+  :: ScopeActivation
   -> DynamicScopeLabel
-currentProtectionLabel = headNonEmpty . activeProtectionLabels
-  where
-    headNonEmpty (label :| _) = label
+currentScopeLabel = scopeActivationLabel
 
 authorizeProtectedValue
-  :: EvaluationProtectionContext
+  :: ScopeActivation
   -> InterpretedValue
   -> Either InterpretedValue InterpretedValue
 authorizeProtectedValue context value =
@@ -69,14 +57,12 @@ authorizeProtectedValue context value =
     Nothing -> Right value
     Just protection
       | scopeProtectionLabel protection
-          `elem` nonEmptyToList (activeProtectionLabels context) ->
+          `elem` activationLabels context ->
               Right (withoutScopeProtection value)
       | otherwise -> Left neverValue
-  where
-    nonEmptyToList (first :| remaining) = first : remaining
 
 runProtectedOperation
-  :: EvaluationProtectionContext
+  :: ScopeActivation
   -> [InterpretedValue]
   -> ([InterpretedValue] -> Either InterpretingError InterpretedValue)
   -> Either InterpretingError InterpretedValue
@@ -90,7 +76,7 @@ runProtectedOperation context operands operation =
         _ -> protectWithPoliciesOf context (result : operands) result)
 
 protectWithPoliciesOf
-  :: EvaluationProtectionContext
+  :: ScopeActivation
   -> [InterpretedValue]
   -> InterpretedValue
   -> InterpretedValue
@@ -99,12 +85,57 @@ protectWithPoliciesOf context operands result =
     [] -> result
     first : remaining ->
       protectInterpretedValue
-        (currentProtectionLabel context)
+        (currentScopeLabel context)
         (first :| remaining)
         result
 
 valueIsScopeProtected :: InterpretedValue -> Bool
 valueIsScopeProtected = maybe False (const True) . interpretedScopeProtection
+
+data ScopeHandoffDecision
+  = PreserveScopeProtection
+  | TransferScopeProtection
+  | RejectScopeProtection
+  deriving (Eq, Show)
+
+-- | Hand a value from one lexical-scope activation to another without ever
+-- exposing its payload.  Every carried policy must choose the same
+-- disposition; preservation additionally requires the old label to remain in
+-- the receiver's ancestry.
+handoffProtectedValue
+  :: ScopeActivation
+  -> ScopeActivation
+  -> (ScopeProtectionPolicy -> ScopeHandoffDecision)
+  -> InterpretedValue
+  -> InterpretedValue
+handoffProtectedValue source receiver decide value =
+  case interpretedScopeProtection value of
+    Nothing -> value
+    Just protection ->
+      case authorizeProtectedValue source value of
+        Left _ -> neverValue
+        Right actual ->
+          case nub (map decide policies) of
+            [PreserveScopeProtection]
+              | scopeProtectionLabel protection `elem` receiverLabels -> value
+              | otherwise -> neverValue
+            [TransferScopeProtection]
+              | scopeProtectionLabel protection `elem` receiverLabels -> value
+              | otherwise -> protectInterpretedValue
+                  (currentScopeLabel receiver)
+                  (scopeProtectionPolicies protection)
+                  actual
+            _ -> neverValue
+      where
+        policies = nonEmptyToList (scopeProtectionPolicies protection)
+        receiverLabels = activationLabels receiver
+  where
+    nonEmptyToList (first :| remaining) = first : remaining
+
+activationLabels :: ScopeActivation -> [DynamicScopeLabel]
+activationLabels activation =
+  scopeActivationLabel activation
+    : maybe [] activationLabels (scopeActivationParent activation)
 
 normalizedPolicies :: [InterpretedValue] -> [ScopeProtectionPolicy]
 normalizedPolicies = sort . nub . concatMap policies
