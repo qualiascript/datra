@@ -48,34 +48,30 @@ compileParametersWithGenerics generics evaluate written static =
     compileMember = compileWith True
     compileWith directMember allowPrivateOptional writtenValue staticValue =
       case staticValue of
-        ForBinding (IdentifierString name) optional bound -> do
-          validateOptionalName allowPrivateOptional name optional
-          annotationValue <- evaluate bound
-          requireCanonicalTypeAnnotation annotationValue
-          case genericByName name of
-            Just binder -> pure (genericArgumentSlotSchema
-              (genericDescriptor binder) annotationValue)
-            Nothing -> pure (dependentArgumentSlotSchema name
-              (optional || allowPrivateOptional) annotationValue)
-        WithBinding (IdentifierString name) optional bound -> do
-          validateOptionalName allowPrivateOptional name optional
-          annotationValue <- evaluate bound
-          requireCanonicalTypeAnnotation annotationValue
-          case genericByName name of
-            Just binder -> pure (genericArgumentSlotSchema
-              (genericDescriptor binder) annotationValue)
-            Nothing -> pure (dependentArgumentSlotSchema name
-              (optional || allowPrivateOptional) annotationValue)
         IdentifierOperation (IdentifierString name) annotation given ->
-          genericEvidenceArgumentSchema (genericReferences writtenValue)
-            <$> parameterSlot (Just name) False annotation given
+          case genericByName name of
+            Just binder -> do
+              annotationValue <- evaluate annotation
+              requireCanonicalTypeAnnotation annotationValue
+              pure (genericArgumentSlotSchema
+                (genericDescriptor binder) annotationValue)
+            Nothing ->
+              genericEvidenceArgumentSchema (genericReferences writtenValue)
+                <$> parameterSlot (Just name) False annotation given
         optional
           | Just
               (IdentifierOperation (IdentifierString name) annotation given, _)
               <- optionalIdentifierExpression optional -> do
               validateOptionalName allowPrivateOptional name True
-              genericEvidenceArgumentSchema (genericReferences writtenValue)
-                <$> parameterSlot (Just name) True annotation given
+              case genericByName name of
+                Just binder -> do
+                  annotationValue <- evaluate annotation
+                  requireCanonicalTypeAnnotation annotationValue
+                  pure (genericArgumentSlotSchema
+                    (genericDescriptor binder) annotationValue)
+                Nothing ->
+                  genericEvidenceArgumentSchema (genericReferences writtenValue)
+                    <$> parameterSlot (Just name) True annotation given
         AtlasMap staticMembers
           | AtlasMap writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers ->
@@ -147,9 +143,6 @@ compileParametersWithGenerics generics evaluate written static =
       | otherwise = Right ()
     validateArgumentMapName member =
       case member of
-        ForBinding (IdentifierString name) True _
-          | not (isPublic name) ->
-              Left (PrivateParameterCannotBeOptional name)
         optional
           | Just (IdentifierOperation (IdentifierString name) _ _, _) <-
               optionalIdentifierExpression optional

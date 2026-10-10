@@ -150,7 +150,7 @@ data InterpretingError
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
-  | DependentBinderOutsideContainer String
+  | GenericIntroductionOutsideFunctionType String
   | DuplicateGenericIdentifier String
   | ForwardGenericBoundReference String String
   | GenericIdentifierOverlap String

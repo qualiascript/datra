@@ -96,7 +96,7 @@ makeProductMap productForm preserveSingleton cardinality values productFederatio
           SingletonAtlasMapFederation valueMap
       | otherwise = productFederation memberFederations
     value =
-      makeInterpretedValue
+      withOrderedAtlasMapView (makeInterpretedValue
         (composedStructuralDatraType
           (map interpretedDatraType values))
         (case productForm of
@@ -112,7 +112,7 @@ makeProductMap productForm preserveSingleton cardinality values productFederatio
               && atlasMapFederationExpressionIsSingleton federation
           then TotalInterpretedMap
           else NonTotalInterpretedMap)
-        semantics
+        semantics)
 
 concatenateValues
   :: InterpretedValue
@@ -212,11 +212,12 @@ concatenateValues left right = do
             else NonTotalInterpretedMap)
           finalSemantics
   pure
-    (case (interpretedForm left, interpretedForm right) of
+    (withOrderedAtlasMapView
+      (case (interpretedForm left, interpretedForm right) of
       (AsciiStringForm _, AsciiStringForm _) ->
         maybe ordinaryResult makeAsciiString
           (asciiStringFromInterpretedMap resultMap)
-      _ -> ordinaryResult)
+      _ -> ordinaryResult))
   where
     operandsAreTotal =
       hasConcreteSource left && hasConcreteSource right

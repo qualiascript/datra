@@ -454,9 +454,9 @@ functionTests =
               ]) "()"
         , programCase "projected schemas retain names inside the body"
             (unlines
-              [ "Slots := (for T? of Any) -> Any do"
-              , "  slots := with i in Nat do \"field%(i)\"? : T"
-              , "yield with n in Nat do slots[0..n]"
+              [ "Slots := &T? -> Any do"
+              , "  slots := (^_i :: Nat) -> Any do yield \"field%(_i)\"? : T"
+              , "yield ((^n? :: Nat) -> Any do yield slots[0..n])"
               , "f := {Slots Nat,} -> Any do yield it"
               , "assert (f(3; 4))[0][1] = 3"
               , "assert (f(3; 4)).field1[1] = 4"
@@ -608,50 +608,50 @@ functionTests =
             "f := ({callback?:(Nat -> Nat)} -> Nat do yield 0)\nyield f ({n?:Nat} -> Nat do yield n)"
             "0"
         ]
-    , testGroup "dependent products"
-        [ programCase "argument maps evaluate homogeneous products"
-            "yield ({for i? of from 0 to 2; i})[1]"
-            "(0; 1; 2)"
+    , testGroup "generic products"
+        [ programCase "generic products project indexed values"
+            "yield ((&i? :: from 0 to 2) -> Any do yield i)[1]"
+            "1"
         , programCase "optional binder accepts positional witnesses"
-            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
+            ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
                 <> "yield identity (Nat; 5)"
             )
             "5"
         , programCase "optional binder accepts named assignment witnesses"
-            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
+            ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
                 <> "yield identity {T := Nat; value := 5}"
             )
             "5"
         , programCase "required binder accepts only its named assignment form"
-            ( "identity := ({for T of Any; value? : T} -> T do yield value)\n"
+            ( "identity := ({value? : &T :: Any} -> T do yield value)\n"
                 <> "yield identity {T := Nat; value := 5}"
             )
             "5"
         , programFailureCase "required binder rejects a positional witness"
-            ( "identity := ({for T of Any; value? : T} -> T do yield value)\n"
+            ( "identity := ({value? : &T :: Any} -> T do yield value)\n"
                 <> "yield identity (Nat; 5)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "dependent value must inhabit its selected type"
-            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
+            ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
                 <> "yield identity (Nat; \"bad\")"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "dependent binders scope sequentially"
-            ( "identity := ({for T? of Any; for U? of T; value? : U} -> U do yield value)\n"
-                <> "yield identity (Any; Nat; 5)"
+            ( "identity := ({marker? : &T? :: Any; value? : &U? :: T} -> U do yield value)\n"
+                <> "yield identity (Any; Nat; 0; 5)"
             )
             "5"
         , programCase "dependent product composes with of"
-            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
-                <> "yield identity of ({for T? of Any; value? : T} -> T)"
+            ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
+                <> "yield identity of ({value? : &T? :: Any} -> T)"
             )
             "true"
         , programCase "dependent product composes with specification"
-            ( "identity := ({for T? of Any; value? : T} -> T do yield value)\n"
-                <> "yield (identity ~> ({for T? of Any; value? : T} -> T)) (Nat; 5)"
+            ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
+                <> "yield (identity ~> ({value? : &T? :: Any} -> T)) (Nat; 5)"
             )
             "5"
         , programFailureCase "ordinary parameters do not bind later annotations"
@@ -659,17 +659,12 @@ functionTests =
                 <> "yield bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
-        , programFailureCase "dependent products do not bind forwards"
-            ( "bad := ({value? : T; for T? of Any} -> Any do yield value)\n"
-                <> "yield bad"
-            )
-            (SourceEvaluationFailure (UnknownIdentifier "T"))
         , programCase "mixed dependent binders scope sequentially"
-            ( "identity := ({for T? of Any; with U? of T; value? : U} "
-                <> "-> U do yield value)\n"
-                <> "yield identity (Any; Nat; 5)"
+            ( "identity := ({marker? : &T? :: Any; value? : ^U? :: T} "
+                <> "-> Bool do yield value of U)\n"
+                <> "yield identity (Any; Nat; 0; 5)"
             )
-            "5"
+            "true"
         ]
     , recursionTests
     ]

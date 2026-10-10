@@ -22,9 +22,11 @@ module Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
-  , omegaArgumentValuesComplete
+  , suppliedArgumentValue
+  , foliageArgumentValuesComplete
   , overloadArgumentSchemaComplete
   , overloadArgumentSchemaCompleteWithGenerics
+  , overloadArgumentSchemaCompleteWithTrustedGenerics
   , argumentSchemaHasInferredGenerics
   , argumentSchemaInferredGenericNames
   , argumentSchemaValidationArgument
@@ -44,6 +46,7 @@ import DatraOrdinal
   , omega
   , ordinalGT
   , ordinalGTE
+  , ordinalLTE
   )
 import DatraLanguage.Identifier (public)
 import Evaluation.Arguments
@@ -78,6 +81,7 @@ import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
+import FoliageMap (foliageMap, foliageMapPositionAt)
 import Numeric.Natural (Natural)
 
 data GenericArgumentBinder = GenericArgumentBinder
@@ -401,6 +405,14 @@ suppliedValue value =
               (Just name, maybe annotation id supplied)
             Nothing -> (Nothing, value)
 
+-- | Observe the routing name and underlying value of one supplied argument.
+-- Existential packaging uses the same name erasure as ordinary application
+-- before splitting the generic prefix from its dependent fibre.
+suppliedArgumentValue
+  :: InterpretedValue
+  -> (Maybe String, InterpretedValue)
+suppliedArgumentValue = suppliedValue
+
 suppliedAsAssignment :: InterpretedValue -> Bool
 suppliedAsAssignment value =
   case interpretedForm value of
@@ -639,12 +651,14 @@ projectedArgumentSchema target
   | otherwise = argumentSchemaFromValue target
 
 hasDependentArgumentFamily :: InterpretedValue -> Bool
-hasDependentArgumentFamily value = case interpretedForm value of
-  DependentSumForm _ -> True
-  EitherForm alternatives ->
-    hasDependentArgumentFamily (evaluatedEitherLeft alternatives)
-      || hasDependentArgumentFamily (evaluatedEitherRight alternatives)
-  _ -> False
+hasDependentArgumentFamily value =
+  case dependentSumView value of
+    Just _ -> True
+    Nothing -> case interpretedForm value of
+      EitherForm alternatives ->
+        hasDependentArgumentFamily (evaluatedEitherLeft alternatives)
+          || hasDependentArgumentFamily (evaluatedEitherRight alternatives)
+      _ -> False
 
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =
@@ -749,17 +763,20 @@ argumentSchemaBodyDomain schema = case schema of
 -- Projection selects ordinary schemas, including optional names. The body
 -- always sees their completed, named form, independently of library spelling.
 projectedBodyDomain :: InterpretedValue -> InterpretedValue
-projectedBodyDomain target = case interpretedForm target of
-  DependentSumForm dependent
-    | Just project <- evaluatedDependentSumAccess dependent ->
-        withDependentSumAccess
-          (fmap (argumentSchemaBodyDomain . argumentSchemaFromValue) . project)
-          target
-  EitherForm alternatives -> target
-    { interpretedForm = EitherForm alternatives
-        { evaluatedEitherLeft = projectedBodyDomain (evaluatedEitherLeft alternatives)
-        , evaluatedEitherRight = projectedBodyDomain (evaluatedEitherRight alternatives) } }
-  _ -> argumentSchemaBodyDomain (argumentSchemaFromValue target)
+projectedBodyDomain target =
+  case dependentSumView target >>= evaluatedDependentSumAccess of
+    Just project ->
+      withDependentSumAccess
+        (fmap (argumentSchemaBodyDomain . argumentSchemaFromValue) . project)
+        target
+    Nothing -> case interpretedForm target of
+      EitherForm alternatives -> target
+        { interpretedForm = EitherForm alternatives
+            { evaluatedEitherLeft =
+                projectedBodyDomain (evaluatedEitherLeft alternatives)
+            , evaluatedEitherRight =
+                projectedBodyDomain (evaluatedEitherRight alternatives) } }
+      _ -> argumentSchemaBodyDomain (argumentSchemaFromValue target)
 
 namedSlot :: (Maybe String, InterpretedValue) -> InterpretedValue
 namedSlot (name, value) = maybe value (`simpleIdentifierTypeValue` value) name
@@ -768,9 +785,12 @@ argumentSchemaBodyValues
   :: ArgumentSchema -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 argumentSchemaBodyValues schema supplied = case schema of
-  ProjectedArgumentSchema target -> do
-    selected <- specifyValues supplied target
-    argumentSchemaBodyValues (argumentSchemaFromValue selected) selected
+  ProjectedArgumentSchema target ->
+    case orderedAtlasMapView target of
+      Just _ -> foliageArgumentValuesComplete target supplied
+      Nothing -> do
+        selected <- specifyValues supplied target
+        argumentSchemaBodyValues (argumentSchemaFromValue selected) selected
   GenericEvidenceArgumentSchema _ child ->
     argumentSchemaBodyValues child supplied
   _ -> do
@@ -820,20 +840,20 @@ argumentSchemaVariadicElementType schema =
 -- and removes identifier wrappers after a page has been selected.
 projectedPositionalDomain :: InterpretedValue -> InterpretedValue
 projectedPositionalDomain target =
-  case interpretedForm target of
-    DependentSumForm dependent
-      | Just project <- evaluatedDependentSumAccess dependent ->
-          withDependentSumAccess
-            (\insertion -> project insertion >>= eraseNames)
-            target
-    EitherForm alternatives ->
-      case makeDistinctUnion
-          [ projectedPositionalDomain (evaluatedEitherLeft alternatives)
-          , projectedPositionalDomain (evaluatedEitherRight alternatives)
-          ] of
-        Right value -> value
-        Left _ -> target
-    _ -> target
+  case dependentSumView target >>= evaluatedDependentSumAccess of
+    Just project ->
+      withDependentSumAccess
+        (\insertion -> project insertion >>= eraseNames)
+        target
+    Nothing -> case interpretedForm target of
+      EitherForm alternatives ->
+        case makeDistinctUnion
+            [ projectedPositionalDomain (evaluatedEitherLeft alternatives)
+            , projectedPositionalDomain (evaluatedEitherRight alternatives)
+            ] of
+          Right value -> value
+          Left _ -> target
+      _ -> target
   where
     eraseNames value =
       case interpretedForm value of
@@ -855,7 +875,14 @@ argumentSchemaValuesComplete
   -> Either InterpretingError InterpretedValue
 argumentSchemaValuesComplete schema supplied =
   case schema of
-    ProjectedArgumentSchema target -> specifyValues supplied target
+    ProjectedArgumentSchema target ->
+      case orderedAtlasMapView target of
+        Just _ -> foliageArgumentValuesCompleteWith
+          argumentSchemaValuesComplete target supplied
+        Nothing -> do
+          selected <- specifyValues supplied target
+          argumentSchemaValuesComplete
+            (argumentSchemaFromValue selected) selected
     _ -> do
       let normalized = normalizeArgumentSchema schema
       replacements <- resolveReplacements normalized supplied
@@ -872,76 +899,99 @@ argumentValuesComplete
 argumentValuesComplete template =
   argumentSchemaBodyValues (argumentSchemaFromValue template)
 
--- | Select one argument-map fibre from a dependent federation whose index
--- order is at most omega.  Candidate indices come exclusively from the
--- retained dependent domain; source arity is used only to prove that a failed
--- candidate and every later, strictly larger candidate cannot fit.
-omegaArgumentValuesComplete
+-- | Select the first matching page in a generic family's canonical foliage
+-- traversal. Finite families are exhausted and may therefore be refuted. An
+-- infinite family is observed only through a finite, source-derived frontier:
+-- finding a page proves the application, while exhausting that frontier is
+-- undecidable rather than a false refutation.
+foliageArgumentValuesComplete
   :: InterpretedValue
   -> InterpretedValue
-  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> Either InterpretingError InterpretedValue
+foliageArgumentValuesComplete =
+  foliageArgumentValuesCompleteWith argumentSchemaBodyValues
+
+-- Page selection is independent of the representation exposed afterwards.
+-- Calls retain the selected page's identifiers for body bindings, while
+-- values-only conversions erase them into canonical positional order.
+foliageArgumentValuesCompleteWith
+  :: (ArgumentSchema
+      -> InterpretedValue
+      -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-omegaArgumentValuesComplete domain staticTarget fibreAt supplied = do
-  let candidateOrder =
-        interpretedMapFinalOrderType (interpretedMap domain)
-  if ordinalGT candidateOrder omega
-    then undecidable
-    else do
-      reservations <- decisionEither
-        (ArgumentMap.argumentReservations
-          selectFederationMember
-          supplied
-          [staticTarget])
-      let positional =
-            ArgumentMap.positionalArgumentSource reservations supplied
-      suppliedOrder <- argumentOrder supplied
-      search candidateOrder reservations positional suppliedOrder Nothing 0
+foliageArgumentValuesCompleteWith complete family supplied = do
+  ordered <- maybe undecidable Right (orderedAtlasMapView family)
+  reservations <- decisionEither
+    (ArgumentMap.argumentReservations
+      selectFederationMember supplied [family])
+  let positional =
+        ArgumentMap.positionalArgumentSource reservations supplied
+  rows <- argumentRows supplied
+  let orderType = ordinalOrderedValuesOrderType ordered
+      traversal = foliageMap orderType
+      sourceFrontier = 1 + maximum (0 : map (fromIntegral . length) rows)
+      ranks = case naturalAtOrdinal orderType of
+        Just count -> naturalPositions count
+        Nothing -> naturalPositions sourceFrontier
+      exhausted = case naturalAtOrdinal orderType of
+        Just _ -> refuted
+        Nothing -> undecidable
+  suppliedOrder <- argumentOrder supplied
+  search reservations positional suppliedOrder
+    (ordinalLTE orderType omega) Nothing ordered traversal ranks exhausted
   where
-    search familyOrder reservations positional suppliedOrder previousOrder position
-      | Just count <- naturalAtOrdinal familyOrder
-      , position >= count = refuted
-      | otherwise = do
-          witness <- maybe undecidable Right
-            (interpretedMapValueAt
-              (interpretedMap domain)
-              (finiteOrdinal position))
-          candidate <- fibreAt witness
-          orderType <- argumentOrder candidate
-          candidateReservations <- decisionEither
-            (ArgumentMap.argumentReservations
-              selectFederationMember
-              supplied
-              [candidate])
-          let admitsReserved = and
-                (zipWith
-                  (\reserved admitted -> not reserved || admitted)
-                  reservations
-                  candidateReservations)
-              later = search familyOrder reservations positional
-                suppliedOrder (Just orderType) (position + 1)
-          if not admitsReserved
-            then later
-            else case argumentValuesComplete candidate positional of
-              Right selected -> Right selected
-              Left failure
-                | ordinalGTE orderType suppliedOrder -> Left failure
-                | Just previous <- previousOrder
-                , not (ordinalGT orderType previous) -> undecidable
-                | otherwise -> later
+    search _ _ _ _ _ _ _ [] exhausted = exhausted
+    search reservations positional suppliedOrder monotonicFamily previousOrder
+        ordered traversal
+        (rank : remaining) exhausted =
+      case foliageMapPositionAt traversal rank
+          >>= ordinalOrderedValueAt ordered of
+        Nothing -> undecidable
+        Just candidate -> do
+          candidateOrder <- argumentOrder candidate
+          let monotonic = monotonicFamily && maybe True
+                (candidateOrder `ordinalGT`) previousOrder
+              conclusive = monotonic
+                && candidateOrder `ordinalGTE` suppliedOrder
+          case decisionEither
+              (ArgumentMap.argumentReservations
+                selectFederationMember supplied [candidate]) of
+            Left _ -> undecidable
+            Right candidateReservations ->
+              let admitsReserved = and
+                    (zipWith
+                      (\reserved admitted -> not reserved || admitted)
+                      reservations
+                      candidateReservations)
+              in if not admitsReserved
+                then if conclusive then missing else later candidateOrder
+                else case complete
+                    (argumentSchemaFromValue candidate) positional of
+                  Right selected -> Right selected
+                  Left failure ->
+                    if conclusive then Left failure else later candidateOrder
+      where
+        later candidateOrder = search reservations positional suppliedOrder
+          monotonicFamily (Just candidateOrder) ordered traversal
+          remaining exhausted
 
-    argumentOrder value = do
-      rows <- argumentRows value
-      case nubBy (==)
-          [finiteOrdinal (fromIntegral (length row)) | row <- rows] of
-        [orderType] -> Right orderType
-        _ -> undecidable
+    naturalPositions 0 = []
+    naturalPositions count = [0 .. count - 1]
 
     decisionEither decision =
       case decision of
         DecisionProved value -> Right value
         DecisionRefuted -> refuted
         DecisionUndecidable -> undecidable
+
+    argumentOrder value = do
+      valueRows <- argumentRows value
+      case nubBy (==)
+          [finiteOrdinal (fromIntegral (length row)) | row <- valueRows] of
+        [orderType] -> Right orderType
+        _ -> undecidable
 
     refuted = Left
       (AtlasMapFederationOperationRefuted
@@ -950,6 +1000,7 @@ omegaArgumentValuesComplete domain staticTarget fibreAt supplied = do
       (AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure
           AtlasMapFederationSpecification))
+    missing = Left (OverloadError OverloadMissingRequiredSlot)
 
 overloadArgumentSchemaComplete
   :: ArgumentSchema
@@ -968,6 +1019,25 @@ overloadArgumentSchemaCompleteWithGenerics
   -> InterpretedValue
   -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
 overloadArgumentSchemaCompleteWithGenerics infer schema supplied =
+  overloadArgumentSchemaCompleteWithTrustedGenerics
+    infer [] schema supplied
+
+-- | Complete a call while accepting selected generic witnesses directly from
+-- their declared indexing family. Projection uses this path after obtaining
+-- a witness from the bound itself; explicit caller arguments continue through
+-- ordinary slot specification.
+overloadArgumentSchemaCompleteWithTrustedGenerics
+  :: ( GenericArgumentBinder
+       -> InterpretedValue
+       -> [InterpretedValue]
+       -> [(GenericArgumentBinder, InterpretedValue)]
+       -> Either InterpretingError InterpretedValue)
+  -> [(GenericBinderId, InterpretedValue)]
+  -> ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
+overloadArgumentSchemaCompleteWithTrustedGenerics
+    infer trusted schema supplied =
   let normalized = normalizeArgumentSchema schema
   in case projectedGenericInferenceParts normalized of
     Just (genericSlots, evidenceBinders, projection) -> do
@@ -978,10 +1048,11 @@ overloadArgumentSchemaCompleteWithGenerics infer schema supplied =
             | binderId <- evidenceBinders
             ]
           provisional =
-            [ (slotName slot, slotAnnotation slot)
+            [ (slotName slot, trustedValue slot)
             | slot <- genericSlots
             ]
-      completed <- completeGenericSlots infer evidence genericSlots provisional
+      completed <- completeGenericSlots trustedInfer
+        evidence genericSlots provisional
       let prepared = makeAtlasMapPreservingSingleton 2
             (map namedSlot completed <> projectedMembers)
       pure
@@ -995,11 +1066,26 @@ overloadArgumentSchemaCompleteWithGenerics infer schema supplied =
       _ -> do
         replacements <- resolveReplacements normalized supplied
         let slots = templateSlots normalized
-        provisional <- traverse (completeSlot replacements) slots
-        completed <- completeGenericSlots infer
+        provisional <- traverse (completeTrustedSlot replacements) slots
+        completed <- completeGenericSlots trustedInfer
           (genericEvidence slots provisional) slots provisional
         let prepared = bodyAggregate normalized (map namedSlot completed)
         pure (prepared, [(name, value) | (Just name, value) <- completed])
+  where
+    trustedValue slot =
+      case slotGenericBinder slot of
+        Just binder -> maybe (slotAnnotation slot) id
+          (lookup (genericArgumentBinderId binder) trusted)
+        Nothing -> slotAnnotation slot
+    completeTrustedSlot replacements slot =
+      case slotGenericBinder slot >>= \binder ->
+          lookup (genericArgumentBinderId binder) trusted of
+        Just value -> Right (slotName slot, value)
+        Nothing -> completeSlot replacements slot
+    trustedInfer binder annotation evidence prior =
+      case lookup (genericArgumentBinderId binder) trusted of
+        Just value -> Right value
+        Nothing -> infer binder annotation evidence prior
 
 -- A private generic prefix consumes no caller slots. When its only ordinary
 -- suffix is a projected family such as @Args _T@, delegate the entire supplied

@@ -89,15 +89,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "adaptorul de control sintactic nu este înregistrat"
         ["adaptor: " <> name]
-    InvalidDependentBinder name ->
-      LocalizedMessage "legătura dependentă necesită un identificator"
-        ["adaptor: " <> name]
-    UndecidableDependentBinder name ->
-      LocalizedMessage
-        "expresia legăturii dependente nu poate fi decisă static"
-        [ "adaptor: " <> name
-        , "în prezent este necesar un singur identificator lexical"
-        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -170,9 +161,10 @@ localizeInterpretingError reason =
       LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let necesită un bloc begin" []
-    DependentBinderOutsideContainer binder ->
-      LocalizedMessage "legătura dependentă necesită un container de tip exterior"
-        ["legătură: " <> binder]
+    GenericIntroductionOutsideFunctionType binder ->
+      LocalizedMessage
+        "introducerea generică necesită un tip de funcție exterior"
+        ["operator generic: " <> binder]
     DuplicateGenericIdentifier name ->
       LocalizedMessage
         "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"

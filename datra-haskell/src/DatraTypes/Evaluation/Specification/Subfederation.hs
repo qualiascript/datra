@@ -85,14 +85,14 @@ decideValueSubfederation source target
         target
   | interpretedSemanticResult source == interpretedSemanticResult target =
       DecisionProved ()
-  | DependentSumForm sourceDependent <- interpretedForm source
-  , DependentSumForm targetDependent <- interpretedForm target
+  | Just sourceDependent <- dependentSumView source
+  , Just targetDependent <- dependentSumView target
   , ListDependentSum sourceElement <-
       evaluatedDependentSumStructure sourceDependent
   , ListDependentSum targetElement <-
       evaluatedDependentSumStructure targetDependent =
       decideValueSubfederation sourceElement targetElement
-  | DependentSumForm dependent <- interpretedForm target =
+  | Just dependent <- dependentSumView target =
       case evaluatedDependentSumSpecify dependent source of
         Right _ -> DecisionProved ()
         Left (AtlasMapFederationOperationUndecidable _) ->

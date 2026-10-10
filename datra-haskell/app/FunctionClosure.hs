@@ -295,7 +295,6 @@ fresh candidate reserved = go (0 :: Int)
       where name = candidate <> if suffix == 0 then "" else "_" <> show suffix
 
 parameterNames :: Expression -> [String]
-parameterNames (ForBinding (IdentifierString name) _ _) = [name]
 parameterNames value@(IdentifierOperation _ _ _) = bindingNames value
 parameterNames value
   | Just (named@IdentifierOperation {}, _) <-

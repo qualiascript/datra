@@ -32,13 +32,13 @@ import AtlasMapFederationExpression
       ( PrimitiveAtlasMapFederation
       )
   )
-import DatraOrdinal (Ordinal, finiteOrdinal)
+import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , OperandSide (..)
   )
-import Evaluation.Construction (mapFromInsertion)
+import Evaluation.Construction (makeInteger, mapFromInsertion)
 import Evaluation.Ordinal
   ( requireExplicit
   , requireRangeUpperBoundary
@@ -51,6 +51,7 @@ import NaturalRange qualified
 import NaturalType qualified
 import ValuedNaturalRange qualified
 import IntegerRange qualified
+import IntegerRange.Interval (integerAtOffset)
 import IntegerType qualified
 import ValuedIntegerRange qualified
 import NumericalOperators.NumericalOperand
@@ -255,7 +256,7 @@ interpretedValuedNaturalRangeValue
   -> ValuedNaturalRange.ValuedNaturalRange rangeScope federationScope
   -> InterpretedValue
 interpretedValuedNaturalRangeValue semantics valueRange =
-  makeInterpretedValue
+  withOrderedAtlasMapView (makeInterpretedValue
     structuralDatraType
     (ValuedNaturalRangeForm evaluatedValuedNaturalRange)
     (ValidInsertion insertion)
@@ -263,7 +264,7 @@ interpretedValuedNaturalRangeValue semantics valueRange =
     (PrimitiveAtlasMapFederation
       (ValuedNaturalRangeAtlasMapFederation evaluatedValuedNaturalRange))
     NonTotalInterpretedMap
-    semantics
+    semantics)
   where
     evaluatedValuedNaturalRange = EvaluatedValuedNaturalRange valueRange
     evaluated =
@@ -302,7 +303,7 @@ interpretedValuedIntegerRangeValue
   -> ValuedIntegerRange.ValuedIntegerRange rangeScope federationScope
   -> InterpretedValue
 interpretedValuedIntegerRangeValue semantics valueRange =
-  makeInterpretedValue
+  withOrderedAtlasMapValues orderedValues (makeInterpretedValue
     structuralDatraType
     (ValuedIntegerRangeForm evaluatedValuedIntegerRange)
     (ValidInsertion insertion)
@@ -311,12 +312,21 @@ interpretedValuedIntegerRangeValue semantics valueRange =
       (ValuedIntegerRangeAtlasMapFederation
         evaluatedValuedIntegerRange))
     NonTotalInterpretedMap
-    semantics
+    semantics)
   where
     evaluatedValuedIntegerRange = EvaluatedValuedIntegerRange valueRange
     insertion = eraseSuperEllipsisInsertion
       (ValuedIntegerRange.valuedIntegerRangeInsertion valueRange)
     valueMap = mapFromInsertion insertion [semantics]
+    orderedValues = OrdinalOrderedValues
+      (interpretedMapFinalOrderType valueMap)
+      (\position -> do
+        offset <- naturalAtOrdinal position
+        pure (makeInteger
+          (integerAtOffset
+            (ValuedIntegerRange.valuedIntegerRangeDirection valueRange)
+            (ValuedIntegerRange.valuedIntegerRangeStart valueRange)
+            offset)))
 
 interpretedNaturalRangeFallback
   :: Natural

@@ -93,15 +93,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "syntax control adapter is not registered"
         ["adapter: " <> name]
-    InvalidDependentBinder name ->
-      LocalizedMessage "dependent binder requires an identifier"
-        ["adapter: " <> name]
-    UndecidableDependentBinder name ->
-      LocalizedMessage
-        "dependent binder expression cannot be decided statically"
-        [ "adapter: " <> name
-        , "a single lexical identifier is currently required"
-        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -172,9 +163,10 @@ localizeInterpretingError reason =
       LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let requires an enclosing begin block" []
-    DependentBinderOutsideContainer binder ->
-      LocalizedMessage "dependent binder requires an enclosing type container"
-        ["binder: " <> binder]
+    GenericIntroductionOutsideFunctionType binder ->
+      LocalizedMessage
+        "generic introduction requires an enclosing function type"
+        ["generic operator: " <> binder]
     DuplicateGenericIdentifier name ->
       LocalizedMessage
         "generic identifier is introduced more than once in one function domain"

@@ -15,6 +15,14 @@ module DatraTypes
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
+  , dependentSumView
+  , withDependentSumView
+  , orderedAtlasMapView
+  , withOrderedAtlasMapView
+  , withOrderedAtlasMapValues
+  , withMapView
+  , OrdinalIndexedFamily (..)
+  , ordinalIndexedValueFamily
   , withDependentSumAccess
   , withDependentSumFamily
   , withDependentSumReservationTarget
@@ -163,7 +171,8 @@ module DatraTypes
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
-  , omegaArgumentValuesComplete
+  , suppliedArgumentValue
+  , foliageArgumentValuesComplete
   , compileParameters
   , compileParametersWithGenerics
   , compileDependentParameter
@@ -176,6 +185,7 @@ module DatraTypes
   , GenericArgumentBinder (..)
   , overloadArgumentSchemaComplete
   , overloadArgumentSchemaCompleteWithGenerics
+  , overloadArgumentSchemaCompleteWithTrustedGenerics
   , argumentSchemaHasInferredGenerics
   , argumentSchemaInferredGenericNames
   , argumentSchemaValidationArgument
@@ -314,13 +324,15 @@ import Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
-  , omegaArgumentValuesComplete
+  , suppliedArgumentValue
+  , foliageArgumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
   , projectedArgumentSchema
   , orderedArgumentSchema
   , overloadArgumentSchemaComplete
   , overloadArgumentSchemaCompleteWithGenerics
+  , overloadArgumentSchemaCompleteWithTrustedGenerics
   , argumentSchemaHasInferredGenerics
   , argumentSchemaInferredGenericNames
   , argumentSchemaValidationArgument
@@ -385,6 +397,10 @@ import Evaluation.Identifier
   , withTrailingIdentifierMarker
   , requireCanonicalTypeAnnotation
   )
+import Evaluation.OrdinalIndexedFamily
+  ( OrdinalIndexedFamily (..)
+  , ordinalIndexedValueFamily
+  )
 import Evaluation.Specification
   ( assignIdentifierValues
   , contextuallySpecifyValues
@@ -411,6 +427,12 @@ import Evaluation.Value
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
+  , dependentSumView
+  , withDependentSumView
+  , orderedAtlasMapView
+  , withOrderedAtlasMapView
+  , withOrderedAtlasMapValues
+  , withMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily

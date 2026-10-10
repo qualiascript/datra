@@ -113,6 +113,7 @@ library
         Chain
         Consolidation
         Folio
+        FoliageMap
         PageElements
         Pagination
         Atlas
@@ -224,6 +225,7 @@ library
         Evaluation.FunctionArguments
         Evaluation.Identifier
         Evaluation.IdentifierErasure
+        Evaluation.OrdinalIndexedFamily
         Evaluation.Length
         Evaluation.LimitRange
         Evaluation.Map

@@ -188,8 +188,6 @@ data Expression
   | Fun Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
   | GenericReferenceExpression GenericReference
-  | WithBinding IdentifierString Bool Expression
-  | ForBinding IdentifierString Bool Expression
   | InModule String Expression
   | Import Bool String
   | SyntaxType Expression Expression
@@ -354,8 +352,6 @@ data OperatorExpression
   | GenericIntroductionValue
       (GenericIntroduction OperatorExpression)
   | GenericReferenceValue GenericReference
-  | WithBindingValue IdentifierString Bool OperatorExpression
-  | ForBindingValue IdentifierString Bool OperatorExpression
   | InModuleValue String OperatorExpression
   | ImportValue Bool String
   | SyntaxTypeValue OperatorExpression OperatorExpression
@@ -500,10 +496,6 @@ normalizeExpression (GenericIntroductionExpression introduction) =
       }
 normalizeExpression (GenericReferenceExpression reference) =
   GenericReferenceExpression reference
-normalizeExpression (WithBinding name optional bound) =
-  WithBinding name optional (normalizeExpression bound)
-normalizeExpression (ForBinding name optional bound) =
-  ForBinding name optional (normalizeExpression bound)
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import allNames path) = Import allNames path
 normalizeExpression (SyntaxType templates signature) =
@@ -686,10 +678,6 @@ lower (GenericIntroductionExpression introduction) =
       }
 lower (GenericReferenceExpression reference) =
   GenericReferenceValue reference
-lower (WithBinding name optional bound) =
-  WithBindingValue name optional (lower bound)
-lower (ForBinding name optional bound) =
-  ForBindingValue name optional (lower bound)
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import allNames path) = ImportValue allNames path
 lower (SyntaxType templates signature) =
@@ -909,16 +897,6 @@ prettyOperator (GenericReferenceValue reference) =
         (genericReferenceBinderId reference))
     , pretty (genericReferenceRoleName
         (genericReferenceRole reference))
-    ]
-prettyOperator (WithBindingValue (IdentifierString name) optional bound) =
-  prettyForm "with"
-    [ pretty (renderIdentifierString name <> if optional then "?" else "")
-    , prettyOperator bound
-    ]
-prettyOperator (ForBindingValue (IdentifierString name) optional bound) =
-  prettyForm "for"
-    [ pretty (renderIdentifierString name <> if optional then "?" else "")
-    , prettyOperator bound
     ]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
 prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
@@ -1204,10 +1182,6 @@ traverseExpressionChildren visit expression = case expression of
       <$> visit (genericIntroductionBound introduction)
   GenericReferenceExpression reference ->
     pure (GenericReferenceExpression reference)
-  WithBinding name optional bound ->
-    WithBinding name optional <$> visit bound
-  ForBinding name optional bound ->
-    ForBinding name optional <$> visit bound
   FunctionTypeExpression generics domain codomain ->
     FunctionTypeExpression
       <$> traverse visitBinder generics

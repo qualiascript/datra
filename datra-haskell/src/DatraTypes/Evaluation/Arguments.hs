@@ -81,15 +81,16 @@ flattenFiniteConcatenation value =
     _ -> [value]
   where
     containsDependentFamily current =
-      case interpretedForm current of
-        DependentSumForm _ -> True
-        EitherForm alternatives ->
-          containsDependentFamily (evaluatedEitherLeft alternatives)
-            || containsDependentFamily (evaluatedEitherRight alternatives)
-        ConcatenatedMapForm left right ->
-          containsDependentFamily left || containsDependentFamily right
-        CoalizationForm operand -> containsDependentFamily operand
-        _ -> False
+      case dependentSumView current of
+        Just _ -> True
+        Nothing -> case interpretedForm current of
+          EitherForm alternatives ->
+            containsDependentFamily (evaluatedEitherLeft alternatives)
+              || containsDependentFamily (evaluatedEitherRight alternatives)
+          ConcatenatedMapForm left right ->
+            containsDependentFamily left || containsDependentFamily right
+          CoalizationForm operand -> containsDependentFamily operand
+          _ -> False
 
 -- The existing Either constructor still checks separation between different
 -- members. Only identical alternatives are removed here.

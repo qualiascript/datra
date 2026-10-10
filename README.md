@@ -29,9 +29,9 @@ Variadic arguments need no special handling in Datra. `Args` is a first-class
 type defined entirely in the standard library:
 
 ```datra
-Args := (for T? of Any) -> Any do
-  slots := with i in Nat do "arg%(i)"? : T
-yield with n in Nat do slots[0..n]
+Args := &T? -> Any do
+  slots := (^_i :: Nat) -> Any do yield "arg%(_i)"? : T
+yield ((^n? :: Nat) -> Any do yield slots[0..n])
 ```
 
 For example:

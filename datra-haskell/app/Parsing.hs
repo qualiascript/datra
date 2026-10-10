@@ -110,8 +110,6 @@ import DatraLanguage.AST
       , Fun
       , GenericIntroductionExpression
       , GenericReferenceExpression
-      , WithBinding
-      , ForBinding
       , InModule
       , Import
       , FunctionTypeExpression
@@ -274,6 +272,14 @@ resolveGenericExpression
   -> GenericResolution Expression
 resolveGenericExpression enclosing expressionValue =
   case expressionValue of
+    IdentifierOperation name annotation (Just given)
+      | given == annotation -> do
+          resolved <- resolveGenericExpression enclosing annotation
+          pure (IdentifierOperation name resolved (Just resolved))
+    IdentifierTemplateOperation parts annotation (Just given)
+      | given == annotation -> do
+          resolved <- resolveGenericExpression enclosing annotation
+          pure (IdentifierTemplateOperation parts resolved (Just resolved))
     FunctionTypeExpression [] domain codomain ->
       resolveNewGenericFunctionType enclosing domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -410,8 +416,6 @@ functionTypeIdentifiers expressionValue =
       [SimpleFunctionTypeIdentifier name]
     dependent@IdentifierTemplateOperation {} ->
       [DependentFunctionTypeIdentifier dependent]
-    ForBinding name _ _ -> [SimpleFunctionTypeIdentifier name]
-    WithBinding name _ _ -> [SimpleFunctionTypeIdentifier name]
     SyntaxBoundary value -> functionTypeIdentifiers value
     OptionalType value -> functionTypeIdentifiers value
     EitherType left right -> both left right
@@ -450,11 +454,16 @@ prepareFunctionDomain generics domain =
         AtlasMap entries -> (PreparedOrderedFunctionDomain, entries)
         MapSequence entries -> (PreparedOrderedFunctionDomain, entries)
         ArgumentMap entries -> (PreparedArgumentFunctionDomain, entries)
+        GenericReferenceExpression reference
+          | genericReferenceRole reference == GenericDeclarationReference
+          , any ((== genericReferenceBinderId reference) . genericBinderId)
+              generics ->
+              (PreparedScalarFunctionDomain, [])
         _ -> (PreparedScalarFunctionDomain, [expressionValue])
 
--- | Lower the identity-based generic telescope into the existing dependent
--- binder machinery. This is an evaluator adapter, not a surface-syntax
--- rewrite: the semantic AST continues to retain binder identities and roles.
+-- | Materialize the identity-based generic telescope as ordinary named prefix
+-- slots. The owning telescope retains polarity and identity; the prepared
+-- domain needs only the existing identifier-slot representation.
 prepareFunctionDomainExpression
   :: [GenericBinder Expression]
   -> Expression
@@ -474,9 +483,10 @@ prepareFunctionDomainExpression generics domain =
                 genericBinderIdentifier binder
               bound = prepareGenericExpression generics
                 (genericBinderBound binder)
-          in case genericBinderPolarity binder of
-            GenericProduct -> ForBinding name optionalName bound
-            GenericSum -> WithBinding name optionalName bound
+              declaration = IdentifierOperation name bound Nothing
+          in if optionalName
+              then OptionalType declaration
+              else declaration
         PreparedOrdinaryFunctionDomainMember expressionValue ->
           prepareGenericExpression generics expressionValue
 
@@ -646,8 +656,6 @@ astForm =
       , astGenericIntroduction
       , astGenericReference
       , astGenericFunctionType
-      , astDependentBinder "with" WithBinding
-      , astDependentBinder "for" ForBinding
       , astBinary AST.SyntaxTypeOperator SyntaxType
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
@@ -762,18 +770,6 @@ astGenericIdentifier expressionValue = do
         && null (public
           [(genericIdentifierText identifier, ())])))
   pure identifier
-
-astDependentBinder
-  :: Text
-  -> (IdentifierString -> Bool -> Expression -> Expression)
-  -> Parser Expression
-astDependentBinder name constructor = do
-  _ <- astSymbol name
-  spelling <- astIdentifierExpression
-  identifier <- IdentifierString <$> validateIdentifierSpelling spelling
-  optionalName <- maybe False (const True) <$> optional
-    (char '?' <* astSpaceConsumer)
-  constructor identifier optionalName <$> astExpression
 
 astIdentifierOperation
   :: AST.Operator
@@ -1464,10 +1460,6 @@ argumentMap = do
   guard (all validDependentName members)
   pure (ArgumentMap members)
   where
-    validDependentName (ForBinding (IdentifierString name) True _) =
-      not (null (public [(name, ())]))
-    validDependentName (WithBinding (IdentifierString name) True _) =
-      not (null (public [(name, ())]))
     validDependentName _ = True
 
 -- Explicitly parenthesizing both operands makes a reverse specification a

@@ -46,7 +46,20 @@ specifyValues source target
       (FunctionEvaluationFailed NoApplicableFunctionAlternative)
   | NeverForm <- interpretedForm target = Left
       (FunctionEvaluationFailed NoApplicableFunctionAlternative)
-  | DependentSumForm dependent <- interpretedForm target =
+  -- Generic functions retain an existential-package view for application,
+  -- but function specification must continue to compare their signatures.
+  -- Otherwise the target's auxiliary dependent-sum view incorrectly treats
+  -- the source function itself as an existential package.
+  | Just _ <- interpretedFunction source
+  , Just _ <- interpretedFunction target =
+      specifyTypeFamily
+        (typeFamilyOperations
+          (datraTypeFamily (interpretedDatraType target)))
+        decideValueSubfederation
+        specifyValues
+        source
+        target
+  | Just dependent <- dependentSumView target =
       evaluatedDependentSumSpecify dependent source
   | EitherForm _ <- interpretedForm target
   , any isDependentSum (argumentAlternatives target) =
@@ -131,9 +144,9 @@ sourceHasNoIdentifier source =
 
 isDependentSum :: InterpretedValue -> Bool
 isDependentSum value =
-  case interpretedForm value of
-    DependentSumForm _ -> True
-    _ -> False
+  case dependentSumView value of
+    Just _ -> True
+    Nothing -> False
 
 assignIdentifierValues
   :: String

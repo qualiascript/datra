@@ -67,7 +67,8 @@ import Rendering
   , renderInterpretedValueAsNewlineMap
   )
 import DatraOrdinal
-  ( finiteOrdinal
+  ( addOrdinals
+  , finiteOrdinal
   , naturalAtOrdinal
   , omega
   , ordinal
@@ -118,6 +119,8 @@ testTree =
     [ testGroup "examples"
         [ testCase "literals and arithmetic" testLiteralsAndArithmetic
         , testCase "slot ordinal distinctness" testSlotOrdinalDistinctness
+        , testCase "generic product ordinal indexing"
+            testGenericProductOrdinalIndexing
         , testCase "string templates" testStringTemplates
         , testCase "named field access" testNamedAccess
         , testCase "argument maps" testArgumentMaps
@@ -1298,6 +1301,66 @@ testSlotOrdinalDistinctness = do
           (unitFunction coalizedString)) of
       Right _ -> True
       Left _ -> False)
+
+testGenericProductOrdinalIndexing :: IO ()
+testGenericProductOrdinalIndexing = do
+  expectSourceValue
+      "two natural coordinates"
+      "(&n? :: (Nat; Nat)) -> Any do yield n" $ \grid -> do
+        let valueMap = interpretedMap grid
+            omegaPlusTwo = addOrdinals omega (finiteOrdinal 2)
+        assert "Nat products have omega-squared order"
+          (interpretedMapFinalOrderType valueMap == ordinal [1, 0, 0])
+        assert "Nat products use row-major ordinal blocks"
+          ( fmap renderInterpretedValue
+              (interpretedMapValueAt valueMap omegaPlusTwo)
+              == Just "(1; 2)"
+          )
+  expectSourceValue
+      "finite descending product"
+      ( "(&n? :: (from 5 to 10; from 9 to -5)) -> Any "
+          <> "do yield n"
+      ) $ \grid -> do
+        let valueMap = interpretedMap grid
+            renderedAt position =
+              renderInterpretedValue <$>
+                interpretedMapValueAt valueMap (finiteOrdinal position)
+        assert "finite product order is the product of component orders"
+          (interpretedMapFinalOrderType valueMap == finiteOrdinal 90)
+        assertEqual
+          "descending components retain their written order"
+          (map Just ["(5; 9)", "(5; -5)", "(6; 9)", "(10; -5)"])
+          (map renderedAt [0, 14, 15, 89])
+  expectSourceValue
+      "finite coordinate before Nat"
+      "(&n? :: (from 5 to 10; Nat)) -> Any do yield n" $ \grid -> do
+        let valueMap = interpretedMap grid
+            omegaPlusThree = addOrdinals omega (finiteOrdinal 3)
+        assert "an infinite inner coordinate creates one omega block per outer value"
+          (interpretedMapFinalOrderType valueMap == ordinal [6, 0])
+        assert "transfinite access enters the second omega block"
+          ( fmap renderInterpretedValue
+              (interpretedMapValueAt valueMap omegaPlusThree)
+              == Just "(6; 3)"
+          )
+  expectSourceValue
+      "limit endpoint is not an ordinal-indexed family"
+      ( "(&n? :: (from 0 to Infinity; from 0 to 1)) -> Any "
+          <> "do yield n"
+      ) $ \grid ->
+        assert "a positive-infinity endpoint prevents map projection"
+          ( interpretedMapFinalOrderType (interpretedMap grid)
+              == finiteOrdinal 0
+          )
+  expectSourceValue
+      "negative limit endpoint is not an ordinal-indexed family"
+      ( "(&n? :: (from 0 to -Infinity; from 0 to 1)) -> Any "
+          <> "do yield n"
+      ) $ \grid ->
+        assert "a negative-infinity endpoint prevents map projection"
+          ( interpretedMapFinalOrderType (interpretedMap grid)
+              == finiteOrdinal 0
+          )
 
 testStringTemplates :: IO ()
 testStringTemplates = do

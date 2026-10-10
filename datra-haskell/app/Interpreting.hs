@@ -68,9 +68,11 @@ import DatraLanguage.AST
   ( Expression (..)
   , pattern FunctionType
   , GenericBinder (..)
+  , GenericBinderId
   , GenericIdentifier (..)
   , GenericIntroduction (..)
   , GenericPolarity (..)
+  , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , namedBeginBlock
@@ -127,7 +129,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application
   ( ParseFailure (..) )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega, ordinalGT)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 
 interpretExpression
   :: Expression
@@ -1162,10 +1164,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             (case operand of Begin {} -> True; _ -> False)
             recursive)
           scope resolving operand
-    WithBinding _ _ _ -> Left (DependentBinderOutsideContainer "with")
-    ForBinding _ _ _ -> Left (DependentBinderOutsideContainer "for")
     GenericIntroductionExpression introduction ->
-      Left (DependentBinderOutsideContainer
+      Left (GenericIntroductionOutsideFunctionType
         (case genericIntroductionPolarity introduction of
           GenericProduct -> "&"
           GenericSum -> "^"))
@@ -1191,12 +1191,13 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               AstPatternRequiresFunctionSignature)
           _ -> Right neverValue
     FunctionTypeExpression [] domain codomain -> do
-      evaluateFunctionType expressionValue domain codomain
+      evaluateFunctionType [] expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
       validateGenericFunctionType interpret generics domain codomain
       let preparedDomain = prepareFunctionDomainExpression generics domain
           preparedCodomain = prepareGenericExpression generics codomain
-      evaluateFunctionType expressionValue preparedDomain preparedCodomain
+      evaluateFunctionType generics expressionValue
+        preparedDomain preparedCodomain
     FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication function argument -> do
       callable <- interpret function
@@ -1572,16 +1573,13 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (withoutCanonicalDependencies
           (maybe [] pure (scopePresentationDependency imported)) handed))
 
-    interpretContainer ordinary container expressions =
-      case firstDependentBindingPolarity expressions of
-        Nothing -> ordinary
-        Just GenericSum -> createDependentSum scope resolving container
-        Just GenericProduct -> createDependentProduct scope resolving container
-    evaluateFunctionType written preparedDomain preparedCodomain = do
+    interpretContainer ordinary _ _ = ordinary
+    evaluateFunctionType generics written preparedDomain preparedCodomain = do
       let (staticDomain, substitutions) =
-            staticDependentDomain preparedDomain
+            staticGenericDomain generics preparedDomain
           staticCodomain = substituteDependent substitutions preparedCodomain
-      input <- compileParameters interpret staticDomain >>= parameterDomain
+      input <- compileParametersWithGenerics generics interpret
+        preparedDomain staticDomain >>= parameterDomain
       output <- interpret staticCodomain
       let signatureText = renderSourceExpression written
       runProtectedOperation protection [input, output] $ \actuals ->
@@ -1595,31 +1593,6 @@ syntaxImplementationExpression :: Expression -> Bool
 syntaxImplementationExpression FunctionBody {} = True
 syntaxImplementationExpression External {} = True
 syntaxImplementationExpression _ = False
-
-data DependentBinding = DependentBinding
-  { dependentBindingPolarity :: GenericPolarity
-  , dependentBindingName :: IdentifierString
-  , dependentBindingOptional :: Bool
-  , dependentBindingBound :: Expression
-  }
-
-dependentBinding :: Expression -> Maybe DependentBinding
-dependentBinding expressionValue =
-  case expressionValue of
-    WithBinding name optional bound ->
-      Just (DependentBinding GenericSum name optional bound)
-    ForBinding name optional bound ->
-      Just (DependentBinding GenericProduct name optional bound)
-    _ -> Nothing
-
-firstDependentBindingPolarity
-  :: [Expression]
-  -> Maybe GenericPolarity
-firstDependentBindingPolarity [] = Nothing
-firstDependentBindingPolarity (entry : remaining) =
-  case dependentBinding entry of
-    Just binder -> Just (dependentBindingPolarity binder)
-    Nothing -> firstDependentBindingPolarity remaining
 
 duplicateGenericIdentifier
   :: [GenericBinder Expression]
@@ -2331,40 +2304,25 @@ recursiveListElement expressionValue =
   where
     isSelf = isContextualAccessOf (IdentifierString "_this")
 
--- Dependent binders are scoped by their enclosing domain and are introduced
--- strictly from left to right.  Static checking uses each binder's upper
--- bound; invocation repeats the checks with the actual witnesses.
-staticDependentDomain :: Expression -> (Expression, [(String, Expression)])
-staticDependentDomain expressionValue =
-  case expressionValue of
-    ArgumentMap entries ->
-      let (values, substitutions) = staticEntries [] entries
-      in (ArgumentMap values, substitutions)
-    AtlasMap entries ->
-      let (values, substitutions) = staticEntries [] entries
-      in (AtlasMap values, substitutions)
-    MapSequence entries ->
-      let (values, substitutions) = staticEntries [] entries
-      in (MapSequence values, substitutions)
-    _ -> staticEntry [] expressionValue
+-- Generic bounds form one ordered telescope. Static function signatures use
+-- each binder's upper bound, while invocation repeats the checks with the
+-- actual witnesses.
+staticGenericDomain
+  :: [GenericBinder Expression]
+  -> Expression
+  -> (Expression, [(String, Expression)])
+staticGenericDomain generics expressionValue =
+  (substituteDependent substitutions expressionValue, substitutions)
   where
-    staticEntries substitutions [] = ([], substitutions)
-    staticEntries substitutions (entry : remaining) =
-      let (staticValue, afterEntry) = staticEntry substitutions entry
-          (staticRemaining, finalSubstitutions) =
-            staticEntries afterEntry remaining
-      in (staticValue : staticRemaining, finalSubstitutions)
-    staticEntry substitutions entry =
-      case dependentBinding entry of
-        Just binder ->
-          let staticBound = substituteDependent substitutions bound
-              IdentifierString name = dependentBindingName binder
-              optional = dependentBindingOptional binder
-              bound = dependentBindingBound binder
-          in ( ForBinding (IdentifierString name) optional staticBound
-             , (name, staticBound) : substitutions
-             )
-        Nothing -> (substituteDependent substitutions entry, substitutions)
+    substitutions = go [] generics
+    go prepared [] = reverse prepared
+    go prepared (binder : remaining) =
+      let GenericIdentifier (IdentifierString name) _ =
+            genericBinderIdentifier binder
+          bound = prepareGenericExpression generics
+            (genericBinderBound binder)
+          staticBound = substituteDependent prepared bound
+      in go ((name, staticBound) : prepared) remaining
 
 substituteDependent :: [(String, Expression)] -> Expression -> Expression
 substituteDependent substitutions expressionValue =
@@ -2384,280 +2342,80 @@ domainEntries expressionValue =
     MapConcatenation left right -> domainEntries left <> domainEntries right
     _ -> [expressionValue]
 
-createDependentSum
-  :: Scope
-  -> [String]
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-createDependentSum captured resolving written = do
-  let evaluate = evalInScope captured resolving
-      staticExpression = fst (staticDependentDomain written)
-      compiledSchema = compileParameters evaluate staticExpression
-  (staticTarget, specify) <- case compiledSchema of
-    Right schema -> do
-      target <- parameterDomain schema
-      pure (target, \source -> do
-        supplied <- matchArguments schema source
-        _ <- validateDependentMapArguments captured resolving written supplied
-        pure source)
-    Left symbolicFailure ->
-      case representativeDependentTarget captured resolving written of
-        Right target -> pure
-          (target, \source -> source <$ specifyValues source target)
-        Left _ -> Left symbolicFailure
-  domain <- dependentSumDomain captured resolving written
-  let project insertion =
-        projectDependentSum
-          captured resolving written staticTarget insertion
-      dependent = makeDependentSumValue
-        (renderSourceExpression written) staticTarget specify
-  pure
-    (withDependentSumFamily domain project
-      (withDependentSumAccess project dependent))
-
-dependentSumDomain
-  :: Scope
-  -> [String]
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-dependentSumDomain captured resolving written =
-  case domainEntries written of
-    WithBinding _ _ boundExpression : _ ->
-      evalInScope captured resolving boundExpression
-    _ -> Left (DependentBinderOutsideContainer "with")
-
--- | Interpret a dependent product as its indexed Atlas family. Page zero is
--- the index domain and page one is a lazy map of fibres, so the surface
--- @for i in A do B@ projection uses the same ordinary @[1]@ machinery as
--- every other Atlas value.
-createDependentProduct
-  :: Scope
-  -> [String]
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-createDependentProduct captured resolving written =
-  case domainEntries written of
-    ForBinding (IdentifierString name) _ boundExpression : entries -> do
-      bound <- evalInScope captured resolving boundExpression
-      let orderType = interpretedMapFinalOrderType (interpretedMap bound)
-          fibreAt position = do
-            witness <- maybe
-              (Left (FunctionEvaluationFailed
-                (FunctionArgumentPageUnavailable 0)))
-              Right
-              (interpretedMapValueAt (interpretedMap bound) position)
-            values <- instantiateDependentEntries
-              captured resolving written name witness entries
-            case values of
-              [] -> Right (makeAtlasMap 0 [])
-              [value] -> Right value
-              _ -> Right (makeAtlasMap 2 values)
-      fibres <- case naturalAtOrdinal orderType of
-        Just count -> makeAtlasMap 2 <$> traverse
-          (fibreAt . finiteOrdinal)
-          (if count == 0 then [] else [0 .. count - 1])
-        Nothing -> pure (makeLazyMapValue orderType
-          (either (const Nothing) Just . fibreAt))
-      pure (makeAtlasMap 2 [bound, fibres])
-    _ -> Left (DependentBinderOutsideContainer "for")
-
--- | Some dependent value expressions cannot be approximated by replacing a
--- binder with its whole upper bound (for example, a range endpoint).  In that
--- case use the first member of the binder federation as a structural fibre;
--- exact checking still happens against the concrete fibre selected later.
-representativeDependentTarget
-  :: Scope
-  -> [String]
-  -> Expression
-  -> Either InterpretingError InterpretedValue
-representativeDependentTarget captured resolving written =
-  case domainEntries written of
-    WithBinding (IdentifierString name) _ boundExpression : entries -> do
-      bound <- evalInScope captured resolving boundExpression
-      witness <- maybe
-        (Left (FunctionEvaluationFailed
-          (FunctionArgumentPageUnavailable 0)))
-        Right
-        (interpretedMapValueAt
-          (interpretedMap bound)
-          (finiteOrdinal 0))
-      values <- instantiateDependentEntries
-        captured resolving written name witness entries
-      pure (makeAtlasMap 2 (witness : values))
-    _ -> Left (OverloadError OverloadNoMatch)
-
--- | Project a dependent family by instantiating each fibre only when its
--- Atlas page is demanded.  This is deliberately unaware of clients such as
--- @Args@: the binder's own ordered federation supplies the indices, and the
--- ordinary argument-map machinery decides membership in each projected
--- fibre.
-projectDependentSum
-  :: Scope
-  -> [String]
-  -> Expression
-  -> InterpretedValue
-  -> InterpretedValue
-  -> Either InterpretingError InterpretedValue
-projectDependentSum captured resolving written staticTarget insertion =
-  case domainEntries written of
-    WithBinding (IdentifierString name) _ boundExpression : entries -> do
-      bound <- evalInScope captured resolving boundExpression
-      reservationTarget <-
-        case instantiateDependentEntries
-            captured resolving written name bound entries of
-          Right values -> Right (makeAtlasMap 2 values)
-          Left _
-            | not (ordinalGT
-                (interpretedMapFinalOrderType (interpretedMap bound))
-                omega)
-            , Right values <- instantiateDependentEntries
-                captured resolving written name bound
-                (map (dependentFamilyEnvelope name) entries) ->
-                  Right (makeAtlasMap 2 values)
-          Left _ -> Right staticTarget
-      let memberAt witness = do
-            values <- instantiateDependentEntries
-              captured resolving written name witness entries
-            pure (makeAtlasMap 2 (witness : values))
-      let orderType = interpretedMapFinalOrderType (interpretedMap bound)
-          fibreAtOrdinal position = do
-            witness <- maybe
-              (Left (FunctionEvaluationFailed
-                (FunctionArgumentPageUnavailable 0)))
-              Right
-              (interpretedMapValueAt (interpretedMap bound) position)
-            memberAt witness >>= (`accessValues` insertion)
-          lazyMap = makeLazyMapValue orderType
-            (either (const Nothing) Just . fibreAtOrdinal)
-          projectedMemberAt witness =
-            memberAt witness >>= (`accessValues` insertion)
-          projection = makeDependentSumValue
-            (renderSourceExpression written
-              <> "[" <> renderInterpretedValue insertion <> "]")
-            lazyMap
-            (omegaArgumentValuesComplete
-              bound reservationTarget projectedMemberAt)
-      pure
-        (withDependentSumReservationTarget reservationTarget
-          (withDependentSumFamily bound projectedMemberAt
-            (withDependentSumAccess (accessValues lazyMap) projection)))
-    _ -> accessValues staticTarget insertion
-
--- | The empty prefix is an exact candidate and therefore has no identifier
--- slots.  For the family-wide named pass, however, a bounded prefix whose
--- upper endpoint is the dependent witness has the ordinary open prefix as
--- its envelope.  This retains the projected dependency without attributing
--- any of its identifiers to the empty candidate itself.
-dependentFamilyEnvelope :: String -> Expression -> Expression
-dependentFamilyEnvelope name expressionValue =
-  case expressionValue of
-    SuperEllipsisRange lower
-        (IdentifierReference (IdentifierString upperName))
-      | upperName == name ->
-          SuperEllipsisRangePlus (dependentFamilyEnvelope name lower)
-    _ -> mapExpressionChildren
-      (dependentFamilyEnvelope name)
-      expressionValue
-
-instantiateDependentEntries
-  :: Scope
-  -> [String]
-  -> Expression
-  -> String
-  -> InterpretedValue
-  -> [Expression]
-  -> Either InterpretingError [InterpretedValue]
-instantiateDependentEntries captured resolving written name witness =
-  go [scopeBinding name (EvaluatedBinding witness)]
-  where
-    go _ [] = Right []
-    go dependentScope pending@(entry : remaining) =
-      case dependentBinding entry of
-        Just _ -> do
-          value <- evalInScope (extendScope dependentScope captured) resolving
-            (withDomainEntries written pending)
-          pure [value]
-        Nothing -> do
-          value <- evalInScope (extendScope dependentScope captured) resolving entry
-          later <- go dependentScope remaining
-          pure (value : later)
-
-withDomainEntries :: Expression -> [Expression] -> Expression
-withDomainEntries written entries =
-  case written of
-    ArgumentMap _ -> ArgumentMap entries
-    MapSequence _ -> MapSequence entries
-    _ -> AtlasMap entries
-
--- | Validate every dependent binder with the same left-to-right scope,
--- independently of whether an entry is a sum or product. Polarity affects
--- the value constructed from the map, not telescope name resolution.
-validateDependentMapArguments
-  :: Scope
-  -> [String]
-  -> Expression
-  -> [(String, InterpretedValue)]
-  -> Either InterpretingError ScopeBindings
-validateDependentMapArguments captured resolving domain supplied =
-  validateDependentMapArgumentsExcept [] captured resolving domain supplied
-
-validateDependentMapArgumentsExcept
+-- | Validate the generic telescope from left to right, then validate ordinary
+-- named parameters in the resulting scope. Polarity affects protection, not
+-- telescope name resolution.
+validateGenericArgumentsExcept
   :: [String]
   -> Scope
   -> [String]
+  -> [GenericBinder Expression]
   -> Expression
   -> [(String, InterpretedValue)]
   -> Either InterpretingError ScopeBindings
-validateDependentMapArgumentsExcept trusted captured resolving domain supplied =
-  go [] (domainEntries domain)
+validateGenericArgumentsExcept
+    trusted captured resolving generics domain supplied =
+  validateGenerics [] generics
   where
-    go dependentScope [] = Right dependentScope
-    go dependentScope (entry : remaining) =
-      case dependentBinding entry of
-        Just binder -> do
-          let IdentifierString name = dependentBindingName binder
-              bound = dependentBindingBound binder
-          witness <- maybe (Left (UnknownIdentifier name)) Right
-            (lookup name supplied)
-          target <- evalInScope (extendScope dependentScope captured) resolving bound
-          _ <- if name `elem` trusted
-            then Right witness
-            else specifyValues witness target
-          go (scopeBinding name (EvaluatedBinding witness) : dependentScope)
-            remaining
-        Nothing -> case entry of
-          IdentifierOperation (IdentifierString name) annotation _ -> do
-            validateNamed dependentScope name annotation
-            go dependentScope remaining
-          optional
-            | Just
-                (IdentifierOperation (IdentifierString name) annotation _, _)
-                <- optionalIdentifierExpression optional -> do
-                validateNamed dependentScope name annotation
-                go dependentScope remaining
-          _ -> go dependentScope remaining
-    validateNamed dependentScope name annotation =
+    genericNames =
+      [ name
+      | binder <- generics
+      , let GenericIdentifier (IdentifierString name) _ =
+              genericBinderIdentifier binder
+      ]
+    validateGenerics genericScope [] =
+      validateEntries genericScope (domainEntries domain)
+    validateGenerics genericScope (binder : remaining) = do
+      let GenericIdentifier (IdentifierString name) _ =
+            genericBinderIdentifier binder
+          bound = prepareGenericExpression generics
+            (genericBinderBound binder)
+      witness <- maybe (Left (UnknownIdentifier name)) Right
+        (lookup name supplied)
+      target <- evalInScope
+        (extendScope genericScope captured) resolving bound
+      _ <- if name `elem` trusted
+        then Right witness
+        else specifyValues witness target
+      validateGenerics
+        (scopeBinding name (EvaluatedBinding witness) : genericScope)
+        remaining
+    validateEntries genericScope [] = Right genericScope
+    validateEntries genericScope (entry : remaining) = do
+      case entry of
+        IdentifierOperation (IdentifierString name) annotation _
+          | name `notElem` genericNames ->
+              validateNamed genericScope name annotation
+        optional
+          | Just
+              (IdentifierOperation (IdentifierString name) annotation _, _)
+              <- optionalIdentifierExpression optional
+          , name `notElem` genericNames ->
+              validateNamed genericScope name annotation
+        _ -> Right ()
+      validateEntries genericScope remaining
+    validateNamed genericScope name annotation =
       case lookup name supplied of
         Nothing -> Right ()
         Just value -> do
           target <- evalInScope
-            (extendScope dependentScope captured) resolving annotation
+            (extendScope genericScope captured) resolving annotation
           () <$ specifyValues value target
 
 inferGenericArgument
   :: Scope
   -> [String]
-  -> Expression
+  -> [GenericBinder Expression]
   -> GenericArgumentBinder
   -> InterpretedValue
   -> [InterpretedValue]
   -> [(GenericArgumentBinder, InterpretedValue)]
   -> Either InterpretingError InterpretedValue
-inferGenericArgument captured resolving domain binder _ evidence prior = do
+inferGenericArgument captured resolving generics binder _ evidence prior = do
   boundExpression <- maybe
     (Left (UnknownIdentifier name))
-    Right
-    (dependentBound name (domainEntries domain))
+    (Right . prepareGenericExpression generics . genericBinderBound)
+    (findBinder (genericArgumentBinderId binder) generics)
   let currentBindings =
         [ scopeBinding (genericArgumentName priorBinder)
             (EvaluatedBinding value)
@@ -2672,13 +2430,10 @@ inferGenericArgument captured resolving domain binder _ evidence prior = do
   where
     name = genericArgumentName binder
 
-    dependentBound _ [] = Nothing
-    dependentBound target (entry : remaining) =
-      case dependentBinding entry of
-        Just dependent
-          | dependentBindingName dependent == IdentifierString target ->
-              Just (dependentBindingBound dependent)
-        _ -> dependentBound target remaining
+    findBinder _ [] = Nothing
+    findBinder binderId (candidate : remaining)
+      | genericBinderId candidate == binderId = Just candidate
+      | otherwise = findBinder binderId remaining
 
     keepSuccessful operation = go
       where
@@ -2727,8 +2482,10 @@ createFunctionWithGenerics reduction captured resolving
     signature writtenDomainExpression writtenOutput bindings result
     generics = do
   let (domainExpression, substitutions) =
-        staticDependentDomain writtenDomainExpression
+        staticGenericDomain generics writtenDomainExpression
       specifiedOutput = substituteDependent substitutions writtenOutput
+      preparedBindings = map (prepareGenericExpression generics) bindings
+      preparedResult = prepareGenericExpression generics result
   schema <- compileParametersWithGenerics generics evaluate
     writtenDomainExpression domainExpression
   let inferredGenericNames = argumentSchemaInferredGenericNames schema
@@ -2738,7 +2495,7 @@ createFunctionWithGenerics reduction captured resolving
         (constantContextualBindings "it" anyTypeValue) captured
       bodyDeclarations =
         [ declaration
-        | entry <- bindings
+        | entry <- preparedBindings
         , Just declaration <- [blockDeclaration entry]
         ]
   -- Reject an unprovable recursive-scope shadow before invocation. Finite
@@ -2773,17 +2530,28 @@ createFunctionWithGenerics reduction captured resolving
         Just (includesDependencies, _) -> (True, includesDependencies)
         _ -> (False, False)
   output <- evaluate specifiedOutput
-  let prepare argument = do
-        (prepared, imported) <- overloadArgumentSchemaCompleteWithGenerics
-          (inferGenericArgument captured resolving writtenDomainExpression)
-          schema argument
-        _ <- validateDependentMapArgumentsExcept inferredGenericNames
-          captured resolving writtenDomainExpression imported
+  let prepareWith trusted argument = do
+        (prepared, imported) <-
+          overloadArgumentSchemaCompleteWithTrustedGenerics
+          (inferGenericArgument captured resolving generics)
+          trusted schema argument
+        let trustedNames =
+              [ name
+              | binder <- generics
+              , Just _ <- [lookup (genericBinderId binder) trusted]
+              , let GenericIdentifier (IdentifierString name) _ =
+                      genericBinderIdentifier binder
+              ]
+        _ <- validateGenericArgumentsExcept
+          (trustedNames <> inferredGenericNames)
+          captured resolving generics writtenDomainExpression imported
         supplied <- if argumentSchemaHasInferredGenerics schema
           then argumentSchemaValidationArgument schema prepared
           else Right argument
         pure (PreparedFunctionArgument supplied prepared imported)
-      invoke callerActivation invocationReduction preparedCall = do
+      prepare = prepareWith []
+      evaluatePreparedBodyWith bodyResult
+          callerActivation invocationReduction preparedCall = do
         let argument = functionPreparedArgument preparedCall
             imported = functionPreparedBindings preparedCall
             callCaptured = captured
@@ -2793,19 +2561,19 @@ createFunctionWithGenerics reduction captured resolving
             bodySeed = enterScopeWithReceiver
               preparedCall [] callerActivation
               genericFunctionReturnHandoff callCaptured
-        dependentScope <- validateDependentMapArgumentsExcept
-          inferredGenericNames callCaptured resolving
-          writtenDomainExpression imported
-        protectedDomain <- prepareProtectedDomain
-          bodySeed callCaptured resolving generics
-          writtenDomainExpression imported
         let genericNames =
               [ name
               | binder <- generics
               , let GenericIdentifier (IdentifierString name) _ =
                       genericBinderIdentifier binder
               ]
-            ordinaryDependentScope =
+        dependentScope <- validateGenericArgumentsExcept
+          genericNames callCaptured resolving generics
+          writtenDomainExpression imported
+        protectedDomain <- prepareProtectedDomain
+          bodySeed callCaptured resolving generics
+          writtenDomainExpression imported
+        let ordinaryDependentScope =
               [ binding
               | binding@(name, _) <- dependentScope
               , name `notElem` genericNames
@@ -2831,22 +2599,28 @@ createFunctionWithGenerics reduction captured resolving
               constantContextualBindings "it" bodyArgument
                 <> [scopeBinding name
                     (if isPrivateIdentifier name
+                        && name `notElem` genericNames
                       then PrivateParameterBinding value
                       else EvaluatedBinding value)
                   | (name,value) <- bodyImported]
                 <> scopeBindings callCaptured
             bodyBase = scopeWithBindings localBindings bodySeed
-        bodyScope <- importScopeWithin bodyBase [] bindings
-        value <- evalInScopeWith invocationReduction bodyScope [] result
+        bodyScope <- importScopeWithin bodyBase [] preparedBindings
+        value <- evalInScopeWith invocationReduction bodyScope [] bodyResult
         let escaped = withoutCanonicalDependencies
               ( nub
                   ( scopePresentationDependencies bodyScope
                       <> scopePresentationDependencies captured)
               )
               value
-            handed = handoffScopeValue bodyScope escaped
             codomainEvaluationScope = enterScope preparedCall
               codomainScope genericContinuationHandoff callCaptured
+        pure (bodyScope, escaped, codomainEvaluationScope)
+      evaluatePreparedBody = evaluatePreparedBodyWith preparedResult
+      invoke callerActivation invocationReduction preparedCall = do
+        (bodyScope, escaped, codomainEvaluationScope) <-
+          evaluatePreparedBody callerActivation invocationReduction preparedCall
+        let handed = handoffScopeValue bodyScope escaped
         dynamicOutput <- evalInScopeWith invocationReduction
           codomainEvaluationScope resolving writtenOutput
         let handedOutput = handoffScopeValue
@@ -2854,7 +2628,8 @@ createFunctionWithGenerics reduction captured resolving
         specified <- contextuallySpecify handed handedOutput
         pure (EvaluatedFunctionInvocation specified (Just handedOutput))
   let signatureText = renderSourceExpression signature
-  let definition = MapSpecification (FunctionBody bindings result)
+  let definition = MapSpecification
+        (FunctionBody bindings result)
         signature
       self = case [bindingKey name expressionValue
                   | (name, binding) <- scopeBindings captured
@@ -2872,12 +2647,218 @@ createFunctionWithGenerics reduction captured resolving
         (EvaluatedFunction input output Nothing Nothing
           (Just (renderSourceExpression closed)) signatureText
           (Just prepare) (Just invoke) False)
+      validateExistentialPackage source = do
+        rows <- argumentRows source
+        tryPackageRows source Nothing rows
+      tryPackageRows _ Nothing [] = Left (OverloadError OverloadNoMatch)
+      tryPackageRows _ (Just failure) [] = Left failure
+      tryPackageRows source previousFailure (row : remainingRows) =
+        case splitExistentialRow generics row of
+          Nothing -> tryPackageRows source previousFailure remainingRows
+          Just (prefix, fibreSource) ->
+            case validatePackageRow source prefix fibreSource of
+              Right selected -> Right selected
+              Left failure ->
+                tryPackageRows source (Just failure) remainingRows
+      validatePackageRow source prefix fibreMembers = do
+        preparedCall <- prepare (makeAtlasMap 2 prefix)
+        (bodyScope, protectedFibre, _) <- evaluatePreparedBody
+          (scopeActivation captured) reduction preparedCall
+        fibre <- case authorizeProtectedValue
+            (scopeActivation bodyScope) protectedFibre of
+          Right actual -> Right actual
+          Left _ -> Left (OverloadError OverloadNoMatch)
+        let fibreSource = makeAtlasMap 2 fibreMembers
+        _ <- specifyValues fibreSource fibre
+        pure source
+      existentialView
+        | any ((== GenericSum) . genericBinderPolarity) generics =
+            Just (makeDependentSumValue
+              signatureText
+              input
+              validateExistentialPackage)
+        | otherwise = Nothing
+      existentialFunction = maybe functionValue
+        (`withDependentSumView` functionValue) existentialView
+  reservationTarget <- case genericFamilyEnvelope generics preparedResult of
+    Nothing -> Right Nothing
+    Just envelopeResult ->
+      case genericUpperBoundWitnesses captured resolving reduction generics of
+        Left _ -> Right Nothing
+        Right trusted ->
+          case prepareWith trusted (makeAtlasMap 0 []) of
+            Left _ -> Right Nothing
+            Right preparedCall ->
+              case evaluatePreparedBodyWith envelopeResult
+                  (scopeActivation captured) reduction preparedCall of
+                Left _ -> Right Nothing
+                Right (bodyScope, value, _) ->
+                  case authorizeProtectedValue
+                      (scopeActivation bodyScope) value of
+                    Left _ -> Right Nothing
+                    Right actual -> Right (Just actual)
+  let reservedFunction = maybe existentialFunction
+        (`withDependentSumReservationTarget` existentialFunction)
+        reservationTarget
+  mapView <- genericFunctionMapView
+    captured resolving reduction generics prepareWith invoke
+  let projectedFunction = maybe reservedFunction
+        (`withMapView` reservedFunction) mapView
+      protectedFunction = protectWithPoliciesOf
+        (scopeActivation captured)
+        (scopeProtectedValues captured)
+        projectedFunction
   pure (protectWithPoliciesOf
     (scopeActivation captured)
     (scopeProtectedValues captured)
-    functionValue)
+    protectedFunction)
   where
     evaluate = evalInScopeWith reduction captured resolving
+
+-- | Split a dependent-sum package without letting an optional generic slot
+-- consume the entire package as one positional value. Explicitly named
+-- witnesses win; optional names may otherwise consume the next unnamed
+-- member. The unconsumed members form the dependent fibre.
+splitExistentialRow
+  :: [GenericBinder Expression]
+  -> [InterpretedValue]
+  -> Maybe ([InterpretedValue], [InterpretedValue])
+splitExistentialRow binders = select [] binders
+  where
+    select selected [] remaining = Just (reverse selected, remaining)
+    select selected (binder : later) remaining = do
+      let GenericIdentifier (IdentifierString name) optional =
+            genericBinderIdentifier binder
+      (witness, rest) <-
+        removeFirst ((== Just name) . fst . suppliedArgumentValue) remaining
+          <|> if optional
+            then removeFirst
+              ((== Nothing) . fst . suppliedArgumentValue)
+              remaining
+            else Nothing
+      select (witness : selected) later rest
+
+    removeFirst _ [] = Nothing
+    removeFirst predicate (value : remaining)
+      | predicate value = Just (value, remaining)
+      | otherwise = do
+          (selected, rest) <- removeFirst predicate remaining
+          pure (selected, value : rest)
+
+-- | A leading ordinal-indexed generic gives a function an ordinary lazy Atlas
+-- view. Atomic valued ranges and products of them share this interface. Each
+-- selected witness fixes one telescope entry; another enumerable entry makes
+-- the next curried map. Naming optionality and privacy affect calls, not
+-- whether this map view exists.
+genericFunctionMapView
+  :: Scope
+  -> [String]
+  -> ReductionContext
+  -> [GenericBinder Expression]
+  -> ( [(GenericBinderId, InterpretedValue)]
+       -> InterpretedValue
+       -> Either InterpretingError PreparedFunctionArgument)
+  -> ( ScopeActivation
+       -> ReductionContext
+       -> PreparedFunctionArgument
+       -> Either InterpretingError EvaluatedFunctionInvocation)
+  -> Either InterpretingError (Maybe InterpretedValue)
+genericFunctionMapView
+    captured resolving reduction generics prepare invoke =
+  case generics of
+    [] -> Right Nothing
+    _ -> build [] generics
+  where
+    build selected [] = do
+      prepared <- prepare (reverse selected) (makeAtlasMap 0 [])
+      invocation <- invoke
+        (scopeActivation captured) reduction prepared
+      pure (Just (functionInvocationValue invocation))
+    build selected (binder : remaining) = do
+      let boundExpression = prepareGenericExpression generics
+            (genericBinderBound binder)
+          selectedScope =
+            [ scopeBinding name (EvaluatedBinding witness)
+            | selectedBinder <- generics
+            , let identity = genericBinderId selectedBinder
+            , Just witness <- [lookup identity selected]
+            , let GenericIdentifier (IdentifierString name) _ =
+                    genericBinderIdentifier selectedBinder
+            ]
+      bound <- evalInScopeWith reduction
+        (extendScope selectedScope captured) resolving boundExpression
+      case ordinalIndexedValueFamily bound of
+        Nothing -> pure Nothing
+        Just family -> pure (Just (makeLazyMapValue
+          (ordinalIndexedFamilyOrderType family)
+          (\position -> do
+            witness <- ordinalIndexedFamilyValueAt family position
+            either (const Nothing) id
+              (build
+                ((genericBinderId binder, witness) : selected)
+                remaining))))
+
+-- | Evaluate each upper bound in telescope order so a generic family can
+-- build structural metadata without inventing a concrete witness.  These
+-- values are trusted only for the metadata evaluation; ordinary calls still
+-- validate concrete witnesses through the regular argument path.
+genericUpperBoundWitnesses
+  :: Scope
+  -> [String]
+  -> ReductionContext
+  -> [GenericBinder Expression]
+  -> Either InterpretingError [(GenericBinderId, InterpretedValue)]
+genericUpperBoundWitnesses captured resolving reduction generics =
+  go [] generics
+  where
+    go selected [] = Right
+      [(identity, value) | (identity, _, value) <- reverse selected]
+    go selected (binder : remaining) = do
+      let boundExpression = prepareGenericExpression generics
+            (genericBinderBound binder)
+          selectedScope =
+            [ scopeBinding selectedName (EvaluatedBinding value)
+            | (_, selectedName, value) <- selected
+            ]
+          GenericIdentifier (IdentifierString name) _ =
+            genericBinderIdentifier binder
+      bound <- evalInScopeWith reduction
+        (extendScope selectedScope captured) resolving boundExpression
+      go ((genericBinderId binder, name, bound) : selected) remaining
+
+-- | Replace a prefix ending at a generic-sum witness with its open-prefix
+-- envelope.  The resulting value contains every identifier name admitted by
+-- the family, which lets argument matching reserve such names before choosing
+-- one concrete page.
+genericFamilyEnvelope
+  :: [GenericBinder Expression]
+  -> Expression
+  -> Maybe Expression
+genericFamilyEnvelope generics expressionValue =
+  let transformed = go expressionValue
+  in if null sumBinders then Nothing else Just transformed
+  where
+    sumBinders =
+      [ genericBinderId binder
+      | binder <- generics
+      , genericBinderPolarity binder == GenericSum
+      ]
+    sumNames =
+      [ name
+      | binder <- generics
+      , genericBinderPolarity binder == GenericSum
+      , let GenericIdentifier (IdentifierString name) _ =
+              genericBinderIdentifier binder
+      ]
+    go current =
+      case current of
+        SuperEllipsisRange lower (GenericReferenceExpression reference)
+          | genericReferenceBinderId reference `elem` sumBinders ->
+              SuperEllipsisRangePlus (go lower)
+        SuperEllipsisRange lower
+            (IdentifierReference (IdentifierString name))
+          | name `elem` sumNames -> SuperEllipsisRangePlus (go lower)
+        _ -> mapExpressionChildren go current
 
 prepareProtectedDomain
   :: Scope
@@ -2889,7 +2870,8 @@ prepareProtectedDomain
   -> Either InterpretingError [(String, InterpretedValue)]
 prepareProtectedDomain
     bodyScope parent resolving generics domain supplied = do
-  prepared <- go [] (domainEntries domain)
+  preparedGenerics <- go [] generics
+  prepared <- protectEntries preparedGenerics (domainEntries domain)
   pure
     [ (name, handoffScopeValue domainScope value)
     | (name, value) <- prepared
@@ -2903,40 +2885,49 @@ prepareProtectedDomain
     domainLabel = currentScopeLabel domainActivation
 
     go prepared [] = Right (reverse prepared)
-    go prepared (entry : remaining) =
-      case preparedEntry entry of
-        Nothing -> go prepared remaining
-        Just (name, boundExpression) -> do
-          let dependentScope =
-                [ scopeBinding preparedName (EvaluatedBinding value)
-                | (preparedName, value) <- prepared
-                ]
-          witness <- maybe (Left (UnknownIdentifier name)) Right
-            (lookup name supplied)
-          target <- evalInScope
-            (extendScope dependentScope domainScope) resolving boundExpression
-          specified <- runProtectedOperation
-            domainActivation [witness, target] $ \actuals ->
-              case actuals of
-                [actualWitness, actualTarget] ->
-                  specifyValues actualWitness actualTarget
-                _ -> Right neverValue
-          let protectedWitness =
-                case genericPolarity name of
-                  Just GenericSum ->
-                    protectGenericExistential domainLabel witness
-                  _ -> protectWithPoliciesOf
-                    domainActivation [target, specified] witness
-          go ((name, protectedWitness) : prepared) remaining
+    go prepared (binder : remaining) = do
+      let GenericIdentifier (IdentifierString name) _ =
+            genericBinderIdentifier binder
+          boundExpression = prepareGenericExpression generics
+            (genericBinderBound binder)
+          dependentScope =
+            [ scopeBinding preparedName (EvaluatedBinding value)
+            | (preparedName, value) <- prepared
+            ]
+      witness <- maybe (Left (UnknownIdentifier name)) Right
+        (lookup name supplied)
+      target <- evalInScope
+        (extendScope dependentScope domainScope) resolving boundExpression
+      let protectedWitness =
+            case genericBinderPolarity binder of
+              GenericSum ->
+                protectGenericExistential domainLabel witness
+              GenericProduct -> protectWithPoliciesOf
+                domainActivation [target] witness
+      go ((name, protectedWitness) : prepared) remaining
 
-    preparedEntry entry =
-      case dependentBinding entry of
-        Just binder ->
-          let IdentifierString name = dependentBindingName binder
-          in Just (name, dependentBindingBound binder)
-        Nothing -> ordinaryEntry entry
+    -- An ordinary parameter inherits every protection policy carried by its
+    -- evaluated annotation.  For example, after protecting the existential
+    -- witness in @^T@, both @marker : T@ and @value : T@ must enter the body
+    -- protected as well.  Merely validating them against T is insufficient:
+    -- it would install their raw values and allow the existential to escape.
+    protectEntries prepared [] = Right prepared
+    protectEntries prepared (entry : remaining) = do
+      extended <- case namedDomainEntry entry of
+        Just (name, annotation)
+          | name `notElem` genericNames
+          , Just value <- lookup name supplied -> do
+              target <- evalInScope
+                (extendScope (preparedBindings prepared) domainScope)
+                resolving
+                annotation
+              let protected = protectWithPoliciesOf
+                    domainActivation [target] value
+              pure ((name, protected) : prepared)
+        _ -> Right prepared
+      protectEntries extended remaining
 
-    ordinaryEntry entry =
+    namedDomainEntry entry =
       case entry of
         IdentifierOperation (IdentifierString name) annotation _ ->
           Just (name, annotation)
@@ -2947,16 +2938,17 @@ prepareProtectedDomain
                 Just (name, annotation)
         _ -> Nothing
 
-    genericPolarity name =
-      case
-          [ genericBinderPolarity binder
-          | binder <- generics
-          , let GenericIdentifier (IdentifierString binderName) _ =
-                  genericBinderIdentifier binder
-          , binderName == name
-          ] of
-        polarity : _ -> Just polarity
-        [] -> Nothing
+    preparedBindings prepared =
+      [ scopeBinding name (EvaluatedBinding value)
+      | (name, value) <- prepared
+      ]
+
+    genericNames =
+      [ name
+      | binder <- generics
+      , let GenericIdentifier (IdentifierString name) _ =
+              genericBinderIdentifier binder
+      ]
 
 applyFunction
   :: ScopeActivation
