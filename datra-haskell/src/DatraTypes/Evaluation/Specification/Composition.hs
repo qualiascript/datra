@@ -67,7 +67,7 @@ selectFederationMember source target
         (evaluatedSpecificationSourceValue assignment)
         target
   | not (interpretedValueHasTotalMap source) = DecisionRefuted
-  | DependentSumForm dependent <- interpretedForm target =
+  | Just dependent <- dependentSumView target =
       case evaluatedDependentSumSpecify dependent source of
         Right selected ->
           DecisionProved (EvaluatedDependentSumMember selected)

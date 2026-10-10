@@ -48,6 +48,7 @@ data AccessSource = AccessSource
 accessSource :: InterpretedValue -> AccessSource
 accessSource value =
   case interpretedForm value of
+    NeverForm -> ordinarySource []
     BuiltinMetaTypeForm _ -> ordinarySource []
     FunctionForm _ -> ordinarySource []
     RangeForm valueRange ->
@@ -154,6 +155,7 @@ semanticAccessSource (PresentedSemantics _ _ semantics) =
   semanticAccessSource semantics
 semanticAccessSource semantics =
   case semantics of
+    NeverSemantics -> ordinarySource []
     BuiltinMetaTypeSemantics _ -> ordinarySource []
     FunctionSemantics {} -> ordinarySource []
     ExplicitSemantics level value ->

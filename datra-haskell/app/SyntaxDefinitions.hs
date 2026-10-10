@@ -23,7 +23,6 @@ import DatraLanguage.SyntaxTemplate
   , invalidSyntaxTemplateCharacter
   , literalSyntaxTemplate
   )
-import IdentifierValueType (isIdentifierValue)
 import DatraLanguage.Diagnostics.Application
   ( SyntaxExpansionFailure (..))
 
@@ -89,20 +88,6 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
   , ("datra.fun", \case
       [entry] -> Right (Fun (absorbFunSequence entry))
       captures -> invalidBody symbol captures)
-  , ("datra.with", \case
-      [name, bound] -> dependentBinder "with" WithBinding name bound
-      captures -> invalidBody symbol captures)
-  , ("datra.for", \case
-      [name, bound] -> dependentBinder "for" ForBinding name bound
-      captures -> invalidBody symbol captures)
-  , ("datra.withIn", \case
-      [name, bound, body] ->
-        localDependentFamily "with" WithBinding name bound body
-      captures -> invalidBody symbol captures)
-  , ("datra.forIn", \case
-      [name, bound, body] ->
-        localDependentFamily "for" ForBinding name bound body
-      captures -> invalidBody symbol captures)
   , ("datra.modular", \case
       [value] -> Right (Modular value)
       captures -> invalidBody symbol captures)
@@ -138,53 +123,6 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
 blockEntries :: Expression -> [Expression]
 blockEntries (AtlasMap entries) = entries
 blockEntries value = [value]
-
-dependentBinder
-  :: String
-  -> (IdentifierString -> Bool -> Expression -> Expression)
-  -> Expression
-  -> Expression
-  -> Either SyntaxExpansionFailure Expression
-dependentBinder name constructor binder bound =
-  case binder of
-    IdentifierReference identifier ->
-      Right (constructor identifier False bound)
-    OptionalType (IdentifierReference identifier) ->
-      Right (constructor identifier True bound)
-    AsciiStringLiteral identifier
-      | isIdentifierValue identifier ->
-          Right (constructor (IdentifierString identifier) False bound)
-    OptionalType (AsciiStringLiteral identifier)
-      | isIdentifierValue identifier ->
-          Right (constructor (IdentifierString identifier) True bound)
-    value
-      | dynamicIdentifierExpression value ->
-          Left (UndecidableDependentBinder name)
-    _ -> Left (InvalidDependentBinder name)
-  where
-    dynamicIdentifierExpression value =
-      case value of
-        StringTemplate {} -> True
-        OptionalType underlying -> dynamicIdentifierExpression underlying
-        _ -> False
-
-localDependentFamily
-  :: String
-  -> (IdentifierString -> Bool -> Expression -> Expression)
-  -> Expression
-  -> Expression
-  -> Expression
-  -> Either SyntaxExpansionFailure Expression
-localDependentFamily name constructor binder bound body = do
-  dependent <- dependentBinder name constructor binder bound
-  Right (MapAccess (AtlasMap [makeOptional dependent, body])
-    (EllipsisNatural 1))
-  where
-    makeOptional (WithBinding identifier _ value) =
-      WithBinding identifier True value
-    makeOptional (ForBinding identifier _ value) =
-      ForBinding identifier True value
-    makeOptional value = value
 
 absorbAssignedConcatenation :: Expression -> Expression
 absorbAssignedConcatenation value = case value of

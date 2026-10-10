@@ -6,6 +6,7 @@ import Datra.TestSupport
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
+  , FunctionFailure (NoApplicableFunctionAlternative)
   , InterpretedValue
   , InterpretingError (..)
   , datraCanonicalType
@@ -44,6 +45,7 @@ datraTypeLawTests =
         (map datraTypeExampleTests compositeTypeExamples)
     , extensionalEqualityTests
     , skipCoercionTests
+    , neverLawsTests
     , totalBlockTests
     ]
 
@@ -53,6 +55,7 @@ datraTypeLawTests =
 standardLibraryTypeExamples :: [DatraTypeExample]
 standardLibraryTypeExamples =
   [ canonical "Any" "Any"
+  , canonical "Never" "Never"
   , canonical "Nat" "Nat"
   , canonical "Int" "Int"
   , canonical "Str" "Str"
@@ -157,6 +160,7 @@ extensionalEqualityTests =
         ]
     ]
 
+
 skipCoercionTests :: TestTree
 skipCoercionTests =
   testGroup "skip numerical coercion"
@@ -166,6 +170,24 @@ skipCoercionTests =
     , expressionCase "coercion does not erase skip typing identity"
         "not (* of Nat) and not (1 of *)"
         "true"
+    ]
+
+neverLawsTests :: TestTree
+neverLawsTests =
+  testGroup "Never laws"
+    [ expressionCase "Never is a subfederation of every type"
+        "Never of (Nat; Str; (Nat -> Str))"
+        "true"
+    , expressionCase "ordinary types are not subfederations of Never"
+        "not (Nat of Never)"
+        "true"
+    , expressionCase "Never is the identity of federation union"
+        "(Nat | Never) = Nat"
+        "true"
+    , expressionFailureCase "ordinary values cannot specify to Never"
+        "1 ~> Never"
+        (SourceEvaluationFailure
+          (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     ]
 
 assertEqualityLaw

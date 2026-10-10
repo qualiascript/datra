@@ -9,11 +9,20 @@ module DatraTypes
   , DatraType
   , datraCanonicalType
   , PreparedFunctionArgument (..)
+  , EvaluatedFunctionInvocation (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
+  , dependentSumView
+  , withDependentSumView
+  , orderedAtlasMapView
+  , withOrderedAtlasMapView
+  , withOrderedAtlasMapValues
+  , withMapView
+  , OrdinalIndexedFamily (..)
+  , ordinalIndexedValueFamily
   , withDependentSumAccess
   , withDependentSumFamily
   , withDependentSumReservationTarget
@@ -38,6 +47,15 @@ module DatraTypes
   , callableFunction
   , interpretedFunction
   , InterpretedValue
+  , DynamicScopeLabel (..)
+  , ScopeActivation (..)
+  , ScopeProtectionPolicy (..)
+  , ScopeProtection (..)
+  , Decision (..)
+  , neverValue
+  , interpretedScopeProtection
+  , protectInterpretedValue
+  , withoutScopeProtection
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
@@ -153,8 +171,10 @@ module DatraTypes
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
-  , omegaArgumentValuesComplete
+  , suppliedArgumentValue
+  , foliageArgumentValuesComplete
   , compileParameters
+  , compileParametersWithGenerics
   , compileDependentParameter
   , parameterBindings
   , parameterDomain
@@ -162,7 +182,13 @@ module DatraTypes
   , prepareArguments
   , matchArguments
   , selectFunctionCandidate
+  , GenericArgumentBinder (..)
   , overloadArgumentSchemaComplete
+  , overloadArgumentSchemaCompleteWithGenerics
+  , overloadArgumentSchemaCompleteWithTrustedGenerics
+  , argumentSchemaHasInferredGenerics
+  , argumentSchemaInferredGenericNames
+  , argumentSchemaValidationArgument
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -171,6 +197,8 @@ module DatraTypes
   , validateFunctionInput
   , specifyValues
   , contextuallySpecifyValues
+  , IdentifierNameDisjointness (..)
+  , identifierNameDisjointness
   , interpretedValueKind
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -200,6 +228,7 @@ module DatraTypes
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , decideClosedPublicResultContract
   ) where
 
 import Evaluation.Error
@@ -242,6 +271,7 @@ import Evaluation.Boolean
 import Evaluation.Either (makeEitherValue)
 import Evaluation.FunctionArguments
   ( compileParameters
+  , compileParametersWithGenerics
   , compileDependentParameter
   , matchArguments
   , parameterBindings
@@ -284,6 +314,7 @@ import Evaluation.Map
   )
 import Evaluation.Overload
   ( ArgumentSchema
+  , GenericArgumentBinder (..)
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaBodyDomain
@@ -293,12 +324,18 @@ import Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
-  , omegaArgumentValuesComplete
+  , suppliedArgumentValue
+  , foliageArgumentValuesComplete
   , argumentSlotSchema
   , concatenatedArgumentSchema
   , projectedArgumentSchema
   , orderedArgumentSchema
   , overloadArgumentSchemaComplete
+  , overloadArgumentSchemaCompleteWithGenerics
+  , overloadArgumentSchemaCompleteWithTrustedGenerics
+  , argumentSchemaHasInferredGenerics
+  , argumentSchemaInferredGenericNames
+  , argumentSchemaValidationArgument
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -360,12 +397,23 @@ import Evaluation.Identifier
   , withTrailingIdentifierMarker
   , requireCanonicalTypeAnnotation
   )
+import Evaluation.OrdinalIndexedFamily
+  ( OrdinalIndexedFamily (..)
+  , ordinalIndexedValueFamily
+  )
 import Evaluation.Specification
   ( assignIdentifierValues
   , contextuallySpecifyValues
   , validateFunctionInput
   , specifyValues
   )
+import Evaluation.Specification.Subfederation
+  ( IdentifierNameDisjointness (..)
+  , identifierNameDisjointness
+  )
+import Evaluation.Specification.Decision (Decision (..))
+import Evaluation.ResultContract
+  ( decideClosedPublicResultContract )
 import Evaluation.Value
   ( ASTMetaCategory (..)
   , CanonicalType
@@ -373,11 +421,18 @@ import Evaluation.Value
   , datraCanonicalType
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
+  , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)
   , DependentSumStructure (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
   , makeDependentSumValue
+  , dependentSumView
+  , withDependentSumView
+  , orderedAtlasMapView
+  , withOrderedAtlasMapView
+  , withOrderedAtlasMapValues
+  , withMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily
@@ -402,6 +457,14 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , DynamicScopeLabel (..)
+  , ScopeActivation (..)
+  , ScopeProtectionPolicy (..)
+  , ScopeProtection (..)
+  , neverValue
+  , interpretedScopeProtection
+  , protectInterpretedValue
+  , withoutScopeProtection
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation

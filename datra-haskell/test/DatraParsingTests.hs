@@ -46,26 +46,29 @@ import DatraLanguage.Diagnostics
   , SourceSpan (SourceSpan)
   )
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (parseFailureMessage)
-  , SyntaxExpansionFailure (..)
-  )
+  ( ParseFailure (parseFailureMessage) )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
   ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
 import Parsing
-  ( ResourceEnvelope (..)
+  ( FunctionTypeIdentifier (..)
+  , PreparedFunctionDomain (..)
+  , PreparedFunctionDomainKind (..)
+  , PreparedFunctionDomainMember (..)
+  , ResourceEnvelope (..)
+  , functionTypeIdentifiers
+  , prepareFunctionDomain
+  , prepareFunctionDomainExpression
   , parseDatra
   , parseDatraAst
   , parseDatraRawLocatedWithSourceName
   )
 import SyntaxDefinitions
-  ( SyntaxFunctionBody (applySyntaxFunctionBody)
-  , SyntaxHoleKind (..)
+  ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxRule (..)
   , SyntaxTemplate (..)
   , expandSyntax
-  , syntaxFunctionBodyForSymbol
   )
 import SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
@@ -173,12 +176,69 @@ testGenericSourceParsing = do
   privateParsed <- parseGenericSource
     "{Args (&_T :: IntLimit),} -> _T"
   case privateParsed of
-    FunctionTypeExpression [binder] _ reference -> do
+    FunctionTypeExpression [binder] domain reference -> do
       assert "private generic identifiers retain ordinary privacy spelling"
         (genericBinderIdentifier binder == genericIdentifier "_T" False)
       assert "private generic codomain references use binder identity"
         (reference == genericReference binder GenericUseReference)
+      case prepareFunctionDomain [binder] domain of
+        PreparedFunctionDomain PreparedArgumentFunctionDomain
+            [ PreparedGenericFunctionDomainMember preparedBinder
+            , PreparedOrdinaryFunctionDomainMember _
+            ] ->
+          assert "argument domains expose generic binders as real prefix members"
+            (preparedBinder == binder)
+        prepared -> fail ("unexpected prepared argument domain: " <> show prepared)
     other -> fail ("unexpected private generic AST: " <> show other)
+
+  ordered <- parseGenericSource
+    "(a : _T; b : &_T) -> _T"
+  case ordered of
+    FunctionTypeExpression [binder] domain _ ->
+      case prepareFunctionDomain [binder] domain of
+        PreparedFunctionDomain PreparedOrderedFunctionDomain
+            [ PreparedGenericFunctionDomainMember preparedBinder
+            , PreparedOrdinaryFunctionDomainMember _
+            , PreparedOrdinaryFunctionDomainMember _
+            ] ->
+          assert "ordered domains retain generic prefix position"
+            (preparedBinder == binder)
+        prepared -> fail ("unexpected prepared ordered domain: " <> show prepared)
+    other -> fail ("unexpected ordered generic AST: " <> show other)
+
+  forwardDomainUse <- parseGenericSource
+    "(x : T; y : ^T) -> Any"
+  case forwardDomainUse of
+    FunctionTypeExpression [binder]
+        domain@(SyntaxBoundary
+          (AtlasMap
+            [ IdentifierOperation (IdentifierString "x") firstUse Nothing
+            , IdentifierOperation (IdentifierString "y") declaration Nothing
+            ])) _ -> do
+      assert "ordinary entries may use a generic before its written marker"
+        ( firstUse == genericReference binder GenericUseReference
+          && declaration
+            == genericReference binder GenericDeclarationReference
+        )
+      case prepareFunctionDomain [binder] domain of
+        PreparedFunctionDomain PreparedOrderedFunctionDomain
+            [ PreparedGenericFunctionDomainMember _
+            , PreparedOrdinaryFunctionDomainMember _
+            , PreparedOrdinaryFunctionDomainMember _
+            ] -> pure ()
+        prepared -> fail
+          ("unexpected prepared forward-use domain: " <> show prepared)
+      case prepareFunctionDomainExpression [binder] domain of
+        AtlasMap
+            [ IdentifierOperation (IdentifierString "T") _ Nothing
+            , IdentifierOperation (IdentifierString "x")
+                (IdentifierReference (IdentifierString "T")) Nothing
+            , IdentifierOperation (IdentifierString "y")
+                (IdentifierReference (IdentifierString "T")) Nothing
+            ] -> pure ()
+        prepared -> fail
+          ("unexpected lowered forward-use domain: " <> show prepared)
+    other -> fail ("unexpected forward generic use AST: " <> show other)
 
   sumParsed <- parseGenericSource
     "{value? : ^T? :: Any} -> Any"
@@ -189,6 +249,31 @@ testGenericSourceParsing = do
           && genericBinderIdentifier binder == genericIdentifier "T" True
         )
     other -> fail ("unexpected sum generic AST: " <> show other)
+
+  mixed <- parseGenericSource
+    "{a? : ^S; b? : &T; c? : ^U} -> Any"
+  case mixed of
+    FunctionTypeExpression binders domain _ -> do
+      assert "mixed generic prefixes retain source polarity order"
+        (map genericBinderPolarity binders
+          == [GenericSum, GenericProduct, GenericSum])
+      case prepareFunctionDomain binders domain of
+        PreparedFunctionDomain PreparedArgumentFunctionDomain members ->
+          assert "mixed generic binders precede every ordinary domain member"
+            ( map preparedPolarity (take 3 members)
+                == map Just [GenericSum, GenericProduct, GenericSum]
+              && all isOrdinary (drop 3 members)
+            )
+        prepared -> fail ("unexpected prepared mixed domain: " <> show prepared)
+      case prepareFunctionDomainExpression binders domain of
+        ArgumentMap
+            ( IdentifierOperation (IdentifierString "S") _ Nothing
+            : IdentifierOperation (IdentifierString "T") _ Nothing
+            : IdentifierOperation (IdentifierString "U") _ Nothing
+            : _
+            ) -> pure ()
+        prepared -> fail ("unexpected lowered mixed domain: " <> show prepared)
+    other -> fail ("unexpected mixed generic AST: " <> show other)
 
   quoted <- parseGenericSource
     "{value? : &\"T-name\"?} -> Any"
@@ -218,6 +303,29 @@ testGenericSourceParsing = do
     other -> fail ("duplicate generic declarations were not retained: "
       <> show other)
 
+  collision <- parseGenericSource
+    "{T? : Any; marker? : &T} -> (T : Any)"
+  case collision of
+    FunctionTypeExpression [_]
+        domain@(ArgumentMap
+          [ OptionalType (IdentifierOperation domainName _ Nothing)
+          , OptionalType (IdentifierOperation _ _ Nothing)
+          ])
+        codomain@(SyntaxBoundary
+          (IdentifierOperation codomainName _ Nothing)) -> do
+      assert "ordinary collision candidates remain declarations for semantic validation"
+        ( domainName == IdentifierString "T"
+          && codomainName == IdentifierString "T"
+        )
+      assertEqual "parsing classifies complete function-type scope identifiers"
+        [ SimpleFunctionTypeIdentifier (IdentifierString "T")
+        , SimpleFunctionTypeIdentifier (IdentifierString "marker")
+        , SimpleFunctionTypeIdentifier (IdentifierString "T")
+        ]
+        (functionTypeIdentifiers domain <> functionTypeIdentifiers codomain)
+    other -> fail ("generic collision candidates were not retained: "
+      <> show other)
+
   nested <- parseGenericSource
     "{outer? : &T; inner? : ({value? : &T} -> T)} -> T"
   case nested of
@@ -236,6 +344,13 @@ testGenericSourceParsing = do
         (GenericReference (genericBinderId binder) role)
     descendants expressionValue =
       expressionValue : concatMap descendants (expressionChildren expressionValue)
+    preparedPolarity member =
+      case member of
+        PreparedGenericFunctionDomainMember binder ->
+          Just (genericBinderPolarity binder)
+        PreparedOrdinaryFunctionDomainMember _ -> Nothing
+    isOrdinary PreparedOrdinaryFunctionDomainMember {} = True
+    isOrdinary _ = False
 
 genericIdentifier :: String -> Bool -> GenericIdentifier
 genericIdentifier name optionalName =
@@ -527,86 +642,10 @@ regressionTests = do
   assertAstOutput "fun expands to an inline fixed point"
     "fun 5"
     (Fun (natural 5))
-  assertAstOutput "optional dependent product binder"
-    "for T? of Any"
-    (ForBinding (IdentifierString "T") True (ref "Any"))
-  assertAstOutput "required dependent product binder"
-    "for \"T\" of Any"
-    (ForBinding (IdentifierString "T") False (ref "Any"))
-  assertAstOutput "optional dependent sum binder"
-    "with T? of Any"
-    (WithBinding (IdentifierString "T") True (ref "Any"))
-  assertAstOutput "quoted dependent sum binder"
-    "with \"T\"? of Any"
-    (WithBinding (IdentifierString "T") True (ref "Any"))
-  assertAstOutput "dependent sum family sugar"
-    "with i in Nat do \"arg%(i)\"? : Int"
-    (MapAccess
-      (AtlasMap
-        [ WithBinding (IdentifierString "i") True (ref "Nat")
-        , OptionalType
-            (IdentifierTemplateOperation
-              [ StringTemplateLiteral "arg"
-              , StringTemplateInterpolation (ref "i")
-              ]
-              (ref "Int")
-              Nothing)
-        ])
-      (natural 1))
-  assertAstOutput "dependent product family sugar accepts a quoted binder"
-    "for \"i\" in Nat do i"
-    (MapAccess
-      (AtlasMap
-        [ ForBinding (IdentifierString "i") True (ref "Nat")
-        , ref "i"
-        ])
-      (natural 1))
-  let dynamicBinder = StringTemplate
-        [ StringTemplateLiteral "item"
-        , StringTemplateInterpolation (ref "index")
-        ]
-      optionalDynamicBinder = OptionalType dynamicBinder
-      assertUndecidableBinder symbol adapter captures =
-        case syntaxFunctionBodyForSymbol symbol of
-          Nothing -> fail ("missing syntax adapter: " <> symbol)
-          Just body -> assert
-            (adapter <> " reports a dynamic binder as undecidable")
-            ( applySyntaxFunctionBody body captures
-                == Left (UndecidableDependentBinder adapter)
-            )
-  assertUndecidableBinder
-    "datra.with" "with" [dynamicBinder, ref "Any"]
-  assertUndecidableBinder
-    "datra.for" "for" [optionalDynamicBinder, ref "Any"]
-  assertUndecidableBinder
-    "datra.withIn" "with" [dynamicBinder, ref "Any", ref "index"]
-  assertUndecidableBinder
-    "datra.forIn" "for" [optionalDynamicBinder, ref "Any", ref "index"]
-  assertAstOutput "dependent sum family sugar can omit in before from"
-    "with i from 0 to 3 do i * 2"
-    (MapAccess
-      (AtlasMap
-        [ WithBinding (IdentifierString "i") True (intValRange (fromTo 0 3))
-        , Multiplication (ref "i") (natural 2)
-        ])
-      (natural 1))
-  assertAstOutput "dependent product family sugar can omit in before from"
-    "for i from 0 to 3 do i * 2"
-    (MapAccess
-      (AtlasMap
-        [ ForBinding (IdentifierString "i") True (intValRange (fromTo 0 3))
-        , Multiplication (ref "i") (natural 2)
-        ])
-      (natural 1))
-  assertParsed "private optional dependent binder is valid in an ordered map"
-    "(with _T? of Any; value? : _T)"
-    (AtlasMap
-      [ WithBinding (IdentifierString "_T") True (ref "Any")
-      , OptionalType
-          (AST.dependentIdentifierType "value" (ref "_T"))
-      ])
-  assertRejected "private optional dependent binder is invalid in an argument map"
-    "{for _T? of Any; value? : _T}"
+  assertParsed "removed with keyword is an ordinary identifier"
+    "with T" (FunctionApplication (ref "with") (ref "T"))
+  assertParsed "removed for keyword is an ordinary identifier"
+    "for T" (FunctionApplication (ref "for") (ref "T"))
   assertAstOutput "not equals"
     "a =/= b"
     (Inequality (ref "a") (ref "b"))
@@ -656,8 +695,10 @@ regressionTests = do
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
     , External (AsciiStringLiteral "datra.add")
-    , ForBinding (IdentifierString "T") True (ref "Any")
-    , WithBinding (IdentifierString "T") False (ref "Any")
+    , GenericIntroductionExpression (GenericIntroduction
+        GenericProduct (genericIdentifier "T" True) (ref "Any") Nothing)
+    , GenericIntroductionExpression (GenericIntroduction
+        GenericSum (genericIdentifier "T" False) (ref "Any") Nothing)
     , Program []
         (AST.assignment "Example"
           (Begin
@@ -694,43 +735,28 @@ regressionTests = do
     (ArgumentMap
       [MapConcatenation
         (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap [])])
-  let implicitVariadicDomain = ArgumentMap
-        [ ForBinding (IdentifierString "_T") False (ref "IntLimit")
-        , MapConcatenation
-            (FunctionApplication (ref "Args") (ref "_T")) (AtlasMap [])
-        ]
-  assertAstOutput
-    "a trailing comma splices after a dependent binder"
-    "{for _T of IntLimit; Args _T,}"
-    implicitVariadicDomain
-  assertAstOutput
-    "a comma after a dependent binder concatenates normally"
-    "{for _T of IntLimit, Args _T}"
-    (ArgumentMap
-      [ MapConcatenation
-          (ForBinding (IdentifierString "_T") False (ref "IntLimit"))
-          (FunctionApplication (ref "Args") (ref "_T"))
-      ])
-  let implicitVariadicFunction = MapSpecification
-        (FunctionBody [] (ref "nothing"))
-        (FunctionType implicitVariadicDomain
-          (OptionalType (ref "_T")))
-  assertAstOutput
-    "a trailing splice composes through a function definition"
-    "max := {for _T of IntLimit; Args _T,} -> _T? do yield nothing"
-    (AST.assignment "max" implicitVariadicFunction implicitVariadicFunction)
-  assert "a dependent argument splice renders without nested braces"
-    (renderSourceExpression implicitVariadicDomain
-      == "{for _T of IntLimit; Args _T,}")
-  assertAstOutput
-    "a grouped comma remains inside a dependent binder bound"
-    "{for _T of (IntLimit, Nothing); Args _T,}"
-    (ArgumentMap
-      [ ForBinding (IdentifierString "_T") False
-          (MapConcatenation (ref "IntLimit") (ref "Nothing"))
-      , MapConcatenation
-          (FunctionApplication (ref "Args") (ref "_T")) (AtlasMap [])
-      ])
+  variadic <- parseGenericSource
+    "{Args (&_T :: IntLimit),} -> _T?"
+  case variadic of
+    FunctionTypeExpression [binder]
+        (ArgumentMap [MapConcatenation
+          (FunctionApplication (IdentifierReference (IdentifierString "Args"))
+            declaration)
+          (AtlasMap [])])
+        (OptionalType reference) ->
+      let expectedDeclaration = GenericReferenceExpression
+            (GenericReference (genericBinderId binder)
+              GenericDeclarationReference)
+          expectedReference = GenericReferenceExpression
+            (GenericReference (genericBinderId binder) GenericUseReference)
+          actualDeclaration = case declaration of
+            SyntaxBoundary value -> value
+            value -> value
+      in assertEqual
+          "generic declarations compose with trailing argument splices"
+          (expectedDeclaration, expectedReference)
+          (actualDeclaration, reference)
+    other -> fail ("unexpected generic variadic domain: " <> show other)
   assertAstOutput "unary argument map" "{2}" (ArgumentMap [natural 2])
   assertAstOutput "argument map supports newline separators"
     "{1\n2}" (ArgumentMap [natural 1, natural 2])
@@ -810,10 +836,17 @@ regressionTests = do
   assertParsed "a function body follows an explicit function type"
     "{value? : Any} -> Any do yield value"
     (inferredFunction optionalInput)
-  assertParsed "a declarative domain composes with an explicit function type"
-    "for T? of Any -> Any do yield value"
-    (inferredFunction
-      (ForBinding (IdentifierString "T") True (ref "Any")))
+  case parseSource "((&T?) -> Any do yield value\n)" of
+    Right (MapSpecification body
+        (FunctionTypeExpression [binder] declaration codomain)) ->
+      assert "a generic domain composes with an explicit function body"
+        ( body == identityBody
+          && declaration == GenericReferenceExpression
+            (GenericReference (genericBinderId binder)
+              GenericDeclarationReference)
+          && codomain == ref "Any"
+        )
+    result -> fail ("unexpected generic function body: " <> show result)
   assertParsed "function domains accept forward specifications"
     "(Nat ~> Any) -> Any do yield value"
     (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
@@ -2610,9 +2643,6 @@ integer value
 rangeTo, fromTo :: Integer -> Integer -> Expression
 rangeTo start end = rangeCall "range" (integer start) (UpperBound (integer end))
 fromTo start end = rangeCall "from" (integer start) (UpperBound (integer end))
-
-intValRange :: Expression -> Expression
-intValRange = id
 
 rangeUpwards, rangeDownwards, fromUpwards :: Integer -> Expression
 rangeUpwards start = rangeCall "range" (integer start) Upwards

@@ -467,9 +467,9 @@ standardLibraryTests =
             )
             "(arg0 : 3; arg1 : 0)"
         , programCase "source-defined Args supports string-template functions"
-            ( "MyArgs := (for T? of Any) -> Any do\n"
-                <> "  slots := with i in Nat do \"arg%(i)\"? : T\n"
-                <> "yield with n in Nat do slots[0..n]\n"
+            ( "MyArgs := &T? -> Any do\n"
+                <> "  slots := (^_i :: Nat) -> Any do yield \"arg%(_i)\"? : T\n"
+                <> "yield ((^n? :: Nat) -> Any do yield slots[0..n])\n"
                 <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
                 <> "assert ((arg2 := 10, 4) of {MyArgs Int,}) = false\n"
                 <> "yield (display(); display(1); display(1, 2, 3); "
@@ -499,75 +499,59 @@ standardLibraryTests =
             )
             "()"
         ]
-    , testGroup "dependent family sugar"
-        [ programCase "with-in-do builds an indexed sum family"
-            "yield (with i in range 0 to 2 do i + 1)[2]"
+    , testGroup "generic family projection"
+        [ programCase "generic sums build indexed families"
+            "yield ((^i? :: from 0 to 2) -> Any do yield i + 1)[2]"
             "3"
-        , programCase "with-from-do omits the in keyword"
-            "yield (with i from 0 to 2 do i + 1)[2]"
+        , programCase "generic sums accept valued ranges"
+            "yield ((^i? :: from 0 to 2) -> Any do yield i + 1)[2]"
             "3"
-        , programCase "for-in-do builds an indexed product family"
-            "yield (for i in range 0 to 2 do i + 1)[2]"
+        , programCase "generic products build indexed families"
+            "yield ((&i? :: from 0 to 2) -> Any do yield i + 1)[2]"
             "3"
-        , programCase "for-from-do maps a finite valued range"
-            "yield for i from 0 to 3 do i * 2"
-            "(0; 2; 4; 6)"
-        , programCase "omitted-in accepts a valued range expression"
-            "values := from 0 to 3\nyield for i values do i * 2"
-            "(0; 2; 4; 6)"
-        , programCase "for-from-do maps an infinite valued range lazily"
-            "yield (for i from 0 up do i * i)[5]"
+        , programCase "generic products map finite valued ranges"
+            "yield ((&i? :: from 0 to 3) -> Any do yield i * 2)[2]"
+            "4"
+        , programCase "generic products accept a named range"
+            ( "values := from 0 to 3\n"
+                <> "yield ((&i? :: values) -> Any do yield i * 2)[3]"
+            )
+            "6"
+        , programCase "generic products accept any ordered Atlas map"
+            "yield ((&value? :: 5) -> Any do yield value)[0]"
+            "5"
+        , programCase "generic products map infinite valued ranges lazily"
+            "yield ((&i? :: from 0 up) -> Any do yield i * i)[5]"
             "25"
-        , programFailureCase "for without in rejects an ordinary range"
-            "yield for i range 0 to 2 do i"
-            (SourceEvaluationFailure (UnknownIdentifier "for"))
-        , programFailureCase "with without in rejects an ordinary range"
-            "yield with i range 0 to 2 do i"
-            (SourceEvaluationFailure (UnknownIdentifier "with"))
         ]
-    , testGroup "dependent sums"
+    , testGroup "generic sums"
         [ programCase "optional binder accepts positional witnesses"
-            ( "Pair := {with T? of Any; value? : T}\n"
+            ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
                 <> "yield (Nat; 5) of Pair"
             )
             "true"
         , programCase "optional binder accepts named assignment witnesses"
-            ( "Pair := {with T? of Any; value? : T}\n"
+            ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
                 <> "yield {T := Nat; value := 5} of Pair"
-            )
-            "true"
-        , programCase "required binder accepts its named assignment form"
-            ( "Pair := {with T of Any; value? : T}\n"
-                <> "yield {T := Nat; value := 5} of Pair"
-            )
-            "true"
-        , programCase "required binder rejects a positional witness"
-            ( "Pair := {with T of Any; value? : T}\n"
-                <> "yield not ((Nat; 5) of Pair)"
             )
             "true"
         , programCase "dependent sum validates the selected fibre"
-            ( "Pair := {with T? of Any; value? : T}\n"
+            ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
                 <> "yield not ({T := Nat; value := \"bad\"} of Pair)"
             )
             "true"
-        , programCase "dependent sum binders scope sequentially"
-            ( "Nested := {with T? of Any; with U? of T; value? : U}\n"
-                <> "yield {T := Any; U := Nat; value := 5} of Nested"
-            )
-            "true"
         , programCase "dependent sum composes with forward specification"
-            ( "Pair := {with T? of Any; value? : T}\n"
+            ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
                 <> "yield ({T := Nat; value := 5} ~> Pair) of Pair"
             )
             "true"
         , programCase "dependent sum composes with reverse specification"
-            ( "Pair := {with T? of Any; value? : T}\n"
+            ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
                 <> "yield (Pair <~ {T := Nat; value := 5}) of Pair"
             )
             "true"
         , programCase "private optional binder is valid in an ordered map"
-            ( "Pair := (with _T? of Any; value? : _T)\n"
+            ( "Pair := (^_T :: Any) -> Any do yield (value? : _T)\n"
                 <> "yield (_T := Nat; value := 5) of Pair"
             )
             "true"
@@ -579,17 +563,6 @@ standardLibraryTests =
                 <> "yield Bad"
             )
             (SourceEvaluationFailure (UnknownIdentifier "T"))
-        , programFailureCase "dependent sums do not bind forwards"
-            ( "Bad := {value? : T; with T? of Any}\n"
-                <> "yield Bad"
-            )
-            (SourceEvaluationFailure (UnknownIdentifier "T"))
-        , programFailureCase "argument maps reject mixed dependent binders"
-            "yield {with T? of Any; for U? of Any; value? : T}"
-            (SourceEvaluationFailure MixedDependentBinders)
-        , programFailureCase "ordered maps reject mixed dependent binders"
-            "yield (for T? of Any; with U? of Any; value? : T)"
-            (SourceEvaluationFailure MixedDependentBinders)
         ]
     , integerLimitTests
     , declaredPatternTests

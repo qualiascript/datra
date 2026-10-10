@@ -3,9 +3,12 @@
 -- defaults erased, then replaces only the slots it supplies.
 module Evaluation.Overload
   ( ArgumentSchema
+  , GenericArgumentBinder (..)
   , argumentSchemaFromValue
   , argumentSlotSchema
   , dependentArgumentSlotSchema
+  , genericArgumentSlotSchema
+  , genericEvidenceArgumentSchema
   , orderedArgumentSchema
   , unorderedArgumentSchema
   , concatenatedArgumentSchema
@@ -19,8 +22,14 @@ module Evaluation.Overload
   , argumentSchemaValuesComplete
   , optionalArgumentSlot
   , argumentValuesComplete
-  , omegaArgumentValuesComplete
+  , suppliedArgumentValue
+  , foliageArgumentValuesComplete
   , overloadArgumentSchemaComplete
+  , overloadArgumentSchemaCompleteWithGenerics
+  , overloadArgumentSchemaCompleteWithTrustedGenerics
+  , argumentSchemaHasInferredGenerics
+  , argumentSchemaInferredGenericNames
+  , argumentSchemaValidationArgument
   , overloadValues
   , safeOverloadValues
   , overloadValuesComplete
@@ -29,13 +38,15 @@ module Evaluation.Overload
 import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import Data.Foldable (traverse_)
-import Data.List (nubBy, permutations, sortOn)
+import Data.List (nub, nubBy, permutations, sortOn)
+import DatraLanguage.AST (GenericBinderId, GenericPolarity)
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
   , omega
   , ordinalGT
   , ordinalGTE
+  , ordinalLTE
   )
 import DatraLanguage.Identifier (public)
 import Evaluation.Arguments
@@ -70,7 +81,17 @@ import Evaluation.Specification.Composition (selectFederationMember)
 import Evaluation.Specification.Decision (Decision (..))
 import Evaluation.Specification.Subfederation (decideValueSubfederation)
 import Evaluation.Value
+import FoliageMap (foliageMap, foliageMapPositionAt)
 import Numeric.Natural (Natural)
+
+data GenericArgumentBinder = GenericArgumentBinder
+  { genericArgumentBinderId :: GenericBinderId
+  , genericArgumentPolarity :: GenericPolarity
+  , genericArgumentName :: String
+  , genericArgumentOptionalName :: Bool
+  , genericArgumentInferred :: Bool
+  }
+  deriving (Eq, Show)
 
 data ArgumentSchema
   = ArgumentSlotSchema
@@ -80,6 +101,9 @@ data ArgumentSchema
       Bool
       InterpretedValue
       (Maybe InterpretedValue)
+  | GenericArgumentSlotSchema
+      Int GenericArgumentBinder InterpretedValue
+  | GenericEvidenceArgumentSchema [GenericBinderId] ArgumentSchema
   | OrderedArgumentSchema Natural [ArgumentSchema]
   | UnorderedArgumentSchema [ArgumentSchema]
   | ConcatenatedArgumentSchema ArgumentSchema ArgumentSchema
@@ -91,10 +115,16 @@ data Slot = Slot
   , slotName :: Maybe String
   , slotOptionalName :: Bool
   , slotDependentBinder :: Bool
+  , slotGenericBinder :: Maybe GenericArgumentBinder
+  , slotEvidenceBinders :: [GenericBinderId]
   , slotAllowsPrivateName :: Bool
   , slotAnnotation :: InterpretedValue
   , slotDefault :: Maybe InterpretedValue
   }
+
+slotIsInferred :: Slot -> Bool
+slotIsInferred slot =
+  maybe False genericArgumentInferred (slotGenericBinder slot)
 
 -- 'Nothing' records an explicit positional @*@.  Keeping it distinct from an
 -- absent entry lets complete calls diagnose a skipped required slot while
@@ -163,12 +193,12 @@ resolveReplacements
   -> InterpretedValue
   -> Either InterpretingError Replacements
 resolveReplacements template supplied
-  | [slot] <- templateSlots template
+  | [slot] <- suppliedSlots
   , not (isSkip supplied)
   , Just value <- matchSlot (slotNames [slot]) slot supplied =
       Right [(slotIndex slot, Just value)]
   | otherwise = do
-      let targetNames = slotNames (templateSlots template)
+      let targetNames = slotNames suppliedSlots
           rowSource = case suppliedValue supplied of
             (Just name, underlying)
               | name `notElem` targetNames -> underlying
@@ -179,7 +209,7 @@ resolveReplacements template supplied
           ArgumentMapForm members _ ->
             overloadArgumentRows (makeAtlasMap 2 members)
           _ -> pure rows
-      let writtenOrder = templateSlots template
+      let writtenOrder = suppliedSlots
           slotOrders = templateSlotOrders template
           writtenRoutes =
             nubBy sameReplacements
@@ -210,6 +240,7 @@ resolveReplacements template supplied
                 _ -> Left (OverloadError OverloadAmbiguousWrittenOrder)
       routeResult
   where
+    suppliedSlots = filter (not . slotIsInferred) (templateSlots template)
     isSkip value = case interpretedForm value of
       SkipForm _ -> True
       _ -> False
@@ -374,6 +405,14 @@ suppliedValue value =
               (Just name, maybe annotation id supplied)
             Nothing -> (Nothing, value)
 
+-- | Observe the routing name and underlying value of one supplied argument.
+-- Existential packaging uses the same name erasure as ordinary application
+-- before splitting the generic prefix from its dependent fibre.
+suppliedArgumentValue
+  :: InterpretedValue
+  -> (Maybe String, InterpretedValue)
+suppliedArgumentValue = suppliedValue
+
 suppliedAsAssignment :: InterpretedValue -> Bool
 suppliedAsAssignment value =
   case interpretedForm value of
@@ -387,7 +426,17 @@ templateSlots = slots True
   where
     slots allowsPrivateName template = case template of
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-        [Slot index name optional dependent allowsPrivateName annotation defaultValue]
+        [Slot index name optional dependent Nothing [] allowsPrivateName
+          annotation defaultValue]
+      GenericArgumentSlotSchema index binder annotation ->
+        [Slot index (Just (genericArgumentName binder))
+          (genericArgumentOptionalName binder) True (Just binder) []
+          allowsPrivateName annotation
+          (if genericArgumentInferred binder then Just annotation else Nothing)]
+      GenericEvidenceArgumentSchema binderIds child ->
+        [slot
+          { slotEvidenceBinders = nub (binderIds <> slotEvidenceBinders slot) }
+        | slot <- slots allowsPrivateName child]
       OrderedArgumentSchema _ children -> concatMap (slots True) children
       UnorderedArgumentSchema children -> concatMap (slots False) children
       ConcatenatedArgumentSchema left right ->
@@ -403,7 +452,20 @@ templateSlotOrders = orders True
   where
     orders allowsPrivateName template = case template of
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-        [[Slot index name optional dependent allowsPrivateName annotation defaultValue]]
+        [[Slot index name optional dependent Nothing [] allowsPrivateName
+          annotation defaultValue]]
+      GenericArgumentSlotSchema index binder annotation
+        | genericArgumentInferred binder -> [[]]
+        | otherwise ->
+            [[Slot index (Just (genericArgumentName binder))
+              (genericArgumentOptionalName binder) True (Just binder) []
+              allowsPrivateName annotation Nothing]]
+      GenericEvidenceArgumentSchema binderIds child ->
+        [ [slot
+            { slotEvidenceBinders =
+                nub (binderIds <> slotEvidenceBinders slot) }
+          | slot <- childSlots]
+        | childSlots <- orders allowsPrivateName child]
       OrderedArgumentSchema _ children -> combine True children
       UnorderedArgumentSchema children ->
         concatMap (combine False) (permutations children)
@@ -505,6 +567,11 @@ normalizeArgumentSchema schema = fst (go 0 schema)
           ( ArgumentSlotSchema next name optional dependent annotation defaultValue
           , next + 1
           )
+        GenericArgumentSlotSchema _ binder annotation ->
+          (GenericArgumentSlotSchema next binder annotation, next + 1)
+        GenericEvidenceArgumentSchema binderIds child ->
+          let (normalized, afterChild) = go next child
+          in (GenericEvidenceArgumentSchema binderIds normalized, afterChild)
         OrderedArgumentSchema cardinality children ->
           let (normalized, afterChildren) = normalizeChildren next children
           in (OrderedArgumentSchema cardinality normalized, afterChildren)
@@ -542,6 +609,21 @@ dependentArgumentSlotSchema
 dependentArgumentSlotSchema name optional annotation =
   ArgumentSlotSchema 0 (Just name) optional True annotation Nothing
 
+genericArgumentSlotSchema
+  :: GenericArgumentBinder
+  -> InterpretedValue
+  -> ArgumentSchema
+genericArgumentSlotSchema binder annotation =
+  GenericArgumentSlotSchema 0 binder annotation
+
+genericEvidenceArgumentSchema
+  :: [GenericBinderId]
+  -> ArgumentSchema
+  -> ArgumentSchema
+genericEvidenceArgumentSchema [] schema = schema
+genericEvidenceArgumentSchema binderIds schema =
+  GenericEvidenceArgumentSchema binderIds schema
+
 orderedArgumentSchema :: Natural -> [ArgumentSchema] -> ArgumentSchema
 orderedArgumentSchema = OrderedArgumentSchema
 
@@ -569,18 +651,23 @@ projectedArgumentSchema target
   | otherwise = argumentSchemaFromValue target
 
 hasDependentArgumentFamily :: InterpretedValue -> Bool
-hasDependentArgumentFamily value = case interpretedForm value of
-  DependentSumForm _ -> True
-  EitherForm alternatives ->
-    hasDependentArgumentFamily (evaluatedEitherLeft alternatives)
-      || hasDependentArgumentFamily (evaluatedEitherRight alternatives)
-  _ -> False
+hasDependentArgumentFamily value =
+  case dependentSumView value of
+    Just _ -> True
+    Nothing -> case interpretedForm value of
+      EitherForm alternatives ->
+        hasDependentArgumentFamily (evaluatedEitherLeft alternatives)
+          || hasDependentArgumentFamily (evaluatedEitherRight alternatives)
+      _ -> False
 
 argumentSchemaBindings :: ArgumentSchema -> [(String, InterpretedValue)]
 argumentSchemaBindings schema =
   case schema of
     ArgumentSlotSchema _ (Just name) _ _ annotation _ -> [(name, annotation)]
     ArgumentSlotSchema _ Nothing _ _ _ _ -> []
+    GenericArgumentSlotSchema _ binder annotation ->
+      [(genericArgumentName binder, annotation)]
+    GenericEvidenceArgumentSchema _ child -> argumentSchemaBindings child
     OrderedArgumentSchema _ children -> concatMap argumentSchemaBindings children
     UnorderedArgumentSchema children -> concatMap argumentSchemaBindings children
     ConcatenatedArgumentSchema left right ->
@@ -592,36 +679,60 @@ argumentSchemaDomain
   :: ArgumentSchema
   -> Either InterpretingError InterpretedValue
 argumentSchemaDomain schema =
-  case schema of
-    ArgumentSlotSchema _ Nothing _ _ annotation _ -> pure annotation
-    ArgumentSlotSchema _ (Just name) optional _ annotation _ -> do
-      let named = simpleIdentifierTypeValue name annotation
-      if optional then makeEitherValue named annotation else pure named
-    OrderedArgumentSchema cardinality children ->
-      makeAtlasMap cardinality <$> traverse argumentSchemaDomain children
-    UnorderedArgumentSchema children -> do
-      members <- traverse argumentSchemaDomain children
-      case makeArgumentMap members of
-        Right domain -> Right domain
-        -- The runtime schema retains unordered routing and gives the written
-        -- positional order priority. When optional labels make its permuted
-        -- federation overlap, keep that written presentation as the semantic
-        -- function domain instead of rejecting an otherwise callable schema.
-        Left EitherAlternativesNotDistinct -> Right (makeAtlasMap 2 members)
-        Left failure -> Left failure
-    ConcatenatedArgumentSchema _ _ -> do
-      alternatives <- schemaPages schema
-      let presentations = map (makeAtlasMap 2) alternatives
-      case nubBy sameValue presentations of
-        [] -> pure (makeAtlasMap 0 [])
-        first : remaining -> foldM makeEitherValue first remaining
-    ProjectedArgumentSchema target -> pure target
-    EmptyArgumentSchema -> pure (makeAtlasMap 0 [])
+  case projectedGenericInferenceParts (normalizeArgumentSchema schema) of
+    Just (genericSlots, _, ProjectedArgumentSchema target) -> do
+      prefix <- makeAtlasMapPreservingSingleton 2
+        <$> traverse genericSlotDomain genericSlots
+      concatenateValues prefix target
+    _ -> ordinary schema
   where
+    genericSlotDomain slot =
+      case slotGenericBinder slot of
+        Just binder -> do
+          let named = simpleIdentifierTypeValue
+                (genericArgumentName binder) (slotAnnotation slot)
+          if genericArgumentOptionalName binder
+            then makeEitherValue named (slotAnnotation slot)
+            else pure named
+        Nothing -> Left (OverloadError OverloadNoMatch)
+    ordinary current =
+      case current of
+        ArgumentSlotSchema _ Nothing _ _ annotation _ -> pure annotation
+        ArgumentSlotSchema _ (Just name) optional _ annotation _ -> do
+          let named = simpleIdentifierTypeValue name annotation
+          if optional then makeEitherValue named annotation else pure named
+        GenericArgumentSlotSchema _ binder annotation -> do
+          let named = simpleIdentifierTypeValue
+                (genericArgumentName binder) annotation
+          if genericArgumentOptionalName binder
+            then makeEitherValue named annotation
+            else pure named
+        GenericEvidenceArgumentSchema _ child -> argumentSchemaDomain child
+        OrderedArgumentSchema cardinality children ->
+          makeAtlasMap cardinality <$> traverse argumentSchemaDomain children
+        UnorderedArgumentSchema children -> do
+          members <- traverse argumentSchemaDomain children
+          case makeArgumentMap members of
+            Right domain -> Right domain
+            -- The runtime schema retains unordered routing and gives the written
+            -- positional order priority. When optional labels make its permuted
+            -- federation overlap, keep that written presentation as the semantic
+            -- function domain instead of rejecting an otherwise callable schema.
+            Left EitherAlternativesNotDistinct -> Right (makeAtlasMap 2 members)
+            Left failure -> Left failure
+        ConcatenatedArgumentSchema _ _ -> do
+          alternatives <- schemaPages schema
+          let presentations = map (makeAtlasMap 2) alternatives
+          case nubBy sameValue presentations of
+            [] -> pure (makeAtlasMap 0 [])
+            first : remaining -> foldM makeEitherValue first remaining
+        ProjectedArgumentSchema target -> pure target
+        EmptyArgumentSchema -> pure (makeAtlasMap 0 [])
     sameValue left right =
       interpretedSemanticResult left == interpretedSemanticResult right
     schemaPages current =
       case current of
+        GenericEvidenceArgumentSchema _ child -> schemaPages child
         OrderedArgumentSchema _ entries ->
           (:[]) <$> traverse argumentSchemaDomain entries
         unordered@(UnorderedArgumentSchema _) ->
@@ -641,6 +752,7 @@ argumentSchemaDomain schema =
 argumentSchemaBodyDomain :: ArgumentSchema -> InterpretedValue
 argumentSchemaBodyDomain schema = case schema of
   ProjectedArgumentSchema target -> projectedBodyDomain target
+  GenericEvidenceArgumentSchema _ child -> argumentSchemaBodyDomain child
   _ -> bodyAggregate normalized
     [ namedSlot (slotName slot, slotAnnotation slot)
     | slot <- templateSlots normalized
@@ -651,17 +763,20 @@ argumentSchemaBodyDomain schema = case schema of
 -- Projection selects ordinary schemas, including optional names. The body
 -- always sees their completed, named form, independently of library spelling.
 projectedBodyDomain :: InterpretedValue -> InterpretedValue
-projectedBodyDomain target = case interpretedForm target of
-  DependentSumForm dependent
-    | Just project <- evaluatedDependentSumAccess dependent ->
-        withDependentSumAccess
-          (fmap (argumentSchemaBodyDomain . argumentSchemaFromValue) . project)
-          target
-  EitherForm alternatives -> target
-    { interpretedForm = EitherForm alternatives
-        { evaluatedEitherLeft = projectedBodyDomain (evaluatedEitherLeft alternatives)
-        , evaluatedEitherRight = projectedBodyDomain (evaluatedEitherRight alternatives) } }
-  _ -> argumentSchemaBodyDomain (argumentSchemaFromValue target)
+projectedBodyDomain target =
+  case dependentSumView target >>= evaluatedDependentSumAccess of
+    Just project ->
+      withDependentSumAccess
+        (fmap (argumentSchemaBodyDomain . argumentSchemaFromValue) . project)
+        target
+    Nothing -> case interpretedForm target of
+      EitherForm alternatives -> target
+        { interpretedForm = EitherForm alternatives
+            { evaluatedEitherLeft =
+                projectedBodyDomain (evaluatedEitherLeft alternatives)
+            , evaluatedEitherRight =
+                projectedBodyDomain (evaluatedEitherRight alternatives) } }
+      _ -> argumentSchemaBodyDomain (argumentSchemaFromValue target)
 
 namedSlot :: (Maybe String, InterpretedValue) -> InterpretedValue
 namedSlot (name, value) = maybe value (`simpleIdentifierTypeValue` value) name
@@ -670,9 +785,14 @@ argumentSchemaBodyValues
   :: ArgumentSchema -> InterpretedValue
   -> Either InterpretingError InterpretedValue
 argumentSchemaBodyValues schema supplied = case schema of
-  ProjectedArgumentSchema target -> do
-    selected <- specifyValues supplied target
-    argumentSchemaBodyValues (argumentSchemaFromValue selected) selected
+  ProjectedArgumentSchema target ->
+    case orderedAtlasMapView target of
+      Just _ -> foliageArgumentValuesComplete target supplied
+      Nothing -> do
+        selected <- specifyValues supplied target
+        argumentSchemaBodyValues (argumentSchemaFromValue selected) selected
+  GenericEvidenceArgumentSchema _ child ->
+    argumentSchemaBodyValues child supplied
   _ -> do
     let normalized = normalizeArgumentSchema schema
     replacements <- resolveReplacements normalized supplied
@@ -686,6 +806,7 @@ bodyAggregate :: ArgumentSchema -> [InterpretedValue] -> InterpretedValue
 bodyAggregate schema values =
   case schema of
     ArgumentSlotSchema _ Nothing _ _ _ _ -> makeAtlasMap 2 values
+    GenericEvidenceArgumentSchema _ child -> bodyAggregate child values
     _ -> makeAtlasMapPreservingSingleton 2 values
 
 -- | Values-only view of the written slots, used to infer identifier erasure.
@@ -695,6 +816,8 @@ argumentSchemaPositionalDomain
 argumentSchemaPositionalDomain schema =
   case schema of
     ProjectedArgumentSchema target -> projectedPositionalDomain target
+    GenericEvidenceArgumentSchema _ child ->
+      argumentSchemaPositionalDomain child
     _ -> makeAtlasMap 2
       [ slotAnnotation slot
       | slot <- templateSlots (normalizeArgumentSchema schema)
@@ -717,20 +840,20 @@ argumentSchemaVariadicElementType schema =
 -- and removes identifier wrappers after a page has been selected.
 projectedPositionalDomain :: InterpretedValue -> InterpretedValue
 projectedPositionalDomain target =
-  case interpretedForm target of
-    DependentSumForm dependent
-      | Just project <- evaluatedDependentSumAccess dependent ->
-          withDependentSumAccess
-            (\insertion -> project insertion >>= eraseNames)
-            target
-    EitherForm alternatives ->
-      case makeDistinctUnion
-          [ projectedPositionalDomain (evaluatedEitherLeft alternatives)
-          , projectedPositionalDomain (evaluatedEitherRight alternatives)
-          ] of
-        Right value -> value
-        Left _ -> target
-    _ -> target
+  case dependentSumView target >>= evaluatedDependentSumAccess of
+    Just project ->
+      withDependentSumAccess
+        (\insertion -> project insertion >>= eraseNames)
+        target
+    Nothing -> case interpretedForm target of
+      EitherForm alternatives ->
+        case makeDistinctUnion
+            [ projectedPositionalDomain (evaluatedEitherLeft alternatives)
+            , projectedPositionalDomain (evaluatedEitherRight alternatives)
+            ] of
+          Right value -> value
+          Left _ -> target
+      _ -> target
   where
     eraseNames value =
       case interpretedForm value of
@@ -752,7 +875,14 @@ argumentSchemaValuesComplete
   -> Either InterpretingError InterpretedValue
 argumentSchemaValuesComplete schema supplied =
   case schema of
-    ProjectedArgumentSchema target -> specifyValues supplied target
+    ProjectedArgumentSchema target ->
+      case orderedAtlasMapView target of
+        Just _ -> foliageArgumentValuesCompleteWith
+          argumentSchemaValuesComplete target supplied
+        Nothing -> do
+          selected <- specifyValues supplied target
+          argumentSchemaValuesComplete
+            (argumentSchemaFromValue selected) selected
     _ -> do
       let normalized = normalizeArgumentSchema schema
       replacements <- resolveReplacements normalized supplied
@@ -769,76 +899,99 @@ argumentValuesComplete
 argumentValuesComplete template =
   argumentSchemaBodyValues (argumentSchemaFromValue template)
 
--- | Select one argument-map fibre from a dependent federation whose index
--- order is at most omega.  Candidate indices come exclusively from the
--- retained dependent domain; source arity is used only to prove that a failed
--- candidate and every later, strictly larger candidate cannot fit.
-omegaArgumentValuesComplete
+-- | Select the first matching page in a generic family's canonical foliage
+-- traversal. Finite families are exhausted and may therefore be refuted. An
+-- infinite family is observed only through a finite, source-derived frontier:
+-- finding a page proves the application, while exhausting that frontier is
+-- undecidable rather than a false refutation.
+foliageArgumentValuesComplete
   :: InterpretedValue
   -> InterpretedValue
-  -> (InterpretedValue -> Either InterpretingError InterpretedValue)
+  -> Either InterpretingError InterpretedValue
+foliageArgumentValuesComplete =
+  foliageArgumentValuesCompleteWith argumentSchemaBodyValues
+
+-- Page selection is independent of the representation exposed afterwards.
+-- Calls retain the selected page's identifiers for body bindings, while
+-- values-only conversions erase them into canonical positional order.
+foliageArgumentValuesCompleteWith
+  :: (ArgumentSchema
+      -> InterpretedValue
+      -> Either InterpretingError InterpretedValue)
+  -> InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-omegaArgumentValuesComplete domain staticTarget fibreAt supplied = do
-  let candidateOrder =
-        interpretedMapFinalOrderType (interpretedMap domain)
-  if ordinalGT candidateOrder omega
-    then undecidable
-    else do
-      reservations <- decisionEither
-        (ArgumentMap.argumentReservations
-          selectFederationMember
-          supplied
-          [staticTarget])
-      let positional =
-            ArgumentMap.positionalArgumentSource reservations supplied
-      suppliedOrder <- argumentOrder supplied
-      search candidateOrder reservations positional suppliedOrder Nothing 0
+foliageArgumentValuesCompleteWith complete family supplied = do
+  ordered <- maybe undecidable Right (orderedAtlasMapView family)
+  reservations <- decisionEither
+    (ArgumentMap.argumentReservations
+      selectFederationMember supplied [family])
+  let positional =
+        ArgumentMap.positionalArgumentSource reservations supplied
+  rows <- argumentRows supplied
+  let orderType = ordinalOrderedValuesOrderType ordered
+      traversal = foliageMap orderType
+      sourceFrontier = 1 + maximum (0 : map (fromIntegral . length) rows)
+      ranks = case naturalAtOrdinal orderType of
+        Just count -> naturalPositions count
+        Nothing -> naturalPositions sourceFrontier
+      exhausted = case naturalAtOrdinal orderType of
+        Just _ -> refuted
+        Nothing -> undecidable
+  suppliedOrder <- argumentOrder supplied
+  search reservations positional suppliedOrder
+    (ordinalLTE orderType omega) Nothing ordered traversal ranks exhausted
   where
-    search familyOrder reservations positional suppliedOrder previousOrder position
-      | Just count <- naturalAtOrdinal familyOrder
-      , position >= count = refuted
-      | otherwise = do
-          witness <- maybe undecidable Right
-            (interpretedMapValueAt
-              (interpretedMap domain)
-              (finiteOrdinal position))
-          candidate <- fibreAt witness
-          orderType <- argumentOrder candidate
-          candidateReservations <- decisionEither
-            (ArgumentMap.argumentReservations
-              selectFederationMember
-              supplied
-              [candidate])
-          let admitsReserved = and
-                (zipWith
-                  (\reserved admitted -> not reserved || admitted)
-                  reservations
-                  candidateReservations)
-              later = search familyOrder reservations positional
-                suppliedOrder (Just orderType) (position + 1)
-          if not admitsReserved
-            then later
-            else case argumentValuesComplete candidate positional of
-              Right selected -> Right selected
-              Left failure
-                | ordinalGTE orderType suppliedOrder -> Left failure
-                | Just previous <- previousOrder
-                , not (ordinalGT orderType previous) -> undecidable
-                | otherwise -> later
+    search _ _ _ _ _ _ _ [] exhausted = exhausted
+    search reservations positional suppliedOrder monotonicFamily previousOrder
+        ordered traversal
+        (rank : remaining) exhausted =
+      case foliageMapPositionAt traversal rank
+          >>= ordinalOrderedValueAt ordered of
+        Nothing -> undecidable
+        Just candidate -> do
+          candidateOrder <- argumentOrder candidate
+          let monotonic = monotonicFamily && maybe True
+                (candidateOrder `ordinalGT`) previousOrder
+              conclusive = monotonic
+                && candidateOrder `ordinalGTE` suppliedOrder
+          case decisionEither
+              (ArgumentMap.argumentReservations
+                selectFederationMember supplied [candidate]) of
+            Left _ -> undecidable
+            Right candidateReservations ->
+              let admitsReserved = and
+                    (zipWith
+                      (\reserved admitted -> not reserved || admitted)
+                      reservations
+                      candidateReservations)
+              in if not admitsReserved
+                then if conclusive then missing else later candidateOrder
+                else case complete
+                    (argumentSchemaFromValue candidate) positional of
+                  Right selected -> Right selected
+                  Left failure ->
+                    if conclusive then Left failure else later candidateOrder
+      where
+        later candidateOrder = search reservations positional suppliedOrder
+          monotonicFamily (Just candidateOrder) ordered traversal
+          remaining exhausted
 
-    argumentOrder value = do
-      rows <- argumentRows value
-      case nubBy (==)
-          [finiteOrdinal (fromIntegral (length row)) | row <- rows] of
-        [orderType] -> Right orderType
-        _ -> undecidable
+    naturalPositions 0 = []
+    naturalPositions count = [0 .. count - 1]
 
     decisionEither decision =
       case decision of
         DecisionProved value -> Right value
         DecisionRefuted -> refuted
         DecisionUndecidable -> undecidable
+
+    argumentOrder value = do
+      valueRows <- argumentRows value
+      case nubBy (==)
+          [finiteOrdinal (fromIntegral (length row)) | row <- valueRows] of
+        [orderType] -> Right orderType
+        _ -> undecidable
 
     refuted = Left
       (AtlasMapFederationOperationRefuted
@@ -847,23 +1000,236 @@ omegaArgumentValuesComplete domain staticTarget fibreAt supplied = do
       (AtlasMapFederationOperationUndecidable
         (NoAtlasMapFederationDecisionProcedure
           AtlasMapFederationSpecification))
+    missing = Left (OverloadError OverloadMissingRequiredSlot)
 
 overloadArgumentSchemaComplete
   :: ArgumentSchema
   -> InterpretedValue
   -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
-overloadArgumentSchemaComplete schema supplied =
-  case schema of
-    ProjectedArgumentSchema _ -> do
-      prepared <- argumentSchemaBodyValues schema supplied
-      pure (prepared, [])
+overloadArgumentSchemaComplete = overloadArgumentSchemaCompleteWithGenerics
+  (\_ annotation _ _ -> Right annotation)
+
+overloadArgumentSchemaCompleteWithGenerics
+  :: ( GenericArgumentBinder
+       -> InterpretedValue
+       -> [InterpretedValue]
+       -> [(GenericArgumentBinder, InterpretedValue)]
+       -> Either InterpretingError InterpretedValue)
+  -> ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
+overloadArgumentSchemaCompleteWithGenerics infer schema supplied =
+  overloadArgumentSchemaCompleteWithTrustedGenerics
+    infer [] schema supplied
+
+-- | Complete a call while accepting selected generic witnesses directly from
+-- their declared indexing family. Projection uses this path after obtaining
+-- a witness from the bound itself; explicit caller arguments continue through
+-- ordinary slot specification.
+overloadArgumentSchemaCompleteWithTrustedGenerics
+  :: ( GenericArgumentBinder
+       -> InterpretedValue
+       -> [InterpretedValue]
+       -> [(GenericArgumentBinder, InterpretedValue)]
+       -> Either InterpretingError InterpretedValue)
+  -> [(GenericBinderId, InterpretedValue)]
+  -> ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, [(String, InterpretedValue)])
+overloadArgumentSchemaCompleteWithTrustedGenerics
+    infer trusted schema supplied =
+  let normalized = normalizeArgumentSchema schema
+  in case projectedGenericInferenceParts normalized of
+    Just (genericSlots, evidenceBinders, projection) -> do
+      projected <- argumentSchemaBodyValues projection supplied
+      projectedMembers <- canonicalArgumentMembers projected
+      let evidence =
+            [ (binderId, uniqueValues (map eraseIdentifier projectedMembers))
+            | binderId <- evidenceBinders
+            ]
+          provisional =
+            [ (slotName slot, trustedValue slot)
+            | slot <- genericSlots
+            ]
+      completed <- completeGenericSlots trustedInfer
+        evidence genericSlots provisional
+      let prepared = makeAtlasMapPreservingSingleton 2
+            (map namedSlot completed <> projectedMembers)
+      pure
+        ( prepared
+        , [(name, value) | (Just name, value) <- completed]
+        )
+    Nothing -> case schema of
+      ProjectedArgumentSchema _ -> do
+        prepared <- argumentSchemaBodyValues schema supplied
+        pure (prepared, [])
+      _ -> do
+        replacements <- resolveReplacements normalized supplied
+        let slots = templateSlots normalized
+        provisional <- traverse (completeTrustedSlot replacements) slots
+        completed <- completeGenericSlots trustedInfer
+          (genericEvidence slots provisional) slots provisional
+        let prepared = bodyAggregate normalized (map namedSlot completed)
+        pure (prepared, [(name, value) | (Just name, value) <- completed])
+  where
+    trustedValue slot =
+      case slotGenericBinder slot of
+        Just binder -> maybe (slotAnnotation slot) id
+          (lookup (genericArgumentBinderId binder) trusted)
+        Nothing -> slotAnnotation slot
+    completeTrustedSlot replacements slot =
+      case slotGenericBinder slot >>= \binder ->
+          lookup (genericArgumentBinderId binder) trusted of
+        Just value -> Right (slotName slot, value)
+        Nothing -> completeSlot replacements slot
+    trustedInfer binder annotation evidence prior =
+      case lookup (genericArgumentBinderId binder) trusted of
+        Just value -> Right value
+        Nothing -> infer binder annotation evidence prior
+
+-- A private generic prefix consumes no caller slots. When its only ordinary
+-- suffix is a projected family such as @Args _T@, delegate the entire supplied
+-- value to that family, then prepend the inferred witnesses to its selected
+-- body page. Public/explicit prefix slots still use ordinary routing.
+projectedGenericInferenceParts
+  :: ArgumentSchema
+  -> Maybe ([Slot], [GenericBinderId], ArgumentSchema)
+projectedGenericInferenceParts schema = do
+  (genericSlots, projections) <- collect [] schema
+  case projections of
+    [(binderIds, projection)]
+      | not (null genericSlots)
+      , all slotIsInferred genericSlots ->
+          Just (genericSlots, binderIds, projection)
+    _ -> Nothing
+  where
+    collect inherited current =
+      case current of
+        GenericArgumentSlotSchema {} ->
+          Just (templateSlots current, [])
+        GenericEvidenceArgumentSchema binderIds child ->
+          collect (nub (inherited <> binderIds)) child
+        ProjectedArgumentSchema {} ->
+          Just ([], [(inherited, current)])
+        OrderedArgumentSchema _ children -> collectChildren inherited children
+        UnorderedArgumentSchema children -> collectChildren inherited children
+        ConcatenatedArgumentSchema left right ->
+          collectChildren inherited [left, right]
+        EmptyArgumentSchema -> Just ([], [])
+        ArgumentSlotSchema {} -> Nothing
+    collectChildren inherited children = do
+      parts <- traverse (collect inherited) children
+      pure
+        ( concatMap fst parts
+        , concatMap snd parts
+        )
+
+canonicalArgumentMembers
+  :: InterpretedValue
+  -> Either InterpretingError [InterpretedValue]
+canonicalArgumentMembers value =
+  case interpretedForm value of
+    ArgumentMapForm members _ -> Right members
     _ -> do
-      let normalized = normalizeArgumentSchema schema
-      replacements <- resolveReplacements normalized supplied
-      let slots = templateSlots normalized
-      completed <- traverse (completeSlot replacements) slots
-      let prepared = bodyAggregate normalized (map namedSlot completed)
-      pure (prepared, [(name, value) | (Just name, value) <- completed])
+      rows <- argumentRows value
+      case rows of
+        [members] -> Right members
+        _ -> Left (OverloadError OverloadNoMatch)
+
+eraseIdentifier :: InterpretedValue -> InterpretedValue
+eraseIdentifier value =
+  case suppliedValue value of
+    (Just _, underlying) -> eraseIdentifier underlying
+    (Nothing, underlying) -> underlying
+
+uniqueValues :: [InterpretedValue] -> [InterpretedValue]
+uniqueValues = nubBy sameValue
+  where
+    sameValue left right =
+      interpretedSemanticResult left == interpretedSemanticResult right
+
+completeGenericSlots
+  :: ( GenericArgumentBinder
+       -> InterpretedValue
+       -> [InterpretedValue]
+       -> [(GenericArgumentBinder, InterpretedValue)]
+       -> Either InterpretingError InterpretedValue)
+  -> [(GenericBinderId, [InterpretedValue])]
+  -> [Slot]
+  -> [(Maybe String, InterpretedValue)]
+  -> Either InterpretingError [(Maybe String, InterpretedValue)]
+completeGenericSlots infer evidence = go []
+  where
+    go _ [] [] = Right []
+    go generics (slot : remainingSlots) (completed : remainingCompleted) =
+      case slotGenericBinder slot of
+        Just binder | genericArgumentInferred binder -> do
+          witness <- infer binder (slotAnnotation slot)
+            (maybe [] id (lookup (genericArgumentBinderId binder) evidence))
+            (reverse generics)
+          remaining <- go ((binder, witness) : generics)
+            remainingSlots remainingCompleted
+          pure ((Just (genericArgumentName binder), witness) : remaining)
+        Just binder -> do
+          remaining <- go ((binder, snd completed) : generics)
+            remainingSlots remainingCompleted
+          pure (completed : remaining)
+        Nothing -> (completed :) <$> go generics remainingSlots remainingCompleted
+    go _ _ _ = Left (OverloadError OverloadNoMatch)
+
+genericEvidence
+  :: [Slot]
+  -> [(Maybe String, InterpretedValue)]
+  -> [(GenericBinderId, [InterpretedValue])]
+genericEvidence slots completed = foldr add [] (zip slots completed)
+  where
+    add (slot, (_, value)) evidence =
+      foldr (insertEvidence (eraseIdentifier value)) evidence
+        (slotEvidenceBinders slot)
+    insertEvidence value binderId evidence =
+      case lookup binderId evidence of
+        Nothing -> (binderId, [value]) : evidence
+        Just values
+          | any (sameValue value) values -> evidence
+          | otherwise ->
+              (binderId, value : values)
+                : filter ((/= binderId) . fst) evidence
+    sameValue left right =
+      interpretedSemanticResult left == interpretedSemanticResult right
+
+argumentSchemaHasInferredGenerics :: ArgumentSchema -> Bool
+argumentSchemaHasInferredGenerics = any slotIsInferred . templateSlots
+
+argumentSchemaInferredGenericNames :: ArgumentSchema -> [String]
+argumentSchemaInferredGenericNames schema =
+  [ genericArgumentName binder
+  | slot <- templateSlots schema
+  , Just binder <- [slotGenericBinder slot]
+  , genericArgumentInferred binder
+  ]
+
+-- Function specifications validate the hidden prefix against its declared
+-- domain. Keep the joined witness for the body and lexical binding, while the
+-- redundant structural validation uses one already-checked evidence value.
+-- The concatenated projected suffix remains expanded and concrete.
+argumentSchemaValidationArgument
+  :: ArgumentSchema
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+argumentSchemaValidationArgument schema prepared =
+  case projectedGenericInferenceParts (normalizeArgumentSchema schema) of
+    Just (genericSlots, _, ProjectedArgumentSchema _) -> do
+      members <- canonicalArgumentMembers prepared
+      let suffix = drop (length genericSlots) members
+          representative = case suffix of
+            first : _ -> eraseIdentifier first
+            [] -> makeAtlasMap 0 []
+          prefix =
+            [ namedSlot (slotName slot, representative)
+            | slot <- genericSlots
+            ]
+      pure (makeAtlasMapPreservingSingleton 2 (prefix <> suffix))
+    _ -> Right prepared
 
 finiteMembers :: InterpretedValue -> Maybe [InterpretedValue]
 finiteMembers value = do
@@ -951,6 +1317,12 @@ buildTemplate replacements template =
     ArgumentSlotSchema index name optional dependent annotation defaultValue ->
       buildSlot name optional dependent annotation
         (replacementAt index replacements <|> defaultValue)
+    GenericArgumentSlotSchema index binder annotation ->
+      buildSlot (Just (genericArgumentName binder))
+        (genericArgumentOptionalName binder) True annotation
+        (replacementAt index replacements
+          <|> if genericArgumentInferred binder then Just annotation else Nothing)
+    GenericEvidenceArgumentSchema _ child -> buildTemplate replacements child
     OrderedArgumentSchema cardinality children ->
       makeAtlasMap cardinality <$> traverse (buildTemplate replacements) children
     UnorderedArgumentSchema children ->

@@ -2,6 +2,7 @@
 -- argument schema used by both function calls and overload operators.
 module Evaluation.FunctionArguments
   ( compileParameters
+  , compileParametersWithGenerics
   , compileDependentParameter
   , parameterBindings
   , parameterDomain
@@ -28,47 +29,113 @@ compileParameters
   :: (Expression -> Either InterpretingError InterpretedValue)
   -> Expression
   -> Either InterpretingError ArgumentSchema
-compileParameters evaluate = compile False
+compileParameters evaluate expressionValue =
+  compileParametersWithGenerics [] evaluate expressionValue expressionValue
+
+compileParametersWithGenerics
+  :: [GenericBinder Expression]
+  -> (Expression -> Either InterpretingError InterpretedValue)
+  -> Expression
+  -> Expression
+  -> Either InterpretingError ArgumentSchema
+compileParametersWithGenerics generics evaluate written static =
+  compileWith False False written static
   where
+    inferenceBoundary = case written of
+      ArgumentMap _ -> True
+      _ -> False
     compile = compileWith False
     compileMember = compileWith True
-    compileWith directMember allowPrivateOptional expression =
-      case expression of
-        ForBinding (IdentifierString name) optional bound -> do
-          validateOptionalName allowPrivateOptional name optional
-          annotationValue <- evaluate bound
-          requireCanonicalTypeAnnotation annotationValue
-          pure (dependentArgumentSlotSchema name optional annotationValue)
+    compileWith directMember allowPrivateOptional writtenValue staticValue =
+      case staticValue of
         IdentifierOperation (IdentifierString name) annotation given ->
-          parameterSlot (Just name) False annotation given
+          case genericByName name of
+            Just binder -> do
+              annotationValue <- evaluate annotation
+              requireCanonicalTypeAnnotation annotationValue
+              pure (genericArgumentSlotSchema
+                (genericDescriptor binder) annotationValue)
+            Nothing ->
+              genericEvidenceArgumentSchema (genericReferences writtenValue)
+                <$> parameterSlot (Just name) False annotation given
         optional
           | Just
               (IdentifierOperation (IdentifierString name) annotation given, _)
               <- optionalIdentifierExpression optional -> do
               validateOptionalName allowPrivateOptional name True
-              parameterSlot (Just name) True annotation given
-        AtlasMap members ->
-          orderedArgumentSchema 2 <$> traverse (compileMember True) members
-        MapSequence members ->
-          orderedArgumentSchema 2 <$> traverse (compileMember True) members
-        ArgumentMap members -> do
-          traverse_ validateArgumentMapName members
-          unorderedArgumentSchema <$> traverse (compileMember False) members
-        MapConcatenation member (AtlasMap []) ->
-          projectedArgumentSchema <$> evaluate member
+              case genericByName name of
+                Just binder -> do
+                  annotationValue <- evaluate annotation
+                  requireCanonicalTypeAnnotation annotationValue
+                  pure (genericArgumentSlotSchema
+                    (genericDescriptor binder) annotationValue)
+                Nothing ->
+                  genericEvidenceArgumentSchema (genericReferences writtenValue)
+                    <$> parameterSlot (Just name) True annotation given
+        AtlasMap staticMembers
+          | AtlasMap writtenMembers <- writtenValue
+          , length writtenMembers == length staticMembers ->
+              orderedArgumentSchema 2
+                <$> traverse (uncurry (compileMember True))
+                  (zip writtenMembers staticMembers)
+        MapSequence staticMembers
+          | MapSequence writtenMembers <- writtenValue
+          , length writtenMembers == length staticMembers ->
+              orderedArgumentSchema 2
+                <$> traverse (uncurry (compileMember True))
+                  (zip writtenMembers staticMembers)
+        ArgumentMap staticMembers
+          | ArgumentMap writtenMembers <- writtenValue
+          , length writtenMembers == length staticMembers -> do
+              traverse_ validateArgumentMapName writtenMembers
+              unorderedArgumentSchema
+                <$> traverse (uncurry (compileMember False))
+                  (zip writtenMembers staticMembers)
+        MapConcatenation staticMember (AtlasMap []) ->
+          genericEvidenceArgumentSchema (genericReferences writtenValue)
+            . projectedArgumentSchema <$> evaluate staticMember
         MapConcatenation _ _ ->
           concatenatedArgumentSchema
-            <$> traverse (compile allowPrivateOptional) (flatten expression)
+            <$> traverse
+              (uncurry (compile allowPrivateOptional))
+              (zip (flatten writtenValue) (flatten staticValue))
           where
             flatten (MapConcatenation left right) =
               flatten left <> flatten right
             flatten value = [value]
         _ -> do
-          annotation <- evaluate expression
-          pure
+          annotation <- evaluate staticValue
+          pure (genericEvidenceArgumentSchema (genericReferences writtenValue)
             (if directMember
               then argumentSlotSchema Nothing False annotation Nothing
-              else argumentSchemaFromValue annotation)
+              else argumentSchemaFromValue annotation))
+    genericByName target = findGeneric generics
+      where
+        findGeneric [] = Nothing
+        findGeneric (binder : remaining) =
+          let GenericIdentifier (IdentifierString name) _ =
+                genericBinderIdentifier binder
+          in if name == target then Just binder else findGeneric remaining
+    genericDescriptor binder =
+      let GenericIdentifier (IdentifierString name) optional =
+            genericBinderIdentifier binder
+      in GenericArgumentBinder
+          { genericArgumentBinderId = genericBinderId binder
+          , genericArgumentPolarity = genericBinderPolarity binder
+          , genericArgumentName = name
+          , genericArgumentOptionalName = optional || not inferenceBoundary
+          , genericArgumentInferred =
+              inferenceBoundary && not (isPublic name)
+          }
+    genericReferences expressionValue = nubBinderIds (go expressionValue)
+      where
+        go current = case current of
+          IdentifierReference (IdentifierString name) ->
+            maybe [] (pure . genericBinderId) (genericByName name)
+          _ -> concatMap go (expressionChildren current)
+        nubBinderIds [] = []
+        nubBinderIds (binderId : remaining) =
+          binderId : nubBinderIds (filter (/= binderId) remaining)
     isPublic name = not (null (public [(name, ())]))
     validateOptionalName allowPrivate name optional
       | optional && not allowPrivate && not (isPublic name) =
@@ -76,9 +143,6 @@ compileParameters evaluate = compile False
       | otherwise = Right ()
     validateArgumentMapName member =
       case member of
-        ForBinding (IdentifierString name) True _
-          | not (isPublic name) ->
-              Left (PrivateParameterCannotBeOptional name)
         optional
           | Just (IdentifierOperation (IdentifierString name) _ _, _) <-
               optionalIdentifierExpression optional

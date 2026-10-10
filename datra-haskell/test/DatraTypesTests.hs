@@ -58,6 +58,7 @@ import DatraOrdinal
   , omega
   , ordinal
   , ordinalCoefficients
+  , ordinalLT
   )
 import qualified DatraTypes as Types
 import DatraTypes.DependentTypes qualified as Dependent
@@ -82,7 +83,6 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (UnsupportedEvaluationMode)
   , ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
-  , SyntaxExpansionFailure (UndecidableDependentBinder)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -90,6 +90,7 @@ import DatraLanguage.Diagnostics.Localization
   , renderDatraError
   )
 import Ellipsis
+import FoliageMap
 import EllipsisNatural qualified as DatraNatural
 import EllipsisInteger qualified as DatraInteger
 import BooleanType qualified as DatraBoolean
@@ -150,7 +151,12 @@ testTree =
   testGroup "Datra types"
     [ testGroup "examples"
         [ testCase "ordinal inspection" testOrdinalInspection
+        , testCase "foliage map traversal" testFoliageMapTraversal
+        , testCase "ordinal-indexed families use ordered-map capability"
+            testOrdinalIndexedFamilyCapability
         , testCase "diagnostics" testDiagnostics
+        , testCase "generic identifier disjointness"
+            testGenericIdentifierDisjointness
         , testCase "evaluation boundary" testEvaluationBoundary
         , testCase "map length" testMapLength
         , testCase "ASCII map" testAsciiMap
@@ -187,6 +193,8 @@ testTree =
             propOrdinalSequenceAppend
         , testProperty "argument schema skip preserves a default"
             propArgumentSchemaSkipDefault
+        , testProperty "foliage map positions round-trip"
+            propFoliageMapRoundTrip
         ]
     ]
 
@@ -196,6 +204,67 @@ testOrdinalInspection = do
     (ordinalCoefficients (ordinal [0, 2, 0, 3]) == [2, 0, 3])
   assert "zero has no canonical coefficients"
     (null (ordinalCoefficients (finiteOrdinal 0)))
+
+testFoliageMapTraversal :: IO ()
+testFoliageMapTraversal = do
+  let orderType = ordinal [1, 1, 0]
+      traversal = foliageMap orderType
+      expected =
+        [ finiteOrdinal 0
+        , ordinal [1, 0, 0]
+        , finiteOrdinal 1
+        , ordinal [1, 0, 1]
+        , omega
+        , ordinal [1, 0, 2]
+        , finiteOrdinal 2
+        , ordinal [1, 0, 3]
+        , ordinal [1, 1]
+        , ordinal [1, 0, 4]
+        , ordinal [2, 0]
+        ]
+  assert "Cantor-normal traversal diagonally interleaves infinite lanes"
+    (map (foliageMapPositionAt traversal) [0 .. 10] == map Just expected)
+  assert "Cantor-normal traversal and its inverse agree numerically"
+    (and
+      [ (foliageMapPositionAt traversal code >>= foliageMapRankOf traversal)
+          == Just code
+      | code <- [0 .. 100]
+      ])
+
+propFoliageMapRoundTrip :: H.Property
+propFoliageMapRoundTrip = H.property $ do
+  coefficients <- H.forAll
+    (Gen.list (Range.linear 0 5) (Gen.integral (Range.linear 0 8)))
+  code <- H.forAll (Gen.integral (Range.linear 0 10000))
+  let orderType = ordinal coefficients
+      traversal = foliageMap orderType
+  case foliageMapPositionAt traversal code of
+    Nothing -> H.assert
+      (maybe True (code >=) (naturalAtOrdinal orderType))
+    Just position -> do
+      H.assert (ordinalLT position orderType)
+      foliageMapRankOf traversal position H.=== Just code
+
+testOrdinalIndexedFamilyCapability :: IO ()
+testOrdinalIndexedFamilyCapability = do
+  let orderType = finiteOrdinal 3
+      ordered = Types.makeLazyMapValue orderType
+        (fmap Types.naturalValue . naturalAtOrdinal)
+  case Types.ordinalIndexedValueFamily ordered of
+    Nothing -> assert "a non-range ordered map exposes an indexed family" False
+    Just family -> do
+      assert "the family preserves the ordered map's cardinality"
+        (Types.ordinalIndexedFamilyOrderType family == orderType)
+      assert "the family delegates to the ordered map's ordinal accessor"
+        ((Types.ordinalIndexedFamilyValueAt family (finiteOrdinal 2)
+            >>= Types.interpretedInteger) == Just 2)
+  let aboveOmega = Types.makeLazyMapValue
+        (addOrdinals omega (finiteOrdinal 1))
+        (const Nothing)
+  assert "an atomic ordered map above omega is not an indexed family"
+    (case Types.ordinalIndexedValueFamily aboveOmega of
+      Nothing -> True
+      Just _ -> False)
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do
@@ -418,29 +487,17 @@ testDiagnostics = do
           "adnotarea de tip a identificatorului nu este canonică"
           ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
     )
-  assert "undecidable dependent binders have a bilingual diagnostic"
-    ( localizeDiagnostic English (UndecidableDependentBinder "with")
+  assert "unowned generic introductions have a bilingual diagnostic"
+    ( localizeDiagnostic English
+        (Types.GenericIntroductionOutsideFunctionType "^")
         == LocalizedMessage
-          "dependent binder expression cannot be decided statically"
-          [ "adapter: with"
-          , "a single lexical identifier is currently required"
-          ]
-      && localizeDiagnostic Romanian (UndecidableDependentBinder "with")
+          "generic introduction requires an enclosing function type"
+          ["generic operator: ^"]
+      && localizeDiagnostic Romanian
+        (Types.GenericIntroductionOutsideFunctionType "^")
         == LocalizedMessage
-          "expresia legăturii dependente nu poate fi decisă static"
-          [ "adaptor: with"
-          , "în prezent este necesar un singur identificator lexical"
-          ]
-    )
-  assert "mixed dependent binders have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English Types.MixedDependentBinders
-      == LocalizedMessage
-          "dependent sums and products cannot be mixed in one type container"
-          []
-      && localizeDiagnostic Romanian Types.MixedDependentBinders
-      == LocalizedMessage
-          "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
-          []
+          "introducerea generică necesită un tip de funcție exterior"
+          ["operator generic: ^"]
     )
   assert "duplicate generic identifiers have an explicit bilingual diagnostic"
     ( localizeDiagnostic English (Types.DuplicateGenericIdentifier "T")
@@ -451,6 +508,42 @@ testDiagnostics = do
           (Types.DuplicateGenericIdentifier "T")
       == LocalizedMessage
           "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
+          ["identificator: T"]
+    )
+  assert "forward generic bounds have an explicit bilingual diagnostic"
+    ( localizeDiagnostic English
+        (Types.ForwardGenericBoundReference "T" "U")
+      == LocalizedMessage
+          "generic bound refers to a binder that is not yet available"
+          [ "generic identifier: T"
+          , "unavailable identifier: U"
+          ]
+      && localizeDiagnostic Romanian
+          (Types.ForwardGenericBoundReference "T" "U")
+      == LocalizedMessage
+          "limita generică se referă la o legătură care nu este încă disponibilă"
+          [ "identificator generic: T"
+          , "identificator indisponibil: U"
+          ]
+    )
+  assert "generic identifier collisions have explicit bilingual diagnostics"
+    ( localizeDiagnostic English (Types.GenericIdentifierOverlap "T")
+      == LocalizedMessage
+          "generic identifier overlaps another identifier in its function type"
+          ["identifier: T"]
+      && localizeDiagnostic Romanian (Types.GenericIdentifierOverlap "T")
+      == LocalizedMessage
+          "identificatorul generic se suprapune cu alt identificator din tipul funcției sale"
+          ["identificator: T"]
+      && localizeDiagnostic English
+          (Types.GenericIdentifierDisjointnessUndecidable "T")
+      == LocalizedMessage
+          "generic identifier cannot be proven disjoint from a dependent identifier"
+          ["identifier: T"]
+      && localizeDiagnostic Romanian
+          (Types.GenericIdentifierDisjointnessUndecidable "T")
+      == LocalizedMessage
+          "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
           ["identificator: T"]
     )
   assert "invalid syntax-template characters have an explicit bilingual diagnostic"
@@ -504,6 +597,30 @@ testDiagnostics = do
           , "se așteaptă dev, development, prod sau production"
           ]
     )
+
+testGenericIdentifierDisjointness :: IO ()
+testGenericIdentifierDisjointness = do
+  first <- expectRight "construct first identifier name"
+    (Types.asciiStringValue "T")
+  second <- expectRight "construct second identifier name"
+    (Types.asciiStringValue "U")
+  names <- expectRight "construct identifier-name federation"
+    (Types.eitherValue first second)
+  naturalType <- expectRight "construct dependent identifier bound"
+    Types.naturalTypeValue
+  let family = Types.identifierTemplateTypeValue
+        "generic-disjointness-test" names naturalType
+      opaque = Types.dependentIdentifierTypeValue
+        "opaque-generic-disjointness-test" (const "T") naturalType
+  assert "a generic is rejected when any dependent-name fibre overlaps"
+    (Types.identifierNameDisjointness "T" family
+      == Types.IdentifierNameOverlap)
+  assert "a generic is accepted when the complete name federation is disjoint"
+    (Types.identifierNameDisjointness "V" family
+      == Types.IdentifierNameDisjoint)
+  assert "an open family without an all-fibre name proof stays undecidable"
+    (Types.identifierNameDisjointness "T" opaque
+      == Types.IdentifierNameDisjointnessUndecidable)
 
 assert :: String -> Bool -> IO ()
 assert = assertBool

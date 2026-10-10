@@ -15,7 +15,6 @@ import BlockScope (bindingNames)
 import Data.List (nub)
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
-import DatraLanguage.Identifier (public)
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
@@ -389,7 +388,9 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     rewriteDeclaredValue declaredName selected
       | canReceiveFunctionBody selected
           || ( not (directSelfAlias declaredName selected)
-                && startsBlockAtHead environment selected
+                && ( containsBlockStart environment selected
+                      || startsBlockAtHead environment selected
+                   )
              ) = do
           (candidate, remaining) <-
             rewriteWithTail True capture environment selected trailing
@@ -435,6 +436,8 @@ canReceiveFunctionBody :: Expression -> Bool
 canReceiveFunctionBody FunctionTypeExpression {} = True
 canReceiveFunctionBody SyntaxType {} = True
 canReceiveFunctionBody (Fun signature) = canReceiveFunctionBody signature
+canReceiveFunctionBody (SyntaxBoundary signature) =
+  canReceiveFunctionBody signature
 canReceiveFunctionBody _ = False
 
 containsFunctionImplementation :: Expression -> Bool
@@ -492,8 +495,8 @@ rewriteChildren capture environment value =
 -- ends and its enclosing application resumes. Rewrite a literal-headed suffix
 -- first when it is itself a complete syntax expression. The enclosing pass
 -- can then flatten that rewritten value contextually and match its own rule.
--- This is what makes composition such as @with i from 0 to 3 do ...@ depend
--- on the declared @from@ rule rather than on a parser-level range grammar.
+-- This is what makes a composed range application depend on the declared
+-- @from@ rule rather than on a parser-level range grammar.
 rewriteEmbeddedApplication
   :: CaptureHole
   -> RewriteEnvironment
@@ -523,18 +526,9 @@ rewriteEmbeddedApplication capture environment value =
         else Right (Just (applicationFrom (prefix <> [rewritten])))
 
 dependentBinderDeclaration :: Expression -> Maybe Expression
-dependentBinderDeclaration binder = case binder of
-  WithBinding name _ bound ->
-    Just (IdentifierOperation name bound Nothing)
-  ForBinding name _ bound ->
-    Just (IdentifierOperation name bound Nothing)
-  _ -> Nothing
+dependentBinderDeclaration _ = Nothing
 
 validArgumentMember :: Expression -> Bool
-validArgumentMember (ForBinding (IdentifierString name) True _) =
-  not (null (public [(name, ())]))
-validArgumentMember (WithBinding (IdentifierString name) True _) =
-  not (null (public [(name, ())]))
 validArgumentMember _ = True
 
 attachTrailingFunctionBody
@@ -605,6 +599,8 @@ implementedFunction :: Expression -> Expression -> Maybe Expression
 implementedFunction body (Fun signature)
   | acceptsFunctionBody signature =
       Just (Fun (MapSpecification body signature))
+implementedFunction body (SyntaxBoundary signature) =
+  SyntaxBoundary <$> implementedFunction body signature
 implementedFunction body signature
   | acceptsFunctionBody signature = Just (MapSpecification body signature)
 implementedFunction _ _ = Nothing
@@ -934,9 +930,9 @@ matchEmbeddedBlock capture environment = matchWithResult id
             Nothing -> Right Nothing
 
     -- An inline ordinary form owns a shared delimiter before that delimiter
-    -- can begin an embedded block.  This keeps @with ... do expression@ on
-    -- one source line from consuming the following line as a @do ... yield@
-    -- body while leaving genuine block starts unchanged.
+    -- can begin an embedded block. This keeps an inline application ending
+    -- in @do expression@ from consuming the following line as a
+    -- @do ... yield@ body while leaving genuine block starts unchanged.
     ordinarySyntaxPrecedesBlock expressionValue blockStart blockPrefix =
       any precedes (rewriteRules environment)
       where
@@ -976,17 +972,28 @@ matchEmbeddedBlock capture environment = matchWithResult id
               (result, remaining) <-
                 rewriteWithTail True capture nested
                   (wrapResult rawResult) afterBlock
-              let candidate = applicationFrom
+              let candidate selectedResult = applicationFrom
                     (map literalExpression prefix
                       <> [ AtlasMap block
                          , literalExpression delimiter
-                         , result
+                         , selectedResult
                          ])
                   captureInScope previous kind captured =
                     capture (rewriteStrictCaptures nested)
                       (rewriteDeclarations nested) previous kind captured
-              case matchSyntaxRulesWith captureInScope [rule] candidate of
-                Left NoMatchingSyntaxTemplate -> Right Nothing
+                  match = matchSyntaxRulesWith captureInScope [rule]
+              case match (candidate result) of
+                Left NoMatchingSyntaxTemplate ->
+                  case match (candidate (wrapResult rawResult)) of
+                    Left NoMatchingSyntaxTemplate -> Right Nothing
+                    Left failure -> Left (SyntaxRewriteMatchFailure failure)
+                    Right expanded -> do
+                      (rewritten, fallbackRemaining) <-
+                        rewriteWithTail True capture nested expanded afterBlock
+                      Right (Just
+                        ( applicationFrom (before <> [rewritten])
+                        , fallbackRemaining
+                        ))
                 Left failure -> Left (SyntaxRewriteMatchFailure failure)
                 Right expanded -> Right (Just
                   (applicationFrom (before <> [expanded]), remaining))
@@ -1054,7 +1061,7 @@ rightInfixContext value = case value of
 
 -- Concatenation is a contextual boundary only for hole-led syntax such as
 -- @%_Expr of %_Expr@. Prefix syntax must finish before a following comma; for
--- example, @for T of Any, value@ binds @Any@ rather than the concatenation.
+-- example, @&T, value@ binds @Any@ rather than the concatenation.
 concatenationBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
 concatenationBoundaryCandidates rule value = do
   literal <- case
@@ -1210,17 +1217,37 @@ consumeBlock capture initial = go [] initial
       case splitAtDelimiter delimiter current of
         Just (beforeDelimiter, resultTokens)
           | not (null resultTokens) -> do
-              let prefix = maybe [] (: [])
-                    (applicationFromMaybe beforeDelimiter)
-                  collected = reverse reversed <> prefix
-              (rewrittenBlock, finalNested) <-
-                rewriteSequence capture initial collected
-              Right (Just
-                ( rewrittenBlock
-                , finalNested
-                , applicationFrom resultTokens
-                , trailing
-                ))
+              let result = applicationFrom resultTokens
+              case applicationFromMaybe beforeDelimiter of
+                Just unfinished
+                  | containsBlockStart environment unfinished -> do
+                      let continuation =
+                            applicationFrom
+                              (literalExpression delimiter : resultTokens)
+                              : trailing
+                          tentative = environment
+                            { rewriteStrictCaptures = False }
+                      (rewritten, remaining) <- rewriteWithTail False
+                        capture tentative unfinished continuation
+                      if length remaining < length continuation
+                        then go (rewritten : reversed)
+                          (introduceDeclaration tentative rewritten)
+                          delimiter [] remaining
+                        else complete beforeDelimiter result
+                _ -> complete beforeDelimiter result
+              where
+                complete before result = do
+                  let prefix = maybe [] (: [])
+                        (applicationFromMaybe before)
+                      collected = reverse reversed <> prefix
+                  (rewrittenBlock, finalNested) <-
+                    rewriteSequence capture initial collected
+                  Right (Just
+                    ( rewrittenBlock
+                    , finalNested
+                    , result
+                    , trailing
+                    ))
         _ -> case applicationFromMaybe current of
           Just entry -> do
             let tentative = environment { rewriteStrictCaptures = False }

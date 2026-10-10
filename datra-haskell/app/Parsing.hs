@@ -3,6 +3,15 @@
 
 module Parsing
   ( ResourceEnvelope (..)
+  , FunctionTypeIdentifier (..)
+  , PreparedFunctionDomainKind (..)
+  , PreparedFunctionDomainMember (..)
+  , PreparedFunctionDomain (..)
+  , functionTypeIdentifiers
+  , prepareFunctionDomain
+  , prepareFunctionDomainExpression
+  , prepareGenericExpression
+  , forwardGenericBoundReference
   , parseDatra
   , sourceImports
   , sourceImportInvocations
@@ -101,8 +110,6 @@ import DatraLanguage.AST
       , Fun
       , GenericIntroductionExpression
       , GenericReferenceExpression
-      , WithBinding
-      , ForBinding
       , InModule
       , Import
       , FunctionTypeExpression
@@ -119,6 +126,7 @@ import DatraLanguage.AST
       )
   , contextualAccess
   , expressionChildren
+  , mapExpressionChildren
   , traverseExpressionChildren
   )
 import DatraLanguage.AST.Operator qualified as AST
@@ -185,6 +193,34 @@ data ResourceEnvelope
   | ImplicitBlockEnvelope
   deriving (Eq, Show)
 
+-- | One identifier introduced into a completed function-type domain or
+-- codomain scope. Simple identifiers can be compared lexically; dependent
+-- identifiers retain their expression for the semantic all-fibre proof.
+data FunctionTypeIdentifier
+  = SimpleFunctionTypeIdentifier IdentifierString
+  | DependentFunctionTypeIdentifier Expression
+  deriving (Eq, Show)
+
+-- | Container behavior retained while generic binders become real leading
+-- domain members. Both parenthesized Atlas maps and semicolon map sequences
+-- use the ordered path; argument maps retain their name-matching boundary.
+data PreparedFunctionDomainKind
+  = PreparedOrderedFunctionDomain
+  | PreparedArgumentFunctionDomain
+  | PreparedScalarFunctionDomain
+  deriving (Eq, Show)
+
+data PreparedFunctionDomainMember
+  = PreparedGenericFunctionDomainMember (GenericBinder Expression)
+  | PreparedOrdinaryFunctionDomainMember Expression
+  deriving (Eq, Show)
+
+data PreparedFunctionDomain = PreparedFunctionDomain
+  { preparedFunctionDomainKind :: PreparedFunctionDomainKind
+  , preparedFunctionDomainMembers :: [PreparedFunctionDomainMember]
+  }
+  deriving (Eq, Show)
+
 -- | Parse an in-memory Datra resource without associating it with a real
 -- filesystem path. This is the entry point used by tests and other callers
 -- that already have the source contents.
@@ -236,6 +272,14 @@ resolveGenericExpression
   -> GenericResolution Expression
 resolveGenericExpression enclosing expressionValue =
   case expressionValue of
+    IdentifierOperation name annotation (Just given)
+      | given == annotation -> do
+          resolved <- resolveGenericExpression enclosing annotation
+          pure (IdentifierOperation name resolved (Just resolved))
+    IdentifierTemplateOperation parts annotation (Just given)
+      | given == annotation -> do
+          resolved <- resolveGenericExpression enclosing annotation
+          pure (IdentifierTemplateOperation parts resolved (Just resolved))
     FunctionTypeExpression [] domain codomain ->
       resolveNewGenericFunctionType enclosing domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -359,6 +403,147 @@ genericIdentifierText :: GenericIdentifier -> String
 genericIdentifierText
     (GenericIdentifier (IdentifierString name) _) = name
 
+-- Identifier declarations buried in a domain combinator still contribute to
+-- that function type's completed scope. An identifier declaration owns its
+-- annotation, so names nested inside that annotation are not members of the
+-- surrounding scope. Nested function types likewise establish a fresh
+-- ownership boundary.
+functionTypeIdentifiers :: Expression -> [FunctionTypeIdentifier]
+functionTypeIdentifiers expressionValue =
+  case expressionValue of
+    FunctionTypeExpression {} -> []
+    IdentifierOperation name _ _ ->
+      [SimpleFunctionTypeIdentifier name]
+    dependent@IdentifierTemplateOperation {} ->
+      [DependentFunctionTypeIdentifier dependent]
+    SyntaxBoundary value -> functionTypeIdentifiers value
+    OptionalType value -> functionTypeIdentifiers value
+    EitherType left right -> both left right
+    AtlasMap entries -> entriesOf entries
+    ArgumentMap entries -> entriesOf entries
+    MapSequence entries -> entriesOf entries
+    MapConcatenation left right -> both left right
+    MapSpecification _ target -> functionTypeIdentifiers target
+    ReverseMapSpecification target _ -> functionTypeIdentifiers target
+    Overload defaults supplied -> both defaults supplied
+    ReverseOverload supplied defaults -> both defaults supplied
+    SafeOverload defaults supplied -> both defaults supplied
+    ReverseSafeOverload supplied defaults -> both defaults supplied
+    _ -> []
+  where
+    entriesOf = concatMap functionTypeIdentifiers
+    both left right =
+      functionTypeIdentifiers left <> functionTypeIdentifiers right
+
+-- | Materialize the domain order consumed by generic-aware matching. The
+-- declaration marker remains at its written location as an ordinary binder
+-- reference; the telescope entries themselves occupy the leading positions.
+prepareFunctionDomain
+  :: [GenericBinder Expression]
+  -> Expression
+  -> PreparedFunctionDomain
+prepareFunctionDomain generics domain =
+  PreparedFunctionDomain kind
+    (map PreparedGenericFunctionDomainMember generics
+      <> map PreparedOrdinaryFunctionDomainMember suffix)
+  where
+    (kind, suffix) = layout domain
+    layout expressionValue =
+      case expressionValue of
+        SyntaxBoundary value -> layout value
+        AtlasMap entries -> (PreparedOrderedFunctionDomain, entries)
+        MapSequence entries -> (PreparedOrderedFunctionDomain, entries)
+        ArgumentMap entries -> (PreparedArgumentFunctionDomain, entries)
+        GenericReferenceExpression reference
+          | genericReferenceRole reference == GenericDeclarationReference
+          , any ((== genericReferenceBinderId reference) . genericBinderId)
+              generics ->
+              (PreparedScalarFunctionDomain, [])
+        _ -> (PreparedScalarFunctionDomain, [expressionValue])
+
+-- | Materialize the identity-based generic telescope as ordinary named prefix
+-- slots. The owning telescope retains polarity and identity; the prepared
+-- domain needs only the existing identifier-slot representation.
+prepareFunctionDomainExpression
+  :: [GenericBinder Expression]
+  -> Expression
+  -> Expression
+prepareFunctionDomainExpression generics domain =
+  case prepareFunctionDomain generics domain of
+    PreparedFunctionDomain kind members ->
+      container kind (map lowerMember members)
+  where
+    container PreparedArgumentFunctionDomain = ArgumentMap
+    container PreparedOrderedFunctionDomain = AtlasMap
+    container PreparedScalarFunctionDomain = AtlasMap
+    lowerMember member =
+      case member of
+        PreparedGenericFunctionDomainMember binder ->
+          let GenericIdentifier name optionalName =
+                genericBinderIdentifier binder
+              bound = prepareGenericExpression generics
+                (genericBinderBound binder)
+              declaration = IdentifierOperation name bound Nothing
+          in if optionalName
+              then OptionalType declaration
+              else declaration
+        PreparedOrdinaryFunctionDomainMember expressionValue ->
+          prepareGenericExpression generics expressionValue
+
+-- | Convert references owned by the supplied telescope back to lexical
+-- references for the existing dependent-map evaluator. References belonging
+-- to another telescope remain identity based.
+prepareGenericExpression
+  :: [GenericBinder Expression]
+  -> Expression
+  -> Expression
+prepareGenericExpression generics = lower
+  where
+    lower expressionValue =
+      case expressionValue of
+        GenericReferenceExpression reference ->
+          case binderName (genericReferenceBinderId reference) generics of
+            Just name -> IdentifierReference name
+            Nothing -> expressionValue
+        _ -> mapExpressionChildren lower expressionValue
+    binderName _ [] = Nothing
+    binderName identity (binder : remaining)
+      | genericBinderId binder == identity =
+          Just (genericIdentifierName (genericBinderIdentifier binder))
+      | otherwise = binderName identity remaining
+
+-- | Find the first self or forward reference in an ordered generic telescope.
+-- Earlier binders have already become identity-based references; a remaining
+-- lexical occurrence of the current or a later local name is therefore an
+-- invalid forward dependency rather than an ambient lookup.
+forwardGenericBoundReference
+  :: [GenericBinder Expression]
+  -> Maybe (IdentifierString, IdentifierString)
+forwardGenericBoundReference = go
+  where
+    go [] = Nothing
+    go remaining@(binder : later) =
+      case firstMatchingReference unavailable
+          (genericBinderBound binder) of
+        Just referenced -> Just (owner, referenced)
+        Nothing -> go later
+      where
+        owner = genericIdentifierName (genericBinderIdentifier binder)
+        unavailable = map
+          (genericIdentifierName . genericBinderIdentifier)
+          remaining
+    firstMatchingReference unavailable expressionValue =
+      case expressionValue of
+        IdentifierReference name
+          | name `elem` unavailable -> Just name
+        _ -> firstFrom
+          (map (firstMatchingReference unavailable)
+            (expressionChildren expressionValue))
+    firstFrom [] = Nothing
+    firstFrom (result : remaining) =
+      case result of
+        Just value -> Just value
+        Nothing -> firstFrom remaining
 
 -- | Parse the canonical symbolic S-expression emitted by 'renderExpression'.
 parseDatraAst :: String -> Either ParseFailure Expression
@@ -471,8 +656,6 @@ astForm =
       , astGenericIntroduction
       , astGenericReference
       , astGenericFunctionType
-      , astDependentBinder "with" WithBinding
-      , astDependentBinder "for" ForBinding
       , astBinary AST.SyntaxTypeOperator SyntaxType
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
@@ -587,18 +770,6 @@ astGenericIdentifier expressionValue = do
         && null (public
           [(genericIdentifierText identifier, ())])))
   pure identifier
-
-astDependentBinder
-  :: Text
-  -> (IdentifierString -> Bool -> Expression -> Expression)
-  -> Parser Expression
-astDependentBinder name constructor = do
-  _ <- astSymbol name
-  spelling <- astIdentifierExpression
-  identifier <- IdentifierString <$> validateIdentifierSpelling spelling
-  optionalName <- maybe False (const True) <$> optional
-    (char '?' <* astSpaceConsumer)
-  constructor identifier optionalName <$> astExpression
 
 astIdentifierOperation
   :: AST.Operator
@@ -1289,10 +1460,6 @@ argumentMap = do
   guard (all validDependentName members)
   pure (ArgumentMap members)
   where
-    validDependentName (ForBinding (IdentifierString name) True _) =
-      not (null (public [(name, ())]))
-    validDependentName (WithBinding (IdentifierString name) True _) =
-      not (null (public [(name, ())]))
     validDependentName _ = True
 
 -- Explicitly parenthesizing both operands makes a reverse specification a

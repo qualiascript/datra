@@ -150,9 +150,11 @@ data InterpretingError
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
-  | DependentBinderOutsideContainer String
-  | MixedDependentBinders
+  | GenericIntroductionOutsideFunctionType String
   | DuplicateGenericIdentifier String
+  | ForwardGenericBoundReference String String
+  | GenericIdentifierOverlap String
+  | GenericIdentifierDisjointnessUndecidable String
   | ExpectedNumericalOperand OperandSide InterpretedValueKind
   | ExpectedFiniteIntegerOperand OperandSide InterpretedValueKind
   | ExpectedBooleanOperand OperandSide InterpretedValueKind

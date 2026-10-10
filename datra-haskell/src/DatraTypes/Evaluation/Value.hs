@@ -20,6 +20,7 @@ module Evaluation.Value
   , datraTypeFamily
   , datraCanonicalType
   , PreparedFunctionArgument (..)
+  , EvaluatedFunctionInvocation (..)
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
@@ -71,13 +72,27 @@ module Evaluation.Value
   , InterpretedAtlasMapFederation
   , PresentationDependency (..)
   , ValueSemantics (..)
+  , DynamicScopeLabel (..)
+  , ScopeActivation (..)
+  , ScopeProtectionPolicy (..)
+  , ScopeProtection (..)
   , semanticValueSemantics
   , CanonicalResult (..)
   , InterpretedValue
   , InterpretedValueTotality (..)
   , makeInterpretedValue
+  , neverValue
+  , interpretedScopeProtection
+  , protectInterpretedValue
+  , withoutScopeProtection
   , makeSingletonInterpretedValue
   , makeDependentSumValue
+  , dependentSumView
+  , withDependentSumView
+  , orderedAtlasMapView
+  , withOrderedAtlasMapView
+  , withOrderedAtlasMapValues
+  , withMapView
   , withDependentSumStructure
   , withDependentSumAccess
   , withDependentSumFamily
@@ -137,6 +152,9 @@ import BooleanType (DatraBoolean)
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (SingletonAtlasMapFederation) )
 import Data.Char (chr)
+import Data.IORef (IORef)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (..)
   , SyntaxHoleKind (..)
@@ -314,6 +332,15 @@ data PreparedFunctionArgument = PreparedFunctionArgument
   , functionPreparedBindings :: [(String, InterpretedValue)]
   }
 
+-- | The value produced by one invocation and the checked semantic contract
+-- which governed that result.  Generic functions may evaluate their codomain
+-- per call, so this cannot in general be recovered from the function's static
+-- summary after invocation has completed.
+data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
+  { functionInvocationValue :: InterpretedValue
+  , functionInvocationContract :: Maybe InterpretedValue
+  }
+
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
@@ -324,9 +351,10 @@ data EvaluatedFunction = EvaluatedFunction
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)
   , functionInvoke :: Maybe
-      (ReductionContext
+      (ScopeActivation
+        -> ReductionContext
         -> PreparedFunctionArgument
-        -> Either InterpretingError InterpretedValue)
+        -> Either InterpretingError EvaluatedFunctionInvocation)
   , functionValidatesResult :: Bool
   }
 
@@ -468,7 +496,8 @@ syntaxCategoryTypeValue :: ASTMetaCategory -> InterpretedValue
 syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType
 
 data ValueForm
-  = BuiltinMetaTypeForm BuiltinMetaType
+  = NeverForm
+  | BuiltinMetaTypeForm BuiltinMetaType
   | FunctionForm EvaluatedFunction
   | ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
@@ -561,7 +590,33 @@ data InterpretedValue = InterpretedValue
   , interpretedTotalAtlasMap :: Maybe InterpretedTotalAtlasMap
   , interpretedSemantics :: ValueSemantics
   , interpretedEvaluationSource :: Maybe String
+  , interpretedScopeProtection :: Maybe ScopeProtection
+  , interpretedDependentSumView :: Maybe EvaluatedDependentSum
+  , interpretedOrderedAtlasMapView
+      :: Maybe (OrdinalOrderedValues InterpretedValue)
   }
+
+newtype DynamicScopeLabel = DynamicScopeLabel Natural
+  deriving (Eq, Ord, Show)
+
+-- | Runtime identity for one active lexical-scope chain.  The supply belongs
+-- to the complete evaluation; the labels are obtained from the active scope
+-- ancestry rather than from a separate protection-only stack.
+data ScopeActivation = ScopeActivation
+  { scopeActivationLabelSupply :: IORef Natural
+  , scopeActivationLabel :: DynamicScopeLabel
+  , scopeActivationParent :: Maybe ScopeActivation
+  }
+
+data ScopeProtectionPolicy
+  = GenericExistentialProtection
+  deriving (Eq, Ord, Show)
+
+data ScopeProtection = ScopeProtection
+  { scopeProtectionLabel :: DynamicScopeLabel
+  , scopeProtectionPolicies :: NonEmpty ScopeProtectionPolicy
+  }
+  deriving (Eq, Show)
 
 data InterpretedValueTotality = TotalInterpretedMap | NonTotalInterpretedMap
 
@@ -587,7 +642,41 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
           NonTotalInterpretedMap -> Nothing
     , interpretedSemantics = semantics
     , interpretedEvaluationSource = Nothing
+    , interpretedScopeProtection = Nothing
+    , interpretedDependentSumView = Nothing
+    , interpretedOrderedAtlasMapView = Nothing
     }
+
+neverValue :: InterpretedValue
+neverValue =
+  makeInterpretedValue
+    structuralDatraType
+    NeverForm
+    NoInsertion
+    emptyInterpretedMap
+    (SingletonAtlasMapFederation emptyInterpretedMap)
+    NonTotalInterpretedMap
+    NeverSemantics
+
+protectInterpretedValue
+  :: DynamicScopeLabel
+  -> NonEmpty ScopeProtectionPolicy
+  -> InterpretedValue
+  -> InterpretedValue
+protectInterpretedValue label policies value = value
+  { interpretedScopeProtection = Just
+      (ScopeProtection label (normalizePolicies policies))
+  }
+  where
+    normalizePolicies (first NonEmpty.:| remaining) =
+      first NonEmpty.:| foldr add [] remaining
+      where
+        add policy accumulated
+          | policy == first || policy `elem` accumulated = accumulated
+          | otherwise = policy : accumulated
+
+withoutScopeProtection :: InterpretedValue -> InterpretedValue
+withoutScopeProtection value = value { interpretedScopeProtection = Nothing }
 
 makeSingletonInterpretedValue
   :: DatraType
@@ -598,13 +687,14 @@ makeSingletonInterpretedValue
   -> ValueSemantics
   -> InterpretedValue
 makeSingletonInterpretedValue datraType form capability valueMap totality =
-  makeInterpretedValue
-    datraType
-    form
-    capability
-    valueMap
-    (SingletonAtlasMapFederation valueMap)
-    totality
+  withOrderedAtlasMapValues (interpretedMapFinalValues valueMap)
+    . makeInterpretedValue
+      datraType
+      form
+      capability
+      valueMap
+      (SingletonAtlasMapFederation valueMap)
+      totality
 
 makeDependentSumValue
   :: String
@@ -623,6 +713,61 @@ makeDependentSumValue source staticTarget specify =
     NonTotalInterpretedMap
     (DependentSumSemantics source)
 
+-- | Observe the existential capability of a value independently of its
+-- primary runtime form. Ordinary dependent sums carry the capability in their
+-- form; generic functions attach the same capability while remaining
+-- callable and canonically rendered as functions.
+dependentSumView :: InterpretedValue -> Maybe EvaluatedDependentSum
+dependentSumView value =
+  case interpretedForm value of
+    DependentSumForm dependent -> Just dependent
+    _ -> interpretedDependentSumView value
+
+-- | Attach the dependent-sum capability of the first value to the second
+-- without replacing the second value's primary form.
+withDependentSumView :: InterpretedValue -> InterpretedValue -> InterpretedValue
+withDependentSumView view value =
+  value { interpretedDependentSumView = dependentSumView view }
+
+-- | The semantic, ordinal-indexed view of a genuinely ordered Atlas map.
+-- This is separate from 'interpretedMap': every runtime value has an erased
+-- map presentation, but not every value denotes an ordered family whose
+-- positions may be used as generic witnesses.
+orderedAtlasMapView
+  :: InterpretedValue
+  -> Maybe (OrdinalOrderedValues InterpretedValue)
+orderedAtlasMapView = interpretedOrderedAtlasMapView
+
+-- | Expose the value's own final-page ordering as a semantic ordered-map
+-- capability.
+withOrderedAtlasMapView :: InterpretedValue -> InterpretedValue
+withOrderedAtlasMapView value =
+  withOrderedAtlasMapValues
+    (interpretedMapFinalValues (interpretedMap value))
+    value
+
+-- | Attach an explicitly constructed semantic ordering. Range adapters use
+-- this when their erased insertion coordinates differ from their Datra
+-- witness values, as for descending integer ranges.
+withOrderedAtlasMapValues
+  :: OrdinalOrderedValues InterpretedValue
+  -> InterpretedValue
+  -> InterpretedValue
+withOrderedAtlasMapValues values value =
+  value { interpretedOrderedAtlasMapView = Just values }
+
+-- | Retain a value's primary behavior while exposing another value through
+-- ordinary Atlas access. Generic functions use this for the lazy map induced
+-- by a valued-range prefix; calls and canonical rendering remain functional.
+withMapView :: InterpretedValue -> InterpretedValue -> InterpretedValue
+withMapView view value = value
+  { interpretedInsertionCapability = interpretedInsertionCapability view
+  , interpretedMap = interpretedMap view
+  , interpretedAtlasMapFederation = interpretedAtlasMapFederation view
+  , interpretedTotalAtlasMap = interpretedTotalAtlasMap view
+  , interpretedOrderedAtlasMapView = orderedAtlasMapView view
+  }
+
 -- | Attach source-independent structure to a dependent sum.  Constructors
 -- such as recursive lists use this instead of making later consumers infer a
 -- standard-library identifier from rendered text.
@@ -631,13 +776,9 @@ withDependentSumStructure
   -> InterpretedValue
   -> InterpretedValue
 withDependentSumStructure structure value =
-  case interpretedForm value of
-    DependentSumForm dependent ->
-      value
-        { interpretedForm = DependentSumForm
-            dependent { evaluatedDependentSumStructure = structure }
-        }
-    _ -> value
+  mapDependentSumView
+    (\dependent -> dependent { evaluatedDependentSumStructure = structure })
+    value
 
 -- | Attach the exact access map of a dependent family.  The structural
 -- target remains available for ordinary static reasoning, while projection
@@ -647,13 +788,9 @@ withDependentSumAccess
   -> InterpretedValue
   -> InterpretedValue
 withDependentSumAccess access value =
-  case interpretedForm value of
-    DependentSumForm dependent ->
-      value
-        { interpretedForm = DependentSumForm
-            dependent { evaluatedDependentSumAccess = Just access }
-        }
-    _ -> value
+  mapDependentSumView
+    (\dependent -> dependent { evaluatedDependentSumAccess = Just access })
+    value
 
 -- | Retain the indexing family and exact fibre constructor of a dependent
 -- sum.  Selection can then instantiate a candidate from its dependency
@@ -664,16 +801,12 @@ withDependentSumFamily
   -> InterpretedValue
   -> InterpretedValue
 withDependentSumFamily domain fibreAt value =
-  case interpretedForm value of
-    DependentSumForm dependent ->
-      value
-        { interpretedForm = DependentSumForm
-            dependent
-              { evaluatedDependentSumDomain = Just domain
-              , evaluatedDependentSumFibreAt = Just fibreAt
-              }
-        }
-    _ -> value
+  mapDependentSumView
+    (\dependent -> dependent
+      { evaluatedDependentSumDomain = Just domain
+      , evaluatedDependentSumFibreAt = Just fibreAt
+      })
+    value
 
 -- | Retain a structural target that contains every identifier admitted by
 -- the dependent family.  Nested projections use this for the named argument
@@ -683,14 +816,23 @@ withDependentSumReservationTarget
   -> InterpretedValue
   -> InterpretedValue
 withDependentSumReservationTarget target value =
+  mapDependentSumView
+    (\dependent -> dependent
+      { evaluatedDependentSumReservationTarget = Just target })
+    value
+
+mapDependentSumView
+  :: (EvaluatedDependentSum -> EvaluatedDependentSum)
+  -> InterpretedValue
+  -> InterpretedValue
+mapDependentSumView operation value =
   case interpretedForm value of
     DependentSumForm dependent ->
-      value
-        { interpretedForm = DependentSumForm
-            dependent
-              { evaluatedDependentSumReservationTarget = Just target }
-        }
+      value { interpretedForm = DependentSumForm (operation dependent) }
     _ -> value
+      { interpretedDependentSumView = operation
+          <$> interpretedDependentSumView value
+      }
 
 -- | A lazily indexed Atlas map.  This is the erased runtime presentation of
 -- a dependent family's page projection; values are demanded through normal
@@ -700,21 +842,21 @@ makeLazyMapValue
   -> (Ordinal -> Maybe InterpretedValue)
   -> InterpretedValue
 makeLazyMapValue orderType valueAt =
-  makeInterpretedValue
-    structuralDatraType
-    MapForm
-    NoInsertion
-    (InterpretedMap
-      1
-      (OrdinalOrderedValues orderType valueAt)
-      [])
-    (SingletonAtlasMapFederation
-      (InterpretedMap
+  withOrderedAtlasMapValues values
+    (makeInterpretedValue
+      structuralDatraType
+      MapForm
+      NoInsertion
+      valueMap
+      (SingletonAtlasMapFederation valueMap)
+      NonTotalInterpretedMap
+      (MapSemantics 1 []))
+  where
+    values = OrdinalOrderedValues orderType valueAt
+    valueMap = InterpretedMap
         1
-        (OrdinalOrderedValues orderType valueAt)
-        []))
-    NonTotalInterpretedMap
-    (MapSemantics 1 [])
+        values
+        []
 
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
 interpretedValueHasTotalMap = maybe False (const True) . interpretedTotalAtlasMap
@@ -818,6 +960,7 @@ withoutCanonicalDependencies dependencies value = value
 interpretedValueKind :: InterpretedValue -> InterpretedValueKind
 interpretedValueKind value =
   case interpretedForm value of
+    NeverForm -> MapValueKind
     BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
     BuiltinMetaTypeForm TemplateMetaType -> AsciiStringValueKind
     BuiltinMetaTypeForm _ -> RangeValueKind

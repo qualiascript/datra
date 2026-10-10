@@ -429,8 +429,15 @@ identifierAdmitsSource select source target
 identifierCandidates
   :: InterpretedValue
   -> [EvaluatedDependentIdentifierType]
-identifierCandidates value =
-  case interpretedForm value of
+identifierCandidates value
+  | Just dependent <- dependentSumView value =
+      identifierCandidates
+        (maybe
+          (evaluatedDependentSumStaticTarget dependent)
+          id
+          (evaluatedDependentSumReservationTarget dependent))
+  | otherwise =
+    case interpretedForm value of
     DependentIdentifierTypeForm identifier -> [identifier]
     IdentifierStringProjectionForm identifier -> [identifier]
     AssignmentForm specification ->
@@ -440,12 +447,6 @@ identifierCandidates value =
     EitherForm alternatives ->
       identifierCandidates (evaluatedEitherLeft alternatives)
         <> identifierCandidates (evaluatedEitherRight alternatives)
-    DependentSumForm dependent ->
-      identifierCandidates
-        (maybe
-          (evaluatedDependentSumStaticTarget dependent)
-          id
-          (evaluatedDependentSumReservationTarget dependent))
     SequentialMapForm ->
       maybe [] (concatMap identifierCandidates) (sequenceOperands value)
     ConcatenatedMapForm left right ->

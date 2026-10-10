@@ -11,6 +11,7 @@ data Decision proof
   = DecisionProved proof
   | DecisionRefuted
   | DecisionUndecidable
+  deriving (Eq, Show)
 
 decideAll :: [Decision proof] -> Decision [proof]
 decideAll decisions

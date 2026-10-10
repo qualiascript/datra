@@ -93,15 +93,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "syntax control adapter is not registered"
         ["adapter: " <> name]
-    InvalidDependentBinder name ->
-      LocalizedMessage "dependent binder requires an identifier"
-        ["adapter: " <> name]
-    UndecidableDependentBinder name ->
-      LocalizedMessage
-        "dependent binder expression cannot be decided statically"
-        [ "adapter: " <> name
-        , "a single lexical identifier is currently required"
-        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -172,16 +163,27 @@ localizeInterpretingError reason =
       LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let requires an enclosing begin block" []
-    DependentBinderOutsideContainer binder ->
-      LocalizedMessage "dependent binder requires an enclosing type container"
-        ["binder: " <> binder]
-    MixedDependentBinders ->
+    GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
-        "dependent sums and products cannot be mixed in one type container"
-        []
+        "generic introduction requires an enclosing function type"
+        ["generic operator: " <> binder]
     DuplicateGenericIdentifier name ->
       LocalizedMessage
         "generic identifier is introduced more than once in one function domain"
+        ["identifier: " <> name]
+    ForwardGenericBoundReference owner referenced ->
+      LocalizedMessage
+        "generic bound refers to a binder that is not yet available"
+        [ "generic identifier: " <> owner
+        , "unavailable identifier: " <> referenced
+        ]
+    GenericIdentifierOverlap name ->
+      LocalizedMessage
+        "generic identifier overlaps another identifier in its function type"
+        ["identifier: " <> name]
+    GenericIdentifierDisjointnessUndecidable name ->
+      LocalizedMessage
+        "generic identifier cannot be proven disjoint from a dependent identifier"
         ["identifier: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage

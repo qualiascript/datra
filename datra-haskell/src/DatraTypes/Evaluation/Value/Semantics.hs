@@ -90,6 +90,7 @@ newtype PresentationDependency = PresentationDependency String
 data ValueSemantics
   = PresentedSemantics
       [PresentationDependency] CanonicalResult ValueSemantics
+  | NeverSemantics
   | BuiltinMetaTypeSemantics BuiltinMetaType
   | FunctionSemantics
       ValueSemantics ValueSemantics (Maybe String)
@@ -134,6 +135,7 @@ data ValueSemantics
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
   = CanonicalReference String
+  | CanonicalNever
   | CanonicalNamedAccess CanonicalResult String
   | CanonicalApplication CanonicalResult CanonicalResult
   | CanonicalBuiltinMetaType BuiltinMetaType
@@ -267,6 +269,7 @@ canonicalResultWith retainPresentation semantics =
     PresentedSemantics _ presentation underlying
       | retainPresentation -> presentation
       | otherwise -> canonicalResultWith False underlying
+    NeverSemantics -> CanonicalNever
     BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
     FunctionSemantics input output body ->
       CanonicalFunction

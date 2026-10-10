@@ -16,6 +16,11 @@ restoreGenericSurface = restore []
   where
     restore enclosing expressionValue =
       case expressionValue of
+        MapSpecification implementation
+            signature@(FunctionTypeExpression generics _ _) ->
+          MapSpecification
+            (restore (generics <> enclosing) implementation)
+            (restore enclosing signature)
         FunctionTypeExpression generics domain codomain ->
           let visible = generics <> enclosing
           in FunctionTypeExpression generics
@@ -58,10 +63,6 @@ source context expression =
           (genericIntroductionIdentifier introduction)
         <> genericBound introduction)
     GenericReferenceValue {} -> atom
-    WithBindingValue (IdentifierString name) optional bound -> wrapped 0
-      ("with " <> binderName name optional <> " of " <> source 0 bound)
-    ForBindingValue (IdentifierString name) optional bound -> wrapped 0
-      ("for " <> binderName name optional <> " of " <> source 0 bound)
     InModuleValue _ value -> source context value
     ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
     SyntaxTypeValue templates signature -> wrapped 1

@@ -89,15 +89,6 @@ localizeSyntaxExpansionFailure failure =
     UnknownSyntaxControlAdapter name ->
       LocalizedMessage "adaptorul de control sintactic nu este înregistrat"
         ["adaptor: " <> name]
-    InvalidDependentBinder name ->
-      LocalizedMessage "legătura dependentă necesită un identificator"
-        ["adaptor: " <> name]
-    UndecidableDependentBinder name ->
-      LocalizedMessage
-        "expresia legăturii dependente nu poate fi decisă static"
-        [ "adaptor: " <> name
-        , "în prezent este necesar un singur identificator lexical"
-        ]
 
 localizeCommandLineOptionFailure
   :: CommandLineOptionFailure
@@ -170,16 +161,27 @@ localizeInterpretingError reason =
       LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let necesită un bloc begin" []
-    DependentBinderOutsideContainer binder ->
-      LocalizedMessage "legătura dependentă necesită un container de tip exterior"
-        ["legătură: " <> binder]
-    MixedDependentBinders ->
+    GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
-        "sumele și produsele dependente nu pot fi amestecate într-un singur container de tip"
-        []
+        "introducerea generică necesită un tip de funcție exterior"
+        ["operator generic: " <> binder]
     DuplicateGenericIdentifier name ->
       LocalizedMessage
         "identificatorul generic este introdus de mai multe ori în același domeniu de funcție"
+        ["identificator: " <> name]
+    ForwardGenericBoundReference owner referenced ->
+      LocalizedMessage
+        "limita generică se referă la o legătură care nu este încă disponibilă"
+        [ "identificator generic: " <> owner
+        , "identificator indisponibil: " <> referenced
+        ]
+    GenericIdentifierOverlap name ->
+      LocalizedMessage
+        "identificatorul generic se suprapune cu alt identificator din tipul funcției sale"
+        ["identificator: " <> name]
+    GenericIdentifierDisjointnessUndecidable name ->
+      LocalizedMessage
+        "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
         ["identificator: " <> name]
     ExpectedNumericalOperand side actual ->
       LocalizedMessage

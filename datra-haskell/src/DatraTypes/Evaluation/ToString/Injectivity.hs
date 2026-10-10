@@ -53,6 +53,7 @@ stringConversionProperties semantics
       complementedIntegerTypeIncludesInfinity semantics =
       complementedIntegerProperties includesInfinity
   | otherwise = case semantics of
+    NeverSemantics -> exactStrings ["Never"]
     BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics TemplateMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion

@@ -113,6 +113,7 @@ library
         Chain
         Consolidation
         Folio
+        FoliageMap
         PageElements
         Pagination
         Atlas
@@ -224,6 +225,7 @@ library
         Evaluation.FunctionArguments
         Evaluation.Identifier
         Evaluation.IdentifierErasure
+        Evaluation.OrdinalIndexedFamily
         Evaluation.Length
         Evaluation.LimitRange
         Evaluation.Map
@@ -233,6 +235,7 @@ library
         Evaluation.Overload
         Evaluation.DatraType
         Evaluation.Range
+        Evaluation.ResultContract
         Evaluation.Specification
         Evaluation.Specification.ArgumentMap
         Evaluation.Specification.Composition
@@ -332,6 +335,7 @@ executable datra-haskell
         RuntimeModules
         ModuleLoading
         FunctionClosure
+        GenericScopeProtection
         BlockScope
         LibraryFiles
         SyntaxDefinitions
@@ -339,6 +343,7 @@ executable datra-haskell
         SyntaxRewriting
         Parsing
         Rendering
+        ScopeProtection
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell
@@ -389,7 +394,9 @@ test-suite datra-parsing-test
         Interpreting
         RuntimeModules
         FunctionClosure
+        GenericScopeProtection
         Rendering
+        ScopeProtection
         Parsing
         BlockScope
         LibraryFiles
@@ -433,6 +440,7 @@ test-suite datra-interpreting-test
         RuntimeModules
         ModuleLoading
         FunctionClosure
+        GenericScopeProtection
         BlockScope
         LibraryFiles
         SyntaxDefinitions
@@ -440,6 +448,7 @@ test-suite datra-interpreting-test
         SyntaxRewriting
         Parsing
         Rendering
+        ScopeProtection
         Paths_datra_haskell
     autogen-modules:
         Paths_datra_haskell

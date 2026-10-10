@@ -1,11 +1,14 @@
 -- | Central dispatch for inclusion between evaluated Datra types.
 module Evaluation.Specification.Subfederation
   ( decideValueSubfederation
+  , IdentifierNameDisjointness (..)
+  , identifierNameDisjointness
   ) where
 
 import AtlasMapFederationExpression
   ( AtlasMapFederationExpression (..)
   )
+import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError (..))
 import Evaluation.Specification.Decision
 import Evaluation.TypeFamily
@@ -14,11 +17,63 @@ import Evaluation.TypeFamily
   )
 import Evaluation.Value
 
+-- | Whether one literal identifier name can occur anywhere in an evaluated
+-- identifier family. Generic-scope validation deliberately distinguishes an
+-- undecidable family from a proven-disjoint one: failing to find one witness
+-- is not a proof that moving a generic into the domain prefix is safe.
+data IdentifierNameDisjointness
+  = IdentifierNameDisjoint
+  | IdentifierNameOverlap
+  | IdentifierNameDisjointnessUndecidable
+  deriving (Eq, Show)
+
+identifierNameDisjointness
+  :: String
+  -> InterpretedValue
+  -> IdentifierNameDisjointness
+identifierNameDisjointness candidate value =
+  case interpretedForm value of
+    DependentIdentifierTypeForm identifier -> againstIdentifier identifier
+    IdentifierStringProjectionForm identifier -> againstIdentifier identifier
+    SpecificationForm specification ->
+      identifierNameDisjointness candidate
+        (evaluatedSpecificationTarget specification)
+    AssignmentForm specification ->
+      identifierNameDisjointness candidate
+        (evaluatedSpecificationTarget specification)
+    _ -> IdentifierNameDisjointnessUndecidable
+  where
+    againstIdentifier identifier =
+      case evaluatedIdentifierDependency identifier of
+        SimpleIdentifierDependency name
+          | name == candidate -> IdentifierNameOverlap
+          | otherwise -> IdentifierNameDisjoint
+        dependency@DependentIdentifierDependency {} ->
+          case evaluatedIdentifierNameFederation identifier of
+            Just names -> fromDecision
+              (decideValueSubfederation (makeAsciiString candidate) names)
+            Nothing
+              | interpretedValueHasTotalMap underlying ->
+                  if identifierDependencyStringFor dependency
+                      (interpretedSemanticResult underlying) == candidate
+                    then IdentifierNameOverlap
+                    else IdentifierNameDisjoint
+              | otherwise -> IdentifierNameDisjointnessUndecidable
+          where
+            underlying = evaluatedIdentifierUnderlying identifier
+    fromDecision decision =
+      case decision of
+        DecisionProved () -> IdentifierNameOverlap
+        DecisionRefuted -> IdentifierNameDisjoint
+        DecisionUndecidable -> IdentifierNameDisjointnessUndecidable
+
 decideValueSubfederation
   :: InterpretedValue
   -> InterpretedValue
   -> Decision ()
 decideValueSubfederation source target
+  | NeverForm <- interpretedForm source = DecisionProved ()
+  | NeverForm <- interpretedForm target = DecisionRefuted
   | productFederationFormsConflict source target = DecisionRefuted
   | Just _ <- interpretedFunction source
   , Just _ <- interpretedFunction target =
@@ -30,14 +85,14 @@ decideValueSubfederation source target
         target
   | interpretedSemanticResult source == interpretedSemanticResult target =
       DecisionProved ()
-  | DependentSumForm sourceDependent <- interpretedForm source
-  , DependentSumForm targetDependent <- interpretedForm target
+  | Just sourceDependent <- dependentSumView source
+  , Just targetDependent <- dependentSumView target
   , ListDependentSum sourceElement <-
       evaluatedDependentSumStructure sourceDependent
   , ListDependentSum targetElement <-
       evaluatedDependentSumStructure targetDependent =
       decideValueSubfederation sourceElement targetElement
-  | DependentSumForm dependent <- interpretedForm target =
+  | Just dependent <- dependentSumView target =
       case evaluatedDependentSumSpecify dependent source of
         Right _ -> DecisionProved ()
         Left (AtlasMapFederationOperationUndecidable _) ->

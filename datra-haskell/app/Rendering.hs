@@ -122,6 +122,7 @@ prettyCanonicalResult result
 prettyNonKeywordCanonicalResult :: CanonicalResult -> Doc annotation
 prettyNonKeywordCanonicalResult result =
   case result of
+    CanonicalNever -> "Never"
     CanonicalReference name -> pretty (renderIdentifierString name)
     CanonicalNamedAccess operand name ->
       prettyCanonicalAccessOperand operand

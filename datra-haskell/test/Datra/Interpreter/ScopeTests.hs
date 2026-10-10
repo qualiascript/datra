@@ -1,21 +1,39 @@
 module Datra.Interpreter.ScopeTests (scopeTests) where
 
 import Datra.TestSupport
+import Data.List.NonEmpty (NonEmpty (..))
 import DatraTypes
-  ( FunctionFailure (NoApplicableFunctionAlternative)
+  ( DynamicScopeLabel (..)
+  , Decision (..)
+  , EvaluatedFunction (..)
+  , FunctionFailure (NoApplicableFunctionAlternative)
+  , ScopeProtection (..)
+  , ScopeProtectionPolicy (..)
   , InterpretingError
       ( InconsistentShadowing
       , FunctionEvaluationFailed
       , LetBindingCannotShadowConsistentIdentifier
       , UnknownIdentifier
       )
+  , anyTypeValue
+  , decideClosedPublicResultContract
+  , interpretedScopeProtection
+  , makeAtlasMap
+  , makeFunctionValue
+  , naturalValue
+  , neverValue
   )
+import Rendering (renderInterpretedValue)
+import GenericScopeProtection
+import ScopeProtection
 import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
 scopeTests :: TestTree
 scopeTests =
   testGroup "lexical scope"
-    [ testGroup "contextual depth"
+    [ scopeProtectionTests
+    , testGroup "contextual depth"
         [ programCase "this selects current and outer declaration scopes"
             ( "outer := 10\n"
                 <> "yield begin middle := 20; "
@@ -248,4 +266,145 @@ scopeTests =
             "begin\n ((a : Nat) ~> (a : Int))\nyield a"
             (SourceEvaluationFailure (UnknownIdentifier "a"))
         ]
+    ]
+
+scopeProtectionTests :: TestTree
+scopeProtectionTests =
+  testGroup "scope-protection substrate"
+    [ testCase "fresh nested scopes receive distinct monotonic labels" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            grandchild = enterScopeActivation (2 :: Int) child
+            DynamicScopeLabel first = currentScopeLabel child
+            DynamicScopeLabel second = currentScopeLabel grandchild
+        assertBool "the second label follows the first" (second > first)
+    , testCase "an active ancestor label authorizes observation" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            label = currentScopeLabel child
+            protected = protectGenericExistential label (naturalValue 3)
+        case authorizeProtectedValue child protected of
+          Left inaccessible ->
+            assertEqual "authorized value became inaccessible"
+              "3" (renderInterpretedValue inaccessible)
+          Right actual ->
+            assertEqual "authorized value did not unwrap temporarily"
+              "3" (renderInterpretedValue actual)
+    , testCase "an expired label produces Never without running the operation" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            label = currentScopeLabel child
+            protected = protectGenericExistential label (naturalValue 3)
+            result = runProtectedOperation root [protected]
+              (\_ -> error "inaccessible operation was evaluated")
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value -> assertEqual "inaccessible observation"
+            (renderInterpretedValue neverValue)
+            (renderInterpretedValue value)
+    , testCase "derived results retain normalized policy metadata" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            label = currentScopeLabel child
+            protected = protectGenericExistential label (naturalValue 3)
+            result = runProtectedOperation child [protected]
+              (const (Right (naturalValue 4)))
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value ->
+            case interpretedScopeProtection value of
+              Nothing -> assertBool "missing protection" False
+              Just protection -> do
+                assertEqual "derived label"
+                  label (scopeProtectionLabel protection)
+                assertEqual "derived policies"
+                  [GenericExistentialProtection]
+                  (case scopeProtectionPolicies protection of
+                    first :| remaining -> first : remaining)
+    , testCase "eligible result contracts remove protection after validation" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            result = runProtectedOperationWithContract child
+              (\_ _ -> DecisionProved ())
+              (\actual _ -> Right actual)
+              [protected]
+              (\_ -> Right (naturalValue 4, Just (naturalValue 4)))
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value -> do
+            assertEqual "validated result" "4" (renderInterpretedValue value)
+            assertEqual "removed protection" Nothing
+              (interpretedScopeProtection value)
+    , testCase "undecidable result contracts conservatively retain protection" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            result = runProtectedOperationWithContract child
+              (\_ _ -> DecisionUndecidable)
+              (\_ _ -> error "undecidable contract was validated")
+              [protected]
+              (\_ -> Right (naturalValue 4, Just (naturalValue 4)))
+        case result of
+          Left failure -> assertBool (show failure) False
+          Right value -> assertBool "missing retained protection"
+            (valueIsScopeProtected value)
+    , testCase "closed maps are eligible only when every member is eligible" $ do
+        let closed = makeAtlasMap 2 [naturalValue 2, naturalValue 3]
+            containingAny = makeAtlasMap 2 [naturalValue 2, anyTypeValue]
+        assertEqual "closed map"
+          (DecisionProved ())
+          (decideClosedPublicResultContract closed)
+        assertEqual "map containing Any"
+          DecisionRefuted
+          (decideClosedPublicResultContract containingAny)
+    , testCase "function result contracts are ineligible" $ do
+        let function = makeFunctionValue (EvaluatedFunction
+              (naturalValue 0) (naturalValue 1) Nothing Nothing Nothing
+              "Nat -> Nat" Nothing Nothing False)
+        assertEqual "function contract"
+          DecisionRefuted
+          (decideClosedPublicResultContract function)
+    , testCase "bounded contract analysis reports undecidable" $ do
+        let deeplyNested = foldr
+              (\_ nested -> makeAtlasMap 2 [naturalValue 0, nested])
+              (naturalValue 1)
+              [1 :: Int .. 257]
+        assertEqual "analysis budget"
+          DecisionUndecidable
+          (decideClosedPublicResultContract deeplyNested)
+    , testCase "handoff preserves an ancestor-protected wrapper" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel root) (naturalValue 3)
+            handed = handoffProtectedValue child root
+              (const PreserveScopeProtection) protected
+        assertEqual "preserved protection"
+          (interpretedScopeProtection protected)
+          (interpretedScopeProtection handed)
+    , testCase "handoff transfers protection to the receiver" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            handed = handoffProtectedValue child root
+              (const TransferScopeProtection) protected
+        case interpretedScopeProtection handed of
+          Nothing -> assertBool "missing transferred protection" False
+          Just protection -> assertEqual "receiver label"
+            (currentScopeLabel root)
+            (scopeProtectionLabel protection)
+    , testCase "handoff rejection produces Never" $ do
+        let root = initialScopeActivation (0 :: Int)
+            child = enterScopeActivation (1 :: Int) root
+            protected = protectGenericExistential
+              (currentScopeLabel child) (naturalValue 3)
+            handed = handoffProtectedValue child root
+              (const RejectScopeProtection) protected
+        assertEqual "rejected handoff"
+          (renderInterpretedValue neverValue)
+          (renderInterpretedValue handed)
     ]
