@@ -483,6 +483,32 @@ functionTests =
         , programCase "unmatched identifiers match argument slots positionally"
             "yield (my_val : 3) of {value : Int}"
             "true"
+        , programCase "private regular names may be omitted but not changed"
+            (unlines
+              [ "assert 5 of (_x : Int)"
+              , "assert (_x := 5) of (_x : Int)"
+              , "assert (_x : 5) of (_x : Int)"
+              , "assert not ((_y := 5) of (_x : Int))"
+              , "assert not ((_y : 5) of (_x : Int))"
+              ])
+            "()"
+        , programCase "private argument-map names may be changed"
+            (unlines
+              [ "assert 5 of {_x : Int}"
+              , "assert (_x := 5) of {_x : Int}"
+              , "assert (_x : 5) of {_x : Int}"
+              , "assert (_y := 5) of {_x : Int}"
+              , "assert (_y : 5) of {_x : Int}"
+              ])
+            "()"
+        , programCase "private names compose with specification"
+            (unlines
+              [ "assert (5 ~> (_x : Int)) of (_x : Int)"
+              , "assert ((_x : Int) <~ 5) of (_x : Int)"
+              , "assert (5 ~> {_x : Int}) of {_x : Int}"
+              , "assert ({_x : Int} <~ 5) of {_x : Int}"
+              ])
+            "()"
         , programCase "matching identifiers reserve their candidate"
             "yield (my_val : 3) of {value : Int, my_val : Str}"
             "false"
@@ -536,6 +562,20 @@ functionTests =
         , expressionCase "invalid function variance"
             "(Nat -> Int) of (Int -> Nat)"
             "false"
+        , programCase "private domains are compatible with unnamed domains"
+            (unlines
+              [ "assert (Int -> Nat) of ((_x : Int) -> Nat)"
+              , "assert ((_x : Int) -> Nat) of (Int -> Nat)"
+              , "assert not (((_x : Int) -> Nat) of ((_y : Int) -> Nat))"
+              ])
+            "()"
+        , programCase "private codomains are compatible with unnamed codomains"
+            (unlines
+              [ "assert (Nat -> (_x : Int)) of (Nat -> Int)"
+              , "assert (Nat -> Int) of (Nat -> (_x : Int))"
+              , "assert not ((Nat -> (_x : Int)) of (Nat -> (_y : Int)))"
+              ])
+            "()"
         , programCase "required names accept matching named input"
             "f := ({x:Int} -> Int do yield x+1)\nyield f (x:2)"
             "3"
@@ -546,20 +586,39 @@ functionTests =
         , programCase "written order resolves otherwise ambiguous arguments"
             "f := ({x?:Int;y?:Int} -> Int do yield x+y)\nyield f {2;3}"
             "5"
-        , programCase "ordinary-map private parameter accepts its written name"
+        , programCase "ordered private parameter is positional inside the call"
             ( "f := ((_x:Int) -> Int do yield ~\"_x\"+1)\n"
-                <> "yield f (_x:2)"
+                <> "yield f 2"
             )
             "3"
         , programCase "private parameter remains in the positional argument aggregate"
             ( "f := ((_x:Nat) -> Nat do yield it[0][1])\n"
-                <> "yield f (_x:2)"
+                <> "yield f 2"
             )
             "2"
+        , programCase "private parameter is bound directly in the body"
+            "f := ((_x:Int) -> Int do yield _x+1)\nyield f 2"
+            "3"
         , programFailureCase
-            "private parameter is not automatically reduced in the body"
-            "f := ((_x:Int) -> Int do yield _x+1)\nyield f (_x:2)"
-            (SourceEvaluationFailure (UnknownIdentifier "_x"))
+            "ordered private parameter rejects its written name"
+            ( "f := ((_x:Int) -> Int do yield _x+1)\n"
+                <> "yield f (_x:2)"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programFailureCase
+            "ordered private parameter rejects an assigned written name"
+            ( "f := ((_x:Int) -> Int do yield _x+1)\n"
+                <> "yield f (_x:=2)"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programCase
+            "singleton argument-map private parameter is positional"
+            ( "f := ({_x:Int} -> Int do yield _x+1)\n"
+                <> "yield f 2"
+            )
+            "3"
         , programFailureCase
             "singleton argument-map private parameter rejects its written name"
             ( "f := ({_x:Int} -> Int do yield ~\"_x\"+1)\n"
@@ -567,15 +626,25 @@ functionTests =
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programFailureCase "private required names reject positional input"
+        , programCase "private argument-map parameters preserve written order"
             ( "sum := ({_x:Int;_y:Int} -> Int do "
-                <> "yield ~\"_x\"+~\"_y\")\nyield sum (1,2)"
+                <> "yield _x+_y)\nyield sum (1,2)"
             )
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+            "3"
+        , programCase "private concatenated parameters bind in the body"
+            ( "sum := (_x : Int, _y : Int) -> Int do "
+                <> "yield _x + _y\nyield sum (1, 2)"
+            )
+            "3"
         , programFailureCase "private parameter slots reject named input"
             ( "sum := ({_x:Int;_y:Int} -> Int do "
                 <> "yield ~\"_x\"+~\"_y\")\nyield sum (_x:1,_y:2)"
+            )
+            (SourceEvaluationFailure
+              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
+        , programFailureCase "private parameter slots reject unrelated names"
+            ( "sum := (_x:Int,_y:Int) -> Int do "
+                <> "yield _x+_y\nyield sum (left:1,right:2)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))

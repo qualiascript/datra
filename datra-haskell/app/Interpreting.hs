@@ -46,8 +46,7 @@ import Data.List (nub, intercalate, partition)
 import BlockScope
 import FunctionClosure
 import DatraLanguage.Identifier
-  ( isPrivateIdentifier
-  , public
+  ( public
   , requiresShadowingConsistency
   )
 import IdentifierValueType (isIdentifierValue)
@@ -645,7 +644,6 @@ data Scope = Scope
 data Binding
   = DeferredBinding Scope (Maybe Expression) Expression
   | EvaluatedBinding InterpretedValue
-  | PrivateParameterBinding InterpretedValue
   | ContextualBinding String Bool
       (ReductionContext -> Either InterpretingError InterpretedValue)
   | ShadowingConsistentBinding Binding
@@ -720,7 +718,6 @@ scopeProtectedValues scope =
     bindingValue binding =
       case binding of
         EvaluatedBinding value -> Just value
-        PrivateParameterBinding value -> Just value
         RetainedBinding _ _ _ value -> Just value
         ImportedBinding _ _ value _ -> Just value
         ShadowingConsistentBinding target -> bindingValue target
@@ -1706,9 +1703,6 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
       withoutCanonicalPresentation <$> resolve binding
     resolve (ShadowingConsistentBinding binding) = resolve binding
     resolve (EvaluatedBinding value) = Right value
-    resolve (PrivateParameterBinding value)
-      | includesPrivate = Right value
-      | otherwise = Left (UnknownIdentifier name)
     resolve (ContextualBinding surface _ _) =
       contextualFunction surface
         (contextualLevels includesPrivate resolving surface scope)
@@ -2598,12 +2592,9 @@ createFunctionWithGenerics reduction captured resolving
               argument
             localBindings =
               constantContextualBindings "it" bodyArgument
-                <> [scopeBinding name
-                    (if isPrivateIdentifier name
-                        && name `notElem` genericNames
-                      then PrivateParameterBinding value
-                      else EvaluatedBinding value)
-                  | (name,value) <- bodyImported]
+                <> [ scopeBinding name (EvaluatedBinding value)
+                   | (name, value) <- bodyImported
+                   ]
                 <> scopeBindings callCaptured
             bodyBase = scopeWithBindings localBindings bodySeed
         bodyScope <- importScopeWithin bodyBase [] preparedBindings
@@ -3003,6 +2994,7 @@ applyFunction activation reduction callable input =
     prepare function =
       case attempt input of
         Right prepared -> Right prepared
+        Left failure@(OverloadError OverloadNamedPrivateSlot) -> Left failure
         Left original -> case stripOuterIdentifierValue input of
           Right erased -> attempt erased
           Left _ -> Left original

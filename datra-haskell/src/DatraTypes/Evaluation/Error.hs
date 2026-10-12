@@ -65,6 +65,7 @@ data AtlasMapFederationUncertainty
 -- control flow; localized prose belongs exclusively to diagnostics modules.
 data OverloadFailure
   = OverloadNoMatch
+  | OverloadNamedPrivateSlot
   | OverloadAmbiguousWithoutWrittenOrder
   | OverloadAmbiguousWrittenOrder
   | OverloadMissingRequiredSlot

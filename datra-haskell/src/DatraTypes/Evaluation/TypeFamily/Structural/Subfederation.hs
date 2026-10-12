@@ -15,7 +15,11 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (makeAtlasMap)
-import Evaluation.Identifier (identifierNameFederationFor)
+import Evaluation.Identifier
+  ( evaluatedIdentifierType
+  , identifierNameFederationFor
+  , privateIdentifierUnderlying
+  )
 import Evaluation.Numerical
   ( nonnegativeFederationInComplementedInteger )
 import Evaluation.Specification.Composition (selectFederationMember)
@@ -57,6 +61,12 @@ decideStructuralSubfederation decideSubfederation source target
       decideAnyEitherAlternative decideSubfederation source targetEither
   | BuiltinMetaTypeForm _ <- interpretedForm source = DecisionRefuted
   | Just _ <- interpretedFunction source = DecisionRefuted
+  | Just sourceUnderlying <- privateIdentifierUnderlying source
+  , Nothing <- evaluatedIdentifierType target =
+      decideSubfederation sourceUnderlying target
+  | Nothing <- evaluatedIdentifierType source
+  , Just targetUnderlying <- privateIdentifierUnderlying target =
+      decideSubfederation source targetUnderlying
   | ArgumentMapForm _ underlying <- interpretedForm target =
       if argumentSourceHasConcreteMembers source
         then mapDecision (const ()) (selectFederationMember source target)

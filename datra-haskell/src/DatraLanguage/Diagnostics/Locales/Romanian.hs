@@ -423,6 +423,8 @@ overloadFailure failure =
   case failure of
     OverloadNoMatch ->
       "operandul drept nu corespunde operandului stâng fără valorile implicite"
+    OverloadNamedPrivateSlot ->
+      "un parametru privat acceptă numai intrare pozițională"
     OverloadAmbiguousWithoutWrittenOrder ->
       "supraîncărcare ambiguă; nu există o potrivire care păstrează ordinea"
     OverloadAmbiguousWrittenOrder ->

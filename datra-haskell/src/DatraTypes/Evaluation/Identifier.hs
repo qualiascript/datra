@@ -4,6 +4,9 @@ module Evaluation.Identifier
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , identifierNameFederationFor
+  , evaluatedIdentifierType
+  , privateSimpleIdentifier
+  , privateIdentifierUnderlying
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
@@ -23,6 +26,33 @@ import Evaluation.Error
   ( InterpretingError (NonCanonicalIdentifierTypeAnnotation) )
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraLanguage.Identifier (isPrivateIdentifier)
+
+evaluatedIdentifierType
+  :: InterpretedValue
+  -> Maybe EvaluatedDependentIdentifierType
+evaluatedIdentifierType value =
+  case interpretedForm value of
+    DependentIdentifierTypeForm identifier -> Just identifier
+    IdentifierStringProjectionForm identifier -> Just identifier
+    AssignmentForm specification ->
+      evaluatedIdentifierType (evaluatedSpecificationTarget specification)
+    SpecificationForm specification ->
+      evaluatedIdentifierType (evaluatedSpecificationTarget specification)
+    _ -> Nothing
+
+privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
+privateSimpleIdentifier identifier =
+  case evaluatedIdentifierDependency identifier of
+    SimpleIdentifierDependency name -> isPrivateIdentifier name
+    DependentIdentifierDependency {} -> False
+
+privateIdentifierUnderlying :: InterpretedValue -> Maybe InterpretedValue
+privateIdentifierUnderlying value = do
+  identifier <- evaluatedIdentifierType value
+  if privateSimpleIdentifier identifier
+    then Just (evaluatedIdentifierUnderlying identifier)
+    else Nothing
 
 -- | Identifier annotations participate in canonical source syntax. A
 -- noncanonical Datra type can still be named as a value, but cannot define
