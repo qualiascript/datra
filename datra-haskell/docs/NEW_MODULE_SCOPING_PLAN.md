@@ -10,6 +10,9 @@ Give module loading and lexical scope opening separate meanings:
 - `.` is the module scope operator. `value.(expression)` evaluates `expression`
   as its own expression in a fresh lexical scope populated from `value`'s public
   named members.
+- `'with` opens several module values at once. `with Std; Numbers do ...`
+  federates their public bindings and syntax metadata, then evaluates the
+  function body in that combined module scope.
 - If `value` is an imported module, the fresh scope also receives that module's
   exported syntax rules.
 - `_AST` and `datra.AST` are removed. Every standard-library syntax hole and
@@ -172,6 +175,40 @@ Opening a scope exposes only public exported names. It must not expose a
 module's private evaluation scope merely because that scope is available to the
 module loader.
 
+### Multiple module scopes with `'with`
+
+The standard library declares a multi-module scope form:
+
+```datra
+with Std; Numbers do
+  ...
+yield ...
+```
+
+`'with` evaluates each module-valued operand in the enclosing scope, constructs
+a new federation from those module values, and evaluates the supplied
+`FunctionBody` in the module scope opened from that federation. The resulting
+scope contains the public members and associated syntax rules contributed by
+both `Std` and `Numbers`; the qualified `Std` and `Numbers` values themselves
+remain ordinary enclosing bindings.
+
+Semantically, `with modules body` is the multi-source spelling of the module
+scope operation: federate `modules`, retain all contributing module descriptors,
+then use that federation as the LHS of `ScopeAccess` with `body` as its RHS. The
+implementation should lower to the shared scope machinery rather than creating
+a second evaluator for `'with`.
+
+Federation construction is atomic. The ordinary federation and syntax-overload
+rules must prove that the contributed public binder fibers and syntax rules are
+unambiguous. If the combination overlaps or its required disjointness is
+undecidable, compilation fails before the body is rewritten or evaluated. There
+is no left-to-right precedence between modules. Repeating an identical module
+value is idempotent under the ordinary federation rules.
+
+As with direct `source.(body)` access, a `yield` under `'with` continues to
+target the actual enclosing function activation. The temporary combined module
+scope and its syntax rules disappear after the function body.
+
 ### Maps are still maps
 
 The module scope operator does not turn its RHS into a statement block. For
@@ -331,6 +368,12 @@ module name. Value scope opening and syntax scope opening must consult the same
 descriptor, so the two views cannot be reconstructed independently or disagree
 about exports.
 
+A federation created for `'with` or a multi-file import must retain the complete
+set of contributing descriptors. Do not collapse it into an ordinary map and
+then attempt to rediscover syntax metadata from member names. Its public binder
+federation, combined syntax rules, and provenance must be constructed and
+validated together.
+
 Do not re-evaluate a module or reparse function source when using the module
 scope operator. Module loading computes the descriptor once and the existing
 per-load cache reuses it.
@@ -353,7 +396,7 @@ _FunctionBody := !~"datra.FunctionBody"
 
 `_FunctionBody` denotes an already parsed function-body node and is available
 to standard-library syntax declarations. It does not teach the neutral parser
-the spelling `import`; that spelling remains entirely in `std.datra`.
+the spellings `import` or `with`; both remain entirely in `std.datra`.
 
 There is deliberately no `_AST` fallback. Syntax capture and application must
 reject a value of the wrong structural category at the typed adapter boundary,
@@ -393,17 +436,28 @@ Add an explicit rewrite operation for `ScopeAccess`:
 4. Rewrite the RHS exactly once in that child environment.
 5. Discard the child rule environment after the RHS.
 
+The `'with` adapter lowers its module-list expression and `_FunctionBody` to
+this same operation. Before rewriting the body, resolve all contributing module
+descriptors, form and validate their public binder/syntax federation, and make
+that combined metadata available to the ordinary `ScopeAccess` rewrite. Reject
+an ambiguous federation before rewriting the body, and discard the combined
+environment afterward.
+
 Add a scoped rewrite operation for `Import paths body`:
 
 1. Resolve and discover every path retained in the import node.
-2. Federate every loaded module's public exported identifier binders into the
-   synthesized anonymous-function domain, retaining each fiber's descriptor.
-3. Rewrite the `_FunctionBody` exactly once in the function rewrite environment
+2. Construct a new federation from every loaded file's public exported
+   identifier binders, retaining each fiber's descriptor.
+3. Validate that federation with the ordinary ambiguity and disjointness rules;
+   fail before rewriting or evaluating the body if construction is refuted or
+   undecidable.
+4. Use the validated federation as the synthesized anonymous-function domain.
+5. Rewrite the `_FunctionBody` exactly once in the function rewrite environment
    associated with that domain.
-4. Do not add the imported modules' public members or syntax rules directly;
+6. Do not add the imported modules' public members or syntax rules directly;
    syntax rules become active only within the RHS of an explicit module scope
    operation such as `Numbers.(...)`.
-5. Discard the import/function rewrite environment after the body.
+7. Discard the import/function rewrite environment after the body.
 
 An import therefore does not extend an executable block left-to-right. Its
 qualified bindings are visible only in its explicit function body. Within an
@@ -426,6 +480,9 @@ real rewrite:
 
 - entering `Std.(...)` makes Std's declared import syntax visible inside;
 - leaving it removes that visibility;
+- entering `with Std; Numbers do ...` makes the validated federation of their
+  syntax rules and public members visible only in that function body;
+- leaving a `'with` body discards its combined descriptors and rules;
 - discovering an import records every path in its `List String` operand and
   makes the resulting exported binder federation and descriptors available
   while discovering its `_FunctionBody`, but does not perform a full source
@@ -466,13 +523,18 @@ module scope.
 Evaluate `Import paths body` by desugaring it semantically into eager anonymous
 function application:
 
-1. Resolve all paths and federate every public exported identifier binder into
-   one domain/argument value, such as `Numbers`, `Ordinals`, or multiple binders
-   contributed by a single file.
-2. Construct an anonymous function with that domain and the supplied
+1. Resolve every path and obtain each file's public exported binder federation.
+2. Construct a new cross-file federation from those results using the ordinary
+   federation operation.
+3. If the cross-file federation is ambiguous, refuted, or insufficiently
+   disjoint under the usual rules, return the established federation diagnostic
+   without constructing or invoking the function.
+4. Use the validated federation as one domain/argument value, containing such
+   binders as `Numbers`, `Ordinals`, or multiple binders from a single file.
+5. Construct an anonymous function with that domain and the supplied
    `FunctionBody`.
-3. Immediately apply the function to the constructed domain value.
-4. Return the eager invocation's result as the value of the import expression.
+6. Immediately apply the function to the constructed domain value.
+7. Return the eager invocation's result as the value of the import expression.
 
 The import body's `yield` belongs to this synthesized function activation.
 Closures created by the body retain only the imported binder fibers they
@@ -531,6 +593,10 @@ _FunctionBody := !~"datra.FunctionBody"
 'import :=
   "import %_Expr %_FunctionBody" %
     (List Str; _FunctionBody -> _Expr) !~"datra.import"
+
+'with :=
+  "with %_Expr %_FunctionBody" %
+    (_Expr; _FunctionBody -> _Expr) !~"datra.with"
 ```
 
 Place `_FunctionBody` with the other narrow syntax-category external types so
@@ -551,6 +617,13 @@ The surface adapter collects the one-or-more path-string expression into the
 `List Str` operand, so both `import "numbers" do ... yield ...` and
 `import "numbers"; "ordinals" do ... yield ...` reach the same list-based
 implementation.
+
+The `datra.with` adapter validates the semicolon-separated module-value
+expression, builds the descriptor-preserving federation, rejects ambiguity, and
+lowers the result to the shared `ScopeAccess` implementation. It must preserve
+the complete `_FunctionBody` and return `_Expr`. Direct invocation through the
+standard-library `'with` function value must converge on the same semantics;
+neither form may flatten the operands into a metadata-free map.
 
 Replace `_AST` in every other `std.datra` syntax signature at the same time.
 Inputs use the category named by their syntax holes, and outputs use the actual
@@ -633,7 +706,16 @@ from, and must not reintroduce, a one-binder-per-file restriction.
    yield (...)
    ```
 
-7. Leave sources that require no standard names unwrapped.
+7. Replace nested module scopes that intentionally open several modules for the
+   same body with the direct form where clearer:
+
+   ```datra
+   with Std; Numbers do
+     ...
+   yield ...
+   ```
+
+8. Leave sources that require no standard names unwrapped.
 
 ## Regression coverage
 
@@ -657,6 +739,9 @@ from, and must not reintroduce, a one-binder-per-file restriction.
 - multiple path strings parse as one import operand and one function body.
 - canonical and surface import render/parse round trips preserve path order and
   the complete body.
+- `with Std; Numbers do ... yield ...` retains both module operands and the
+  complete `_FunctionBody`, while `with` remains standard-library-declared
+  syntax rather than a neutral keyword.
 
 ### Syntax category typing
 
@@ -668,7 +753,7 @@ from, and must not reintroduce, a one-binder-per-file restriction.
 - `_Expr`, `_Block`, `_IdenExp`, and `_FunctionBody` accept only their matching
   captured structures.
 - `datra.do` returns `_FunctionBody`; ordinary expression-producing adapters,
-  including `datra.import`, return `_Expr`.
+  including `datra.import` and `datra.with`, return `_Expr`.
 - every standard syntax rule still rewrites with its narrowed signature.
 - `_AST` remains available as an ordinary user identifier spelling when a user
   explicitly binds it; it has no built-in meaning.
@@ -685,6 +770,10 @@ from, and must not reintroduce, a one-binder-per-file restriction.
   a non-identical binding, and succeeds when the binding has identity.
 - private module members remain inaccessible.
 - nested module scopes compose and restore the outer scope on exit.
+- `with Std; Numbers do ... yield ...` exposes both modules' public members and
+  syntax rules only within its body.
+- an ambiguous `'with` federation fails before its body is rewritten or
+  evaluated, with no left-to-right winner.
 - a function `yield` beneath a module scope reaches the true function boundary.
 - closures created inside the RHS retain the opened values they actually use.
 
@@ -711,6 +800,8 @@ from, and must not reintroduce, a one-binder-per-file restriction.
   choice.
 - a multi-path import constructs one combined domain and still performs one
   eager invocation.
+- a multi-path import explicitly constructs a new cross-file federation before
+  function construction; an ambiguous federation fails before invocation.
 - `import "numbers" do Numbers.(... yield ...)` composes import-function scope
   with module scope, and the nested `yield` returns from the synthesized import
   function.
@@ -770,15 +861,19 @@ by these operations.
    handoff behavior.
 7. Change `'import` to accept `List Str` plus a function body, replace the
    no-op/entry-form import with a value-producing import AST, federate all simple
-   or dependent exports into its domain, and evaluate it as one eager anonymous
-   function application.
-8. Remove `import all`, the import-kind Boolean, and out-of-band executable-scope
+   or dependent exports across all requested files into one validated domain,
+   fail on federation ambiguity, and evaluate it as one eager anonymous function
+   application.
+8. Add the standard-library `'with` function and syntax adapter, preserving
+   module descriptors while lowering its validated multi-module federation to
+   the shared `ScopeAccess` machinery.
+9. Remove `import all`, the import-kind Boolean, and out-of-band executable-scope
    import handling from the AST, standard library, loader, and interpreter.
-9. Implement the implicit Std scope at executable source boundaries.
-10. Migrate bundled libraries and fixtures.
-11. Run focused parser, syntax-category, scope, module, numbers, ordinals,
+10. Implement the implicit Std scope at executable source boundaries.
+11. Migrate bundled libraries and fixtures.
+12. Run focused parser, syntax-category, scope, module, numbers, ordinals,
     closure, specification, and subfederation tests.
-12. Run `git diff --check`, build with LiquidHaskell disabled, and run the full
+13. Run `git diff --check`, build with LiquidHaskell disabled, and run the full
     test suite once with `-f-liquid`.
 
 ## Acceptance criteria
@@ -793,12 +888,15 @@ The change is complete when:
   category, with no universal replacement for `_AST`;
 - `_Expr`, `_Block`, `_IdenExp`, and `_FunctionBody` reject structurally
   mismatched captures at their typed boundary;
-- `_FunctionBody` is exposed to `std.datra` without recognizing `import` in the
-  neutral parser;
+- `_FunctionBody` is exposed to `std.datra` without recognizing `import` or
+  `with` in the neutral parser;
 - `'import` accepts a `List Str` and `_FunctionBody`, constructs a real import
   AST expression, and never produces a surface no-op instruction;
 - each import creates one anonymous function whose domain contains all requested
   exported identifier binders, eagerly invokes it, and returns its result;
+- every multi-file import first constructs one new federation from the files'
+  exported binder federations and fails before body rewriting or invocation if
+  that combination is ambiguous;
 - a single imported file may contribute multiple simple identifier binders;
 - dependent identifier exports are accepted, and all cross-file and within-file
   ambiguity is decided by the ordinary federation rules;
@@ -810,6 +908,12 @@ The change is complete when:
   function activation, closure, `yield`, and handoff behavior;
 - executable scopes contain no out-of-band import interception or left-to-right
   import mutation;
+- `'with` is declared in `std.datra`, accepts several module values plus a
+  `_FunctionBody`, and lowers to the shared module-scope implementation;
+- `with Std; Numbers do ...` opens the validated federation of both modules'
+  public members and syntax rules for exactly its body;
+- an ambiguous `'with` federation produces the ordinary federation diagnostic
+  without choosing a module by source order;
 - `.` is consistently described and implemented as the module scope operator;
 - the module scope operator opens both public values and associated syntax rules
   for exactly its RHS;
@@ -820,7 +924,8 @@ The change is complete when:
 - opening a module scope reports an inconsistent-shadowing compiler error when
   it would shadow an outer apostrophe identifier with a non-identical binding;
 - standard executables behave as an implicit outer `Std.(...)`;
-- modules use qualified imports plus the explicit module scope operator;
+- modules use qualified imports plus the explicit module scope operator or
+  `'with` for a validated multi-module scope;
 - Std has no self-import or self-opening path;
 - syntax rewriting and dependency discovery do not duplicate full rewrites;
 - module descriptors and syntax rules are cached and reused;
