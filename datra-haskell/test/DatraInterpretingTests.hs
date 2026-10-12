@@ -783,7 +783,7 @@ testArgumentMaps = do
     , "{1; 2} = ((1; 2) | (2; 1))"
     , "{b := 8; 2} = {2; b := 8}"
     , "{b := 8; 2} of {a? : Nat := 2; b? : Nat}"
-    , "{(1, 2); 3} = {3; (1, 2)}"
+    , "{(1; 2); 3} = {3; (1; 2)}"
     , "{2; 2} = (2; 2)"
     , "{1; 2; 3} = {3; 1; 2}"
     , "{(1; 2); 3} = {3; (1; 2)}"
@@ -807,16 +807,16 @@ testArgumentMaps = do
     ]
   expectSourceRejection
     "duplicate unnamed argument types have no distinct permutations"
-    "($a, $b, 5) of {Int; Str; Str}"
+    "($a; $b; 5) of {Int; Str; Str}"
     (== EitherAlternativesNotDistinct)
   expectSourceValue "written order wins over other valid permutations"
-      "(1, 2) ~> {x : Int; y : Int}" $ \value ->
+      "(1; 2) ~> {x : Int; y : Int}" $ \value ->
     assert "required names accept positional values in written order"
       (renderInterpretedValue value
         == "(1; 2) ~> {x : " <> sourceIntType
           <> "; y : " <> sourceIntType <> "}")
   expectSourceValue "a unique valid argument reorder is selected"
-      "($a, 5) ~> {x : Int; y : IdenStr}" $ \value ->
+      "($a; 5) ~> {x : Int; y : IdenStr}" $ \value ->
     assert "the unique reordered presentation is retained"
       (renderInterpretedValue value
         == "($a; 5) ~> {x : " <> sourceIntType <> "; y : IdenStr}")
@@ -861,7 +861,7 @@ testArgumentMaps = do
         (renderInterpretedValue roundTrip == rendered))
     [ example
     , "{b := 8; 2} ~> {a? : Nat := 2; b? : Nat}"
-    , "{(1, 2); 3}"
+    , "{(1; 2); 3}"
     , "{(a : Nat; b : Nat); 3}"
     , "{(1 ~> Nat); b := 8}"
     ]
@@ -1995,6 +1995,15 @@ testOptionalsAndConditionals = do
           (AST.eitherType
             (AST.dependentIdentifierType "b" AST.integerType)
             AST.integerType)
+      optionalIntegerSequence =
+        MapSequence
+          [ AST.eitherType
+              (AST.dependentIdentifierType "a" AST.integerType)
+              AST.integerType
+          , AST.eitherType
+              (AST.dependentIdentifierType "b" AST.integerType)
+              AST.integerType
+          ]
       optionalAssigned identifierString value =
         AST.eitherType
           (AST.assignment
@@ -2051,8 +2060,8 @@ testOptionalsAndConditionals = do
       (renderInterpretedValue value == "a? : from 0 up")
   expectValue
       "positional values specify into optional identifier slots"
-      ( MapConcatenation (natural 12) (natural 23)
-          ~> optionalIntegerSlots
+      ( MapSequence [natural 12, natural 23]
+          ~> optionalIntegerSequence
       ) $ \value ->
     assert "positional values canonicalize as optional assignments"
       (renderInterpretedValue value
@@ -2520,6 +2529,50 @@ parseProductionSource source =
 
 testMaps :: IO ()
 testMaps = do
+  expectSourceRejection
+    "redundant binary concatenation"
+    "1, 2"
+    (== RedundantConcatenation)
+  expectSourceRejection
+    "redundant trailing concatenation"
+    "(1; 2),"
+    (== RedundantConcatenation)
+  expectSourceRejection
+    "a trailing comma delegates to its binary concatenation"
+    "1, 2,"
+    (== RedundantConcatenation)
+  expectSourceRejection
+    "a trailing comma is redundant after an atomic value"
+    "1,"
+    (== RedundantConcatenation)
+  expectSourceValue
+      "a trailing comma splices a variadic family"
+      "Args Int," $ \_ ->
+    pure ()
+  expectSourceValue
+      "concatenation can flatten a nested sequence"
+      "(1; 2), 3" $ \value ->
+    assert "a structurally distinct concatenation is accepted"
+      (renderInterpretedValue value == "(1; 2; 3)")
+  expectSourceValue
+      "optional names preserve a concatenation boundary"
+      "(a? : Nat), (b? : Nat)" $ \value ->
+    assert "optional names remain distinct from a sequence"
+      (renderInterpretedValue value == "a? : Nat, b? : Nat")
+  expectSourceValue
+      "a trailing comma is optional after binary concatenation"
+      "(a? : Nat), (b? : Nat)," $ \_ ->
+    pure ()
+  expectSourceValue
+      "nonredundant concatenation supports subfederation"
+      "((1; 2), 3) of ((1; 2), 3)" $ \value ->
+    assert "subfederation sees the accepted concatenation"
+      (renderInterpretedValue value == "true")
+  expectSourceValue
+      "nonredundant concatenation supports specification"
+      "((1; 2), 3) ~> ((1; 2), 3)" $ \value ->
+    assert "specification sees the accepted concatenation"
+      (renderInterpretedValue value == "(1; 2; 3)")
   expectValue
       "unary maps are structural identities"
       (AtlasMap [AtlasMap [natural 1]]) $ \value ->
@@ -2592,13 +2645,13 @@ testMaps = do
     assert "access does not flatten the selected sequence operand"
       (renderInterpretedValue value == "1..4")
   expectValue
-      "concatenation flattens compound operands"
-      ((<.>)
+      "sequence preserves compound operands"
+      ((<:>)
         ((<..>) (natural 1) (natural 4))
         (AsciiStringLiteral "ab")) $ \value ->
-    assert "concatenation appends operand final-page contents"
+    assert "sequence retains one position per operand"
       (interpretedMapFinalOrderType (interpretedMap value)
-        == finiteOrdinal 5)
+        == finiteOrdinal 2)
   expectValue
       "operator expansion"
       ((natural 1 <:> natural 2) <+> (natural 3 <:> natural 4)) $ \value ->
@@ -2748,9 +2801,7 @@ testAtlasMapFederations = do
 testAccess :: IO ()
 testAccess = do
   let threeValues =
-        (<.>)
-          (natural 1)
-          ((<.>) (natural 2) (natural 3))
+        MapSequence [natural 1, natural 2, natural 3]
       fiveValues = AtlasMap (map natural [0 .. 4])
       sequenceSpecification =
         (~>)
@@ -3342,22 +3393,27 @@ testSpecification = do
         MapExpansion
           (AtlasMap [AsciiStringLiteral "a"])
           (AtlasMap [ValuedNaturalRange 1 100])
-      concatenate = foldr1 (<.>)
-      compositeConcatenationSource =
-        concatenate
+      compositeSequencedSource =
+        MapSequence
           [ AsciiStringLiteral "a"
           , natural 3
           , natural 4
           , natural 5
           ]
-      compositeConcatenationTarget =
-        (<.>)
-          (AsciiStringLiteral "a")
-          (NaturalRange 1 10)
-      compositeConcatenationWidenedTarget =
-        (<.>)
-          (AsciiStringLiteral "a")
-          (NaturalRangeUpwards 0)
+      compositeSequencedTarget =
+        MapSequence
+          [ AsciiStringLiteral "a"
+          , NaturalType
+          , NaturalType
+          , NaturalType
+          ]
+      compositeSequencedIntermediate =
+        MapSequence
+          [ AsciiStringLiteral "a"
+          , ValuedNaturalRange 1 100
+          , ValuedNaturalRange 1 100
+          , ValuedNaturalRange 1 100
+          ]
   let expectIdentity label expressionValue expectedKind expected =
         expectValue label ((~>) expressionValue expressionValue) $ \value ->
           assert label
@@ -3411,10 +3467,10 @@ testSpecification = do
     compositeSequenceTarget
     "($a; 50) ~> ($a; from 0 up)"
   expectSpecification
-    "concatenated federation partitions and selects members"
-    compositeConcatenationSource
-    compositeConcatenationTarget
-    "($a; 3; 4; 5) ~> $a, range 1 to 10"
+    "sequenced federation selects members pointwise"
+    compositeSequencedSource
+    compositeSequencedTarget
+    "($a; 3; 4; 5) ~> ($a; from 0 up; from 0 up; from 0 up)"
   expectValue
       "expansion federation selects members pointwise"
       ((~>) compositeExpansionSource compositeExpansionTarget) $ \value ->
@@ -3429,15 +3485,15 @@ testSpecification = do
       (renderInterpretedValue value
         == "($a; 50) ~> ($a; from 0 up)")
   expectValue
-      "concatenated subfederations compose pointwise"
+      "long sequence subfederations compose pointwise"
       ((~>)
         ((~>)
-          compositeConcatenationSource
-          compositeConcatenationTarget)
-        compositeConcatenationWidenedTarget) $ \value ->
-    assert "concatenation composition retains the final target"
+          compositeSequencedSource
+          compositeSequencedIntermediate)
+        compositeSequencedTarget) $ \value ->
+    assert "long sequence composition retains the final target"
       (renderInterpretedValue value
-        == "($a; 3; 4; 5) ~> $a, range 0 up")
+        == "($a; 3; 4; 5) ~> ($a; from 0 up; from 0 up; from 0 up)")
   expectValue
       "expansion subfederations compose pointwise"
       ((~>)
@@ -4136,9 +4192,7 @@ testTypedRejections = do
   expectValue
       "ordinary open ranges clip against finite maps"
       ((<@>)
-        ((<.>)
-          (natural 1)
-          ((<.>) (natural 2) (natural 3)))
+        (MapSequence [natural 1, natural 2, natural 3])
         ((..+) (natural 1))) $ \value ->
     assert "the available tail is selected"
       (renderInterpretedValue value == "(2; 3)")

@@ -221,6 +221,10 @@ localizeInterpretingError reason =
       localizeSuperEllipsisRangeError rejection
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
+    RedundantConcatenation ->
+      LocalizedMessage
+        "concatenation does not change the meaning of this expression"
+        ["use ; between operands or remove the trailing comma"]
     AccessRejected rejection -> localizeAccessError rejection
     GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage

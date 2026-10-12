@@ -1227,8 +1227,26 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               then Right (makeAtlasMap 0 [])
               else Left AssertionFailed
           _ -> Right neverValue
-    MapConcatenation left right ->
-      binary concatenateValues left right
+    MapConcatenation left right
+      | AtlasMap [] <- right ->
+          case left of
+            -- The postfix comma in @A, B,@ delegates its diagnostic decision
+            -- to the enclosed binary concatenation.
+            MapConcatenation _ _ -> binary concatenateValues left right
+            _ -> checkedConcatenation
+              RedundantConcatenation
+              (\actualLeft _ -> actualLeft)
+              left
+              right
+      | otherwise -> checkedConcatenation
+          RedundantConcatenation
+          (\actualLeft actualRight ->
+            buildAtlasMapFromValues
+              makeAtlasMap
+              [left, right]
+              [actualLeft, actualRight])
+          left
+          right
     Overload defaults supplied ->
       binary overloadValues defaults supplied
     SafeOverload defaults supplied ->
@@ -1474,6 +1492,21 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       runProtectedOperation protection [leftValue, rightValue] $ \actuals ->
         case actuals of
           [actualLeft, actualRight] -> operation actualLeft actualRight
+          _ -> Right neverValue
+    checkedConcatenation rejection comparison left right = do
+      leftValue <- interpret left
+      rightValue <- interpret right
+      runProtectedOperation protection [leftValue, rightValue] $ \actuals ->
+        case actuals of
+          [actualLeft, actualRight] -> do
+            (result, equivalenceView) <-
+              concatenateValuesWithEquivalenceView actualLeft actualRight
+            equivalent <-
+              equalValues
+                equivalenceView
+                (comparison actualLeft actualRight)
+                >>= booleanCondition
+            if equivalent then Left rejection else Right result
           _ -> Right neverValue
     checkedUnary operation operand = do
       value <- interpret operand

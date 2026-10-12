@@ -221,6 +221,10 @@ localizeInterpretingError reason =
       localizeSuperEllipsisRangeError rejection
     RangeConcatenationRejected rejection ->
       localizeSuperEllipsisRangeConcatError rejection
+    RedundantConcatenation ->
+      LocalizedMessage
+        "concatenarea nu schimbă sensul acestei expresii"
+        ["folosiți ; între operanzi sau eliminați virgula finală"]
     AccessRejected rejection -> localizeAccessError rejection
     GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage

@@ -59,13 +59,13 @@ overloadTests =
         "yield {x? : Nat := 2; Nat} << 4"
         "{x? : Nat := 4; Nat}"
     , programCase "skip advances one positional overload slot"
-        "yield {x? : Nat; y? : Nat} << (*, 3)"
+        "yield {x? : Nat; y? : Nat} << (*; 3)"
         "{x? : Nat; y? : Nat := 3}"
     , programCase "skip composes through argument-map overload input"
         "yield {x? : Nat; y? : Nat} << {*; 3}"
         "{x? : Nat; y? : Nat := 3}"
     , programFailureCase "transfinite ordinal is not a skip"
-        "yield {x? : Nat; y? : Nat} << (..., 3)"
+        "yield {x? : Nat; y? : Nat} << (...; 3)"
         (SourceEvaluationFailure
           (OverloadError OverloadNoMatch))
     , programCase "safe overload fills a later compatible slot"
@@ -88,16 +88,16 @@ overloadTests =
         "yield ({x? : Nat := 2} <<< 2) ~> (x? : Int)"
         "x? : Int := 2"
     , programCase "safe overload can leave a default skipped"
-        "yield {x? : Nat := 2; y? : Nat} <<< (*, 3)"
+        "yield {x? : Nat := 2; y? : Nat} <<< (*; 3)"
         "{x? : Nat := 2; y? : Nat := 3}"
     , programCase "skip specifications match only skip positions"
         (unlines
-          [ "assert (*, 3) of (*, Nat)"
+          [ "assert (*; 3) of (*; Nat)"
           , "assert {*; 3} of {*; Nat}"
-          , "assert ((*, 3) ~> (*, Nat)) of (*, Nat)"
+          , "assert ((*; 3) ~> (*; Nat)) of (*; Nat)"
           , "assert ({*; 3} ~> {*; Nat}) of {*; Nat}"
-          , "assert not ((..., 3) of (*, Nat))"
-          , "assert not ((*, 3) of (..., Nat))"
+          , "assert not ((...; 3) of (*; Nat))"
+          , "assert not ((*; 3) of (...; Nat))"
           ])
         "()"
     , programCase "skip coerces to one in numerical operators"
@@ -120,13 +120,13 @@ defaultedFunctionTests =
     [ programCase "unparenthesized my_pow can assert a skipped default"
         (unlines
           [ "my_pow := {base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent"
-          , "assert my_pow (*, 3) = 8"
+          , "assert my_pow (*; 3) = 8"
           ])
         "()"
     , programCase "positional-only my_pow skips its defaulted first argument"
         (unlines
           [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
-          , "yield my_pow (*, 3)"
+          , "yield my_pow (*; 3)"
           ])
         "8"
     , programCase "positional-only my_pow accepts a skip in an argument map"
@@ -138,13 +138,13 @@ defaultedFunctionTests =
     , programCase "function call can skip a later default"
         (unlines
           [ "add := ({x? : Nat; y? : Nat := 4} -> Nat do yield x + y)"
-          , "yield add (3, *)"
+          , "yield add (3; *)"
           ])
         "7"
     , programFailureCase "function call cannot skip a required argument"
         (unlines
           [ "sum := ({x : Nat; y? : Nat} -> Nat do yield x + y)"
-          , "yield sum (*, 3)"
+          , "yield sum (*; 3)"
           ])
         (SourceEvaluationFailure
           (OverloadError OverloadSkippedRequiredSlot))
@@ -157,7 +157,7 @@ defaultedFunctionTests =
     , programFailureCase "function call does not treat an ordinal as skip"
         (unlines
           [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield base ^ exponent)"
-          , "yield my_pow (..., 3)"
+          , "yield my_pow (...; 3)"
           ])
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
