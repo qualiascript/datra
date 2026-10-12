@@ -20,7 +20,11 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (concatenateValues, makeAtlasMap)
-import Evaluation.Identifier (identifierNameFederationFor)
+import Evaluation.Identifier
+  ( evaluatedIdentifierType
+  , identifierNameFederationFor
+  , privateSimpleIdentifier
+  )
 import Evaluation.Numerical
   ( IntegerLimit (..)
   , complementedIntegerTypeIncludesInfinity
@@ -62,6 +66,7 @@ selectFederationMember source target
         selectFederationMember source members underlying
   | ArgumentMapForm _ underlying <- interpretedForm source =
       selectFederationMember underlying target
+  | Just decision <- selectPrivateIdentifierMember source target = decision
   | AssignmentForm assignment <- interpretedForm source =
       selectFederationMember
         (evaluatedSpecificationSourceValue assignment)
@@ -141,20 +146,40 @@ selectIdentifierMember source target =
         (evaluatedSpecificationTarget specification)
     _ -> selectDirectIdentifierMember source target
 
+-- A private regular-map name may be omitted, but a supplied name remains
+-- structural and must match. Argument maps handle relabeling before reaching
+-- this rule.
+selectPrivateIdentifierMember
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Maybe (Decision EvaluatedAtlasMapFederationMember)
+selectPrivateIdentifierMember source target =
+  case (evaluatedIdentifierType source, evaluatedIdentifierType target) of
+    (Just sourceIdentifier, Just targetIdentifier)
+      | privateSimpleIdentifier sourceIdentifier
+          || privateSimpleIdentifier targetIdentifier ->
+              Just (selectMatchingIdentifierMember
+                sourceIdentifier targetIdentifier)
+    (Nothing, Just targetIdentifier)
+      | privateSimpleIdentifier targetIdentifier ->
+          Just (mapDecision
+            (EvaluatedDependentIdentifierTypeMember Nothing)
+            (selectFederationMember source
+              (evaluatedIdentifierUnderlying targetIdentifier)))
+    (Just sourceIdentifier, Nothing)
+      | privateSimpleIdentifier sourceIdentifier ->
+          Just (selectFederationMember
+            (evaluatedIdentifierUnderlying sourceIdentifier) target)
+    _ -> Nothing
+
 selectDirectIdentifierMember
   :: InterpretedValue
   -> InterpretedValue
   -> Maybe (Decision EvaluatedAtlasMapFederationMember)
 selectDirectIdentifierMember source target =
-  case (interpretedForm source, interpretedForm target) of
-    ( DependentIdentifierTypeForm sourceIdentifier
-      , DependentIdentifierTypeForm targetIdentifier
-      ) ->
-        Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
-    ( IdentifierStringProjectionForm sourceIdentifier
-      , IdentifierStringProjectionForm targetIdentifier
-      ) ->
-        Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
+  case (evaluatedIdentifierType source, evaluatedIdentifierType target) of
+    (Just sourceIdentifier, Just targetIdentifier) ->
+      Just (selectMatchingIdentifierMember sourceIdentifier targetIdentifier)
     _ -> Nothing
 
 selectMatchingIdentifierMember

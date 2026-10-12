@@ -422,6 +422,8 @@ overloadFailure failure =
   case failure of
     OverloadNoMatch ->
       "the right operand does not match the left operand without its defaults"
+    OverloadNamedPrivateSlot ->
+      "a private parameter accepts only positional input"
     OverloadAmbiguousWithoutWrittenOrder ->
       "ambiguous overload; no order-preserving match exists"
     OverloadAmbiguousWrittenOrder ->

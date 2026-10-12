@@ -13,7 +13,7 @@ module Evaluation.FunctionArguments
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.Identifier (public)
+import DatraLanguage.Identifier (isPrivateIdentifier)
 import Data.Foldable (traverse_)
 import Evaluation.Error
   ( FunctionFailure (..)
@@ -125,7 +125,7 @@ compileParametersWithGenerics generics evaluate written static =
           , genericArgumentName = name
           , genericArgumentOptionalName = optional || not inferenceBoundary
           , genericArgumentInferred =
-              inferenceBoundary && not (isPublic name)
+              inferenceBoundary && isPrivateIdentifier name
           }
     genericReferences expressionValue = nubBinderIds (go expressionValue)
       where
@@ -136,9 +136,8 @@ compileParametersWithGenerics generics evaluate written static =
         nubBinderIds [] = []
         nubBinderIds (binderId : remaining) =
           binderId : nubBinderIds (filter (/= binderId) remaining)
-    isPublic name = not (null (public [(name, ())]))
     validateOptionalName allowPrivate name optional
-      | optional && not allowPrivate && not (isPublic name) =
+      | optional && not allowPrivate && isPrivateIdentifier name =
           Left (PrivateParameterCannotBeOptional name)
       | otherwise = Right ()
     validateArgumentMapName member =
@@ -146,7 +145,7 @@ compileParametersWithGenerics generics evaluate written static =
         optional
           | Just (IdentifierOperation (IdentifierString name) _ _, _) <-
               optionalIdentifierExpression optional
-          , not (isPublic name) ->
+          , isPrivateIdentifier name ->
               Left (PrivateParameterCannotBeOptional name)
         _ -> Right ()
     parameterSlot name optional annotation given = do

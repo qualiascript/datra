@@ -48,7 +48,7 @@ import DatraOrdinal
   , ordinalGTE
   , ordinalLTE
   )
-import DatraLanguage.Identifier (public)
+import DatraLanguage.Identifier (isPrivateIdentifier)
 import Evaluation.Arguments
   ( argumentRows
   , makeArgumentMap
@@ -117,14 +117,38 @@ data Slot = Slot
   , slotDependentBinder :: Bool
   , slotGenericBinder :: Maybe GenericArgumentBinder
   , slotEvidenceBinders :: [GenericBinderId]
-  , slotAllowsPrivateName :: Bool
   , slotAnnotation :: InterpretedValue
   , slotDefault :: Maybe InterpretedValue
   }
 
+data SlotRouting
+  = UnnamedSlot
+  | RequiredNamedSlot String
+  | OptionalNamedSlot String
+  | PrivatePositionalSlot
+  deriving (Eq)
+
+slotRouting :: Slot -> SlotRouting
+slotRouting slot =
+  case slotName slot of
+    Nothing -> UnnamedSlot
+    Just name
+      | Just _ <- slotGenericBinder slot
+      , slotOptionalName slot -> OptionalNamedSlot name
+      | Just _ <- slotGenericBinder slot -> RequiredNamedSlot name
+      | isPrivateIdentifier name -> PrivatePositionalSlot
+      | slotOptionalName slot -> OptionalNamedSlot name
+      | otherwise -> RequiredNamedSlot name
+
 slotIsInferred :: Slot -> Bool
 slotIsInferred slot =
   maybe False genericArgumentInferred (slotGenericBinder slot)
+
+slotIsPrivatePositional :: Slot -> Bool
+slotIsPrivatePositional slot =
+  case slotRouting slot of
+    PrivatePositionalSlot -> True
+    _ -> False
 
 -- 'Nothing' records an explicit positional @*@.  Keeping it distinct from an
 -- absent entry lets complete calls diagnose a skipped required slot while
@@ -201,7 +225,8 @@ resolveReplacements template supplied
       let targetNames = slotNames suppliedSlots
           rowSource = case suppliedValue supplied of
             (Just name, underlying)
-              | name `notElem` targetNames -> underlying
+              | not (any slotIsPrivatePositional suppliedSlots)
+              , name `notElem` targetNames -> underlying
             _ -> supplied
       rows <- overloadArgumentRows rowSource
       writtenRows <-
@@ -211,6 +236,13 @@ resolveReplacements template supplied
           _ -> pure rows
       let writtenOrder = suppliedSlots
           slotOrders = templateSlotOrders template
+          namedPrivateFailure =
+            any slotIsPrivatePositional suppliedSlots
+              && any (any suppliedInputIsNamed) rows
+          noMatch = OverloadError
+            (if namedPrivateFailure
+              then OverloadNamedPrivateSlot
+              else OverloadNoMatch)
           writtenRoutes =
             nubBy sameReplacements
               [ replacements
@@ -226,14 +258,14 @@ resolveReplacements template supplied
             ]
       let routeResult =
             if any null routes
-              then Left (OverloadError OverloadNoMatch)
+              then Left noMatch
               else case writtenRoutes of
                 -- Written order is the canonical positional interpretation.
                 -- Prefer it even when equal annotations admit permutations.
                 [replacements] -> Right replacements
                 [] ->
                   case nubBy sameReplacements (concat routes) of
-                    [] -> Left (OverloadError OverloadNoMatch)
+                    [] -> Left noMatch
                     [replacements] -> Right replacements
                     _ -> Left (OverloadError
                       OverloadAmbiguousWithoutWrittenOrder)
@@ -248,6 +280,11 @@ resolveReplacements template supplied
     canonical = sortOn fst . map
       (\(index, value) ->
         (index, interpretedSemanticResult <$> value))
+    suppliedInputIsNamed Nothing = False
+    suppliedInputIsNamed (Just value) =
+      case suppliedValue value of
+        (Just _, _) -> True
+        (Nothing, _) -> False
 
 matchInputs :: [Slot] -> [Maybe InterpretedValue] -> [Replacements]
 matchInputs slots inputs =
@@ -337,10 +374,23 @@ positionalContents targetNames value =
     _ -> Just value
 
 slotNames :: [Slot] -> [String]
-slotNames = foldr (maybe id (:) . slotName) []
+slotNames = foldr add []
+  where
+    add slot names =
+      case slotRouting slot of
+        RequiredNamedSlot name -> name : names
+        OptionalNamedSlot name -> name : names
+        UnnamedSlot -> names
+        PrivatePositionalSlot -> names
 
 matchSlot :: [String] -> Slot -> InterpretedValue -> Maybe InterpretedValue
 matchSlot targetNames slot input = do
+  case slotRouting slot of
+    PrivatePositionalSlot ->
+      case suppliedValue input of
+        (Nothing, _) -> pure ()
+        (Just _, _) -> Nothing
+    _ -> pure ()
   let (suppliedName, suppliedInput) =
         case slotName slot of
           Nothing -> (Nothing, input)
@@ -350,14 +400,12 @@ matchSlot targetNames slot input = do
         _ -> suppliedName
   case (slotName slot, inputName) of
     (Just expected, Just actual)
-      | not (isPublicIdentifier expected)
-      , not (slotAllowsPrivateName slot)
-      , not (slotDependentBinder slot) -> Nothing
       | expected == actual
       , not (slotDependentBinder slot) || suppliedAsAssignment input -> pure ()
       | otherwise -> Nothing
     (Just _, Nothing)
-      | slotOptionalName slot -> pure ()
+      | slotOptionalName slot
+          || slotRouting slot == PrivatePositionalSlot -> pure ()
       | otherwise -> Nothing
     (Nothing, Nothing) -> pure ()
     (Nothing, Just _) -> Nothing
@@ -382,10 +430,6 @@ matchSlot targetNames slot input = do
               Just inputValue
           | otherwise -> Just prepared
         Left _ -> Nothing
-
-isPublicIdentifier :: String -> Bool
-isPublicIdentifier identifier =
-  not (null (public [(identifier, ())]))
 
 suppliedValue :: InterpretedValue -> (Maybe String, InterpretedValue)
 suppliedValue value =
@@ -421,26 +465,48 @@ suppliedAsAssignment value =
       CanonicalAssignment {} -> True
       _ -> False
 
+argumentSlot
+  :: Int
+  -> Maybe String
+  -> Bool
+  -> Bool
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+  -> Slot
+argumentSlot index name optional dependent annotation defaultValue =
+  Slot index name optional dependent Nothing [] annotation defaultValue
+
+genericSlot :: Int -> GenericArgumentBinder -> InterpretedValue -> Slot
+genericSlot index binder annotation =
+  Slot
+    index
+    (Just (genericArgumentName binder))
+    (genericArgumentOptionalName binder)
+    True
+    (Just binder)
+    []
+    annotation
+    (if genericArgumentInferred binder then Just annotation else Nothing)
+
+withEvidenceBinders :: [GenericBinderId] -> Slot -> Slot
+withEvidenceBinders binderIds slot =
+  slot
+    { slotEvidenceBinders = nub (binderIds <> slotEvidenceBinders slot) }
+
 templateSlots :: ArgumentSchema -> [Slot]
-templateSlots = slots True
+templateSlots = slots
   where
-    slots allowsPrivateName template = case template of
+    slots template = case template of
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-        [Slot index name optional dependent Nothing [] allowsPrivateName
-          annotation defaultValue]
+        [argumentSlot index name optional dependent annotation defaultValue]
       GenericArgumentSlotSchema index binder annotation ->
-        [Slot index (Just (genericArgumentName binder))
-          (genericArgumentOptionalName binder) True (Just binder) []
-          allowsPrivateName annotation
-          (if genericArgumentInferred binder then Just annotation else Nothing)]
+        [genericSlot index binder annotation]
       GenericEvidenceArgumentSchema binderIds child ->
-        [slot
-          { slotEvidenceBinders = nub (binderIds <> slotEvidenceBinders slot) }
-        | slot <- slots allowsPrivateName child]
-      OrderedArgumentSchema _ children -> concatMap (slots True) children
-      UnorderedArgumentSchema children -> concatMap (slots False) children
+        map (withEvidenceBinders binderIds) (slots child)
+      OrderedArgumentSchema _ children -> concatMap slots children
+      UnorderedArgumentSchema children -> concatMap slots children
       ConcatenatedArgumentSchema left right ->
-        slots allowsPrivateName left <> slots allowsPrivateName right
+        slots left <> slots right
       ProjectedArgumentSchema _ -> []
       EmptyArgumentSchema -> []
 
@@ -448,36 +514,28 @@ templateSlots = slots True
 -- order, so unnamed values remain ambiguous while named values normalize to
 -- one replacement set. Concatenation preserves the order of its segments.
 templateSlotOrders :: ArgumentSchema -> [[Slot]]
-templateSlotOrders = orders True
+templateSlotOrders = orders
   where
-    orders allowsPrivateName template = case template of
+    orders template = case template of
       ArgumentSlotSchema index name optional dependent annotation defaultValue ->
-        [[Slot index name optional dependent Nothing [] allowsPrivateName
-          annotation defaultValue]]
+        [[argumentSlot index name optional dependent annotation defaultValue]]
       GenericArgumentSlotSchema index binder annotation
         | genericArgumentInferred binder -> [[]]
-        | otherwise ->
-            [[Slot index (Just (genericArgumentName binder))
-              (genericArgumentOptionalName binder) True (Just binder) []
-              allowsPrivateName annotation Nothing]]
+        | otherwise -> [[genericSlot index binder annotation]]
       GenericEvidenceArgumentSchema binderIds child ->
-        [ [slot
-            { slotEvidenceBinders =
-                nub (binderIds <> slotEvidenceBinders slot) }
-          | slot <- childSlots]
-        | childSlots <- orders allowsPrivateName child]
-      OrderedArgumentSchema _ children -> combine True children
+        [ map (withEvidenceBinders binderIds) childSlots
+        | childSlots <- orders child]
+      OrderedArgumentSchema _ children -> combine children
       UnorderedArgumentSchema children ->
-        concatMap (combine False) (permutations children)
+        concatMap combine (permutations children)
       ConcatenatedArgumentSchema left right ->
         [leftSlots <> rightSlots
-        | leftSlots <- orders allowsPrivateName left
-        , rightSlots <- orders allowsPrivateName right
+        | leftSlots <- orders left
+        , rightSlots <- orders right
         ]
       ProjectedArgumentSchema _ -> [[]]
       EmptyArgumentSchema -> [[]]
-    combine allowsPrivateName children =
-      map concat (sequence (map (orders allowsPrivateName) children))
+    combine children = map concat (sequence (map orders children))
 
 argumentSchemaFromValue :: InterpretedValue -> ArgumentSchema
 argumentSchemaFromValue value = fst (fromValue 0 value)
@@ -1355,7 +1413,7 @@ buildSlot (Just name) optional dependent annotation supplied = do
     case supplied of
       Nothing -> Right (simpleIdentifierTypeValue name annotation)
       Just value
-        | not (isPublicIdentifier name) && not dependent -> do
+        | isPrivateIdentifier name && not dependent -> do
             _ <- specifyValues value annotation
             Right (simpleIdentifierTypeValue name value)
       Just value ->

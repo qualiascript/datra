@@ -19,6 +19,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (isEmptyMap, makeAtlasMap)
+import Evaluation.Identifier (evaluatedIdentifierType)
 import Evaluation.Specification.Decision
 import Evaluation.Value
 
@@ -285,13 +286,11 @@ selectPositionalSlot select identifierIsReserved source target =
             DecisionRefuted -> DecisionRefuted
             DecisionUndecidable -> DecisionUndecidable
           else case interpretedForm target of
-            DependentIdentifierTypeForm targetIdentifier
-              | privateSimpleIdentifier targetIdentifier -> DecisionRefuted
-              | otherwise ->
-                  mapDecision
-                    (EvaluatedDependentIdentifierTypeMember Nothing)
-                    (select sourcePayload
-                      (evaluatedIdentifierUnderlying targetIdentifier))
+            DependentIdentifierTypeForm targetIdentifier ->
+              mapDecision
+                (EvaluatedDependentIdentifierTypeMember Nothing)
+                (select sourcePayload
+                  (evaluatedIdentifierUnderlying targetIdentifier))
             _ -> select sourcePayload target
       Nothing ->
         case interpretedForm target of
@@ -321,18 +320,13 @@ sourceIdentifierParts value =
     _ -> Nothing
   where
     fromSpecification specification = do
-      identifier <- identifierOf
+      identifier <- evaluatedIdentifierType
         (evaluatedSpecificationTarget specification)
       pure
         ( identifier
         , stripSourceIdentifier
             (evaluatedSpecificationSourceValue specification)
         )
-    identifierOf target =
-      case interpretedForm target of
-        DependentIdentifierTypeForm identifier -> Just identifier
-        IdentifierStringProjectionForm identifier -> Just identifier
-        _ -> Nothing
     stripSourceIdentifier source =
       case interpretedForm source of
         DependentIdentifierTypeForm identifier ->
@@ -387,12 +381,6 @@ sourceComponents source =
     ArgumentMapForm members _ -> Just members
     ConcatenatedMapForm _ _ -> Just (concatenationOperands source)
     _ -> sequenceOperands source
-
-privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
-privateSimpleIdentifier identifier =
-  case evaluatedIdentifierDependency identifier of
-    SimpleIdentifierDependency ('_':_) -> True
-    _ -> False
 
 identifierMatchesTarget
   :: FederationSelector
