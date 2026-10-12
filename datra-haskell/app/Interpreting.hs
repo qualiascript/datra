@@ -100,6 +100,7 @@ import Parsing
   , prepareGenericExpression
   , parseDatra
   , parseDatraRawLocatedWithSourceName
+  , resolveGenericFunctionTypes
   , sourceImportInvocations
   , ResourceEnvelope (..)
   )
@@ -187,7 +188,7 @@ parseDatraSourceLocatedWithImportsAndStandardLibrary
           rewriteImplicitSyntax classify capture initialRules [] entries
         _ -> Left MissingImplicitBlockResult
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
-  pure (Located sourceSpan expressionValue)
+  pure (Located sourceSpan (resolveGenericFunctionTypes expressionValue))
   where
     interpretingParseFailure = ParseFailure . show
     rewriteParseFailure = ParseFailure . show
@@ -477,7 +478,7 @@ parsedDefaultModule = do
           rewriteImplicitSyntax
             classify capture contextualSyntaxRules [] entries
         _ -> Left MissingImplicitBlockResult
-  either
+  resolveGenericFunctionTypes <$> either
     (parseFailure . ParseFailure . show)
     Right
     rewritten
