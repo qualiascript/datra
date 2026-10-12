@@ -3,7 +3,7 @@
 ## Purpose
 
 This document proposes a staged rewrite of the Lean formalization so that it
-models the **current executable representation** in `datra-haskell/src/DatraCore`,
+models the **current executable representation** in `../src/DatraCore`,
 then uses that model to remove the remaining LiquidHaskell assumptions.
 
 The governing rule is:
