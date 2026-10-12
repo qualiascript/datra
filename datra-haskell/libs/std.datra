@@ -64,10 +64,10 @@ yield Std := begin
   of := "%_Expr of %_Expr" % (_AST, _AST -> _AST) !~"datra.of"
   not := "not %_Expr" % (_AST -> _AST) !~"datra.not"
 
-  List := &T? -> Any do yield fun () | (T; this)
-  InhabitedList := &T? -> Any do yield (T; List T)
-  Just := &T? -> Any do yield Just : T
-  Maybe := &T? -> Any do yield nothing | Just T
+  List := &T? do yield fun () | (T; this)
+  InhabitedList := &T? do yield (T; List T)
+  Just := &T? do yield Just : T
+  Maybe := &T? do yield nothing | Just T
   let Str := >< (List Char)
   public := !~"datra.public"
 
@@ -76,8 +76,8 @@ yield Std := begin
   let Int := >< (Nat; $Complement?)
   let IntLimit := >< (NatLimit; $Complement?)
 
-  Args := &T? -> Any do
-    slots := (^_i :: Nat) -> Any do yield "arg%(_i)"? : T
-  yield ((^n? :: Nat) -> Any do yield slots[0..n])
+  Args := &T? do
+    slots := (^_i :: Nat) do yield "arg%(_i)"? : T
+  yield ((^n? :: Nat) do yield slots[0..n])
 
 yield public modular this

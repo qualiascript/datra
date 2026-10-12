@@ -833,32 +833,64 @@ regressionTests = do
           [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
       inferredFunction input = MapSpecification identityBody
         (FunctionType input (ref "Any"))
+      implicitFunction input = MapSpecification identityBody
+        (FunctionType input (External (AsciiStringLiteral "datra.Any")))
   assertParsed "a function body follows an explicit function type"
     "{value? : Any} -> Any do yield value"
     (inferredFunction optionalInput)
-  case parseSource "((&T?) -> Any do yield value\n)" of
+  assertParsed "a function body infers Any after a non-function type"
+    "{value? : Any} do yield value"
+    (implicitFunction optionalInput)
+  assertParsed "an external body infers Any after a non-function type"
+    "Nat !~\"datra.example\""
+    (MapSpecification
+      (External (AsciiStringLiteral "datra.example"))
+      (FunctionType
+        (ref "Nat")
+        (External (AsciiStringLiteral "datra.Any"))))
+  assertParsed "a leading external remains a standalone value"
+    "!~\"datra.Any\""
+    (External (AsciiStringLiteral "datra.Any"))
+  assertParsed "a parenthesized type retains its signature boundary"
+    "(Nat) do yield value"
+    (implicitFunction (ref "Nat"))
+  case parseSource "((&T?) do yield value\n)" of
     Right (MapSpecification body
         (FunctionTypeExpression [binder] declaration codomain)) ->
-      assert "a generic domain composes with an explicit function body"
+      assert "an inferred generic function owns its binder scope"
         ( body == identityBody
           && declaration == GenericReferenceExpression
             (GenericReference (genericBinderId binder)
               GenericDeclarationReference)
-          && codomain == ref "Any"
+          && codomain == External (AsciiStringLiteral "datra.Any")
         )
     result -> fail ("unexpected generic function body: " <> show result)
   assertParsed "function domains accept forward specifications"
     "(Nat ~> Any) -> Any do yield value"
     (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+  assertParsed "inferred function domains accept forward specifications"
+    "(Nat ~> Any) do yield value"
+    (implicitFunction (MapSpecification (ref "Nat") (ref "Any")))
   assertParsed "function domains accept reverse specifications"
     "(Any <~ Nat) -> Any do yield value"
     (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+  assertParsed "inferred function domains accept reverse specifications"
+    "(Any <~ Nat) do yield value"
+    (implicitFunction (MapSpecification (ref "Nat") (ref "Any")))
   assertParsed "function domains accept subfederations"
     "(Nat of Any) -> Any do yield value"
     (inferredFunction (Subfederation (ref "Nat") (ref "Any")))
+  assertParsed "inferred function domains accept subfederations"
+    "(Nat of Any) do yield value"
+    (implicitFunction (Subfederation (ref "Nat") (ref "Any")))
   assertParsed "an explicit code-block codomain is preserved"
     "{value? : Any} -> Nat do yield value"
     (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
+  assertParsed "an explicit coalized codomain owns the following body"
+    "{value? : Any} -> >< (Nat; Nat) do yield value"
+    (MapSpecification identityBody
+      (FunctionType optionalInput
+        (Coalization (AtlasMap [ref "Nat", ref "Nat"]))))
   assertParsed "a declared syntax signature is not a shorthand function domain"
     "\"step %Int next\" % (Int -> Int) do yield value"
     (MapSpecification identityBody
@@ -868,6 +900,17 @@ regressionTests = do
         , StringTemplateLiteral " next"
         ])
         (FunctionType (ref "Int") (ref "Int"))))
+  assertParsed "a declared syntax signature can infer its Any codomain"
+    "\"step %Int next\" % Int do yield value"
+    (MapSpecification identityBody
+      (SyntaxType (StringTemplate
+        [ StringTemplateLiteral "step "
+        , StringTemplateInterpolation (ref "Int")
+        , StringTemplateLiteral " next"
+        ])
+        (FunctionType
+          (ref "Int")
+          (External (AsciiStringLiteral "datra.Any")))))
   let optionalIntInput = ArgumentMap
         [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
   assertParsed "a declared syntax signature accepts a multiline body"

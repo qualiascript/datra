@@ -20,6 +20,7 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
+import Parsing (inferredFunction, resolveGenericFunctionTypes)
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , declarationRules
@@ -417,8 +418,13 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       (rematched, finalTrailing) <-
         matchOrdinarySyntaxWithTail
           True capture environment normalizedChildren afterSyntax
-      final <- attachTrailingFunctionBody capture environment rematched
-      pure (final, finalTrailing)
+      explicitlyAttached <-
+        attachTrailingFunctionBody capture environment rematched
+      pure
+        ( attachInferredExternalImplementation
+            environment explicitlyAttached
+        , finalTrailing
+        )
     boundaryValue (SyntaxBoundary inner) = inner
     boundaryValue inner = inner
 
@@ -550,6 +556,10 @@ attachTrailingFunctionBody capture environment value =
     SyntaxType templates (MapSpecification body signature)
       | isFunctionImplementation body ->
           pure (MapSpecification body (SyntaxType templates signature))
+    FunctionTypeExpression generics domain inferredResult
+      | Just (resultType, body) <- trailingInferredFunctionBody inferredResult ->
+          pure (MapSpecification body
+            (FunctionTypeExpression generics domain resultType))
     FunctionTypeExpression generics domain codomain ->
       case trailingFunctionBody codomain of
         Just (resultType, body) ->
@@ -571,6 +581,39 @@ isFunctionImplementation :: Expression -> Bool
 isFunctionImplementation FunctionBody {} = True
 isFunctionImplementation External {} = True
 isFunctionImplementation _ = False
+
+isIntrinsicAny :: Expression -> Bool
+isIntrinsicAny (External (AsciiStringLiteral "datra.Any")) = True
+isIntrinsicAny _ = False
+
+trailingInferredFunctionBody
+  :: Expression
+  -> Maybe (Expression, Expression)
+trailingInferredFunctionBody value = case value of
+  MapSpecification body
+      (FunctionTypeExpression [] resultType inferredCodomain)
+    | isIntrinsicAny inferredCodomain -> Just (resultType, body)
+  Coalization inner -> do
+    (resultType, body) <- trailingInferredFunctionBody inner
+    pure (Coalization resultType, body)
+  _ -> Nothing
+
+-- Resolve this ambiguity only after declared syntax has matched. For example,
+-- @yield !~"datra.add"@ yields an external value, while @Nat !~"example"@
+-- is an inferred function.
+attachInferredExternalImplementation
+  :: RewriteEnvironment
+  -> Expression
+  -> Expression
+attachInferredExternalImplementation environment value =
+  case applicationSpine value of
+    (function, arguments)
+      | not (null arguments)
+      , body@External {} <- last arguments ->
+          resolveInCurrentScope environment
+            (inferredFunction body
+              (applicationFrom (function : init arguments)))
+    _ -> value
 
 trailingFunctionBody :: Expression -> Maybe (Expression, Expression)
 trailingFunctionBody value =
@@ -890,11 +933,11 @@ matchEmbeddedBlock
   -> Expression
   -> [Expression]
   -> Either SyntaxRewriteFailure (Maybe (Expression, [Expression]))
-matchEmbeddedBlock capture environment = matchWithResult id
+matchEmbeddedBlock capture environment = matchWithResult True id
   where
-    matchWithResult wrapResult value trailing = do
+    matchWithResult inferAdjacent wrapResult value trailing = do
       direct <- firstSuccessful
-        [ attempt wrapResult value trailing rule start
+        [ attempt inferAdjacent wrapResult value trailing rule start
         | rule <- rewriteRules environment
         , Just (prefix, _) <- [blockShape rule]
         , start <- matchingStarts prefix (applicationPhrase value)
@@ -904,29 +947,32 @@ matchEmbeddedBlock capture environment = matchWithResult id
         Just result -> Right (Just result)
         Nothing -> case value of
           FunctionTypeExpression generics domain codomain ->
-            matchWithResult wrapResult codomain trailing >>= \case
+            matchWithResult False wrapResult codomain trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
                 (FunctionTypeExpression generics domain rewritten, remaining))
               Nothing -> Right Nothing
           SyntaxType templates signature ->
-            matchWithResult wrapResult signature trailing >>= \case
+            matchWithResult False wrapResult signature trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
-                (SyntaxType templates rewritten, remaining))
+                ( completeSyntaxType templates rewritten
+                , remaining
+                ))
               Nothing -> Right Nothing
           MapSpecification (SyntaxBoundary source) target ->
-            matchWithResult id source trailing >>= \case
+            matchWithResult False id source trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
                 (wrapResult (MapSpecification rewritten target), remaining))
               Nothing -> Right Nothing
           ReverseMapSpecification target (SyntaxBoundary source) ->
-            matchWithResult id source trailing >>= \case
+            matchWithResult False id source trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
                 (wrapResult
                   (ReverseMapSpecification target rewritten), remaining))
               Nothing -> Right Nothing
           _ -> case leftInfixContext value of
             Just (left, rebuildResult) ->
-              matchWithResult (wrapResult . rebuildResult) left trailing
+              matchWithResult False
+                (wrapResult . rebuildResult) left trailing
             Nothing -> Right Nothing
 
     -- An inline ordinary form owns a shared delimiter before that delimiter
@@ -958,7 +1004,7 @@ matchEmbeddedBlock capture environment = matchWithResult id
         Just result -> Right (Just result)
         Nothing -> firstSuccessful rest
 
-    attempt wrapResult value trailing rule start =
+    attempt inferAdjacent wrapResult value trailing rule start =
       case blockShape rule of
         Nothing -> Right Nothing
         Just (prefix, delimiter) -> do
@@ -991,12 +1037,36 @@ matchEmbeddedBlock capture environment = matchWithResult id
                       (rewritten, fallbackRemaining) <-
                         rewriteWithTail True capture nested expanded afterBlock
                       Right (Just
-                        ( applicationFrom (before <> [rewritten])
+                        ( attachAdjacentBody inferAdjacent before rewritten
                         , fallbackRemaining
                         ))
                 Left failure -> Left (SyntaxRewriteMatchFailure failure)
                 Right expanded -> Right (Just
-                  (applicationFrom (before <> [expanded]), remaining))
+                  (attachAdjacentBody inferAdjacent before expanded, remaining))
+
+    attachAdjacentBody True before body@FunctionBody {}
+      | Just signature <- applicationFromMaybe before =
+          resolveInCurrentScope environment
+            (inferredFunction body signature)
+    attachAdjacentBody _ before expanded =
+      applicationFrom (before <> [expanded])
+
+    completeSyntaxType templates
+        (FunctionApplication signature body@FunctionBody {}) =
+      resolveInCurrentScope environment
+        (inferredFunction body (SyntaxType templates signature))
+    completeSyntaxType templates signature = SyntaxType templates signature
+
+-- Inferred generic signatures may be used by declarations later in the same
+-- block, before the final whole-AST resolution pass. Seed resolution with
+-- visible declarations so newly allocated binder identities remain distinct
+-- from every function already in scope.
+resolveInCurrentScope :: RewriteEnvironment -> Expression -> Expression
+resolveInCurrentScope environment inferred =
+  case resolveGenericFunctionTypes
+      (AtlasMap (rewriteDeclarations environment <> [inferred])) of
+    AtlasMap resolved -> last resolved
+    _ -> inferred
 
 -- Infix operators are read before syntax templates only as a temporary tree.
 -- If a block begins in the left operand, everything to its right still belongs

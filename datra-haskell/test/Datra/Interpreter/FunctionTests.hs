@@ -396,9 +396,9 @@ functionTests =
               , "yield apply (increment,4)"
               ])
             "5"
-        , programCase "Any accepts a canonical argument value"
+        , programCase "inferred Any accepts a canonical argument value"
             (unlines
-              [ "identity := ({value?:Any} -> Any do yield value)"
+              [ "identity := ({value?:Any} do yield value)"
               , "yield identity 5"
               ])
             "5"

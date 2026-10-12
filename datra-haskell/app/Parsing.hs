@@ -12,6 +12,8 @@ module Parsing
   , prepareFunctionDomainExpression
   , prepareGenericExpression
   , forwardGenericBoundReference
+  , inferredFunction
+  , resolveGenericFunctionTypes
   , parseDatra
   , sourceImports
   , sourceImportInvocations
@@ -264,7 +266,27 @@ type GenericResolution = State Natural
 -- identity while keeping nested function domains independent.
 resolveGenericFunctionTypes :: Expression -> Expression
 resolveGenericFunctionTypes expressionValue =
-  evalState (resolveGenericExpression [] expressionValue) 0
+  evalState
+    (resolveGenericExpression [] expressionValue)
+    (nextGenericBinderId expressionValue)
+
+-- Resolution also runs after declarative rewriting, when arrow-less function
+-- bodies have acquired function types. Continue above any identities already
+-- allocated by the neutral parse so the second pass cannot alias binders.
+nextGenericBinderId :: Expression -> Natural
+nextGenericBinderId expressionValue = case genericBinderIds expressionValue of
+  [] -> 0
+  identities -> maximum identities + 1
+  where
+    genericBinderIds value = current <> concatMap genericBinderIds
+      (expressionChildren value)
+      where
+        current = case value of
+          FunctionTypeExpression binders _ _ ->
+            [ identity
+            | GenericBinderId identity <- map genericBinderId binders
+            ]
+          _ -> []
 
 resolveGenericExpression
   :: GenericScope
@@ -1011,43 +1033,46 @@ listMaybeThen values function =
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
   signature <- arrowExpressionWith operand
-  attachFunctionImplementation signature
+  attachExplicitExternalImplementation signature
 
--- A code block turns an arrow-less expression into a function whose output is
--- unconstrained. Explicit function types retain their declared codomain.
-attachFunctionImplementation :: Expression -> Parser Expression
-attachFunctionImplementation signature = do
-  implementation <- if acceptsFunctionBody signature
-    then optional (functionImplementation signature)
+-- External implementations on explicit function signatures can be attached
+-- by the neutral parser. An external after any other expression stays in the
+-- application spine until declarative syntax has had a chance to claim it.
+attachExplicitExternalImplementation :: Expression -> Parser Expression
+attachExplicitExternalImplementation signature = do
+  implementation <- if acceptsExplicitFunctionBody signature
+    then optional externalExpression
     else pure Nothing
   pure (case implementation of
     Nothing -> signature
-    Just body -> implementedFunction body signature)
+    Just body -> inferredFunction body signature)
 
-acceptsFunctionBody :: Expression -> Bool
-acceptsFunctionBody FunctionTypeExpression {} = True
-acceptsFunctionBody SyntaxType {} = True
-acceptsFunctionBody (Fun signature) = acceptsFunctionBody signature
-acceptsFunctionBody (SyntaxBoundary signature) = acceptsFunctionBody signature
-acceptsFunctionBody _ = False
+acceptsExplicitFunctionBody :: Expression -> Bool
+acceptsExplicitFunctionBody FunctionTypeExpression {} = True
+acceptsExplicitFunctionBody SyntaxType {} = True
+acceptsExplicitFunctionBody (Fun signature) =
+  acceptsExplicitFunctionBody signature
+acceptsExplicitFunctionBody (SyntaxBoundary signature) =
+  acceptsExplicitFunctionBody signature
+acceptsExplicitFunctionBody _ = False
 
--- @fun@ is syntax, so its capture is parsed before a following function body
--- is attached. Lift the fixed point over the completed function instead of
--- leaving it on the domain of an inferred outer function. Thus
--- @fun {x? : T} -> U do ...@ has the same AST as
--- @fun ({x? : T} -> U do ...)@.
-implementedFunction :: Expression -> Expression -> Expression
-implementedFunction body (Fun signature) =
-  Fun (MapSpecification body signature)
-implementedFunction body (SyntaxBoundary signature) =
-  SyntaxBoundary (implementedFunction body signature)
-implementedFunction body signature =
-  MapSpecification body signature
+inferredFunction :: Expression -> Expression -> Expression
+inferredFunction body (Fun signature) =
+  Fun (MapSpecification body (inferredFunctionSignature signature))
+inferredFunction body (SyntaxBoundary signature) =
+  SyntaxBoundary (inferredFunction body signature)
+inferredFunction body (SyntaxType templates signature) =
+  MapSpecification body
+    (SyntaxType templates (inferredFunctionSignature signature))
+inferredFunction body signature =
+  MapSpecification body (inferredFunctionSignature signature)
 
--- External blocks are the only function implementations recognized by the
--- neutral reader. Declarative block forms are attached during syntax rewrite.
-functionImplementation :: Expression -> Parser Expression
-functionImplementation _ = externalExpression
+inferredFunctionSignature :: Expression -> Expression
+inferredFunctionSignature signature@FunctionTypeExpression {} = signature
+inferredFunctionSignature (SyntaxBoundary signature) =
+  SyntaxBoundary (inferredFunctionSignature signature)
+inferredFunctionSignature signature =
+  FunctionType signature (External (AsciiStringLiteral "datra.Any"))
 
 externalExpression :: Parser Expression
 externalExpression =
@@ -1199,7 +1224,7 @@ identifierValueExpression = do
       (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
     pure (maybe input (FunctionType input) output)
-  attachFunctionImplementation signature
+  attachExplicitExternalImplementation signature
 
 -- The value following @:=@ additionally admits an unparenthesized federation.
 -- Type annotations keep the narrower grammar so @name : T | U@ continues to
@@ -1209,7 +1234,7 @@ assignedValueExpression = do
   signature <- arrowExpressionWithLayer
     assignmentEitherExpressionWith
     (makeExprParser rangeExpression identifierValueOperatorTable)
-  attachFunctionImplementation signature
+  attachExplicitExternalImplementation signature
 
 -- Assignment has lower precedence than federation, except that a following
 -- identifier declaration starts the next federation member. Thus
@@ -1285,7 +1310,7 @@ term = do
       , prefixedApplicationArgument
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , do
-          guard (not (acceptsFunctionBody function))
+          guard (not (acceptsExplicitFunctionBody function))
           externalExpression
       , symbolicSyntaxLiteral
       , identifierReference
