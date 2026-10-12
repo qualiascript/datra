@@ -6,8 +6,9 @@ Give module loading and lexical scope opening separate meanings:
 
 - `import "numbers"` loads a module and binds only its qualified exported name,
   such as `Numbers`.
-- `value.(expression)` evaluates `expression` in a fresh lexical scope populated
-  from `value`'s public named members.
+- `.` is the module scope operator. `value.(expression)` evaluates `expression`
+  as its own expression in a fresh lexical scope populated from `value`'s public
+  named members.
 - If `value` is an imported module, the fresh scope also receives that module's
   exported syntax rules.
 - `import all` is removed.
@@ -37,9 +38,9 @@ qualified exported binding and does not add the module's members individually.
 An import never changes the visibility of an earlier entry. Repeated imports of
 the same module are idempotent, and conflicting qualified names remain errors.
 
-### Scoped dot access
+### Module scope operator
 
-The dot operation has the general form:
+The module scope operator has the general form:
 
 ```datra
 source.(body)
@@ -50,13 +51,27 @@ It performs these steps:
 1. Evaluate `source` in the enclosing scope.
 2. Extract its public named members.
 3. Enter a fresh child scope containing those members.
-4. Add syntax rules associated with `source` to the rewrite environment for
+4. Reject any non-identical collision between an opened public member and an
+   outer apostrophe-prefixed identifier.
+5. Add syntax rules associated with `source` to the rewrite environment for
    `body`.
-5. Rewrite and evaluate `body` in that child scope.
-6. Return the value of `body`, applying the ordinary child-scope handoff rules.
+6. Rewrite and evaluate `body` in that child scope.
+7. Return the value of `body`, applying the ordinary child-scope handoff rules.
 
 The child scope is lexical. Its values, declarations, imports, and syntax rules
 do not leak into the enclosing scope.
+
+The RHS is always interpreted as its own expression in the newly opened module
+scope; it is not a field name attached to the LHS. Thus:
+
+```datra
+a.x
+```
+
+lowers to `ScopeAccess a (IdentifierReference x)` and evaluates the identifier
+expression `x` inside the scope opened from `a`. Likewise, `a.(expression)`
+evaluates the complete `expression` there. This one rule covers both the short
+identifier spelling and arbitrary parenthesized RHS expressions.
 
 The short form:
 
@@ -64,9 +79,18 @@ The short form:
 source.member
 ```
 
-is the same operation with an identifier-reference RHS. Its canonical source
-spelling remains the short form. A non-identifier RHS is rendered with explicit
-parentheses.
+is the module scope operation with an identifier-reference RHS. Its canonical
+source spelling remains the short form. A non-identifier RHS is rendered with
+explicit parentheses.
+
+Opening a module scope must also enforce the existing consistency policy for
+apostrophe-prefixed identifiers. If a public module member would shadow an
+outer-scope apostrophe identifier and the two bindings do not have identity,
+compilation fails with an inconsistent-shadowing diagnostic. An identical
+binding is permitted. Reuse the existing consistent-shadowing identity test and
+report `InconsistentShadowing name`; do not introduce a separate definition of
+identity for modules. This check happens when constructing the module scope,
+before interpreting the RHS.
 
 Opening a scope exposes only public exported names. It must not expose a
 module's private evaluation scope merely because that scope is available to the
@@ -74,7 +98,8 @@ module loader.
 
 ### Maps are still maps
 
-Dot does not turn its RHS into a statement block. For example:
+The module scope operator does not turn its RHS into a statement block. For
+example:
 
 ```datra
 my_map := Std.(
@@ -168,30 +193,31 @@ The qualified module binding must retain a reference to this descriptor. Value
 scope opening and syntax scope opening must consult the same descriptor, so the
 two views cannot be reconstructed independently or disagree about exports.
 
-Do not re-evaluate a module or reparse function source when entering a dot
-scope. Module loading computes the descriptor once and the existing per-load
-cache reuses it.
+Do not re-evaluate a module or reparse function source when using the module
+scope operator. Module loading computes the descriptor once and the existing
+per-load cache reuses it.
 
-For non-module values, dot may derive bindings from ordinary public named map
-members. Such values have no associated imported syntax rules unless syntax
-metadata is explicitly present on the value; no module name or Std-specific
-fallback should be inferred.
+For non-module values, the module scope operator may derive bindings from
+ordinary public named map members. Such values have no associated imported
+syntax rules unless syntax metadata is explicitly present on the value; no
+module name or Std-specific fallback should be inferred.
 
 ## Parser and syntax rewriting
 
 ### Neutral parsing
 
-Extend postfix dot parsing as follows:
+Extend postfix module-scope parsing as follows:
 
 - `.name` parses a single identifier-reference RHS.
 - `.(...)` parses the contents with the ordinary parenthesized map/expression
   grammar.
-- Empty and multi-member maps follow the normal map grammar rather than a
-  dot-specific list-of-names grammar.
+- Empty and multi-member maps follow the normal map grammar rather than an
+  operator-specific list-of-names grammar.
 
-Remove the specialized `namedAccessNames` expansion for dot. Value lookup syntax
-such as `~(a, b)` may retain its own identifier-list grammar because it denotes
-identifier selection, not scoped evaluation.
+Remove the specialized `namedAccessNames` expansion for the module scope
+operator. Value lookup syntax such as `~(a, b)` may retain its own
+identifier-list grammar because it denotes identifier selection, not scoped
+evaluation.
 
 ### Scoped rewrite environments
 
@@ -238,8 +264,13 @@ the public bindings derived from `source`. Use the existing activation and
 handoff machinery so generic protection, closures, and function returns cross
 the boundary correctly.
 
-Remove projection-only special cases after the general scope implementation can
-preserve:
+Before installing those public bindings, run the ordinary consistent-shadowing
+check against outer apostrophe-prefixed identifiers. A non-identical collision
+must be surfaced as a compiler error rather than silently masking the outer
+binding or deferring the failure until the colliding name is referenced.
+
+Remove projection-only special cases after the general module scope
+implementation can preserve:
 
 - qualified canonical names;
 - modular presentation dependencies;
@@ -247,10 +278,10 @@ preserve:
 - contextual `this` access;
 - ordinary map-field diagnostics.
 
-The scope opened by dot must preserve the enclosing function's actual return
-receiver. A `yield` in a function body nested beneath one or more dot/import
-scopes must still return from the function activation, not from the nearest
-child scope.
+The scope opened by the module scope operator must preserve the enclosing
+function's actual return receiver. A `yield` in a function body nested beneath
+one or more module/import scopes must still return from the function activation,
+not from the nearest child scope.
 
 Imports remain scope-building events. Simplify the import representation from:
 
@@ -292,13 +323,33 @@ Remove:
 - import-all collision behavior that can no longer be expressed;
 - tests and diagnostics that exist only for importing every member directly.
 
-Retain validation of module exports because dot scope opening still needs a
+Retain validation of module exports because module scope opening still needs a
 well-defined public named-member set.
 
 ## Source migration
 
-1. Wrap `libs/numbers.datra` in `Std.(...)` and remove its
-   `Std.'import($all; "std")` entry.
+1. Replace `libs/numbers.datra` with the module-scope form (and remove its
+   `Std.'import($all; "std")` entry):
+
+   ```kotlin
+   Std.(
+     yield Numbers := begin
+
+       max := {Args IntLimit,} -> IntLimit? do
+         yield it !? it in fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
+           yield if candidate = Infinity or remaining = () or
+             candidate >= (next : this remaining[0; 1..]) then
+               candidate else next
+
+       min := {Args IntLimit,} -> IntLimit? do
+         yield it !? it in fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
+           yield if candidate = -Infinity or remaining = () or
+             candidate <= (next : this remaining[0; 1..]) then
+               candidate else next
+
+     yield public this
+   )
+   ```
 2. Wrap `libs/ordinals.datra` the same way.
 3. Convert every fixture or library beginning with
    `Std.'import($all; "std")` into an explicit `Std.(...)` scope around the
@@ -320,8 +371,11 @@ well-defined public named-member set.
 ### Parsing and rendering
 
 - `a.b` and `a.(b)` lower to the scoped-access representation.
+- the RHS is a distinct expression: `a.x` resolves the identifier expression
+  `x` inside the scope opened from `a`, rather than using projection-specific
+  lookup.
 - `a.(b, c)` uses an ordinary concatenation map on the RHS.
-- multiline RHS maps parse without dot-specific member restrictions.
+- multiline RHS maps parse without operator-specific member restrictions.
 - arbitrary RHS expressions parse, including function applications,
   specification, and subfederation.
 - canonical AST and source render/parse round trips preserve scoped access.
@@ -333,9 +387,12 @@ well-defined public named-member set.
   the enclosing source already opened Std.
 - a local declaration shadows an opened member according to ordinary lexical
   rules.
+- opening a module scope fails with an inconsistent-shadowing compiler error
+  when a public module member would shadow an outer apostrophe identifier with
+  a non-identical binding, and succeeds when the binding has identity.
 - private module members remain inaccessible.
-- nested dot scopes compose and restore the outer scope on exit.
-- a function `yield` beneath a dot scope reaches the true function boundary.
+- nested module scopes compose and restore the outer scope on exit.
+- a function `yield` beneath a module scope reaches the true function boundary.
 - closures created inside the RHS retain the opened values they actually use.
 
 ### Ordinary maps
@@ -349,7 +406,7 @@ well-defined public named-member set.
 
 - imports bind only qualified module names.
 - an import affects only later entries in its executable scope.
-- imports inside a dot RHS do not escape that RHS.
+- imports inside a module-scope RHS do not escape that RHS.
 - transitive imports and cycle diagnostics remain correct.
 - repeated qualified imports are idempotent.
 - module aliases retain their associated exported syntax rules.
@@ -364,8 +421,8 @@ Cover opened values and syntax through:
 - subfederation;
 - generic function domains and codomains.
 
-The dot scope must not strip or weaken any scope-protection metadata carried by
-these operations.
+The module scope must not strip or weaken any scope-protection metadata carried
+by these operations.
 
 ### Executable entry behavior
 
@@ -379,7 +436,7 @@ these operations.
 
 1. Add `ScopeAccess` throughout the AST, canonical parser, traversals, and
    renderers while preserving existing short-form behavior.
-2. Change surface dot parsing so the parenthesized RHS is an ordinary
+2. Change surface module-scope parsing so the parenthesized RHS is an ordinary
    expression/map.
 3. Introduce the shared module descriptor and move public value bindings plus
    syntax rules onto it.
@@ -402,11 +459,17 @@ The change is complete when:
 
 - no `import all` syntax or `datra.importAll` implementation remains;
 - no import-kind Boolean remains in the AST or module-loading APIs;
-- dot opens both public values and associated syntax rules for exactly its RHS;
-- dot works with any ordinary RHS expression or map without spelling-specific
+- `.` is consistently described and implemented as the module scope operator;
+- the module scope operator opens both public values and associated syntax rules
+  for exactly its RHS;
+- its RHS is evaluated as its own expression, including the identifier
+  expression in the short `a.x` form;
+- it works with any ordinary RHS expression or map without spelling-specific
   parser logic;
+- opening a module scope reports an inconsistent-shadowing compiler error when
+  it would shadow an outer apostrophe identifier with a non-identical binding;
 - standard executables behave as an implicit outer `Std.(...)`;
-- modules use qualified imports plus explicit scoped access;
+- modules use qualified imports plus the explicit module scope operator;
 - Std has no self-import or self-opening path;
 - syntax rewriting and dependency discovery do not duplicate full rewrites;
 - module descriptors and syntax rules are cached and reused;
