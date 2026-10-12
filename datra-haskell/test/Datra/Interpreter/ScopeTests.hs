@@ -228,10 +228,10 @@ scopeTests =
             "yield if false and (unused : missing) then unused else 2"
             "2"
         , programCase "Maybe branch aliases it"
-            "yield (1; 2; 3)! ?? begin my_it := it; yield my_it[1][0]"
+            "yield (1; 2; 3) !? begin my_it := it; yield my_it[1][0]"
             "Just : 1"
         , programCase "Maybe branch binding may be shadowed privately"
-            "yield (1; 2; 3)! ?? begin _it := 23; yield _it"
+            "yield (1; 2; 3) !? begin _it := 23; yield _it"
             "Just : 23"
         ]
     , testGroup "map members"
@@ -361,9 +361,11 @@ scopeProtectionTests =
           DecisionRefuted
           (decideClosedPublicResultContract containingAny)
     , testCase "function result contracts are ineligible" $ do
-        let function = makeFunctionValue (EvaluatedFunction
-              (naturalValue 0) (naturalValue 1) Nothing Nothing Nothing
-              "Nat -> Nat" Nothing Nothing False)
+        let function = makeFunctionValue
+              (EvaluatedFunction
+                (naturalValue 0) (naturalValue 1)
+                Nothing Nothing Nothing Nothing
+                "Nat -> Nat" Nothing Nothing False)
         assertEqual "function contract"
           DecisionRefuted
           (decideClosedPublicResultContract function)

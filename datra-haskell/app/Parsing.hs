@@ -15,8 +15,6 @@ module Parsing
   , inferredFunction
   , resolveGenericFunctionTypes
   , parseDatra
-  , sourceImports
-  , sourceImportInvocations
   , parseDatraRawLocatedWithSourceName
   , parseDatraAst
   , parseDatraAstLocatedWithSourceName
@@ -91,7 +89,6 @@ import DatraLanguage.AST
       , ValuedIntegerRangeDownwards
       , EitherType
       , OptionalType
-      , ListUncons
       , MaybeThen
       , Conditional
       , Subfederation
@@ -717,7 +714,6 @@ astForm =
           (astSymbol "ref" *> astString)
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
-      , astUnary AST.ListUnconsOperator ListUncons
       , astBinary AST.MaybeThenOperator MaybeThen
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
@@ -1000,9 +996,7 @@ expressionWith operand = do
         (SyntaxBoundary source))
 
 -- Maybe sequencing is deliberately low-precedence and right-associative so
--- its lazy branch can contain a complete function or map expression. The
--- list-sequencing shorthand lowers here so evaluation and inference share the
--- existing list split and Maybe sequencing semantics.
+-- its lazy branch can contain a complete function or map expression.
 maybeThenExpressionWith :: Parser Expression -> Parser Expression
 maybeThenExpressionWith operand =
   maybeThenExpressionFrom (functionExpressionWith operand)
@@ -1011,24 +1005,12 @@ maybeThenExpressionFrom :: Parser Expression -> Parser Expression
 maybeThenExpressionFrom operand = do
   optionalValue <- operand
   continuation <- optional $ do
-    constructor <-
-      MaybeThen <$ continuedOperator AST.MaybeThenOperator
-        <|> listMaybeThen <$ continuedOperator AST.ListMaybeThenOperator
+    constructor <- MaybeThen <$ continuedOperator AST.MaybeThenOperator
     branch <- maybeThenExpressionFrom operand
     pure (constructor, branch)
   pure (case continuation of
     Nothing -> optionalValue
     Just (constructor, branch) -> constructor optionalValue branch)
-
--- @values !? function@ is exactly @values! ?? function it@. Keeping the
--- expansion structural also preserves the laziness of an absent list split.
-listMaybeThen :: Expression -> Expression -> Expression
-listMaybeThen values function =
-  MaybeThen
-    (ListUncons values)
-    (FunctionApplication
-      function
-      (contextualAccess (IdentifierString "_it")))
 
 functionExpressionWith :: Parser Expression -> Parser Expression
 functionExpressionWith operand = do
@@ -1442,31 +1424,6 @@ bareSkip = do
   notFollowedBy (operatorToken AST.MultiplicationOperator)
   pure Skip
 
-importExpression :: Parser Expression
-importExpression = do
-  _ <- continuedKeyword "import"
-  allNames <- maybe False (const True) <$> optional (continuedKeyword "all")
-  Import allNames <$> standardString
-
--- Scan import literals without interpreting strings as syntax. This allows the
--- loader to resolve dependencies before parsing expressions using their names.
-sourceImports :: String -> Either ParseFailure [String]
-sourceImports = fmap (map snd) . sourceImportInvocations
-
-sourceImportInvocations :: String -> Either ParseFailure [(Bool, String)]
-sourceImportInvocations source = Bifunctor.first (ParseFailure . errorBundlePretty) $
-  runParser (runReaderT scan
-    (ParserContext 0))
-    "<imports>" (Text.pack source)
-  where
-    invocations (Import allNames path) = [(allNames, path)]
-    invocations _ = []
-    scan = concat <$> many item <* eof
-    item = try (invocations <$> importExpression)
-      <|> ([] <$ sourceStringTemplateToken)
-      <|> ([] <$ lineComment)
-      <|> ([] <$ anySingle)
-
 identifierReference :: Parser Expression
 identifierReference = try $ do
   first <- bareIdentifierToken
@@ -1527,7 +1484,6 @@ accessedTerm atom = do
         horizontalSpaceConsumer
         pure (expandedNamedAccess names)
     , OptionalType <$ optionalTypeSuffix
-    , ListUncons <$ listUnconsSuffix
     ])
   pure (foldl (\value select -> select value) source selections)
 
@@ -1536,9 +1492,6 @@ optionalTypeSuffix = try $ do
   token <- operatorToken AST.OptionalOperator
   notFollowedBy (char ':')
   pure token
-
-listUnconsSuffix :: Parser Text
-listUnconsSuffix = operatorToken AST.ListUnconsOperator
 
 namedAccessNames :: Parser [IdentifierString]
 namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
@@ -1613,19 +1566,6 @@ naturalRangeExpressionFor FromPrefix (NaturalRangeFromUpwards origin) =
     else ValuedIntegerRangeUpwards origin
 naturalRangeExpressionFor FromPrefix (IntegerRangeFromDownwards origin) =
   ValuedIntegerRangeDownwards origin
-
-continuedKeyword :: Text -> Parser Text
-continuedKeyword value = keywordToken value <* keywordSeparator
-
-keywordToken :: Text -> Parser Text
-keywordToken value =
-  try
-    (value <$ chunk value
-      <* notFollowedBy (satisfy isIdentifierCharacter))
-
-keywordSeparator :: Parser ()
-keywordSeparator =
-  void (some (void space1 <|> lineComment))
 
 parenthesizedExpression :: Parser Expression
 parenthesizedExpression =
@@ -2037,7 +1977,6 @@ operatorToken operator = lexeme $ try $ do
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
-    AST.ListUnconsOperator -> notFollowedBy (char '?' <|> char '~')
     AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%')
     AST.SyntaxTypeOperator -> notFollowedBy (char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')

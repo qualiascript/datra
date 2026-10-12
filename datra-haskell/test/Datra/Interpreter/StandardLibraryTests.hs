@@ -287,24 +287,40 @@ standardLibraryTests =
               (AtlasMapFederationOperationRefuted
                 AtlasMapFederationSpecificationHasNoMatchingMember))
         ]
+    , testGroup "in syntax"
+        [ programCase "applies a value to an inline function"
+            "yield (4 in fun Int -> Int do yield it + 5)"
+            "9"
+        , programCase "applies an optional named value"
+            ( "yield ((value : 4) in "
+                <> "fun {value? : Int} -> Int do yield value + 5)"
+            )
+            "9"
+        , programCase "result supports specification"
+            "yield (4 in fun Int -> Int do yield it + 5) ~> Int"
+            "9 ~> Int"
+        , programCase "result supports subfederation"
+            "yield (4 in fun Int -> Int do yield it + 5) of Int"
+            "true"
+        ]
     , testGroup "Maybe and list operators"
         [ programCase "postfix optional aliases Maybe"
             "yield Int? = Maybe Int" "true"
         , programCase "parenthesized postfix optional nests"
             "yield (Int?)? = Maybe (Maybe Int)" "true"
         , programCase "empty list split is nothing"
-            "yield ()!" "nothing"
+            "yield () !? Just it" "nothing"
         , programCase "nonempty list split preserves head and tail"
-            "yield (1; 2; 3)!" "Just : (1; >< (2; 3))"
+            "yield (1; 2; 3) !? Just it" "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing binds tagged it"
-            "yield (1; 2; 3)! ?? it[1]"
+            "yield (1; 2; 3) !? it[1]"
             "Just : (1; >< (2; 3))"
         , programCase "Maybe sequencing leaves the absent branch lazy"
-            "yield ()! ?? missing" "nothing"
+            "yield () !? missing" "nothing"
         , programCase "list sequencing applies a function to a nonempty split"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield (1; 2; 3) !? head"
+                <> "yield (1; 2; 3) !? it in head"
             )
             "Just : 1"
         , programCase "list sequencing leaves an empty split lazy"
@@ -315,40 +331,32 @@ standardLibraryTests =
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
                 <> "apply := ({values? : List Int} -> Int? "
-                <> "do yield values !? head)\n"
+                <> "do yield values !? it in head)\n"
                 <> "yield apply (4; 5)"
             )
             "Just : 4"
         , programCase "list sequencing result supports specification"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield ((1; 2) !? head) ~> Int?"
+                <> "yield ((1; 2) !? it in head) ~> Int?"
             )
             "(Just : 1) ~> Maybe Int"
         , programCase "list sequencing result supports subfederation"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield ((1; 2) !? head) of Int?"
+                <> "yield ((1; 2) !? it in head) of Int?"
             )
             "true"
-        , programFailureCase "Maybe sequencing rejects a non-Maybe left operand"
-            "yield 1 ?? 2"
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programFailureCase "Maybe sequencing rejects a non-Maybe operand when called"
-            "f := (() -> Int? do yield 1 ?? 2)\nyield f()"
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programCase "optional named matcher accepts split positional values"
             ( "head := ({candidate? : Int; remaining? : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield (1; 2; 3)! ?? head it"
+                <> "yield (1; 2; 3) !? it in head"
             )
             "Just : 1"
         , programFailureCase "required named matcher rejects split positional values"
             ( "head := ({candidate : Int; remaining : List Int} -> Int "
                 <> "do yield candidate)\n"
-                <> "yield (1; 2; 3)! ?? head it"
+                <> "yield (1; 2; 3) !? it in head"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))

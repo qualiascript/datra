@@ -17,9 +17,13 @@ import DatraLanguage.Diagnostics.Localization
 import Interpreting
   ( EvaluationMode (DevelopmentMode, ProductionMode)
   , interpretLocatedWithImportsInModeAndStandardLibrary
+  , rewriteParsedDatraSourceWithImports
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
-import ModuleLoading (loadImports, loadExpressionImports)
+import ModuleLoading
+  ( loadExpressionImports
+  , loadSourceImports
+  )
 import Options.Applicative
 import Parsing
   ( parseDatraAstLocatedWithSourceName )
@@ -258,12 +262,14 @@ runCommand commandValue =
     Build input astPath outputPath locale mode includeStandardLibrary -> do
       let errorPath = errorPathFor input [outputPath, astPath]
       (sourceName, source) <- readInput input
-      imports <- loadImports sourceName source
+      (imports, parsed) <- loadSourceImports sourceName source
         >>= diagnosticOrFail locale errorPath
       locatedExpression <-
         diagnosticOrFail locale errorPath
-          (parseDatraSourceLocatedWithImportsAndStandardLibrary
-            includeStandardLibrary imports sourceName source)
+          (if includeStandardLibrary
+            then rewriteParsedDatraSourceWithImports imports parsed
+            else parseDatraSourceLocatedWithImportsAndStandardLibrary
+              False imports sourceName source)
       writeOutput astPath
         (renderExpression (locatedValue locatedExpression))
       interpreted <- either (failWithOutput errorPath . renderDatraError locale) pure
@@ -273,12 +279,14 @@ runCommand commandValue =
     GenerateAst input outputPath includeStandardLibrary -> do
       let errorPath = errorPathFor input [outputPath]
       (sourceName, source) <- readInput input
-      imports <- loadImports sourceName source
+      (imports, parsed) <- loadSourceImports sourceName source
         >>= diagnosticOrFail English errorPath
       locatedExpression <-
         diagnosticOrFail English errorPath
-          (parseDatraSourceLocatedWithImportsAndStandardLibrary
-            includeStandardLibrary imports sourceName source)
+          (if includeStandardLibrary
+            then rewriteParsedDatraSourceWithImports imports parsed
+            else parseDatraSourceLocatedWithImportsAndStandardLibrary
+              False imports sourceName source)
       writeOutput outputPath
         (renderExpression (locatedValue locatedExpression))
     InterpretAst input outputPath locale mode includeStandardLibrary -> do

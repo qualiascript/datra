@@ -94,6 +94,9 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
   , ("datra.of", \case
       [source, target] -> Right (Subfederation source target)
       captures -> invalidBody symbol captures)
+  , ("datra.in", \case
+      [value, function] -> Right (FunctionApplication function value)
+      captures -> invalidBody symbol captures)
   , ("datra.and", \case
       [left, right] -> Right (BooleanAnd left right)
       captures -> invalidBody symbol captures)

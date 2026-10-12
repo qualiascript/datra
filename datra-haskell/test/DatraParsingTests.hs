@@ -1214,22 +1214,17 @@ regressionTests = do
     (OptionalType (AST.eitherType (ref "Nat") (ref "Int")))
   assertAstOutput "parenthesized postfix optional nests"
     "(Nat?)?" (OptionalType (OptionalType (ref "Nat")))
-  assertAstOutput "postfix list split"
-    "values!" (ListUncons (ref "values"))
-  assertAstOutput "Maybe sequencing binds after list split"
-    "values! ?? maximum _it"
-    (MaybeThen
-      (ListUncons (ref "values"))
-      (FunctionApplication (ref "maximum") (ref "_it")))
-  assertAstOutput "Maybe sequencing is distinct from an optional declaration"
-    "values ?? maximum _it"
+  assertAstOutput "bang is no longer a postfix list operator" "values!"
+    (FunctionApplication (ref "values") (ref "!"))
+  assertAstOutput "Maybe sequencing includes the list split"
+    "values !? maximum _it"
     (MaybeThen
       (ref "values")
       (FunctionApplication (ref "maximum") (ref "_it")))
-  assertAstOutput "list sequencing combines split and Maybe application"
-    "values !? maximum"
+  assertAstOutput "list sequencing is explicit composition"
+    "values !? it in maximum"
     (MaybeThen
-      (ListUncons (ref "values"))
+      (ref "values")
       (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   let inlineLimitFunction = Fun
         (MapSpecification
@@ -1244,41 +1239,38 @@ regressionTests = do
               ])
             (ref "IntLimit")))
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
-    ("values !? fun {candidate? : IntLimit; "
+    ("values !? it in fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
     (MaybeThen
-      (ListUncons (ref "values"))
+      (ref "values")
       (FunctionApplication inlineLimitFunction (contextualAccess (IdentifierString "_it"))))
-  assert "list sequencing source rendering keeps the compact form"
+  assert "Maybe sequencing source rendering uses its sole symbol"
     ( renderSourceExpression
         (MaybeThen
-          (ListUncons (ref "values"))
+          (ref "values")
           (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-        == "values !? maximum"
+        == "values !? maximum it"
     )
   assertAstOutput "list sequencing accepts an optional named left operand"
-    "values? : List Int !? maximum"
+    "(values? : List Int) !? it in maximum"
     (MaybeThen
-      (ListUncons
-        (OptionalType
-          (AST.dependentIdentifierType "values"
-            (FunctionApplication (ref "List") (ref "Int")))))
-      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-  assertAstOutput "list sequencing follows forward specification"
-    "values ~> List Int !? maximum"
-    (MaybeThen
-      (ListUncons
-        (MapSpecification
-          (ref "values")
+      (OptionalType
+        (AST.dependentIdentifierType "values"
           (FunctionApplication (ref "List") (ref "Int"))))
       (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
+  assertAstOutput "list sequencing follows forward specification"
+    "(values ~> List Int) !? it in maximum"
+    (MaybeThen
+      (MapSpecification
+        (ref "values")
+        (FunctionApplication (ref "List") (ref "Int")))
+      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   assertAstOutput "subfederation greedily captures right-side sequencing"
-    "values of List Int !? maximum"
+    "values of (List Int) !? it in maximum"
     (Subfederation
       (ref "values")
       (MaybeThen
-        (ListUncons
-          (FunctionApplication (ref "List") (ref "Int")))
+        (FunctionApplication (ref "List") (ref "Int"))
         (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it")))))
   assertAstOutput
     "optional identifier slot"

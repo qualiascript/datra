@@ -50,6 +50,7 @@ yield Std := begin
     ("import %("all") %Str" %
       ($all; Str -> ()) !~"datra.importAll") |
     ("import %Str" % (Str -> ()) !~"datra.import")
+  'in := "%_Expr in %_Expr" % (_AST; _AST -> _AST) !~"datra.in"
   'len := "len %_Expr" % (Any -> NatLimit) !~"datra.len"
   'modular := "modular %_Expr" % (_AST -> _AST) !~"datra.modular"
   let 'range :=

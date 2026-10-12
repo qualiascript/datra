@@ -165,7 +165,6 @@ data Expression
   | BooleanType
   | EitherType Expression Expression
   | OptionalType Expression
-  | ListUncons Expression
   | MaybeThen Expression Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
@@ -325,7 +324,6 @@ data OperatorExpression
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
-  | ListUnconsValue OperatorExpression
   | MaybeThenValue OperatorExpression OperatorExpression
   | ConditionalValue
       OperatorExpression
@@ -446,8 +444,6 @@ normalizeExpression (EitherType left right) =
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
   OptionalType (normalizeExpression operand)
-normalizeExpression (ListUncons operand) =
-  ListUncons (normalizeExpression operand)
 normalizeExpression (MaybeThen optional branch) =
   MaybeThen (normalizeExpression optional) (normalizeExpression branch)
 normalizeExpression (Conditional condition consequent alternative) =
@@ -646,7 +642,6 @@ lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
-lower (ListUncons operand) = ListUnconsValue (lower operand)
 lower (MaybeThen optional branch) =
   MaybeThenValue (lower optional) (lower branch)
 lower (Conditional condition consequent alternative) =
@@ -835,8 +830,6 @@ prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
-prettyOperator (ListUnconsValue operand) =
-  prettyForm (operatorCanonicalSymbol ListUnconsOperator) [prettyOperator operand]
 prettyOperator (MaybeThenValue optional branch) =
   prettyForm (operatorCanonicalSymbol MaybeThenOperator)
     [prettyOperator optional, prettyOperator branch]
@@ -1152,7 +1145,6 @@ traverseExpressionChildren visit expression = case expression of
   BooleanNot x -> BooleanNot <$> visit x
   Coalization x -> Coalization <$> visit x
   OptionalType x -> OptionalType <$> visit x
-  ListUncons x -> ListUncons <$> visit x
   External x -> External <$> visit x
   Let x -> Let <$> visit x
   SuperEllipsisRangePlus x -> SuperEllipsisRangePlus <$> visit x

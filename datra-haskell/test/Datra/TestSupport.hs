@@ -26,9 +26,10 @@ import Interpreting
   , interpretExpressionReason
   , interpretWithImports
   , interpretWithImportsInMode
+  , rewriteParsedDatraSourceWithImports
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
-import ModuleLoading (loadImports)
+import ModuleLoading (loadSourceImports)
 import Rendering (renderInterpretedValue)
 import Test.Tasty (TestName, TestTree)
 import Test.Tasty.HUnit
@@ -76,12 +77,11 @@ runProgramInMode mode source = do
 
 runModuleProgram :: FilePath -> String -> IO (Either ModuleFailure InterpretedValue)
 runModuleProgram origin source = do
-  loaded <- loadImports origin source
+  loaded <- loadSourceImports origin source
   case loaded of
     Left failure -> pure (Left (ModuleLoadingFailure failure))
-    Right imports ->
-      case parseDatraSourceLocatedWithImportsAndStandardLibrary
-          True imports origin source of
+    Right (imports, parsed) ->
+      case rewriteParsedDatraSourceWithImports imports parsed of
         Left failure -> pure (Left (ModuleParseFailure failure))
         Right located ->
           pure
