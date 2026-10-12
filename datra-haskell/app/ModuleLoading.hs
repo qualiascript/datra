@@ -2,6 +2,7 @@
 -- each module's own dependency context. The standard library is embedded.
 module ModuleLoading
   ( loadSourceImports
+  , loadSourceImportsWithStandardLibraryVisibility
   , loadExpressionImports
   ) where
 import Control.Exception (IOException, try)
@@ -31,8 +32,17 @@ loadSourceImports
   -> String
   -> IO (Either ModuleLoadFailure
       ([(String, ModuleSource)], ParsedDatraSource))
-loadSourceImports origin source =
-  case parseDatraSourceSyntax AllStandardLibrary origin source of
+loadSourceImports =
+  loadSourceImportsWithStandardLibraryVisibility AllStandardLibrary
+
+loadSourceImportsWithStandardLibraryVisibility
+  :: StandardLibraryVisibility
+  -> FilePath
+  -> String
+  -> IO (Either ModuleLoadFailure
+      ([(String, ModuleSource)], ParsedDatraSource))
+loadSourceImportsWithStandardLibraryVisibility visibility origin source =
+  case parseDatraSourceSyntax visibility origin source of
     Left failure -> pure (Left (ImportScanFailed origin failure))
     Right parsed -> case parsedSourceImportInvocations parsed of
       Left failure -> pure (Left (ImportScanFailed origin failure))
