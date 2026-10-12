@@ -1,4 +1,4 @@
-import all "std"
+Std.'import($all; "std")
 
 yield Nested := begin
   import "library_one"

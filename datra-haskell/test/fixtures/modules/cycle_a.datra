@@ -1,4 +1,4 @@
-import all "std"
+Std.'import($all; "std")
 
 yield CycleA := begin
   import "cycle_b"

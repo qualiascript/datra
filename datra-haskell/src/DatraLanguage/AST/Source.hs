@@ -108,15 +108,7 @@ source context expression =
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
-    MaybeThenValue
-        (ListUnconsValue values)
-        (FunctionApplicationValue function
-          (FunctionApplicationValue
-            (IdentifierReferenceValue (IdentifierString "_it"))
-            argument))
-      | isDefaultContextualArgument argument ->
-      listMaybeThen values function
-    MaybeThenValue optional branch -> binary 1 "??" optional branch
+    MaybeThenValue optional branch -> binary 1 "!?" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right
     And left right -> binary 5 "and" left right
@@ -149,7 +141,6 @@ source context expression =
         annotation
         given
     OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
-    ListUnconsValue operand -> wrapped 10 (source 10 operand <> "!")
     NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
     Access operand (NaturalValue 1)
       | Just names <- scopeNames operand ->
@@ -194,11 +185,6 @@ source context expression =
     binary precedence operator left right = wrapped precedence
       (source (precedence + 1) left <> " " <> operator <> " " <> source (precedence + 1) right)
     unary operator operand = wrapped 10 (operator <> source 11 operand)
-    listMaybeThen values function = wrapped 1
-      (listMaybeInput values <> " !? " <> listMaybeFunction function)
-    listMaybeFunction function@FunValue {} = source 0 function
-    listMaybeFunction function = source 2 function
-    listMaybeInput operand = source 2 operand
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
     applicationInput SkipValue = "(*)"

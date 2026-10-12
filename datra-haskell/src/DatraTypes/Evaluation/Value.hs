@@ -347,6 +347,7 @@ data EvaluatedFunction = EvaluatedFunction
   , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
   , functionSyntaxSource :: Maybe (FunctionSyntax String)
   , functionSource :: Maybe String
+  , functionExternalSymbol :: Maybe String
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)

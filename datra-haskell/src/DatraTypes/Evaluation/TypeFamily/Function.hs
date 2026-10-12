@@ -37,6 +37,7 @@ specifyFunction decideSubfederation specify source target =
                 , interpretedSemanticResult (functionCodomain original) == interpretedSemanticResult (functionCodomain signature) -> Just sourceText
               Just sourceText -> Just
                 ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
+          , functionExternalSymbol = functionExternalSymbol original
           , functionPrepare = Just (\argument -> do
               preparedCall <- case functionPrepare original of
                 Just prepare -> prepare argument

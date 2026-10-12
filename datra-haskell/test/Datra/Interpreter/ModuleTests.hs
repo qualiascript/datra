@@ -50,6 +50,21 @@ moduleTests =
     , moduleCase origin "qualified exported syntax"
         "import \"library_one\"\nyield LibraryOne.shift 7"
         "11"
+    , moduleCase origin "function-body import keeps the function return scope"
+        ( "f := ({n? : Int} -> Int do\n"
+            <> "  Std.'import($all; \"library_one\")\n"
+            <> "  yield increment n)\n"
+            <> "yield f 4"
+        )
+        "8"
+    , moduleFailureCase origin "import scope does not reach earlier declarations"
+        ( "f := ({n? : Int} -> Int do\n"
+            <> "  before := increment n\n"
+            <> "  Std.'import($all; \"library_one\")\n"
+            <> "  yield before)\n"
+            <> "yield f 4"
+        )
+        (== ModuleEvaluationFailure (UnknownIdentifier "increment"))
     , moduleCase origin "unqualified exported syntax"
         "import all \"library_one\"\nyield shift 7"
         "11"

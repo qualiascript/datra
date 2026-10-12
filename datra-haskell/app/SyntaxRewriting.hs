@@ -44,6 +44,7 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteDeclarations :: [Expression]
   , rewriteStrictCaptures :: Bool
   , rewriteClassifyHole :: ClassifyHole
+  , rewriteScopeRules :: ScopeRules
   }
 
 type ClassifyHole =
@@ -59,30 +60,39 @@ type CaptureHole =
   -> Expression
   -> Maybe Expression
 
+-- Rules introduced by evaluating one completed entry in the current lexical
+-- scope. Imports use this hook to extend only the scope of following entries.
+type ScopeRules = [Expression] -> Expression -> [SyntaxRule]
+
 rewriteExplicitSyntax
   :: ClassifyHole
   -> CaptureHole
+  -> ScopeRules
   -> [SyntaxRule]
   -> [Expression]
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-rewriteExplicitSyntax classify capture initialRules initialDeclarations value =
+rewriteExplicitSyntax classify capture scopeRules
+    initialRules initialDeclarations value =
   rewriteStandalone capture environment value
   where
     environment = RewriteEnvironment
-      initialRules initialDeclarations True classify
+      initialRules initialDeclarations True classify scopeRules
 
 rewriteImplicitSyntax
   :: ClassifyHole
   -> CaptureHole
+  -> ScopeRules
   -> [SyntaxRule]
   -> [Expression]
   -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax classify capture initialRules initialDeclarations entries = do
+rewriteImplicitSyntax classify capture scopeRules
+    initialRules initialDeclarations entries = do
   resolveImplicitBlock capture initial [] entries
   where
-    initial = RewriteEnvironment initialRules initialDeclarations True classify
+    initial = RewriteEnvironment
+      initialRules initialDeclarations True classify scopeRules
 
 resolveImplicitBlock
   :: CaptureHole
@@ -101,7 +111,7 @@ resolveImplicitBlock capture initial = go initial
             entry : rest -> do
               (rewritten, trailing) <-
                 rewriteWithTail False capture environment entry rest
-              let next = introduceDeclaration environment rewritten
+              let next = advanceScope environment rewritten
               go next (rewrittenPrefix <> [rewritten]) trailing
 
     tryRules environment rewrittenPrefix remaining =
@@ -151,7 +161,7 @@ rewriteSequence
 rewriteSequence capture initial rawEntries = fixedPoint []
   where
     fixedPoint recursiveDeclarations = do
-      let recursiveEnvironment strict = (foldl introduceDeclaration
+      let recursiveEnvironment strict = (foldl advanceScope
             initial recursiveDeclarations)
               { rewriteStrictCaptures = strict }
       (rewritten, tentativeEnvironment) <-
@@ -180,7 +190,7 @@ rewriteSequence capture initial rawEntries = fixedPoint []
                 }
           (rewrittenEntry, trailing) <-
             rewriteWithTail False capture scoped entry remaining
-          let next = introduceDeclaration scoped rewrittenEntry
+          let next = advanceScope scoped rewrittenEntry
           strictPass stable (position + 1)
             (rewrittenEntry : reversed) next trailing
 
@@ -201,7 +211,7 @@ rewriteSequence capture initial rawEntries = fixedPoint []
     pass reversed environment (entry : remaining) = do
       (rewritten, trailing) <-
         rewriteWithTail False capture environment entry remaining
-      let next = introduceDeclaration environment rewritten
+      let next = advanceScope environment rewritten
       pass (rewritten : reversed) next trailing
 
     isLetDeclaration Let {} = True
@@ -341,9 +351,6 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
                 (FunctionApplication rewrittenFunction rewrittenArgument)
                 remaining
             else finish value trailing
-    ListUncons operand -> do
-      rewrittenOperand <- rewriteStandalone capture environment operand
-      finish (ListUncons rewrittenOperand) trailing
     FunctionTypeExpression generics domain codomain
       | allowNestedContinuation || containsBlockStart environment codomain -> do
           rewrittenDomain <- rewriteStandalone capture environment domain
@@ -474,7 +481,7 @@ rewriteChildren capture environment value =
     MapAccess (AtlasMap [binder, body]) insertion
       | Just declaration <- dependentBinderDeclaration binder -> do
           rewrittenBinder <- rewriteStandalone capture environment binder
-          let nested = introduceDeclaration environment declaration
+          let nested = advanceScope environment declaration
           rewrittenBody <- rewriteStandalone capture nested body
           rewrittenInsertion <-
             rewriteStandalone capture environment insertion
@@ -544,6 +551,14 @@ attachTrailingFunctionBody
   -> Either SyntaxRewriteFailure Expression
 attachTrailingFunctionBody capture environment value =
   case value of
+    MapSpecification body
+        (FunctionTypeExpression generics
+          (FunctionApplication (Fun domain) argument)
+          codomain) ->
+      pure (FunctionApplication
+        (Fun (MapSpecification body
+          (FunctionTypeExpression generics domain codomain)))
+        argument)
     MapSpecification body (Fun signature)
       | acceptsFunctionBody signature ->
           pure (Fun (MapSpecification body signature))
@@ -881,7 +896,7 @@ stripTrailingLiteralAssignment value = case value of
 -- A declarative template may begin inside the provisional left operand of an
 -- operator tree while its final hole extends to the enclosing expression
 -- boundary. Preserve the written prefix and move the remaining operator
--- context into that final capture. List-Maybe sequencing is a syntax boundary:
+-- context into that final capture. Maybe sequencing is a syntax boundary:
 -- a completed prefix form on its left is sequenced, rather than its final hole
 -- absorbing @!?@. Explicit container boundaries never reach this function, so
 -- reassociation remains local to one parsed expression.
@@ -1076,7 +1091,6 @@ leftInfixContext
   :: Expression
   -> Maybe (Expression, Expression -> Expression)
 leftInfixContext value = case value of
-  ListUncons inner -> Just (inner, ListUncons)
   EitherType left right -> Just (left, (`EitherType` right))
   MaybeThen left right -> Just (left, (`MaybeThen` right))
   Addition left right -> Just (left, (`Addition` right))
@@ -1106,7 +1120,6 @@ rightInfixContext
   -> Maybe (Expression, Expression -> Expression)
 rightInfixContext value = case value of
   EitherType left right -> Just (right, EitherType left)
-  MaybeThen left right -> Just (right, MaybeThen left)
   Addition left right -> Just (right, Addition left)
   Subtraction left right -> Just (right, Subtraction left)
   Equality left right -> Just (right, Equality left)
@@ -1301,7 +1314,7 @@ consumeBlock capture initial = go [] initial
                         capture tentative unfinished continuation
                       if length remaining < length continuation
                         then go (rewritten : reversed)
-                          (introduceDeclaration tentative rewritten)
+                          (advanceScope tentative rewritten)
                           delimiter [] remaining
                         else complete beforeDelimiter result
                 _ -> complete beforeDelimiter result
@@ -1325,7 +1338,7 @@ consumeBlock capture initial = go [] initial
               rewriteWithTail False capture tentative entry trailing
             let consumedCount = length trailing - length remaining
                 consumed = entry : take consumedCount trailing
-                nested = introduceDeclaration tentative rewritten
+                nested = advanceScope tentative rewritten
             go (reverse consumed <> reversed) nested delimiter [] remaining
           Nothing -> case trailing of
             [] -> Right Nothing
@@ -1428,9 +1441,9 @@ directApplicationSplit literal value =
       IdentifierReference (IdentifierString actual) -> actual == expected
       _ -> False
 
-introduceDeclaration :: RewriteEnvironment -> Expression -> RewriteEnvironment
-introduceDeclaration environment entry = environment
-  { rewriteRules = retained <> introduced
+advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
+advanceScope environment entry = environment
+  { rewriteRules = retained <> introduced <> scoped
   , rewriteDeclarations = retainedDeclarations <> [entry]
   }
   where
@@ -1438,6 +1451,7 @@ introduceDeclaration environment entry = environment
     retained = filter ((`notElem` names) . syntaxName)
       (rewriteRules environment)
     introduced = map specializeRule (declarationRules entry) <> aliasRules entry
+    scoped = rewriteScopeRules environment retainedDeclarations entry
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)

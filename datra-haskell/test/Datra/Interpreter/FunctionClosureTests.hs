@@ -212,7 +212,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "concrete range syntax needs no range dependency binding" 0
         (occurrences "let \"___'range\" :=" text)
       assertBool "the variadic input uses an anonymous compact split directly"
-        ("it !? fun" `isInfixOf` text
+        ("it !? (fun" `isInfixOf` text
           && not ("values :=" `isInfixOf` text)
           && not ("maximum :=" `isInfixOf` text)
           && not ("minimum :=" `isInfixOf` text)
