@@ -744,6 +744,9 @@ declaredPatternTests =
         "% rejects a closing grouping character in a syntax template"
         "yield (\"call %Int)\" % (Int -> Int))"
         (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter ')'))
+    , programCase "% accepts a comma in a syntax template"
+        "yield (\"take,%Int\" % (Int -> Int))"
+        "(Int -> Int)"
     , programFailureCase
         "one forbidden member rejects a complete template map"
         "yield ((\"step %Int\"; \"call (%Int)\") % (Int -> Int))"

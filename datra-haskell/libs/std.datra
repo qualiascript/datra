@@ -3,7 +3,7 @@ _Expr := !~"datra.Expr"
 _IdenExp := !~"datra.IdenExp"
 _Block := !~"datra.Block"
 
-'begin := "begin %_Block yield %_Expr" % (_AST, _AST -> _AST) !~"datra.begin"
+'begin := "begin %_Block yield %_Expr" % (_AST; _AST -> _AST) !~"datra.begin"
 
 yield Std := begin
 
@@ -31,10 +31,10 @@ yield Std := begin
   'let := "let %_Expr" % (_AST -> _AST) !~"datra.let"
   'assert :=
     ("assert %("hard") %_Expr" %
-      (($hard; _AST) -> _AST) !~"datra.assertHard") |
+      ($hard; _AST -> _AST) !~"datra.assertHard") |
     ("assert %_Expr" % (_AST -> _AST) !~"datra.assert")
   'begin := 'begin
-  'do := "do %_Block yield %_Expr" % (_AST, _AST -> _AST) !~"datra.do"
+  'do := "do %_Block yield %_Expr" % (_AST; _AST -> _AST) !~"datra.do"
   let 'from :=
     ("from %Int to %IntLimit" %
       ({origin : Int; target : IntLimit} -> IntValRange) !~"datra.from") |
@@ -43,12 +43,12 @@ yield Std := begin
   'fun := "fun %_Expr" % (_AST -> _AST) !~"datra.fun"
   'if :=
     ("if %_Expr then %_Expr else %_Expr" %
-      (_AST, _AST, _AST -> _AST) !~"datra.if") |
+      (_AST; _AST; _AST -> _AST) !~"datra.if") |
     ("if %_Expr then %_Expr" %
-      (_AST, _AST -> _AST) !~"datra.ifThen")
+      (_AST; _AST -> _AST) !~"datra.ifThen")
   'import :=
     ("import %("all") %Str" %
-      (($all; Str) -> ()) !~"datra.importAll") |
+      ($all; Str -> ()) !~"datra.importAll") |
     ("import %Str" % (Str -> ()) !~"datra.import")
   'len := "len %_Expr" % (Any -> NatLimit) !~"datra.len"
   'modular := "modular %_Expr" % (_AST -> _AST) !~"datra.modular"
@@ -59,9 +59,9 @@ yield Std := begin
       ({origin : IntLimit; direction : _Direction} -> IntRange) !~"datra.range")
 
   # These parsing rules are ordered from lower to higher precedence.
-  or := "%_Expr or %_Expr" % (_AST, _AST -> _AST) !~"datra.or"
-  and := "%_Expr and %_Expr" % (_AST, _AST -> _AST) !~"datra.and"
-  of := "%_Expr of %_Expr" % (_AST, _AST -> _AST) !~"datra.of"
+  or := "%_Expr or %_Expr" % (_AST; _AST -> _AST) !~"datra.or"
+  and := "%_Expr and %_Expr" % (_AST; _AST -> _AST) !~"datra.and"
+  of := "%_Expr of %_Expr" % (_AST; _AST -> _AST) !~"datra.of"
   not := "not %_Expr" % (_AST -> _AST) !~"datra.not"
 
   List := &T? do yield fun () | (T; this)

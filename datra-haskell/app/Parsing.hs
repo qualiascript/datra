@@ -1422,7 +1422,7 @@ reservedCoreSymbolicRuns = coreSymbolicTokens <> compactPrefixSkipRuns
 reservedCoreSymbolicPrefixes :: [String]
 reservedCoreSymbolicPrefixes =
   [ symbolText
-  | operator <- [AST.SyntaxTypeOperator]
+  | operator <- [AST.SyntaxTypeOperator, AST.ConcatenationOperator]
   , Just symbolText <- [AST.operatorSourceSymbol operator]
   ]
 
@@ -1632,7 +1632,27 @@ parenthesizedExpression =
   between
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
-    (SyntaxBoundary . sequenceExpression <$> elements)
+    (SyntaxBoundary . parenthesizedSequenceExpression <$> elements)
+
+-- An ungrouped arrow in the final member owns the complete semicolon domain.
+-- Explicit parentheses around that final function retain it as a sequence
+-- member because they introduce a 'SyntaxBoundary'.
+parenthesizedSequenceExpression :: [Expression] -> Expression
+parenthesizedSequenceExpression expressions =
+  case reverse expressions of
+    final : reversedPrefix
+      | not (null reversedPrefix)
+      , Just lifted <- prependDomain (reverse reversedPrefix) final -> lifted
+    _ -> sequenceExpression expressions
+  where
+    prependDomain prefix expressionValue =
+      case expressionValue of
+        FunctionTypeExpression generics domain codomain ->
+          Just (FunctionTypeExpression generics
+            (sequenceExpression (prefix <> [domain])) codomain)
+        MapSpecification implementation signature ->
+          MapSpecification implementation <$> prependDomain prefix signature
+        _ -> Nothing
 
 -- Arithmetic follows Haskell and binds more tightly than range construction.
 arithmeticOperatorTable :: [[Operator Parser Expression]]
