@@ -17,7 +17,7 @@ functionTests =
     , testGroup "application"
         [ programCase "it observes the complete given map"
             (unlines
-              [ "sum := ((Nat; Nat) -> Nat do yield it[0] + it[1])"
+              [ "sum := (Nat; Nat -> Nat do yield it[0] + it[1])"
               , "assert sum (1; 2) = 3"
               ])
             "()"
@@ -27,6 +27,10 @@ functionTests =
               , "assert sum ((2 ~> Int); (5 ~> Int)) = 7"
               ])
             "()"
+        , programFailureCase
+            "function domains use ordinary concatenation validation"
+            "yield (1, 2 -> Any)"
+            (SourceEvaluationFailure RedundantConcatenation)
         , programCase "it observes defaults after skipped-argument overloading"
             (unlines
               [ "my_pow := ({base? : Nat := 2; exponent? : Nat} -> Nat do yield it.base[1] ^ it.exponent[1])"

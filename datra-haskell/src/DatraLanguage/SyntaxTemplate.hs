@@ -100,7 +100,7 @@ isSymbolicSyntaxCharacter character =
     -- These characters are structural delimiters, string/comment introducers,
     -- or escapes in source. The neutral reader cannot preserve them as an
     -- opaque symbolic literal for the later declared-syntax pass.
-    && character `notElem` (" \t\r\n(){}[];,.\"#$\\" :: String)
+    && character `notElem` (" \t\r\n(){}[];.\"#$\\" :: String)
 
 traverseSyntaxTemplate
   :: Applicative f

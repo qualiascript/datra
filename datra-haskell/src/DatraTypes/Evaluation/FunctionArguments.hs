@@ -39,14 +39,12 @@ compileParametersWithGenerics
   -> Expression
   -> Either InterpretingError ArgumentSchema
 compileParametersWithGenerics generics evaluate written static =
-  compileWith False False written static
+  compileWith False written static
   where
     inferenceBoundary = case written of
       ArgumentMap _ -> True
       _ -> False
-    compile = compileWith False
-    compileMember = compileWith True
-    compileWith directMember allowPrivateOptional writtenValue staticValue =
+    compileWith allowPrivateOptional writtenValue staticValue =
       case staticValue of
         IdentifierOperation (IdentifierString name) annotation given ->
           case genericByName name of
@@ -76,39 +74,25 @@ compileParametersWithGenerics generics evaluate written static =
           | AtlasMap writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers ->
               orderedArgumentSchema 2
-                <$> traverse (uncurry (compileMember True))
+                <$> traverse (uncurry (compileWith True))
                   (zip writtenMembers staticMembers)
         MapSequence staticMembers
           | MapSequence writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers ->
               orderedArgumentSchema 2
-                <$> traverse (uncurry (compileMember True))
+                <$> traverse (uncurry (compileWith True))
                   (zip writtenMembers staticMembers)
         ArgumentMap staticMembers
           | ArgumentMap writtenMembers <- writtenValue
           , length writtenMembers == length staticMembers -> do
               traverse_ validateArgumentMapName writtenMembers
               unorderedArgumentSchema
-                <$> traverse (uncurry (compileMember False))
+                <$> traverse (uncurry (compileWith False))
                   (zip writtenMembers staticMembers)
-        MapConcatenation staticMember (AtlasMap []) ->
-          genericEvidenceArgumentSchema (genericReferences writtenValue)
-            . projectedArgumentSchema <$> evaluate staticMember
-        MapConcatenation _ _ ->
-          concatenatedArgumentSchema
-            <$> traverse
-              (uncurry (compile allowPrivateOptional))
-              (zip (flatten writtenValue) (flatten staticValue))
-          where
-            flatten (MapConcatenation left right) =
-              flatten left <> flatten right
-            flatten value = [value]
         _ -> do
           annotation <- evaluate staticValue
           pure (genericEvidenceArgumentSchema (genericReferences writtenValue)
-            (if directMember
-              then argumentSlotSchema Nothing False annotation Nothing
-              else argumentSchemaFromValue annotation))
+            (argumentSchemaFromValue annotation))
     genericByName target = findGeneric generics
       where
         findGeneric [] = Nothing
