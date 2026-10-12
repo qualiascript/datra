@@ -21,6 +21,7 @@ module Interpreting
   , interpretLocatedWithImports
   , interpretLocatedWithImportsInMode
   , interpretLocatedWithImportsInModeAndStandardLibrary
+  , interpretLocatedWithImportsInModeAndStandardLibraryVisibility
   , interpretWithImports
   , interpretWithImportsInMode
   , InterpretedValue
@@ -195,7 +196,9 @@ parseDatraSourceSyntax standardLibraryVisibility sourceName source = do
     , parsedRawExpression = locatedRaw
     , parsedBaseScope = base
     , parsedStandardRules = standardRules
-    , parsedImportRules = importRules
+    -- Discover both qualified imports and bare imports opened by an earlier
+    -- explicit import-all, before loading their module dependencies.
+    , parsedImportRules = nub (importRules <> standardRules)
     }
 
 parsedSourceImportInvocations
@@ -515,10 +518,21 @@ interpretLocatedWithImportsInModeAndStandardLibrary
   -> Located Expression
   -> Either (DatraError InterpretingError) InterpretedValue
 interpretLocatedWithImportsInModeAndStandardLibrary
-    includeStandardLibrary mode modules (Located sourceSpan expression) =
+    includeStandardLibrary =
+  interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+    (if includeStandardLibrary then AllStandardLibrary else NoStandardLibrary)
+
+interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+  :: StandardLibraryVisibility
+  -> EvaluationMode
+  -> [(String, ModuleSource)]
+  -> Located Expression
+  -> Either (DatraError InterpretingError) InterpretedValue
+interpretLocatedWithImportsInModeAndStandardLibraryVisibility
+    visibility mode modules (Located sourceSpan expression) =
   Bifunctor.first (atSourceSpan sourceSpan)
-    (interpretWithImportsInModeAndStandardLibrary
-      includeStandardLibrary mode modules expression)
+    (interpretWithImportsInModeAndStandardLibraryVisibility
+      visibility mode modules expression)
 
 interpretExpressionReason
   :: Expression
@@ -552,10 +566,19 @@ interpretWithImportsInModeAndStandardLibrary
   -> Expression
   -> Either InterpretingError InterpretedValue
 interpretWithImportsInModeAndStandardLibrary
-    includeStandardLibrary mode modules expression = do
-  base <- if includeStandardLibrary
-    then defaultImportScope
-    else Right (rootScope expression [])
+    includeStandardLibrary =
+  interpretWithImportsInModeAndStandardLibraryVisibility
+    (if includeStandardLibrary then AllStandardLibrary else NoStandardLibrary)
+
+interpretWithImportsInModeAndStandardLibraryVisibility
+  :: StandardLibraryVisibility
+  -> EvaluationMode
+  -> [(String, ModuleSource)]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+interpretWithImportsInModeAndStandardLibraryVisibility
+    visibility mode modules expression = do
+  (base, _) <- standardLibraryEnvironment visibility expression
   evalInScope
     (extendScope
       [("\0imports", ModuleCatalog (modulesForMode mode modules))]

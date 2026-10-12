@@ -258,7 +258,7 @@ without a prefix:
 yield if true then 1 else 0
 ```
 
-`--no-std` disables both the qualified Std binding and the implicit opening.
+`--qualified-std` retains the qualified Std binding and disables the implicit opening.
 
 Module files do not receive the implicit opening. Non-Std modules receive the
 qualified `Std` binding so they can explicitly write `Std.(...)`. The Std module
@@ -839,7 +839,7 @@ by these operations.
 
 - default CLI programs have standard values and syntax through the implicit
   outer Std scope.
-- `--no-std` exposes neither the `Std` binding nor unqualified standard names.
+- `--qualified-std` exposes the `Std` binding without unqualified standard names.
 - library modules receive qualified Std only.
 - numbers and ordinals load through their explicit Std scopes.
 

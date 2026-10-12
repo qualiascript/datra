@@ -67,6 +67,14 @@ docker run --rm \
   --output output.datra
 ```
 
+Pass `--qualified-std` to `build`, `ast`, or `interpret` to expose only the
+qualified `Std` module, without opening its names or syntax. For example:
+
+```sh
+docker run --rm datra-haskell:prod build --qualified-std \
+  --source 'yield Std' --ast-output /dev/null --output -
+```
+
 Use the `ast` command to generate canonical AST notation and `interpret` to
 evaluate an existing AST file. Pass `-` as an input or output path for standard
 input or standard output.
