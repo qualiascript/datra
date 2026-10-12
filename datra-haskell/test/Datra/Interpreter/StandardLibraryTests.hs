@@ -158,8 +158,8 @@ standardLibraryTests =
                   <> "yield a.(b,c) ~> (b?:Nat,c?:Nat)"
               , "b? : Nat := 2, c? : Nat := 3"
               )
-            , ("yield 'from (2,5)", "from 2 to 5")
-            , ("yield 'from (2,$up)", "from 2 up")
+            , ("yield 'from (2;5)", "from 2 to 5")
+            , ("yield 'from (2;$up)", "from 2 up")
             , ("f := !~\"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
@@ -249,7 +249,7 @@ standardLibraryTests =
         , programCase "semicolon access retains overlapping argument types"
             ( "split := ({Args Int,} -> Any do "
                 <> "yield it[0; 1..])\n"
-                <> "yield split(10, 20, 30)"
+                <> "yield split(10; 20; 30)"
             )
             "(arg0 : 10; >< (arg1 : 20; arg2 : 30))"
         , programCase "clipped access preserves optional identifiers"
@@ -453,7 +453,7 @@ standardLibraryTests =
             "true"
         , programCase "Args accepts every finite positional prefix"
             ( "values := ({Args Int,} -> Any do yield it)\n"
-                <> "yield values(1, 2, 3) of {List Int,}"
+                <> "yield values(1; 2; 3) of {List Int,}"
             )
             "true"
         , programCase "Args reorders named and positional slots"
@@ -472,7 +472,7 @@ standardLibraryTests =
                 <> "yield ((^n? :: Nat) -> Any do yield slots[0..n])\n"
                 <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
                 <> "assert ((arg2 := 10, 4) of {MyArgs Int,}) = false\n"
-                <> "yield (display(); display(1); display(1, 2, 3); "
+                <> "yield (display(); display(1); display(1; 2; 3); "
                 <> "display(arg1 := 10, 4))"
             )
             ("(\"()\"; \"arg0 : 1\"; "
@@ -492,7 +492,7 @@ standardLibraryTests =
                 <> "  yield \"%(toList it)\"\n"
                 <> "assert display() = \"()\"\n"
                 <> "assert display(1) = \"1\"\n"
-                <> "assert display(1, 2, 3) = \"(1; 2; 3)\"\n"
+                <> "assert display(1; 2; 3) = \"(1; 2; 3)\"\n"
                 <> "assert display(arg1 := 10, 4) = \"(4; 10)\"\n"
                 <> "assert ((arg2 := 10, 4) of ArgsIntMap) = false\n"
                 <> "yield ()"
@@ -593,9 +593,9 @@ integerLimitTests =
         , programCase "unit and Boolean are not integer members"
             "yield (not (() of Int); not (true of Int))"
             "(true; true)"
-        , programCase "unit is neutral only in sequences"
-            "yield ((23; ()) = 23; ((); 23) = 23; (23, ()) = 23; ((), 23) = 23)"
-            "(true; true; false; false)"
+        , programCase "unit is neutral in sequences"
+            "yield ((23; ()) = 23; ((); 23) = 23)"
+            "(true; true)"
         , programCase "complement representation inhabits integer types"
             ( "yield ((22; Just : $Complement) of Int; "
                 <> "(Infinity; Just : $Complement) of IntLimit)"
@@ -639,11 +639,11 @@ integerLimitTests =
             )
             "(true; true; true; true; true; true; true)"
         , programFailureCase "from rejects a positive-infinite origin"
-            "yield 'from (Infinity, $down)"
+            "yield 'from (Infinity; $down)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "from rejects a negative-infinite origin"
-            "yield 'from (-Infinity, $up)"
+            "yield 'from (-Infinity; $up)"
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         ]

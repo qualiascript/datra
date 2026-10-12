@@ -6,6 +6,7 @@ module Evaluation.Map
   , isEmptyMap
   , makeAtlasExpansion
   , concatenateValues
+  , concatenateValuesWithEquivalenceView
   ) where
 
 import AtlasMapFederationExpression
@@ -118,7 +119,22 @@ concatenateValues
   :: InterpretedValue
   -> InterpretedValue
   -> Either InterpretingError InterpretedValue
-concatenateValues left right = do
+concatenateValues left right =
+  fst <$> concatenateValuesWithEquivalenceView left right
+
+-- | Evaluate concatenation and also return the same result without syntax-
+-- preserving comma boundaries. The interpreter uses the latter only to decide
+-- whether a written comma changes the denoted Atlas-map federation.
+concatenateValuesWithEquivalenceView
+  :: InterpretedValue
+  -> InterpretedValue
+  -> Either InterpretingError (InterpretedValue, InterpretedValue)
+concatenateValuesWithEquivalenceView left right
+  | isEmptyMap left
+  , hasConcreteSource right = Right (right, right)
+  | isEmptyMap right
+  , hasConcreteSource left = Right (left, left)
+concatenateValuesWithEquivalenceView left right = do
   requireFederationDecision
     (decideValueConcatenation left right)
   normalizedRanges <-
@@ -165,13 +181,13 @@ concatenateValues left right = do
             MapSemantics cardinality mapComponents
           _ -> semantics
       baseResultMap = InterpretedMap cardinality finalValues components
-      resultFederation
+      resultFederation valueMap
         | operandsAreTotal
         , atlasMapFederationExpressionIsSingleton
             (interpretedAtlasMapFederation left)
         , atlasMapFederationExpressionIsSingleton
               (interpretedAtlasMapFederation right) =
-            SingletonAtlasMapFederation resultMap
+            SingletonAtlasMapFederation valueMap
         | otherwise =
             ConcatenatedAtlasMapFederation
               (interpretedAtlasMapFederation left)
@@ -180,7 +196,7 @@ concatenateValues left right = do
         isEmptyMap left
           || isEmptyMap right
           || semanticsContainsRange
-          (interpretedSemantics left)
+            (interpretedSemantics left)
           || semanticsContainsRange
             (interpretedSemantics right)
           || preservesConcatenationBoundary left
@@ -198,26 +214,37 @@ concatenateValues left right = do
             baseResultMap
               { interpretedMapComponents = [preservedSemantics] }
         | otherwise = baseResultMap
-      ordinaryResult =
+      makeResult valueMap federation valueSemantics =
         makeInterpretedValue
           (composedStructuralDatraType
             (map interpretedDatraType [left, right]))
           form
           insertionCapability
-          resultMap
-          resultFederation
+          valueMap
+          federation
           (if operandsAreTotal
-                && atlasMapFederationExpressionIsSingleton resultFederation
+                && atlasMapFederationExpressionIsSingleton federation
             then TotalInterpretedMap
             else NonTotalInterpretedMap)
-          finalSemantics
+          valueSemantics
+      ordinaryResult =
+        makeResult resultMap (resultFederation resultMap) finalSemantics
+      equivalenceResult =
+        makeResult
+          baseResultMap
+          (resultFederation baseResultMap)
+          resultSemantics
+      finish result valueMap =
+        withOrderedAtlasMapView
+          (case (interpretedForm left, interpretedForm right) of
+          (AsciiStringForm _, AsciiStringForm _) ->
+            maybe result makeAsciiString
+              (asciiStringFromInterpretedMap valueMap)
+          _ -> result)
   pure
-    (withOrderedAtlasMapView
-      (case (interpretedForm left, interpretedForm right) of
-      (AsciiStringForm _, AsciiStringForm _) ->
-        maybe ordinaryResult makeAsciiString
-          (asciiStringFromInterpretedMap resultMap)
-      _ -> ordinaryResult))
+    ( finish ordinaryResult resultMap
+    , finish equivalenceResult baseResultMap
+    )
   where
     operandsAreTotal =
       hasConcreteSource left && hasConcreteSource right

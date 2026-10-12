@@ -155,6 +155,7 @@ module DatraTypes
   , argumentPresentations
   , makeAtlasExpansion
   , concatenateValues
+  , concatenateValuesWithEquivalenceView
   , mapLengthValue
   , ArgumentSchema
   , argumentSlotSchema
@@ -308,6 +309,7 @@ import Evaluation.Eval (evalValues)
 import BooleanType qualified
 import Evaluation.Map
   ( concatenateValues
+  , concatenateValuesWithEquivalenceView
   , isEmptyMap
   , makeAtlasExpansion
   , makeAtlasMap

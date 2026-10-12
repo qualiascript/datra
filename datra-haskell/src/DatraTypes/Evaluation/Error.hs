@@ -166,6 +166,7 @@ data InterpretingError
   | ExpectedTotalAtlasMap InterpretedValueKind
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
+  | RedundantConcatenation
   | AccessRejected AccessError
   | GivenValueOutsideTypeAnnotation
       { expectedTypeAnnotation :: String

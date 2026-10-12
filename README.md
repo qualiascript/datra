@@ -34,7 +34,7 @@ Args := &T? do
 yield ((^n? :: Nat) do yield slots[0..n])
 ```
 
-For example:
+For example, this is a Datra program that utilizes `Args` directly:
 
 ```datra
 ArgsIntMap := {Args Int,}
