@@ -466,6 +466,14 @@ rewriteChildren
   -> Either SyntaxRewriteFailure Expression
 rewriteChildren capture environment value =
   case value of
+    -- Value lookup and the short @this.name@ spelling select the written name.
+    -- Keep that identifier structural instead of letting a zero-hole syntax
+    -- rule such as @this@ reinterpret it before the child scope exists.
+    ScopeAccess source body@IdentifierReference {}
+      | isContextualAccessOf (IdentifierString "_this") source ->
+          ScopeAccess
+            <$> rewriteStandalone capture environment source
+            <*> pure body
     ReverseMapSpecification target source ->
       MapSpecification
         <$> rewriteStandalone capture environment source

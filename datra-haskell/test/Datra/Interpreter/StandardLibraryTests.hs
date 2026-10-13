@@ -18,8 +18,8 @@ standardLibraryTests :: TestTree
 standardLibraryTests =
   testGroup "standard library and declarative syntax"
     [ testGroup "modular exports"
-        [ programCase "marker is appended at the final identifier index"
-            "x := 7\nyield (modular this).x[2]" "$Modular"
+        [ programCase "modular retains its named member"
+            "x := 7\nyield modular this" "x : 7"
         , programCase "the empty map may be marked repeatedly"
             "yield modular (modular ())" "()"
         , programFailureCase "modular rejects unnamed values"
@@ -141,7 +141,7 @@ standardLibraryTests =
     , testGroup "scope values"
         [ programCase source source expected
         | (source, expected) <-
-            [ ("a:=5\nb:=8\nyield this.a", "a : 5")
+            [ ("a:=5\nb:=8\nyield this.a", "5")
             , ("_private:=3\na:=5\nyield public this", "a : 5")
             , ( "yield public (_private:3;a:5) of (a?:Nat)"
               , "true"
@@ -149,14 +149,13 @@ standardLibraryTests =
             , ( "yield public (_private:3;a:5) ~> (a?:Nat)"
               , "a? : Nat := 5"
               )
-            , ("_private:=3\na:=5\nyield this._private", "_private : 3")
+            , ("_private:=3\na:=5\nyield this._private", "3")
             , ("a:=5\nyield this.a of (a?:Nat)", "true")
             , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
-            , ("a:=(b:2;c:3)\nyield a.(b,c)", "b : 2, c : 3")
-            , ("a:=(b:2;c:3)\nyield a.(b,c) of (a.b,a.c)", "true")
+            , ("a:=(b:2;c:3)\nyield a.(b+c)", "5")
             , ( "a:=(b:2;c:3)\n"
-                  <> "yield a.(b,c) ~> (b?:Nat,c?:Nat)"
-              , "b? : Nat := 2, c? : Nat := 3"
+                  <> "yield a.(left := b; right := c)"
+              , "(left : 2; right : 3)"
               )
             , ("yield 'from (2;5)", "from 2 to 5")
             , ("yield 'from (2;$up)", "from 2 up")

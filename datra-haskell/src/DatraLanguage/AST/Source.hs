@@ -99,6 +99,14 @@ source context expression =
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
+    ScopeAccessValue {} | Just names <- scopeNames expression ->
+      "~" <> case names of
+        [name] -> renderIdentifierString name
+        _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
+    Concatenate {} | Just names <- scopeNames expression ->
+      "~" <> case names of
+        [name] -> renderIdentifierString name
+        _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
@@ -141,12 +149,11 @@ source context expression =
         annotation
         given
     OptionalValue operand -> wrapped 10 (source 10 operand <> "?")
-    NamedAccessValue operand (IdentifierString name) -> wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
-    Access operand (NaturalValue 1)
-      | Just names <- scopeNames operand ->
-          "~" <> case names of
-            [name] -> renderIdentifierString name
-            _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
+    ScopeAccessValue operand
+        (IdentifierReferenceValue (IdentifierString name)) ->
+      wrapped 12 (source 12 operand <> "." <> renderIdentifierString name)
+    ScopeAccessValue operand body ->
+      wrapped 12 (source 12 operand <> "." <> scopeBody body)
     -- Access associates to the left, so a second page selection can continue
     -- directly as @value[first][second]@.  Operands with genuinely looser
     -- precedence are still parenthesized by their own renderer.
@@ -220,18 +227,24 @@ source context expression =
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
     argumentMembers = intercalate "; " . map (source 0)
 
--- Preserve the exact expansion of @this.(a, b)[1]@ when rendering name lists.
 scopeNames :: OperatorExpression -> Maybe [String]
 scopeNames
-    (NamedAccessValue
+    (ScopeAccessValue
       (FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_this"))
         argument)
-      (IdentifierString name))
+      (IdentifierReferenceValue (IdentifierString name)))
   | isDefaultContextualArgument argument = Just [name]
 scopeNames (Concatenate left EmptyMap) = scopeNames left
 scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
 scopeNames _ = Nothing
+
+scopeBody :: OperatorExpression -> String
+scopeBody body = case body of
+  Sequential {} -> source 0 body
+  Expansion {} -> source 0 body
+  EmptyMap -> source 0 body
+  _ -> "(" <> source 0 body <> ")"
 
 isDefaultContextualArgument :: OperatorExpression -> Bool
 isDefaultContextualArgument (NaturalValue 0) = True
@@ -239,5 +252,4 @@ isDefaultContextualArgument EmptyMap = True
 isDefaultContextualArgument _ = False
 
 valueLookupNames :: OperatorExpression -> Maybe [String]
-valueLookupNames (Access operand (NaturalValue 1)) = scopeNames operand
-valueLookupNames _ = Nothing
+valueLookupNames operand = scopeNames operand

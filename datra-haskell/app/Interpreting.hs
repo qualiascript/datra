@@ -1442,50 +1442,45 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       binary overloadValues defaults supplied
     SafeOverload defaults supplied ->
       binary safeOverloadValues defaults supplied
-    NamedAccess
+    ScopeAccess
         (IdentifierReference (IdentifierString namespace))
-        (IdentifierString name)
+        (IdentifierReference (IdentifierString name))
       | Just (ImportedBinding dependency identity value _) <- lookupScope namespace scope ->
-          case evaluateNamedAccess value name of
+          case namedAccessValue value name of
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
             result -> do
               selected <- result
+              payload <- accessValues selected (naturalValue 1)
               if hasTrailingIdentifierMarker modularMarker selected
                 then do
-                  payload <- accessValues selected (naturalValue 1)
                   pure (withCanonicalNamedAccess
                     [modularPresentationDependency identity]
                     (CanonicalReference namespace) name payload)
                 else withCanonicalNamedAccess
                   [dependency] (CanonicalReference namespace) name
-                    <$> transparentEitherAlias selected
+                    <$> transparentEitherAlias payload
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
-    NamedAccess
+    ScopeAccess
         thisValue
-        (IdentifierString name)
+        (IdentifierReference (IdentifierString name))
       | isContextualAccessOf (IdentifierString "_this") thisValue
-      , Just (_, value) <- lookupScope "_this" scope >>= contextualBinding ->
-          value reduction >>= \contextual ->
-            runProtectedOperation protection [contextual] $ \actuals ->
-              case actuals of
-                [actual] -> namedAccessValue actual name
-                _ -> Right neverValue
-      | isContextualAccessOf (IdentifierString "_this") thisValue
-      , Just names <- lookupScope "_this" scope >>= scopeMembersBinding
-      , name `elem` names ->
-          simpleIdentifierTypeValue name
-            <$> resolveIdentifierWith reduction scope resolving name
-    NamedAccess operand (IdentifierString name) ->
-      interpret operand >>= (`evaluateNamedAccess` name)
-    MapAccess
-        (NamedAccess
-          thisValue
-          (IdentifierString name))
-        (EllipsisNatural 1)
-      | isContextualAccessOf (IdentifierString "_this") thisValue ->
-          resolveIdentifierIncludingPrivate reduction scope resolving name
+          -> resolveIdentifierWith reduction scope resolving name
+    ScopeAccess operand body -> do
+      source <- interpret operand
+      runProtectedOperation protection [source] $ \actuals ->
+        case actuals of
+          [actual] -> do
+            validateShortScopeMember actual body
+            members <- scopeNamedMembers actual
+            let opened = public members
+            bindings <- traverse openedBinding opened
+            validateShortScopeAccess actual opened body
+            mapM_ (validateOpenedBinding actual) opened
+            evalInContinuationScopeWith expressionValue reduction
+              bindings scope resolving body
+          _ -> Right neverValue
     MapAccess
         thisValue
         insertionOperand
@@ -1724,22 +1719,34 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     checkedResult operation = do
       result <- operation
       pure (result, Just result)
-    -- Dot access is a lexical operation. The left value supplies a binding
-    -- environment and the right identifier is evaluated in a fresh child
-    -- scope, so qualified functions follow the ordinary lookup/call path.
-    evaluateNamedAccess source name =
-      runProtectedOperation protection [source] $ \actuals ->
-        case actuals of
-          [actual] -> do
-            selected <- namedAccessValue actual name
-            evalInContinuationScopeWith
-              (NamedAccess expressionValue (IdentifierString name))
-              reduction
-              [scopeBinding name (EvaluatedBinding selected)]
-              scope
-              resolving
-              (IdentifierReference (IdentifierString name))
-          _ -> Right neverValue
+    validateOpenedBinding _ (name, selected) =
+      case lookupScope name scope of
+        Just existing | not (bindingHasUnrestrictedShadowing existing) -> do
+          let bounded = ShadowingConsistencyReduction
+                name shadowingConsistencyFuel
+          original <- resolveIdentifierWith bounded scope resolving name
+          replacement <- accessValues selected (naturalValue 1)
+          if interpretedSemanticResult original
+              == interpretedSemanticResult replacement
+            then Right ()
+            else Left (InconsistentShadowing name)
+        _ -> Right ()
+    openedBinding (name, selected) = do
+      payload <- accessValues selected (naturalValue 1)
+      pure (scopeBinding name (EvaluatedBinding payload))
+    validateShortScopeAccess actual opened selectedBody =
+      case selectedBody of
+        IdentifierReference (IdentifierString name)
+          | name `elem` map fst opened -> Right ()
+          | otherwise -> case namedAccessValue actual name of
+              Left failure -> Left failure
+              Right _ -> Left (UnknownIdentifier name)
+        _ -> Right ()
+    validateShortScopeMember actual selectedBody =
+      case selectedBody of
+        IdentifierReference (IdentifierString name) ->
+          () <$ namedAccessValue actual name
+        _ -> Right ()
     interpretProtectedValues expressions operation = do
       values <- traverse interpret expressions
       runProtectedOperation protection values operation
@@ -1893,14 +1900,6 @@ resolveIdentifierWith
   -> String
   -> Either InterpretingError InterpretedValue
 resolveIdentifierWith = resolveIdentifierAccess False
-
-resolveIdentifierIncludingPrivate
-  :: ReductionContext
-  -> Scope
-  -> [String]
-  -> String
-  -> Either InterpretingError InterpretedValue
-resolveIdentifierIncludingPrivate = resolveIdentifierAccess True
 
 resolveIdentifierAccess
   :: Bool
@@ -3809,6 +3808,51 @@ namedMembers value = case interpretedSemanticResult value of
     field CanonicalAssignment { canonicalAssignmentIdentifierString = name } =
       (name,) <$> namedAccessValue value name
     field _ = Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
+
+scopeNamedMembers
+  :: InterpretedValue
+  -> Either InterpretingError [(String, InterpretedValue)]
+scopeNamedMembers value =
+  case scopeMemberNamesFromCanonical (interpretedSemanticResult value) of
+    []
+      | emptyScopeValue (interpretedSemanticResult value) -> Right []
+      | otherwise -> Left
+          (ModuleEvaluationFailed ImportedModuleRequiresNamedExports)
+    names -> do
+      selected <- selectMembers [] names
+      if null selected
+        then Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports)
+        else Right selected
+  where
+    selectMembers selected [] = Right (reverse selected)
+    selectMembers selected (name : remaining) =
+      case namedAccessValue value name of
+        Right member -> selectMembers ((name, member) : selected) remaining
+        Left (NamedAccessFailed (NamedFieldNotFound _)) ->
+          selectMembers selected remaining
+        Left failure -> Left failure
+    scopeMemberNamesFromCanonical result = case result of
+      CanonicalSimpleIdentifierType { canonicalIdentifierString = name } ->
+        [name]
+      CanonicalAssignment { canonicalAssignmentIdentifierString = name } ->
+        [name]
+      CanonicalMap _ members -> concatMap scopeMemberNamesFromCanonical members
+      CanonicalArgumentMap _ members ->
+        concatMap scopeMemberNamesFromCanonical members
+      CanonicalConcatenation members ->
+        concatMap scopeMemberNamesFromCanonical members
+      CanonicalEither left right ->
+        scopeMemberNamesFromCanonical left
+          <> scopeMemberNamesFromCanonical right
+      CanonicalCoalization operand -> scopeMemberNamesFromCanonical operand
+      CanonicalSkip operand -> scopeMemberNamesFromCanonical operand
+      CanonicalSpecification _ target -> scopeMemberNamesFromCanonical target
+      _ -> []
+    emptyScopeValue result = case result of
+      CanonicalMap _ [] -> True
+      CanonicalArgumentMap _ [] -> True
+      CanonicalConcatenation [] -> True
+      _ -> False
 
 namedBindings
   :: InterpretedValue

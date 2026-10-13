@@ -56,7 +56,7 @@ import DatraLanguage.AST
       , EllipsisLiteral
       , EllipsisNatural
       , Exponentiation
-      , NamedAccess
+      , ScopeAccess
       , MapAccess
       , MapConcatenation
       , MapExpansion
@@ -718,7 +718,7 @@ astForm =
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication
       , astBinary AST.ExponentiationOperator Exponentiation
-      , NamedAccess <$> (astSymbol "." *> astExpression) <*> (IdentifierString <$> astString)
+      , ScopeAccess <$> (astSymbol "." *> astExpression) <*> astExpression
       , astBinary AST.AccessOperator MapAccess
       , astBinary AST.SpecificationOperator MapSpecification
       , astBinary AST.SafeOverloadOperator SafeOverload
@@ -1480,12 +1480,17 @@ accessedTerm atom = do
     , do
         _ <- try (char '.' <* notFollowedBy (char '.'))
         horizontalSpaceConsumer
-        names <- namedAccessNames
+        body <- scopeAccessBody
         horizontalSpaceConsumer
-        pure (expandedNamedAccess names)
+        pure (\value -> ScopeAccess value body)
     , OptionalType <$ optionalTypeSuffix
     ])
   pure (foldl (\value select -> select value) source selections)
+
+scopeAccessBody :: Parser Expression
+scopeAccessBody =
+  parenthesizedExpression
+    <|> (IdentifierReference <$> namedAccessName)
 
 optionalTypeSuffix :: Parser Text
 optionalTypeSuffix = try $ do
@@ -1504,20 +1509,17 @@ namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
           (continuedOperator AST.ConcatenationOperator *> namedAccessName)
         pure (first : rest)
 
--- Like named access, the operand denotes names rather than evaluating them.
--- Subsequent selections apply to the retrieved value: @~a[0]@ means
--- @this.a[1][0]@. Keep this sugar in the core grammar so serialized closures
--- can use it without importing a syntax declaration from Std.
+-- The operand denotes names rather than evaluating them. Keep this sugar in
+-- the core grammar so serialized closures can use it without importing a
+-- syntax declaration from Std.
 valueOfExpression :: Parser Expression
 valueOfExpression = do
   _ <- operatorToken AST.ValueOfOperator
   names <- namedAccessNames
   horizontalSpaceConsumer
   notFollowedBy (operatorToken AST.ExponentiationOperator)
-  pure (MapAccess
-    (expandedNamedAccess names
-      (contextualAccess (IdentifierString "_this")))
-    (EllipsisNatural 1))
+  pure (expandedNamedAccess names
+    (contextualAccess (IdentifierString "_this")))
 
 namedAccessName :: Parser IdentifierString
 namedAccessName =
@@ -1528,7 +1530,7 @@ expandedNamedAccess
   -> Expression
   -> Expression
 expandedNamedAccess names value =
-  case map (NamedAccess value) names of
+  case map (ScopeAccess value . IdentifierReference) names of
     [] -> value
     first : rest -> foldl MapConcatenation first rest
 

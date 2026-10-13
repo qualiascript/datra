@@ -201,7 +201,7 @@ data Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
-  | NamedAccess Expression IdentifierString
+  | ScopeAccess Expression Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
   | Overload Expression Expression
@@ -367,7 +367,7 @@ data OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
-  | NamedAccessValue OperatorExpression IdentifierString
+  | ScopeAccessValue OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
@@ -523,10 +523,8 @@ normalizeExpression (Exponentiation left right) =
   Exponentiation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
-normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression value) name
--- The payload of a scope identifier is its canonical reference spelling.
--- It resolves the binding directly, including quoted names and captured names,
--- without materializing the current block's declaration map.
+normalizeExpression (ScopeAccess source body) =
+  ScopeAccess (normalizeExpression source) (normalizeExpression body)
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -697,7 +695,7 @@ lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
-lower (NamedAccess value name) = NamedAccessValue (lower value) name
+lower (ScopeAccess source body) = ScopeAccessValue (lower source) (lower body)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (Overload left right) = OverloadValue (lower left) (lower right)
@@ -921,7 +919,8 @@ prettyOperator (Power left right) =
   prettyBinary ExponentiationOperator left right
 prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
-prettyOperator (NamedAccessValue value (IdentifierString name)) = prettyForm "." [prettyOperator value, pretty (renderAsciiStringLiteral name)]
+prettyOperator (ScopeAccessValue source body) =
+  prettyForm "." [prettyOperator source, prettyOperator body]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
@@ -1197,7 +1196,7 @@ traverseExpressionChildren visit expression = case expression of
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
-  NamedAccess value name -> (`NamedAccess` name) <$> visit value
+  ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
   SyntaxType templates signature ->
     SyntaxType <$> visit templates <*> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given

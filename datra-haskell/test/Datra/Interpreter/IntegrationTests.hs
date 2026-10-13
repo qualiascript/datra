@@ -83,7 +83,7 @@ moduleOrigin = "test/fixtures/modules/main.datra"
 moduleProgram :: String
 moduleProgram = unlines
   [ "import \"library_one\""
-  , "assert LibraryOne.x[1] = 7"
+  , "assert LibraryOne.x = 7"
   , "assert LibraryOne.increment 7 = 11"
   , "assert LibraryOne.shift 7 = 11"
   ]

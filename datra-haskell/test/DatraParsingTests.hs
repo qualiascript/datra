@@ -684,7 +684,7 @@ regressionTests = do
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
     [ Import False "library_one", Import True "std"
     , InModule "std" (ref "_this")
-    , NamedAccess (ref "_this") (IdentifierString "abc")
+    , ScopeAccess (ref "_this") (ref "abc")
     , SyntaxType (StringTemplate
         [ StringTemplateInterpolation (ref "Int")
         , StringTemplateLiteral " next"
@@ -1916,26 +1916,26 @@ regressionTests = do
     "$a[$b][$c]"
     ((AST.asciiString "a" <@> AST.asciiString "b") <@> AST.asciiString "c")
   assertAstOutput
-    "named access expands over a list of identifiers"
+    "module scope retains an ordinary concatenation RHS"
     "a.(b, c)"
-    (MapConcatenation
-      (NamedAccess (ref "a") (IdentifierString "b"))
-      (NamedAccess (ref "a") (IdentifierString "c")))
+    (ScopeAccess (ref "a")
+      (MapConcatenation (ref "b") (ref "c")))
   assertAstOutput
-    "named access lists accept standard strings"
+    "module scope retains strings as ordinary RHS expressions"
     "a.(\"b\", c)"
-    (MapConcatenation
-      (NamedAccess (ref "a") (IdentifierString "b"))
-      (NamedAccess (ref "a") (IdentifierString "c")))
-  assertRejected "named access lists require at least one name" "a.()"
-  assertRejected "named access lists reject expressions" "a.(b + c)"
+    (ScopeAccess (ref "a")
+      (MapConcatenation (AsciiStringLiteral "b") (ref "c")))
+  assertAstOutput "module scope accepts an empty RHS map"
+    "a.()" (ScopeAccess (ref "a") (AtlasMap []))
+  assertAstOutput "module scope accepts an arithmetic RHS"
+    "a.(b + c)" (ScopeAccess (ref "a") (Addition (ref "b") (ref "c")))
+  assertAstOutput "short module scope uses an identifier-reference RHS"
+    "a.b" (ScopeAccess (ref "a") (ref "b"))
   let valueOf name =
-        MapAccess
-          (NamedAccess
-            (contextualAccess (IdentifierString "_this"))
-            (IdentifierString name))
-          (natural 1)
-  assertAstOutput "value lookup expands to the binding's value page"
+        ScopeAccess
+          (contextualAccess (IdentifierString "_this"))
+          (ref name)
+  assertAstOutput "value lookup opens the current lexical binding"
     "~a" (valueOf "a")
   assertAstOutput "value lookup accepts quoted names"
     "~\"name with spaces\"" (valueOf "name with spaces")
@@ -1950,24 +1950,27 @@ regressionTests = do
   assertAstOutput "an exponent can be a parenthesized lookup"
     "2 ^ (~a)" (Exponentiation (natural 2) (valueOf "a"))
   assertAstOutput "value lookup precedes chained access"
-    "~a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
+    "~a[0].b" (ScopeAccess (MapAccess (valueOf "a") (natural 0)) (ref "b"))
   assertAstOutput "value lookup can be a function"
     "~f 2" (FunctionApplication (valueOf "f") (natural 2))
   assertAstOutput "value lookup can be an application argument"
     "f (~a)" (FunctionApplication (ref "f") (valueOf "a"))
+  assertAstOutput "a generated lookup can select a page inside an opened scope"
+    "abc.(~\"___def\")[1]"
+    (MapAccess
+      (ScopeAccess (ref "abc") (valueOf "___def"))
+      (natural 1))
   assertAstOutput "postfix optional can follow value lookup"
     "~a?" (OptionalType (valueOf "a"))
   assertAstOutput "Maybe accepts a looked-up value"
     "Maybe (~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
-  let nameList = MapAccess
-        (MapConcatenation
-          (NamedAccess
+  let nameList = MapConcatenation
+          (ScopeAccess
             (contextualAccess (IdentifierString "_this"))
-            (IdentifierString "a"))
-          (NamedAccess
+            (ref "a"))
+          (ScopeAccess
             (contextualAccess (IdentifierString "_this"))
-            (IdentifierString "b")))
-        (natural 1)
+            (ref "b"))
   assertAstOutput "value lookup preserves named access list semantics"
     "~(a, \"b\")" nameList
   assertRejected "value lookup needs a name" "~"
@@ -1982,11 +1985,11 @@ regressionTests = do
     , (nameList, "~(a, b)")
     , (FunctionApplication (valueOf "f") (valueOf "a"), "~f (~a)")
     , (MapAccess (valueOf "a") (natural 0), "~a[0]")
-    , (NamedAccess (valueOf "a") (IdentifierString "b"), "~a.b")
+    , (ScopeAccess (valueOf "a") (ref "b"), "~a.b")
     , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
         "x : ~\"type name\"")
-    , (MapAccess (NamedAccess (ref "_this") (IdentifierString "a")) (natural 0), "_this.a[0]")
-    , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
+    , (MapAccess (ScopeAccess (ref "_this") (ref "a")) (natural 0), "_this.a[0]")
+    , (MapAccess (ScopeAccess (ref "other") (ref "a")) (natural 1), "other.a[1]")
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
@@ -2364,7 +2367,7 @@ genExpression =
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
-    , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
+    , Gen.subterm2 genExpression genExpression ScopeAccess
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression
         (SyntaxType (StringTemplate

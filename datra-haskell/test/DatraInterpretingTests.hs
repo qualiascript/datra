@@ -1055,7 +1055,7 @@ parseTestExpression source =
 testBegin :: IO ()
 testBegin = do
   expectSourceValue "retained block canonicalizes value lookup"
-    "begin \"value with spaces\" : 5; yield this.\"value with spaces\"[1] + 1" $ \value -> do
+    "begin \"value with spaces\" : 5; yield this.\"value with spaces\" + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block uses the symbolic lookup operator"
         (rendered == "6 <~ begin \"value with spaces\" : 5; yield ~\"value with spaces\" + 1")
@@ -4376,18 +4376,19 @@ testNamedAccess :: IO ()
 testNamedAccess = do
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
       assert (source <> " preserves the selected field") (renderInterpretedValue value == expected))
-    [ ("{a : Nat := 5; b : Str}.a", "a : Nat := 5")
-    , ("{b : Str; a : Nat := 5}.a", "a : Nat := 5")
-    , ("{a? : Nat := 5; b : Str}.a", "a : Nat := 5")
+    [ ("{a : Nat := 5; b : Str}.a", "5 ~> Nat")
+    , ("{b : Str; a : Nat := 5}.a", "5 ~> Nat")
+    , ("{a? : Nat := 5; b : Str}.a", "5 ~> Nat")
     , ( "({b:8;2} ~> {a?:Nat:=2;b?:Nat}).b"
-      , "b : Nat := 8"
+      , "8 ~> Nat"
       )
-    , ("{a:Nat:=5;b:Str}.a of (a:Nat)", "true")
-    , ( "{a:Nat:=5;b:Str}.a ~> (a:Int)"
-      , "a : " <> sourceIntType <> " := 5"
+    , ("{a:Nat:=5;b:Str}.a of Nat", "true")
+    , ("{a:Nat:=5;b:Str}.a ~> Int", "5 ~> " <> sourceIntType)
+    , ("(x:3, {a:5;b:8}).b", "8")
+    , ("{a:5;b:8}.(a + b)", "13")
+    , ( "{a:5;b:8}.(left := a; right := b)"
+      , "(left : 5; right : 8)"
       )
-    , ("(x:3, {a:5;b:8}).b", "b : 8")
-    , ("{a:5;b:8}.a[1] * 2", "10")
     ]
   mapM_ (\(source, expected) ->
       expectSourceRejection source source (== NamedAccessFailed expected))
