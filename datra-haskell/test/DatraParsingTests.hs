@@ -522,19 +522,18 @@ regressionTests = do
           == matchRules matchesNumericHole [correctFrom] fromPhrase
       Left _ -> False)
   let beginAliasBootstrap = unlines
-        [ "_AST := !~\"datra.AST\""
-        , "_Expr := !~\"datra.Expr\""
+        [ "_Expr := !~\"datra.Expr\""
         , "_Block := !~\"datra.Block\""
-        , "begin := \"begin %_Block yield %_Expr\" % (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) !~\"datra.begin\""
         , "yield Example := begin"
-        , "  begin := begin"
-        , "yield begin"
+        , "  'begin := 'begin"
+        , "yield 'begin"
         ]
       isBeginAlias expressionValue =
         expressionValue == AST.assignment
-          "begin" (ref "begin") (ref "begin")
+          "'begin" (ref "'begin") (ref "'begin")
           || any isBeginAlias (expressionChildren expressionValue)
-  assert "begin := begin remains a declaration beside its own template"
+  assert "'begin := 'begin remains a declaration beside its own template"
     (case parseSourceLocated False
         "<begin-alias-regression>" beginAliasBootstrap of
       Right (Located _ parsed) -> isBeginAlias parsed
@@ -682,9 +681,9 @@ regressionTests = do
       (Exponentiation EllipsisLiteral (natural 0))
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
-    [ Import False "library_one", Import True "std"
+    [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
-    , NamedAccess (ref "_this") (IdentifierString "abc")
+    , ScopeAccess (ref "_this") (ref "abc")
     , SyntaxType (StringTemplate
         [ StringTemplateInterpolation (ref "Int")
         , StringTemplateLiteral " next"
@@ -798,12 +797,13 @@ regressionTests = do
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
     (AST.dependentIdentifierType "module" (ref "Nat"))
-  assertParsed "declared qualified import lowers to the structural import AST"
-    "import \"library_one\""
-    (Import False "library_one")
-  assertParsed "declared import-all lowers to the same structural import AST"
-    "import all \"library_one\""
-    (Import True "library_one")
+  assertParsed "declared import lowers paths and its function body structurally"
+    "import \"library_one\" do yield 7"
+    (Import ["library_one"] (FunctionBody [] (natural 7)))
+  assertParsed "declared import accepts multiple paths"
+    "import (\"library_one\"; \"library_two\") do yield 7"
+    (Import ["library_one", "library_two"]
+      (FunctionBody [] (natural 7)))
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x : 10 yield x"
@@ -1916,26 +1916,26 @@ regressionTests = do
     "$a[$b][$c]"
     ((AST.asciiString "a" <@> AST.asciiString "b") <@> AST.asciiString "c")
   assertAstOutput
-    "named access expands over a list of identifiers"
+    "module scope retains an ordinary concatenation RHS"
     "a.(b, c)"
-    (MapConcatenation
-      (NamedAccess (ref "a") (IdentifierString "b"))
-      (NamedAccess (ref "a") (IdentifierString "c")))
+    (ScopeAccess (ref "a")
+      (MapConcatenation (ref "b") (ref "c")))
   assertAstOutput
-    "named access lists accept standard strings"
+    "module scope retains strings as ordinary RHS expressions"
     "a.(\"b\", c)"
-    (MapConcatenation
-      (NamedAccess (ref "a") (IdentifierString "b"))
-      (NamedAccess (ref "a") (IdentifierString "c")))
-  assertRejected "named access lists require at least one name" "a.()"
-  assertRejected "named access lists reject expressions" "a.(b + c)"
+    (ScopeAccess (ref "a")
+      (MapConcatenation (AsciiStringLiteral "b") (ref "c")))
+  assertAstOutput "module scope accepts an empty RHS map"
+    "a.()" (ScopeAccess (ref "a") (AtlasMap []))
+  assertAstOutput "module scope accepts an arithmetic RHS"
+    "a.(b + c)" (ScopeAccess (ref "a") (Addition (ref "b") (ref "c")))
+  assertAstOutput "short module scope uses an identifier-reference RHS"
+    "a.b" (ScopeAccess (ref "a") (ref "b"))
   let valueOf name =
-        MapAccess
-          (NamedAccess
-            (contextualAccess (IdentifierString "_this"))
-            (IdentifierString name))
-          (natural 1)
-  assertAstOutput "value lookup expands to the binding's value page"
+        ScopeAccess
+          (contextualAccess (IdentifierString "_this"))
+          (ref name)
+  assertAstOutput "value lookup opens the current lexical binding"
     "~a" (valueOf "a")
   assertAstOutput "value lookup accepts quoted names"
     "~\"name with spaces\"" (valueOf "name with spaces")
@@ -1950,24 +1950,27 @@ regressionTests = do
   assertAstOutput "an exponent can be a parenthesized lookup"
     "2 ^ (~a)" (Exponentiation (natural 2) (valueOf "a"))
   assertAstOutput "value lookup precedes chained access"
-    "~a[0].b" (NamedAccess (MapAccess (valueOf "a") (natural 0)) (IdentifierString "b"))
+    "~a[0].b" (ScopeAccess (MapAccess (valueOf "a") (natural 0)) (ref "b"))
   assertAstOutput "value lookup can be a function"
     "~f 2" (FunctionApplication (valueOf "f") (natural 2))
   assertAstOutput "value lookup can be an application argument"
     "f (~a)" (FunctionApplication (ref "f") (valueOf "a"))
+  assertAstOutput "a generated lookup can select a page inside an opened scope"
+    "abc.(~\"___def\")[1]"
+    (MapAccess
+      (ScopeAccess (ref "abc") (valueOf "___def"))
+      (natural 1))
   assertAstOutput "postfix optional can follow value lookup"
     "~a?" (OptionalType (valueOf "a"))
   assertAstOutput "Maybe accepts a looked-up value"
     "Maybe (~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
-  let nameList = MapAccess
-        (MapConcatenation
-          (NamedAccess
+  let nameList = MapConcatenation
+          (ScopeAccess
             (contextualAccess (IdentifierString "_this"))
-            (IdentifierString "a"))
-          (NamedAccess
+            (ref "a"))
+          (ScopeAccess
             (contextualAccess (IdentifierString "_this"))
-            (IdentifierString "b")))
-        (natural 1)
+            (ref "b"))
   assertAstOutput "value lookup preserves named access list semantics"
     "~(a, \"b\")" nameList
   assertRejected "value lookup needs a name" "~"
@@ -1982,11 +1985,11 @@ regressionTests = do
     , (nameList, "~(a, b)")
     , (FunctionApplication (valueOf "f") (valueOf "a"), "~f (~a)")
     , (MapAccess (valueOf "a") (natural 0), "~a[0]")
-    , (NamedAccess (valueOf "a") (IdentifierString "b"), "~a.b")
+    , (ScopeAccess (valueOf "a") (ref "b"), "~a.b")
     , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
         "x : ~\"type name\"")
-    , (MapAccess (NamedAccess (ref "_this") (IdentifierString "a")) (natural 0), "_this.a[0]")
-    , (MapAccess (NamedAccess (ref "other") (IdentifierString "a")) (natural 1), "other.a[1]")
+    , (MapAccess (ScopeAccess (ref "_this") (ref "a")) (natural 0), "_this.a[0]")
+    , (MapAccess (ScopeAccess (ref "other") (ref "a")) (natural 1), "other.a[1]")
     ]
   let alternatives = EitherType (AST.asciiString "up") (AST.asciiString "down")
   assertAstOutput "assignment retains its complete alternative value"
@@ -2352,7 +2355,6 @@ genExpression =
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
     , pure (ref "_this")
-    , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
@@ -2364,7 +2366,9 @@ genExpression =
     , MapSequence <$> Gen.list (Range.linear 0 6) genExpression
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
-    , Gen.subterm genExpression (`NamedAccess` IdentifierString "field")
+    , Gen.subterm2 genExpression genExpression ScopeAccess
+    , Gen.subterm genExpression
+        (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression
         (SyntaxType (StringTemplate
@@ -2577,14 +2581,14 @@ assertAstSyntax = do
         (SyntaxType (ref "Template") (FunctionType (ref "Int") (ref "Int")))
         == "(% (ref $Template) (-> (ref $Int) (ref $Int)))"
     )
-  assert "bounded from calls retain their scoped signature and checked captures"
-    ( renderExpression (fromTo 2 5)
-        == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 5))"
-    )
-  assert "directional from calls retain the private direction type"
-    ( renderExpression (fromUpwards 2)
-        == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 $up))"
-    )
+  assertEqual
+    "bounded from calls retain their scoped signature and checked captures"
+    "(apply-func (in-module $Std (ref $'from)) (<:> 2 5))"
+    (renderExpression (fromTo 2 5))
+  assertEqual
+    "directional from calls retain the private direction type"
+    "(apply-func (in-module $Std (ref $'from)) (<:> 2 $up))"
+    (renderExpression (fromUpwards 2))
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
 
@@ -2688,7 +2692,7 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
-  (InModule "std.datra" (ref ('\'' : name)))
+  (InModule "Std" (ref ('\'' : name)))
   (AtlasMap [start, endpoint])
   where
     endpoint = case end of

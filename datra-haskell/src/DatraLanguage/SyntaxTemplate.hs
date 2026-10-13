@@ -26,6 +26,7 @@ import DatraLanguage.Identifier
 data SyntaxHoleKind value
   = ExpressionSyntaxHole value
   | BlockSyntaxHole value
+  | FunctionBodySyntaxHole value
   | IdentifierExpressionSyntaxHole value
   | ValueSyntaxHole value
   deriving (Eq, Show)
@@ -33,6 +34,7 @@ data SyntaxHoleKind value
 syntaxHoleValue :: SyntaxHoleKind value -> value
 syntaxHoleValue (ExpressionSyntaxHole value) = value
 syntaxHoleValue (BlockSyntaxHole value) = value
+syntaxHoleValue (FunctionBodySyntaxHole value) = value
 syntaxHoleValue (IdentifierExpressionSyntaxHole value) = value
 syntaxHoleValue (ValueSyntaxHole value) = value
 
@@ -43,6 +45,7 @@ mapSyntaxHoleKind
 mapSyntaxHoleKind transform kind = case kind of
   ExpressionSyntaxHole value -> ExpressionSyntaxHole (transform value)
   BlockSyntaxHole value -> BlockSyntaxHole (transform value)
+  FunctionBodySyntaxHole value -> FunctionBodySyntaxHole (transform value)
   IdentifierExpressionSyntaxHole value ->
     IdentifierExpressionSyntaxHole (transform value)
   ValueSyntaxHole value -> ValueSyntaxHole (transform value)
@@ -115,6 +118,8 @@ traverseSyntaxTemplate transform (SyntaxTemplate pieces) =
       SyntaxHole . ExpressionSyntaxHole <$> transform value
     traversePiece (SyntaxHole (BlockSyntaxHole value)) =
       SyntaxHole . BlockSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (FunctionBodySyntaxHole value)) =
+      SyntaxHole . FunctionBodySyntaxHole <$> transform value
     traversePiece (SyntaxHole (IdentifierExpressionSyntaxHole value)) =
       SyntaxHole . IdentifierExpressionSyntaxHole <$> transform value
     traversePiece (SyntaxHole (ValueSyntaxHole value)) =
@@ -127,5 +132,6 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
     renderPiece (SyntaxLiteral literal) = literal
     renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "%_Expr"
     renderPiece (SyntaxHole BlockSyntaxHole {}) = "%_Block"
+    renderPiece (SyntaxHole FunctionBodySyntaxHole {}) = "%_FunctionBody"
     renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "%_IdenExp"
     renderPiece (SyntaxHole (ValueSyntaxHole value)) = '%' : renderValue value

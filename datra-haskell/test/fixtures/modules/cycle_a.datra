@@ -1,5 +1,5 @@
-Std.'import($all; "std")
-
-yield CycleA := begin
-  import "cycle_b"
-yield public this
+Std.(
+import "cycle_b" do
+  yield CycleA := begin
+  yield public this
+)

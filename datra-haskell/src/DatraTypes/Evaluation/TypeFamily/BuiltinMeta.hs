@@ -33,14 +33,10 @@ decideBuiltinMetaSubfederation source target =
         case decideBuiltinMetaSubfederation operand expected of
           DecisionProved () -> True
           _ -> False
-      (_, AnyMetaType) ->
-        case datraCanonicalType (interpretedDatraType source) of
-          Just _ -> True
-          Nothing -> False
+      (_, AnyMetaType) -> True
       (_, OrdinalMetaType) -> isTransfiniteOrdinal
         (interpretedSemantics source)
       (BuiltinMetaTypeForm actual, expected) | actual == expected -> True
-      (BuiltinMetaTypeForm (ASTMetaType _), ASTMetaType AnyAST) -> True
       (BuiltinMetaTypeForm NatRangeMetaType, IntRangeMetaType) -> True
       (BuiltinMetaTypeForm NatValRangeMetaType, IntValRangeMetaType) -> True
       (_, NatRangeMetaType) | isPositiveInfinity source -> True

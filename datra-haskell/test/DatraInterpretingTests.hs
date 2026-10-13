@@ -96,7 +96,6 @@ import SyntaxDefinitions
   , SyntaxPiece (SyntaxHole, SyntaxLiteral)
   , SyntaxRule (..)
   , SyntaxTemplate (SyntaxTemplate)
-  , qualifySyntaxRule
   )
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -131,8 +130,6 @@ testTree =
         , testCase "begin/yield scope and provenance" testBegin
         , testCase "begin/yield scope rejections" testBeginRejections
         , testCase "module aliases retain syntax rules" testModuleSyntaxAlias
-        , testCase "qualified syntax excludes hole-led rules"
-            testQualifiedSyntaxRules
         , testCase "implicit programs" testPrograms
         , testCase "integers and integer ranges" testIntegers
         , testCase "closed infinite valued range" testClosedInfiniteValuedRange
@@ -183,42 +180,9 @@ testTree =
 assert :: String -> Bool -> IO ()
 assert = assertBool
 
-testQualifiedSyntaxRules :: IO ()
-testQualifiedSyntaxRules = do
-  let expressionHole =
-        SyntaxHole (ExpressionSyntaxHole (identifierReference "_Expr"))
-      rule template = SyntaxRule
-        "syntax" template (AtlasMap []) False Nothing (AtlasMap [])
-      literalHeaded = rule (SyntaxTemplate
-        [ SyntaxLiteral "if"
-        , expressionHole
-        , SyntaxLiteral "then"
-        , expressionHole
-        ])
-      holeLed = rule (SyntaxTemplate
-        [ expressionHole
-        , SyntaxLiteral "or"
-        , expressionHole
-        ])
-  assertEqual "literal syntax receives a qualified surface head"
-    (Just literalHeaded
-      { syntaxName = "Std.syntax"
-      , syntaxTemplate = SyntaxTemplate
-          [ SyntaxLiteral "Std.if"
-          , expressionHole
-          , SyntaxLiteral "then"
-          , expressionHole
-          ]
-      })
-    (qualifySyntaxRule "Std" literalHeaded)
-  assertEqual "hole-led syntax cannot be qualified without leaking globally"
-    Nothing
-    (qualifySyntaxRule "Std" holeLed)
-
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let astType = External (AsciiStringLiteral "datra.AST")
-      expressionType = External (AsciiStringLiteral "datra.Expr")
+  let expressionType = External (AsciiStringLiteral "datra.Expr")
       blockType = External (AsciiStringLiteral "datra.Block")
       beginValue = SyntaxType
         (StringTemplate
@@ -227,7 +191,8 @@ testModuleSyntaxAlias = do
           , StringTemplateLiteral " yield "
           , StringTemplateInterpolation (identifierReference "_Expr")
           ])
-        (FunctionType (AtlasMap [astType, astType]) astType)
+        (FunctionType
+          (AtlasMap [blockType, expressionType]) expressionType)
       binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
       moduleBody = Begin
@@ -336,14 +301,13 @@ testModuleSyntaxAlias = do
           (contextualAccess (IdentifierString "_this")))))
         []
       importingSource = ModuleSource "importing-module.datra"
-        (Program
-          [Import True "std"]
-          (binding "ImportingModule" isolatedBody))
+        (ScopeAccess (identifierReference "Std")
+          (Program [] (binding "ImportingModule" isolatedBody)))
         [("std", explicitStd)]
   case moduleExportNames importingSource of
     Right ["x"] -> pure ()
     result -> assertFailure
-      ("an explicit import-all did not supply module bindings: " <> show result)
+      ("an explicit Std scope did not supply module bindings: " <> show result)
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString
@@ -670,10 +634,10 @@ testClosedInfiniteValuedRange =
     Right closed -> do
       assert "closed infinite valued range has order type omega plus one"
         (interpretedMapFinalOrderType (interpretedMap closed) == ordinal [1, 1])
-      case Types.requireCanonicalTypeAnnotation closed of
+      case Types.toStringValue canonicalStringCodec closed of
         Left failure ->
           assertFailure ("closed infinite valued range is not canonical: " <> show failure)
-        Right () -> pure ()
+        Right _ -> pure ()
       complement <- either
         (assertFailure . ("Complement construction failed: " <>) . show)
         pure
@@ -683,10 +647,10 @@ testClosedInfiniteValuedRange =
         pure
         (Types.eitherValue complement (Types.makeAtlasMap 0 []))
       let signedLimit = Types.makeAtlasMap 2 [closed, complementBranch]
-      case Types.requireCanonicalTypeAnnotation signedLimit of
+      case Types.toStringValue canonicalStringCodec signedLimit of
         Left failure ->
           assertFailure ("IntLimit representation is not canonical: " <> show failure)
-        Right () -> pure ()
+        Right _ -> pure ()
       case Types.specifyValues closed Types.integerValuedRangeTypeValue of
         Left failure ->
           assertFailure ("closed infinite valued range typing failed: " <> show failure)
@@ -1055,7 +1019,7 @@ parseTestExpression source =
 testBegin :: IO ()
 testBegin = do
   expectSourceValue "retained block canonicalizes value lookup"
-    "begin \"value with spaces\" : 5; yield this.\"value with spaces\"[1] + 1" $ \value -> do
+    "begin \"value with spaces\" : 5; yield this.\"value with spaces\" + 1" $ \value -> do
       let rendered = renderInterpretedValue value
       assert "block uses the symbolic lookup operator"
         (rendered == "6 <~ begin \"value with spaces\" : 5; yield ~\"value with spaces\" + 1")
@@ -1138,27 +1102,22 @@ testCanonicalTypes = do
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
     , "Template"
-    ]
-  mapM_ expectNonCanonicalDatraType
-    [ "!~\"datra.AST\""
     , "!~\"datra.Expr\""
+    , "!~\"datra.IdenExp\""
     , "!~\"datra.Block\""
+    , "!~\"datra.FunctionBody\""
+    , "(Nat; (!~\"datra.Expr\"))"
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "(Nat; (!~\"datra.AST\"))"
+    , "!~\"datra.SyntaxTemplate\""
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
-    assert "functions carry a CanonicalType"
-      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
-        Nothing -> False
-        Just _ -> True)
+    case Types.toStringValue canonicalStringCodec value of
+      Left rejection -> fail ("function conversion was rejected: " <> show rejection)
+      Right _ -> pure ()
   expectSourceValue "canonical begin block capability" "begin yield 11" $ \value -> do
-    assert "a retained total block embeds a CanonicalType"
-      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
-        Just _ -> True
-        Nothing -> False)
     case Types.toStringValue canonicalStringCodec value of
       Left rejection ->
         fail ("canonical block conversion was rejected: " <> show rejection)
@@ -1169,18 +1128,10 @@ testCanonicalTypes = do
   where
     expectCanonicalType source =
       expectSourceValue (source <> " is canonical") source $ \value ->
-        assert (source <> " embeds the narrower CanonicalType")
-          (case Types.datraCanonicalType
-              (Types.interpretedDatraType value) of
-            Just _ -> True
-            Nothing -> False)
-    expectNonCanonicalDatraType source =
-      expectSourceValue (source <> " is noncanonical") source $ \value ->
-        assert (source <> " is a DatraType without a CanonicalType")
-          (case Types.datraCanonicalType
-              (Types.interpretedDatraType value) of
-            Nothing -> True
-            Just _ -> False)
+        case Types.toStringValue canonicalStringCodec value of
+          Left rejection -> fail
+            (source <> " canonical conversion was rejected: " <> show rejection)
+          Right _ -> pure ()
 
 testPrograms :: IO ()
 testPrograms = do
@@ -1787,16 +1738,11 @@ testStringTemplates = do
     Right naturals -> do
       let dependentIdentifier =
             Types.dependentIdentifierTypeValue "n" (const "same") naturals
-      assert "widest dependent identifier is not a CanonicalType"
-        (case Types.datraCanonicalType
-            (Types.interpretedDatraType dependentIdentifier) of
-          Nothing -> True
-          Just _ -> False)
-      assert "dependent identifier type has no proven injective toString"
+      assert "dependent identifier type carries an injective toString proof"
         (case Types.toStringValue
             canonicalStringCodec dependentIdentifier of
-          Left NonInjectiveStringInterpolation -> True
-          _ -> False)
+          Right _ -> True
+          Left _ -> False)
     Left rejection ->
       fail ("Nat construction was rejected: " <> show rejection)
   expectValue
@@ -3725,11 +3671,7 @@ testIdentifiers = do
       "a dependent identifier has a canonical source representation"
       "\"abc%(it)\" : range 0 up" $ \value ->
     assert "the canonical form retains the identifier expression and annotation"
-      ( case Types.datraCanonicalType (Types.interpretedDatraType value) of
-          Just _ -> renderInterpretedValue value
-            == "\"abc%(it)\" : range 0 up"
-          Nothing -> False
-      )
+      (renderInterpretedValue value == "\"abc%(it)\" : range 0 up")
   expectSourceRejection
     "repeated dependent-name holes retain ordinary template ambiguity"
     "\"%(it)%(it)\" : Nat"
@@ -4376,18 +4318,19 @@ testNamedAccess :: IO ()
 testNamedAccess = do
   mapM_ (\(source, expected) -> expectSourceValue source source $ \value ->
       assert (source <> " preserves the selected field") (renderInterpretedValue value == expected))
-    [ ("{a : Nat := 5; b : Str}.a", "a : Nat := 5")
-    , ("{b : Str; a : Nat := 5}.a", "a : Nat := 5")
-    , ("{a? : Nat := 5; b : Str}.a", "a : Nat := 5")
+    [ ("{a : Nat := 5; b : Str}.a", "5 ~> Nat")
+    , ("{b : Str; a : Nat := 5}.a", "5 ~> Nat")
+    , ("{a? : Nat := 5; b : Str}.a", "5 ~> Nat")
     , ( "({b:8;2} ~> {a?:Nat:=2;b?:Nat}).b"
-      , "b : Nat := 8"
+      , "8 ~> Nat"
       )
-    , ("{a:Nat:=5;b:Str}.a of (a:Nat)", "true")
-    , ( "{a:Nat:=5;b:Str}.a ~> (a:Int)"
-      , "a : " <> sourceIntType <> " := 5"
+    , ("{a:Nat:=5;b:Str}.a of Nat", "true")
+    , ("{a:Nat:=5;b:Str}.a ~> Int", "5 ~> " <> sourceIntType)
+    , ("(x:3, {a:5;b:8}).b", "8")
+    , ("{a:5;b:8}.(a + b)", "13")
+    , ( "{a:5;b:8}.(left := a; right := b)"
+      , "(left : 5; right : 8)"
       )
-    , ("(x:3, {a:5;b:8}).b", "b : 8")
-    , ("{a:5;b:8}.a[1] * 2", "10")
     ]
   mapM_ (\(source, expected) ->
       expectSourceRejection source source (== NamedAccessFailed expected))

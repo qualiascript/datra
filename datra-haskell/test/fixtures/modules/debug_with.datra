@@ -1,0 +1,2 @@
+import "multiple_exports" do
+with First; Second do yield x + shift second 3

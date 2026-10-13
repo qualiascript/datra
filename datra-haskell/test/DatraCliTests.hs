@@ -192,18 +192,18 @@ testQualifiedStandardLibraryModule :: Assertion
 testQualifiedStandardLibraryModule =
   withTemporaryPath "datra-cli-std.ast" $ \astPath -> do
     (status, output, errors) <- runDatra
-      [ "build", "--qualified-std", "--source", "yield Std"
+      [ "build", "--qualified-std", "--source", "(Std.(Int))"
       , "--ast-output", astPath, "--output", "-"
       ]
     assertEqual "exit status" ExitSuccess status
     assertEqual "stderr" "" errors
-    assertEqual "qualified module value" "Std\n" output
+    assertEqual "qualified module value" "Std.Int\n" output
 
 testQualifiedStandardLibraryAst :: Assertion
 testQualifiedStandardLibraryAst = do
   (parseStatus, ast, parseErrors) <- runDatra
     [ "ast", "--qualified-std"
-    , "--source", "yield Std.if Std.false then 1 else 11"
+    , "--source", "(Std.(if false then 1 else 11))"
     , "--output", "-"
     ]
   assertEqual "parse exit status" ExitSuccess parseStatus
@@ -232,7 +232,7 @@ testQualifiedStandardLibrarySyntax =
   withTemporaryPath "datra-cli-syntax.ast" $ \astPath -> do
     (status, _, errors) <- runDatra
       [ "build", "--qualified-std"
-      , "--source", "yield if Std.false then 1 else 11"
+      , "--source", "(if Std.false then 1 else 11)"
       , "--ast-output", astPath, "--output", "-"
       ]
     case status of
@@ -245,10 +245,11 @@ testQualifiedStandardLibraryImports :: Assertion
 testQualifiedStandardLibraryImports =
   withTemporaryPath "datra-cli-module.datra" $ \modulePath ->
   withTemporaryPath "datra-cli-import.ast" $ \astPath -> do
-    writeFile modulePath "yield Answer := 42\n"
+    writeFile modulePath "Std.(yield Answer := 42)\n"
     (status, output, errors) <- runDatra
       [ "build", "--qualified-std"
-      , "--source", "Std.import " <> show modulePath <> "\nyield Answer"
+      , "--source", "(Std.(import " <> show modulePath
+          <> " do yield Answer + 0))"
       , "--ast-output", astPath, "--output", "-"
       ]
     assertEqual ("exit status; stderr: " <> errors) ExitSuccess status

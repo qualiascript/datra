@@ -13,8 +13,7 @@ import AtlasMapFederationExpression
   )
 import Data.List (isInfixOf, nub)
 import Evaluation.Construction (makeAsciiString)
-import Evaluation.Error
-  ( InterpretingError (NonInjectiveStringInterpolation) )
+import Evaluation.Error (InterpretingError)
 import Evaluation.Specification.String (valueProducesStrings)
 import Evaluation.ToString.Injectivity (proveInjectiveToString)
 import Evaluation.Value
@@ -40,18 +39,17 @@ toStringValue
 toStringValue codec source =
   if stringConversionIsIdentity source
     then Right source
-    else case datraCanonicalType (interpretedDatraType source) of
-      Nothing -> Left NonInjectiveStringInterpolation
-      Just _ ->
-        if interpretedTypeIsTotal source
-        then
-          Right
-            (makeAsciiString
-              (renderCanonicalString codec source))
-        else
-          case proveInjectiveToString (decodeCanonicalString codec) source of
-            Just proof -> Right (pointwiseFederation proof)
-            Nothing -> Left NonInjectiveStringInterpolation
+    else if interpretedTypeIsTotal source
+      then
+        Right
+          (makeAsciiString
+            (renderCanonicalString codec source))
+      else
+        Right (pointwiseFederation
+          (proveInjectiveToString
+            (interpretedDatraType source)
+            (decodeCanonicalString codec)
+            source))
   where
     pointwiseFederation proof =
       makeInterpretedValue

@@ -10,7 +10,7 @@ module SyntaxDefinitions
   , declarationRules, compileSyntaxTemplatesFromExpression
   , contextualSyntaxRules
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
-  , qualifySyntaxRule, expandSyntax
+  , expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
   , normalizeSyntaxExpansion
   ) where
@@ -113,18 +113,42 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
       [_, condition] -> Right (Assert True condition)
       captures -> invalidBody symbol captures)
   , ("datra.import", \case
-      [AsciiStringLiteral path] -> Right (Import False path)
+      [paths, body@FunctionBody {}]
+        | Just requested <- importPaths paths
+        , not (null requested) -> Right (Import requested body)
       captures -> invalidBody symbol captures)
-  , ("datra.importAll", \case
-      [AsciiStringLiteral "all", AsciiStringLiteral path] ->
-        Right (Import True path)
+  , ("datra.with", \case
+      [modules, FunctionBody bindings result] -> Right
+        (ScopeAccess
+          (ArgumentMap (withModuleOperands modules))
+          (Program bindings result))
       captures -> invalidBody symbol captures)
   ]
   where
     invalidBody name _ = Left (UnknownSyntaxControlAdapter name)
 
+importPaths :: Expression -> Maybe [String]
+importPaths value = case value of
+  AsciiStringLiteral path -> Just [path]
+  AtlasMap paths -> concat <$> traverse importPaths paths
+  MapSequence paths -> concat <$> traverse importPaths paths
+  MapConcatenation left right ->
+    (<>) <$> importPaths left <*> importPaths right
+  SyntaxBoundary inner -> importPaths inner
+  _ -> Nothing
+
+withModuleOperands :: Expression -> [Expression]
+withModuleOperands value = case value of
+  AtlasMap modules -> modules
+  MapSequence modules -> modules
+  MapConcatenation left right ->
+    withModuleOperands left <> withModuleOperands right
+  SyntaxBoundary inner -> withModuleOperands inner
+  _ -> [value]
+
 blockEntries :: Expression -> [Expression]
 blockEntries (AtlasMap entries) = entries
+blockEntries (SyntaxBoundary inner) = blockEntries inner
 blockEntries value = [value]
 
 absorbAssignedConcatenation :: Expression -> Expression
@@ -205,22 +229,6 @@ syntaxTemplateLiteralPrefix = foldr prefix []
   where
     prefix (SyntaxLiteral literal) rest = literal : rest
     prefix (SyntaxHole _) _ = []
-
--- | Qualify a literal-headed syntax declaration. A hole-led declaration has
--- no surface head to qualify, so exposing it through a qualified import would
--- silently duplicate its unqualified spelling (and change declaration-order
--- precedence for an accompanying @import all@).
-qualifySyntaxRule :: String -> SyntaxRule -> Maybe SyntaxRule
-qualifySyntaxRule namespace rule = case syntaxTemplate rule of
-  SyntaxTemplate (SyntaxLiteral name : pieces) -> Just rule
-    { syntaxName = qualifiedName
-    , syntaxTemplate = SyntaxTemplate
-        (SyntaxLiteral (namespace <> "." <> name) : pieces)
-    }
-  _ -> Nothing
-  where
-    originalName = syntaxName rule
-    qualifiedName = namespace <> "." <> originalName
 
 -- | Expand captures selected by one declared syntax template.
 expandSyntax

@@ -6,19 +6,16 @@
 module Evaluation.Value
   ( ASTMetaCategory (..)
   , BuiltinMetaType (..)
-  , CanonicalType
+  , CanonicalStringImplementation (..)
   , DatraType
   , DatraTypeFamily (..)
-  , makeCanonicalType
-  , canonicalTypeAsDatraType
-  , makeNonCanonicalDatraType
   , structuralDatraType
   , composedStructuralDatraType
   , functionDatraType
   , builtinMetaDatraType
   , totalBlockDatraType
   , datraTypeFamily
-  , datraCanonicalType
+  , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
   , EvaluatedFunction (..)
@@ -26,7 +23,6 @@ module Evaluation.Value
   , functionSyntaxEquivalent
   , makeFunctionValue
   , syntaxCategoryTypeValue
-  , astTypeValue
   , functionAlternatives
   , isFunctionFamily
   , templateTypeValue
@@ -34,6 +30,7 @@ module Evaluation.Value
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
+  , builtinMetaTypeCanonicalString
   , naturalRangeTypeValue
   , integerRangeTypeValue
   , naturalValuedRangeTypeValue
@@ -395,6 +392,9 @@ functionSyntaxEquivalent left right =
         (BlockSyntaxHole leftValue)
         (BlockSyntaxHole rightValue) = equivalent leftValue rightValue
     holeEquivalent
+        (FunctionBodySyntaxHole leftValue)
+        (FunctionBodySyntaxHole rightValue) = equivalent leftValue rightValue
+    holeEquivalent
         (IdentifierExpressionSyntaxHole leftValue)
         (IdentifierExpressionSyntaxHole rightValue) =
           equivalent leftValue rightValue
@@ -463,9 +463,9 @@ builtinMetaTypeName :: BuiltinMetaType -> String
 builtinMetaTypeName AnyMetaType = "Any"
 builtinMetaTypeName OrdinalMetaType = "Ordinal"
 builtinMetaTypeName (ASTMetaType category) = case category of
-  AnyAST -> "_AST"
   ExpressionAST -> "Expr"
   BlockAST -> "Block"
+  FunctionBodyAST -> "FunctionBody"
   IdentifierExpressionAST -> "IdenExp"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
@@ -474,18 +474,29 @@ builtinMetaTypeName IntValRangeMetaType = "IntValRange"
 builtinMetaTypeName TemplateMetaType = "Template"
 builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
+builtinMetaTypeCanonicalString :: BuiltinMetaType -> String
+builtinMetaTypeCanonicalString (ASTMetaType category) =
+  "!~\"" <> externalSymbol category <> "\""
+  where
+    externalSymbol ExpressionAST = "datra.Expr"
+    externalSymbol BlockAST = "datra.Block"
+    externalSymbol FunctionBodyAST = "datra.FunctionBody"
+    externalSymbol IdentifierExpressionAST = "datra.IdenExp"
+builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
+  "!~\"datra.SyntaxTemplate\""
+builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
+
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
 builtinMetaTypeValue kind = makeInterpretedValue
   (builtinMetaDatraType kind)
   (BuiltinMetaTypeForm kind) NoInsertion emptyInterpretedMap
   (SingletonAtlasMapFederation emptyInterpretedMap) NonTotalInterpretedMap (BuiltinMetaTypeSemantics kind)
 
-anyTypeValue, ordinalTypeValue, astTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
+anyTypeValue, ordinalTypeValue, naturalRangeTypeValue, integerRangeTypeValue,
   naturalValuedRangeTypeValue, integerValuedRangeTypeValue,
   templateTypeValue, syntaxTemplateTypeValue :: InterpretedValue
 anyTypeValue = builtinMetaTypeValue AnyMetaType
 ordinalTypeValue = builtinMetaTypeValue OrdinalMetaType
-astTypeValue = builtinMetaTypeValue (ASTMetaType AnyAST)
 naturalRangeTypeValue = builtinMetaTypeValue NatRangeMetaType
 integerRangeTypeValue = builtinMetaTypeValue IntRangeMetaType
 naturalValuedRangeTypeValue = builtinMetaTypeValue NatValRangeMetaType

@@ -188,7 +188,7 @@ data Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
   | GenericReferenceExpression GenericReference
   | InModule String Expression
-  | Import Bool String
+  | Import [String] Expression
   | SyntaxType Expression Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
   | FunctionBody [Expression] Expression
@@ -201,7 +201,7 @@ data Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
-  | NamedAccess Expression IdentifierString
+  | ScopeAccess Expression Expression
   | MapAccess Expression Expression
   | MapSpecification Expression Expression
   | Overload Expression Expression
@@ -258,6 +258,8 @@ yieldedIdentifier
   :: Expression
   -> Maybe (IdentifierString, Expression, Maybe Expression)
 yieldedIdentifier (Program _ result) = yieldedIdentifier result
+yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
+yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier (IdentifierOperation name annotation given) =
   Just (name, annotation, given)
 yieldedIdentifier _ = Nothing
@@ -351,7 +353,7 @@ data OperatorExpression
       (GenericIntroduction OperatorExpression)
   | GenericReferenceValue GenericReference
   | InModuleValue String OperatorExpression
-  | ImportValue Bool String
+  | ImportValue [String] OperatorExpression
   | SyntaxTypeValue OperatorExpression OperatorExpression
   | FunctionTypeValue
       [GenericBinder OperatorExpression]
@@ -367,7 +369,7 @@ data OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
-  | NamedAccessValue OperatorExpression IdentifierString
+  | ScopeAccessValue OperatorExpression OperatorExpression
   | Access OperatorExpression OperatorExpression
   | Specify OperatorExpression OperatorExpression
   | OverloadValue OperatorExpression OperatorExpression
@@ -493,7 +495,8 @@ normalizeExpression (GenericIntroductionExpression introduction) =
 normalizeExpression (GenericReferenceExpression reference) =
   GenericReferenceExpression reference
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
-normalizeExpression (Import allNames path) = Import allNames path
+normalizeExpression (Import paths body) =
+  Import paths (normalizeExpression body)
 normalizeExpression (SyntaxType templates signature) =
   SyntaxType
     (normalizeExpression templates)
@@ -523,10 +526,8 @@ normalizeExpression (Exponentiation left right) =
   Exponentiation (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapConcatenation left right) =
   MapConcatenation (normalizeExpression left) (normalizeExpression right)
-normalizeExpression (NamedAccess value name) = NamedAccess (normalizeExpression value) name
--- The payload of a scope identifier is its canonical reference spelling.
--- It resolves the binding directly, including quoted names and captured names,
--- without materializing the current block's declaration map.
+normalizeExpression (ScopeAccess source body) =
+  ScopeAccess (normalizeExpression source) (normalizeExpression body)
 normalizeExpression (MapAccess left right) =
   MapAccess (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (MapSpecification left right) =
@@ -674,7 +675,7 @@ lower (GenericIntroductionExpression introduction) =
 lower (GenericReferenceExpression reference) =
   GenericReferenceValue reference
 lower (InModule path value) = InModuleValue path (lower value)
-lower (Import allNames path) = ImportValue allNames path
+lower (Import paths body) = ImportValue paths (lower body)
 lower (SyntaxType templates signature) =
   SyntaxTypeValue (lower templates) (lower signature)
 lower (FunctionTypeExpression generics input output) =
@@ -697,7 +698,7 @@ lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
   Concatenate (lower left) (lower right)
-lower (NamedAccess value name) = NamedAccessValue (lower value) name
+lower (ScopeAccess source body) = ScopeAccessValue (lower source) (lower body)
 lower (MapAccess left right) = Access (lower left) (lower right)
 lower (MapSpecification left right) = Specify (lower left) (lower right)
 lower (Overload left right) = OverloadValue (lower left) (lower right)
@@ -892,7 +893,10 @@ prettyOperator (GenericReferenceValue reference) =
         (genericReferenceRole reference))
     ]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
-prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
+prettyOperator (ImportValue paths body) = prettyForm "import"
+  [ prettyForm "paths" (map (pretty . renderAsciiStringLiteral) paths)
+  , prettyOperator body
+  ]
 prettyOperator (SyntaxTypeValue templates signature) =
   prettyBinary SyntaxTypeOperator templates signature
 prettyOperator (FunctionTypeValue [] input output) =
@@ -921,7 +925,8 @@ prettyOperator (Power left right) =
   prettyBinary ExponentiationOperator left right
 prettyOperator (Concatenate left right) =
   prettyBinary ConcatenationOperator left right
-prettyOperator (NamedAccessValue value (IdentifierString name)) = prettyForm "." [prettyOperator value, pretty (renderAsciiStringLiteral name)]
+prettyOperator (ScopeAccessValue source body) =
+  prettyForm "." [prettyOperator source, prettyOperator body]
 prettyOperator (Access left right) =
   prettyBinary AccessOperator left right
 prettyOperator (Specify left right) =
@@ -1197,7 +1202,8 @@ traverseExpressionChildren visit expression = case expression of
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
-  NamedAccess value name -> (`NamedAccess` name) <$> visit value
+  Import paths body -> Import paths <$> visit body
+  ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
   SyntaxType templates signature ->
     SyntaxType <$> visit templates <*> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given

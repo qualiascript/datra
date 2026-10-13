@@ -1,6 +1,6 @@
-Std.'import($all; "std")
-
-yield Nested := begin
-  import "library_one"
-  x := LibraryOne.x[1] + 1
-yield public this
+Std.(
+import "library_one" do
+  yield Nested := begin
+    x := LibraryOne.x + 1
+  yield public this
+)

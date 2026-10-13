@@ -143,6 +143,13 @@ rewrite _ _ _ _ _ _ expression
 
 rewrite mode depth reserved active resolver bound expression =
   case expression of
+    -- A short scope access evaluates its RHS name inside the child scope
+    -- opened by the rewritten source. It is not an ambient dependency to
+    -- capture or rename independently.
+    ScopeAccess source body@IdentifierReference {} ->
+      ScopeAccess
+        <$> rewrite mode depth reserved active resolver bound source
+        <*> pure body
     InModule path body
       | Just imported <- resolveDependencyModule resolver path ->
           rewrite mode (depth + 1) reserved active imported bound body
@@ -252,21 +259,20 @@ transparentDependencyBlock definitions result =
 
 referencePath :: Expression -> Maybe [String]
 referencePath
-    (MapAccess
-      (NamedAccess
-        thisValue
-        (IdentifierString name))
-      (EllipsisNatural 1)) =
-  if isContextualAccessOf (IdentifierString "_this") thisValue
-    then Just ["\0this", name]
-    else Nothing
+    (ScopeAccess
+      thisValue
+      (IdentifierReference (IdentifierString name)))
+  | isContextualAccessOf (IdentifierString "_this") thisValue =
+      Just ["\0this", name]
 referencePath expression
   | FunctionApplication
       (IdentifierReference (IdentifierString name))
       (EllipsisNatural 0)
       <- expression = Just [name]
 referencePath (IdentifierReference (IdentifierString name)) = Just [name]
-referencePath (NamedAccess source (IdentifierString name)) = (<> [name]) <$> referencePath source
+referencePath
+    (ScopeAccess source (IdentifierReference (IdentifierString name))) =
+  (<> [name]) <$> referencePath source
 referencePath _ = Nothing
 
 -- A reference rooted in a shadowing-consistent binding is one stable lexical

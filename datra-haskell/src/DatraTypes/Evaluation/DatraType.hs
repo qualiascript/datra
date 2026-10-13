@@ -8,28 +8,25 @@
 module Evaluation.DatraType
   ( ASTMetaCategory (..)
   , BuiltinMetaType (..)
-  , CanonicalType
+  , CanonicalStringImplementation (..)
   , DatraType
   , DatraTypeFamily (..)
-  , makeCanonicalType
-  , canonicalTypeAsDatraType
-  , makeNonCanonicalDatraType
   , structuralDatraType
   , functionDatraType
   , builtinMetaDatraType
   , totalBlockDatraType
   , composedStructuralDatraType
   , datraTypeFamily
-  , datraCanonicalType
+  , canonicalStringImplementation
   ) where
 
 -- | Host-provided primitive families exposed through declarations in
 -- @libs/std.datra@.  These names are capabilities, not language-level
 -- bindings; the standard library remains responsible for publishing them.
 data ASTMetaCategory
-  = AnyAST
-  | ExpressionAST
+  = ExpressionAST
   | BlockAST
+  | FunctionBodyAST
   | IdentifierExpressionAST
   deriving (Eq, Show)
 
@@ -59,68 +56,53 @@ newtype TypeImplementations = TypeImplementations
   { implementationFamily :: DatraTypeFamily }
   deriving (Eq, Show)
 
--- | The narrower class of Datra types with an injective, round-trippable
--- source representation. Specification and subfederation remain mandatory.
-newtype CanonicalType = CanonicalType TypeImplementations
+-- | The canonical-string implementation carried by every Datra type.
+data CanonicalStringImplementation
+  = StructuralCanonicalString
+  | FunctionCanonicalString
+  | BuiltinMetaCanonicalString BuiltinMetaType
+  | TotalBlockCanonicalString
   deriving (Eq, Show)
 
--- | The complete runtime typing contract. Every Datra type implements
--- specification and subfederation; only the canonical branch additionally
--- promises an injective source representation.
-data DatraType
-  = CanonicalDatraType CanonicalType
-  | NonCanonicalDatraType TypeImplementations
+data DatraType = DatraType
+  TypeImplementations
+  CanonicalStringImplementation
   deriving (Eq, Show)
 
 structuralDatraType :: DatraType
-structuralDatraType = canonicalTypeAsDatraType
-  (makeCanonicalType StructuralTypeFamily)
+structuralDatraType = makeDatraType
+  StructuralTypeFamily StructuralCanonicalString
 
 composedStructuralDatraType
   :: [DatraType]
   -> DatraType
-composedStructuralDatraType components =
-  if all (maybe False (const True) . datraCanonicalType) components
-    then structuralDatraType
-    else makeNonCanonicalDatraType StructuralTypeFamily
+composedStructuralDatraType _ = structuralDatraType
 
 functionDatraType :: DatraType
-functionDatraType = canonicalTypeAsDatraType (makeCanonicalType FunctionTypeFamily)
+functionDatraType = makeDatraType
+  FunctionTypeFamily FunctionCanonicalString
 
 builtinMetaDatraType :: BuiltinMetaType -> DatraType
 builtinMetaDatraType kind =
-  case kind of
-    AnyMetaType -> canonicalTypeAsDatraType
-      (makeCanonicalType (BuiltinMetaTypeFamily kind))
-    OrdinalMetaType -> canonicalTypeAsDatraType
-      (makeCanonicalType (BuiltinMetaTypeFamily kind))
-    TemplateMetaType -> canonicalTypeAsDatraType
-      (makeCanonicalType (BuiltinMetaTypeFamily kind))
-    _ -> makeNonCanonicalDatraType (BuiltinMetaTypeFamily kind)
+  makeDatraType
+    (BuiltinMetaTypeFamily kind) (BuiltinMetaCanonicalString kind)
 
 -- | An evaluated begin/yield block is a total singleton type.  Its sole
 -- member is the yielded value; block source is retained separately as
 -- canonical presentation provenance rather than becoming nominal identity.
 totalBlockDatraType :: DatraType
-totalBlockDatraType = canonicalTypeAsDatraType
-  (makeCanonicalType TotalBlockTypeFamily)
+totalBlockDatraType = makeDatraType
+  TotalBlockTypeFamily TotalBlockCanonicalString
 
--- | Constructing either layer requires both fundamental typing operations.
--- There is deliberately no constructor for a partial Datra type.
-makeCanonicalType
+-- | There is no constructor for a Datra type without its canonical-string
+-- implementation. Keeping this constructor private makes injectivity part of
+-- the type witness rather than a second, fallible lookup table.
+makeDatraType
   :: DatraTypeFamily
-  -> CanonicalType
-makeCanonicalType family =
-  CanonicalType (TypeImplementations family)
-
-canonicalTypeAsDatraType :: CanonicalType -> DatraType
-canonicalTypeAsDatraType = CanonicalDatraType
-
-makeNonCanonicalDatraType
-  :: DatraTypeFamily
+  -> CanonicalStringImplementation
   -> DatraType
-makeNonCanonicalDatraType family =
-  NonCanonicalDatraType (TypeImplementations family)
+makeDatraType family stringImplementation =
+  DatraType (TypeImplementations family) stringImplementation
 
 datraTypeFamily
   :: DatraType
@@ -128,14 +110,10 @@ datraTypeFamily
 datraTypeFamily =
   implementationFamily . datraTypeImplementations
 
-datraCanonicalType :: DatraType -> Maybe CanonicalType
-datraCanonicalType datraType =
-  case datraType of
-    CanonicalDatraType canonical -> Just canonical
-    NonCanonicalDatraType _ -> Nothing
+canonicalStringImplementation
+  :: DatraType
+  -> CanonicalStringImplementation
+canonicalStringImplementation (DatraType _ implementation) = implementation
 
 datraTypeImplementations :: DatraType -> TypeImplementations
-datraTypeImplementations datraType =
-  case datraType of
-    CanonicalDatraType (CanonicalType implementations) -> implementations
-    NonCanonicalDatraType implementations -> implementations
+datraTypeImplementations (DatraType implementations _) = implementations

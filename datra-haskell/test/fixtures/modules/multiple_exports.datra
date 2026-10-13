@@ -1,0 +1,14 @@
+Std.(
+yield (
+  First := begin
+    x := 3
+  yield public this
+  Second := begin
+    let _offset := 4
+    y := 4
+    shiftSecond :=
+      "shift second %Int" % ({value? : Int} -> Int) do
+        yield value + _offset
+  yield public this
+)
+)

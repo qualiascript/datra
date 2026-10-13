@@ -1,5 +1,5 @@
-Std.'import($all; "std")
-
+Std.(
 yield DeclaredName := begin
   x := 12
 yield public this
+)

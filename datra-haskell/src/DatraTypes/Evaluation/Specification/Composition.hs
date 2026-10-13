@@ -80,10 +80,8 @@ selectFederationMember source target
           DecisionUndecidable
         Left _ -> DecisionRefuted
   | BuiltinMetaTypeForm AnyMetaType <- interpretedForm target =
-      case datraCanonicalType (interpretedDatraType source) of
-        Just _ -> DecisionProved
-          (EvaluatedCanonicalTypeMember (interpretedSemanticResult source))
-        Nothing -> DecisionRefuted
+      DecisionProved
+        (EvaluatedCanonicalTypeMember (interpretedSemanticResult source))
   | BuiltinMetaTypeForm OrdinalMetaType <- interpretedForm target =
       case BuiltinMeta.decideBuiltinMetaSubfederation source OrdinalMetaType of
         DecisionProved () -> DecisionProved

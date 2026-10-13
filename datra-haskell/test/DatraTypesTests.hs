@@ -440,34 +440,26 @@ testDiagnostics = do
   assert "unnamed imported files have a localized module failure"
     ( localizeDiagnostic English
         (Types.ModuleEvaluationFailed
-          Types.ImportedModuleRequiresSimpleIdentifierType)
+          Types.ImportedModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
-          "imported file must yield a simple identifier type"
-          ["use yield Name := value"]
+          "imported file must yield an identifier-binder federation"
+          ["use yield Name := value or a federation of identifier binders"]
       && localizeDiagnostic Romanian
         (Types.ModuleEvaluationFailed
-          Types.ImportedModuleRequiresSimpleIdentifierType)
+          Types.ImportedModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
-          "fișierul importat trebuie să producă un tip de identificator simplu"
-          ["folosiți yield Nume := valoare"]
-      && localizeDiagnostic English
-        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresTotalValue)
-        == LocalizedMessage
-          "imported identifier must have a total value" []
-      && localizeDiagnostic Romanian
-        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresTotalValue)
-        == LocalizedMessage
-          "identificatorul importat trebuie să aibă o valoare totală" []
+          "fișierul importat trebuie să producă o federație de identificatori"
+          ["folosiți yield Nume := valoare sau o federație de identificatori"]
       && localizeDiagnostic English
         (Types.ModuleEvaluationFailed
-          Types.ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
+          Types.ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
         == LocalizedMessage
-          "import all requires a total map of simple identifier types" []
+          "module scope requires a total map of simple identifier types" []
       && localizeDiagnostic Romanian
         (Types.ModuleEvaluationFailed
-          Types.ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
+          Types.ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
         == LocalizedMessage
-          "import all necesită o hartă totală de tipuri de identificator simplu" []
+          "domeniul modulului necesită o hartă totală de tipuri de identificator simplu" []
     )
   assert "named-access failures are localized from semantic fields"
     ( localizeDiagnostic English
@@ -476,16 +468,6 @@ testDiagnostics = do
       && localizeDiagnostic Romanian
         (Types.NamedAccessFailed (Types.NamedFieldNotFound "field"))
         == LocalizedMessage "câmpul denumit nu există" ["câmp: field"]
-    )
-  assert "noncanonical identifier annotations are localized structurally"
-    ( localizeDiagnostic English Types.NonCanonicalIdentifierTypeAnnotation
-        == LocalizedMessage
-          "identifier type annotation is not canonical"
-          ["identifier type annotations must implement canonical toString"]
-      && localizeDiagnostic Romanian Types.NonCanonicalIdentifierTypeAnnotation
-        == LocalizedMessage
-          "adnotarea de tip a identificatorului nu este canonică"
-          ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
     )
   assert "unowned generic introductions have a bilingual diagnostic"
     ( localizeDiagnostic English

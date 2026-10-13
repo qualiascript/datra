@@ -111,10 +111,8 @@ data ExternalFailure
 data ModuleEvaluationFailure
   = StandardLibraryParseFailure FilePath String
   | StandardLibraryRequiresDeclarationBlock FilePath
-  | ImportOutsideScope
-  | ImportedModuleRequiresSimpleIdentifierType
-  | ImportedModuleRequiresTotalValue
-  | ImportAllRequiresTotalMapOfSimpleIdentifierTypes
+  | ImportedModuleRequiresIdentifierBinderFederation
+  | ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes
   | ModularRequiresTotalMapOfSimpleIdentifierTypes
   | ModularIdentifierAlreadyMarked String
   | ImportedModuleRequiresNamedExports
@@ -141,7 +139,6 @@ data InterpretingError
   | ExternalEvaluationFailed ExternalFailure
   | ModuleEvaluationFailed ModuleEvaluationFailure
   | ExpectedBuiltinType String
-  | NonCanonicalIdentifierTypeAnnotation
   | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String

@@ -9,9 +9,7 @@ import DatraTypes
   , FunctionFailure (NoApplicableFunctionAlternative)
   , InterpretedValue
   , InterpretingError (..)
-  , datraCanonicalType
   , interpretedCanonicalResult
-  , interpretedDatraType
   , interpretedTypeIsTotal
   , toStringValue
   )
@@ -26,14 +24,9 @@ import Test.Tasty.HUnit
   , testCase
   )
 
-data ExpectedStringCapability
-  = CanonicalString
-  | NonCanonicalString
-
 data DatraTypeExample = DatraTypeExample
   { exampleName :: String
   , exampleSource :: String
-  , exampleStringCapability :: ExpectedStringCapability
   }
 
 datraTypeLawTests :: TestTree
@@ -61,15 +54,18 @@ standardLibraryTypeExamples =
   , canonical "Str" "Str"
   , canonical "IdenStr" "IdenStr"
   , canonical "Bool" "Bool"
-  , noncanonical "AST" "!~\"datra.AST\""
-  , noncanonical "private Expr primitive" "!~\"datra.Expr\""
-  , noncanonical "private Block primitive" "!~\"datra.Block\""
-  , noncanonical "NatRange" "NatRange"
-  , noncanonical "IntRange" "IntRange"
-  , noncanonical "NatValRange" "NatValRange"
-  , noncanonical "IntValRange" "IntValRange"
+  , canonical "private Expr primitive" "!~\"datra.Expr\""
+  , canonical "private identifier-expression primitive"
+      "!~\"datra.IdenExp\""
+  , canonical "private Block primitive" "!~\"datra.Block\""
+  , canonical "private function-body primitive"
+      "!~\"datra.FunctionBody\""
+  , canonical "NatRange" "NatRange"
+  , canonical "IntRange" "IntRange"
+  , canonical "NatValRange" "NatValRange"
+  , canonical "IntValRange" "IntValRange"
   , canonical "Template" "Template"
-  , noncanonical "private SyntaxTemplate primitive" "!~\"datra.SyntaxTemplate\""
+  , canonical "private SyntaxTemplate primitive" "!~\"datra.SyntaxTemplate\""
   ]
 
 compositeTypeExamples :: [DatraTypeExample]
@@ -82,15 +78,13 @@ compositeTypeExamples =
   , canonical "simple identifier" "value : Nat"
   , canonical "total begin/yield block" "begin yield 11"
   , canonical "function" "Nat -> Nat"
-  , noncanonical "map containing a noncanonical type" "(Nat; (!~\"datra.AST\"))"
+  , canonical "map containing a syntax category"
+      "(Nat; (!~\"datra.Expr\"))"
   , canonical "federation containing a function" "Nat | (Nat -> Nat)"
   ]
 
 canonical :: String -> String -> DatraTypeExample
-canonical name source = DatraTypeExample name source CanonicalString
-
-noncanonical :: String -> String -> DatraTypeExample
-noncanonical name source = DatraTypeExample name source NonCanonicalString
+canonical = DatraTypeExample
 
 datraTypeExampleTests :: DatraTypeExample -> TestTree
 datraTypeExampleTests example =
@@ -104,39 +98,19 @@ datraTypeExampleTests example =
         "()"
     , testCase "string capability" $ do
         value <- requireExpression source
-        assertStringCapability (exampleStringCapability example) value
+        assertStringCapability value
     ]
   where
     source = exampleSource example
 
 assertStringCapability
-  :: ExpectedStringCapability
-  -> InterpretedValue
+  :: InterpretedValue
   -> Assertion
-assertStringCapability expected value =
-  case expected of
-    CanonicalString -> do
-      assertBool "canonical value embeds CanonicalType"
-        (case datraCanonicalType (interpretedDatraType value) of
-          Just _ -> True
-          Nothing -> False)
-      case toStringValue canonicalStringCodec value of
-        Left rejection ->
-          assertFailure ("canonical toString failed: " <> show rejection)
-        Right _ -> assertCanonicalRoundTrip value
-    NonCanonicalString -> do
-      assertBool "noncanonical value is still a DatraType"
-        (case datraCanonicalType (interpretedDatraType value) of
-          Nothing -> True
-          Just _ -> False)
-      case toStringValue canonicalStringCodec value of
-        Left NonInjectiveStringInterpolation -> pure ()
-        Left rejection ->
-          assertFailure ("unexpected canonical toString failure: "
-            <> show rejection)
-        Right rendered ->
-          assertFailure ("noncanonical value gained canonical toString: "
-            <> renderInterpretedValue rendered)
+assertStringCapability value =
+  case toStringValue canonicalStringCodec value of
+    Left rejection ->
+      assertFailure ("canonical toString failed: " <> show rejection)
+    Right _ -> assertCanonicalRoundTrip value
 
 assertCanonicalRoundTrip :: InterpretedValue -> Assertion
 assertCanonicalRoundTrip original = do
