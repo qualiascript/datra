@@ -682,7 +682,7 @@ regressionTests = do
       (Exponentiation EllipsisLiteral (natural 0))
       (natural 3))
   mapM_ (\value -> assertAstRoundTrip "new syntax AST roundtrip" (renderExpression value))
-    [ Import False "library_one", Import True "std"
+    [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
     , ScopeAccess (ref "_this") (ref "abc")
     , SyntaxType (StringTemplate
@@ -798,12 +798,13 @@ regressionTests = do
   assertAstOutput "module remains an ordinary identifier"
     "module : Nat"
     (AST.dependentIdentifierType "module" (ref "Nat"))
-  assertParsed "declared qualified import lowers to the structural import AST"
-    "import \"library_one\""
-    (Import False "library_one")
-  assertParsed "declared import-all lowers to the same structural import AST"
-    "import all \"library_one\""
-    (Import True "library_one")
+  assertParsed "declared import lowers paths and its function body structurally"
+    "import \"library_one\" do yield 7"
+    (Import ["library_one"] (FunctionBody [] (natural 7)))
+  assertParsed "declared import accepts multiple paths"
+    "import (\"library_one\"; \"library_two\") do yield 7"
+    (Import ["library_one", "library_two"]
+      (FunctionBody [] (natural 7)))
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
     "begin let x : 10 yield x"
@@ -2355,7 +2356,6 @@ genExpression =
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
     , pure (ref "_this")
-    , Import <$> Gen.bool <*> Gen.element ["std", "library_one", "path/library_two"]
     , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
@@ -2368,6 +2368,8 @@ genExpression =
     , Gen.subterm2 genExpression genExpression FunctionType
     , Gen.subterm2 genExpression genExpression FunctionApplication
     , Gen.subterm2 genExpression genExpression ScopeAccess
+    , Gen.subterm genExpression
+        (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
     , Gen.subterm genExpression
         (SyntaxType (StringTemplate

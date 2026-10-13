@@ -397,16 +397,12 @@ localizeModuleFailure failure =
     StandardLibraryRequiresDeclarationBlock path ->
       LocalizedMessage "standard library must contain a declaration block"
         ["path: " <> path]
-    ImportOutsideScope ->
-      LocalizedMessage "import must be a scope entry" []
-    ImportedModuleRequiresSimpleIdentifierType ->
-      LocalizedMessage "imported file must yield a simple identifier type"
-        ["use yield Name := value"]
-    ImportedModuleRequiresTotalValue ->
-      LocalizedMessage "imported identifier must have a total value" []
-    ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
+    ImportedModuleRequiresIdentifierBinderFederation ->
+      LocalizedMessage "imported file must yield an identifier-binder federation"
+        ["use yield Name := value or a federation of identifier binders"]
+    ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
-        "import all requires a total map of simple identifier types" []
+        "module scope requires a total map of simple identifier types" []
     ModularRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "modular requires a total map of simple identifier types" []

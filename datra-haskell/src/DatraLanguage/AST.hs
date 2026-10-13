@@ -188,7 +188,7 @@ data Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
   | GenericReferenceExpression GenericReference
   | InModule String Expression
-  | Import Bool String
+  | Import [String] Expression
   | SyntaxType Expression Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
   | FunctionBody [Expression] Expression
@@ -258,6 +258,8 @@ yieldedIdentifier
   :: Expression
   -> Maybe (IdentifierString, Expression, Maybe Expression)
 yieldedIdentifier (Program _ result) = yieldedIdentifier result
+yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
+yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier (IdentifierOperation name annotation given) =
   Just (name, annotation, given)
 yieldedIdentifier _ = Nothing
@@ -351,7 +353,7 @@ data OperatorExpression
       (GenericIntroduction OperatorExpression)
   | GenericReferenceValue GenericReference
   | InModuleValue String OperatorExpression
-  | ImportValue Bool String
+  | ImportValue [String] OperatorExpression
   | SyntaxTypeValue OperatorExpression OperatorExpression
   | FunctionTypeValue
       [GenericBinder OperatorExpression]
@@ -493,7 +495,8 @@ normalizeExpression (GenericIntroductionExpression introduction) =
 normalizeExpression (GenericReferenceExpression reference) =
   GenericReferenceExpression reference
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
-normalizeExpression (Import allNames path) = Import allNames path
+normalizeExpression (Import paths body) =
+  Import paths (normalizeExpression body)
 normalizeExpression (SyntaxType templates signature) =
   SyntaxType
     (normalizeExpression templates)
@@ -672,7 +675,7 @@ lower (GenericIntroductionExpression introduction) =
 lower (GenericReferenceExpression reference) =
   GenericReferenceValue reference
 lower (InModule path value) = InModuleValue path (lower value)
-lower (Import allNames path) = ImportValue allNames path
+lower (Import paths body) = ImportValue paths (lower body)
 lower (SyntaxType templates signature) =
   SyntaxTypeValue (lower templates) (lower signature)
 lower (FunctionTypeExpression generics input output) =
@@ -890,7 +893,10 @@ prettyOperator (GenericReferenceValue reference) =
         (genericReferenceRole reference))
     ]
 prettyOperator (InModuleValue path value) = prettyForm "in-module" [pretty (renderAsciiStringLiteral path), prettyOperator value]
-prettyOperator (ImportValue allNames path) = prettyForm (if allNames then "import-all" else "import") [pretty (renderAsciiStringLiteral path)]
+prettyOperator (ImportValue paths body) = prettyForm "import"
+  [ prettyForm "paths" (map (pretty . renderAsciiStringLiteral) paths)
+  , prettyOperator body
+  ]
 prettyOperator (SyntaxTypeValue templates signature) =
   prettyBinary SyntaxTypeOperator templates signature
 prettyOperator (FunctionTypeValue [] input output) =
@@ -1196,6 +1202,7 @@ traverseExpressionChildren visit expression = case expression of
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c
   InModule path value -> InModule path <$> visit value
+  Import paths body -> Import paths <$> visit body
   ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
   SyntaxType templates signature ->
     SyntaxType <$> visit templates <*> visit signature

@@ -158,6 +158,7 @@ module DatraTypes
   , concatenateValuesWithEquivalenceView
   , mapLengthValue
   , ArgumentSchema
+  , argumentSchemaFromValue
   , argumentSlotSchema
   , orderedArgumentSchema
   , unorderedArgumentSchema
@@ -317,6 +318,7 @@ import Evaluation.Map
 import Evaluation.Overload
   ( ArgumentSchema
   , GenericArgumentBinder (..)
+  , argumentSchemaFromValue
   , argumentSchemaBindings
   , argumentSchemaDomain
   , argumentSchemaBodyDomain

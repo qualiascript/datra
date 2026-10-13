@@ -7,7 +7,6 @@
 module Interpreting
   ( ModuleSource (..)
   , EvaluationMode (..)
-  , moduleName
   , moduleExportNames
   , moduleSyntaxRules
   , importInvocation
@@ -87,7 +86,6 @@ import DatraLanguage.AST
   , isContextualAccessOf
   , expressionChildren
   , mapExpressionChildren
-  , yieldedIdentifier
   )
 import DatraLanguage.SyntaxTemplate
   ( FunctionSyntax (FunctionSyntax)
@@ -115,7 +113,6 @@ import SyntaxRewriting
   , rewriteExplicitSyntax
   , rewriteImplicitSyntax
   )
-import SyntaxTemplateMatching (matchSyntaxRulesWith)
 import Rendering (renderCanonicalResult, renderInterpretedValue)
 import GenericScopeProtection
 import ScopeProtection
@@ -125,8 +122,6 @@ import SyntaxDefinitions
   , SyntaxTemplateCompilationFailure (..)
   , compileSyntaxTemplatesFromExpression
   , contextualSyntaxRules
-  , externalSymbol
-  , qualifySyntaxRule
   , syntaxFunctionBodyForSymbol
   )
 import DatraLanguage.Diagnostics
@@ -139,6 +134,7 @@ import DatraLanguage.Diagnostics.Application
   ( ParseFailure (..) )
 import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import System.FilePath (takeFileName)
 
 interpretExpression
   :: Expression
@@ -174,7 +170,6 @@ data ParsedDatraSource = ParsedDatraSource
   , parsedRawExpression :: Located Expression
   , parsedBaseScope :: Scope
   , parsedStandardRules :: [SyntaxRule]
-  , parsedImportRules :: [SyntaxRule]
   }
 
 parseDatraSourceSyntax
@@ -187,30 +182,23 @@ parseDatraSourceSyntax standardLibraryVisibility sourceName source = do
     parseDatraRawLocatedWithSourceName sourceName source
   (base, standardRules) <- Bifunctor.first (ParseFailure . show)
     (standardLibraryEnvironment standardLibraryVisibility raw)
-  importRules <- Bifunctor.first (ParseFailure . show) $ case
-      standardLibraryVisibility of
-    NoStandardLibrary -> Right []
-    _ -> standardImportSyntaxRules base
   pure ParsedDatraSource
     { parsedEnvelope = envelope
     , parsedRawExpression = locatedRaw
     , parsedBaseScope = base
     , parsedStandardRules = standardRules
-    -- Discover both qualified imports and bare imports opened by an earlier
-    -- explicit import-all, before loading their module dependencies.
-    , parsedImportRules = nub (importRules <> standardRules)
     }
 
 parsedSourceImportInvocations
   :: ParsedDatraSource
-  -> Either ParseFailure [(Bool, String)]
+  -> Either ParseFailure [[String]]
 parsedSourceImportInvocations parsed =
-  discoverImportInvocations base standardRules envelope raw
+  discoverImportInvocations base activeRules envelope raw
   where
     envelope = parsedEnvelope parsed
     Located _ raw = parsedRawExpression parsed
     base = parsedBaseScope parsed
-    standardRules = parsedImportRules parsed
+    activeRules = parsedStandardRules parsed
 
 parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
   :: StandardLibraryVisibility
@@ -229,12 +217,20 @@ rewriteParsedDatraSourceWithImports
   -> ParsedDatraSource
   -> Either ParseFailure (Located Expression)
 rewriteParsedDatraSourceWithImports modules parsed = do
-  let availableModuleRules =
+  baseModuleRules <- Bifunctor.first (ParseFailure . show) $ traverse
+    (\(namespace, identity, value) -> do
+      rules <- moduleSyntaxRulesFromValueIn identity namespace value
+      pure (identity, namespace, rules))
+    [ (namespace, identity, value)
+    | (namespace, ImportedBinding _ identity value _) <- scopeBindings base
+    ]
+  let dependencyRules =
         [ (requested, namespace, rules)
         | (requested, source) <- modules
-        , Right namespace <- [moduleName source]
-        , Right rules <- [moduleSyntaxRules requested source]
+        , Right ruleSets <- [moduleSyntaxRuleSets requested source]
+        , (namespace, rules) <- ruleSets
         ]
+      availableModuleRules = baseModuleRules <> dependencyRules
       initialRules = contextualSyntaxRules <> standardRules
       classify = classifySyntaxHole base modules
       capture = captureSyntaxHole base modules
@@ -256,10 +252,6 @@ rewriteParsedDatraSourceWithImports modules parsed = do
     standardRules = parsedStandardRules parsed
     rewriteParseFailure = ParseFailure . show
 
--- An import changes the syntax environment in exactly the same place where it
--- changes the value environment: after its entry, and only for descendants of
--- that lexical scope. The callback receives the already rewritten prefix, so
--- regular function lookup and overload selection use ordinary scope semantics.
 importedSyntaxRules
   :: Scope
   -> [(String, ModuleSource)]
@@ -267,69 +259,48 @@ importedSyntaxRules
   -> [Expression]
   -> Expression
   -> [SyntaxRule]
-importedSyntaxRules base modules availableRules
-    declarations entry = either (const []) id $ do
-  invocation <- case importInvocation entry of
-    Just requested -> Right (Just requested)
-    Nothing -> case entry of
-      FunctionApplication {} -> do
-        let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
-        (scope, _, _) <- declareScope enclosing declarations
-        functionImportInvocation scope entry
-      _ -> Right Nothing
-  case invocation of
-    Nothing -> Right []
-    Just (allNames, requested) -> case
-        [ (namespace, rules)
-        | (path, namespace, rules) <- availableRules
-        , path == requested
-        ] of
-      [] -> Right []
-      (namespace, rules) : _ -> do
-        let qualified =
-              [ selected
-              | rule <- rules
-              , Just selected <- [qualifySyntaxRule namespace rule]
-              ]
-        pure (qualified <> [rule | allNames, rule <- rules])
+importedSyntaxRules _ _ availableRules _ source =
+  case source of
+    IdentifierReference (IdentifierString selected) ->
+      concat
+        [ rules
+        | (_, namespace, rules) <- availableRules
+        , namespace == selected
+        ]
+    _ -> []
 
 discoverImportInvocations
   :: Scope
   -> [SyntaxRule]
   -> ResourceEnvelope
   -> Expression
-  -> Either ParseFailure [(Bool, String)]
-discoverImportInvocations base standardRules _ raw =
-  pure (nub (importsInExpression raw))
+  -> Either ParseFailure [[String]]
+discoverImportInvocations base activeRules envelope raw = do
+  baseModuleRules <- Bifunctor.first (ParseFailure . show) $ traverse
+    (\(namespace, identity, value) -> do
+      rules <- moduleSyntaxRulesFromValueIn identity namespace value
+      pure (namespace, rules))
+    [ (namespace, identity, value)
+    | (namespace, ImportedBinding _ identity value _) <- scopeBindings base
+    ]
+  let scoped _ source = case source of
+        IdentifierReference (IdentifierString selected) -> concat
+          [ rules
+          | (namespace, rules) <- baseModuleRules
+          , namespace == selected
+          ]
+        _ -> []
+  rewritten <- Bifunctor.first (ParseFailure . show) $ case (envelope, raw) of
+    (ExplicitMapEnvelope, expressionValue) ->
+      rewriteExplicitSyntax classify capture scoped activeRules [] expressionValue
+    (ImplicitBlockEnvelope, Program entries _) ->
+      rewriteImplicitSyntax classify capture scoped activeRules [] entries
+    _ -> Left MissingImplicitBlockResult
+  pure (nub (importsInExpansion rewritten))
   where
-    importRules =
-      [ rule
-      | rule <- standardRules
-      , externalSymbol (syntaxImplementation rule)
-          `elem` [Just "datra.import", Just "datra.importAll"]
-      ]
-    capture previous kind value =
-      captureSyntaxHole base [] True [] previous kind value
-    importsInExpression = importsInPosition True
-    importsInPosition complete expressionValue =
-      direct complete expressionValue <> nested expressionValue
-    nested (FunctionApplication function argument) =
-      importsInPosition False function <> importsInPosition True argument
-    nested expressionValue =
-      concatMap (importsInPosition True) (expressionChildren expressionValue)
-    direct complete expressionValue =
-      maybe [] pure (importInvocation expressionValue)
-        <> case if complete
-            then functionImportInvocation base expressionValue
-            else Right Nothing of
-          Right (Just invocation) -> [invocation]
-          _ | complete ->
-            [ invocation
-            | Right expanded <-
-                [matchSyntaxRulesWith capture importRules expressionValue]
-            , invocation <- importsInExpansion expanded
-            ]
-          _ -> []
+    classify = classifySyntaxHole base []
+    capture strict declarations previous kind value =
+      captureSyntaxHole base [] strict declarations previous kind value
     importsInExpansion expressionValue =
       maybe [] pure (importInvocation expressionValue)
         <> concatMap importsInExpansion (expressionChildren expressionValue)
@@ -599,16 +570,6 @@ standardLibraryEnvironment visibility raw = case visibility of
   QualifiedStandardLibrary -> qualifiedStandardModuleEnvironment
   AllStandardLibrary -> defaultModuleEnvironment
 
-standardImportSyntaxRules
-  :: Scope
-  -> Either InterpretingError [SyntaxRule]
-standardImportSyntaxRules scope =
-  case lookupScope "Std" scope of
-    Just (ImportedBinding _ _ value _) ->
-      moduleSyntaxRulesFromValue standardLibraryFileName value
-    _ -> Left (ModuleEvaluationFailed
-      (ModuleNotLoaded standardLibraryFileName))
-
 -- Parsing and evaluation consume two views of the same imported module.
 -- Build them from one module instance so syntax discovery cannot recursively
 -- instantiate Std independently of the scope used to evaluate those rules.
@@ -628,17 +589,19 @@ standardModuleEnvironment allNames = do
   let base = rootScope source [("\0imports", ModuleCatalog
         [(standardLibraryFileName, source)])]
   scope <- importLoadedModule base allNames source
-  namespace <- moduleName source
-  value <- case lookupScope namespace scope of
-    Just (ImportedBinding _ _ importedValue _) -> Right importedValue
-    _ -> Left (ModuleEvaluationFailed (ModuleNotLoaded standardLibraryFileName))
-  rules <- moduleSyntaxRulesFromValue standardLibraryFileName value
-  let qualifiedRules =
-        [ qualified
-        | rule <- rules
-        , Just qualified <- [qualifySyntaxRule namespace rule]
+  let imported =
+        [ (namespace, value)
+        | (namespace, ImportedBinding _ identity value _) <- scopeBindings scope
+        , identity == standardLibraryFileName
         ]
-  pure (scope, (if allNames then rules else []) <> qualifiedRules)
+  rules <- concat <$> traverse
+    (\(namespace, value) -> moduleSyntaxRulesFromValueIn
+      standardLibraryFileName namespace value)
+    imported
+  if null imported
+    then Left (ModuleEvaluationFailed
+      (ModuleNotLoaded standardLibraryFileName))
+    else pure (scope, [rule | allNames, rule <- rules])
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -921,6 +884,19 @@ data ImportPresentation
   | ModularImportPresentation
 
 data ModuleExport = ModuleExport String ImportPresentation Binding
+
+data LoadedModuleBinder = LoadedModuleBinder
+  { loadedModuleBinderName :: String
+  , loadedModuleBinderPresentation :: ImportPresentation
+  , loadedModuleBinderValue :: InterpretedValue
+  , loadedModuleBinderScope :: Scope
+  }
+
+data LoadedModuleResult = LoadedModuleResult
+  { loadedModuleIdentity :: FilePath
+  , loadedModuleFederation :: InterpretedValue
+  , loadedModuleBinders :: [LoadedModuleBinder]
+  }
 
 moduleExportName :: ModuleExport -> String
 moduleExportName (ModuleExport name _ _) = name
@@ -1364,7 +1340,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       imported <- lookupModuleDefinitionScope scope path
       evalInContinuationScopeWith body reduction
         (scopeBindings imported) scope resolving body
-    Import _ _ -> Left (ModuleEvaluationFailed ImportOutsideScope)
+    Import paths body -> evaluateImport
+      reduction scope resolving expressionValue paths body
     SyntaxType templates signature -> do
       syntax <- evaluateFunctionSyntax interpret templates
       sourceSyntax <- sourceFunctionSyntax interpret templates
@@ -1467,6 +1444,25 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (IdentifierReference (IdentifierString name))
       | isContextualAccessOf (IdentifierString "_this") thisValue
           -> resolveIdentifierWith reduction scope resolving name
+    ScopeAccess
+        (IdentifierReference (IdentifierString namespace))
+        body
+      | Just (ImportedBinding _ identity importedValue internal) <-
+          lookupScope namespace scope ->
+          runProtectedOperation protection [importedValue] $ \actuals ->
+            case actuals of
+              [actual] -> do
+                validateShortScopeMember actual body
+                members <- scopeNamedMembers actual
+                let opened = public members
+                exported <- moduleExportsFromValue actual
+                bindings <- moduleExportBindings
+                  scope namespace identity internal exported
+                validateShortScopeAccess actual opened body
+                mapM_ (validateOpenedBinding actual) opened
+                evalInContinuationScopeWith expressionValue reduction
+                  bindings scope resolving body
+              _ -> Right neverValue
     ScopeAccess operand body -> do
       source <- interpret operand
       runProtectedOperation protection [source] $ \actuals ->
@@ -2277,53 +2273,20 @@ scopeBuilderActivated scopedEnclosing entries = do
       | otherwise = Right (name : declared)
       where name = declarationName declaration
 
--- Scope-building events retain the exact source position at which an import
--- extended the lexical environment. Replaying them rebuilds recursive scopes
--- without making a later import visible to an earlier declaration.
 data ScopeEntry
   = ScopeDeclaration Declaration
-  | ScopeImport ScopeBindings
 
 scopeEntriesFrom
   :: Scope
   -> [Expression]
   -> Either InterpretingError (Scope, [ScopeEntry])
-scopeEntriesFrom initial = go initial [] []
+scopeEntriesFrom initial = go []
   where
-    go imported _ reversed [] =
-      Right (imported, reverse reversed)
-    go imported declarations reversed (entry : remaining) = do
-      invocation <- case importInvocation entry of
-        Just requested -> Right (Just requested)
-        Nothing -> case entry of
-          FunctionApplication {} ->
-            functionImportInvocation (visibleScope imported declarations) entry
-          _ -> Right Nothing
-      case invocation of
-        Just requested -> do
-          let visible = visibleScope imported declarations
-          extended <- importModule visible requested
-          let addedCount = length (scopeBindings extended)
-                - length (scopeBindings visible)
-              added = take addedCount (scopeBindings extended)
-              next = extendScope added imported
-          go next declarations (ScopeImport added : reversed) remaining
-        Nothing -> case blockDeclaration entry of
-          Just declaration -> go imported (declarations <> [declaration])
-            (ScopeDeclaration declaration : reversed) remaining
-          Nothing -> go imported declarations reversed remaining
-
-    visibleScope imported declarations = scopeWithBindings
-      (buildScopeBindings (temporaryBinding imported)
-        (scopeBindings imported) declarations)
-      imported
-
-    temporaryBinding imported captured declaration =
-      scopeBinding (declarationName declaration)
-        (DeferredBinding
-          (scopeWithBindings captured imported)
-          (declarationAnnotation declaration)
-          (declarationValue declaration))
+    go reversed [] = Right (initial, reverse reversed)
+    go reversed (entry : remaining) = case blockDeclaration entry of
+      Just declaration ->
+        go (ScopeDeclaration declaration : reversed) remaining
+      Nothing -> go reversed remaining
 
 buildScopedBindings
   :: (ScopeBindings -> Declaration -> (String, Binding))
@@ -2339,74 +2302,15 @@ buildScopedBindings makeBinding enclosing entries = foldl add initial entries
       , declarationIsLet declaration
       ]
     scopeBefore position = foldl add initial (take position entries)
-    add bindings (ScopeImport imported) = imported <> bindings
     add bindings (ScopeDeclaration declaration)
       | declarationIsLet declaration = bindings
       | otherwise = makeBinding bindings declaration : bindings
 
-importInvocation :: Expression -> Maybe (Bool, String)
+importInvocation :: Expression -> Maybe [String]
 importInvocation expressionValue =
   case expressionValue of
-    Import allNames path -> Just (allNames, path)
+    Import paths _ -> Just paths
     _ -> Nothing
-
--- Import functions are ordinary functions. Qualified lookup, argument
--- evaluation, and overload selection happen through the same evaluator path
--- as every other call; scope construction only consumes the import request
--- carried by the selected native implementation.
-functionImportInvocation
-  :: Scope
-  -> Expression
-  -> Either InterpretingError (Maybe (Bool, String))
-functionImportInvocation scope expressionValue =
-  case expressionValue of
-    FunctionApplication callableExpression argumentExpression ->
-      case evalInScope scope [] callableExpression of
-        Left _ -> Right Nothing
-        Right callable ->
-          let alternatives = functionAlternatives callable
-              importAlternatives =
-                [ (allNames, function)
-                | function <- alternatives
-                , Just allNames <- [importFunctionKind function]
-                ]
-          in case importAlternatives of
-            [] -> Right Nothing
-            _ -> do
-              argument <- evalInScope scope [] argumentExpression
-              (selected, prepared) <- selectFunctionCandidate
-                [ (function, prepare function argument)
-                | function <- alternatives
-                ]
-              case importFunctionKind selected of
-                Nothing -> Right Nothing
-                Just allNames -> Just . (allNames,) <$>
-                  importRequest allNames
-                    (functionSuppliedArgument prepared)
-    _ -> Right Nothing
-  where
-    prepare function argument =
-      case functionPrepare function of
-        Just operation -> operation argument
-        Nothing -> PreparedFunctionArgument argument argument []
-          <$ validateFunctionInput argument (functionDomain function)
-    importFunctionKind function = case functionExternalSymbol function of
-      Just "datra.import" -> Just False
-      Just "datra.importAll" -> Just True
-      _ -> Nothing
-
-importRequest
-  :: Bool
-  -> InterpretedValue
-  -> Either InterpretingError String
-importRequest allNames argument = do
-  pathValue <- if allNames
-    then accessValues argument (naturalValue 1)
-    else Right argument
-  case interpretedSemanticResult pathValue of
-    CanonicalAsciiString path -> Right path
-    _ -> Left (ExternalEvaluationFailed
-      (MissingNativeArgument "path"))
 
 -- Only declaration-shaped block entries create lexical bindings. Maps and map
 -- operators remain values: identifier-shaped members inside them neither enter
@@ -3424,7 +3328,7 @@ resolveExternal
   :: Scope
   -> InterpretedValue
   -> Either InterpretingError ResolvedExternal
-resolveExternal scope descriptor =
+resolveExternal _scope descriptor =
   case interpretedSemanticResult descriptor of
     CanonicalAsciiString symbol -> resolve symbol
     canonical -> do
@@ -3444,26 +3348,9 @@ resolveExternal scope descriptor =
         (UnsupportedExternalBackend backend))
         else resolve symbol
   where
-    resolve "datra.import" =
-      Right (ResolvedExternalValue (importExternal False "datra.import"))
-    resolve "datra.importAll" =
-      Right (ResolvedExternalValue
-        (importExternal True "datra.importAll"))
     resolve symbol = case syntaxFunctionBodyForSymbol symbol of
       Just body -> Right (ResolvedFunctionBody body)
       Nothing -> ResolvedExternalValue <$> registeredExternal symbol
-    importExternal allNames symbol =
-      unlinkedExternalFunction
-        (if allNames then 2 else 1)
-        symbol
-        (invokeImport allNames)
-    invokeImport allNames argument = do
-      requested <- importRequest allNames argument
-      (_, _, value) <- lookupModule scope requested >>= loadedModuleValue
-      if allNames
-        then () <$ importAllBindings value
-        else requireTotalModuleValue value
-      pure (makeAtlasMap 0 [])
     required name fields = maybe
       (Left (ExternalEvaluationFailed
         (MissingExternalDescriptorField name)))
@@ -3501,6 +3388,7 @@ registeredExternal symbol = case symbol of
   "datra.Expr" -> Right (syntaxCategoryTypeValue ExpressionAST)
   "datra.IdenExp" -> Right (syntaxCategoryTypeValue IdentifierExpressionAST)
   "datra.Block" -> Right (syntaxCategoryTypeValue BlockAST)
+  "datra.FunctionBody" -> Right (syntaxCategoryTypeValue FunctionBodyAST)
   "datra.Template" -> Right templateTypeValue
   "datra.SyntaxTemplate" -> Right syntaxTemplateTypeValue
   "datra.NatRange" -> Right naturalRangeTypeValue
@@ -3600,116 +3488,352 @@ unlinkedExternalFunction arity symbol invoke =
       (FunctionType domainExpression anyExpression)
 
 
-importModule :: Scope -> (Bool, String) -> Either InterpretingError Scope
-importModule scope (allNames, requested) = do
-  source <- lookupModule scope requested
-  importLoadedModule scope allNames source
+evaluateImport
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> Expression
+  -> [String]
+  -> Expression
+  -> Either InterpretingError InterpretedValue
+evaluateImport reduction captured resolving sourceExpression paths body =
+  case body of
+    FunctionBody declarations result -> do
+      modules <- traverse load (nub paths)
+      let loaded =
+            [ (loadedModuleIdentity loadedModule, binder)
+            | loadedModule <- modules
+            , binder <- loadedModuleBinders loadedModule
+            ]
+          names = map (loadedModuleBinderName . snd) loaded
+      case
+          [ name
+          | name <- names
+          , name `elem` map fst (scopeBindings captured)
+          ] of
+        name : _ -> Left (IdentifierStringOverlap name)
+        [] -> pure ()
+      domain <- importDomainValue (map loadedModuleFederation modules)
+      let schema = argumentSchemaFromValue domain
+      input <- parameterDomain schema
+      let prepare argument = do
+            (prepared, bindings) <-
+              overloadArgumentSchemaComplete schema argument
+            pure (PreparedFunctionArgument argument prepared bindings)
+          invoke callerActivation invocationReduction preparedCall = do
+            let argument = functionPreparedArgument preparedCall
+                supplied = functionPreparedBindings preparedCall
+                callCaptured = captured
+                  { scopeActivation = callerActivation
+                  , scopeHandoff = Nothing
+                  }
+                bodySeed = enterScopeWithReceiver
+                  preparedCall [] callerActivation
+                  genericFunctionReturnHandoff callCaptured
+                bodyArgument = protectWithPoliciesOf
+                  (scopeActivation bodySeed) (map snd supplied) argument
+            importedBindings <- traverse
+              (importArgumentBinding captured supplied) loaded
+            let localBindings =
+                  constantContextualBindings "it" bodyArgument
+                    <> importedBindings
+                    <> scopeBindings callCaptured
+                bodyBase = scopeWithBindings localBindings bodySeed
+            bodyScope <- importScopeWithin bodyBase [] declarations
+            value <- evalInScopeWith
+              invocationReduction bodyScope resolving result
+            let escaped = withoutCanonicalDependencies
+                  ( nub
+                      ( scopePresentationDependencies bodyScope
+                          <> scopePresentationDependencies captured)
+                  )
+                  value
+                handed = handoffScopeValue bodyScope escaped
+            pure (EvaluatedFunctionInvocation handed Nothing)
+          callable = makeFunctionValue (EvaluatedFunction
+            input anyTypeValue Nothing Nothing Nothing Nothing
+            (renderSourceExpression sourceExpression)
+            (Just prepare) (Just invoke) False)
+      fst <$> applyFunction
+        (scopeActivation captured) reduction callable domain
+    _ -> Left (FunctionEvaluationFailed ExpectedFunctionType)
+  where
+    load requested = do
+      moduleSource <- lookupModule captured requested
+      let isolatedBase = scopeWithBindings [] captured
+      loadedModuleResultWithBase isolatedBase moduleSource
+
+importDomainValue
+  :: [InterpretedValue]
+  -> Either InterpretingError InterpretedValue
+importDomainValue values =
+  case values of
+    [] -> Right (makeAtlasMap 0 [])
+    first : remaining -> foldM concatenateValues first remaining
+
+importArgumentBinding
+  :: Scope
+  -> [(String, InterpretedValue)]
+  -> (FilePath, LoadedModuleBinder)
+  -> Either InterpretingError (String, Binding)
+importArgumentBinding captured supplied (identity, binder) = do
+  let name = loadedModuleBinderName binder
+  value <- maybe (Left (UnknownIdentifier name)) Right (lookup name supplied)
+  let dependency = case scopePresentationDependency captured of
+        Just current -> current
+        Nothing -> PresentationDependency ("import:" <> identity)
+  pure (scopeBinding name (ImportedBinding
+    dependency identity value (loadedModuleBinderScope binder)))
+
 
 importLoadedModule
   :: Scope
   -> Bool
   -> ModuleSource
   -> Either InterpretingError Scope
-importLoadedModule scope allNames source = do
+importLoadedModule scope openMembers source = do
   let isolatedBase = scopeWithBindings [] scope
-  (identity, namespace, value) <- loadedModuleValueWithBase
-    isolatedBase source
-  exportedValues <- if allNames
-    then importAllBindings value
-    else requireTotalModuleValue value >> pure []
-  internal <- moduleScopeWithBase isolatedBase source
-  let exported =
-        [ ModuleExport name presentation
-            (maybe evaluated (retainExportDefinition evaluated)
-              (lookupScope name internal))
-        | ModuleExport name presentation evaluated <- exportedValues
-        ]
-      dependency = case scopePresentationDependency scope of
+  (identity, binders) <- loadedModuleBindersWithBase isolatedBase source
+  let dependency = case scopePresentationDependency scope of
         Just current -> current
         Nothing -> PresentationDependency ("import:" <> identity)
-      namedExports =
-        [ scopeBinding name
-            (case presentation of
-              ModularImportPresentation -> NamedBinding
-                (modularPresentationDependency identity)
-                (QualifiedBinding (namespace <> "." <> name) binding)
-              TransparentImportPresentation -> QualifiedBinding
-                (namespace <> "." <> name)
-                (NamedBinding dependency binding))
-        | ModuleExport name presentation binding <- exported
-        ]
-  (alreadyImported, namespaceScope) <- case lookupScope namespace scope of
-    Nothing -> pure
-      (False,
-        extendScope
-          [(namespace, ImportedBinding dependency identity value internal)]
-          scope)
-    Just (ImportedBinding _ previous _ _) | previous == identity ->
-      pure (True, scope)
-    _ -> Left (IdentifierStringOverlap namespace)
-  if allNames
-    then foldM (insertExport alreadyImported) namespaceScope
-      namedExports
-    else pure namespaceScope
+      alreadyImported = all (sameImportedBinding identity scope) binders
+  qualified <- foldM (insertBinder dependency identity) scope binders
+  if openMembers
+    then foldM (openBinderMembers alreadyImported identity) qualified binders
+    else pure qualified
   where
-    insertExport alreadyImported values entry@(name,_) =
+    sameImportedBinding identity values binder =
+      case lookupScope (loadedModuleBinderName binder) values of
+        Just (ImportedBinding _ previous _ _) -> previous == identity
+        _ -> False
+    insertBinder dependency identity values binder =
+      let name = loadedModuleBinderName binder
+          entry = scopeBinding name (ImportedBinding
+            dependency identity
+            (loadedModuleBinderValue binder)
+            (loadedModuleBinderScope binder))
+      in case lookupScope name values of
+        Nothing -> Right (extendScope [entry] values)
+        Just (ImportedBinding _ previous _ _) | previous == identity ->
+          Right values
+        _ -> Left (IdentifierStringOverlap name)
+    openBinderMembers alreadyImported identity values binder = do
+      exported <- moduleExportsFromValue (loadedModuleBinderValue binder)
+      entries <- moduleExportBindings
+        values
+        (loadedModuleBinderName binder)
+        identity
+        (loadedModuleBinderScope binder)
+        exported
+      foldM (insertExport alreadyImported) values entries
+    insertExport alreadyImported values entry@(name, _) =
       case lookupScope name values of
         Nothing -> Right (extendScope [entry] values)
         Just _ | alreadyImported -> Right values
         _ -> Left (IdentifierStringOverlap name)
 
-loadedModuleValue
-  :: ModuleSource
-  -> Either InterpretingError (FilePath, String, InterpretedValue)
-loadedModuleValue source =
-  loadedModuleValueWithBase (rootScope source []) source
+moduleExportBindings
+  :: Scope
+  -> String
+  -> FilePath
+  -> Scope
+  -> [ModuleExport]
+  -> Either InterpretingError ScopeBindings
+moduleExportBindings scope namespace identity internal exportedValues =
+  pure
+    [ scopeBinding name
+        (case presentation of
+          ModularImportPresentation -> NamedBinding
+            (modularPresentationDependency identity)
+            (QualifiedBinding (namespace <> "." <> name) binding)
+          TransparentImportPresentation -> QualifiedBinding
+            (namespace <> "." <> name)
+            (NamedBinding dependency binding))
+    | ModuleExport name presentation evaluated <- exportedValues
+    , let binding = maybe evaluated (retainExportDefinition evaluated)
+            (lookupScope name internal)
+    ]
+  where
+    dependency = case scopePresentationDependency scope of
+      Just current -> current
+      Nothing -> PresentationDependency ("import:" <> identity)
 
-loadedModuleValueWithBase
+loadedModuleBindersWithBase
   :: Scope
   -> ModuleSource
-  -> Either InterpretingError (FilePath, String, InterpretedValue)
-loadedModuleValueWithBase base
-    moduleSource@(ModuleSource path expression dependencies) = do
-  name <- moduleName moduleSource
-  (_, annotation, given) <- case yieldedIdentifier expression of
-    Just binding -> Right binding
-    Nothing -> Left (ModuleEvaluationFailed
-      ImportedModuleRequiresSimpleIdentifierType)
-  scope <- importScope
-    (extendScope
-      [ ("\0scope", LexicalScope (PresentationDependency ("module:" <> path)))
-      , ("\0imports", ModuleCatalog ((path, moduleSource) : dependencies))
-      ]
-      base)
-    []
-    (resourceBindings expression)
-  let yieldedExpression = case given of
+  -> Either InterpretingError (FilePath, [LoadedModuleBinder])
+loadedModuleBindersWithBase base moduleSource = do
+  loaded <- loadedModuleResultWithBase base moduleSource
+  pure (loadedModuleIdentity loaded, loadedModuleBinders loaded)
+
+loadedModuleResultWithBase
+  :: Scope
+  -> ModuleSource
+  -> Either InterpretingError LoadedModuleResult
+loadedModuleResultWithBase base
+    moduleSource@(ModuleSource path expression _) = do
+  prepared <- moduleBaseScope base moduleSource
+  (resourceBase, resource) <- prepareModuleResource prepared expression
+  outer <- importScope resourceBase [] (resourceBindings resource)
+  let resultExpression = resourceResultExpression resource
+  result <- evalInScope outer [] resultExpression
+  exported <- case importNamedBindings result of
+    Right []
+      | interpretedValueKind result == DependentIdentifierTypeValueKind ->
+          Right []
+      | otherwise -> Left (ModuleEvaluationFailed
+          ImportedModuleRequiresIdentifierBinderFederation)
+    Right bindings -> Right bindings
+    Left _ -> Left (ModuleEvaluationFailed
+      ImportedModuleRequiresIdentifierBinderFederation)
+  binders <- traverse (loadedBinder outer resultExpression) exported
+  pure LoadedModuleResult
+    { loadedModuleIdentity = path
+    , loadedModuleFederation = handoffScopeValue outer result
+    , loadedModuleBinders = binders
+    }
+  where
+    loadedBinder outer resultExpression
+        (ModuleExport name presentation binding) = do
+      value <- case binding of
+        EvaluatedBinding evaluated -> Right evaluated
+        _ -> Left (ModuleEvaluationFailed
+          ImportedModuleRequiresIdentifierBinderFederation)
+      internal <- moduleBinderScope outer resultExpression name
+      pure LoadedModuleBinder
+        { loadedModuleBinderName = name
+        , loadedModuleBinderPresentation = presentation
+        , loadedModuleBinderValue = handoffScopeValue outer value
+        , loadedModuleBinderScope = internal
+        }
+
+resourceResultExpression :: Expression -> Expression
+resourceResultExpression (Program _ result) = result
+resourceResultExpression expressionValue = expressionValue
+
+moduleBinderScope
+  :: Scope
+  -> Expression
+  -> String
+  -> Either InterpretingError Scope
+moduleBinderScope outer resultExpression name =
+  case namedBinderValueExpression name resultExpression of
+    Just (Begin declarations _) -> importScope outer [] declarations
+    _ -> Right outer
+
+namedBinderValueExpression :: String -> Expression -> Maybe Expression
+namedBinderValueExpression selected expressionValue = case expressionValue of
+  IdentifierOperation (IdentifierString name) annotation given
+    | name == selected -> Just (case given of
         Nothing -> annotation
         Just value
           | value == annotation -> value
-          | otherwise -> MapSpecification value annotation
-  value <- evalInScope scope [] yieldedExpression
-  pure (path, name, handoffScopeValue scope value)
+          | otherwise -> MapSpecification value annotation)
+  AtlasMap members -> firstJust members
+  ArgumentMap members -> firstJust members
+  MapSequence members -> firstJust members
+  MapConcatenation left right ->
+    namedBinderValueExpression selected left
+      <|> namedBinderValueExpression selected right
+  SyntaxBoundary inner -> namedBinderValueExpression selected inner
+  _ -> Nothing
+  where
+    firstJust = foldr
+      ((<|>) . namedBinderValueExpression selected)
+      Nothing
+
+moduleBaseScope
+  :: Scope
+  -> ModuleSource
+  -> Either InterpretingError Scope
+moduleBaseScope base
+    moduleSource@(ModuleSource path _ dependencies) = do
+  let seeded = extendScope
+        [ ("\0scope", LexicalScope (PresentationDependency ("module:" <> path)))
+        , ("\0imports", ModuleCatalog ((path, moduleSource) : dependencies))
+        ]
+        base
+      standardDependency =
+        [ source
+        | (_, source@(ModuleSource identity _ _)) <- dependencies
+        , takeFileName identity == standardLibraryFileName
+        ]
+  case (takeFileName path == standardLibraryFileName, standardDependency) of
+    (False, standard : _) -> importLoadedModule seeded False standard
+    _ -> Right seeded
+
+-- Resource-level scope access and import wrap the declarations which produce
+-- a module value. Prepare those lexical scopes once so value evaluation and
+-- retained export definitions close over precisely the same bindings.
+prepareModuleResource
+  :: Scope
+  -> Expression
+  -> Either InterpretingError (Scope, Expression)
+prepareModuleResource base expressionValue = case expressionValue of
+  ScopeAccess source body -> do
+    bindings <- case source of
+      IdentifierReference (IdentifierString namespace)
+        | Just (ImportedBinding _ identity value internal) <-
+            lookupScope namespace base -> do
+            exported <- moduleExportsFromValue value
+            moduleExportBindings base namespace identity internal exported
+      _ -> do
+        value <- evalInScope base [] source
+        members <- scopeNamedMembers value
+        traverse openedBinding (public members)
+    prepareModuleResource (extendScope bindings base) body
+  Import paths (FunctionBody bindings result) -> do
+    imported <- foldM importQualified base (nub paths)
+    prepareModuleResource imported (Program bindings result)
+  Import _ _ -> Left (FunctionEvaluationFailed ExpectedFunctionType)
+  _ -> Right (base, expressionValue)
+  where
+    openedBinding (name, selected) = do
+      payload <- accessValues selected (naturalValue 1)
+      pure (scopeBinding name (EvaluatedBinding payload))
+    importQualified imported requested = do
+      source <- lookupModule imported requested
+      importLoadedModule imported False source
 
 moduleExportNames :: ModuleSource -> Either InterpretingError [String]
 moduleExportNames source = do
-  (_, _, value) <- loadedModuleValue source
-  exported <- importAllBindings value
-  pure (map moduleExportName exported)
+  (_, binders) <- loadedModuleBindersWithBase (rootScope source []) source
+  concat <$> traverse binderExports binders
+  where
+    binderExports binder = do
+      exported <- moduleExportsFromValue (loadedModuleBinderValue binder)
+      pure (map moduleExportName exported)
 
 moduleSyntaxRules
   :: String
   -> ModuleSource
   -> Either InterpretingError [SyntaxRule]
 moduleSyntaxRules requested source = do
-  (_, _, value) <- loadedModuleValue source
-  moduleSyntaxRulesFromValue requested value
+  ruleSets <- moduleSyntaxRuleSets requested source
+  pure (concatMap snd ruleSets)
 
-moduleSyntaxRulesFromValue
+moduleSyntaxRuleSets
   :: String
+  -> ModuleSource
+  -> Either InterpretingError [(String, [SyntaxRule])]
+moduleSyntaxRuleSets requested source = do
+  (_, binders) <- loadedModuleBindersWithBase (rootScope source []) source
+  traverse rulesForBinder binders
+  where
+    rulesForBinder binder = do
+      rules <- moduleSyntaxRulesFromValueIn
+        requested
+        (loadedModuleBinderName binder)
+        (loadedModuleBinderValue binder)
+      pure (loadedModuleBinderName binder, rules)
+
+moduleSyntaxRulesFromValueIn
+  :: String
+  -> String
   -> InterpretedValue
   -> Either InterpretingError [SyntaxRule]
-moduleSyntaxRulesFromValue requested moduleValue = do
+moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
   members <- case namedMembers moduleValue of
     Right named -> Right named
     Left (ModuleEvaluationFailed ImportedModuleRequiresNamedExports) -> Right []
@@ -3731,7 +3855,7 @@ moduleSyntaxRulesFromValue requested moduleValue = do
           (functionSource function)
         pure
           [ SyntaxRule
-              name template signature False (Just requested) implementation
+              name template signature False (Just scopeName) implementation
           | template <- sourceTemplates
           ]
     parseScopedRuleExpression sourceText = do
@@ -3744,44 +3868,16 @@ moduleSyntaxRulesFromValue requested moduleValue = do
         Right expressionValue -> Right expressionValue
         Left _ -> Left NoCanonicalStringConversion
 
-moduleName :: ModuleSource -> Either InterpretingError String
-moduleName (ModuleSource _ expression _) = declaredModuleName expression
-
-declaredModuleName :: Expression -> Either InterpretingError String
-declaredModuleName expression =
-  case yieldedIdentifier expression of
-    Just (IdentifierString name, _, _) -> Right name
-    Nothing -> Left (ModuleEvaluationFailed
-      ImportedModuleRequiresSimpleIdentifierType)
-
-requireTotalModuleValue
-  :: InterpretedValue
-  -> Either InterpretingError ()
-requireTotalModuleValue value
-  | interpretedTypeIsTotal value = Right ()
-  | otherwise = Left (ModuleEvaluationFailed
-      ImportedModuleRequiresTotalValue)
-
-importAllBindings
+moduleExportsFromValue
   :: InterpretedValue
   -> Either InterpretingError [ModuleExport]
-importAllBindings value
-  | not (interpretedTypeIsTotal value) = invalid
-  | not (all isSimpleIdentifier members) = invalid
-  | otherwise =
-      case namedBindings value of
-        Right bindings -> Right bindings
-        Left _ -> invalid
+moduleExportsFromValue value =
+  case namedBindings value of
+    Right bindings -> Right bindings
+    Left _ -> invalid
   where
-    members = case interpretedSemanticResult value of
-      CanonicalMap _ values -> values
-      CanonicalConcatenation values -> values
-      _ -> []
-    isSimpleIdentifier CanonicalSimpleIdentifierType {} = True
-    isSimpleIdentifier CanonicalAssignment {} = True
-    isSimpleIdentifier _ = False
     invalid = Left (ModuleEvaluationFailed
-      ImportAllRequiresTotalMapOfSimpleIdentifierTypes)
+      ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
 
 scopeMemberNames :: Scope -> [String]
 scopeMemberNames scope = case lookupScope "_this" scope of
@@ -3857,16 +3953,28 @@ scopeNamedMembers value =
 namedBindings
   :: InterpretedValue
   -> Either InterpretingError [ModuleExport]
-namedBindings value = namedMembers value >>= traverse field
-  where
-    field (name, selected) = do
-      payload <- accessValues selected (naturalValue 1)
-      pure (ModuleExport
-        name
-        (if hasTrailingIdentifierMarker modularMarker selected
-          then ModularImportPresentation
-          else TransparentImportPresentation)
-        (EvaluatedBinding payload))
+namedBindings value = namedMembers value >>= traverse namedBinding
+
+-- An imported file may yield a federation that mixes ordinary named binders
+-- with dependent identifier binders.  The dependent fibers remain in the
+-- complete federation used as the synthesized function domain; this view is
+-- only for installing the ordinary names as qualified lexical bindings.
+importNamedBindings
+  :: InterpretedValue
+  -> Either InterpretingError [ModuleExport]
+importNamedBindings value = scopeNamedMembers value >>= traverse namedBinding
+
+namedBinding
+  :: (String, InterpretedValue)
+  -> Either InterpretingError ModuleExport
+namedBinding (name, selected) = do
+  payload <- accessValues selected (naturalValue 1)
+  pure (ModuleExport
+    name
+    (if hasTrailingIdentifierMarker modularMarker selected
+      then ModularImportPresentation
+      else TransparentImportPresentation)
+    (EvaluatedBinding payload))
 
 modularMarker :: String
 modularMarker = "Modular"
@@ -3913,13 +4021,15 @@ lookupModuleDefinitionScope
   -> String
   -> Either InterpretingError Scope
 lookupModuleDefinitionScope scope path =
-  case
+  case lookupScope path scope of
+    Just (ImportedBinding _ _ _ imported) -> Right imported
+    _ -> case
       [ imported
       | (_, ImportedBinding _ identity _ imported) <- scopeBindings scope
       , identity == path
       ] of
-    imported : _ -> Right imported
-    [] -> lookupModule scope path >>= moduleScope
+      imported : _ -> Right imported
+      [] -> lookupModule scope path >>= moduleScope
 
 moduleScope :: ModuleSource -> Either InterpretingError Scope
 moduleScope source = moduleScopeWithBase (rootScope source []) source
@@ -3929,21 +4039,18 @@ moduleScopeWithBase
   -> ModuleSource
   -> Either InterpretingError Scope
 moduleScopeWithBase base
-    moduleSource@(ModuleSource path expression dependencies) = do
-  _ <- declaredModuleName expression
-  outer <- importScope
-    (extendScope
-      [("\0imports", ModuleCatalog ((path, moduleSource) : dependencies))]
-      base)
-    []
-    (resourceBindings expression)
-  case namedBeginBlock expression of
+    moduleSource@(ModuleSource _ expression _) = do
+  prepared <- moduleBaseScope base moduleSource
+  (resourceBase, resource) <- prepareModuleResource prepared expression
+  outer <- importScope resourceBase [] (resourceBindings resource)
+  case namedBeginBlock resource of
     Just (_, declarations, _) ->
       importScope outer [] declarations
     Nothing -> Right outer
 
 resourceBindings :: Expression -> [Expression]
 resourceBindings (Program bindings _) = bindings
+resourceBindings (ScopeAccess _ body) = resourceBindings body
 resourceBindings _ = []
 
 -- | Source provenance survives eager let evaluation. Ordinary definitions

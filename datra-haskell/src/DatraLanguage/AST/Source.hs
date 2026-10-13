@@ -64,7 +64,9 @@ source context expression =
         <> genericBound introduction)
     GenericReferenceValue {} -> atom
     InModuleValue _ value -> source context value
-    ImportValue allNames path -> "import " <> (if allNames then "all " else "") <> renderAsciiStringLiteral path
+    ImportValue paths body -> "import "
+      <> intercalate "; " (map renderAsciiStringLiteral paths)
+      <> " " <> source 0 body
     SyntaxTypeValue templates signature -> wrapped 1
       (source 2 templates <> " % " <> source 0 signature)
     FunctionTypeValue _ input output -> wrapped 1

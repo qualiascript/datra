@@ -667,8 +667,7 @@ astForm =
   between (astSymbol "(") (astSymbol ")")
     (choice
       [ InModule <$> (astSymbol "in-module" *> astString) <*> astExpression
-      , Import True <$> (astSymbol "import-all" *> astString)
-      , Import False <$> (astSymbol "import" *> astString)
+      , astImport
       , Assert True <$> (astSymbol "assert-hard" *> astExpression)
       , astUnary AST.AssertOperator (Assert False)
       , astUnaryForm "fun" Fun
@@ -724,6 +723,14 @@ astForm =
       , astBinary AST.SafeOverloadOperator SafeOverload
       , astBinary AST.OverloadOperator Overload
       ])
+
+astImport :: Parser Expression
+astImport = do
+  _ <- astSymbol "import"
+  paths <- between (astSymbol "(") (astSymbol ")") $ do
+    _ <- astSymbol "paths"
+    many astString
+  Import paths <$> astExpression
 
 astGenericIntroduction :: Parser Expression
 astGenericIntroduction = do

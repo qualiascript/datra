@@ -8,6 +8,7 @@ import DatraLanguage.AST
   ( Expression
       ( AsciiStringLiteral
       , AtlasMap
+      , FunctionBody
       , IdentifierReference
       , OptionalType
       , StringTemplate
@@ -34,6 +35,10 @@ captureSyntaxExpression target captured =
       case captured of
         AtlasMap {} -> Just captured
         _ -> Nothing
+    BuiltinMetaTypeForm (ASTMetaType FunctionBodyAST) ->
+      case captured of
+        FunctionBody {} -> Just captured
+        _ -> Nothing
     BuiltinMetaTypeForm (ASTMetaType IdentifierExpressionAST) ->
       identifierExpression captured
     _ -> Nothing
@@ -59,6 +64,8 @@ specializeSyntaxHoleKind target hole = case (interpretedForm target, hole) of
     ExpressionSyntaxHole value
   (BuiltinMetaTypeForm (ASTMetaType BlockAST), ValueSyntaxHole value) ->
     BlockSyntaxHole value
+  (BuiltinMetaTypeForm (ASTMetaType FunctionBodyAST), ValueSyntaxHole value) ->
+    ExpressionSyntaxHole value
   ( BuiltinMetaTypeForm (ASTMetaType IdentifierExpressionAST)
     , ValueSyntaxHole value
     ) -> IdentifierExpressionSyntaxHole value

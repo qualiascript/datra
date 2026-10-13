@@ -96,7 +96,6 @@ import SyntaxDefinitions
   , SyntaxPiece (SyntaxHole, SyntaxLiteral)
   , SyntaxRule (..)
   , SyntaxTemplate (SyntaxTemplate)
-  , qualifySyntaxRule
   )
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -131,8 +130,6 @@ testTree =
         , testCase "begin/yield scope and provenance" testBegin
         , testCase "begin/yield scope rejections" testBeginRejections
         , testCase "module aliases retain syntax rules" testModuleSyntaxAlias
-        , testCase "qualified syntax excludes hole-led rules"
-            testQualifiedSyntaxRules
         , testCase "implicit programs" testPrograms
         , testCase "integers and integer ranges" testIntegers
         , testCase "closed infinite valued range" testClosedInfiniteValuedRange
@@ -182,38 +179,6 @@ testTree =
 
 assert :: String -> Bool -> IO ()
 assert = assertBool
-
-testQualifiedSyntaxRules :: IO ()
-testQualifiedSyntaxRules = do
-  let expressionHole =
-        SyntaxHole (ExpressionSyntaxHole (identifierReference "_Expr"))
-      rule template = SyntaxRule
-        "syntax" template (AtlasMap []) False Nothing (AtlasMap [])
-      literalHeaded = rule (SyntaxTemplate
-        [ SyntaxLiteral "if"
-        , expressionHole
-        , SyntaxLiteral "then"
-        , expressionHole
-        ])
-      holeLed = rule (SyntaxTemplate
-        [ expressionHole
-        , SyntaxLiteral "or"
-        , expressionHole
-        ])
-  assertEqual "literal syntax receives a qualified surface head"
-    (Just literalHeaded
-      { syntaxName = "Std.syntax"
-      , syntaxTemplate = SyntaxTemplate
-          [ SyntaxLiteral "Std.if"
-          , expressionHole
-          , SyntaxLiteral "then"
-          , expressionHole
-          ]
-      })
-    (qualifySyntaxRule "Std" literalHeaded)
-  assertEqual "hole-led syntax cannot be qualified without leaking globally"
-    Nothing
-    (qualifySyntaxRule "Std" holeLed)
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
@@ -336,14 +301,13 @@ testModuleSyntaxAlias = do
           (contextualAccess (IdentifierString "_this")))))
         []
       importingSource = ModuleSource "importing-module.datra"
-        (Program
-          [Import True "std"]
-          (binding "ImportingModule" isolatedBody))
+        (ScopeAccess (identifierReference "Std")
+          (Program [] (binding "ImportingModule" isolatedBody)))
         [("std", explicitStd)]
   case moduleExportNames importingSource of
     Right ["x"] -> pure ()
     result -> assertFailure
-      ("an explicit import-all did not supply module bindings: " <> show result)
+      ("an explicit Std scope did not supply module bindings: " <> show result)
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString

@@ -47,7 +47,7 @@ loadSourceImportsWithStandardLibraryVisibility visibility origin source =
     Right parsed -> case parsedSourceImportInvocations parsed of
       Left failure -> pure (Left (ImportScanFailed origin failure))
       Right invocations -> fmap (fmap (, parsed))
-        (loadPaths [] origin (map snd invocations))
+        (loadPaths [] origin (concat invocations))
 
 -- Canonical AST imports must be read structurally: their string spelling may
 -- be compact, and source text inside a string is not another import.
@@ -58,7 +58,7 @@ loadExpressionImports
 loadExpressionImports origin = loadPaths [] origin . paths
   where
     paths value = case importInvocation value of
-      Just (_, path) -> [path]
+      Just requested -> requested
       Nothing -> concatMap paths (expressionChildren value)
 
 loadPaths
@@ -140,7 +140,7 @@ loadPathsCached ancestors origin =
             Left failure -> pure (Left (ImportScanFailed path failure))
             Right invocations -> do
               dependencies <- loadPathsCached (path:visiting) path
-                (map snd invocations)
+                (concat invocations)
               case dependencies of
                 Left failure -> pure (Left failure)
                 Right imports -> do
@@ -149,16 +149,13 @@ loadPathsCached ancestors origin =
                     then ensureStandardLibrary (path:visiting) path imports
                     else pure (Right (Nothing, imports))
                   pure $ do
-                    (implicitStandard, allImports) <- standardImport
+                    (_, allImports) <- standardImport
                     expression <- Bifunctor.first
                       (ImportedModuleParseFailed path)
                       (locatedValue <$>
                         rewriteParsedDatraSourceWithImports allImports parsed)
-                    let importedExpression = case implicitStandard of
-                          Just standard -> prependQualifiedImport standard expression
-                          Nothing -> expression
                     pure (requested,
-                      ModuleSource identity importedExpression allImports)
+                      ModuleSource identity expression allImports)
     ensureStandardLibrary visiting parent imports =
       case
           [ requested
@@ -169,6 +166,3 @@ loadPathsCached ancestors origin =
         [] -> fmap (fmap (\standard@(requested, _) ->
           (Just requested, standard : imports)))
           (load visiting parent standardLibraryFileName)
-    prependQualifiedImport requested (Program entries result) =
-      Program (Import False requested : entries) result
-    prependQualifiedImport _ expression = expression

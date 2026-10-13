@@ -172,7 +172,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
         (interpretedCanonicalResult a /= interpretedCanonicalResult b)
   , testCase "only the selected module member is reconstructed" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import \"library_one\"\nyield ({n? : Int} -> Int do yield LibraryOne.increment n)"
+        ( "import \"library_one\" do\n"
+            <> "yield ({n? : Int} -> Int do yield LibraryOne.increment n)"
+        )
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "module filename is not a runtime dependency" (not ("import " `isInfixOf` text))
@@ -182,9 +184,11 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "private closure dependency survived" "11" (renderInterpretedValue result)
-  , testCase "import-all dependency names retain their module origin" $ do
+  , testCase "qualified dependency names retain their module origin" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import all \"library_one\"\nyield ({n? : Int} -> Int do yield x + n)"
+        ( "import \"library_one\" do\n"
+            <> "yield ({n? : Int} -> Int do yield LibraryOne.x + n)"
+        )
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       assertBool "actual module provenance is retained"
@@ -195,30 +199,23 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "captured imported value" "10" (renderInterpretedValue result)
   , testCase "user name cannot collide with a nested module function" $ do
       original <- runModuleProgram "test/fixtures/modules/main.datra"
-        "import \"library_one\"\nuserFun := 4\nyield ({n? : Int} -> Int do yield userFun + LibraryOne.increment n)"
+        ( "import \"library_one\" do\n"
+            <> "  userFun := 4\n"
+            <> "yield ({n? : Int} -> Int do "
+            <> "yield userFun + LibraryOne.increment n)"
+        )
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
       reconstructed <- requireExpression text
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
-  , testCase "optional number closure avoids nested module reconstruction" $ do
+  , testCase "selected number function retains its module name" $ do
       original <- runModuleProgram "libs/numbers.datra"
-        "import \"numbers\"\nyield Numbers.max"
+        "import \"numbers\" do yield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
-      assertEqual "from has one shared dependency binding" 1
-        (occurrences "let \"___'from\" :=" text)
-      assertEqual "concrete range syntax needs no range dependency binding" 0
-        (occurrences "let \"___'range\" :=" text)
-      assertBool "the variadic input uses an anonymous compact split directly"
-        ("it !? (fun" `isInfixOf` text
-          && not ("values :=" `isInfixOf` text)
-          && not ("maximum :=" `isInfixOf` text)
-          && not ("minimum :=" `isInfixOf` text)
-          && not ("next :=" `isInfixOf` text))
-      assertBool "the removed explicit list specification stays absent"
-        (not ("values ~>" `isInfixOf` text))
+      assertEqual "canonical module member" "Numbers.max" text
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
   , programCase "functions can annotate named parameters"
       "apply := ({callback? : (Nat -> Nat); value? : Nat} -> Nat do yield callback value)\nyield apply (({n? : Nat} -> Nat do yield n + 1), 4)"

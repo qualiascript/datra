@@ -31,7 +31,7 @@ integrationTests =
         "production omits soft assertions but retains hard integration checks"
         productionModeProgram
         "()"
-    , programFileCase 20
+    , programFileCase 21
         "composed language regression"
         "test/fixtures/integration/composed_features.datra"
         "()"
@@ -82,10 +82,11 @@ moduleOrigin = "test/fixtures/modules/main.datra"
 
 moduleProgram :: String
 moduleProgram = unlines
-  [ "import \"library_one\""
-  , "assert LibraryOne.x = 7"
-  , "assert LibraryOne.increment 7 = 11"
-  , "assert LibraryOne.shift 7 = 11"
+  [ "import \"library_one\" do"
+  , "  assert LibraryOne.x = 7"
+  , "  assert LibraryOne.increment 7 = 11"
+  , "  assert LibraryOne.(shift 7) = 11"
+  , "yield ()"
   ]
 
 modeProgram :: String

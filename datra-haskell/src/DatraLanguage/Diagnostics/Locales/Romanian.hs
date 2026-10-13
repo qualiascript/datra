@@ -398,16 +398,13 @@ localizeModuleFailure failure =
     StandardLibraryRequiresDeclarationBlock path ->
       LocalizedMessage "biblioteca standard trebuie să conțină un bloc de declarații"
         ["cale: " <> path]
-    ImportOutsideScope ->
-      LocalizedMessage "import trebuie să fie o intrare de domeniu" []
-    ImportedModuleRequiresSimpleIdentifierType ->
-      LocalizedMessage "fișierul importat trebuie să producă un tip de identificator simplu"
-        ["folosiți yield Nume := valoare"]
-    ImportedModuleRequiresTotalValue ->
-      LocalizedMessage "identificatorul importat trebuie să aibă o valoare totală" []
-    ImportAllRequiresTotalMapOfSimpleIdentifierTypes ->
+    ImportedModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage
-        "import all necesită o hartă totală de tipuri de identificator simplu" []
+        "fișierul importat trebuie să producă o federație de identificatori"
+        ["folosiți yield Nume := valoare sau o federație de identificatori"]
+    ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
+      LocalizedMessage
+        "domeniul modulului necesită o hartă totală de tipuri de identificator simplu" []
     ModularRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "modular necesită o hartă totală de tipuri de identificator simplu" []

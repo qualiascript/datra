@@ -466,6 +466,7 @@ builtinMetaTypeName (ASTMetaType category) = case category of
   AnyAST -> "_AST"
   ExpressionAST -> "Expr"
   BlockAST -> "Block"
+  FunctionBodyAST -> "FunctionBody"
   IdentifierExpressionAST -> "IdenExp"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"

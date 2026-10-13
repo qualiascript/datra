@@ -30,6 +30,7 @@ data ASTMetaCategory
   = AnyAST
   | ExpressionAST
   | BlockAST
+  | FunctionBodyAST
   | IdentifierExpressionAST
   deriving (Eq, Show)
 

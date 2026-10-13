@@ -1,4 +1,4 @@
-Std.'import($all; "std")
-
+Std.(
 offset := 2
 yield AnswerWithBinding := offset + 40
+)

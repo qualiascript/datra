@@ -111,10 +111,8 @@ data ExternalFailure
 data ModuleEvaluationFailure
   = StandardLibraryParseFailure FilePath String
   | StandardLibraryRequiresDeclarationBlock FilePath
-  | ImportOutsideScope
-  | ImportedModuleRequiresSimpleIdentifierType
-  | ImportedModuleRequiresTotalValue
-  | ImportAllRequiresTotalMapOfSimpleIdentifierTypes
+  | ImportedModuleRequiresIdentifierBinderFederation
+  | ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes
   | ModularRequiresTotalMapOfSimpleIdentifierTypes
   | ModularIdentifierAlreadyMarked String
   | ImportedModuleRequiresNamedExports

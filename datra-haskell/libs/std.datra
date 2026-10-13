@@ -2,6 +2,7 @@ _AST := !~"datra.AST"
 _Expr := !~"datra.Expr"
 _IdenExp := !~"datra.IdenExp"
 _Block := !~"datra.Block"
+_FunctionBody := !~"datra.FunctionBody"
 
 'begin := "begin %_Block yield %_Expr" % (_AST; _AST -> _AST) !~"datra.begin"
 
@@ -47,9 +48,8 @@ yield Std := begin
     ("if %_Expr then %_Expr" %
       (_AST; _AST -> _AST) !~"datra.ifThen")
   'import :=
-    ("import %("all") %Str" %
-      ($all; Str -> ()) !~"datra.importAll") |
-    ("import %Str" % (Str -> ()) !~"datra.import")
+    "import %(List Str) %_FunctionBody" %
+      (List Str; _FunctionBody -> _Expr) !~"datra.import"
   'in := "%_Expr in %_Expr" % (_AST; _AST -> _AST) !~"datra.in"
   'len := "len %_Expr" % (Any -> NatLimit) !~"datra.len"
   'modular := "modular %_Expr" % (_AST -> _AST) !~"datra.modular"
@@ -65,7 +65,7 @@ yield Std := begin
   of := "%_Expr of %_Expr" % (_AST; _AST -> _AST) !~"datra.of"
   not := "not %_Expr" % (_AST -> _AST) !~"datra.not"
 
-  List := &T? do yield fun () | (T; this)
+  let List := &T? do yield fun () | (T; this)
   InhabitedList := &T? do yield (T; List T)
   Just := &T? do yield Just : T
   Maybe := &T? do yield nothing | Just T

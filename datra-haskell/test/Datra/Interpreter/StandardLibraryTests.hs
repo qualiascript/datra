@@ -65,9 +65,12 @@ standardLibraryTests =
         , programCase "omega length is positive infinity"
             "yield len (from 0 up)"
             "Infinity"
-        , programCase "ordinary and qualified calls remain available"
-            "yield ('len (1; 2; 3); Std.len (4; 5))"
+        , programCase "ordinary and scoped calls remain available"
+            "yield ('len (1; 2; 3); Std.(len (4; 5)))"
             "(3; 2)"
+        , programCase "external syntax adapters permit ordinary calls"
+            "yield 'if (false; 4; 5)"
+            "5"
         , programCase "optional named values retain their map extent"
             ( "measure := ({value? : Any} -> NatLimit do yield len value)\n"
                 <> "yield measure (value := (1; 2; 3))"
@@ -87,9 +90,9 @@ standardLibraryTests =
     , testGroup "qualified syntax"
         [ expressionCase source source expected
         | (source, expected) <-
-            [ ("Std.if false then (1 + \"bad\") else 11", "11")
-            , ("Std.from (1 + 1) to 5", "from 2 to 5")
-            , ("Std.range 2 down", "range 2 down")
+            [ ("Std.(if false then (1 + \"bad\") else 11)", "11")
+            , ("Std.(from (1 + 1) to 5)", "from 2 to 5")
+            , ("Std.(range 2 down)", "range 2 down")
             , ("Std.true", "Std.true")
             ]
         ]
