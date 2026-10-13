@@ -12,7 +12,6 @@ module Evaluation.Identifier
   , identifierStringProjectionValue
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
-  , requireCanonicalTypeAnnotation
   ) where
 
 import AtlasMapFederationExpression
@@ -22,8 +21,7 @@ import AtlasMapFederationExpression
       )
   )
 import Evaluation.Construction (makeAsciiString)
-import Evaluation.Error
-  ( InterpretingError (NonCanonicalIdentifierTypeAnnotation) )
+import Evaluation.Error (InterpretingError)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
@@ -53,17 +51,6 @@ privateIdentifierUnderlying value = do
   if privateSimpleIdentifier identifier
     then Just (evaluatedIdentifierUnderlying identifier)
     else Nothing
-
--- | Identifier annotations participate in canonical source syntax. A
--- noncanonical Datra type can still be named as a value, but cannot define
--- the annotated member family of an identifier.
-requireCanonicalTypeAnnotation
-  :: InterpretedValue
-  -> Either InterpretingError ()
-requireCanonicalTypeAnnotation annotation =
-  case datraCanonicalType (interpretedDatraType annotation) of
-    Just _ -> Right ()
-    Nothing -> Left NonCanonicalIdentifierTypeAnnotation
 
 dependentIdentifierTypeValue
   :: String
@@ -219,9 +206,7 @@ identifierStringProjectionValue evaluated = value
         { interpretedMapComponents = [semantics] }
     value =
       makeEvaluatedIdentifierValue
-        (if isTotal
-          then structuralDatraType
-          else makeNonCanonicalDatraType StructuralTypeFamily)
+        structuralDatraType
         (IdentifierStringProjectionForm evaluated)
         (IdentifierStringProjectionAtlasMapFederation evaluated)
         isTotal
@@ -276,20 +261,7 @@ makeDependentIdentifierTypeValue
         isTotal
         valueMap
         semantics
-    canonicalType
-      | isTotal = structuralDatraType
-      | isCanonical =
-          structuralTypeWithCanonicalityOf underlying
-      | otherwise =
-          case dependency of
-            SimpleIdentifierDependency _ ->
-              structuralTypeWithCanonicalityOf underlying
-            DependentIdentifierDependency {} ->
-              makeNonCanonicalDatraType StructuralTypeFamily
-    structuralTypeWithCanonicalityOf source =
-      case datraCanonicalType (interpretedDatraType source) of
-        Just _ -> structuralDatraType
-        Nothing -> makeNonCanonicalDatraType StructuralTypeFamily
+    canonicalType = structuralDatraType
 
 -- | Totality is established by the caller from every component of the
 -- identifier's two-position map. This is also the exact boundary between its

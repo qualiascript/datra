@@ -93,7 +93,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   , mapSyntaxHoleKind
-  , syntaxHoleValue
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -122,6 +121,7 @@ import SyntaxDefinitions
   , SyntaxTemplateCompilationFailure (..)
   , compileSyntaxTemplatesFromExpression
   , contextualSyntaxRules
+  , declarationRules
   , syntaxFunctionBodyForSymbol
   )
 import DatraLanguage.Diagnostics
@@ -259,15 +259,12 @@ importedSyntaxRules
   -> [Expression]
   -> Expression
   -> [SyntaxRule]
-importedSyntaxRules _ _ availableRules _ source =
-  case source of
-    IdentifierReference (IdentifierString selected) ->
-      concat
-        [ rules
-        | (_, namespace, rules) <- availableRules
-        , namespace == selected
-        ]
-    _ -> []
+importedSyntaxRules base modules availableRules =
+  scopeSyntaxRules
+    (classifySyntaxHole base modules)
+    [ (namespace, rules)
+    | (_, namespace, rules) <- availableRules
+    ]
 
 discoverImportInvocations
   :: Scope
@@ -283,13 +280,7 @@ discoverImportInvocations base activeRules envelope raw = do
     [ (namespace, identity, value)
     | (namespace, ImportedBinding _ identity value _) <- scopeBindings base
     ]
-  let scoped _ source = case source of
-        IdentifierReference (IdentifierString selected) -> concat
-          [ rules
-          | (namespace, rules) <- baseModuleRules
-          , namespace == selected
-          ]
-        _ -> []
+  let scoped = scopeSyntaxRules classify baseModuleRules
   rewritten <- Bifunctor.first (ParseFailure . show) $ case (envelope, raw) of
     (ExplicitMapEnvelope, expressionValue) ->
       rewriteExplicitSyntax classify capture scoped activeRules [] expressionValue
@@ -304,6 +295,91 @@ discoverImportInvocations base activeRules envelope raw = do
     importsInExpansion expressionValue =
       maybe [] pure (importInvocation expressionValue)
         <> concatMap importsInExpansion (expressionChildren expressionValue)
+
+scopeSyntaxNamespaces :: Expression -> [String]
+scopeSyntaxNamespaces source = case source of
+  IdentifierReference (IdentifierString selected) -> [selected]
+  ArgumentMap modules -> concatMap scopeSyntaxNamespaces modules
+  _ -> []
+
+scopeSyntaxRules
+  :: ([Expression] -> SyntaxHoleKind Expression -> SyntaxHoleKind Expression)
+  -> [(String, [SyntaxRule])]
+  -> [Expression]
+  -> Expression
+  -> [SyntaxRule]
+scopeSyntaxRules classify availableRules declarations source =
+  localSyntaxRules classify declarations source <>
+  concat
+    [ rules
+    | selected <- scopeSyntaxNamespaces source
+    , (namespace, rules) <- availableRules
+    , namespace == selected
+    ]
+
+-- A lexical map can introduce syntax in exactly the same way as an imported
+-- module.  Its rules are visible only on the right side of an access to that
+-- map, and are specialized against the declarations visible both outside and
+-- inside the map.
+localSyntaxRules
+  :: ([Expression] -> SyntaxHoleKind Expression -> SyntaxHoleKind Expression)
+  -> [Expression]
+  -> Expression
+  -> [SyntaxRule]
+localSyntaxRules classify declarations source =
+  case localScopeDeclarations declarations source of
+    [] -> []
+    local -> snd (foldl introduce (enclosingDeclarations, []) local)
+  where
+    enclosingDeclarations = case localScopeName source of
+      Nothing -> declarations
+      Just name -> filter (notElem name . bindingNames) declarations
+    introduce (visible, rules) declaration =
+      (retainedDeclarations <> [declaration], retainedRules <> introduced)
+      where
+        names = bindingNames declaration
+        retainedDeclarations = filter
+          (null . filter (`elem` names) . bindingNames)
+          visible
+        retainedRules = filter ((`notElem` names) . syntaxName) rules
+        introduced = map (specialize visible) (declarationRules declaration)
+    specialize visible rule = rule
+      { syntaxTemplate = specializeTemplate visible (syntaxTemplate rule) }
+    specializeTemplate visible (SyntaxTemplate pieces) = SyntaxTemplate
+      [ case piece of
+          SyntaxHole kind -> SyntaxHole (classify visible kind)
+          SyntaxLiteral {} -> piece
+      | piece <- pieces
+      ]
+
+localScopeName :: Expression -> Maybe String
+localScopeName source = case source of
+  IdentifierReference (IdentifierString name) -> Just name
+  SyntaxBoundary inner -> localScopeName inner
+  _ -> Nothing
+
+localScopeDeclarations :: [Expression] -> Expression -> [Expression]
+localScopeDeclarations declarations source = case source of
+  IdentifierReference (IdentifierString name) ->
+    case
+        [ declarationValue binding
+        | declaration <- reverse declarations
+        , Just binding <- [blockDeclaration declaration]
+        , declarationName binding == name
+        ] of
+      value : _ -> mapScopeEntries value
+      [] -> []
+  SyntaxBoundary inner -> localScopeDeclarations declarations inner
+  _ -> []
+
+mapScopeEntries :: Expression -> [Expression]
+mapScopeEntries value = case value of
+  AtlasMap entries -> entries
+  MapSequence entries -> entries
+  MapConcatenation left right ->
+    mapScopeEntries left <> mapScopeEntries right
+  SyntaxBoundary inner -> mapScopeEntries inner
+  _ -> []
 
 -- Every syntax hole follows evaluation followed by selection. For AST
 -- categories the evaluator is the identity function and selection validates
@@ -320,9 +396,14 @@ captureSyntaxHole
   -> Maybe Expression
 captureSyntaxHole base modules strict declarations previous kind captured =
   case kind of
-    ExpressionSyntaxHole target -> identityEvaluationCapture target
-    BlockSyntaxHole target -> identityEvaluationCapture target
-    IdentifierExpressionSyntaxHole target -> identityEvaluationCapture target
+    ExpressionSyntaxHole {} -> Just captured
+    BlockSyntaxHole {} -> case captured of
+      AtlasMap {} -> Just captured
+      _ -> Nothing
+    FunctionBodySyntaxHole {} -> case captured of
+      FunctionBody {} -> Just captured
+      _ -> Nothing
+    IdentifierExpressionSyntaxHole {} -> identifierSyntaxCapture captured
     ValueSyntaxHole target ->
       literalCapture target captured
         <|> if strict then valueEvaluationCapture target else tentativeCapture
@@ -338,8 +419,12 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    identityEvaluationCapture = captureInScopes $ \_ target ->
-      captureSyntaxExpression target captured
+    identifierSyntaxCapture value = case value of
+      IdentifierReference {} -> Just value
+      AsciiStringLiteral {} -> Just value
+      StringTemplate {} -> Just value
+      OptionalType inner -> OptionalType <$> identifierSyntaxCapture inner
+      _ -> Nothing
     valueEvaluationCapture targetExpression =
       captureInScopes selectValue targetExpression
       where
@@ -622,20 +707,20 @@ parsedDefaultModule = do
   let emptyScope = rootScope raw []
       capture = captureSyntaxHole emptyScope []
       classify = classifySyntaxHole emptyScope []
+      scopedRules = scopeSyntaxRules classify []
       rewritten = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
           rewriteExplicitSyntax
-            classify capture noScopeRules contextualSyntaxRules [] expressionValue
+            classify capture scopedRules contextualSyntaxRules [] expressionValue
         (ImplicitBlockEnvelope, Program entries _) ->
           rewriteImplicitSyntax
-            classify capture noScopeRules contextualSyntaxRules [] entries
+            classify capture scopedRules contextualSyntaxRules [] entries
         _ -> Left MissingImplicitBlockResult
   resolveGenericFunctionTypes <$> either
     (parseFailure . ParseFailure . show)
     Right
     rewritten
   where
-    noScopeRules _ _ = []
     parseFailure = Left . ModuleEvaluationFailed
       . StandardLibraryParseFailure standardLibraryFileName
       . parseFailureMessage
@@ -657,14 +742,14 @@ evaluateFunctionSyntax
   -> Either InterpretingError (FunctionSyntax InterpretedValue)
 evaluateFunctionSyntax interpret templatesExpression = do
   templates <- validatedSyntaxTemplates templatesExpression
-  evaluated <- traverse (traverseSyntaxTemplate interpret) templates
-  pure (FunctionSyntax (map specializeTemplate evaluated))
+  FunctionSyntax <$> traverse evaluateTemplate templates
   where
-    specializeTemplate (SyntaxTemplate pieces) =
-      SyntaxTemplate (map specializePiece pieces)
-    specializePiece (SyntaxHole kind@(ValueSyntaxHole target)) =
-      SyntaxHole (specializeSyntaxHoleKind target kind)
-    specializePiece piece = piece
+    evaluateTemplate (SyntaxTemplate pieces) =
+      SyntaxTemplate <$> traverse evaluatePiece pieces
+    evaluatePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
+    evaluatePiece (SyntaxHole kind) = do
+      specialized <- specializeSourceSyntaxHole interpret kind
+      SyntaxHole <$> traverseSyntaxHoleKind interpret specialized
 
 sourceFunctionSyntax
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -678,10 +763,48 @@ sourceFunctionSyntax interpret templatesExpression = do
       SyntaxTemplate <$> traverse sourcePiece pieces
     sourcePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
     sourcePiece (SyntaxHole kind) = do
-      target <- interpret (syntaxHoleValue kind)
+      specialized <- specializeSourceSyntaxHole interpret kind
       pure (SyntaxHole
         (mapSyntaxHoleKind renderSourceExpression
-          (specializeSyntaxHoleKind target kind)))
+          specialized))
+
+specializeSourceSyntaxHole
+  :: (Expression -> Either InterpretingError InterpretedValue)
+  -> SyntaxHoleKind Expression
+  -> Either InterpretingError (SyntaxHoleKind Expression)
+specializeSourceSyntaxHole interpret kind@(ValueSyntaxHole target) = do
+  evaluated <- interpret target
+  let specialized = specializeSyntaxHoleKind evaluated kind
+  pure $ case specialized of
+    ValueSyntaxHole {}
+      | any syntaxCategoryExpression
+          (concatMap expressionTree (expressionChildren target)) ->
+          ExpressionSyntaxHole target
+    _ -> specialized
+  where
+    expressionTree expressionValue =
+      expressionValue
+        : concatMap expressionTree (expressionChildren expressionValue)
+    syntaxCategoryExpression expressionValue = case interpret expressionValue of
+      Right value -> case specializeSyntaxHoleKind value
+          (ValueSyntaxHole expressionValue) of
+        ValueSyntaxHole {} -> False
+        _ -> True
+      Left _ -> False
+specializeSourceSyntaxHole _ kind = pure kind
+
+traverseSyntaxHoleKind
+  :: Applicative f
+  => (source -> f target)
+  -> SyntaxHoleKind source
+  -> f (SyntaxHoleKind target)
+traverseSyntaxHoleKind transform kind = case kind of
+  ExpressionSyntaxHole value -> ExpressionSyntaxHole <$> transform value
+  BlockSyntaxHole value -> BlockSyntaxHole <$> transform value
+  FunctionBodySyntaxHole value -> FunctionBodySyntaxHole <$> transform value
+  IdentifierExpressionSyntaxHole value ->
+    IdentifierExpressionSyntaxHole <$> transform value
+  ValueSyntaxHole value -> ValueSyntaxHole <$> transform value
 
 validatedSyntaxTemplates
   :: Expression
@@ -1444,38 +1567,23 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (IdentifierReference (IdentifierString name))
       | isContextualAccessOf (IdentifierString "_this") thisValue
           -> resolveIdentifierWith reduction scope resolving name
-    ScopeAccess
-        (IdentifierReference (IdentifierString namespace))
-        body
-      | Just (ImportedBinding _ identity importedValue internal) <-
-          lookupScope namespace scope ->
-          runProtectedOperation protection [importedValue] $ \actuals ->
-            case actuals of
-              [actual] -> do
-                validateShortScopeMember actual body
-                members <- scopeNamedMembers actual
-                let opened = public members
-                exported <- moduleExportsFromValue actual
-                bindings <- moduleExportBindings
-                  scope namespace identity internal exported
-                validateShortScopeAccess actual opened body
-                mapM_ (validateOpenedBinding actual) opened
-                evalInContinuationScopeWith expressionValue reduction
-                  bindings scope resolving body
-              _ -> Right neverValue
+    ScopeAccess operand body
+      | Just moduleOperands <- withModuleScopeOperands operand -> do
+          let distinctOperands = nub moduleOperands
+          sources <- traverse interpret distinctOperands
+          runProtectedOperation protection sources $ \actuals -> do
+            publicDomains <- traverse publicDomainValue actuals
+            _ <- importDomainValue publicDomains
+            publicValues <- traverse publicValue actuals
+            combined <- importDomainValue publicValues
+            enterOpenedScope expressionValue combined
+              (zip distinctOperands actuals) body
     ScopeAccess operand body -> do
       source <- interpret operand
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
-          [actual] -> do
-            validateShortScopeMember actual body
-            members <- scopeNamedMembers actual
-            let opened = public members
-            bindings <- traverse openedBinding opened
-            validateShortScopeAccess actual opened body
-            mapM_ (validateOpenedBinding actual) opened
-            evalInContinuationScopeWith expressionValue reduction
-              bindings scope resolving body
+          [actual] -> enterOpenedScope expressionValue actual
+            [(operand, actual)] body
           _ -> Right neverValue
     MapAccess
         thisValue
@@ -1508,21 +1616,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       | External descriptorExpression <- implementation -> do
           syntax <- evaluateFunctionSyntax interpret templates
           sourceSyntax <- sourceFunctionSyntax interpret templates
-          descriptor <- interpret descriptorExpression
-          target <- interpret signature
-          value <- resolveExternal scope descriptor
-          functionValue <- case value of
-            ResolvedFunctionBody _ ->
-              case interpretedFunction target of
-                Just function -> pure (makeFunctionValue function
-                  { functionSource = Just
-                      (renderSourceExpression implementation) })
-                Nothing -> Left (FunctionEvaluationFailed
-                  AstPatternRequiresFunctionImplementation)
-            ResolvedExternalValue external ->
-              case linkExternalAdapter external target of
-                Just linked -> linked
-                Nothing -> contextuallySpecify external target
+          functionValue <- interpretExternalImplementation
+            implementation descriptorExpression signature
           case interpretedFunction functionValue of
             Just function -> pure (makeFunctionValue function
               { functionSyntax = Just syntax
@@ -1541,6 +1636,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
               })
             Nothing -> Left (FunctionEvaluationFailed
               AstPatternRequiresFunctionImplementation)
+    MapSpecification implementation@(External descriptorExpression) signature ->
+      interpretExternalImplementation
+        implementation descriptorExpression signature
     MapSpecification
         (FunctionBody bindings result)
         signature@(FunctionTypeExpression [] domain codomain) ->
@@ -1568,7 +1666,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         typeAnnotationExpression
         maybeGivenValueExpression -> do
       typeAnnotation <- interpret typeAnnotationExpression
-      requireCanonicalTypeAnnotation typeAnnotation
       let identifierExpression = StringTemplate parts
           familyKey = renderSourceExpression identifierExpression
           nameFamily supplied =
@@ -1578,9 +1675,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                 scope resolving)
               parts
       identifier <- nameFamily typeAnnotation
-      case datraCanonicalType (interpretedDatraType identifier) of
-        Just _ -> pure ()
-        Nothing -> Left NoCanonicalStringConversion
       case asciiStringFromInterpretedMap (interpretedMap identifier) of
         Just identifierString
           | interpretedValueHasTotalMap identifier
@@ -1611,6 +1705,23 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
   where
     protection = scopeActivation scope
     interpret = evalInScopeWith reduction scope resolving
+    interpretExternalImplementation
+        implementation descriptorExpression signature = do
+      descriptor <- interpret descriptorExpression
+      target <- interpret signature
+      value <- resolveExternal scope descriptor
+      case value of
+        ResolvedFunctionBody _ ->
+          case interpretedFunction target of
+            Just function -> pure (makeFunctionValue function
+              { functionSource = Just
+                  (renderSourceExpression implementation) })
+            Nothing -> Left (FunctionEvaluationFailed
+              AstPatternRequiresFunctionImplementation)
+        ResolvedExternalValue external ->
+          case linkExternalAdapter external target of
+            Just linked -> linked
+            Nothing -> contextuallySpecify external target
     transparentEitherAlias value =
       case stripOuterIdentifierType value of
         Right underlying
@@ -1624,7 +1735,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           runProtectedOperation protection [typeAnnotation] $ \actuals ->
             case actuals of
               [actualAnnotation] -> do
-                requireCanonicalTypeAnnotation actualAnnotation
                 if identifierString == "False"
                     && interpretedValueKind actualAnnotation
                       == NaturalValueKind
@@ -1644,7 +1754,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             protection [typeAnnotation, givenValue] $ \actuals ->
               case actuals of
                 [actualAnnotation, actualGiven] -> do
-                  requireCanonicalTypeAnnotation actualAnnotation
                   case assignIdentifierValues
                       identifierString actualAnnotation actualGiven of
                     Left _
@@ -1727,9 +1836,16 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             then Right ()
             else Left (InconsistentShadowing name)
         _ -> Right ()
-    openedBinding (name, selected) = do
-      payload <- accessValues selected (naturalValue 1)
-      pure (scopeBinding name (EvaluatedBinding payload))
+    enterOpenedScope salt actual contributions selectedBody = do
+      validateShortScopeMember actual selectedBody
+      members <- scopeNamedMembers actual
+      let opened = public members
+      bindings <- concat <$>
+        traverse (openedScopeContributionBindings scope) contributions
+      validateShortScopeAccess actual opened selectedBody
+      mapM_ (validateOpenedBinding actual) opened
+      evalInContinuationScopeWith salt reduction
+        bindings scope resolving selectedBody
     validateShortScopeAccess actual opened selectedBody =
       case selectedBody of
         IdentifierReference (IdentifierString name)
@@ -1984,9 +2100,8 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
       case annotation of
         Nothing -> pure ()
         Just typeExpression ->
-          evalInScopeWith reduction captured
+          () <$ evalInScopeWith reduction captured
             (resolutionKey : resolving) typeExpression
-            >>= requireCanonicalTypeAnnotation
       resolveInferredEitherAlias annotation
         <$> evaluateDefinition
   where
@@ -3384,7 +3499,6 @@ registeredExternal symbol = case symbol of
       (Just (\_ _ preparedCall -> do
         value <- publicValue (functionPreparedArgument preparedCall)
         pure (EvaluatedFunctionInvocation value Nothing))) False))
-  "datra.AST" -> Right astTypeValue
   "datra.Expr" -> Right (syntaxCategoryTypeValue ExpressionAST)
   "datra.IdenExp" -> Right (syntaxCategoryTypeValue IdentifierExpressionAST)
   "datra.Block" -> Right (syntaxCategoryTypeValue BlockAST)
@@ -3464,6 +3578,13 @@ registeredExternal symbol = case symbol of
       pure (makeFunctionValue (EvaluatedFunction input output Nothing Nothing
         (Just ("!~" <> show symbol)) (Just symbol) signatureText
         (Just prepare) (Just invoke) True))
+
+withModuleScopeOperands :: Expression -> Maybe [Expression]
+withModuleScopeOperands expressionValue = case expressionValue of
+  ArgumentMap modules
+    | not (null modules)
+    , all (null . bindingNames) modules -> Just modules
+  _ -> Nothing
 
 unlinkedExternalFunction
   :: Int
@@ -3633,6 +3754,30 @@ importLoadedModule scope openMembers source = do
         Just _ | alreadyImported -> Right values
         _ -> Left (IdentifierStringOverlap name)
 
+-- Both evaluated scope access and resource preparation install opened
+-- members through this boundary. Imported binders retain their definition
+-- scopes and presentation metadata; ordinary local values use evaluated
+-- public members.
+openedScopeContributionBindings
+  :: Scope
+  -> (Expression, InterpretedValue)
+  -> Either InterpretingError ScopeBindings
+openedScopeContributionBindings scope (operand, actual) =
+  case operand of
+    IdentifierReference (IdentifierString namespace)
+      | Just (ImportedBinding _ identity _ internal) <-
+          lookupScope namespace scope -> do
+          exported <- moduleExportsFromValue actual
+          moduleExportBindings
+            scope namespace identity internal exported
+    _ -> do
+      members <- scopeNamedMembers actual
+      traverse openedBinding (public members)
+  where
+    openedBinding (name, selected) = do
+      payload <- accessValues selected (naturalValue 1)
+      pure (scopeBinding name (EvaluatedBinding payload))
+
 moduleExportBindings
   :: Scope
   -> String
@@ -3679,12 +3824,11 @@ loadedModuleResultWithBase base
   let resultExpression = resourceResultExpression resource
   result <- evalInScope outer [] resultExpression
   exported <- case importNamedBindings result of
-    Right []
-      | interpretedValueKind result == DependentIdentifierTypeValueKind ->
-          Right []
-      | otherwise -> Left (ModuleEvaluationFailed
-          ImportedModuleRequiresIdentifierBinderFederation)
-    Right bindings -> Right bindings
+    Right bindings@(_ : _) -> Right bindings
+    _ | interpretedValueKind result == DependentIdentifierTypeValueKind ->
+      Right []
+    Right [] -> Left (ModuleEvaluationFailed
+      ImportedModuleRequiresIdentifierBinderFederation)
     Left _ -> Left (ModuleEvaluationFailed
       ImportedModuleRequiresIdentifierBinderFederation)
   binders <- traverse (loadedBinder outer resultExpression) exported
@@ -3772,16 +3916,12 @@ prepareModuleResource
   -> Either InterpretingError (Scope, Expression)
 prepareModuleResource base expressionValue = case expressionValue of
   ScopeAccess source body -> do
-    bindings <- case source of
+    value <- case source of
       IdentifierReference (IdentifierString namespace)
-        | Just (ImportedBinding _ identity value internal) <-
-            lookupScope namespace base -> do
-            exported <- moduleExportsFromValue value
-            moduleExportBindings base namespace identity internal exported
-      _ -> do
-        value <- evalInScope base [] source
-        members <- scopeNamedMembers value
-        traverse openedBinding (public members)
+        | Just (ImportedBinding _ _ value _) <-
+            lookupScope namespace base -> Right value
+      _ -> evalInScope base [] source
+    bindings <- openedScopeContributionBindings base (source, value)
     prepareModuleResource (extendScope bindings base) body
   Import paths (FunctionBody bindings result) -> do
     imported <- foldM importQualified base (nub paths)
@@ -3789,9 +3929,6 @@ prepareModuleResource base expressionValue = case expressionValue of
   Import _ _ -> Left (FunctionEvaluationFailed ExpectedFunctionType)
   _ -> Right (base, expressionValue)
   where
-    openedBinding (name, selected) = do
-      payload <- accessValues selected (naturalValue 1)
-      pure (scopeBinding name (EvaluatedBinding payload))
     importQualified imported requested = do
       source <- lookupModule imported requested
       importLoadedModule imported False source
@@ -3888,6 +4025,16 @@ publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 publicValue value = do
   members <- namedMembers value
   pure (makeAtlasMap 2 (map snd (public members)))
+
+publicDomainValue
+  :: InterpretedValue
+  -> Either InterpretingError InterpretedValue
+publicDomainValue value = do
+  members <- namedMembers value
+  importDomainValue
+    [ simpleIdentifierTypeValue name anyTypeValue
+    | (name, _) <- public members
+    ]
 
 namedMembers
   :: InterpretedValue

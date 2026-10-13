@@ -469,16 +469,6 @@ testDiagnostics = do
         (Types.NamedAccessFailed (Types.NamedFieldNotFound "field"))
         == LocalizedMessage "câmpul denumit nu există" ["câmp: field"]
     )
-  assert "noncanonical identifier annotations are localized structurally"
-    ( localizeDiagnostic English Types.NonCanonicalIdentifierTypeAnnotation
-        == LocalizedMessage
-          "identifier type annotation is not canonical"
-          ["identifier type annotations must implement canonical toString"]
-      && localizeDiagnostic Romanian Types.NonCanonicalIdentifierTypeAnnotation
-        == LocalizedMessage
-          "adnotarea de tip a identificatorului nu este canonică"
-          ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
-    )
   assert "unowned generic introductions have a bilingual diagnostic"
     ( localizeDiagnostic English
         (Types.GenericIntroductionOutsideFunctionType "^")

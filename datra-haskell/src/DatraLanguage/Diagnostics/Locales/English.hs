@@ -137,9 +137,6 @@ localizeInterpretingError reason =
     ExpectedBuiltinType name ->
       LocalizedMessage "value does not belong to the required built-in type"
         ["expected type: " <> name]
-    NonCanonicalIdentifierTypeAnnotation ->
-      LocalizedMessage "identifier type annotation is not canonical"
-        ["identifier type annotations must implement canonical toString"]
     OverloadError failure ->
       LocalizedMessage "overloading failed" [overloadFailure failure]
     AssertionFailed -> LocalizedMessage "assertion failed" []

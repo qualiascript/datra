@@ -50,6 +50,40 @@ moduleTests =
     , moduleCase origin "each exported binder retains its syntax scope"
         "import \"multiple_exports\" do yield Second.(shift second 3)"
         "7"
+    , programFileCase 2 "with opens several module values and their syntax"
+        "test/fixtures/modules/debug_with.datra"
+        "10"
+    , moduleCase origin "with repeated module values is idempotent"
+        ( "import \"multiple_exports\" do\n"
+            <> "with First; First do yield x + 0"
+        )
+        "3"
+    , moduleCase origin "with function value uses the same scope operation"
+        ( "import \"multiple_exports\" do\n"
+            <> "yield 'with ((First; Second); do yield x + y)"
+        )
+        "7"
+    , moduleCase origin "with preserves its enclosing function return"
+        ( "import \"multiple_exports\" do\n"
+            <> "  f := ({n? : Int} -> Int do\n"
+            <> "    with First do yield x + n)\n"
+            <> "yield f 8"
+        )
+        "11"
+    , moduleFailureCase origin "with rejects ambiguous public federations"
+        ( "import (\"library_one\"; \"library_two\") do\n"
+            <> "with LibraryOne; LibraryTwo do yield x"
+        )
+        (== ModuleEvaluationFailure
+          (AtlasMapFederationOperationUndecidable
+            (NoAtlasMapFederationDecisionProcedure
+              AtlasMapFederationConcatenation)))
+    , moduleFailureCase origin "with scope does not leak"
+        ( "import \"multiple_exports\" do\n"
+            <> "  opened := (with First do yield x)\n"
+            <> "yield x"
+        )
+        (== ModuleEvaluationFailure (UnknownIdentifier "x"))
     , moduleCase origin "import body returns its result"
         ( "import \"library_one\" do\n"
             <> "  doubled := LibraryOne.x * 2\n"

@@ -5,9 +5,7 @@
 -- strongly typed failures belong here.
 module DatraTypes
   ( ASTMetaCategory (..)
-  , CanonicalType
   , DatraType
-  , datraCanonicalType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
   , EvaluatedFunction (..)
@@ -32,13 +30,13 @@ module DatraTypes
   , syntaxCategoryTypeValue
   , captureSyntaxExpression
   , specializeSyntaxHoleKind
-  , astTypeValue
   , functionAlternatives
   , templateTypeValue
   , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
+  , builtinMetaTypeCanonicalString
   , naturalRangeTypeValue
   , integerRangeTypeValue
   , naturalValuedRangeTypeValue
@@ -143,7 +141,6 @@ module DatraTypes
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
-  , requireCanonicalTypeAnnotation
   , assignIdentifierValues
   , makeAtlasMap
   , isEmptyMap
@@ -399,7 +396,6 @@ import Evaluation.Identifier
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
-  , requireCanonicalTypeAnnotation
   )
 import Evaluation.OrdinalIndexedFamily
   ( OrdinalIndexedFamily (..)
@@ -420,9 +416,7 @@ import Evaluation.ResultContract
   ( decideClosedPublicResultContract )
 import Evaluation.Value
   ( ASTMetaCategory (..)
-  , CanonicalType
   , DatraType
-  , datraCanonicalType
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
   , EvaluatedFunctionInvocation (..)
@@ -443,13 +437,13 @@ import Evaluation.Value
   , withDependentSumReservationTarget
   , makeLazyMapValue
   , syntaxCategoryTypeValue
-  , astTypeValue
   , functionAlternatives
   , templateTypeValue
   , syntaxTemplateTypeValue
   , anyTypeValue
   , ordinalTypeValue
   , builtinMetaTypeName
+  , builtinMetaTypeCanonicalString
   , naturalRangeTypeValue
   , integerRangeTypeValue
   , naturalValuedRangeTypeValue

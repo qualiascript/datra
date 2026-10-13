@@ -182,8 +182,7 @@ assert = assertBool
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let astType = External (AsciiStringLiteral "datra.AST")
-      expressionType = External (AsciiStringLiteral "datra.Expr")
+  let expressionType = External (AsciiStringLiteral "datra.Expr")
       blockType = External (AsciiStringLiteral "datra.Block")
       beginValue = SyntaxType
         (StringTemplate
@@ -192,7 +191,8 @@ testModuleSyntaxAlias = do
           , StringTemplateLiteral " yield "
           , StringTemplateInterpolation (identifierReference "_Expr")
           ])
-        (FunctionType (AtlasMap [astType, astType]) astType)
+        (FunctionType
+          (AtlasMap [blockType, expressionType]) expressionType)
       binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
       moduleBody = Begin
@@ -634,10 +634,10 @@ testClosedInfiniteValuedRange =
     Right closed -> do
       assert "closed infinite valued range has order type omega plus one"
         (interpretedMapFinalOrderType (interpretedMap closed) == ordinal [1, 1])
-      case Types.requireCanonicalTypeAnnotation closed of
+      case Types.toStringValue canonicalStringCodec closed of
         Left failure ->
           assertFailure ("closed infinite valued range is not canonical: " <> show failure)
-        Right () -> pure ()
+        Right _ -> pure ()
       complement <- either
         (assertFailure . ("Complement construction failed: " <>) . show)
         pure
@@ -647,10 +647,10 @@ testClosedInfiniteValuedRange =
         pure
         (Types.eitherValue complement (Types.makeAtlasMap 0 []))
       let signedLimit = Types.makeAtlasMap 2 [closed, complementBranch]
-      case Types.requireCanonicalTypeAnnotation signedLimit of
+      case Types.toStringValue canonicalStringCodec signedLimit of
         Left failure ->
           assertFailure ("IntLimit representation is not canonical: " <> show failure)
-        Right () -> pure ()
+        Right _ -> pure ()
       case Types.specifyValues closed Types.integerValuedRangeTypeValue of
         Left failure ->
           assertFailure ("closed infinite valued range typing failed: " <> show failure)
@@ -1102,27 +1102,22 @@ testCanonicalTypes = do
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
     , "Template"
-    ]
-  mapM_ expectNonCanonicalDatraType
-    [ "!~\"datra.AST\""
     , "!~\"datra.Expr\""
+    , "!~\"datra.IdenExp\""
     , "!~\"datra.Block\""
+    , "!~\"datra.FunctionBody\""
+    , "(Nat; (!~\"datra.Expr\"))"
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "(Nat; (!~\"datra.AST\"))"
+    , "!~\"datra.SyntaxTemplate\""
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
-    assert "functions carry a CanonicalType"
-      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
-        Nothing -> False
-        Just _ -> True)
+    case Types.toStringValue canonicalStringCodec value of
+      Left rejection -> fail ("function conversion was rejected: " <> show rejection)
+      Right _ -> pure ()
   expectSourceValue "canonical begin block capability" "begin yield 11" $ \value -> do
-    assert "a retained total block embeds a CanonicalType"
-      (case Types.datraCanonicalType (Types.interpretedDatraType value) of
-        Just _ -> True
-        Nothing -> False)
     case Types.toStringValue canonicalStringCodec value of
       Left rejection ->
         fail ("canonical block conversion was rejected: " <> show rejection)
@@ -1133,18 +1128,10 @@ testCanonicalTypes = do
   where
     expectCanonicalType source =
       expectSourceValue (source <> " is canonical") source $ \value ->
-        assert (source <> " embeds the narrower CanonicalType")
-          (case Types.datraCanonicalType
-              (Types.interpretedDatraType value) of
-            Just _ -> True
-            Nothing -> False)
-    expectNonCanonicalDatraType source =
-      expectSourceValue (source <> " is noncanonical") source $ \value ->
-        assert (source <> " is a DatraType without a CanonicalType")
-          (case Types.datraCanonicalType
-              (Types.interpretedDatraType value) of
-            Nothing -> True
-            Just _ -> False)
+        case Types.toStringValue canonicalStringCodec value of
+          Left rejection -> fail
+            (source <> " canonical conversion was rejected: " <> show rejection)
+          Right _ -> pure ()
 
 testPrograms :: IO ()
 testPrograms = do
@@ -1751,16 +1738,11 @@ testStringTemplates = do
     Right naturals -> do
       let dependentIdentifier =
             Types.dependentIdentifierTypeValue "n" (const "same") naturals
-      assert "widest dependent identifier is not a CanonicalType"
-        (case Types.datraCanonicalType
-            (Types.interpretedDatraType dependentIdentifier) of
-          Nothing -> True
-          Just _ -> False)
-      assert "dependent identifier type has no proven injective toString"
+      assert "dependent identifier type carries an injective toString proof"
         (case Types.toStringValue
             canonicalStringCodec dependentIdentifier of
-          Left NonInjectiveStringInterpolation -> True
-          _ -> False)
+          Right _ -> True
+          Left _ -> False)
     Left rejection ->
       fail ("Nat construction was rejected: " <> show rejection)
   expectValue
@@ -3689,11 +3671,7 @@ testIdentifiers = do
       "a dependent identifier has a canonical source representation"
       "\"abc%(it)\" : range 0 up" $ \value ->
     assert "the canonical form retains the identifier expression and annotation"
-      ( case Types.datraCanonicalType (Types.interpretedDatraType value) of
-          Just _ -> renderInterpretedValue value
-            == "\"abc%(it)\" : range 0 up"
-          Nothing -> False
-      )
+      (renderInterpretedValue value == "\"abc%(it)\" : range 0 up")
   expectSourceRejection
     "repeated dependent-name holes retain ordinary template ambiguity"
     "\"%(it)%(it)\" : Nat"

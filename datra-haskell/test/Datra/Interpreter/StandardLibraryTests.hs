@@ -31,7 +31,7 @@ standardLibraryTests =
             (SourceEvaluationFailure (ModuleEvaluationFailed
               (ModularIdentifierAlreadyMarked "x")))
         ]
-    , testGroup "private AST implementation type"
+    , testGroup "private syntax categories"
         [ programFailureCase "AST is no longer implicitly imported"
             "yield AST" (SourceEvaluationFailure (UnknownIdentifier "AST"))
         , programFailureCase "_AST is private to the library"
@@ -40,8 +40,11 @@ standardLibraryTests =
             "yield Std._AST" (SourceEvaluationFailure (UnknownIdentifier "_AST"))
         , programCase "AST can be a user binding"
             "AST := 2\nyield AST" "2"
-        , programCase "AST external uses the private type spelling"
-            "yield !~\"datra.AST\"" "_AST"
+        , programFailureCase "the universal AST external is removed"
+            "yield !~\"datra.AST\""
+            (SourceEvaluationFailure
+              (ExternalEvaluationFailed
+                (UnknownExternalSymbol "datra.AST")))
         , programFailureCase "Expr is private to the library"
             "yield Expr" (SourceEvaluationFailure (UnknownIdentifier "Expr"))
         , programFailureCase "Block is private to the library"
@@ -53,8 +56,8 @@ standardLibraryTests =
         , programFailureCase "_SyntaxTemplate is private to the library"
             "yield _SyntaxTemplate"
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
-        , programCase "SyntaxTemplate external uses the private type spelling"
-            "yield !~\"datra.SyntaxTemplate\"" "_SyntaxTemplate"
+        , programCase "SyntaxTemplate retains its external canonical spelling"
+            "yield !~\"datra.SyntaxTemplate\"" "!~\"datra.SyntaxTemplate\""
         ]
     , testGroup "final-page length"
         [ programCase "finite lengths use the final page"
@@ -71,6 +74,13 @@ standardLibraryTests =
         , programCase "external syntax adapters permit ordinary calls"
             "yield 'if (false; 4; 5)"
             "5"
+        , programCase "direct begin rewrites its result in the block scope"
+            ( "yield 'begin ((\n"
+                <> "  apply := \"apply %_Expr\" % "
+                <> "(_Expr -> _Expr) !~\"datra.fun\"\n"
+                <> "); apply 7)"
+            )
+            "7"
         , programCase "optional named values retain their map extent"
             ( "measure := ({value? : Any} -> NatLimit do yield len value)\n"
                 <> "yield measure (value := (1; 2; 3))"
@@ -394,8 +404,11 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "not ((!~\"datra.AST\") of Any)"
-            , "not ((Nat; (!~\"datra.AST\")) of Any)"
+            , "(!~\"datra.Expr\") of Any"
+            , "(!~\"datra.IdenExp\") of Any"
+            , "(!~\"datra.Block\") of Any"
+            , "(!~\"datra.FunctionBody\") of Any"
+            , "(Nat; (!~\"datra.Expr\")) of Any"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -416,10 +429,7 @@ standardLibraryTests =
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "(!~\"datra.Expr\") of (!~\"datra.AST\")"
-            , "(!~\"datra.Block\") of (!~\"datra.AST\")"
             , "not ((!~\"datra.Block\") of (!~\"datra.Expr\"))"
-            , "((!~\"datra.Expr\") ~> (!~\"datra.AST\")) of (!~\"datra.AST\")"
             , "\"%Any\" of Template"
             , "\"%Int %IdenStr\" of Template"
             , "(\"%Int %IdenStr\" ~> Template) of Template"

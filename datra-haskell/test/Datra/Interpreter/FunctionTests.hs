@@ -674,9 +674,9 @@ functionTests =
         , programCase "block binding accepts a canonical function annotation"
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
-        , expressionFailureCase "noncanonical standard type cannot annotate an identifier"
-            "node : (!~\"datra.AST\")"
-            (SourceEvaluationFailure NonCanonicalIdentifierTypeAnnotation)
+        , expressionCase "syntax category can annotate an identifier"
+            "node : (!~\"datra.Expr\")"
+            "node : !~\"datra.Expr\""
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat do yield 0)\nyield f ({n?:Nat} -> Nat do yield n)"
             "0"

@@ -522,19 +522,18 @@ regressionTests = do
           == matchRules matchesNumericHole [correctFrom] fromPhrase
       Left _ -> False)
   let beginAliasBootstrap = unlines
-        [ "_AST := !~\"datra.AST\""
-        , "_Expr := !~\"datra.Expr\""
+        [ "_Expr := !~\"datra.Expr\""
         , "_Block := !~\"datra.Block\""
-        , "begin := \"begin %_Block yield %_Expr\" % (_AST, _AST -> _AST) !~\"datra.begin\""
+        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) !~\"datra.begin\""
         , "yield Example := begin"
-        , "  begin := begin"
-        , "yield begin"
+        , "  'begin := 'begin"
+        , "yield 'begin"
         ]
       isBeginAlias expressionValue =
         expressionValue == AST.assignment
-          "begin" (ref "begin") (ref "begin")
+          "'begin" (ref "'begin") (ref "'begin")
           || any isBeginAlias (expressionChildren expressionValue)
-  assert "begin := begin remains a declaration beside its own template"
+  assert "'begin := 'begin remains a declaration beside its own template"
     (case parseSourceLocated False
         "<begin-alias-regression>" beginAliasBootstrap of
       Right (Located _ parsed) -> isBeginAlias parsed
@@ -2582,14 +2581,14 @@ assertAstSyntax = do
         (SyntaxType (ref "Template") (FunctionType (ref "Int") (ref "Int")))
         == "(% (ref $Template) (-> (ref $Int) (ref $Int)))"
     )
-  assert "bounded from calls retain their scoped signature and checked captures"
-    ( renderExpression (fromTo 2 5)
-        == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 5))"
-    )
-  assert "directional from calls retain the private direction type"
-    ( renderExpression (fromUpwards 2)
-        == "(apply-func (in-module \"std.datra\" (ref $'from)) (<:> 2 $up))"
-    )
+  assertEqual
+    "bounded from calls retain their scoped signature and checked captures"
+    "(apply-func (in-module $Std (ref $'from)) (<:> 2 5))"
+    (renderExpression (fromTo 2 5))
+  assertEqual
+    "directional from calls retain the private direction type"
+    "(apply-func (in-module $Std (ref $'from)) (<:> 2 $up))"
+    (renderExpression (fromUpwards 2))
   assert "library types render as identifier references"
     (renderExpression (ref "Nat") == "(ref $Nat)")
 
@@ -2693,7 +2692,7 @@ data RangeEnd = UpperBound Expression | Upwards | Downwards
 
 rangeCall :: String -> Expression -> RangeEnd -> Expression
 rangeCall name start end = FunctionApplication
-  (InModule "std.datra" (ref ('\'' : name)))
+  (InModule "Std" (ref ('\'' : name)))
   (AtlasMap [start, endpoint])
   where
     endpoint = case end of

@@ -16,32 +16,34 @@ import Evaluation.Numerical
 import IdentifierValueType (identifierValueCharacterAlphabet)
 
 data StringConversionProperties = StringConversionProperties
-  { conversionIsInjective :: Bool
-  , conversionCharacterAlphabet :: Maybe String
+  { conversionCharacterAlphabet :: Maybe String
   , conversionExactStrings :: Maybe [String]
   , conversionExcludesSubstring :: String -> Bool
   }
 
 proveInjectiveToString
-  :: (String -> [InterpretedValue])
+  :: DatraType
+  -> (String -> [InterpretedValue])
   -> InterpretedValue
-  -> Maybe ProvenInjectiveToString
-proveInjectiveToString decodeCanonical source =
-  let properties = stringConversionProperties
-        (interpretedSemanticSemantics source)
-  in if conversionIsInjective properties
-      then
-        Just
-          ProvenInjectiveToString
-            { injectiveToStringCharacterAlphabet =
-                conversionCharacterAlphabet properties
-            , injectiveToStringExactStrings =
-                conversionExactStrings properties
-            , injectiveToStringExcludesSubstring =
-                conversionExcludesSubstring properties
-            , invertInjectiveToString = decodeToStringMember decodeCanonical
-            }
-      else Nothing
+  -> ProvenInjectiveToString
+proveInjectiveToString datraType decodeCanonical source =
+  ProvenInjectiveToString
+    { injectiveToStringCharacterAlphabet =
+        conversionCharacterAlphabet properties
+    , injectiveToStringExactStrings =
+        conversionExactStrings properties
+    , injectiveToStringExcludesSubstring =
+        conversionExcludesSubstring properties
+    , invertInjectiveToString = decodeToStringMember decodeCanonical
+    }
+  where
+    properties = case canonicalStringImplementation datraType of
+      StructuralCanonicalString -> stringConversionProperties semantics
+      FunctionCanonicalString -> unknownAlphabetProperties
+      BuiltinMetaCanonicalString kind ->
+        exactStrings [builtinMetaTypeCanonicalString kind]
+      TotalBlockCanonicalString -> stringConversionProperties semantics
+    semantics = interpretedSemanticSemantics source
 
 stringConversionProperties
   :: ValueSemantics
@@ -54,8 +56,6 @@ stringConversionProperties semantics
       complementedIntegerProperties includesInfinity
   | otherwise = case semantics of
     NeverSemantics -> exactStrings ["Never"]
-    BuiltinMetaTypeSemantics AnyMetaType -> injectiveUnknownAlphabet
-    BuiltinMetaTypeSemantics TemplateMetaType -> injectiveUnknownAlphabet
     BuiltinMetaTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
@@ -112,15 +112,14 @@ stringConversionProperties semantics
     numericRange =
       knownAlphabet " -0123456789.rangeftoupwds"
     injectiveUnknownAlphabet =
-      StringConversionProperties True Nothing Nothing (const False)
+      unknownAlphabetProperties
     knownAlphabet alphabet =
       StringConversionProperties
-        True
         (Just alphabet)
         Nothing
         (\substring -> any (`notElem` alphabet) substring)
     unknownConversion =
-      StringConversionProperties False Nothing Nothing (const False)
+      StringConversionProperties Nothing Nothing (const False)
 
     structuralWrapperProperties underlying =
       (stringConversionProperties underlying)
@@ -128,9 +127,8 @@ stringConversionProperties semantics
         , conversionExactStrings = Nothing
         }
 
-    compositeProperties members =
+    compositeProperties _ =
       StringConversionProperties
-        (all (conversionIsInjective . stringConversionProperties) members)
         Nothing
         Nothing
         (const False)
@@ -159,9 +157,6 @@ eitherConversionProperties
   -> StringConversionProperties
 eitherConversionProperties left right =
   StringConversionProperties
-    ( conversionIsInjective left
-        && conversionIsInjective right
-    )
     (unionMaybe unionLists
       (conversionCharacterAlphabet left)
       (conversionCharacterAlphabet right))
@@ -175,10 +170,13 @@ eitherConversionProperties left right =
 exactStrings :: [String] -> StringConversionProperties
 exactStrings strings =
   StringConversionProperties
-    True
     (Just (nub (concat strings)))
     (Just strings)
     (\substring -> all (not . isInfixOf substring) strings)
+
+unknownAlphabetProperties :: StringConversionProperties
+unknownAlphabetProperties =
+  StringConversionProperties Nothing Nothing (const False)
 
 data StringLanguageSegment
   = FixedString String
@@ -187,7 +185,6 @@ data StringLanguageSegment
 complementedIntegerProperties :: Bool -> StringConversionProperties
 complementedIntegerProperties includesInfinity =
   StringConversionProperties
-    True
     Nothing
     Nothing
     (\substring ->

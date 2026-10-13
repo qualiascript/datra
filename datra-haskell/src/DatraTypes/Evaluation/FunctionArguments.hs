@@ -21,7 +21,6 @@ import Evaluation.Error
   , OverloadFailure (..)
   , overloadFailureIsAmbiguous
   )
-import Evaluation.Identifier (requireCanonicalTypeAnnotation)
 import Evaluation.Overload
 import Evaluation.Value (InterpretedValue)
 
@@ -50,7 +49,6 @@ compileParametersWithGenerics generics evaluate written static =
           case genericByName name of
             Just binder -> do
               annotationValue <- evaluate annotation
-              requireCanonicalTypeAnnotation annotationValue
               pure (genericArgumentSlotSchema
                 (genericDescriptor binder) annotationValue)
             Nothing ->
@@ -64,7 +62,6 @@ compileParametersWithGenerics generics evaluate written static =
               case genericByName name of
                 Just binder -> do
                   annotationValue <- evaluate annotation
-                  requireCanonicalTypeAnnotation annotationValue
                   pure (genericArgumentSlotSchema
                     (genericDescriptor binder) annotationValue)
                 Nothing ->
@@ -134,7 +131,6 @@ compileParametersWithGenerics generics evaluate written static =
         _ -> Right ()
     parameterSlot name optional annotation given = do
       annotationValue <- evaluate annotation
-      requireCanonicalTypeAnnotation annotationValue
       argumentSlotSchema name optional annotationValue
         <$> traverse evaluate given
 

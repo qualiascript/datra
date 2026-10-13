@@ -117,6 +117,12 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
         | Just requested <- importPaths paths
         , not (null requested) -> Right (Import requested body)
       captures -> invalidBody symbol captures)
+  , ("datra.with", \case
+      [modules, FunctionBody bindings result] -> Right
+        (ScopeAccess
+          (ArgumentMap (withModuleOperands modules))
+          (Program bindings result))
+      captures -> invalidBody symbol captures)
   ]
   where
     invalidBody name _ = Left (UnknownSyntaxControlAdapter name)
@@ -131,8 +137,18 @@ importPaths value = case value of
   SyntaxBoundary inner -> importPaths inner
   _ -> Nothing
 
+withModuleOperands :: Expression -> [Expression]
+withModuleOperands value = case value of
+  AtlasMap modules -> modules
+  MapSequence modules -> modules
+  MapConcatenation left right ->
+    withModuleOperands left <> withModuleOperands right
+  SyntaxBoundary inner -> withModuleOperands inner
+  _ -> [value]
+
 blockEntries :: Expression -> [Expression]
 blockEntries (AtlasMap entries) = entries
+blockEntries (SyntaxBoundary inner) = blockEntries inner
 blockEntries value = [value]
 
 absorbAssignedConcatenation :: Expression -> Expression

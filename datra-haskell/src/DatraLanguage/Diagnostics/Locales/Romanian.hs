@@ -135,9 +135,6 @@ localizeInterpretingError reason =
     ExpectedBuiltinType name ->
       LocalizedMessage "valoarea nu aparține tipului încorporat necesar"
         ["tip așteptat: " <> name]
-    NonCanonicalIdentifierTypeAnnotation ->
-      LocalizedMessage "adnotarea de tip a identificatorului nu este canonică"
-        ["adnotările de tip ale identificatorilor trebuie să implementeze toString canonic"]
     OverloadError failure ->
       LocalizedMessage "supraîncărcarea a eșuat" [overloadFailure failure]
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []

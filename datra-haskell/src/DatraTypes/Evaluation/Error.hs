@@ -139,7 +139,6 @@ data InterpretingError
   | ExternalEvaluationFailed ExternalFailure
   | ModuleEvaluationFailed ModuleEvaluationFailure
   | ExpectedBuiltinType String
-  | NonCanonicalIdentifierTypeAnnotation
   | OverloadError OverloadFailure
   | AssertionFailed
   | IdentifierStringOverlap String

@@ -24,7 +24,7 @@ import DatraLanguage.AST
   )
 import DatraTypes
   ( CanonicalResult (..)
-  , builtinMetaTypeName
+  , builtinMetaTypeCanonicalString
   , InterpretedValue
   , interpretedCanonicalResult
   , interpretedEvaluationSource
@@ -130,7 +130,8 @@ prettyNonKeywordCanonicalResult result =
     CanonicalApplication function argument ->
       prettyCanonicalApplicationOperand function
         <+> prettyCanonicalApplicationArgument argument
-    CanonicalBuiltinMetaType kind -> pretty (builtinMetaTypeName kind)
+    CanonicalBuiltinMetaType kind ->
+      pretty (builtinMetaTypeCanonicalString kind)
     CanonicalFunction input output body ->
       let signature = parens (prettyCanonicalResult input) <+> "->" <+> parens (prettyCanonicalResult output)
       in case body of
