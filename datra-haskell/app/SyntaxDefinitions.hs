@@ -20,11 +20,15 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   , TemplateSelection (..)
-  , invalidSyntaxTemplateCharacter
   , literalSyntaxTemplate
+  , renderSyntaxTemplate
   )
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure (..))
+  ( SyntaxExpansionFailure (..)
+  , SyntaxTemplateAdmissibilityFailure
+  )
+import DatraLanguage.AST.Source (renderSourceExpression)
+import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
 
 data SyntaxRule = SyntaxRule
   { syntaxName :: String, syntaxTemplate :: SyntaxTemplate Expression
@@ -36,7 +40,9 @@ data SyntaxRule = SyntaxRule
 
 data SyntaxTemplateCompilationFailure
   = ExpectedSyntaxTemplateOperand
-  | ForbiddenSyntaxTemplateCharacter Char
+  | InadmissibleSyntaxTemplate
+      String
+      SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
 
 -- | Contextual bindings are supplied by their enclosing evaluator scopes,
@@ -191,14 +197,14 @@ compileSyntaxTemplatesFromExpression templates = do
     (Left ExpectedSyntaxTemplateOperand)
     Right
     (templateValues templates)
-  case
-      [ invalid
-      | template <- compiled
-      , Just invalid <- [invalidSyntaxTemplateCharacter template]
-      ] of
-    invalid : _ -> Left (ForbiddenSyntaxTemplateCharacter invalid)
-    [] -> Right compiled
+  _ <- traverse validate compiled
+  pure compiled
   where
+    validate template = case validateSyntaxTemplate template of
+      Left failure -> Left (InadmissibleSyntaxTemplate
+        (renderSyntaxTemplate renderSourceExpression template)
+        failure)
+      Right () -> Right ()
     templateValues value@AsciiStringLiteral {} =
       (: []) <$> templateValue value
     templateValues value@StringTemplate {} =

@@ -13,15 +13,7 @@ module DatraLanguage.SyntaxTemplate
   , literalSyntaxTemplate
   , traverseSyntaxTemplate
   , renderSyntaxTemplate
-  , invalidSyntaxTemplateCharacter
-  , isSymbolicSyntaxCharacter
   ) where
-
-import Data.Maybe (listToMaybe)
-import DatraLanguage.Identifier
-  ( isAsciiCharacter
-  , isIdentifierCharacter
-  )
 
 data SyntaxHoleKind value
   = ExpressionSyntaxHole value
@@ -81,29 +73,6 @@ templateSelectionProjection selection =
 -- text; in particular, an escaped percent sign can never become a hole here.
 literalSyntaxTemplate :: String -> SyntaxTemplate value
 literalSyntaxTemplate = SyntaxTemplate . map SyntaxLiteral . words
-
--- | Return the first literal character that the neutral source parser cannot
--- retain as part of a declared syntax phrase. This validation is intentionally
--- separate from 'literalSyntaxTemplate': template strings remain ordinary valid
--- values until a syntax type operator asks to install one as surface syntax.
-invalidSyntaxTemplateCharacter :: SyntaxTemplate value -> Maybe Char
-invalidSyntaxTemplateCharacter (SyntaxTemplate pieces) = listToMaybe
-  [ character
-  | SyntaxLiteral literal <- pieces
-  , character <- literal
-  , not
-      (isIdentifierCharacter character
-        || isSymbolicSyntaxCharacter character)
-  ]
-
-isSymbolicSyntaxCharacter :: Char -> Bool
-isSymbolicSyntaxCharacter character =
-  isAsciiCharacter character
-    && not (isIdentifierCharacter character)
-    -- These characters are structural delimiters, string/comment introducers,
-    -- or escapes in source. The neutral reader cannot preserve them as an
-    -- opaque symbolic literal for the later declared-syntax pass.
-    && character `notElem` (" \t\r\n(){}[];.\"#$\\" :: String)
 
 traverseSyntaxTemplate
   :: Applicative f

@@ -36,6 +36,19 @@ import SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
   , matchSyntaxRulesWith
   )
+import SyntaxTemplateProjection
+  ( applicationFrom
+  , applicationFromMaybe
+  , applicationPhrase
+  , applicationSpine
+  , directApplicationSplit
+  , leftInfixContext
+  , literalExpression
+  , matchesLiteral
+  , rightInfixContext
+  , stripTrailingLiteralAssignment
+  , syntaxProjectionCandidates
+  )
 
 data SyntaxRewriteFailure
   = MissingImplicitBlockResult
@@ -956,9 +969,9 @@ matchOrdinarySyntaxWithTail includeConcatenation
           firstRule (rule : earlier) remaining
       | otherwise =
           firstCandidate rule
-            (syntaxCandidates
+            (syntaxProjectionCandidates
               (includeConcatenation || not (earlierPrefixPending earlier))
-              rule value) >>= \case
+              (syntaxTemplate rule) value) >>= \case
             Just rewritten -> Right (rewritten, trailing)
             Nothing -> firstRule (rule : earlier) remaining
     firstCandidate _ [] = Right Nothing
@@ -971,40 +984,6 @@ matchOrdinarySyntaxWithTail includeConcatenation
       not (null (syntaxTemplateLiteralPrefix earlierRule))
         && ruleLiteralsPresent earlierRule value)
 
-syntaxCandidates :: Bool -> SyntaxRule -> Expression -> [Expression]
-syntaxCandidates includeConcatenation rule value =
-  if includeConcatenation && holeLed
-    then concatenationBoundaryCandidates rule value <> ordinary
-    else ordinary
-  where
-    -- Seed the search with every possible single deep rewrite, then combine
-    -- rewrites through local parent/child steps. Recomputing all descendant
-    -- rewrites at every frontier duplicates equivalent paths exponentially.
-    deepSeeds = filter (/= value)
-      (nub (oneDescendantCandidates directCandidates value))
-    initial = value : deepSeeds
-    ordinary = initial <> contextualClosure initial initial
-
-    contextualClosure _ [] = []
-    contextualClosure seen frontier =
-      let fresh = filter (`notElem` seen)
-            (nub (concatMap contextualStep frontier))
-      in fresh <> contextualClosure (seen <> fresh) fresh
-
-    contextualStep current = directCandidates current
-      <> oneChildCandidates directCandidates current
-
-    directCandidates current =
-      signedArgumentCandidates rule current
-        <> declarationBoundaryCandidates current
-        <> rightApplicationCandidates current
-        <> leftBoundaryCandidates rule current
-        <> rightBoundaryCandidates current
-
-    holeLed = case syntaxTemplatePieces (syntaxTemplate rule) of
-      SyntaxHole {} : _ -> True
-      _ -> False
-
 ruleLiteralsPresent :: SyntaxRule -> Expression -> Bool
 ruleLiteralsPresent rule value = all (`isPresentIn` value)
   [ literal
@@ -1014,177 +993,11 @@ ruleLiteralsPresent rule value = all (`isPresentIn` value)
     isPresentIn literal expressionValue =
       matchesLiteral literal expressionValue
         || renderSourceExpression expressionValue == literal
+        || postfixConcatenationLiteral literal expressionValue
         || any (isPresentIn literal) (expressionChildren expressionValue)
-
-data OneChild a = OneChild a [a]
-
-instance Functor OneChild where
-  fmap function (OneChild original changed) =
-    OneChild (function original) (map function changed)
-
-instance Applicative OneChild where
-  pure value = OneChild value []
-  OneChild originalFunction changedFunctions
-      <*> OneChild originalValue changedValues =
-    OneChild
-      (originalFunction originalValue)
-      ( map ($ originalValue) changedFunctions
-          <> map originalFunction changedValues
-      )
-
-oneChildCandidates
-  :: (Expression -> [Expression])
-  -> Expression
-  -> [Expression]
-oneChildCandidates candidates value = changed
-  where
-    OneChild _ changed = traverseExpressionChildren
-      (\child -> OneChild child (candidates child)) value
-
--- Produce candidates which change exactly one descendant, regardless of its
--- depth. Contextual closure then combines independent changes as needed.
--- Merely descending does not itself add a candidate, so the search remains
--- finite when no structural rewrite applies.
-oneDescendantCandidates
-  :: (Expression -> [Expression])
-  -> Expression
-  -> [Expression]
-oneDescendantCandidates candidates = descend
-  where
-    descend value = oneChildCandidates
-      (\child -> candidates child <> descend child)
-      value
-
--- Provisional infix reassociation can leave a source-adjacent phrase on the
--- right of an application. Promote that phrase back into the enclosing
--- application spine so later template literals remain visible. An explicit
--- parenthesized argument is still wrapped in 'SyntaxBoundary' at this stage
--- and therefore cannot be flattened here.
-rightApplicationCandidates :: Expression -> [Expression]
-rightApplicationCandidates value = case value of
-  FunctionApplication function argument@FunctionApplication {} ->
-    [applicationFrom (applicationPhrase function <> applicationPhrase argument)]
-  _ -> []
-
--- Once a literal syntax head has been read as an ordinary operand, a written
--- signed argument is provisionally represented as binary addition or
--- subtraction. Re-form that first right-hand phrase member as the unary value
--- the template hole receives; matching the declaration still decides whether
--- this interpretation is valid.
-signedArgumentCandidates :: SyntaxRule -> Expression -> [Expression]
-signedArgumentCandidates rule value = binarySign <> embeddedSigns
-  where
-    binarySign = case value of
-      Addition left right -> withSign Plus left right
-      Subtraction left right -> withSign Minus left right
-      _ -> []
-    withSign sign left right
-      | length (applicationPhrase left) < templateArity =
-          case applicationPhrase right of
-            first : remaining ->
-              [applicationFrom
-                (applicationPhrase left <> (sign first : remaining))]
-            [] -> []
-      | otherwise = []
-    templateArity = length
-      (syntaxTemplatePieces (syntaxTemplate rule))
-    phrase = applicationPhrase value
-    embeddedSigns =
-      [ applicationFrom (before <> (sign first : rest) <> after)
-      | (before, current, after) <- contexts phrase
-      , (sign, operand) <- case current of
-          Plus inner -> [(Plus, inner)]
-          Minus inner -> [(Minus, inner)]
-          _ -> []
-      , first : rest <- [applicationPhrase operand]
-      , not (null rest)
-      ]
-    contexts [] = []
-    contexts (current : after) = ([], current, after) :
-      [ (current : before, nested, remaining)
-      | (before, nested, remaining) <- contexts after
-      ]
-
--- The neutral reader associates a trailing assignment with the final literal
--- identifier in an annotation.  A declared syntax rule can prove that the
--- identifier belongs to the annotation instead: in @a : from 0 up := 2@,
--- @up@ is the final literal of @from $Int up@ and the assignment therefore
--- belongs to @a@.  Re-form that boundary as a candidate; the template matcher
--- still has to accept the stripped annotation, so this does not reserve any
--- particular literal or syntax shape.
-declarationBoundaryCandidates :: Expression -> [Expression]
-declarationBoundaryCandidates value = case value of
-  IdentifierOperation name annotation Nothing ->
-    [ IdentifierOperation name rewritten (Just given)
-    | (rewritten, given) <- stripTrailingLiteralAssignment annotation
-    ]
-  IdentifierTemplateOperation parts annotation Nothing ->
-    [ IdentifierTemplateOperation parts rewritten (Just given)
-    | (rewritten, given) <- stripTrailingLiteralAssignment annotation
-    ]
-  _ -> []
-
-stripTrailingLiteralAssignment
-  :: Expression
-  -> [(Expression, Expression)]
-stripTrailingLiteralAssignment value = case value of
-  FunctionApplication function
-      (IdentifierOperation name annotation (Just given))
-    | annotation == given ->
-        [ ( FunctionApplication function (IdentifierReference name)
-          , given
-          )
-        ]
-  _ -> []
-
--- A declarative template may begin inside the provisional left operand of an
--- operator tree while its final hole extends to the enclosing expression
--- boundary. Preserve the written prefix and move the remaining operator
--- context into that final capture. Maybe sequencing is a syntax boundary:
--- a completed prefix form on its left is sequenced, rather than its final hole
--- absorbing @!?@. Explicit container boundaries never reach this function, so
--- reassociation remains local to one parsed expression.
-leftBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
-leftBoundaryCandidates rule = descend id
-  where
-    descend _ MaybeThen {}
-      | literalLed = []
-    descend wrap current =
-      case leftInfixContext current of
-        Just (left, rebuild) ->
-          reassociate (wrap . rebuild) left
-            <> descend (wrap . rebuild) left
-        Nothing -> []
-    reassociate wrap current =
-      let phrase = applicationPhrase current
-      in [ applicationFrom (prefix <> [wrap (applicationFrom suffix)])
-         | position <- [1 .. length phrase - 1]
-         , let (prefix, suffix) = splitAt position phrase
-         ]
-    literalLed = case syntaxTemplatePieces (syntaxTemplate rule) of
-      SyntaxLiteral {} : _ -> True
-      _ -> False
-
--- Conversely, a hole-led infix template such as @%_Expr of %_Expr@ may begin
--- in the provisional right operand. Fold everything preceding its literal
--- back into the first capture, which gives declarative word operators their
--- precedence without teaching the parser their names.
-rightBoundaryCandidates :: Expression -> [Expression]
-rightBoundaryCandidates = descend id
-  where
-    descend wrap current =
-      case rightInfixContext current of
-        Just (right, rebuild) ->
-          reassociate (wrap . rebuild) right
-            <> descend (wrap . rebuild) right
-        Nothing -> []
-    reassociate wrap current =
-      let phrase = applicationPhrase current
-      in [ applicationFrom
-            (wrap (applicationFrom prefix) : suffix)
-         | position <- [1 .. length phrase - 1]
-         , let (prefix, suffix) = splitAt position phrase
-         ]
+    postfixConcatenationLiteral literal (MapConcatenation left _) =
+      renderSourceExpression (MapConcatenation left (AtlasMap [])) == literal
+    postfixConcatenationLiteral _ _ = False
 
 -- A semicolon-separated operand reaches this pass as consecutive implicit
 -- block entries.  For a declared form whose final capture is a function body,
@@ -1454,107 +1267,6 @@ resolveInCurrentScope environment inferred =
     AtlasMap resolved -> last resolved
     _ -> inferred
 
--- Infix operators are read before syntax templates only as a temporary tree.
--- If a block begins in the left operand, everything to its right still belongs
--- to the block's result expression. Thread that context into the result rather
--- than allowing the provisional operator tree to become an AST boundary.
-leftInfixContext
-  :: Expression
-  -> Maybe (Expression, Expression -> Expression)
-leftInfixContext value = case value of
-  EitherType left right -> Just (left, (`EitherType` right))
-  MaybeThen left right -> Just (left, (`MaybeThen` right))
-  Addition left right -> Just (left, (`Addition` right))
-  Subtraction left right -> Just (left, (`Subtraction` right))
-  Equality left right -> Just (left, (`Equality` right))
-  Inequality left right -> Just (left, (`Inequality` right))
-  LessThan left right -> Just (left, (`LessThan` right))
-  LessThanOrEqual left right -> Just (left, (`LessThanOrEqual` right))
-  GreaterThan left right -> Just (left, (`GreaterThan` right))
-  GreaterThanOrEqual left right -> Just (left, (`GreaterThanOrEqual` right))
-  Multiplication left right -> Just (left, (`Multiplication` right))
-  Exponentiation left right -> Just (left, (`Exponentiation` right))
-  MapAccess left right -> Just (left, (`MapAccess` right))
-  MapSpecification left right -> Just (left, (`MapSpecification` right))
-  Overload left right -> Just (left, (`Overload` right))
-  SafeOverload left right -> Just (left, (`SafeOverload` right))
-  ReverseMapSpecification left right ->
-    Just (left, (`ReverseMapSpecification` right))
-  ReverseOverload left right -> Just (left, (`ReverseOverload` right))
-  ReverseSafeOverload left right ->
-    Just (left, (`ReverseSafeOverload` right))
-  SuperEllipsisRange left right -> Just (left, (`SuperEllipsisRange` right))
-  _ -> Nothing
-
-rightInfixContext
-  :: Expression
-  -> Maybe (Expression, Expression -> Expression)
-rightInfixContext value = case value of
-  EitherType left right -> Just (right, EitherType left)
-  Addition left right -> Just (right, Addition left)
-  Subtraction left right -> Just (right, Subtraction left)
-  Equality left right -> Just (right, Equality left)
-  Inequality left right -> Just (right, Inequality left)
-  LessThan left right -> Just (right, LessThan left)
-  LessThanOrEqual left right -> Just (right, LessThanOrEqual left)
-  GreaterThan left right -> Just (right, GreaterThan left)
-  GreaterThanOrEqual left right -> Just (right, GreaterThanOrEqual left)
-  Multiplication left right -> Just (right, Multiplication left)
-  Exponentiation left right -> Just (right, Exponentiation left)
-  MapAccess left right -> Just (right, MapAccess left)
-  MapSpecification left right -> Just (right, MapSpecification left)
-  Overload left right -> Just (right, Overload left)
-  SafeOverload left right -> Just (right, SafeOverload left)
-  ReverseMapSpecification left right ->
-    Just (right, ReverseMapSpecification left)
-  ReverseOverload left right -> Just (right, ReverseOverload left)
-  ReverseSafeOverload left right ->
-    Just (right, ReverseSafeOverload left)
-  SuperEllipsisRange left right -> Just (right, SuperEllipsisRange left)
-  _ -> Nothing
-
--- Concatenation is a contextual boundary only for hole-led syntax such as
--- @%_Expr of %_Expr@. Prefix syntax must finish before a following comma; for
--- example, @&T, value@ binds @Any@ rather than the concatenation.
-concatenationBoundaryCandidates :: SyntaxRule -> Expression -> [Expression]
-concatenationBoundaryCandidates rule value = do
-  literal <- case
-      [ text
-      | SyntaxLiteral text <- syntaxTemplatePieces (syntaxTemplate rule)
-      ] of
-    first : _ -> [first]
-    [] -> []
-  (beforeComponents, component, afterComponents) <-
-    componentContexts (flattenConcatenation value)
-  (beforeLiteral, afterLiteral) <- case
-      directApplicationSplit literal component of
-    Just split -> [split]
-    Nothing -> []
-  left <- maybeToList (concatenationFrom
-    (beforeComponents <> maybe [] (: []) beforeLiteral))
-  right <- maybeToList (concatenationFrom
-    (maybe [] (: []) (applicationFromMaybe afterLiteral)
-      <> afterComponents))
-  pure (applicationFrom [left, literalExpression literal, right])
-  where
-    flattenConcatenation (MapConcatenation left right) =
-      flattenConcatenation left <> flattenConcatenation right
-    flattenConcatenation expressionValue = [expressionValue]
-
-    componentContexts [] = []
-    componentContexts (component : remaining) =
-      ([], component, remaining) :
-        [ (component : before, selected, after)
-        | (before, selected, after) <- componentContexts remaining
-        ]
-
-    concatenationFrom [] = Nothing
-    concatenationFrom (first : remaining) =
-      Just (foldl MapConcatenation first remaining)
-
-    maybeToList Nothing = []
-    maybeToList (Just result) = [result]
-
 -- Newline separation is provisional when the current line ends at an
 -- internal literal of a visible syntax template. Such a literal has syntax on
 -- both sides (for example @or@ or @then@), so the expression cannot yet be
@@ -1811,19 +1523,6 @@ splitAtLiteral literal value =
         pure (Let <$> before, suffix)
       _ -> Nothing
 
-directApplicationSplit
-  :: String
-  -> Expression
-  -> Maybe (Maybe Expression, [Expression])
-directApplicationSplit literal value =
-  case break (isLiteral literal) (applicationPhrase value) of
-    (_, []) -> Nothing
-    (before, _ : after) -> Just (applicationFromMaybe before, after)
-  where
-    isLiteral expected expressionValue = case expressionValue of
-      IdentifierReference (IdentifierString actual) -> actual == expected
-      _ -> False
-
 advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
 advanceScope environment entry = environment
   { rewriteRules = retained <> introduced
@@ -1861,32 +1560,3 @@ sequenceExpression values = AtlasMap values
 
 argumentExpression :: [Expression] -> Expression
 argumentExpression = ArgumentMap
-
-applicationPhrase :: Expression -> [Expression]
-applicationPhrase value =
-  case applicationSpine value of
-    (function, arguments) -> function : arguments
-
-applicationSpine :: Expression -> (Expression, [Expression])
-applicationSpine = go []
-  where
-    go arguments (FunctionApplication function argument) =
-      go (argument : arguments) function
-    go arguments function = (function, arguments)
-
-applicationFrom :: [Expression] -> Expression
-applicationFrom [] = AtlasMap []
-applicationFrom (first : remaining) =
-  foldl FunctionApplication first remaining
-
-applicationFromMaybe :: [Expression] -> Maybe Expression
-applicationFromMaybe [] = Nothing
-applicationFromMaybe values = Just (applicationFrom values)
-
-literalExpression :: String -> Expression
-literalExpression = IdentifierReference . IdentifierString
-
-matchesLiteral :: String -> Expression -> Bool
-matchesLiteral literal (IdentifierReference (IdentifierString value)) =
-  literal == value
-matchesLiteral _ _ = False

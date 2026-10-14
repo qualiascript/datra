@@ -169,6 +169,7 @@ data ParsedDatraSource = ParsedDatraSource
   , parsedRawExpression :: Located Expression
   , parsedBaseScope :: Scope
   , parsedStandardRules :: [SyntaxRule]
+  , parsedBaseModuleRules :: [(String, String, [SyntaxRule])]
   }
 
 parseDatraSourceSyntax
@@ -179,13 +180,15 @@ parseDatraSourceSyntax
 parseDatraSourceSyntax standardLibraryVisibility sourceName source = do
   (envelope, locatedRaw@(Located _ raw)) <-
     parseDatraRawLocatedWithSourceName sourceName source
-  (base, standardRules) <- Bifunctor.first (ParseFailure . show)
-    (standardLibraryEnvironment standardLibraryVisibility raw)
+  (base, standardRules, baseModuleRules) <-
+    Bifunctor.first (ParseFailure . show)
+      (standardLibraryParsingEnvironment standardLibraryVisibility raw)
   pure ParsedDatraSource
     { parsedEnvelope = envelope
     , parsedRawExpression = locatedRaw
     , parsedBaseScope = base
     , parsedStandardRules = standardRules
+    , parsedBaseModuleRules = baseModuleRules
     }
 
 parsedSourceImportInvocations
@@ -216,13 +219,6 @@ rewriteParsedDatraSourceWithImports
   -> ParsedDatraSource
   -> Either ParseFailure (Located Expression)
 rewriteParsedDatraSourceWithImports modules parsed = do
-  baseModuleRules <- Bifunctor.first (ParseFailure . show) $ traverse
-    (\(namespace, identity, value) -> do
-      rules <- moduleSyntaxRulesFromValueIn identity namespace value
-      pure (identity, namespace, rules))
-    [ (namespace, identity, value)
-    | (namespace, ImportedBinding _ identity value _) <- scopeBindings base
-    ]
   let dependencyRules =
         [ (requested, namespace, rules)
         | (requested, source) <- modules
@@ -249,6 +245,7 @@ rewriteParsedDatraSourceWithImports modules parsed = do
     Located sourceSpan raw = parsedRawExpression parsed
     base = parsedBaseScope parsed
     standardRules = parsedStandardRules parsed
+    baseModuleRules = parsedBaseModuleRules parsed
     rewriteParseFailure = ParseFailure . show
 
 importedSyntaxRules
@@ -651,25 +648,47 @@ standardLibraryEnvironment
   :: StandardLibraryVisibility
   -> Expression
   -> Either InterpretingError (Scope, [SyntaxRule])
-standardLibraryEnvironment visibility raw = case visibility of
-  NoStandardLibrary -> Right (rootScope raw [], [])
-  QualifiedStandardLibrary -> qualifiedStandardModuleEnvironment
-  AllStandardLibrary -> defaultModuleEnvironment
+standardLibraryEnvironment visibility raw = do
+  (scope, activeRules, _) <-
+    standardLibraryParsingEnvironment visibility raw
+  pure (scope, activeRules)
+
+standardLibraryParsingEnvironment
+  :: StandardLibraryVisibility
+  -> Expression
+  -> Either InterpretingError
+      (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
+standardLibraryParsingEnvironment visibility raw = case visibility of
+  NoStandardLibrary -> Right (rootScope raw [], [], [])
+  QualifiedStandardLibrary -> qualifiedStandardModuleBundle
+  AllStandardLibrary -> defaultModuleBundle
 
 -- Parsing and evaluation consume two views of the same imported module.
 -- Build them from one module instance so syntax discovery cannot recursively
 -- instantiate Std independently of the scope used to evaluate those rules.
 defaultModuleEnvironment
   :: Either InterpretingError (Scope, [SyntaxRule])
-defaultModuleEnvironment = standardModuleEnvironment True
+defaultModuleEnvironment = do
+  (scope, activeRules, _) <- defaultModuleBundle
+  pure (scope, activeRules)
+{-# NOINLINE defaultModuleEnvironment #-}
 
-qualifiedStandardModuleEnvironment
-  :: Either InterpretingError (Scope, [SyntaxRule])
-qualifiedStandardModuleEnvironment = standardModuleEnvironment False
+defaultModuleBundle
+  :: Either InterpretingError
+      (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
+defaultModuleBundle = standardModuleEnvironment True
+{-# NOINLINE defaultModuleBundle #-}
+
+qualifiedStandardModuleBundle
+  :: Either InterpretingError
+      (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
+qualifiedStandardModuleBundle = standardModuleEnvironment False
+{-# NOINLINE qualifiedStandardModuleBundle #-}
 
 standardModuleEnvironment
   :: Bool
-  -> Either InterpretingError (Scope, [SyntaxRule])
+  -> Either InterpretingError
+      (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardModuleEnvironment allNames = do
   source <- defaultModuleSource
   let base = rootScope source [("\0imports", ModuleCatalog
@@ -680,14 +699,20 @@ standardModuleEnvironment allNames = do
         | (namespace, ImportedBinding _ identity value _) <- scopeBindings scope
         , identity == standardLibraryFileName
         ]
-  rules <- concat <$> traverse
-    (\(namespace, value) -> moduleSyntaxRulesFromValueIn
-      standardLibraryFileName namespace value)
+  ruleSets <- traverse
+    (\(namespace, value) -> do
+      rules <- moduleSyntaxRulesFromValueIn
+        standardLibraryFileName namespace value
+      pure (standardLibraryFileName, namespace, rules))
     imported
   if null imported
     then Left (ModuleEvaluationFailed
       (ModuleNotLoaded standardLibraryFileName))
-    else pure (scope, [rule | allNames, rule <- rules])
+    else pure
+      ( scope
+      , [rule | allNames, (_, _, rules) <- ruleSets, rule <- rules]
+      , ruleSets
+      )
 
 retainExportDefinition :: Binding -> Binding -> Binding
 retainExportDefinition evaluated source =
@@ -725,10 +750,12 @@ parsedDefaultModule = do
     parseFailure = Left . ModuleEvaluationFailed
       . StandardLibraryParseFailure standardLibraryFileName
       . parseFailureMessage
+{-# NOINLINE parsedDefaultModule #-}
 
 defaultModuleSource :: Either InterpretingError ModuleSource
 defaultModuleSource =
   ModuleSource standardLibraryFileName <$> parsedDefaultModule <*> pure []
+{-# NOINLINE defaultModuleSource #-}
 
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
@@ -814,8 +841,8 @@ validatedSyntaxTemplates templatesExpression =
   case compileSyntaxTemplatesFromExpression templatesExpression of
     Left ExpectedSyntaxTemplateOperand ->
       Left InvalidSyntaxTemplateOperand
-    Left (ForbiddenSyntaxTemplateCharacter invalid) ->
-      Left (InvalidSyntaxTemplateCharacter invalid)
+    Left (InadmissibleSyntaxTemplate template failure) ->
+      Left (InvalidSyntaxTemplate template failure)
     Right templates -> Right templates
 
 canonicalStringCandidates :: String -> [InterpretedValue]

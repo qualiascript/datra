@@ -83,6 +83,7 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure (UnsupportedEvaluationMode)
   , ModuleLoadFailure (CyclicModuleImport)
   , ParseFailure (ParseFailure)
+  , SyntaxTemplateAdmissibilityFailure (..)
   )
 import DatraLanguage.Diagnostics.Localization
   ( Locale (English, Romanian)
@@ -535,19 +536,22 @@ testDiagnostics = do
           "nu se poate demonstra că identificatorul generic este disjunct de un identificator dependent"
           ["identificator: T"]
     )
-  assert "invalid syntax-template characters have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English (Types.InvalidSyntaxTemplateCharacter '(')
+  assert "inadmissible syntax templates have an explicit bilingual diagnostic"
+    ( localizeDiagnostic English
+          (Types.InvalidSyntaxTemplate "call ~"
+            (IncompleteCoreSyntaxOperator "~"))
         == LocalizedMessage
-          "syntax template contains an invalid literal character"
-          [ "character: '('"
-          , "% can only install literals retained by the neutral source parser"
+          "syntax pattern ends with the incomplete core operator ~"
+          [ "pattern: \"call ~\""
+          , "the complete pattern must supply the operator's required operand"
           ]
       && localizeDiagnostic Romanian
-          (Types.InvalidSyntaxTemplateCharacter '(')
+          (Types.InvalidSyntaxTemplate "call ~"
+            (IncompleteCoreSyntaxOperator "~"))
         == LocalizedMessage
-          "șablonul sintactic conține un caracter literal nevalid"
-          [ "caracter: '('"
-          , "% poate instala doar literali păstrați de analizorul neutru al sursei"
+          "șablonul sintactic se termină cu operatorul nucleu incomplet ~"
+          [ "șablon: \"call ~\""
+          , "șablonul complet trebuie să furnizeze operandul cerut de operator"
           ]
     )
   assert "invalid syntax-template operands have an explicit bilingual diagnostic"

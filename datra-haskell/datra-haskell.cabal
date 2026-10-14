@@ -57,6 +57,7 @@ library
         DatraLanguage.AST.Reserved.Bootstrap
         DatraLanguage.AST.Syntax
         DatraLanguage.SyntaxTemplate
+        DatraLanguage.NeutralLexer
         DatraLanguage.Identifier
         DatraTypes
         DatraTypes.DependentTypes
@@ -339,7 +340,9 @@ executable datra-haskell
         BlockScope
         LibraryFiles
         SyntaxDefinitions
+        SyntaxTemplateAdmissibility
         SyntaxTemplateMatching
+        SyntaxTemplateProjection
         SyntaxRewriting
         Parsing
         Rendering
@@ -349,6 +352,7 @@ executable datra-haskell
         Paths_datra_haskell
     build-depends:
         base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9,
         datra-haskell,
         filepath >= 1.4 && < 1.6,
         directory >= 1.3 && < 1.4,
@@ -401,7 +405,9 @@ test-suite datra-parsing-test
         BlockScope
         LibraryFiles
         SyntaxDefinitions
+        SyntaxTemplateAdmissibility
         SyntaxTemplateMatching
+        SyntaxTemplateProjection
         SyntaxRewriting
         Paths_datra_haskell
     autogen-modules:
@@ -411,6 +417,7 @@ test-suite datra-parsing-test
         filepath,
         directory,
         base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9,
         datra-haskell,
         megaparsec >= 9.8 && < 10,
         parser-combinators >= 1.3 && < 2,
@@ -444,7 +451,9 @@ test-suite datra-interpreting-test
         BlockScope
         LibraryFiles
         SyntaxDefinitions
+        SyntaxTemplateAdmissibility
         SyntaxTemplateMatching
+        SyntaxTemplateProjection
         SyntaxRewriting
         Parsing
         Rendering
@@ -457,6 +466,7 @@ test-suite datra-interpreting-test
         filepath,
         directory,
         base >= 4.14 && < 5,
+        containers >= 0.6 && < 0.9,
         datra-haskell,
         megaparsec >= 9.8 && < 10,
         parser-combinators >= 1.3 && < 2,

@@ -4,6 +4,7 @@ module DatraLanguage.Diagnostics.Application
   ( ParseFailure (..)
   , ModuleLoadFailure (..)
   , SyntaxExpansionFailure (..)
+  , SyntaxTemplateAdmissibilityFailure (..)
   , CommandLineOptionFailure (..)
   ) where
 
@@ -21,6 +22,14 @@ data ModuleLoadFailure
 
 data SyntaxExpansionFailure
   = UnknownSyntaxControlAdapter String
+  deriving (Eq, Show)
+
+data SyntaxTemplateAdmissibilityFailure
+  = NeutralSyntaxTemplateParseFailure
+  | IncompleteCoreSyntaxOperator String
+  | SyntaxTemplateProjectionLoss
+  | SyntaxTemplateProjectionOrderMismatch
+  | UnstableSyntaxTemplateProjection
   deriving (Eq, Show)
 
 data CommandLineOptionFailure

@@ -4,6 +4,7 @@
 module DatraParsingTests (main) where
 
 import Data.Char (chr, toUpper)
+import Data.List (isInfixOf)
 import DatraLanguage.AST
   ( Expression (..)
   , GenericBinder (..)
@@ -60,19 +61,25 @@ import Parsing
   , PreparedFunctionDomainMember (..)
   , ResourceEnvelope (..)
   , functionTypeIdentifiers
+  , freshNeutralWitnessIdentifiers
+  , neutralExpressionWitnessSources
   , prepareFunctionDomain
   , prepareFunctionDomainExpression
   , parseDatra
   , parseDatraAst
   , parseDatraRawLocatedWithSourceName
+  , parseNeutralPhrase
   )
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxRule (..)
   , SyntaxTemplate (..)
+  , SyntaxTemplateCompilationFailure (..)
+  , compileSyntaxTemplatesFromExpression
   , expandSyntax
   )
+import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
 import SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
   , matchSyntaxRules
@@ -93,6 +100,8 @@ testTree =
   testGroup "Datra parser"
     [ testCase "brace separator semantics" testBraceSeparatorSemantics
     , testCase "bundled module block shape" assertBundledModuleBlockShape
+    , testCase "standard syntax declarations are admissible"
+        assertStandardSyntaxDeclarationsAdmissible
     , testCase "generic AST representation" testGenericAstRepresentation
     , testCase "generic source parsing" testGenericSourceParsing
     , testCase "syntax regressions" regressionTests
@@ -454,6 +463,69 @@ regressionTests = do
         parsed == SyntaxBoundary
           (FunctionApplication (natural 2) (ref "++"))
       Left _ -> False)
+  let compilePattern source = case parseNeutralPhrase source of
+        Left _ -> Left ExpectedSyntaxTemplateOperand
+        Right expressionValue ->
+          compileSyntaxTemplatesFromExpression expressionValue
+  assert "whole-template validation rejects an incomplete core prefix"
+    (case compilePattern "\"call ~\"" of
+      Left (InadmissibleSyntaxTemplate "call ~" _) -> True
+      _ -> False)
+  assert "whole-template validation accepts a complete value-of expression"
+    (case compilePattern "\"call ~name\"" of
+      Right _ -> True
+      _ -> False)
+  assert "whole-template validation rejects consumed grouping boundaries"
+    (case compilePattern "\"call (%Int)\"" of
+      Left (InadmissibleSyntaxTemplate _ _) -> True
+      _ -> False)
+  let holeKinds =
+        [ ExpressionSyntaxHole (ref "_Expr")
+        , BlockSyntaxHole (ref "_Block")
+        , FunctionBodySyntaxHole (ref "_FunctionBody")
+        , IdentifierExpressionSyntaxHole (ref "_IdenExp")
+        , ValueSyntaxHole (ref "Int")
+        ]
+  assert "admissibility covers every typed hole kind"
+    (all
+      (\kind -> validateSyntaxTemplate
+        (SyntaxTemplate [SyntaxHole kind]) == Right ())
+      holeKinds)
+  assert "expression witnesses remain recoverable after a literal prefix"
+    (validateSyntaxTemplate
+      (SyntaxTemplate
+        [ SyntaxLiteral "call"
+        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
+        ]) == Right ())
+  assert "expression witnesses remain recoverable before a literal suffix"
+    (validateSyntaxTemplate
+      (SyntaxTemplate
+        [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
+        , SyntaxLiteral "after"
+        ]) == Right ())
+  assert "multiple holes retain both adjacent literal boundaries"
+    (validateSyntaxTemplate
+      (SyntaxTemplate
+        [ SyntaxLiteral "left"
+        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
+        , SyntaxLiteral "middle"
+        , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
+        ]) == Right ())
+  assert "the parser-owned expression witness inventory remains parseable"
+    (all
+      (\source -> case parseNeutralPhrase source of
+        Right _ -> True
+        Left _ -> False)
+      (neutralExpressionWitnessSources "_witness" "_operand"))
+  let witnessLiterals = ["A", "AAAA", "literal"]
+      freshMarkers = take 4
+        (freshNeutralWitnessIdentifiers witnessLiterals)
+  assert "witness identifiers are derived fresh from template literals"
+    ( length freshMarkers == 4
+      && all
+        (\marker -> all (not . isInfixOf marker) witnessLiterals)
+        freshMarkers
+    )
   assertParsed "compact signed skips remain numerical operands"
     "assert -* = +*"
     (Assert False (Equality (Minus Skip) (Plus Skip)))
@@ -2584,6 +2656,30 @@ assertBundledModuleBlockShape = do
     openedBody (ScopeAccess _ body) = openedBody body
     openedBody (SyntaxBoundary body) = openedBody body
     openedBody value = value
+
+assertStandardSyntaxDeclarationsAdmissible :: IO ()
+assertStandardSyntaxDeclarationsAdmissible = do
+  source <- readFile "libs/std.datra"
+  case parseDatraRawLocatedWithSourceName "libs/std.datra" source of
+    Left failure -> fail
+      ("Std neutral parse failed: " <> parseFailureMessage failure)
+    Right (_, Located _ raw) -> do
+      let operands = syntaxTemplateOperands raw
+          failures =
+            [ failure
+            | operand <- operands
+            , Left failure <- [compileSyntaxTemplatesFromExpression operand]
+            ]
+      assert "Std contains syntax declarations" (not (null operands))
+      assert "every Std syntax declaration is admissible" (null failures)
+  where
+    syntaxTemplateOperands expressionValue = current
+      <> concatMap syntaxTemplateOperands
+        (expressionChildren expressionValue)
+      where
+        current = case expressionValue of
+          SyntaxType templates _ -> [templates]
+          _ -> []
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do

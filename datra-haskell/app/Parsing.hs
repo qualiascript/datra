@@ -15,6 +15,10 @@ module Parsing
   , inferredFunction
   , resolveGenericFunctionTypes
   , parseDatra
+  , parseNeutralPhrase
+  , freshNeutralWitnessIdentifiers
+  , neutralExpressionWitnessSources
+  , neutralIncompletePrefixOperator
   , parseDatraRawLocatedWithSourceName
   , parseDatraAst
   , parseDatraAstLocatedWithSourceName
@@ -29,7 +33,7 @@ import Control.Monad.Combinators.Expr
   , makeExprParser
   )
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (find, isPrefixOf)
+import Data.List (find, nub)
 import Data.Char (chr, digitToInt, isHexDigit)
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -139,8 +143,10 @@ import DatraLanguage.Identifier
   , isIdentifierCharacter
   , isLeadingIdentifierCharacter
   )
-import DatraLanguage.SyntaxTemplate
-  ( isSymbolicSyntaxCharacter )
+import DatraLanguage.NeutralLexer
+  ( isOpaqueSymbolicSyntaxLiteral
+  , isSymbolicSyntaxCharacter
+  )
 import DatraLanguage.Diagnostics
   ( Located (Located, locatedValue)
   , SourcePosition (SourcePosition)
@@ -224,6 +230,113 @@ data PreparedFunctionDomain = PreparedFunctionDomain
 -- that already have the source contents.
 parseDatra :: String -> Either ParseFailure Expression
 parseDatra = parseDatraWithSourceName "<input>"
+
+-- | Parse exactly one declaration-independent source phrase. Unlike
+-- 'parseDatra', this entry point does not synthesize an implicit resource
+-- block and cannot load declarations or bootstrap Std.
+parseNeutralPhrase :: String -> Either ParseFailure Expression
+parseNeutralPhrase source =
+  resolveGenericFunctionTypes <$> Bifunctor.first
+    (ParseFailure . errorBundlePretty)
+    (runParser
+      (runReaderT
+        (fullSpaceConsumer *> expression <* fullSpaceConsumer <* eof)
+        (ParserContext 0))
+      "<syntax-template>"
+      (Text.pack source))
+
+-- | Parser-owned representative source shapes for a general expression hole.
+-- Operator spellings are obtained from the same metadata consumed by the
+-- grammar; admissibility therefore has no operator inventory of its own.
+freshNeutralWitnessIdentifiers :: [String] -> [String]
+freshNeutralWitnessIdentifiers literals = case witnessCharacters of
+  witnessCharacter : _ ->
+    [ replicate width witnessCharacter
+    | width <- [minimumWidth ..]
+    ]
+  [] -> []
+  where
+    minimumWidth = 1 + maximum (0 : map length literals)
+    witnessCharacters =
+      [ character
+      | code <- [0 .. 127]
+      , let character = chr code
+      , isLeadingIdentifierCharacter character
+      , isIdentifierValue [character]
+      ]
+
+neutralExpressionWitnessSources :: String -> String -> [String]
+neutralExpressionWitnessSources marker auxiliary = nub
+  ( [ marker
+    , marker <> " " <> auxiliary
+    ]
+    <> [marker <> operatorText
+       | operator <- [AST.OptionalOperator, AST.ConcatenationOperator]
+       , Just operatorText <- [AST.operatorSourceSymbol operator]
+       ]
+    <> [operatorText <> marker | (operator, _) <- arithmeticPrefixOperators
+          , Just operatorText <- [AST.operatorSourceSymbol operator]]
+    <> [infixWitnessSource operator operatorText marker auxiliary
+       | operator <- neutralInfixOperators
+       , Just operatorText <- [AST.operatorSourceSymbol operator]
+       ]
+  )
+  where
+    -- Maybe sequencing intentionally terminates a completed literal-led
+    -- syntax form. Parentheses are therefore part of a valid expression-hole
+    -- witness at that boundary, rather than a reassociation request.
+    infixWitnessSource AST.MaybeThenOperator operator left right =
+      grouped operator left right
+    infixWitnessSource AST.ReverseSafeOverloadOperator operator left right =
+      grouped operator left right
+    infixWitnessSource AST.ReverseOverloadOperator operator left right =
+      grouped operator left right
+    infixWitnessSource _ operator left right =
+      left <> " " <> operator <> " " <> right
+    grouped operator left right =
+      "(" <> left <> " " <> operator <> " " <> right <> ")"
+-- This inventory is parser metadata: every member occurs in one of the
+-- declaration-independent expression layers below. It is exported only
+-- through 'neutralExpressionWitnessSources', never as validator policy.
+neutralInfixOperators :: [AST.Operator]
+neutralInfixOperators =
+  [ AST.FunctionTypeOperator
+  , AST.SyntaxTypeOperator
+  , AST.MaybeThenOperator
+  , AST.EitherOperator
+  , AST.InequalityOperator
+  , AST.EqualityOperator
+  , AST.LessThanOrEqualOperator
+  , AST.GreaterThanOrEqualOperator
+  , AST.LessThanOperator
+  , AST.GreaterThanOperator
+  , AST.ExponentiationOperator
+  , AST.MultiplicationOperator
+  , AST.AdditionOperator
+  , AST.SubtractionOperator
+  , AST.ConcatenationOperator
+  , AST.AccessOperator
+  , AST.SafeOverloadOperator
+  , AST.ReverseSafeOverloadOperator
+  , AST.OverloadOperator
+  , AST.ReverseOverloadOperator
+  , AST.SpecificationOperator
+  ]
+
+-- | Identify an operand-taking core prefix left at the end of a phrase.
+-- Spellings come from the same operator metadata as the grammar.
+neutralIncompletePrefixOperator :: String -> Maybe String
+neutralIncompletePrefixOperator source = case reverse (words source) of
+  trailing : _ -> find (== trailing)
+    [ operatorText
+    | operator <- operandPrefixOperators
+    , Just operatorText <- [AST.operatorSourceSymbol operator]
+    ]
+  [] -> Nothing
+  where
+    operandPrefixOperators =
+      [AST.ValueOfOperator, AST.ExternalOperator]
+        <> map fst arithmeticPrefixOperators
 
 -- | Outer parentheses select expression mode; every other resource is an
 -- implicit block whose exported result is introduced explicitly by @yield@.
@@ -1383,42 +1496,8 @@ genericIntroduction = do
 symbolicSyntaxLiteral :: Parser Expression
 symbolicSyntaxLiteral = lexeme . try $ do
   literal <- some (satisfy isSymbolicSyntaxCharacter)
-  guard (literal `notElem` reservedCoreSymbolicRuns)
-  guard (all (`notPrefixOf` literal) reservedCoreSymbolicPrefixes)
+  guard (isOpaqueSymbolicSyntaxLiteral literal)
   pure (IdentifierReference (IdentifierString literal))
-  where
-    notPrefixOf prefix value = not (prefix `isPrefixOf` value)
-
-coreSymbolicTokens :: [String]
-coreSymbolicTokens = "&" : AST.ellipsisSymbol : Text.unpack reverseSpecificationSymbol :
-  [ symbolText
-  | operator <- [minBound .. maxBound]
-  , Just symbolText <- [AST.operatorSourceSymbol operator]
-  , any (not . isIdentifierCharacter) symbolText
-  ]
-
--- Prefix operators and skip are separate tokens, but their compact forms are
--- complete core expressions. Derive those runs from the same prefix table
--- used by the arithmetic parser so new prefix operators cannot be forgotten.
-reservedCoreSymbolicRuns :: [String]
-reservedCoreSymbolicRuns = coreSymbolicTokens <> compactPrefixSkipRuns
-
--- Percent owns interpolation inside strings and syntax attachment between
--- expressions. Do not let longer unrecognized percent runs escape into the
--- declarative-symbol fallback as ordinary identifiers.
-reservedCoreSymbolicPrefixes :: [String]
-reservedCoreSymbolicPrefixes =
-  [ symbolText
-  | operator <- [AST.SyntaxTypeOperator, AST.ConcatenationOperator]
-  , Just symbolText <- [AST.operatorSourceSymbol operator]
-  ]
-
-compactPrefixSkipRuns :: [String]
-compactPrefixSkipRuns =
-  [ prefix <> AST.skipSourceSymbol
-  | (operator, _) <- arithmeticPrefixOperators
-  , Just prefix <- [AST.operatorSourceSymbol operator]
-  ]
 
 -- The skip atom and multiplication share @*@. A bare skip can participate in
 -- every unambiguous expression position, but multiplication requires explicit
