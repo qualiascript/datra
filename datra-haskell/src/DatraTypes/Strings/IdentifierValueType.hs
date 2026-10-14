@@ -42,7 +42,7 @@ identifierValueCharacterAlphabet =
 
 isIdentifierValueCharacter :: Char -> Bool
 isIdentifierValueCharacter character =
-  character `elem` identifierValueCharacterAlphabet
+  isAsciiAlphaNumeric character || character == '_' || character == '\''
 
 isIdentifierValueInitialCharacter :: Char -> Bool
 isIdentifierValueInitialCharacter = isIdentifierValueCharacter

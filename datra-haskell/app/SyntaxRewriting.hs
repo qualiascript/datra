@@ -14,6 +14,7 @@ import Control.Applicative ((<|>))
 import BlockScope (bindingNames)
 import Data.List (nub)
 import Data.Either (isRight)
+import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
 import DatraLanguage.SyntaxTemplate
@@ -58,12 +59,43 @@ data SyntaxRewriteFailure
   deriving (Eq, Show)
 
 data RewriteEnvironment = RewriteEnvironment
-  { rewriteRules :: [SyntaxRule]
+  { rewriteRules :: [RewriteRule]
   , rewriteDeclarations :: [Expression]
   , rewriteStrictCaptures :: Bool
   , rewriteClassifyHole :: ClassifyHole
   , rewriteScopeRules :: ScopeRules
   }
+
+-- Facts derived solely from a syntax declaration. Keeping them beside the
+-- rule avoids rediscovering template shapes during every rewrite attempt.
+data RewriteRule = RewriteRule
+  { rewriteRule :: SyntaxRule
+  , rewriteRuleLiteralPrefix :: [String]
+  , rewriteRuleLiterals :: Set.Set String
+  , rewriteRuleBlockShape :: Maybe ([String], String)
+  , rewriteRuleSequenceFunctionBodyShape :: Maybe [String]
+  , rewriteRuleContinuations :: [(String, [String])]
+  } deriving (Eq, Show)
+
+compileRewriteRule :: SyntaxRule -> RewriteRule
+compileRewriteRule rule = RewriteRule
+  { rewriteRule = rule
+  , rewriteRuleLiteralPrefix = syntaxTemplateLiteralPrefix rule
+  , rewriteRuleLiterals = Set.fromList
+      [ literal | SyntaxLiteral literal <- pieces ]
+  , rewriteRuleBlockShape = blockShapeFromPieces pieces
+  , rewriteRuleSequenceFunctionBodyShape =
+      sequenceFunctionBodyShapeFromPieces pieces
+  , rewriteRuleContinuations = continuationContexts pieces
+  }
+  where
+    pieces = syntaxTemplatePieces (syntaxTemplate rule)
+
+rewriteRuleName :: RewriteRule -> String
+rewriteRuleName = syntaxName . rewriteRule
+
+rewriteRuleImplementation :: RewriteRule -> Expression
+rewriteRuleImplementation = syntaxImplementation . rewriteRule
 
 -- Contextual surface names exist only inside syntax nodes whose evaluator
 -- installs the corresponding private binding. Entering such a node replaces
@@ -73,10 +105,10 @@ withContextualSyntax :: [String] -> RewriteEnvironment -> RewriteEnvironment
 withContextualSyntax surfaces environment = environment
   { rewriteRules = contextual <> filter (not . contextualName) existing }
   where
-    contextual = contextualSyntaxRulesFor surfaces
+    contextual = map compileRewriteRule (contextualSyntaxRulesFor surfaces)
     existing = rewriteRules environment
-    names = map syntaxName contextual
-    contextualName rule = syntaxName rule `elem` names
+    names = map rewriteRuleName contextual
+    contextualName rule = rewriteRuleName rule `elem` names
 
 type ClassifyHole =
   [Expression]
@@ -108,7 +140,8 @@ rewriteExplicitSyntax classify capture scopeRules
   rewriteStandalone capture environment value
   where
     environment = RewriteEnvironment
-      initialRules initialDeclarations True classify scopeRules
+      (map compileRewriteRule initialRules)
+      initialDeclarations True classify scopeRules
 
 rewriteImplicitSyntax
   :: ClassifyHole
@@ -123,7 +156,8 @@ rewriteImplicitSyntax classify capture scopeRules
   resolveImplicitBlock capture initial [] entries
   where
     initial = RewriteEnvironment
-      initialRules initialDeclarations True classify scopeRules
+      (map compileRewriteRule initialRules)
+      initialDeclarations True classify scopeRules
 
 resolveImplicitBlock
   :: CaptureHole
@@ -153,7 +187,7 @@ resolveImplicitBlock capture initial = go initial
       firstSuccessful
         [ implicitRule environment rewrittenPrefix remaining rule shape
         | rule <- rewriteRules environment
-        , Just shape <- [blockShape rule]
+        , Just shape <- [rewriteRuleBlockShape rule]
         ]
 
     firstSuccessful [] = Right Nothing
@@ -180,7 +214,8 @@ resolveImplicitBlock capture initial = go initial
               captureInScope previous kind captured =
                 capture (rewriteStrictCaptures nested)
                   (rewriteDeclarations nested) previous kind captured
-          case matchSyntaxRulesWith captureInScope [rule] candidate of
+          case matchSyntaxRulesWith captureInScope
+              [rewriteRule rule] candidate of
             Right (Begin bindings finalResult)
               | null finalTrailing ->
                   Right (Just (if explicitBlockAtHead
@@ -195,7 +230,7 @@ resolveImplicitBlock capture initial = go initial
             matchingStarts writtenHead (applicationPhrase first)
           [] -> False
         writtenHead
-          | null prefix = [syntaxName rule]
+          | null prefix = [rewriteRuleName rule]
           | otherwise = prefix
 
 rewriteSequence
@@ -643,16 +678,16 @@ directSyntaxFunctionExpansion environment application =
     ruleAdapters requestedModule name function =
       [ adapter
       | rule <- availableRules requestedModule function
-      , syntaxName rule == name
-      , name `notElem` syntaxTemplateLiteralPrefix rule
-      , Just symbol <- [externalSymbol (syntaxImplementation rule)]
+      , rewriteRuleName rule == name
+      , name `notElem` rewriteRuleLiteralPrefix rule
+      , Just symbol <- [externalSymbol (rewriteRuleImplementation rule)]
       , Just adapter <- [syntaxFunctionBodyForSymbol symbol]
       ]
     availableRules requestedModule function =
       case requestedModule of
         Nothing -> rewriteRules environment
-        Just namespace -> rewriteScopeRules environment
-          (rewriteDeclarations environment) (scopeSource namespace function)
+        Just namespace -> map compileRewriteRule (rewriteScopeRules environment
+          (rewriteDeclarations environment) (scopeSource namespace function))
     scopeSource _ (ScopeAccess source _) = source
     scopeSource namespace _ =
       IdentifierReference (IdentifierString namespace)
@@ -714,7 +749,8 @@ rewriteScopeAccess capture environment source body = do
   let scopedRules = rewriteScopeRules environment
         (rewriteDeclarations environment) rewrittenSource
       nested = environment
-        { rewriteRules = nub (rewriteRules environment <> scopedRules) }
+        { rewriteRules = nub
+            (rewriteRules environment <> map compileRewriteRule scopedRules) }
   -- A short access names a member; it is not an invocation of a zero-hole
   -- syntax rule with the same spelling. Arbitrary RHS expressions are
   -- rewritten once with the source module's exported syntax in scope.
@@ -743,7 +779,7 @@ startsWithBlockDelimiter environment body = any startsWithDelimiter
     delimiters =
       [ delimiter
       | rule <- rewriteRules environment
-      , Just (_, delimiter) <- [blockShape rule]
+      , Just (_, delimiter) <- [rewriteRuleBlockShape rule]
       ]
     startsWithDelimiter entry = case applicationPhrase entry of
       IdentifierReference (IdentifierString name) : _ -> name `elem` delimiters
@@ -771,7 +807,7 @@ rewriteEmbeddedApplication capture environment value =
       ]
     literalHeadAt position = case drop position phrase of
       IdentifierReference (IdentifierString literal) : _ ->
-        any ((== [literal]) . take 1 . syntaxTemplateLiteralPrefix)
+        any ((== [literal]) . take 1 . rewriteRuleLiteralPrefix)
           (rewriteRules environment)
       _ -> False
     firstChanged [] = Right Nothing
@@ -935,7 +971,7 @@ containsBlockStart environment value = any containsStart
     descendants child = child : concatMap descendants (expressionChildren child)
     containsStart expressionValue = any (starts expressionValue)
       (rewriteRules environment)
-    starts expressionValue rule = case blockShape rule of
+    starts expressionValue rule = case rewriteRuleBlockShape rule of
       Just (prefix, _) -> not (null
         (matchingStarts prefix (applicationPhrase expressionValue)))
       Nothing -> False
@@ -944,7 +980,7 @@ startsBlockAtHead :: RewriteEnvironment -> Expression -> Bool
 startsBlockAtHead environment expressionValue = any starts
   (rewriteRules environment)
   where
-    starts rule = case blockShape rule of
+    starts rule = case rewriteRuleBlockShape rule of
       Just (prefix, _) -> 0 `elem`
         matchingStarts prefix (applicationPhrase expressionValue)
       Nothing -> False
@@ -960,44 +996,53 @@ matchOrdinarySyntaxWithTail includeConcatenation
     capture environment value trailing =
   firstRule [] (rewriteRules environment)
   where
+    facts = expressionFacts value
     captureInScope previous kind captured =
       capture (rewriteStrictCaptures environment)
         (rewriteDeclarations environment) previous kind captured
     firstRule _ [] = Right (value, trailing)
     firstRule earlier (rule : remaining)
-      | not (ruleLiteralsPresent rule value) =
+      | not (ruleLiteralsPresent rule facts) =
           firstRule (rule : earlier) remaining
       | otherwise =
           firstCandidate rule
             (syntaxProjectionCandidates
               (includeConcatenation || not (earlierPrefixPending earlier))
-              (syntaxTemplate rule) value) >>= \case
+              (syntaxTemplate (rewriteRule rule)) value) >>= \case
             Just rewritten -> Right (rewritten, trailing)
             Nothing -> firstRule (rule : earlier) remaining
     firstCandidate _ [] = Right Nothing
     firstCandidate rule (candidate : remaining) =
-      case matchSyntaxRulesWith captureInScope [rule] candidate of
+      case matchSyntaxRulesWith captureInScope [rewriteRule rule] candidate of
         Right rewritten -> Right (Just rewritten)
         Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
         Left failure -> Left (SyntaxRewriteMatchFailure failure)
     earlierPrefixPending = any (\earlierRule ->
-      not (null (syntaxTemplateLiteralPrefix earlierRule))
-        && ruleLiteralsPresent earlierRule value)
+      not (null (rewriteRuleLiteralPrefix earlierRule))
+        && ruleLiteralsPresent earlierRule facts)
 
-ruleLiteralsPresent :: SyntaxRule -> Expression -> Bool
-ruleLiteralsPresent rule value = all (`isPresentIn` value)
-  [ literal
-  | SyntaxLiteral literal <- syntaxTemplatePieces (syntaxTemplate rule)
-  ]
+newtype ExpressionFacts = ExpressionFacts
+  { expressionRenderings :: Set.Set String
+  }
+
+expressionFacts :: Expression -> ExpressionFacts
+expressionFacts = ExpressionFacts . collect
   where
-    isPresentIn literal expressionValue =
-      matchesLiteral literal expressionValue
-        || renderSourceExpression expressionValue == literal
-        || postfixConcatenationLiteral literal expressionValue
-        || any (isPresentIn literal) (expressionChildren expressionValue)
-    postfixConcatenationLiteral literal (MapConcatenation left _) =
-      renderSourceExpression (MapConcatenation left (AtlasMap [])) == literal
-    postfixConcatenationLiteral _ _ = False
+    collect expressionValue = Set.unions
+      (surface expressionValue
+        : postfixConcatenation expressionValue
+        : map collect (expressionChildren expressionValue))
+    surface expressionValue = Set.fromList
+      (renderSourceExpression expressionValue : identifierName expressionValue)
+    identifierName (IdentifierReference (IdentifierString name)) = [name]
+    identifierName _ = []
+    postfixConcatenation (MapConcatenation left _) = Set.singleton
+      (renderSourceExpression (MapConcatenation left (AtlasMap [])))
+    postfixConcatenation _ = Set.empty
+
+ruleLiteralsPresent :: RewriteRule -> ExpressionFacts -> Bool
+ruleLiteralsPresent rule facts =
+  rewriteRuleLiterals rule `Set.isSubsetOf` expressionRenderings facts
 
 -- A semicolon-separated operand reaches this pass as consecutive implicit
 -- block entries.  For a declared form whose final capture is a function body,
@@ -1016,7 +1061,7 @@ matchSequenceFunctionBody capture environment value trailing =
   firstSuccessful
     [ attempt rule prefix
     | rule <- rewriteRules environment
-    , Just prefix <- [sequenceFunctionBodyShape rule]
+    , Just prefix <- [rewriteRuleSequenceFunctionBodyShape rule]
     ]
   where
     firstSuccessful [] = Right Nothing
@@ -1050,7 +1095,7 @@ matchSequenceFunctionBody capture environment value trailing =
             findBody rule prefix (operands <> [current]) (Just next) rest
 
     matchCollected rule prefix operands body remaining =
-      case matchSyntaxRulesWith captureInScope [rule] candidate of
+      case matchSyntaxRulesWith captureInScope [rewriteRule rule] candidate of
         Right expanded -> Right (Just (expanded, remaining))
         Left NoMatchingSyntaxTemplate -> Right Nothing
         Left failure -> Left (SyntaxRewriteMatchFailure failure)
@@ -1093,12 +1138,13 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
   matchWithResult initialInferAdjacent id
   where
     matchWithResult inferAdjacent wrapResult value trailing = do
+      let facts = expressionFacts value
       direct <- firstSuccessful
         [ attempt inferAdjacent wrapResult value trailing rule start
         | rule <- rewriteRules environment
-        , Just (prefix, _) <- [blockShape rule]
+        , Just (prefix, _) <- [rewriteRuleBlockShape rule]
         , start <- matchingStarts prefix (applicationPhrase value)
-        , not (ordinarySyntaxPrecedesBlock value start prefix)
+        , not (ordinarySyntaxPrecedesBlock value facts start prefix)
         ]
       case direct of
         Just result -> Right (Just result)
@@ -1136,23 +1182,17 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
     -- can begin an embedded block. This keeps an inline application ending
     -- in @do expression@ from consuming the following line as a
     -- @do ... yield@ body while leaving genuine block starts unchanged.
-    ordinarySyntaxPrecedesBlock expressionValue blockStart blockPrefix =
+    ordinarySyntaxPrecedesBlock expressionValue facts blockStart blockPrefix =
       any precedes (rewriteRules environment)
       where
         precedes rule
-          | Just _ <- blockShape rule = False
-          | not (ruleLiteralsPresent rule expressionValue) = False
-          | not (all (`elem` ruleLiterals) blockPrefix) = False
+          | Just _ <- rewriteRuleBlockShape rule = False
+          | not (ruleLiteralsPresent rule facts) = False
+          | not (all (`Set.member` rewriteRuleLiterals rule) blockPrefix) = False
           | otherwise = any (< blockStart)
               (matchingStarts
-                (syntaxTemplateLiteralPrefix rule)
+                (rewriteRuleLiteralPrefix rule)
                 (applicationPhrase expressionValue))
-          where
-            ruleLiterals =
-              [ literal
-              | SyntaxLiteral literal <-
-                  syntaxTemplatePieces (syntaxTemplate rule)
-              ]
 
     firstSuccessful [] = Right Nothing
     firstSuccessful (candidate : rest) = do
@@ -1162,7 +1202,7 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
         Nothing -> firstSuccessful rest
 
     attempt inferAdjacent wrapResult value trailing rule start =
-      case blockShape rule of
+      case rewriteRuleBlockShape rule of
         Nothing -> Right Nothing
         Just (prefix, delimiter) -> do
           let phrase = applicationPhrase value
@@ -1183,7 +1223,8 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
                       capture (rewriteStrictCaptures environment)
                         (rewriteDeclarations environment)
                         previous kind captured
-                    match = matchSyntaxRulesWith captureInScope [rule]
+                    match = matchSyntaxRulesWith captureInScope
+                      [rewriteRule rule]
                 case match candidate of
                   Left NoMatchingSyntaxTemplate -> Right Nothing
                   Left failure -> Left (SyntaxRewriteMatchFailure failure)
@@ -1204,7 +1245,8 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
                   captureInScope previous kind captured =
                     capture (rewriteStrictCaptures nested)
                       (rewriteDeclarations nested) previous kind captured
-                  match = matchSyntaxRulesWith captureInScope [rule]
+                  match = matchSyntaxRulesWith captureInScope
+                    [rewriteRule rule]
               case match (candidate result) of
                 Left NoMatchingSyntaxTemplate ->
                   case match (candidate (wrapResult rawResult)) of
@@ -1248,7 +1290,8 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
       applicationFrom (before <> [expanded])
 
     acceptsBody candidate rule = isRight
-      (matchSyntaxRulesWith (\_ _ captured -> Just captured) [rule] candidate)
+      (matchSyntaxRulesWith (\_ _ captured -> Just captured)
+        [rewriteRule rule] candidate)
 
     completeSyntaxType templates
         (FunctionApplication signature body@FunctionBody {}) =
@@ -1285,7 +1328,7 @@ continueIncompleteExpression environment = go
     blockLiterals = nub
       [ literal
       | rule <- rules
-      , Just (prefix, delimiter) <- [blockShape rule]
+      , Just (prefix, delimiter) <- [rewriteRuleBlockShape rule]
       , literal <- prefix <> [delimiter]
       ]
     go current (next : remaining)
@@ -1295,28 +1338,16 @@ continueIncompleteExpression environment = go
     go current remaining = (current, remaining)
 
     continues current trailing rule = any applies
-      [ (literal, before)
-      | (before, SyntaxLiteral literal : after) <-
-          pieceContexts (syntaxTemplatePieces (syntaxTemplate rule))
-      , not (null before)
-      , not (null after)
+      [ (literal, previous)
+      | (literal, previous) <- rewriteRuleContinuations rule
       , literal `notElem` blockLiterals
       ]
       where
         identifiers = expressionIdentifiers current
-        applies (literal, before) =
-          literal == trailing && case
-              [ previous
-              | SyntaxLiteral previous <- before
-              ] of
+        applies (literal, previous) =
+          literal == trailing && case previous of
             [] -> current /= literalExpression literal
-            previous -> all (`elem` identifiers) previous
-    pieceContexts [] = []
-    pieceContexts (piece : remaining) =
-      ([], piece : remaining) :
-        [ (piece : before, suffix)
-        | (before, suffix) <- pieceContexts remaining
-        ]
+            _ -> all (`elem` identifiers) previous
 
     expressionIdentifiers expressionValue = case expressionValue of
       IdentifierReference (IdentifierString name) -> name : nested
@@ -1347,10 +1378,12 @@ appendAtRightEdge left right =
     Nothing -> applicationFrom
       (applicationPhrase left <> applicationPhrase right)
 
-blockShape :: SyntaxRule -> Maybe ([String], String)
-blockShape rule =
+blockShapeFromPieces
+  :: [SyntaxPiece Expression]
+  -> Maybe ([String], String)
+blockShapeFromPieces pieces =
   case break isBlockHole
-      (syntaxTemplatePieces (syntaxTemplate rule)) of
+      pieces of
     (prefix, SyntaxHole BlockSyntaxHole {}
         : SyntaxLiteral delimiter
         : [SyntaxHole ExpressionSyntaxHole {}]) ->
@@ -1362,9 +1395,11 @@ blockShape rule =
     literal (SyntaxLiteral text) = Just text
     literal _ = Nothing
 
-sequenceFunctionBodyShape :: SyntaxRule -> Maybe [String]
-sequenceFunctionBodyShape rule =
-  case reverse (syntaxTemplatePieces (syntaxTemplate rule)) of
+sequenceFunctionBodyShapeFromPieces
+  :: [SyntaxPiece Expression]
+  -> Maybe [String]
+sequenceFunctionBodyShapeFromPieces pieces =
+  case reverse pieces of
     SyntaxHole FunctionBodySyntaxHole {}
         : SyntaxHole {}
         : reversedPrefix ->
@@ -1373,6 +1408,21 @@ sequenceFunctionBodyShape rule =
   where
     literal (SyntaxLiteral text) = Just text
     literal _ = Nothing
+
+continuationContexts :: [SyntaxPiece Expression] -> [(String, [String])]
+continuationContexts pieces =
+  [ (literal, [previous | SyntaxLiteral previous <- before])
+  | (before, SyntaxLiteral literal : after) <- pieceContexts pieces
+  , not (null before)
+  , not (null after)
+  ]
+  where
+    pieceContexts [] = []
+    pieceContexts (piece : remaining) =
+      ([], piece : remaining) :
+        [ (piece : before, suffix)
+        | (before, suffix) <- pieceContexts remaining
+        ]
 
 matchingStarts :: [String] -> [Expression] -> [Int]
 matchingStarts prefix values =
@@ -1530,9 +1580,11 @@ advanceScope environment entry = environment
   }
   where
     names = bindingNames entry
-    retained = filter ((`notElem` names) . syntaxName)
+    retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
-    introduced = map specializeRule (declarationRules entry) <> aliasRules entry
+    introduced =
+      map (compileRewriteRule . specializeRule) (declarationRules entry)
+        <> aliasRules entry
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)
@@ -1548,9 +1600,11 @@ advanceScope environment entry = environment
     aliasRules expressionValue = case expressionValue of
       IdentifierOperation (IdentifierString name) _ (Just
           (IdentifierReference (IdentifierString target))) ->
-        [ rule { syntaxName = name }
+        [ rule
+            { rewriteRule = (rewriteRule rule) { syntaxName = name }
+            }
         | rule <- rewriteRules environment
-        , syntaxName rule == target
+        , rewriteRuleName rule == target
         ]
       _ -> []
 sequenceExpression :: [Expression] -> Expression

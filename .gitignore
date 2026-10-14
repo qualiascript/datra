@@ -28,3 +28,4 @@ input.datra
 output.datra
 output.datra.error
 output.datra.ast
+/datra-haskell/profiles/
