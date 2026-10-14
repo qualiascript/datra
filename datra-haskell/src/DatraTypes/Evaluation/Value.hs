@@ -476,14 +476,14 @@ builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
 builtinMetaTypeCanonicalString :: BuiltinMetaType -> String
 builtinMetaTypeCanonicalString (ASTMetaType category) =
-  "!~\"" <> externalSymbol category <> "\""
+  "~~\"" <> externalSymbol category <> "\""
   where
     externalSymbol ExpressionAST = "datra.Expr"
     externalSymbol BlockAST = "datra.Block"
     externalSymbol FunctionBodyAST = "datra.FunctionBody"
     externalSymbol IdentifierExpressionAST = "datra.IdenExp"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
-  "!~\"datra.SyntaxTemplate\""
+  "~~\"datra.SyntaxTemplate\""
 builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue

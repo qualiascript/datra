@@ -62,7 +62,7 @@ runProgram source = do
   expression <- first SourceParseFailure
     (locatedValue <$> parseDatraSourceLocatedWithImportsAndStandardLibrary
       True [] "<program>" source)
-  first SourceEvaluationFailure (interpretExpressionReason expression)
+  first SourceEvaluationFailure (interpretWithImports [] expression)
 
 runProgramInMode
   :: EvaluationMode

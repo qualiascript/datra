@@ -8,7 +8,7 @@ module SyntaxDefinitions
   , SyntaxTemplateCompilationFailure (..)
   , SyntaxFunctionBody, syntaxFunctionBodyForSymbol, applySyntaxFunctionBody
   , declarationRules, compileSyntaxTemplatesFromExpression
-  , contextualSyntaxRules
+  , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , expandSyntax
   , declarationLiterals, absorbFunSequence, externalSymbol
@@ -43,19 +43,16 @@ data SyntaxTemplateCompilationFailure
 -- not by Std. These zero-hole templates are ordinary syntax-function rules:
 -- each surface word omits the argument whose domain has depth @0@ as its
 -- default.
-contextualSyntaxRules :: [SyntaxRule]
-contextualSyntaxRules = map rule
-  [ ("_this", "this")
-  , ("_it", "it")
-  ]
+contextualSyntaxRulesFor :: [String] -> [SyntaxRule]
+contextualSyntaxRulesFor = map rule
   where
-    rule (binding, surface) = SyntaxRule
-      binding
+    rule surface = SyntaxRule
+      ("_" <> surface)
       (syntaxTemplateFromPattern surface)
       signature
       False
       Nothing
-      (IdentifierReference (IdentifierString binding))
+      (IdentifierReference (IdentifierString ("_" <> surface)))
     signature = FunctionType
       (EllipsisNatural 0)
       (External (AsciiStringLiteral "datra.Any"))
@@ -121,7 +118,7 @@ syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
       [modules, FunctionBody bindings result] -> Right
         (ScopeAccess
           (ArgumentMap (withModuleOperands modules))
-          (Program bindings result))
+          (Begin bindings result))
       captures -> invalidBody symbol captures)
   ]
   where

@@ -49,7 +49,10 @@ import DatraLanguage.Diagnostics.Application
   ( ParseFailure (parseFailureMessage) )
 import DatraLanguage.Identifier qualified as Identifier
 import Interpreting
-  ( parseDatraSourceLocatedWithImportsAndStandardLibrary )
+  ( StandardLibraryVisibility (NoStandardLibrary, QualifiedStandardLibrary)
+  , parseDatraSourceLocatedWithImportsAndStandardLibrary
+  , parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+  )
 import Parsing
   ( FunctionTypeIdentifier (..)
   , PreparedFunctionDomain (..)
@@ -89,6 +92,7 @@ testTree :: TestTree
 testTree =
   testGroup "Datra parser"
     [ testCase "brace separator semantics" testBraceSeparatorSemantics
+    , testCase "bundled module block shape" assertBundledModuleBlockShape
     , testCase "generic AST representation" testGenericAstRepresentation
     , testCase "generic source parsing" testGenericSourceParsing
     , testCase "syntax regressions" regressionTests
@@ -406,10 +410,29 @@ regressionTests = do
     ( Identifier.identifierPolicy "''not compact"
         == Identifier.PublicIdentifier Identifier.ConsistentShadowing
     )
-  assertParsed "surface this omits its defaulted contextual depth"
-    "this" (contextualAccess (IdentifierString "_this"))
-  assertParsed "surface it omits its defaulted contextual depth"
-    "it" (contextualAccess (IdentifierString "_it"))
+  assertParsed "an explicit resource does not introduce surface this"
+    "this" (ref "this")
+  assertParsed "an explicit resource does not introduce surface it"
+    "it" (ref "it")
+  case parseSource "yield this" of
+    Right actual
+      | actual == Begin [] (ref "this") -> pure ()
+      | otherwise -> fail
+          ("implicit resource rewrote surface this: " <> show actual)
+    Left failure -> fail
+      ("implicit resource unexpectedly failed: " <> parseFailureMessage failure)
+  case parseSource "begin yield 5" of
+    Right actual
+      | actual == Begin [] (Begin [] (natural 5)) -> pure ()
+      | otherwise -> fail
+          ("top-level begin had the wrong block shape: " <> show actual)
+    Left failure -> fail
+      ("top-level begin unexpectedly failed: " <> parseFailureMessage failure)
+  assertParsed "a nested begin introduces surface this"
+    "value := begin yield this"
+    (AST.assignment "value"
+      (Begin [] (contextualAccess (IdentifierString "_this")))
+      (Begin [] (contextualAccess (IdentifierString "_this"))))
   assertParsed "explicit contextual depth remains an ordinary application"
     "_this 2"
     (FunctionApplication
@@ -522,9 +545,9 @@ regressionTests = do
           == matchRules matchesNumericHole [correctFrom] fromPhrase
       Left _ -> False)
   let beginAliasBootstrap = unlines
-        [ "_Expr := !~\"datra.Expr\""
-        , "_Block := !~\"datra.Block\""
-        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) !~\"datra.begin\""
+        [ "_Expr := ~~\"datra.Expr\""
+        , "_Block := ~~\"datra.Block\""
+        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) ~~\"datra.begin\""
         , "yield Example := begin"
         , "  'begin := 'begin"
         , "yield 'begin"
@@ -698,7 +721,7 @@ regressionTests = do
         GenericProduct (genericIdentifier "T" True) (ref "Any") Nothing)
     , GenericIntroductionExpression (GenericIntroduction
         GenericSum (genericIdentifier "T" False) (ref "Any") Nothing)
-    , Program []
+    , Begin []
         (AST.assignment "Example"
           (Begin
             [AST.assignment "x" (natural 1) (natural 1)]
@@ -842,14 +865,14 @@ regressionTests = do
     "{value? : Any} do yield value"
     (implicitFunction optionalInput)
   assertParsed "an external body infers Any after a non-function type"
-    "Nat !~\"datra.example\""
+    "Nat ~~\"datra.example\""
     (MapSpecification
       (External (AsciiStringLiteral "datra.example"))
       (FunctionType
         (ref "Nat")
         (External (AsciiStringLiteral "datra.Any"))))
   assertParsed "a leading external remains a standalone value"
-    "!~\"datra.Any\""
+    "~~\"datra.Any\""
     (External (AsciiStringLiteral "datra.Any"))
   assertParsed "a parenthesized type retains its signature boundary"
     "(Nat) do yield value"
@@ -959,24 +982,24 @@ regressionTests = do
         (FunctionType (ref "Any") (ref "Any"))
       syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
   assertParsed "inline external syntax adapters use the external as their body"
-    "\"handler %_Expr\" % (Any -> Any) !~\"datra.syntax.test\""
+    "\"handler %_Expr\" % (Any -> Any) ~~\"datra.syntax.test\""
     (MapSpecification syntaxAdapter syntaxAdapterType)
   assertParsed "a syntax type is an ordinary value without a body"
     "\"handler %_Expr\" % (Any -> Any)"
     syntaxAdapterType
   assertParsed "declared external syntax adapters use the function body form"
-    "handler := \"handler %_Expr\" % (Any -> Any) !~\"datra.syntax.test\""
+    "handler := \"handler %_Expr\" % (Any -> Any) ~~\"datra.syntax.test\""
     (AST.assignment "handler"
       (MapSpecification syntaxAdapter syntaxAdapterType)
       (MapSpecification syntaxAdapter syntaxAdapterType))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : \"handler %_Expr\" % (Any -> Any) := !~\"datra.syntax.test\""
+    "handler : \"handler %_Expr\" % (Any -> Any) := ~~\"datra.syntax.test\""
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take %_Expr\" % (Int -> Int) !~\"datra.modular\""
+        , "take := \"take %_Expr\" % (Int -> Int) ~~\"datra.modular\""
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -985,9 +1008,9 @@ regressionTests = do
     _ -> False
   assert "AST capture behavior follows the interpolated value's type" $ case
       parseSource (unlines
-        [ "(Capture := !~\"datra.Expr\""
+        [ "(Capture := ~~\"datra.Expr\""
         , "CaptureAlias := Capture"
-        , "take := \"take %CaptureAlias\" % (Any -> Any) !~\"datra.modular\""
+        , "take := \"take %CaptureAlias\" % (Any -> Any) ~~\"datra.modular\""
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -996,10 +1019,10 @@ regressionTests = do
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_IdenExp := !~\"datra.IdenExp\""
-        , "_Expr := !~\"datra.Expr\""
+        [ "(_IdenExp := ~~\"datra.IdenExp\""
+        , "_Expr := ~~\"datra.Expr\""
         , "gate := \"gate %_IdenExp bound %_Expr body %Int\" %"
-            <> " ((Any; Any; Int) -> Int) !~\"test.gate\""
+            <> " ((Any; Any; Int) -> Int) ~~\"test.gate\""
         , "gate x bound Int body x)"
         ]) of
     Right (AtlasMap [_, _, _, rewritten]) ->
@@ -1009,23 +1032,23 @@ regressionTests = do
   let dependentIdentifierTemplate = StringTemplate
         [ StringTemplateLiteral "abc"
         , StringTemplateInterpolation
-            (contextualAccess (IdentifierString "_it"))
+            (ref "it")
         ]
-  assert "an identifier capture accepts a dependent string expression" $ case
+  assert "an identifier capture does not introduce contextual it" $ case
       parseSource (unlines
-        [ "(_IdenExp := !~\"datra.IdenExp\""
+        [ "(_IdenExp := ~~\"datra.IdenExp\""
         , "capture := \"capture %_IdenExp\" %"
-            <> " (Any -> Any) !~\"datra.modular\""
+            <> " (Any -> Any) ~~\"datra.modular\""
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Modular captured]) ->
       captured == dependentIdentifierTemplate
     _ -> False
-  assert "an identifier capture accepts an optional dependent string expression" $
+  assert "an optional identifier capture does not introduce contextual it" $
     case parseSource (unlines
-      [ "(_IdenExp := !~\"datra.IdenExp\""
+      [ "(_IdenExp := ~~\"datra.IdenExp\""
       , "capture := \"capture %_IdenExp\" %"
-          <> " (Any -> Any) !~\"datra.modular\""
+          <> " (Any -> Any) ~~\"datra.modular\""
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Modular captured]) ->
@@ -1036,7 +1059,8 @@ regressionTests = do
   assertParsed "val is available as an ordinary identifier"
     "val _it" (FunctionApplication (ref "val") (ref "_it"))
   assertParsed "external escape constructs an External AST"
-    "!~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
+    "~~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
+  assertRejected "previous external symbol is rejected" "!~\"datra.Int\""
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
     (name <> " : Nat") (AST.dependentIdentifierType name (ref "Nat")))
@@ -2377,7 +2401,6 @@ genExpression =
           ]))
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
-    , Gen.subterm2 genExpression genExpression (\binding result -> Program [binding] result)
     , Gen.subterm genExpression Let
     , Gen.subterm genExpression (StringTemplate . (:[]) . StringTemplateInterpolation)
     , Gen.subterm2 genExpression genExpression MapExpansion
@@ -2508,16 +2531,16 @@ assertResourceEnvelopes = do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail (parseFailureMessage message))
-    [ ("a : 6\nyield a", Program [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    [ ("a : 6\nyield a", Begin [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
     , ( "yield 5 >> {a? : Nat := 3}"
-      , Program []
+      , Begin []
           (Overload
             (ArgumentMap
               [OptionalType (AST.assignment "a" (ref "Nat") (natural 3))])
             (natural 5))
       )
     , ( "yield \"a\" >>> {x? : Nat := 2; Str}"
-      , Program []
+      , Begin []
           (SafeOverload
             (ArgumentMap
               [ OptionalType
@@ -2527,10 +2550,10 @@ assertResourceEnvelopes = do
             (AST.asciiString "a"))
       )
     , ( "yield Nat <~ (fun 5)"
-      , Program [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
+      , Begin [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
       )
-    , ("a : 6", Program [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
-    , ("", Program [] (AtlasMap []))
+    , ("a : 6", Begin [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
+    , ("", Begin [] (AtlasMap []))
     ]
   where
     assertEnvelope label source expected =
@@ -2538,6 +2561,29 @@ assertResourceEnvelopes = do
         Left message -> fail
           (label <> ": unexpected failure: " <> parseFailureMessage message)
         Right (actual, _) -> assert label (actual == expected)
+
+assertBundledModuleBlockShape :: IO ()
+assertBundledModuleBlockShape = do
+  assertModule "libs/std.datra" NoStandardLibrary "Std"
+  assertModule "libs/numbers.datra" QualifiedStandardLibrary "Numbers"
+  where
+    assertModule path visibility expectedName = do
+      source <- readFile path
+      case parseDatraSourceLocatedWithImportsAndStandardLibraryVisibility
+          visibility [] path source of
+        Left failure -> fail
+          (path <> ": unexpected parse failure: " <> parseFailureMessage failure)
+        Right located -> case openedBody (locatedValue located) of
+          Begin [] (IdentifierOperation
+              (IdentifierString actualName) annotation given)
+            | actualName == expectedName
+            , Begin {} <- maybe annotation id given -> pure ()
+          actual -> fail
+            (path <> ": expected an outer block yielding a named inner block, got "
+              <> show actual)
+    openedBody (ScopeAccess _ body) = openedBody body
+    openedBody (SyntaxBoundary body) = openedBody body
+    openedBody value = value
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do

@@ -19,7 +19,7 @@ standardLibraryTests =
   testGroup "standard library and declarative syntax"
     [ testGroup "modular exports"
         [ programCase "modular retains its named member"
-            "x := 7\nyield modular this" "x : 7"
+            "begin x := 7; yield modular this" "x : 7"
         , programCase "the empty map may be marked repeatedly"
             "yield modular (modular ())" "()"
         , programFailureCase "modular rejects unnamed values"
@@ -27,7 +27,7 @@ standardLibraryTests =
             (SourceEvaluationFailure (ModuleEvaluationFailed
               ModularRequiresTotalMapOfSimpleIdentifierTypes))
         , programFailureCase "modular rejects an existing marker"
-            "x := 7\nyield modular (modular this)"
+            "begin x := 7; yield modular (modular this)"
             (SourceEvaluationFailure (ModuleEvaluationFailed
               (ModularIdentifierAlreadyMarked "x")))
         ]
@@ -41,7 +41,7 @@ standardLibraryTests =
         , programCase "AST can be a user binding"
             "AST := 2\nyield AST" "2"
         , programFailureCase "the universal AST external is removed"
-            "yield !~\"datra.AST\""
+            "yield ~~\"datra.AST\""
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalSymbol "datra.AST")))
@@ -57,7 +57,7 @@ standardLibraryTests =
             "yield _SyntaxTemplate"
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
         , programCase "SyntaxTemplate retains its external canonical spelling"
-            "yield !~\"datra.SyntaxTemplate\"" "!~\"datra.SyntaxTemplate\""
+            "yield ~~\"datra.SyntaxTemplate\"" "~~\"datra.SyntaxTemplate\""
         ]
     , testGroup "final-page length"
         [ programCase "finite lengths use the final page"
@@ -77,7 +77,7 @@ standardLibraryTests =
         , programCase "direct begin rewrites its result in the block scope"
             ( "yield 'begin ((\n"
                 <> "  apply := \"apply %_Expr\" % "
-                <> "(_Expr -> _Expr) !~\"datra.fun\"\n"
+                <> "(_Expr -> _Expr) ~~\"datra.fun\"\n"
                 <> "); apply 7)"
             )
             "7"
@@ -154,17 +154,17 @@ standardLibraryTests =
     , testGroup "scope values"
         [ programCase source source expected
         | (source, expected) <-
-            [ ("a:=5\nb:=8\nyield this.a", "5")
-            , ("_private:=3\na:=5\nyield public this", "a : 5")
+            [ ("begin a:=5; b:=8; yield this.a", "5")
+            , ("begin _private:=3; a:=5; yield public this", "a : 5")
             , ( "yield public (_private:3;a:5) of (a?:Nat)"
               , "true"
               )
             , ( "yield public (_private:3;a:5) ~> (a?:Nat)"
               , "a? : Nat := 5"
               )
-            , ("_private:=3\na:=5\nyield this._private", "3")
-            , ("a:=5\nyield this.a of (a?:Nat)", "true")
-            , ("a:=5\nyield this.a ~> (a?:Nat)", "a? : Nat := 5")
+            , ("begin _private:=3; a:=5; yield this._private", "3")
+            , ("begin a:=5; yield this.a of (a?:Nat)", "true")
+            , ("begin a:=5; yield this.a ~> (a?:Nat)", "a? : Nat := 5")
             , ("a:=(b:2;c:3)\nyield a.(b+c)", "5")
             , ( "a:=(b:2;c:3)\n"
                   <> "yield a.(left := b; right := c)"
@@ -172,7 +172,7 @@ standardLibraryTests =
               )
             , ("yield 'from (2;5)", "from 2 to 5")
             , ("yield 'from (2;$up)", "from 2 up")
-            , ("f := !~\"datra.add\"\nyield f (b:5;6)", "11")
+            , ("f := ~~\"datra.add\"\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
@@ -181,13 +181,13 @@ standardLibraryTests =
         ]
     , testGroup "value lookup"
         [ programCase "retrieves a named binding"
-            "x := 5\nyield ~x" "5"
+            "begin x := 5; yield ~x" "5"
         , programCase "retrieves a quoted binding"
-            "\"value with spaces\" := 5\nyield ~\"value with spaces\"" "5"
+            "begin \"value with spaces\" := 5; yield ~\"value with spaces\"" "5"
         , programCase "retrieves a private binding"
-            "_x := 5\nyield ~\"_x\"" "5"
+            "begin _x := 5; yield ~\"_x\"" "5"
         , programCase "further access selects from the retrieved value"
-            "x := (5; 8)\nyield ~x[1]" "8"
+            "begin x := (5; 8); yield ~x[1]" "8"
         , programCase "optional names accept named and positional inputs"
             ("f := ({x? : Nat} -> Nat do yield ~x + 1)\n"
               <> "yield (f 5; f (x := 5))")
@@ -195,15 +195,15 @@ standardLibraryTests =
         , programCase "optional names retain defaults"
             "f := ({x? : Nat := 5} -> Nat do yield ~x + 1)\nyield f ()" "6"
         , programCase "specification accepts the retrieved value"
-            "x := 5\nyield (~x ~> Int) of Int" "true"
+            "begin x := 5; yield (~x ~> Int) of Int" "true"
         , programCase "reverse specification accepts the retrieved value"
-            "x := 5\nyield (Int <~ ~x) of Int" "true"
+            "begin x := 5; yield (Int <~ ~x) of Int" "true"
         , programCase "subfederation checks the retrieved value"
-            "x := 5\nyield ~x of Nat" "true"
+            "begin x := 5; yield ~x of Nat" "true"
         , programCase "subfederation rejects a different value"
-            "x := 5\nyield ~x of 6" "false"
+            "begin x := 5; yield ~x of 6" "false"
         , programCase "lookup does not change optional-name specification"
-            ("x := 5\nyield (x := ~x) ~> (x? : Nat)")
+            ("begin x := 5; yield (x := ~x) ~> (x? : Nat)")
             "x? : Nat := 5"
         ]
     , testGroup "mapped access"
@@ -387,7 +387,7 @@ standardLibraryTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase "unknown external shorthand"
-            "yield !~\"missing.symbol\""
+            "yield ~~\"missing.symbol\""
             (SourceEvaluationFailure
               (ExternalEvaluationFailed
                 (UnknownExternalSymbol "missing.symbol")))
@@ -404,11 +404,11 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "(!~\"datra.Expr\") of Any"
-            , "(!~\"datra.IdenExp\") of Any"
-            , "(!~\"datra.Block\") of Any"
-            , "(!~\"datra.FunctionBody\") of Any"
-            , "(Nat; (!~\"datra.Expr\")) of Any"
+            , "(~~\"datra.Expr\") of Any"
+            , "(~~\"datra.IdenExp\") of Any"
+            , "(~~\"datra.Block\") of Any"
+            , "(~~\"datra.FunctionBody\") of Any"
+            , "(Nat; (~~\"datra.Expr\")) of Any"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -429,7 +429,7 @@ standardLibraryTests =
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "not ((!~\"datra.Block\") of (!~\"datra.Expr\"))"
+            , "not ((~~\"datra.Block\") of (~~\"datra.Expr\"))"
             , "\"%Any\" of Template"
             , "\"%Int %IdenStr\" of Template"
             , "(\"%Int %IdenStr\" ~> Template) of Template"
@@ -834,7 +834,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"step %Int next\" % (Int -> Int) !~\"datra.abs\")"
+        ( "step := ((\"step %Int next\" % (Int -> Int) ~~\"datra.abs\")"
             <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"
             <> "yield step"
         )
@@ -848,14 +848,14 @@ declaredPatternTests =
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((\"step %Int left\" % (Int -> Int) !~\"datra.abs\")"
-            <> " | (\"step %Int right\" % (Int -> Int) !~\"datra.abs\"))\n"
+        ( "step := ((\"step %Int left\" % (Int -> Int) ~~\"datra.abs\")"
+            <> " | (\"step %Int right\" % (Int -> Int) ~~\"datra.abs\"))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) !~\"datra.abs\")"
-            <> " | (\"choose %Int mark\" % (Int -> Int) !~\"datra.abs\"))\n"
+        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) ~~\"datra.abs\")"
+            <> " | (\"choose %Int mark\" % (Int -> Int) ~~\"datra.abs\"))\n"
             <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)

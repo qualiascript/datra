@@ -42,6 +42,7 @@ import Interpreting
   , InterpretingError (..)
   , OperandSide (..)
   , interpretExpressionReason
+  , interpretWithImports
   , interpretLocatedExpression
   , canonicalStringCodec
   , interpretedExplicitOrdinal
@@ -199,7 +200,7 @@ testModuleSyntaxAlias = do
         [binding "begin" (identifierReference "begin")]
         (contextualAccess (IdentifierString "_this"))
       source = ModuleSource "alias-module.datra"
-        (Program
+        (Begin
           [ binding "_Expr" expressionType
           , binding "_Block" blockType
           , binding "begin" beginValue
@@ -230,7 +231,7 @@ testModuleSyntaxAlias = do
     Left failure -> assertFailure
       ("module syntax discovery failed: " <> show failure)
   let shadowingSource = ModuleSource "shadowing-module.datra"
-        (Program
+        (Begin
           [ binding "_Expr" expressionType
           , binding "_Block" blockType
           , binding "begin" beginValue
@@ -246,7 +247,7 @@ testModuleSyntaxAlias = do
     Left failure -> assertFailure
       ("shadowing module syntax discovery failed: " <> show failure)
   let preservingSource = ModuleSource "preserving-module.datra"
-        (Program
+        (Begin
           [ binding "_Expr" expressionType
           , binding "_Block" blockType
           , binding "begin" beginValue
@@ -276,7 +277,7 @@ testModuleSyntaxAlias = do
     Left failure -> assertFailure
       ("syntax-preserving shadow failed: " <> show failure)
   let duplicateSource = ModuleSource "duplicate-module.datra"
-        (Program [] (binding "DuplicateModule" (Begin
+        (Begin [] (binding "DuplicateModule" (Begin
           [ binding "abc" (natural 123)
           , binding "abc" (natural 456)
           ]
@@ -290,19 +291,19 @@ testModuleSyntaxAlias = do
         [binding "x" (identifierReference "Int")]
         (contextualAccess (IdentifierString "_this"))
       isolatedSource = ModuleSource "isolated-module.datra"
-        (Program [] (binding "IsolatedModule" isolatedBody)) []
+        (Begin [] (binding "IsolatedModule" isolatedBody)) []
   case moduleExportNames isolatedSource of
     Left (UnknownIdentifier "Int") -> pure ()
     result -> assertFailure
       ("a loaded module implicitly received Std: " <> show result)
   let explicitStd = ModuleSource "std.datra"
-        (Program [] (binding "Std" (Begin
+        (Begin [] (binding "Std" (Begin
           [binding "Int" (natural 7)]
           (contextualAccess (IdentifierString "_this")))))
         []
       importingSource = ModuleSource "importing-module.datra"
         (ScopeAccess (identifierReference "Std")
-          (Program [] (binding "ImportingModule" isolatedBody)))
+          (Begin [] (binding "ImportingModule" isolatedBody)))
         [("std", explicitStd)]
   case moduleExportNames importingSource of
     Right ["x"] -> pure ()
@@ -1102,16 +1103,16 @@ testCanonicalTypes = do
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
     , "Template"
-    , "!~\"datra.Expr\""
-    , "!~\"datra.IdenExp\""
-    , "!~\"datra.Block\""
-    , "!~\"datra.FunctionBody\""
-    , "(Nat; (!~\"datra.Expr\"))"
+    , "~~\"datra.Expr\""
+    , "~~\"datra.IdenExp\""
+    , "~~\"datra.Block\""
+    , "~~\"datra.FunctionBody\""
+    , "(Nat; (~~\"datra.Expr\"))"
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "!~\"datra.SyntaxTemplate\""
+    , "~~\"datra.SyntaxTemplate\""
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     case Types.toStringValue canonicalStringCodec value of
@@ -1138,8 +1139,10 @@ testPrograms = do
   mapM_ (\(source, expected) ->
     case parseProductionSource source of
       Left message -> fail (parseFailureMessage message)
-      Right expression -> expectValue source expression $ \value ->
-        assert (source <> ": " <> renderInterpretedValue value)
+      Right expression -> case interpretWithImports [] expression of
+        Left rejection -> fail
+          (source <> ": unexpected rejection: " <> show rejection)
+        Right value -> assert (source <> ": " <> renderInterpretedValue value)
           (renderInterpretedValue value == expected))
     [ ("a := 2 * 3\nb := 5\nyield a + b", "11")
     , ("a : 2 * 3\nb : 8\nyield a + b", "14")
