@@ -104,7 +104,6 @@ import DatraLanguage.AST
       , Coalization
       , Assert
       , Begin
-      , Program
       , SyntaxType
       , Fun
       , GenericIntroductionExpression
@@ -707,7 +706,6 @@ astForm =
       , astUnary AST.BooleanNotOperator BooleanNot
       , astUnary AST.CoalizationOperator Coalization
       , astBlock "begin" Begin
-      , astBlock "program" Program
       , astUnary AST.LetOperator Let
       , IdentifierReference . IdentifierString <$>
           (astSymbol "ref" *> astString)
@@ -953,7 +951,7 @@ rawResourceWithEnvelope = do
       (,) ExplicitMapEnvelope <$> parenthesizedExpression
     implicitResource = do
       entries <- elements
-      pure (ImplicitBlockEnvelope, Program entries (AtlasMap []))
+      pure (ImplicitBlockEnvelope, Begin entries (AtlasMap []))
 
 -- Parse the parenthesized expression itself in lookahead so the closing
 -- parenthesis must enclose the whole resource. This distinguishes an explicit
@@ -1986,7 +1984,7 @@ operatorToken operator = lexeme $ try $ do
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
-    AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%')
+    AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%' <|> char '~')
     AST.SyntaxTypeOperator -> notFollowedBy (char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')

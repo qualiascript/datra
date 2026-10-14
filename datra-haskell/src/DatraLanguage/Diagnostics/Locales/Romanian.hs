@@ -395,6 +395,8 @@ localizeModuleFailure failure =
     StandardLibraryRequiresDeclarationBlock path ->
       LocalizedMessage "biblioteca standard trebuie să conțină un bloc de declarații"
         ["cale: " <> path]
+    ImportedModuleRequiresBlock ->
+      LocalizedMessage "fișierul importat trebuie să se reducă la un bloc" []
     ImportedModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage
         "fișierul importat trebuie să producă o federație de identificatori"

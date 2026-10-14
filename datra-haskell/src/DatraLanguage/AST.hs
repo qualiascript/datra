@@ -194,7 +194,6 @@ data Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
   | External Expression
-  | Program [Expression] Expression
   | Begin [Expression] Expression
   | Let Expression
   | IdentifierReference IdentifierString
@@ -257,7 +256,7 @@ isContextualAccessOf name expression = case expression of
 yieldedIdentifier
   :: Expression
   -> Maybe (IdentifierString, Expression, Maybe Expression)
-yieldedIdentifier (Program _ result) = yieldedIdentifier result
+yieldedIdentifier (Begin _ result) = yieldedIdentifier result
 yieldedIdentifier (ScopeAccess _ body) = yieldedIdentifier body
 yieldedIdentifier (Import _ (FunctionBody _ result)) = yieldedIdentifier result
 yieldedIdentifier (IdentifierOperation name annotation given) =
@@ -362,7 +361,6 @@ data OperatorExpression
   | FunctionBodyValue [OperatorExpression] OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
   | ExternalValue OperatorExpression
-  | ProgramValue [OperatorExpression] OperatorExpression
   | BeginValue [OperatorExpression] OperatorExpression
   | LetValue OperatorExpression
   | IdentifierReferenceValue IdentifierString
@@ -514,8 +512,6 @@ normalizeExpression (FunctionTypeExpression generics input output) =
 normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
 normalizeExpression (External descriptor) = External (normalizeExpression descriptor)
-normalizeExpression (Program bindings result) =
-  Program (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Begin bindings result) =
   Begin (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Let binding) = Let (normalizeExpression binding)
@@ -690,7 +686,6 @@ lower (FunctionTypeExpression generics input output) =
 lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
 lower (External descriptor) = ExternalValue (lower descriptor)
-lower (Program bindings result) = ProgramValue (map lower bindings) (lower result)
 lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
 lower (IdentifierReference name) = IdentifierReferenceValue name
@@ -910,9 +905,6 @@ prettyOperator (FunctionTypeValue generics input output) =
 prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
 prettyOperator (ExternalValue descriptor) = prettyUnary ExternalOperator descriptor
-prettyOperator (ProgramValue bindings result) =
-  prettyForm "program"
-    [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (BeginValue bindings result) =
   prettyForm "begin"
     [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
@@ -1197,7 +1189,6 @@ traverseExpressionChildren visit expression = case expression of
     ReverseMapSpecification <$> visit a <*> visit b
   ReverseOverload a b -> ReverseOverload <$> visit a <*> visit b
   ReverseSafeOverload a b -> ReverseSafeOverload <$> visit a <*> visit b
-  Program xs y -> Program <$> traverse visit xs <*> visit y
   Begin xs y -> Begin <$> traverse visit xs <*> visit y
   FunctionBody xs y -> FunctionBody <$> traverse visit xs <*> visit y
   Conditional a b c -> Conditional <$> visit a <*> visit b <*> visit c

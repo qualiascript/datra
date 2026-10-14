@@ -1,0 +1,3 @@
+(ExplicitResource := begin
+  x := 1
+yield public this)

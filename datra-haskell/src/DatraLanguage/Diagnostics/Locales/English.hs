@@ -394,6 +394,8 @@ localizeModuleFailure failure =
     StandardLibraryRequiresDeclarationBlock path ->
       LocalizedMessage "standard library must contain a declaration block"
         ["path: " <> path]
+    ImportedModuleRequiresBlock ->
+      LocalizedMessage "imported file must reduce to a block" []
     ImportedModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage "imported file must yield an identifier-binder federation"
         ["use yield Name := value or a federation of identifier binders"]

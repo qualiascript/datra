@@ -278,6 +278,10 @@ moduleTests =
         (== ModuleEvaluationFailure
           (ModuleEvaluationFailed
             ImportedModuleRequiresIdentifierBinderFederation))
+    , moduleFailureCase origin "imported file must reduce to a block"
+        "import \"explicit_resource\" do yield ()"
+        (== ModuleEvaluationFailure
+          (ModuleEvaluationFailed ImportedModuleRequiresBlock))
     , moduleCase origin "qualified import accepts a non-total binder value"
         "import \"non_total_value\" do yield Numbers = Nat"
         "true"

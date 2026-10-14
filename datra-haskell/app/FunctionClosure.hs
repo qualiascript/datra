@@ -174,7 +174,6 @@ rewrite mode depth reserved active resolver bound expression =
         (FunctionTypeExpression closedGenerics closedDomain closedCodomain))
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
-    Program entries result -> block Program entries result
     OptionalType operand
       | Nothing <- optionalIdentifierExpression expression ->
           recur

@@ -144,7 +144,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "f := ({x? : Int} -> Int do yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , mutualRecursiveDefinitions
-  , roundTrip "registered native function" "yield !~\"datra.add\""
+  , roundTrip "registered native function" "yield ~~\"datra.add\""
       "(2; 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
       "step := \"step %Nat next\" % ({value? : Int} -> Int) do yield value + 1\nyield step"
@@ -161,9 +161,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("!~\"datra.from\"" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("~~\"datra.from\"" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
-        (not ("!~\"datra.Int\"" `isInfixOf` text))
+        (not ("~~\"datra.Int\"" `isInfixOf` text))
       assertBool "dependency selected through value lookup" ("~\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int do yield x + offset)"

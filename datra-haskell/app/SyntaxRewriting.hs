@@ -11,11 +11,7 @@ module SyntaxRewriting
   ) where
 
 import Control.Applicative ((<|>))
-import BlockScope
-  ( Declaration (declarationValue)
-  , bindingNames
-  , blockDeclaration
-  )
+import BlockScope (bindingNames)
 import Data.List (nub)
 import Data.Either (isRight)
 import DatraLanguage.AST
@@ -29,6 +25,7 @@ import Parsing (inferredFunction, resolveGenericFunctionTypes)
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , applySyntaxFunctionBody
+  , contextualSyntaxRulesFor
   , declarationRules
   , externalSymbol
   , normalizeSyntaxExpansion
@@ -54,6 +51,19 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteClassifyHole :: ClassifyHole
   , rewriteScopeRules :: ScopeRules
   }
+
+-- Contextual surface names exist only inside syntax nodes whose evaluator
+-- installs the corresponding private binding. Entering such a node replaces
+-- an outer rule with the node's fresh contextual binding; declarations within
+-- the node may still shadow it through 'advanceScope'.
+withContextualSyntax :: [String] -> RewriteEnvironment -> RewriteEnvironment
+withContextualSyntax surfaces environment = environment
+  { rewriteRules = contextual <> filter (not . contextualName) existing }
+  where
+    contextual = contextualSyntaxRulesFor surfaces
+    existing = rewriteRules environment
+    names = map syntaxName contextual
+    contextualName rule = syntaxName rule `elem` names
 
 type ClassifyHole =
   [Expression]
@@ -118,10 +128,8 @@ resolveImplicitBlock capture initial = go initial
             [] -> case rewrittenPrefix of
               [scoped@ScopeAccess {}] -> Right scoped
               [imported@Import {}] -> Right imported
-              _ | Just (bindings, exported) <-
-                    finalBlockDeclarationExport rewrittenPrefix ->
-                    Right (Program bindings exported)
-              _ -> Right (Program rewrittenPrefix (AtlasMap []))
+              [block@Begin {}] -> Right (Begin [] block)
+              _ -> Right (Begin rewrittenPrefix (AtlasMap []))
             entry : rest -> do
               (rewritten, trailing) <-
                 rewriteWithTail False capture environment entry rest
@@ -142,13 +150,6 @@ resolveImplicitBlock capture initial = go initial
         Just value -> Right (Just value)
         Nothing -> firstSuccessful rest
 
-    finalBlockDeclarationExport entries = case reverse entries of
-      declaration : reversedBindings
-        | Just binding <- blockDeclaration declaration
-        , Begin {} <- declarationValue binding ->
-            Just (reverse reversedBindings, declaration)
-      _ -> Nothing
-
     implicitRule environment rewrittenPrefix remaining rule
         (prefix, delimiter) =
       consumeBlock capture environment delimiter [] remaining >>= \case
@@ -156,10 +157,10 @@ resolveImplicitBlock capture initial = go initial
         Just (rewrittenSuffix, nested, rawResult, trailing) -> do
           (result, finalTrailing) <-
             rewriteWithTail True capture nested rawResult trailing
-          let block = rewrittenPrefix <> rewrittenSuffix
+          let blockEntries = rewrittenPrefix <> rewrittenSuffix
               candidate = applicationFrom
                 (map literalExpression prefix
-                  <> [ AtlasMap block
+                  <> [ AtlasMap blockEntries
                      , literalExpression delimiter
                      , result
                      ])
@@ -169,10 +170,20 @@ resolveImplicitBlock capture initial = go initial
           case matchSyntaxRulesWith captureInScope [rule] candidate of
             Right (Begin bindings finalResult)
               | null finalTrailing ->
-                  Right (Just (Program bindings finalResult))
+                  Right (Just (if explicitBlockAtHead
+                    then Begin rewrittenPrefix (Begin bindings finalResult)
+                    else Begin bindings finalResult))
             Right _ -> Right Nothing
             Left NoMatchingSyntaxTemplate -> Right Nothing
             Left failure -> Left (SyntaxRewriteMatchFailure failure)
+      where
+        explicitBlockAtHead = case remaining of
+          first : _ -> 0 `elem`
+            matchingStarts writtenHead (applicationPhrase first)
+          [] -> False
+        writtenHead
+          | null prefix = [syntaxName rule]
+          | otherwise = prefix
 
 rewriteSequence
   :: CaptureHole
@@ -328,6 +339,8 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
                   (Just rewrittenValue))
                 remaining
     IdentifierTemplateOperation parts annotation given -> do
+      let contextual = withContextualSyntax ["it"] environment
+      rewrittenParts <- traverse (rewriteTemplatePart contextual) parts
       let (rawAnnotation, rawGiven) =
             normalizeTrailingAssignment annotation given
       case rawGiven of
@@ -335,14 +348,15 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
           (rewrittenAnnotation, remaining) <-
             rewriteDeclarationPart Nothing rawAnnotation
           finish
-            (IdentifierTemplateOperation parts rewrittenAnnotation Nothing)
+            (IdentifierTemplateOperation
+              rewrittenParts rewrittenAnnotation Nothing)
             remaining
         Just original
           | original == rawAnnotation -> do
               (rewrittenValue, remaining) <-
                 rewriteDeclarationPart Nothing original
               finish
-                (IdentifierTemplateOperation parts rewrittenValue
+                (IdentifierTemplateOperation rewrittenParts rewrittenValue
                   (Just rewrittenValue))
                 remaining
           | otherwise -> do
@@ -351,7 +365,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
               (rewrittenValue, remaining) <-
                 rewriteDeclarationPart Nothing original
               finish
-                (IdentifierTemplateOperation parts rewrittenAnnotation
+                (IdentifierTemplateOperation rewrittenParts rewrittenAnnotation
                   (Just rewrittenValue))
                 remaining
     FunctionApplication function argument
@@ -365,8 +379,9 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     MaybeThen optional branch
       | allowNestedContinuation -> do
           rewrittenOptional <- rewriteStandalone capture environment optional
+          let contextual = withContextualSyntax ["it"] environment
           (rewrittenBranch, remaining) <-
-            rewriteWithTail True capture environment branch trailing
+            rewriteWithTail True capture contextual branch trailing
           finish (MaybeThen rewrittenOptional rewrittenBranch) remaining
     FunctionApplication function argument
       | allowNestedContinuation
@@ -392,9 +407,14 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
             remaining
     Fun signature
       | allowNestedContinuation -> do
+          let nested = withContextualSyntax ["this"] environment
           (rewrittenSignature, remaining) <-
-            rewriteWithTail True capture environment signature trailing
+            rewriteWithTail True capture nested signature trailing
           finish (Fun rewrittenSignature) remaining
+      | otherwise -> do
+          let nested = withContextualSyntax ["this"] environment
+          rewrittenSignature <- rewriteStandalone capture nested signature
+          finish (Fun rewrittenSignature) trailing
     AtlasMap entries -> do
       (rewritten, _) <- rewriteSequence capture environment entries
       finish (sequenceExpression rewritten) trailing
@@ -404,22 +424,24 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
         then finish (argumentExpression rewritten) trailing
         else Left InvalidPrivateOptionalArgumentName
     Begin bindings result -> do
+      let contextual = withContextualSyntax ["this"] environment
       (rewrittenBindings, nested) <-
-        rewriteSequence capture environment bindings
+        rewriteSequence capture contextual bindings
       rewrittenResult <- rewriteStandalone capture nested result
       pure (Begin rewrittenBindings rewrittenResult, trailing)
     FunctionBody bindings result -> do
+      let contextual = withContextualSyntax ["this", "it"] environment
       (rewrittenBindings, nested) <-
-        rewriteSequence capture environment bindings
+        rewriteSequence capture contextual bindings
       rewrittenResult <- rewriteStandalone capture nested result
       pure (FunctionBody rewrittenBindings rewrittenResult, trailing)
-    Program bindings result -> do
-      (rewrittenBindings, nested) <-
-        rewriteSequence capture environment bindings
-      rewrittenResult <- rewriteStandalone capture nested result
-      pure (Program rewrittenBindings rewrittenResult, trailing)
     _ -> finish value trailing
   where
+    rewriteTemplatePart contextual part = case part of
+      StringTemplateLiteral {} -> pure part
+      StringTemplateInterpolation interpolation ->
+        StringTemplateInterpolation <$>
+          rewriteStandalone capture contextual interpolation
     rewriteDeclarationPart declaredName selected =
       if allowNestedContinuation
         then rewriteWithTail True capture environment selected trailing
@@ -505,6 +527,11 @@ rewriteChildren
   -> Either SyntaxRewriteFailure Expression
 rewriteChildren capture environment value =
   case value of
+    MaybeThen optional branch -> do
+      rewrittenOptional <- rewriteStandalone capture environment optional
+      let contextual = withContextualSyntax ["it"] environment
+      rewrittenBranch <- rewriteStandalone capture contextual branch
+      pure (MaybeThen rewrittenOptional rewrittenBranch)
     ScopeAccess source body ->
       rewriteScopeAccess capture environment source body
     ReverseMapSpecification target source ->
@@ -623,7 +650,6 @@ isDirectControlExpansion :: Expression -> Bool
 isDirectControlExpansion expanded = case expanded of
   Begin {} -> True
   FunctionBody {} -> True
-  Program {} -> True
   ScopeAccess {} -> True
   _ -> False
 
@@ -689,7 +715,7 @@ rewriteScopeAccess capture environment source body = do
   pure (ScopeAccess rewrittenSource rewrittenBody)
 
 singleScopedExpression :: Expression -> Expression
-singleScopedExpression (Program [entry] (AtlasMap [])) = entry
+singleScopedExpression (Begin [entry] (AtlasMap [])) = entry
 singleScopedExpression expressionValue = expressionValue
 
 scopeBodyEntries :: Expression -> [Expression]
@@ -820,7 +846,7 @@ trailingInferredFunctionBody value = case value of
   _ -> Nothing
 
 -- Resolve this ambiguity only after declared syntax has matched. For example,
--- @yield !~"datra.add"@ yields an external value, while @Nat !~"example"@
+-- @yield ~~"datra.add"@ yields an external value, while @Nat ~~"example"@
 -- is an inferred function.
 attachInferredExternalImplementation
   :: RewriteEnvironment
@@ -1395,7 +1421,7 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
       _ -> pure Nothing
 
     scopedProgram (SyntaxBoundary inner) = scopedProgram inner
-    scopedProgram scoped@(ScopeAccess _ (Program _ _)) = Just scoped
+    scopedProgram scoped@(ScopeAccess _ (Begin _ _)) = Just scoped
     scopedProgram _ = Nothing
 
     attachAdjacentBody True before body@FunctionBody {}

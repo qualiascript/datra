@@ -439,6 +439,13 @@ testDiagnostics = do
     )
   assert "unnamed imported files have a localized module failure"
     ( localizeDiagnostic English
+        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresBlock)
+        == LocalizedMessage "imported file must reduce to a block" []
+      && localizeDiagnostic Romanian
+        (Types.ModuleEvaluationFailed Types.ImportedModuleRequiresBlock)
+        == LocalizedMessage
+          "fișierul importat trebuie să se reducă la un bloc" []
+      && localizeDiagnostic English
         (Types.ModuleEvaluationFailed
           Types.ImportedModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
