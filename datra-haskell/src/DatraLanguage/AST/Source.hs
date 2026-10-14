@@ -3,6 +3,7 @@ module DatraLanguage.AST.Source (renderSourceExpression) where
 
 import Data.List (intercalate)
 import DatraLanguage.AST
+import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
 
 renderSourceExpression :: Expression -> String
 renderSourceExpression =
@@ -87,6 +88,7 @@ source context expression =
     LetValue binding -> wrapped 0 ("let " <> source 0 binding)
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
+      | isOpaqueSymbolicSyntaxLiteral name -> name
       | otherwise -> "~" <> renderIdentifierString name
     IdentifierOperationValue (IdentifierString name) annotation given ->
       identifierOperation

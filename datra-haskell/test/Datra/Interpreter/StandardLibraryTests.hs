@@ -3,6 +3,9 @@ module Datra.Interpreter.StandardLibraryTests
   ) where
 
 import Datra.TestSupport
+import DatraLanguage.Diagnostics.Application
+  ( SyntaxTemplateAdmissibilityFailure (..)
+  )
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
@@ -757,20 +760,37 @@ declaredPatternTests =
         )
         "(3; 3)"
     , programFailureCase
+        "% rejects an incomplete core operator in the complete pattern"
+        "yield (\"call ~\" % (Int -> Int))"
+        (SourceEvaluationFailure (InvalidSyntaxTemplate
+          "call ~" (IncompleteCoreSyntaxOperator "~")))
+    , programCase
+        "% accepts and invokes a complete value-of literal"
+        ( "answer := \"call ~name\" % (() -> Int) do yield 7\n"
+            <> "yield call ~name"
+        )
+        "7"
+    , programFailureCase
         "% rejects an opening grouping character in a syntax template"
         "yield (\"call (%Int)\" % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter '('))
+        (SourceEvaluationFailure (InvalidSyntaxTemplate
+          "call ( %Int )" SyntaxTemplateProjectionLoss))
     , programFailureCase
         "% rejects a closing grouping character in a syntax template"
         "yield (\"call %Int)\" % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter ')'))
-    , programCase "% accepts a comma in a syntax template"
-        "yield (\"take,%Int\" % (Int -> Int))"
-        "(Int -> Int)"
+        (SourceEvaluationFailure (InvalidSyntaxTemplate
+          "call %Int )" NeutralSyntaxTemplateParseFailure))
+    , programCase "% accepts and invokes a comma-boundary template"
+        ( "take := \"take,%Int\" % ({value?:Int} -> Int)"
+            <> " do yield value+1\n"
+            <> "yield (take,2)"
+        )
+        "3"
     , programFailureCase
         "one forbidden member rejects a complete template map"
         "yield ((\"step %Int\"; \"call (%Int)\") % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplateCharacter '('))
+        (SourceEvaluationFailure (InvalidSyntaxTemplate
+          "call ( %Int )" SyntaxTemplateProjectionLoss))
     , programFailureCase "% rejects a non-string map member"
         "yield ((\"step %Int\"; 1) % (Int -> Int))"
         (SourceEvaluationFailure InvalidSyntaxTemplateOperand)

@@ -17,6 +17,8 @@ module Evaluation.Error
   ) where
 
 import DatraOrdinal (Ordinal)
+import DatraLanguage.Diagnostics.Application
+  ( SyntaxTemplateAdmissibilityFailure )
 import MapOperators.AccessOperator (AccessError)
 import Numeric.Natural (Natural)
 import SuperEllipsisRange
@@ -183,7 +185,9 @@ data InterpretingError
   | NonInjectiveStringInterpolation
   | NoCanonicalStringConversion
   | InvalidSyntaxTemplateOperand
-  | InvalidSyntaxTemplateCharacter Char
+  | InvalidSyntaxTemplate
+      String
+      SyntaxTemplateAdmissibilityFailure
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
   | InvalidAsciiStringCharacter Char

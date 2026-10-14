@@ -61,13 +61,13 @@ import Prettyprinter.Render.String (renderString)
 newtype IdentifierString = IdentifierString
   { identifierStringText :: String
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | The quantifier-like polarity of a function-owned generic binder.
 data GenericPolarity
   = GenericProduct
   | GenericSum
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | The simple identifier accepted by a generic introduction. Privacy remains
 -- a property of the ordinary identifier spelling; the Boolean is the existing
@@ -76,7 +76,7 @@ data GenericIdentifier = GenericIdentifier
   { genericIdentifierName :: IdentifierString
   , genericIdentifierNameOptional :: Bool
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Identity allocated by function-type scope resolution. Identifier text is
 -- presentation; this identity distinguishes shadowed binders.
@@ -88,7 +88,7 @@ newtype GenericBinderId = GenericBinderId Natural
 data GenericReferenceRole
   = GenericDeclarationReference
   | GenericUseReference
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Raw generic syntax before its nearest function type has collected it.
 -- Generic identifiers are deliberately simple: dependent identifier
@@ -100,7 +100,7 @@ data GenericIntroduction expression = GenericIntroduction
   , genericIntroductionBound :: expression
   , genericIntroductionSource :: Maybe SourceSpan
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | One entry in a resolved function type's ordered generic telescope.
 data GenericBinder expression = GenericBinder
@@ -110,7 +110,7 @@ data GenericBinder expression = GenericBinder
   , genericBinderBound :: expression
   , genericBinderSource :: Maybe SourceSpan
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | A resolved occurrence uses binder identity rather than duplicating its
 -- identifier expression. Rendering and diagnostics recover that expression
@@ -119,7 +119,7 @@ data GenericReference = GenericReference
   { genericReferenceBinderId :: GenericBinderId
   , genericReferenceRole :: GenericReferenceRole
   }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | One source-order component of a quoted string template. Literal chunks
 -- are already decoded by the parser; interpolations retain their unevaluated
@@ -127,7 +127,7 @@ data GenericReference = GenericReference
 data StringTemplatePart expression
   = StringTemplateLiteral String
   | StringTemplateInterpolation expression
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Unevaluated Datra syntax. Capabilities and silent coercions are resolved
 -- later by the type checker and interpreter, not while constructing the AST.
@@ -220,7 +220,7 @@ data Expression
       , identifierTemplateTypeAnnotation :: Expression
       , identifierTemplateGivenValue :: Maybe Expression
       }
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Compatibility pattern for an ordinary function type. Generic-aware code
 -- must match 'FunctionTypeExpression' or 'GenericFunctionType' explicitly, so

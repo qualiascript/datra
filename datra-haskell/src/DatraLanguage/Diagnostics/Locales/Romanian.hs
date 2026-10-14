@@ -17,6 +17,7 @@ import DatraLanguage.Diagnostics.Application
   , ModuleLoadFailure (..)
   , ParseFailure (..)
   , SyntaxExpansionFailure (..)
+  , SyntaxTemplateAdmissibilityFailure (..)
   )
 import Evaluation.Error
   ( InterpretedValueKind (..)
@@ -282,11 +283,11 @@ localizeInterpretingError reason =
       LocalizedMessage
         "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
         []
-    InvalidSyntaxTemplateCharacter character ->
+    InvalidSyntaxTemplate template failure ->
       LocalizedMessage
-        "șablonul sintactic conține un caracter literal nevalid"
-        [ "caracter: " <> show character
-        , "% poate instala doar literali păstrați de analizorul neutru al sursei"
+        (syntaxTemplateFailureSummary template failure)
+        [ "șablon: " <> show template
+        , syntaxTemplateFailureDetail failure
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
@@ -300,6 +301,33 @@ localizeInterpretingError reason =
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"
         ["caracter: " <> show character]
+
+syntaxTemplateFailureSummary
+  :: String
+  -> SyntaxTemplateAdmissibilityFailure
+  -> String
+syntaxTemplateFailureSummary _ NeutralSyntaxTemplateParseFailure =
+  "șablonul sintactic nu poate fi citit de analizorul neutru al sursei"
+syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
+  "șablonul sintactic se termină cu operatorul nucleu incomplet " <> operator
+syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
+  "șablonul sintactic pierde un literal sau un gol în timpul potrivirii"
+syntaxTemplateFailureSummary _ SyntaxTemplateProjectionOrderMismatch =
+  "șablonul sintactic reordonează sau duplică un literal sau un gol"
+syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
+  "șablonul sintactic se schimbă după afișare și reanalizare"
+
+syntaxTemplateFailureDetail :: SyntaxTemplateAdmissibilityFailure -> String
+syntaxTemplateFailureDetail NeutralSyntaxTemplateParseFailure =
+  "șablonul complet trebuie analizat înainte de instalarea sintaxei declarate"
+syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
+  "șablonul complet trebuie să furnizeze operandul cerut de operator"
+syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
+  "potrivitorul nu poate recupera fiecare limită din arborele sintactic neutru"
+syntaxTemplateFailureDetail SyntaxTemplateProjectionOrderMismatch =
+  "potrivitorul trebuie să recupereze fiecare gol exact o dată și în ordinea sursei"
+syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
+  "forma neutră recuperată trebuie să rămână stabilă după o conversie canonică"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =

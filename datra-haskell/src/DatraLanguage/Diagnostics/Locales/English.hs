@@ -20,6 +20,7 @@ import DatraLanguage.Diagnostics.Application
   , ModuleLoadFailure (..)
   , ParseFailure (..)
   , SyntaxExpansionFailure (..)
+  , SyntaxTemplateAdmissibilityFailure (..)
   )
 import Evaluation.Error
   ( InterpretedValueKind (..)
@@ -282,11 +283,11 @@ localizeInterpretingError reason =
       LocalizedMessage
         "% expects a compile-time string or total map of strings"
         []
-    InvalidSyntaxTemplateCharacter character ->
+    InvalidSyntaxTemplate template failure ->
       LocalizedMessage
-        "syntax template contains an invalid literal character"
-        [ "character: " <> show character
-        , "% can only install literals retained by the neutral source parser"
+        (syntaxTemplateFailureSummary template failure)
+        [ "pattern: " <> show template
+        , syntaxTemplateFailureDetail failure
         ]
     EitherAlternativesNotDistinct ->
       LocalizedMessage
@@ -300,6 +301,33 @@ localizeInterpretingError reason =
       LocalizedMessage
         "string contains a character outside the ASCII map"
         ["character: " <> show character]
+
+syntaxTemplateFailureSummary
+  :: String
+  -> SyntaxTemplateAdmissibilityFailure
+  -> String
+syntaxTemplateFailureSummary _ NeutralSyntaxTemplateParseFailure =
+  "syntax pattern cannot be read by the neutral source parser"
+syntaxTemplateFailureSummary _ (IncompleteCoreSyntaxOperator operator) =
+  "syntax pattern ends with the incomplete core operator " <> operator
+syntaxTemplateFailureSummary _ SyntaxTemplateProjectionLoss =
+  "syntax pattern loses a literal or hole during matching"
+syntaxTemplateFailureSummary _ SyntaxTemplateProjectionOrderMismatch =
+  "syntax pattern reorders or duplicates a literal or hole"
+syntaxTemplateFailureSummary _ UnstableSyntaxTemplateProjection =
+  "syntax pattern changes when rendered and parsed again"
+
+syntaxTemplateFailureDetail :: SyntaxTemplateAdmissibilityFailure -> String
+syntaxTemplateFailureDetail NeutralSyntaxTemplateParseFailure =
+  "the complete pattern must be parseable before declared syntax is installed"
+syntaxTemplateFailureDetail (IncompleteCoreSyntaxOperator _) =
+  "the complete pattern must supply the operator's required operand"
+syntaxTemplateFailureDetail SyntaxTemplateProjectionLoss =
+  "the matcher cannot recover every pattern boundary from the neutral AST"
+syntaxTemplateFailureDetail SyntaxTemplateProjectionOrderMismatch =
+  "the matcher must recover each hole exactly once and in source order"
+syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
+  "the recovered neutral form must survive a canonical round trip"
 
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
