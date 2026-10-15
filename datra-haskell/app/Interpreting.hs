@@ -49,6 +49,7 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, intercalate, partition)
+import Debug.Trace (trace)
 import BlockScope
 import FunctionClosure
 import DatraHost
@@ -1738,21 +1739,36 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     ScopeAccess
         (IdentifierReference (IdentifierString namespace))
         (IdentifierReference (IdentifierString name))
-      | Just (ImportedBinding dependency identity value _) <- lookupScope namespace scope ->
+      | Just (ImportedBinding dependency identity value internal) <-
+          lookupScope namespace scope ->
           case namedAccessValue value name of
             Left (NamedAccessFailed (NamedFieldNotFound _)) ->
               Left (UnknownIdentifier name)
             result -> do
               selected <- result
               payload <- accessValues selected (naturalValue 1)
+              let exportedPayload = withoutCanonicalDependencies
+                    [ dependency
+                    | (_, LexicalScope dependency) <- scopeBindings internal
+                    ]
+                    payload
+                  inspectedPayload = if name == "max"
+                    then trace (show
+                      ( hasTrailingIdentifierMarker modularMarker selected
+                      , dependency
+                      , scopePresentationDependencies scope
+                      , interpretedCanonicalPresentation payload
+                      , interpretedCanonicalPresentation exportedPayload
+                      )) exportedPayload
+                    else exportedPayload
               if hasTrailingIdentifierMarker modularMarker selected
                 then do
                   pure (withCanonicalNamedAccess
                     [modularPresentationDependency identity]
-                    (CanonicalReference namespace) name payload)
+                    (CanonicalReference namespace) name inspectedPayload)
                 else withCanonicalNamedAccess
                   [dependency] (CanonicalReference namespace) name
-                    <$> transparentEitherAlias payload
+                    <$> transparentEitherAlias inspectedPayload
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
     ScopeAccess

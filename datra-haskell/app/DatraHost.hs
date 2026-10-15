@@ -218,15 +218,18 @@ hostMap entries = do
 publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 publicValue value = do
   members <- namedMembers value
-  pure (makeAtlasMap 2 (map snd (public members)))
+  pure (makeAtlasMapPreservingSingleton 2 (map snd (public members)))
 
 namedMembers
   :: InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 namedMembers value =
   case argumentMapMembers value of
-    Just members -> traverse field members
-    Nothing -> case simpleIdentifierName value of
+    Just members
+      | Right named <- traverse field members -> Right named
+    _ -> projectedMembers
+  where
+    projectedMembers = case simpleIdentifierName value of
       Just name -> Right [(name, value)]
       Nothing -> do
         count <- maybe invalid Right
@@ -235,7 +238,6 @@ namedMembers value =
         members <- traverse memberAt
           (if count == 0 then [] else [0 .. count - 1])
         traverse field members
-  where
     invalid = Left (ModuleEvaluationFailed
       ImportedModuleRequiresNamedExports)
     memberAt index = maybe invalid Right
@@ -257,7 +259,7 @@ modularValue value = do
       ] of
     name : _ -> Left (ModuleEvaluationFailed
       (ModularIdentifierAlreadyMarked name))
-    [] -> pure (makeAtlasMap 2
+    [] -> pure (makeAtlasMapPreservingSingleton 2
       [ withTrailingIdentifierMarker modularMarker member
       | (_, member) <- members
       ])

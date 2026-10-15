@@ -147,6 +147,7 @@ module DatraTypes
   , hasTrailingIdentifierMarker
   , assignIdentifierValues
   , makeAtlasMap
+  , makeAtlasMapPreservingSingleton
   , isEmptyMap
   , makeArgumentMap
   , makeArgumentMapPreservingSingleton
@@ -315,6 +316,7 @@ import Evaluation.Map
   , isEmptyMap
   , makeAtlasExpansion
   , makeAtlasMap
+  , makeAtlasMapPreservingSingleton
   )
 import Evaluation.Overload
   ( ArgumentSchema

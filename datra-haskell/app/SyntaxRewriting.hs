@@ -426,7 +426,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     FunctionApplication (Fun signature) body@FunctionBody {}
       | canReceiveFunctionBody signature ->
           finish (Fun (FunctionApplication signature body)) trailing
-    FunctionApplication function body@FunctionBody {}
+    FunctionApplication function@FunctionApplication {} body@FunctionBody {}
       | canReceiveFunctionBody function ->
           finish (inferredFunction body function) trailing
     FunctionApplication function argument
