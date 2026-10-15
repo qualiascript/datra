@@ -213,12 +213,12 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
-  , testCase "selected non-modular number function is self-contained" $ do
+  , testCase "selected transparent number function is self-contained" $ do
       original <- runModuleProgram "libs/numbers.datra"
         "import \"numbers\" do yield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
-      assertBool "transparent export claimed a modular identity"
+      assertBool "transparent export claimed a canonical-value identity"
         (text /= "Numbers.max")
       reconstructed <- requireExpression text
       assertEqual "canonical text is idempotent"

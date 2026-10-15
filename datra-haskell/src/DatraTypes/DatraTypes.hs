@@ -143,6 +143,7 @@ module DatraTypes
   , simpleIdentifierName
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
+  , canonicalValueMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
   , assignIdentifierValues
@@ -398,6 +399,7 @@ import Evaluation.Identifier
   ( dependentIdentifierTypeValue
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
+  , canonicalValueMarker
   , hasTrailingIdentifierMarker
   , simpleIdentifierName
   , simpleIdentifierTypeValue

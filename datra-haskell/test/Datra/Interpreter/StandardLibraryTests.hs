@@ -12,26 +12,35 @@ import DatraTypes
   , FunctionFailure (..)
   , InterpretingError (..)
   , MapLengthFailure (..)
-  , ModuleEvaluationFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
 standardLibraryTests :: TestTree
 standardLibraryTests =
   testGroup "standard library and declarative syntax"
-    [ testGroup "modular exports"
-        [ programCase "modular retains its named member"
-            "begin x := 7; yield modular this" "x : 7"
-        , programCase "the empty map may be marked repeatedly"
-            "yield modular (modular ())" "()"
-        , programFailureCase "modular rejects unnamed values"
-            "yield modular (1; 2)"
-            (SourceEvaluationFailure (ModuleEvaluationFailed
-              ModularRequiresTotalMapOfSimpleIdentifierTypes))
-        , programFailureCase "modular rejects an existing marker"
-            "begin x := 7; yield modular (modular this)"
-            (SourceEvaluationFailure (ModuleEvaluationFailed
-              (ModularIdentifierAlreadyMarked "x")))
+    [ testGroup "canonical value declarations"
+        [ programCase "val retains its named member"
+            "begin val x := 7; yield this" "x : 7"
+        , programCase "val stores the canonical-value marker on its identifier"
+            "begin val x := 7; yield this[0][2]" "$CanonicalValue"
+        , programCase "let composes outside val"
+            "begin a := x + 1; let val x := 10; yield a" "11"
+        , programCase "val composes with optional names"
+            "begin val x? : Nat := 7; yield x + 0" "7"
+        , programCase "val composes with specification and subfederation"
+            ( "begin val x : Nat := 7; "
+                <> "assert x of Nat; yield (x + 0) ~> Nat"
+            )
+            "7 ~> Nat"
+        , programFailureCase "val rejects an unnamed value"
+            "yield val (1; 2)"
+            (SourceEvaluationFailure ValOutsideBegin)
+        , programFailureCase "val rejects an inner let"
+            "begin val let x := 7; yield x"
+            (SourceEvaluationFailure ValOutsideBegin)
+        , programFailureCase "val rejects a duplicate marker"
+            "begin val val x := 7; yield x"
+            (SourceEvaluationFailure ValOutsideBegin)
         ]
     , testGroup "private syntax categories"
         [ programFailureCase "AST is no longer implicitly imported"

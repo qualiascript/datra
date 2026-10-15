@@ -159,6 +159,8 @@ localizeInterpretingError reason =
       LocalizedMessage "dependență ciclică între identificatori" ["identificatori: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let necesită un bloc begin" []
+    ValOutsideBegin ->
+      LocalizedMessage "val necesită o declarație de identificator într-un bloc" []
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "introducerea generică necesită un tip de funcție exterior"
@@ -413,12 +415,6 @@ localizeModuleFailure failure =
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "domeniul modulului necesită o hartă totală de tipuri de identificator simplu" []
-    ModularRequiresTotalMapOfSimpleIdentifierTypes ->
-      LocalizedMessage
-        "modular necesită o hartă totală de tipuri de identificator simplu" []
-    ModularIdentifierAlreadyMarked name ->
-      LocalizedMessage "modular nu poate marca un identificator de mai multe ori"
-        ["identificator: " <> name]
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "modulul importat trebuie să producă un domeniu sau o hartă denumită"
         ["folosiți yield this pentru a exporta domeniul"]

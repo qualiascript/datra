@@ -138,7 +138,7 @@ source context expression =
     Negate operand -> unary "-" operand
     Not operand -> unary "not " operand
     CoalizationValue operand -> unary ">< " operand
-    ModularValue operand -> wrapped 0 ("modular " <> source 0 operand)
+    ValValue declaration -> wrapped 0 ("val " <> source 0 declaration)
     OptionalValue
         (IdentifierOperationValue (IdentifierString name) annotation given) ->
       identifierOperation

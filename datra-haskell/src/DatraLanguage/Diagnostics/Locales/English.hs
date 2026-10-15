@@ -161,6 +161,8 @@ localizeInterpretingError reason =
       LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let requires an enclosing begin block" []
+    ValOutsideBegin ->
+      LocalizedMessage "val requires an identifier declaration in a block" []
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "generic introduction requires an enclosing function type"
@@ -410,12 +412,6 @@ localizeModuleFailure failure =
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "module scope requires a total map of simple identifier types" []
-    ModularRequiresTotalMapOfSimpleIdentifierTypes ->
-      LocalizedMessage
-        "modular requires a total map of simple identifier types" []
-    ModularIdentifierAlreadyMarked name ->
-      LocalizedMessage "modular cannot mark an identifier more than once"
-        ["identifier: " <> name]
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "imported module must yield a scope or named map"
         ["use yield this to export its scope"]

@@ -1583,11 +1583,13 @@ advanceScope environment entry = environment
           SyntaxLiteral {} -> piece
       | piece <- pieces
       ]
-    aliasRules expressionValue = case expressionValue of
-      IdentifierOperation (IdentifierString name) _ (Just
-          (IdentifierReference (IdentifierString target))) ->
+    aliasRules expressionValue = case blockDeclaration expressionValue of
+      Just declaration
+        | IdentifierReference (IdentifierString target) <-
+            declarationValue declaration ->
         [ rule
-            { rewriteRule = (rewriteRule rule) { syntaxName = name }
+            { rewriteRule = (rewriteRule rule)
+                { syntaxName = declarationName declaration }
             }
         | rule <- rewriteRules environment
         , rewriteRuleName rule == target

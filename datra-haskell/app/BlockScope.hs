@@ -2,12 +2,15 @@
 -- canonical reconstruction. The caller supplies how binding values are read.
 module BlockScope
   ( Declaration (..)
+  , ScopeMember (..)
   , blockDeclaration
   , bindingNames
   , buildScopeBindings
+  , declarationScopeMember
   , declarationMap
   , projectDeclaration
   , selectedDeclarationName
+  , scopeMemberNames
   ) where
 
 import DatraLanguage.AST
@@ -17,23 +20,34 @@ import DatraTypes
 data Declaration = Declaration
   { declarationName :: String
   , declarationIsLet :: Bool
+  , declarationIsCanonicalValue :: Bool
   , declarationAnnotation :: Maybe Expression
   , declarationValue :: Expression
   }
 
+data ScopeMember = ScopeMember
+  { scopeMemberName :: String
+  , scopeMemberIsCanonicalValue :: Bool
+  }
+  deriving (Eq, Show)
+
 blockDeclaration :: Expression -> Maybe Declaration
-blockDeclaration = declaration False
+blockDeclaration = declaration False False
   where
-    declaration _ (Let value) = declaration True value
-    declaration strict (IdentifierOperation (IdentifierString name) annotation given) =
-      Just (Declaration name strict (annotationToCheck annotation given)
+    declaration _ True (Let _) = Nothing
+    declaration _ canonical (Let value) = declaration True canonical value
+    declaration _ True (Val _) = Nothing
+    declaration strict _ (Val value) = declaration strict True value
+    declaration strict canonical
+        (IdentifierOperation (IdentifierString name) annotation given) =
+      Just (Declaration name strict canonical (annotationToCheck annotation given)
         (maybe annotation (\value -> if value == annotation then value
           else MapSpecification value annotation) given))
-    declaration strict optional
+    declaration strict canonical optional
       | Just (named@IdentifierOperation {}, _) <-
           optionalIdentifierExpression optional =
-          declaration strict named
-    declaration _ _ = Nothing
+          declaration strict canonical named
+    declaration _ _ _ = Nothing
 
     annotationToCheck annotation (Just implementation)
       | annotation == implementation = Nothing
@@ -43,6 +57,14 @@ blockDeclaration = declaration False
 
 bindingNames :: Expression -> [String]
 bindingNames = maybe [] ((: []) . declarationName) . blockDeclaration
+
+declarationScopeMember :: Declaration -> ScopeMember
+declarationScopeMember declaration = ScopeMember
+  (declarationName declaration)
+  (declarationIsCanonicalValue declaration)
+
+scopeMemberNames :: [ScopeMember] -> [String]
+scopeMemberNames = map scopeMemberName
 
 -- Ordinary declarations capture earlier ordinary bindings; let declarations
 -- are predeclared in every captured scope. Evaluation order is left to callers.
@@ -59,30 +81,45 @@ buildScopeBindings makeBinding enclosing declarations = foldl addOrdinary initia
       | declarationIsLet value = scope
       | otherwise = makeBinding scope value : scope
 
-declarationMap :: [String] -> (String -> Either InterpretingError InterpretedValue)
+declarationMap :: [ScopeMember] -> (String -> Either InterpretingError InterpretedValue)
   -> Either InterpretingError InterpretedValue
-declarationMap names resolve = makeAtlasMap 2 <$>
-  traverse (\name -> simpleIdentifierTypeValue name
-    <$> resolve name) names
+declarationMap members resolve = makeAtlasMap 2 <$> traverse memberValue members
+  where
+    memberValue member = do
+      value <- simpleIdentifierTypeValue name <$> resolve name
+      pure (if scopeMemberIsCanonicalValue member
+        then withTrailingIdentifierMarker canonicalValueMarker value
+        else value)
+      where name = scopeMemberName member
 
 -- Validate against the map shape before asking for any declaration values.
 -- This also bounds the Natural-to-Int conversion used to select the list entry.
-selectedDeclarationName :: [String] -> InterpretedValue
+selectedDeclarationName :: [ScopeMember] -> InterpretedValue
   -> Either InterpretingError (Maybe String)
-selectedDeclarationName names index = do
-  shape <- declarationMap names (const (Right (naturalValue 0)))
+selectedDeclarationName members index =
+  fmap (fmap scopeMemberName) (selectedDeclarationMember members index)
+
+selectedDeclarationMember :: [ScopeMember] -> InterpretedValue
+  -> Either InterpretingError (Maybe ScopeMember)
+selectedDeclarationMember members index = do
+  shape <- declarationMap members (const (Right (naturalValue 0)))
   _ <- accessValues shape index
   pure $ do
     ordinal <- interpretedExplicitOrdinal index >>= (naturalAtOrdinal . snd)
-    case drop (fromIntegral ordinal) names of
-      name : _ -> Just name
+    case drop (fromIntegral ordinal) members of
+      member : _ -> Just member
       [] -> Nothing
 
-projectDeclaration :: [String] -> (String -> Either InterpretingError InterpretedValue)
+projectDeclaration :: [ScopeMember] -> (String -> Either InterpretingError InterpretedValue)
   -> InterpretedValue -> Either InterpretingError InterpretedValue
-projectDeclaration names resolve index = do
-  selected <- selectedDeclarationName names index
+projectDeclaration members resolve index = do
+  selected <- selectedDeclarationMember members index
   case selected of
-    Just name -> simpleIdentifierTypeValue name
-      . withoutCanonicalPresentation <$> resolve name
-    Nothing -> declarationMap names resolve >>= (`accessValues` index)
+    Just member -> do
+      let name = scopeMemberName member
+      value <- simpleIdentifierTypeValue name
+        . withoutCanonicalPresentation <$> resolve name
+      pure (if scopeMemberIsCanonicalValue member
+        then withTrailingIdentifierMarker canonicalValueMarker value
+        else value)
+    Nothing -> declarationMap members resolve >>= (`accessValues` index)

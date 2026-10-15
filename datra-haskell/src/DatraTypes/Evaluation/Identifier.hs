@@ -11,6 +11,7 @@ module Evaluation.Identifier
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , identifierStringProjectionValue
+  , canonicalValueMarker
   , withTrailingIdentifierMarker
   , hasTrailingIdentifierMarker
   ) where
@@ -27,6 +28,11 @@ import Evaluation.Map (isEmptyMap)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
+
+-- | Compiler-owned metadata identifying an identifier whose declared name is
+-- its canonical presentation.
+canonicalValueMarker :: String
+canonicalValueMarker = "CanonicalValue"
 
 evaluatedIdentifierType
   :: InterpretedValue

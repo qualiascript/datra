@@ -182,7 +182,7 @@ data Expression
   | BooleanOr Expression Expression
   | BooleanNot Expression
   | Coalization Expression
-  | Modular Expression
+  | Val Expression
   | Assert Bool Expression
   | Fun Expression
   | GenericIntroductionExpression (GenericIntroduction Expression)
@@ -344,7 +344,7 @@ data OperatorExpression
   | Or OperatorExpression OperatorExpression
   | Not OperatorExpression
   | CoalizationValue OperatorExpression
-  | ModularValue OperatorExpression
+  | ValValue OperatorExpression
   | AssertValue Bool OperatorExpression
   | FunValue OperatorExpression
   | GenericIntroductionValue
@@ -477,8 +477,8 @@ normalizeExpression (BooleanNot operand) =
   BooleanNot (normalizeExpression operand)
 normalizeExpression (Coalization operand) =
   Coalization (normalizeExpression operand)
-normalizeExpression (Modular operand) =
-  Modular (normalizeExpression operand)
+normalizeExpression (Val declaration) =
+  Val (normalizeExpression declaration)
 normalizeExpression (Assert hard condition) =
   Assert hard (normalizeExpression condition)
 normalizeExpression (Fun operand) = Fun (normalizeExpression operand)
@@ -656,7 +656,7 @@ lower (BooleanAnd left right) = And (lower left) (lower right)
 lower (BooleanOr left right) = Or (lower left) (lower right)
 lower (BooleanNot operand) = Not (lower operand)
 lower (Coalization operand) = CoalizationValue (lower operand)
-lower (Modular operand) = ModularValue (lower operand)
+lower (Val declaration) = ValValue (lower declaration)
 lower (Assert hard condition) = AssertValue hard (lower condition)
 lower (Fun operand) = FunValue (lower operand)
 lower (GenericIntroductionExpression introduction) =
@@ -862,8 +862,8 @@ prettyOperator (Not operand) =
   prettyUnary BooleanNotOperator operand
 prettyOperator (CoalizationValue operand) =
   prettyUnary CoalizationOperator operand
-prettyOperator (ModularValue operand) =
-  prettyForm "modular" [prettyOperator operand]
+prettyOperator (ValValue declaration) =
+  prettyUnary ValOperator declaration
 prettyOperator (AssertValue hard condition) =
   prettyForm (if hard then "assert-hard" else "assert")
     [prettyOperator condition]
@@ -1131,7 +1131,7 @@ traverseExpressionChildren visit expression = case expression of
   ArgumentMap xs -> ArgumentMap <$> traverse visit xs
   MapSequence xs -> MapSequence <$> traverse visit xs
   SyntaxBoundary x -> SyntaxBoundary <$> visit x
-  Modular x -> Modular <$> visit x
+  Val x -> Val <$> visit x
   Plus x -> Plus <$> visit x
   Minus x -> Minus <$> visit x
   BooleanNot x -> BooleanNot <$> visit x

@@ -143,6 +143,16 @@ moduleTests =
             <> "yield SelectedExports.a + SelectedExports.b"
         )
         "3"
+    , moduleCase origin "val and transparent exports preserve distinct forms"
+        ( "import \"canonical_values\" do\n"
+            <> "yield (CanonicalValues.owned; CanonicalValues.transparent)"
+        )
+        "(CanonicalValues.owned; 8)"
+    , moduleCase origin "opened val and transparent exports preserve distinct forms"
+        ( "import \"canonical_values\" do\n"
+            <> "with CanonicalValues do yield (owned; transparent)"
+        )
+        "(owned; 8)"
     , moduleCase origin "scalar module value"
         "import \"total_value\" do yield Answer + 0"
         "42"

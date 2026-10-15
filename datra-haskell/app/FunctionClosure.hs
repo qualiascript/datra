@@ -344,6 +344,7 @@ nameText (IdentifierString text) = text
 
 entryName :: Expression -> [IdentifierString]
 entryName (Let value) = entryName value
+entryName (Val value) = entryName value
 entryName (IdentifierOperation name _ _) = [name]
 entryName _ = []
 

@@ -65,6 +65,7 @@ contextualSyntaxRulesFor = map rule
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules (Let value) =
   [rule { syntaxRecursive = True } | rule <- declarationRules value]
+declarationRules (Val value) = declarationRules value
 declarationRules optional
   | Just (operation, _) <- optionalIdentifierExpression optional =
       declarationRules operation
@@ -265,6 +266,7 @@ declarationLiterals :: [Expression] -> String -> [String]
 declarationLiterals declarations typeName = concatMap declaration declarations
   where
     declaration (Let value) = declaration value
+    declaration (Val value) = declaration value
     declaration (IdentifierOperation (IdentifierString name) annotation given)
       | name == typeName = literals (maybe annotation id given)
     declaration _ = []

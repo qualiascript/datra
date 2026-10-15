@@ -3,8 +3,6 @@
 module DatraHost
   ( datraHostIdentifier
   , datraHostValue
-  , modularMarker
-  , modularValue
   , namedMembers
   , publicValue
   ) where
@@ -72,6 +70,9 @@ datraHostValue = do
     , syntaxBody "let" $ \case
         [entry] -> Just (Let (absorbAssignedConcatenation entry))
         _ -> Nothing
+    , syntaxBody "val" $ \case
+        [entry] -> Just (Val (absorbAssignedConcatenation entry))
+        _ -> Nothing
     , syntaxBody "assert" $ \case
         [condition] -> Just (Assert False condition)
         _ -> Nothing
@@ -106,9 +107,6 @@ datraHostValue = do
         _ -> Nothing
     , syntaxBody "in" $ \case
         [value, function] -> Just (FunctionApplication function value)
-        _ -> Nothing
-    , syntaxBody "modular" $ \case
-        [value] -> Just (Modular value)
         _ -> Nothing
     , syntaxBody "of" $ \case
         [source, target] -> Just (Subfederation source target)
@@ -210,10 +208,12 @@ hostMap
   -> Either InterpretingError InterpretedValue
 hostMap entries = do
   fields <- traverse field entries
-  modularValue (makeAtlasMap 2 fields)
+  pure (makeAtlasMap 2 fields)
   where
-    field (name, value) =
-      inferredIdentifierAssignmentValue name <$> value
+    field (name, value) = do
+      underlying <- value
+      pure (withTrailingIdentifierMarker canonicalValueMarker
+        (inferredIdentifierAssignmentValue name underlying))
 
 publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 publicValue value = do
@@ -245,24 +245,3 @@ namedMembers value =
     field member = case simpleIdentifierName member of
       Just name -> Right (name, member)
       Nothing -> Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)
-
-modularMarker :: String
-modularMarker = "Modular"
-
-modularValue :: InterpretedValue -> Either InterpretingError InterpretedValue
-modularValue value = do
-  members <- either (const invalid) Right (namedMembers value)
-  case
-      [ name
-      | (name, member) <- members
-      , hasTrailingIdentifierMarker modularMarker member
-      ] of
-    name : _ -> Left (ModuleEvaluationFailed
-      (ModularIdentifierAlreadyMarked name))
-    [] -> pure (makeAtlasMapPreservingSingleton 2
-      [ withTrailingIdentifierMarker modularMarker member
-      | (_, member) <- members
-      ])
-  where
-    invalid = Left (ModuleEvaluationFailed
-      ModularRequiresTotalMapOfSimpleIdentifierTypes)

@@ -106,8 +106,6 @@ data ModuleEvaluationFailure
   | ImportedModuleRequiresBlock
   | ImportedModuleRequiresIdentifierBinderFederation
   | ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes
-  | ModularRequiresTotalMapOfSimpleIdentifierTypes
-  | ModularIdentifierAlreadyMarked String
   | ImportedModuleRequiresNamedExports
   | ModuleExportRequiresIdentifier
   | ModuleNotLoaded String
@@ -141,6 +139,7 @@ data InterpretingError
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
+  | ValOutsideBegin
   | GenericIntroductionOutsideFunctionType String
   | DuplicateGenericIdentifier String
   | ForwardGenericBoundReference String String
