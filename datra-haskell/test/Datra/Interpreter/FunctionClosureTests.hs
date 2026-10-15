@@ -82,8 +82,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertBool "canonical closure is a single line" (not ('\n' `elem` text))
       assertBool "begin entries are separated from yield"
         ("; yield fun " `isInfixOf` text)
-      assertBool "do scope is space-delimited"
-        ("fun (do yield if " `isInfixOf` text)
+      assertBool "function body follows its full signature"
+        (" -> " `isInfixOf` text
+          && " do yield if " `isInfixOf` text)
       assertBool "closure yields an inline fixed point" ("yield fun " `isInfixOf` text)
       assertBool "recursive reference is this" ("this (n - 1)" `isInfixOf` text)
       assertBool "temporary name is absent" (not ("__fun" `isInfixOf` text))
@@ -144,7 +145,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "f := ({x? : Int} -> Int do yield x + 1)\nyield f ~> ({x? : Nat} -> Int)"
       "4" "5"
   , mutualRecursiveDefinitions
-  , roundTrip "registered native function" "yield ~~\"datra.add\""
+  , roundTrip "registered native function"
+      ("yield ({a? : 'datra.Int; b? : 'datra.Int} -> "
+        <> "'datra.Int 'datra.add)")
       "(2; 3)" "5"
   , roundTripUsingStd "syntax function ordinary application"
       "step := \"step %Nat next\" % ({value? : Int} -> Int) do yield value + 1\nyield step"
@@ -161,9 +164,9 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("~~\"datra.from\"" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("'datra.from" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
-        (not ("~~\"datra.Int\"" `isInfixOf` text))
+        (not (":= 'datra.Int;" `isInfixOf` text))
       assertBool "dependency selected through value lookup" ("~\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int do yield x + offset)"
@@ -210,12 +213,16 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
-  , testCase "selected number function retains its module name" $ do
+  , testCase "selected non-modular number function is self-contained" $ do
       original <- runModuleProgram "libs/numbers.datra"
         "import \"numbers\" do yield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
-      assertEqual "canonical module member" "Numbers.max" text
+      assertBool "transparent export claimed a modular identity"
+        (text /= "Numbers.max")
+      reconstructed <- requireExpression text
+      assertEqual "canonical text is idempotent"
+        text (renderInterpretedValue reconstructed)
   , programCase "function types belong to Any" "assert (Nat -> Nat) of Any" "()"
   , programCase "functions can annotate named parameters"
       "apply := ({callback? : (Nat -> Nat); value? : Nat} -> Nat do yield callback value)\nyield apply (({n? : Nat} -> Nat do yield n + 1), 4)"

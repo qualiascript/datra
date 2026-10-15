@@ -4,7 +4,6 @@ module Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
   , FunctionFailure (..)
-  , ExternalFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
   , MapLengthFailure (..)
@@ -85,7 +84,8 @@ overloadFailureIsAmbiguous failure =
 data FunctionFailure
   = AstPatternRequiresFunctionSignature
   | AstPatternRequiresFunctionImplementation
-  | ExternalAdapterRequiresAstCaptures
+  | HostSyntaxHookRequiresAstCaptures
+  | MissingNativeArgument String
   | AmbiguousFunctionSumApplication
   | AmbiguousFunctionArgumentBindings
   | NoApplicableFunctionAlternative
@@ -98,16 +98,6 @@ data FunctionFailure
   | FunctionArgumentsRequireFinitePages
   | FunctionArgumentPageUnavailable Natural
   | ExpectedFunctionType
-  deriving (Eq, Show)
-
-data ExternalFailure
-  = DuplicateExternalDescriptorField
-  | UnknownExternalDescriptorFields [String]
-  | UnsupportedExternalBackend String
-  | MissingExternalDescriptorField String
-  | ExternalDescriptorRequiresStringMap
-  | UnknownExternalSymbol String
-  | MissingNativeArgument String
   deriving (Eq, Show)
 
 data ModuleEvaluationFailure
@@ -139,7 +129,6 @@ data InterpretingError
   = NamedAccessFailed NamedAccessFailure
   | MapLengthFailed MapLengthFailure
   | FunctionEvaluationFailed FunctionFailure
-  | ExternalEvaluationFailed ExternalFailure
   | ModuleEvaluationFailed ModuleEvaluationFailure
   | ExpectedBuiltinType String
   | OverloadError OverloadFailure

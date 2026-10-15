@@ -9,7 +9,6 @@ import DatraLanguage.Diagnostics.Application
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
-  , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
   , MapLengthFailure (..)
@@ -43,11 +42,6 @@ standardLibraryTests =
             "yield Std._AST" (SourceEvaluationFailure (UnknownIdentifier "_AST"))
         , programCase "AST can be a user binding"
             "AST := 2\nyield AST" "2"
-        , programFailureCase "the universal AST external is removed"
-            "yield ~~\"datra.AST\""
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (UnknownExternalSymbol "datra.AST")))
         , programFailureCase "Expr is private to the library"
             "yield Expr" (SourceEvaluationFailure (UnknownIdentifier "Expr"))
         , programFailureCase "Block is private to the library"
@@ -59,8 +53,8 @@ standardLibraryTests =
         , programFailureCase "_SyntaxTemplate is private to the library"
             "yield _SyntaxTemplate"
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
-        , programCase "SyntaxTemplate retains its external canonical spelling"
-            "yield ~~\"datra.SyntaxTemplate\"" "~~\"datra.SyntaxTemplate\""
+        , programCase "SyntaxTemplate retains its host-map canonical spelling"
+            "yield 'datra.SyntaxTemplate" "'datra.SyntaxTemplate"
         ]
     , testGroup "final-page length"
         [ programCase "finite lengths use the final page"
@@ -77,10 +71,16 @@ standardLibraryTests =
         , programCase "external syntax adapters permit ordinary calls"
             "yield 'if (false; 4; 5)"
             "5"
+        , programCase "recursive let aliases to syntax bodies are discovered"
+            ( "answer := choose (false; 1; 2)\n"
+                <> "let choose := 'datra.if\n"
+                <> "yield answer"
+            )
+            "2"
         , programCase "direct begin rewrites its result in the block scope"
             ( "yield 'begin ((\n"
                 <> "  apply := \"apply %_Expr\" % "
-                <> "(_Expr -> _Expr) ~~\"datra.fun\"\n"
+                <> "(_Expr -> _Expr) 'datra.fun\n"
                 <> "); apply 7)"
             )
             "7"
@@ -175,7 +175,11 @@ standardLibraryTests =
               )
             , ("yield 'from (2;5)", "from 2 to 5")
             , ("yield 'from (2;$up)", "from 2 up")
-            , ("f := ~~\"datra.add\"\nyield f (b:5;6)", "11")
+            , ( "body := 'datra.add\n"
+                  <> "f := ({a? : Int; b? : Int} -> Int) body\n"
+                  <> "yield f (b:5;6)"
+              , "11"
+              )
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
@@ -389,11 +393,6 @@ standardLibraryTests =
               <> "g := (f ~> ({x?:Nat} -> Int))\nyield g (-1)")
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-        , programFailureCase "unknown external shorthand"
-            "yield ~~\"missing.symbol\""
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (UnknownExternalSymbol "missing.symbol")))
         , programFailureCase "the former Iden spelling is no longer exported"
             "yield Iden"
             (SourceEvaluationFailure (UnknownIdentifier "Iden"))
@@ -407,11 +406,11 @@ standardLibraryTests =
             , "(Nat; Str) of Any"
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
-            , "(~~\"datra.Expr\") of Any"
-            , "(~~\"datra.IdenExp\") of Any"
-            , "(~~\"datra.Block\") of Any"
-            , "(~~\"datra.FunctionBody\") of Any"
-            , "(Nat; (~~\"datra.Expr\")) of Any"
+            , "'datra.Expr of Any"
+            , "'datra.IdenExp of Any"
+            , "'datra.Block of Any"
+            , "'datra.FunctionBody of Any"
+            , "(Nat; 'datra.Expr) of Any"
             , "(5 ~> Any) = 5"
             , "(value : Any := 5) of (value : Any)"
             , "$Nothing = (Nothing : ())"
@@ -432,7 +431,7 @@ standardLibraryTests =
             , "(from 2 to 5 ~> NatValRange) of IntValRange"
             , "(from (-5) to Infinity ~> IntValRange) of IntValRange"
             , "(range 2 to 5 ~> NatRange) of IntRange"
-            , "not ((~~\"datra.Block\") of (~~\"datra.Expr\"))"
+            , "not ('datra.Block of 'datra.Expr)"
             , "\"%Any\" of Template"
             , "\"%Int %IdenStr\" of Template"
             , "(\"%Int %IdenStr\" ~> Template) of Template"
@@ -854,7 +853,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"step %Int next\" % (Int -> Int) ~~\"datra.abs\")"
+        ( "step := ((\"step %Int next\" % (Int -> Int) 'datra.abs)"
             <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"
             <> "yield step"
         )
@@ -868,14 +867,14 @@ declaredPatternTests =
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((\"step %Int left\" % (Int -> Int) ~~\"datra.abs\")"
-            <> " | (\"step %Int right\" % (Int -> Int) ~~\"datra.abs\"))\n"
+        ( "step := ((\"step %Int left\" % (Int -> Int) 'datra.abs)"
+            <> " | (\"step %Int right\" % (Int -> Int) 'datra.abs))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) ~~\"datra.abs\")"
-            <> " | (\"choose %Int mark\" % (Int -> Int) ~~\"datra.abs\"))\n"
+        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) 'datra.abs)"
+            <> " | (\"choose %Int mark\" % (Int -> Int) 'datra.abs))\n"
             <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)

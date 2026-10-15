@@ -402,20 +402,6 @@ testDiagnostics = do
           "parametrul privat al funcției nu poate fi opțional"
           ["identificator: _value"]
     )
-  assert "external failures are localized from semantic fields"
-    ( localizeDiagnostic English
-        (Types.ExternalEvaluationFailed
-          (Types.UnsupportedExternalBackend "native"))
-        == LocalizedMessage
-          "external backend is not supported"
-          ["backend: native"]
-      && localizeDiagnostic Romanian
-        (Types.ExternalEvaluationFailed
-          (Types.UnsupportedExternalBackend "native"))
-        == LocalizedMessage
-          "backendul extern nu este acceptat"
-          ["backend: native"]
-    )
   assert "map-length failures have bilingual structured diagnostics"
     ( localizeDiagnostic English
         (Types.MapLengthFailed
@@ -605,6 +591,14 @@ testGenericIdentifierDisjointness = do
         "generic-disjointness-test" names naturalType
       opaque = Types.dependentIdentifierTypeValue
         "opaque-generic-disjointness-test" (const "T") naturalType
+      namedAny = Types.simpleIdentifierTypeValue "T" Types.anyTypeValue
+  assert "a named Any remains a dependent identifier type"
+    (Types.interpretedValueKind namedAny
+      == Types.DependentIdentifierTypeValueKind)
+  assert "a named Any remains distinct from its unnamed bound"
+    (case Types.eitherValue namedAny Types.anyTypeValue of
+      Right _ -> True
+      Left _ -> False)
   assert "a generic is rejected when any dependent-name fibre overlaps"
     (Types.identifierNameDisjointness "T" family
       == Types.IdentifierNameOverlap)

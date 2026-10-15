@@ -4,7 +4,6 @@ import Datra.TestSupport
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
-  , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
   )
@@ -40,10 +39,9 @@ functionTests =
         , programCase "explicit unordered parameters"
             "f := ({a?:Int;b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
             "11"
-        , programFailureCase "standalone do requires a function type"
+        , programCase "standalone function body remains callable"
             "f := (do yield 3)\nyield f ()"
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed ExpectedFunctionType))
+            "3"
         , programFailureCase "generic identifiers cannot repeat in one domain"
             (unlines
               [ "f := ({a? : &T; b? : ^T?} -> T do yield a)"
@@ -70,6 +68,17 @@ functionTests =
               , "yield ()"
               ])
             "()"
+        , programCase "a generic introduction is owned by an inferred function"
+            (unlines
+              [ "identity := ({value? : &T? :: Any} do yield value)"
+              , "yield identity (Nat; 5)"
+              ])
+            "5"
+        , programFailureCase
+            "a generic introduction outside a function type is rejected"
+            "yield (&T?) 3"
+            (SourceEvaluationFailure
+              (GenericIntroductionOutsideFunctionType "&"))
         , programCase "generic function types compile their prepared prefix"
             ( "assert ((x : T; y : ^T) -> Any) of "
                 <> "((T : Any; x : Any; y : Any) -> Any)"
@@ -523,42 +532,6 @@ functionTests =
             "yield (arg0 : 1; arg1 : 2; arg2 : 3) of List Int"
             "false"
         ]
-    , testGroup "externals"
-        [ programCase "short external descriptor"
-            "f := ~~\"datra.add\"\nyield f (b:5;6)"
-            "11"
-        , programCase "structured external descriptor"
-            ("f := ~~(backend:\"haskell\";symbol:\"datra.add\")\n"
-              <> "yield f (b:5;6)")
-            "11"
-        , expressionFailureCase "unknown external backend"
-            "~~(backend:\"missing\";symbol:\"datra.add\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (UnsupportedExternalBackend "missing")))
-        , expressionFailureCase "unknown external symbol"
-            "~~(backend:\"haskell\";symbol:\"missing\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
-        , expressionFailureCase "duplicate external descriptor field"
-            "~~(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed DuplicateExternalDescriptorField))
-        , expressionFailureCase "unknown external descriptor field"
-            "~~(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (UnknownExternalDescriptorFields ["extra"])))
-        , expressionFailureCase "missing external descriptor field"
-            "~~(backend:\"haskell\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (MissingExternalDescriptorField "symbol")))
-        , expressionFailureCase "external descriptor requires string fields"
-            "~~(1; 2)"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
-        ]
     , testGroup "typing"
         [ expressionCase "contravariant input and covariant output"
             "(Int -> Nat) of (Nat -> Int)"
@@ -675,8 +648,8 @@ functionTests =
             "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionCase "syntax category can annotate an identifier"
-            "node : (~~\"datra.Expr\")"
-            "node : ~~\"datra.Expr\""
+            "node : 'datra.Expr"
+            "node : 'datra.Expr"
         , programCase "function parameter annotation is canonical"
             "f := ({callback?:(Nat -> Nat)} -> Nat do yield 0)\nyield f ({n?:Nat} -> Nat do yield n)"
             "0"

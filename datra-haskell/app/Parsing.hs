@@ -117,7 +117,6 @@ import DatraLanguage.AST
       , FunctionTypeExpression
       , FunctionBody
       , FunctionApplication
-      , External
       , Let
       , IdentifierReference
       )
@@ -335,7 +334,7 @@ neutralIncompletePrefixOperator source = case reverse (words source) of
   [] -> Nothing
   where
     operandPrefixOperators =
-      [AST.ValueOfOperator, AST.ExternalOperator]
+      [AST.ValueOfOperator]
         <> map fst arithmeticPrefixOperators
 
 -- | Outer parentheses select expression mode; every other resource is an
@@ -789,7 +788,6 @@ astForm =
       , astBinary AST.SyntaxTypeOperator SyntaxType
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
-      , astUnary AST.ExternalOperator External
       , astBlock "do" FunctionBody
       , astSequence
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
@@ -1131,55 +1129,55 @@ maybeThenExpressionFrom operand = do
     Just (constructor, branch) -> constructor optionalValue branch)
 
 functionExpressionWith :: Parser Expression -> Parser Expression
-functionExpressionWith operand = do
-  signature <- arrowExpressionWith operand
-  attachExplicitExternalImplementation signature
-
--- External implementations on explicit function signatures can be attached
--- by the neutral parser. An external after any other expression stays in the
--- application spine until declarative syntax has had a chance to claim it.
-attachExplicitExternalImplementation :: Expression -> Parser Expression
-attachExplicitExternalImplementation signature = do
-  implementation <- if acceptsExplicitFunctionBody signature
-    then optional externalExpression
-    else pure Nothing
-  pure (case implementation of
-    Nothing -> signature
-    Just body -> inferredFunction body signature)
-
-acceptsExplicitFunctionBody :: Expression -> Bool
-acceptsExplicitFunctionBody FunctionTypeExpression {} = True
-acceptsExplicitFunctionBody SyntaxType {} = True
-acceptsExplicitFunctionBody (Fun signature) =
-  acceptsExplicitFunctionBody signature
-acceptsExplicitFunctionBody (SyntaxBoundary signature) =
-  acceptsExplicitFunctionBody signature
-acceptsExplicitFunctionBody _ = False
+functionExpressionWith operand = arrowExpressionWith operand
 
 inferredFunction :: Expression -> Expression -> Expression
 inferredFunction body (Fun signature) =
-  Fun (MapSpecification body (inferredFunctionSignature signature))
+  Fun (FunctionApplication (inferredFunctionSignature signature) body)
 inferredFunction body (SyntaxBoundary signature) =
   SyntaxBoundary (inferredFunction body signature)
 inferredFunction body (SyntaxType templates signature) =
-  MapSpecification body
-    (SyntaxType templates (inferredFunctionSignature signature))
+  FunctionApplication
+    (SyntaxType templates (inferredFunctionSignature signature)) body
 inferredFunction body signature =
-  MapSpecification body (inferredFunctionSignature signature)
+  FunctionApplication (inferredFunctionSignature signature) body
 
 inferredFunctionSignature :: Expression -> Expression
-inferredFunctionSignature signature@FunctionTypeExpression {} = signature
-inferredFunctionSignature (SyntaxBoundary signature) =
-  SyntaxBoundary (inferredFunctionSignature signature)
 inferredFunctionSignature signature =
-  FunctionType signature (External (AsciiStringLiteral "datra.Any"))
+  case appliedFunctionType signature of
+    Just functionType -> functionType
+    Nothing -> FunctionType signature (ScopeAccess
+      (IdentifierReference (IdentifierString "'datra"))
+      (IdentifierReference (IdentifierString "Any")))
+  where
+    appliedFunctionType functionType@FunctionTypeExpression {} =
+      Just functionType
+    appliedFunctionType (SyntaxBoundary inner) =
+      SyntaxBoundary <$> appliedFunctionType inner
+    appliedFunctionType (SyntaxType templates inner) =
+      SyntaxType templates <$> appliedFunctionType inner
+    appliedFunctionType (FunctionApplication function argument) = do
+      functionType <- appliedFunctionType function
+      pure (applyCodomainArgument functionType argument)
+    appliedFunctionType _ = Nothing
 
-externalExpression :: Parser Expression
-externalExpression =
-  External <$> (operatorToken AST.ExternalOperator *> externalTermAtom)
+    applyCodomainArgument
+        (FunctionTypeExpression generics domain codomain) argument =
+      FunctionTypeExpression generics domain
+        (FunctionApplication codomain argument)
+    applyCodomainArgument (SyntaxBoundary inner) argument =
+      SyntaxBoundary (applyCodomainArgument inner argument)
+    applyCodomainArgument (SyntaxType templates inner) argument =
+      SyntaxType templates (applyCodomainArgument inner argument)
+    applyCodomainArgument functionType argument =
+      FunctionApplication functionType argument
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
-arrowExpressionWith = arrowExpressionWithLayer eitherExpressionWith
+arrowExpressionWith operand =
+  eitherExpressionWith (tightArrowExpressionWith operand)
+
+tightArrowExpressionWith :: Parser Expression -> Parser Expression
+tightArrowExpressionWith = arrowExpressionWithLayer id
 
 arrowExpressionWithLayer
   :: (Parser Expression -> Parser Expression)
@@ -1191,14 +1189,33 @@ arrowExpressionWithLayer expressionLayer operand = do
   input <- syntaxTypeSuffix rawInput signature
   output <- optional
     (continuedOperator AST.FunctionTypeOperator *> signature)
-  pure (maybe input (FunctionType input) output)
+  pure (maybe input (applyAfter (applyFunctionType input)) output)
 
 syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
 syntaxTypeSuffix input signature = do
   syntaxSignature <- optional . try $ do
     _ <- continuedOperator AST.SyntaxTypeOperator
-    SyntaxType input <$> signature
+    applyAfter (SyntaxType input) <$> signature
   pure (maybe input id syntaxSignature)
+
+-- Function and syntax type construction binds before the neutral application
+-- spine on its right. Parentheses introduce a 'SyntaxBoundary', so an applied
+-- codomain can still be written explicitly when that is what is intended.
+applyAfter :: (Expression -> Expression) -> Expression -> Expression
+applyAfter construct value = case value of
+  FunctionApplication function argument ->
+    FunctionApplication (applyAfter construct function) argument
+  Coalization operand -> applyAfter (construct . Coalization) operand
+  _ -> construct value
+
+-- The arrow likewise owns only the final operand of an application phrase on
+-- its left. Thus @f A -> B@ is @f (A -> B)@; parentheses are required when the
+-- intended domain is the applied value @f A@.
+applyFunctionType :: Expression -> Expression -> Expression
+applyFunctionType input output = case input of
+  FunctionApplication function argument ->
+    FunctionApplication function (applyFunctionType argument output)
+  _ -> FunctionType input output
 
 eitherExpressionWith :: Parser Expression -> Parser Expression
 eitherExpressionWith = eitherExpressionWithOperator
@@ -1318,23 +1335,22 @@ identifierValueExpression = do
   signature <- do
     rawInput <- makeExprParser rangeExpression identifierValueOperatorTable
     input <- syntaxTypeSuffix rawInput
-      (arrowExpressionWith
+      (tightArrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
     output <- optional
-      (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
+      (continuedOperator AST.FunctionTypeOperator *> tightArrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
     pure (maybe input (FunctionType input) output)
-  attachExplicitExternalImplementation signature
+  pure signature
 
 -- The value following @:=@ additionally admits an unparenthesized federation.
 -- Type annotations keep the narrower grammar so @name : T | U@ continues to
 -- mean a federation whose first member is a named type.
 assignedValueExpression :: Parser Expression
-assignedValueExpression = do
-  signature <- arrowExpressionWithLayer
-    assignmentEitherExpressionWith
-    (makeExprParser rangeExpression identifierValueOperatorTable)
-  attachExplicitExternalImplementation signature
+assignedValueExpression =
+  assignmentEitherExpressionWith
+    (tightArrowExpressionWith
+      (makeExprParser rangeExpression identifierValueOperatorTable))
 
 -- Assignment has lower precedence than federation, except that a following
 -- identifier declaration starts the next federation member. Thus
@@ -1394,13 +1410,13 @@ rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
 term = do
-  function <- accessedTerm externalTermAtom
+  function <- accessedTerm termAtom
   arguments <- many (try (applicationArgument function))
   pure (foldl FunctionApplication function arguments)
   where
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
-    applicationArgument function = accessedTerm (choice
+    applicationArgument _function = accessedTerm (choice
       [ try identifierTemplateOperation
       , try identifierOperation
       , argumentMap
@@ -1409,9 +1425,6 @@ term = do
       , trailingApplicationSkip
       , prefixedApplicationArgument
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
-      , do
-          guard (not (acceptsExplicitFunctionBody function))
-          externalExpression
       , symbolicSyntaxLiteral
       , identifierReference
       ])
@@ -1434,11 +1447,6 @@ prefixedApplicationArgument :: Parser Expression
 prefixedApplicationArgument =
   Coalization
     <$> (operatorToken AST.CoalizationOperator *> term)
-
-externalTermAtom :: Parser Expression
-externalTermAtom =
-  externalExpression
-    <|> termAtom
 
 termAtom :: Parser Expression
 termAtom =

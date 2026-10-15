@@ -11,26 +11,32 @@ module SyntaxRewriting
   ) where
 
 import Control.Applicative ((<|>))
-import BlockScope (bindingNames)
+import BlockScope
+  ( Declaration (declarationName, declarationValue)
+  , bindingNames
+  , blockDeclaration
+  )
 import Data.List (nub)
-import Data.Either (isRight)
+import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
+import Parsing (inferredFunction)
+import DatraTypes
+  ( EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
+  , InterpretedValue
+  , interpretedFunctionBody
+  )
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
-import Parsing (inferredFunction, resolveGenericFunctionTypes)
 import SyntaxDefinitions
   ( SyntaxRule (..)
-  , applySyntaxFunctionBody
   , contextualSyntaxRulesFor
   , declarationRules
-  , externalSymbol
   , normalizeSyntaxExpansion
-  , syntaxFunctionBodyForSymbol
   , syntaxTemplateLiteralPrefix
   )
 import SyntaxTemplateMatching
@@ -64,6 +70,7 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteStrictCaptures :: Bool
   , rewriteClassifyHole :: ClassifyHole
   , rewriteScopeRules :: ScopeRules
+  , rewriteEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
   }
 
 -- Facts derived solely from a syntax declaration. Keeping them beside the
@@ -131,33 +138,35 @@ rewriteExplicitSyntax
   :: ClassifyHole
   -> CaptureHole
   -> ScopeRules
+  -> ([Expression] -> Expression -> Maybe InterpretedValue)
   -> [SyntaxRule]
   -> [Expression]
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-rewriteExplicitSyntax classify capture scopeRules
+rewriteExplicitSyntax classify capture scopeRules evaluate
     initialRules initialDeclarations value =
   rewriteStandalone capture environment value
   where
     environment = RewriteEnvironment
       (map compileRewriteRule initialRules)
-      initialDeclarations True classify scopeRules
+      initialDeclarations True classify scopeRules evaluate
 
 rewriteImplicitSyntax
   :: ClassifyHole
   -> CaptureHole
   -> ScopeRules
+  -> ([Expression] -> Expression -> Maybe InterpretedValue)
   -> [SyntaxRule]
   -> [Expression]
   -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax classify capture scopeRules
+rewriteImplicitSyntax classify capture scopeRules evaluate
     initialRules initialDeclarations entries = do
   resolveImplicitBlock capture initial [] entries
   where
     initial = RewriteEnvironment
       (map compileRewriteRule initialRules)
-      initialDeclarations True classify scopeRules
+      initialDeclarations True classify scopeRules evaluate
 
 resolveImplicitBlock
   :: CaptureHole
@@ -216,12 +225,14 @@ resolveImplicitBlock capture initial = go initial
                   (rewriteDeclarations nested) previous kind captured
           case matchSyntaxRulesWith captureInScope
               [rewriteRule rule] candidate of
-            Right (Begin bindings finalResult)
-              | null finalTrailing ->
-                  Right (Just (if explicitBlockAtHead
-                    then Begin rewrittenPrefix (Begin bindings finalResult)
-                    else Begin bindings finalResult))
-            Right _ -> Right Nothing
+            Right matched ->
+              directSyntaxFunctionExpansion nested (Just rule) matched >>= \case
+                Begin bindings finalResult
+                  | null finalTrailing ->
+                      Right (Just (if explicitBlockAtHead
+                        then Begin rewrittenPrefix (Begin bindings finalResult)
+                        else Begin bindings finalResult))
+                _ -> Right Nothing
             Left NoMatchingSyntaxTemplate -> Right Nothing
             Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where
@@ -416,14 +427,25 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
                 (IdentifierTemplateOperation rewrittenParts rewrittenAnnotation
                   (Just rewrittenValue))
                 remaining
+    FunctionApplication (Fun signature) body@FunctionBody {}
+      | canReceiveFunctionBody signature ->
+          finish (Fun (FunctionApplication signature body)) trailing
+    FunctionApplication function@FunctionApplication {} body@FunctionBody {}
+      | canReceiveFunctionBody function ->
+          finish (inferredFunction body function) trailing
     FunctionApplication function argument
-      | containsBlockStart environment argument -> do
-          rewrittenFunction <- rewriteStandalone capture environment function
-          (rewrittenArgument, remaining) <-
-            rewriteWithTail True capture environment argument trailing
-          finish
-            (FunctionApplication rewrittenFunction rewrittenArgument)
-            remaining
+      | containsBlockStart environment argument
+      , not (containsBlockStart environment function) -> do
+          rewriteEmbeddedApplication capture environment value >>= \case
+            Just rewritten -> finish rewritten trailing
+            Nothing -> do
+              rewrittenFunction <-
+                rewriteStandalone capture environment function
+              (rewrittenArgument, remaining) <-
+                rewriteWithTail True capture environment argument trailing
+              finish
+                (FunctionApplication rewrittenFunction rewrittenArgument)
+                remaining
     MaybeThen optional branch
       | allowNestedContinuation -> do
           rewrittenOptional <- rewriteStandalone capture environment optional
@@ -465,11 +487,14 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
           finish (Fun rewrittenSignature) trailing
     AtlasMap entries -> do
       (rewritten, _) <- rewriteSequence capture environment entries
-      finish (sequenceExpression rewritten) trailing
+      finish (case rewritten of
+        [] -> AtlasMap []
+        [expressionValue] -> expressionValue
+        expressions -> AtlasMap expressions) trailing
     ArgumentMap entries -> do
       rewritten <- traverse (rewriteStandalone capture environment) entries
       if all validArgumentMember rewritten
-        then finish (argumentExpression rewritten) trailing
+        then finish (ArgumentMap rewritten) trailing
         else Left InvalidPrivateOptionalArgumentName
     Begin bindings result -> do
       let contextual = withContextualSyntax ["this"] environment
@@ -504,9 +529,6 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
           (candidate, remaining) <-
             rewriteWithTail True capture environment selected trailing
           if length remaining < length trailing
-              && ( containsFunctionImplementation candidate
-                    || startsBlockAtHead environment selected
-                 )
             then pure (candidate, remaining)
             else standalone selected
       | otherwise = standalone selected
@@ -517,30 +539,27 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       rewritten <- rewriteStandalone capture environment selected
       pure (rewritten, trailing)
     finish expressionValue remaining = do
-      (declared, afterDeclaredSyntax) <-
-        if maybe False (const True) (trailingFunctionBody expressionValue)
-          then matchOrdinarySyntaxWithTail
-            False capture environment expressionValue remaining
-          else pure (expressionValue, remaining)
-      attached <- if declared /= expressionValue
-          || afterDeclaredSyntax /= remaining
-        then pure declared
-        else attachTrailingFunctionBody capture environment expressionValue
       (matched, afterSyntax) <-
         matchOrdinarySyntaxWithTail
-          False capture environment attached afterDeclaredSyntax
-      rewrittenChildren <- rewriteChildren capture environment matched
-      let normalizedChildren = normalizeSyntaxExpansion rewrittenChildren
-      (rematched, finalTrailing) <-
-        matchOrdinarySyntaxWithTail
-          True capture environment normalizedChildren afterSyntax
-      explicitlyAttached <-
-        attachTrailingFunctionBody capture environment rematched
-      pure
-        ( attachInferredExternalImplementation
-            environment explicitlyAttached
-        , finalTrailing
-        )
+          False capture environment expressionValue remaining
+      case matched of
+        Conditional condition yes no
+          | allowNestedContinuation -> do
+              rewrittenCondition <-
+                rewriteStandalone capture environment condition
+              rewrittenYes <- rewriteStandalone capture environment yes
+              (rewrittenNo, afterConditional) <-
+                rewriteWithTail True capture environment no afterSyntax
+              pure
+                ( normalizeSyntaxExpansion
+                    (Conditional rewrittenCondition rewrittenYes rewrittenNo)
+                , afterConditional
+                )
+        _ -> do
+          rewrittenChildren <- rewriteChildren capture environment matched
+          let normalizedChildren = normalizeSyntaxExpansion rewrittenChildren
+          matchOrdinarySyntaxWithTail
+            True capture environment normalizedChildren afterSyntax
     boundaryValue (SyntaxBoundary inner) = inner
     boundaryValue inner = inner
 
@@ -557,15 +576,25 @@ normalizeTrailingAssignment annotation given = (annotation, given)
 canReceiveFunctionBody :: Expression -> Bool
 canReceiveFunctionBody FunctionTypeExpression {} = True
 canReceiveFunctionBody SyntaxType {} = True
+-- A generic introduction followed by a body is the existing shorthand for an
+-- inferred function type; deciding that does not require evaluating the bound.
+canReceiveFunctionBody GenericIntroductionExpression {} = True
 canReceiveFunctionBody (Fun signature) = canReceiveFunctionBody signature
 canReceiveFunctionBody (SyntaxBoundary signature) =
   canReceiveFunctionBody signature
+canReceiveFunctionBody (FunctionApplication function _) =
+  canReceiveFunctionBody function
 canReceiveFunctionBody _ = False
 
 containsFunctionImplementation :: Expression -> Bool
 containsFunctionImplementation MapSpecification {} = True
+containsFunctionImplementation
+    (FunctionApplication signature FunctionBody {}) =
+  canReceiveFunctionBody signature
 containsFunctionImplementation (Fun signature) =
   containsFunctionImplementation signature
+containsFunctionImplementation (SyntaxBoundary inner) =
+  containsFunctionImplementation inner
 containsFunctionImplementation _ = False
 
 rewriteChildren
@@ -612,7 +641,7 @@ rewriteChildren capture environment value =
           (rewriteStandalone capture environment) value
     FunctionApplication _ Skip -> Left AmbiguousBareSkipApplication
     FunctionApplication {} ->
-      case directSyntaxFunctionExpansion environment value of
+      case directSyntaxFunctionExpansion environment Nothing value of
         Right expanded | isDirectBlockExpansion expanded ->
           rewriteDirectControlExpansion capture environment expanded
         _ -> do
@@ -626,62 +655,110 @@ rewriteChildren capture environment value =
     _ -> traverseExpressionChildren
       (rewriteStandalone capture environment) value
 
--- Syntax-backed declarations are still ordinary function values.  When one
--- is called explicitly, its structural arguments must go through the same
--- registered AST adapter used by its surface template; otherwise evaluation
--- would try to interpret nodes such as 'FunctionBody' as runtime values.
+-- Syntax-backed declarations are ordinary functions whose function bodies
+-- can expand AST captures before runtime evaluation.
 directSyntaxFunctionApplication
   :: CaptureHole
   -> RewriteEnvironment
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 directSyntaxFunctionApplication capture environment application = do
-  expanded <- directSyntaxFunctionExpansion environment application
+  expanded <- directSyntaxFunctionExpansion environment Nothing application
   rewriteDirectControlExpansion capture environment expanded
 
 directSyntaxFunctionExpansion
   :: RewriteEnvironment
+  -> Maybe RewriteRule
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-directSyntaxFunctionExpansion environment application =
+directSyntaxFunctionExpansion environment selectedRule application =
   case applicationSpine application of
-    (function, [argument]) -> case directExternalAdapter function of
-      Just adapter -> apply adapter (directSyntaxArguments argument)
-      Nothing -> case directSyntaxFunctionName function of
-        Nothing -> Right application
-        Just (requestedModule, name) ->
-          case adapters requestedModule name function of
-            [] -> Right application
-            candidates -> choose candidates [] Nothing
-          where
-            captures = directSyntaxArguments argument
-            choose [] successes firstFailure =
-              case nub successes of
-                [expanded] -> Right expanded
-                [] -> maybe (Right application) expansionFailure firstFailure
-                _ -> Right application
-            choose (adapter : remaining) successes firstFailure =
-              case applySyntaxFunctionBody adapter captures of
-                Right expanded ->
-                  choose remaining (expanded : successes) firstFailure
-                Left failure ->
-                  choose remaining successes (firstFailure <|> Just failure)
+    (function, [argument]) ->
+      choose adapters [] Nothing
+      where
+        captures expected = case expected of
+          Just 0 -> []
+          Just 1 -> [argument]
+          _ -> directSyntaxArguments argument
+        adapters = do
+          (expressionValue, expected) <- case selectedRule of
+            Just rule -> [(rewriteRuleImplementation rule,
+              Just (captureCount rule))]
+            Nothing -> case declaredImplementations function of
+              []
+                | mayResolveSyntaxFunctionBody function -> [(function, Nothing)]
+                | otherwise -> []
+              implementations ->
+                [ (rewriteRuleImplementation rule, Just
+                    (captureCount rule))
+                | rule <- implementations
+                ]
+          value <- maybeToList (rewriteEvaluate environment
+            (rewriteDeclarations environment) expressionValue)
+          body <- maybeToList (interpretedFunctionBody value)
+          case body of
+            EvaluatedSyntaxFunctionBody _ expansion -> [(expansion, expected)]
+            _ -> []
+        choose [] successes firstFailure =
+          case nub successes of
+            [expanded] -> Right expanded
+            [] -> maybe (Right application) expansionFailure firstFailure
+            _ -> Right application
+        choose ((adapter, expected) : remaining) successes firstFailure =
+          case adapter (captures expected) of
+            Right expanded -> choose remaining (expanded : successes) firstFailure
+            Left failure ->
+              choose remaining successes (firstFailure <|> Just failure)
     _ -> Right application
   where
-    directExternalAdapter function =
-      externalSymbol function >>= syntaxFunctionBodyForSymbol
-    apply adapter captures = case applySyntaxFunctionBody adapter captures of
-      Right expanded -> Right expanded
-      Left failure -> expansionFailure failure
-    adapters requestedModule name function =
-      ruleAdapters requestedModule name function
-    ruleAdapters requestedModule name function =
-      [ adapter
-      | rule <- availableRules requestedModule function
-      , rewriteRuleName rule == name
-      , name `notElem` rewriteRuleLiteralPrefix rule
-      , Just symbol <- [externalSymbol (rewriteRuleImplementation rule)]
-      , Just adapter <- [syntaxFunctionBodyForSymbol symbol]
+    declaredImplementations function =
+      case directSyntaxFunctionName function of
+        Nothing -> []
+        Just (requestedModule, name) ->
+          [ rule
+          | rule <- availableRules requestedModule function
+          , rewriteRuleName rule == name
+          , name `notElem` rewriteRuleLiteralPrefix rule
+          ]
+    -- Tentative passes may reach a recursive let use before discovering its
+    -- declaration. Leaving that application unchanged defers the decision;
+    -- the fixed-point pass retries it after recursive declarations are in
+    -- scope. Known aliases are followed without interpreting ordinary callees.
+    mayResolveSyntaxFunctionBody = candidate Set.empty
+      where
+        candidate seen expressionValue = case expressionValue of
+          ScopeAccess {} -> True
+          InModule {} -> True
+          SyntaxBoundary inner -> candidate seen inner
+          IdentifierReference (IdentifierString requested)
+            | requested `Set.member` seen -> False
+            | otherwise -> case declaredValue requested of
+                Just declared -> candidate
+                  (Set.insert requested seen) declared
+                Nothing -> False
+          MapSpecification source _ -> candidate seen source
+          ReverseMapSpecification _ source -> candidate seen source
+          EitherType left right -> both seen left right
+          Overload left right -> both seen left right
+          ReverseOverload left right -> both seen left right
+          SafeOverload left right -> both seen left right
+          ReverseSafeOverload left right -> both seen left right
+          _ -> False
+        both seen left right = candidate seen left || candidate seen right
+        declaredValue requested = firstDeclared
+          (reverse (rewriteDeclarations environment))
+          where
+            firstDeclared [] = Nothing
+            firstDeclared (entry : remaining) =
+              case blockDeclaration entry of
+                Just declaration
+                  | declarationName declaration == requested ->
+                      Just (declarationValue declaration)
+                _ -> firstDeclared remaining
+    captureCount rule = length
+      [ ()
+      | SyntaxHole _ <- syntaxTemplatePieces
+          (syntaxTemplate (rewriteRule rule))
       ]
     availableRules requestedModule function =
       case requestedModule of
@@ -717,6 +794,14 @@ rewriteDirectControlExpansion capture environment expanded
       rewriteStandalone capture environment planned
   | otherwise = Right expanded
 
+directSyntaxArguments :: Expression -> [Expression]
+directSyntaxArguments argument = case argument of
+  AtlasMap members -> members
+  ArgumentMap members -> members
+  MapSequence members -> members
+  SyntaxBoundary inner -> directSyntaxArguments inner
+  _ -> [argument]
+
 directSyntaxFunctionName
   :: Expression
   -> Maybe (Maybe String, String)
@@ -729,14 +814,6 @@ directSyntaxFunctionName function = case function of
   InModule namespace (IdentifierReference (IdentifierString name)) ->
     Just (Just namespace, name)
   _ -> Nothing
-
-directSyntaxArguments :: Expression -> [Expression]
-directSyntaxArguments argument = case argument of
-  AtlasMap members -> members
-  ArgumentMap members -> members
-  MapSequence members -> members
-  SyntaxBoundary inner -> directSyntaxArguments inner
-  _ -> [argument]
 
 rewriteScopeAccess
   :: CaptureHole
@@ -825,142 +902,6 @@ dependentBinderDeclaration _ = Nothing
 validArgumentMember :: Expression -> Bool
 validArgumentMember _ = True
 
-attachTrailingFunctionBody
-  :: CaptureHole
-  -> RewriteEnvironment
-  -> Expression
-  -> Either SyntaxRewriteFailure Expression
-attachTrailingFunctionBody capture environment value =
-  case value of
-    MapSpecification body
-        (FunctionTypeExpression generics
-          (FunctionApplication (Fun domain) argument)
-          codomain) ->
-      pure (FunctionApplication
-        (Fun (MapSpecification body
-          (FunctionTypeExpression generics domain codomain)))
-        argument)
-    MapSpecification body (Fun signature)
-      | acceptsFunctionBody signature ->
-          pure (Fun (MapSpecification body signature))
-    MapSpecification body
-        (FunctionTypeExpression generics (Fun domain) codomain) ->
-      pure (Fun (MapSpecification body
-        (FunctionTypeExpression generics domain codomain)))
-    FunctionTypeExpression generics (Fun domain) codomain ->
-      pure (Fun (FunctionTypeExpression generics domain codomain))
-    SyntaxType templates (MapSpecification body signature)
-      | isFunctionImplementation body ->
-          pure (MapSpecification body (SyntaxType templates signature))
-    FunctionTypeExpression generics domain inferredResult
-      | Just (resultType, body) <- trailingInferredFunctionBody inferredResult ->
-          pure (MapSpecification body
-            (FunctionTypeExpression generics domain resultType))
-    FunctionTypeExpression generics domain codomain ->
-      case trailingFunctionBody codomain of
-        Just (resultType, body) ->
-          pure (MapSpecification body
-            (FunctionTypeExpression generics domain resultType))
-        Nothing -> pure value
-    Fun signature -> Fun <$>
-      attachTrailingFunctionBody capture environment signature
-    _ -> case applicationSpine value of
-      (function, arguments)
-        | not (null arguments)
-        , body@FunctionBody {} <- last arguments -> do
-            signature <- rewriteStandalone capture environment
-              (applicationFrom (function : init arguments))
-            pure (maybe value id (implementedFunction body signature))
-      _ -> pure value
-
-isFunctionImplementation :: Expression -> Bool
-isFunctionImplementation FunctionBody {} = True
-isFunctionImplementation External {} = True
-isFunctionImplementation _ = False
-
-isIntrinsicAny :: Expression -> Bool
-isIntrinsicAny (External (AsciiStringLiteral "datra.Any")) = True
-isIntrinsicAny _ = False
-
-trailingInferredFunctionBody
-  :: Expression
-  -> Maybe (Expression, Expression)
-trailingInferredFunctionBody value = case value of
-  MapSpecification body
-      (FunctionTypeExpression [] resultType inferredCodomain)
-    | isIntrinsicAny inferredCodomain -> Just (resultType, body)
-  Coalization inner -> do
-    (resultType, body) <- trailingInferredFunctionBody inner
-    pure (Coalization resultType, body)
-  _ -> Nothing
-
--- Resolve this ambiguity only after declared syntax has matched. For example,
--- @yield ~~"datra.add"@ yields an external value, while @Nat ~~"example"@
--- is an inferred function.
-attachInferredExternalImplementation
-  :: RewriteEnvironment
-  -> Expression
-  -> Expression
-attachInferredExternalImplementation environment value =
-  case applicationSpine value of
-    (function, arguments)
-      | not (null arguments)
-      , body@External {} <- last arguments ->
-          resolveInCurrentScope environment
-            (inferredFunction body
-              (applicationFrom (function : init arguments)))
-    _ -> value
-
-trailingFunctionBody :: Expression -> Maybe (Expression, Expression)
-trailingFunctionBody value =
-  case applicationSpine value of
-    (function, arguments)
-      | not (null arguments)
-      , body@FunctionBody {} <- last arguments ->
-          Just (applicationFrom (function : init arguments), body)
-    (function, arguments)
-      | not (null arguments)
-      , body@External {} <- last arguments ->
-          Just (applicationFrom (function : init arguments), body)
-    (function, arguments)
-      | not (null arguments)
-      , Begin bindings result <- last arguments ->
-          Just
-            ( applicationFrom (function : init arguments)
-            , FunctionBody bindings result
-            )
-    _ | Coalization inner <- value -> do
-          (resultType, body) <- trailingFunctionBody inner
-          pure (Coalization resultType, body)
-    _ -> Nothing
-
-implementedFunction :: Expression -> Expression -> Maybe Expression
-implementedFunction body (Fun signature)
-  | acceptsFunctionBody signature =
-      Just (Fun (MapSpecification body signature))
-implementedFunction body (SyntaxBoundary signature) =
-  SyntaxBoundary <$> implementedFunction body signature
-implementedFunction body signature
-  | genericIntroductionSignature signature =
-      Just (inferredFunction body signature)
-implementedFunction body signature
-  | acceptsFunctionBody signature = Just (MapSpecification body signature)
-implementedFunction _ _ = Nothing
-
-genericIntroductionSignature :: Expression -> Bool
-genericIntroductionSignature signature = case applicationSpine signature of
-  (GenericIntroductionExpression {}, remaining) ->
-    all isGenericIntroduction remaining
-  _ -> False
-  where
-    isGenericIntroduction GenericIntroductionExpression {} = True
-    isGenericIntroduction _ = False
-
-acceptsFunctionBody :: Expression -> Bool
-acceptsFunctionBody FunctionTypeExpression {} = True
-acceptsFunctionBody SyntaxType {} = True
-acceptsFunctionBody _ = False
-
 containsBlockStart :: RewriteEnvironment -> Expression -> Bool
 containsBlockStart environment value = any containsStart
   (value : concatMap descendants (expressionChildren value))
@@ -1006,20 +947,44 @@ matchOrdinarySyntaxWithTail includeConcatenation
           firstRule (rule : earlier) remaining
       | otherwise =
           firstCandidate rule
-            (syntaxProjectionCandidates
-              (includeConcatenation || not (earlierPrefixPending earlier))
-              (syntaxTemplate (rewriteRule rule)) value) >>= \case
+            ( literalBoundaryCandidates rule
+                <> syntaxProjectionCandidates
+                  (includeConcatenation || not (earlierPrefixPending earlier))
+                  (syntaxTemplate (rewriteRule rule)) value
+            ) >>= \case
             Just rewritten -> Right (rewritten, trailing)
             Nothing -> firstRule (rule : earlier) remaining
     firstCandidate _ [] = Right Nothing
     firstCandidate rule (candidate : remaining) =
-      case matchSyntaxRulesWith captureInScope [rewriteRule rule] candidate of
-        Right rewritten -> Right (Just rewritten)
+      case matchSyntaxRulesWith captureInScope
+          [rewriteRule rule] candidate of
+        Right rewritten ->
+          Just <$> directSyntaxFunctionExpansion
+            environment (Just rule) rewritten
         Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
         Left failure -> Left (SyntaxRewriteMatchFailure failure)
     earlierPrefixPending = any (\earlierRule ->
       not (null (rewriteRuleLiteralPrefix earlierRule))
         && ruleLiteralsPresent earlierRule facts)
+    literalBoundaryCandidates rule = case rewriteRuleLiteralPrefix rule of
+      first : _
+        | rewriteRuleBlockShape rule == Nothing
+        , any isHole (syntaxTemplatePieces
+            (syntaxTemplate (rewriteRule rule)))
+        , literalOccurrences first value > 1 ->
+            maybeToList (literalBoundaryCandidate
+              (syntaxTemplate (rewriteRule rule)) value)
+      _ -> []
+    isHole SyntaxHole {} = True
+    isHole _ = False
+    literalOccurrences :: String -> Expression -> Int
+    literalOccurrences selected expressionValue =
+      (case expressionValue of
+        IdentifierReference (IdentifierString name)
+          | name == selected -> 1
+        _ -> 0)
+        + sum (map (literalOccurrences selected)
+          (expressionChildren expressionValue))
 
 newtype ExpressionFacts = ExpressionFacts
   { expressionRenderings :: Set.Set String
@@ -1083,7 +1048,7 @@ matchSequenceFunctionBody capture environment value trailing =
     findBody rule prefix operands Nothing (next : remaining) =
       findBody rule prefix operands (Just next) remaining
     findBody rule prefix operands (Just current) remaining =
-      matchEmbeddedBlockWith False capture environment current remaining
+      matchEmbeddedBlockWith capture environment current remaining
         >>= \case
         Just (rewritten, afterBody)
           | Just (beforeBody, body) <- trailingFunctionBodyValue rewritten ->
@@ -1095,13 +1060,14 @@ matchSequenceFunctionBody capture environment value trailing =
             findBody rule prefix (operands <> [current]) (Just next) rest
 
     matchCollected rule prefix operands body remaining =
-      case matchSyntaxRulesWith captureInScope [rewriteRule rule] candidate of
+      case matchSyntaxRulesWith captureInScope
+          [rewriteRule rule] candidate of
         Right expanded -> Right (Just (expanded, remaining))
         Left NoMatchingSyntaxTemplate -> Right Nothing
         Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where
         candidate = applicationFrom
-          (map literalExpression prefix <> [sequenceExpression operands, body])
+          (map literalExpression prefix <> [AtlasMap operands, body])
         captureInScope previous kind captured =
           capture (rewriteStrictCaptures environment)
             (rewriteDeclarations environment) previous kind captured
@@ -1125,22 +1091,21 @@ matchEmbeddedBlock
   -> Expression
   -> [Expression]
   -> Either SyntaxRewriteFailure (Maybe (Expression, [Expression]))
-matchEmbeddedBlock = matchEmbeddedBlockWith True
+matchEmbeddedBlock = matchEmbeddedBlockWith
 
 matchEmbeddedBlockWith
-  :: Bool
-  -> CaptureHole
+  :: CaptureHole
   -> RewriteEnvironment
   -> Expression
   -> [Expression]
   -> Either SyntaxRewriteFailure (Maybe (Expression, [Expression]))
-matchEmbeddedBlockWith initialInferAdjacent capture environment =
-  matchWithResult initialInferAdjacent id
+matchEmbeddedBlockWith capture environment =
+  matchWithResult id
   where
-    matchWithResult inferAdjacent wrapResult value trailing = do
+    matchWithResult wrapResult value trailing = do
       let facts = expressionFacts value
       direct <- firstSuccessful
-        [ attempt inferAdjacent wrapResult value trailing rule start
+        [ attempt wrapResult value trailing rule start
         | rule <- rewriteRules environment
         , Just (prefix, _) <- [rewriteRuleBlockShape rule]
         , start <- matchingStarts prefix (applicationPhrase value)
@@ -1150,31 +1115,45 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
         Just result -> Right (Just result)
         Nothing -> case value of
           FunctionTypeExpression generics domain codomain ->
-            matchWithResult False wrapResult codomain trailing >>= \case
+            matchWithResult wrapResult codomain trailing >>= \case
+              Just (FunctionApplication rewrittenCodomain body@FunctionBody {}, remaining) ->
+                Right (Just
+                  ( FunctionApplication
+                      (FunctionTypeExpression generics domain rewrittenCodomain)
+                      body
+                  , remaining
+                  ))
               Just (rewritten, remaining) -> Right (Just
                 (FunctionTypeExpression generics domain rewritten, remaining))
               Nothing -> Right Nothing
           SyntaxType templates signature ->
-            matchWithResult False wrapResult signature trailing >>= \case
+            matchWithResult wrapResult signature trailing >>= \case
+              Just (FunctionApplication rewrittenSignature body@FunctionBody {}, remaining) ->
+                Right (Just
+                  ( FunctionApplication
+                      (SyntaxType templates rewrittenSignature)
+                      body
+                  , remaining
+                  ))
               Just (rewritten, remaining) -> Right (Just
-                ( completeSyntaxType templates rewritten
+                ( SyntaxType templates rewritten
                 , remaining
                 ))
               Nothing -> Right Nothing
           MapSpecification (SyntaxBoundary source) target ->
-            matchWithResult False id source trailing >>= \case
+            matchWithResult id source trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
                 (wrapResult (MapSpecification rewritten target), remaining))
               Nothing -> Right Nothing
           ReverseMapSpecification target (SyntaxBoundary source) ->
-            matchWithResult False id source trailing >>= \case
+            matchWithResult id source trailing >>= \case
               Just (rewritten, remaining) -> Right (Just
                 (wrapResult
                   (ReverseMapSpecification target rewritten), remaining))
               Nothing -> Right Nothing
           _ -> case leftInfixContext value of
             Just (left, rebuildResult) ->
-              matchWithResult False
+              matchWithResult
                 (wrapResult . rebuildResult) left trailing
             Nothing -> Right Nothing
 
@@ -1201,7 +1180,7 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
         Just result -> Right (Just result)
         Nothing -> firstSuccessful rest
 
-    attempt inferAdjacent wrapResult value trailing rule start =
+    attempt wrapResult value trailing rule start =
       case rewriteRuleBlockShape rule of
         Nothing -> Right Nothing
         Just (prefix, delimiter) -> do
@@ -1228,10 +1207,13 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
                 case match candidate of
                   Left NoMatchingSyntaxTemplate -> Right Nothing
                   Left failure -> Left (SyntaxRewriteMatchFailure failure)
-                  Right expanded -> Right (Just
-                    ( attachAdjacentBody inferAdjacent before expanded
-                    , afterScoped
-                    ))
+                  Right expanded -> do
+                    direct <- directSyntaxFunctionExpansion
+                      environment (Just rule) expanded
+                    Right (Just
+                      ( attachAdjacentBody before direct
+                      , afterScoped
+                      ))
             Just (block, nested, rawResult, afterBlock) -> do
               (result, remaining) <-
                 rewriteWithTail True capture nested
@@ -1253,15 +1235,20 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
                     Left NoMatchingSyntaxTemplate -> Right Nothing
                     Left failure -> Left (SyntaxRewriteMatchFailure failure)
                     Right expanded -> do
+                      direct <- directSyntaxFunctionExpansion
+                        nested (Just rule) expanded
                       (rewritten, fallbackRemaining) <-
-                        rewriteWithTail True capture nested expanded afterBlock
+                        rewriteWithTail True capture nested direct afterBlock
                       Right (Just
-                        ( attachAdjacentBody inferAdjacent before rewritten
+                        ( attachAdjacentBody before rewritten
                         , fallbackRemaining
                         ))
                 Left failure -> Left (SyntaxRewriteMatchFailure failure)
-                Right expanded -> Right (Just
-                  (attachAdjacentBody inferAdjacent before expanded, remaining))
+                Right expanded -> do
+                  direct <- directSyntaxFunctionExpansion
+                    nested (Just rule) expanded
+                  Right (Just
+                    (attachAdjacentBody before direct, remaining))
 
     adjacentScopedExpression afterPrefix trailing = case afterPrefix of
       [candidateScope] -> do
@@ -1279,36 +1266,8 @@ matchEmbeddedBlockWith initialInferAdjacent capture environment =
     scopedProgram scoped@(ScopeAccess _ (Begin _ _)) = Just scoped
     scopedProgram _ = Nothing
 
-    attachAdjacentBody True before body@FunctionBody {}
-      | Just signature <- applicationFromMaybe before =
-          let candidate = applicationFrom (before <> [body])
-          in if any (acceptsBody candidate) (rewriteRules environment)
-              then candidate
-              else resolveInCurrentScope environment
-                (inferredFunction body signature)
-    attachAdjacentBody _ before expanded =
+    attachAdjacentBody before expanded =
       applicationFrom (before <> [expanded])
-
-    acceptsBody candidate rule = isRight
-      (matchSyntaxRulesWith (\_ _ captured -> Just captured)
-        [rewriteRule rule] candidate)
-
-    completeSyntaxType templates
-        (FunctionApplication signature body@FunctionBody {}) =
-      resolveInCurrentScope environment
-        (inferredFunction body (SyntaxType templates signature))
-    completeSyntaxType templates signature = SyntaxType templates signature
-
--- Inferred generic signatures may be used by declarations later in the same
--- block, before the final whole-AST resolution pass. Seed resolution with
--- visible declarations so newly allocated binder identities remain distinct
--- from every function already in scope.
-resolveInCurrentScope :: RewriteEnvironment -> Expression -> Expression
-resolveInCurrentScope environment inferred =
-  case resolveGenericFunctionTypes
-      (AtlasMap (rewriteDeclarations environment <> [inferred])) of
-    AtlasMap resolved -> last resolved
-    _ -> inferred
 
 -- Newline separation is provisional when the current line ends at an
 -- internal literal of a visible syntax template. Such a literal has syntax on
@@ -1573,6 +1532,33 @@ splitAtLiteral literal value =
         pure (Let <$> before, suffix)
       _ -> Nothing
 
+literalBoundaryCandidate
+  :: SyntaxTemplate Expression
+  -> Expression
+  -> Maybe Expression
+literalBoundaryCandidate (SyntaxTemplate pieces) value =
+  case pieces of
+    SyntaxLiteral first : remaining -> do
+      (Nothing, suffix) <- splitAtLiteral first value
+      continue [literalExpression first] remaining (applicationFrom suffix)
+    _ -> Nothing
+  where
+    continue built [] _ = Just (applicationFrom built)
+    continue built [SyntaxHole _] current =
+      Just (applicationFrom (built <> [current]))
+    continue built
+        (SyntaxHole _ : SyntaxLiteral delimiter : remaining) current = do
+      (Just captured, suffix) <- splitAtLiteral delimiter current
+      continue
+        (built <> [captured, literalExpression delimiter])
+        remaining
+        (applicationFrom suffix)
+    continue built (SyntaxLiteral literal : remaining) current = do
+      (Nothing, suffix) <- splitAtLiteral literal current
+      continue (built <> [literalExpression literal]) remaining
+        (applicationFrom suffix)
+    continue _ _ _ = Nothing
+
 advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
 advanceScope environment entry = environment
   { rewriteRules = retained <> introduced
@@ -1607,10 +1593,3 @@ advanceScope environment entry = environment
         , rewriteRuleName rule == target
         ]
       _ -> []
-sequenceExpression :: [Expression] -> Expression
-sequenceExpression [] = AtlasMap []
-sequenceExpression [value] = value
-sequenceExpression values = AtlasMap values
-
-argumentExpression :: [Expression] -> Expression
-argumentExpression = ArgumentMap

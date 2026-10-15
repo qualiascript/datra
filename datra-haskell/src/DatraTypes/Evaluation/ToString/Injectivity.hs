@@ -58,6 +58,7 @@ stringConversionProperties semantics
     NeverSemantics -> exactStrings ["Never"]
     BuiltinMetaTypeSemantics _ -> unknownConversion
     FunctionSemantics {} -> injectiveUnknownAlphabet
+    FunctionBodySemantics {} -> injectiveUnknownAlphabet
     ExplicitSemantics {} -> knownAlphabet "0123456789"
     IntegerSemantics {} -> knownAlphabet "-0123456789"
     NaturalRangeSemantics {} -> numericRange

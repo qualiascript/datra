@@ -333,6 +333,7 @@ executable datra-haskell
     main-is:          Main.hs
     other-modules:
         Interpreting
+        DatraHost
         RuntimeModules
         ModuleLoading
         FunctionClosure
@@ -396,6 +397,7 @@ test-suite datra-parsing-test
     main-is:          DatraParsingTests.hs
     other-modules:
         Interpreting
+        DatraHost
         RuntimeModules
         FunctionClosure
         GenericScopeProtection
@@ -444,6 +446,7 @@ test-suite datra-interpreting-test
         Datra.Interpreter.StandardLibraryTests
         Datra.TestSupport
         Interpreting
+        DatraHost
         RuntimeModules
         ModuleLoading
         FunctionClosure

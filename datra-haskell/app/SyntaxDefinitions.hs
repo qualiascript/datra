@@ -1,17 +1,16 @@
 {-# LANGUAGE LambdaCase #-}
 
--- | Declarative AST templates. External AST adapters preserve control semantics
+-- | Declarative AST templates. Syntax function bodies preserve control semantics
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
   , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
-  , SyntaxFunctionBody, syntaxFunctionBodyForSymbol, applySyntaxFunctionBody
   , declarationRules, compileSyntaxTemplatesFromExpression
   , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , expandSyntax
-  , declarationLiterals, absorbFunSequence, externalSymbol
+  , declarationLiterals, absorbFunSequence
   , normalizeSyntaxExpansion
   ) where
 import DatraLanguage.AST
@@ -61,107 +60,7 @@ contextualSyntaxRulesFor = map rule
       (IdentifierReference (IdentifierString ("_" <> surface)))
     signature = FunctionType
       (EllipsisNatural 0)
-      (External (AsciiStringLiteral "datra.Any"))
-
-newtype SyntaxFunctionBody = SyntaxFunctionBody
-  { applySyntaxFunctionBody
-      :: [Expression]
-      -> Either SyntaxExpansionFailure Expression
-  }
-
-syntaxFunctionBodyForSymbol :: String -> Maybe SyntaxFunctionBody
-syntaxFunctionBodyForSymbol symbol = SyntaxFunctionBody <$> lookup symbol
-  [ ("datra.if", \case
-      [condition, yes, no] -> Right
-        (Conditional condition yes no)
-      captures -> invalidBody symbol captures)
-  , ("datra.ifThen", \case
-      [condition, yes] -> Right
-        (Conditional condition yes (AtlasMap []))
-      captures -> invalidBody symbol captures)
-  , ("datra.begin", \case
-      [entries, result] -> Right (Begin (blockEntries entries) result)
-      captures -> invalidBody symbol captures)
-  , ("datra.do", \case
-      [entries, result] -> Right (FunctionBody (blockEntries entries) result)
-      captures -> invalidBody symbol captures)
-  , ("datra.let", \case
-      [entry] -> Right (Let (absorbAssignedConcatenation entry))
-      captures -> invalidBody symbol captures)
-  , ("datra.fun", \case
-      [entry] -> Right (Fun (absorbFunSequence entry))
-      captures -> invalidBody symbol captures)
-  , ("datra.modular", \case
-      [value] -> Right (Modular value)
-      captures -> invalidBody symbol captures)
-  , ("datra.of", \case
-      [source, target] -> Right (Subfederation source target)
-      captures -> invalidBody symbol captures)
-  , ("datra.in", \case
-      [value, function] -> Right (FunctionApplication function value)
-      captures -> invalidBody symbol captures)
-  , ("datra.and", \case
-      [left, right] -> Right (BooleanAnd left right)
-      captures -> invalidBody symbol captures)
-  , ("datra.or", \case
-      [left, right] -> Right (BooleanOr left right)
-      captures -> invalidBody symbol captures)
-  , ("datra.not", \case
-      [value] -> Right (BooleanNot value)
-      captures -> invalidBody symbol captures)
-  , ("datra.assert", \case
-      [condition] -> Right (Assert False condition)
-      captures -> invalidBody symbol captures)
-  , ("datra.assertHard", \case
-      [_, condition] -> Right (Assert True condition)
-      captures -> invalidBody symbol captures)
-  , ("datra.import", \case
-      [paths, body@FunctionBody {}]
-        | Just requested <- importPaths paths
-        , not (null requested) -> Right (Import requested body)
-      captures -> invalidBody symbol captures)
-  , ("datra.with", \case
-      [modules, FunctionBody bindings result] -> Right
-        (ScopeAccess
-          (ArgumentMap (withModuleOperands modules))
-          (Begin bindings result))
-      captures -> invalidBody symbol captures)
-  ]
-  where
-    invalidBody name _ = Left (UnknownSyntaxControlAdapter name)
-
-importPaths :: Expression -> Maybe [String]
-importPaths value = case value of
-  AsciiStringLiteral path -> Just [path]
-  AtlasMap paths -> concat <$> traverse importPaths paths
-  MapSequence paths -> concat <$> traverse importPaths paths
-  MapConcatenation left right ->
-    (<>) <$> importPaths left <*> importPaths right
-  SyntaxBoundary inner -> importPaths inner
-  _ -> Nothing
-
-withModuleOperands :: Expression -> [Expression]
-withModuleOperands value = case value of
-  AtlasMap modules -> modules
-  MapSequence modules -> modules
-  MapConcatenation left right ->
-    withModuleOperands left <> withModuleOperands right
-  SyntaxBoundary inner -> withModuleOperands inner
-  _ -> [value]
-
-blockEntries :: Expression -> [Expression]
-blockEntries (AtlasMap entries) = entries
-blockEntries (SyntaxBoundary inner) = blockEntries inner
-blockEntries value = [value]
-
-absorbAssignedConcatenation :: Expression -> Expression
-absorbAssignedConcatenation value = case value of
-  MapConcatenation
-      (IdentifierOperation name annotation (Just given)) right
-    | annotation == given ->
-        let assignedValue = MapConcatenation given right
-        in IdentifierOperation name assignedValue (Just assignedValue)
-  _ -> value
+      (IdentifierReference (IdentifierString "Any"))
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules (Let value) =
@@ -176,6 +75,10 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
     collect key (MapSpecification body (SyntaxType templates signature)) =
       rules key templates signature body
     collect key (SyntaxType templates (MapSpecification body signature)) =
+      rules key templates signature body
+    collect key (SyntaxType templates (FunctionApplication signature body)) =
+      rules key templates signature body
+    collect key (FunctionApplication (SyntaxType templates signature) body) =
       rules key templates signature body
     collect _ _ = []
     rules key templates signature body =
@@ -238,10 +141,8 @@ expandSyntax
   :: SyntaxRule
   -> TemplateSelection Expression Expression
   -> Either SyntaxExpansionFailure Expression
-expandSyntax rule selection = case
-    externalSymbol (syntaxImplementation rule) >>= syntaxFunctionBodyForSymbol of
-  Just body -> applySyntaxFunctionBody body captures
-  _ -> Right (FunctionApplication callable suppliedInput)
+expandSyntax rule selection =
+  Right (FunctionApplication callable suppliedInput)
   where
     captures = templateSelectionCaptures selection
     callable = scoped (IdentifierReference (IdentifierString localName))
@@ -341,20 +242,6 @@ identifierReferences :: Expression -> [String]
 identifierReferences expressionValue = case expressionValue of
   IdentifierReference (IdentifierString name) -> [name]
   _ -> concatMap identifierReferences (expressionChildren expressionValue)
-
-externalSymbol :: Expression -> Maybe String
-externalSymbol (External (AsciiStringLiteral symbol)) = Just symbol
-externalSymbol (External descriptor) = findSymbol descriptor
-  where
-    findSymbol (IdentifierOperation (IdentifierString "symbol") (AsciiStringLiteral value) _) = Just value
-    findSymbol (AtlasMap members) = first (map findSymbol members)
-    findSymbol (MapConcatenation left right) =
-      first [findSymbol left, findSymbol right]
-    findSymbol _ = Nothing
-    first [] = Nothing
-    first (Just value:_) = Just value
-    first (_:rest) = first rest
-externalSymbol _ = Nothing
 
 -- Within @fun@, the canonical recursive-list spelling associates a following
 -- sequence with the nonempty branch: @() | T; this@ means

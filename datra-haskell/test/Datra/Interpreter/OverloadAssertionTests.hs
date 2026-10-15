@@ -235,9 +235,12 @@ functionBodySpellingTests =
     [ programCase "yield without a block keyword"
         "f := ({n? : Nat} -> Nat do yield n + 1)\nyield f 4"
         "5"
-    , programCase "do block"
+    , programCase "do block is a function body"
         "f := ({n? : Nat} -> Nat do x := 1; yield n + x)\nyield f 4"
         "5"
+    , programFailureCase "begin block is not a function body"
+        "f := ({n? : Nat} -> Nat begin x := 1; yield n + x)\nyield f 4"
+        (SourceEvaluationFailure (UnknownIdentifier "n"))
     , programCase "multiline do block"
         (unlines
           [ "f := ({n? : Nat} -> Nat do"
@@ -245,9 +248,6 @@ functionBodySpellingTests =
           , "  yield n + x)"
           , "yield f 4"
           ])
-        "5"
-    , programCase "begin block without do"
-        "f := ({n? : Nat} -> Nat begin x := 1; yield n + x)\nyield f 4"
         "5"
     , programCase "assertion-only function has an explicit unit yield"
         "f := ({n? : Nat} -> () do assert n of Nat; yield ())\nyield f 4"

@@ -37,7 +37,6 @@ specifyFunction decideSubfederation specify source target =
                 , interpretedSemanticResult (functionCodomain original) == interpretedSemanticResult (functionCodomain signature) -> Just sourceText
               Just sourceText -> Just
                 ("(" <> sourceText <> ") ~> (" <> functionSignatureSource signature <> ")")
-          , functionExternalSymbol = functionExternalSymbol original
           , functionPrepare = Just (\argument -> do
               preparedCall <- case functionPrepare original of
                 Just prepare -> prepare argument
@@ -52,6 +51,7 @@ specifyFunction decideSubfederation specify source target =
                 (functionDomain signature)
               pure preparedCall)
           , functionInvoke = functionInvoke original
+          , functionBody = functionBody original
           })
         DecisionRefuted -> Left (FunctionEvaluationFailed
           FunctionSignatureVarianceViolation)
@@ -60,7 +60,6 @@ specifyFunction decideSubfederation specify source target =
             (show (interpretedSemanticResult source))
             (show (interpretedSemanticResult target))))
     _ -> Left (FunctionEvaluationFailed ExpectedFunctionValue)
-
 validateFunctionInput
   :: (InterpretedValue -> InterpretedValue -> Decision ())
   -> (InterpretedValue

@@ -9,12 +9,13 @@ module Evaluation.Value.Semantics
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
   , PresentationDependency (..)
+  , ValuePresentation (..)
   , ValueSemantics (..)
   , CanonicalResult (..)
   , canonicalResult
   , semanticCanonicalResult
   , canonicalPresentation
-  , canonicalPresentations
+  , presentationForSemantics
   , semanticValueSemantics
   , mapValueSemanticsChildren
   , stripPresentedDependencies
@@ -89,11 +90,12 @@ newtype PresentationDependency = PresentationDependency String
 -- separately as 'CanonicalResult'.
 data ValueSemantics
   = PresentedSemantics
-      [PresentationDependency] CanonicalResult ValueSemantics
+      [PresentationDependency] ValuePresentation ValueSemantics
   | NeverSemantics
   | BuiltinMetaTypeSemantics BuiltinMetaType
   | FunctionSemantics
       ValueSemantics ValueSemantics (Maybe String)
+  | FunctionBodySemantics String
   | ExplicitSemantics Natural Ordinal
   | IntegerSemantics Integer
   | FormulationSemantics Natural
@@ -131,6 +133,14 @@ data ValueSemantics
   | MapSemantics Natural [ValueSemantics]
   | ArgumentMapSemantics Bool [ValueSemantics]
   | SpecificationSemantics ValueSemantics ValueSemantics
+
+-- | A canonical spelling whose dependencies remain local to its leaves.
+-- Applications compose operand presentations directly, so lexical fallback
+-- never requires enumerating their Cartesian product.
+data ValuePresentation
+  = AtomicPresentation CanonicalResult
+  | SemanticPresentation ValueSemantics
+  | ApplicationPresentation ValuePresentation ValuePresentation
 
 -- | A normalized, source-independent presentation of an evaluated value.
 data CanonicalResult
@@ -192,19 +202,11 @@ canonicalPresentation
   :: ValueSemantics
   -> Maybe ([PresentationDependency], CanonicalResult)
 canonicalPresentation (PresentedSemantics dependencies presentation _) =
-  Just (dependencies, presentation)
+  Just
+    ( dependencies <> presentationDependencies presentation
+    , presentationResult presentation
+    )
 canonicalPresentation _ = Nothing
-
--- | Presentations from the most local binding to the most deeply retained
--- fallback. This ordering lets composed values keep the same lexical fallback
--- behavior as direct aliases.
-canonicalPresentations
-  :: ValueSemantics
-  -> [([PresentationDependency], CanonicalResult)]
-canonicalPresentations
-    (PresentedSemantics dependencies presentation underlying) =
-  (dependencies, presentation) : canonicalPresentations underlying
-canonicalPresentations _ = []
 
 -- | Remove presentation at an operation boundary while retaining the full
 -- underlying semantic structure.
@@ -257,23 +259,50 @@ stripPresentedDependencies
   -> ValueSemantics
 stripPresentedDependencies expired semantics =
   case semantics of
-    PresentedSemantics dependencies _ underlying
+    PresentedSemantics
+        dependencies presentation@(ApplicationPresentation _ _) underlying
       | any (`elem` expired) dependencies -> recur underlying
+      | otherwise ->
+          let stripped = stripPresentationDependencies expired presentation
+          in if presentationRetainsName stripped
+            then PresentedSemantics dependencies stripped (recur underlying)
+            else recur underlying
+    PresentedSemantics dependencies presentation underlying
+      | any (`elem` expired)
+          (dependencies <> presentationDependencies presentation) ->
+            recur underlying
+    PresentedSemantics dependencies presentation underlying ->
+      PresentedSemantics
+        dependencies
+        (stripPresentationDependencies expired presentation)
+        (recur underlying)
     _ -> mapValueSemanticsChildren recur semantics
   where
     recur = stripPresentedDependencies expired
+
+presentationRetainsName :: ValuePresentation -> Bool
+presentationRetainsName presentation =
+  case presentation of
+    AtomicPresentation _ -> True
+    SemanticPresentation semantics ->
+      case canonicalPresentation semantics of
+        Just _ -> True
+        Nothing -> False
+    ApplicationPresentation function argument ->
+      presentationRetainsName function || presentationRetainsName argument
 
 canonicalResultWith :: Bool -> ValueSemantics -> CanonicalResult
 canonicalResultWith retainPresentation semantics =
   case semantics of
     PresentedSemantics _ presentation underlying
-      | retainPresentation -> presentation
+      | retainPresentation -> presentationResult presentation
       | otherwise -> canonicalResultWith False underlying
     NeverSemantics -> CanonicalNever
     BuiltinMetaTypeSemantics kind -> CanonicalBuiltinMetaType kind
     FunctionSemantics input output body ->
       CanonicalFunction
         (recur input) (recur output) body
+    FunctionBodySemantics source -> CanonicalReference source
     ExplicitSemantics level value -> CanonicalExplicit level value
     IntegerSemantics value -> CanonicalInteger value
     FormulationSemantics level -> CanonicalFormulation level
@@ -336,6 +365,42 @@ canonicalResultWith retainPresentation semantics =
         (recur target)
   where
     recur = canonicalResultWith retainPresentation
+
+presentationForSemantics :: ValueSemantics -> ValuePresentation
+presentationForSemantics = SemanticPresentation
+
+presentationResult :: ValuePresentation -> CanonicalResult
+presentationResult presentation =
+  case presentation of
+    AtomicPresentation result -> result
+    SemanticPresentation semantics -> canonicalResult semantics
+    ApplicationPresentation function argument ->
+      CanonicalApplication
+        (presentationResult function)
+        (presentationResult argument)
+
+presentationDependencies :: ValuePresentation -> [PresentationDependency]
+presentationDependencies presentation =
+  case presentation of
+    AtomicPresentation _ -> []
+    SemanticPresentation semantics ->
+      maybe [] fst (canonicalPresentation semantics)
+    ApplicationPresentation function argument ->
+      presentationDependencies function <> presentationDependencies argument
+
+stripPresentationDependencies
+  :: [PresentationDependency]
+  -> ValuePresentation
+  -> ValuePresentation
+stripPresentationDependencies expired presentation =
+  case presentation of
+    AtomicPresentation _ -> presentation
+    SemanticPresentation semantics ->
+      SemanticPresentation (stripPresentedDependencies expired semantics)
+    ApplicationPresentation function argument ->
+      ApplicationPresentation
+        (stripPresentationDependencies expired function)
+        (stripPresentationDependencies expired argument)
 
 -- Specifications into optional identifier slots have an assignment
 -- presentation that carries the selected source values directly. This is the

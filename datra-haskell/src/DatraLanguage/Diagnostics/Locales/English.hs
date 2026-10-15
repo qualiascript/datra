@@ -25,7 +25,6 @@ import DatraLanguage.Diagnostics.Application
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
-  , ExternalFailure (..)
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
@@ -133,7 +132,6 @@ localizeInterpretingError reason =
     NamedAccessFailed failure -> localizeNamedAccessFailure failure
     MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
-    ExternalEvaluationFailed failure -> localizeExternalFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
     ExpectedBuiltinType name ->
       LocalizedMessage "value does not belong to the required built-in type"
@@ -336,8 +334,11 @@ localizeFunctionFailure failure =
       LocalizedMessage "an AST pattern requires a function signature" []
     AstPatternRequiresFunctionImplementation ->
       LocalizedMessage "an AST pattern requires a function implementation" []
-    ExternalAdapterRequiresAstCaptures ->
-      LocalizedMessage "external syntax adapter requires unevaluated AST captures" []
+    HostSyntaxHookRequiresAstCaptures ->
+      LocalizedMessage "host syntax hook requires unevaluated AST captures" []
+    MissingNativeArgument name ->
+      LocalizedMessage "native function did not receive a required argument"
+        ["argument: " <> name]
     AmbiguousFunctionSumApplication ->
       LocalizedMessage "function sum application is ambiguous" []
     AmbiguousFunctionArgumentBindings ->
@@ -389,29 +390,6 @@ localizeMapLengthFailure failure =
       LocalizedMessage
         "object's final-page length is not representable by NatLimit"
         ["final-page order type: " <> renderOrdinal orderType]
-
-localizeExternalFailure :: ExternalFailure -> LocalizedMessage
-localizeExternalFailure failure =
-  case failure of
-    DuplicateExternalDescriptorField ->
-      LocalizedMessage "external descriptor contains a duplicate field" []
-    UnknownExternalDescriptorFields names ->
-      LocalizedMessage "external descriptor contains unknown fields"
-        ["fields: " <> show names]
-    UnsupportedExternalBackend backend ->
-      LocalizedMessage "external backend is not supported"
-        ["backend: " <> backend]
-    MissingExternalDescriptorField name ->
-      LocalizedMessage "external descriptor is missing a required field"
-        ["field: " <> name]
-    ExternalDescriptorRequiresStringMap ->
-      LocalizedMessage "external descriptor must be a map of string fields" []
-    UnknownExternalSymbol symbol ->
-      LocalizedMessage "external symbol is not registered"
-        ["symbol: " <> symbol]
-    MissingNativeArgument name ->
-      LocalizedMessage "native function did not receive a required argument"
-        ["argument: " <> name]
 
 localizeModuleFailure :: ModuleEvaluationFailure -> LocalizedMessage
 localizeModuleFailure failure =

@@ -22,7 +22,6 @@ import DatraLanguage.Diagnostics.Application
 import Evaluation.Error
   ( InterpretedValueKind (..)
   , InterpretingError (..)
-  , ExternalFailure (..)
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
@@ -131,7 +130,6 @@ localizeInterpretingError reason =
     NamedAccessFailed failure -> localizeNamedAccessFailure failure
     MapLengthFailed failure -> localizeMapLengthFailure failure
     FunctionEvaluationFailed failure -> localizeFunctionFailure failure
-    ExternalEvaluationFailed failure -> localizeExternalFailure failure
     ModuleEvaluationFailed failure -> localizeModuleFailure failure
     ExpectedBuiltinType name ->
       LocalizedMessage "valoarea nu aparține tipului încorporat necesar"
@@ -336,8 +334,11 @@ localizeFunctionFailure failure =
       LocalizedMessage "un șablon AST necesită o semnătură de funcție" []
     AstPatternRequiresFunctionImplementation ->
       LocalizedMessage "un șablon AST necesită o implementare de funcție" []
-    ExternalAdapterRequiresAstCaptures ->
-      LocalizedMessage "adaptorul extern de sintaxă necesită capturi AST neevaluate" []
+    HostSyntaxHookRequiresAstCaptures ->
+      LocalizedMessage "cârligul de sintaxă gazdă necesită capturi AST neevaluate" []
+    MissingNativeArgument name ->
+      LocalizedMessage "funcția nativă nu a primit un argument obligatoriu"
+        ["argument: " <> name]
     AmbiguousFunctionSumApplication ->
       LocalizedMessage "aplicarea sumei de funcții este ambiguă" []
     AmbiguousFunctionArgumentBindings ->
@@ -391,28 +392,6 @@ localizeMapLengthFailure failure =
         "lungimea paginii finale a obiectului nu poate fi reprezentată de NatLimit"
         ["tipul de ordine al paginii finale: " <> renderOrdinal orderType]
 
-localizeExternalFailure :: ExternalFailure -> LocalizedMessage
-localizeExternalFailure failure =
-  case failure of
-    DuplicateExternalDescriptorField ->
-      LocalizedMessage "descriptorul extern conține un câmp duplicat" []
-    UnknownExternalDescriptorFields names ->
-      LocalizedMessage "descriptorul extern conține câmpuri necunoscute"
-        ["câmpuri: " <> show names]
-    UnsupportedExternalBackend backend ->
-      LocalizedMessage "backendul extern nu este acceptat"
-        ["backend: " <> backend]
-    MissingExternalDescriptorField name ->
-      LocalizedMessage "descriptorului extern îi lipsește un câmp obligatoriu"
-        ["câmp: " <> name]
-    ExternalDescriptorRequiresStringMap ->
-      LocalizedMessage "descriptorul extern trebuie să fie o hartă de câmpuri șir" []
-    UnknownExternalSymbol symbol ->
-      LocalizedMessage "simbolul extern nu este înregistrat"
-        ["simbol: " <> symbol]
-    MissingNativeArgument name ->
-      LocalizedMessage "funcția nativă nu a primit un argument obligatoriu"
-        ["argument: " <> name]
 
 localizeModuleFailure :: ModuleEvaluationFailure -> LocalizedMessage
 localizeModuleFailure failure =

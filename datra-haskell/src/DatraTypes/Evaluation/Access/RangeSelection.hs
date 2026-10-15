@@ -51,6 +51,7 @@ accessSource value =
     NeverForm -> ordinarySource []
     BuiltinMetaTypeForm _ -> ordinarySource []
     FunctionForm _ -> ordinarySource []
+    FunctionBodyForm _ -> ordinarySource []
     RangeForm valueRange ->
       rangeSource [evaluatedDescribedRange valueRange]
     NaturalRangeForm valueRange ->
@@ -158,6 +159,7 @@ semanticAccessSource semantics =
     NeverSemantics -> ordinarySource []
     BuiltinMetaTypeSemantics _ -> ordinarySource []
     FunctionSemantics {} -> ordinarySource []
+    FunctionBodySemantics {} -> ordinarySource []
     ExplicitSemantics level value ->
       ordinarySource [singletonDescribedRange level value]
     IntegerSemantics _ -> ordinarySource []
