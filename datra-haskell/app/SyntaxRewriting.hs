@@ -17,6 +17,7 @@ import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
+import Parsing (inferredFunction)
 import DatraTypes
   ( EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
   , InterpretedValue
@@ -425,6 +426,9 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     FunctionApplication (Fun signature) body@FunctionBody {}
       | canReceiveFunctionBody signature ->
           finish (Fun (FunctionApplication signature body)) trailing
+    FunctionApplication function body@FunctionBody {}
+      | canReceiveFunctionBody function ->
+          finish (inferredFunction body function) trailing
     FunctionApplication function argument
       | containsBlockStart environment argument
       , not (containsBlockStart environment function) -> do
@@ -567,6 +571,8 @@ canReceiveFunctionBody SyntaxType {} = True
 canReceiveFunctionBody (Fun signature) = canReceiveFunctionBody signature
 canReceiveFunctionBody (SyntaxBoundary signature) =
   canReceiveFunctionBody signature
+canReceiveFunctionBody (FunctionApplication function _) =
+  canReceiveFunctionBody function
 canReceiveFunctionBody _ = False
 
 containsFunctionImplementation :: Expression -> Bool
@@ -916,10 +922,14 @@ matchOrdinarySyntaxWithTail includeConcatenation
     literalBoundaryCandidates rule = case rewriteRuleLiteralPrefix rule of
       first : _
         | rewriteRuleBlockShape rule == Nothing
+        , any isHole (syntaxTemplatePieces
+            (syntaxTemplate (rewriteRule rule)))
         , literalOccurrences first value > 1 ->
             maybeToList (literalBoundaryCandidate
               (syntaxTemplate (rewriteRule rule)) value)
       _ -> []
+    isHole SyntaxHole {} = True
+    isHole _ = False
     literalOccurrences :: String -> Expression -> Int
     literalOccurrences selected expressionValue =
       (case expressionValue of

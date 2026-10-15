@@ -3579,10 +3579,25 @@ attachFunctionBody signatureValue body =
         { functionSource = Just (attachedSource signature)
         , functionBody = Just body
         }
-      EvaluatedRuntimeFunctionBody {} -> signature
+      EvaluatedRuntimeFunctionBody _ implementation -> signature
         { functionSource = Just (attachedSource signature)
         , functionBody = Just body
+        , functionPrepare = Just (\argument ->
+            case functionPrepare signature of
+              Just prepare -> case prepare argument of
+                Right preparedSignature -> Right preparedSignature
+                Left _ -> prepareBody argument
+              Nothing -> prepareBody argument)
         }
+        where
+          prepareBody argument = do
+            prepared <- case functionPrepare implementation of
+              Just prepare -> prepare argument
+              Nothing -> pure
+                (PreparedFunctionArgument argument argument [])
+            prepared <$ validateFunctionInput
+              (functionSuppliedArgument prepared)
+              (functionDomain signature)
     attachedSource signature =
       functionSignatureSource signature <> " " <> functionBodySource body
 

@@ -1143,13 +1143,34 @@ inferredFunction body signature =
   FunctionApplication (inferredFunctionSignature signature) body
 
 inferredFunctionSignature :: Expression -> Expression
-inferredFunctionSignature signature@FunctionTypeExpression {} = signature
-inferredFunctionSignature (SyntaxBoundary signature) =
-  SyntaxBoundary (inferredFunctionSignature signature)
 inferredFunctionSignature signature =
-  FunctionType signature (ScopeAccess
-    (IdentifierReference (IdentifierString "'datra"))
-    (IdentifierReference (IdentifierString "Any")))
+  case appliedFunctionType signature of
+    Just functionType -> functionType
+    Nothing -> FunctionType signature (ScopeAccess
+      (IdentifierReference (IdentifierString "'datra"))
+      (IdentifierReference (IdentifierString "Any")))
+  where
+    appliedFunctionType functionType@FunctionTypeExpression {} =
+      Just functionType
+    appliedFunctionType (SyntaxBoundary inner) =
+      SyntaxBoundary <$> appliedFunctionType inner
+    appliedFunctionType (SyntaxType templates inner) =
+      SyntaxType templates <$> appliedFunctionType inner
+    appliedFunctionType (FunctionApplication function argument) = do
+      functionType <- appliedFunctionType function
+      pure (applyCodomainArgument functionType argument)
+    appliedFunctionType _ = Nothing
+
+    applyCodomainArgument
+        (FunctionTypeExpression generics domain codomain) argument =
+      FunctionTypeExpression generics domain
+        (FunctionApplication codomain argument)
+    applyCodomainArgument (SyntaxBoundary inner) argument =
+      SyntaxBoundary (applyCodomainArgument inner argument)
+    applyCodomainArgument (SyntaxType templates inner) argument =
+      SyntaxType templates (applyCodomainArgument inner argument)
+    applyCodomainArgument functionType argument =
+      FunctionApplication functionType argument
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
 arrowExpressionWith operand =

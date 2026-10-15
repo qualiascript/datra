@@ -39,10 +39,9 @@ functionTests =
         , programCase "explicit unordered parameters"
             "f := ({a?:Int;b?:Int} -> Int do yield a+b)\nyield f (b:5;6)"
             "11"
-        , programFailureCase "standalone do requires a function type"
+        , programCase "standalone function body remains callable"
             "f := (do yield 3)\nyield f ()"
-            (SourceEvaluationFailure
-              (FunctionEvaluationFailed ExpectedFunctionType))
+            "3"
         , programFailureCase "generic identifiers cannot repeat in one domain"
             (unlines
               [ "f := ({a? : &T; b? : ^T?} -> T do yield a)"
