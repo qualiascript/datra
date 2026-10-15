@@ -132,7 +132,7 @@ functionTests =
         , programCase "required public product accepts a named witness"
             (unlines
               [ "identity := ({marker? : &T; value? : T} -> T do yield value)"
-              , "yield identity {T := Nat; marker := 3; value := 5}"
+              , "yield identity {T : Nat; marker : 3; value : 5}"
               ])
             "5"
         , programFailureCase "required public product rejects a positional witness"
@@ -151,37 +151,37 @@ functionTests =
         , programCase "optional-name public product accepts a named witness"
             (unlines
               [ "identity := ({marker? : &T?; value? : T} -> T do yield value)"
-              , "yield identity {T := Nat; marker := 3; value := 5}"
+              , "yield identity {T : Nat; marker : 3; value : 5}"
               ])
             "5"
         , programCase "private product is inferred from consistent arguments"
             (unlines
               [ "genericPrivate := ({marker? : &_T; value? : _T} -> _T do yield value)"
-              , "yield genericPrivate {marker := 3; value := 5}"
+              , "yield genericPrivate {marker : 3; value : 5}"
               ])
             "5"
         , programCase "private product is inserted into the body prefix"
             (unlines
               [ "genericPrefix := ({marker? : &_T; value? : _T} -> Any do yield it[0])"
-              , "yield genericPrefix {marker := 3; value := 5}"
+              , "yield genericPrefix {marker : 3; value : 5}"
               ])
             "_T : 3 | 5"
         , programCase "unrelated arguments do not widen private inference"
             (unlines
               [ "genericEvidence := ({marker? : &_T; unrelated? : Any} -> Any do yield it[0])"
-              , "yield genericEvidence {marker := 3; unrelated := 5}"
+              , "yield genericEvidence {marker : 3; unrelated : 5}"
               ])
             "_T : 3"
         , programCase "private product remains positional in an ordered map"
             (unlines
               [ "orderedGeneric := ((marker : &_T; value : _T) -> _T do yield value)"
-              , "yield orderedGeneric (Nat; marker := 3; value := 5)"
+              , "yield orderedGeneric (Nat; marker : 3; value : 5)"
               ])
             "5"
         , programCase "required public sum accepts a named witness"
             (unlines
               [ "identity := ({marker? : ^T; value? : T} -> Any do yield 5)"
-              , "yield identity {T := Nat; marker := 3; value := 5}"
+              , "yield identity {T : Nat; marker : 3; value : 5}"
               ])
             "5"
         , programFailureCase "required public sum rejects a positional witness"
@@ -200,44 +200,44 @@ functionTests =
         , programCase "optional-name public sum accepts a named witness"
             (unlines
               [ "identity := ({marker? : ^T?; value? : T} -> Any do yield 5)"
-              , "yield identity {T := Nat; marker := 3; value := 5}"
+              , "yield identity {T : Nat; marker : 3; value : 5}"
               ])
             "5"
         , programCase "private sum is inferred from consistent arguments"
             (unlines
               [ "genericPrivate := ({marker? : ^_T; value? : _T} -> Any do yield 5)"
-              , "yield genericPrivate {marker := 3; value := 5}"
+              , "yield genericPrivate {marker : 3; value : 5}"
               ])
             "5"
         , programCase "private sum is protected in the body prefix"
             (unlines
               [ "genericPrefix := ({marker? : ^_T; value? : _T} -> Never do yield it[0])"
-              , "yield genericPrefix {marker := 3; value := 5}"
+              , "yield genericPrefix {marker : 3; value : 5}"
               ])
             "Never"
         , programCase "private sum matching remains positional in an ordered map"
             (unlines
               [ "orderedGeneric := ((marker : ^_T; value : _T) -> Any do yield 5)"
-              , "yield orderedGeneric (Nat; marker := 3; value := 5)"
+              , "yield orderedGeneric (Nat; marker : 3; value : 5)"
               ])
             "5"
         , programFailureCase
             "private sum remains unavailable to the codomain"
             (unlines
               [ "orderedGeneric := ((marker : ^_T; value : _T) -> _T do yield value)"
-              , "yield orderedGeneric (Nat; marker := 3; value := 5)"
+              , "yield orderedGeneric (Nat; marker : 3; value : 5)"
               ])
             (SourceEvaluationFailure (UnknownIdentifier "_T"))
         , programCase "mixed generic matching respects telescope order"
             (unlines
               [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> Any do yield 5)"
-              , "yield mixed (Nat; Nat; Nat; a := 1; b := 3; c := 5; value := 5)"
+              , "yield mixed (Nat; Nat; Nat; a : 1; b : 3; c : 5; value : 5)"
               ])
             "5"
         , programCase "body-protected generic evidence becomes Never at return"
             (unlines
               [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
-              , "yield identity {T := Nat; marker := 3; value := 5}"
+              , "yield identity {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programCase "a closure cannot retain an expired generic activation"
@@ -245,19 +245,19 @@ functionTests =
               [ "capture := ({marker? : ^T; value? : T} -> Never do"
               , "  yield (Any -> Any do yield value)"
               , ")"
-              , "yield capture {T := Nat; marker := 3; value := 5}"
+              , "yield capture {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programCase "scope-protected generic composes with specification"
             (unlines
               [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
-              , "yield (identity ~> ({marker? : ^T; value? : T} -> Never)) {T := Nat; marker := 3; value := 5}"
+              , "yield (identity ~> ({marker? : ^T; value? : T} -> Never)) {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programCase "scope-protected generic composes with reverse specification"
             (unlines
               [ "identity := ({marker? : ^T; value? : T} -> Never do yield value)"
-              , "yield (({marker? : ^T; value? : T} -> Never) <~ identity) {T := Nat; marker := 3; value := 5}"
+              , "yield (({marker? : ^T; value? : T} -> Never) <~ identity) {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programCase "scope-protected generic composes with of"
@@ -269,19 +269,19 @@ functionTests =
         , programCase "string rendering eliminates generic protection"
             (unlines
               [ "render := ({marker? : ^T; value? : T} -> Str do yield \"%(value)\")"
-              , "yield render {T := Nat; marker := 3; value := 5}"
+              , "yield render {T : Nat; marker : 3; value : 5}"
               ])
             "\"5\""
         , programCase "equality eliminates generic protection to Bool"
             (unlines
               [ "compare := ({marker? : ^T; value? : T} -> Bool do yield value = value)"
-              , "yield compare {T := Nat; marker := 3; value := 5}"
+              , "yield compare {T : Nat; marker : 3; value : 5}"
               ])
             "true"
         , programCase "arithmetic eliminates generic protection to Nat"
             (unlines
               [ "increment := ({marker? : ^T :: Nat; value? : T} -> Nat do yield value + 1)"
-              , "yield increment {T := Nat; marker := 3; value := 5}"
+              , "yield increment {T : Nat; marker : 3; value : 5}"
               ])
             "6"
         , programCase "a protected callable eliminates through its Str codomain"
@@ -289,7 +289,7 @@ functionTests =
               [ "eliminate := ({marker? : ^T; value? : T} -> Str do"
               , "  render := (T -> Str do yield \"%(it)\")"
               , "yield render value)"
-              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "\"5\""
         , programCase "a closed ordered-map codomain eliminates recursively"
@@ -297,7 +297,7 @@ functionTests =
               [ "eliminate := ({marker? : ^T; value? : T} -> (Str; Bool) do"
               , "  pair := (T -> (Str; Bool) do yield (\"%(it)\"; it = it))"
               , "yield pair value)"
-              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "(\"5\"; true)"
         , programCase "a closed argument-map codomain eliminates recursively"
@@ -306,13 +306,13 @@ functionTests =
               , "  pair := (T -> {text? : Str; valid? : Bool} do"
               , "    yield {text : \"%(it)\"; valid : (it = it)})"
               , "yield pair value)"
-              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "(text : \"5\"; valid : true) | (valid : true; text : \"5\")"
         , programCase "of eliminates generic protection to Bool"
             (unlines
               [ "inspect := ({marker? : ^T; value? : T} -> Bool do yield value of Nat)"
-              , "yield inspect {T := Nat; marker := 3; value := 5}"
+              , "yield inspect {T : Nat; marker : 3; value : 5}"
               ])
             "true"
         , programCase "optional-name sums eliminate through a public result"
@@ -326,7 +326,7 @@ functionTests =
               [ "eliminate := ({marker? : ^T; value? : T} -> Str do"
               , "  render := (T -> Str do yield \"%(it)\")"
               , "yield (render ~> (T -> Str)) value)"
-              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "\"5\""
         , programCase "reverse-specified eliminators retain their checked codomain"
@@ -334,7 +334,7 @@ functionTests =
               [ "eliminate := ({marker? : ^T; value? : T} -> Str do"
               , "  render := (T -> Str do yield \"%(it)\")"
               , "yield ((T -> Str) <~ render) value)"
-              , "yield eliminate {T := Nat; marker := 3; value := 5}"
+              , "yield eliminate {T : Nat; marker : 3; value : 5}"
               ])
             "\"5\""
         , programCase "Any cannot launder a protected generic result"
@@ -342,7 +342,7 @@ functionTests =
               [ "escape := ({marker? : ^T; value? : T} -> Never do"
               , "  identity := (T -> Any do yield it)"
               , "yield identity value)"
-              , "yield escape {T := Nat; marker := 3; value := 5}"
+              , "yield escape {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programCase "an identity codomain cannot eliminate generic protection"
@@ -350,7 +350,7 @@ functionTests =
               [ "escape := ({marker? : ^T; value? : T} -> Never do"
               , "  identity := (T -> T do yield it)"
               , "yield identity value)"
-              , "yield escape {T := Nat; marker := 3; value := 5}"
+              , "yield escape {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programCase "untyped map construction does not eliminate protection"
@@ -358,33 +358,33 @@ functionTests =
               [ "escape := ({marker? : ^T; value? : T} -> Never do"
               , "  yield (\"public\"; value)"
               , ")"
-              , "yield escape {T := Nat; marker := 3; value := 5}"
+              , "yield escape {T : Nat; marker : 3; value : 5}"
               ])
             "Never"
         , programFailureCase
             "a mixed telescope does not expose its final sum to the codomain"
             (unlines
               [ "mixed := ((a : ^S; b : &T; c : ^U; value : U) -> U do yield value)"
-              , "yield mixed (Nat; Nat; Nat; a := 1; b := 3; c := 5; value := 5)"
+              , "yield mixed (Nat; Nat; Nat; a : 1; b : 3; c : 5; value : 5)"
               ])
             (SourceEvaluationFailure (UnknownIdentifier "U"))
         , programFailureCase "sum generic is unavailable in the codomain"
             (unlines
               [ "identity := ({marker? : ^T; value? : T} -> T do yield value)"
-              , "yield identity {T := Nat; marker := 3; value := 5}"
+              , "yield identity {T : Nat; marker : 3; value : 5}"
               ])
             (SourceEvaluationFailure (UnknownIdentifier "T"))
         , programCase "independent product remains available in the codomain"
             (unlines
               [ "identity := ({sumMarker? : ^T; productMarker? : &U} -> U do yield productMarker)"
-              , "yield identity {T := Str; U := Nat; sumMarker := \"x\"; productMarker := 3}"
+              , "yield identity {T : Str; U : Nat; sumMarker : \"x\"; productMarker : 3}"
               ])
             "3"
         , programFailureCase
             "product depending on a protected sum is unavailable in the codomain"
             (unlines
               [ "identity := ({sumMarker? : ^T; productMarker? : &U :: T} -> U do yield productMarker)"
-              , "yield identity {T := Any; U := Nat; sumMarker := 3; productMarker := 3}"
+              , "yield identity {T : Any; U : Nat; sumMarker : 3; productMarker : 3}"
               ])
             (SourceEvaluationFailure (UnknownIdentifier "U"))
         , programCase "variadic Args contributes private generic evidence"
@@ -440,7 +440,7 @@ functionTests =
               [ "f := {abc? : Nat; xyz? : Nat} -> Bool do"
               , "  yield it.abc = abc and it.xyz = xyz"
               , "assert f(3; 4)"
-              , "assert f(xyz := 4, abc := 3)"
+              , "assert f(xyz : 4, abc : 3)"
               ]) "()"
         , programCase "mixed slots preserve their written positions"
             (unlines
@@ -478,7 +478,7 @@ functionTests =
             (unlines
               [ "f := {Args Int,} -> Any do yield it"
               , "assert (f(3; 4)).arg0 = 3"
-              , "assert (f(arg1 := 4, 3)).arg1 = 4"
+              , "assert (f(arg1 : 4, 3)).arg1 = 4"
               ]) "()"
         , programCase "empty and singleton unnamed inputs keep their shape"
             (unlines
@@ -499,18 +499,14 @@ functionTests =
         , programCase "private regular names may be omitted but not changed"
             (unlines
               [ "assert 5 of (_x : Int)"
-              , "assert (_x := 5) of (_x : Int)"
               , "assert (_x : 5) of (_x : Int)"
-              , "assert not ((_y := 5) of (_x : Int))"
               , "assert not ((_y : 5) of (_x : Int))"
               ])
             "()"
         , programCase "private argument-map names may be changed"
             (unlines
               [ "assert 5 of {_x : Int}"
-              , "assert (_x := 5) of {_x : Int}"
               , "assert (_x : 5) of {_x : Int}"
-              , "assert (_y := 5) of {_x : Int}"
               , "assert (_y : 5) of {_x : Int}"
               ])
             "()"
@@ -584,9 +580,9 @@ functionTests =
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
         , programFailureCase
-            "ordered private parameter rejects an assigned written name"
+            "ordered private parameter rejects a named written value"
             ( "f := ((_x:Int) -> Int do yield _x+1)\n"
-                <> "yield f (_x:=2)"
+                <> "yield f (_x :2)"
             )
             (SourceEvaluationFailure
               (FunctionEvaluationFailed NoApplicableFunctionAlternative))
@@ -645,7 +641,7 @@ functionTests =
             "assert (callback : (Nat -> Nat)) of (callback : (Nat -> Nat))"
             "()"
         , programCase "block binding accepts a canonical function annotation"
-            "callback : (Nat -> Nat)\nyield callback of (Nat -> Nat)"
+            "callback := (Nat -> Nat)\nyield callback of (Nat -> Nat)"
             "true"
         , expressionCase "syntax category can annotate an identifier"
             "node : 'datra.Expr"
@@ -663,14 +659,14 @@ functionTests =
                 <> "yield identity (Nat; 5)"
             )
             "5"
-        , programCase "optional binder accepts named assignment witnesses"
+        , programCase "optional binder accepts named dependent identifiers"
             ( "identity := ({value? : &T? :: Any} -> T do yield value)\n"
-                <> "yield identity {T := Nat; value := 5}"
+                <> "yield identity {T : Nat; value : 5}"
             )
             "5"
-        , programCase "required binder accepts only its named assignment form"
+        , programCase "required binder accepts only its named identifier form"
             ( "identity := ({value? : &T :: Any} -> T do yield value)\n"
-                <> "yield identity {T := Nat; value := 5}"
+                <> "yield identity {T : Nat; value : 5}"
             )
             "5"
         , programFailureCase "required binder rejects a positional witness"

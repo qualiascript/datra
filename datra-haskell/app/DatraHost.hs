@@ -45,7 +45,8 @@ datraHostValue = do
     , ("Char", Right character)
     , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
-    , ("IdenExp", Right identifierExpressionType)
+    , ("DependentIdentifier", Right dependentIdentifierType)
+    , ("Declaration", Right declarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
     , ("Template", Right templateTypeValue)
@@ -123,7 +124,8 @@ datraHostValue = do
     ]
   where
     expressionType = syntaxCategoryTypeValue ExpressionAST
-    identifierExpressionType = syntaxCategoryTypeValue IdentifierExpressionAST
+    dependentIdentifierType = syntaxCategoryTypeValue DependentIdentifierAST
+    declarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
     syntaxBody name expand =

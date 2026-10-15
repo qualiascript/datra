@@ -87,6 +87,7 @@ import DatraLanguage.AST
   , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , isDeclarationExpression
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -408,7 +409,10 @@ captureSyntaxHole base modules strict declarations previous kind captured =
     FunctionBodySyntaxHole {} -> case captured of
       FunctionBody {} -> Just captured
       _ -> Nothing
-    IdentifierExpressionSyntaxHole {} -> identifierSyntaxCapture captured
+    DeclarationSyntaxHole {}
+      | isDeclarationExpression captured -> Just captured
+      | otherwise -> Nothing
+    DependentIdentifierSyntaxHole {} -> dependentIdentifierCapture captured
     ValueSyntaxHole target ->
       literalCapture target captured
         <|> if strict then valueEvaluationCapture target else tentativeCapture
@@ -424,11 +428,13 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    identifierSyntaxCapture value = case value of
+    dependentIdentifierCapture value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
-      OptionalType inner -> OptionalType <$> identifierSyntaxCapture inner
+      IdentifierOperation _ _ Nothing -> Just value
+      IdentifierTemplateOperation _ _ Nothing -> Just value
+      OptionalType inner -> OptionalType <$> dependentIdentifierCapture inner
       _ -> Nothing
     valueEvaluationCapture targetExpression =
       captureInScopes selectValue targetExpression
@@ -493,7 +499,7 @@ binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
   -> [Expression]
 binderDeclarations
-    ((IdentifierExpressionSyntaxHole {}, binder) : (_, bound) : remaining) =
+    ((DependentIdentifierSyntaxHole {}, binder) : (_, bound) : remaining) =
   maybe id (:) (binderDeclaration binder bound)
     (binderDeclarations remaining)
 binderDeclarations (_ : remaining) = binderDeclarations remaining
@@ -501,16 +507,21 @@ binderDeclarations [] = []
 
 binderDeclaration :: Expression -> Expression -> Maybe Expression
 binderDeclaration binder bound = case binder of
-  IdentifierReference name -> Just (IdentifierOperation name bound Nothing)
+  IdentifierReference name -> Just (assigned name)
   OptionalType (IdentifierReference name) ->
-    Just (IdentifierOperation name bound Nothing)
+    Just (assigned name)
   AsciiStringLiteral name
     | isIdentifierValue name ->
-        Just (IdentifierOperation (IdentifierString name) bound Nothing)
+        Just (assigned (IdentifierString name))
   OptionalType (AsciiStringLiteral name)
     | isIdentifierValue name ->
-        Just (IdentifierOperation (IdentifierString name) bound Nothing)
+        Just (assigned (IdentifierString name))
   _ -> Nothing
+  where
+    -- Syntax binders are validation-only lexical declarations. Representing
+    -- them as explicit self-valued assignments keeps block declarations
+    -- assignment-only without changing the value visible to later holes.
+    assigned name = IdentifierOperation name bound (Just bound)
 
 canonicalValueCapture
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -686,7 +697,8 @@ validateFunctionBodyParts expressionValue = do
   mapM_ validateFunctionBodyParts (expressionChildren expressionValue)
   where
     validatePart part
-      | Just _ <- blockDeclaration part = Right ()
+      | isDeclarationExpression part
+      , Just _ <- blockDeclaration part = Right ()
     validatePart Let {} = Right ()
     validatePart Val {} = Right ()
     validatePart part
@@ -910,8 +922,9 @@ traverseSyntaxHoleKind transform kind = case kind of
   ExpressionSyntaxHole value -> ExpressionSyntaxHole <$> transform value
   BlockSyntaxHole value -> BlockSyntaxHole <$> transform value
   FunctionBodySyntaxHole value -> FunctionBodySyntaxHole <$> transform value
-  IdentifierExpressionSyntaxHole value ->
-    IdentifierExpressionSyntaxHole <$> transform value
+  DeclarationSyntaxHole value -> DeclarationSyntaxHole <$> transform value
+  DependentIdentifierSyntaxHole value ->
+    DependentIdentifierSyntaxHole <$> transform value
   ValueSyntaxHole value -> ValueSyntaxHole <$> transform value
 
 validatedSyntaxTemplates
@@ -1938,7 +1951,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       | typeAnnotationExpression == givenValueExpression = do
           givenValue <- interpret givenValueExpression
           if interpretedValueHasTotalMap givenValue
-            then assignIdentifierValues identifierString givenValue givenValue
+            then Left RedundantAssignment
             else pure
               (inferredIdentifierAssignmentValue identifierString givenValue)
     interpretIdentifierOperation

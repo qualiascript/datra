@@ -1,4 +1,4 @@
 Std.(
-yield BadMap := begin
+yield BadMap : begin
 yield (1; 2)
 )

@@ -202,8 +202,9 @@ lowerConditionAtom condition yes no =
     selected = selectedConditionBindings condition yes no
     selectedNames = map fst selected
     declarations =
-      [ IdentifierOperation name (rewrite value) Nothing
-      | (name, value) <- selected
+      [ IdentifierOperation name value (Just value)
+      | (name, original) <- selected
+      , let value = rewrite original
       ]
     rewrittenCondition = rewrite condition
     rewrite expressionValue = case expressionValue of

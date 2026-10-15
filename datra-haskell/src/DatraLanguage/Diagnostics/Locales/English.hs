@@ -225,6 +225,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "concatenation does not change the meaning of this expression"
         ["use ; between operands or remove the trailing comma"]
+    RedundantAssignment ->
+      LocalizedMessage
+        "inferred assignment is redundant for a total value"
+        ["use : instead of :="]
     AccessRejected rejection -> localizeAccessError rejection
     GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage
@@ -408,7 +412,7 @@ localizeModuleFailure failure =
       LocalizedMessage "imported file must reduce to a block" []
     ImportedModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage "imported file must yield an identifier-binder federation"
-        ["use yield Name := value or a federation of identifier binders"]
+        ["use yield Name : value or a federation of identifier binders"]
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "module scope requires a total map of simple identifier types" []

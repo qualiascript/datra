@@ -156,6 +156,7 @@ data InterpretingError
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | RedundantConcatenation
+  | RedundantAssignment
   | AccessRejected AccessError
   | GivenValueOutsideTypeAnnotation
       { expectedTypeAnnotation :: String

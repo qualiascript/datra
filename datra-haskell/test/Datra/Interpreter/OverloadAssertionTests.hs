@@ -266,7 +266,7 @@ functionBodySpellingTests =
     , programCase "an unused value declaration has an effect"
         (unlines
           [ "f := (Nat -> Nat do"
-          , "  x : 2 + 3"
+          , "  x := 2 + 3"
           , "yield 0)"
           , "yield ()"
           ])
@@ -274,7 +274,7 @@ functionBodySpellingTests =
     , programCase "an unused let binding has an effect"
         (unlines
           [ "f := (Nat -> Nat do"
-          , "  let x : 2 + 3"
+          , "  let x := 2 + 3"
           , "yield 0)"
           , "yield ()"
           ])

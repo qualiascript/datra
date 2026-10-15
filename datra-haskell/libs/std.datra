@@ -1,10 +1,13 @@
 ('datra.begin (()
   Std := 'datra.begin ((
     _Expr := 'datra.Expr
-    _IdenExp := 'datra.IdenExp
+    _DependentIdentifier := 'datra.DependentIdentifier
+    _Declaration := 'datra.Declaration
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
-    'datra.val ('val := "val %_Expr" % (_Expr -> _Expr) 'datra.val)
+
+    'datra.val ('val := "val %_Declaration" %
+      (_Declaration -> _Declaration) 'datra.val)
     val 'datra := 'datra
 
     val Any := 'datra.Any
@@ -28,7 +31,8 @@
     val IntValRange := 'datra.IntValRange
 
     # These bindings introduce parsing rules.
-    val 'let := "let %_Expr" % (_Expr -> _Expr) 'datra.let
+    val 'let := "let %_Declaration" %
+      (_Declaration -> _Declaration) 'datra.let
     val 'assert :=
       ("assert %("hard") %_Expr" %
         ($hard; _Expr -> _Expr) 'datra.assertHard) |

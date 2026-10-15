@@ -1,5 +1,5 @@
 Std.(
 import "cycle_b" do
-  yield CycleA := begin
+  yield CycleA : begin
   yield public this
 )

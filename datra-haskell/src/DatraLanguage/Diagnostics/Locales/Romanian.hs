@@ -225,6 +225,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "concatenarea nu schimbă sensul acestei expresii"
         ["folosiți ; între operanzi sau eliminați virgula finală"]
+    RedundantAssignment ->
+      LocalizedMessage
+        "atribuirea inferată este redundantă pentru o valoare totală"
+        ["folosiți : în loc de :="]
     AccessRejected rejection -> localizeAccessError rejection
     GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage
@@ -411,7 +415,7 @@ localizeModuleFailure failure =
     ImportedModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage
         "fișierul importat trebuie să producă o federație de identificatori"
-        ["folosiți yield Nume := valoare sau o federație de identificatori"]
+        ["folosiți yield Nume : valoare sau o federație de identificatori"]
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "domeniul modulului necesită o hartă totală de tipuri de identificator simplu" []

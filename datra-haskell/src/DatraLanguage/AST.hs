@@ -24,6 +24,7 @@ module DatraLanguage.AST
   , yieldedIdentifier
   , namedBeginBlock
   , optionalIdentifierExpression
+  , isDeclarationExpression
   , normalizeExpression
   , renderExpression
   , renderOperatorExpression
@@ -286,6 +287,21 @@ optionalIdentifierExpression (OptionalType operation) =
     IdentifierTemplateOperation _ annotation _ -> Just (operation, annotation)
     _ -> Nothing
 optionalIdentifierExpression _ = Nothing
+
+-- | A declaration is an inferred identifier assignment as it may appear in a
+-- block, possibly decorated by declaration modifiers. Both an unassigned
+-- @x : T@ and an explicitly annotated @x : T := value@ remain identifier
+-- expressions for maps and specifications, but are not executable
+-- declarations. Modifier ordering and other semantic restrictions remain the
+-- responsibility of block evaluation.
+isDeclarationExpression :: Expression -> Bool
+isDeclarationExpression (IdentifierOperation _ annotation (Just given)) =
+  annotation == given
+isDeclarationExpression (OptionalType inner) =
+  isDeclarationExpression inner
+isDeclarationExpression (Let inner) = isDeclarationExpression inner
+isDeclarationExpression (Val inner) = isDeclarationExpression inner
+isDeclarationExpression _ = False
 
 -- | Lower map notation and render the unevaluated AST using canonical AST
 -- operator notation.
