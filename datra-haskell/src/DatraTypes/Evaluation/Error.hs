@@ -133,6 +133,7 @@ data InterpretingError
   | ExpectedBuiltinType String
   | OverloadError OverloadFailure
   | AssertionFailed
+  | OperationHasNoEffect
   | IdentifierStringOverlap String
   | InconsistentShadowing String
   | LetBindingCannotShadowConsistentIdentifier String

@@ -614,17 +614,20 @@ interpretExpressionReason
   :: Expression
   -> Either InterpretingError InterpretedValue
 interpretExpressionReason expressionValue = do
+  validateFunctionBodyParts expressionValue
   scope <- defaultImportScope
   evalInScope scope [] expressionValue
 
 -- | Evaluate a closed reconstruction without importing Std or any modules.
 interpretClosedExpression :: Expression -> Either InterpretingError InterpretedValue
 interpretClosedExpression expressionValue = do
+  validateFunctionBodyParts expressionValue
   scope <- rootScopeWithDatra expressionValue []
   evalInScope scope [] expressionValue
 
 interpretWithImports :: [(String, ModuleSource)] -> Expression -> Either InterpretingError InterpretedValue
 interpretWithImports modules expression = do
+  validateEvaluationSources modules expression
   scope <- defaultImportScope
   evalResourceInScopeWith UnrestrictedReduction
     (extendScope [("\0imports", ModuleCatalog modules)] scope)
@@ -657,6 +660,7 @@ interpretWithImportsInModeAndStandardLibraryVisibility
   -> Either InterpretingError InterpretedValue
 interpretWithImportsInModeAndStandardLibraryVisibility
     visibility mode modules expression = do
+  validateEvaluationSources modules expression
   (base, _) <- standardLibraryEnvironment visibility expression
   evalResourceInScopeWith UnrestrictedReduction
     (extendScope
@@ -664,6 +668,48 @@ interpretWithImportsInModeAndStandardLibraryVisibility
       base)
     []
     (expressionForMode mode expression)
+
+-- Validate the written tree before evaluation-mode lowering can erase soft
+-- assertions. A pre-yield part is meaningful precisely when it introduces a
+-- declaration, requests eager evaluation with let, or performs an assertion;
+-- every other value would be computed and discarded. The same rule applies
+-- to explicit begin blocks because they use the same block-part syntax and
+-- scope semantics as function bodies.
+validateFunctionBodyParts :: Expression -> Either InterpretingError ()
+validateFunctionBodyParts expressionValue = do
+  case expressionValue of
+    FunctionBody parts _ -> mapM_ validatePart parts
+    Begin parts _ -> mapM_ validatePart parts
+    _ -> Right ()
+  mapM_ validateFunctionBodyParts (expressionChildren expressionValue)
+  where
+    validatePart part
+      | Just _ <- blockDeclaration part = Right ()
+    validatePart Let {} = Right ()
+    validatePart part
+      | containsActiveAssertion part = Right ()
+    validatePart _ = Left OperationHasNoEffect
+
+    -- Declarative syntax can leave an assertion beneath an application or
+    -- another strict operator. It still runs when that body part is evaluated.
+    -- A nested function body is a closure boundary: its assertions do not run
+    -- merely because the enclosing operation is evaluated.
+    containsActiveAssertion value = case value of
+      Assert {} -> True
+      FunctionBody {} -> False
+      _ -> any containsActiveAssertion (expressionChildren value)
+
+validateEvaluationSources
+  :: [(String, ModuleSource)]
+  -> Expression
+  -> Either InterpretingError ()
+validateEvaluationSources modules expressionValue = do
+  validateFunctionBodyParts expressionValue
+  mapM_ (validateModuleSource . snd) modules
+  where
+    validateModuleSource (ModuleSource _ source dependencies) = do
+      validateFunctionBodyParts source
+      mapM_ (validateModuleSource . snd) dependencies
 
 
 defaultImportScope :: Either InterpretingError Scope

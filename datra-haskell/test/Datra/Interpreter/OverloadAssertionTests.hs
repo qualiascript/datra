@@ -102,7 +102,7 @@ overloadTests =
         "()"
     , programCase "skip coerces to one in numerical operators"
         (unlines
-          [ "assert * + 2 = 3"
+          [ "assert (*) + 2 = 3"
           , "assert 4 - * = 3"
           , "assert (*) * 7 = 7"
           , "assert 7 * (*) = 7"
@@ -251,5 +251,32 @@ functionBodySpellingTests =
         "5"
     , programCase "assertion-only function has an explicit unit yield"
         "f := ({n? : Nat} -> () do assert n of Nat; yield ())\nyield f 4"
+        "()"
+    , programFailureCase "an unyielded begin operation has no effect"
+        "yield begin\n  2 + 3\nyield nothing"
+        (SourceEvaluationFailure OperationHasNoEffect)
+    , programFailureCase "an unyielded function-body operation has no effect"
+        (unlines
+          [ "f := (Nat -> Nat do"
+          , "  2 + 3"
+          , "yield 0)"
+          , "yield ()"
+          ])
+        (SourceEvaluationFailure OperationHasNoEffect)
+    , programCase "an unused value declaration has an effect"
+        (unlines
+          [ "f := (Nat -> Nat do"
+          , "  x : 2 + 3"
+          , "yield 0)"
+          , "yield ()"
+          ])
+        "()"
+    , programCase "an unused let binding has an effect"
+        (unlines
+          [ "f := (Nat -> Nat do"
+          , "  let x : 2 + 3"
+          , "yield 0)"
+          , "yield ()"
+          ])
         "()"
     ]

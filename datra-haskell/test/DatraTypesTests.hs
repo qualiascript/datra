@@ -370,6 +370,12 @@ testDiagnostics = do
   assert "Romanian diagnostics retain source positions and diacritics"
     (renderedRomanian
       == "<test>:1:5: inserția de acces selectează o poziție din afara hărții\n  poziția selectată: 4\n  tipul de ordine al ultimei pagini din hartă: 3")
+  assert "no-effect operations use a typed English diagnostic"
+    (localizeDiagnostic English Types.OperationHasNoEffect
+      == LocalizedMessage "operation has no effect" [])
+  assert "no-effect operations use a typed Romanian diagnostic"
+    (localizeDiagnostic Romanian Types.OperationHasNoEffect
+      == LocalizedMessage "operația nu are efect" [])
   assert "English diagnostics render omega in Datra notation"
     (localizeDiagnostic
         English
