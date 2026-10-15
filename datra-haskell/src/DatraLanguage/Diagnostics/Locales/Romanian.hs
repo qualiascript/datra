@@ -137,6 +137,8 @@ localizeInterpretingError reason =
     OverloadError failure ->
       LocalizedMessage "supraîncărcarea a eșuat" [overloadFailure failure]
     AssertionFailed -> LocalizedMessage "aserțiunea a eșuat" []
+    OperationHasNoEffect ->
+      LocalizedMessage "operația nu are efect" []
     IdentifierStringOverlap name ->
       LocalizedMessage "șirurile identificatorilor se suprapun în domeniul begin" ["identificator: " <> name]
     InconsistentShadowing name ->

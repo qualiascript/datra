@@ -12,6 +12,10 @@ import Datra.Interpreter.ModuleTests (moduleTests)
 import Datra.Interpreter.OverloadAssertionTests (overloadAssertionTests)
 import Datra.Interpreter.ScopeTests (scopeTests)
 import Datra.Interpreter.StandardLibraryTests (standardLibraryTests)
+import Datra.TestSupport
+  ( SourceFailure (SourceEvaluationFailure)
+  , runProgram
+  )
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
@@ -1181,13 +1185,20 @@ testPrograms = do
     , ("a : 2 * 3\nb : 8\nyield a + b", "14")
     , ("a : 2 * 3\nb : 5", "()")
     , ("", "()")
-    , ("2 + 3", "()")
     , ("# comment\n(2 + 3) # trailing comment", "5")
     , ("yield (1; 2)", "(1; 2)")
+    , ("yield 2 + 3", "5")
     , ("(2 + 3)", "5")
     , ("yield begin a : 6 yield a + 5", "11")
     , ("a : x + 1\nlet x : 10\nyield a", "11")
     ]
+  case runProgram "2 + 3" of
+    Left (SourceEvaluationFailure OperationHasNoEffect) -> pure ()
+    Left failure -> fail
+      ("an unyielded operation returned an unexpected failure: " <> show failure)
+    Right value -> fail
+      ("an unyielded operation unexpectedly produced "
+        <> renderInterpretedValue value)
 
 testBeginRejections :: IO ()
 testBeginRejections = do
@@ -1204,12 +1215,15 @@ testBeginRejections = do
     , "begin let x : y + 1; y : 9 yield x"
     , "begin a : a yield a"
     , "begin a : b; b : a yield a"
-    , "begin (a : 1; b : 2) yield a"
-    , "begin {a : 1; b : 2} yield a"
     , "begin let (a : 1; b : a) yield 0"
     , "begin let {a : 1; b : a} yield 0"
     , "begin a : b yield begin b : 2 yield a"
     , "(begin a : 2 yield a), (begin yield a)"
+    ]
+  mapM_ (\source -> expectSourceRejection source source
+    (== OperationHasNoEffect))
+    [ "begin (a : 1; b : 2) yield a"
+    , "begin {a : 1; b : 2} yield a"
     ]
   expectSourceRejection "unused let must be evaluated"
     "begin let bad : 1 + \"bad\" yield 11" (const True)

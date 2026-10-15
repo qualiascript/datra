@@ -139,6 +139,8 @@ localizeInterpretingError reason =
     OverloadError failure ->
       LocalizedMessage "overloading failed" [overloadFailure failure]
     AssertionFailed -> LocalizedMessage "assertion failed" []
+    OperationHasNoEffect ->
+      LocalizedMessage "operation has no effect" []
     IdentifierStringOverlap name ->
       LocalizedMessage "identifier strings overlap in begin scope" ["identifier: " <> name]
     InconsistentShadowing name ->

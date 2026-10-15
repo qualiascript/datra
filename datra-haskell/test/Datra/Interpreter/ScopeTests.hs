@@ -13,6 +13,7 @@ import DatraTypes
       ( InconsistentShadowing
       , FunctionEvaluationFailed
       , LetBindingCannotShadowConsistentIdentifier
+      , OperationHasNoEffect
       , UnknownIdentifier
       )
   , anyTypeValue
@@ -321,13 +322,13 @@ scopeTests =
             (SourceEvaluationFailure (UnknownIdentifier "b"))
         , expressionFailureCase "ordinary map members do not escape into a block"
             "begin (a : 1, b : 2) yield a"
-            (SourceEvaluationFailure (UnknownIdentifier "a"))
+            (SourceEvaluationFailure OperationHasNoEffect)
         , expressionFailureCase "argument-map members do not escape into a block"
             "begin {a : 1; b : 2} yield a"
-            (SourceEvaluationFailure (UnknownIdentifier "a"))
+            (SourceEvaluationFailure OperationHasNoEffect)
         , expressionFailureCase "specified map members do not become block declarations"
             "begin\n ((a : Nat) ~> (a : Int))\nyield a"
-            (SourceEvaluationFailure (UnknownIdentifier "a"))
+            (SourceEvaluationFailure OperationHasNoEffect)
         ]
     ]
 
