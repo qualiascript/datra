@@ -8,6 +8,7 @@ module Evaluation.Arguments
   , argumentPresentations
   , makeArgumentMap
   , makeArgumentMapPreservingSingleton
+  , argumentMapMembers
   , argumentSourceHasConcreteMembers
   , makeDistinctUnion
   , argumentAlternatives
@@ -59,6 +60,11 @@ makeArgumentMapPreservingSingleton originalMembers = do
     members = concatMap flattenFiniteConcatenation originalMembers
     totalPage member =
       hasConcreteSource member || valueIsCoalition member
+
+argumentMapMembers :: InterpretedValue -> Maybe [InterpretedValue]
+argumentMapMembers value = case interpretedForm value of
+  ArgumentMapForm members _ -> Just members
+  _ -> Nothing
 
 argumentSourceHasConcreteMembers :: InterpretedValue -> Bool
 argumentSourceHasConcreteMembers value =

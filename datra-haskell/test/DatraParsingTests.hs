@@ -139,7 +139,7 @@ testGenericAstRepresentation = do
   assert "raw generic introductions retain polarity and optional public names"
     (renderSourceExpression rawIntroduction == "^T?")
   assert "resolved function types reconstruct the declaration anchor"
-    (renderSourceExpression signature == "Args (&_T :: IntLimit) -> _T")
+    (renderSourceExpression signature == "(Args (&_T :: IntLimit)) -> _T")
   assert "function types own binder bounds as immediate AST children"
     (expressionChildren signature
       == [ ref "IntLimit"

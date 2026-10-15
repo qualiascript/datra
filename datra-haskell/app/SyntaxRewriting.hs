@@ -422,8 +422,12 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
                 (IdentifierTemplateOperation rewrittenParts rewrittenAnnotation
                   (Just rewrittenValue))
                 remaining
+    FunctionApplication (Fun signature) body@FunctionBody {}
+      | canReceiveFunctionBody signature ->
+          finish (Fun (FunctionApplication signature body)) trailing
     FunctionApplication function argument
-      | containsBlockStart environment argument -> do
+      | containsBlockStart environment argument
+      , not (containsBlockStart environment function) -> do
           rewrittenFunction <- rewriteStandalone capture environment function
           (rewrittenArgument, remaining) <-
             rewriteWithTail True capture environment argument trailing
@@ -526,10 +530,24 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       (matched, afterSyntax) <-
         matchOrdinarySyntaxWithTail
           False capture environment expressionValue remaining
-      rewrittenChildren <- rewriteChildren capture environment matched
-      let normalizedChildren = normalizeSyntaxExpansion rewrittenChildren
-      matchOrdinarySyntaxWithTail
-        True capture environment normalizedChildren afterSyntax
+      case matched of
+        Conditional condition yes no
+          | allowNestedContinuation -> do
+              rewrittenCondition <-
+                rewriteStandalone capture environment condition
+              rewrittenYes <- rewriteStandalone capture environment yes
+              (rewrittenNo, afterConditional) <-
+                rewriteWithTail True capture environment no afterSyntax
+              pure
+                ( normalizeSyntaxExpansion
+                    (Conditional rewrittenCondition rewrittenYes rewrittenNo)
+                , afterConditional
+                )
+        _ -> do
+          rewrittenChildren <- rewriteChildren capture environment matched
+          let normalizedChildren = normalizeSyntaxExpansion rewrittenChildren
+          matchOrdinarySyntaxWithTail
+            True capture environment normalizedChildren afterSyntax
     boundaryValue (SyntaxBoundary inner) = inner
     boundaryValue inner = inner
 
@@ -876,9 +894,11 @@ matchOrdinarySyntaxWithTail includeConcatenation
           firstRule (rule : earlier) remaining
       | otherwise =
           firstCandidate rule
-            (syntaxProjectionCandidates
-              (includeConcatenation || not (earlierPrefixPending earlier))
-              (syntaxTemplate (rewriteRule rule)) value) >>= \case
+            ( literalBoundaryCandidates rule
+                <> syntaxProjectionCandidates
+                  (includeConcatenation || not (earlierPrefixPending earlier))
+                  (syntaxTemplate (rewriteRule rule)) value
+            ) >>= \case
             Just rewritten -> Right (rewritten, trailing)
             Nothing -> firstRule (rule : earlier) remaining
     firstCandidate _ [] = Right Nothing
@@ -893,6 +913,21 @@ matchOrdinarySyntaxWithTail includeConcatenation
     earlierPrefixPending = any (\earlierRule ->
       not (null (rewriteRuleLiteralPrefix earlierRule))
         && ruleLiteralsPresent earlierRule facts)
+    literalBoundaryCandidates rule = case rewriteRuleLiteralPrefix rule of
+      first : _
+        | rewriteRuleBlockShape rule == Nothing
+        , literalOccurrences first value > 1 ->
+            maybeToList (literalBoundaryCandidate
+              (syntaxTemplate (rewriteRule rule)) value)
+      _ -> []
+    literalOccurrences :: String -> Expression -> Int
+    literalOccurrences selected expressionValue =
+      (case expressionValue of
+        IdentifierReference (IdentifierString name)
+          | name == selected -> 1
+        _ -> 0)
+        + sum (map (literalOccurrences selected)
+          (expressionChildren expressionValue))
 
 newtype ExpressionFacts = ExpressionFacts
   { expressionRenderings :: Set.Set String
@@ -1024,11 +1059,25 @@ matchEmbeddedBlockWith capture environment =
         Nothing -> case value of
           FunctionTypeExpression generics domain codomain ->
             matchWithResult wrapResult codomain trailing >>= \case
+              Just (FunctionApplication rewrittenCodomain body@FunctionBody {}, remaining) ->
+                Right (Just
+                  ( FunctionApplication
+                      (FunctionTypeExpression generics domain rewrittenCodomain)
+                      body
+                  , remaining
+                  ))
               Just (rewritten, remaining) -> Right (Just
                 (FunctionTypeExpression generics domain rewritten, remaining))
               Nothing -> Right Nothing
           SyntaxType templates signature ->
             matchWithResult wrapResult signature trailing >>= \case
+              Just (FunctionApplication rewrittenSignature body@FunctionBody {}, remaining) ->
+                Right (Just
+                  ( FunctionApplication
+                      (SyntaxType templates rewrittenSignature)
+                      body
+                  , remaining
+                  ))
               Just (rewritten, remaining) -> Right (Just
                 ( SyntaxType templates rewritten
                 , remaining
@@ -1101,10 +1150,13 @@ matchEmbeddedBlockWith capture environment =
                 case match candidate of
                   Left NoMatchingSyntaxTemplate -> Right Nothing
                   Left failure -> Left (SyntaxRewriteMatchFailure failure)
-                  Right expanded -> Right (Just
-                    ( attachAdjacentBody before expanded
-                    , afterScoped
-                    ))
+                  Right expanded -> do
+                    direct <- directSyntaxFunctionExpansion
+                      environment (Just rule) expanded
+                    Right (Just
+                      ( attachAdjacentBody before direct
+                      , afterScoped
+                      ))
             Just (block, nested, rawResult, afterBlock) -> do
               (result, remaining) <-
                 rewriteWithTail True capture nested
@@ -1126,15 +1178,20 @@ matchEmbeddedBlockWith capture environment =
                     Left NoMatchingSyntaxTemplate -> Right Nothing
                     Left failure -> Left (SyntaxRewriteMatchFailure failure)
                     Right expanded -> do
+                      direct <- directSyntaxFunctionExpansion
+                        nested (Just rule) expanded
                       (rewritten, fallbackRemaining) <-
-                        rewriteWithTail True capture nested expanded afterBlock
+                        rewriteWithTail True capture nested direct afterBlock
                       Right (Just
                         ( attachAdjacentBody before rewritten
                         , fallbackRemaining
                         ))
                 Left failure -> Left (SyntaxRewriteMatchFailure failure)
-                Right expanded -> Right (Just
-                  (attachAdjacentBody before expanded, remaining))
+                Right expanded -> do
+                  direct <- directSyntaxFunctionExpansion
+                    nested (Just rule) expanded
+                  Right (Just
+                    (attachAdjacentBody before direct, remaining))
 
     adjacentScopedExpression afterPrefix trailing = case afterPrefix of
       [candidateScope] -> do
@@ -1417,6 +1474,33 @@ splitAtLiteral literal value =
         (before, suffix) <- splitAtLiteral literal inner
         pure (Let <$> before, suffix)
       _ -> Nothing
+
+literalBoundaryCandidate
+  :: SyntaxTemplate Expression
+  -> Expression
+  -> Maybe Expression
+literalBoundaryCandidate (SyntaxTemplate pieces) value =
+  case pieces of
+    SyntaxLiteral first : remaining -> do
+      (Nothing, suffix) <- splitAtLiteral first value
+      continue [literalExpression first] remaining (applicationFrom suffix)
+    _ -> Nothing
+  where
+    continue built [] _ = Just (applicationFrom built)
+    continue built [SyntaxHole _] current =
+      Just (applicationFrom (built <> [current]))
+    continue built
+        (SyntaxHole _ : SyntaxLiteral delimiter : remaining) current = do
+      (Just captured, suffix) <- splitAtLiteral delimiter current
+      continue
+        (built <> [captured, literalExpression delimiter])
+        remaining
+        (applicationFrom suffix)
+    continue built (SyntaxLiteral literal : remaining) current = do
+      (Nothing, suffix) <- splitAtLiteral literal current
+      continue (built <> [literalExpression literal]) remaining
+        (applicationFrom suffix)
+    continue _ _ _ = Nothing
 
 advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
 advanceScope environment entry = environment

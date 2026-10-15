@@ -150,6 +150,7 @@ module DatraTypes
   , isEmptyMap
   , makeArgumentMap
   , makeArgumentMapPreservingSingleton
+  , argumentMapMembers
   , argumentRows
   , overloadArgumentRows
   , functionArgumentValue
@@ -282,7 +283,8 @@ import Evaluation.FunctionArguments
   , selectFunctionCandidate
   )
 import Evaluation.Arguments
-  ( argumentPresentations
+  ( argumentMapMembers
+  , argumentPresentations
   , argumentRows
   , functionArgumentValue
   , makeArgumentMap

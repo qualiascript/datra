@@ -228,13 +228,21 @@ collectDependency mode depth reserved active dependency =
               occupied = reserved
                 <> [text | (_, IdentifierString text, _) <- collected]
                 <> [nameText name]
+              key = dependencyKey dependency
+          put (collected <>
+            [(key, name, dependencyExpression dependency)])
           value <- rewrite mode (depth + 1) occupied
-            ((dependencyKey dependency, name) : active)
+            ((key, name) : active)
             (dependencyResolver dependency)
             []
             (dependencyExpression dependency)
           transitive <- get
-          put (transitive <> [(dependencyKey dependency, name, value)])
+          put
+            [ if existingKey == key && existingName == name
+                then (existingKey, existingName, value)
+                else entry
+            | entry@(existingKey, existingName, _) <- transitive
+            ]
           pure (IdentifierReference name)
 
 contextualMarker :: String -> String

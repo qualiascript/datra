@@ -91,6 +91,7 @@ import MapOperators.AccessOperator
   ( AccessError
       ( AccessPositionOutOfBounds )
   )
+import ModuleLoading (loadSourceImports)
 import Numeric.Natural (Natural)
 import SyntaxDefinitions
   ( SyntaxHoleKind (..)
@@ -343,7 +344,7 @@ ordinalCall :: String -> [Expression] -> Expression
 ordinalCall name arguments =
   FunctionApplication
     (ScopeAccess
-      (hostReference "ordinal")
+      (identifierReference "Ordinals")
       (identifierReference name))
     (AtlasMap arguments)
 
@@ -497,6 +498,31 @@ expectValue label expressionValue check =
     Left rejection ->
       fail (label <> ": unexpected rejection: " <> show rejection)
     Right value -> check value
+
+expectValueWithImports
+  :: [(String, ModuleSource)]
+  -> String
+  -> Expression
+  -> (InterpretedValue -> IO ())
+  -> IO ()
+expectValueWithImports imports label expressionValue check =
+  case interpretWithImports imports (withOrdinalLibrary expressionValue) of
+    Left rejection ->
+      fail (label <> ": unexpected rejection: " <> show rejection)
+    Right value -> check value
+
+requireOrdinalLibraryImports :: IO [(String, ModuleSource)]
+requireOrdinalLibraryImports = do
+  loaded <- loadSourceImports
+    "test/fixtures/modules/main.datra"
+    "import \"ordinals\" do yield ()"
+  case loaded of
+    Left failure -> fail
+      ("could not load the ordinal library: " <> show failure)
+    Right (imports, _) -> pure imports
+
+withOrdinalLibrary :: Expression -> Expression
+withOrdinalLibrary = Import ["ordinals"] . FunctionBody []
 
 expectSourceValue :: String -> String -> (InterpretedValue -> IO ()) -> IO ()
 expectSourceValue label source check =
@@ -1778,17 +1804,18 @@ testStringTemplates = do
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do
-  expectValue
+  ordinalImports <- requireOrdinalLibraryImports
+  expectValueWithImports ordinalImports
       "zero ordinal exponent"
       (ordinalExponent (...) (natural 0)) $ \value ->
     assert "an ordinal to zero evaluates to one"
       (renderInterpretedValue value == "1")
-  expectValue
+  expectValueWithImports ordinalImports
       "second ordinal exponent"
       (ordinalExponent (...) (natural 2)) $ \value ->
     assert "ordinal exponentiation returns an explicit ordinal"
       (renderInterpretedValue value == "... ^ 2 + 0")
-  expectValue
+  expectValueWithImports ordinalImports
       "ordinal multiplication order"
       (ordinalProduct
         (ordinalSum (...) (natural 1))
@@ -2347,6 +2374,7 @@ testRanges = do
 
 testCanonicalResults :: IO ()
 testCanonicalResults = do
+  ordinalImports <- requireOrdinalLibraryImports
   expectValue
       "adjacent ascending ranges"
       ((<.>)
@@ -2363,7 +2391,7 @@ testCanonicalResults = do
       (renderInterpretedValue value == "9..2")
   let levelTwoFormulation =
         ordinalExponent (...) (natural 2)
-  expectValue
+  expectValueWithImports ordinalImports
       "adjacent cross-rank ranges"
       ((<.>)
         ((<..>) (natural 2) (natural 5))
@@ -2394,6 +2422,7 @@ testCanonicalResults = do
 
 testRendering :: IO ()
 testRendering = do
+  ordinalImports <- requireOrdinalLibraryImports
   expectValue
       "root map rendering modes"
       (AtlasMap [natural 1, natural 2]) $ \value ->
@@ -2414,17 +2443,17 @@ testRendering = do
   expectValue "formulation Ellipsis" (...) $ \value ->
     assert "literal Ellipsis retains formulation syntax"
       (renderInterpretedValue value == "...")
-  expectValue
+  expectValueWithImports ordinalImports
       "explicit omega"
       (ordinalSum (...) (natural 0)) $ \value ->
     assert "explicit omega is distinguished from the formulation"
       (renderInterpretedValue value == "... + 0")
-  expectValue
+  expectValueWithImports ordinalImports
       "second explicit ordinal power"
       (ordinalExponent (...) (natural 2)) $ \value ->
     assert "higher ordinal powers render canonically"
       (renderInterpretedValue value == "... ^ 2 + 0")
-  expectValue
+  expectValueWithImports ordinalImports
       "zero multiplication"
       (ordinalSum
         (ordinalProduct (...) (natural 0))
@@ -2756,6 +2785,7 @@ testAtlasMapFederations = do
 
 testAccess :: IO ()
 testAccess = do
+  ordinalImports <- requireOrdinalLibraryImports
   let threeValues =
         MapSequence [natural 1, natural 2, natural 3]
       fiveValues = AtlasMap (map natural [0 .. 4])
@@ -2769,6 +2799,14 @@ testAccess = do
             ( interpretedValueKind value == expectedKind
               && renderInterpretedValue value == expected
             )
+      expectOrdinalRangeAccess
+          label expectedKind sourceValue selectionValue expected =
+        expectValueWithImports ordinalImports label
+          ((<@>) sourceValue selectionValue) $ \value ->
+            assert label
+              ( interpretedValueKind value == expectedKind
+                && renderInterpretedValue value == expected
+              )
   expectValue
       "access projects one specification fiber"
       ((<@>) sequenceSpecification (natural 0)) $ \value ->
@@ -3090,13 +3128,13 @@ testAccess = do
     ((<..>) (natural 2) (...))
     ((<..>) (natural 3) (...))
     "5..(...)"
-  expectRangeAccess
+  expectOrdinalRangeAccess
     "open transfinite range access computes its limit boundary"
     RangeValueKind
     ((..+) (ordinalSum (...) (natural 2)))
     ((..+) (natural 3))
     "(... + 5)..(... * 2 + 0)"
-  expectRangeAccess
+  expectOrdinalRangeAccess
     "selection can begin after an infinite source component"
     RangeValueKind
     ((<.>)
@@ -3104,7 +3142,7 @@ testAccess = do
       ((..+) (ordinalSum (...) (natural 10))))
     ((..+) (...))
     "(... + 10).."
-  expectRangeAccess
+  expectOrdinalRangeAccess
     "descending transfinite selection preserves finite-tail arithmetic"
     RangeValueKind
     ((<.>)
@@ -3662,6 +3700,7 @@ testSpecification = do
 
 testIdentifiers :: IO ()
 testIdentifiers = do
+  ordinalImports <- requireOrdinalLibraryImports
   expectSourceValue
       "dependent identifier matching uses the supplied specification"
       "(\"abc2..9\" : range 1 to 30) of (\"abc%(it)\" : range 0 up)" $
@@ -3843,9 +3882,12 @@ testIdentifiers = do
       (renderInterpretedValue value == "true")
   expectValue
       "unit assignment"
-      (assignment "Value" (AtlasMap []) (AtlasMap [])) $ \value ->
-    assert "a unit assignment also canonicalizes to its identifier string"
-      (renderInterpretedValue value == "$Value")
+      (assignment "Value" (AtlasMap []) (AtlasMap [])) $ \value -> do
+    let rendered = renderInterpretedValue value
+    assert
+      ("a unit assignment also canonicalizes to its identifier string; got "
+        <> rendered)
+      (rendered == "$Value")
   expectValue "simple identifier type" xNatural $ \value ->
     assert "identifier types retain their two-position map view"
       ( interpretedValueKind value == DependentIdentifierTypeValueKind
@@ -3895,7 +3937,7 @@ testIdentifiers = do
     assert "unary minus shares identifier coercion"
       (renderInterpretedValue value == "true")
   let omegaSquared = ordinalExponent (...) (natural 2)
-  expectValue
+  expectValueWithImports ordinalImports
       "transfinite identifier addition"
       (AST.equal
         (ordinalSum
@@ -3982,11 +4024,13 @@ testIdentifiers = do
       )
   expectValue
       "binary assignment canonicalization"
-      (assignment "x" (natural 5) (natural 5)) $ \value ->
-    assert "equal total type and value use canonical identifier syntax"
-      ( interpretedValueKind value == SpecificationValueKind
-        && renderInterpretedValue value == "x : 5"
-      )
+      (assignment "x" (natural 5) (natural 5)) $ \value -> do
+    let kind = interpretedValueKind value
+        rendered = renderInterpretedValue value
+    assert
+      ("equal total type and value use canonical identifier syntax; got "
+        <> show kind <> " rendered as " <> rendered)
+      (kind == SpecificationValueKind && rendered == "x : 5")
   expectValue
       "binary assignment value access"
       ((<@>)
@@ -4099,6 +4143,7 @@ testIdentifiers = do
 
 testTypedRejections :: IO ()
 testTypedRejections = do
+  ordinalImports <- requireOrdinalLibraryImports
   assert "non-ASCII programmatic string literals are rejected"
     (case interpretExpressionReason (AsciiStringLiteral "λ") of
       Left (InvalidAsciiStringCharacter 'λ') -> True
@@ -4116,10 +4161,10 @@ testTypedRejections = do
             LeftOperand DependentIdentifierTypeValueKind) -> True
       _ -> False)
   assert "computed non-natural values are rejected as exponents"
-    (case interpretExpressionReason
-        ((AST.^)
+    (case interpretWithImports ordinalImports
+        (withOrdinalLibrary ((AST.^)
           (natural 2)
-          (ordinalSum (...) (natural 0))) of
+          (ordinalSum (...) (natural 0)))) of
       Left (ExpectedNaturalExponent ExplicitOrdinalValueKind) -> True
       _ -> False)
   expectValue

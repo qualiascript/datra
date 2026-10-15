@@ -994,14 +994,19 @@ withCanonicalApplication
   -> InterpretedValue
   -> InterpretedValue
   -> InterpretedValue
-withCanonicalApplication function argument value = value
-  { interpretedSemantics = PresentedSemantics
-      []
-      (ApplicationPresentation
-        (presentationForSemantics (interpretedSemantics function))
-        (presentationForSemantics (interpretedSemantics argument)))
-      (interpretedSemantics value)
-  }
+withCanonicalApplication function argument value =
+  case ( interpretedCanonicalPresentation function
+       , interpretedCanonicalPresentation argument
+       ) of
+    (Nothing, Nothing) -> value
+    _ -> value
+      { interpretedSemantics = PresentedSemantics
+          []
+          (ApplicationPresentation
+            (presentationForSemantics (interpretedSemantics function))
+            (presentationForSemantics (interpretedSemantics argument)))
+          (interpretedSemantics value)
+      }
 
 withoutCanonicalPresentation :: InterpretedValue -> InterpretedValue
 withoutCanonicalPresentation value = value

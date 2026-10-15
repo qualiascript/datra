@@ -432,6 +432,10 @@ prettyAssignment
   -> CanonicalResult
   -> CanonicalResult
   -> Doc annotation
+prettyAssignment identifierString
+    (CanonicalMap 0 [])
+    (CanonicalMap 0 []) =
+  pretty (renderAsciiStringLiteral identifierString)
 prettyAssignment identifierString typeAnnotation givenValue =
   if typeAnnotation == givenValue
     then

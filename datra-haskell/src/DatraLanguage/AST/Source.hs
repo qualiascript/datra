@@ -70,8 +70,8 @@ source context expression =
       <> " " <> source 0 body
     SyntaxTypeValue templates signature -> wrapped 1
       (source 2 templates <> " % " <> source 0 signature)
-    FunctionTypeValue _ input output -> wrapped 1
-      (source 2 input <> " -> " <> source 1 output)
+    FunctionTypeValue _ input output -> wrapped 11
+      (source 12 input <> " -> " <> functionTypeOutput output)
     FunctionApplicationValue
         (IdentifierReferenceValue (IdentifierString "_this"))
         argument
@@ -197,9 +197,12 @@ source context expression =
     multiplicand SkipValue = "(*)"
     multiplicand operand = source 9 operand
     applicationInput SkipValue = "(*)"
+    applicationInput operand@FunctionBodyValue {} = source 0 operand
     applicationInput operand
       | Just _ <- valueLookupNames operand = "(" <> source 0 operand <> ")"
     applicationInput operand = source 12 operand
+    functionTypeOutput output@FunctionTypeValue {} = source 11 output
+    functionTypeOutput output = source 12 output
     bounded keyword start end = keyword <> " " <> show start <> " to " <> show end
     open keyword start direction = keyword <> " " <> show start <> " " <> direction
     binderName name optional =

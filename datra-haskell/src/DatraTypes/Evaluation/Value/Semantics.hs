@@ -259,6 +259,14 @@ stripPresentedDependencies
   -> ValueSemantics
 stripPresentedDependencies expired semantics =
   case semantics of
+    PresentedSemantics
+        dependencies presentation@(ApplicationPresentation _ _) underlying
+      | any (`elem` expired) dependencies -> recur underlying
+      | otherwise ->
+          let stripped = stripPresentationDependencies expired presentation
+          in if presentationRetainsName stripped
+            then PresentedSemantics dependencies stripped (recur underlying)
+            else recur underlying
     PresentedSemantics dependencies presentation underlying
       | any (`elem` expired)
           (dependencies <> presentationDependencies presentation) ->
@@ -271,6 +279,17 @@ stripPresentedDependencies expired semantics =
     _ -> mapValueSemanticsChildren recur semantics
   where
     recur = stripPresentedDependencies expired
+
+presentationRetainsName :: ValuePresentation -> Bool
+presentationRetainsName presentation =
+  case presentation of
+    AtomicPresentation _ -> True
+    SemanticPresentation semantics ->
+      case canonicalPresentation semantics of
+        Just _ -> True
+        Nothing -> False
+    ApplicationPresentation function argument ->
+      presentationRetainsName function || presentationRetainsName argument
 
 canonicalResultWith :: Bool -> ValueSemantics -> CanonicalResult
 canonicalResultWith retainPresentation semantics =

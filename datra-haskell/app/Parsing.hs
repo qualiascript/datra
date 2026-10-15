@@ -1152,7 +1152,11 @@ inferredFunctionSignature signature =
     (IdentifierReference (IdentifierString "Any")))
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
-arrowExpressionWith = arrowExpressionWithLayer eitherExpressionWith
+arrowExpressionWith operand =
+  eitherExpressionWith (tightArrowExpressionWith operand)
+
+tightArrowExpressionWith :: Parser Expression -> Parser Expression
+tightArrowExpressionWith = arrowExpressionWithLayer id
 
 arrowExpressionWithLayer
   :: (Parser Expression -> Parser Expression)
@@ -1310,10 +1314,10 @@ identifierValueExpression = do
   signature <- do
     rawInput <- makeExprParser rangeExpression identifierValueOperatorTable
     input <- syntaxTypeSuffix rawInput
-      (arrowExpressionWith
+      (tightArrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
     output <- optional
-      (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
+      (continuedOperator AST.FunctionTypeOperator *> tightArrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
     pure (maybe input (FunctionType input) output)
   pure signature
@@ -1322,10 +1326,10 @@ identifierValueExpression = do
 -- Type annotations keep the narrower grammar so @name : T | U@ continues to
 -- mean a federation whose first member is a named type.
 assignedValueExpression :: Parser Expression
-assignedValueExpression = do
-  arrowExpressionWithLayer
-    assignmentEitherExpressionWith
-    (makeExprParser rangeExpression identifierValueOperatorTable)
+assignedValueExpression =
+  assignmentEitherExpressionWith
+    (tightArrowExpressionWith
+      (makeExprParser rangeExpression identifierValueOperatorTable))
 
 -- Assignment has lower precedence than federation, except that a following
 -- identifier declaration starts the next federation member. Thus

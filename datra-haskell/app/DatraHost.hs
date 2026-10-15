@@ -224,15 +224,17 @@ namedMembers
   :: InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 namedMembers value =
-  case simpleIdentifierName value of
-    Just name -> Right [(name, value)]
-    Nothing -> do
-      count <- maybe invalid Right
-        (naturalAtOrdinal
-          (interpretedMapFinalOrderType (interpretedMap value)))
-      members <- traverse memberAt
-        (if count == 0 then [] else [0 .. count - 1])
-      traverse field members
+  case argumentMapMembers value of
+    Just members -> traverse field members
+    Nothing -> case simpleIdentifierName value of
+      Just name -> Right [(name, value)]
+      Nothing -> do
+        count <- maybe invalid Right
+          (naturalAtOrdinal
+            (interpretedMapFinalOrderType (interpretedMap value)))
+        members <- traverse memberAt
+          (if count == 0 then [] else [0 .. count - 1])
+        traverse field members
   where
     invalid = Left (ModuleEvaluationFailed
       ImportedModuleRequiresNamedExports)

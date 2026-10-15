@@ -60,7 +60,8 @@ import DatraHost
   , publicValue
   )
 import DatraLanguage.Identifier
-  ( public
+  ( isPrivateIdentifier
+  , public
   , requiresShadowingConsistency
   )
 import IdentifierValueType (isIdentifierValue)
@@ -1005,7 +1006,10 @@ rootScopeWithDatra
 rootScopeWithDatra salt bindings = do
   host <- datraHostValue
   pure (rootScope salt
-    ((datraHostIdentifier, EvaluatedBinding host) : bindings))
+    ( (datraHostIdentifier, EvaluatedBinding
+        (withCanonicalReference [] datraHostIdentifier host))
+    : bindings
+    ))
 
 scopeWithBindings :: ScopeBindings -> Scope -> Scope
 scopeWithBindings bindings scope = scope { scopeBindings = bindings }
@@ -1772,8 +1776,25 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       source <- interpret operand
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
-          [actual] -> enterOpenedScope expressionValue actual
-            [(operand, actual)] body
+          [actual] -> case body of
+            IdentifierReference (IdentifierString name)
+              | isPrivateIdentifier name -> Left (UnknownIdentifier name)
+              | otherwise -> do
+                  selected <- namedAccessValue actual name
+                  validateOpenedBinding actual (name, selected)
+                  payload <- accessValues selected (naturalValue 1)
+                  if hasTrailingIdentifierMarker modularMarker selected
+                    then do
+                      let dependencies = maybe [] fst
+                            (interpretedCanonicalPresentation actual)
+                      pure (withCanonicalNamedAccess
+                        dependencies
+                        (interpretedCanonicalResult actual)
+                        name
+                        payload)
+                    else pure payload
+            _ -> enterOpenedScope expressionValue actual
+              [(operand, actual)] body
           _ -> Right neverValue
     MapAccess
         thisValue
@@ -1862,7 +1883,10 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (Just givenValueExpression)
       | typeAnnotationExpression == givenValueExpression = do
           givenValue <- interpret givenValueExpression
-          pure (inferredIdentifierAssignmentValue identifierString givenValue)
+          if interpretedValueHasTotalMap givenValue
+            then assignIdentifierValues identifierString givenValue givenValue
+            else pure
+              (inferredIdentifierAssignmentValue identifierString givenValue)
     interpretIdentifierOperation
         identifierString typeAnnotationExpression maybeGivenValueExpression = do
       typeAnnotation <- interpret typeAnnotationExpression
@@ -3552,21 +3576,15 @@ attachFunctionBody signatureValue body =
   where
     attach signature = case body of
       EvaluatedSyntaxFunctionBody {} -> signature
-        { functionSource = Just (functionBodySource body)
+        { functionSource = Just (attachedSource signature)
         , functionBody = Just body
         }
-      EvaluatedRuntimeFunctionBody _ implementation -> signature
-        { functionSource = Just (functionBodySource body)
+      EvaluatedRuntimeFunctionBody {} -> signature
+        { functionSource = Just (attachedSource signature)
         , functionBody = Just body
-        , functionPrepare = Just (\argument -> do
-            preparedCall <- case functionPrepare implementation of
-              Just prepare -> prepare argument
-              Nothing -> pure
-                (PreparedFunctionArgument argument argument [])
-            preparedCall <$ validateFunctionInput
-              (functionSuppliedArgument preparedCall)
-              (functionDomain signature))
         }
+    attachedSource signature =
+      functionSignatureSource signature <> " " <> functionBodySource body
 
 attachedFunctionInvocation
   :: EvaluatedFunction
@@ -3699,8 +3717,9 @@ evaluateImport reduction captured resolving sourceExpression paths body =
             input anyTypeValue Nothing Nothing Nothing Nothing
             (renderSourceExpression sourceExpression)
             (Just prepare) (Just invoke) False)
-      fst <$> applyFunction
+      (applied, _) <- applyFunction
         (scopeActivation captured) reduction callable domain
+      pure (withoutCanonicalPresentation applied)
     _ -> Left (FunctionEvaluationFailed ExpectedFunctionType)
   where
     load requested = do
@@ -3928,7 +3947,9 @@ moduleBaseScope base
     (True, _) -> do
       host <- datraHostValue
       Right (extendScope
-        [(datraHostIdentifier, EvaluatedBinding host)] seeded)
+        [ (datraHostIdentifier, EvaluatedBinding
+            (withCanonicalReference [] datraHostIdentifier host))
+        ] seeded)
     _ -> Right seeded
 
 -- Resource-level scope access and import wrap the declarations which produce
@@ -4015,7 +4036,9 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         unscopedImplementation <- maybe
           (pure (IdentifierReference (IdentifierString name)))
           parseRuleExpression
-          (functionSource function)
+          ( functionBodySource <$> functionBody function
+              <|> functionSource function
+          )
         let implementation = InModule scopeName unscopedImplementation
         pure
           [ SyntaxRule
@@ -4210,26 +4233,24 @@ closureResolver scope = resolver
             }
     resolve (name : fields) = do
       binding <- lookupScope name scope
-      if modularBinding binding
-        then Nothing
-        else case (fields, bindingDefinition binding) of
-          ([], Just (lexical, _, expressionValue)) ->
-            Just (Dependency (bindingKey name expressionValue)
-              (originName name) expressionValue (closureResolver lexical))
-          _ -> do
-            value <- either (const Nothing) Just
-              (resolveIdentifier scope [] name)
-            selected <- either (const Nothing) Just
-              (foldM namedAccessValue value fields)
-            expressionValue <- either (const Nothing) Just
-              (valueExpression selected)
-            pure (Dependency
-              (intercalate "." (name : fields) <> ":" <> show expressionValue)
-              (intercalate "." (originName name : fields))
-              expressionValue emptyResolver)
-    modularBinding (NamedBinding _ (QualifiedBinding _ _)) = True
-    modularBinding (ShadowingConsistentBinding target) = modularBinding target
-    modularBinding _ = False
+      case (fields, bindingDefinition binding) of
+        ([], Just (lexical, _, expressionValue)) ->
+          Just (Dependency (bindingKey name expressionValue)
+            (originName name) expressionValue (closureResolver lexical))
+        _ -> do
+          value <- either (const Nothing) Just
+            (resolveIdentifier scope [] name)
+          selected <- either (const Nothing) Just
+            (foldM namedAccessValue value fields)
+          if hasTrailingIdentifierMarker modularMarker selected
+            then Nothing
+            else do
+              expressionValue <- either (const Nothing) Just
+                (valueExpression selected)
+              pure (Dependency
+                (intercalate "." (name : fields) <> ":" <> show expressionValue)
+                (intercalate "." (originName name : fields))
+                expressionValue emptyResolver)
     originName name
       | Just original <- lookup name
           (concat
