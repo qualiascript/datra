@@ -68,6 +68,17 @@ functionTests =
               , "yield ()"
               ])
             "()"
+        , programCase "a generic introduction is owned by an inferred function"
+            (unlines
+              [ "identity := ({value? : &T? :: Any} do yield value)"
+              , "yield identity (Nat; 5)"
+              ])
+            "5"
+        , programFailureCase
+            "a generic introduction outside a function type is rejected"
+            "yield (&T?) 3"
+            (SourceEvaluationFailure
+              (GenericIntroductionOutsideFunctionType "&"))
         , programCase "generic function types compile their prepared prefix"
             ( "assert ((x : T; y : ^T) -> Any) of "
                 <> "((T : Any; x : Any; y : Any) -> Any)"

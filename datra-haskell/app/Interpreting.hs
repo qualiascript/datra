@@ -792,7 +792,8 @@ defaultModuleSource =
 canonicalStringCodec :: CanonicalStringCodec
 canonicalStringCodec =
   CanonicalStringCodec
-    { renderCanonicalString = renderInterpretedValue
+    { renderCanonicalString =
+        renderInterpretedValue . withoutCanonicalPresentation
     , decodeCanonicalString = canonicalStringCandidates
     }
 
