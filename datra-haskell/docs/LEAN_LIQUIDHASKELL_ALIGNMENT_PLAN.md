@@ -479,7 +479,7 @@ verification rather than relying on cached results.
 
 ## Deliverables
 
-1. A modular executable Lean layer mirroring `DatraCore` foundations.
+1. A componentized executable Lean layer mirroring `DatraCore` foundations.
 2. A preserved semantic layer containing the abstract category theory.
 3. Interpretation/equivalence theorems connecting both layers.
 4. A formal normalized/Karoubi Atlas category matching Haskell identity and

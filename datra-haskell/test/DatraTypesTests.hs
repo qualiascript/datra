@@ -443,13 +443,13 @@ testDiagnostics = do
           Types.ImportedModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
           "imported file must yield an identifier-binder federation"
-          ["use yield Name := value or a federation of identifier binders"]
+          ["use yield Name : value or a federation of identifier binders"]
       && localizeDiagnostic Romanian
         (Types.ModuleEvaluationFailed
           Types.ImportedModuleRequiresIdentifierBinderFederation)
         == LocalizedMessage
           "fișierul importat trebuie să producă o federație de identificatori"
-          ["folosiți yield Nume := valoare sau o federație de identificatori"]
+          ["folosiți yield Nume : valoare sau o federație de identificatori"]
       && localizeDiagnostic English
         (Types.ModuleEvaluationFailed
           Types.ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)

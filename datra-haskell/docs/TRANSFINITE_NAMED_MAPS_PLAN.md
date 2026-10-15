@@ -3,7 +3,7 @@
 ## Goal
 
 Allow named maps with transfinite final order types to participate in
-`public`, `modular`, module exports, and named scope lookup without converting
+`public`, canonical-value declarations, module exports, and named scope lookup without converting
 their order type to a `Natural`, enumerating the entire map, or hanging while
 trying to prove that an infinite traversal is complete.
 
@@ -34,8 +34,8 @@ That type commits the operation to all of the following:
 The main consumers inherit that finite assumption:
 
 - `publicValue` filters the completed list and constructs a new finite map.
-- `modularValue` checks every member for an existing marker, marks every
-  member, and constructs a new finite map.
+- declaration-map construction attaches canonical-value metadata to the
+  individually marked members while constructing a new finite map.
 - module syntax discovery enumerates every exported member.
 - scope construction turns every exported member into a finite binding list.
 - module export-name reporting returns a complete list of names.
@@ -162,37 +162,27 @@ compose a `NamedMapView` at the same time as its ordinary `InterpretedMap`.
 - Add law tests ensuring that a retained named view agrees with ordinary map
   access at every tested ordinal.
 
-## `modular`
+## Canonical-value declarations
 
-`modular` is a one-to-one transformation of named members. It can preserve the
-source order type and lazily add the marker when a member is requested:
+`val` is declaration metadata, not a transformation over a completed map.
+When a declaration scope constructs a named member, its retained declaration
+metadata determines whether that one identifier receives the
+`$CanonicalValue` marker:
 
 ```text
-position p -> source member p -> mark that identifier -> return member p
-name n     -> source member n -> mark that identifier -> return member n
+position p -> source declaration p -> construct and conditionally mark member p
+name n     -> source declaration n -> construct and conditionally mark member n
 ```
 
-Nested named maps must receive the same transformation through map
-construction, without changing the language meaning of `modular` itself.
-
-One existing rule needs an explicit transfinite design decision:
-`ModularIdentifierAlreadyMarked` currently requires proving globally that no
-member is already marked before returning a result. Such a proof cannot be
-obtained by exhaustively traversing an arbitrary infinite map.
-
-Preserving that rule requires one of these capabilities from the producer:
-
-1. a construction-time invariant proving that the entire view is unmarked; or
-2. a summary stating whether any member is already marked.
-
-Do not silently change the error to an access-time failure and do not make
-marking idempotent as part of this refactor. If neither proof capability is
-available, `modular` must reject the map as lacking the required named-map
-evidence.
+The named-map view must therefore retain the canonical-value bit beside each
+member's name. Concatenation, selection, scope snapshots, and lazy ordinal
+access must preserve that bit without inspecting or transforming neighboring
+members. There is no global already-marked proof: invalid duplicate `val`
+syntax is rejected when the declaration is formed.
 
 ## `public`
 
-`public` is harder than `modular` because it filters and compacts members.
+`public` is harder than per-member canonical marking because it filters and compacts members.
 For a transfinite source, neither the result order type nor the source position
 of result position `p` can generally be calculated by scanning successors:
 that scan never crosses an `omega` boundary.
@@ -277,8 +267,8 @@ named map that can escape evaluation.
 - Preserve the constructor/application presentation that generated the map.
 - Named access should compose with that presentation without enumerating the
   namespace.
-- `modular` and `public` should compose symbolic presentations for their
-  transformed views.
+- canonical-value metadata and `public` should compose with symbolic
+  presentations for their selected views.
 - If no finite symbolic presentation exists, canonical string conversion must
   return its existing typed failure rather than force the map.
 - Canonical round trips must not demand export-name enumeration.
@@ -292,8 +282,8 @@ named map that can escape evaluation.
    wrappers.
 4. Replace `DatraHost.namedMembers` consumers with the narrow observation each
    operation actually needs.
-5. Reimplement `modularValue` as an order-preserving named-view
-   transformation, guarded by the global marker invariant.
+5. Retain each declaration's canonical-value bit in its named member and add
+   `$CanonicalValue` only when that member is materialized.
 6. Reimplement `publicValue` using the producer-supplied public selection.
 7. Add namespace resolvers to `Scope` and migrate module/open-scope lookup.
 8. Separate finite syntax manifests from value exports.
@@ -313,11 +303,12 @@ Add focused tests before removing the finite fallback:
 - access in maps with order types `omega + n`, `omega * 2`, and a higher
   Cantor-normal-form lane;
 - absent-name lookup terminates with `Nothing` or the appropriate typed error;
-- `modular` preserves the exact order type and marks a member at `omega`;
-- recursively constructed nested maps receive modular identifiers without
-  changing `modular` semantics;
-- an already-marked transfinite map is rejected through its summary invariant,
-  without enumeration;
+- `val` preserves the exact containing order type and marks its member at
+  `omega`;
+- canonical and transparent declarations coexist in recursively constructed
+  maps without changing each other's presentation;
+- invalid nested declaration modifiers are rejected without enumerating the
+  containing map;
 - `public` preserves the producer-declared public order across a transfinite
   boundary;
 - private members around `omega` do not shift public positions incorrectly;
@@ -340,8 +331,8 @@ This work is complete when:
 
 - no named-map operation converts an arbitrary order type with
   `naturalAtOrdinal` merely to discover members;
-- `public`, `modular`, module access, and scope lookup operate through retained
-  named capabilities;
+- `public`, canonical-value export presentation, module access, and scope
+  lookup operate through retained named capabilities;
 - lookup at and beyond `omega` is covered by deterministic tests;
 - absent-name lookup cannot diverge through enumeration;
 - syntax discovery remains finite and independent of value-namespace size;

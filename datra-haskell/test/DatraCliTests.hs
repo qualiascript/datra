@@ -245,7 +245,7 @@ testQualifiedStandardLibraryImports :: Assertion
 testQualifiedStandardLibraryImports =
   withTemporaryPath "datra-cli-module.datra" $ \modulePath ->
   withTemporaryPath "datra-cli-import.ast" $ \astPath -> do
-    writeFile modulePath "Std.(yield Answer := 42)\n"
+    writeFile modulePath "Std.(yield Answer : 42)\n"
     (status, output, errors) <- runDatra
       [ "build", "--qualified-std"
       , "--source", "(Std.(import " <> show modulePath

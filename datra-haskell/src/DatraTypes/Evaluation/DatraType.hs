@@ -27,7 +27,8 @@ data ASTMetaCategory
   = ExpressionAST
   | BlockAST
   | FunctionBodyAST
-  | IdentifierExpressionAST
+  | DeclarationAST
+  | DependentIdentifierAST
   deriving (Eq, Show)
 
 data BuiltinMetaType

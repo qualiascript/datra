@@ -1,9 +1,9 @@
 Std.(
 yield (
-  First := begin
+  First : begin
     x := 3
   yield public this
-  Second := begin
+  Second : begin
     let _offset := 4
     y := 4
     shiftSecond :=

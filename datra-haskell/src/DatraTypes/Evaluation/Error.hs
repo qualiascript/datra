@@ -106,8 +106,6 @@ data ModuleEvaluationFailure
   | ImportedModuleRequiresBlock
   | ImportedModuleRequiresIdentifierBinderFederation
   | ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes
-  | ModularRequiresTotalMapOfSimpleIdentifierTypes
-  | ModularIdentifierAlreadyMarked String
   | ImportedModuleRequiresNamedExports
   | ModuleExportRequiresIdentifier
   | ModuleNotLoaded String
@@ -141,6 +139,7 @@ data InterpretingError
   | PrivateParameterCannotBeOptional String
   | CyclicIdentifierReference [String]
   | LetOutsideBegin
+  | ValOutsideBegin
   | GenericIntroductionOutsideFunctionType String
   | DuplicateGenericIdentifier String
   | ForwardGenericBoundReference String String
@@ -157,6 +156,7 @@ data InterpretingError
   | RangeConstructionRejected SuperEllipsisRangeError
   | RangeConcatenationRejected SuperEllipsisRangeConcatError
   | RedundantConcatenation
+  | RedundantAssignment
   | AccessRejected AccessError
   | GivenValueOutsideTypeAnnotation
       { expectedTypeAnnotation :: String

@@ -143,6 +143,16 @@ moduleTests =
             <> "yield SelectedExports.a + SelectedExports.b"
         )
         "3"
+    , moduleCase origin "val and transparent exports preserve distinct forms"
+        ( "import \"canonical_values\" do\n"
+            <> "yield (CanonicalValues.owned; CanonicalValues.transparent)"
+        )
+        "(CanonicalValues.owned; 8)"
+    , moduleCase origin "opened val and transparent exports preserve distinct forms"
+        ( "import \"canonical_values\" do\n"
+            <> "with CanonicalValues do yield (owned; transparent)"
+        )
+        "(owned; 8)"
     , moduleCase origin "scalar module value"
         "import \"total_value\" do yield Answer + 0"
         "42"
@@ -158,7 +168,7 @@ moduleTests =
     , moduleCase origin "imported values compose with optional names"
         ( "import \"total_value\" do\n"
             <> "  f := ({value? : Int} -> Int do yield value)\n"
-            <> "yield f(value := Answer) + 0"
+            <> "yield f(value : Answer) + 0"
         )
         "42"
     , moduleCase origin "numbers max and min satisfy positional assertions"
@@ -172,8 +182,8 @@ moduleTests =
         "()"
     , moduleCase origin "numbers max and min support mixed named calls"
         ( "import \"numbers\" do\n"
-            <> "yield (Numbers.max(arg1 := 3, 0); "
-            <> "Numbers.min(arg2 := 12, arg0 := 9, 2))"
+            <> "yield (Numbers.max(arg1 : 3, 0); "
+            <> "Numbers.min(arg2 : 12, arg0 : 9, 2))"
         )
         "(Just : 3; Just : 2)"
     , moduleCase origin "numbers max and min support integer limits"
@@ -189,10 +199,10 @@ moduleTests =
         )
         "(Just : -3; Just : -20)"
     , moduleCase origin "numbers max matches unmatched names positionally"
-        "import \"numbers\" do yield Numbers.max(my_arg := 3, 0)"
+        "import \"numbers\" do yield Numbers.max(my_arg : 3, 0)"
         "Just : 3"
     , moduleFailureCase origin "numbers max reserves admitted Args names"
-        "import \"numbers\" do yield Numbers.max(arg2 := 3, 0)"
+        "import \"numbers\" do yield Numbers.max(arg2 : 3, 0)"
         (== ModuleEvaluationFailure
           (OverloadError OverloadMissingRequiredSlot))
     , moduleFailureCase origin "numbers is not imported by default"
@@ -213,7 +223,7 @@ moduleTests =
         )
         "(true; true; true; true)"
     , moduleCase origin "ordinal operations accept x and y argument maps"
-        "import \"ordinals\" do yield Ordinals.sum(y := 3; x := 2)"
+        "import \"ordinals\" do yield Ordinals.sum(y : 3; x : 2)"
         "5"
     , moduleCase origin "OrdValue contains naturals and transfinite ordinals"
         ( "import \"ordinals\" do\n"
@@ -232,8 +242,8 @@ moduleTests =
         )
         (== ModuleEvaluationFailure (UnknownIdentifier "LibraryOne"))
     , moduleFailureCase origin "an import in a map does not affect siblings"
-        ( "result := (loaded := import \"library_one\" do "
-            <> "yield LibraryOne.x; sibling := LibraryOne.x)\n"
+        ( "result := (loaded : import \"library_one\" do "
+            <> "yield LibraryOne.x; sibling : LibraryOne.x)\n"
             <> "yield result"
         )
         (== ModuleEvaluationFailure (UnknownIdentifier "LibraryOne"))

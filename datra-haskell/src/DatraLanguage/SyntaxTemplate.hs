@@ -19,7 +19,8 @@ data SyntaxHoleKind value
   = ExpressionSyntaxHole value
   | BlockSyntaxHole value
   | FunctionBodySyntaxHole value
-  | IdentifierExpressionSyntaxHole value
+  | DeclarationSyntaxHole value
+  | DependentIdentifierSyntaxHole value
   | ValueSyntaxHole value
   deriving (Eq, Show)
 
@@ -27,7 +28,8 @@ syntaxHoleValue :: SyntaxHoleKind value -> value
 syntaxHoleValue (ExpressionSyntaxHole value) = value
 syntaxHoleValue (BlockSyntaxHole value) = value
 syntaxHoleValue (FunctionBodySyntaxHole value) = value
-syntaxHoleValue (IdentifierExpressionSyntaxHole value) = value
+syntaxHoleValue (DeclarationSyntaxHole value) = value
+syntaxHoleValue (DependentIdentifierSyntaxHole value) = value
 syntaxHoleValue (ValueSyntaxHole value) = value
 
 mapSyntaxHoleKind
@@ -38,8 +40,9 @@ mapSyntaxHoleKind transform kind = case kind of
   ExpressionSyntaxHole value -> ExpressionSyntaxHole (transform value)
   BlockSyntaxHole value -> BlockSyntaxHole (transform value)
   FunctionBodySyntaxHole value -> FunctionBodySyntaxHole (transform value)
-  IdentifierExpressionSyntaxHole value ->
-    IdentifierExpressionSyntaxHole (transform value)
+  DeclarationSyntaxHole value -> DeclarationSyntaxHole (transform value)
+  DependentIdentifierSyntaxHole value ->
+    DependentIdentifierSyntaxHole (transform value)
   ValueSyntaxHole value -> ValueSyntaxHole (transform value)
 
 data SyntaxPiece value
@@ -89,8 +92,10 @@ traverseSyntaxTemplate transform (SyntaxTemplate pieces) =
       SyntaxHole . BlockSyntaxHole <$> transform value
     traversePiece (SyntaxHole (FunctionBodySyntaxHole value)) =
       SyntaxHole . FunctionBodySyntaxHole <$> transform value
-    traversePiece (SyntaxHole (IdentifierExpressionSyntaxHole value)) =
-      SyntaxHole . IdentifierExpressionSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (DeclarationSyntaxHole value)) =
+      SyntaxHole . DeclarationSyntaxHole <$> transform value
+    traversePiece (SyntaxHole (DependentIdentifierSyntaxHole value)) =
+      SyntaxHole . DependentIdentifierSyntaxHole <$> transform value
     traversePiece (SyntaxHole (ValueSyntaxHole value)) =
       SyntaxHole . ValueSyntaxHole <$> transform value
 
@@ -102,5 +107,7 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
     renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "%_Expr"
     renderPiece (SyntaxHole BlockSyntaxHole {}) = "%_Block"
     renderPiece (SyntaxHole FunctionBodySyntaxHole {}) = "%_FunctionBody"
-    renderPiece (SyntaxHole IdentifierExpressionSyntaxHole {}) = "%_IdenExp"
+    renderPiece (SyntaxHole DeclarationSyntaxHole {}) = "%_Declaration"
+    renderPiece (SyntaxHole DependentIdentifierSyntaxHole {}) =
+      "%_DependentIdentifier"
     renderPiece (SyntaxHole (ValueSyntaxHole value)) = '%' : renderValue value

@@ -35,6 +35,7 @@ data Operator
   | AssertOperator
   | BeginOperator
   | LetOperator
+  | ValOperator
   | EitherOperator
   | OptionalOperator
   | MaybeThenOperator
@@ -80,6 +81,7 @@ operatorCanonicalSymbol ValueOfOperator = "~"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
+operatorCanonicalSymbol ValOperator = "val"
 operatorCanonicalSymbol EitherOperator = "|"
 operatorCanonicalSymbol OptionalOperator = "?"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
@@ -125,6 +127,7 @@ operatorSourceSymbol ValueOfOperator = Just "~"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"
+operatorSourceSymbol ValOperator = Just "val"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
 operatorSourceSymbol MaybeThenOperator = Just "!?"

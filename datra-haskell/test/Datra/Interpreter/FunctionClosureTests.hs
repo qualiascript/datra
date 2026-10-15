@@ -33,10 +33,10 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "7"
       "7"
   , roundTrip "user local named _fun"
-      "let factorial := ({n? : Int} -> Int do _fun : 0; yield if n = _fun then 1 else n * factorial (n - 1))\nyield factorial"
+      "let factorial := ({n? : Int} -> Int do _fun := 0; yield if n = _fun then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"
   , roundTrip "quoted local matches generated root"
-      "let factorial := ({n? : Int} -> Int do \"__fun\" : 0; yield if n = this.\"__fun\" then 1 else n * factorial (n - 1))\nyield factorial"
+      "let factorial := ({n? : Int} -> Int do \"__fun\" := 0; yield if n = this.\"__fun\" then 1 else n * factorial (n - 1))\nyield factorial"
       "5" "120"
   , roundTrip "captured name matches generated root"
       "_fun := 4\nyield ({n? : Int} -> Int do yield n + _fun)"
@@ -137,7 +137,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int do yield x + this.\"name.with.dots\")"
       "7" "11"
   , roundTrip "computed this projection inside a function"
-      "yield (() -> Int do x : 2; y : 3; z : this[y-x][1]; yield z)"
+      "yield (() -> Int do x := 2; y := 3; z := this[y-x][1]; yield z)"
       "()" "3"
   , roundTrip "nothing result" "yield (() -> nothing do yield nothing)"
       "()" "Nothing? : ()"
@@ -213,12 +213,12 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertEqual "stable module reconstruction" text (renderInterpretedValue reconstructed)
       result <- requireProgram ("f := " <> text <> "\nyield f 7")
       assertEqual "user capture and nested root remain distinct" "15" (renderInterpretedValue result)
-  , testCase "selected non-modular number function is self-contained" $ do
+  , testCase "selected transparent number function is self-contained" $ do
       original <- runModuleProgram "libs/numbers.datra"
         "import \"numbers\" do yield Numbers.max"
       value <- either (assertFailure . show) pure original
       let text = renderInterpretedValue value
-      assertBool "transparent export claimed a modular identity"
+      assertBool "transparent export claimed a canonical-value identity"
         (text /= "Numbers.max")
       reconstructed <- requireExpression text
       assertEqual "canonical text is idempotent"

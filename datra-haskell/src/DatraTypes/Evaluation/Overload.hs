@@ -401,7 +401,7 @@ matchSlot targetNames slot input = do
   case (slotName slot, inputName) of
     (Just expected, Just actual)
       | expected == actual
-      , not (slotDependentBinder slot) || suppliedAsAssignment input -> pure ()
+      , not (slotDependentBinder slot) || suppliedAsNamedIdentifier input -> pure ()
       | otherwise -> Nothing
     (Just _, Nothing)
       | slotOptionalName slot
@@ -457,12 +457,13 @@ suppliedArgumentValue
   -> (Maybe String, InterpretedValue)
 suppliedArgumentValue = suppliedValue
 
-suppliedAsAssignment :: InterpretedValue -> Bool
-suppliedAsAssignment value =
+suppliedAsNamedIdentifier :: InterpretedValue -> Bool
+suppliedAsNamedIdentifier value =
   case interpretedForm value of
     AssignmentForm _ -> True
     _ -> case interpretedSemanticResult value of
       CanonicalAssignment {} -> True
+      CanonicalSimpleIdentifierType {} -> True
       _ -> False
 
 argumentSlot

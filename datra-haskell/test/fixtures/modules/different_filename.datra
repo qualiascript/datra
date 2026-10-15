@@ -1,5 +1,5 @@
 Std.(
-yield DeclaredName := begin
+yield DeclaredName : begin
   x := 12
 yield public this
 )

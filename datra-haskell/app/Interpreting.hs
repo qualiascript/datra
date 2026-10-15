@@ -55,8 +55,6 @@ import FunctionClosure
 import DatraHost
   ( datraHostIdentifier
   , datraHostValue
-  , modularMarker
-  , modularValue
   , namedMembers
   )
 import DatraLanguage.Identifier
@@ -89,6 +87,7 @@ import DatraLanguage.AST
   , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , isDeclarationExpression
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -410,7 +409,10 @@ captureSyntaxHole base modules strict declarations previous kind captured =
     FunctionBodySyntaxHole {} -> case captured of
       FunctionBody {} -> Just captured
       _ -> Nothing
-    IdentifierExpressionSyntaxHole {} -> identifierSyntaxCapture captured
+    DeclarationSyntaxHole {}
+      | isDeclarationExpression captured -> Just captured
+      | otherwise -> Nothing
+    DependentIdentifierSyntaxHole {} -> dependentIdentifierCapture captured
     ValueSyntaxHole target ->
       literalCapture target captured
         <|> if strict then valueEvaluationCapture target else tentativeCapture
@@ -426,11 +428,13 @@ captureSyntaxHole base modules strict declarations previous kind captured =
         | name `notElem` concatMap bindingNames declarations ->
             Just (AsciiStringLiteral name)
       _ -> Just captured
-    identifierSyntaxCapture value = case value of
+    dependentIdentifierCapture value = case value of
       IdentifierReference {} -> Just value
       AsciiStringLiteral {} -> Just value
       StringTemplate {} -> Just value
-      OptionalType inner -> OptionalType <$> identifierSyntaxCapture inner
+      IdentifierOperation _ _ Nothing -> Just value
+      IdentifierTemplateOperation _ _ Nothing -> Just value
+      OptionalType inner -> OptionalType <$> dependentIdentifierCapture inner
       _ -> Nothing
     valueEvaluationCapture targetExpression =
       captureInScopes selectValue targetExpression
@@ -495,7 +499,7 @@ binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
   -> [Expression]
 binderDeclarations
-    ((IdentifierExpressionSyntaxHole {}, binder) : (_, bound) : remaining) =
+    ((DependentIdentifierSyntaxHole {}, binder) : (_, bound) : remaining) =
   maybe id (:) (binderDeclaration binder bound)
     (binderDeclarations remaining)
 binderDeclarations (_ : remaining) = binderDeclarations remaining
@@ -503,16 +507,21 @@ binderDeclarations [] = []
 
 binderDeclaration :: Expression -> Expression -> Maybe Expression
 binderDeclaration binder bound = case binder of
-  IdentifierReference name -> Just (IdentifierOperation name bound Nothing)
+  IdentifierReference name -> Just (assigned name)
   OptionalType (IdentifierReference name) ->
-    Just (IdentifierOperation name bound Nothing)
+    Just (assigned name)
   AsciiStringLiteral name
     | isIdentifierValue name ->
-        Just (IdentifierOperation (IdentifierString name) bound Nothing)
+        Just (assigned (IdentifierString name))
   OptionalType (AsciiStringLiteral name)
     | isIdentifierValue name ->
-        Just (IdentifierOperation (IdentifierString name) bound Nothing)
+        Just (assigned (IdentifierString name))
   _ -> Nothing
+  where
+    -- Syntax binders are validation-only lexical declarations. Representing
+    -- them as explicit self-valued assignments keeps block declarations
+    -- assignment-only without changing the value visible to later holes.
+    assigned name = IdentifierOperation name bound (Just bound)
 
 canonicalValueCapture
   :: (Expression -> Either InterpretingError InterpretedValue)
@@ -543,6 +552,10 @@ syntaxValidationDeclaration declaration = case declaration of
   Let (IdentifierOperation name _ (Just definition))
     | Just implementation <- recursiveFunctionImplementation definition ->
         Let (IdentifierOperation name implementation (Just implementation))
+  Let (Val (IdentifierOperation name _ (Just definition)))
+    | Just implementation <- recursiveFunctionImplementation definition ->
+        Let (Val
+          (IdentifierOperation name implementation (Just implementation)))
   _ -> declaration
 
 identifierCaptureIsSubtype
@@ -684,8 +697,10 @@ validateFunctionBodyParts expressionValue = do
   mapM_ validateFunctionBodyParts (expressionChildren expressionValue)
   where
     validatePart part
-      | Just _ <- blockDeclaration part = Right ()
+      | isDeclarationExpression part
+      , Just _ <- blockDeclaration part = Right ()
     validatePart Let {} = Right ()
+    validatePart Val {} = Right ()
     validatePart part
       | containsActiveAssertion part = Right ()
     validatePart _ = Left OperationHasNoEffect
@@ -907,8 +922,9 @@ traverseSyntaxHoleKind transform kind = case kind of
   ExpressionSyntaxHole value -> ExpressionSyntaxHole <$> transform value
   BlockSyntaxHole value -> BlockSyntaxHole <$> transform value
   FunctionBodySyntaxHole value -> FunctionBodySyntaxHole <$> transform value
-  IdentifierExpressionSyntaxHole value ->
-    IdentifierExpressionSyntaxHole <$> transform value
+  DeclarationSyntaxHole value -> DeclarationSyntaxHole <$> transform value
+  DependentIdentifierSyntaxHole value ->
+    DependentIdentifierSyntaxHole <$> transform value
   ValueSyntaxHole value -> ValueSyntaxHole <$> transform value
 
 validatedSyntaxTemplates
@@ -1035,7 +1051,7 @@ data Binding
   | ImportedBinding
       PresentationDependency FilePath InterpretedValue Scope
   | ModuleCatalog [(String, ModuleSource)]
-  | ScopeMembers [String]
+  | ScopeMembers [ScopeMember]
   | CanonicalNames [(String, String)]
   | LexicalScope PresentationDependency
 
@@ -1121,7 +1137,7 @@ scopeProtectedValues scope =
 
 data ImportPresentation
   = TransparentImportPresentation
-  | ModularImportPresentation
+  | CanonicalValueImportPresentation
 
 data ModuleExport = ModuleExport String ImportPresentation Binding
 
@@ -1219,8 +1235,8 @@ contextualLevels includesPrivate resolving surface scope =
       case binding of
         ContextualBinding _ includesDependencies value ->
           Just (includesDependencies, value)
-        ScopeMembers names ->
-          Just (False, \reduction -> declarationMap names
+        ScopeMembers members ->
+          Just (False, \reduction -> declarationMap members
             (resolveIdentifierAccess
               includesPrivate reduction
               (scopeWithBindings environment scope) resolving))
@@ -1303,7 +1319,7 @@ accessContextualMap reduction depth (ContextualMap _ levels)
     unavailable = Left
       (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
-scopeMembersBinding :: Binding -> Maybe [String]
+scopeMembersBinding :: Binding -> Maybe [ScopeMember]
 scopeMembersBinding binding =
   case binding of
     ScopeMembers names -> Just names
@@ -1617,7 +1633,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       checkedBinary booleanOrValues left right
     BooleanNot operand -> checkedUnary booleanNotValue operand
     Coalization operand -> unary (Right . coalizeValue) operand
-    Modular operand -> unary modularValue operand
+    Val _ -> Left ValOutsideBegin
     Fun operand ->
       case recursiveListElement operand of
         Just element -> do
@@ -1829,11 +1845,11 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                           ]
                           payload
                         Nothing -> payload
-                  if hasTrailingIdentifierMarker modularMarker selected
+                  if hasTrailingIdentifierMarker canonicalValueMarker selected
                     then do
                       let dependencies = case imported of
                             Just (identity, _) ->
-                              [modularPresentationDependency identity]
+                              [canonicalValuePresentationDependency identity]
                             Nothing -> maybe [] fst
                               (interpretedCanonicalPresentation actual)
                       pure (withCanonicalNamedAccess
@@ -1863,7 +1879,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                       accessValues actualContextual actualInsertion
                     _ -> Right neverValue
             _ -> projectDeclaration
-              (scopeMemberNames scope)
+              (scopeDeclarationMembers scope)
               (resolveIdentifierWith reduction scope resolving)
               insertion
     MapAccess mapOperand insertionOperand ->
@@ -1935,7 +1951,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       | typeAnnotationExpression == givenValueExpression = do
           givenValue <- interpret givenValueExpression
           if interpretedValueHasTotalMap givenValue
-            then assignIdentifierValues identifierString givenValue givenValue
+            then Left RedundantAssignment
             else pure
               (inferredIdentifierAssignmentValue identifierString givenValue)
     interpretIdentifierOperation
@@ -2328,13 +2344,14 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
 -- preserve the lexical snapshot at that declaration rather than exposing
 -- declarations that occur later in the same block. The binding constructor,
 -- not a particular identifier spelling, identifies this implicit reference.
-visibleScopeMembers :: String -> Scope -> [String]
+visibleScopeMembers :: String -> Scope -> [ScopeMember]
 visibleScopeMembers reference scope =
   case break isReferencedScope (scopeBindings scope) of
     (visible, (_, binding) : _)
-      | Just names <- scopeMembersBinding binding ->
+      | Just members <- scopeMembersBinding binding ->
       let visibleNames = map fst visible
-      in [name | name <- names, name `elem` visibleNames]
+      in [member | member <- members
+           , scopeMemberName member `elem` visibleNames]
     _ -> []
   where
     isReferencedScope (name, binding) =
@@ -2373,6 +2390,7 @@ recursiveFunctionImplementation expressionValue =
       Just implementation
     Begin _ result -> recursiveFunctionImplementation result
     Let value -> recursiveFunctionImplementation value
+    Val value -> recursiveFunctionImplementation value
     EitherType left right ->
       case recursiveFunctionImplementation left of
         Just implementation -> Just implementation
@@ -2558,7 +2576,7 @@ scopeBuilderActivated
       )
 scopeBuilderActivated introducesThis scopedEnclosing entries = do
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
-      names = map declarationName definitions
+      members = map declarationScopeMember definitions
       eagerNames =
         [ declarationName declaration
         | declaration <- definitions
@@ -2570,7 +2588,7 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
             case lookupScope "_this" scopedEnclosing >>= contextualBinding of
               Just _ -> scopedEnclosing
               Nothing -> extendScope
-                [scopeBinding "_this" (ScopeMembers names)] scopedEnclosing
+                [scopeBinding "_this" (ScopeMembers members)] scopedEnclosing
   (blockOuter, scopeEntries) <- scopeEntriesFrom blockBase entries
   let
       rebuild retained = scopeWithBindings
@@ -2682,6 +2700,7 @@ bindingImports strict expressionValue =
     Just declaration -> ([declaration], [])
     Nothing -> case expressionValue of
       Let value -> bindingImports True value
+      Val _ -> ([], [expressionValue])
       Assert {} -> ([], [expressionValue])
       _ -> ([], [expressionValue | strict])
 
@@ -3899,8 +3918,8 @@ moduleExportBindings scope namespace identity internal exportedValues =
   pure
     [ scopeBinding name
         (case presentation of
-          ModularImportPresentation -> NamedBinding
-            (modularPresentationDependency identity)
+          CanonicalValueImportPresentation -> NamedBinding
+            (canonicalValuePresentationDependency identity)
             (QualifiedBinding (namespace <> "." <> name) binding)
           TransparentImportPresentation -> QualifiedBinding
             (namespace <> "." <> name)
@@ -4134,9 +4153,9 @@ moduleExportsFromValue value =
     invalid = Left (ModuleEvaluationFailed
       ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
 
-scopeMemberNames :: Scope -> [String]
-scopeMemberNames scope = case lookupScope "_this" scope of
-  Just binding | Just names <- scopeMembersBinding binding -> names
+scopeDeclarationMembers :: Scope -> [ScopeMember]
+scopeDeclarationMembers scope = case lookupScope "_this" scope of
+  Just binding | Just members <- scopeMembersBinding binding -> members
   _ -> []
 
 publicDomainValue
@@ -4199,17 +4218,17 @@ namedBinding (name, selected) = do
   payload <- accessValues selected (naturalValue 1)
   pure (ModuleExport
     name
-    (if hasTrailingIdentifierMarker modularMarker selected
-      then ModularImportPresentation
+    (if hasTrailingIdentifierMarker canonicalValueMarker selected
+      then CanonicalValueImportPresentation
       else TransparentImportPresentation)
     (EvaluatedBinding payload))
 
--- A modular name is owned by the exporting module, rather than by the lexical
+-- A canonical value name is owned by the exporting module, rather than by the lexical
 -- scope that happened to import it. Keeping those dependencies distinct makes
 -- the canonical spelling survive both explicit and implicit imports.
-modularPresentationDependency :: FilePath -> PresentationDependency
-modularPresentationDependency identity =
-  PresentationDependency ("modular:" <> identity)
+canonicalValuePresentationDependency :: FilePath -> PresentationDependency
+canonicalValuePresentationDependency identity =
+  PresentationDependency ("canonical-value:" <> identity)
 
 lookupModule :: Scope -> String -> Either InterpretingError ModuleSource
 lookupModule scope path
@@ -4285,7 +4304,8 @@ closureResolver scope = resolver
     resolver = Resolver resolve moduleResolver scopeIndex contextualDepth
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
-      either (const Nothing) id (selectedDeclarationName (scopeMemberNames scope) index)
+      either (const Nothing) id
+        (selectedDeclarationName (scopeDeclarationMembers scope) index)
     moduleResolver path = case
         [ imported
         | (_, ImportedBinding _ identity _ imported) <- scopeBindings scope
@@ -4333,7 +4353,7 @@ closureResolver scope = resolver
             (resolveIdentifier scope [] name)
           selected <- either (const Nothing) Just
             (foldM namedAccessValue value fields)
-          if hasTrailingIdentifierMarker modularMarker selected
+          if hasTrailingIdentifierMarker canonicalValueMarker selected
             then Nothing
             else do
               expressionValue <- either (const Nothing) Just

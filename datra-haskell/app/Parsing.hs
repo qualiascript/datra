@@ -118,6 +118,7 @@ import DatraLanguage.AST
       , FunctionBody
       , FunctionApplication
       , Let
+      , Val
       , IdentifierReference
       )
   , pattern FunctionType
@@ -818,6 +819,7 @@ astForm =
       , astUnary AST.CoalizationOperator Coalization
       , astBlock "begin" Begin
       , astUnary AST.LetOperator Let
+      , astUnary AST.ValOperator Val
       , IdentifierReference . IdentifierString <$>
           (astSymbol "ref" *> astString)
       , astBinary AST.EitherOperator EitherType

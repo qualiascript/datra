@@ -90,7 +90,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.Hedgehog (testProperty)
-import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
+import Test.Tasty.HUnit (assertBool, assertEqual, assertFailure, testCase)
 
 main :: IO ()
 main = defaultMain testTree
@@ -483,7 +483,8 @@ regressionTests = do
         [ ExpressionSyntaxHole (ref "_Expr")
         , BlockSyntaxHole (ref "_Block")
         , FunctionBodySyntaxHole (ref "_FunctionBody")
-        , IdentifierExpressionSyntaxHole (ref "_IdenExp")
+        , DeclarationSyntaxHole (ref "_Declaration")
+        , DependentIdentifierSyntaxHole (ref "_DependentIdentifier")
         , ValueSyntaxHole (ref "Int")
         ]
   assert "admissibility covers every typed hole kind"
@@ -901,13 +902,21 @@ regressionTests = do
       (FunctionBody [] (natural 7)))
   assertAstOutput "begin AST roundtrip" "begin a : 2 * 3; b : 5 yield a + b" block
   assertParsed "let in begin"
-    "begin let x : 10 yield x"
-    (Begin [Let (AST.dependentIdentifierType "x" (natural 10))] (IdentifierReference (IdentifierString "x")))
+    "begin let x := 10 yield x"
+    (Begin [Let (AST.assignment "x" (natural 10) (natural 10))]
+      (IdentifierReference (IdentifierString "x")))
   assertParsed "references are parsed independently of lexical lookup" "(begin x : 1 yield x), x"
     (MapConcatenation (Begin [AST.dependentIdentifierType "x" (natural 1)] (IdentifierReference (IdentifierString "x")))
       (IdentifierReference (IdentifierString "x")))
-  assertParsed "let accepts any declared expression" "let x : 1"
-    (Let (AST.dependentIdentifierType "x" (natural 1)))
+  assertParsed "let accepts an assigned declaration" "let x := 1"
+    (Let (AST.assignment "x" (natural 1) (natural 1)))
+  assertParsed "val marks one assigned declaration" "val x := 1"
+    (Val (AST.assignment "x" (natural 1) (natural 1)))
+  assertParsed "let composes outside val" "let val x := 1"
+    (Let (Val (AST.assignment "x" (natural 1) (natural 1))))
+  assertParsed "val preserves the rejected inner-let ordering"
+    "val let x := 1"
+    (Val (Let (AST.assignment "x" (natural 1) (natural 1))))
   assertParsed "an incomplete begin form remains ordinary application syntax"
     "begin x : 1"
     (FunctionApplication
@@ -937,8 +946,8 @@ regressionTests = do
     "{value? : Any} do yield value"
     (appliedBody optionalInput)
   assertParsed "a host function body infers Any after a non-function type"
-    "Nat 'datra.modular"
-    (FunctionApplication (ref "Nat") (datraRef ["modular"]))
+    "Nat 'datra.val"
+    (FunctionApplication (ref "Nat") (datraRef ["val"]))
   assertParsed "a leading host member remains a standalone value"
     "'datra.Any"
     (datraRef ["Any"])
@@ -1071,29 +1080,29 @@ regressionTests = do
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take %_Expr\" % (Int -> Int) 'datra.modular"
+        , "take := \"take %_Expr\" % (Int -> Int) 'datra.fun"
         , "take 7"
         , "take Infinity)"
         ]) of
-    Right (AtlasMap [_, _, Modular (EllipsisNatural 7), final]) ->
+    Right (AtlasMap [_, _, Fun (EllipsisNatural 7), final]) ->
       final == FunctionApplication (ref "take") (ref "Infinity")
     _ -> False
   assert "AST capture behavior follows the interpolated value's type" $ case
       parseSource (unlines
         [ "(Capture := 'datra.Expr"
         , "CaptureAlias := Capture"
-        , "take := \"take %CaptureAlias\" % (Any -> Any) 'datra.modular"
+        , "take := \"take %CaptureAlias\" % (Any -> Any) 'datra.fun"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
-      Modular captured : _ -> captured == ref "Infinity"
+      Fun captured : _ -> captured == ref "Infinity"
       _ -> False
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_IdenExp := 'datra.IdenExp"
+        [ "(_DependentIdentifier := 'datra.DependentIdentifier"
         , "_Expr := 'datra.Expr"
-        , "gate := \"gate %_IdenExp bound %_Expr body %Int\" %"
+        , "gate := \"gate %_DependentIdentifier bound %_Expr body %Int\" %"
             <> " ((Any; Any; Int) -> Int) 'datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
@@ -1108,27 +1117,56 @@ regressionTests = do
         ]
   assert "an identifier capture does not introduce contextual it" $ case
       parseSource (unlines
-        [ "(_IdenExp := 'datra.IdenExp"
-        , "capture := \"capture %_IdenExp\" %"
-            <> " (Any -> Any) 'datra.modular"
+        [ "(_DependentIdentifier := 'datra.DependentIdentifier"
+        , "capture := \"capture %_DependentIdentifier\" %"
+            <> " (Any -> Any) 'datra.fun"
         , "capture \"abc%(it)\")"
         ]) of
-    Right (AtlasMap [_, _, Modular captured]) ->
+    Right (AtlasMap [_, _, Fun captured]) ->
       captured == dependentIdentifierTemplate
     _ -> False
   assert "an optional identifier capture does not introduce contextual it" $
     case parseSource (unlines
-      [ "(_IdenExp := 'datra.IdenExp"
-      , "capture := \"capture %_IdenExp\" %"
-          <> " (Any -> Any) 'datra.modular"
+      [ "(_DependentIdentifier := 'datra.DependentIdentifier"
+      , "capture := \"capture %_DependentIdentifier\" %"
+          <> " (Any -> Any) 'datra.fun"
       , "capture \"abc%(it)\"?)"
       ]) of
-      Right (AtlasMap [_, _, Modular captured]) ->
+      Right (AtlasMap [_, _, Fun captured]) ->
         captured == OptionalType dependentIdentifierTemplate
       _ -> False
+  case parseSource (unlines
+      [ "(_DependentIdentifier := 'datra.DependentIdentifier"
+      , "_Declaration := 'datra.Declaration"
+      , "captureId := \"captureId %_DependentIdentifier\" %"
+          <> " (Any -> Any) 'datra.fun"
+      , "captureDeclaration := \"captureDeclaration %_Declaration\" %"
+          <> " (Any -> Any) 'datra.fun"
+      , "captureId x"
+      , "captureId (x : Int)"
+      , "captureDeclaration x := 1"
+      , "captureDeclaration x : Int"
+      , "captureDeclaration x : Int := 1)"
+      ]) of
+      Right (AtlasMap
+          [ _, _, _, _, Fun identifier, Fun dependent, Fun declaration
+          , unmatched, annotated
+          ])
+        | identifier == ref "x"
+          && dependent == AST.dependentIdentifierType "x" (ref "Int")
+          && declaration == AST.assignment "x" (natural 1) (natural 1)
+          && unmatched == FunctionApplication
+            (ref "captureDeclaration")
+            (AST.dependentIdentifierType "x" (ref "Int"))
+          && annotated == FunctionApplication
+            (ref "captureDeclaration")
+            (AST.assignment "x" (ref "Int") (natural 1)) -> pure ()
+      actual -> assertFailure
+        ("identifier expressions and declarations use distinct captures: "
+          <> show actual)
   assert "reserved symbols have unique identifier strings"
     Reserved.reservedSymbolIdentifiersAreUnique
-  assertParsed "val is available as an ordinary identifier"
+  assertParsed "val requires a declaration capture"
     "val _it" (FunctionApplication (ref "val") (ref "_it"))
   assertRejected "the removed external escape is rejected" "~~\"datra.Int\""
   assertRejected "previous external symbol is rejected" "!~\"datra.Int\""
@@ -1471,7 +1509,7 @@ regressionTests = do
       (natural 1)
       (AST.minus (natural 2)))
   let nextValue = FunctionApplication (ref "compute") (ref "input")
-      nextDeclaration = AST.dependentIdentifierType "next" nextValue
+      nextDeclaration = AST.assignment "next" nextValue nextValue
   assertAstOutput
     "a referenced named condition value becomes a local declaration"
     ("if candidate >= (next : compute input) "
@@ -1486,8 +1524,8 @@ regressionTests = do
     "condition-local declarations are not comparison-specific"
     "if valid (parsed : parse input) then parsed else fallback"
     (Begin
-      [ AST.dependentIdentifierType "parsed"
-          (FunctionApplication (ref "parse") (ref "input"))
+      [ let parsed = FunctionApplication (ref "parse") (ref "input")
+        in AST.assignment "parsed" parsed parsed
       ]
       (AST.conditional
         (FunctionApplication (ref "valid") (ref "parsed"))
@@ -2603,7 +2641,7 @@ assertResourceEnvelopes = do
         assert ("program AST: " <> source) (actual == expected)
         assertAstRoundTrip "program AST roundtrip" (renderExpression actual)
       Left message -> fail (parseFailureMessage message))
-    [ ("a : 6\nyield a", Begin [AST.dependentIdentifierType "a" (natural 6)] (IdentifierReference (IdentifierString "a")))
+    [ ("a := 6\nyield a", Begin [AST.assignment "a" (natural 6) (natural 6)] (IdentifierReference (IdentifierString "a")))
     , ( "yield 5 >> {a? : Nat := 3}"
       , Begin []
           (Overload
@@ -2624,7 +2662,7 @@ assertResourceEnvelopes = do
     , ( "yield Nat <~ (fun 5)"
       , Begin [] (MapSpecification (Fun (natural 5)) (ref "Nat"))
       )
-    , ("a : 6", Begin [AST.dependentIdentifierType "a" (natural 6)] (AtlasMap []))
+    , ("a := 6", Begin [AST.assignment "a" (natural 6) (natural 6)] (AtlasMap []))
     , ("", Begin [] (AtlasMap []))
     ]
   where

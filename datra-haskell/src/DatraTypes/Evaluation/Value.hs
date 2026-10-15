@@ -406,8 +406,11 @@ functionSyntaxEquivalent left right =
         (FunctionBodySyntaxHole leftValue)
         (FunctionBodySyntaxHole rightValue) = equivalent leftValue rightValue
     holeEquivalent
-        (IdentifierExpressionSyntaxHole leftValue)
-        (IdentifierExpressionSyntaxHole rightValue) =
+        (DeclarationSyntaxHole leftValue)
+        (DeclarationSyntaxHole rightValue) = equivalent leftValue rightValue
+    holeEquivalent
+        (DependentIdentifierSyntaxHole leftValue)
+        (DependentIdentifierSyntaxHole rightValue) =
           equivalent leftValue rightValue
     holeEquivalent
         (ValueSyntaxHole leftValue) (ValueSyntaxHole rightValue) =
@@ -517,7 +520,8 @@ builtinMetaTypeName (ASTMetaType category) = case category of
   ExpressionAST -> "Expr"
   BlockAST -> "Block"
   FunctionBodyAST -> "FunctionBody"
-  IdentifierExpressionAST -> "IdenExp"
+  DeclarationAST -> "Declaration"
+  DependentIdentifierAST -> "DependentIdentifier"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
 builtinMetaTypeName NatValRangeMetaType = "NatValRange"
@@ -530,7 +534,8 @@ builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
   ExpressionAST -> "'datra.Expr"
   BlockAST -> "'datra.Block"
   FunctionBodyAST -> "'datra.FunctionBody"
-  IdentifierExpressionAST -> "'datra.IdenExp"
+  DeclarationAST -> "'datra.Declaration"
+  DependentIdentifierAST -> "'datra.DependentIdentifier"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
   "'datra.SyntaxTemplate"
 builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind

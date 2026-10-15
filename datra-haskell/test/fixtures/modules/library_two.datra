@@ -1,5 +1,5 @@
 Std.(
-yield LibraryTwo := begin
+yield LibraryTwo : begin
   x := 9
 yield public this
 )

@@ -12,26 +12,33 @@ import DatraTypes
   , FunctionFailure (..)
   , InterpretingError (..)
   , MapLengthFailure (..)
-  , ModuleEvaluationFailure (..)
   )
 import Test.Tasty (TestTree, testGroup)
 
 standardLibraryTests :: TestTree
 standardLibraryTests =
   testGroup "standard library and declarative syntax"
-    [ testGroup "modular exports"
-        [ programCase "modular retains its named member"
-            "begin x := 7; yield modular this" "x : 7"
-        , programCase "the empty map may be marked repeatedly"
-            "yield modular (modular ())" "()"
-        , programFailureCase "modular rejects unnamed values"
-            "yield modular (1; 2)"
-            (SourceEvaluationFailure (ModuleEvaluationFailed
-              ModularRequiresTotalMapOfSimpleIdentifierTypes))
-        , programFailureCase "modular rejects an existing marker"
-            "begin x := 7; yield modular (modular this)"
-            (SourceEvaluationFailure (ModuleEvaluationFailed
-              (ModularIdentifierAlreadyMarked "x")))
+    [ testGroup "canonical value declarations"
+        [ programCase "val retains its named member"
+            "begin val x := 7; yield this" "x : 7"
+        , programCase "val stores the canonical-value marker on its identifier"
+            "begin val x := 7; yield this[0][2]" "$CanonicalValue"
+        , programCase "let composes outside val"
+            "begin a := x + 1; let val x := 10; yield a" "11"
+        , programCase "val composes with optional names"
+            "begin val x? := 7; yield x + 0" "7"
+        , programFailureCase "val rejects an annotated assignment"
+            "begin val x : Nat := 7; yield x"
+            (SourceEvaluationFailure OperationHasNoEffect)
+        , programFailureCase "val syntax rejects a non-declaration"
+            "yield val (1; 2)"
+            (SourceEvaluationFailure (UnknownIdentifier "val"))
+        , programFailureCase "val rejects an inner let"
+            "begin val let x := 7; yield x"
+            (SourceEvaluationFailure ValOutsideBegin)
+        , programFailureCase "val rejects a duplicate marker"
+            "begin val val x := 7; yield x"
+            (SourceEvaluationFailure ValOutsideBegin)
         ]
     , testGroup "private syntax categories"
         [ programFailureCase "AST is no longer implicitly imported"
@@ -48,8 +55,13 @@ standardLibraryTests =
             "yield Block" (SourceEvaluationFailure (UnknownIdentifier "Block"))
         , programFailureCase "Pages is private to the library"
             "yield Pages" (SourceEvaluationFailure (UnknownIdentifier "Pages"))
-        , programFailureCase "IdenExp is private to the library"
-            "yield IdenExp" (SourceEvaluationFailure (UnknownIdentifier "IdenExp"))
+        , programFailureCase "DependentIdentifier is private to the library"
+            "yield DependentIdentifier"
+            (SourceEvaluationFailure
+              (UnknownIdentifier "DependentIdentifier"))
+        , programFailureCase "Declaration is private to the library"
+            "yield Declaration"
+            (SourceEvaluationFailure (UnknownIdentifier "Declaration"))
         , programFailureCase "_SyntaxTemplate is private to the library"
             "yield _SyntaxTemplate"
             (SourceEvaluationFailure (UnknownIdentifier "_SyntaxTemplate"))
@@ -86,7 +98,7 @@ standardLibraryTests =
             "7"
         , programCase "optional named values retain their map extent"
             ( "measure := ({value? : Any} -> NatLimit do yield len value)\n"
-                <> "yield measure (value := (1; 2; 3))"
+                <> "yield measure (value : (1; 2; 3))"
             )
             "3"
         , programCase "length results compose with specification and subfederation"
@@ -127,7 +139,7 @@ standardLibraryTests =
             "720"
         , programCase "finite access lazily unfolds recursive data"
             ("name := fun (\"hi:\", this)\n"
-              <> "k : Nat := 1\n"
+              <> "k := 1\n"
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
         , programCase "recursive concatenation is not string-specific"
@@ -140,7 +152,7 @@ standardLibraryTests =
             "(1; 2; 1; 2; 1; 2)"
         , programCase "let and fun share productive fixed-point access"
             ("let name := (\"hi:\", name)\n"
-              <> "k : Nat := 1\n"
+              <> "k := 1\n"
               <> "yield name[from 0 to 3 * (k + 1) - 1]")
             "\"hi:hi:\""
         , programCase "fixed point specification"
@@ -170,7 +182,7 @@ standardLibraryTests =
             , ("begin a:=5; yield this.a ~> (a?:Nat)", "a? : Nat := 5")
             , ("a:=(b:2;c:3)\nyield a.(b+c)", "5")
             , ( "a:=(b:2;c:3)\n"
-                  <> "yield a.(left := b; right := c)"
+                  <> "yield a.(left : b; right : c)"
               , "(left : 2; right : 3)"
               )
             , ("yield 'from (2;5)", "from 2 to 5")
@@ -197,7 +209,7 @@ standardLibraryTests =
             "begin x := (5; 8); yield ~x[1]" "8"
         , programCase "optional names accept named and positional inputs"
             ("f := ({x? : Nat} -> Nat do yield ~x + 1)\n"
-              <> "yield (f 5; f (x := 5))")
+              <> "yield (f 5; f (x : 5))")
             "(6; 6)"
         , programCase "optional names retain defaults"
             "f := ({x? : Nat := 5} -> Nat do yield ~x + 1)\nyield f ()" "6"
@@ -210,7 +222,7 @@ standardLibraryTests =
         , programCase "subfederation rejects a different value"
             "begin x := 5; yield ~x of 6" "false"
         , programCase "lookup does not change optional-name specification"
-            ("begin x := 5; yield (x := ~x) ~> (x? : Nat)")
+            ("begin x := 5; yield (x : ~x) ~> (x? : Nat)")
             "x? : Nat := 5"
         ]
     , testGroup "mapped access"
@@ -407,7 +419,8 @@ standardLibraryTests =
             , "(begin yield (Nat -> Nat)) of Any"
             , "(Nat -> Nat) of Any"
             , "'datra.Expr of Any"
-            , "'datra.IdenExp of Any"
+            , "'datra.DependentIdentifier of Any"
+            , "'datra.Declaration of Any"
             , "'datra.Block of Any"
             , "'datra.FunctionBody of Any"
             , "(Nat; 'datra.Expr) of Any"
@@ -480,12 +493,12 @@ standardLibraryTests =
             "true"
         , programCase "Args reorders named and positional slots"
             ( "values := ({Args Int,} -> Any do yield it)\n"
-                <> "yield values(arg1 := 3, 0) of {List Int,}"
+                <> "yield values(arg1 : 3, 0) of {List Int,}"
             )
             "true"
         , programCase "unmatched Args names fall back positionally"
             ( "values := ({Args Int,} -> Any do yield it)\n"
-                <> "yield values(my_arg := 3, 0)"
+                <> "yield values(my_arg : 3, 0)"
             )
             "(arg0 : 3; arg1 : 0)"
         , programCase "source-defined Args supports string-template functions"
@@ -493,9 +506,9 @@ standardLibraryTests =
                 <> "  slots := (^_i :: Nat) -> Any do yield \"arg%(_i)\"? : T\n"
                 <> "yield ((^n? :: Nat) -> Any do yield slots[0..n])\n"
                 <> "display := {MyArgs Int,} -> Str do yield \"%(it)\"\n"
-                <> "assert ((arg2 := 10, 4) of {MyArgs Int,}) = false\n"
+                <> "assert ((arg2 : 10, 4) of {MyArgs Int,}) = false\n"
                 <> "yield (display(); display(1); display(1; 2; 3); "
-                <> "display(arg1 := 10, 4))"
+                <> "display(arg1 : 10, 4))"
             )
             ("(\"()\"; \"arg0 : 1\"; "
               <> "\"(arg0 : 1; arg1 : 2; arg2 : 3)\"; "
@@ -515,8 +528,8 @@ standardLibraryTests =
                 <> "assert display() = \"()\"\n"
                 <> "assert display(1) = \"1\"\n"
                 <> "assert display(1; 2; 3) = \"(1; 2; 3)\"\n"
-                <> "assert display(arg1 := 10, 4) = \"(4; 10)\"\n"
-                <> "assert ((arg2 := 10, 4) of ArgsIntMap) = false\n"
+                <> "assert display(arg1 : 10, 4) = \"(4; 10)\"\n"
+                <> "assert ((arg2 : 10, 4) of ArgsIntMap) = false\n"
                 <> "yield ()"
             )
             "()"
@@ -552,29 +565,29 @@ standardLibraryTests =
                 <> "yield (Nat; 5) of Pair"
             )
             "true"
-        , programCase "optional binder accepts named assignment witnesses"
+        , programCase "optional binder accepts named dependent identifiers"
             ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
-                <> "yield {T := Nat; value := 5} of Pair"
+                <> "yield {T : Nat; value : 5} of Pair"
             )
             "true"
         , programCase "dependent sum validates the selected fibre"
             ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
-                <> "yield not ({T := Nat; value := \"bad\"} of Pair)"
+                <> "yield not ({T : Nat; value : \"bad\"} of Pair)"
             )
             "true"
         , programCase "dependent sum composes with forward specification"
             ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
-                <> "yield ({T := Nat; value := 5} ~> Pair) of Pair"
+                <> "yield ({T : Nat; value : 5} ~> Pair) of Pair"
             )
             "true"
         , programCase "dependent sum composes with reverse specification"
             ( "Pair := (^T? :: Any) -> Any do yield (value? : T)\n"
-                <> "yield (Pair <~ {T := Nat; value := 5}) of Pair"
+                <> "yield (Pair <~ {T : Nat; value : 5}) of Pair"
             )
             "true"
         , programCase "private optional binder is valid in an ordered map"
             ( "Pair := (^_T :: Any) -> Any do yield (value? : _T)\n"
-                <> "yield (_T := Nat; value := 5) of Pair"
+                <> "yield (_T : Nat; value : 5) of Pair"
             )
             "true"
         , programCase "private spelling remains structural in ordinary maps"

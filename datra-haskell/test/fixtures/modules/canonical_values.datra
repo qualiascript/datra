@@ -1,0 +1,6 @@
+Std.(
+yield CanonicalValues : begin
+  val owned := 7
+  transparent := 8
+yield public this
+)

@@ -161,6 +161,8 @@ localizeInterpretingError reason =
       LocalizedMessage "cyclic identifier dependency" ["identifiers: " <> show names]
     LetOutsideBegin ->
       LocalizedMessage "let requires an enclosing begin block" []
+    ValOutsideBegin ->
+      LocalizedMessage "val requires an identifier declaration in a block" []
     GenericIntroductionOutsideFunctionType binder ->
       LocalizedMessage
         "generic introduction requires an enclosing function type"
@@ -223,6 +225,10 @@ localizeInterpretingError reason =
       LocalizedMessage
         "concatenation does not change the meaning of this expression"
         ["use ; between operands or remove the trailing comma"]
+    RedundantAssignment ->
+      LocalizedMessage
+        "inferred assignment is redundant for a total value"
+        ["use : instead of :="]
     AccessRejected rejection -> localizeAccessError rejection
     GivenValueOutsideTypeAnnotation expected given ->
       LocalizedMessage
@@ -406,16 +412,10 @@ localizeModuleFailure failure =
       LocalizedMessage "imported file must reduce to a block" []
     ImportedModuleRequiresIdentifierBinderFederation ->
       LocalizedMessage "imported file must yield an identifier-binder federation"
-        ["use yield Name := value or a federation of identifier binders"]
+        ["use yield Name : value or a federation of identifier binders"]
     ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes ->
       LocalizedMessage
         "module scope requires a total map of simple identifier types" []
-    ModularRequiresTotalMapOfSimpleIdentifierTypes ->
-      LocalizedMessage
-        "modular requires a total map of simple identifier types" []
-    ModularIdentifierAlreadyMarked name ->
-      LocalizedMessage "modular cannot mark an identifier more than once"
-        ["identifier: " <> name]
     ImportedModuleRequiresNamedExports ->
       LocalizedMessage "imported module must yield a scope or named map"
         ["use yield this to export its scope"]

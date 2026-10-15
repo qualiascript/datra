@@ -1,3 +1,3 @@
 Std.(
-yield Shared := Int
+yield Shared : Int
 )

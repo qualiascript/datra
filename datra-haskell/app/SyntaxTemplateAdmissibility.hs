@@ -117,6 +117,12 @@ templateWitnesses template = atomic : variants
         [ FunctionBody [identifier auxiliary] (identifier marker)
         , AtlasMap []
         ]
+      DeclarationSyntaxHole {} ->
+        let value = identifier auxiliary
+        in IdentifierOperation
+          (IdentifierString marker)
+          value
+          (Just value)
       _ -> identifier marker
     identifier = IdentifierReference . IdentifierString
     groupedSource source = case parseNeutralPhrase source of
