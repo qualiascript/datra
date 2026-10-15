@@ -218,7 +218,7 @@ hostMap entries = do
 publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
 publicValue value = do
   members <- namedMembers value
-  pure (makeAtlasMapPreservingSingleton 2 (map snd (public members)))
+  pure (makeAtlasMap 2 (map snd (public members)))
 
 namedMembers
   :: InterpretedValue

@@ -12,7 +12,6 @@ module Parsing
   , prepareFunctionDomainExpression
   , prepareGenericExpression
   , forwardGenericBoundReference
-  , collectOwnedGenericIntroductions
   , inferredFunction
   , resolveGenericFunctionTypes
   , parseDatra

@@ -58,7 +58,6 @@ import DatraHost
   , modularMarker
   , modularValue
   , namedMembers
-  , publicValue
   )
 import DatraLanguage.Identifier
   ( isPrivateIdentifier
@@ -108,7 +107,6 @@ import DatraLanguage.SyntaxTemplate
 import DatraTypes
 import Parsing
   ( FunctionTypeIdentifier (..)
-  , collectOwnedGenericIntroductions
   , forwardGenericBoundReference
   , functionTypeIdentifiers
   , inferredFunction
@@ -1688,20 +1686,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                       applyFunction
                         (scopeActivation scope) reduction actualCallable input
                 _ -> Right (neverValue, Nothing)
-          applyNormally = do
-            callable <- interpret function
-            supplied <- interpret argument
-            applyEvaluated callable supplied
-      if null (collectOwnedGenericIntroductions function)
-        then applyNormally
-        else do
+      case interpret function of
+        Left failure@(GenericIntroductionOutsideFunctionType _) -> do
           supplied <- interpret argument
           case interpretedFunctionBody supplied of
             Just _ -> interpret (resolveGenericFunctionTypes
               (inferredFunction argument function))
-            Nothing -> do
-              callable <- interpret function
-              applyEvaluated callable supplied
+            Nothing -> Left failure
+        Left failure -> Left failure
+        Right callable -> do
+          supplied <- interpret argument
+          applyEvaluated callable supplied
     Begin bindings result ->
       evaluateBlockInScope True
         (Just (renderSourceExpression expressionValue))
@@ -1758,8 +1753,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           runProtectedOperation protection sources $ \actuals -> do
             publicDomains <- traverse publicDomainValue actuals
             _ <- importDomainValue publicDomains
-            publicValues <- traverse publicValue actuals
-            combined <- importDomainValue publicValues
+            members <- concat <$> traverse scopeNamedMembers actuals
+            let combined = makeAtlasMapPreservingSingleton 2
+                  (map snd (public members))
             enterOpenedScope expressionValue combined
               (zip distinctOperands actuals) body
     ScopeAccess operand body -> do
@@ -3552,7 +3548,9 @@ applyFunction activation reduction callable input =
         pure
           ( case functionSyntax function of
               Just _ -> result
-              Nothing -> withCanonicalApplication callable input result
+              Nothing
+                | interpretedTypeIsTotal result -> result
+                | otherwise -> withCanonicalApplication callable input result
           , contract
           )
     Right _ -> Left (FunctionEvaluationFailed

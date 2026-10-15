@@ -11,7 +11,11 @@ module SyntaxRewriting
   ) where
 
 import Control.Applicative ((<|>))
-import BlockScope (bindingNames)
+import BlockScope
+  ( Declaration (declarationName, declarationValue)
+  , bindingNames
+  , blockDeclaration
+  )
 import Data.List (nub)
 import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
@@ -432,12 +436,16 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
     FunctionApplication function argument
       | containsBlockStart environment argument
       , not (containsBlockStart environment function) -> do
-          rewrittenFunction <- rewriteStandalone capture environment function
-          (rewrittenArgument, remaining) <-
-            rewriteWithTail True capture environment argument trailing
-          finish
-            (FunctionApplication rewrittenFunction rewrittenArgument)
-            remaining
+          rewriteEmbeddedApplication capture environment value >>= \case
+            Just rewritten -> finish rewritten trailing
+            Nothing -> do
+              rewrittenFunction <-
+                rewriteStandalone capture environment function
+              (rewrittenArgument, remaining) <-
+                rewriteWithTail True capture environment argument trailing
+              finish
+                (FunctionApplication rewrittenFunction rewrittenArgument)
+                remaining
     MaybeThen optional branch
       | allowNestedContinuation -> do
           rewrittenOptional <- rewriteStandalone capture environment optional
@@ -568,6 +576,9 @@ normalizeTrailingAssignment annotation given = (annotation, given)
 canReceiveFunctionBody :: Expression -> Bool
 canReceiveFunctionBody FunctionTypeExpression {} = True
 canReceiveFunctionBody SyntaxType {} = True
+-- A generic introduction followed by a body is the existing shorthand for an
+-- inferred function type; deciding that does not require evaluating the bound.
+canReceiveFunctionBody GenericIntroductionExpression {} = True
 canReceiveFunctionBody (Fun signature) = canReceiveFunctionBody signature
 canReceiveFunctionBody (SyntaxBoundary signature) =
   canReceiveFunctionBody signature
@@ -579,12 +590,11 @@ containsFunctionImplementation :: Expression -> Bool
 containsFunctionImplementation MapSpecification {} = True
 containsFunctionImplementation
     (FunctionApplication signature FunctionBody {}) =
-  case signature of
-    FunctionTypeExpression {} -> True
-    SyntaxType {} -> True
-    _ -> False
+  canReceiveFunctionBody signature
 containsFunctionImplementation (Fun signature) =
   containsFunctionImplementation signature
+containsFunctionImplementation (SyntaxBoundary inner) =
+  containsFunctionImplementation inner
 containsFunctionImplementation _ = False
 
 rewriteChildren
@@ -675,7 +685,9 @@ directSyntaxFunctionExpansion environment selectedRule application =
             Just rule -> [(rewriteRuleImplementation rule,
               Just (captureCount rule))]
             Nothing -> case declaredImplementations function of
-              [] -> [(function, Nothing)]
+              []
+                | mayResolveSyntaxFunctionBody function -> [(function, Nothing)]
+                | otherwise -> []
               implementations ->
                 [ (rewriteRuleImplementation rule, Just
                     (captureCount rule))
@@ -708,6 +720,41 @@ directSyntaxFunctionExpansion environment selectedRule application =
           , rewriteRuleName rule == name
           , name `notElem` rewriteRuleLiteralPrefix rule
           ]
+    -- Tentative passes may reach a recursive let use before discovering its
+    -- declaration. Leaving that application unchanged defers the decision;
+    -- the fixed-point pass retries it after recursive declarations are in
+    -- scope. Known aliases are followed without interpreting ordinary callees.
+    mayResolveSyntaxFunctionBody = candidate Set.empty
+      where
+        candidate seen expressionValue = case expressionValue of
+          ScopeAccess {} -> True
+          InModule {} -> True
+          SyntaxBoundary inner -> candidate seen inner
+          IdentifierReference (IdentifierString requested)
+            | requested `Set.member` seen -> False
+            | otherwise -> case declaredValue requested of
+                Just declared -> candidate
+                  (Set.insert requested seen) declared
+                Nothing -> False
+          MapSpecification source _ -> candidate seen source
+          ReverseMapSpecification _ source -> candidate seen source
+          EitherType left right -> both seen left right
+          Overload left right -> both seen left right
+          ReverseOverload left right -> both seen left right
+          SafeOverload left right -> both seen left right
+          ReverseSafeOverload left right -> both seen left right
+          _ -> False
+        both seen left right = candidate seen left || candidate seen right
+        declaredValue requested = firstDeclared
+          (reverse (rewriteDeclarations environment))
+          where
+            firstDeclared [] = Nothing
+            firstDeclared (entry : remaining) =
+              case blockDeclaration entry of
+                Just declaration
+                  | declarationName declaration == requested ->
+                      Just (declarationValue declaration)
+                _ -> firstDeclared remaining
     captureCount rule = length
       [ ()
       | SyntaxHole _ <- syntaxTemplatePieces

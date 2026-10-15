@@ -71,6 +71,12 @@ standardLibraryTests =
         , programCase "external syntax adapters permit ordinary calls"
             "yield 'if (false; 4; 5)"
             "5"
+        , programCase "recursive let aliases to syntax bodies are discovered"
+            ( "answer := choose (false; 1; 2)\n"
+                <> "let choose := 'datra.if\n"
+                <> "yield answer"
+            )
+            "2"
         , programCase "direct begin rewrites its result in the block scope"
             ( "yield 'begin ((\n"
                 <> "  apply := \"apply %_Expr\" % "
@@ -169,7 +175,11 @@ standardLibraryTests =
               )
             , ("yield 'from (2;5)", "from 2 to 5")
             , ("yield 'from (2;$up)", "from 2 up")
-            , ("f := 'datra.add\nyield f (b:5;6)", "11")
+            , ( "body := 'datra.add\n"
+                  <> "f := ({a? : Int; b? : Int} -> Int) body\n"
+                  <> "yield f (b:5;6)"
+              , "11"
+              )
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
