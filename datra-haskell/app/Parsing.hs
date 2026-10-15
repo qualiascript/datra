@@ -117,7 +117,6 @@ import DatraLanguage.AST
       , FunctionTypeExpression
       , FunctionBody
       , FunctionApplication
-      , External
       , Let
       , IdentifierReference
       )
@@ -335,7 +334,7 @@ neutralIncompletePrefixOperator source = case reverse (words source) of
   [] -> Nothing
   where
     operandPrefixOperators =
-      [AST.ValueOfOperator, AST.ExternalOperator]
+      [AST.ValueOfOperator]
         <> map fst arithmeticPrefixOperators
 
 -- | Outer parentheses select expression mode; every other resource is an
@@ -789,7 +788,6 @@ astForm =
       , astBinary AST.SyntaxTypeOperator SyntaxType
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
-      , astUnary AST.ExternalOperator External
       , astBlock "do" FunctionBody
       , astSequence
       , ArgumentMap <$> (astSymbol "{}" *> many astExpression)
@@ -1131,52 +1129,27 @@ maybeThenExpressionFrom operand = do
     Just (constructor, branch) -> constructor optionalValue branch)
 
 functionExpressionWith :: Parser Expression -> Parser Expression
-functionExpressionWith operand = do
-  signature <- arrowExpressionWith operand
-  attachExplicitExternalImplementation signature
-
--- External implementations on explicit function signatures can be attached
--- by the neutral parser. An external after any other expression stays in the
--- application spine until declarative syntax has had a chance to claim it.
-attachExplicitExternalImplementation :: Expression -> Parser Expression
-attachExplicitExternalImplementation signature = do
-  implementation <- if acceptsExplicitFunctionBody signature
-    then optional externalExpression
-    else pure Nothing
-  pure (case implementation of
-    Nothing -> signature
-    Just body -> inferredFunction body signature)
-
-acceptsExplicitFunctionBody :: Expression -> Bool
-acceptsExplicitFunctionBody FunctionTypeExpression {} = True
-acceptsExplicitFunctionBody SyntaxType {} = True
-acceptsExplicitFunctionBody (Fun signature) =
-  acceptsExplicitFunctionBody signature
-acceptsExplicitFunctionBody (SyntaxBoundary signature) =
-  acceptsExplicitFunctionBody signature
-acceptsExplicitFunctionBody _ = False
+functionExpressionWith operand = arrowExpressionWith operand
 
 inferredFunction :: Expression -> Expression -> Expression
 inferredFunction body (Fun signature) =
-  Fun (MapSpecification body (inferredFunctionSignature signature))
+  Fun (FunctionApplication (inferredFunctionSignature signature) body)
 inferredFunction body (SyntaxBoundary signature) =
   SyntaxBoundary (inferredFunction body signature)
 inferredFunction body (SyntaxType templates signature) =
-  MapSpecification body
-    (SyntaxType templates (inferredFunctionSignature signature))
+  FunctionApplication
+    (SyntaxType templates (inferredFunctionSignature signature)) body
 inferredFunction body signature =
-  MapSpecification body (inferredFunctionSignature signature)
+  FunctionApplication (inferredFunctionSignature signature) body
 
 inferredFunctionSignature :: Expression -> Expression
 inferredFunctionSignature signature@FunctionTypeExpression {} = signature
 inferredFunctionSignature (SyntaxBoundary signature) =
   SyntaxBoundary (inferredFunctionSignature signature)
 inferredFunctionSignature signature =
-  FunctionType signature (External (AsciiStringLiteral "datra.Any"))
-
-externalExpression :: Parser Expression
-externalExpression =
-  External <$> (operatorToken AST.ExternalOperator *> externalTermAtom)
+  FunctionType signature (ScopeAccess
+    (IdentifierReference (IdentifierString "'datra"))
+    (IdentifierReference (IdentifierString "Any")))
 
 arrowExpressionWith :: Parser Expression -> Parser Expression
 arrowExpressionWith = arrowExpressionWithLayer eitherExpressionWith
@@ -1324,17 +1297,16 @@ identifierValueExpression = do
       (continuedOperator AST.FunctionTypeOperator *> arrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
     pure (maybe input (FunctionType input) output)
-  attachExplicitExternalImplementation signature
+  pure signature
 
 -- The value following @:=@ additionally admits an unparenthesized federation.
 -- Type annotations keep the narrower grammar so @name : T | U@ continues to
 -- mean a federation whose first member is a named type.
 assignedValueExpression :: Parser Expression
 assignedValueExpression = do
-  signature <- arrowExpressionWithLayer
+  arrowExpressionWithLayer
     assignmentEitherExpressionWith
     (makeExprParser rangeExpression identifierValueOperatorTable)
-  attachExplicitExternalImplementation signature
 
 -- Assignment has lower precedence than federation, except that a following
 -- identifier declaration starts the next federation member. Thus
@@ -1394,13 +1366,13 @@ rangeEndpoint = makeExprParser rangeEndpointTerm arithmeticOperatorTable
 
 term :: Parser Expression
 term = do
-  function <- accessedTerm externalTermAtom
+  function <- accessedTerm termAtom
   arguments <- many (try (applicationArgument function))
   pure (foldl FunctionApplication function arguments)
   where
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
-    applicationArgument function = accessedTerm (choice
+    applicationArgument _function = accessedTerm (choice
       [ try identifierTemplateOperation
       , try identifierOperation
       , argumentMap
@@ -1409,9 +1381,6 @@ term = do
       , trailingApplicationSkip
       , prefixedApplicationArgument
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
-      , do
-          guard (not (acceptsExplicitFunctionBody function))
-          externalExpression
       , symbolicSyntaxLiteral
       , identifierReference
       ])
@@ -1434,11 +1403,6 @@ prefixedApplicationArgument :: Parser Expression
 prefixedApplicationArgument =
   Coalization
     <$> (operatorToken AST.CoalizationOperator *> term)
-
-externalTermAtom :: Parser Expression
-externalTermAtom =
-  externalExpression
-    <|> termAtom
 
 termAtom :: Parser Expression
 termAtom =

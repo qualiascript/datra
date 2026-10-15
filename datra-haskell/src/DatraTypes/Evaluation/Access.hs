@@ -30,6 +30,7 @@ import Evaluation.Coalization
   )
 import Evaluation.Access.Specification (accessSpecification)
 import Evaluation.Access.Identifier (accessDependentIdentifierType)
+import Evaluation.Identifier (simpleIdentifierName)
 import Evaluation.Map
   ( concatenateValues
   , makeAtlasExpansion
@@ -539,6 +540,8 @@ namedAccessValue source name = do
     _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
+      | Just actual <- simpleIdentifierName value =
+          Right [value | actual == name]
       | matchesName (interpretedSemanticResult value) = Right [value]
       | otherwise = case interpretedForm value of
           DependentIdentifierTypeForm _ -> Right []

@@ -4,7 +4,6 @@ import Datra.TestSupport
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
-  , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretingError (..)
   )
@@ -522,42 +521,6 @@ functionTests =
         , programCase "identifier maps do not inhabit unnamed recursive lists"
             "yield (arg0 : 1; arg1 : 2; arg2 : 3) of List Int"
             "false"
-        ]
-    , testGroup "externals"
-        [ programCase "short external descriptor"
-            "f := ~~\"datra.add\"\nyield f (b:5;6)"
-            "11"
-        , programCase "structured external descriptor"
-            ("f := ~~(backend:\"haskell\";symbol:\"datra.add\")\n"
-              <> "yield f (b:5;6)")
-            "11"
-        , expressionFailureCase "unknown external backend"
-            "~~(backend:\"missing\";symbol:\"datra.add\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (UnsupportedExternalBackend "missing")))
-        , expressionFailureCase "unknown external symbol"
-            "~~(backend:\"haskell\";symbol:\"missing\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed (UnknownExternalSymbol "missing")))
-        , expressionFailureCase "duplicate external descriptor field"
-            "~~(backend:\"haskell\";backend:\"haskell\";symbol:\"datra.add\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed DuplicateExternalDescriptorField))
-        , expressionFailureCase "unknown external descriptor field"
-            "~~(backend:\"haskell\";extra:\"value\";symbol:\"datra.add\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (UnknownExternalDescriptorFields ["extra"])))
-        , expressionFailureCase "missing external descriptor field"
-            "~~(backend:\"haskell\")"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed
-                (MissingExternalDescriptorField "symbol")))
-        , expressionFailureCase "external descriptor requires string fields"
-            "~~(1; 2)"
-            (SourceEvaluationFailure
-              (ExternalEvaluationFailed ExternalDescriptorRequiresStringMap))
         ]
     , testGroup "typing"
         [ expressionCase "contravariant input and covariant output"

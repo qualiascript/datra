@@ -12,7 +12,6 @@ data Operator
   | SyntaxTypeOperator
   | ApplicationOperator
   | DoOperator
-  | ExternalOperator
   | SequentialOperator
   | ExpansionOperator
   | RangeOperator
@@ -58,7 +57,6 @@ operatorCanonicalSymbol FunctionTypeOperator = "->"
 operatorCanonicalSymbol SyntaxTypeOperator = "%"
 operatorCanonicalSymbol ApplicationOperator = "apply-func"
 operatorCanonicalSymbol DoOperator = "do"
-operatorCanonicalSymbol ExternalOperator = "~~"
 operatorCanonicalSymbol SequentialOperator = "<:>"
 operatorCanonicalSymbol ExpansionOperator = "<+>"
 operatorCanonicalSymbol RangeOperator = "<..>"
@@ -104,7 +102,6 @@ operatorSourceSymbol FunctionTypeOperator = Just "->"
 operatorSourceSymbol SyntaxTypeOperator = Just "%"
 operatorSourceSymbol ApplicationOperator = Nothing
 operatorSourceSymbol DoOperator = Just "do"
-operatorSourceSymbol ExternalOperator = Just "~~"
 operatorSourceSymbol SequentialOperator = Nothing
 operatorSourceSymbol ExpansionOperator = Nothing
 operatorSourceSymbol RangeOperator = Just ".."

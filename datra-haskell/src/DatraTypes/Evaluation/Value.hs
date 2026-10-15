@@ -18,10 +18,14 @@ module Evaluation.Value
   , canonicalStringImplementation
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , EvaluatedFunctionBody (..)
+  , functionBodySource
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , makeFunctionBodyValue
+  , interpretedFunctionBody
   , syntaxCategoryTypeValue
   , functionAlternatives
   , isFunctionFamily
@@ -108,7 +112,6 @@ module Evaluation.Value
   , interpretedSemanticResult
   , interpretedSemanticSemantics
   , interpretedCanonicalPresentation
-  , interpretedCanonicalPresentations
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -158,6 +161,8 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   )
+import DatraLanguage.AST (Expression)
+import DatraLanguage.Diagnostics.Application (SyntaxExpansionFailure)
 import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
 import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
 import Evaluation.DatraType
@@ -338,13 +343,19 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
   , functionInvocationContract :: Maybe InterpretedValue
   }
 
+data EvaluatedFunctionBody
+  = EvaluatedSyntaxFunctionBody
+      String
+      ([Expression] -> Either SyntaxExpansionFailure Expression)
+  | EvaluatedRuntimeFunctionBody String EvaluatedFunction
+
 data EvaluatedFunction = EvaluatedFunction
   { functionDomain :: InterpretedValue
   , functionCodomain :: InterpretedValue
   , functionSyntax :: Maybe (FunctionSyntax InterpretedValue)
   , functionSyntaxSource :: Maybe (FunctionSyntax String)
   , functionSource :: Maybe String
-  , functionExternalSymbol :: Maybe String
+  , functionBody :: Maybe EvaluatedFunctionBody
   , functionSignatureSource :: String
   , functionPrepare :: Maybe
       (InterpretedValue -> Either InterpretingError PreparedFunctionArgument)
@@ -417,6 +428,46 @@ makeFunctionValue function = makeInterpretedValue functionDatraType
     signature = functionSignatureSource function
     canonicalSource = maybe signature id (functionSource function)
 
+makeFunctionBodyValue :: EvaluatedFunctionBody -> InterpretedValue
+makeFunctionBodyValue body = case body of
+  EvaluatedSyntaxFunctionBody {} -> bodyValue (FunctionBodyForm body)
+  EvaluatedRuntimeFunctionBody _ implementation ->
+    bodyValue (FunctionForm implementation)
+  where
+    bodyValue form = makeInterpretedValue
+      (builtinMetaDatraType (ASTMetaType FunctionBodyAST))
+      form
+      NoInsertion
+      emptyInterpretedMap
+      (SingletonAtlasMapFederation emptyInterpretedMap)
+      TotalInterpretedMap
+      (FunctionBodySemantics (functionBodySource body))
+
+functionBodySource :: EvaluatedFunctionBody -> String
+functionBodySource body = case body of
+  EvaluatedSyntaxFunctionBody source _ -> source
+  EvaluatedRuntimeFunctionBody source _ -> source
+
+interpretedFunctionBody :: InterpretedValue -> Maybe EvaluatedFunctionBody
+interpretedFunctionBody value = case interpretedForm value of
+  FunctionBodyForm body -> Just body
+  FunctionForm function -> case datraTypeFamily
+      (interpretedDatraType value) of
+    BuiltinMetaTypeFamily (ASTMetaType FunctionBodyAST) ->
+      Just (EvaluatedRuntimeFunctionBody source function)
+    _ -> Nothing
+    where
+      source = case functionSource function of
+        Just implementationSource -> implementationSource
+        Nothing -> functionSignatureSource function
+  DependentIdentifierTypeForm identifier ->
+    interpretedFunctionBody (evaluatedIdentifierUnderlying identifier)
+  AssignmentForm specification ->
+    interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
+  SpecificationForm specification ->
+    interpretedFunctionBody (evaluatedSpecificationSourceValue specification)
+  _ -> Nothing
+
 interpretedFunction :: InterpretedValue -> Maybe EvaluatedFunction
 interpretedFunction value = case interpretedForm value of
   FunctionForm function -> Just function
@@ -475,15 +526,13 @@ builtinMetaTypeName TemplateMetaType = "Template"
 builtinMetaTypeName SyntaxTemplateMetaType = "_SyntaxTemplate"
 
 builtinMetaTypeCanonicalString :: BuiltinMetaType -> String
-builtinMetaTypeCanonicalString (ASTMetaType category) =
-  "~~\"" <> externalSymbol category <> "\""
-  where
-    externalSymbol ExpressionAST = "datra.Expr"
-    externalSymbol BlockAST = "datra.Block"
-    externalSymbol FunctionBodyAST = "datra.FunctionBody"
-    externalSymbol IdentifierExpressionAST = "datra.IdenExp"
+builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
+  ExpressionAST -> "'datra.Expr"
+  BlockAST -> "'datra.Block"
+  FunctionBodyAST -> "'datra.FunctionBody"
+  IdentifierExpressionAST -> "'datra.IdenExp"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
-  "~~\"datra.SyntaxTemplate\""
+  "'datra.SyntaxTemplate"
 builtinMetaTypeCanonicalString kind = builtinMetaTypeName kind
 
 builtinMetaTypeValue :: BuiltinMetaType -> InterpretedValue
@@ -510,6 +559,7 @@ syntaxCategoryTypeValue = builtinMetaTypeValue . ASTMetaType
 data ValueForm
   = NeverForm
   | BuiltinMetaTypeForm BuiltinMetaType
+  | FunctionBodyForm EvaluatedFunctionBody
   | FunctionForm EvaluatedFunction
   | ExplicitForm EvaluatedExplicit
   | IntegerForm Integer
@@ -914,11 +964,6 @@ interpretedCanonicalPresentation
   -> Maybe ([PresentationDependency], CanonicalResult)
 interpretedCanonicalPresentation = canonicalPresentation . interpretedSemantics
 
-interpretedCanonicalPresentations
-  :: InterpretedValue
-  -> [([PresentationDependency], CanonicalResult)]
-interpretedCanonicalPresentations = canonicalPresentations . interpretedSemantics
-
 withCanonicalReference
   :: [PresentationDependency]
   -> String
@@ -927,7 +972,7 @@ withCanonicalReference
 withCanonicalReference dependencies name value = value
   { interpretedSemantics = PresentedSemantics
       dependencies
-      (CanonicalReference name)
+      (AtomicPresentation (CanonicalReference name))
       (interpretedSemantics value)
   }
 
@@ -940,20 +985,21 @@ withCanonicalNamedAccess
 withCanonicalNamedAccess dependencies operand name value = value
   { interpretedSemantics = PresentedSemantics
       dependencies
-      (CanonicalNamedAccess operand name)
+      (AtomicPresentation (CanonicalNamedAccess operand name))
       (interpretedSemantics value)
   }
 
 withCanonicalApplication
-  :: [PresentationDependency]
-  -> CanonicalResult
-  -> CanonicalResult
+  :: InterpretedValue
   -> InterpretedValue
   -> InterpretedValue
-withCanonicalApplication dependencies function argument value = value
+  -> InterpretedValue
+withCanonicalApplication function argument value = value
   { interpretedSemantics = PresentedSemantics
-      dependencies
-      (CanonicalApplication function argument)
+      []
+      (ApplicationPresentation
+        (presentationForSemantics (interpretedSemantics function))
+        (presentationForSemantics (interpretedSemantics argument)))
       (interpretedSemantics value)
   }
 
@@ -974,6 +1020,7 @@ interpretedValueKind value =
   case interpretedForm value of
     NeverForm -> MapValueKind
     BuiltinMetaTypeForm (ASTMetaType _) -> FunctionValueKind
+    FunctionBodyForm _ -> FunctionValueKind
     BuiltinMetaTypeForm TemplateMetaType -> AsciiStringValueKind
     BuiltinMetaTypeForm _ -> RangeValueKind
     FunctionForm _ -> FunctionValueKind

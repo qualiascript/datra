@@ -63,7 +63,7 @@ declarationMap :: [String] -> (String -> Either InterpretingError InterpretedVal
   -> Either InterpretingError InterpretedValue
 declarationMap names resolve = makeAtlasMap 2 <$>
   traverse (\name -> simpleIdentifierTypeValue name
-    . withoutCanonicalPresentation <$> resolve name) names
+    <$> resolve name) names
 
 -- Validate against the map shape before asking for any declaration values.
 -- This also bounds the Natural-to-Int conversion used to select the list entry.

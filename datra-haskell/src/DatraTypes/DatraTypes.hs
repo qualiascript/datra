@@ -8,10 +8,14 @@ module DatraTypes
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
+  , EvaluatedFunctionBody (..)
+  , functionBodySource
   , EvaluatedFunction (..)
   , ReductionContext (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , makeFunctionBodyValue
+  , interpretedFunctionBody
   , makeDependentSumValue
   , dependentSumView
   , withDependentSumView
@@ -59,7 +63,6 @@ module DatraTypes
   , InterpretedMap
   , InterpretingError (..)
   , FunctionFailure (..)
-  , ExternalFailure (..)
   , ModuleEvaluationFailure (..)
   , NamedAccessFailure (..)
   , MapLengthFailure (..)
@@ -137,6 +140,7 @@ module DatraTypes
   , dependentIdentifierTypeValue
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
+  , simpleIdentifierName
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -206,7 +210,6 @@ module DatraTypes
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
-  , interpretedCanonicalPresentations
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -234,7 +237,6 @@ import Evaluation.Error
   ( AtlasMapFederationOperation (..)
   , AtlasMapFederationRefutation (..)
   , AtlasMapFederationUncertainty (..)
-  , ExternalFailure (..)
   , FunctionFailure (..)
   , InterpretedValueKind (..)
   , InterpretingError (..)
@@ -393,6 +395,7 @@ import Evaluation.Identifier
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , hasTrailingIdentifierMarker
+  , simpleIdentifierName
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -419,11 +422,15 @@ import Evaluation.Value
   , DatraType
   , PreparedFunctionArgument (..)
   , EvaluatedFunction (..)
+  , EvaluatedFunctionBody (..)
+  , functionBodySource
   , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)
   , DependentSumStructure (..)
   , functionSyntaxEquivalent
   , makeFunctionValue
+  , makeFunctionBodyValue
+  , interpretedFunctionBody
   , makeDependentSumValue
   , dependentSumView
   , withDependentSumView
@@ -466,7 +473,6 @@ import Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
-  , interpretedCanonicalPresentations
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication

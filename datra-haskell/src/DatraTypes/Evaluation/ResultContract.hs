@@ -34,6 +34,7 @@ decideClosedPublicResultContract = go 256
             BuiltinMetaTypeForm IntValRangeMetaType -> eligible
             BuiltinMetaTypeForm _ -> ineligible
             FunctionForm _ -> ineligible
+            FunctionBodyForm _ -> ineligible
             ExplicitForm _ -> eligible
             IntegerForm _ -> eligible
             BooleanForm _ -> eligible

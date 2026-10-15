@@ -153,8 +153,9 @@ rewrite mode depth reserved active resolver bound expression =
     InModule path body
       | Just imported <- resolveDependencyModule resolver path ->
           rewrite mode (depth + 1) reserved active imported bound body
-    MapSpecification (FunctionBody entries result)
-        (FunctionTypeExpression generics domain codomain) -> do
+    FunctionApplication
+        (FunctionTypeExpression generics domain codomain)
+        (FunctionBody entries result) -> do
       let parameters = parameterNames domain
       closedGenerics <- traverse
         (\binder -> do
@@ -170,8 +171,9 @@ rewrite mode depth reserved active resolver bound expression =
       body <- rewrite mode depth reserved active resolver
         (contextualMarker "_it" : "_it" : parameters <> bound)
         (FunctionBody entries result)
-      pure (MapSpecification body
-        (FunctionTypeExpression closedGenerics closedDomain closedCodomain))
+      pure (FunctionApplication
+        (FunctionTypeExpression closedGenerics closedDomain closedCodomain)
+        body)
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
     OptionalType operand
@@ -326,7 +328,7 @@ canonicalDependencyNames entries result
     isClosedFunctionResult (Fun value) = isFunction value
     isClosedFunctionResult value = isFunction value
     isFunction
-      (MapSpecification (FunctionBody {}) FunctionTypeExpression {}) = True
+      (FunctionApplication (FunctionTypeExpression {}) (FunctionBody {})) = True
     isFunction _ = False
 
 nameText :: IdentifierString -> String

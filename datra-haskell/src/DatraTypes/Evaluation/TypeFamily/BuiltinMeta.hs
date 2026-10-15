@@ -34,6 +34,7 @@ decideBuiltinMetaSubfederation source target =
           DecisionProved () -> True
           _ -> False
       (_, AnyMetaType) -> True
+      (FunctionBodyForm _, ASTMetaType FunctionBodyAST) -> True
       (_, OrdinalMetaType) -> isTransfiniteOrdinal
         (interpretedSemantics source)
       (BuiltinMetaTypeForm actual, expected) | actual == expected -> True

@@ -5,6 +5,7 @@ module Evaluation.Identifier
   , identifierTemplateTypeValue
   , identifierNameFederationFor
   , evaluatedIdentifierType
+  , simpleIdentifierName
   , privateSimpleIdentifier
   , privateIdentifierUnderlying
   , simpleIdentifierTypeValue
@@ -38,6 +39,22 @@ evaluatedIdentifierType value =
     SpecificationForm specification ->
       evaluatedIdentifierType (evaluatedSpecificationTarget specification)
     _ -> Nothing
+
+simpleIdentifierName :: InterpretedValue -> Maybe String
+simpleIdentifierName value =
+  case evaluatedIdentifierType value of
+    Just identifier ->
+      case evaluatedIdentifierDependency identifier of
+        SimpleIdentifierDependency name -> Just name
+        DependentIdentifierDependency {} -> Nothing
+    Nothing -> semanticName (interpretedSemantics value)
+  where
+    semanticName semantics = case semantics of
+      PresentedSemantics _ _ underlying -> semanticName underlying
+      AssignmentSemantics name _ _ -> Just name
+      DependentIdentifierTypeSemantics
+          (SimpleIdentifierDependency name) _ _ _ -> Just name
+      _ -> Nothing
 
 privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
 privateSimpleIdentifier identifier =
@@ -117,7 +134,8 @@ simpleIdentifierTypeValue
   -> InterpretedValue
   -> InterpretedValue
 simpleIdentifierTypeValue identifierString underlying
-  | interpretedSemanticResult underlying == CanonicalMap 0 [] =
+  | interpretedMapFinalOrderType (interpretedMap underlying)
+      == finiteOrdinal 0 =
       makeAsciiString identifierString
   | otherwise =
       makeDependentIdentifierTypeValue
@@ -135,7 +153,12 @@ inferredIdentifierAssignmentValue
   -> InterpretedValue
   -> InterpretedValue
 inferredIdentifierAssignmentValue identifierString underlying =
-  (simpleIdentifierTypeValue identifierString underlying)
+  (makeDependentIdentifierTypeValue
+      (SimpleIdentifierDependency identifierString)
+      Nothing
+      Nothing
+      True
+      underlying)
     { interpretedSemantics = AssignmentSemantics
         identifierString
         (interpretedSemantics underlying)
@@ -177,7 +200,9 @@ hasTrailingIdentifierMarker marker value =
       | count > 0
       , Just finalValue <- interpretedMapValueAt
           valueMap (finiteOrdinal (count - 1)) ->
-          interpretedSemanticResult finalValue == CanonicalAsciiString marker
+          case interpretedForm finalValue of
+            AsciiStringForm found -> found == marker
+            _ -> False
     _ -> False
   where
     valueMap = interpretedMap value

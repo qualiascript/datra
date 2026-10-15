@@ -183,8 +183,8 @@ assert = assertBool
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let expressionType = External (AsciiStringLiteral "datra.Expr")
-      blockType = External (AsciiStringLiteral "datra.Block")
+  let expressionType = hostReference "Expr"
+      blockType = hostReference "Block"
       beginValue = SyntaxType
         (StringTemplate
           [ StringTemplateLiteral "begin "
@@ -313,6 +313,11 @@ testModuleSyntaxAlias = do
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString
 
+hostReference :: String -> Expression
+hostReference name = ScopeAccess
+  (identifierReference "'datra")
+  (identifierReference name)
+
 sourceNatType :: String
 sourceNatType = "Nat"
 
@@ -337,7 +342,9 @@ maybeExpansion value =
 ordinalCall :: String -> [Expression] -> Expression
 ordinalCall name arguments =
   FunctionApplication
-    (External (AsciiStringLiteral ("datra.ordinal." <> name)))
+    (ScopeAccess
+      (hostReference "ordinal")
+      (identifierReference name))
     (AtlasMap arguments)
 
 ordinalSum, ordinalProduct, ordinalExponent :: Expression -> Expression -> Expression

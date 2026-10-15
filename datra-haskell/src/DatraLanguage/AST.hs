@@ -193,7 +193,6 @@ data Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
-  | External Expression
   | Begin [Expression] Expression
   | Let Expression
   | IdentifierReference IdentifierString
@@ -360,7 +359,6 @@ data OperatorExpression
       OperatorExpression
   | FunctionBodyValue [OperatorExpression] OperatorExpression
   | FunctionApplicationValue OperatorExpression OperatorExpression
-  | ExternalValue OperatorExpression
   | BeginValue [OperatorExpression] OperatorExpression
   | LetValue OperatorExpression
   | IdentifierReferenceValue IdentifierString
@@ -511,7 +509,6 @@ normalizeExpression (FunctionTypeExpression generics input output) =
     (normalizeExpression output)
 normalizeExpression (FunctionBody bindings result) = FunctionBody (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (FunctionApplication function input) = FunctionApplication (normalizeExpression function) (normalizeExpression input)
-normalizeExpression (External descriptor) = External (normalizeExpression descriptor)
 normalizeExpression (Begin bindings result) =
   Begin (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Let binding) = Let (normalizeExpression binding)
@@ -685,7 +682,6 @@ lower (FunctionTypeExpression generics input output) =
     (lower output)
 lower (FunctionBody bindings result) = FunctionBodyValue (map lower bindings) (lower result)
 lower (FunctionApplication function input) = FunctionApplicationValue (lower function) (lower input)
-lower (External descriptor) = ExternalValue (lower descriptor)
 lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
 lower (IdentifierReference name) = IdentifierReferenceValue name
@@ -904,7 +900,6 @@ prettyOperator (FunctionTypeValue generics input output) =
     ]
 prettyOperator (FunctionBodyValue bindings result) = prettyForm "do" [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
 prettyOperator (FunctionApplicationValue function input) = prettyBinary ApplicationOperator function input
-prettyOperator (ExternalValue descriptor) = prettyUnary ExternalOperator descriptor
 prettyOperator (BeginValue bindings result) =
   prettyForm "begin"
     [prettyForm "bindings" (map prettyOperator bindings), prettyOperator result]
@@ -1142,7 +1137,6 @@ traverseExpressionChildren visit expression = case expression of
   BooleanNot x -> BooleanNot <$> visit x
   Coalization x -> Coalization <$> visit x
   OptionalType x -> OptionalType <$> visit x
-  External x -> External <$> visit x
   Let x -> Let <$> visit x
   SuperEllipsisRangePlus x -> SuperEllipsisRangePlus <$> visit x
   SuperEllipsisRangeMinus x -> SuperEllipsisRangeMinus <$> visit x
