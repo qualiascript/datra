@@ -49,7 +49,6 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, intercalate, partition)
-import Debug.Trace (trace)
 import BlockScope
 import FunctionClosure
 import DatraHost
@@ -1736,39 +1735,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       binary overloadValues defaults supplied
     SafeOverload defaults supplied ->
       binary safeOverloadValues defaults supplied
-    ScopeAccess
-        (IdentifierReference (IdentifierString namespace))
-        (IdentifierReference (IdentifierString name))
-      | Just (ImportedBinding dependency identity value internal) <-
-          lookupScope namespace scope ->
-          case namedAccessValue value name of
-            Left (NamedAccessFailed (NamedFieldNotFound _)) ->
-              Left (UnknownIdentifier name)
-            result -> do
-              selected <- result
-              payload <- accessValues selected (naturalValue 1)
-              let exportedPayload = withoutCanonicalDependencies
-                    [ dependency
-                    | (_, LexicalScope dependency) <- scopeBindings internal
-                    ]
-                    payload
-                  inspectedPayload = if name == "max"
-                    then trace (show
-                      ( hasTrailingIdentifierMarker modularMarker selected
-                      , dependency
-                      , scopePresentationDependencies scope
-                      , interpretedCanonicalPresentation payload
-                      , interpretedCanonicalPresentation exportedPayload
-                      )) exportedPayload
-                    else exportedPayload
-              if hasTrailingIdentifierMarker modularMarker selected
-                then do
-                  pure (withCanonicalNamedAccess
-                    [modularPresentationDependency identity]
-                    (CanonicalReference namespace) name inspectedPayload)
-                else withCanonicalNamedAccess
-                  [dependency] (CanonicalReference namespace) name
-                    <$> transparentEitherAlias inspectedPayload
     -- Project one declared binding without forcing the whole scope map. This
     -- also permits projections next to recursive function declarations.
     ScopeAccess
@@ -1799,16 +1765,35 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                   selected <- namedAccessValue actual name
                   validateOpenedBinding actual (name, selected)
                   payload <- accessValues selected (naturalValue 1)
+                  let imported = case operand of
+                        IdentifierReference (IdentifierString namespace) ->
+                          case lookupScope namespace scope of
+                            Just (ImportedBinding _ identity _ internal) ->
+                              Just (identity, internal)
+                            _ -> Nothing
+                        _ -> Nothing
+                      exportedPayload = case imported of
+                        Just (_, internal) -> withoutCanonicalDependencies
+                          [ dependency
+                          | (_, LexicalScope dependency) <- scopeBindings internal
+                          ]
+                          payload
+                        Nothing -> payload
                   if hasTrailingIdentifierMarker modularMarker selected
                     then do
-                      let dependencies = maybe [] fst
-                            (interpretedCanonicalPresentation actual)
+                      let dependencies = case imported of
+                            Just (identity, _) ->
+                              [modularPresentationDependency identity]
+                            Nothing -> maybe [] fst
+                              (interpretedCanonicalPresentation actual)
                       pure (withCanonicalNamedAccess
                         dependencies
                         (interpretedCanonicalResult actual)
                         name
-                        payload)
-                    else pure payload
+                        exportedPayload)
+                    else case imported of
+                      Just _ -> transparentEitherAlias exportedPayload
+                      Nothing -> pure exportedPayload
             _ -> enterOpenedScope expressionValue actual
               [(operand, actual)] body
           _ -> Right neverValue
@@ -3726,8 +3711,10 @@ evaluateImport reduction captured resolving sourceExpression paths body =
                   genericFunctionReturnHandoff callCaptured
                 bodyArgument = protectWithPoliciesOf
                   (scopeActivation bodySeed) (map snd supplied) argument
+                bodyDependency = childPresentationDependency
+                  bodySeed declarations
             importedBindings <- traverse
-              (importArgumentBinding captured supplied) loaded
+              (importArgumentBinding bodyDependency supplied) loaded
             let localBindings =
                   constantContextualBindings "it" bodyArgument
                     <> importedBindings
@@ -3767,16 +3754,13 @@ importDomainValue values =
     first : remaining -> foldM concatenateValues first remaining
 
 importArgumentBinding
-  :: Scope
+  :: PresentationDependency
   -> [(String, InterpretedValue)]
   -> (FilePath, LoadedModuleBinder)
   -> Either InterpretingError (String, Binding)
-importArgumentBinding captured supplied (identity, binder) = do
+importArgumentBinding dependency supplied (identity, binder) = do
   let name = loadedModuleBinderName binder
   value <- maybe (Left (UnknownIdentifier name)) Right (lookup name supplied)
-  let dependency = case scopePresentationDependency captured of
-        Just current -> current
-        Nothing -> PresentationDependency ("import:" <> identity)
   pure (scopeBinding name (ImportedBinding
     dependency identity value (loadedModuleBinderScope binder)))
 
