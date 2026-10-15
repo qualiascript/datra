@@ -224,12 +224,14 @@ resolveImplicitBlock capture initial = go initial
                   (rewriteDeclarations nested) previous kind captured
           case matchSyntaxRulesWith captureInScope
               [rewriteRule rule] candidate of
-            Right (Begin bindings finalResult)
-              | null finalTrailing ->
-                  Right (Just (if explicitBlockAtHead
-                    then Begin rewrittenPrefix (Begin bindings finalResult)
-                    else Begin bindings finalResult))
-            Right _ -> Right Nothing
+            Right matched ->
+              directSyntaxFunctionExpansion nested matched >>= \case
+                Begin bindings finalResult
+                  | null finalTrailing ->
+                      Right (Just (if explicitBlockAtHead
+                        then Begin rewrittenPrefix (Begin bindings finalResult)
+                        else Begin bindings finalResult))
+                _ -> Right Nothing
             Left NoMatchingSyntaxTemplate -> Right Nothing
             Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where

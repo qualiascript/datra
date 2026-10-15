@@ -605,6 +605,14 @@ testGenericIdentifierDisjointness = do
         "generic-disjointness-test" names naturalType
       opaque = Types.dependentIdentifierTypeValue
         "opaque-generic-disjointness-test" (const "T") naturalType
+      namedAny = Types.simpleIdentifierTypeValue "T" Types.anyTypeValue
+  assert "a named Any remains a dependent identifier type"
+    (Types.interpretedValueKind namedAny
+      == Types.DependentIdentifierTypeValueKind)
+  assert "a named Any remains distinct from its unnamed bound"
+    (case Types.eitherValue namedAny Types.anyTypeValue of
+      Right _ -> True
+      Left _ -> False)
   assert "a generic is rejected when any dependent-name fibre overlaps"
     (Types.identifierNameDisjointness "T" family
       == Types.IdentifierNameOverlap)

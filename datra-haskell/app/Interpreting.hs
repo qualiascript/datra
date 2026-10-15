@@ -717,8 +717,8 @@ standardModuleEnvironment
       (Scope, [SyntaxRule], [(String, String, [SyntaxRule])])
 standardModuleEnvironment allNames = do
   source <- defaultModuleSource
-  base <- rootScopeWithDatra source [("\0imports", ModuleCatalog
-    [(standardLibraryFileName, source)])]
+  let base = rootScope source [("\0imports", ModuleCatalog
+        [(standardLibraryFileName, source)])]
   scope <- importLoadedModule base allNames source
   let imported =
         [ (namespace, value)

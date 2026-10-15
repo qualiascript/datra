@@ -23,6 +23,7 @@ import AtlasMapFederationExpression
   )
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError)
+import Evaluation.Map (isEmptyMap)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
@@ -134,8 +135,7 @@ simpleIdentifierTypeValue
   -> InterpretedValue
   -> InterpretedValue
 simpleIdentifierTypeValue identifierString underlying
-  | interpretedMapFinalOrderType (interpretedMap underlying)
-      == finiteOrdinal 0 =
+  | isEmptyMap underlying =
       makeAsciiString identifierString
   | otherwise =
       makeDependentIdentifierTypeValue
