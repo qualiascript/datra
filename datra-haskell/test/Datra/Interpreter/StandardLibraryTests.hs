@@ -169,7 +169,7 @@ standardLibraryTests =
               )
             , ("yield 'from (2;5)", "from 2 to 5")
             , ("yield 'from (2;$up)", "from 2 up")
-            , ("f := ~~\"datra.add\"\nyield f (b:5;6)", "11")
+            , ("f := 'datra.add\nyield f (b:5;6)", "11")
             , ( "f := (x:Int, {a?:Int;b?:Int} -> Int do yield x+a+b)\n"
                   <> "yield f (x:3,b:5,6)"
               , "14"
@@ -843,7 +843,7 @@ declaredPatternTests =
         (declaration <> declaration <> "yield this")
         (SourceEvaluationFailure (IdentifierStringOverlap "step"))
     , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"step %Int next\" % (Int -> Int) ~~\"datra.abs\")"
+        ( "step := ((\"step %Int next\" % (Int -> Int) 'datra.abs)"
             <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"
             <> "yield step"
         )
@@ -857,14 +857,14 @@ declaredPatternTests =
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase
         "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((\"step %Int left\" % (Int -> Int) ~~\"datra.abs\")"
-            <> " | (\"step %Int right\" % (Int -> Int) ~~\"datra.abs\"))\n"
+        ( "step := ((\"step %Int left\" % (Int -> Int) 'datra.abs)"
+            <> " | (\"step %Int right\" % (Int -> Int) 'datra.abs))\n"
             <> "yield step"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)
     , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) ~~\"datra.abs\")"
-            <> " | (\"choose %Int mark\" % (Int -> Int) ~~\"datra.abs\"))\n"
+        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) 'datra.abs)"
+            <> " | (\"choose %Int mark\" % (Int -> Int) 'datra.abs))\n"
             <> "yield choose"
         )
         (SourceEvaluationFailure EitherAlternativesNotDistinct)

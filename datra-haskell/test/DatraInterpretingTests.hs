@@ -1110,16 +1110,16 @@ testCanonicalTypes = do
     , "Nat -> Nat"
     , "Nat | (Nat -> Nat)"
     , "Template"
-    , "~~\"datra.Expr\""
-    , "~~\"datra.IdenExp\""
-    , "~~\"datra.Block\""
-    , "~~\"datra.FunctionBody\""
-    , "(Nat; (~~\"datra.Expr\"))"
+    , "'datra.Expr"
+    , "'datra.IdenExp"
+    , "'datra.Block"
+    , "'datra.FunctionBody"
+    , "(Nat; 'datra.Expr)"
     , "NatRange"
     , "IntRange"
     , "NatValRange"
     , "IntValRange"
-    , "~~\"datra.SyntaxTemplate\""
+    , "'datra.SyntaxTemplate"
     ]
   expectSourceValue "canonical function string capability" "Nat -> Nat" $ \value ->
     case Types.toStringValue canonicalStringCodec value of

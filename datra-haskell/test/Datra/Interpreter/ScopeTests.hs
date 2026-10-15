@@ -43,7 +43,7 @@ scopeTests =
             "(30; 20)"
         , programCase "this has the exact available valued-natural domain"
             "yield begin marker := 1; yield _this"
-            "(from 0 to 0 -> ~~\"datra.Any\")"
+            "(from 0 to 0 -> 'datra.Any)"
         , programCase "it skips scopes which introduce no it binding"
             ( "outer := (Nat -> Nat do\n"
                 <> " inner := (Nat -> Nat do "
@@ -58,7 +58,7 @@ scopeTests =
                 <> " yield inner 9)\n"
                 <> "yield outer 7"
             )
-            "(from 0 to 1 -> ~~\"datra.Any\")"
+            "(from 0 to 1 -> 'datra.Any)"
         , programCase "closure-local _inner_this cannot collide with source"
             ( "yield begin _inner_this := 23; value := 4; "
                 <> "yield this.value"

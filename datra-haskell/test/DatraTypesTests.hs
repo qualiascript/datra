@@ -402,20 +402,6 @@ testDiagnostics = do
           "parametrul privat al funcției nu poate fi opțional"
           ["identificator: _value"]
     )
-  assert "external failures are localized from semantic fields"
-    ( localizeDiagnostic English
-        (Types.ExternalEvaluationFailed
-          (Types.UnsupportedExternalBackend "native"))
-        == LocalizedMessage
-          "external backend is not supported"
-          ["backend: native"]
-      && localizeDiagnostic Romanian
-        (Types.ExternalEvaluationFailed
-          (Types.UnsupportedExternalBackend "native"))
-        == LocalizedMessage
-          "backendul extern nu este acceptat"
-          ["backend: native"]
-    )
   assert "map-length failures have bilingual structured diagnostics"
     ( localizeDiagnostic English
         (Types.MapLengthFailed

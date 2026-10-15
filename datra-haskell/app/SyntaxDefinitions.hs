@@ -76,6 +76,8 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
       rules key templates signature body
     collect key (SyntaxType templates (MapSpecification body signature)) =
       rules key templates signature body
+    collect key (SyntaxType templates (FunctionApplication signature body)) =
+      rules key templates signature body
     collect key (FunctionApplication (SyntaxType templates signature) body) =
       rules key templates signature body
     collect _ _ = []

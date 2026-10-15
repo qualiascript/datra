@@ -259,8 +259,10 @@ stripPresentedDependencies
   -> ValueSemantics
 stripPresentedDependencies expired semantics =
   case semantics of
-    PresentedSemantics dependencies _ underlying
-      | any (`elem` expired) dependencies -> recur underlying
+    PresentedSemantics dependencies presentation underlying
+      | any (`elem` expired)
+          (dependencies <> presentationDependencies presentation) ->
+            recur underlying
     PresentedSemantics dependencies presentation underlying ->
       PresentedSemantics
         dependencies

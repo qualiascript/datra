@@ -535,15 +535,15 @@ regressionTests = do
         , syntaxSignature = ref "Any"
         , syntaxRecursive = False
         , syntaxModule = Nothing
-        , syntaxImplementation = External (AsciiStringLiteral implementation)
+        , syntaxImplementation = datraRef implementation
         }
   assert "external syntax implementations are not selected by namespace"
-    (expandSyntax (syntaxControl "datra.syntax.unknown")
+    (expandSyntax (syntaxControl ["syntax", "unknown"])
       (TemplateSelection (ref "test-control") [])
       == Right (FunctionApplication
         (ref "test-control")
         (AtlasMap [])))
-  let zeroCaptureSyntax = (syntaxControl "datra.syntax.unknown")
+  let zeroCaptureSyntax = (syntaxControl ["syntax", "unknown"])
         { syntaxName = "answer"
         , syntaxSignature = FunctionType (natural 42) (ref "Nat")
         }
@@ -561,7 +561,7 @@ regressionTests = do
             (ref "IntValRange")
         , syntaxRecursive = False
         , syntaxModule = Nothing
-        , syntaxImplementation = External (AsciiStringLiteral implementation)
+        , syntaxImplementation = datraRef implementation
         }
       intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
       intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
@@ -582,17 +582,17 @@ regressionTests = do
         _ -> False
       wrongFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intHole]
-        "datra.wrong-from"
+        ["wrong-from"]
       correctFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intLimitHole]
-        "datra.from"
+        ["from"]
       unrelated = syntaxFunction "unrelated"
         [ intHole
         , SyntaxLiteral "to"
         , intLimitHole
         , SyntaxLiteral "with-more-template-text"
         ]
-        "datra.unrelated"
+        ["unrelated"]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
@@ -617,9 +617,9 @@ regressionTests = do
           == matchRules matchesNumericHole [correctFrom] fromPhrase
       Left _ -> False)
   let beginAliasBootstrap = unlines
-        [ "_Expr := ~~\"datra.Expr\""
-        , "_Block := ~~\"datra.Block\""
-        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) ~~\"datra.begin\""
+        [ "_Expr := 'datra.Expr"
+        , "_Block := 'datra.Block"
+        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) 'datra.begin"
         , "yield Example := begin"
         , "  'begin := 'begin"
         , "yield 'begin"
@@ -643,7 +643,7 @@ regressionTests = do
         , SyntaxLiteral "marker"
         , SyntaxHole (ValueSyntaxHole (ref "Tail"))
         ]
-        "datra.greedy"
+        ["greedy"]
       greedyPhrase = foldl FunctionApplication (ref "greedy")
         [ natural 1
         , ref "marker"
@@ -668,10 +668,10 @@ regressionTests = do
       Left _ -> False)
   let contextualShort = syntaxFunction "contextual"
         [intHole]
-        "datra.contextual-short"
+        ["contextual-short"]
       contextualLong = syntaxFunction "contextual"
         [intHole, SyntaxLiteral "marker", intHole]
-        "datra.contextual-long"
+        ["contextual-long"]
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
@@ -686,13 +686,13 @@ regressionTests = do
       Left _ -> False)
   let rankedShort = syntaxFunction "ranked"
         [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        "datra.ranked-short"
+        ["ranked-short"]
       rankedLong = syntaxFunction "ranked"
         [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         , SyntaxLiteral "marker"
         , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         ]
-        "datra.ranked-long"
+        ["ranked-long"]
       rankedPhrase = foldl FunctionApplication (ref "ranked")
         [natural 1, ref "marker", natural 2]
   let rankedCapture = foldl FunctionApplication (natural 1)
@@ -788,7 +788,7 @@ regressionTests = do
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
     , Coalization (AtlasMap [natural 1, natural 2])
-    , External (AsciiStringLiteral "datra.add")
+    , datraRef ["add"]
     , GenericIntroductionExpression (GenericIntroduction
         GenericProduct (genericIdentifier "T" True) (ref "Any") Nothing)
     , GenericIntroductionExpression (GenericIntroduction
@@ -926,97 +926,97 @@ regressionTests = do
       optionalInput =
         ArgumentMap
           [OptionalType (AST.dependentIdentifierType "value" (ref "Any"))]
-      inferredFunction input = MapSpecification identityBody
-        (FunctionType input (ref "Any"))
-      implicitFunction input = MapSpecification identityBody
-        (FunctionType input (External (AsciiStringLiteral "datra.Any")))
+      arrowBody input output = FunctionApplication
+        (FunctionType input output)
+        identityBody
+      appliedBody input = FunctionApplication input identityBody
   assertParsed "a function body follows an explicit function type"
     "{value? : Any} -> Any do yield value"
-    (inferredFunction optionalInput)
+    (arrowBody optionalInput (ref "Any"))
   assertParsed "a function body infers Any after a non-function type"
     "{value? : Any} do yield value"
-    (implicitFunction optionalInput)
-  assertParsed "an external body infers Any after a non-function type"
-    "Nat ~~\"datra.example\""
-    (MapSpecification
-      (External (AsciiStringLiteral "datra.example"))
-      (FunctionType
-        (ref "Nat")
-        (External (AsciiStringLiteral "datra.Any"))))
-  assertParsed "a leading external remains a standalone value"
-    "~~\"datra.Any\""
-    (External (AsciiStringLiteral "datra.Any"))
+    (appliedBody optionalInput)
+  assertParsed "a host function body infers Any after a non-function type"
+    "Nat 'datra.modular"
+    (FunctionApplication (ref "Nat") (datraRef ["modular"]))
+  assertParsed "a leading host member remains a standalone value"
+    "'datra.Any"
+    (datraRef ["Any"])
   assertParsed "a parenthesized type retains its signature boundary"
     "(Nat) do yield value"
-    (implicitFunction (ref "Nat"))
+    (appliedBody (ref "Nat"))
   case parseSource "((&T?) do yield value\n)" of
-    Right (MapSpecification body
-        (FunctionTypeExpression [binder] declaration codomain)) ->
-      assert "an inferred generic function owns its binder scope"
+    Right (FunctionApplication
+        (GenericIntroductionExpression introduction) body) ->
+      assert "a generic introduction remains an ordinary body application"
         ( body == identityBody
-          && declaration == GenericReferenceExpression
-            (GenericReference (genericBinderId binder)
-              GenericDeclarationReference)
-          && codomain == External (AsciiStringLiteral "datra.Any")
+          && genericIntroductionIdentifier introduction
+            == genericIdentifier "T" True
         )
     result -> fail ("unexpected generic function body: " <> show result)
   assertParsed "function domains accept forward specifications"
     "(Nat ~> Any) -> Any do yield value"
-    (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+    (arrowBody
+      (MapSpecification (ref "Nat") (ref "Any"))
+      (ref "Any"))
   assertParsed "inferred function domains accept forward specifications"
     "(Nat ~> Any) do yield value"
-    (implicitFunction (MapSpecification (ref "Nat") (ref "Any")))
+    (appliedBody (MapSpecification (ref "Nat") (ref "Any")))
   assertParsed "function domains accept reverse specifications"
     "(Any <~ Nat) -> Any do yield value"
-    (inferredFunction (MapSpecification (ref "Nat") (ref "Any")))
+    (arrowBody
+      (MapSpecification (ref "Nat") (ref "Any"))
+      (ref "Any"))
   assertParsed "inferred function domains accept reverse specifications"
     "(Any <~ Nat) do yield value"
-    (implicitFunction (MapSpecification (ref "Nat") (ref "Any")))
+    (appliedBody (MapSpecification (ref "Nat") (ref "Any")))
   assertParsed "function domains accept subfederations"
     "(Nat of Any) -> Any do yield value"
-    (inferredFunction (Subfederation (ref "Nat") (ref "Any")))
+    (arrowBody
+      (Subfederation (ref "Nat") (ref "Any"))
+      (ref "Any"))
   assertParsed "inferred function domains accept subfederations"
     "(Nat of Any) do yield value"
-    (implicitFunction (Subfederation (ref "Nat") (ref "Any")))
+    (appliedBody (Subfederation (ref "Nat") (ref "Any")))
   assertParsed "an explicit code-block codomain is preserved"
     "{value? : Any} -> Nat do yield value"
-    (MapSpecification identityBody (FunctionType optionalInput (ref "Nat")))
+    (arrowBody optionalInput (ref "Nat"))
   assertParsed "an explicit coalized codomain owns the following body"
     "{value? : Any} -> >< (Nat; Nat) do yield value"
-    (MapSpecification identityBody
-      (FunctionType optionalInput
-        (Coalization (AtlasMap [ref "Nat", ref "Nat"]))))
+    (arrowBody optionalInput
+      (Coalization (AtlasMap [ref "Nat", ref "Nat"])))
   assertParsed "a declared syntax signature is not a shorthand function domain"
     "\"step %Int next\" % (Int -> Int) do yield value"
-    (MapSpecification identityBody
+    (FunctionApplication
       (SyntaxType (StringTemplate
-        [ StringTemplateLiteral "step "
-        , StringTemplateInterpolation (ref "Int")
-        , StringTemplateLiteral " next"
-        ])
-        (FunctionType (ref "Int") (ref "Int"))))
+          [ StringTemplateLiteral "step "
+          , StringTemplateInterpolation (ref "Int")
+          , StringTemplateLiteral " next"
+          ])
+        (FunctionType (ref "Int") (ref "Int")))
+      identityBody)
   assertParsed "a declared syntax signature can infer its Any codomain"
     "\"step %Int next\" % Int do yield value"
-    (MapSpecification identityBody
+    (FunctionApplication
       (SyntaxType (StringTemplate
-        [ StringTemplateLiteral "step "
-        , StringTemplateInterpolation (ref "Int")
-        , StringTemplateLiteral " next"
-        ])
-        (FunctionType
-          (ref "Int")
-          (External (AsciiStringLiteral "datra.Any")))))
+          [ StringTemplateLiteral "step "
+          , StringTemplateInterpolation (ref "Int")
+          , StringTemplateLiteral " next"
+          ])
+        (ref "Int"))
+      identityBody)
   let optionalIntInput = ArgumentMap
         [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
   assertParsed "a declared syntax signature accepts a multiline body"
     "\"step %Nat next\" % ({value?:Int} -> Int) do\n  yield value"
-    (MapSpecification identityBody
+    (FunctionApplication
       (SyntaxType (StringTemplate
-        [ StringTemplateLiteral "step "
-        , StringTemplateInterpolation (ref "Nat")
-        , StringTemplateLiteral " next"
-        ])
-        (FunctionType optionalIntInput (ref "Int"))))
+          [ StringTemplateLiteral "step "
+          , StringTemplateInterpolation (ref "Nat")
+          , StringTemplateLiteral " next"
+          ])
+        (FunctionType optionalIntInput (ref "Int")))
+      identityBody)
   assertAstOutput "% accepts an inhabited total map of template strings"
     "(\"%Int++\"; \"increment %Int\") % (Int -> Int)"
     (SyntaxType
@@ -1052,26 +1052,26 @@ regressionTests = do
           , StringTemplateInterpolation (ref "_Expr")
           ])
         (FunctionType (ref "Any") (ref "Any"))
-      syntaxAdapter = External (AsciiStringLiteral "datra.syntax.test")
-  assertParsed "inline external syntax adapters use the external as their body"
-    "\"handler %_Expr\" % (Any -> Any) ~~\"datra.syntax.test\""
-    (MapSpecification syntaxAdapter syntaxAdapterType)
+      syntaxAdapter = datraRef ["syntax", "test"]
+  assertParsed "inline host syntax adapters use the host member as their body"
+    "\"handler %_Expr\" % (Any -> Any) 'datra.syntax.test"
+    (FunctionApplication syntaxAdapterType syntaxAdapter)
   assertParsed "a syntax type is an ordinary value without a body"
     "\"handler %_Expr\" % (Any -> Any)"
     syntaxAdapterType
-  assertParsed "declared external syntax adapters use the function body form"
-    "handler := \"handler %_Expr\" % (Any -> Any) ~~\"datra.syntax.test\""
+  assertParsed "declared host syntax adapters use the function body form"
+    "handler := \"handler %_Expr\" % (Any -> Any) 'datra.syntax.test"
     (AST.assignment "handler"
-      (MapSpecification syntaxAdapter syntaxAdapterType)
-      (MapSpecification syntaxAdapter syntaxAdapterType))
+      (FunctionApplication syntaxAdapterType syntaxAdapter)
+      (FunctionApplication syntaxAdapterType syntaxAdapter))
   assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : \"handler %_Expr\" % (Any -> Any) := ~~\"datra.syntax.test\""
+    "handler : \"handler %_Expr\" % (Any -> Any) := 'datra.syntax.test"
     (IdentifierOperation
       (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take %_Expr\" % (Int -> Int) ~~\"datra.modular\""
+        , "take := \"take %_Expr\" % (Int -> Int) 'datra.modular"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -1080,9 +1080,9 @@ regressionTests = do
     _ -> False
   assert "AST capture behavior follows the interpolated value's type" $ case
       parseSource (unlines
-        [ "(Capture := ~~\"datra.Expr\""
+        [ "(Capture := 'datra.Expr"
         , "CaptureAlias := Capture"
-        , "take := \"take %CaptureAlias\" % (Any -> Any) ~~\"datra.modular\""
+        , "take := \"take %CaptureAlias\" % (Any -> Any) 'datra.modular"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -1091,10 +1091,10 @@ regressionTests = do
     _ -> False
   assert "an identifier capture is in scope for later typed captures" $ case
       parseSource (unlines
-        [ "(_IdenExp := ~~\"datra.IdenExp\""
-        , "_Expr := ~~\"datra.Expr\""
+        [ "(_IdenExp := 'datra.IdenExp"
+        , "_Expr := 'datra.Expr"
         , "gate := \"gate %_IdenExp bound %_Expr body %Int\" %"
-            <> " ((Any; Any; Int) -> Int) ~~\"test.gate\""
+            <> " ((Any; Any; Int) -> Int) 'datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
     Right (AtlasMap [_, _, _, rewritten]) ->
@@ -1108,9 +1108,9 @@ regressionTests = do
         ]
   assert "an identifier capture does not introduce contextual it" $ case
       parseSource (unlines
-        [ "(_IdenExp := ~~\"datra.IdenExp\""
+        [ "(_IdenExp := 'datra.IdenExp"
         , "capture := \"capture %_IdenExp\" %"
-            <> " (Any -> Any) ~~\"datra.modular\""
+            <> " (Any -> Any) 'datra.modular"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Modular captured]) ->
@@ -1118,9 +1118,9 @@ regressionTests = do
     _ -> False
   assert "an optional identifier capture does not introduce contextual it" $
     case parseSource (unlines
-      [ "(_IdenExp := ~~\"datra.IdenExp\""
+      [ "(_IdenExp := 'datra.IdenExp"
       , "capture := \"capture %_IdenExp\" %"
-          <> " (Any -> Any) ~~\"datra.modular\""
+          <> " (Any -> Any) 'datra.modular"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Modular captured]) ->
@@ -1130,8 +1130,7 @@ regressionTests = do
     Reserved.reservedSymbolIdentifiersAreUnique
   assertParsed "val is available as an ordinary identifier"
     "val _it" (FunctionApplication (ref "val") (ref "_it"))
-  assertParsed "external escape constructs an External AST"
-    "~~\"datra.Int\"" (External (AsciiStringLiteral "datra.Int"))
+  assertRejected "the removed external escape is rejected" "~~\"datra.Int\""
   assertRejected "previous external symbol is rejected" "!~\"datra.Int\""
   assertRejected "legacy external symbol is rejected" "!^\"datra.Int\""
   mapM_ (\name -> assertParsed ("library name is an ordinary identifier: " <> name)
@@ -1323,8 +1322,7 @@ regressionTests = do
       (ref "values")
       (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
   let inlineLimitFunction = Fun
-        (MapSpecification
-          (FunctionBody [] (ref "candidate"))
+        (FunctionApplication
           (FunctionType
             (ArgumentMap
               [ OptionalType
@@ -1333,7 +1331,8 @@ regressionTests = do
                   (AST.dependentIdentifierType "remaining"
                     (FunctionApplication (ref "List") (ref "IntLimit")))
               ])
-            (ref "IntLimit")))
+            (ref "IntLimit"))
+          (FunctionBody [] (ref "candidate")))
   assertAstOutput "list sequencing accepts an ungrouped inline fixed point"
     ("values !? it in fun {candidate? : IntLimit; "
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
@@ -2451,7 +2450,8 @@ genExpression =
     , ref <$> Gen.element ["nothing", "true", "false", "Nat", "Int", "Str", "IdenStr", "Bool", "AST", "IntRange", "NatRange", "IntValRange", "NatValRange", "Template"]
     , IdentifierReference <$> genIdentifierString
     , pure (ref "_this")
-    , External . AsciiStringLiteral <$> Gen.element ["datra.add", "datra.abs", "datra.syntax.if"]
+    , datraRef <$> Gen.element
+        [["add"], ["abs"], ["syntax", "if"]]
     , AsciiStringLiteral
         <$> Gen.list (Range.linear 0 24) (Gen.enum '\0' '\255')
     , genRangeExpression
@@ -2815,6 +2815,9 @@ containsFunctionBody value = any containsFunctionBody (expressionChildren value)
 -- of the parser's syntax expansion so they can catch changes in that expansion.
 ref :: String -> Expression
 ref = IdentifierReference . IdentifierString
+
+datraRef :: [String] -> Expression
+datraRef = foldl ScopeAccess (ref "'datra") . map ref
 
 integer :: Integer -> Expression
 integer value

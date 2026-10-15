@@ -1611,7 +1611,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             Nothing -> Left (FunctionEvaluationFailed
               AstPatternRequiresFunctionSignature)
           _ -> Right neverValue
-    FunctionTypeExpression [] domain codomain -> do
+    FunctionTypeExpression [] domain codomain ->
       evaluateFunctionType [] expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
       validateGenericFunctionType interpret generics domain codomain
@@ -1619,7 +1619,17 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           preparedCodomain = prepareGenericExpression generics codomain
       evaluateFunctionType generics expressionValue
         preparedDomain preparedCodomain
-    FunctionBody {} -> Left (FunctionEvaluationFailed ExpectedFunctionType)
+    FunctionBody bindings result -> do
+      implementation <- createFunctionWithEvaluatedTypes
+        (Just (anyTypeValue, anyTypeValue))
+        reduction scope resolving expressionValue
+        (AtlasMap []) (AtlasMap []) bindings result []
+      case interpretedFunction implementation of
+        Just function -> pure (makeFunctionBodyValue
+          (EvaluatedRuntimeFunctionBody
+            (renderSourceExpression expressionValue)
+            function))
+        Nothing -> Left (FunctionEvaluationFailed ExpectedFunctionType)
     FunctionApplication
         (SyntaxType templates signature)
         body@FunctionBody {} -> do
@@ -1654,7 +1664,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           , interpret function
           ) of
         (Just _, Left (GenericIntroductionOutsideFunctionType _)) ->
-          interpret (inferredFunction argument function)
+          interpret (resolveGenericFunctionTypes
+            (inferredFunction argument function))
         (_, Left failure) -> Left failure
         (_, Right callable) ->
           runProtectedOperationWithContract
@@ -1672,7 +1683,8 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                 , not (interpretedTypeIsTotal actualCallable)
                 , Just _ <- interpretedFunctionBody actualSupplied ->
                     (, Nothing) <$> interpret
-                      (inferredFunction argument function)
+                      (resolveGenericFunctionTypes
+                        (inferredFunction argument function))
                 | otherwise -> do
                     input <- functionArgumentValue actualSupplied
                     applyFunction
@@ -2273,6 +2285,8 @@ resolveInferredEitherAlias (Just _) value = value
 recursiveFunctionImplementation :: Expression -> Maybe Expression
 recursiveFunctionImplementation expressionValue =
   case expressionValue of
+    SyntaxType _ (FunctionApplication _ implementation) ->
+      Just implementation
     FunctionApplication (SyntaxType {}) implementation ->
       Just implementation
     FunctionApplication (FunctionTypeExpression {}) implementation
@@ -2987,14 +3001,34 @@ createFunctionWithGenerics
   -> Either InterpretingError InterpretedValue
 createFunctionWithGenerics reduction captured resolving
     signature writtenDomainExpression writtenOutput bindings result
+    generics = createFunctionWithEvaluatedTypes Nothing
+      reduction captured resolving signature writtenDomainExpression
+      writtenOutput bindings result generics
+
+createFunctionWithEvaluatedTypes
+  :: Maybe (InterpretedValue, InterpretedValue)
+  -> ReductionContext
+  -> Scope
+  -> [String]
+  -> Expression
+  -> Expression
+  -> Expression
+  -> [Expression]
+  -> Expression
+  -> [GenericBinder Expression]
+  -> Either InterpretingError InterpretedValue
+createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
+    signature writtenDomainExpression writtenOutput bindings result
     generics = do
   let (domainExpression, substitutions) =
         staticGenericDomain generics writtenDomainExpression
       specifiedOutput = substituteDependent substitutions writtenOutput
       preparedBindings = map (prepareGenericExpression generics) bindings
       preparedResult = prepareGenericExpression generics result
-  schema <- compileParametersWithGenerics generics evaluate
-    writtenDomainExpression domainExpression
+  schema <- case evaluatedTypes of
+    Just (input, _) -> pure (argumentSchemaFromValue input)
+    Nothing -> compileParametersWithGenerics generics evaluate
+      writtenDomainExpression domainExpression
   let inferredGenericNames = argumentSchemaInferredGenericNames schema
   let parameters = parameterBindings schema
       names = map fst parameters
@@ -3036,7 +3070,9 @@ createFunctionWithGenerics reduction captured resolving
         lookupScope "_this" captured >>= contextualBinding of
         Just (includesDependencies, _) -> (True, includesDependencies)
         _ -> (False, False)
-  output <- evaluate specifiedOutput
+  output <- case evaluatedTypes of
+    Just (_, preparedOutput) -> pure preparedOutput
+    Nothing -> evaluate specifiedOutput
   let prepareWith trusted argument = do
         (prepared, imported) <-
           overloadArgumentSchemaCompleteWithTrustedGenerics
@@ -3125,15 +3161,19 @@ createFunctionWithGenerics reduction captured resolving
         (bodyScope, escaped, codomainEvaluationScope) <-
           evaluatePreparedBody callerActivation invocationReduction preparedCall
         let handed = handoffScopeValue bodyScope escaped
-        dynamicOutput <- evalInScopeWith invocationReduction
-          codomainEvaluationScope resolving writtenOutput
+        dynamicOutput <- case evaluatedTypes of
+          Just (_, preparedOutput) -> pure preparedOutput
+          Nothing -> evalInScopeWith invocationReduction
+            codomainEvaluationScope resolving writtenOutput
         let handedOutput = handoffScopeValue
               codomainEvaluationScope dynamicOutput
         specified <- contextuallySpecify handed handedOutput
         pure (EvaluatedFunctionInvocation specified (Just handedOutput))
-  let signatureText = renderSourceExpression signature
-      definition = FunctionApplication signature
-        (FunctionBody bindings result)
+  let definition = case evaluatedTypes of
+        Just _ -> FunctionBody bindings result
+        Nothing -> FunctionApplication signature
+          (FunctionBody bindings result)
+      signatureText = renderSourceExpression definition
       self = case [bindingKey name expressionValue
                   | (name, binding) <- scopeBindings captured
                   , Just (_, _, expressionValue) <- [bindingDefinition binding]
@@ -3972,10 +4012,11 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
           (traverseSyntaxTemplate parseScopedRuleExpression)
           templates
         signature <- parseRuleExpression (functionSignatureSource function)
-        implementation <- maybe
+        unscopedImplementation <- maybe
           (pure (IdentifierReference (IdentifierString name)))
           parseRuleExpression
           (functionSource function)
+        let implementation = InModule scopeName unscopedImplementation
         pure
           [ SyntaxRule
               name template signature False (Just scopeName) implementation
@@ -4169,19 +4210,26 @@ closureResolver scope = resolver
             }
     resolve (name : fields) = do
       binding <- lookupScope name scope
-      case (fields, bindingDefinition binding) of
-        ([], Just (lexical, _, expressionValue)) ->
-          Just (Dependency (bindingKey name expressionValue)
-            (originName name) expressionValue (closureResolver lexical))
-        _ -> do
-          value <- either (const Nothing) Just (resolveIdentifier scope [] name)
-          selected <- either (const Nothing) Just
-            (foldM namedAccessValue value fields)
-          expressionValue <- either (const Nothing) Just (valueExpression selected)
-          pure (Dependency
-            (intercalate "." (name : fields) <> ":" <> show expressionValue)
-            (intercalate "." (originName name : fields))
-            expressionValue emptyResolver)
+      if modularBinding binding
+        then Nothing
+        else case (fields, bindingDefinition binding) of
+          ([], Just (lexical, _, expressionValue)) ->
+            Just (Dependency (bindingKey name expressionValue)
+              (originName name) expressionValue (closureResolver lexical))
+          _ -> do
+            value <- either (const Nothing) Just
+              (resolveIdentifier scope [] name)
+            selected <- either (const Nothing) Just
+              (foldM namedAccessValue value fields)
+            expressionValue <- either (const Nothing) Just
+              (valueExpression selected)
+            pure (Dependency
+              (intercalate "." (name : fields) <> ":" <> show expressionValue)
+              (intercalate "." (originName name : fields))
+              expressionValue emptyResolver)
+    modularBinding (NamedBinding _ (QualifiedBinding _ _)) = True
+    modularBinding (ShadowingConsistentBinding target) = modularBinding target
+    modularBinding _ = False
     originName name
       | Just original <- lookup name
           (concat

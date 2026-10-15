@@ -1164,14 +1164,33 @@ arrowExpressionWithLayer expressionLayer operand = do
   input <- syntaxTypeSuffix rawInput signature
   output <- optional
     (continuedOperator AST.FunctionTypeOperator *> signature)
-  pure (maybe input (FunctionType input) output)
+  pure (maybe input (applyAfter (applyFunctionType input)) output)
 
 syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
 syntaxTypeSuffix input signature = do
   syntaxSignature <- optional . try $ do
     _ <- continuedOperator AST.SyntaxTypeOperator
-    SyntaxType input <$> signature
+    applyAfter (SyntaxType input) <$> signature
   pure (maybe input id syntaxSignature)
+
+-- Function and syntax type construction binds before the neutral application
+-- spine on its right. Parentheses introduce a 'SyntaxBoundary', so an applied
+-- codomain can still be written explicitly when that is what is intended.
+applyAfter :: (Expression -> Expression) -> Expression -> Expression
+applyAfter construct value = case value of
+  FunctionApplication function argument ->
+    FunctionApplication (applyAfter construct function) argument
+  Coalization operand -> applyAfter (construct . Coalization) operand
+  _ -> construct value
+
+-- The arrow likewise owns only the final operand of an application phrase on
+-- its left. Thus @f A -> B@ is @f (A -> B)@; parentheses are required when the
+-- intended domain is the applied value @f A@.
+applyFunctionType :: Expression -> Expression -> Expression
+applyFunctionType input output = case input of
+  FunctionApplication function argument ->
+    FunctionApplication function (applyFunctionType argument output)
+  _ -> FunctionType input output
 
 eitherExpressionWith :: Parser Expression -> Parser Expression
 eitherExpressionWith = eitherExpressionWithOperator
