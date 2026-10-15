@@ -49,6 +49,7 @@ module Interpreting
 
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, intercalate, partition)
+import Data.Maybe (catMaybes)
 import BlockScope
 import FunctionClosure
 import DatraHost
@@ -107,6 +108,7 @@ import DatraLanguage.SyntaxTemplate
 import DatraTypes
 import Parsing
   ( FunctionTypeIdentifier (..)
+  , collectOwnedGenericIntroductions
   , forwardGenericBoundReference
   , functionTypeIdentifiers
   , inferredFunction
@@ -1662,38 +1664,43 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         signature preparedDomain preparedCodomain bindings result
         generics
     FunctionApplication function argument -> do
-      supplied <- interpret argument
-      case
-          ( interpretedFunctionBody supplied
-          , interpret function
-          ) of
-        (Just _, Left (GenericIntroductionOutsideFunctionType _)) ->
-          interpret (resolveGenericFunctionTypes
-            (inferredFunction argument function))
-        (_, Left failure) -> Left failure
-        (_, Right callable) ->
-          runProtectedOperationWithContract
-            protection
-            genericOperationResultDecision
-            contextuallySpecify
-            [callable, supplied] $ \actuals ->
-            case actuals of
-              [actualCallable, actualSupplied]
-                | Just signature <- interpretedFunction actualCallable
-                , Nothing <- functionSource signature
-                , Just body <- interpretedFunctionBody actualSupplied ->
-                    (, Nothing) <$> attachFunctionBody actualCallable body
-                | Nothing <- interpretedFunction actualCallable
-                , not (interpretedTypeIsTotal actualCallable)
-                , Just _ <- interpretedFunctionBody actualSupplied ->
-                    (, Nothing) <$> interpret
-                      (resolveGenericFunctionTypes
-                        (inferredFunction argument function))
-                | otherwise -> do
-                    input <- functionArgumentValue actualSupplied
-                    applyFunction
-                      (scopeActivation scope) reduction actualCallable input
-              _ -> Right (neverValue, Nothing)
+      let applyEvaluated callable supplied =
+            runProtectedOperationWithContract
+              protection
+              genericOperationResultDecision
+              contextuallySpecify
+              [callable, supplied] $ \actuals ->
+              case actuals of
+                [actualCallable, actualSupplied]
+                  | Just signature <- interpretedFunction actualCallable
+                  , Nothing <- functionSource signature
+                  , Just body <- interpretedFunctionBody actualSupplied ->
+                      (, Nothing) <$> attachFunctionBody actualCallable body
+                  | Nothing <- interpretedFunction actualCallable
+                  , not (interpretedTypeIsTotal actualCallable)
+                  , Just _ <- interpretedFunctionBody actualSupplied ->
+                      (, Nothing) <$> interpret
+                        (resolveGenericFunctionTypes
+                          (inferredFunction argument function))
+                  | otherwise -> do
+                      input <- functionArgumentValue actualSupplied
+                      applyFunction
+                        (scopeActivation scope) reduction actualCallable input
+                _ -> Right (neverValue, Nothing)
+          applyNormally = do
+            callable <- interpret function
+            supplied <- interpret argument
+            applyEvaluated callable supplied
+      if null (collectOwnedGenericIntroductions function)
+        then applyNormally
+        else do
+          supplied <- interpret argument
+          case interpretedFunctionBody supplied of
+            Just _ -> interpret (resolveGenericFunctionTypes
+              (inferredFunction argument function))
+            Nothing -> do
+              callable <- interpret function
+              applyEvaluated callable supplied
     Begin bindings result ->
       evaluateBlockInScope True
         (Just (renderSourceExpression expressionValue))
@@ -4114,7 +4121,31 @@ namedBindings value = namedMembers value >>= traverse namedBinding
 importNamedBindings
   :: InterpretedValue
   -> Either InterpretingError [ModuleExport]
-importNamedBindings value = scopeNamedMembers value >>= traverse namedBinding
+importNamedBindings value =
+  case scopeNamedMembers value of
+    Right members -> traverse namedBinding members
+    Left _ -> mixedBindings
+  where
+    mixedBindings = do
+      members <- case argumentMapMembers value of
+        Just arguments -> Right arguments
+        Nothing -> do
+          count <- maybe invalid Right
+            (naturalAtOrdinal
+              (interpretedMapFinalOrderType (interpretedMap value)))
+          traverse memberAt
+            (if count == 0 then [] else [0 .. count - 1])
+      catMaybes <$> traverse export members
+    invalid = Left (ModuleEvaluationFailed
+      ImportedModuleRequiresIdentifierBinderFederation)
+    memberAt index = maybe invalid Right
+      (interpretedMapValueAt (interpretedMap value) (finiteOrdinal index))
+    export member = case simpleIdentifierName member of
+      Just name -> Just <$> namedBinding (name, member)
+      Nothing
+        | interpretedValueKind member == DependentIdentifierTypeValueKind ->
+            Right Nothing
+        | otherwise -> invalid
 
 namedBinding
   :: (String, InterpretedValue)
