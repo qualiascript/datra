@@ -6,7 +6,6 @@
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val ('in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in)
     'datra.val in it ('val := "val %_Declaration" %
       (_Declaration -> _Declaration) it)
     val 'datra := 'datra
@@ -31,9 +30,10 @@
     val NatValRange := 'datra.NatValRange
     val IntValRange := 'datra.IntValRange
 
-    # These bindings introduce parsing rules.
     val 'let := "let %_Declaration" %
       (_Declaration -> _Declaration) 'datra.let
+    let 'in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in
+
     val 'assert :=
       ("assert %("hard") %_Expr" %
         ($hard; _Expr -> _Expr) 'datra.assertHard) |
