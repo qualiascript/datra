@@ -6,8 +6,9 @@
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val ('val := "val %_Declaration" %
-      (_Declaration -> _Declaration) 'datra.val)
+    'datra.val ('in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in)
+    'datra.val in it ('val := "val %_Declaration" %
+      (_Declaration -> _Declaration) it)
     val 'datra := 'datra
 
     val Any := 'datra.Any
@@ -60,7 +61,6 @@
     val 'with :=
       "with %(List _Expr) %_FunctionBody" %
         (List _Expr; _FunctionBody -> _Expr) 'datra.with
-    val 'in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in
     val 'len := "len %_Expr" % (Any -> NatLimit) 'datra.len
     let val 'range :=
       ("range %IntLimit to %IntLimit" %
