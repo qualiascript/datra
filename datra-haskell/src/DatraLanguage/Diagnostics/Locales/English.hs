@@ -303,6 +303,16 @@ localizeInterpretingError reason =
       LocalizedMessage
         "ambiguous string template"
         ["the template does not map each source configuration to a unique string"]
+    LookupRequiresString kind ->
+      LocalizedMessage
+        "lookup operator expects a string expression"
+        ["operand kind: " <> show kind]
+    LookupCaptureHasNoGenericMapView index capture ->
+      LocalizedMessage
+        "lookup capture has no generic map view"
+        [ "capture index: " <> show index
+        , "capture: " <> capture
+        ]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "string contains a character outside the ASCII map"

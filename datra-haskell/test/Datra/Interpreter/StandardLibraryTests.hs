@@ -198,32 +198,37 @@ standardLibraryTests =
               )
             ]
         ]
-    , testGroup "value lookup"
-        [ programCase "retrieves a named binding"
-            "begin x := 5; yield ~x" "5"
-        , programCase "retrieves a quoted binding"
-            "begin \"value with spaces\" := 5; yield ~\"value with spaces\"" "5"
-        , programCase "retrieves a private binding"
-            "begin _x := 5; yield ~\"_x\"" "5"
-        , programCase "further access selects from the retrieved value"
-            "begin x := (5; 8); yield ~x[1]" "8"
-        , programCase "optional names accept named and positional inputs"
-            ("f := ({x? : Nat} -> Nat do yield ~x + 1)\n"
-              <> "yield (f 5; f (x : 5))")
-            "(6; 6)"
-        , programCase "optional names retain defaults"
-            "f := ({x? : Nat := 5} -> Nat do yield ~x + 1)\nyield f ()" "6"
-        , programCase "specification accepts the retrieved value"
-            "begin x := 5; yield (~x ~> Int) of Int" "true"
-        , programCase "reverse specification accepts the retrieved value"
-            "begin x := 5; yield (Int <~ ~x) of Int" "true"
-        , programCase "subfederation checks the retrieved value"
-            "begin x := 5; yield ~x of Nat" "true"
-        , programCase "subfederation rejects a different value"
-            "begin x := 5; yield ~x of 6" "false"
-        , programCase "lookup does not change optional-name specification"
-            ("begin x := 5; yield (x : ~x) ~> (x? : Nat)")
-            "x? : Nat := 5"
+    , testGroup "lookup operator"
+        [ programCase "returns a raw key-value row for a bound key"
+            "begin x := 5; yield ((~\"x\")[0].key; (~\"x\")[0].value)"
+            "($x; 5)"
+        , programCase "returns an empty map for an absent key"
+            "begin x := 5; yield ~\"missing\"" "()"
+        , programCase "evaluates an identifier operand as a string"
+            "begin key := \"x\"; x := 5; yield (~key)[0].value" "5"
+        , programCase "resolves a quoted binding"
+            ("begin \"value with spaces\" := 5; "
+              <> "yield (~\"value with spaces\")[0].value")
+            "5"
+        , programCase "resolves a private binding"
+            "begin _x := 5; yield (~\"_x\")[0].value" "5"
+        , programCase "folds a total template to one concrete key"
+            "begin arg4 := 8; yield (~\"arg%(2 + 2)\")[0].value" "8"
+        , programCase "filters missing members from an infinite family"
+            ("begin arg4 := 8; arg0 := 3; "
+              <> "yield ((~\"arg%Nat\")[0].key; (~\"arg%Nat\")[1].key)")
+            "($arg0; $arg4)"
+        , programCase "retains the lexical scope where lookup is evaluated"
+            ("rows := begin hidden := 7; yield ~\"hidden\"\n"
+              <> "hidden := 9\nyield rows[0].value + 1")
+            "8"
+        , programFailureCase "defers binding failure until a row is selected"
+            "begin broken := missing; rows := ~\"broken\"; yield rows[0].value"
+            (SourceEvaluationFailure (UnknownIdentifier "missing"))
+        , programFailureCase "rejects a capture without a generic map view"
+            "yield ~\"value%Any\""
+            (SourceEvaluationFailure
+              (LookupCaptureHasNoGenericMapView 0 "Any"))
         ]
     , testGroup "mapped access"
         [ expressionCase "coalization is explicit and idempotent"

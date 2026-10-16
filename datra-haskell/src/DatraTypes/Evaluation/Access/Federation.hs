@@ -73,16 +73,20 @@ atomicFederationAccess value =
       let coalitionMap =
             InterpretedMap
               1
-              (singletonOrdinalOrderedValues value)
+              values
+              (Right . ordinalOrderedValueAt values)
               [interpretedSemantics value]
+          values = singletonOrdinalOrderedValues value
       in Just (directRule (fixedLayout coalitionMap))
     PrimitiveAtlasMapFederation
         (ValuedIntegerRangeAtlasMapFederation _) ->
       let coalitionMap =
             InterpretedMap
               1
-              (singletonOrdinalOrderedValues value)
+              values
+              (Right . ordinalOrderedValueAt values)
               [interpretedSemantics value]
+          values = singletonOrdinalOrderedValues value
       in Just (directRule (fixedLayout coalitionMap))
     PrimitiveAtlasMapFederation
         (NaturalRangeAtlasMapFederation sourceRange) ->

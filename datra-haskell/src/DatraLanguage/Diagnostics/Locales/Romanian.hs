@@ -303,6 +303,16 @@ localizeInterpretingError reason =
       LocalizedMessage
         "șablon de șir ambiguu"
         ["șablonul nu mapează fiecare configurație sursă la un șir unic"]
+    LookupRequiresString kind ->
+      LocalizedMessage
+        "operatorul de căutare necesită o expresie șir"
+        ["tipul operandului: " <> show kind]
+    LookupCaptureHasNoGenericMapView index capture ->
+      LocalizedMessage
+        "captura de căutare nu are o vedere de hartă generică"
+        [ "indexul capturii: " <> show index
+        , "captura: " <> capture
+        ]
     InvalidAsciiStringCharacter character ->
       LocalizedMessage
         "șirul conține un caracter din afara hărții ASCII"

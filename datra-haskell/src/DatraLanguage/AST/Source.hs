@@ -88,7 +88,8 @@ source context expression =
     IdentifierReferenceValue (IdentifierString name)
       | renderIdentifierString name == name -> name
       | isOpaqueSymbolicSyntaxLiteral name -> name
-      | otherwise -> "~" <> renderIdentifierString name
+      | otherwise -> "this." <> renderIdentifierString name
+    LookupValue operand -> unary "~" operand
     IdentifierOperationValue (IdentifierString name) annotation given ->
       identifierOperation
         (renderIdentifierString name) False annotation given
@@ -101,14 +102,6 @@ source context expression =
     Sequential members -> "(" <> intercalate "; " (map (source 0) members) <> ")"
     Arguments members -> "{" <> argumentMembers members <> "}"
     Expansion left right -> "(" <> source 0 left <> "; " <> source 0 right <> ")"
-    ScopeAccessValue {} | Just names <- scopeNames expression ->
-      "~" <> case names of
-        [name] -> renderIdentifierString name
-        _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
-    Concatenate {} | Just names <- scopeNames expression ->
-      "~" <> case names of
-        [name] -> renderIdentifierString name
-        _ -> "(" <> intercalate ", " (map renderIdentifierString names) <> ")"
     Concatenate left EmptyMap -> wrapped 10 (source 10 left <> ",")
     Concatenate left right -> binary 2 "," left right
     Specify left right -> binary 1 "~>" left right
@@ -198,8 +191,6 @@ source context expression =
     multiplicand operand = source 9 operand
     applicationInput SkipValue = "(*)"
     applicationInput operand@FunctionBodyValue {} = source 0 operand
-    applicationInput operand
-      | Just _ <- valueLookupNames operand = "(" <> source 0 operand <> ")"
     applicationInput operand = source 12 operand
     functionTypeOutput output@FunctionTypeValue {} = source 11 output
     functionTypeOutput output = source 12 output
@@ -232,18 +223,6 @@ source context expression =
       <> intercalate "; " (map (source 0) bindings <> ["yield " <> source 0 result])
     argumentMembers = intercalate "; " . map (source 0)
 
-scopeNames :: OperatorExpression -> Maybe [String]
-scopeNames
-    (ScopeAccessValue
-      (FunctionApplicationValue
-        (IdentifierReferenceValue (IdentifierString "_this"))
-        argument)
-      (IdentifierReferenceValue (IdentifierString name)))
-  | isDefaultContextualArgument argument = Just [name]
-scopeNames (Concatenate left EmptyMap) = scopeNames left
-scopeNames (Concatenate left right) = (<>) <$> scopeNames left <*> scopeNames right
-scopeNames _ = Nothing
-
 scopeBody :: OperatorExpression -> String
 scopeBody body = case body of
   Sequential {} -> source 0 body
@@ -255,6 +234,3 @@ isDefaultContextualArgument :: OperatorExpression -> Bool
 isDefaultContextualArgument (NaturalValue 0) = True
 isDefaultContextualArgument EmptyMap = True
 isDefaultContextualArgument _ = False
-
-valueLookupNames :: OperatorExpression -> Maybe [String]
-valueLookupNames operand = scopeNames operand

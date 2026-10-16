@@ -180,5 +180,7 @@ data InterpretingError
       SyntaxTemplateAdmissibilityFailure
   | EitherAlternativesNotDistinct
   | AmbiguousStringTemplate
+  | LookupRequiresString InterpretedValueKind
+  | LookupCaptureHasNoGenericMapView Natural String
   | InvalidAsciiStringCharacter Char
   deriving (Eq, Show)

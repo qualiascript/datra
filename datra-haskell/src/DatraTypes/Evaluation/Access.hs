@@ -402,20 +402,21 @@ finishAccess
   :: InterpretedValue
   -> InterpretedMap
   -> Either InterpretingError InterpretedValue
-finishAccess mapValue selected =
+finishAccess mapValue selected = do
+  materialized <- case naturalAtOrdinal
+      (interpretedMapFinalOrderType selected) of
+    Just cardinality -> selectedValueList cardinality
+    Nothing -> Right Nothing
   let semantics =
         MapSemantics
           (interpretedMapPageCardinality selected)
           (interpretedMapComponents selected)
       ordinaryResult =
-        case naturalAtOrdinal (interpretedMapFinalOrderType selected) of
-          Just cardinality ->
-            case selectedValueList cardinality of
-              Just values ->
-                makeAtlasMap
-                  (interpretedMapPageCardinality selected)
-                  values
-              Nothing -> fallbackResult
+        case materialized of
+          Just values ->
+            makeAtlasMap
+              (interpretedMapPageCardinality selected)
+              values
           Nothing -> fallbackResult
       fallbackResult =
         makeSingletonInterpretedValue
@@ -427,18 +428,18 @@ finishAccess mapValue selected =
             then TotalInterpretedMap
             else NonTotalInterpretedMap)
           semantics
-  in pure
+  pure
     (case interpretedForm mapValue of
       AsciiStringForm _ ->
         maybe ordinaryResult makeAsciiString
           (asciiStringFromInterpretedMap selected)
       _ -> ordinaryResult)
   where
-    selectedValueList 0 = Just []
+    selectedValueList 0 = Right (Just [])
     selectedValueList cardinality =
-      traverse
-        (interpretedMapValueAt selected . finiteOrdinal)
-        [0 .. cardinality - 1]
+      fmap sequence . traverse
+        (interpretedMapValueAtChecked selected . finiteOrdinal)
+        $ [0 .. cardinality - 1]
 
 rangeAccessResult
   :: Bool
@@ -508,8 +509,13 @@ accessMap sourceMap insertion
               selectedPosition <-
                 someSuperEllipsisInsertionPositionAt insertion position
               ordinalOrderedValueAt sourceValues selectedPosition
+          selectedValueAt position =
+            case someSuperEllipsisInsertionPositionAt insertion position of
+              Nothing -> Right Nothing
+              Just selectedPosition ->
+                interpretedMapValueAtChecked sourceMap selectedPosition
           components = selectedComponents selectedValues insertionOrderType
-      Right (InterpretedMap 2 selectedValues components)
+      Right (InterpretedMap 2 selectedValues selectedValueAt components)
   where
     sourceValues = interpretedMapFinalValues sourceMap
     sourceOrderType = ordinalOrderedValuesOrderType sourceValues

@@ -197,6 +197,7 @@ data Expression
   | Begin [Expression] Expression
   | Let Expression
   | IdentifierReference IdentifierString
+  | Lookup Expression
   | Multiplication Expression Expression
   | Exponentiation Expression Expression
   | MapConcatenation Expression Expression
@@ -378,6 +379,7 @@ data OperatorExpression
   | BeginValue [OperatorExpression] OperatorExpression
   | LetValue OperatorExpression
   | IdentifierReferenceValue IdentifierString
+  | LookupValue OperatorExpression
   | Multiply OperatorExpression OperatorExpression
   | Power OperatorExpression OperatorExpression
   | Concatenate OperatorExpression OperatorExpression
@@ -529,6 +531,7 @@ normalizeExpression (Begin bindings result) =
   Begin (map normalizeExpression bindings) (normalizeExpression result)
 normalizeExpression (Let binding) = Let (normalizeExpression binding)
 normalizeExpression (IdentifierReference name) = IdentifierReference name
+normalizeExpression (Lookup operand) = Lookup (normalizeExpression operand)
 normalizeExpression (Multiplication left right) =
   Multiplication (normalizeExpression left) (normalizeExpression right)
 normalizeExpression (Exponentiation left right) =
@@ -701,6 +704,7 @@ lower (FunctionApplication function input) = FunctionApplicationValue (lower fun
 lower (Begin bindings result) = BeginValue (map lower bindings) (lower result)
 lower (Let binding) = LetValue (lower binding)
 lower (IdentifierReference name) = IdentifierReferenceValue name
+lower (Lookup operand) = LookupValue (lower operand)
 lower (Multiplication left right) = Multiply (lower left) (lower right)
 lower (Exponentiation left right) = Power (lower left) (lower right)
 lower (MapConcatenation left right) =
@@ -922,6 +926,8 @@ prettyOperator (BeginValue bindings result) =
 prettyOperator (LetValue binding) = prettyUnary LetOperator binding
 prettyOperator (IdentifierReferenceValue (IdentifierString name)) =
   prettyForm "ref" [pretty (renderAsciiStringLiteral name)]
+prettyOperator (LookupValue operand) =
+  prettyUnary LookupOperator operand
 prettyOperator (Multiply left right) =
   prettyBinary MultiplicationOperator left right
 prettyOperator (Power left right) =
@@ -1187,6 +1193,7 @@ traverseExpressionChildren visit expression = case expression of
       <*> visit domain
       <*> visit codomain
   FunctionApplication a b -> FunctionApplication <$> visit a <*> visit b
+  Lookup operand -> Lookup <$> visit operand
   Multiplication a b -> Multiplication <$> visit a <*> visit b
   Exponentiation a b -> Exponentiation <$> visit a <*> visit b
   MapConcatenation left right ->

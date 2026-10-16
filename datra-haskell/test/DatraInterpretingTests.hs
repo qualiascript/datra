@@ -127,6 +127,8 @@ testTree =
         , testCase "generic product ordinal indexing"
             testGenericProductOrdinalIndexing
         , testCase "string templates" testStringTemplates
+        , testCase "lookup follows transfinite foliage traversal"
+            testLookupFoliageTraversal
         , testCase "named field access" testNamedAccess
         , testCase "argument maps" testArgumentMaps
         , testCase "argument maps in concatenation" testArgumentMapConcatenation
@@ -1058,12 +1060,12 @@ parseTestExpression source =
 
 testBegin :: IO ()
 testBegin = do
-  expectSourceValue "retained block canonicalizes value lookup"
+  expectSourceValue "retained block canonicalizes strict quoted access"
     "begin \"value with spaces\" := 5; yield this.\"value with spaces\" + 1" $ \value -> do
       let rendered = renderInterpretedValue value
-      assert "block uses the symbolic lookup operator"
-        (rendered == "6 <~ begin \"value with spaces\" := 5; yield ~\"value with spaces\" + 1")
-      expectSourceValue "canonical value lookup block round trip" rendered $ \decoded ->
+      assert "block keeps explicit current-scope access"
+        (rendered == "6 <~ begin \"value with spaces\" := 5; yield this.\"value with spaces\" + 1")
+      expectSourceValue "canonical strict-access block round trip" rendered $ \decoded ->
         assert "canonical block remains stable"
           (renderInterpretedValue decoded == rendered)
   let example = "begin\n a := 2 * 3\n b := 5\nyield a + b"
@@ -1399,6 +1401,7 @@ testStringTemplates = do
       "\"Infinity\" of \"%IntLimit\"" $ \value ->
     assert "Infinity is an IntLimit template member"
       (renderInterpretedValue value == "true")
+
   expectSourceValue
       "surface arithmetic interpolation equality"
       "\"2 + 2 = %(2+2)\" = \"2 + 2 = 4\"" $ \value ->
@@ -1818,6 +1821,26 @@ testStringTemplates = do
             (Addition (AsciiStringLiteral "x") (natural 1))]) of
       Left (ExpectedFiniteIntegerOperand LeftOperand AsciiStringValueKind) -> True
       _ -> False)
+
+testLookupFoliageTraversal :: IO ()
+testLookupFoliageTraversal =
+  case runProgram (unlines
+      [ "\"cell2.0\" := 20"
+      , "\"cell0.2\" := 2"
+      , "\"cell1.1\" := 11"
+      , "\"cell1.0\" := 10"
+      , "\"cell0.1\" := 1"
+      , "\"cell0.0\" := 0"
+      , "rows := ~\"cell%Nat.%Nat\""
+      , "yield (rows[0].key; rows[1].key; rows[2].key; "
+          <> "rows[3].key; rows[4].key; rows[5].key)"
+      ]) of
+    Left failure -> assertFailure
+      ("transfinite lookup failed: " <> show failure)
+    Right value -> assertEqual
+      "omega-squared captures use Cantor-diagonal foliage order"
+      "(\"cell0.0\"; \"cell0.1\"; \"cell1.0\"; \"cell0.2\"; \"cell1.1\"; \"cell2.0\")"
+      (renderInterpretedValue value)
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do

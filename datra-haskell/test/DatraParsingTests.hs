@@ -2064,63 +2064,39 @@ regressionTests = do
     "a.(b + c)" (ScopeAccess (ref "a") (Addition (ref "b") (ref "c")))
   assertAstOutput "short module scope uses an identifier-reference RHS"
     "a.b" (ScopeAccess (ref "a") (ref "b"))
-  let valueOf name =
-        ScopeAccess
-          (contextualAccess (IdentifierString "_this"))
-          (ref name)
-  assertAstOutput "value lookup opens the current lexical binding"
-    "~a" (valueOf "a")
-  assertAstOutput "value lookup accepts quoted names"
-    "~\"name with spaces\"" (valueOf "name with spaces")
-  assertAstOutput "value lookup accepts reserved names"
-    "~this" (valueOf "this")
-  assertAstOutput "value lookup binds before arithmetic"
-    "~a + 2" (Addition (valueOf "a") (natural 2))
-  assertRejected "lookup before exponentiation requires parentheses" "~a ^ 2"
-  assertRejected "lookup after exponentiation requires parentheses" "2 ^ ~a"
-  assertAstOutput "parenthesized lookup can be exponentiated"
-    "(~a) ^ 2" (Exponentiation (valueOf "a") (natural 2))
-  assertAstOutput "an exponent can be a parenthesized lookup"
-    "2 ^ (~a)" (Exponentiation (natural 2) (valueOf "a"))
-  assertAstOutput "value lookup precedes chained access"
-    "~a[0].b" (ScopeAccess (MapAccess (valueOf "a") (natural 0)) (ref "b"))
-  assertAstOutput "value lookup can be a function"
-    "~f 2" (FunctionApplication (valueOf "f") (natural 2))
-  assertAstOutput "value lookup can be an application argument"
-    "f (~a)" (FunctionApplication (ref "f") (valueOf "a"))
-  assertAstOutput "a generated lookup can select a page inside an opened scope"
-    "abc.(~\"___def\")[1]"
+  assertAstOutput "lookup evaluates an identifier operand"
+    "~a" (Lookup (ref "a"))
+  assertAstOutput "lookup accepts a concrete string operand"
+    "~\"a\"" (Lookup (AsciiStringLiteral "a"))
+  assertAstOutput "lookup retains a string-template operand"
+    "~\"arg%Nat\""
+    (Lookup (StringTemplate
+      [ StringTemplateLiteral "arg"
+      , StringTemplateInterpolation (ref "Nat")
+      ]))
+  assertAstOutput "lookup accepts a computed parenthesized operand"
+    "~(a + b)" (Lookup (Addition (ref "a") (ref "b")))
+  assertAstOutput "postfix selection applies to the lookup result"
+    "~\"arg%Nat\"[0]"
     (MapAccess
-      (ScopeAccess (ref "abc") (valueOf "___def"))
-      (natural 1))
-  assertAstOutput "postfix optional can follow value lookup"
-    "~a?" (OptionalType (valueOf "a"))
-  assertAstOutput "Maybe accepts a looked-up value"
-    "Maybe (~a)" (FunctionApplication (ref "Maybe") (valueOf "a"))
-  let nameList = MapConcatenation
-          (ScopeAccess
-            (contextualAccess (IdentifierString "_this"))
-            (ref "a"))
-          (ScopeAccess
-            (contextualAccess (IdentifierString "_this"))
-            (ref "b"))
-  assertAstOutput "value lookup preserves named access list semantics"
-    "~(a, \"b\")" nameList
-  assertRejected "value lookup needs a name" "~"
-  assertRejected "value lookup rejects empty name lists" "~()"
-  assertRejected "value lookup rejects computed names like named access" "~(a + b)"
+      (Lookup (StringTemplate
+        [ StringTemplateLiteral "arg"
+        , StringTemplateInterpolation (ref "Nat")
+        ]))
+      (natural 0))
+  let tupleOperand = MapConcatenation (ref "a") (ref "b")
+  assertAstOutput "a parenthesized map is one lookup operand"
+    "~(a, b)" (Lookup tupleOperand)
+  assertRejected "lookup needs an operand" "~"
   mapM_ (\(value, expected) -> do
-      assert "source rendering uses value lookup sugar"
+      assert "source rendering preserves the lookup node"
         (renderSourceExpression value == expected)
-      assertAstOutput "rendered value lookup reparses" expected value)
-    [ (valueOf "a", "~a")
-    , (valueOf "name with spaces", "~\"name with spaces\"")
-    , (nameList, "~(a, b)")
-    , (FunctionApplication (valueOf "f") (valueOf "a"), "~f (~a)")
-    , (MapAccess (valueOf "a") (natural 0), "~a[0]")
-    , (ScopeAccess (valueOf "a") (ref "b"), "~a.b")
-    , (IdentifierOperation (IdentifierString "x") (valueOf "type name") Nothing,
-        "x : ~\"type name\"")
+      assertAstOutput "rendered lookup reparses" expected value)
+    [ (Lookup (ref "a"), "~a")
+    , (Lookup (AsciiStringLiteral "a"), "~$a")
+    , (Lookup tupleOperand, "~(a , b)")
+    , (MapAccess (Lookup (ref "a")) (natural 0), "~a[0]")
+    , (Lookup (Addition (ref "a") (ref "b")), "~(a + b)")
     , (MapAccess (ScopeAccess (ref "_this") (ref "a")) (natural 0), "_this.a[0]")
     , (MapAccess (ScopeAccess (ref "other") (ref "a")) (natural 1), "other.a[1]")
     ]
@@ -2133,8 +2109,8 @@ regressionTests = do
       (IdentifierOperation
         (IdentifierString "x") alternatives (Just alternatives))
       == "x := $up | $down")
-  assert "quoted identifier references render through value lookup"
-    (renderSourceExpression (ref "___Std.Int") == "~\"___Std.Int\"")
+  assert "quoted identifier references render as strict current-scope access"
+    (renderSourceExpression (ref "___Std.Int") == "this.\"___Std.Int\"")
   assertAstOutput
     "ordinary access sees a tightly bound insertion"
     "$a @ $b[$c]"

@@ -59,6 +59,8 @@ module Evaluation.Value
   , DependentSumStructure (..)
   , EvaluatedDependentSum (..)
   , InterpretedTotalAtlasMap (..)
+  , EvaluatedStringTemplate (..)
+  , EvaluatedStringTemplateSegment (..)
   , EvaluatedAtlasMapFederationMember (..)
   , EvaluatedSpecification (..)
   , ValueForm (..)
@@ -99,6 +101,7 @@ module Evaluation.Value
   , withDependentSumFamily
   , withDependentSumReservationTarget
   , makeLazyMapValue
+  , makeCheckedLazyMapValue
   , interpretedForm
   , interpretedInsertionCapability
   , interpretedMap
@@ -120,6 +123,8 @@ module Evaluation.Value
   , interpretedEvaluationSource
   , withEvaluationSource
   , interpretedValueKind
+  , interpretedStringTemplate
+  , withStringTemplatePlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
   , interpretedFederationSpecificationBranches
@@ -129,6 +134,7 @@ module Evaluation.Value
   , interpretedRangeDescription
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , interpretedMapValueAtChecked
   , asciiStringFromInterpretedMap
   , explicitOrdinal
   , explicitInsertion
@@ -607,6 +613,8 @@ data InsertionCapability
 data InterpretedMap = InterpretedMap
   { interpretedMapPageCardinality :: Natural
   , interpretedMapFinalValues :: OrdinalOrderedValues InterpretedValue
+  , interpretedMapCheckedValueAt
+      :: Ordinal -> Either InterpretingError (Maybe InterpretedValue)
   , interpretedMapComponents :: [ValueSemantics]
   }
 
@@ -614,6 +622,20 @@ data InterpretedMap = InterpretedMap
 -- This is distinct from the final page's possibly-transfinite order type.
 interpretedMapCardinality :: InterpretedMap -> Natural
 interpretedMapCardinality = interpretedMapPageCardinality
+
+-- | The evaluated, non-total holes retained by a string template. Total
+-- interpolations are folded into adjacent literal chunks before this plan is
+-- attached, so every capture here participates in lookup enumeration.
+data EvaluatedStringTemplate = EvaluatedStringTemplate
+  { evaluatedStringTemplateSegments :: [EvaluatedStringTemplateSegment]
+  }
+
+data EvaluatedStringTemplateSegment
+  = EvaluatedStringTemplateLiteral String
+  | EvaluatedStringTemplateCapture
+      Natural
+      InterpretedValue
+      InterpretedValue
 
 -- | The partial inverse carried by a proven pointwise string conversion.
 data ToStringInverseDecision
@@ -661,6 +683,7 @@ data InterpretedValue = InterpretedValue
   , interpretedDependentSumView :: Maybe EvaluatedDependentSum
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
+  , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
   }
 
 newtype DynamicScopeLabel = DynamicScopeLabel Natural
@@ -712,7 +735,15 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedScopeProtection = Nothing
     , interpretedDependentSumView = Nothing
     , interpretedOrderedAtlasMapView = Nothing
+    , interpretedStringTemplate = Nothing
     }
+
+withStringTemplatePlan
+  :: EvaluatedStringTemplate
+  -> InterpretedValue
+  -> InterpretedValue
+withStringTemplatePlan plan value =
+  value { interpretedStringTemplate = Just plan }
 
 neverValue :: InterpretedValue
 neverValue =
@@ -909,6 +940,17 @@ makeLazyMapValue
   -> (Ordinal -> Maybe InterpretedValue)
   -> InterpretedValue
 makeLazyMapValue orderType valueAt =
+  makeCheckedLazyMapValue orderType (Right . valueAt)
+
+-- | A lazily indexed Atlas map whose demanded members may fail evaluation.
+-- The ordinary ordered view remains available for structural operations, but
+-- checked access preserves a binding failure instead of confusing it with an
+-- unavailable ordinal.
+makeCheckedLazyMapValue
+  :: Ordinal
+  -> (Ordinal -> Either InterpretingError (Maybe InterpretedValue))
+  -> InterpretedValue
+makeCheckedLazyMapValue orderType valueAt =
   withOrderedAtlasMapValues values
     (makeInterpretedValue
       structuralDatraType
@@ -919,10 +961,12 @@ makeLazyMapValue orderType valueAt =
       NonTotalInterpretedMap
       (MapSemantics 1 []))
   where
-    values = OrdinalOrderedValues orderType valueAt
+    values = OrdinalOrderedValues orderType
+      (either (const Nothing) id . valueAt)
     valueMap = InterpretedMap
         1
         values
+        valueAt
         []
 
 interpretedValueHasTotalMap :: InterpretedValue -> Bool
@@ -1135,6 +1179,12 @@ interpretedMapValueAt
   -> Maybe InterpretedValue
 interpretedMapValueAt = ordinalOrderedValueAt . interpretedMapFinalValues
 
+interpretedMapValueAtChecked
+  :: InterpretedMap
+  -> Ordinal
+  -> Either InterpretingError (Maybe InterpretedValue)
+interpretedMapValueAtChecked = interpretedMapCheckedValueAt
+
 -- | Recover ASCII characters from a finite interpreted map. String operators
 -- use this after delegating their ordering to the ordinary map operations.
 asciiStringFromInterpretedMap :: InterpretedMap -> Maybe String
@@ -1207,11 +1257,16 @@ valueRanges value =
     _ -> Nothing
 
 emptyInterpretedMap :: InterpretedMap
-emptyInterpretedMap = InterpretedMap 0 emptyOrdinalOrderedValues []
+emptyInterpretedMap = InterpretedMap
+  0
+  emptyOrdinalOrderedValues
+  (const (Right Nothing))
+  []
 
 singletonMap :: ValueSemantics -> InterpretedValue -> InterpretedMap
 singletonMap semantics value =
   InterpretedMap
     1
     (singletonOrdinalOrderedValues value)
+    (Right . ordinalOrderedValueAt (singletonOrdinalOrderedValues value))
     [semantics]

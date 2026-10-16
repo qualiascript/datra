@@ -281,6 +281,7 @@ makeDependentIdentifierTypeValue
       InterpretedMap
         2
         finalValues
+        (Right . ordinalOrderedValueAt finalValues)
         [ interpretedSemantics identifierStringValue
         , interpretedSemantics underlying
         ]

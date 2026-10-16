@@ -17,6 +17,7 @@ import DatraOrdinal
   , naturalAtOrdinal
   , omegaPower
   , ordinalLT
+  , subtractOrdinal
   )
 import Evaluation.Access.Federation
 import Evaluation.Access.RangeSelection
@@ -173,8 +174,17 @@ appendAccessMaps left right =
   InterpretedMap
     (if finalOrderType == finiteOrdinal 0 then 0 else 2)
     finalValues
+    checkedValueAt
     (interpretedMapComponents left <> interpretedMapComponents right)
   where
+    leftOrderType = interpretedMapFinalOrderType left
+    checkedValueAt position
+      | ordinalLT position leftOrderType =
+          interpretedMapCheckedValueAt left position
+      | otherwise = case subtractOrdinal leftOrderType position of
+          Just rightPosition ->
+            interpretedMapCheckedValueAt right rightPosition
+          Nothing -> Right Nothing
     finalValues =
       appendOrdinalOrderedValues
         (interpretedMapFinalValues left)
