@@ -98,11 +98,11 @@ declarationRules expressionValue =
 
 dependentDeclarationRules :: DependentDeclaration -> [SyntaxRule]
 dependentDeclarationRules declaration =
-  directTemplateRule declaration <>
-    compatibilityRules
+  compatibilityRules
       (renderSourceExpression
         (StringTemplate (dependentDeclarationParts declaration)))
-      declaration
+      declaration <>
+    directTemplateRule declaration
 
 directTemplateRule :: DependentDeclaration -> [SyntaxRule]
 directTemplateRule declaration =

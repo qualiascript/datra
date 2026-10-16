@@ -389,6 +389,7 @@ rewriteSequence capture initial rawEntries = do
               previousLabel currentLabel)
 
         validateInjective environment (rule, dependent)
+          | null captures = Right ()
           | identityImplementation implementation = Right ()
           | otherwise =
               case (evaluate input, evaluate output) of
