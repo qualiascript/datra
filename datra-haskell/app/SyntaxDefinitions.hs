@@ -4,13 +4,14 @@
 -- without evaluating their captures or interpolating source strings.
 module SyntaxDefinitions
   ( SyntaxRule (..), DependentSyntaxRule (..)
-  , DependentSyntaxInvocation (..)
+  , SyntaxRuleSemantics (..), DependentSyntaxInvocation (..)
   , SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
   , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
   , declarationRules, compileSyntaxTemplatesFromExpression
   , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
+  , syntaxDependentRule, syntaxRuleAdapter
   , expandSyntax
   , declarationLiterals, absorbFunSequence
   , normalizeSyntaxExpansion
@@ -31,17 +32,19 @@ import DatraLanguage.SyntaxTemplate
   , renderSyntaxTemplate
   )
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure (..)
-  , SyntaxTemplateAdmissibilityFailure
-  )
+  ( SyntaxTemplateAdmissibilityFailure )
 import DatraLanguage.AST.Source (renderSourceExpression)
 import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
 
 data SyntaxRule = SyntaxRule
   { syntaxName :: String, syntaxTemplate :: SyntaxTemplate Expression
-  , syntaxModule :: Maybe String
-  , syntaxDependentRule :: Maybe DependentSyntaxRule
+  , syntaxSemantics :: SyntaxRuleSemantics
   } deriving (Eq,Show)
+
+data SyntaxRuleSemantics
+  = SyntaxAdapter Expression
+  | DependentSyntax DependentSyntaxRule
+  deriving (Eq, Show)
 
 data DependentSyntaxRule = DependentSyntaxRule
   { dependentSyntaxCaptures
@@ -52,8 +55,20 @@ data DependentSyntaxRule = DependentSyntaxRule
 
 data DependentSyntaxInvocation
   = DependentSyntaxLookup [StringTemplatePart Expression]
-  | DependentSyntaxCallable
+  | DependentSyntaxAdapter Expression
   deriving (Eq, Show)
+
+syntaxDependentRule :: SyntaxRule -> Maybe DependentSyntaxRule
+syntaxDependentRule rule = case syntaxSemantics rule of
+  SyntaxAdapter {} -> Nothing
+  DependentSyntax dependent -> Just dependent
+
+syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
+syntaxRuleAdapter rule = case syntaxSemantics rule of
+  SyntaxAdapter adapter -> Just adapter
+  DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
+    DependentSyntaxLookup {} -> Nothing
+    DependentSyntaxAdapter adapter -> Just adapter
 
 data SyntaxTemplateCompilationFailure
   = ExpectedSyntaxTemplateOperand
@@ -72,9 +87,11 @@ contextualSyntaxRulesFor = map rule
     rule surface = SyntaxRule
       { syntaxName = "_" <> surface
       , syntaxTemplate = syntaxTemplateFromPattern surface
-      , syntaxModule = Nothing
-      , syntaxDependentRule = Nothing
+      , syntaxSemantics = SyntaxAdapter callable
       }
+      where
+        callable = IdentifierReference
+          (IdentifierString ("_" <> surface))
 
 declarationRules :: Expression -> [SyntaxRule]
 declarationRules expressionValue =
@@ -96,8 +113,7 @@ directTemplateRule declaration =
           { syntaxName = renderSourceExpression
               (StringTemplate (dependentDeclarationParts declaration))
           , syntaxTemplate = template
-          , syntaxModule = Nothing
-          , syntaxDependentRule = Just (DependentSyntaxRule
+          , syntaxSemantics = DependentSyntax (DependentSyntaxRule
               captures
               (dependentDeclarationImplementation declaration)
               (DependentSyntaxLookup
@@ -131,8 +147,10 @@ compatibilityRules name declaration =
                 (mapSyntaxHoleKind (In contextual) kind)
           | piece <- syntaxTemplatePieces (syntaxTemplate rule)
           ]
-      , syntaxDependentRule = scopeDependentRule
-          <$> syntaxDependentRule rule
+      , syntaxSemantics = case syntaxSemantics rule of
+          SyntaxAdapter adapter -> SyntaxAdapter (In contextual adapter)
+          DependentSyntax dependent ->
+            DependentSyntax (scopeDependentRule dependent)
       }
       where
         -- The declaration context closes over the callable. The capture-side
@@ -143,19 +161,23 @@ compatibilityRules name declaration =
         scopeDependentRule dependent = dependent
           { dependentSyntaxImplementation = scopeDependent
               (dependentSyntaxImplementation dependent)
+          , dependentSyntaxInvocation = case
+                dependentSyntaxInvocation dependent of
+              DependentSyntaxLookup parts -> DependentSyntaxLookup parts
+              DependentSyntaxAdapter adapter ->
+                DependentSyntaxAdapter (In contextual adapter)
           }
     rules templates _body callable =
       [ SyntaxRule
           { syntaxName = name
           , syntaxTemplate = template
-          , syntaxModule = Nothing
-          , syntaxDependentRule = Just (DependentSyntaxRule
+          , syntaxSemantics = DependentSyntax (DependentSyntaxRule
               [ Nothing
               | SyntaxHole {} <- syntaxTemplatePieces template
               ]
               (FunctionApplication callable
                 (IdentifierReference (IdentifierString "it")))
-              DependentSyntaxCallable)
+              (DependentSyntaxAdapter _body))
           }
       | template <- either (const []) id
           (compileSyntaxTemplatesFromExpression templates)
@@ -237,43 +259,33 @@ syntaxTemplateLiteralPrefix = foldr prefix []
 expandSyntax
   :: SyntaxRule
   -> TemplateSelection Expression Expression
-  -> Either SyntaxExpansionFailure Expression
+  -> Expression
 expandSyntax rule selection =
-  Right (case syntaxDependentRule rule of
-    Just dependent -> case dependentSyntaxInvocation dependent of
-      DependentSyntaxLookup parts -> dependentLookup
-        parts (dependentSyntaxCaptures dependent) captures
-      DependentSyntaxCallable -> FunctionApplication callable suppliedInput
-    Nothing -> FunctionApplication callable suppliedInput)
+  case syntaxSemantics rule of
+    DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
+      DependentSyntaxLookup parts -> dependentLookup parts captures
+      DependentSyntaxAdapter adapter ->
+        FunctionApplication adapter suppliedInput
+    SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
   where
     captures = templateSelectionCaptures selection
-    callable = scoped (IdentifierReference (IdentifierString localName))
-    localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
-    scoped value = maybe value (`InModule` value) (syntaxModule rule)
     suppliedInput = case captures of
       [] -> AtlasMap []
       [value] -> value
       values -> AtlasMap values
-    dependentLookup parts binders values =
+    dependentLookup parts values =
       MapAccess
         (MapAccess
-          (Lookup (StringTemplate (substitute parts (boundValues binders values))))
+          (Lookup (StringTemplate (substitute parts values)))
           (EllipsisNatural 0))
         (EllipsisNatural 1)
-    boundValues binders values =
-      [ value
-      | (binder, value) <- zip binders values
-      , case binder of
-          Just _ -> True
-          Nothing -> True
-      ]
-    substitute parts values = fst (foldl replace ([], values) parts)
-    replace (reversed, values) literal@StringTemplateLiteral {} =
-      (reversed <> [literal], values)
-    replace (reversed, value : values) StringTemplateInterpolation {} =
-      (reversed <> [StringTemplateInterpolation value], values)
-    replace (reversed, []) interpolation@StringTemplateInterpolation {} =
-      (reversed <> [interpolation], [])
+    substitute [] _ = []
+    substitute (StringTemplateLiteral literal : parts) values =
+      StringTemplateLiteral literal : substitute parts values
+    substitute (StringTemplateInterpolation _ : parts) (value : values) =
+      StringTemplateInterpolation value : substitute parts values
+    substitute (interpolation@StringTemplateInterpolation {} : parts) [] =
+      interpolation : substitute parts []
     -- Function preparation overloads this supplied tail onto the declared
     -- domain. Empty, singleton, and multi-capture syntax therefore follows the
     -- same call path as an ordinary partial argument map.

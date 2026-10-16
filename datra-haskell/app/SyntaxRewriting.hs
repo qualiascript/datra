@@ -42,9 +42,12 @@ import DatraLanguage.SyntaxTemplate
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , DependentSyntaxRule (..)
+  , DependentSyntaxInvocation (..)
   , contextualSyntaxRulesFor
   , declarationRules
   , normalizeSyntaxExpansion
+  , syntaxDependentRule
+  , syntaxRuleAdapter
   , syntaxTemplateLiteralPrefix
   )
 import SyntaxTemplateMatching
@@ -71,7 +74,6 @@ data SyntaxRewriteFailure
   | AmbiguousBareSkipApplication
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
-  | SyntaxRewriteMatchFailure SyntaxTemplateMatchFailure
   deriving (Eq, Show)
 
 -- Evaluation callbacks share a lexical scope. Entering a contextual expression
@@ -124,13 +126,8 @@ compileRewriteRule rule = RewriteRule
 rewriteRuleName :: RewriteRule -> String
 rewriteRuleName = syntaxName . rewriteRule
 
-rewriteRuleImplementation :: RewriteRule -> Expression
-rewriteRuleImplementation compiled = maybe callable (`InModule` callable)
-  (syntaxModule rule)
-  where
-    rule = rewriteRule compiled
-    callable = IdentifierReference (IdentifierString localName)
-    localName = reverse (takeWhile (/= '.') (reverse (syntaxName rule)))
+rewriteRuleImplementation :: RewriteRule -> Maybe Expression
+rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
 
 -- Contextual surface names exist only inside syntax nodes whose evaluator
 -- installs the corresponding private binding. Entering such a node replaces
@@ -275,7 +272,6 @@ resolveImplicitBlock capture initial = go initial
                         else Begin bindings finalResult))
                 _ -> Right Nothing
             Left NoMatchingSyntaxTemplate -> Right Nothing
-            Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where
         explicitBlockAtHead = case remaining of
           first : _ -> 0 `elem`
@@ -366,6 +362,8 @@ rewriteSequence capture initial rawEntries = do
               [ (rule, dependent)
               | rule <- currentRules
               , Just dependent <- [syntaxDependentRule rule]
+              , DependentSyntaxLookup {} <-
+                  [dependentSyntaxInvocation dependent]
               ]
             else Right ()
           let retained = case currentDeclaration of
@@ -889,7 +887,7 @@ directSyntaxFunctionExpansion environment selectedRule application =
       , any (Set.member literal . rewriteRuleLiterals) (rewriteRules environment) ->
           Right application
     (function, [argument]) ->
-      choose adapters [] Nothing
+      choose adapters []
       where
         captures expected = case expected of
           Just 0 -> []
@@ -897,32 +895,35 @@ directSyntaxFunctionExpansion environment selectedRule application =
           _ -> directSyntaxArguments argument
         adapters = do
           (expressionValue, expected, evaluate) <- case selectedRule of
-            Just rule -> [(rewriteRuleImplementation rule,
-              Just (captureCount rule), evaluateRule rule)]
+            Just rule ->
+              [ (implementation, Just (captureCount rule), evaluateRule rule)
+              | implementation <- maybeToList
+                  (rewriteRuleImplementation rule)
+              ]
             Nothing -> case declaredImplementations function of
               []
                 | mayResolveSyntaxFunctionBody function -> [(function, Nothing, evaluateHere)]
                 | otherwise -> []
               implementations ->
-                [ (rewriteRuleImplementation rule, Just
-                    (captureCount rule), evaluateRule rule)
+                [ (implementation, Just (captureCount rule), evaluateRule rule)
                 | rule <- implementations
+                , implementation <- maybeToList
+                    (rewriteRuleImplementation rule)
                 ]
           value <- maybeToList (evaluate expressionValue)
           body <- maybeToList (interpretedFunctionBody value)
           case body of
             EvaluatedSyntaxFunctionBody _ expansion -> [(expansion, expected)]
             _ -> []
-        choose [] successes firstFailure =
+        choose [] successes =
           case nub successes of
             [expanded] -> Right expanded
-            [] -> maybe (Right application) expansionFailure firstFailure
+            [] -> Right application
             _ -> Right application
-        choose ((adapter, expected) : remaining) successes firstFailure =
+        choose ((adapter, expected) : remaining) successes =
           case adapter (captures expected) of
-            Right expanded -> choose remaining (expanded : successes) firstFailure
-            Left failure ->
-              choose remaining successes (firstFailure <|> Just failure)
+            Just expanded -> choose remaining (expanded : successes)
+            Nothing -> choose remaining successes
     _ -> Right application
   where
     evaluateHere = rewriteEvaluate environment (rewriteDeclarations environment)
@@ -989,8 +990,6 @@ directSyntaxFunctionExpansion environment selectedRule application =
     scopeSource _ (ScopeAccess source _) = source
     scopeSource namespace _ =
       IdentifierReference (IdentifierString namespace)
-    expansionFailure failure = Left (SyntaxRewriteMatchFailure
-      (SyntaxTemplateExpansionFailure failure))
 
 -- Inspect the adapter's AST constructor before rewriting a raw block. A
 -- function body already shadows the outer input while its declarations and
@@ -1207,7 +1206,6 @@ matchOrdinarySyntaxWithTail includeConcatenation
           Just <$> directSyntaxFunctionExpansion
             environment (Just rule) rewritten
         Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
-        Left failure -> Left (SyntaxRewriteMatchFailure failure)
     earlierPrefixPending = any (\earlierRule ->
       not (null (rewriteRuleLiteralPrefix earlierRule))
         && ruleLiteralsPresent earlierRule facts)
@@ -1309,7 +1307,6 @@ matchSequenceFunctionBody capture environment value trailing =
           [rewriteRule rule] candidate of
         Right expanded -> Right (Just (expanded, remaining))
         Left NoMatchingSyntaxTemplate -> Right Nothing
-        Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where
         candidate = applicationFrom
           (map literalExpression prefix <> [AtlasMap operands, body])
@@ -1453,7 +1450,6 @@ matchEmbeddedBlockWith capture environment =
                       [rewriteRule rule]
                 case match candidate of
                   Left NoMatchingSyntaxTemplate -> Right Nothing
-                  Left failure -> Left (SyntaxRewriteMatchFailure failure)
                   Right expanded -> do
                     direct <- directSyntaxFunctionExpansion
                       environment (Just rule) expanded
@@ -1480,7 +1476,6 @@ matchEmbeddedBlockWith capture environment =
                 Left NoMatchingSyntaxTemplate ->
                   case match (candidate (wrapResult rawResult)) of
                     Left NoMatchingSyntaxTemplate -> Right Nothing
-                    Left failure -> Left (SyntaxRewriteMatchFailure failure)
                     Right expanded -> do
                       direct <- directSyntaxFunctionExpansion
                         nested (Just rule) expanded
@@ -1490,7 +1485,6 @@ matchEmbeddedBlockWith capture environment =
                         ( attachAdjacentBody before rewritten
                         , fallbackRemaining
                         ))
-                Left failure -> Left (SyntaxRewriteMatchFailure failure)
                 Right expanded -> do
                   direct <- directSyntaxFunctionExpansion
                     nested (Just rule) expanded

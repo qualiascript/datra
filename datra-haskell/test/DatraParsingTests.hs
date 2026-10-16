@@ -74,6 +74,7 @@ import SyntaxDefinitions
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxRule (..)
+  , SyntaxRuleSemantics (..)
   , SyntaxTemplate (..)
   , SyntaxTemplateCompilationFailure (..)
   , compileSyntaxTemplatesFromExpression
@@ -531,22 +532,20 @@ regressionTests = do
     "assert -* = +*"
     (Assert False (Equality (Minus Skip) (Plus Skip)))
   let zeroCaptureSyntax = SyntaxRule
-        { syntaxName = "test-control"
+        { syntaxName = "answer"
         , syntaxTemplate = SyntaxTemplate []
-        , syntaxModule = Nothing
-        , syntaxDependentRule = Nothing
+        , syntaxSemantics = SyntaxAdapter (ref "answer")
         }
   assert "zero-hole syntax supplies the empty capture tail"
     (expandSyntax zeroCaptureSyntax
       (TemplateSelection (ref "answer") [])
-      == Right (FunctionApplication
+      == FunctionApplication
         (ref "answer")
-        (AtlasMap [])))
+        (AtlasMap []))
   let syntaxFunction name pieces = SyntaxRule
         { syntaxName = name
         , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
-        , syntaxModule = Nothing
-        , syntaxDependentRule = Nothing
+        , syntaxSemantics = SyntaxAdapter (ref name)
         }
       intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
       intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
@@ -579,12 +578,10 @@ regressionTests = do
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
   assert "IntLimit template holes accept an Infinity AST"
-    (case expandSyntax correctFrom
-        (TemplateSelection fromPhrase [natural 0, ref "Infinity"]) of
-      Right expected ->
-        matchRules matchesNumericHole [correctFrom] fromPhrase
-          == Right expected
-      Left _ -> False)
+    (let expected = expandSyntax correctFrom
+          (TemplateSelection fromPhrase [natural 0, ref "Infinity"])
+     in matchRules matchesNumericHole [correctFrom] fromPhrase
+          == Right expected)
   assert "the explicit AST head selects the syntax binding"
     ( matchRules matchesNumericHole
         [unrelated, correctFrom]
@@ -641,12 +638,10 @@ regressionTests = do
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
-    (case expandSyntax greedyRule
-        (TemplateSelection greedyPhrase [greedyPrefix, natural 3]) of
-      Right expected ->
-        matchRules matchesGreedyHole [greedyRule] greedyPhrase
-          == Right expected
-      Left _ -> False)
+    (let expected = expandSyntax greedyRule
+          (TemplateSelection greedyPhrase [greedyPrefix, natural 3])
+     in matchRules matchesGreedyHole [greedyRule] greedyPhrase
+          == Right expected)
   let contextualShort = syntaxFunction "contextual"
         [intHole]
       contextualLong = syntaxFunction "contextual"
@@ -654,15 +649,13 @@ regressionTests = do
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
-    (case expandSyntax contextualShort
-        (TemplateSelection contextualPhrase [natural 1]) of
-      Right expanded ->
-        matchRules matchesNumericHole
+    (let expanded = expandSyntax contextualShort
+          (TemplateSelection contextualPhrase [natural 1])
+     in matchRules matchesNumericHole
           [contextualShort, contextualLong]
           contextualPhrase
           == Right (foldl FunctionApplication expanded
-            [ref "marker", natural 2, ref "after"])
-      Left _ -> False)
+            [ref "marker", natural 2, ref "after"]))
   let rankedShort = syntaxFunction "ranked"
         [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
       rankedLong = syntaxFunction "ranked"
@@ -675,14 +668,12 @@ regressionTests = do
   let rankedCapture = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
   assert "the first declaration greedily takes its longest valid match"
-    (case expandSyntax rankedShort
-        (TemplateSelection rankedPhrase [rankedCapture]) of
-      Right expected ->
-        matchRules (const (const True))
+    (let expected = expandSyntax rankedShort
+          (TemplateSelection rankedPhrase [rankedCapture])
+     in matchRules (const (const True))
           [rankedShort, rankedLong]
           rankedPhrase
-          == Right expected
-      Left _ -> False)
+          == Right expected)
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"

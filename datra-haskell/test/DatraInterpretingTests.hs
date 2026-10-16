@@ -294,7 +294,7 @@ testModuleSyntaxAlias = do
           (contextualAccess (IdentifierString "_this")))))
         []
   case moduleExportNames duplicateSource of
-    Left (IdentifierStringOverlap "abc") -> pure ()
+    Left (OverlappingBindings "abc") -> pure ()
     result -> assertFailure
       ("same-block redeclaration was not rejected: " <> show result)
   let isolatedBody = Begin
@@ -1209,7 +1209,7 @@ testPrograms = do
 testBeginRejections :: IO ()
 testBeginRejections = do
   mapM_ (\source -> expectSourceRejection source source
-    (\case IdentifierStringOverlap "a" -> True; _ -> False))
+    (\case OverlappingBindings "a" -> True; _ -> False))
     [ "begin a := 1; a := 2 yield a"
     , "begin a := 1; let a := 2 yield a"
     , "begin a? := 1; a := 2 yield a"

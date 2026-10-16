@@ -132,7 +132,7 @@ data InterpretingError
   | OverloadError OverloadFailure
   | AssertionFailed
   | OperationHasNoEffect
-  | IdentifierStringOverlap String
+  | OverlappingBindings String
   | InconsistentShadowing String
   | LetBindingCannotShadowConsistentIdentifier String
   | UnknownIdentifier String

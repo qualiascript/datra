@@ -17,7 +17,6 @@ import DatraLanguage.Diagnostics.Application
   ( CommandLineOptionFailure
   , ModuleLoadFailure
   , ParseFailure
-  , SyntaxExpansionFailure
   )
 import Evaluation.Error (InterpretingError)
 import DatraLanguage.Diagnostics.Locales.English qualified as English
@@ -45,10 +44,6 @@ instance LocalizedDiagnostic ParseFailure where
 instance LocalizedDiagnostic ModuleLoadFailure where
   localizeDiagnostic English = English.localizeModuleLoadFailure
   localizeDiagnostic Romanian = Romanian.localizeModuleLoadFailure
-
-instance LocalizedDiagnostic SyntaxExpansionFailure where
-  localizeDiagnostic English = English.localizeSyntaxExpansionFailure
-  localizeDiagnostic Romanian = Romanian.localizeSyntaxExpansionFailure
 
 instance LocalizedDiagnostic CommandLineOptionFailure where
   localizeDiagnostic English = English.localizeCommandLineOptionFailure

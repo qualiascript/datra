@@ -26,12 +26,8 @@ import SyntaxDefinitions
   , expandSyntax
   , syntaxTemplateLiteralPrefix
   )
-import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure )
-
 data SyntaxTemplateMatchFailure
   = NoMatchingSyntaxTemplate
-  | SyntaxTemplateExpansionFailure SyntaxExpansionFailure
   deriving (Eq, Show)
 
 type HoleMatches = SyntaxHoleKind Expression -> Expression -> Bool
@@ -86,10 +82,8 @@ matchSyntaxRulesWith captureHole rules expressionValue = do
         , captures <- matchPieces captureHole [] (rulePieces rule) candidate
         ]
   matched <- chooseSuccessful successful
-  expanded <- either
-    (Left . SyntaxTemplateExpansionFailure)
-    Right
-    (expandSyntax (successfulRule matched) (successfulSelection matched))
+  let expanded = expandSyntax
+        (successfulRule matched) (successfulSelection matched)
   pure (foldl FunctionApplication expanded (successfulRemaining matched))
   where
     prefixMatches phrase rule = and

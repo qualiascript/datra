@@ -184,7 +184,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxTemplate (..)
   )
 import DatraLanguage.AST (Expression)
-import DatraLanguage.Diagnostics.Application (SyntaxExpansionFailure)
 import DatraOrdinal
   ( Ordinal
   , addOrdinals
@@ -379,7 +378,7 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
 data EvaluatedFunctionBody
   = EvaluatedSyntaxFunctionBody
       String
-      ([Expression] -> Either SyntaxExpansionFailure Expression)
+      ([Expression] -> Maybe Expression)
   | EvaluatedRuntimeFunctionBody String EvaluatedFunction
 
 data EvaluatedFunction = EvaluatedFunction

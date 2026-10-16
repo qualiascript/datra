@@ -126,6 +126,7 @@ import GenericScopeProtection
 import ScopeProtection
 import SyntaxDefinitions
   ( SyntaxRule (..)
+  , SyntaxRuleSemantics (..)
   , SyntaxTemplateCompilationFailure (..)
   , compileSyntaxTemplatesFromExpression
   , declarationRules
@@ -3124,7 +3125,7 @@ validateDeclarationFamilies = go []
 
     requireDistinct declaration family (_, previous)
       | Right _ <- eitherValue previous family = Right ()
-      | otherwise = Left (IdentifierStringOverlap
+      | otherwise = Left (OverlappingBindings
           (dependentDeclarationLabel declaration))
 
     dependentDeclarationLabel declaration =
@@ -3925,7 +3926,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
        , name `elem` map fst (scopeBindings captured)
           || length (filter (== name) names) > 1
        ] of
-    name : _ -> Left (IdentifierStringOverlap name)
+    name : _ -> Left (OverlappingBindings name)
     [] -> pure ()
   input <- parameterDomain schema
   let (explicitSelf, selfIncludesDependencies) = case
@@ -4529,7 +4530,7 @@ evaluateImport reduction captured resolving sourceExpression paths body =
           | name <- names
           , name `elem` map fst (scopeBindings captured)
           ] of
-        name : _ -> Left (IdentifierStringOverlap name)
+        name : _ -> Left (OverlappingBindings name)
         [] -> pure ()
       domain <- importDomainValue (map loadedModuleFederation modules)
       let schema = argumentSchemaFromValue domain
@@ -4635,7 +4636,7 @@ importLoadedModule scope openMembers source = do
         Nothing -> Right (extendScope [entry] values)
         Just (ImportedBinding _ previous _ _) | previous == identity ->
           Right values
-        _ -> Left (IdentifierStringOverlap name)
+        _ -> Left (OverlappingBindings name)
     openBinderMembers alreadyImported identity values binder = do
       exported <- moduleExportsFromValue (loadedModuleBinderValue binder)
       entries <- moduleExportBindings
@@ -4649,7 +4650,7 @@ importLoadedModule scope openMembers source = do
       case lookupScope name values of
         Nothing -> Right (extendScope [entry] values)
         Just _ | alreadyImported -> Right values
-        _ -> Left (IdentifierStringOverlap name)
+        _ -> Left (OverlappingBindings name)
 
 -- Both evaluated scope access and resource preparation install opened
 -- members through this boundary. Imported binders retain their definition
@@ -4889,10 +4890,11 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
           [ SyntaxRule
               { syntaxName = name
               , syntaxTemplate = template
-              , syntaxModule = Just scopeName
-              , syntaxDependentRule = Nothing
+              , syntaxSemantics = SyntaxAdapter callable
               }
           | template <- sourceTemplates
+          , let callable = InModule scopeName
+                  (IdentifierReference (IdentifierString name))
           ]
     parseScopedRuleExpression sourceText = do
       expressionValue <- parseRuleExpression sourceText

@@ -8,8 +8,6 @@ module DatraHost
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure (UnknownSyntaxControlAdapter) )
 import DatraLanguage.Identifier (public)
 import DatraTypes
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
@@ -130,13 +128,9 @@ datraHostValue = do
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
     syntaxBody name expand =
       (name, Right (makeFunctionBodyValue
-        (EvaluatedSyntaxFunctionBody source apply)))
+        (EvaluatedSyntaxFunctionBody source expand)))
       where
         source = "'datra." <> name
-        apply captures = maybe
-          (Left (UnknownSyntaxControlAdapter source))
-          Right
-          (expand captures)
     nativeBody namespace name implementation =
       (name, runtimeBody source invoke)
       where
