@@ -17,6 +17,7 @@ import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
+  , mapSyntaxHoleKind
   , SyntaxTemplate (..)
   , TemplateSelection (..)
   , literalSyntaxTemplate
@@ -66,6 +67,21 @@ declarationRules :: Expression -> [SyntaxRule]
 declarationRules (Let value) =
   [rule { syntaxRecursive = True } | rule <- declarationRules value]
 declarationRules (Val value) = declarationRules value
+-- The declaration escapes the contextual expression, but its implementation
+-- and type expressions retain that expression's lexical input.
+declarationRules (In value body) =
+  [ rule
+      { syntaxImplementation = In value (syntaxImplementation rule)
+      , syntaxSignature = In value (syntaxSignature rule)
+      , syntaxTemplate = SyntaxTemplate
+          [ case piece of
+              SyntaxLiteral literal -> SyntaxLiteral literal
+              SyntaxHole kind -> SyntaxHole (mapSyntaxHoleKind (In value) kind)
+          | piece <- syntaxTemplatePieces (syntaxTemplate rule)
+          ]
+      }
+  | rule <- declarationRules body
+  ]
 declarationRules optional
   | Just (operation, _) <- optionalIdentifierExpression optional =
       declarationRules operation

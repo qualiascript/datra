@@ -118,6 +118,7 @@ source context expression =
       ("assert " <> (if hard then "hard " else "") <> source 0 condition)
     ConditionalValue condition yes no -> wrapped 0
       ("if " <> source 0 condition <> " then " <> source 0 yes <> " else " <> source 0 no)
+    InValue value body -> binary 0 "in" value body
     MaybeThenValue optional branch -> binary 1 "!?" optional branch
     EitherValue left right -> binary 3 "|" left right
     Or left right -> binary 4 "or" left right

@@ -117,7 +117,8 @@ import Parsing
   , ResourceEnvelope (..)
   )
 import SyntaxRewriting
-  ( SyntaxRewriteFailure (..)
+  ( SyntaxContext (..)
+  , SyntaxRewriteFailure (..)
   , rewriteExplicitSyntax
   , rewriteImplicitSyntax
   )
@@ -233,17 +234,14 @@ rewriteParsedDatraSourceWithImports modules parsed = do
         ]
       availableModuleRules = baseModuleRules <> dependencyRules
       initialRules = standardRules
-      classify = classifySyntaxHole base modules
-      capture = captureSyntaxHole base modules
-      scopedRules = importedSyntaxRules base modules availableModuleRules
       rewrite = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
           rewriteExplicitSyntax
-            classify capture scopedRules (evaluateSyntaxValue base modules)
+            (syntaxContext base modules availableModuleRules)
             initialRules [] expressionValue
         (ImplicitBlockEnvelope, Begin entries _) ->
           rewriteImplicitSyntax
-            classify capture scopedRules (evaluateSyntaxValue base modules)
+            (syntaxContext base modules availableModuleRules)
             initialRules [] entries
         _ -> Left MissingImplicitBlockResult
   expressionValue <- Bifunctor.first rewriteParseFailure rewrite
@@ -284,20 +282,17 @@ discoverImportInvocations base activeRules envelope raw = do
     [ (namespace, identity, value)
     | (namespace, ImportedBinding _ identity value _) <- scopeBindings base
     ]
-  let scoped = scopeSyntaxRules classify baseModuleRules
+  let availableRules =
+        [(namespace, namespace, rules) | (namespace, rules) <- baseModuleRules]
+      context = syntaxContext base [] availableRules
   rewritten <- Bifunctor.first (ParseFailure . show) $ case (envelope, raw) of
     (ExplicitMapEnvelope, expressionValue) ->
-      rewriteExplicitSyntax classify capture scoped
-        (evaluateSyntaxValue base []) activeRules [] expressionValue
+      rewriteExplicitSyntax context activeRules [] expressionValue
     (ImplicitBlockEnvelope, Begin entries _) ->
-      rewriteImplicitSyntax classify capture scoped
-        (evaluateSyntaxValue base []) activeRules [] entries
+      rewriteImplicitSyntax context activeRules [] entries
     _ -> Left MissingImplicitBlockResult
   pure (nub (importsInExpansion rewritten))
   where
-    classify = classifySyntaxHole base []
-    capture strict declarations previous kind value =
-      captureSyntaxHole base [] strict declarations previous kind value
     importsInExpansion expressionValue =
       maybe [] pure (importInvocation expressionValue)
         <> concatMap importsInExpansion (expressionChildren expressionValue)
@@ -494,6 +489,35 @@ evaluateSyntaxValue base modules declarations expressionValue = do
     (declareScope enclosing
       (map syntaxValidationDeclaration declarations))
   either (const Nothing) Just (evalInScope scope [] expressionValue)
+
+-- Syntax evaluation uses the same contextual binding shape as runtime
+-- evaluation. The supplied value is lazy here: unknown runtime inputs need
+-- not prevent rewriting syntax that does not inspect them.
+syntaxContext
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [(String, String, [SyntaxRule])]
+  -> SyntaxContext
+syntaxContext base modules availableRules = SyntaxContext
+  (classifySyntaxHole base modules)
+  (captureSyntaxHole base modules)
+  (importedSyntaxRules base modules availableRules)
+  (evaluateSyntaxValue base modules)
+  enter
+  where
+    enter declarations input = syntaxContext child modules availableRules
+      where
+        enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+        declared = declareScope enclosing
+          (map syntaxValidationDeclaration declarations)
+        parent = either (const enclosing) (\(scope, _, _) -> scope) declared
+        supplied = do
+          (scope, _, _) <- declared
+          case input of
+            Just expressionValue -> evalInScope scope [] expressionValue
+            Nothing -> Left (UnknownIdentifier "_it")
+        child = extendScope
+          (contextualBindings "it" False (const supplied)) parent
 
 binderDeclarations
   :: [(SyntaxHoleKind Expression, Expression)]
@@ -820,17 +844,14 @@ parsedDefaultModule = do
       (requiredBundledLibrarySource standardLibraryFileName))
   emptyScope <- rootScopeWithDatra raw []
   let
-      capture = captureSyntaxHole emptyScope []
-      classify = classifySyntaxHole emptyScope []
-      scopedRules = scopeSyntaxRules classify []
       rewritten = case (envelope, raw) of
         (ExplicitMapEnvelope, expressionValue) ->
           rewriteExplicitSyntax
-            classify capture scopedRules (evaluateSyntaxValue emptyScope [])
+            (syntaxContext emptyScope [] [])
             [] [] expressionValue
         (ImplicitBlockEnvelope, Begin entries _) ->
           rewriteImplicitSyntax
-            classify capture scopedRules (evaluateSyntaxValue emptyScope [])
+            (syntaxContext emptyScope [] [])
             [] [] entries
         _ -> Left MissingImplicitBlockResult
   resolveGenericFunctionTypes <$> either
@@ -1574,6 +1595,13 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           (FunctionApplication
             (IdentifierReference (IdentifierString "Maybe"))
             operand)
+    In value body -> do
+      supplied <- interpret value
+      runProtectedOperation protection [supplied] $ \actuals ->
+        case actuals of
+          [actual] -> evalInContinuationScopeWith body reduction
+            (constantContextualBindings "it" actual) scope resolving body
+          _ -> Right neverValue
     MaybeThen optional branch -> do
       optionalResult <- interpret optional >>= unconsList
       runProtectedOperation protection [optionalResult] $ \actuals ->

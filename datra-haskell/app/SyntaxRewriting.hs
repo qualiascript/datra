@@ -5,7 +5,8 @@
 -- matched directly, while an 'AtlasMap' supplies the contextual boundary for
 -- block captures.
 module SyntaxRewriting
-  ( SyntaxRewriteFailure (..)
+  ( SyntaxContext (..)
+  , SyntaxRewriteFailure (..)
   , rewriteExplicitSyntax
   , rewriteImplicitSyntax
   ) where
@@ -16,7 +17,7 @@ import BlockScope
   , bindingNames
   , blockDeclaration
   )
-import Data.List (nub)
+import Data.List (nub, nubBy)
 import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
@@ -64,8 +65,19 @@ data SyntaxRewriteFailure
   | SyntaxRewriteMatchFailure SyntaxTemplateMatchFailure
   deriving (Eq, Show)
 
+-- Evaluation callbacks share a lexical scope. Entering a contextual expression
+-- creates a child scope for every callback, including typed hole validation.
+data SyntaxContext = SyntaxContext
+  { contextClassify :: ClassifyHole
+  , contextCapture :: CaptureHole
+  , contextScopeRules :: ScopeRules
+  , contextEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
+  , contextEnter :: [Expression] -> Maybe Expression -> SyntaxContext
+  }
+
 data RewriteEnvironment = RewriteEnvironment
-  { rewriteRules :: [RewriteRule]
+  { rewriteContext :: SyntaxContext
+  , rewriteRules :: [RewriteRule]
   , rewriteDeclarations :: [Expression]
   , rewriteStrictCaptures :: Bool
   , rewriteClassifyHole :: ClassifyHole
@@ -73,8 +85,8 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
   }
 
--- Facts derived solely from a syntax declaration. Keeping them beside the
--- rule avoids rediscovering template shapes during every rewrite attempt.
+-- Cache template shapes and retain the implementation's lexical evaluator.
+-- A later contextual input must not rebind a syntax implementation's `it`.
 data RewriteRule = RewriteRule
   { rewriteRule :: SyntaxRule
   , rewriteRuleLiteralPrefix :: [String]
@@ -82,7 +94,8 @@ data RewriteRule = RewriteRule
   , rewriteRuleBlockShape :: Maybe ([String], String)
   , rewriteRuleSequenceFunctionBodyShape :: Maybe [String]
   , rewriteRuleContinuations :: [(String, [String])]
-  } deriving (Eq, Show)
+  , rewriteRuleEvaluation :: Maybe (Expression -> Maybe InterpretedValue)
+  }
 
 compileRewriteRule :: SyntaxRule -> RewriteRule
 compileRewriteRule rule = RewriteRule
@@ -94,6 +107,7 @@ compileRewriteRule rule = RewriteRule
   , rewriteRuleSequenceFunctionBodyShape =
       sequenceFunctionBodyShapeFromPieces pieces
   , rewriteRuleContinuations = continuationContexts pieces
+  , rewriteRuleEvaluation = Nothing
   }
   where
     pieces = syntaxTemplatePieces (syntaxTemplate rule)
@@ -134,39 +148,45 @@ type CaptureHole =
 -- only while rewriting that access's right operand.
 type ScopeRules = [Expression] -> Expression -> [SyntaxRule]
 
+rewriteEnvironment
+  :: SyntaxContext -> [SyntaxRule] -> [Expression] -> RewriteEnvironment
+rewriteEnvironment context rules declarations = RewriteEnvironment
+  context (map compileRewriteRule rules) declarations True
+  (contextClassify context) (contextScopeRules context) (contextEvaluate context)
+
 rewriteExplicitSyntax
-  :: ClassifyHole
-  -> CaptureHole
-  -> ScopeRules
-  -> ([Expression] -> Expression -> Maybe InterpretedValue)
+  :: SyntaxContext
   -> [SyntaxRule]
   -> [Expression]
   -> Expression
   -> Either SyntaxRewriteFailure Expression
-rewriteExplicitSyntax classify capture scopeRules evaluate
-    initialRules initialDeclarations value =
-  rewriteStandalone capture environment value
-  where
-    environment = RewriteEnvironment
-      (map compileRewriteRule initialRules)
-      initialDeclarations True classify scopeRules evaluate
+rewriteExplicitSyntax context rules declarations =
+  rewriteStandalone (contextCapture context)
+    (rewriteEnvironment context rules declarations)
 
 rewriteImplicitSyntax
-  :: ClassifyHole
-  -> CaptureHole
-  -> ScopeRules
-  -> ([Expression] -> Expression -> Maybe InterpretedValue)
+  :: SyntaxContext
   -> [SyntaxRule]
   -> [Expression]
   -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax classify capture scopeRules evaluate
-    initialRules initialDeclarations entries = do
-  resolveImplicitBlock capture initial [] entries
+rewriteImplicitSyntax context rules declarations =
+  resolveImplicitBlock (contextCapture context)
+    (rewriteEnvironment context rules declarations) []
+
+-- Keep visible syntax rules, while moving the declarations they depend on into
+-- the evaluator's parent scope. RHS declarations belong to the new scope.
+enterContext :: Maybe Expression -> RewriteEnvironment -> RewriteEnvironment
+enterContext value environment = withContextualSyntax ["it"] environment
+  { rewriteContext = nested
+  , rewriteDeclarations = []
+  , rewriteClassifyHole = contextClassify nested
+  , rewriteScopeRules = contextScopeRules nested
+  , rewriteEvaluate = contextEvaluate nested
+  }
   where
-    initial = RewriteEnvironment
-      (map compileRewriteRule initialRules)
-      initialDeclarations True classify scopeRules evaluate
+    nested = contextEnter (rewriteContext environment)
+      (rewriteDeclarations environment) value
 
 resolveImplicitBlock
   :: CaptureHole
@@ -398,7 +418,7 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
                   (Just rewrittenValue))
                 remaining
     IdentifierTemplateOperation parts annotation given -> do
-      let contextual = withContextualSyntax ["it"] environment
+      let contextual = enterContext Nothing environment
       rewrittenParts <- traverse (rewriteTemplatePart contextual) parts
       let (rawAnnotation, rawGiven) =
             normalizeTrailingAssignment annotation given
@@ -446,12 +466,18 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
               finish
                 (FunctionApplication rewrittenFunction rewrittenArgument)
                 remaining
+    In input body -> do
+      rewrittenInput <- rewriteStandalone capture environment input
+      let nested = enterContext (Just rewrittenInput) environment
+      (rewrittenBody, remaining) <- rewriteWithTail allowNestedContinuation
+        (contextCapture (rewriteContext nested)) nested body trailing
+      pure (In rewrittenInput rewrittenBody, remaining)
     MaybeThen optional branch
       | allowNestedContinuation -> do
           rewrittenOptional <- rewriteStandalone capture environment optional
-          let contextual = withContextualSyntax ["it"] environment
-          (rewrittenBranch, remaining) <-
-            rewriteWithTail True capture contextual branch trailing
+          let contextual = enterContext Nothing environment
+          (rewrittenBranch, remaining) <- rewriteWithTail True
+            (contextCapture (rewriteContext contextual)) contextual branch trailing
           finish (MaybeThen rewrittenOptional rewrittenBranch) remaining
     FunctionApplication function argument
       | allowNestedContinuation
@@ -503,10 +529,12 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       rewrittenResult <- rewriteStandalone capture nested result
       pure (Begin rewrittenBindings rewrittenResult, trailing)
     FunctionBody bindings result -> do
-      let contextual = withContextualSyntax ["this", "it"] environment
+      let contextual = withContextualSyntax ["this"]
+            (enterContext Nothing environment)
+          nestedCapture = contextCapture (rewriteContext contextual)
       (rewrittenBindings, nested) <-
-        rewriteSequence capture contextual bindings
-      rewrittenResult <- rewriteStandalone capture nested result
+        rewriteSequence nestedCapture contextual bindings
+      rewrittenResult <- rewriteStandalone nestedCapture nested result
       pure (FunctionBody rewrittenBindings rewrittenResult, trailing)
     _ -> finish value trailing
   where
@@ -514,7 +542,8 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
       StringTemplateLiteral {} -> pure part
       StringTemplateInterpolation interpolation ->
         StringTemplateInterpolation <$>
-          rewriteStandalone capture contextual interpolation
+          rewriteStandalone (contextCapture (rewriteContext contextual))
+            contextual interpolation
     rewriteDeclarationPart declaredName selected =
       if allowNestedContinuation
         then rewriteWithTail True capture environment selected trailing
@@ -604,10 +633,17 @@ rewriteChildren
   -> Either SyntaxRewriteFailure Expression
 rewriteChildren capture environment value =
   case value of
+    In input body -> do
+      rewrittenInput <- rewriteStandalone capture environment input
+      let nested = enterContext (Just rewrittenInput) environment
+      rewrittenBody <- rewriteStandalone
+        (contextCapture (rewriteContext nested)) nested body
+      pure (In rewrittenInput rewrittenBody)
     MaybeThen optional branch -> do
       rewrittenOptional <- rewriteStandalone capture environment optional
-      let contextual = withContextualSyntax ["it"] environment
-      rewrittenBranch <- rewriteStandalone capture contextual branch
+      let contextual = enterContext Nothing environment
+      rewrittenBranch <- rewriteStandalone
+        (contextCapture (rewriteContext contextual)) contextual branch
       pure (MaybeThen rewrittenOptional rewrittenBranch)
     ScopeAccess source body ->
       rewriteScopeAccess capture environment source body
@@ -672,7 +708,11 @@ directSyntaxFunctionExpansion
   -> Expression
   -> Either SyntaxRewriteFailure Expression
 directSyntaxFunctionExpansion environment selectedRule application =
-  case applicationSpine application of
+  case syntaxApplicationSpine application of
+    (_, [IdentifierReference (IdentifierString literal)])
+      | Nothing <- selectedRule
+      , any (Set.member literal . rewriteRuleLiterals) (rewriteRules environment) ->
+          Right application
     (function, [argument]) ->
       choose adapters [] Nothing
       where
@@ -681,20 +721,19 @@ directSyntaxFunctionExpansion environment selectedRule application =
           Just 1 -> [argument]
           _ -> directSyntaxArguments argument
         adapters = do
-          (expressionValue, expected) <- case selectedRule of
+          (expressionValue, expected, evaluate) <- case selectedRule of
             Just rule -> [(rewriteRuleImplementation rule,
-              Just (captureCount rule))]
+              Just (captureCount rule), evaluateRule rule)]
             Nothing -> case declaredImplementations function of
               []
-                | mayResolveSyntaxFunctionBody function -> [(function, Nothing)]
+                | mayResolveSyntaxFunctionBody function -> [(function, Nothing, evaluateHere)]
                 | otherwise -> []
               implementations ->
                 [ (rewriteRuleImplementation rule, Just
-                    (captureCount rule))
+                    (captureCount rule), evaluateRule rule)
                 | rule <- implementations
                 ]
-          value <- maybeToList (rewriteEvaluate environment
-            (rewriteDeclarations environment) expressionValue)
+          value <- maybeToList (evaluate expressionValue)
           body <- maybeToList (interpretedFunctionBody value)
           case body of
             EvaluatedSyntaxFunctionBody _ expansion -> [(expansion, expected)]
@@ -711,6 +750,10 @@ directSyntaxFunctionExpansion environment selectedRule application =
               choose remaining successes (firstFailure <|> Just failure)
     _ -> Right application
   where
+    evaluateHere = rewriteEvaluate environment (rewriteDeclarations environment)
+    evaluateRule rule = case rewriteRuleEvaluation rule of
+      Just evaluate -> evaluate
+      Nothing -> evaluateHere
     declaredImplementations function =
       case directSyntaxFunctionName function of
         Nothing -> []
@@ -729,6 +772,8 @@ directSyntaxFunctionExpansion environment selectedRule application =
         candidate seen expressionValue = case expressionValue of
           ScopeAccess {} -> True
           InModule {} -> True
+          In {} -> True
+          FunctionApplication (IdentifierReference (IdentifierString "_it")) _ -> True
           SyntaxBoundary inner -> candidate seen inner
           IdentifierReference (IdentifierString requested)
             | requested `Set.member` seen -> False
@@ -771,14 +816,30 @@ directSyntaxFunctionExpansion environment selectedRule application =
     expansionFailure failure = Left (SyntaxRewriteMatchFailure
       (SyntaxTemplateExpansionFailure failure))
 
+-- Inspect the adapter's AST constructor before rewriting a raw block. A
+-- function body already shadows the outer input while its declarations and
+-- yield expression are being collected, before the FunctionBody node exists.
+blockRewriteEnvironment :: RewriteEnvironment -> RewriteRule -> RewriteEnvironment
+blockRewriteEnvironment environment rule =
+  case directSyntaxFunctionExpansion environment (Just rule) probe of
+    Right FunctionBody {} -> withContextualSyntax ["this"]
+      (enterContext Nothing environment)
+    _ -> environment
+  where
+    probe = FunctionApplication
+      (IdentifierReference (IdentifierString (rewriteRuleName rule)))
+      (AtlasMap [AtlasMap [], AtlasMap []])
+
 isDirectControlExpansion :: Expression -> Bool
 isDirectControlExpansion expanded = case expanded of
+  In {} -> True
   Begin {} -> True
   FunctionBody {} -> True
   ScopeAccess {} -> True
   _ -> False
 
 isDirectBlockExpansion :: Expression -> Bool
+isDirectBlockExpansion In {} = True
 isDirectBlockExpansion Begin {} = True
 isDirectBlockExpansion _ = False
 
@@ -793,6 +854,14 @@ rewriteDirectControlExpansion capture environment expanded
         (environment { rewriteStrictCaptures = False }) expanded
       rewriteStandalone capture environment planned
   | otherwise = Right expanded
+
+-- A contextual selector is itself a callable expression. Its depth argument
+-- belongs to the selector, not to the syntax function it returns.
+syntaxApplicationSpine :: Expression -> (Expression, [Expression])
+syntaxApplicationSpine (FunctionApplication function argument)
+  | FunctionApplication (IdentifierReference (IdentifierString name)) _ <- function
+  , name == "_it" || name == "_this" = (function, [argument])
+syntaxApplicationSpine value = applicationSpine value
 
 directSyntaxArguments :: Expression -> [Expression]
 directSyntaxArguments argument = case argument of
@@ -826,7 +895,7 @@ rewriteScopeAccess capture environment source body = do
   let scopedRules = rewriteScopeRules environment
         (rewriteDeclarations environment) rewrittenSource
       nested = environment
-        { rewriteRules = nub
+        { rewriteRules = nubBy (\left right -> rewriteRule left == rewriteRule right)
             (rewriteRules environment <> map compileRewriteRule scopedRules) }
   -- A short access names a member; it is not an invocation of a zero-hole
   -- syntax rule with the same spelling. Arbitrary RHS expressions are
@@ -1187,7 +1256,9 @@ matchEmbeddedBlockWith capture environment =
           let phrase = applicationPhrase value
               afterPrefix = drop (start + length prefix) phrase
               before = take start phrase
-          consumeBlock capture environment delimiter afterPrefix trailing
+              blockScope = blockRewriteEnvironment environment rule
+              blockCapture = contextCapture (rewriteContext blockScope)
+          consumeBlock blockCapture blockScope delimiter afterPrefix trailing
             >>= \case
             Nothing -> adjacentScopedExpression afterPrefix trailing >>= \case
               Nothing -> Right Nothing
@@ -1216,7 +1287,7 @@ matchEmbeddedBlockWith capture environment =
                       ))
             Just (block, nested, rawResult, afterBlock) -> do
               (result, remaining) <-
-                rewriteWithTail True capture nested
+                rewriteWithTail True blockCapture nested
                   (wrapResult rawResult) afterBlock
               let candidate selectedResult = applicationFrom
                     (map literalExpression prefix
@@ -1225,7 +1296,7 @@ matchEmbeddedBlockWith capture environment =
                          , selectedResult
                          ])
                   captureInScope previous kind captured =
-                    capture (rewriteStrictCaptures nested)
+                    blockCapture (rewriteStrictCaptures nested)
                       (rewriteDeclarations nested) previous kind captured
                   match = matchSyntaxRulesWith captureInScope
                     [rewriteRule rule]
@@ -1238,7 +1309,7 @@ matchEmbeddedBlockWith capture environment =
                       direct <- directSyntaxFunctionExpansion
                         nested (Just rule) expanded
                       (rewritten, fallbackRemaining) <-
-                        rewriteWithTail True capture nested direct afterBlock
+                        rewriteWithTail True blockCapture nested direct afterBlock
                       Right (Just
                         ( attachAdjacentBody before rewritten
                         , fallbackRemaining
@@ -1569,8 +1640,11 @@ advanceScope environment entry = environment
     retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
     introduced =
-      map (compileRewriteRule . specializeRule) (declarationRules entry)
-        <> aliasRules entry
+      map compileScoped (declarationRules entry) <> aliasRules entry
+    compileScoped rule = (compileRewriteRule (specializeRule rule))
+      { rewriteRuleEvaluation = Just
+          (rewriteEvaluate environment retainedDeclarations)
+      }
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)

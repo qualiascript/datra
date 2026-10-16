@@ -38,6 +38,7 @@ data Operator
   | ValOperator
   | EitherOperator
   | OptionalOperator
+  | InOperator
   | MaybeThenOperator
   | MultiplicationOperator
   | ExponentiationOperator
@@ -84,6 +85,7 @@ operatorCanonicalSymbol LetOperator = "let"
 operatorCanonicalSymbol ValOperator = "val"
 operatorCanonicalSymbol EitherOperator = "|"
 operatorCanonicalSymbol OptionalOperator = "?"
+operatorCanonicalSymbol InOperator = "in"
 operatorCanonicalSymbol MaybeThenOperator = "maybe-then"
 operatorCanonicalSymbol MultiplicationOperator = "*"
 operatorCanonicalSymbol ExponentiationOperator = "^"
@@ -130,6 +132,7 @@ operatorSourceSymbol LetOperator = Just "let"
 operatorSourceSymbol ValOperator = Just "val"
 operatorSourceSymbol EitherOperator = Just "|"
 operatorSourceSymbol OptionalOperator = Just "?"
+operatorSourceSymbol InOperator = Just "in"
 operatorSourceSymbol MaybeThenOperator = Just "!?"
 operatorSourceSymbol MultiplicationOperator = Just skipSourceSymbol
 operatorSourceSymbol ExponentiationOperator = Just "^"

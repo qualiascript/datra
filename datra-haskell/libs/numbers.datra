@@ -2,16 +2,16 @@ Std.(
   yield Numbers := begin
 
     max := {Args IntLimit,} -> IntLimit? do
-      yield it !? it in fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
+      yield it !? (fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
         yield if candidate = Infinity or remaining = () or
           candidate >= (next : this remaining[0; 1..]) then
-            candidate else next
+            candidate else next) it
 
     min := {Args IntLimit,} -> IntLimit? do
-      yield it !? it in fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
+      yield it !? (fun {candidate? : IntLimit; remaining? : List IntLimit} -> IntLimit do
         yield if candidate = -Infinity or remaining = () or
           candidate <= (next : this remaining[0; 1..]) then
-            candidate else next
+            candidate else next) it
 
   yield public this
 )

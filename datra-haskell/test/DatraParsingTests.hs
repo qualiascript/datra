@@ -1358,7 +1358,7 @@ regressionTests = do
     "values !? it in maximum"
     (MaybeThen
       (ref "values")
-      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
+      (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
   let inlineLimitFunction = Fun
         (FunctionApplication
           (FunctionType
@@ -1376,13 +1376,13 @@ regressionTests = do
       <> "remaining? : List IntLimit} -> IntLimit do yield candidate")
     (MaybeThen
       (ref "values")
-      (FunctionApplication inlineLimitFunction (contextualAccess (IdentifierString "_it"))))
+      (In (contextualAccess (IdentifierString "_it")) inlineLimitFunction))
   assert "Maybe sequencing source rendering uses its sole symbol"
     ( renderSourceExpression
         (MaybeThen
           (ref "values")
-          (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
-        == "values !? maximum it"
+          (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
+        == "values !? (it in maximum)"
     )
   assertAstOutput "list sequencing accepts an optional named left operand"
     "(values? : List Int) !? it in maximum"
@@ -1390,21 +1390,21 @@ regressionTests = do
       (OptionalType
         (AST.dependentIdentifierType "values"
           (FunctionApplication (ref "List") (ref "Int"))))
-      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
+      (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
   assertAstOutput "list sequencing follows forward specification"
     "(values ~> List Int) !? it in maximum"
     (MaybeThen
       (MapSpecification
         (ref "values")
         (FunctionApplication (ref "List") (ref "Int")))
-      (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it"))))
+      (In (contextualAccess (IdentifierString "_it")) (ref "maximum")))
   assertAstOutput "subfederation greedily captures right-side sequencing"
     "values of (List Int) !? it in maximum"
     (Subfederation
       (ref "values")
       (MaybeThen
         (FunctionApplication (ref "List") (ref "Int"))
-        (FunctionApplication (ref "maximum") (contextualAccess (IdentifierString "_it")))))
+        (In (contextualAccess (IdentifierString "_it")) (ref "maximum"))))
   assertAstOutput
     "optional identifier slot"
     "a? : Nat"
@@ -2517,6 +2517,7 @@ genExpression =
     , Gen.subterm2 genExpression genExpression SuperEllipsisRange
     , Gen.subterm genExpression SuperEllipsisRangePlus
     , Gen.subterm genExpression SuperEllipsisRangeMinus
+    , Gen.subterm2 genExpression genExpression In
     , Gen.subterm2 genExpression genExpression Addition
     , Gen.subterm2 genExpression genExpression Subtraction
     , Gen.subterm genExpression Plus

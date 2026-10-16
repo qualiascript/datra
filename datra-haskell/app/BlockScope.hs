@@ -47,6 +47,12 @@ blockDeclaration = declaration False False
       | Just (named@IdentifierOperation {}, _) <-
           optionalIdentifierExpression optional =
           declaration strict canonical named
+    declaration strict canonical (In value body) = do
+      declared <- declaration strict canonical body
+      pure declared
+        { declarationAnnotation = In value <$> declarationAnnotation declared
+        , declarationValue = In value (declarationValue declared)
+        }
     declaration _ _ _ = Nothing
 
     annotationToCheck annotation (Just implementation)
