@@ -1,4 +1,4 @@
-# Foliage-ordered value lookup
+# Foliage-ordered lookup operator
 
 ## Summary
 
@@ -32,6 +32,16 @@ String-template matching is also changed to validate captures with ordinary
 function-domain preparation rather than generic `of` membership. Captured text
 must be canonical. Thus `"arg%(_x : Nat)"` generates and matches `"arg4"`, not
 `"arg(_x := 4)"`.
+
+## Terminology
+
+The language-level name of `~` is the **lookup operator**. Documentation,
+diagnostics, test descriptions, and user-facing messages must use that name.
+Do not call it the “value lookup operator,” “value-of operator,” or “tilde
+operator.” Existing implementation names such as `ValueOfOperator` may be
+renamed to `LookupOperator` as part of this change; the new AST constructor
+should likewise be named `Lookup` unless a more specific internal name is
+needed to avoid a collision.
 
 ## Goals
 
@@ -253,10 +263,10 @@ fallback, so the same failure is a compilation error:
 Add a diagnostic such as:
 
 ```haskell
-ValueLookupCaptureHasNoGenericMapView CaptureIndex String
+LookupCaptureHasNoGenericMapView CaptureIndex String
 ```
 
-Report it while compiling `ValueLookup`, before scope matching or result-map
+Report it while compiling `Lookup`, before scope matching or result-map
 construction. It must not be represented as an empty result.
 
 This check applies only when non-total captures remain. A total template is a
@@ -461,17 +471,17 @@ patterns continue to match source AST structure.
 Add a real expression constructor:
 
 ```haskell
-ValueLookup Expression
+Lookup Expression
 ```
 
 and the corresponding `OperatorExpression` constructor. `~` remains a tight
 prefix operator:
 
 ```text
-~a                 == ValueLookup (IdentifierReference "a")
-~"a"               == ValueLookup (AsciiStringLiteral "a")
-~"arg%Nat"         == ValueLookup <template>
-~(a + b)           == ValueLookup (Addition a b)
+~a                 == Lookup (IdentifierReference "a")
+~"a"               == Lookup (AsciiStringLiteral "a")
+~"arg%Nat"         == Lookup <template>
+~(a + b)           == Lookup (Addition a b)
 ```
 
 Postfix access applies to the result map, so `~"arg%Nat"[0]` selects its first
@@ -490,7 +500,7 @@ rendering, syntax rewriting, closure analysis, and serialized-AST parsing for
 the new node.
 
 Source rendering prints `~` followed by its operand at prefix precedence. It
-must round-trip to `ValueLookup`; it must not infer `~` from a `ScopeAccess`
+must round-trip to `Lookup`; it must not infer `~` from a `ScopeAccess`
 shape.
 
 ### Strict generated references
@@ -504,14 +514,14 @@ this."value with spaces"
 ```
 
 Remove the `scopeNames` renderer shortcut. Generated code must never use
-`ValueLookup`, because doing so would change a strict dependency into a map.
+`Lookup`, because doing so would change a strict dependency into a map.
 
 ## Interpreter structure
 
 A suggested top-level decomposition is:
 
 ```haskell
-evaluateValueLookup
+evaluateLookup
   :: ReductionContext
   -> Scope
   -> [String]
@@ -528,13 +538,13 @@ matchingScopeKeys
   -> Either InterpretingError [RankedScopeKey]
 ```
 
-`evaluateValueLookup` distinguishes:
+`evaluateLookup` distinguishes:
 
 1. a concrete string, producing an empty or checked singleton map; and
 2. a retained non-total template plan, compiling its `^`-generic map view,
    discovering matching scope keys, and producing a checked lazy result map.
 
-Any other operand produces `ValueLookupRequiresString`.
+Any other operand produces `LookupRequiresString`.
 
 `compileLookupCaptureFamily` should be a thin adapter over generic map-view
 machinery. Future changes to generic projection rules must automatically apply
@@ -544,11 +554,11 @@ to lookup capture admissibility.
 
 Add or reuse diagnostics for:
 
-- `ValueLookupRequiresString` when the operand is neither a concrete string nor
+- `LookupRequiresString` when the operand is neither a concrete string nor
   a retained string template;
-- `ValueLookupCaptureHasNoGenericMapView` when a non-total capture fails the
+- `LookupCaptureHasNoGenericMapView` when a non-total capture fails the
   same map-view rule as a `^` generic bound;
-- `ValueLookupCaptureNotCanonical` when a capture has no unique canonical
+- `LookupCaptureNotCanonical` when a capture has no unique canonical
   concrete string conversion;
 - a scope-key-index error when a namespace cannot conclusively expose its
   queryable keys; and
@@ -579,7 +589,7 @@ acquire the new map semantics.
 
 Update `DatraParsingTests` to cover:
 
-- `~a`, `~"a"`, `~"arg%Nat"`, and `~(a + b)` as `ValueLookup` nodes;
+- `~a`, `~"a"`, `~"arg%Nat"`, and `~(a + b)` as `Lookup` nodes;
 - postfix selection from a lookup result;
 - rejection of a lone `~`;
 - `~(a, b)` no longer expanding into two scope accesses;
@@ -658,7 +668,7 @@ lookup map.
 
 ## Implementation sequence
 
-1. Add `ValueLookup` AST constructors and update traversal, parsing, rendering,
+1. Add `Lookup` AST constructors and update traversal, parsing, rendering,
    and strict generated-reference rendering.
 2. Retain evaluated string-template capture plans and fold total
    interpolations to concrete strings.
