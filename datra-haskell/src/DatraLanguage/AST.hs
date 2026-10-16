@@ -299,7 +299,13 @@ optionalIdentifierExpression _ = Nothing
 isDeclarationExpression :: Expression -> Bool
 isDeclarationExpression (IdentifierOperation _ annotation (Just given)) =
   annotation == given
-isDeclarationExpression (OptionalType inner) =
+isDeclarationExpression
+    (IdentifierTemplateOperation _ annotation (Just given)) =
+  annotation == given
+-- Optional names are valid dependent identifiers, but a dependent
+-- declaration must denote every name in its family. Keep optional ordinary
+-- declarations for the existing fixed-name binding rules only.
+isDeclarationExpression (OptionalType inner@IdentifierOperation {}) =
   isDeclarationExpression inner
 isDeclarationExpression (Let inner) = isDeclarationExpression inner
 isDeclarationExpression (Val inner) = isDeclarationExpression inner

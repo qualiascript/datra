@@ -723,7 +723,7 @@ validateFunctionBodyParts expressionValue = do
   where
     validatePart part
       | isDeclarationExpression part
-      , Just _ <- blockDeclaration part = Right ()
+      , isBlockDeclaration part = Right ()
     validatePart Let {} = Right ()
     validatePart Val {} = Right ()
     validatePart part
@@ -3005,6 +3005,8 @@ importInvocation expressionValue =
 -- operators remain values: identifier-shaped members inside them neither enter
 -- the surrounding scope nor become visible to sibling members.
 bindingImports :: Bool -> Expression -> ([Declaration], [Expression])
+bindingImports _ expressionValue
+  | isDependentDeclaration expressionValue = ([], [])
 bindingImports strict expressionValue =
   case blockDeclaration (if strict then Let expressionValue else expressionValue) of
     Just declaration -> ([declaration], [])
@@ -4456,11 +4458,99 @@ moduleSyntaxRuleSets requested source = do
   traverse rulesForBinder binders
   where
     rulesForBinder binder = do
-      rules <- moduleSyntaxRulesFromValueIn
+      valueRules <- moduleSyntaxRulesFromValueIn
         requested
         (loadedModuleBinderName binder)
         (loadedModuleBinderValue binder)
-      pure (loadedModuleBinderName binder, rules)
+      let dependentRules = moduleDependentRulesFromSource
+            requested (loadedModuleBinderName binder) source
+      pure (loadedModuleBinderName binder, valueRules <> dependentRules)
+
+-- Dependent declarations do not denote one finite member that can carry
+-- function syntax metadata in the evaluated module value. Recover their rules
+-- from the exported binder's source block and scope both the capture schemas
+-- and implementation exactly as ordinary exported syntax is scoped.
+moduleDependentRulesFromSource
+  :: String
+  -> String
+  -> ModuleSource
+  -> [SyntaxRule]
+moduleDependentRulesFromSource requested scopeName
+    (ModuleSource _ source _) =
+  case sourceBinderBlock scopeName source of
+    Just (entries, result) ->
+      [ scopeRule rule
+      | entry <- entries
+      , rule <- declarationRules entry
+      , Just _ <- [syntaxDependentCaptures rule]
+      , not (filtersPrivate result && privateRule rule)
+      ]
+    Nothing -> []
+  where
+    scopeRule rule = rule
+      { syntaxTemplate = traverseTemplate (syntaxTemplate rule)
+      , syntaxModule = Just scopeName
+      , syntaxDependentCaptures = fmap (map scopeCapture)
+          (syntaxDependentCaptures rule)
+      }
+    traverseTemplate (SyntaxTemplate pieces) = SyntaxTemplate
+      [ case piece of
+          SyntaxLiteral {} -> piece
+          SyntaxHole kind -> SyntaxHole
+            (mapSyntaxHoleKind scopeExpression kind)
+      | piece <- pieces
+      ]
+    scopeCapture Nothing = Nothing
+    scopeCapture (Just (name, annotation)) =
+      Just (name, scopeExpression annotation)
+    scopeExpression expressionValue = case expressionValue of
+      AsciiStringLiteral {} -> expressionValue
+      ScopeAccess {} -> expressionValue
+      _ -> InModule requested expressionValue
+
+    privateRule rule = case syntaxTemplatePieces (syntaxTemplate rule) of
+      SyntaxLiteral literal : _ -> isPrivateIdentifier literal
+      _ -> False
+
+    filtersPrivate expressionValue = case expressionValue of
+      FunctionApplication function argument ->
+        functionName function == Just "public"
+          && isContextualAccessOf (IdentifierString "_this") argument
+      _ -> False
+    functionName (IdentifierReference (IdentifierString name)) = Just name
+    functionName (ScopeAccess _ (IdentifierReference (IdentifierString name))) =
+      Just name
+    functionName _ = Nothing
+
+sourceBinderBlock
+  :: String
+  -> Expression
+  -> Maybe ([Expression], Expression)
+sourceBinderBlock selected source = do
+  directValueBlock <|> containingBlock source
+  where
+    directValueBlock = do
+      value <- sourceBinderValue selected source
+      case value of
+        Begin entries result -> Just (entries, result)
+        _ -> Nothing
+
+    sourceBinderValue name expressionValue =
+      case expressionValue of
+        Begin _ result -> sourceBinderValue name result
+        ScopeAccess _ body -> sourceBinderValue name body
+        Import _ (FunctionBody _ result) -> sourceBinderValue name result
+        _ -> namedBinderValueExpression name expressionValue
+
+    containingBlock expressionValue = case expressionValue of
+      Begin entries result
+        | selected `elem` concatMap bindingNames entries ->
+            Just (entries, result)
+        | otherwise -> firstJust (map containingBlock (entries <> [result]))
+      _ -> firstJust (map containingBlock
+        (expressionChildren expressionValue))
+
+    firstJust = foldr (<|>) Nothing
 
 moduleSyntaxRulesFromValueIn
   :: String
@@ -4493,6 +4583,7 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         pure
           [ SyntaxRule
               name template signature False (Just scopeName) implementation
+              Nothing
           | template <- sourceTemplates
           ]
     parseScopedRuleExpression sourceText = do

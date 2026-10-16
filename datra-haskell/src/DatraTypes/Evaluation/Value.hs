@@ -526,7 +526,7 @@ builtinMetaTypeName (ASTMetaType category) = case category of
   ExpressionAST -> "Expr"
   BlockAST -> "Block"
   FunctionBodyAST -> "FunctionBody"
-  DeclarationAST -> "Declaration"
+  DeclarationAST -> "DependentDeclaration"
   DependentIdentifierAST -> "DependentIdentifier"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
@@ -540,7 +540,7 @@ builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
   ExpressionAST -> "'datra.Expr"
   BlockAST -> "'datra.Block"
   FunctionBodyAST -> "'datra.FunctionBody"
-  DeclarationAST -> "'datra.Declaration"
+  DeclarationAST -> "'datra.DependentDeclaration"
   DependentIdentifierAST -> "'datra.DependentIdentifier"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
   "'datra.SyntaxTemplate"

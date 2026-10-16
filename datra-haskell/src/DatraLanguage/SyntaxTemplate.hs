@@ -107,7 +107,8 @@ renderSyntaxTemplate renderValue (SyntaxTemplate pieces) =
     renderPiece (SyntaxHole ExpressionSyntaxHole {}) = "%_Expr"
     renderPiece (SyntaxHole BlockSyntaxHole {}) = "%_Block"
     renderPiece (SyntaxHole FunctionBodySyntaxHole {}) = "%_FunctionBody"
-    renderPiece (SyntaxHole DeclarationSyntaxHole {}) = "%_Declaration"
+    renderPiece (SyntaxHole DeclarationSyntaxHole {}) =
+      "%_DependentDeclaration"
     renderPiece (SyntaxHole DependentIdentifierSyntaxHole {}) =
       "%_DependentIdentifier"
     renderPiece (SyntaxHole (ValueSyntaxHole value)) = '%' : renderValue value

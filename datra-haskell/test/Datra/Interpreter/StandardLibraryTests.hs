@@ -59,7 +59,11 @@ standardLibraryTests =
             "yield DependentIdentifier"
             (SourceEvaluationFailure
               (UnknownIdentifier "DependentIdentifier"))
-        , programFailureCase "Declaration is private to the library"
+        , programFailureCase "DependentDeclaration is private to the library"
+            "yield DependentDeclaration"
+            (SourceEvaluationFailure
+              (UnknownIdentifier "DependentDeclaration"))
+        , programFailureCase "the former Declaration name is unavailable"
             "yield Declaration"
             (SourceEvaluationFailure (UnknownIdentifier "Declaration"))
         , programFailureCase "_SyntaxTemplate is private to the library"
@@ -347,8 +351,8 @@ standardLibraryTests =
             ("'datra.val in (it (unit := 7))\nyield unit + 0") "7"
         , programCase "syntax implementation captures its declaration context"
             ("yield ('datra.val in begin "
-              <> "'canon := \"canon %('datra.Declaration)\" % "
-              <> "('datra.Declaration -> 'datra.Declaration) it; "
+              <> "'canon := \"canon %('datra.DependentDeclaration)\" % "
+              <> "('datra.DependentDeclaration -> 'datra.DependentDeclaration) it; "
               <> "f := Nat -> Nat do canon x := 7; yield x; yield f 0)") "7"
         , programCase "syntax holes retain their contextual type"
             ("Nat in ('identity := \"identity %(it)\" % "
@@ -457,7 +461,7 @@ standardLibraryTests =
             , "(Nat -> Nat) of Any"
             , "'datra.Expr of Any"
             , "'datra.DependentIdentifier of Any"
-            , "'datra.Declaration of Any"
+            , "'datra.DependentDeclaration of Any"
             , "'datra.Block of Any"
             , "'datra.FunctionBody of Any"
             , "(Nat; 'datra.Expr) of Any"

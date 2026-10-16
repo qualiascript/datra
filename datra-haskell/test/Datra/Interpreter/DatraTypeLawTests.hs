@@ -58,7 +58,7 @@ standardLibraryTypeExamples =
   , canonical "private identifier-expression primitive"
       "'datra.DependentIdentifier"
   , canonical "private declaration primitive"
-      "'datra.Declaration"
+      "'datra.DependentDeclaration"
   , canonical "private Block primitive" "'datra.Block"
   , canonical "private function-body primitive"
       "'datra.FunctionBody"

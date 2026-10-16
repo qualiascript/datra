@@ -127,6 +127,7 @@ testTree =
         , testCase "generic product ordinal indexing"
             testGenericProductOrdinalIndexing
         , testCase "string templates" testStringTemplates
+        , testCase "dependent declarations" testDependentDeclarations
         , testCase "lookup follows transfinite foliage traversal"
             testLookupFoliageTraversal
         , testCase "named field access" testNamedAccess
@@ -1146,7 +1147,7 @@ testCanonicalTypes = do
     , "Template"
     , "'datra.Expr"
     , "'datra.DependentIdentifier"
-    , "'datra.Declaration"
+    , "'datra.DependentDeclaration"
     , "'datra.Block"
     , "'datra.FunctionBody"
     , "(Nat; 'datra.Expr)"
@@ -1841,6 +1842,97 @@ testLookupFoliageTraversal =
       "omega-squared captures use Cantor-diagonal foliage order"
       "(\"cell0.0\"; \"cell0.1\"; \"cell1.0\"; \"cell0.2\"; \"cell1.1\"; \"cell2.0\")"
       (renderInterpretedValue value)
+
+testDependentDeclarations :: IO ()
+testDependentDeclarations = do
+  expectProgram
+    "dependent declaration binds captures as it"
+    (unlines
+      [ "\"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "let dependent declaration is visible recursively"
+    (unlines
+      [ "answer := pair 1 with 2"
+      , "let \"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield answer"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "parenthesized declaration head evaluates its template binding"
+    (unlines
+      [ "pattern := \"pair %(_x : Int) with %(_y : Int)\""
+      , "(pattern) := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "concrete lookup reaches a dependent declaration"
+    (unlines
+      [ "\"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield (~\"pair 1 with 2\")[0].value"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectProgram
+    "val accepts an injective dependent declaration"
+    (unlines
+      [ "val \"pair %(_x : Int) with %(_y : Int)\" := it"
+      , "yield pair 1 with 2"
+      ])
+    "{_x : Int := 1; _y : Int := 2}"
+  expectFailure
+    "val rejects a many-to-one dependent declaration"
+    "NonInjectiveDependentDeclaration"
+    (unlines
+      [ "val \"pair %(_x : Int)\" := 1"
+      , "yield pair 2"
+      ])
+  expectFailure
+    "dependent declarations cannot be optional"
+    "OperationHasNoEffect"
+    (unlines
+      [ "\"pair %(_x : Int)\"? := it"
+      , "yield 1"
+      ])
+  expectFailure
+    "overlapping dependent declarations are rejected"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "\"pair %(_x : Int)\" := it"
+      , "\"pair 1%(_x : Int)\" := it"
+      , "yield 1"
+      ])
+  expectProgram
+    "distinct dependent declaration languages coexist"
+    (unlines
+      [ "\"left %(_x : Int)\" := it"
+      , "\"right %(_x : Int)\" := it"
+      , "yield right 2"
+      ])
+    "{_x : Int := 2}"
+  where
+    expectProgram label source expected =
+      case runProgram source of
+        Left failure -> assertFailure
+          (label <> ": unexpected failure: " <> show failure)
+        Right value -> assertEqual label expected
+          (renderInterpretedValue value)
+    expectFailure label expected source =
+      case runProgram source of
+        Left failure -> assert
+          (label <> ": " <> show failure)
+          (expected `contains` show failure)
+        Right value -> assertFailure
+          (label <> ": unexpectedly produced " <> renderInterpretedValue value)
+    contains needle haystack = any (needle `prefixOf`) (tails haystack)
+    prefixOf [] _ = True
+    prefixOf _ [] = False
+    prefixOf (left : lefts) (right : rights) =
+      left == right && prefixOf lefts rights
+    tails [] = [[]]
+    tails value@(_ : rest) = value : tails rest
 
 testRemainingLiterals :: IO ()
 testRemainingLiterals = do

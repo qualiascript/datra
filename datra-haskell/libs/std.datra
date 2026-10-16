@@ -2,12 +2,12 @@
   Std := 'datra.begin ((
     _Expr := 'datra.Expr
     _DependentIdentifier := 'datra.DependentIdentifier
-    _Declaration := 'datra.Declaration
+    _DependentDeclaration := 'datra.DependentDeclaration
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val in it ('val := "val %_Declaration" %
-      (_Declaration -> _Declaration) it)
+    'datra.val in it ('val := "val %_DependentDeclaration" %
+      (_DependentDeclaration -> _DependentDeclaration) it)
     val 'datra := 'datra
 
     val Any := 'datra.Any
@@ -30,8 +30,8 @@
     val NatValRange := 'datra.NatValRange
     val IntValRange := 'datra.IntValRange
 
-    val 'let := "let %_Declaration" %
-      (_Declaration -> _Declaration) 'datra.let
+    val 'let := "let %_DependentDeclaration" %
+      (_DependentDeclaration -> _DependentDeclaration) 'datra.let
     let 'in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in
 
     val 'assert :=

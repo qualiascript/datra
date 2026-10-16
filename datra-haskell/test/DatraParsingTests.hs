@@ -483,7 +483,7 @@ regressionTests = do
         [ ExpressionSyntaxHole (ref "_Expr")
         , BlockSyntaxHole (ref "_Block")
         , FunctionBodySyntaxHole (ref "_FunctionBody")
-        , DeclarationSyntaxHole (ref "_Declaration")
+        , DeclarationSyntaxHole (ref "_DependentDeclaration")
         , DependentIdentifierSyntaxHole (ref "_DependentIdentifier")
         , ValueSyntaxHole (ref "Int")
         ]
@@ -537,6 +537,7 @@ regressionTests = do
         , syntaxRecursive = False
         , syntaxModule = Nothing
         , syntaxImplementation = datraRef implementation
+        , syntaxDependentCaptures = Nothing
         }
   assert "external syntax implementations are not selected by namespace"
     (expandSyntax (syntaxControl ["syntax", "unknown"])
@@ -563,6 +564,7 @@ regressionTests = do
         , syntaxRecursive = False
         , syntaxModule = Nothing
         , syntaxImplementation = datraRef implementation
+        , syntaxDependentCaptures = Nothing
         }
       intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
       intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
@@ -1137,10 +1139,10 @@ regressionTests = do
       _ -> False
   case parseSource (unlines
       [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "_Declaration := 'datra.Declaration"
+      , "_DependentDeclaration := 'datra.DependentDeclaration"
       , "captureId := \"captureId %_DependentIdentifier\" %"
           <> " (Any -> Any) 'datra.fun"
-      , "captureDeclaration := \"captureDeclaration %_Declaration\" %"
+      , "captureDeclaration := \"captureDeclaration %_DependentDeclaration\" %"
           <> " (Any -> Any) 'datra.fun"
       , "captureId x"
       , "captureId (x : Int)"
@@ -1729,6 +1731,24 @@ regressionTests = do
   assertRejected
     "identifier operations reject expression left sides"
     "(2 + 2) : Nat := 4"
+  assertAstOutput
+    "parenthesized names evaluate dependent declaration templates"
+    "(abc) := 123"
+    (IdentifierTemplateOperation
+      [StringTemplateInterpolation (ref "abc")]
+      (natural 123)
+      (Just (natural 123)))
+  assertAstOutput
+    "parenthesized names evaluate dependent identifier templates"
+    "(abc) : Nat"
+    (IdentifierTemplateOperation
+      [StringTemplateInterpolation (ref "abc")]
+      (ref "Nat")
+      Nothing)
+  assertAstOutput
+    "bare names remain literal declarations"
+    "abc := 123"
+    (AST.assignment "abc" (natural 123) (natural 123))
   assertRejected
     "identifier operations reject dollar-prefixed left sides"
     "$x : Nat := 4"

@@ -4,6 +4,8 @@ module BlockScope
   ( Declaration (..)
   , ScopeMember (..)
   , blockDeclaration
+  , isBlockDeclaration
+  , isDependentDeclaration
   , bindingNames
   , buildScopeBindings
   , declarationScopeMember
@@ -60,6 +62,24 @@ blockDeclaration = declaration False False
     annotationToCheck FunctionTypeExpression {} (Just FunctionBody {}) = Nothing
     annotationToCheck SyntaxType {} (Just _) = Nothing
     annotationToCheck annotation _ = Just annotation
+
+-- A dependent declaration exists only as a block entry and contributes a
+-- family of names rather than one finite binding. It is therefore recognized
+-- here without being coerced into the fixed-name 'Declaration' record.
+isBlockDeclaration :: Expression -> Bool
+isBlockDeclaration expressionValue =
+  case blockDeclaration expressionValue of
+    Just _ -> True
+    Nothing -> isDependentDeclaration expressionValue
+
+isDependentDeclaration :: Expression -> Bool
+isDependentDeclaration expressionValue = case expressionValue of
+  IdentifierTemplateOperation _ annotation (Just given) ->
+    annotation == given
+  Let value -> isDependentDeclaration value
+  Val value -> isDependentDeclaration value
+  In _ value -> isDependentDeclaration value
+  _ -> False
 
 bindingNames :: Expression -> [String]
 bindingNames = maybe [] ((: []) . declarationName) . blockDeclaration

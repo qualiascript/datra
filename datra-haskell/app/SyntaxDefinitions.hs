@@ -36,6 +36,8 @@ data SyntaxRule = SyntaxRule
   , syntaxRecursive :: Bool
   , syntaxModule :: Maybe String
   , syntaxImplementation :: Expression
+  , syntaxDependentCaptures
+      :: Maybe [Maybe (IdentifierString, Expression)]
   } deriving (Eq,Show)
 
 data SyntaxTemplateCompilationFailure
@@ -59,6 +61,7 @@ contextualSyntaxRulesFor = map rule
       False
       Nothing
       (IdentifierReference (IdentifierString ("_" <> surface)))
+      Nothing
     signature = FunctionType
       (EllipsisNatural 0)
       (IdentifierReference (IdentifierString "Any"))
@@ -84,7 +87,9 @@ declarationRules (In value body) =
   ]
 declarationRules optional
   | Just (operation, _) <- optionalIdentifierExpression optional =
-      declarationRules operation
+      case operation of
+        IdentifierTemplateOperation {} -> []
+        _ -> declarationRules operation
 declarationRules (IdentifierOperation (IdentifierString name) annotation (Just implementation)) =
   collect name (if annotation == implementation then implementation else MapSpecification implementation annotation)
   where
@@ -100,11 +105,51 @@ declarationRules (IdentifierOperation (IdentifierString name) annotation (Just i
     collect _ _ = []
     rules key templates signature body =
       [ SyntaxRule key template
-          signature False Nothing body
+          signature False Nothing body Nothing
       | template <- either (const []) id
           (compileSyntaxTemplatesFromExpression templates)
       ]
+declarationRules
+    (IdentifierTemplateOperation parts _ (Just implementation)) =
+  case compileDependentDeclarationTemplate parts of
+    Left _ -> []
+    Right (template, captures) ->
+      [ SyntaxRule
+          { syntaxName = renderSourceExpression (StringTemplate parts)
+          , syntaxTemplate = template
+          , syntaxSignature = IdentifierReference (IdentifierString "Any")
+          , syntaxRecursive = False
+          , syntaxModule = Nothing
+          , syntaxImplementation = implementation
+          , syntaxDependentCaptures = Just captures
+          }
+      ]
 declarationRules _ = []
+
+compileDependentDeclarationTemplate
+  :: [StringTemplatePart Expression]
+  -> Either SyntaxTemplateCompilationFailure
+      ( SyntaxTemplate Expression
+      , [Maybe (IdentifierString, Expression)]
+      )
+compileDependentDeclarationTemplate parts = do
+  let (pieces, captures) = foldMap compilePart parts
+      template = SyntaxTemplate pieces
+  case validateSyntaxTemplate template of
+    Left failure -> Left (InadmissibleSyntaxTemplate
+      (renderSyntaxTemplate renderSourceExpression template)
+      failure)
+    Right () -> Right (template, captures)
+  where
+    compilePart (StringTemplateLiteral literal) =
+      (syntaxTemplatePieces (syntaxTemplateFromPattern literal), [])
+    compilePart (StringTemplateInterpolation expressionValue) =
+      let (target, name) = capture expressionValue
+      in ([SyntaxHole (ValueSyntaxHole target)], [name])
+    capture (SyntaxBoundary inner) = capture inner
+    capture (IdentifierOperation name annotation Nothing) =
+      (annotation, Just (name, annotation))
+    capture value = (value, Nothing)
 
 -- | The left operand of @%@ is either one string template or an inhabited
 -- compile-time total map of string templates. Rules must be available before
@@ -159,7 +204,10 @@ expandSyntax
   -> TemplateSelection Expression Expression
   -> Either SyntaxExpansionFailure Expression
 expandSyntax rule selection =
-  Right (FunctionApplication callable suppliedInput)
+  Right (case syntaxDependentCaptures rule of
+    Just binders -> In (ArgumentMap (zipWith bind binders captures))
+      (scoped (syntaxImplementation rule))
+    Nothing -> FunctionApplication callable suppliedInput)
   where
     captures = templateSelectionCaptures selection
     callable = scoped (IdentifierReference (IdentifierString localName))
@@ -169,6 +217,9 @@ expandSyntax rule selection =
       [] -> AtlasMap []
       [value] -> value
       values -> AtlasMap values
+    bind (Just (name, annotation)) value =
+      IdentifierOperation name annotation (Just value)
+    bind Nothing value = value
     -- Function preparation overloads this supplied tail onto the declared
     -- domain. Empty, singleton, and multi-capture syntax therefore follows the
     -- same call path as an ordinary partial argument map.
