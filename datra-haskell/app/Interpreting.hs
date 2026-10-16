@@ -48,7 +48,7 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, intercalate, partition)
+import Data.List (nub, nubBy, intercalate, partition, stripPrefix)
 import Data.Maybe (catMaybes)
 import BlockScope
 import FunctionClosure
@@ -140,6 +140,7 @@ import DatraLanguage.Diagnostics
 import DatraLanguage.Diagnostics.Application (ParseFailure (..))
 import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
 
 interpretExpression
@@ -1794,6 +1795,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     Let _ -> Left LetOutsideBegin
     IdentifierReference (IdentifierString name) ->
       resolveIdentifierWith reduction scope resolving name
+    Lookup operand -> do
+      query <- interpret operand
+      evaluateLookup reduction scope resolving query
     Assert _ condition -> do
       conditionValue <- interpret condition
       runProtectedOperation protection [conditionValue] $ \actuals ->
@@ -2240,6 +2244,300 @@ validateGenericFunctionType evaluate generics domain codomain = do
             IdentifierNameDisjointnessUndecidable ->
               Left (GenericIdentifierDisjointnessUndecidable genericName)
 
+-- | Evaluate the first-class lookup operator against the lexical environment
+-- captured at the operator site. Name discovery is finite and does not force
+-- bindings; the checked lazy row accessor performs ordinary resolution only
+-- when a retained row is selected.
+evaluateLookup
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+evaluateLookup reduction scope resolving query =
+  case interpretedSemanticResult query of
+    CanonicalAsciiString key ->
+      lookupResult reduction scope resolving
+        [key | scopeKeyExists scope key]
+    _ -> case interpretedStringTemplate query of
+      Just template -> do
+        family <- compileLookupCaptureFamily template
+        keys <- filterMRight
+          (matchCanonicalTemplate template)
+          (scopeLookupKeys scope)
+        lookupTemplateResult reduction scope resolving template family keys
+      Nothing -> Left (LookupRequiresString (interpretedValueKind query))
+
+lookupResult
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> [String]
+  -> Either InterpretingError InterpretedValue
+lookupResult reduction scope resolving keys =
+  Right (makeCheckedLazyMapValue
+    (finiteOrdinal (fromIntegral (length keys)))
+    (\position -> case naturalAtOrdinal position of
+      Just index -> case valueAt index keys of
+        Just key -> Just <$> lookupRow reduction scope resolving key
+        Nothing -> Right Nothing
+      Nothing -> Right Nothing))
+  where
+    valueAt 0 (value : _) = Just value
+    valueAt index (_ : remaining) = valueAt (index - 1) remaining
+    valueAt _ [] = Nothing
+
+lookupTemplateResult
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> EvaluatedStringTemplate
+  -> OrdinalIndexedFamily
+  -> [String]
+  -> Either InterpretingError InterpretedValue
+lookupTemplateResult reduction scope resolving template family keys =
+  Right (makeCheckedLazyMapValue
+    (finiteOrdinal (fromIntegral (length keys)))
+    (rowAt . naturalAtOrdinal))
+  where
+    traversal = foliageMap (ordinalIndexedFamilyOrderType family)
+
+    rowAt Nothing = Right Nothing
+    rowAt (Just requested) = seek 0 0 []
+      where
+        seek rank emitted emittedKeys = do
+          sourcePosition <- maybe
+            (Left AmbiguousStringTemplate)
+            Right
+            (foliageMapPositionAt traversal rank)
+          witness <- maybe
+            (Left AmbiguousStringTemplate)
+            Right
+            (ordinalIndexedFamilyValueAt family sourcePosition)
+          key <- renderLookupTemplateKey template witness
+          if key `elem` keys && key `notElem` emittedKeys
+            then if emitted == requested
+              then Just <$> lookupRow reduction scope resolving key
+              else seek (rank + 1) (emitted + 1) (key : emittedKeys)
+            else seek (rank + 1) emitted emittedKeys
+
+lookupRow
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> String
+  -> Either InterpretingError InterpretedValue
+lookupRow reduction scope resolving key = do
+  keyValue <- asciiStringValue key
+  resolved <- resolveIdentifierAccess False reduction scope resolving key
+  keyMember <- assignIdentifierValues "key" keyValue keyValue
+  valueMember <- assignIdentifierValues "value" resolved resolved
+  pure (makeAtlasMapPreservingSingleton 2 [keyMember, valueMember])
+
+compileLookupCaptureFamily
+  :: EvaluatedStringTemplate
+  -> Either InterpretingError OrdinalIndexedFamily
+compileLookupCaptureFamily template =
+  case captures of
+    [] -> Left AmbiguousStringTemplate
+    _ -> case ordinalIndexedValueFamily
+        (makeAtlasMap 2 (map captureBound captures)) of
+      Just family -> Right family
+      Nothing ->
+        case [capture | capture <- captures
+              , Nothing <- [ordinalIndexedValueFamily
+                  (captureBound capture)]] of
+          capture : _ -> Left (LookupCaptureHasNoGenericMapView
+            (captureIndex capture)
+            (renderInterpretedValue (captureSchema capture)))
+          [] -> Left (LookupCaptureHasNoGenericMapView
+            0 (renderInterpretedValue
+              (makeAtlasMap 2 (map captureBound captures))))
+  where
+    captures = templateCaptures template
+
+data LookupCapture = LookupCapture
+  { captureIndex :: Natural
+  , captureSchema :: InterpretedValue
+  , captureBound :: InterpretedValue
+  }
+
+templateCaptures :: EvaluatedStringTemplate -> [LookupCapture]
+templateCaptures template =
+  [ LookupCapture index schema bound
+  | EvaluatedStringTemplateCapture index schema bound <-
+      evaluatedStringTemplateSegments template
+  ]
+
+renderLookupTemplateKey
+  :: EvaluatedStringTemplate
+  -> InterpretedValue
+  -> Either InterpretingError String
+renderLookupTemplateKey template witness = do
+  witnesses <- captureWitnesses (length captures) witness
+  concat <$> traverse (renderSegment witnesses)
+    (evaluatedStringTemplateSegments template)
+  where
+    captures = templateCaptures template
+    renderSegment _ (EvaluatedStringTemplateLiteral literal) = Right literal
+    renderSegment witnesses
+        (EvaluatedStringTemplateCapture index _ _) = do
+      selected <- maybe
+        (Left AmbiguousStringTemplate)
+        Right
+        (naturalListAt index witnesses)
+      renderCanonicalCapture selected
+
+captureWitnesses
+  :: Int
+  -> InterpretedValue
+  -> Either InterpretingError [InterpretedValue]
+captureWitnesses 1 witness = Right [witness]
+captureWitnesses count witness =
+  traverse member [0 .. count - 1]
+  where
+    member index = maybe
+      (Left AmbiguousStringTemplate)
+      Right
+      (interpretedMapValueAt
+        (interpretedMap witness)
+        (finiteOrdinal (fromIntegral index)))
+
+renderCanonicalCapture
+  :: InterpretedValue
+  -> Either InterpretingError String
+renderCanonicalCapture value = do
+  rendered <- toStringValue canonicalStringCodec value
+  case interpretedSemanticResult rendered of
+    CanonicalAsciiString text -> Right text
+    _ -> case asciiStringFromInterpretedMap (interpretedMap rendered) of
+      Just text | interpretedValueHasTotalMap rendered -> Right text
+      _ -> Left NoCanonicalStringConversion
+
+-- | Canonical reverse matching mirrors function-domain preparation. Every
+-- decoded candidate is completed against its capture schema, identifiers are
+-- erased to positional payloads, and the payload must render byte-for-byte to
+-- the captured substring.
+matchCanonicalTemplate
+  :: EvaluatedStringTemplate
+  -> String
+  -> Either InterpretingError Bool
+matchCanonicalTemplate template input = do
+  matches <- matchSegments
+    (evaluatedStringTemplateSegments template)
+    input
+  let distinct = nubBy samePrepared matches
+  case distinct of
+    [] -> Right False
+    [_] -> Right True
+    _ -> Left AmbiguousStringTemplate
+  where
+    samePrepared left right =
+      map interpretedSemanticResult left == map interpretedSemanticResult right
+
+    matchSegments [] remaining = Right [[] | null remaining]
+    matchSegments (EvaluatedStringTemplateLiteral literal : remaining) text =
+      case stripPrefix literal text of
+        Nothing -> Right []
+        Just suffix -> matchSegments remaining suffix
+    matchSegments
+        (EvaluatedStringTemplateCapture _ schema _ : remaining)
+        text = do
+      alternatives <- traverse attempt [0 .. length text]
+      pure (concat alternatives)
+      where
+        attempt boundary = do
+          let (captured, suffix) = splitAt boundary text
+          prepared <- preparedCaptureCandidates schema captured
+          tails <- matchSegments remaining suffix
+          pure [value : tailValues | value <- prepared, tailValues <- tails]
+
+preparedCaptureCandidates
+  :: InterpretedValue
+  -> String
+  -> Either InterpretingError [InterpretedValue]
+preparedCaptureCandidates schema captured =
+  pure
+    [ prepared
+    | candidate <- decodeCanonicalString canonicalStringCodec captured
+    , Right prepared <-
+        [argumentSchemaValuesComplete
+          (argumentSchemaFromValue schema)
+          candidate]
+    , Right rendered <- [renderCanonicalCapture prepared]
+    , rendered == captured
+    ]
+
+naturalListAt :: Natural -> [value] -> Maybe value
+naturalListAt 0 (value : _) = Just value
+naturalListAt index (_ : remaining) = naturalListAt (index - 1) remaining
+naturalListAt _ [] = Nothing
+
+filterMRight
+  :: (value -> Either error Bool)
+  -> [value]
+  -> Either error [value]
+filterMRight predicate = foldM retain []
+  where
+    retain retained value = do
+      accepted <- predicate value
+      pure (if accepted then retained <> [value] else retained)
+
+scopeLookupKeys :: Scope -> [String]
+scopeLookupKeys scope = nub (direct <> aliases)
+  where
+    direct =
+      [ name
+      | (name, binding) <- scopeBindings scope
+      , case name of
+          '\0' : _ -> False
+          _ -> True
+      , queryableBinding binding
+      ]
+    aliases =
+      [ original
+      | (_, CanonicalNames names) <- scopeBindings scope
+      , (_, original) <- names
+      , scopeKeyExists scope original
+      ]
+
+scopeKeyExists :: Scope -> String -> Bool
+scopeKeyExists scope name =
+  case canonicalScopeAlias scope name of
+    Just generated -> maybe False queryableBinding (lookupScope generated scope)
+    Nothing -> maybe False queryableBinding (lookupScope name scope)
+
+queryableBinding :: Binding -> Bool
+queryableBinding binding =
+  case binding of
+    ShadowingConsistentBinding target -> queryableBinding target
+    NamedBinding _ target -> queryableBinding target
+    QualifiedBinding _ target -> queryableBinding target
+    CanonicalNames {} -> False
+    ModuleCatalog {} -> False
+    LexicalScope {} -> False
+    _ -> True
+
+canonicalScopeAlias :: Scope -> String -> Maybe String
+canonicalScopeAlias scope name =
+  unique exactAliases `orElse` unique qualifiedAliases
+  where
+    aliases = concat
+      [names | (_, CanonicalNames names) <- scopeBindings scope]
+    exactAliases =
+      [generated | (generated, original) <- aliases, original == name]
+    qualifiedAliases =
+      [ generated
+      | (generated, original) <- aliases
+      , reverse (takeWhile (/= '.') (reverse original)) == name
+      ]
+    unique values = case nub values of
+      [value] -> Just value
+      _ -> Nothing
+    orElse value fallback = case value of
+      Just _ -> value
+      Nothing -> fallback
+
 resolveIdentifier
   :: Scope -> [String] -> String -> Either InterpretingError InterpretedValue
 resolveIdentifier = resolveIdentifierWith UnrestrictedReduction
@@ -2260,29 +2558,13 @@ resolveIdentifierAccess
   -> String
   -> Either InterpretingError InterpretedValue
 resolveIdentifierAccess includesPrivate reduction scope resolving name =
-  case canonicalAlias of
+  case canonicalScopeAlias scope name of
     Just generated -> resolveIdentifierAccess
       includesPrivate reduction scope resolving generated
     Nothing -> case lookupScope name scope of
       Just binding -> resolve binding
       Nothing -> Left (UnknownIdentifier name)
   where
-    canonicalAlias = unique exactAliases `orElse` unique qualifiedAliases
-    aliases = concat
-      [names | (_, CanonicalNames names) <- scopeBindings scope]
-    exactAliases = [generated | (generated, original) <- aliases, original == name]
-    qualifiedAliases =
-      [ generated
-      | (generated, original) <- aliases
-      , reverse (takeWhile (/= '.') (reverse original)) == name
-      ]
-    unique values = case nub values of
-      [value] -> Just value
-      _ -> Nothing
-    orElse value fallback = case value of
-      Just _ -> value
-      Nothing -> fallback
-
     resolve (NamedBinding dependency binding) =
       withCanonicalReference [dependency] name <$> resolve binding
     -- An import-all binding keeps its qualified origin for dependency
@@ -2738,20 +3020,33 @@ interpretStringTemplateWith
   -> [StringTemplatePart Expression]
   -> Either InterpretingError InterpretedValue
 interpretStringTemplateWith protection interpret parts = do
-  values <- traverse interpretPart parts
-  case values of
+  evaluated <- traverse interpretPart parts
+  case map fst evaluated of
     [] -> asciiStringValue ""
     firstValue : remaining -> do
       result <- foldM concatenateTemplateValues firstValue remaining
       runProtectedOperation protection [result] $ \actuals ->
         case actuals of
-          [actual] -> Right (templateValue actual)
+          [actual] ->
+            let segments = templateSegments evaluated
+                captures =
+                  [ ()
+                  | EvaluatedStringTemplateCapture {} <- segments
+                  ]
+                templated = templateValue actual
+            in Right
+              (if null captures
+                then templated
+                else withStringTemplatePlan
+                  (EvaluatedStringTemplate segments)
+                  templated)
           _ -> Right neverValue
   where
-    interpretPart (StringTemplateLiteral value) = asciiStringValue value
+    interpretPart (StringTemplateLiteral value) =
+      (, Nothing) <$> asciiStringValue value
     interpretPart (StringTemplateInterpolation expressionValue) = do
       value <- interpret expressionValue
-      runProtectedOperationWithContract
+      converted <- runProtectedOperationWithContract
         protection
         genericOperationResultDecision
         contextuallySpecify
@@ -2760,6 +3055,47 @@ interpretStringTemplateWith protection interpret parts = do
             [actual] -> checkedString
               (toStringValue canonicalStringCodec actual)
             _ -> Right (neverValue, Nothing)
+      pure (converted, Just value)
+
+    templateSegments = snd . foldl appendPart (0, [])
+    appendPart (captureIndex, segments) (converted, captureSchema) =
+      case captureSchema of
+        Nothing ->
+          (captureIndex, appendLiteral (concreteString converted) segments)
+        Just schema ->
+          case concreteStringMaybe converted of
+            Just literal ->
+              (captureIndex, appendLiteral literal segments)
+            Nothing ->
+              ( captureIndex + 1
+              , segments <>
+                  [ EvaluatedStringTemplateCapture
+                      captureIndex
+                      schema
+                      (argumentSchemaPositionalDomain
+                        (argumentSchemaFromValue schema))
+                  ]
+              )
+
+    appendLiteral "" segments = segments
+    appendLiteral literal segments =
+      case reverse segments of
+        EvaluatedStringTemplateLiteral previous : remaining ->
+          reverse remaining <>
+            [EvaluatedStringTemplateLiteral (previous <> literal)]
+        _ -> segments <> [EvaluatedStringTemplateLiteral literal]
+
+    concreteString converted =
+      case concreteStringMaybe converted of
+        Just value -> value
+        Nothing -> ""
+
+    concreteStringMaybe converted =
+      case interpretedSemanticResult converted of
+        CanonicalAsciiString value -> Just value
+        _ | interpretedValueHasTotalMap converted ->
+              asciiStringFromInterpretedMap (interpretedMap converted)
+          | otherwise -> Nothing
 
     concatenateTemplateValues left right =
       case runProtectedOperationWithContract
@@ -4355,7 +4691,7 @@ closureResolver scope = resolver
         expressionValue
         emptyResolver)
     resolve [] = Nothing
-    -- FunctionClosure tags the exact expansion of @~name@ so it remains
+    -- FunctionClosure tags the exact strict-reference expansion so it remains
     -- distinguishable from an ordinary @_this.name@ access. Both select the
     -- named lexical binding here, but the tagged form must be resolved as one
     -- dependency rather than traversed into and projected a second time.

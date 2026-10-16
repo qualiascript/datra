@@ -71,6 +71,7 @@ makeAsciiString characters = value
       InterpretedMap
         (if null characters then 0 else 2)
         finalValues
+        (Right . ordinalOrderedValueAt finalValues)
         [semantics]
     value =
       makeSingletonInterpretedValue
@@ -130,7 +131,9 @@ makeFormulation level = value
         (\position -> do
           absolute <- someSuperEllipsisInsertionPositionAt insertion position
           pure (makeExplicit ComputedOrigin absolute))
-    valueMap = InterpretedMap 1 values [semantics]
+    valueMap = InterpretedMap 1 values
+      (Right . ordinalOrderedValueAt values)
+      [semantics]
     value =
       makeSingletonInterpretedValue
         structuralDatraType
@@ -167,13 +170,15 @@ mapFromInsertion
 mapFromInsertion insertion components =
   InterpretedMap
     (if isEmpty then 0 else 1)
-    (OrdinalOrderedValues
+    values
+    (Right . ordinalOrderedValueAt values)
+    (if isEmpty then [] else components)
+  where
+    values = OrdinalOrderedValues
       (someSuperEllipsisInsertionOrderType insertion)
       (\position -> do
         absolute <- someSuperEllipsisInsertionPositionAt insertion position
-        pure (makeExplicit ComputedOrigin absolute)))
-    (if isEmpty then [] else components)
-  where
+        pure (makeExplicit ComputedOrigin absolute))
     isEmpty =
       someSuperEllipsisInsertionOrderType insertion == finiteOrdinal 0
 

@@ -560,7 +560,7 @@ functionTests =
             "f := ({x?:Int;y?:Int} -> Int do yield x+y)\nyield f {2;3}"
             "5"
         , programCase "ordered private parameter is positional inside the call"
-            ( "f := ((_x:Int) -> Int do yield ~\"_x\"+1)\n"
+            ( "f := ((_x:Int) -> Int do yield this.\"_x\"+1)\n"
                 <> "yield f 2"
             )
             "3"

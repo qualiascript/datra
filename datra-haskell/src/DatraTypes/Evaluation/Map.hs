@@ -87,7 +87,9 @@ makeProductMap productForm preserveSingleton cardinality values productFederatio
     components =
       map interpretedSemantics values
     semantics = MapSemantics cardinality components
-    valueMap = InterpretedMap cardinality finalValues components
+    valueMap = InterpretedMap cardinality finalValues
+      (Right . ordinalOrderedValueAt finalValues)
+      components
     memberFederations = map interpretedAtlasMapFederation values
     federation
       | preserveSingleton
@@ -180,7 +182,9 @@ concatenateValuesWithEquivalenceView left right = do
           MapSemantics _ mapComponents ->
             MapSemantics cardinality mapComponents
           _ -> semantics
-      baseResultMap = InterpretedMap cardinality finalValues components
+      baseResultMap = InterpretedMap cardinality finalValues
+        (Right . ordinalOrderedValueAt finalValues)
+        components
       resultFederation valueMap
         | operandsAreTotal
         , atlasMapFederationExpressionIsSingleton

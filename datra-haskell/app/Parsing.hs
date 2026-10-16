@@ -121,13 +121,13 @@ import DatraLanguage.AST
       , Let
       , Val
       , IdentifierReference
+      , Lookup
       )
   , pattern FunctionType
   , StringTemplatePart
       ( StringTemplateInterpolation
       , StringTemplateLiteral
       )
-  , contextualAccess
   , expressionChildren
   , mapExpressionChildren
   , traverseExpressionChildren
@@ -336,7 +336,7 @@ neutralIncompletePrefixOperator source = case reverse (words source) of
   [] -> Nothing
   where
     operandPrefixOperators =
-      [AST.ValueOfOperator]
+      [AST.LookupOperator]
         <> map fst arithmeticPrefixOperators
 
 -- | Outer parentheses select expression mode; every other resource is an
@@ -823,6 +823,7 @@ astForm =
       , astUnary AST.ValOperator Val
       , IdentifierReference . IdentifierString <$>
           (astSymbol "ref" *> astString)
+      , astUnary AST.LookupOperator Lookup
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
       , astBinary AST.InOperator In
@@ -1425,7 +1426,7 @@ term = do
       , try identifierOperation
       , argumentMap
       , parenthesizedExpression
-      , valueOfExpression
+      , lookupExpression
       , trailingApplicationSkip
       , prefixedApplicationArgument
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -1457,7 +1458,7 @@ termAtom =
   choice
     [ bareSkip
     , genericIntroduction
-    , valueOfExpression
+    , lookupExpression
     , argumentMap
     , try parenthesizedReverseSpecification
     , parenthesizedExpression
@@ -1594,41 +1595,26 @@ optionalTypeSuffix = try $ do
   notFollowedBy (char ':')
   pure token
 
-namedAccessNames :: Parser [IdentifierString]
-namedAccessNames = parenthesized <|> ((: []) <$> namedAccessName)
+-- Lookup is a genuine tight prefix expression. Its operand is evaluated; in
+-- particular, an identifier contributes its string value rather than its
+-- source spelling. Postfix access is parsed by the enclosing 'accessedTerm'
+-- and therefore applies to the lookup result.
+lookupExpression :: Parser Expression
+lookupExpression = do
+  _ <- operatorToken AST.LookupOperator
+  Lookup <$> lookupOperand
   where
-    parenthesized = between
-      (symbol "(" <* lineSpaceConsumer)
-      (lineSpaceConsumer *> symbol ")") $ do
-        first <- namedAccessName
-        rest <- many
-          (continuedOperator AST.ConcatenationOperator *> namedAccessName)
-        pure (first : rest)
-
--- The operand denotes names rather than evaluating them. Keep this sugar in
--- the core grammar so serialized closures can use it without importing a
--- syntax declaration from Std.
-valueOfExpression :: Parser Expression
-valueOfExpression = do
-  _ <- operatorToken AST.ValueOfOperator
-  names <- namedAccessNames
-  horizontalSpaceConsumer
-  notFollowedBy (operatorToken AST.ExponentiationOperator)
-  pure (expandedNamedAccess names
-    (contextualAccess (IdentifierString "_this")))
+    lookupOperand = choice
+      [ lookupExpression
+      , argumentMap
+      , parenthesizedExpression
+      , lexeme (atomicExpressionToken sourceStringTemplateToken)
+      , identifierReference
+      ]
 
 namedAccessName :: Parser IdentifierString
 namedAccessName =
   IdentifierString <$> (bareIdentifierToken <|> standardStringToken)
-
-expandedNamedAccess
-  :: [IdentifierString]
-  -> Expression
-  -> Expression
-expandedNamedAccess names value =
-  case map (ScopeAccess value . IdentifierReference) names of
-    [] -> value
-    first : rest -> foldl MapConcatenation first rest
 
 bracketedInsertion :: Parser Expression
 bracketedInsertion =
@@ -1722,14 +1708,14 @@ arithmeticPrefixOperators =
   , (AST.CoalizationOperator, Coalization)
   ]
 
--- Parentheses make transitions between prefix value lookup and infix
+-- Parentheses make transitions between prefix lookup and infix
 -- exponentiation explicit.
 exponentiationOperator
   :: (AST.Operator -> Parser Text)
   -> Parser Text
 exponentiationOperator infixOperator = try $ do
   token <- infixOperator AST.ExponentiationOperator
-  notFollowedBy (operatorToken AST.ValueOfOperator)
+  notFollowedBy (operatorToken AST.LookupOperator)
   pure token
 
 multiplicationOperator
@@ -2075,7 +2061,7 @@ operatorToken operator = lexeme $ try $ do
     AST.MinusOperator -> notFollowedBy (char '>')
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
-    AST.ValueOfOperator -> notFollowedBy (char '>' <|> char '%' <|> char '~')
+    AST.LookupOperator -> notFollowedBy (char '>' <|> char '%' <|> char '~')
     AST.SyntaxTypeOperator -> notFollowedBy (char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')

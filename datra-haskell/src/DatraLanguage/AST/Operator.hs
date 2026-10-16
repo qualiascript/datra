@@ -31,7 +31,7 @@ data Operator
   | BooleanOrOperator
   | BooleanNotOperator
   | CoalizationOperator
-  | ValueOfOperator
+  | LookupOperator
   | AssertOperator
   | BeginOperator
   | LetOperator
@@ -78,7 +78,7 @@ operatorCanonicalSymbol BooleanAndOperator = "and"
 operatorCanonicalSymbol BooleanOrOperator = "or"
 operatorCanonicalSymbol BooleanNotOperator = "not"
 operatorCanonicalSymbol CoalizationOperator = "><"
-operatorCanonicalSymbol ValueOfOperator = "~"
+operatorCanonicalSymbol LookupOperator = "~"
 operatorCanonicalSymbol AssertOperator = "assert"
 operatorCanonicalSymbol BeginOperator = "begin"
 operatorCanonicalSymbol LetOperator = "let"
@@ -125,7 +125,7 @@ operatorSourceSymbol BooleanAndOperator = Just "and"
 operatorSourceSymbol BooleanOrOperator = Just "or"
 operatorSourceSymbol BooleanNotOperator = Just "not"
 operatorSourceSymbol CoalizationOperator = Just "><"
-operatorSourceSymbol ValueOfOperator = Just "~"
+operatorSourceSymbol LookupOperator = Just "~"
 operatorSourceSymbol AssertOperator = Just "assert"
 operatorSourceSymbol BeginOperator = Just "begin"
 operatorSourceSymbol LetOperator = Just "let"

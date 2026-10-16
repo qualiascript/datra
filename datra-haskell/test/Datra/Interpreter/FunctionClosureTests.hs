@@ -53,7 +53,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("wrong dependency for " <> show userName)
           ((show dependency <> " :=") `isInfixOf` text)
         assertBool ("wrong dependency reference for " <> show userName)
-          (("~" <> show dependency) `isInfixOf` text))
+          (("this." <> show dependency) `isInfixOf` text))
         ["next", "step", "base"]
       assertBool "no temporary recursive declaration" (not ("let \"__fun\"" `isInfixOf` text))
   , roundTrip "user value is distinct from the inline fixed point"
@@ -69,7 +69,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
         assertBool ("missing encoded declaration for " <> show name)
           ((show encoded <> " :=") `isInfixOf` text)
         assertBool ("missing encoded reference for " <> show name)
-          (("~" <> show encoded) `isInfixOf` text))
+          (("this." <> show encoded) `isInfixOf` text))
         [ ("abc", "___abc")
         , ("_abc", "____abc")
         , ("_____abc", "_____abc")
@@ -129,14 +129,14 @@ functionClosureTests = testGroup "canonical function reconstruction"
   , roundTrip "quoted parameter reference"
       "yield ({\"value with spaces\" : Int} -> Int do yield this.\"value with spaces\" + 1)"
       "(\"value with spaces\" : 4)" "5"
-  , roundTrip "value lookup in an optional named parameter"
-      "yield ({\"value with spaces\"? : Int} -> Int do yield ~\"value with spaces\" + 1)"
+  , roundTrip "strict quoted access in an optional named parameter"
+      "yield ({\"value with spaces\"? : Int} -> Int do yield this.\"value with spaces\" + 1)"
       "4" "5"
-  , roundTrip "value lookup applies a captured function"
-      "inc := ({x? : Int} -> Int do yield x + 1)\nyield ({n? : Int} -> Int do yield ~inc (~n))"
+  , roundTrip "strict references apply a captured function"
+      "inc := ({x? : Int} -> Int do yield x + 1)\nyield ({n? : Int} -> Int do yield inc n)"
       "4" "5"
   , roundTrip "library inlining preserves a user _AST parameter"
-      "yield ({_AST : Int := 4} -> Int do yield ~\"_AST\" + 1)" "()" "5"
+      "yield ({_AST : Int := 4} -> Int do yield this.\"_AST\" + 1)" "()" "5"
   , roundTrip "quoted captured identifier"
       "\"name.with.dots\" := 4\nyield ({x? : Int} -> Int do yield x + this.\"name.with.dots\")"
       "7" "11"
@@ -171,7 +171,8 @@ functionClosureTests = testGroup "canonical function reconstruction"
       assertBool "source-defined integer range dependency" ("'datra.from" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
         (not (":= 'datra.Int;" `isInfixOf` text))
-      assertBool "dependency selected through value lookup" ("~\"___Std.Int\"" `isInfixOf` text)
+      assertBool "dependency uses strict current-scope access"
+        ("this.\"___Std.Int\"" `isInfixOf` text)
   , testCase "different captured values have different representations" $ do
       a <- requireProgram "offset := 4\nyield ({x? : Int} -> Int do yield x + offset)"
       b <- requireProgram "offset := 5\nyield ({x? : Int} -> Int do yield x + offset)"
@@ -297,7 +298,7 @@ mutualRecursiveDefinitions = testCase "mutual recursive definitions" $ do
   assertEqual "odd is collected once" 1
     (occurrences "let \"___odd\" :=" text)
   assertBool "even refers to its collected odd dependency"
-    ("else ~\"___odd\" (n - 1)" `isInfixOf` text)
+    ("else this.\"___odd\" (n - 1)" `isInfixOf` text)
   assertBool "odd's back-edge refers to the reconstructed even function"
     ("else this (n - 1)" `isInfixOf` text)
   result <- requireProgram (mutualDefinitions <> "\nyield even 2")

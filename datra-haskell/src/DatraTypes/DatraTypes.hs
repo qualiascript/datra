@@ -29,6 +29,7 @@ module DatraTypes
   , withDependentSumFamily
   , withDependentSumReservationTarget
   , makeLazyMapValue
+  , makeCheckedLazyMapValue
   , coalizeValue
   , coalizeMapMemberAt
   , syntaxCategoryTypeValue
@@ -49,6 +50,8 @@ module DatraTypes
   , callableFunction
   , interpretedFunction
   , InterpretedValue
+  , EvaluatedStringTemplate (..)
+  , EvaluatedStringTemplateSegment (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -206,6 +209,8 @@ module DatraTypes
   , IdentifierNameDisjointness (..)
   , identifierNameDisjointness
   , interpretedValueKind
+  , interpretedStringTemplate
+  , withStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
@@ -233,6 +238,7 @@ module DatraTypes
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , interpretedMapValueAtChecked
   , decideClosedPublicResultContract
   ) where
 
@@ -449,6 +455,7 @@ import Evaluation.Value
   , withDependentSumFamily
   , withDependentSumReservationTarget
   , makeLazyMapValue
+  , makeCheckedLazyMapValue
   , syntaxCategoryTypeValue
   , functionAlternatives
   , templateTypeValue
@@ -468,6 +475,8 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , EvaluatedStringTemplate (..)
+  , EvaluatedStringTemplateSegment (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
   , ScopeProtectionPolicy (..)
@@ -499,10 +508,13 @@ import Evaluation.Value
   , interpretedMapPageCardinality
   , interpretedMapFinalOrderType
   , interpretedMapValueAt
+  , interpretedMapValueAtChecked
   , interpretedRangeDescription
   , interpretedValueHasTotalMap
   , interpretedTypeIsTotal
   , interpretedValueKind
+  , interpretedStringTemplate
+  , withStringTemplatePlan
   )
 import Numeric.Natural (Natural)
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)

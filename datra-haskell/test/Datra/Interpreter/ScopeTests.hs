@@ -215,7 +215,7 @@ scopeTests =
             "(left : 5; right : 8)"
         , programCase "an explicit lookup can select a deeper page"
             ( "source := (def:(5;8))\n"
-                <> "yield source.(begin selected := def; yield ~selected)[1]"
+                <> "yield source.(begin selected := def; yield selected)[1]"
             )
             "8"
         , programCase "an empty source opens an empty child scope"
@@ -257,7 +257,7 @@ scopeTests =
             "f := (() -> Int do _it := 23; yield _it)\nyield f ()"
             "23"
         , programCase "ordinary identifier named it remains addressable"
-            "f := (() -> Int do it := 23; yield ~it)\nyield f ()"
+            "f := (() -> Int do it := 23; yield this.it)\nyield f ()"
             "23"
         , programCase "explicit private it accepts literal zero"
             "f := (Nat -> Nat do yield _it 0)\nyield f 7"
