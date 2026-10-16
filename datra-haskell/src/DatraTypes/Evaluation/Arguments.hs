@@ -21,7 +21,7 @@ import Evaluation.Error
   ( FunctionFailure (..)
   , InterpretingError (FunctionEvaluationFailed)
   )
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow)
 import Evaluation.Map (makeAtlasMap, hasConcreteSource, concatenateValues)
 import Evaluation.Coalization (valueIsCoalition)
 import Evaluation.Value
@@ -180,7 +180,7 @@ argumentRows value = case interpretedForm value of
             (FunctionArgumentPageUnavailable position)))
           Right
           (interpretedMapValueAt (interpretedMap value) (finiteOrdinal position)))
-        (if count == 0 then [] else [0 .. count - 1])
+        (naturalsBelow count)
 
 concatenationOperandRows
   :: InterpretedValue

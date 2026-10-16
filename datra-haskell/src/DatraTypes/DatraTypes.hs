@@ -66,7 +66,6 @@ module DatraTypes
   , InterpretedValueKind (..)
   , InterpretedMap
   , NamedMember (..)
-  , NamedMemberMetadata (..)
   , NamedMapProjection (..)
   , NamedMapView (..)
   , namedMapView
@@ -76,7 +75,6 @@ module DatraTypes
   , namedMapContainsName
   , namedMapViewForValue
   , appendNamedMapViews
-  , selectPublicNamedMapView
   , namedMapValue
   , withNamedMapView
   , InterpretingError (..)
@@ -227,7 +225,6 @@ module DatraTypes
   , interpretedValueKind
   , interpretedStringTemplate
   , interpretedNamedMapView
-  , interpretedNamedMemberMetadata
   , withStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -496,7 +493,6 @@ import Evaluation.Value
   , InterpretedMap
   , InterpretedValue
   , NamedMember (..)
-  , NamedMemberMetadata (..)
   , NamedMapProjection (..)
   , NamedMapView (..)
   , namedMapView
@@ -506,7 +502,6 @@ import Evaluation.Value
   , namedMapContainsName
   , namedMapViewForValue
   , appendNamedMapViews
-  , selectPublicNamedMapView
   , namedMapValue
   , withNamedMapView
   , EvaluatedStringTemplate (..)
@@ -523,7 +518,6 @@ import Evaluation.Value
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
   , interpretedNamedMapView
-  , interpretedNamedMemberMetadata
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -553,7 +547,7 @@ import Evaluation.Value
   , withStringTemplatePlan
   )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 
 import Data.Char (ord)
 import Data.List (find)
@@ -631,7 +625,7 @@ listTypeValue presentationSource elementType =
         Right
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap source)))
-      mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
+      mapM_ (validateAt source) (naturalsBelow count)
     validateAt source position = do
       member <- maybe
         (Left (FunctionEvaluationFailed

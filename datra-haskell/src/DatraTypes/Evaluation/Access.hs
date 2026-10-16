@@ -7,6 +7,7 @@ module Evaluation.Access
 import DatraOrdinal
   ( finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , omegaPower
   , ordinalLT
   )
@@ -167,7 +168,7 @@ finiteMapMembers value = do
     (interpretedMapFinalOrderType (interpretedMap value))
   traverse
     (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
-    (if count == 0 then [] else [0 .. count - 1])
+    (naturalsBelow count)
 
 accessSingleValue
   :: InterpretedValue
@@ -435,11 +436,10 @@ finishAccess mapValue selected = do
           (asciiStringFromInterpretedMap selected)
       _ -> ordinaryResult)
   where
-    selectedValueList 0 = Right (Just [])
     selectedValueList cardinality =
       fmap sequence . traverse
         (interpretedMapValueAtChecked selected . finiteOrdinal)
-        $ [0 .. cardinality - 1]
+        $ naturalsBelow cardinality
 
 rangeAccessResult
   :: Bool
@@ -532,7 +532,7 @@ accessMap sourceMap insertion
               (interpretedMapComponents . interpretedMap)
               . ordinalOrderedValueAt selectedValues
               . finiteOrdinal)
-            [0 .. cardinality - 1]
+            (naturalsBelow cardinality)
 
 -- | Select a named page without discarding its identifier or specification.
 -- Inspect argument-map slots directly: permutation expansion is unnecessary
@@ -581,7 +581,7 @@ namedAccessValue source name = do
     pages value = case naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap value)) of
       Just count -> concat <$> traverse (\index -> case interpretedMapValueAt (interpretedMap value) (finiteOrdinal index) of
           Nothing -> Left (NamedAccessFailed NamedFieldMapNotInspectable)
-          Just field -> candidates field) (if count == 0 then [] else [0 .. count - 1])
+          Just field -> candidates field) (naturalsBelow count)
       Nothing -> Left (NamedAccessFailed NamedAccessRequiresFiniteMap)
     matchesName canonical = case canonical of
       CanonicalSimpleIdentifierType actual _ -> actual == name

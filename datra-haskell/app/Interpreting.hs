@@ -58,10 +58,7 @@ import DatraHost
   , namedMembers
   )
 import DatraLanguage.Identifier
-  ( isPrivateIdentifier
-  , public
-  , requiresShadowingConsistency
-  )
+  ( requiresShadowingConsistency )
 import IdentifierValueType (isIdentifierValue)
 import RuntimeModules
   ( EvaluationMode (..)
@@ -139,7 +136,7 @@ import DatraLanguage.Diagnostics
   )
 import DatraLanguage.Diagnostics.Application (ParseFailure (..))
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 import FoliageMap (foliageMap, foliageMapPositionAt)
 import System.FilePath (takeFileName)
 
@@ -367,7 +364,7 @@ localScopeDeclarations declarations source = case source of
         [ dependentDeclarationImplementation binding
         | declaration <- reverse declarations
         , Just binding <- [dependentDeclaration declaration]
-        , dependentDeclarationStaticName binding == Just name
+        , name `elem` bindingNames declaration
         ] of
       value : _ -> mapScopeEntries value
       [] -> []
@@ -449,7 +446,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
             (evalInScope enclosing [] targetExpression)
           captureSyntaxExpression target captured
         scopedCapture = do
-          (scope, _, _) <- either (const Nothing) Just
+          scope <- either (const Nothing) Just
             (declareScope enclosing
               (map syntaxValidationDeclaration scopedDeclarations))
           target <- either (const Nothing) Just
@@ -467,7 +464,7 @@ classifySyntaxHole base modules declarations kind =
   case kind of
     ValueSyntaxHole target ->
       either (const kind) (`specializeSyntaxHoleKind` kind) $ do
-        (scope, _, _) <- declareScope enclosing
+        scope <- declareScope enclosing
           (map syntaxValidationDeclaration declarations)
         evalInScope scope [] target
     _ -> kind
@@ -482,7 +479,7 @@ evaluateSyntaxValue
   -> Maybe InterpretedValue
 evaluateSyntaxValue base modules declarations expressionValue = do
   let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
-  (scope, _, _) <- either (const Nothing) Just
+  scope <- either (const Nothing) Just
     (declareScope enclosing
       (map syntaxValidationDeclaration declarations))
   either (const Nothing) Just (evalInScope scope [] expressionValue)
@@ -507,9 +504,9 @@ syntaxContext base modules availableRules = SyntaxContext
         enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
         declared = declareScope enclosing
           (map syntaxValidationDeclaration declarations)
-        parent = either (const enclosing) (\(scope, _, _) -> scope) declared
+        parent = either (const enclosing) id declared
         supplied = do
-          (scope, _, _) <- declared
+          scope <- declared
           case input of
             Just expressionValue -> evalInScope scope [] expressionValue
             Nothing -> Left (UnknownIdentifier "_it")
@@ -1019,6 +1016,8 @@ shadowingConsistencyFuel = 64
 
 type ScopeBindings = [(String, Binding)]
 
+type RetainedDeclarations = [(Int, InterpretedValue)]
+
 data ScopeHandoff = ScopeHandoff
   { scopeHandoffReceiver :: ScopeActivation
   , scopeHandoffPolicyDecision
@@ -1041,7 +1040,8 @@ data Scope = Scope
 -- preceding ordinary declarations; every local let declaration is already
 -- present in that snapshot, but its implementation remains deferred.
 data ScopedDependentDeclaration = ScopedDependentDeclaration
-  { scopedDependentDeclarationScope :: Scope
+  { scopedDependentDeclarationPosition :: Int
+  , scopedDependentDeclarationScope :: Scope
   , scopedDependentDeclarationValue :: DependentDeclaration
   , scopedDependentDeclarationRetainedValue :: Maybe InterpretedValue
   }
@@ -1457,7 +1457,7 @@ accessRepeatedPrefix captured resolving recursivePrefix insertion = do
 selectionMaximum :: InterpretedValue -> Maybe Natural
 selectionMaximum insertion = do
   count <- naturalAtOrdinal (interpretedMapFinalOrderType (interpretedMap insertion))
-  positions <- traverse selected (if count == 0 then [] else [0 .. count - 1])
+  positions <- traverse selected (naturalsBelow count)
   pure (if null positions then 0 else maximum positions)
   where
     selected position = do
@@ -1860,7 +1860,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             _ <- importDomainValue publicDomains
             members <- concat <$> traverse scopeNamedMembers actuals
             let combined = makeAtlasMapPreservingSingleton 2
-                  (map snd (public members))
+                  (map snd members)
             enterOpenedScope expressionValue combined
               (zip distinctOperands actuals) body
     ScopeAccess operand body -> do
@@ -1868,9 +1868,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       runProtectedOperation protection [source] $ \actuals ->
         case actuals of
           [actual] -> case body of
-            IdentifierReference (IdentifierString name)
-              | isPrivateIdentifier name -> Left (UnknownIdentifier name)
-              | otherwise -> do
+            IdentifierReference (IdentifierString name) -> do
                   selected <- namedAccessValue actual name
                   validateOpenedBinding actual (name, selected)
                   payload <- accessValues selected (naturalValue 1)
@@ -2108,9 +2106,9 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
       validateShortScopeMember actual selectedBody
       namedLayer <- case namedMapViewForValue actual of
         Nothing -> Right Nothing
-        Just view -> Just <$> selectPublicNamedMapView view
+        Just view -> Right (Just view)
       opened <- case scopeNamedMembers actual of
-        Right members -> Right (public members)
+        Right members -> Right members
         Left failure -> case namedLayer of
           Just _ -> Right []
           Nothing -> Left failure
@@ -2797,8 +2795,8 @@ importScopeWithin = importScopeUsing scopeBuilderWithin
 
 importScopeUsing
   :: (Scope -> [Expression] -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( RetainedDeclarations -> Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       ))
@@ -2807,42 +2805,34 @@ importScopeUsing
   -> [Expression]
   -> Either InterpretingError Scope
 importScopeUsing build enclosing resolving entries = do
-  (rebuild, eagerNames, eagerEntries, validateConsistency) <-
+  (rebuild, eagerFamilies, eagerEntries, validateConsistency) <-
     build enclosing entries
-  let deferred = rebuild []
-      seeded =
-        [ name
-        | name <- eagerNames
-        , maybe False bindingHasRecursiveFunctionSeed
-            (lookupScope name deferred)
+  eagerDeclarations <- catMaybes <$> traverse prepareEager eagerFamilies
+  let seeded =
+        [ eager
+        | eager@(_, _, expressionValue) <- eagerDeclarations
+        , recursiveFunctionImplementation expressionValue /= Nothing
         ]
       ordinary =
-        [ name
-        | name <- eagerNames
-        , name `notElem` seeded
-        , maybe True (not . productiveRecursiveBinding name)
-            (lookupScope name deferred)
+        [ eager
+        | eager@(_, name, expressionValue) <- eagerDeclarations
+        , Nothing <- [recursiveFunctionImplementation expressionValue]
+        , Nothing <- [recursivePrefixFor
+            (== IdentifierReference (IdentifierString name))
+            expressionValue]
         ]
-      evaluateRetained retained seedOnly name = do
+      evaluateRetained retained seedOnly (_, name, expressionValue) = do
         let current = rebuild retained
-        (captured, annotation, expressionValue) <-
-          maybe (Left (UnknownIdentifier name)) Right
-            (lookupScope name current >>= bindingDefinition)
-        let activeCaptured = captured
-              { scopeActivation = scopeActivation current
-              , scopeHandoff = Nothing
-              }
             activeResolving
               | seedOnly = bindingKey name expressionValue : resolving
               | otherwise = resolving
-        evaluateBindingDefinitionWith UnrestrictedReduction
-          activeCaptured activeResolving name annotation expressionValue
-      retainSeed retained name = do
-        value <- evaluateRetained retained True name
-        pure ((name, value) : retained)
-      retainLet retained name = do
-        value <- evaluateRetained retained False name
-        pure ((name, value) : retained)
+        resolveIdentifierWith UnrestrictedReduction current activeResolving name
+      retainSeed retained eager@(position, _, _) = do
+        value <- evaluateRetained retained True eager
+        pure ((position, value) : retained)
+      retainLet retained eager@(position, _, _) = do
+        value <- evaluateRetained retained False eager
+        pure ((position, value) : retained)
   seeds <- foldM retainSeed [] seeded
   retained <- foldM retainLet seeds (seeded <> ordinary)
   let imported = rebuild retained
@@ -2850,6 +2840,18 @@ importScopeUsing build enclosing resolving entries = do
   -- Anonymous let entries still have eager evaluation semantics.
   mapM_ (evalInScope imported resolving) eagerEntries
   pure imported
+  where
+    prepareEager scoped = do
+      name <- dependentDeclarationSingletonName
+        UnrestrictedReduction resolving scoped
+      pure (case name of
+        Nothing -> Nothing
+        Just value -> Just
+          ( scopedDependentDeclarationPosition scoped
+          , value
+          , dependentDeclarationImplementation
+              (scopedDependentDeclarationValue scoped)
+          ))
 
 scopePresentationDependency :: Scope -> Maybe PresentationDependency
 scopePresentationDependency scope =
@@ -2874,47 +2876,27 @@ childPresentationDependency enclosing entries = PresentationDependency
       Just (PresentationDependency identity) -> identity
       Nothing -> "<root>"
 
-bindingHasRecursiveFunctionSeed :: Binding -> Bool
-bindingHasRecursiveFunctionSeed binding =
-  case bindingDefinition binding of
-    Just (_, _, definition) ->
-      case recursiveFunctionImplementation definition of
-        Just _ -> True
-        Nothing -> False
-    Nothing -> False
-
-productiveRecursiveBinding :: String -> Binding -> Bool
-productiveRecursiveBinding name binding =
-  case bindingDefinition binding of
-    Just (_, _, definition) ->
-      case recursivePrefixFor
-          (== IdentifierReference (IdentifierString name))
-          definition of
-        Just _ -> True
-        Nothing -> False
-    _ -> False
-
 -- Source reconstruction needs definitions without forcing native implementations
 -- while their signatures are themselves being reconstructed.
 declareScope
   :: Scope
   -> [Expression]
-  -> Either InterpretingError (Scope, [String], [Expression])
+  -> Either InterpretingError Scope
 declareScope enclosing entries = do
-  (rebuild, eagerNames, eagerEntries, _) <- scopeBuilder enclosing entries
-  pure (rebuild [], eagerNames, eagerEntries)
+  (rebuild, _, _, _) <- scopeBuilder enclosing entries
+  pure (rebuild [])
 
 -- Rebuild a declaration scope from its finite source declarations whenever an
 -- eager let becomes available.  Recursive lets make their captured scopes
 -- cyclic; recursively walking those scopes to replace a binding can therefore
--- black-hole.  Re-running 'buildScopeBindings' ties one fresh, shared knot and
--- places retained values into every lexical snapshot without traversing it.
+-- black-hole. Rebuilding ties one fresh, shared knot and places retained
+-- values into every lexical snapshot without traversing it.
 scopeBuilder
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( RetainedDeclarations -> Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2924,8 +2906,8 @@ scopeBuilderWithoutContextualThis
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( RetainedDeclarations -> Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2936,8 +2918,8 @@ scopeBuilderWithContextualThis
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( RetainedDeclarations -> Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2953,8 +2935,8 @@ scopeBuilderWithin
   :: Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( RetainedDeclarations -> Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
@@ -2969,23 +2951,17 @@ scopeBuilderActivated
   -> Scope
   -> [Expression]
   -> Either InterpretingError
-      ( [(String, InterpretedValue)] -> Scope
-      , [String]
+      ( RetainedDeclarations -> Scope
+      , [ScopedDependentDeclaration]
       , [Expression]
       , [String] -> Scope -> Either InterpretingError ()
       )
 scopeBuilderActivated introducesThis scopedEnclosing entries = do
-  let (definitions, eagerEntries) = foldMap (bindingImports False) entries
+  let (_, eagerEntries) = foldMap (bindingImports False) entries
       positionedMembers =
         [ (position, declaration)
         | (position, entry) <- zip [0 :: Int ..] entries
         , Just declaration <- [dependentDeclaration entry]
-        ]
-      eagerNames =
-        [ name
-        | declaration <- definitions
-        , Just name <- [dependentDeclarationStaticName declaration]
-        , dependentDeclarationIsLet declaration
         ]
       finalPosition = length entries
       introduceThis = introducesThis
@@ -2997,9 +2973,10 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
         where
           positionedScopeMembers =
             [ ScopedDependentDeclaration
+                position
                 (scopeAt position)
                 declaration
-                (dependentDeclarationStaticName declaration >>= (`lookup` retained))
+                (lookup position retained)
             | (position, declaration) <- positionedMembers
             ]
 
@@ -3011,52 +2988,37 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
                     zip positionedMembers positionedScopeMembers
                 , declaredAt < position || dependentDeclarationIsLet declaration
                 ]
-              dependent =
-                [ scoped
-                | scoped <- visible
-                , Nothing <- [dependentDeclarationStaticName
-                    (scopedDependentDeclarationValue scoped)]
-                ]
+              dependent = visible
               namedScope = scopedEnclosing
                 { scopeDependentDeclarationLayers =
                     [dependent | not (null dependent)]
                       <> scopeDependentDeclarationLayers scopedEnclosing
                 }
-              bindings = localBindings visible
-                <> [ scopeBinding "_this" (ScopeMembers visible)
+              bindings = [ scopeBinding "_this" (ScopeMembers visible)
                    | introduceThis
                    ]
                 <> scopeBindings scopedEnclosing
 
-          localBindings visible =
-            map (makeBinding retained)
-              (reverse ordinary <> recursiveLets)
-            where
-              ordinary =
-                [ (name, scoped)
-                | scoped <- visible
-                , let declaration = scopedDependentDeclarationValue scoped
-                , not (dependentDeclarationIsLet declaration)
-                , Just name <- [dependentDeclarationStaticName declaration]
-                ]
-              recursiveLets =
-                [ (name, scoped)
-                | scoped <- visible
-                , let declaration = scopedDependentDeclarationValue scoped
-                , dependentDeclarationIsLet declaration
-                , Just name <- [dependentDeclarationStaticName declaration]
-                ]
-
       scopedMembers = snd (buildFrame [])
-      consistencyNames =
+      eagerFamilies =
+        [ scoped
+        | scoped <- scopedMembers
+        , dependentDeclarationIsLet
+            (scopedDependentDeclarationValue scoped)
+        ]
+      consistencyCandidates =
         [ name
-        | declaration <- definitions
-        , Just name <- [dependentDeclarationStaticName declaration]
-        , Just binding <- [lookupScope name scopedEnclosing]
+        | (name, binding) <- scopeBindings scopedEnclosing
         , not (bindingHasUnrestrictedShadowing binding)
         ]
-      validateConsistency resolving imported =
+      validateConsistency resolving imported = do
+        consistencyNames <- filterMRight
+          (overlapsDeclarations resolving) consistencyCandidates
         mapM_ (validateConsistencyName resolving imported) consistencyNames
+      overlapsDeclarations resolving name = or <$> traverse
+        (\scoped -> dependentDeclarationContainsName
+          UnrestrictedReduction resolving scoped name)
+        scopedMembers
       validateConsistencyName resolving imported name =
         case lookupScope name scopedEnclosing of
           -- Whole recursive scope values have no finite normal form to
@@ -3080,35 +3042,26 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
                 == interpretedSemanticResult replacement
               then Right ()
               else Left (InconsistentShadowing name)
-      makeBinding retained (name, scoped) =
-        let declaration = scopedDependentDeclarationValue scoped
-            expressionValue = dependentDeclarationImplementation declaration
-            captured = scopedDependentDeclarationScope scoped
-        in case lookup name retained of
-          Just value ->
-            scopeBinding name
-              (RetainedBinding captured Nothing expressionValue value)
-          Nothing ->
-            scopeBinding name
-              (DeferredBinding captured Nothing expressionValue)
-  mapM_ (checkLetShadow scopedEnclosing) definitions
+  mapM_ (checkLetShadow scopedEnclosing) eagerFamilies
   validateDeclarationFamilies scopedMembers
   pure
     ( rebuild
-    , eagerNames
+    , eagerFamilies
     , eagerEntries
     , validateConsistency
     )
   where
-    checkLetShadow enclosing declaration =
-      case dependentDeclarationStaticName declaration of
-        Nothing -> Right ()
-        Just name
-          | dependentDeclarationIsLet declaration
-          , Just binding <- lookupScope name enclosing
-          , not (bindingHasUnrestrictedShadowing binding) ->
-              Left (LetBindingCannotShadowConsistentIdentifier name)
-          | otherwise -> Right ()
+    checkLetShadow enclosing scoped = mapM_ check
+      (scopeBindings enclosing)
+      where
+        check (name, binding)
+          | bindingHasUnrestrictedShadowing binding = Right ()
+          | otherwise = do
+              overlaps <- dependentDeclarationContainsName
+                UnrestrictedReduction [] scoped name
+              if overlaps
+                then Left (LetBindingCannotShadowConsistentIdentifier name)
+                else Right ()
 
 validateDeclarationFamilies
   :: [ScopedDependentDeclaration]
@@ -3128,11 +3081,9 @@ validateDeclarationFamilies = go []
       | otherwise = Left (OverlappingBindings
           (dependentDeclarationLabel declaration))
 
-    dependentDeclarationLabel declaration =
-      case dependentDeclarationStaticName declaration of
-        Just name -> name
-        Nothing -> renderSourceExpression
-          (StringTemplate (dependentDeclarationParts declaration))
+    dependentDeclarationLabel = renderSourceExpression
+      . StringTemplate
+      . dependentDeclarationParts
 
 importInvocation :: Expression -> Maybe [String]
 importInvocation expressionValue =
@@ -3147,15 +3098,10 @@ bindingImports
   :: Bool
   -> Expression
   -> ([DependentDeclaration], [Expression])
-bindingImports _ expressionValue
-  | Just declaration <- dependentDeclaration expressionValue
-  , Nothing <- dependentDeclarationStaticName declaration = ([], [])
 bindingImports strict expressionValue =
   case dependentDeclaration
       (if strict then Let expressionValue else expressionValue) of
-    Just declaration
-      | Just _ <- dependentDeclarationStaticName declaration ->
-          ([declaration], [])
+    Just declaration -> ([declaration], [])
     _ -> case expressionValue of
       Let value -> bindingImports True value
       Val _ -> ([], [expressionValue])
@@ -3286,7 +3232,8 @@ dynamicDependentDeclarationNamedView reduction captured resolving
     retained declaration = do
   (evaluatedCaptures, template) <- prepareDependentDeclaration
     reduction captured resolving declaration
-  captureBounds <- traverse canonicalOrdinalBound
+  captureBounds <- traverse
+    (dependentDeclarationCaptureBound reduction captured resolving)
     [bound | (_, _, bound) <- evaluatedCaptures]
   family <- maybe
     (Left (LookupCaptureHasNoGenericMapView
@@ -3296,46 +3243,13 @@ dynamicDependentDeclarationNamedView reduction captured resolving
   let sourceOrder = ordinalIndexedFamilyOrderType family
       traversal = foliageMap sourceOrder
       localOrder = maybe omega finiteOrdinal (naturalAtOrdinal sourceOrder)
-      allProjection = NamedMapProjection
+      projection = NamedMapProjection
         localOrder
         (memberAt evaluatedCaptures template family traversal)
         (memberByName evaluatedCaptures template)
         (fmap (maybe False (const True)) . decodeCanonicalTemplate template)
-      publicProjection = NamedMapProjection
-        localOrder
-        (publicMemberAt evaluatedCaptures template family traversal)
-        (\name -> if isPrivateIdentifier name
-          then Right Nothing
-          else memberByName evaluatedCaptures template name)
-        (\name -> if isPrivateIdentifier name
-          then Right False
-          else fmap (maybe False (const True))
-            (decodeCanonicalTemplate template name))
-      declaredMembers = case dependentDeclarationStaticName declaration of
-        Nothing -> Right []
-        Just name -> maybe [] pure
-          <$> memberByName evaluatedCaptures template name
-      publicDeclaredMembers = filter namedMemberIsPublic
-        <$> declaredMembers
-  pure (NamedMapView
-    allProjection
-    (Right publicProjection)
-    declaredMembers
-    publicDeclaredMembers)
+  pure (NamedMapView projection)
   where
-    canonicalOrdinalBound bound
-      | Just _ <- ordinalIndexedValueFamily bound = Right bound
-      | otherwise = case
-          ( snd <$> interpretedCanonicalPresentation bound
-          , interpretedSemanticResult bound
-          ) of
-          (Just (CanonicalReference "Nat"), _) -> naturalTypeValue
-          (Just (CanonicalReference "Int"), _) -> integerTypeValue
-          (_, CanonicalNaturalType) -> naturalTypeValue
-          (_, CanonicalIntegerType) -> integerTypeValue
-          _ -> valueExpression bound >>=
-            evalInScopeWith reduction captured resolving
-
     memberAt evaluatedCaptures template family traversal position = case do
         rank <- naturalAtOrdinal position
         sourcePosition <- foliageMapPositionAt traversal rank
@@ -3351,29 +3265,9 @@ dynamicDependentDeclarationNamedView reduction captured resolving
       traverse (materializeMember evaluatedCaptures name) decoded
 
     materializeMember evaluatedCaptures name values =
-      case dependentDeclarationStaticName declaration of
-        Just staticName | staticName == name -> do
-          payload <- case retained of
-            Just value -> Right value
-            Nothing -> evaluateBindingDefinitionWith
-              reduction
-              captured
-              resolving
-              name
-              Nothing
-              (dependentDeclarationImplementation declaration)
-          pure (namedDeclarationMember declaration name payload)
-        _ -> materializeDependentDeclaration
-          reduction captured resolving declaration
-          evaluatedCaptures name values
-
-    publicMemberAt evaluatedCaptures template family traversal position = do
-      member <- memberAt evaluatedCaptures template family traversal position
-      pure (member >>= retainPublic)
-
-    retainPublic member
-      | namedMemberIsPublic member = Just member
-      | otherwise = Nothing
+      materializeDependentDeclaration
+        reduction captured resolving retained declaration
+        evaluatedCaptures name values
 
 dependentDeclarationContainsName
   :: ReductionContext
@@ -3389,6 +3283,52 @@ dependentDeclarationContainsName reduction resolving scoped name = do
     captured = scopedDependentDeclarationScope scoped
     declaration = scopedDependentDeclarationValue scoped
 
+dependentDeclarationSingletonName
+  :: ReductionContext
+  -> [String]
+  -> ScopedDependentDeclaration
+  -> Either InterpretingError (Maybe String)
+dependentDeclarationSingletonName reduction resolving scoped = do
+  (evaluatedCaptures, template) <- prepareDependentDeclaration
+    reduction captured resolving declaration
+  captureBounds <- traverse
+    (dependentDeclarationCaptureBound reduction captured resolving)
+    [bound | (_, _, bound) <- evaluatedCaptures]
+  case ordinalIndexedProductFamily captureBounds of
+    Just family
+      | ordinalIndexedFamilyOrderType family == finiteOrdinal 1 -> do
+          let traversal = foliageMap (ordinalIndexedFamilyOrderType family)
+          case foliageMapPositionAt traversal 0 of
+            Nothing -> Right Nothing
+            Just sourcePosition ->
+              case ordinalIndexedFamilyValueAt family sourcePosition of
+                Nothing -> Right Nothing
+                Just witness ->
+                  Just <$> renderLookupTemplateKey template witness
+    _ -> Right Nothing
+  where
+    captured = scopedDependentDeclarationScope scoped
+    declaration = scopedDependentDeclarationValue scoped
+
+dependentDeclarationCaptureBound
+  :: ReductionContext
+  -> Scope
+  -> [String]
+  -> InterpretedValue
+  -> Either InterpretingError InterpretedValue
+dependentDeclarationCaptureBound reduction captured resolving bound
+  | Just _ <- ordinalIndexedValueFamily bound = Right bound
+  | otherwise = case
+      ( snd <$> interpretedCanonicalPresentation bound
+      , interpretedSemanticResult bound
+      ) of
+      (Just (CanonicalReference "Nat"), _) -> naturalTypeValue
+      (Just (CanonicalReference "Int"), _) -> integerTypeValue
+      (_, CanonicalNaturalType) -> naturalTypeValue
+      (_, CanonicalIntegerType) -> integerTypeValue
+      _ -> valueExpression bound >>=
+        evalInScopeWith reduction captured resolving
+
 dependentDeclarationMemberByName
   :: ReductionContext
   -> [String]
@@ -3401,7 +3341,9 @@ dependentDeclarationMemberByName reduction resolving scoped name = do
   decoded <- decodeCanonicalTemplate template name
   traverse
     (materializeDependentDeclaration
-      reduction captured resolving declaration evaluatedCaptures name)
+      reduction captured resolving
+      (scopedDependentDeclarationRetainedValue scoped)
+      declaration evaluatedCaptures name)
     decoded
   where
     captured = scopedDependentDeclarationScope scoped
@@ -3441,12 +3383,13 @@ materializeDependentDeclaration
   :: ReductionContext
   -> Scope
   -> [String]
+  -> Maybe InterpretedValue
   -> DependentDeclaration
   -> [(Maybe String, InterpretedValue, InterpretedValue)]
   -> String
   -> [InterpretedValue]
   -> Either InterpretingError NamedMember
-materializeDependentDeclaration reduction captured resolving declaration
+materializeDependentDeclaration reduction captured resolving retained declaration
     evaluatedCaptures name values = do
   members <- sequence (zipWith captureValue evaluatedCaptures values)
   supplied <- makeArgumentMapPreservingSingleton members
@@ -3456,10 +3399,14 @@ materializeDependentDeclaration reduction captured resolving declaration
           | ((Just identifier, _, _), value) <- zip evaluatedCaptures values
           ]
         )
-  payload <- evalInScopeWith reduction
-    (extendScope bindings captured)
-    resolving
-    (dependentDeclarationImplementation declaration)
+  payload <- case retained of
+    Just value -> Right value
+    Nothing -> evaluateBindingDefinitionWith reduction
+      (extendScope bindings captured)
+      resolving
+      name
+      Nothing
+      (dependentDeclarationImplementation declaration)
   pure (namedDeclarationMember declaration name payload)
   where
     captureValue (Just captureName, schema, _) value =
@@ -3472,8 +3419,7 @@ namedDeclarationMember
   -> InterpretedValue
   -> NamedMember
 namedDeclarationMember declaration name payload = NamedMember
-  name marked (not (isPrivateIdentifier name))
-  (dependentDeclarationIsCanonicalValue declaration)
+  name marked
   where
     named = simpleIdentifierTypeValue name payload
     marked
@@ -3896,24 +3842,6 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
       names = map fst parameters
       consistencyScope = extendScope
         (constantContextualBindings "it" anyTypeValue) captured
-      bodyDeclarations =
-        [ declaration
-        | entry <- preparedBindings
-        , Just declaration <- [dependentDeclaration entry]
-        , Just _ <- [dependentDeclarationStaticName declaration]
-        ]
-  -- Reject an unprovable recursive-scope shadow before invocation. Finite
-  -- bindings still use the ordinary fixed-point comparison once parameter
-  -- values are available.
-  case [ name
-       | declaration <- bodyDeclarations
-       , Just name <- [dependentDeclarationStaticName declaration]
-       , Just binding <- [lookupScope name captured]
-       , not (bindingHasUnrestrictedShadowing binding)
-       , bindingHasNoFiniteShadowingNormalForm binding
-       ] of
-    name : _ -> Left (InconsistentShadowing name)
-    [] -> pure ()
   case [ name
        | name <- names
        , Just binding <- [lookupScope name consistencyScope]
@@ -4654,8 +4582,8 @@ importLoadedModule scope openMembers source = do
 
 -- Both evaluated scope access and resource preparation install opened
 -- members through this boundary. Imported binders retain their definition
--- scopes and presentation metadata; ordinary local values use evaluated
--- public members.
+-- scopes and presentation metadata; ordinary local values use the members
+-- already selected by the source value.
 openedScopeContributionBindings
   :: Scope
   -> (Expression, InterpretedValue)
@@ -4670,7 +4598,7 @@ openedScopeContributionBindings scope (operand, actual) =
             scope namespace identity internal exported
     _ -> do
       members <- scopeNamedMembers actual
-      traverse openedBinding (public members)
+      traverse openedBinding members
   where
     openedBinding (name, selected) = do
       payload <- accessValues selected (naturalValue 1)
@@ -4930,7 +4858,7 @@ publicDomainValue value = do
   members <- namedMembers value
   importDomainValue
     [ simpleIdentifierTypeValue name anyTypeValue
-    | (name, _) <- public members
+    | (name, _) <- members
     ]
 
 scopeNamedMembers
@@ -4962,8 +4890,7 @@ importNamedBindings value =
           count <- maybe invalid Right
             (naturalAtOrdinal
               (interpretedMapFinalOrderType (interpretedMap value)))
-          traverse memberAt
-            (if count == 0 then [] else [0 .. count - 1])
+          traverse memberAt (naturalsBelow count)
       catMaybes <$> traverse export members
     invalid = Left (ModuleEvaluationFailed
       ImportedModuleRequiresIdentifierBinderFederation)

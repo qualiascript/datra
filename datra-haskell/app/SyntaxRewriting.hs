@@ -16,7 +16,6 @@ import DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , bindingNames
   , dependentDeclaration
-  , dependentDeclarationStaticName
   )
 import Data.List (nub, nubBy)
 import Data.Maybe (maybeToList)
@@ -377,11 +376,9 @@ rewriteSequence capture initial rawEntries = do
             (rewriteDeclarations environment)
             (StringTemplate (dependentDeclarationParts declaration))
 
-        declarationLabel declaration =
-          case dependentDeclarationStaticName declaration of
-            Just name -> name
-            Nothing -> renderSourceExpression
-              (StringTemplate (dependentDeclarationParts declaration))
+        declarationLabel = renderSourceExpression
+          . StringTemplate
+          . dependentDeclarationParts
 
         validateFamily currentLabel currentFamily
             (previousLabel, previousFamily) =
@@ -973,8 +970,7 @@ directSyntaxFunctionExpansion environment selectedRule application =
             firstDeclared (entry : remaining) =
               case dependentDeclaration entry of
                 Just declaration
-                  | dependentDeclarationStaticName declaration
-                      == Just requested ->
+                  | requested `elem` bindingNames entry ->
                       Just (dependentDeclarationImplementation declaration)
                 _ -> firstDeclared remaining
     captureCount rule = length
@@ -1816,7 +1812,6 @@ advanceScope environment entry = environment
     introduced =
       map compileScoped
         (declarationRules (resolveDependentDeclarationHead environment entry))
-        <> aliasRules entry
     compileScoped rule = (compileRewriteRule (specializeRule rule))
       { rewriteRuleEvaluation = Just
           (rewriteEvaluate environment retainedDeclarations)
@@ -1833,20 +1828,6 @@ advanceScope environment entry = environment
           SyntaxLiteral {} -> piece
       | piece <- pieces
       ]
-    aliasRules expressionValue = case dependentDeclaration expressionValue of
-      Just declaration
-        | Just declaredName <- dependentDeclarationStaticName declaration
-        , IdentifierReference (IdentifierString target) <-
-            dependentDeclarationImplementation declaration ->
-        [ rule
-            { rewriteRule = (rewriteRule rule)
-                { syntaxName = declaredName }
-            }
-        | rule <- rewriteRules environment
-        , rewriteRuleName rule == target
-        ]
-      _ -> []
-
 -- Resolve the explicitly parenthesized declaration head against declarations
 -- visible at this block position. Bare identifiers never take this path, so
 -- @abc := value@ continues to declare the literal name @abc@.
@@ -1883,6 +1864,6 @@ resolveDependentDeclarationHead environment expressionValue =
     firstDeclaration requested (candidate : remaining) =
       case dependentDeclaration candidate of
         Just declaration
-          | dependentDeclarationStaticName declaration == Just requested ->
+          | requested `elem` bindingNames candidate ->
               Just declaration
         _ -> firstDeclaration requested remaining

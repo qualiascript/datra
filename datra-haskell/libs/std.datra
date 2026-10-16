@@ -79,6 +79,7 @@
     val Just := &T? do yield Just : T
     val Maybe := &T? do yield nothing | Just T
     let val Str := >< (List Char)
+    let val InhabitedStr := >< (InhabitedList Char)
 
     let val Nat := from 0 up
     let val NatLimit := from 0 to Infinity
@@ -89,7 +90,12 @@
       slots := (^_i :: Nat) do yield "arg%(_i)"? : T
     yield ((^n? :: Nat) do yield slots[0..n])
 
-    val public := 'datra.public
+    val public := {_declarations : List (InhabitedStr; Any; $val?)} do
+      yield (((&_declaration :: _declarations) do
+        yield if _declaration[0][0] = "_"
+          then ()
+          else _declaration),)
+
   )
   public this))
 )

@@ -2,7 +2,6 @@
 -- evaluation, and AST-category capture.
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
-  , dependentDeclarationStaticName
   , dependentDeclaration
   , bindingNames
   ) where
@@ -15,12 +14,6 @@ data DependentDeclaration = DependentDeclaration
   , dependentDeclarationIsCanonicalValue :: Bool
   , dependentDeclarationImplementation :: Expression
   }
-
-dependentDeclarationStaticName :: DependentDeclaration -> Maybe String
-dependentDeclarationStaticName declaration =
-  case dependentDeclarationParts declaration of
-    [StringTemplateLiteral name] -> Just name
-    _ -> Nothing
 
 -- A declaration is an inferred assignment in block position. Identifier
 -- annotations and dependent identifiers remain expressions until an explicit

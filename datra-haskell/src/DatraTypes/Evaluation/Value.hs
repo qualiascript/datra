@@ -70,7 +70,6 @@ module Evaluation.Value
   , InterpretedMap (..)
   , interpretedMapCardinality
   , NamedMember (..)
-  , NamedMemberMetadata (..)
   , NamedMapProjection (..)
   , NamedMapView (..)
   , namedMapView
@@ -80,8 +79,8 @@ module Evaluation.Value
   , namedMapContainsName
   , namedMapViewForValue
   , appendNamedMapViews
-  , selectPublicNamedMapView
   , namedMapValue
+  , interpretedSimpleIdentifierName
   , ToStringInverseDecision (..)
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
@@ -138,7 +137,6 @@ module Evaluation.Value
   , interpretedValueKind
   , interpretedStringTemplate
   , interpretedNamedMapView
-  , interpretedNamedMemberMetadata
   , withNamedMapView
   , withStringTemplatePlan
   , interpretedExplicitOrdinal
@@ -189,6 +187,7 @@ import DatraOrdinal
   , addOrdinals
   , finiteOrdinal
   , naturalAtOrdinal
+  , naturalsBelow
   , ordinalLT
   , subtractOrdinal
   )
@@ -650,14 +649,6 @@ data InterpretedMap = InterpretedMap
 data NamedMember = NamedMember
   { namedMemberName :: String
   , namedMemberValue :: InterpretedValue
-  , namedMemberIsPublic :: Bool
-  , namedMemberIsCanonicalValue :: Bool
-  }
-
-data NamedMemberMetadata = NamedMemberMetadata
-  { namedMetadataName :: String
-  , namedMetadataIsPublic :: Bool
-  , namedMetadataIsCanonicalValue :: Bool
   }
 
 -- | A namespace-preserving view of an Atlas map. Ordinal access retains the
@@ -674,29 +665,43 @@ data NamedMapProjection = NamedMapProjection
       :: String -> Either InterpretingError Bool
   }
 
-data NamedMapView = NamedMapView
+newtype NamedMapView = NamedMapView
   { namedMapProjection :: NamedMapProjection
-  , namedMapPublicProjection
-      :: Either InterpretingError NamedMapProjection
-  , namedMapDeclaredMembers
-      :: Either InterpretingError [NamedMember]
-  , namedMapPublicDeclaredMembers
-      :: Either InterpretingError [NamedMember]
   }
+
+-- | Recover a simple declaration name from its identifier value. The name is
+-- already represented by the first slot, so lookup does not need a parallel
+-- metadata record.
+interpretedSimpleIdentifierName :: InterpretedValue -> Maybe String
+interpretedSimpleIdentifierName value =
+  case interpretedForm value of
+    DependentIdentifierTypeForm identifier -> dependencyName identifier
+    IdentifierStringProjectionForm identifier -> dependencyName identifier
+    AssignmentForm specification ->
+      interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
+    SpecificationForm specification ->
+      interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
+    _ -> semanticName (interpretedSemantics value)
+  where
+    dependencyName identifier =
+      case evaluatedIdentifierDependency identifier of
+        SimpleIdentifierDependency name -> Just name
+        DependentIdentifierDependency {} -> Nothing
+    semanticName semantics = case semantics of
+      PresentedSemantics _ _ underlying -> semanticName underlying
+      AssignmentSemantics name _ _ -> Just name
+      DependentIdentifierTypeSemantics
+          (SimpleIdentifierDependency name) _ _ _ -> Just name
+      _ -> Nothing
 
 namedMapView
   :: Ordinal
   -> (Ordinal -> Either InterpretingError (Maybe NamedMember))
   -> (String -> Either InterpretingError (Maybe NamedMember))
   -> (String -> Either InterpretingError Bool)
-  -> Either InterpretingError NamedMapProjection
   -> NamedMapView
-namedMapView orderType memberAt memberByName containsName publicProjection =
-  NamedMapView
-    (NamedMapProjection orderType memberAt memberByName containsName)
-    publicProjection
-    (Right [])
-    (Right [])
+namedMapView orderType memberAt memberByName containsName =
+  NamedMapView (NamedMapProjection orderType memberAt memberByName containsName)
 
 namedMapOrderType :: NamedMapView -> Ordinal
 namedMapOrderType = namedProjectionOrderType . namedMapProjection
@@ -721,54 +726,22 @@ namedMapContainsName = namedProjectionContainsName . namedMapProjection
 
 namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
 namedMapViewForValue value =
-  case interpretedNamedMemberMetadata value of
-    Just metadata -> Just ((namedMapView
+  case interpretedSimpleIdentifierName value of
+    Just name -> Just (namedMapView
       (finiteOrdinal 1)
       (\position -> Right
         (if position == finiteOrdinal 0 then Just member else Nothing))
-      (\name -> Right
-        (if name == namedMemberName member then Just member else Nothing))
-      (\name -> Right (name == namedMemberName member))
-      (Right publicProjection))
-        { namedMapDeclaredMembers = Right [member]
-        , namedMapPublicDeclaredMembers = Right
-            [member | namedMemberIsPublic member]
-        })
+      (\candidate -> Right
+        (if candidate == name then Just member else Nothing))
+      (\candidate -> Right (candidate == name)))
       where
-        member = NamedMember
-          (namedMetadataName metadata)
-          value
-          (namedMetadataIsPublic metadata)
-          (namedMetadataIsCanonicalValue metadata)
-        publicProjection
-          | namedMemberIsPublic member = NamedMapProjection
-              (finiteOrdinal 1)
-              (\position -> Right
-                (if position == finiteOrdinal 0
-                  then Just member else Nothing))
-              (\name -> Right
-                (if name == namedMemberName member
-                  then Just member else Nothing))
-              (\name -> Right (name == namedMemberName member))
-          | otherwise = NamedMapProjection
-              (finiteOrdinal 0)
-              (const (Right Nothing))
-              (const (Right Nothing))
-              (const (Right False))
+        member = NamedMember name value
     Nothing -> interpretedNamedMapView value
 
 appendNamedMapViews :: NamedMapView -> NamedMapView -> NamedMapView
-appendNamedMapViews left right = NamedMapView
-  (appendNamedMapProjections
-    (namedMapProjection left)
-    (namedMapProjection right))
-  (appendNamedMapProjections
-    <$> namedMapPublicProjection left
-    <*> namedMapPublicProjection right)
-  ((<>) <$> namedMapDeclaredMembers left
-        <*> namedMapDeclaredMembers right)
-  ((<>) <$> namedMapPublicDeclaredMembers left
-        <*> namedMapPublicDeclaredMembers right)
+appendNamedMapViews left right = NamedMapView (appendNamedMapProjections
+  (namedMapProjection left)
+  (namedMapProjection right))
 
 appendNamedMapProjections
   :: NamedMapProjection
@@ -796,18 +769,6 @@ appendNamedMapProjections left right = NamedMapProjection
         (member, Nothing) -> Right member
         (Just _, Just _) ->
           Left (NamedAccessFailed (NamedFieldAmbiguous name))
-
-selectPublicNamedMapView
-  :: NamedMapView
-  -> Either InterpretingError NamedMapView
-selectPublicNamedMapView view = do
-  publicProjection <- namedMapPublicProjection view
-  publicMembers <- namedMapPublicDeclaredMembers view
-  pure (NamedMapView
-    publicProjection
-    (Right publicProjection)
-    (Right publicMembers)
-    (Right publicMembers))
 
 -- | Materialize only the ordinary Atlas-map shell of a named namespace. Each
 -- ordinal demand delegates to the producer and retains its checked failure.
@@ -884,7 +845,6 @@ data InterpretedValue = InterpretedValue
       :: Maybe (OrdinalOrderedValues InterpretedValue)
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
   , interpretedNamedMapView :: Maybe NamedMapView
-  , interpretedNamedMemberMetadata :: Maybe NamedMemberMetadata
   }
 
 newtype DynamicScopeLabel = DynamicScopeLabel Natural
@@ -938,7 +898,6 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedOrderedAtlasMapView = Nothing
     , interpretedStringTemplate = Nothing
     , interpretedNamedMapView = Nothing
-    , interpretedNamedMemberMetadata = Nothing
     }
 
 withNamedMapView :: NamedMapView -> InterpretedValue -> InterpretedValue
@@ -1406,9 +1365,7 @@ asciiStringFromInterpretedMap valueMap = do
       guard (characterCode < 256)
       pure (chr (fromIntegral characterCode))
 
-    finitePositions 0 = []
-    finitePositions cardinality =
-      map finiteOrdinal [0 .. cardinality - 1]
+    finitePositions = map finiteOrdinal . naturalsBelow
 
 explicitOrdinal :: EvaluatedExplicit -> (Natural, Ordinal)
 explicitOrdinal (EvaluatedExplicit level _ value) =

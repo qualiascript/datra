@@ -5,7 +5,6 @@ module DatraLanguage.Identifier
   , ShadowingConsistency (..)
   , identifierSpellingValue
   , identifierPolicy
-  , public
   , isPrivateIdentifier
   , requiresShadowingConsistency
   , isLeadingIdentifierCharacter
@@ -26,12 +25,6 @@ data ShadowingConsistency
   = UnrestrictedShadowing
   | ConsistentShadowing
   deriving (Eq, Show)
-
--- | Keep exactly the named bindings whose identifiers are externally visible.
--- Module export maps and function argument routing share this operation so a
--- leading underscore has one meaning throughout the language.
-public :: [(String, value)] -> [(String, value)]
-public = filter (not . isPrivateIdentifier . fst)
 
 data IdentifierSpelling
   = BareIdentifier String

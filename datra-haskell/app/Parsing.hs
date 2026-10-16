@@ -139,7 +139,7 @@ import DatraLanguage.AST.Reserved.Bootstrap
 import DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
-  , public
+  , isPrivateIdentifier
   , isAsciiCharacter
   , isIdentifierCharacter
   , isLeadingIdentifierCharacter
@@ -906,8 +906,7 @@ astGenericIdentifier expressionValue = do
   guard
     (not
       (genericIdentifierNameOptional identifier
-        && null (public
-          [(genericIdentifierText identifier, ())])))
+        && isPrivateIdentifier (genericIdentifierText identifier)))
   pure identifier
 
 astIdentifierOperation
@@ -1324,8 +1323,7 @@ identifierOperation = do
       <$> optional (operatorToken AST.OptionalOperator)
   guard
     (not
-      (isOptional
-        && null (public [(identifierName, ())])))
+      (isOptional && isPrivateIdentifier identifierName))
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
@@ -1518,8 +1516,7 @@ genericIntroduction = do
       (operatorToken AST.OptionalOperator)
     guard
       (not
-        (optionalName
-          && null (public [(name, ())])))
+        (optionalName && isPrivateIdentifier name))
     bound <- maybe
       (IdentifierReference (IdentifierString "Any"))
       id

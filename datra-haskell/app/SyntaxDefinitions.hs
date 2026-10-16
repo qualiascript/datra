@@ -19,7 +19,6 @@ module SyntaxDefinitions
 import DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , dependentDeclaration
-  , dependentDeclarationStaticName
   )
 import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
@@ -98,10 +97,12 @@ declarationRules expressionValue =
   maybe [] dependentDeclarationRules (dependentDeclaration expressionValue)
 
 dependentDeclarationRules :: DependentDeclaration -> [SyntaxRule]
-dependentDeclarationRules declaration
-  | Just name <- dependentDeclarationStaticName declaration =
-      compatibilityRules name declaration
-  | otherwise = directTemplateRule declaration
+dependentDeclarationRules declaration =
+  directTemplateRule declaration <>
+    compatibilityRules
+      (renderSourceExpression
+        (StringTemplate (dependentDeclarationParts declaration)))
+      declaration
 
 directTemplateRule :: DependentDeclaration -> [SyntaxRule]
 directTemplateRule declaration =

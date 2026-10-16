@@ -25,7 +25,6 @@ import AtlasMapFederationExpression
   )
 import Evaluation.Construction (makeAsciiString)
 import Evaluation.Error (InterpretingError)
-import Evaluation.Map (isEmptyMap)
 import Evaluation.Value
 import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
 import DatraLanguage.Identifier (isPrivateIdentifier)
@@ -49,20 +48,7 @@ evaluatedIdentifierType value =
     _ -> Nothing
 
 simpleIdentifierName :: InterpretedValue -> Maybe String
-simpleIdentifierName value =
-  case evaluatedIdentifierType value of
-    Just identifier ->
-      case evaluatedIdentifierDependency identifier of
-        SimpleIdentifierDependency name -> Just name
-        DependentIdentifierDependency {} -> Nothing
-    Nothing -> semanticName (interpretedSemantics value)
-  where
-    semanticName semantics = case semantics of
-      PresentedSemantics _ _ underlying -> semanticName underlying
-      AssignmentSemantics name _ _ -> Just name
-      DependentIdentifierTypeSemantics
-          (SimpleIdentifierDependency name) _ _ _ -> Just name
-      _ -> Nothing
+simpleIdentifierName = interpretedSimpleIdentifierName
 
 identifierUnderlyingValue :: InterpretedValue -> Maybe InterpretedValue
 identifierUnderlyingValue value =
@@ -145,16 +131,13 @@ simpleIdentifierTypeValue
   :: String
   -> InterpretedValue
   -> InterpretedValue
-simpleIdentifierTypeValue identifierString underlying
-  | isEmptyMap underlying =
-      makeAsciiString identifierString
-  | otherwise =
-      makeDependentIdentifierTypeValue
-        (SimpleIdentifierDependency identifierString)
-        Nothing
-        Nothing
-        True
-        underlying
+simpleIdentifierTypeValue identifierString underlying =
+  makeDependentIdentifierTypeValue
+    (SimpleIdentifierDependency identifierString)
+    Nothing
+    Nothing
+    True
+    underlying
 
 -- | An inferred assignment may bind a non-total value such as a type.  Its
 -- federation remains the dependent identifier family, while its canonical
@@ -191,11 +174,7 @@ withTrailingIdentifierMarker marker value
           case interpretedTotalAtlasMap value of
             Just _ -> Just (InterpretedTotalAtlasMap markedMap)
             Nothing -> Nothing
-      , interpretedNamedMemberMetadata = markMetadata
-          <$> interpretedNamedMemberMetadata value
       }
-    markMetadata metadata = metadata
-      { namedMetadataIsCanonicalValue = True }
     markerValue = makeAsciiString marker
     sourceMap = interpretedMap value
     markedMap = sourceMap
@@ -303,15 +282,7 @@ makeDependentIdentifierTypeValue
         isTotal
         valueMap
         semantics
-    value = case dependency of
-      SimpleIdentifierDependency name -> base
-        { interpretedNamedMemberMetadata = Just
-            (NamedMemberMetadata
-              name
-              (not (isPrivateIdentifier name))
-              False)
-        }
-      DependentIdentifierDependency {} -> base
+    value = base
     canonicalType = structuralDatraType
 
 -- | Totality is established by the caller from every component of the
