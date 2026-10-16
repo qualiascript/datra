@@ -546,6 +546,9 @@ namedAccessValue source name = do
     _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
   where
     candidates value
+      | Just named <- namedMapViewForValue value =
+          maybe [] ((: []) . namedMemberValue)
+            <$> namedMapMemberByName named name
       | Just actual <- simpleIdentifierName value =
           Right [value | actual == name]
       | matchesName (interpretedSemanticResult value) = Right [value]

@@ -1,13 +1,18 @@
 -- | Declaration and projection rules shared by evaluation, inference and
 -- canonical reconstruction. The caller supplies how binding values are read.
 module BlockScope
-  ( Declaration (..)
+  ( DependentDeclaration (..)
   , ScopeMember (..)
   , blockDeclaration
+  , dependentDeclarationStaticName
+  , declarationIsLet
+  , declarationIsCanonicalValue
+  , declarationAnnotation
+  , declarationValue
   , isBlockDeclaration
   , isDependentDeclaration
+  , dependentDeclaration
   , bindingNames
-  , buildScopeBindings
   , declarationScopeMember
   , declarationMap
   , projectDeclaration
@@ -16,15 +21,17 @@ module BlockScope
   ) where
 
 import DatraLanguage.AST
+import Data.Maybe (maybeToList)
 import DatraOrdinal (naturalAtOrdinal)
 import DatraTypes
 
-data Declaration = Declaration
-  { declarationName :: String
-  , declarationIsLet :: Bool
-  , declarationIsCanonicalValue :: Bool
-  , declarationAnnotation :: Maybe Expression
-  , declarationValue :: Expression
+data DependentDeclaration = DependentDeclaration
+  { dependentDeclarationParts :: [StringTemplatePart Expression]
+  , dependentDeclarationUsesTemplateSyntax :: Bool
+  , dependentDeclarationIsLet :: Bool
+  , dependentDeclarationIsCanonicalValue :: Bool
+  , dependentDeclarationAnnotation :: Maybe Expression
+  , dependentDeclarationImplementation :: Expression
   }
 
 data ScopeMember = ScopeMember
@@ -33,29 +40,79 @@ data ScopeMember = ScopeMember
   }
   deriving (Eq, Show)
 
-blockDeclaration :: Expression -> Maybe Declaration
-blockDeclaration = declaration False False
+-- A literal declaration is the zero-capture member of the same declaration
+-- family used by evaluated string templates. Surface syntax chooses the
+-- template; scope construction and export do not choose a second data model.
+blockDeclaration :: Expression -> Maybe DependentDeclaration
+blockDeclaration expressionValue = do
+  declaration <- dependentDeclaration expressionValue
+  _ <- dependentDeclarationStaticName declaration
+  pure declaration
+
+dependentDeclarationStaticName :: DependentDeclaration -> Maybe String
+dependentDeclarationStaticName declaration =
+  case dependentDeclarationParts declaration of
+    [StringTemplateLiteral name] -> Just name
+    _ -> Nothing
+
+declarationIsLet :: DependentDeclaration -> Bool
+declarationIsLet = dependentDeclarationIsLet
+
+declarationIsCanonicalValue :: DependentDeclaration -> Bool
+declarationIsCanonicalValue = dependentDeclarationIsCanonicalValue
+
+declarationAnnotation :: DependentDeclaration -> Maybe Expression
+declarationAnnotation = dependentDeclarationAnnotation
+
+declarationValue :: DependentDeclaration -> Expression
+declarationValue = dependentDeclarationImplementation
+
+isBlockDeclaration :: Expression -> Bool
+isBlockDeclaration = isDependentDeclaration
+
+isDependentDeclaration :: Expression -> Bool
+isDependentDeclaration = maybe False (const True) . dependentDeclaration
+
+dependentDeclaration :: Expression -> Maybe DependentDeclaration
+dependentDeclaration = declaration False False
   where
     declaration _ True (Let _) = Nothing
     declaration _ canonical (Let value) = declaration True canonical value
-    declaration _ True (Val _) = Nothing
     declaration strict _ (Val value) = declaration strict True value
+    declaration strict canonical (In contextual value) = do
+      declared <- declaration strict canonical value
+      pure declared
+        { dependentDeclarationParts =
+            map (scopeTemplatePart contextual)
+              (dependentDeclarationParts declared)
+        , dependentDeclarationAnnotation =
+            In contextual <$> dependentDeclarationAnnotation declared
+        , dependentDeclarationImplementation = In contextual
+            (dependentDeclarationImplementation declared)
+        }
     declaration strict canonical
         (IdentifierOperation (IdentifierString name) annotation given) =
-      Just (Declaration name strict canonical (annotationToCheck annotation given)
-        (maybe annotation (\value -> if value == annotation then value
-          else MapSpecification value annotation) given))
+      Just (makeDeclaration
+        [StringTemplateLiteral name] False strict canonical annotation given)
     declaration strict canonical optional
       | Just (named@IdentifierOperation {}, _) <-
           optionalIdentifierExpression optional =
           declaration strict canonical named
-    declaration strict canonical (In value body) = do
-      declared <- declaration strict canonical body
-      pure declared
-        { declarationAnnotation = In value <$> declarationAnnotation declared
-        , declarationValue = In value (declarationValue declared)
-        }
+    declaration strict canonical
+        (IdentifierTemplateOperation parts annotation (Just given))
+      = Just (makeDeclaration
+          parts True strict canonical annotation (Just given))
     declaration _ _ _ = Nothing
+
+    makeDeclaration parts usesTemplateSyntax strict canonical annotation given =
+      DependentDeclaration
+        parts
+        usesTemplateSyntax
+        strict
+        canonical
+        (annotationToCheck annotation given)
+        (maybe annotation (\value -> if value == annotation then value
+          else MapSpecification value annotation) given)
 
     annotationToCheck annotation (Just implementation)
       | annotation == implementation = Nothing
@@ -63,49 +120,23 @@ blockDeclaration = declaration False False
     annotationToCheck SyntaxType {} (Just _) = Nothing
     annotationToCheck annotation _ = Just annotation
 
--- A dependent declaration exists only as a block entry and contributes a
--- family of names rather than one finite binding. It is therefore recognized
--- here without being coerced into the fixed-name 'Declaration' record.
-isBlockDeclaration :: Expression -> Bool
-isBlockDeclaration expressionValue =
-  case blockDeclaration expressionValue of
-    Just _ -> True
-    Nothing -> isDependentDeclaration expressionValue
-
-isDependentDeclaration :: Expression -> Bool
-isDependentDeclaration expressionValue = case expressionValue of
-  IdentifierTemplateOperation _ annotation (Just given) ->
-    annotation == given
-  Let value -> isDependentDeclaration value
-  Val value -> isDependentDeclaration value
-  In _ value -> isDependentDeclaration value
-  _ -> False
+    scopeTemplatePart _ literal@StringTemplateLiteral {} = literal
+    scopeTemplatePart contextual
+        (StringTemplateInterpolation expressionValue) =
+      StringTemplateInterpolation (In contextual expressionValue)
 
 bindingNames :: Expression -> [String]
-bindingNames = maybe [] ((: []) . declarationName) . blockDeclaration
+bindingNames expressionValue =
+  maybe [] (maybeToList . dependentDeclarationStaticName)
+    (dependentDeclaration expressionValue)
 
-declarationScopeMember :: Declaration -> ScopeMember
-declarationScopeMember declaration = ScopeMember
-  (declarationName declaration)
-  (declarationIsCanonicalValue declaration)
+declarationScopeMember :: DependentDeclaration -> Maybe ScopeMember
+declarationScopeMember declaration = do
+  name <- dependentDeclarationStaticName declaration
+  pure (ScopeMember name (declarationIsCanonicalValue declaration))
 
 scopeMemberNames :: [ScopeMember] -> [String]
 scopeMemberNames = map scopeMemberName
-
--- Ordinary declarations capture earlier ordinary bindings; let declarations
--- are predeclared in every captured scope. Evaluation order is left to callers.
-buildScopeBindings :: ([binding] -> Declaration -> binding)
-  -> [binding] -> [Declaration] -> [binding]
-buildScopeBindings makeBinding enclosing declarations = foldl addOrdinary initial declarations
-  where
-    initial = recursiveLets <> enclosing
-    recursiveLets =
-      [makeBinding (scopeBefore position) value
-      | (position, value) <- zip [0..] declarations, declarationIsLet value]
-    scopeBefore position = foldl addOrdinary initial (take position declarations)
-    addOrdinary scope value
-      | declarationIsLet value = scope
-      | otherwise = makeBinding scope value : scope
 
 declarationMap :: [ScopeMember] -> (String -> Either InterpretingError InterpretedValue)
   -> Either InterpretingError InterpretedValue

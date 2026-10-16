@@ -218,18 +218,27 @@ hostMap entries = do
         (inferredIdentifierAssignmentValue name underlying))
 
 publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
-publicValue value = do
-  members <- namedMembers value
-  pure (makeAtlasMap 2 (map snd (public members)))
+publicValue value = case namedMapViewForValue value of
+  Just named -> namedMapValue <$> selectPublicNamedMapView named
+  Nothing -> do
+    members <- namedMembers value
+    pure (makeAtlasMap 2 (map snd (public members)))
 
 namedMembers
   :: InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 namedMembers value =
-  case argumentMapMembers value of
-    Just members
-      | Right named <- traverse field members -> Right named
-    _ -> projectedMembers
+  case namedMapViewForValue value of
+    Just named -> do
+      members <- namedMapDeclaredMembers named
+      pure
+        [ (namedMemberName member, namedMemberValue member)
+        | member <- members
+        ]
+    Nothing -> case argumentMapMembers value of
+      Just members
+        | Right named <- traverse field members -> Right named
+      _ -> projectedMembers
   where
     projectedMembers = case simpleIdentifierName value of
       Just name -> Right [(name, value)]

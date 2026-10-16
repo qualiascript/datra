@@ -69,6 +69,19 @@ module Evaluation.Value
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
   , interpretedMapCardinality
+  , NamedMember (..)
+  , NamedMemberMetadata (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , selectPublicNamedMapView
+  , namedMapValue
   , ToStringInverseDecision (..)
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
@@ -124,6 +137,9 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedNamedMapView
+  , interpretedNamedMemberMetadata
+  , withNamedMapView
   , withStringTemplatePlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
@@ -169,8 +185,19 @@ import DatraLanguage.SyntaxTemplate
   )
 import DatraLanguage.AST (Expression)
 import DatraLanguage.Diagnostics.Application (SyntaxExpansionFailure)
-import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
-import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
+import DatraOrdinal
+  ( Ordinal
+  , addOrdinals
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , ordinalLT
+  , subtractOrdinal
+  )
+import Evaluation.Error
+  ( InterpretedValueKind (..)
+  , InterpretingError (..)
+  , NamedAccessFailure (..)
+  )
 import Evaluation.DatraType
 import Evaluation.Value.Semantics
 import MapOperators.OrderedAtlasMap
@@ -618,6 +645,179 @@ data InterpretedMap = InterpretedMap
   , interpretedMapComponents :: [ValueSemantics]
   }
 
+-- | One materialized member of a named namespace. Visibility and canonical
+-- declaration status belong to the member rather than being rediscovered by
+-- inspecting its rendered value.
+data NamedMember = NamedMember
+  { namedMemberName :: String
+  , namedMemberValue :: InterpretedValue
+  , namedMemberIsPublic :: Bool
+  , namedMemberIsCanonicalValue :: Bool
+  }
+
+data NamedMemberMetadata = NamedMemberMetadata
+  { namedMetadataName :: String
+  , namedMetadataIsPublic :: Bool
+  , namedMetadataIsCanonicalValue :: Bool
+  }
+
+-- | A namespace-preserving view of an Atlas map. Ordinal access retains the
+-- map's own order; direct name lookup must decide absence without enumerating
+-- that order. Public selection is producer-defined because filtering an
+-- arbitrary transfinite order cannot be implemented by successor scanning.
+data NamedMapProjection = NamedMapProjection
+  { namedProjectionOrderType :: Ordinal
+  , namedProjectionMemberAt
+      :: Ordinal -> Either InterpretingError (Maybe NamedMember)
+  , namedProjectionMemberByName
+      :: String -> Either InterpretingError (Maybe NamedMember)
+  , namedProjectionContainsName
+      :: String -> Either InterpretingError Bool
+  }
+
+data NamedMapView = NamedMapView
+  { namedMapProjection :: NamedMapProjection
+  , namedMapPublicProjection
+      :: Either InterpretingError NamedMapProjection
+  , namedMapDeclaredMembers
+      :: Either InterpretingError [NamedMember]
+  , namedMapPublicDeclaredMembers
+      :: Either InterpretingError [NamedMember]
+  }
+
+namedMapView
+  :: Ordinal
+  -> (Ordinal -> Either InterpretingError (Maybe NamedMember))
+  -> (String -> Either InterpretingError (Maybe NamedMember))
+  -> (String -> Either InterpretingError Bool)
+  -> Either InterpretingError NamedMapProjection
+  -> NamedMapView
+namedMapView orderType memberAt memberByName containsName publicProjection =
+  NamedMapView
+    (NamedMapProjection orderType memberAt memberByName containsName)
+    publicProjection
+    (Right [])
+    (Right [])
+
+namedMapOrderType :: NamedMapView -> Ordinal
+namedMapOrderType = namedProjectionOrderType . namedMapProjection
+
+namedMapMemberAt
+  :: NamedMapView
+  -> Ordinal
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapMemberAt = namedProjectionMemberAt . namedMapProjection
+
+namedMapMemberByName
+  :: NamedMapView
+  -> String
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapMemberByName = namedProjectionMemberByName . namedMapProjection
+
+namedMapContainsName
+  :: NamedMapView
+  -> String
+  -> Either InterpretingError Bool
+namedMapContainsName = namedProjectionContainsName . namedMapProjection
+
+namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
+namedMapViewForValue value =
+  case interpretedNamedMemberMetadata value of
+    Just metadata -> Just ((namedMapView
+      (finiteOrdinal 1)
+      (\position -> Right
+        (if position == finiteOrdinal 0 then Just member else Nothing))
+      (\name -> Right
+        (if name == namedMemberName member then Just member else Nothing))
+      (\name -> Right (name == namedMemberName member))
+      (Right publicProjection))
+        { namedMapDeclaredMembers = Right [member]
+        , namedMapPublicDeclaredMembers = Right
+            [member | namedMemberIsPublic member]
+        })
+      where
+        member = NamedMember
+          (namedMetadataName metadata)
+          value
+          (namedMetadataIsPublic metadata)
+          (namedMetadataIsCanonicalValue metadata)
+        publicProjection
+          | namedMemberIsPublic member = NamedMapProjection
+              (finiteOrdinal 1)
+              (\position -> Right
+                (if position == finiteOrdinal 0
+                  then Just member else Nothing))
+              (\name -> Right
+                (if name == namedMemberName member
+                  then Just member else Nothing))
+              (\name -> Right (name == namedMemberName member))
+          | otherwise = NamedMapProjection
+              (finiteOrdinal 0)
+              (const (Right Nothing))
+              (const (Right Nothing))
+              (const (Right False))
+    Nothing -> interpretedNamedMapView value
+
+appendNamedMapViews :: NamedMapView -> NamedMapView -> NamedMapView
+appendNamedMapViews left right = NamedMapView
+  (appendNamedMapProjections
+    (namedMapProjection left)
+    (namedMapProjection right))
+  (appendNamedMapProjections
+    <$> namedMapPublicProjection left
+    <*> namedMapPublicProjection right)
+  ((<>) <$> namedMapDeclaredMembers left
+        <*> namedMapDeclaredMembers right)
+  ((<>) <$> namedMapPublicDeclaredMembers left
+        <*> namedMapPublicDeclaredMembers right)
+
+appendNamedMapProjections
+  :: NamedMapProjection
+  -> NamedMapProjection
+  -> NamedMapProjection
+appendNamedMapProjections left right = NamedMapProjection
+  (addOrdinals leftOrder (namedProjectionOrderType right))
+  memberAt
+  memberByName
+  (\name -> (||)
+    <$> namedProjectionContainsName left name
+    <*> namedProjectionContainsName right name)
+  where
+    leftOrder = namedProjectionOrderType left
+    memberAt position
+      | position `ordinalLT` leftOrder = namedProjectionMemberAt left position
+      | otherwise = case subtractOrdinal leftOrder position of
+          Just relative -> namedProjectionMemberAt right relative
+          Nothing -> Right Nothing
+    memberByName name = do
+      leftMember <- namedProjectionMemberByName left name
+      rightMember <- namedProjectionMemberByName right name
+      case (leftMember, rightMember) of
+        (Nothing, member) -> Right member
+        (member, Nothing) -> Right member
+        (Just _, Just _) ->
+          Left (NamedAccessFailed (NamedFieldAmbiguous name))
+
+selectPublicNamedMapView
+  :: NamedMapView
+  -> Either InterpretingError NamedMapView
+selectPublicNamedMapView view = do
+  publicProjection <- namedMapPublicProjection view
+  publicMembers <- namedMapPublicDeclaredMembers view
+  pure (NamedMapView
+    publicProjection
+    (Right publicProjection)
+    (Right publicMembers)
+    (Right publicMembers))
+
+-- | Materialize only the ordinary Atlas-map shell of a named namespace. Each
+-- ordinal demand delegates to the producer and retains its checked failure.
+namedMapValue :: NamedMapView -> InterpretedValue
+namedMapValue view = withNamedMapView view
+  (makeCheckedLazyMapValue
+    (namedMapOrderType view)
+    (fmap (fmap namedMemberValue) . namedMapMemberAt view))
+
 -- | Compatibility name for the number of Atlas pages represented by a map.
 -- This is distinct from the final page's possibly-transfinite order type.
 interpretedMapCardinality :: InterpretedMap -> Natural
@@ -684,6 +884,8 @@ data InterpretedValue = InterpretedValue
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
+  , interpretedNamedMapView :: Maybe NamedMapView
+  , interpretedNamedMemberMetadata :: Maybe NamedMemberMetadata
   }
 
 newtype DynamicScopeLabel = DynamicScopeLabel Natural
@@ -736,7 +938,12 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedDependentSumView = Nothing
     , interpretedOrderedAtlasMapView = Nothing
     , interpretedStringTemplate = Nothing
+    , interpretedNamedMapView = Nothing
+    , interpretedNamedMemberMetadata = Nothing
     }
+
+withNamedMapView :: NamedMapView -> InterpretedValue -> InterpretedValue
+withNamedMapView view value = value { interpretedNamedMapView = Just view }
 
 withStringTemplatePlan
   :: EvaluatedStringTemplate
@@ -864,6 +1071,7 @@ withMapView view value = value
   , interpretedAtlasMapFederation = interpretedAtlasMapFederation view
   , interpretedTotalAtlasMap = interpretedTotalAtlasMap view
   , interpretedOrderedAtlasMapView = orderedAtlasMapView view
+  , interpretedNamedMapView = interpretedNamedMapView view
   }
 
 -- | Attach source-independent structure to a dependent sum.  Constructors

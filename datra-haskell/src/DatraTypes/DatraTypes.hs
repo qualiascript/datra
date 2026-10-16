@@ -25,6 +25,7 @@ module DatraTypes
   , withMapView
   , OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   , withDependentSumAccess
   , withDependentSumFamily
   , withDependentSumReservationTarget
@@ -64,6 +65,20 @@ module DatraTypes
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
+  , NamedMember (..)
+  , NamedMemberMetadata (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , selectPublicNamedMapView
+  , namedMapValue
+  , withNamedMapView
   , InterpretingError (..)
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
@@ -144,6 +159,7 @@ module DatraTypes
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , canonicalValueMarker
@@ -210,6 +226,8 @@ module DatraTypes
   , identifierNameDisjointness
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedNamedMapView
+  , interpretedNamedMemberMetadata
   , withStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -408,6 +426,7 @@ import Evaluation.Identifier
   , canonicalValueMarker
   , hasTrailingIdentifierMarker
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -415,6 +434,7 @@ import Evaluation.Identifier
 import Evaluation.OrdinalIndexedFamily
   ( OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   )
 import Evaluation.Specification
   ( assignIdentifierValues
@@ -475,6 +495,20 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , NamedMember (..)
+  , NamedMemberMetadata (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , selectPublicNamedMapView
+  , namedMapValue
+  , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
   , DynamicScopeLabel (..)
@@ -488,6 +522,8 @@ import Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
+  , interpretedNamedMapView
+  , interpretedNamedMemberMetadata
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication

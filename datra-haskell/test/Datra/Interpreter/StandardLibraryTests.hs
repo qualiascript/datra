@@ -4,7 +4,8 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxTemplateAdmissibilityFailure (..)
+  ( ParseFailure (ParseFailure)
+  , SyntaxTemplateAdmissibilityFailure (..)
   )
 import DatraTypes
   ( AtlasMapFederationRefutation
@@ -22,7 +23,7 @@ standardLibraryTests =
         [ programCase "val retains its named member"
             "begin val x := 7; yield this" "x : 7"
         , programCase "val stores the canonical-value marker on its identifier"
-            "begin val x := 7; yield this[0][2]" "$CanonicalValue"
+            "begin val x := 7; yield this[0][2]" "$val"
         , programCase "let composes outside val"
             "begin a := x + 1; let val x := 10; yield a" "11"
         , programCase "val composes with optional names"
@@ -440,7 +441,8 @@ standardLibraryTests =
     , testGroup "scope rejections"
         [ programFailureCase "duplicate scope member"
             "a:=5\na:=8\nyield this"
-            (SourceEvaluationFailure (IdentifierStringOverlap "a"))
+            (SourceParseFailure (ParseFailure
+              "OverlappingDependentDeclarations \"a\" \"a\""))
         , programFailureCase "specified function validates narrowed input"
             ("f := ({x?:Int} -> Int do yield x+1)\n"
               <> "g := (f ~> ({x?:Nat} -> Int))\nyield g (-1)")
@@ -905,7 +907,8 @@ declaredPatternTests =
         "3"
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
-        (SourceEvaluationFailure (IdentifierStringOverlap "step"))
+        (SourceParseFailure (ParseFailure
+          "OverlappingDependentDeclarations \"step\" \"step\""))
     , programFailureCase "ambiguous syntax alternatives"
         ( "step := ((\"step %Int next\" % (Int -> Int) 'datra.abs)"
             <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"

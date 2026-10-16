@@ -4,8 +4,8 @@ module Evaluation.Either
   ) where
 
 import AtlasMapFederationExpression
-  ( AtlasMapFederationExpression (PrimitiveAtlasMapFederation) )
-import Data.List (nubBy)
+  ( AtlasMapFederationExpression (..) )
+import Data.List (isPrefixOf, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NonEmpty
 import DatraLanguage.SyntaxTemplate
@@ -149,10 +149,92 @@ alternativesAreDistinct left right
   | interpretedValueHasTotalMap left = memberIsRefuted left right
   | interpretedValueHasTotalMap right = memberIsRefuted right left
   | valueProducesStrings left
+  , valueProducesStrings right =
+      stringFederationsAreDistinct
+        (interpretedAtlasMapFederation left)
+        (interpretedAtlasMapFederation right)
+  | valueProducesStrings left
   , isNumericalRange right = True
   | isNumericalRange left
   , valueProducesStrings right = True
   | otherwise = rangeAlternativesAreDistinct left right
+
+-- Compare the evaluated string languages, rather than the source templates
+-- which produced them. Prefixes prove separation across different template
+-- shapes; identically segmented templates delegate capture separation back to
+-- the ordinary federation decision procedure.
+stringFederationsAreDistinct
+  :: InterpretedAtlasMapFederation
+  -> InterpretedAtlasMapFederation
+  -> Bool
+stringFederationsAreDistinct left right =
+  incompatiblePrefixes left right
+    || case (stringComponents left, stringComponents right) of
+      (Just leftComponents, Just rightComponents)
+        | sameComponentShape leftComponents rightComponents ->
+            or (zipWith componentsAreDistinct
+              leftComponents rightComponents)
+      _ -> False
+  where
+    incompatiblePrefixes leftFederation rightFederation =
+      case (literalPrefix leftFederation, literalPrefix rightFederation) of
+        (leftPrefix@(_ : _), rightPrefix@(_ : _)) ->
+          not (leftPrefix `isPrefixOf` rightPrefix)
+            && not (rightPrefix `isPrefixOf` leftPrefix)
+        _ -> False
+
+    componentsAreDistinct
+        (StringVariable leftSource _)
+        (StringVariable rightSource _) =
+      alternativesAreDistinct leftSource rightSource
+    componentsAreDistinct _ _ = False
+
+data StringFederationComponent
+  = StringLiteral String
+  | StringVariable InterpretedValue ProvenInjectiveToString
+
+sameComponentShape
+  :: [StringFederationComponent]
+  -> [StringFederationComponent]
+  -> Bool
+sameComponentShape left right =
+  length left == length right
+    && and (zipWith same left right)
+  where
+    same (StringLiteral leftLiteral) (StringLiteral rightLiteral) =
+      leftLiteral == rightLiteral
+    same StringVariable {} StringVariable {} = True
+    same _ _ = False
+
+stringComponents
+  :: InterpretedAtlasMapFederation
+  -> Maybe [StringFederationComponent]
+stringComponents federation =
+  case federation of
+    SingletonAtlasMapFederation valueMap ->
+      case interpretedMapComponents valueMap of
+        [AsciiStringSemantics characters] ->
+          Just [StringLiteral characters]
+        _ -> Nothing
+    PrimitiveAtlasMapFederation primitive ->
+      case primitive of
+        ToStringAtlasMapFederation source proof ->
+          Just [StringVariable source proof]
+        _ -> Nothing
+    CoalizedAtlasMapFederation operand -> stringComponents operand
+    ConcatenatedAtlasMapFederation left right ->
+      (<>) <$> stringComponents left <*> stringComponents right
+    SequentialAtlasMapFederation _ -> Nothing
+    ExpansionAtlasMapFederation _ _ -> Nothing
+
+literalPrefix :: InterpretedAtlasMapFederation -> String
+literalPrefix federation =
+  case stringComponents federation of
+    Just components -> foldr prefix "" components
+    Nothing -> ""
+  where
+    prefix (StringLiteral literal) remaining = literal <> remaining
+    prefix StringVariable {} _ = ""
 
 -- Declaration order makes structurally different templates deterministic for
 -- the declared spelling. Ordinary application is always available, so the

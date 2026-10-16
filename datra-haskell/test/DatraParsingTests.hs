@@ -538,6 +538,8 @@ regressionTests = do
         , syntaxModule = Nothing
         , syntaxImplementation = datraRef implementation
         , syntaxDependentCaptures = Nothing
+        , syntaxDependentImplementation = Nothing
+        , syntaxBindsDependentCaptures = False
         }
   assert "external syntax implementations are not selected by namespace"
     (expandSyntax (syntaxControl ["syntax", "unknown"])
@@ -565,6 +567,8 @@ regressionTests = do
         , syntaxModule = Nothing
         , syntaxImplementation = datraRef implementation
         , syntaxDependentCaptures = Nothing
+        , syntaxDependentImplementation = Nothing
+        , syntaxBindsDependentCaptures = False
         }
       intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
       intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))

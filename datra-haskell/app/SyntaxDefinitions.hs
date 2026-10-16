@@ -13,6 +13,11 @@ module SyntaxDefinitions
   , declarationLiterals, absorbFunSequence
   , normalizeSyntaxExpansion
   ) where
+import BlockScope
+  ( DependentDeclaration (..)
+  , dependentDeclaration
+  , dependentDeclarationStaticName
+  )
 import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
@@ -38,6 +43,8 @@ data SyntaxRule = SyntaxRule
   , syntaxImplementation :: Expression
   , syntaxDependentCaptures
       :: Maybe [Maybe (IdentifierString, Expression)]
+  , syntaxDependentImplementation :: Maybe Expression
+  , syntaxBindsDependentCaptures :: Bool
   } deriving (Eq,Show)
 
 data SyntaxTemplateCompilationFailure
@@ -55,76 +62,112 @@ contextualSyntaxRulesFor :: [String] -> [SyntaxRule]
 contextualSyntaxRulesFor = map rule
   where
     rule surface = SyntaxRule
-      ("_" <> surface)
-      (syntaxTemplateFromPattern surface)
-      signature
-      False
-      Nothing
-      (IdentifierReference (IdentifierString ("_" <> surface)))
-      Nothing
+      { syntaxName = "_" <> surface
+      , syntaxTemplate = syntaxTemplateFromPattern surface
+      , syntaxSignature = signature
+      , syntaxRecursive = False
+      , syntaxModule = Nothing
+      , syntaxImplementation =
+          IdentifierReference (IdentifierString ("_" <> surface))
+      , syntaxDependentCaptures = Nothing
+      , syntaxDependentImplementation = Nothing
+      , syntaxBindsDependentCaptures = False
+      }
     signature = FunctionType
       (EllipsisNatural 0)
       (IdentifierReference (IdentifierString "Any"))
 
 declarationRules :: Expression -> [SyntaxRule]
-declarationRules (Let value) =
-  [rule { syntaxRecursive = True } | rule <- declarationRules value]
-declarationRules (Val value) = declarationRules value
--- The declaration escapes the contextual expression, but its implementation
--- and type expressions retain that expression's lexical input.
-declarationRules (In value body) =
-  [ rule
-      { syntaxImplementation = In value (syntaxImplementation rule)
-      , syntaxSignature = In value (syntaxSignature rule)
-      , syntaxTemplate = SyntaxTemplate
-          [ case piece of
-              SyntaxLiteral literal -> SyntaxLiteral literal
-              SyntaxHole kind -> SyntaxHole (mapSyntaxHoleKind (In value) kind)
-          | piece <- syntaxTemplatePieces (syntaxTemplate rule)
-          ]
-      }
-  | rule <- declarationRules body
-  ]
-declarationRules optional
-  | Just (operation, _) <- optionalIdentifierExpression optional =
-      case operation of
-        IdentifierTemplateOperation {} -> []
-        _ -> declarationRules operation
-declarationRules (IdentifierOperation (IdentifierString name) annotation (Just implementation)) =
-  collect name (if annotation == implementation then implementation else MapSpecification implementation annotation)
-  where
-    collect key (EitherType a b) = collect key a <> collect key b
-    collect key (MapSpecification body (SyntaxType templates signature)) =
-      rules key templates signature body
-    collect key (SyntaxType templates (MapSpecification body signature)) =
-      rules key templates signature body
-    collect key (SyntaxType templates (FunctionApplication signature body)) =
-      rules key templates signature body
-    collect key (FunctionApplication (SyntaxType templates signature) body) =
-      rules key templates signature body
-    collect _ _ = []
-    rules key templates signature body =
-      [ SyntaxRule key template
-          signature False Nothing body Nothing
-      | template <- either (const []) id
-          (compileSyntaxTemplatesFromExpression templates)
-      ]
-declarationRules
-    (IdentifierTemplateOperation parts _ (Just implementation)) =
-  case compileDependentDeclarationTemplate parts of
+declarationRules expressionValue =
+  maybe [] dependentDeclarationRules (dependentDeclaration expressionValue)
+
+dependentDeclarationRules :: DependentDeclaration -> [SyntaxRule]
+dependentDeclarationRules declaration
+  | dependentDeclarationUsesTemplateSyntax declaration =
+      directTemplateRule declaration
+  | Just name <- dependentDeclarationStaticName declaration =
+      compatibilityRules name declaration
+  | otherwise = []
+
+directTemplateRule :: DependentDeclaration -> [SyntaxRule]
+directTemplateRule declaration =
+  case compileDependentDeclarationTemplate
+      (dependentDeclarationParts declaration) of
     Left _ -> []
     Right (template, captures) ->
       [ SyntaxRule
-          { syntaxName = renderSourceExpression (StringTemplate parts)
+          { syntaxName = renderSourceExpression
+              (StringTemplate (dependentDeclarationParts declaration))
           , syntaxTemplate = template
           , syntaxSignature = IdentifierReference (IdentifierString "Any")
-          , syntaxRecursive = False
+          , syntaxRecursive = dependentDeclarationIsLet declaration
           , syntaxModule = Nothing
-          , syntaxImplementation = implementation
+          , syntaxImplementation =
+              dependentDeclarationImplementation declaration
           , syntaxDependentCaptures = Just captures
+          , syntaxDependentImplementation = Just
+              (dependentDeclarationImplementation declaration)
+          , syntaxBindsDependentCaptures = True
           }
       ]
-declarationRules _ = []
+
+-- The old @%@ form is now only a compatibility frontend. Strip the syntax
+-- decoration from its callable and express each pattern as the same
+-- capture-to-@it@ declaration used by a string-template declaration.
+compatibilityRules :: String -> DependentDeclaration -> [SyntaxRule]
+compatibilityRules name declaration =
+  collect (dependentDeclarationImplementation declaration)
+  where
+    collect (EitherType left right) = collect left <> collect right
+    collect (In contextual value) = map (scopeRule contextual) (collect value)
+    collect (MapSpecification body (SyntaxType templates signature)) =
+      rules templates signature body (MapSpecification body signature)
+    collect (SyntaxType templates (MapSpecification body signature)) =
+      rules templates signature body (MapSpecification body signature)
+    collect (SyntaxType templates (FunctionApplication signature body)) =
+      rules templates signature body (FunctionApplication signature body)
+    collect (FunctionApplication (SyntaxType templates signature) body) =
+      rules templates signature body (FunctionApplication signature body)
+    collect _ = []
+    scopeRule contextual rule = rule
+      { syntaxTemplate = SyntaxTemplate
+          [ case piece of
+              SyntaxLiteral {} -> piece
+              SyntaxHole kind -> SyntaxHole
+                (mapSyntaxHoleKind (In contextual) kind)
+          | piece <- syntaxTemplatePieces (syntaxTemplate rule)
+          ]
+      , syntaxSignature = In contextual (syntaxSignature rule)
+      , syntaxImplementation = In contextual (syntaxImplementation rule)
+      , syntaxDependentImplementation =
+          scopeDependent <$> syntaxDependentImplementation rule
+      }
+      where
+        -- The declaration context closes over the callable. The capture-side
+        -- @it@ remains supplied by the dependent declaration expansion.
+        scopeDependent (FunctionApplication callable supplied) =
+          FunctionApplication (In contextual callable) supplied
+        scopeDependent implementation = In contextual implementation
+    rules templates signature body callable =
+      [ SyntaxRule
+          { syntaxName = name
+          , syntaxTemplate = template
+          , syntaxSignature = signature
+          , syntaxRecursive = dependentDeclarationIsLet declaration
+          , syntaxModule = Nothing
+          , syntaxImplementation = body
+          , syntaxDependentCaptures = Just
+              [ Nothing
+              | SyntaxHole {} <- syntaxTemplatePieces template
+              ]
+          , syntaxDependentImplementation = Just
+              (FunctionApplication callable
+                (IdentifierReference (IdentifierString "it")))
+          , syntaxBindsDependentCaptures = False
+          }
+      | template <- either (const []) id
+          (compileSyntaxTemplatesFromExpression templates)
+      ]
 
 compileDependentDeclarationTemplate
   :: [StringTemplatePart Expression]
@@ -204,10 +247,11 @@ expandSyntax
   -> TemplateSelection Expression Expression
   -> Either SyntaxExpansionFailure Expression
 expandSyntax rule selection =
-  Right (case syntaxDependentCaptures rule of
-    Just binders -> In (ArgumentMap (zipWith bind binders captures))
+  Right (case (syntaxBindsDependentCaptures rule,
+      syntaxDependentCaptures rule) of
+    (True, Just binders) -> In (ArgumentMap (zipWith bind binders captures))
       (scoped (syntaxImplementation rule))
-    Nothing -> FunctionApplication callable suppliedInput)
+    _ -> FunctionApplication callable suppliedInput)
   where
     captures = templateSelectionCaptures selection
     callable = scoped (IdentifierReference (IdentifierString localName))

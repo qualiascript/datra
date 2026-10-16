@@ -1912,6 +1912,22 @@ testDependentDeclarations = do
       , "yield right 2"
       ])
     "{_x : Int := 2}"
+  expectProgram
+    "equal template shapes use capture federation disjointness"
+    (unlines
+      [ "\"value %(_x : Int)\" := 1"
+      , "\"value %(_x : Bool)\" := 2"
+      , "yield (value 3; value true)"
+      ])
+    "(1; 2)"
+  expectFailure
+    "ordinary declarations share dependent name-family admission"
+    "OverlappingDependentDeclarations"
+    (unlines
+      [ "abc := 1"
+      , "\"abc\" := 2"
+      , "yield abc"
+      ])
   where
     expectProgram label source expected =
       case runProgram source of

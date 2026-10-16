@@ -13,17 +13,20 @@ module SyntaxRewriting
 
 import Control.Applicative ((<|>))
 import BlockScope
-  ( Declaration (declarationName, declarationValue)
+  ( DependentDeclaration (dependentDeclarationParts)
   , bindingNames
   , blockDeclaration
+  , dependentDeclaration
+  , dependentDeclarationStaticName
+  , declarationValue
   , isDependentDeclaration
   )
-import Data.List (isPrefixOf, nub, nubBy)
+import Data.List (nub, nubBy)
 import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
-import Parsing (inferredFunction, parseNeutralPhrase)
+import Parsing (inferredFunction)
 import DatraTypes
   ( EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
   , InterpretedValue
@@ -367,69 +370,52 @@ rewriteSequence capture initial rawEntries = do
         go _ _ [] = Right ()
         go environment earlier (entry : remaining) = do
           let resolved = resolveDependentDeclarationHead environment entry
-              current = filter isDependentRule (declarationRules resolved)
-          mapM_ (validateRule environment earlier) current
+              currentRules = declarationRules resolved
+              currentDeclaration = dependentDeclaration resolved
+              currentFamily = currentDeclaration >>= evaluateFamily environment
+          case currentDeclaration of
+            Nothing -> pure ()
+            Just declaration -> mapM_
+              (validateFamily (declarationLabel declaration) currentFamily)
+              earlier
           if isValDependentDeclaration resolved
-            then mapM_ (validateInjective environment) current
+            then mapM_ (validateInjective environment)
+              (filter syntaxBindsDependentCaptures currentRules)
             else Right ()
-          go (advanceScope environment entry) (earlier <> current) remaining
+          let retained = case currentDeclaration of
+                Nothing -> earlier
+                Just declaration -> earlier <>
+                  [(declarationLabel declaration, currentFamily)]
+          go (advanceScope environment entry) retained remaining
 
-        validateRule environment earlier current =
-          case filter (dependentRulesOverlap environment current) earlier of
-            previous : _ -> Left (OverlappingDependentDeclarations
-              (syntaxName previous) (syntaxName current))
-            [] -> Right ()
+        evaluateFamily environment declaration =
+          rewriteEvaluate environment
+            (rewriteDeclarations environment)
+            (StringTemplate (dependentDeclarationParts declaration))
 
-        isDependentRule rule = case syntaxDependentCaptures rule of
-          Just _ -> True
-          Nothing -> False
+        declarationLabel declaration =
+          case dependentDeclarationStaticName declaration of
+            Just name -> name
+            Nothing -> renderSourceExpression
+              (StringTemplate (dependentDeclarationParts declaration))
 
-        dependentRulesOverlap environment left right =
-          not (incompatibleLeadingLiterals left right)
-            && ( templateShape left /= templateShape right
-              || and (zipWith (captureTypesOverlap environment)
-                  (templateCaptures left) (templateCaptures right))
-               )
-
-        incompatibleLeadingLiterals left right =
-          case (leadingLiteral left, leadingLiteral right) of
-            (Just leftLiteral, Just rightLiteral) ->
-              not (leftLiteral `isPrefixOf` rightLiteral)
-                && not (rightLiteral `isPrefixOf` leftLiteral)
-            _ -> False
-
-        leadingLiteral rule = case
-            syntaxTemplatePieces (syntaxTemplate rule) of
-          SyntaxLiteral literal : _ -> Just literal
-          _ -> Nothing
-
-        templateShape = map shape
-          . syntaxTemplatePieces . syntaxTemplate
-        shape (SyntaxLiteral literal) = Just literal
-        shape SyntaxHole {} = Nothing
-
-        templateCaptures = foldr captureKind []
-          . syntaxTemplatePieces . syntaxTemplate
-        captureKind (SyntaxHole kind) rest = syntaxHoleValue kind : rest
-        captureKind SyntaxLiteral {} rest = rest
-
-        captureTypesOverlap environment left right =
-          case (evaluate left, evaluate right) of
-            (Just leftType, Just rightType) ->
-              case eitherValue leftType rightType of
-                Right _ -> False
-                Left _ -> True
-            _ -> True
-          where
-            evaluate = rewriteEvaluate environment
-              (rewriteDeclarations environment)
+        validateFamily currentLabel currentFamily
+            (previousLabel, previousFamily) =
+          case (previousFamily, currentFamily) of
+            (Just previous, Just current)
+              | Right _ <- eitherValue previous current -> Right ()
+            _ -> Left (OverlappingDependentDeclarations
+              previousLabel currentLabel)
 
         validateInjective environment rule =
-          case syntaxDependentCaptures rule of
-            Nothing -> Right ()
-            Just _
-              | identityImplementation (syntaxImplementation rule) -> Right ()
-            Just captures ->
+          case ( syntaxDependentCaptures rule
+               , syntaxDependentImplementation rule
+               ) of
+            (Nothing, _) -> Right ()
+            (_, Nothing) -> Right ()
+            (Just _, Just implementation)
+              | identityImplementation implementation -> Right ()
+            (Just captures, Just implementation) ->
               case (evaluate input, evaluate output) of
                 (Just inputValue, Just outputValue)
                   | equivalentFederations inputValue outputValue -> Right ()
@@ -438,7 +424,7 @@ rewriteSequence capture initial rawEntries = do
               where
                 input = ArgumentMap (zipWith captureMember captures
                   (templateCaptureTypes rule))
-                output = In input (syntaxImplementation rule)
+                output = In input implementation
                 evaluate = rewriteEvaluate environment
                   (rewriteDeclarations environment)
 
@@ -528,9 +514,6 @@ rewriteAfterBlock
   -> Either SyntaxRewriteFailure (Expression, [Expression])
 rewriteAfterBlock allowNestedContinuation capture environment value trailing =
   case value of
-    Lookup (AsciiStringLiteral key) -> do
-      rewritten <- rewriteDependentLookup capture environment key
-      pure (rewritten, trailing)
     ScopeAccess source body -> do
       rewritten <- rewriteScopeAccess capture environment source body
       pure (rewritten, trailing)
@@ -847,49 +830,6 @@ rewriteChildren capture environment value =
     _ -> traverseExpressionChildren
       (rewriteStandalone capture environment) value
 
--- A concrete lookup key can denote a member of a dependent declaration even
--- though that member does not occupy a finite slot in the lexical scope. Match
--- the key with the same rule and capture machinery used by its surface syntax,
--- then materialize the ordinary one-row lookup result.
-rewriteDependentLookup
-  :: CaptureHole
-  -> RewriteEnvironment
-  -> String
-  -> Either SyntaxRewriteFailure Expression
-rewriteDependentLookup capture environment key =
-  case parseNeutralPhrase key of
-    Left _ -> Right original
-    Right candidate ->
-      case dependentRules of
-        [] -> Right original
-        rules -> case matchSyntaxRulesWith captureInScope rules candidate of
-          Left NoMatchingSyntaxTemplate -> Right original
-          Left failure -> Left (SyntaxRewriteMatchFailure failure)
-          Right expanded -> do
-            rewritten <- rewriteStandalone capture environment expanded
-            Right (lookupResultExpression key rewritten)
-  where
-    original = Lookup (AsciiStringLiteral key)
-    dependentRules =
-      [ rewriteRule rule
-      | rule <- rewriteRules environment
-      , Just _ <- [syntaxDependentCaptures (rewriteRule rule)]
-      ]
-    captureInScope previous kind captured =
-      capture (rewriteStrictCaptures environment)
-        (rewriteDeclarations environment) previous kind captured
-
-lookupResultExpression :: String -> Expression -> Expression
-lookupResultExpression key value =
-  ArgumentMap
-    [ ArgumentMap
-        [ IdentifierOperation
-            (IdentifierString "key") (AsciiStringLiteral key) Nothing
-        , IdentifierOperation
-            (IdentifierString "value") value Nothing
-        ]
-    ]
-
 -- Syntax-backed declarations are ordinary functions whose function bodies
 -- can expand AST captures before runtime evaluation.
 directSyntaxFunctionApplication
@@ -996,7 +936,8 @@ directSyntaxFunctionExpansion environment selectedRule application =
             firstDeclared (entry : remaining) =
               case blockDeclaration entry of
                 Just declaration
-                  | declarationName declaration == requested ->
+                  | dependentDeclarationStaticName declaration
+                      == Just requested ->
                       Just (declarationValue declaration)
                 _ -> firstDeclared remaining
     captureCount rule = length
@@ -1864,11 +1805,12 @@ advanceScope environment entry = environment
       ]
     aliasRules expressionValue = case blockDeclaration expressionValue of
       Just declaration
-        | IdentifierReference (IdentifierString target) <-
+        | Just declaredName <- dependentDeclarationStaticName declaration
+        , IdentifierReference (IdentifierString target) <-
             declarationValue declaration ->
         [ rule
             { rewriteRule = (rewriteRule rule)
-                { syntaxName = declarationName declaration }
+                { syntaxName = declaredName }
             }
         | rule <- rewriteRules environment
         , rewriteRuleName rule == target
@@ -1911,5 +1853,6 @@ resolveDependentDeclarationHead environment expressionValue =
     firstDeclaration requested (candidate : remaining) =
       case blockDeclaration candidate of
         Just declaration
-          | declarationName declaration == requested -> Just declaration
+          | dependentDeclarationStaticName declaration == Just requested ->
+              Just declaration
         _ -> firstDeclaration requested remaining

@@ -6,6 +6,7 @@ module Evaluation.Identifier
   , identifierNameFederationFor
   , evaluatedIdentifierType
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , privateSimpleIdentifier
   , privateIdentifierUnderlying
   , simpleIdentifierTypeValue
@@ -32,7 +33,7 @@ import DatraLanguage.Identifier (isPrivateIdentifier)
 -- | Compiler-owned metadata identifying an identifier whose declared name is
 -- its canonical presentation.
 canonicalValueMarker :: String
-canonicalValueMarker = "CanonicalValue"
+canonicalValueMarker = "val"
 
 evaluatedIdentifierType
   :: InterpretedValue
@@ -62,6 +63,10 @@ simpleIdentifierName value =
       DependentIdentifierTypeSemantics
           (SimpleIdentifierDependency name) _ _ _ -> Just name
       _ -> Nothing
+
+identifierUnderlyingValue :: InterpretedValue -> Maybe InterpretedValue
+identifierUnderlyingValue value =
+  evaluatedIdentifierUnderlying <$> evaluatedIdentifierType value
 
 privateSimpleIdentifier :: EvaluatedDependentIdentifierType -> Bool
 privateSimpleIdentifier identifier =
@@ -178,14 +183,19 @@ inferredIdentifierAssignmentValue identifierString underlying =
 withTrailingIdentifierMarker :: String -> InterpretedValue -> InterpretedValue
 withTrailingIdentifierMarker marker value
   | hasTrailingIdentifierMarker marker value = value
-  | otherwise = value
+  | otherwise = marked
+  where
+    marked = value
       { interpretedMap = markedMap
       , interpretedTotalAtlasMap =
           case interpretedTotalAtlasMap value of
             Just _ -> Just (InterpretedTotalAtlasMap markedMap)
             Nothing -> Nothing
+      , interpretedNamedMemberMetadata = markMetadata
+          <$> interpretedNamedMemberMetadata value
       }
-  where
+    markMetadata metadata = metadata
+      { namedMetadataIsCanonicalValue = True }
     markerValue = makeAsciiString marker
     sourceMap = interpretedMap value
     markedMap = sourceMap
@@ -285,7 +295,7 @@ makeDependentIdentifierTypeValue
         [ interpretedSemantics identifierStringValue
         , interpretedSemantics underlying
         ]
-    value =
+    base =
       makeEvaluatedIdentifierValue
         canonicalType
         (DependentIdentifierTypeForm evaluated)
@@ -293,6 +303,15 @@ makeDependentIdentifierTypeValue
         isTotal
         valueMap
         semantics
+    value = case dependency of
+      SimpleIdentifierDependency name -> base
+        { interpretedNamedMemberMetadata = Just
+            (NamedMemberMetadata
+              name
+              (not (isPrivateIdentifier name))
+              False)
+        }
+      DependentIdentifierDependency {} -> base
     canonicalType = structuralDatraType
 
 -- | Totality is established by the caller from every component of the
