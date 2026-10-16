@@ -262,10 +262,11 @@ testOrdinalIndexedFamilyCapability = do
   let aboveOmega = Types.makeLazyMapValue
         (addOrdinals omega (finiteOrdinal 1))
         (const Nothing)
-  assert "an atomic ordered map above omega is not an indexed family"
+  assert "an atomic ordered map above omega preserves its ordinal index"
     (case Types.ordinalIndexedValueFamily aboveOmega of
-      Nothing -> True
-      Just _ -> False)
+      Nothing -> False
+      Just family -> Types.ordinalIndexedFamilyOrderType family
+        == addOrdinals omega (finiteOrdinal 1))
 
 testEvaluationBoundary :: IO ()
 testEvaluationBoundary = do

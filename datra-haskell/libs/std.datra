@@ -2,13 +2,12 @@
   Std := 'datra.begin ((
     _Expr := 'datra.Expr
     _DependentIdentifier := 'datra.DependentIdentifier
-    _Declaration := 'datra.Declaration
+    _DependentDeclaration := 'datra.DependentDeclaration
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val ('in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in)
-    'datra.val in it ('val := "val %_Declaration" %
-      (_Declaration -> _Declaration) it)
+    'datra.val in it ('val := "val %_DependentDeclaration" %
+      (_DependentDeclaration -> _DependentDeclaration) it)
     val 'datra := 'datra
 
     val Any := 'datra.Any
@@ -31,9 +30,10 @@
     val NatValRange := 'datra.NatValRange
     val IntValRange := 'datra.IntValRange
 
-    # These bindings introduce parsing rules.
-    val 'let := "let %_Declaration" %
-      (_Declaration -> _Declaration) 'datra.let
+    val 'let := "let %_DependentDeclaration" %
+      (_DependentDeclaration -> _DependentDeclaration) 'datra.let
+    let 'in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in
+
     val 'assert :=
       ("assert %("hard") %_Expr" %
         ($hard; _Expr -> _Expr) 'datra.assertHard) |
@@ -79,6 +79,7 @@
     val Just := &T? do yield Just : T
     val Maybe := &T? do yield nothing | Just T
     let val Str := >< (List Char)
+    let val InhabitedStr := >< (InhabitedList Char)
 
     let val Nat := from 0 up
     let val NatLimit := from 0 to Infinity
@@ -89,7 +90,12 @@
       slots := (^_i :: Nat) do yield "arg%(_i)"? : T
     yield ((^n? :: Nat) do yield slots[0..n])
 
-    val public := 'datra.public
+    val public := {_declarations : List (InhabitedStr; Any; $val?)} do
+      yield (((&_declaration :: _declarations) do
+        yield if _declaration[0][0] = "_"
+          then ()
+          else _declaration),)
+
   )
   public this))
 )

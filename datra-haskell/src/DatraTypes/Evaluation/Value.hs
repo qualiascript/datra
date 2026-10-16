@@ -69,6 +69,18 @@ module Evaluation.Value
   , OrdinalOrderedValues (..)
   , InterpretedMap (..)
   , interpretedMapCardinality
+  , NamedMember (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , namedMapValue
+  , interpretedSimpleIdentifierName
   , ToStringInverseDecision (..)
   , ProvenInjectiveToString (..)
   , InterpretedAtlasMapFederationPrimitive (..)
@@ -124,6 +136,8 @@ module Evaluation.Value
   , withEvaluationSource
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedNamedMapView
+  , withNamedMapView
   , withStringTemplatePlan
   , interpretedExplicitOrdinal
   , interpretedSpecificationSourceValue
@@ -168,9 +182,20 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxTemplate (..)
   )
 import DatraLanguage.AST (Expression)
-import DatraLanguage.Diagnostics.Application (SyntaxExpansionFailure)
-import DatraOrdinal (Ordinal, finiteOrdinal, naturalAtOrdinal)
-import Evaluation.Error (InterpretedValueKind (..), InterpretingError)
+import DatraOrdinal
+  ( Ordinal
+  , addOrdinals
+  , finiteOrdinal
+  , naturalAtOrdinal
+  , naturalsBelow
+  , ordinalLT
+  , subtractOrdinal
+  )
+import Evaluation.Error
+  ( InterpretedValueKind (..)
+  , InterpretingError (..)
+  , NamedAccessFailure (..)
+  )
 import Evaluation.DatraType
 import Evaluation.Value.Semantics
 import MapOperators.OrderedAtlasMap
@@ -352,7 +377,7 @@ data EvaluatedFunctionInvocation = EvaluatedFunctionInvocation
 data EvaluatedFunctionBody
   = EvaluatedSyntaxFunctionBody
       String
-      ([Expression] -> Either SyntaxExpansionFailure Expression)
+      ([Expression] -> Maybe Expression)
   | EvaluatedRuntimeFunctionBody String EvaluatedFunction
 
 data EvaluatedFunction = EvaluatedFunction
@@ -526,7 +551,7 @@ builtinMetaTypeName (ASTMetaType category) = case category of
   ExpressionAST -> "Expr"
   BlockAST -> "Block"
   FunctionBodyAST -> "FunctionBody"
-  DeclarationAST -> "Declaration"
+  DeclarationAST -> "DependentDeclaration"
   DependentIdentifierAST -> "DependentIdentifier"
 builtinMetaTypeName NatRangeMetaType = "NatRange"
 builtinMetaTypeName IntRangeMetaType = "IntRange"
@@ -540,7 +565,7 @@ builtinMetaTypeCanonicalString (ASTMetaType category) = case category of
   ExpressionAST -> "'datra.Expr"
   BlockAST -> "'datra.Block"
   FunctionBodyAST -> "'datra.FunctionBody"
-  DeclarationAST -> "'datra.Declaration"
+  DeclarationAST -> "'datra.DependentDeclaration"
   DependentIdentifierAST -> "'datra.DependentIdentifier"
 builtinMetaTypeCanonicalString SyntaxTemplateMetaType =
   "'datra.SyntaxTemplate"
@@ -618,6 +643,141 @@ data InterpretedMap = InterpretedMap
   , interpretedMapComponents :: [ValueSemantics]
   }
 
+-- | One materialized member of a named namespace. Visibility and canonical
+-- declaration status belong to the member rather than being rediscovered by
+-- inspecting its rendered value.
+data NamedMember = NamedMember
+  { namedMemberName :: String
+  , namedMemberValue :: InterpretedValue
+  }
+
+-- | A namespace-preserving view of an Atlas map. Ordinal access retains the
+-- map's own order; direct name lookup must decide absence without enumerating
+-- that order. Public selection is producer-defined because filtering an
+-- arbitrary transfinite order cannot be implemented by successor scanning.
+data NamedMapProjection = NamedMapProjection
+  { namedProjectionOrderType :: Ordinal
+  , namedProjectionMemberAt
+      :: Ordinal -> Either InterpretingError (Maybe NamedMember)
+  , namedProjectionMemberByName
+      :: String -> Either InterpretingError (Maybe NamedMember)
+  , namedProjectionContainsName
+      :: String -> Either InterpretingError Bool
+  }
+
+newtype NamedMapView = NamedMapView
+  { namedMapProjection :: NamedMapProjection
+  }
+
+-- | Recover a simple declaration name from its identifier value. The name is
+-- already represented by the first slot, so lookup does not need a parallel
+-- metadata record.
+interpretedSimpleIdentifierName :: InterpretedValue -> Maybe String
+interpretedSimpleIdentifierName value =
+  case interpretedForm value of
+    DependentIdentifierTypeForm identifier -> dependencyName identifier
+    IdentifierStringProjectionForm identifier -> dependencyName identifier
+    AssignmentForm specification ->
+      interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
+    SpecificationForm specification ->
+      interpretedSimpleIdentifierName (evaluatedSpecificationTarget specification)
+    _ -> semanticName (interpretedSemantics value)
+  where
+    dependencyName identifier =
+      case evaluatedIdentifierDependency identifier of
+        SimpleIdentifierDependency name -> Just name
+        DependentIdentifierDependency {} -> Nothing
+    semanticName semantics = case semantics of
+      PresentedSemantics _ _ underlying -> semanticName underlying
+      AssignmentSemantics name _ _ -> Just name
+      DependentIdentifierTypeSemantics
+          (SimpleIdentifierDependency name) _ _ _ -> Just name
+      _ -> Nothing
+
+namedMapView
+  :: Ordinal
+  -> (Ordinal -> Either InterpretingError (Maybe NamedMember))
+  -> (String -> Either InterpretingError (Maybe NamedMember))
+  -> (String -> Either InterpretingError Bool)
+  -> NamedMapView
+namedMapView orderType memberAt memberByName containsName =
+  NamedMapView (NamedMapProjection orderType memberAt memberByName containsName)
+
+namedMapOrderType :: NamedMapView -> Ordinal
+namedMapOrderType = namedProjectionOrderType . namedMapProjection
+
+namedMapMemberAt
+  :: NamedMapView
+  -> Ordinal
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapMemberAt = namedProjectionMemberAt . namedMapProjection
+
+namedMapMemberByName
+  :: NamedMapView
+  -> String
+  -> Either InterpretingError (Maybe NamedMember)
+namedMapMemberByName = namedProjectionMemberByName . namedMapProjection
+
+namedMapContainsName
+  :: NamedMapView
+  -> String
+  -> Either InterpretingError Bool
+namedMapContainsName = namedProjectionContainsName . namedMapProjection
+
+namedMapViewForValue :: InterpretedValue -> Maybe NamedMapView
+namedMapViewForValue value =
+  case interpretedSimpleIdentifierName value of
+    Just name -> Just (namedMapView
+      (finiteOrdinal 1)
+      (\position -> Right
+        (if position == finiteOrdinal 0 then Just member else Nothing))
+      (\candidate -> Right
+        (if candidate == name then Just member else Nothing))
+      (\candidate -> Right (candidate == name)))
+      where
+        member = NamedMember name value
+    Nothing -> interpretedNamedMapView value
+
+appendNamedMapViews :: NamedMapView -> NamedMapView -> NamedMapView
+appendNamedMapViews left right = NamedMapView (appendNamedMapProjections
+  (namedMapProjection left)
+  (namedMapProjection right))
+
+appendNamedMapProjections
+  :: NamedMapProjection
+  -> NamedMapProjection
+  -> NamedMapProjection
+appendNamedMapProjections left right = NamedMapProjection
+  (addOrdinals leftOrder (namedProjectionOrderType right))
+  memberAt
+  memberByName
+  (\name -> (||)
+    <$> namedProjectionContainsName left name
+    <*> namedProjectionContainsName right name)
+  where
+    leftOrder = namedProjectionOrderType left
+    memberAt position
+      | position `ordinalLT` leftOrder = namedProjectionMemberAt left position
+      | otherwise = case subtractOrdinal leftOrder position of
+          Just relative -> namedProjectionMemberAt right relative
+          Nothing -> Right Nothing
+    memberByName name = do
+      leftMember <- namedProjectionMemberByName left name
+      rightMember <- namedProjectionMemberByName right name
+      case (leftMember, rightMember) of
+        (Nothing, member) -> Right member
+        (member, Nothing) -> Right member
+        (Just _, Just _) ->
+          Left (NamedAccessFailed (NamedFieldAmbiguous name))
+
+-- | Materialize only the ordinary Atlas-map shell of a named namespace. Each
+-- ordinal demand delegates to the producer and retains its checked failure.
+namedMapValue :: NamedMapView -> InterpretedValue
+namedMapValue view = withNamedMapView view
+  (makeCheckedLazyMapValue
+    (namedMapOrderType view)
+    (fmap (fmap namedMemberValue) . namedMapMemberAt view))
+
 -- | Compatibility name for the number of Atlas pages represented by a map.
 -- This is distinct from the final page's possibly-transfinite order type.
 interpretedMapCardinality :: InterpretedMap -> Natural
@@ -684,6 +844,7 @@ data InterpretedValue = InterpretedValue
   , interpretedOrderedAtlasMapView
       :: Maybe (OrdinalOrderedValues InterpretedValue)
   , interpretedStringTemplate :: Maybe EvaluatedStringTemplate
+  , interpretedNamedMapView :: Maybe NamedMapView
   }
 
 newtype DynamicScopeLabel = DynamicScopeLabel Natural
@@ -736,7 +897,11 @@ makeInterpretedValue datraType form capability valueMap federation totality sema
     , interpretedDependentSumView = Nothing
     , interpretedOrderedAtlasMapView = Nothing
     , interpretedStringTemplate = Nothing
+    , interpretedNamedMapView = Nothing
     }
+
+withNamedMapView :: NamedMapView -> InterpretedValue -> InterpretedValue
+withNamedMapView view value = value { interpretedNamedMapView = Just view }
 
 withStringTemplatePlan
   :: EvaluatedStringTemplate
@@ -864,6 +1029,7 @@ withMapView view value = value
   , interpretedAtlasMapFederation = interpretedAtlasMapFederation view
   , interpretedTotalAtlasMap = interpretedTotalAtlasMap view
   , interpretedOrderedAtlasMapView = orderedAtlasMapView view
+  , interpretedNamedMapView = interpretedNamedMapView view
   }
 
 -- | Attach source-independent structure to a dependent sum.  Constructors
@@ -1199,9 +1365,7 @@ asciiStringFromInterpretedMap valueMap = do
       guard (characterCode < 256)
       pure (chr (fromIntegral characterCode))
 
-    finitePositions 0 = []
-    finitePositions cardinality =
-      map finiteOrdinal [0 .. cardinality - 1]
+    finitePositions = map finiteOrdinal . naturalsBelow
 
 explicitOrdinal :: EvaluatedExplicit -> (Natural, Ordinal)
 explicitOrdinal (EvaluatedExplicit level _ value) =

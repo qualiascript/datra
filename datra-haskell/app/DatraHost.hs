@@ -4,15 +4,11 @@ module DatraHost
   ( datraHostIdentifier
   , datraHostValue
   , namedMembers
-  , publicValue
   ) where
 
 import DatraLanguage.AST
-import DatraLanguage.Diagnostics.Application
-  ( SyntaxExpansionFailure (UnknownSyntaxControlAdapter) )
-import DatraLanguage.Identifier (public)
 import DatraTypes
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinalPositions)
 import SyntaxDefinitions (absorbFunSequence)
 
 datraHostIdentifier :: String
@@ -46,7 +42,7 @@ datraHostValue = do
     , ("IdenStr", Right identifierValueTypeValue)
     , ("Expr", Right expressionType)
     , ("DependentIdentifier", Right dependentIdentifierType)
-    , ("Declaration", Right declarationType)
+    , ("DependentDeclaration", Right dependentDeclarationType)
     , ("Block", Right blockType)
     , ("FunctionBody", Right functionBodyType)
     , ("Template", Right templateTypeValue)
@@ -55,7 +51,6 @@ datraHostValue = do
     , ("IntRange", Right integerRangeTypeValue)
     , ("NatValRange", Right naturalValuedRangeTypeValue)
     , ("IntValRange", Right integerValuedRangeTypeValue)
-    , ("public", Right publicFunction)
     , suppliedBody "len" mapLengthValue
     , suppliedBody "from" (nativeRange ValuedIntegerRangeKind)
     , suppliedBody "range" (nativeRange IntegerRangeKind)
@@ -125,18 +120,14 @@ datraHostValue = do
   where
     expressionType = syntaxCategoryTypeValue ExpressionAST
     dependentIdentifierType = syntaxCategoryTypeValue DependentIdentifierAST
-    declarationType = syntaxCategoryTypeValue DeclarationAST
+    dependentDeclarationType = syntaxCategoryTypeValue DeclarationAST
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
     syntaxBody name expand =
       (name, Right (makeFunctionBodyValue
-        (EvaluatedSyntaxFunctionBody source apply)))
+        (EvaluatedSyntaxFunctionBody source expand)))
       where
         source = "'datra." <> name
-        apply captures = maybe
-          (Left (UnknownSyntaxControlAdapter source))
-          Right
-          (expand captures)
     nativeBody namespace name implementation =
       (name, runtimeBody source invoke)
       where
@@ -155,14 +146,6 @@ datraHostValue = do
       (EvaluatedRuntimeFunctionBody source (EvaluatedFunction
         anyTypeValue anyTypeValue Nothing Nothing (Just source) Nothing
         "Any -> Any" Nothing (Just invoke) True)))
-    publicFunction = makeFunctionValue (EvaluatedFunction
-      anyTypeValue anyTypeValue Nothing Nothing (Just "'datra.public") Nothing
-      "Any -> Any"
-      (Just (\argument -> Right
-        (PreparedFunctionArgument argument argument [])))
-      (Just (\_ _ preparedCall -> do
-        value <- publicValue (functionPreparedArgument preparedCall)
-        pure (EvaluatedFunctionInvocation value Nothing))) False)
     nativeRange kind argument = do
       startValue <- accessValues argument (naturalValue 0)
       endValue <- accessValues argument (naturalValue 1)
@@ -217,33 +200,38 @@ hostMap entries = do
       pure (withTrailingIdentifierMarker canonicalValueMarker
         (inferredIdentifierAssignmentValue name underlying))
 
-publicValue :: InterpretedValue -> Either InterpretingError InterpretedValue
-publicValue value = do
-  members <- namedMembers value
-  pure (makeAtlasMap 2 (map snd (public members)))
-
 namedMembers
   :: InterpretedValue
   -> Either InterpretingError [(String, InterpretedValue)]
 namedMembers value =
-  case argumentMapMembers value of
-    Just members
-      | Right named <- traverse field members -> Right named
-    _ -> projectedMembers
+  case namedMapViewForValue value of
+    Just named -> do
+      positions <- maybe invalid Right
+        (finiteOrdinalPositions (namedMapOrderType named))
+      members <- traverse
+        (\position -> namedMapMemberAt named position >>= maybe invalid Right)
+        positions
+      pure
+        [ (namedMemberName member, namedMemberValue member)
+        | member <- members
+        ]
+    Nothing -> case argumentMapMembers value of
+      Just members
+        | Right named <- traverse field members -> Right named
+      _ -> projectedMembers
   where
     projectedMembers = case simpleIdentifierName value of
       Just name -> Right [(name, value)]
       Nothing -> do
-        count <- maybe invalid Right
-          (naturalAtOrdinal
+        positions <- maybe invalid Right
+          (finiteOrdinalPositions
             (interpretedMapFinalOrderType (interpretedMap value)))
-        members <- traverse memberAt
-          (if count == 0 then [] else [0 .. count - 1])
+        members <- traverse memberAt positions
         traverse field members
     invalid = Left (ModuleEvaluationFailed
       ImportedModuleRequiresNamedExports)
-    memberAt index = maybe invalid Right
-      (interpretedMapValueAt (interpretedMap value) (finiteOrdinal index))
+    memberAt position = maybe invalid Right
+      (interpretedMapValueAt (interpretedMap value) position)
     field member = case simpleIdentifierName member of
       Just name -> Right (name, member)
       Nothing -> Left (ModuleEvaluationFailed ModuleExportRequiresIdentifier)

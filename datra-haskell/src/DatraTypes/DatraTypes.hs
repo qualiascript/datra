@@ -25,6 +25,7 @@ module DatraTypes
   , withMapView
   , OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   , withDependentSumAccess
   , withDependentSumFamily
   , withDependentSumReservationTarget
@@ -64,6 +65,18 @@ module DatraTypes
   , CanonicalResult (..)
   , InterpretedValueKind (..)
   , InterpretedMap
+  , NamedMember (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , namedMapValue
+  , withNamedMapView
   , InterpretingError (..)
   , FunctionFailure (..)
   , ModuleEvaluationFailure (..)
@@ -144,6 +157,7 @@ module DatraTypes
   , dependentIdentifierTemplateTypeValue
   , identifierTemplateTypeValue
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , canonicalValueMarker
@@ -210,6 +224,7 @@ module DatraTypes
   , identifierNameDisjointness
   , interpretedValueKind
   , interpretedStringTemplate
+  , interpretedNamedMapView
   , withStringTemplatePlan
   , interpretedDatraType
   , interpretedValueHasTotalMap
@@ -408,6 +423,7 @@ import Evaluation.Identifier
   , canonicalValueMarker
   , hasTrailingIdentifierMarker
   , simpleIdentifierName
+  , identifierUnderlyingValue
   , simpleIdentifierTypeValue
   , inferredIdentifierAssignmentValue
   , withTrailingIdentifierMarker
@@ -415,6 +431,7 @@ import Evaluation.Identifier
 import Evaluation.OrdinalIndexedFamily
   ( OrdinalIndexedFamily (..)
   , ordinalIndexedValueFamily
+  , ordinalIndexedProductFamily
   )
 import Evaluation.Specification
   ( assignIdentifierValues
@@ -475,6 +492,18 @@ import Evaluation.Value
   , CanonicalResult (..)
   , InterpretedMap
   , InterpretedValue
+  , NamedMember (..)
+  , NamedMapProjection (..)
+  , NamedMapView (..)
+  , namedMapView
+  , namedMapOrderType
+  , namedMapMemberAt
+  , namedMapMemberByName
+  , namedMapContainsName
+  , namedMapViewForValue
+  , appendNamedMapViews
+  , namedMapValue
+  , withNamedMapView
   , EvaluatedStringTemplate (..)
   , EvaluatedStringTemplateSegment (..)
   , DynamicScopeLabel (..)
@@ -488,6 +517,7 @@ import Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedCanonicalPresentation
+  , interpretedNamedMapView
   , withCanonicalReference
   , withCanonicalNamedAccess
   , withCanonicalApplication
@@ -517,7 +547,7 @@ import Evaluation.Value
   , withStringTemplatePlan
   )
 import Numeric.Natural (Natural)
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, omega)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow, omega)
 
 import Data.Char (ord)
 import Data.List (find)
@@ -595,7 +625,7 @@ listTypeValue presentationSource elementType =
         Right
         (naturalAtOrdinal
           (interpretedMapFinalOrderType (interpretedMap source)))
-      mapM_ (validateAt source) (if count == 0 then [] else [0 .. count - 1])
+      mapM_ (validateAt source) (naturalsBelow count)
     validateAt source position = do
       member <- maybe
         (Left (FunctionEvaluationFailed

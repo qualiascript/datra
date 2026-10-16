@@ -8,7 +8,7 @@ module FunctionClosure
   , canonicalDependencyNames
   ) where
 
-import BlockScope (bindingNames)
+import DatraLanguage.DependentDeclaration (bindingNames)
 import Data.List (nub, stripPrefix)
 import DatraLanguage.AST
 import DatraLanguage.Identifier (requiresShadowingConsistency)

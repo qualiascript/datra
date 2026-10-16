@@ -5,7 +5,7 @@ module Evaluation.Federation.Structure
   , concatenationOperands
   ) where
 
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow)
 import Evaluation.Value
 
 sequenceOperands :: InterpretedValue -> Maybe [InterpretedValue]
@@ -51,7 +51,4 @@ finiteMapValues value = do
       (interpretedMapFinalOrderType (interpretedMap value))
   traverse
     (interpretedMapValueAt (interpretedMap value) . finiteOrdinal)
-    (finitePositions cardinality)
-  where
-    finitePositions 0 = []
-    finitePositions cardinality = [0 .. cardinality - 1]
+    (naturalsBelow cardinality)

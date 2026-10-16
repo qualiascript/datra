@@ -74,6 +74,7 @@ import SyntaxDefinitions
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxRule (..)
+  , SyntaxRuleSemantics (..)
   , SyntaxTemplate (..)
   , SyntaxTemplateCompilationFailure (..)
   , compileSyntaxTemplatesFromExpression
@@ -483,7 +484,7 @@ regressionTests = do
         [ ExpressionSyntaxHole (ref "_Expr")
         , BlockSyntaxHole (ref "_Block")
         , FunctionBodySyntaxHole (ref "_FunctionBody")
-        , DeclarationSyntaxHole (ref "_Declaration")
+        , DeclarationSyntaxHole (ref "_DependentDeclaration")
         , DependentIdentifierSyntaxHole (ref "_DependentIdentifier")
         , ValueSyntaxHole (ref "Int")
         ]
@@ -530,39 +531,21 @@ regressionTests = do
   assertParsed "compact signed skips remain numerical operands"
     "assert -* = +*"
     (Assert False (Equality (Minus Skip) (Plus Skip)))
-  let syntaxControl implementation = SyntaxRule
-        { syntaxName = "test-control"
-        , syntaxTemplate = SyntaxTemplate []
-        , syntaxSignature = ref "Any"
-        , syntaxRecursive = False
-        , syntaxModule = Nothing
-        , syntaxImplementation = datraRef implementation
-        }
-  assert "external syntax implementations are not selected by namespace"
-    (expandSyntax (syntaxControl ["syntax", "unknown"])
-      (TemplateSelection (ref "test-control") [])
-      == Right (FunctionApplication
-        (ref "test-control")
-        (AtlasMap [])))
-  let zeroCaptureSyntax = (syntaxControl ["syntax", "unknown"])
+  let zeroCaptureSyntax = SyntaxRule
         { syntaxName = "answer"
-        , syntaxSignature = FunctionType (natural 42) (ref "Nat")
+        , syntaxTemplate = SyntaxTemplate []
+        , syntaxSemantics = SyntaxAdapter (ref "answer")
         }
   assert "zero-hole syntax supplies the empty capture tail"
     (expandSyntax zeroCaptureSyntax
       (TemplateSelection (ref "answer") [])
-      == Right (FunctionApplication
+      == FunctionApplication
         (ref "answer")
-        (AtlasMap [])))
-  let syntaxFunction name pieces implementation = SyntaxRule
+        (AtlasMap []))
+  let syntaxFunction name pieces = SyntaxRule
         { syntaxName = name
         , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
-        , syntaxSignature = FunctionType
-            (AtlasMap [ref "Int", ref "IntLimit"])
-            (ref "IntValRange")
-        , syntaxRecursive = False
-        , syntaxModule = Nothing
-        , syntaxImplementation = datraRef implementation
+        , syntaxSemantics = SyntaxAdapter (ref name)
         }
       intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
       intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
@@ -583,27 +566,22 @@ regressionTests = do
         _ -> False
       wrongFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intHole]
-        ["wrong-from"]
       correctFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intLimitHole]
-        ["from"]
       unrelated = syntaxFunction "unrelated"
         [ intHole
         , SyntaxLiteral "to"
         , intLimitHole
         , SyntaxLiteral "with-more-template-text"
         ]
-        ["unrelated"]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
   assert "IntLimit template holes accept an Infinity AST"
-    (case expandSyntax correctFrom
-        (TemplateSelection fromPhrase [natural 0, ref "Infinity"]) of
-      Right expected ->
-        matchRules matchesNumericHole [correctFrom] fromPhrase
-          == Right expected
-      Left _ -> False)
+    (let expected = expandSyntax correctFrom
+          (TemplateSelection fromPhrase [natural 0, ref "Infinity"])
+     in matchRules matchesNumericHole [correctFrom] fromPhrase
+          == Right expected)
   assert "the explicit AST head selects the syntax binding"
     ( matchRules matchesNumericHole
         [unrelated, correctFrom]
@@ -644,7 +622,6 @@ regressionTests = do
         , SyntaxLiteral "marker"
         , SyntaxHole (ValueSyntaxHole (ref "Tail"))
         ]
-        ["greedy"]
       greedyPhrase = foldl FunctionApplication (ref "greedy")
         [ natural 1
         , ref "marker"
@@ -661,52 +638,42 @@ regressionTests = do
           value == natural 3
         _ -> False
   assert "holes match greedily inside the current AST boundary"
-    (case expandSyntax greedyRule
-        (TemplateSelection greedyPhrase [greedyPrefix, natural 3]) of
-      Right expected ->
-        matchRules matchesGreedyHole [greedyRule] greedyPhrase
-          == Right expected
-      Left _ -> False)
+    (let expected = expandSyntax greedyRule
+          (TemplateSelection greedyPhrase [greedyPrefix, natural 3])
+     in matchRules matchesGreedyHole [greedyRule] greedyPhrase
+          == Right expected)
   let contextualShort = syntaxFunction "contextual"
         [intHole]
-        ["contextual-short"]
       contextualLong = syntaxFunction "contextual"
         [intHole, SyntaxLiteral "marker", intHole]
-        ["contextual-long"]
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
-    (case expandSyntax contextualShort
-        (TemplateSelection contextualPhrase [natural 1]) of
-      Right expanded ->
-        matchRules matchesNumericHole
+    (let expanded = expandSyntax contextualShort
+          (TemplateSelection contextualPhrase [natural 1])
+     in matchRules matchesNumericHole
           [contextualShort, contextualLong]
           contextualPhrase
           == Right (foldl FunctionApplication expanded
-            [ref "marker", natural 2, ref "after"])
-      Left _ -> False)
+            [ref "marker", natural 2, ref "after"]))
   let rankedShort = syntaxFunction "ranked"
         [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        ["ranked-short"]
       rankedLong = syntaxFunction "ranked"
         [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         , SyntaxLiteral "marker"
         , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         ]
-        ["ranked-long"]
       rankedPhrase = foldl FunctionApplication (ref "ranked")
         [natural 1, ref "marker", natural 2]
   let rankedCapture = foldl FunctionApplication (natural 1)
         [ref "marker", natural 2]
   assert "the first declaration greedily takes its longest valid match"
-    (case expandSyntax rankedShort
-        (TemplateSelection rankedPhrase [rankedCapture]) of
-      Right expected ->
-        matchRules (const (const True))
+    (let expected = expandSyntax rankedShort
+          (TemplateSelection rankedPhrase [rankedCapture])
+     in matchRules (const (const True))
           [rankedShort, rankedLong]
           rankedPhrase
-          == Right expected
-      Left _ -> False)
+          == Right expected)
   assertAstOutput "function arrows associate right"
     "Int -> Int -> Int" (FunctionType (ref "Int") (FunctionType (ref "Int") (ref "Int")))
   assertAstOutput "application associates left before arithmetic"
@@ -1137,10 +1104,10 @@ regressionTests = do
       _ -> False
   case parseSource (unlines
       [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "_Declaration := 'datra.Declaration"
+      , "_DependentDeclaration := 'datra.DependentDeclaration"
       , "captureId := \"captureId %_DependentIdentifier\" %"
           <> " (Any -> Any) 'datra.fun"
-      , "captureDeclaration := \"captureDeclaration %_Declaration\" %"
+      , "captureDeclaration := \"captureDeclaration %_DependentDeclaration\" %"
           <> " (Any -> Any) 'datra.fun"
       , "captureId x"
       , "captureId (x : Int)"
@@ -1729,6 +1696,24 @@ regressionTests = do
   assertRejected
     "identifier operations reject expression left sides"
     "(2 + 2) : Nat := 4"
+  assertAstOutput
+    "parenthesized names evaluate dependent declaration templates"
+    "(abc) := 123"
+    (IdentifierTemplateOperation
+      [StringTemplateInterpolation (ref "abc")]
+      (natural 123)
+      (Just (natural 123)))
+  assertAstOutput
+    "parenthesized names evaluate dependent identifier templates"
+    "(abc) : Nat"
+    (IdentifierTemplateOperation
+      [StringTemplateInterpolation (ref "abc")]
+      (ref "Nat")
+      Nothing)
+  assertAstOutput
+    "bare names remain literal declarations"
+    "abc := 123"
+    (AST.assignment "abc" (natural 123) (natural 123))
   assertRejected
     "identifier operations reject dollar-prefixed left sides"
     "$x : Nat := 4"

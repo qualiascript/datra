@@ -167,6 +167,10 @@ scopeTests =
             "'locked := 1\nyield begin let 'locked := 1; yield 'locked"
             (SourceEvaluationFailure
               (LetBindingCannotShadowConsistentIdentifier "'locked"))
+        , programCase
+            "a new scope-protected let does not shadow itself"
+            "yield begin let 'locked := 1; yield 'locked"
+            "1"
         , programCase "a reducing expression may establish a fixed point"
             ( "identity := ({x?:Int} -> Int do yield x)\n"
                 <> "'locked := 1\n"

@@ -139,7 +139,7 @@ import DatraLanguage.AST.Reserved.Bootstrap
 import DatraLanguage.Identifier
   ( IdentifierSpelling (..)
   , identifierSpellingValue
-  , public
+  , isPrivateIdentifier
   , isAsciiCharacter
   , isIdentifierCharacter
   , isLeadingIdentifierCharacter
@@ -906,8 +906,7 @@ astGenericIdentifier expressionValue = do
   guard
     (not
       (genericIdentifierNameOptional identifier
-        && null (public
-          [(genericIdentifierText identifier, ())])))
+        && isPrivateIdentifier (genericIdentifierText identifier)))
   pure identifier
 
 astIdentifierOperation
@@ -1246,8 +1245,47 @@ eitherExpressionWithOperator eitherOperator operand =
 mapExpression :: Parser Expression
 mapExpression =
   makeExprParser
-    (try identifierTemplateOperation <|> try identifierOperation <|> rangeExpression)
+    ( try evaluatedIdentifierOperation
+        <|> try identifierTemplateOperation
+        <|> try identifierOperation
+        <|> rangeExpression
+    )
     mapOperatorTable
+
+-- Parentheses around a declaration head are semantic: a bare @abc@ names the
+-- literal identifier @abc@, while @(abc)@ evaluates @abc@ as the dependent
+-- name template. Reuse the dependent-identifier representation so the two
+-- directions remain one semantic pair rather than two parser-only forms.
+evaluatedIdentifierOperation :: Parser Expression
+evaluatedIdentifierOperation = do
+  evaluated <- try parenthesizedExpression
+  let headExpression = case evaluated of
+        SyntaxBoundary inner -> inner
+        inner -> inner
+  -- Parenthesized declaration heads name the binding whose value supplies the
+  -- template; arbitrary parenthesized expressions remain ordinary operands.
+  case headExpression of
+    IdentifierReference {} -> pure ()
+    _ -> empty
+  let
+      parts = [StringTemplateInterpolation headExpression]
+  isOptional <-
+    maybe False (const True)
+      <$> optional (operatorToken AST.OptionalOperator)
+  choice
+    [ do
+        _ <- continuedOperator AST.AssignmentOperator
+        (typeAnnotation, givenValue) <- assignedIdentifierValue
+        pure (optionalIdentifier isOptional
+          (IdentifierTemplateOperation
+            parts typeAnnotation (Just givenValue)))
+    , do
+        _ <- continuedOperator AST.DependentIdentifierTypeOperator
+        typeAnnotation <- identifierValueExpression
+        givenValue <- optional (assignedValueFor typeAnnotation)
+        pure (optionalIdentifier isOptional
+          (IdentifierTemplateOperation parts typeAnnotation givenValue))
+    ]
 
 identifierTemplateOperation :: Parser Expression
 identifierTemplateOperation = do
@@ -1285,8 +1323,7 @@ identifierOperation = do
       <$> optional (operatorToken AST.OptionalOperator)
   guard
     (not
-      (isOptional
-        && null (public [(identifierName, ())])))
+      (isOptional && isPrivateIdentifier identifierName))
   choice
     [ do
         _ <- continuedOperator AST.AssignmentOperator
@@ -1479,8 +1516,7 @@ genericIntroduction = do
       (operatorToken AST.OptionalOperator)
     guard
       (not
-        (optionalName
-          && null (public [(name, ())])))
+        (optionalName && isPrivateIdentifier name))
     bound <- maybe
       (IdentifierReference (IdentifierString "Any"))
       id

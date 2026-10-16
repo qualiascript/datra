@@ -5,7 +5,7 @@ module Evaluation.ResultContract
   ( decideClosedPublicResultContract
   ) where
 
-import DatraOrdinal (finiteOrdinal, naturalAtOrdinal)
+import DatraOrdinal (finiteOrdinal, naturalAtOrdinal, naturalsBelow)
 import Evaluation.Specification.Decision
   ( Decision (..)
   , decideAll
@@ -91,7 +91,7 @@ decideClosedPublicResultContract = go 256
               [ maybe DecisionUndecidable descend
                   (interpretedMapValueAt
                     (interpretedMap contract) (finiteOrdinal position))
-              | position <- if count == 0 then [] else [0 .. count - 1]
+              | position <- naturalsBelow count
               ]
 
     eligible = DecisionProved ()

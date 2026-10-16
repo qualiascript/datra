@@ -1,0 +1,8 @@
+Std.(
+yield DependentDeclarations : begin
+  marker := 1
+  "pair %(_x : Int) with %(_y : Int)" := it
+  "'protected %(_x : Int)" := it
+  "_private %(_x : Int)" := it
+yield public this
+)

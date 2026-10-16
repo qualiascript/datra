@@ -4,7 +4,8 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
-  ( SyntaxTemplateAdmissibilityFailure (..)
+  ( ParseFailure (ParseFailure)
+  , SyntaxTemplateAdmissibilityFailure (..)
   )
 import DatraTypes
   ( AtlasMapFederationRefutation
@@ -22,7 +23,7 @@ standardLibraryTests =
         [ programCase "val retains its named member"
             "begin val x := 7; yield this" "x : 7"
         , programCase "val stores the canonical-value marker on its identifier"
-            "begin val x := 7; yield this[0][2]" "$CanonicalValue"
+            "begin val x := 7; yield this[0][2]" "$val"
         , programCase "let composes outside val"
             "begin a := x + 1; let val x := 10; yield a" "11"
         , programCase "val composes with optional names"
@@ -59,7 +60,11 @@ standardLibraryTests =
             "yield DependentIdentifier"
             (SourceEvaluationFailure
               (UnknownIdentifier "DependentIdentifier"))
-        , programFailureCase "Declaration is private to the library"
+        , programFailureCase "DependentDeclaration is private to the library"
+            "yield DependentDeclaration"
+            (SourceEvaluationFailure
+              (UnknownIdentifier "DependentDeclaration"))
+        , programFailureCase "the former Declaration name is unavailable"
             "yield Declaration"
             (SourceEvaluationFailure (UnknownIdentifier "Declaration"))
         , programFailureCase "_SyntaxTemplate is private to the library"
@@ -347,8 +352,8 @@ standardLibraryTests =
             ("'datra.val in (it (unit := 7))\nyield unit + 0") "7"
         , programCase "syntax implementation captures its declaration context"
             ("yield ('datra.val in begin "
-              <> "'canon := \"canon %('datra.Declaration)\" % "
-              <> "('datra.Declaration -> 'datra.Declaration) it; "
+              <> "'canon := \"canon %('datra.DependentDeclaration)\" % "
+              <> "('datra.DependentDeclaration -> 'datra.DependentDeclaration) it; "
               <> "f := Nat -> Nat do canon x := 7; yield x; yield f 0)") "7"
         , programCase "syntax holes retain their contextual type"
             ("Nat in ('identity := \"identity %(it)\" % "
@@ -436,7 +441,8 @@ standardLibraryTests =
     , testGroup "scope rejections"
         [ programFailureCase "duplicate scope member"
             "a:=5\na:=8\nyield this"
-            (SourceEvaluationFailure (IdentifierStringOverlap "a"))
+            (SourceParseFailure (ParseFailure
+              "OverlappingDependentDeclarations \"a\" \"a\""))
         , programFailureCase "specified function validates narrowed input"
             ("f := ({x?:Int} -> Int do yield x+1)\n"
               <> "g := (f ~> ({x?:Nat} -> Int))\nyield g (-1)")
@@ -457,7 +463,7 @@ standardLibraryTests =
             , "(Nat -> Nat) of Any"
             , "'datra.Expr of Any"
             , "'datra.DependentIdentifier of Any"
-            , "'datra.Declaration of Any"
+            , "'datra.DependentDeclaration of Any"
             , "'datra.Block of Any"
             , "'datra.FunctionBody of Any"
             , "(Nat; 'datra.Expr) of Any"
@@ -784,6 +790,14 @@ declaredPatternTests =
         "8"
     , programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
+    , programCase "an application spine is one syntax boundary"
+        ( "prefix := \"prefix %_Expr\" % ({value?:Any} -> Any)"
+            <> " do yield value\n"
+            <> "choose := \"%_Expr otherwise %_Expr\""
+            <> " % ({left?:Any; right?:Any} -> Any) do yield right\n"
+            <> "yield prefix 1 otherwise 2"
+        )
+        "2"
     , programCase "surface syntax name may differ from its binding"
         ( "abc := \"def %Nat next\" % ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
@@ -901,7 +915,8 @@ declaredPatternTests =
         "3"
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
-        (SourceEvaluationFailure (IdentifierStringOverlap "step"))
+        (SourceParseFailure (ParseFailure
+          "OverlappingDependentDeclarations \"step\" \"step\""))
     , programFailureCase "ambiguous syntax alternatives"
         ( "step := ((\"step %Int next\" % (Int -> Int) 'datra.abs)"
             <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"

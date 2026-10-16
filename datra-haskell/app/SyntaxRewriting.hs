@@ -12,10 +12,10 @@ module SyntaxRewriting
   ) where
 
 import Control.Applicative ((<|>))
-import BlockScope
-  ( Declaration (declarationName, declarationValue)
+import DatraLanguage.DependentDeclaration
+  ( DependentDeclaration (..)
   , bindingNames
-  , blockDeclaration
+  , dependentDeclaration
   )
 import Data.List (nub, nubBy)
 import Data.Maybe (maybeToList)
@@ -26,18 +26,27 @@ import Parsing (inferredFunction)
 import DatraTypes
   ( EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
   , InterpretedValue
+  , booleanCondition
+  , eitherValue
   , interpretedFunctionBody
+  , interpretedSemanticResult
+  , subfederationValues
   )
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
+  , syntaxHoleValue
   )
 import SyntaxDefinitions
   ( SyntaxRule (..)
+  , DependentSyntaxRule (..)
+  , DependentSyntaxInvocation (..)
   , contextualSyntaxRulesFor
   , declarationRules
   , normalizeSyntaxExpansion
+  , syntaxDependentRule
+  , syntaxRuleAdapter
   , syntaxTemplateLiteralPrefix
   )
 import SyntaxTemplateMatching
@@ -62,7 +71,8 @@ data SyntaxRewriteFailure
   = MissingImplicitBlockResult
   | InvalidPrivateOptionalArgumentName
   | AmbiguousBareSkipApplication
-  | SyntaxRewriteMatchFailure SyntaxTemplateMatchFailure
+  | OverlappingDependentDeclarations String String
+  | NonInjectiveDependentDeclaration String
   deriving (Eq, Show)
 
 -- Evaluation callbacks share a lexical scope. Entering a contextual expression
@@ -115,8 +125,8 @@ compileRewriteRule rule = RewriteRule
 rewriteRuleName :: RewriteRule -> String
 rewriteRuleName = syntaxName . rewriteRule
 
-rewriteRuleImplementation :: RewriteRule -> Expression
-rewriteRuleImplementation = syntaxImplementation . rewriteRule
+rewriteRuleImplementation :: RewriteRule -> Maybe Expression
+rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
 
 -- Contextual surface names exist only inside syntax nodes whose evaluator
 -- installs the corresponding private binding. Entering such a node replaces
@@ -170,9 +180,16 @@ rewriteImplicitSyntax
   -> [Expression]
   -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax context rules declarations =
-  resolveImplicitBlock (contextCapture context)
-    (rewriteEnvironment context rules declarations) []
+rewriteImplicitSyntax context rules declarations entries = do
+  let capture = contextCapture context
+      initial = rewriteEnvironment context rules declarations
+  -- Discover recursive declarations through the same block pass used by
+  -- explicit resources, but retain the raw syntax for the implicit delimiter
+  -- pass. In particular, operators surrounding @yield@ must be rewritten only
+  -- after that boundary has been identified.
+  (discovered, _) <- rewriteSequence capture initial entries
+  resolveImplicitBlock capture
+    (recursiveRewriteEnvironment True initial discovered) [] entries
 
 -- Keep visible syntax rules, while moving the declarations they depend on into
 -- the evaluator's parent scope. RHS declarations belong to the new scope.
@@ -254,7 +271,6 @@ resolveImplicitBlock capture initial = go initial
                         else Begin bindings finalResult))
                 _ -> Right Nothing
             Left NoMatchingSyntaxTemplate -> Right Nothing
-            Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where
         explicitBlockAtHead = case remaining of
           first : _ -> 0 `elem`
@@ -269,24 +285,44 @@ rewriteSequence
   -> RewriteEnvironment
   -> [Expression]
   -> Either SyntaxRewriteFailure ([Expression], RewriteEnvironment)
-rewriteSequence capture initial rawEntries = fixedPoint []
+rewriteSequence capture initial rawEntries = do
+  -- A recursive syntax modifier can itself be declared using syntax that is
+  -- still being bootstrapped in the same block. Run one disposable discovery
+  -- pass with declaration-shaped application operands provisionally visible;
+  -- only declarations that actually rewrite to @Let@ survive into the real
+  -- fixed point below.
+  (provisional, _) <- pass [] discoveryEnvironment rawEntries
+  let recursive = filter isLetDeclarationExpression provisional
+  fixedPoint provisional recursive
   where
-    fixedPoint recursiveDeclarations = do
-      let recursiveEnvironment strict = (foldl advanceScope
-            initial recursiveDeclarations)
-              { rewriteStrictCaptures = strict }
+    discoveryEnvironment = foldl introduceCandidates initial rawEntries
+    introduceCandidates environment entry =
+      foldl advanceScope environment (declarationCandidates entry)
+    declarationCandidates expressionValue =
+      if maybe False (const True) (dependentDeclaration expressionValue)
+        then [expressionValue]
+        else case expressionValue of
+          FunctionApplication function argument ->
+            declarationCandidates function <> declarationCandidates argument
+          SyntaxBoundary inner -> declarationCandidates inner
+          _ -> []
+
+    fixedPoint stable recursiveDeclarations = do
       (rewritten, tentativeEnvironment) <-
-        pass [] (recursiveEnvironment False) rawEntries
-      let discovered = filter isLetDeclaration rewritten
+        pass [] (recursiveRewriteEnvironment False initial stable) rawEntries
+      let discovered = filter isLetDeclarationExpression rewritten
       if discovered == recursiveDeclarations
         then if not (rewriteStrictCaptures initial)
-          then Right (rewritten, tentativeEnvironment)
+          then do
+            validateDependentDeclarations rewritten
+            Right (rewritten, tentativeEnvironment)
           else do
             (strictlyRewritten, strictEnvironment) <-
               strictPass rewritten 0 []
-                (recursiveEnvironment True) rawEntries
+                (recursiveRewriteEnvironment True initial rewritten) rawEntries
+            validateDependentDeclarations strictlyRewritten
             Right (strictlyRewritten, strictEnvironment)
-        else fixedPoint discovered
+        else fixedPoint rewritten discovered
 
       where
         -- Let declarations are visible throughout their block, but they retain
@@ -295,28 +331,104 @@ rewriteSequence capture initial rawEntries = fixedPoint []
         -- recursive target such as Int lose access to an earlier Maybe.
         strictPass _ _ reversed environment [] =
           Right (reverse reversed, environment)
-        strictPass stable position reversed environment (entry : remaining) = do
+        strictPass stableEntries position reversed environment
+            (entry : remaining) = do
           let scoped = environment
-                { rewriteDeclarations = scopedDeclarations position stable
+                { rewriteDeclarations =
+                    scopedBlockDeclarations initial position stableEntries
                 }
           (rewrittenEntry, trailing) <-
             rewriteWithTail False capture scoped entry remaining
           let next = advanceScope scoped rewrittenEntry
-          strictPass stable (position + 1)
+          strictPass stableEntries (position + 1)
             (rewrittenEntry : reversed) next trailing
 
-        declarationsAt position = map snd . filter visible . zip [0 :: Int ..]
-          where
-            visible (index, declaration) =
-              index < position || isLetDeclaration declaration
+    validateDependentDeclarations = go initial []
+      where
+        go _ _ [] = Right ()
+        go environment earlier (entry : remaining) = do
+          let resolved = resolveDependentDeclarationHead environment entry
+              currentRules = declarationRules resolved
+              currentDeclaration = dependentDeclaration resolved
+              currentFamily = currentDeclaration >>= evaluateFamily environment
+          case currentDeclaration of
+            Nothing -> pure ()
+            Just declaration -> mapM_
+              (validateFamily (declarationLabel declaration) currentFamily)
+              earlier
+          if isValDependentDeclaration resolved
+            then mapM_ (validateInjective environment)
+              [ (rule, dependent)
+              | rule <- currentRules
+              , Just dependent <- [syntaxDependentRule rule]
+              , DependentSyntaxLookup {} <-
+                  [dependentSyntaxInvocation dependent]
+              ]
+            else Right ()
+          let retained = case currentDeclaration of
+                Nothing -> earlier
+                Just declaration -> earlier <>
+                  [(declarationLabel declaration, currentFamily)]
+          go (advanceScope environment entry) retained remaining
 
-        scopedDeclarations position stable =
-          filter (not . shadowsOuter) (rewriteDeclarations initial) <> local
+        evaluateFamily environment declaration =
+          rewriteEvaluate environment
+            (rewriteDeclarations environment)
+            (StringTemplate (dependentDeclarationParts declaration))
+
+        declarationLabel = renderSourceExpression
+          . StringTemplate
+          . dependentDeclarationParts
+
+        validateFamily currentLabel currentFamily
+            (previousLabel, previousFamily) =
+          case (previousFamily, currentFamily) of
+            (Just previous, Just current)
+              | Right _ <- eitherValue previous current -> Right ()
+            _ -> Left (OverlappingDependentDeclarations
+              previousLabel currentLabel)
+
+        validateInjective environment (rule, dependent)
+          | null captures = Right ()
+          | identityImplementation implementation = Right ()
+          | otherwise =
+              case (evaluate input, evaluate output) of
+                (Just inputValue, Just outputValue)
+                  | equivalentFederations inputValue outputValue -> Right ()
+                _ -> Left (NonInjectiveDependentDeclaration
+                  (syntaxName rule))
           where
-            local = declarationsAt position stable
-            localNames = concatMap bindingNames local
-            shadowsOuter declaration = any (`elem` localNames)
-              (bindingNames declaration)
+            captures = dependentSyntaxCaptures dependent
+            implementation = dependentSyntaxImplementation dependent
+            input = ArgumentMap (zipWith captureMember captures
+              (templateCaptureTypes rule))
+            output = In input implementation
+            evaluate = rewriteEvaluate environment
+              (rewriteDeclarations environment)
+
+        captureMember (Just (name, annotation)) _ =
+          IdentifierOperation name annotation Nothing
+        captureMember Nothing annotation = annotation
+
+        templateCaptureTypes = foldr captureType []
+          . syntaxTemplatePieces . syntaxTemplate
+        captureType (SyntaxHole kind) rest = syntaxHoleValue kind : rest
+        captureType SyntaxLiteral {} rest = rest
+
+        equivalentFederations left right =
+          interpretedSemanticResult left == interpretedSemanticResult right
+            || (isSubfederation left right && isSubfederation right left)
+        isSubfederation source target =
+          case subfederationValues source target >>= booleanCondition of
+            Right accepted -> accepted
+            Left _ -> False
+
+        identityImplementation expressionValue = case expressionValue of
+          IdentifierReference (IdentifierString "it") -> True
+          InModule _ value -> identityImplementation value
+          SyntaxBoundary value -> identityImplementation value
+          _ -> isContextualAccessOf
+            (IdentifierString "_it") expressionValue
 
     pass reversed environment [] = Right (reverse reversed, environment)
     pass reversed environment (entry : remaining) = do
@@ -324,9 +436,54 @@ rewriteSequence capture initial rawEntries = fixedPoint []
         rewriteWithTail False capture environment entry remaining
       let next = advanceScope environment rewritten
       pass (rewritten : reversed) next trailing
+    isValDependentDeclaration expressionValue = case expressionValue of
+      Val value -> maybe False (const True) (dependentDeclaration value)
+      Let value -> isValDependentDeclaration value
+      In _ value -> isValDependentDeclaration value
+      _ -> False
 
-    isLetDeclaration Let {} = True
-    isLetDeclaration _ = False
+isLetDeclarationExpression :: Expression -> Bool
+isLetDeclarationExpression expressionValue =
+  maybe False dependentDeclarationIsLet
+    (dependentDeclaration expressionValue)
+
+scopedBlockDeclarations
+  :: RewriteEnvironment
+  -> Int
+  -> [Expression]
+  -> [Expression]
+scopedBlockDeclarations initial position entries =
+  filter (not . shadowsOuter) (rewriteDeclarations initial) <> local
+  where
+    local =
+      [ declaration
+      | (index, declaration) <- zip [0 :: Int ..] entries
+      , index < position || isLetDeclarationExpression declaration
+      ]
+    localNames = concatMap bindingNames local
+    shadowsOuter declaration = any (`elem` localNames)
+      (bindingNames declaration)
+
+recursiveRewriteEnvironment
+  :: Bool
+  -> RewriteEnvironment
+  -> [Expression]
+  -> RewriteEnvironment
+recursiveRewriteEnvironment strict initial entries =
+  (foldl introduceRecursive initial
+    [ (position, declaration)
+    | (position, declaration) <- zip [0 :: Int ..] entries
+    , isLetDeclarationExpression declaration
+    ])
+      { rewriteDeclarations = rewriteDeclarations initial
+      , rewriteStrictCaptures = strict
+      }
+  where
+    introduceRecursive environment (position, declaration) =
+      let visible = scopedBlockDeclarations initial position entries
+      in advanceScope
+          (environment { rewriteDeclarations = visible })
+          declaration
 
 rewriteStandalone
   :: CaptureHole
@@ -685,11 +842,25 @@ rewriteChildren capture environment value =
           case embedded of
             Just rewritten -> pure rewritten
             Nothing -> do
-              rewritten <- traverseExpressionChildren
+              rewritten <- rewriteApplicationSpineChildren
                 (rewriteStandalone capture environment) value
               directSyntaxFunctionApplication capture environment rewritten
     _ -> traverseExpressionChildren
       (rewriteStandalone capture environment) value
+
+-- A neutral left-associated application is one syntactic boundary. Rewriting
+-- its nested function prefixes independently can execute a syntax function on
+-- a token that belongs to a larger infix or template match. Parentheses remain
+-- explicit 'SyntaxBoundary' nodes, so intentionally nested applications still
+-- receive their own rewrite pass.
+rewriteApplicationSpineChildren
+  :: (Expression -> Either SyntaxRewriteFailure Expression)
+  -> Expression
+  -> Either SyntaxRewriteFailure Expression
+rewriteApplicationSpineChildren rewrite value =
+  applicationFrom <$> traverse rewrite (function : arguments)
+  where
+    (function, arguments) = applicationSpine value
 
 -- Syntax-backed declarations are ordinary functions whose function bodies
 -- can expand AST captures before runtime evaluation.
@@ -714,7 +885,7 @@ directSyntaxFunctionExpansion environment selectedRule application =
       , any (Set.member literal . rewriteRuleLiterals) (rewriteRules environment) ->
           Right application
     (function, [argument]) ->
-      choose adapters [] Nothing
+      choose adapters []
       where
         captures expected = case expected of
           Just 0 -> []
@@ -722,32 +893,35 @@ directSyntaxFunctionExpansion environment selectedRule application =
           _ -> directSyntaxArguments argument
         adapters = do
           (expressionValue, expected, evaluate) <- case selectedRule of
-            Just rule -> [(rewriteRuleImplementation rule,
-              Just (captureCount rule), evaluateRule rule)]
+            Just rule ->
+              [ (implementation, Just (captureCount rule), evaluateRule rule)
+              | implementation <- maybeToList
+                  (rewriteRuleImplementation rule)
+              ]
             Nothing -> case declaredImplementations function of
               []
                 | mayResolveSyntaxFunctionBody function -> [(function, Nothing, evaluateHere)]
                 | otherwise -> []
               implementations ->
-                [ (rewriteRuleImplementation rule, Just
-                    (captureCount rule), evaluateRule rule)
+                [ (implementation, Just (captureCount rule), evaluateRule rule)
                 | rule <- implementations
+                , implementation <- maybeToList
+                    (rewriteRuleImplementation rule)
                 ]
           value <- maybeToList (evaluate expressionValue)
           body <- maybeToList (interpretedFunctionBody value)
           case body of
             EvaluatedSyntaxFunctionBody _ expansion -> [(expansion, expected)]
             _ -> []
-        choose [] successes firstFailure =
+        choose [] successes =
           case nub successes of
             [expanded] -> Right expanded
-            [] -> maybe (Right application) expansionFailure firstFailure
+            [] -> Right application
             _ -> Right application
-        choose ((adapter, expected) : remaining) successes firstFailure =
+        choose ((adapter, expected) : remaining) successes =
           case adapter (captures expected) of
-            Right expanded -> choose remaining (expanded : successes) firstFailure
-            Left failure ->
-              choose remaining successes (firstFailure <|> Just failure)
+            Just expanded -> choose remaining (expanded : successes)
+            Nothing -> choose remaining successes
     _ -> Right application
   where
     evaluateHere = rewriteEvaluate environment (rewriteDeclarations environment)
@@ -795,10 +969,10 @@ directSyntaxFunctionExpansion environment selectedRule application =
           where
             firstDeclared [] = Nothing
             firstDeclared (entry : remaining) =
-              case blockDeclaration entry of
+              case dependentDeclaration entry of
                 Just declaration
-                  | declarationName declaration == requested ->
-                      Just (declarationValue declaration)
+                  | requested `elem` bindingNames entry ->
+                      Just (dependentDeclarationImplementation declaration)
                 _ -> firstDeclared remaining
     captureCount rule = length
       [ ()
@@ -813,8 +987,6 @@ directSyntaxFunctionExpansion environment selectedRule application =
     scopeSource _ (ScopeAccess source _) = source
     scopeSource namespace _ =
       IdentifierReference (IdentifierString namespace)
-    expansionFailure failure = Left (SyntaxRewriteMatchFailure
-      (SyntaxTemplateExpansionFailure failure))
 
 -- Inspect the adapter's AST constructor before rewriting a raw block. A
 -- function body already shadows the outer input while its declarations and
@@ -1031,7 +1203,6 @@ matchOrdinarySyntaxWithTail includeConcatenation
           Just <$> directSyntaxFunctionExpansion
             environment (Just rule) rewritten
         Left NoMatchingSyntaxTemplate -> firstCandidate rule remaining
-        Left failure -> Left (SyntaxRewriteMatchFailure failure)
     earlierPrefixPending = any (\earlierRule ->
       not (null (rewriteRuleLiteralPrefix earlierRule))
         && ruleLiteralsPresent earlierRule facts)
@@ -1133,7 +1304,6 @@ matchSequenceFunctionBody capture environment value trailing =
           [rewriteRule rule] candidate of
         Right expanded -> Right (Just (expanded, remaining))
         Left NoMatchingSyntaxTemplate -> Right Nothing
-        Left failure -> Left (SyntaxRewriteMatchFailure failure)
       where
         candidate = applicationFrom
           (map literalExpression prefix <> [AtlasMap operands, body])
@@ -1277,7 +1447,6 @@ matchEmbeddedBlockWith capture environment =
                       [rewriteRule rule]
                 case match candidate of
                   Left NoMatchingSyntaxTemplate -> Right Nothing
-                  Left failure -> Left (SyntaxRewriteMatchFailure failure)
                   Right expanded -> do
                     direct <- directSyntaxFunctionExpansion
                       environment (Just rule) expanded
@@ -1304,7 +1473,6 @@ matchEmbeddedBlockWith capture environment =
                 Left NoMatchingSyntaxTemplate ->
                   case match (candidate (wrapResult rawResult)) of
                     Left NoMatchingSyntaxTemplate -> Right Nothing
-                    Left failure -> Left (SyntaxRewriteMatchFailure failure)
                     Right expanded -> do
                       direct <- directSyntaxFunctionExpansion
                         nested (Just rule) expanded
@@ -1314,7 +1482,6 @@ matchEmbeddedBlockWith capture environment =
                         ( attachAdjacentBody before rewritten
                         , fallbackRemaining
                         ))
-                Left failure -> Left (SyntaxRewriteMatchFailure failure)
                 Right expanded -> do
                   direct <- directSyntaxFunctionExpansion
                     nested (Just rule) expanded
@@ -1390,6 +1557,10 @@ trailingIdentifier :: Expression -> Maybe String
 trailingIdentifier value = case value of
   IdentifierReference (IdentifierString name) -> Just name
   SyntaxBoundary _ -> Nothing
+  -- A qualified member is a complete operand. Its final component may share
+  -- a spelling with a declared infix form (notably @'datra.in@), but that does
+  -- not leave the surrounding source line awaiting a right operand.
+  ScopeAccess _ _ -> Nothing
   _ -> case reverse (expressionChildren value) of
     rightmost : _ -> trailingIdentifier rightmost
     [] -> Nothing
@@ -1640,7 +1811,8 @@ advanceScope environment entry = environment
     retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
     introduced =
-      map compileScoped (declarationRules entry) <> aliasRules entry
+      map compileScoped
+        (declarationRules (resolveDependentDeclarationHead environment entry))
     compileScoped rule = (compileRewriteRule (specializeRule rule))
       { rewriteRuleEvaluation = Just
           (rewriteEvaluate environment retainedDeclarations)
@@ -1657,15 +1829,42 @@ advanceScope environment entry = environment
           SyntaxLiteral {} -> piece
       | piece <- pieces
       ]
-    aliasRules expressionValue = case blockDeclaration expressionValue of
-      Just declaration
-        | IdentifierReference (IdentifierString target) <-
-            declarationValue declaration ->
-        [ rule
-            { rewriteRule = (rewriteRule rule)
-                { syntaxName = declarationName declaration }
-            }
-        | rule <- rewriteRules environment
-        , rewriteRuleName rule == target
-        ]
-      _ -> []
+-- Resolve the explicitly parenthesized declaration head against declarations
+-- visible at this block position. Bare identifiers never take this path, so
+-- @abc := value@ continues to declare the literal name @abc@.
+resolveDependentDeclarationHead
+  :: RewriteEnvironment
+  -> Expression
+  -> Expression
+resolveDependentDeclarationHead environment expressionValue =
+  case expressionValue of
+    Let value -> Let (resolveDependentDeclarationHead environment value)
+    Val value -> Val (resolveDependentDeclarationHead environment value)
+    In contextual value -> In contextual
+      (resolveDependentDeclarationHead environment value)
+    IdentifierTemplateOperation
+        [StringTemplateInterpolation headExpression]
+        annotation
+        given ->
+      case resolvedParts headExpression of
+        Just parts -> IdentifierTemplateOperation parts annotation given
+        Nothing -> expressionValue
+    _ -> expressionValue
+  where
+    resolvedParts (SyntaxBoundary inner) = resolvedParts inner
+    resolvedParts (StringTemplate parts) = Just parts
+    resolvedParts (AsciiStringLiteral literal) =
+      Just [StringTemplateLiteral literal]
+    resolvedParts (IdentifierReference (IdentifierString name)) = do
+      declaration <- firstDeclaration name
+        (reverse (rewriteDeclarations environment))
+      resolvedParts (dependentDeclarationImplementation declaration)
+    resolvedParts _ = Nothing
+
+    firstDeclaration _ [] = Nothing
+    firstDeclaration requested (candidate : remaining) =
+      case dependentDeclaration candidate of
+        Just declaration
+          | requested `elem` bindingNames candidate ->
+              Just declaration
+        _ -> firstDeclaration requested remaining
