@@ -2,13 +2,11 @@
 -- canonical reconstruction. The caller supplies how binding values are read.
 module BlockScope
   ( DependentDeclaration (..)
-  , blockDeclaration
   , dependentDeclarationStaticName
   , declarationIsLet
   , declarationIsCanonicalValue
   , declarationAnnotation
   , declarationValue
-  , isBlockDeclaration
   , isDependentDeclaration
   , dependentDeclaration
   , bindingNames
@@ -25,15 +23,6 @@ data DependentDeclaration = DependentDeclaration
   , dependentDeclarationAnnotation :: Maybe Expression
   , dependentDeclarationImplementation :: Expression
   }
-
--- A literal declaration is the zero-capture member of the same declaration
--- family used by evaluated string templates. Surface syntax chooses the
--- template; scope construction and export do not choose a second data model.
-blockDeclaration :: Expression -> Maybe DependentDeclaration
-blockDeclaration expressionValue = do
-  declaration <- dependentDeclaration expressionValue
-  _ <- dependentDeclarationStaticName declaration
-  pure declaration
 
 dependentDeclarationStaticName :: DependentDeclaration -> Maybe String
 dependentDeclarationStaticName declaration =
@@ -52,9 +41,6 @@ declarationAnnotation = dependentDeclarationAnnotation
 
 declarationValue :: DependentDeclaration -> Expression
 declarationValue = dependentDeclarationImplementation
-
-isBlockDeclaration :: Expression -> Bool
-isBlockDeclaration = isDependentDeclaration
 
 isDependentDeclaration :: Expression -> Bool
 isDependentDeclaration = maybe False (const True) . dependentDeclaration

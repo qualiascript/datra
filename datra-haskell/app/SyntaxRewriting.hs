@@ -15,9 +15,9 @@ import Control.Applicative ((<|>))
 import BlockScope
   ( DependentDeclaration (dependentDeclarationParts)
   , bindingNames
-  , blockDeclaration
   , dependentDeclaration
   , dependentDeclarationStaticName
+  , declarationIsLet
   , declarationValue
   , isDependentDeclaration
   )
@@ -181,9 +181,14 @@ rewriteImplicitSyntax
   -> [Expression]
   -> [Expression]
   -> Either SyntaxRewriteFailure Expression
-rewriteImplicitSyntax context rules declarations =
-  resolveImplicitBlock (contextCapture context)
-    (rewriteEnvironment context rules declarations) []
+rewriteImplicitSyntax context rules declarations entries = do
+  let capture = contextCapture context
+      initial = rewriteEnvironment context rules declarations
+  -- Implicit resources share the declaration fixed point used by every other
+  -- block. The remaining implicit pass only identifies the block delimiter
+  -- and result; it no longer owns declaration visibility.
+  (rewritten, _) <- rewriteSequence capture initial entries
+  resolveImplicitBlock capture initial [] rewritten
 
 -- Keep visible syntax rules, while moving the declarations they depend on into
 -- the evaluator's parent scope. RHS declarations belong to the new scope.
@@ -294,9 +299,9 @@ rewriteSequence capture initial rawEntries = do
     introduceCandidates environment entry =
       foldl advanceScope environment (declarationCandidates entry)
     declarationCandidates expressionValue =
-      case blockDeclaration expressionValue of
-        Just _ -> [expressionValue]
-        Nothing -> case expressionValue of
+      if isDependentDeclaration expressionValue
+        then [expressionValue]
+        else case expressionValue of
           FunctionApplication function argument ->
             declarationCandidates function <> declarationCandidates argument
           SyntaxBoundary inner -> declarationCandidates inner
@@ -458,8 +463,8 @@ rewriteSequence capture initial rawEntries = do
         rewriteWithTail False capture environment entry remaining
       let next = advanceScope environment rewritten
       pass (rewritten : reversed) next trailing
-    isLetDeclaration Let {} = True
-    isLetDeclaration _ = False
+    isLetDeclaration expressionValue =
+      maybe False declarationIsLet (dependentDeclaration expressionValue)
 
     isValDependentDeclaration expressionValue = case expressionValue of
       Val value -> isDependentDeclaration value
@@ -948,7 +953,7 @@ directSyntaxFunctionExpansion environment selectedRule application =
           where
             firstDeclared [] = Nothing
             firstDeclared (entry : remaining) =
-              case blockDeclaration entry of
+              case dependentDeclaration entry of
                 Just declaration
                   | dependentDeclarationStaticName declaration
                       == Just requested ->
@@ -1817,7 +1822,7 @@ advanceScope environment entry = environment
           SyntaxLiteral {} -> piece
       | piece <- pieces
       ]
-    aliasRules expressionValue = case blockDeclaration expressionValue of
+    aliasRules expressionValue = case dependentDeclaration expressionValue of
       Just declaration
         | Just declaredName <- dependentDeclarationStaticName declaration
         , IdentifierReference (IdentifierString target) <-
@@ -1865,7 +1870,7 @@ resolveDependentDeclarationHead environment expressionValue =
 
     firstDeclaration _ [] = Nothing
     firstDeclaration requested (candidate : remaining) =
-      case blockDeclaration candidate of
+      case dependentDeclaration candidate of
         Just declaration
           | dependentDeclarationStaticName declaration == Just requested ->
               Just declaration

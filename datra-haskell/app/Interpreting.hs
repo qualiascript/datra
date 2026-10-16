@@ -366,7 +366,7 @@ localScopeDeclarations declarations source = case source of
     case
         [ declarationValue binding
         | declaration <- reverse declarations
-        , Just binding <- [blockDeclaration declaration]
+        , Just binding <- [dependentDeclaration declaration]
         , dependentDeclarationStaticName binding == Just name
         ] of
       value : _ -> mapScopeEntries value
@@ -594,7 +594,7 @@ identifierCaptureIsSubtype scope declarations
   case
       [ annotation
       | declaration <- reverse declarations
-      , Just details <- [blockDeclaration declaration]
+      , Just details <- [dependentDeclaration declaration]
       , dependentDeclarationStaticName details == Just name
       , Just annotation <- [declarationAnnotation details]
       ] of
@@ -723,7 +723,7 @@ validateFunctionBodyParts expressionValue = do
   where
     validatePart part
       | isDeclarationExpression part
-      , isBlockDeclaration part = Right ()
+      , isDependentDeclaration part = Right ()
     validatePart Let {} = Right ()
     validatePart Val {} = Right ()
     validatePart part
@@ -3179,9 +3179,12 @@ bindingImports _ expressionValue
   | Just declaration <- dependentDeclaration expressionValue
   , Nothing <- dependentDeclarationStaticName declaration = ([], [])
 bindingImports strict expressionValue =
-  case blockDeclaration (if strict then Let expressionValue else expressionValue) of
-    Just declaration -> ([declaration], [])
-    Nothing -> case expressionValue of
+  case dependentDeclaration
+      (if strict then Let expressionValue else expressionValue) of
+    Just declaration
+      | Just _ <- dependentDeclarationStaticName declaration ->
+          ([declaration], [])
+    _ -> case expressionValue of
       Let value -> bindingImports True value
       Val _ -> ([], [expressionValue])
       Assert {} -> ([], [expressionValue])
@@ -3924,7 +3927,8 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
       bodyDeclarations =
         [ declaration
         | entry <- preparedBindings
-        , Just declaration <- [blockDeclaration entry]
+        , Just declaration <- [dependentDeclaration entry]
+        , Just _ <- [dependentDeclarationStaticName declaration]
         ]
   -- Reject an unprovable recursive-scope shadow before invocation. Finite
   -- bindings still use the ordinary fixed-point comparison once parameter
