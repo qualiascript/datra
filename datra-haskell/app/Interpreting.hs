@@ -50,7 +50,7 @@ module Interpreting
 import Data.Bifunctor qualified as Bifunctor
 import Data.List (nub, nubBy, intercalate, stripPrefix)
 import Data.Maybe (catMaybes)
-import BlockScope
+import DatraLanguage.DependentDeclaration
 import FunctionClosure
 import DatraHost
   ( datraHostIdentifier
@@ -87,7 +87,6 @@ import DatraLanguage.AST
   , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
-  , isDeclarationExpression
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -364,7 +363,7 @@ localScopeDeclarations :: [Expression] -> Expression -> [Expression]
 localScopeDeclarations declarations source = case source of
   IdentifierReference (IdentifierString name) ->
     case
-        [ declarationValue binding
+        [ dependentDeclarationImplementation binding
         | declaration <- reverse declarations
         , Just binding <- [dependentDeclaration declaration]
         , dependentDeclarationStaticName binding == Just name
@@ -406,7 +405,7 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       FunctionBody {} -> Just captured
       _ -> Nothing
     DeclarationSyntaxHole {}
-      | isDeclarationExpression captured -> Just captured
+      | Just _ <- dependentDeclaration captured -> Just captured
       | otherwise -> Nothing
     DependentIdentifierSyntaxHole {} -> dependentIdentifierCapture captured
     ValueSyntaxHole target ->
@@ -437,13 +436,9 @@ captureSyntaxHole base modules strict declarations previous kind captured =
       where
         selectValue scope _ =
           let interpret = evalInScope scope []
-          in if identifierCaptureIsSubtype
-              scope scopedDeclarations targetExpression captured
-            then Just captured
-            else case canonicalValueCapture
-                interpret targetExpression captured of
-              Right canonical -> Just canonical
-              Left _ -> Nothing
+          in case canonicalValueCapture interpret targetExpression captured of
+            Right canonical -> Just canonical
+            Left _ -> Nothing
     captureInScopes select targetExpression =
       enclosingSyntaxCapture <|> scopedCapture
       where
@@ -583,28 +578,6 @@ syntaxValidationDeclaration declaration = case declaration of
           (IdentifierOperation name implementation (Just implementation)))
   _ -> declaration
 
-identifierCaptureIsSubtype
-  :: Scope
-  -> [Expression]
-  -> Expression
-  -> Expression
-  -> Bool
-identifierCaptureIsSubtype scope declarations
-    target (IdentifierReference (IdentifierString name)) =
-  case
-      [ annotation
-      | declaration <- reverse declarations
-      , Just details <- [dependentDeclaration declaration]
-      , dependentDeclarationStaticName details == Just name
-      , Just annotation <- [declarationAnnotation details]
-      ] of
-    annotation : _ -> either (const False) id $ do
-      source <- evalInScope scope [] annotation
-      destination <- evalInScope scope [] target
-      subfederationValues source destination >>= booleanCondition
-    [] -> False
-identifierCaptureIsSubtype _ _ _ _ = False
-
 interpretLocatedExpression
   :: Located Expression
   -> Either (DatraError InterpretingError) InterpretedValue
@@ -722,8 +695,7 @@ validateFunctionBodyParts expressionValue = do
   mapM_ validateFunctionBodyParts (expressionChildren expressionValue)
   where
     validatePart part
-      | isDeclarationExpression part
-      , isDependentDeclaration part = Right ()
+      | Just _ <- dependentDeclaration part = Right ()
     validatePart Let {} = Right ()
     validatePart Val {} = Right ()
     validatePart part
@@ -3012,7 +2984,7 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
         [ name
         | declaration <- definitions
         , Just name <- [dependentDeclarationStaticName declaration]
-        , declarationIsLet declaration
+        , dependentDeclarationIsLet declaration
         ]
       finalPosition = length entries
       introduceThis = introducesThis
@@ -3036,7 +3008,7 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
                 [ scoped
                 | ((declaredAt, declaration), scoped) <-
                     zip positionedMembers positionedScopeMembers
-                , declaredAt < position || declarationIsLet declaration
+                , declaredAt < position || dependentDeclarationIsLet declaration
                 ]
               dependent =
                 [ scoped
@@ -3063,14 +3035,14 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
                 [ (name, scoped)
                 | scoped <- visible
                 , let declaration = scopedDependentDeclarationValue scoped
-                , not (declarationIsLet declaration)
+                , not (dependentDeclarationIsLet declaration)
                 , Just name <- [dependentDeclarationStaticName declaration]
                 ]
               recursiveLets =
                 [ (name, scoped)
                 | scoped <- visible
                 , let declaration = scopedDependentDeclarationValue scoped
-                , declarationIsLet declaration
+                , dependentDeclarationIsLet declaration
                 , Just name <- [dependentDeclarationStaticName declaration]
                 ]
 
@@ -3109,16 +3081,15 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
               else Left (InconsistentShadowing name)
       makeBinding retained (name, scoped) =
         let declaration = scopedDependentDeclarationValue scoped
-            annotation = declarationAnnotation declaration
-            expressionValue = declarationValue declaration
+            expressionValue = dependentDeclarationImplementation declaration
             captured = scopedDependentDeclarationScope scoped
         in case lookup name retained of
           Just value ->
             scopeBinding name
-              (RetainedBinding captured annotation expressionValue value)
+              (RetainedBinding captured Nothing expressionValue value)
           Nothing ->
             scopeBinding name
-              (DeferredBinding captured annotation expressionValue)
+              (DeferredBinding captured Nothing expressionValue)
   mapM_ (checkLetShadow scopedEnclosing) definitions
   validateDeclarationFamilies scopedMembers
   pure
@@ -3132,7 +3103,7 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
       case dependentDeclarationStaticName declaration of
         Nothing -> Right ()
         Just name
-          | declarationIsLet declaration
+          | dependentDeclarationIsLet declaration
           , Just binding <- lookupScope name enclosing
           , not (bindingHasUnrestrictedShadowing binding) ->
               Left (LetBindingCannotShadowConsistentIdentifier name)
@@ -3388,8 +3359,8 @@ dynamicDependentDeclarationNamedView reduction captured resolving
               captured
               resolving
               name
-              (declarationAnnotation declaration)
-              (declarationValue declaration)
+              Nothing
+              (dependentDeclarationImplementation declaration)
           pure (namedDeclarationMember declaration name payload)
         _ -> materializeDependentDeclaration
           reduction captured resolving declaration
@@ -4914,32 +4885,12 @@ moduleSyntaxRulesFromValueIn requested scopeName moduleValue = do
         sourceTemplates <- traverse
           (traverseSyntaxTemplate parseScopedRuleExpression)
           templates
-        signature <- parseRuleExpression (functionSignatureSource function)
-        unscopedImplementation <- maybe
-          (pure (IdentifierReference (IdentifierString name)))
-          parseRuleExpression
-          ( functionBodySource <$> functionBody function
-              <|> functionSource function
-          )
-        let implementation = InModule scopeName unscopedImplementation
         pure
           [ SyntaxRule
               { syntaxName = name
               , syntaxTemplate = template
-              , syntaxSignature = signature
-              , syntaxRecursive = False
               , syntaxModule = Just scopeName
-              , syntaxImplementation = implementation
-              , syntaxDependentCaptures = Just
-                  [ Nothing
-                  | SyntaxHole {} <- syntaxTemplatePieces template
-                  ]
-              , syntaxDependentImplementation = Just
-                  (FunctionApplication
-                    (InModule scopeName
-                      (IdentifierReference (IdentifierString name)))
-                    (IdentifierReference (IdentifierString "it")))
-              , syntaxBindsDependentCaptures = False
+              , syntaxDependentRule = Nothing
               }
           | template <- sourceTemplates
           ]

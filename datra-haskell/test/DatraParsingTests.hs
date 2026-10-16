@@ -530,26 +530,11 @@ regressionTests = do
   assertParsed "compact signed skips remain numerical operands"
     "assert -* = +*"
     (Assert False (Equality (Minus Skip) (Plus Skip)))
-  let syntaxControl implementation = SyntaxRule
+  let zeroCaptureSyntax = SyntaxRule
         { syntaxName = "test-control"
         , syntaxTemplate = SyntaxTemplate []
-        , syntaxSignature = ref "Any"
-        , syntaxRecursive = False
         , syntaxModule = Nothing
-        , syntaxImplementation = datraRef implementation
-        , syntaxDependentCaptures = Nothing
-        , syntaxDependentImplementation = Nothing
-        , syntaxBindsDependentCaptures = False
-        }
-  assert "external syntax implementations are not selected by namespace"
-    (expandSyntax (syntaxControl ["syntax", "unknown"])
-      (TemplateSelection (ref "test-control") [])
-      == Right (FunctionApplication
-        (ref "test-control")
-        (AtlasMap [])))
-  let zeroCaptureSyntax = (syntaxControl ["syntax", "unknown"])
-        { syntaxName = "answer"
-        , syntaxSignature = FunctionType (natural 42) (ref "Nat")
+        , syntaxDependentRule = Nothing
         }
   assert "zero-hole syntax supplies the empty capture tail"
     (expandSyntax zeroCaptureSyntax
@@ -557,18 +542,11 @@ regressionTests = do
       == Right (FunctionApplication
         (ref "answer")
         (AtlasMap [])))
-  let syntaxFunction name pieces implementation = SyntaxRule
+  let syntaxFunction name pieces = SyntaxRule
         { syntaxName = name
         , syntaxTemplate = SyntaxTemplate (SyntaxLiteral name : pieces)
-        , syntaxSignature = FunctionType
-            (AtlasMap [ref "Int", ref "IntLimit"])
-            (ref "IntValRange")
-        , syntaxRecursive = False
         , syntaxModule = Nothing
-        , syntaxImplementation = datraRef implementation
-        , syntaxDependentCaptures = Nothing
-        , syntaxDependentImplementation = Nothing
-        , syntaxBindsDependentCaptures = False
+        , syntaxDependentRule = Nothing
         }
       intHole = SyntaxHole (ValueSyntaxHole (ref "Int"))
       intLimitHole = SyntaxHole (ValueSyntaxHole (ref "IntLimit"))
@@ -589,17 +567,14 @@ regressionTests = do
         _ -> False
       wrongFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intHole]
-        ["wrong-from"]
       correctFrom = syntaxFunction "from"
         [intHole, SyntaxLiteral "to", intLimitHole]
-        ["from"]
       unrelated = syntaxFunction "unrelated"
         [ intHole
         , SyntaxLiteral "to"
         , intLimitHole
         , SyntaxLiteral "with-more-template-text"
         ]
-        ["unrelated"]
   assert "Int template holes reject an Infinity AST"
     (matchRules matchesNumericHole [wrongFrom] fromPhrase
       == Left NoMatchingSyntaxTemplate)
@@ -650,7 +625,6 @@ regressionTests = do
         , SyntaxLiteral "marker"
         , SyntaxHole (ValueSyntaxHole (ref "Tail"))
         ]
-        ["greedy"]
       greedyPhrase = foldl FunctionApplication (ref "greedy")
         [ natural 1
         , ref "marker"
@@ -675,10 +649,8 @@ regressionTests = do
       Left _ -> False)
   let contextualShort = syntaxFunction "contextual"
         [intHole]
-        ["contextual-short"]
       contextualLong = syntaxFunction "contextual"
         [intHole, SyntaxLiteral "marker", intHole]
-        ["contextual-long"]
       contextualPhrase = foldl FunctionApplication (ref "contextual")
         [natural 1, ref "marker", natural 2, ref "after"]
   assert "the first declaration wins and leaves its unmatched AST suffix"
@@ -693,13 +665,11 @@ regressionTests = do
       Left _ -> False)
   let rankedShort = syntaxFunction "ranked"
         [SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))]
-        ["ranked-short"]
       rankedLong = syntaxFunction "ranked"
         [ SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         , SyntaxLiteral "marker"
         , SyntaxHole (ExpressionSyntaxHole (ref "_Expr"))
         ]
-        ["ranked-long"]
       rankedPhrase = foldl FunctionApplication (ref "ranked")
         [natural 1, ref "marker", natural 2]
   let rankedCapture = foldl FunctionApplication (natural 1)
