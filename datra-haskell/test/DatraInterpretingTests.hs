@@ -1861,6 +1861,21 @@ testDependentDeclarations = do
       ])
     "{_x : Int := 1; _y : Int := 2}"
   expectProgram
+    "unused let dependent declaration does not force its implementation"
+    (unlines
+      [ "let \"unused %(_x : Int)\" := missing"
+      , "yield 7"
+      ])
+    "7"
+  expectFailure
+    "let dependent declaration does not capture later ordinary bindings"
+    "UnknownIdentifier \"later\""
+    (unlines
+      [ "let \"late %(_x : Int)\" := later"
+      , "later := 9"
+      , "yield late 1"
+      ])
+  expectProgram
     "parenthesized declaration head evaluates its template binding"
     (unlines
       [ "pattern := \"pair %(_x : Int) with %(_y : Int)\""

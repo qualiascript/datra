@@ -48,7 +48,7 @@ module Interpreting
   ) where
 
 import Data.Bifunctor qualified as Bifunctor
-import Data.List (nub, nubBy, intercalate, partition, stripPrefix)
+import Data.List (nub, nubBy, intercalate, stripPrefix)
 import Data.Maybe (catMaybes)
 import BlockScope
 import FunctionClosure
@@ -1057,10 +1057,20 @@ data ScopeHandoff = ScopeHandoff
 -- is the generic exit path for values which leave this activation.
 data Scope = Scope
   { scopeBindings :: ScopeBindings
-  , scopeDependentDeclarationLayers :: [[DependentDeclaration]]
+  , scopeDependentDeclarationLayers :: [[ScopedDependentDeclaration]]
   , scopeNamedMapLayers :: [NamedMapView]
   , scopeActivation :: ScopeActivation
   , scopeHandoff :: Maybe ScopeHandoff
+  }
+
+-- A declaration's name family and implementation are interpreted in the
+-- lexical snapshot at its source position. Ordinary declarations see only
+-- preceding ordinary declarations; every local let declaration is already
+-- present in that snapshot, but its implementation remains deferred.
+data ScopedDependentDeclaration = ScopedDependentDeclaration
+  { scopedDependentDeclarationScope :: Scope
+  , scopedDependentDeclarationValue :: DependentDeclaration
+  , scopedDependentDeclarationRetainedValue :: Maybe InterpretedValue
   }
 
 data Binding
@@ -1075,7 +1085,7 @@ data Binding
   | ImportedBinding
       PresentationDependency FilePath InterpretedValue Scope
   | ModuleCatalog [(String, ModuleSource)]
-  | ScopeMembers [DependentDeclaration]
+  | ScopeMembers [ScopedDependentDeclaration]
   | CanonicalNames [(String, String)]
   | LexicalScope PresentationDependency
 
@@ -1242,12 +1252,11 @@ data ContextualMap = ContextualMap String [ContextualLevel]
 -- same-kind boundary, so declarations belonging to that outer scope remain
 -- visible. Scopes which introduce no binding of this kind add no hole.
 contextualLevels
-  :: Bool
-  -> [String]
+  :: [String]
   -> String
   -> Scope
   -> [ContextualLevel]
-contextualLevels includesPrivate resolving surface scope =
+contextualLevels resolving surface scope =
   go (scopeBindings scope) (scopeBindings scope)
   where
     key = "_" <> surface
@@ -1265,8 +1274,7 @@ contextualLevels includesPrivate resolving surface scope =
           Just (includesDependencies, value)
         ScopeMembers entries ->
           Just (False, \reduction -> scopeEntriesValue
-            includesPrivate reduction
-            (scopeWithBindings environment scope) resolving entries)
+            reduction resolving entries)
         ShadowingConsistentBinding target ->
           contextualLevel environment target
         NamedBinding dependency target -> do
@@ -1346,7 +1354,7 @@ accessContextualMap reduction depth (ContextualMap _ levels)
     unavailable = Left
       (FunctionEvaluationFailed NoApplicableFunctionAlternative)
 
-scopeMembersBinding :: Binding -> Maybe [DependentDeclaration]
+scopeMembersBinding :: Binding -> Maybe [ScopedDependentDeclaration]
 scopeMembersBinding binding =
   case binding of
     ScopeMembers entries -> Just entries
@@ -1356,32 +1364,29 @@ scopeMembersBinding binding =
     _ -> Nothing
 
 scopeEntriesValue
-  :: Bool
-  -> ReductionContext
-  -> Scope
+  :: ReductionContext
   -> [String]
-  -> [DependentDeclaration]
+  -> [ScopedDependentDeclaration]
   -> Either InterpretingError InterpretedValue
-scopeEntriesValue includesPrivate reduction scope resolving entries =
-  maybe (makeAtlasMap 0 []) namedMapValue
-    <$> scopeEntriesNamedView
-      includesPrivate reduction scope resolving entries
+scopeEntriesValue reduction resolving entries =
+  do
+    named <- scopeEntriesNamedView reduction resolving entries
+    case named of
+      Nothing -> Right (makeAtlasMap 0 [])
+      Just view -> Right (namedMapValue view)
 
 scopeEntriesNamedView
-  :: Bool
-  -> ReductionContext
-  -> Scope
+  :: ReductionContext
   -> [String]
-  -> [DependentDeclaration]
+  -> [ScopedDependentDeclaration]
   -> Either InterpretingError (Maybe NamedMapView)
-scopeEntriesNamedView includesPrivate reduction scope resolving =
+scopeEntriesNamedView reduction resolving =
   foldM appendEntry Nothing
   where
     appendEntry accumulated entry = do
       next <- entryView entry
       pure (Just (maybe next (`appendNamedMapViews` next) accumulated))
-    entryView = dependentDeclarationNamedView
-      includesPrivate reduction scope resolving
+    entryView = dependentDeclarationNamedView reduction resolving
 
 contextualThisAvailable :: Scope -> Bool
 contextualThisAvailable scope = case lookupScope "_this" scope of
@@ -1943,10 +1948,12 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
                     [actualContextual, actualInsertion] ->
                       accessValues actualContextual actualInsertion
                     _ -> Right neverValue
-            _ -> projectDeclaration
-              (scopeDeclarationMembers scope)
-              (resolveIdentifierWith reduction scope resolving)
-              insertion
+            _ -> case lookupScope "_this" scope >>= scopeMembersBinding of
+              Just declarations -> do
+                contextual <- scopeEntriesValue
+                  reduction resolving declarations
+                accessValues contextual insertion
+              Nothing -> Left (UnknownIdentifier "_this")
     MapAccess mapOperand insertionOperand ->
       case lazyRecursivePrefix scope mapOperand of
         Just (captured, prefix) -> do
@@ -2380,7 +2387,7 @@ lookupRow
   -> Either InterpretingError InterpretedValue
 lookupRow reduction scope resolving key = do
   keyValue <- asciiStringValue key
-  resolved <- resolveIdentifierAccess False reduction scope resolving key
+  resolved <- resolveIdentifierAccess reduction scope resolving key
   pure (makeAtlasMapPreservingSingleton 2
     [ simpleIdentifierTypeValue "key" keyValue
     , simpleIdentifierTypeValue "value" resolved
@@ -2587,7 +2594,7 @@ scopeNameExists reduction scope resolving name
     declarationLayerContains (declarations : outer) = do
       found <- or <$> traverse
         (\declaration -> dependentDeclarationContainsName
-          reduction scope resolving declaration name)
+          reduction resolving declaration name)
         declarations
       if found then Right True else declarationLayerContains outer
 
@@ -2632,19 +2639,18 @@ resolveIdentifierWith
   -> [String]
   -> String
   -> Either InterpretingError InterpretedValue
-resolveIdentifierWith = resolveIdentifierAccess False
+resolveIdentifierWith = resolveIdentifierAccess
 
 resolveIdentifierAccess
-  :: Bool
-  -> ReductionContext
+  :: ReductionContext
   -> Scope
   -> [String]
   -> String
   -> Either InterpretingError InterpretedValue
-resolveIdentifierAccess includesPrivate reduction scope resolving name =
+resolveIdentifierAccess reduction scope resolving name =
   case canonicalScopeAlias scope name of
     Just generated -> resolveIdentifierAccess
-      includesPrivate reduction scope resolving generated
+      reduction scope resolving generated
     Nothing -> case lookupScope name scope of
       Just binding -> resolve binding
       Nothing -> do
@@ -2669,14 +2675,11 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
     firstDeclarationLayer (declarations : outer) = do
       members <- catMaybes <$> traverse
         (\declaration -> dependentDeclarationMemberByName
-          reduction scope resolving declaration name)
+          reduction resolving declaration name)
         declarations
       case members of
         [] -> firstDeclarationLayer outer
-        [member]
-          | includesPrivate || namedMemberIsPublic member ->
-              Right (Just member)
-          | otherwise -> Right Nothing
+        [member] -> Right (Just member)
         _ -> Left (NamedAccessFailed (NamedFieldAmbiguous name))
     resolve (NamedBinding dependency binding) =
       withCanonicalReference [dependency] name <$> resolve binding
@@ -2690,7 +2693,7 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
     resolve (EvaluatedBinding value) = Right value
     resolve (ContextualBinding surface _ _) =
       contextualFunction surface
-        (contextualLevels includesPrivate resolving surface scope)
+        (contextualLevels resolving surface scope)
     resolve (RetainedBinding captured annotation _ value) =
       Right (withCanonicalReference (scopePresentationDependencies captured) name
         (resolveInferredEitherAlias annotation value))
@@ -2698,7 +2701,7 @@ resolveIdentifierAccess includesPrivate reduction scope resolving name =
       Right (withCanonicalReference [dependency] name value)
     resolve ScopeMembers {} =
       contextualFunction "this"
-        (contextualLevels includesPrivate resolving "this" scope)
+        (contextualLevels resolving "this" scope)
     resolve CanonicalNames {} = Left (UnknownIdentifier name)
     resolve ModuleCatalog {} = Left (UnknownIdentifier name)
     resolve LexicalScope {} = Left (UnknownIdentifier name)
@@ -2749,45 +2752,17 @@ evaluateBindingDefinitionWith reduction captured resolving name annotation expre
       case expressionValue of
         contextual
           | isContextualAccessOf (IdentifierString "_this") contextual
-          , Just _ <- lookupScope "_this" captured >>= scopeMembersBinding ->
-              declarationMap
-                (visibleScopeMembers "_this" captured)
-                (resolveIdentifierWith reduction captured
-                  (resolutionKey : resolving))
+          , Just declarations <-
+              lookupScope "_this" captured >>= scopeMembersBinding ->
+              scopeEntriesValue reduction
+                (resolutionKey : resolving) declarations
         IdentifierReference (IdentifierString reference)
-          | Just _ <- lookupScope reference captured >>= scopeMembersBinding ->
-              declarationMap
-                (visibleScopeMembers reference captured)
-                (resolveIdentifierWith reduction captured
-                  (resolutionKey : resolving))
+          | Just declarations <-
+              lookupScope reference captured >>= scopeMembersBinding ->
+              scopeEntriesValue reduction
+                (resolutionKey : resolving) declarations
         _ -> evalInScopeWith reduction captured
           (resolutionKey : resolving) expressionValue
-
--- A declaration-scope reference is a first-class value. When it is aliased,
--- preserve the lexical snapshot at that declaration rather than exposing
--- declarations that occur later in the same block. The binding constructor,
--- not a particular identifier spelling, identifies this implicit reference.
-visibleScopeMembers :: String -> Scope -> [ScopeMember]
-visibleScopeMembers reference scope =
-  case break isReferencedScope (scopeBindings scope) of
-    (visible, (_, binding) : _)
-      | Just entries <- scopeMembersBinding binding ->
-      let visibleNames = map fst visible
-      in [member | member <- ordinaryScopeMembers entries
-           , scopeMemberName member `elem` visibleNames]
-    _ -> []
-  where
-    isReferencedScope (name, binding) =
-      name == reference && case scopeMembersBinding binding of
-        Just _ -> True
-        Nothing -> False
-
-ordinaryScopeMembers :: [DependentDeclaration] -> [ScopeMember]
-ordinaryScopeMembers entries =
-  [ member
-  | declaration <- entries
-  , Just member <- [declarationScopeMember declaration]
-  ]
 
 resolveInferredEitherAlias
   :: Maybe Expression
@@ -2862,19 +2837,41 @@ importScopeUsing build enclosing resolving entries = do
   (rebuild, eagerNames, eagerEntries, validateConsistency) <-
     build enclosing entries
   let deferred = rebuild []
-      forced =
+      seeded =
         [ name
         | name <- eagerNames
+        , maybe False bindingHasRecursiveFunctionSeed
+            (lookupScope name deferred)
+        ]
+      ordinary =
+        [ name
+        | name <- eagerNames
+        , name `notElem` seeded
         , maybe True (not . productiveRecursiveBinding name)
             (lookupScope name deferred)
         ]
-      (seeded, ordinary) = partition
-        (maybe False bindingHasRecursiveFunctionSeed . (`lookupScope` deferred))
-        forced
-      retainLet retained name = do
-        value <- resolveIdentifier (rebuild retained) resolving name
+      evaluateRetained retained seedOnly name = do
+        let current = rebuild retained
+        (captured, annotation, expressionValue) <-
+          maybe (Left (UnknownIdentifier name)) Right
+            (lookupScope name current >>= bindingDefinition)
+        let activeCaptured = captured
+              { scopeActivation = scopeActivation current
+              , scopeHandoff = Nothing
+              }
+            activeResolving
+              | seedOnly = bindingKey name expressionValue : resolving
+              | otherwise = resolving
+        evaluateBindingDefinitionWith UnrestrictedReduction
+          activeCaptured activeResolving name annotation expressionValue
+      retainSeed retained name = do
+        value <- evaluateRetained retained True name
         pure ((name, value) : retained)
-  retained <- foldM retainLet [] (seeded <> ordinary)
+      retainLet retained name = do
+        value <- evaluateRetained retained False name
+        pure ((name, value) : retained)
+  seeds <- foldM retainSeed [] seeded
+  retained <- foldM retainLet seeds (seeded <> ordinary)
   let imported = rebuild retained
   validateConsistency resolving imported
   -- Anonymous let entries still have eager evaluation semantics.
@@ -3006,47 +3003,89 @@ scopeBuilderActivated
       )
 scopeBuilderActivated introducesThis scopedEnclosing entries = do
   let (definitions, eagerEntries) = foldMap (bindingImports False) entries
-      members = catMaybes (map dependentDeclaration entries)
+      positionedMembers =
+        [ (position, declaration)
+        | (position, entry) <- zip [0 :: Int ..] entries
+        , Just declaration <- [dependentDeclaration entry]
+        ]
       eagerNames =
         [ name
         | declaration <- definitions
         , Just name <- [dependentDeclarationStaticName declaration]
         , declarationIsLet declaration
         ]
-      dependentDeclarations =
-        [ declaration
-        | declaration <- members
-        , Nothing <- [dependentDeclarationStaticName declaration]
-        ]
-      namedEnclosing = scopedEnclosing
-        { scopeDependentDeclarationLayers =
-            [dependentDeclarations | not (null dependentDeclarations)]
-              <> scopeDependentDeclarationLayers scopedEnclosing
-        }
-      blockBase
-        | not introducesThis = namedEnclosing
-        | otherwise =
-            case lookupScope "_this" scopedEnclosing >>= contextualBinding of
-              Just _ -> namedEnclosing
-              Nothing -> (extendScope
-                [scopeBinding "_this" (ScopeMembers members)] namedEnclosing)
-  (blockOuter, scopeEntries) <- scopeEntriesFrom blockBase entries
-  let
-      rebuild retained = scopeWithBindings
-        (buildScopedBindings (makeBinding retained)
-          (scopeBindings blockBase) scopeEntries)
-        blockOuter
+      finalPosition = length entries
+      introduceThis = introducesThis
+        && case lookupScope "_this" scopedEnclosing >>= contextualBinding of
+          Just _ -> False
+          Nothing -> True
+      rebuild retained = fst (buildFrame retained)
+      buildFrame retained = (scopeAt finalPosition, positionedScopeMembers)
+        where
+          positionedScopeMembers =
+            [ ScopedDependentDeclaration
+                (scopeAt position)
+                declaration
+                (dependentDeclarationStaticName declaration >>= (`lookup` retained))
+            | (position, declaration) <- positionedMembers
+            ]
+
+          scopeAt position = scopeWithBindings bindings namedScope
+            where
+              visible =
+                [ scoped
+                | ((declaredAt, declaration), scoped) <-
+                    zip positionedMembers positionedScopeMembers
+                , declaredAt < position || declarationIsLet declaration
+                ]
+              dependent =
+                [ scoped
+                | scoped <- visible
+                , Nothing <- [dependentDeclarationStaticName
+                    (scopedDependentDeclarationValue scoped)]
+                ]
+              namedScope = scopedEnclosing
+                { scopeDependentDeclarationLayers =
+                    [dependent | not (null dependent)]
+                      <> scopeDependentDeclarationLayers scopedEnclosing
+                }
+              bindings = localBindings visible
+                <> [ scopeBinding "_this" (ScopeMembers visible)
+                   | introduceThis
+                   ]
+                <> scopeBindings scopedEnclosing
+
+          localBindings visible =
+            map (makeBinding retained)
+              (reverse ordinary <> recursiveLets)
+            where
+              ordinary =
+                [ (name, scoped)
+                | scoped <- visible
+                , let declaration = scopedDependentDeclarationValue scoped
+                , not (declarationIsLet declaration)
+                , Just name <- [dependentDeclarationStaticName declaration]
+                ]
+              recursiveLets =
+                [ (name, scoped)
+                | scoped <- visible
+                , let declaration = scopedDependentDeclarationValue scoped
+                , declarationIsLet declaration
+                , Just name <- [dependentDeclarationStaticName declaration]
+                ]
+
+      scopedMembers = snd (buildFrame [])
       consistencyNames =
         [ name
         | declaration <- definitions
         , Just name <- [dependentDeclarationStaticName declaration]
-        , Just binding <- [lookupScope name blockOuter]
+        , Just binding <- [lookupScope name scopedEnclosing]
         , not (bindingHasUnrestrictedShadowing binding)
         ]
       validateConsistency resolving imported =
         mapM_ (validateConsistencyName resolving imported) consistencyNames
       validateConsistencyName resolving imported name =
-        case lookupScope name blockOuter of
+        case lookupScope name scopedEnclosing of
           -- Whole recursive scope values have no finite normal form to
           -- compare. Consistency cannot be established at this boundary.
           Just binding | bindingHasNoFiniteShadowingNormalForm binding ->
@@ -3054,7 +3093,11 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
           _ -> do
             let bounded = ShadowingConsistencyReduction
                   name shadowingConsistencyFuel
-            original <- resolveIdentifierWith bounded blockOuter resolving name
+            original <- resolveIdentifierWith
+              bounded
+              scopedEnclosing
+              resolving
+              name
             replacement <- resolveIdentifierWith
               bounded
               imported
@@ -3064,10 +3107,11 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
                 == interpretedSemanticResult replacement
               then Right ()
               else Left (InconsistentShadowing name)
-      makeBinding retained name capturedBindings declaration =
-        let annotation = declarationAnnotation declaration
+      makeBinding retained (name, scoped) =
+        let declaration = scopedDependentDeclarationValue scoped
+            annotation = declarationAnnotation declaration
             expressionValue = declarationValue declaration
-            captured = scopeWithBindings capturedBindings blockOuter
+            captured = scopedDependentDeclarationScope scoped
         in case lookup name retained of
           Just value ->
             scopeBinding name
@@ -3075,8 +3119,8 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
           Nothing ->
             scopeBinding name
               (DeferredBinding captured annotation expressionValue)
-  mapM_ (checkLetShadow blockOuter) definitions
-  validateDeclarationFamilies blockOuter members
+  mapM_ (checkLetShadow scopedEnclosing) definitions
+  validateDeclarationFamilies scopedMembers
   pure
     ( rebuild
     , eagerNames
@@ -3084,25 +3128,25 @@ scopeBuilderActivated introducesThis scopedEnclosing entries = do
     , validateConsistency
     )
   where
-    checkLetShadow blockOuter declaration =
+    checkLetShadow enclosing declaration =
       case dependentDeclarationStaticName declaration of
         Nothing -> Right ()
         Just name
           | declarationIsLet declaration
-          , Just binding <- lookupScope name blockOuter
+          , Just binding <- lookupScope name enclosing
           , not (bindingHasUnrestrictedShadowing binding) ->
               Left (LetBindingCannotShadowConsistentIdentifier name)
           | otherwise -> Right ()
 
 validateDeclarationFamilies
-  :: Scope
-  -> [DependentDeclaration]
+  :: [ScopedDependentDeclaration]
   -> Either InterpretingError ()
-validateDeclarationFamilies scope = go []
+validateDeclarationFamilies = go []
   where
     go _ [] = Right ()
-    go earlier (declaration : remaining) = do
-      family <- evalInScope scope []
+    go earlier (scoped : remaining) = do
+      let declaration = scopedDependentDeclarationValue scoped
+      family <- evalInScope (scopedDependentDeclarationScope scoped) []
         (StringTemplate (dependentDeclarationParts declaration))
       mapM_ (requireDistinct declaration family) earlier
       go ((declaration, family) : earlier) remaining
@@ -3117,39 +3161,6 @@ validateDeclarationFamilies scope = go []
         Just name -> name
         Nothing -> renderSourceExpression
           (StringTemplate (dependentDeclarationParts declaration))
-
-scopeEntriesFrom
-  :: Scope
-  -> [Expression]
-  -> Either InterpretingError (Scope, [DependentDeclaration])
-scopeEntriesFrom initial = go []
-  where
-    go reversed [] = Right (initial, reverse reversed)
-    go reversed (entry : remaining) = case dependentDeclaration entry of
-      Just scoped -> go (scoped : reversed) remaining
-      Nothing -> go reversed remaining
-
-buildScopedBindings
-  :: (String -> ScopeBindings -> DependentDeclaration -> (String, Binding))
-  -> ScopeBindings
-  -> [DependentDeclaration]
-  -> ScopeBindings
-buildScopedBindings makeBinding enclosing entries = foldl add initial entries
-  where
-    initial = recursiveLets <> enclosing
-    recursiveLets =
-      [ makeBinding name (scopeBefore position) declaration
-      | (position, declaration) <- zip [0 :: Int ..] entries
-      , Just name <- [dependentDeclarationStaticName declaration]
-      , declarationIsLet declaration
-      ]
-    scopeBefore position = foldl add initial (take position entries)
-    add bindings declaration =
-      case dependentDeclarationStaticName declaration of
-        Nothing -> bindings
-        Just name
-          | declarationIsLet declaration -> bindings
-          | otherwise -> makeBinding name bindings declaration : bindings
 
 importInvocation :: Expression -> Maybe [String]
 importInvocation expressionValue =
@@ -3277,24 +3288,27 @@ interpretStringTemplateWith protection interpret parts = do
       pure (result, Just result)
 
 dependentDeclarationNamedView
-  :: Bool
-  -> ReductionContext
-  -> Scope
+  :: ReductionContext
   -> [String]
-  -> DependentDeclaration
+  -> ScopedDependentDeclaration
   -> Either InterpretingError NamedMapView
-dependentDeclarationNamedView includesPrivate reduction captured resolving declaration =
+dependentDeclarationNamedView reduction resolving scoped =
   dynamicDependentDeclarationNamedView
-    includesPrivate reduction captured resolving declaration
+    reduction captured resolving retained declaration
+  where
+    captured = scopedDependentDeclarationScope scoped
+    declaration = scopedDependentDeclarationValue scoped
+    retained = scopedDependentDeclarationRetainedValue scoped
 
 dynamicDependentDeclarationNamedView
-  :: Bool
-  -> ReductionContext
+  :: ReductionContext
   -> Scope
   -> [String]
+  -> Maybe InterpretedValue
   -> DependentDeclaration
   -> Either InterpretingError NamedMapView
-dynamicDependentDeclarationNamedView includesPrivate reduction captured resolving declaration = do
+dynamicDependentDeclarationNamedView reduction captured resolving
+    retained declaration = do
   (evaluatedCaptures, template) <- prepareDependentDeclaration
     reduction captured resolving declaration
   captureBounds <- traverse canonicalOrdinalBound
@@ -3364,8 +3378,15 @@ dynamicDependentDeclarationNamedView includesPrivate reduction captured resolvin
     materializeMember evaluatedCaptures name values =
       case dependentDeclarationStaticName declaration of
         Just staticName | staticName == name -> do
-          payload <- resolveIdentifierAccess
-            includesPrivate reduction captured resolving name
+          payload <- case retained of
+            Just value -> Right value
+            Nothing -> evaluateBindingDefinitionWith
+              reduction
+              captured
+              resolving
+              name
+              (declarationAnnotation declaration)
+              (declarationValue declaration)
           pure (namedDeclarationMember declaration name payload)
         _ -> materializeDependentDeclaration
           reduction captured resolving declaration
@@ -3381,24 +3402,25 @@ dynamicDependentDeclarationNamedView includesPrivate reduction captured resolvin
 
 dependentDeclarationContainsName
   :: ReductionContext
-  -> Scope
   -> [String]
-  -> DependentDeclaration
+  -> ScopedDependentDeclaration
   -> String
   -> Either InterpretingError Bool
-dependentDeclarationContainsName reduction captured resolving declaration name = do
+dependentDeclarationContainsName reduction resolving scoped name = do
   (_, template) <- prepareDependentDeclaration
     reduction captured resolving declaration
   maybe False (const True) <$> decodeCanonicalTemplate template name
+  where
+    captured = scopedDependentDeclarationScope scoped
+    declaration = scopedDependentDeclarationValue scoped
 
 dependentDeclarationMemberByName
   :: ReductionContext
-  -> Scope
   -> [String]
-  -> DependentDeclaration
+  -> ScopedDependentDeclaration
   -> String
   -> Either InterpretingError (Maybe NamedMember)
-dependentDeclarationMemberByName reduction captured resolving declaration name = do
+dependentDeclarationMemberByName reduction resolving scoped name = do
   (evaluatedCaptures, template) <- prepareDependentDeclaration
     reduction captured resolving declaration
   decoded <- decodeCanonicalTemplate template name
@@ -3406,6 +3428,9 @@ dependentDeclarationMemberByName reduction captured resolving declaration name =
     (materializeDependentDeclaration
       reduction captured resolving declaration evaluatedCaptures name)
     decoded
+  where
+    captured = scopedDependentDeclarationScope scoped
+    declaration = scopedDependentDeclarationValue scoped
 
 prepareDependentDeclaration
   :: ReductionContext
@@ -4941,12 +4966,6 @@ moduleExportsFromValue value =
     invalid = Left (ModuleEvaluationFailed
       ModuleScopeRequiresTotalMapOfSimpleIdentifierTypes)
 
-scopeDeclarationMembers :: Scope -> [ScopeMember]
-scopeDeclarationMembers scope = case lookupScope "_this" scope of
-  Just binding | Just entries <- scopeMembersBinding binding ->
-    ordinaryScopeMembers entries
-  _ -> []
-
 publicDomainValue
   :: InterpretedValue
   -> Either InterpretingError InterpretedValue
@@ -5093,8 +5112,12 @@ closureResolver scope = resolver
     resolver = Resolver resolve moduleResolver scopeIndex contextualDepth
     scopeIndex expressionValue = do
       index <- either (const Nothing) Just (evalInScope scope [] expressionValue)
-      either (const Nothing) id
-        (selectedDeclarationName (scopeDeclarationMembers scope) index)
+      (_, position) <- interpretedExplicitOrdinal index
+      declarations <- lookupScope "_this" scope >>= scopeMembersBinding
+      view <- either (const Nothing) id
+        (scopeEntriesNamedView UnrestrictedReduction [] declarations)
+      member <- either (const Nothing) id (namedMapMemberAt view position)
+      pure (namedMemberName member)
     moduleResolver path = case
         [ imported
         | (_, ImportedBinding _ identity _ imported) <- scopeBindings scope

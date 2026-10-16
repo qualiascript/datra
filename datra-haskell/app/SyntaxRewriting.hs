@@ -824,11 +824,25 @@ rewriteChildren capture environment value =
           case embedded of
             Just rewritten -> pure rewritten
             Nothing -> do
-              rewritten <- traverseExpressionChildren
+              rewritten <- rewriteApplicationSpineChildren
                 (rewriteStandalone capture environment) value
               directSyntaxFunctionApplication capture environment rewritten
     _ -> traverseExpressionChildren
       (rewriteStandalone capture environment) value
+
+-- A neutral left-associated application is one syntactic boundary. Rewriting
+-- its nested function prefixes independently can execute a syntax function on
+-- a token that belongs to a larger infix or template match. Parentheses remain
+-- explicit 'SyntaxBoundary' nodes, so intentionally nested applications still
+-- receive their own rewrite pass.
+rewriteApplicationSpineChildren
+  :: (Expression -> Either SyntaxRewriteFailure Expression)
+  -> Expression
+  -> Either SyntaxRewriteFailure Expression
+rewriteApplicationSpineChildren rewrite value =
+  applicationFrom <$> traverse rewrite (function : arguments)
+  where
+    (function, arguments) = applicationSpine value
 
 -- Syntax-backed declarations are ordinary functions whose function bodies
 -- can expand AST captures before runtime evaluation.
