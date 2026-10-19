@@ -16,8 +16,9 @@ import DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , bindingNames
   , dependentDeclaration
+  , dependentDeclarationNameExpression
   )
-import Data.List (nub, nubBy)
+import Data.List (nub, nubBy, sortBy)
 import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
@@ -41,6 +42,7 @@ import DatraLanguage.SyntaxTemplate
   )
 import SyntaxDefinitions
   ( SyntaxRule (..)
+  , SyntaxRuleSemantics (..)
   , DependentSyntaxRule (..)
   , DependentSyntaxInvocation (..)
   , contextualSyntaxRulesFor
@@ -54,6 +56,7 @@ import SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
   , matchSyntaxRulesWith
   )
+import SyntaxTemplateAdmissibility (syntaxTemplateRefines)
 import SyntaxTemplateProjection
   ( applicationFrom
   , applicationFromMaybe
@@ -128,6 +131,91 @@ rewriteRuleName = syntaxName . rewriteRule
 
 rewriteRuleImplementation :: RewriteRule -> Maybe Expression
 rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
+
+-- A dependent declaration remains a runtime name lookup unless its declared
+-- implementation evaluates to a callable.  Callable declarations use the
+-- ordinary application path, whose prepared domain performs the same override
+-- operation as every other function call.  A raw FunctionBody is deliberately
+-- not callable and therefore cannot enter this branch.
+rewriteRuleForMatch :: RewriteEnvironment -> RewriteRule -> SyntaxRule
+rewriteRuleForMatch environment compiled =
+  case syntaxSemantics rule of
+    DependentSyntax dependent
+      | Just value <- evaluate
+          (dependentSyntaxImplementation dependent)
+      , Just _ <- interpretedFunction value -> rule
+          { syntaxSemantics = SyntaxAdapter
+              (dependentSyntaxImplementation dependent) }
+    _ -> rule
+  where
+    rule = rewriteRule compiled
+    evaluate = case rewriteRuleEvaluation compiled of
+      Just retained -> retained
+      Nothing -> rewriteEvaluate environment
+        (rewriteDeclarations environment)
+
+specificRewriteRules :: RewriteEnvironment -> [RewriteRule]
+specificRewriteRules environment = sortBy compareSpecificity
+  (rewriteRules environment)
+  where
+    compareSpecificity left right
+      | ruleStrictlyRefines environment left right = LT
+      | ruleStrictlyRefines environment right left = GT
+      | otherwise = EQ
+
+ruleStrictlyRefines
+  :: RewriteEnvironment
+  -> RewriteRule
+  -> RewriteRule
+  -> Bool
+ruleStrictlyRefines environment source target =
+  ruleRefines environment source target
+    && not (ruleRefines environment target source)
+
+ruleRefines
+  :: RewriteEnvironment
+  -> RewriteRule
+  -> RewriteRule
+  -> Bool
+ruleRefines environment source target =
+  syntaxTemplateRefines
+    (holeRefines source target)
+    (syntaxTemplate (rewriteRule source))
+    (syntaxTemplate (rewriteRule target))
+  where
+    holeRefines sourceRule targetRule sourceHole targetHole =
+      case targetHole of
+        ExpressionSyntaxHole {} -> True
+        _ | sameHoleClass sourceHole targetHole ->
+              case
+                  ( evaluateHole sourceRule (syntaxHoleValue sourceHole)
+                  , evaluateHole targetRule (syntaxHoleValue targetHole)
+                  ) of
+                (Just sourceValue, Just targetValue) ->
+                  case subfederationValues sourceValue targetValue
+                      >>= booleanCondition of
+                    Right accepted -> accepted
+                    Left _ -> False
+                _ -> False
+          | otherwise -> False
+    evaluateHole compiled expressionValue =
+      case rewriteRuleEvaluation compiled of
+        Just evaluate -> evaluate expressionValue
+        Nothing -> rewriteEvaluate environment
+          (rewriteDeclarations environment) expressionValue
+
+sameHoleClass
+  :: SyntaxHoleKind value
+  -> SyntaxHoleKind other
+  -> Bool
+sameHoleClass ExpressionSyntaxHole {} ExpressionSyntaxHole {} = True
+sameHoleClass BlockSyntaxHole {} BlockSyntaxHole {} = True
+sameHoleClass FunctionBodySyntaxHole {} FunctionBodySyntaxHole {} = True
+sameHoleClass DeclarationSyntaxHole {} DeclarationSyntaxHole {} = True
+sameHoleClass DependentIdentifierSyntaxHole {}
+    DependentIdentifierSyntaxHole {} = True
+sameHoleClass ValueSyntaxHole {} ValueSyntaxHole {} = True
+sameHoleClass _ _ = False
 
 -- Contextual surface names exist only inside syntax nodes whose evaluator
 -- installs the corresponding private binding. Entering such a node replaces
@@ -351,11 +439,12 @@ rewriteSequence capture initial rawEntries = do
           let resolved = resolveDependentDeclarationHead environment entry
               currentRules = declarationRules resolved
               currentDeclaration = dependentDeclaration resolved
-              currentFamily = currentDeclaration >>= evaluateFamily environment
+              currentFamily = evaluateFamilies environment currentRules
           case currentDeclaration of
             Nothing -> pure ()
             Just declaration -> mapM_
-              (validateFamily (declarationLabel declaration) currentFamily)
+              (validateFamily environment
+                (declarationLabel declaration) currentFamily)
               earlier
           if isValDependentDeclaration resolved
             then mapM_ (validateInjective environment)
@@ -372,22 +461,43 @@ rewriteSequence capture initial rawEntries = do
                   [(declarationLabel declaration, currentFamily)]
           go (advanceScope environment entry) retained remaining
 
-        evaluateFamily environment declaration =
-          rewriteEvaluate environment
-            (rewriteDeclarations environment)
-            (StringTemplate (dependentDeclarationParts declaration))
+        evaluateFamilies environment = map branchFamily
+          where
+            branchFamily rule =
+              ( compileRewriteRule rule
+              , case syntaxDependentRule rule of
+                  Just dependent -> case dependentSyntaxInvocation dependent of
+                    DependentSyntaxLookup parts ->
+                      rewriteEvaluate environment
+                        (rewriteDeclarations environment)
+                        (StringTemplate parts)
+                  Nothing -> Nothing
+              )
 
         declarationLabel = renderSourceExpression
-          . StringTemplate
-          . dependentDeclarationParts
+          . dependentDeclarationNameExpression
 
-        validateFamily currentLabel currentFamily
+        validateFamily environment currentLabel currentFamily
             (previousLabel, previousFamily) =
-          case (previousFamily, currentFamily) of
-            (Just previous, Just current)
-              | Right _ <- eitherValue previous current -> Right ()
-            _ -> Left (OverlappingDependentDeclarations
+          if and
+              [ branchesCompatible environment previous current
+              | previous <- previousFamily
+              , current <- currentFamily
+              ]
+            then Right ()
+            else Left (OverlappingDependentDeclarations
               previousLabel currentLabel)
+
+        branchesCompatible environment
+            (previousRule, previousValue)
+            (currentRule, currentValue) =
+          valuesAreDistinct previousValue currentValue
+          where
+            valuesAreDistinct (Just left) (Just right) =
+              case eitherValue left right of
+                Right _ -> True
+                Left _ -> False
+            valuesAreDistinct _ _ = False
 
         validateInjective environment (rule, dependent)
           | null captures = Right ()

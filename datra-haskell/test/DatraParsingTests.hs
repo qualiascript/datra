@@ -104,6 +104,8 @@ testTree =
         assertStandardSyntaxDeclarationsAdmissible
     , testCase "generic AST representation" testGenericAstRepresentation
     , testCase "generic source parsing" testGenericSourceParsing
+    , testCase "dependent declaration precedence"
+        testDependentDeclarationPrecedence
     , testCase "syntax regressions" regressionTests
     , testGroup "properties"
         [ testProperty "rendered ASTs parse canonically" propAstRoundTrip
@@ -400,6 +402,33 @@ testBraceSeparatorSemantics = do
     "(Args Int,)"
     (MapConcatenation
       (FunctionApplication (ref "Args") (ref "Int")) (AtlasMap []))
+
+testDependentDeclarationPrecedence :: IO ()
+testDependentDeclarationPrecedence =
+  case parseNeutralPhrase source of
+    Left failure -> assertFailure (parseFailureMessage failure)
+    Right actual -> assertEqual
+      "template federation binds before dependent declaration assignment"
+      expected
+      actual
+  where
+    source = "\"assert %_Expr\" | \"assert %($hard) %_Expr\" := body"
+    expected = IdentifierTemplateOperation
+      [StringTemplateInterpolation
+        (SyntaxBoundary
+          (EitherType
+            (StringTemplate
+              [ StringTemplateLiteral "assert "
+              , StringTemplateInterpolation (ref "_Expr")
+              ])
+            (StringTemplate
+              [ StringTemplateLiteral "assert "
+              , StringTemplateInterpolation (AST.asciiString "hard")
+              , StringTemplateLiteral " "
+              , StringTemplateInterpolation (ref "_Expr")
+              ])))]
+      (ref "body")
+      (Just (ref "body"))
 
 regressionTests :: IO ()
 regressionTests = do

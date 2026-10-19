@@ -71,8 +71,6 @@ datraHostValue = do
         _ -> Nothing
     , syntaxBody "assert" $ \case
         [condition] -> Just (Assert False condition)
-        _ -> Nothing
-    , syntaxBody "assertHard" $ \case
         [_, condition] -> Just (Assert True condition)
         _ -> Nothing
     , syntaxFunction "begin" $ \case
@@ -86,8 +84,6 @@ datraHostValue = do
         _ -> Nothing
     , syntaxBody "if" $ \case
         [condition, yes, no] -> Just (Conditional condition yes no)
-        _ -> Nothing
-    , syntaxBody "ifThen" $ \case
         [condition, yes] -> Just (Conditional condition yes (AtlasMap []))
         _ -> Nothing
     , syntaxBody "import" $ \case

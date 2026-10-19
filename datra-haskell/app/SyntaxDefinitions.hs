@@ -19,6 +19,7 @@ module SyntaxDefinitions
 import DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , dependentDeclaration
+  , dependentDeclarationTemplateBranches
   )
 import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
@@ -93,25 +94,34 @@ declarationRules expressionValue =
   maybe [] dependentDeclarationRules (dependentDeclaration expressionValue)
 
 dependentDeclarationRules :: DependentDeclaration -> [SyntaxRule]
-dependentDeclarationRules = directTemplateRule
+dependentDeclarationRules declaration = concatMap
+  (directTemplateRule declaration)
+  (dependentDeclarationSyntaxAlternatives declaration)
 
-directTemplateRule :: DependentDeclaration -> [SyntaxRule]
-directTemplateRule declaration =
-  case compileDependentDeclarationTemplate
-      (dependentDeclarationParts declaration) of
+directTemplateRule
+  :: DependentDeclaration
+  -> [StringTemplatePart Expression]
+  -> [SyntaxRule]
+directTemplateRule declaration parts =
+  case compileDependentDeclarationTemplate parts of
     Left _ -> []
     Right (template, captures) ->
       [ SyntaxRule
           { syntaxName = renderSourceExpression
-              (StringTemplate (dependentDeclarationParts declaration))
+              (StringTemplate parts)
           , syntaxTemplate = template
           , syntaxSemantics = DependentSyntax (DependentSyntaxRule
               captures
               (dependentDeclarationImplementation declaration)
-              (DependentSyntaxLookup
-                (dependentDeclarationParts declaration)))
+              (DependentSyntaxLookup parts))
           }
       ]
+
+dependentDeclarationSyntaxAlternatives
+  :: DependentDeclaration
+  -> [[StringTemplatePart Expression]]
+dependentDeclarationSyntaxAlternatives declaration =
+  maybe [] id (dependentDeclarationTemplateBranches declaration)
 
 compileDependentDeclarationTemplate
   :: [StringTemplatePart Expression]

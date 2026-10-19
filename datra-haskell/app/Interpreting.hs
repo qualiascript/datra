@@ -123,6 +123,8 @@ import ScopeProtection
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
+  , DependentSyntaxRule (..)
+  , DependentSyntaxInvocation (..)
   , declarationRules
   )
 import DatraLanguage.Diagnostics
@@ -2955,7 +2957,7 @@ validateDeclarationFamilies = go []
     go earlier (scoped : remaining) = do
       let declaration = scopedDependentDeclarationValue scoped
       family <- evalInScope (scopedDependentDeclarationScope scoped) []
-        (StringTemplate (dependentDeclarationParts declaration))
+        (dependentDeclarationNameExpression declaration)
       mapM_ (requireDistinct declaration family) earlier
       go ((declaration, family) : earlier) remaining
 
@@ -2965,8 +2967,7 @@ validateDeclarationFamilies = go []
           (dependentDeclarationLabel declaration))
 
     dependentDeclarationLabel = renderSourceExpression
-      . StringTemplate
-      . dependentDeclarationParts
+      . dependentDeclarationNameExpression
 
 importInvocation :: Expression -> Maybe [String]
 importInvocation expressionValue =
@@ -3113,26 +3114,49 @@ dynamicDependentDeclarationNamedView
   -> Either InterpretingError NamedMapView
 dynamicDependentDeclarationNamedView reduction captured resolving
     retained declaration = do
-  (evaluatedCaptures, template) <- prepareDependentDeclaration
+  prepared <- prepareDependentDeclaration
     reduction captured resolving declaration
-  captureBounds <- traverse
-    (dependentDeclarationCaptureBound reduction captured resolving)
-    [bound | (_, _, bound) <- evaluatedCaptures]
-  family <- maybe
-    (Left (LookupCaptureHasNoGenericMapView
-      0 (renderInterpretedValue (makeAtlasMap 2 captureBounds))))
-    Right
-    (ordinalIndexedProductFamily captureBounds)
-  let sourceOrder = ordinalIndexedFamilyOrderType family
-      traversal = foliageMap sourceOrder
-      localOrder = maybe omega finiteOrdinal (naturalAtOrdinal sourceOrder)
-      projection = NamedMapProjection
+  views <- traverse branchView prepared
+  case views of
+    [] -> Left AmbiguousStringTemplate
+    first : remaining -> do
+      let combined = foldl appendNamedMapViews first remaining
+          projection = namedMapProjection combined
+          selectedMember name = do
+            selected <- selectPreparedBranch name prepared
+            traverse (uncurry (materializeSelected name)) selected
+          selectedAt position = do
+            member <- namedProjectionMemberAt projection position
+            case member of
+              Nothing -> Right Nothing
+              Just candidate -> selectedMember (namedMemberName candidate)
+      pure (NamedMapView projection
+        { namedProjectionMemberAt = selectedAt
+        , namedProjectionMemberByName = selectedMember
+        , namedProjectionContainsName =
+            fmap (maybe False (const True)) . selectPreparedBranchName prepared
+        })
+  where
+    branchView branch = do
+      let evaluatedCaptures = preparedDeclarationCaptures branch
+          template = preparedDeclarationTemplate branch
+      captureBounds <- traverse
+        (dependentDeclarationCaptureBound reduction captured resolving)
+        [bound | (_, _, bound) <- evaluatedCaptures]
+      family <- maybe
+        (Left (LookupCaptureHasNoGenericMapView
+          0 (renderInterpretedValue (makeAtlasMap 2 captureBounds))))
+        Right
+        (ordinalIndexedProductFamily captureBounds)
+      let sourceOrder = ordinalIndexedFamilyOrderType family
+          traversal = foliageMap sourceOrder
+          localOrder = maybe omega finiteOrdinal (naturalAtOrdinal sourceOrder)
+      pure (NamedMapView (NamedMapProjection
         localOrder
         (memberAt evaluatedCaptures template family traversal)
         (memberByName evaluatedCaptures template)
-        (fmap (maybe False (const True)) . decodeCanonicalTemplate template)
-  pure (NamedMapView projection)
-  where
+        (fmap (maybe False (const True)) . decodeCanonicalTemplate template)))
+
     memberAt evaluatedCaptures template family traversal position = case do
         rank <- naturalAtOrdinal position
         sourcePosition <- foliageMapPositionAt traversal rank
@@ -3147,6 +3171,9 @@ dynamicDependentDeclarationNamedView reduction captured resolving
       decoded <- decodeCanonicalTemplate template name
       traverse (materializeMember evaluatedCaptures name) decoded
 
+    materializeSelected name branch values =
+      materializeMember (preparedDeclarationCaptures branch) name values
+
     materializeMember evaluatedCaptures name values =
       materializeDependentDeclaration
         reduction captured resolving retained declaration
@@ -3159,9 +3186,9 @@ dependentDeclarationContainsName
   -> String
   -> Either InterpretingError Bool
 dependentDeclarationContainsName reduction resolving scoped name = do
-  (_, template) <- prepareDependentDeclaration
+  prepared <- prepareDependentDeclaration
     reduction captured resolving declaration
-  maybe False (const True) <$> decodeCanonicalTemplate template name
+  maybe False (const True) <$> selectPreparedBranchName prepared name
   where
     captured = scopedDependentDeclarationScope scoped
     declaration = scopedDependentDeclarationValue scoped
@@ -3172,26 +3199,32 @@ dependentDeclarationSingletonName
   -> ScopedDependentDeclaration
   -> Either InterpretingError (Maybe String)
 dependentDeclarationSingletonName reduction resolving scoped = do
-  (evaluatedCaptures, template) <- prepareDependentDeclaration
+  prepared <- prepareDependentDeclaration
     reduction captured resolving declaration
-  captureBounds <- traverse
-    (dependentDeclarationCaptureBound reduction captured resolving)
-    [bound | (_, _, bound) <- evaluatedCaptures]
-  case ordinalIndexedProductFamily captureBounds of
-    Just family
-      | ordinalIndexedFamilyOrderType family == finiteOrdinal 1 -> do
-          let traversal = foliageMap (ordinalIndexedFamilyOrderType family)
-          case foliageMapPositionAt traversal 0 of
-            Nothing -> Right Nothing
-            Just sourcePosition ->
-              case ordinalIndexedFamilyValueAt family sourcePosition of
-                Nothing -> Right Nothing
-                Just witness ->
-                  Just <$> renderLookupTemplateKey template witness
+  case prepared of
+    [branch] -> singletonBranch branch
     _ -> Right Nothing
   where
     captured = scopedDependentDeclarationScope scoped
     declaration = scopedDependentDeclarationValue scoped
+    singletonBranch branch = do
+      let evaluatedCaptures = preparedDeclarationCaptures branch
+          template = preparedDeclarationTemplate branch
+      captureBounds <- traverse
+        (dependentDeclarationCaptureBound reduction captured resolving)
+        [bound | (_, _, bound) <- evaluatedCaptures]
+      case ordinalIndexedProductFamily captureBounds of
+        Just family
+          | ordinalIndexedFamilyOrderType family == finiteOrdinal 1 -> do
+              let traversal = foliageMap (ordinalIndexedFamilyOrderType family)
+              case foliageMapPositionAt traversal 0 of
+                Nothing -> Right Nothing
+                Just sourcePosition ->
+                  case ordinalIndexedFamilyValueAt family sourcePosition of
+                    Nothing -> Right Nothing
+                    Just witness ->
+                      Just <$> renderLookupTemplateKey template witness
+        _ -> Right Nothing
 
 dependentDeclarationCaptureBound
   :: ReductionContext
@@ -3219,18 +3252,25 @@ dependentDeclarationMemberByName
   -> String
   -> Either InterpretingError (Maybe NamedMember)
 dependentDeclarationMemberByName reduction resolving scoped name = do
-  (evaluatedCaptures, template) <- prepareDependentDeclaration
+  prepared <- prepareDependentDeclaration
     reduction captured resolving declaration
-  decoded <- decodeCanonicalTemplate template name
-  traverse
-    (materializeDependentDeclaration
+  selected <- selectPreparedBranch name prepared
+  case selected of
+    Nothing -> Right Nothing
+    Just (branch, decoded) -> Just <$> materializeDependentDeclaration
       reduction captured resolving
       (scopedDependentDeclarationRetainedValue scoped)
-      declaration evaluatedCaptures name)
-    decoded
+      declaration (preparedDeclarationCaptures branch) name decoded
   where
     captured = scopedDependentDeclarationScope scoped
     declaration = scopedDependentDeclarationValue scoped
+
+data PreparedDependentDeclaration = PreparedDependentDeclaration
+  { preparedDeclarationCaptures
+      :: [(Maybe String, InterpretedValue, InterpretedValue)]
+  , preparedDeclarationTemplate :: EvaluatedStringTemplate
+  , preparedDeclarationFamily :: Maybe InterpretedValue
+  }
 
 prepareDependentDeclaration
   :: ReductionContext
@@ -3238,22 +3278,25 @@ prepareDependentDeclaration
   -> [String]
   -> DependentDeclaration
   -> Either InterpretingError
-      ( [(Maybe String, InterpretedValue, InterpretedValue)]
-      , EvaluatedStringTemplate
-      )
-prepareDependentDeclaration reduction captured resolving declaration = do
-  evaluatedCaptures <- traverse evaluateCapture captureExpressions
-  pure
-    ( evaluatedCaptures
-    , EvaluatedStringTemplate
-        (dependentTemplateSegments parts evaluatedCaptures)
-    )
+      [PreparedDependentDeclaration]
+prepareDependentDeclaration reduction captured resolving declaration =
+  traverse prepareBranch branches
   where
-    parts = dependentDeclarationParts declaration
-    captureExpressions =
-      [ captureExpression value
-      | StringTemplateInterpolation value <- parts
-      ]
+    branches = maybe
+      [dependentDeclarationParts declaration]
+      id
+      (dependentDeclarationTemplateBranches declaration)
+    prepareBranch parts = do
+      let captureExpressions =
+            [ captureExpression value
+            | StringTemplateInterpolation value <- parts
+            ]
+      evaluatedCaptures <- traverse evaluateCapture captureExpressions
+      let segments = dependentTemplateSegments parts evaluatedCaptures
+      pure (PreparedDependentDeclaration
+        evaluatedCaptures
+        (EvaluatedStringTemplate segments)
+        Nothing)
     evaluateCapture (name, expressionValue) = do
       schema <- evalInScopeWith reduction captured resolving expressionValue
       pure
@@ -3261,6 +3304,48 @@ prepareDependentDeclaration reduction captured resolving declaration = do
         , schema
         , argumentSchemaPositionalDomain (argumentSchemaFromValue schema)
         )
+
+selectPreparedBranchName
+  :: [PreparedDependentDeclaration]
+  -> String
+  -> Either InterpretingError (Maybe PreparedDependentDeclaration)
+selectPreparedBranchName prepared name =
+  fmap (fmap fst) (selectPreparedBranch name prepared)
+
+selectPreparedBranch
+  :: String
+  -> [PreparedDependentDeclaration]
+  -> Either InterpretingError
+      (Maybe (PreparedDependentDeclaration, [InterpretedValue]))
+selectPreparedBranch name prepared = do
+  matches <- fmap concat (traverse match prepared)
+  case matches of
+    [] -> Right Nothing
+    _ -> case
+        [ candidate
+        | (index, candidate) <- indexed
+        , all (\(otherIndex, other) ->
+            index == otherIndex || strictlyBelow candidate other) indexed
+        ] of
+      [selected] -> Right (Just selected)
+      _ -> Left AmbiguousStringTemplate
+      where
+        indexed = zip [0 :: Int ..] matches
+  where
+    match branch = do
+      decoded <- decodeCanonicalTemplate
+        (preparedDeclarationTemplate branch) name
+      pure (maybe [] (\values -> [(branch, values)]) decoded)
+    strictlyBelow (source, _) (target, _) =
+      case (preparedDeclarationFamily source, preparedDeclarationFamily target) of
+        (Just sourceFamily, Just targetFamily) ->
+          isSubfederation sourceFamily targetFamily
+            && not (isSubfederation targetFamily sourceFamily)
+        _ -> False
+    isSubfederation source target =
+      case subfederationValues source target >>= booleanCondition of
+        Right accepted -> accepted
+        Left _ -> False
 
 materializeDependentDeclaration
   :: ReductionContext

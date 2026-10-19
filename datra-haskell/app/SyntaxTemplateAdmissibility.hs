@@ -2,6 +2,7 @@
 -- the same structural projection used by runtime syntax rewriting.
 module SyntaxTemplateAdmissibility
   ( validateSyntaxTemplate
+  , syntaxTemplateRefines
   ) where
 
 import DatraLanguage.AST
@@ -74,6 +75,54 @@ validateSyntaxTemplate template =
         neutralIncompletePrefixOperator source of
       Just operator -> IncompleteCoreSyntaxOperator operator
       Nothing -> NeutralSyntaxTemplateParseFailure
+
+-- | Structural inclusion between two syntax-template federations.  The
+-- source template is rendered with the same neutral witnesses used by
+-- admissibility, then projected through the target.  A target expression hole
+-- may absorb a larger admissible source fragment; aligned holes delegate their
+-- value-family relation to the caller.
+syntaxTemplateRefines
+  :: (SyntaxHoleKind Expression -> SyntaxHoleKind Expression -> Bool)
+  -> SyntaxTemplate Expression
+  -> SyntaxTemplate Expression
+  -> Bool
+syntaxTemplateRefines holeRefines source target =
+  all refinesWitness (templateWitnesses source)
+  where
+    sourceKinds =
+      [ kind
+      | SyntaxHole kind <- syntaxTemplatePieces source
+      ]
+    refinesWitness witnesses =
+      case parseNeutralPhrase (renderWitness source witnesses) of
+        Left _ -> False
+        Right parsed ->
+          case projectSyntaxTemplate
+              (capture witnesses)
+              target
+              parsed of
+            Just _ -> True
+            Nothing -> False
+    capture witnesses targetKind captured =
+      case exactSourceHole witnesses captured of
+        Just sourceKind
+          | holeRefines sourceKind targetKind -> Just captured
+          | otherwise -> Nothing
+        Nothing -> case targetKind of
+          ExpressionSyntaxHole {} -> Just captured
+          _ -> Nothing
+    exactSourceHole witnesses captured = firstExact
+      [ (witness, kind)
+      | (witness, kind) <- zip witnesses sourceKinds
+      ]
+      where
+        normalized = normalizeExpression captured
+        firstExact [] = Nothing
+        firstExact ((witness, kind) : remaining) =
+          case parseNeutralPhrase (witnessSource witness) of
+            Right expected
+              | normalizeExpression expected == normalized -> Just kind
+            _ -> firstExact remaining
 
 templateWitnesses :: SyntaxTemplate Expression -> [[Witness]]
 templateWitnesses template = atomic : variants

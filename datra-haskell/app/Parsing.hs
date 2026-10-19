@@ -1241,17 +1241,16 @@ mapExpression =
 -- directions remain one semantic pair rather than two parser-only forms.
 evaluatedIdentifierOperation :: Parser Expression
 evaluatedIdentifierOperation = do
-  evaluated <- try parenthesizedExpression
+  evaluated <- try
+    (parenthesizedExpression <|> templateFederationBoundary)
   let headExpression = case evaluated of
         SyntaxBoundary inner -> inner
         inner -> inner
   -- Parenthesized declaration heads name the binding whose value supplies the
   -- template; arbitrary parenthesized expressions remain ordinary operands.
-  case headExpression of
-    IdentifierReference {} -> pure ()
-    _ -> empty
+  guard (validEvaluatedDeclarationHead headExpression)
   let
-      parts = [StringTemplateInterpolation headExpression]
+      parts = [StringTemplateInterpolation evaluated]
   isOptional <-
     maybe False (const True)
       <$> optional (operatorToken AST.OptionalOperator)
@@ -1269,6 +1268,29 @@ evaluatedIdentifierOperation = do
         pure (optionalIdentifier isOptional
           (IdentifierTemplateOperation parts typeAnnotation givenValue))
     ]
+
+-- An unparenthesized federation of explicit templates is a completed
+-- declaration head.  Retaining the same boundary used by parentheses keeps
+-- the following assignment outside that federation without inventing a
+-- second declaration representation.
+templateFederationBoundary :: Parser Expression
+templateFederationBoundary = do
+  value <- eitherExpressionWith stringExpression
+  case value of
+    EitherType {} -> pure (SyntaxBoundary value)
+    _ -> empty
+
+validEvaluatedDeclarationHead :: Expression -> Bool
+validEvaluatedDeclarationHead expressionValue =
+  case expressionValue of
+    IdentifierReference {} -> True
+    AsciiStringLiteral {} -> True
+    StringTemplate {} -> True
+    EitherType left right ->
+      validEvaluatedDeclarationHead left
+        && validEvaluatedDeclarationHead right
+    SyntaxBoundary inner -> validEvaluatedDeclarationHead inner
+    _ -> False
 
 identifierTemplateOperation :: Parser Expression
 identifierTemplateOperation = do

@@ -3,6 +3,8 @@
 module DatraLanguage.DependentDeclaration
   ( DependentDeclaration (..)
   , dependentDeclaration
+  , dependentDeclarationNameExpression
+  , dependentDeclarationTemplateBranches
   , bindingNames
   ) where
 
@@ -52,8 +54,64 @@ dependentDeclaration = declaration False False
 
     scopeTemplatePart _ literal@StringTemplateLiteral {} = literal
     scopeTemplatePart contextual
+        (StringTemplateInterpolation (SyntaxBoundary expressionValue)) =
+      StringTemplateInterpolation
+        (SyntaxBoundary (In contextual expressionValue))
+    scopeTemplatePart contextual
         (StringTemplateInterpolation expressionValue) =
       StringTemplateInterpolation (In contextual expressionValue)
+
+-- A syntax boundary on the sole interpolation marks an evaluated declaration
+-- head, whether it was written with parentheses or formed by a tighter
+-- operator such as an explicit template federation.  Ordinary quoted
+-- templates retain their literal/interpolation structure.
+dependentDeclarationNameExpression :: DependentDeclaration -> Expression
+dependentDeclarationNameExpression declaration =
+  case dependentDeclarationParts declaration of
+    [StringTemplateInterpolation (SyntaxBoundary expressionValue)] ->
+      expressionValue
+    parts -> StringTemplate parts
+
+-- Explicit alternatives in an evaluated declaration head are still one
+-- declaration family.  Each leaf is a complete string template; consumers
+-- that operate on syntax structure use these branches while consumers that
+-- need the written family expression use 'dependentDeclarationNameExpression'.
+dependentDeclarationTemplateBranches
+  :: DependentDeclaration
+  -> Maybe [[StringTemplatePart Expression]]
+dependentDeclarationTemplateBranches declaration =
+  fmap (concatMap expandOptionalInterpolations) $
+  case dependentDeclarationParts declaration of
+    [StringTemplateInterpolation (SyntaxBoundary expressionValue)] ->
+      branches expressionValue
+    parts -> Just [parts]
+  where
+    branches (SyntaxBoundary inner) = branches inner
+    branches (EitherType left right) =
+      (<>) <$> branches left <*> branches right
+    branches (AsciiStringLiteral literal) =
+      Just [[StringTemplateLiteral literal]]
+    branches (StringTemplate parts) = Just [parts]
+    branches _ = Nothing
+
+    expandOptionalInterpolations [] = [[]]
+    expandOptionalInterpolations (part : remaining) =
+      [ selected <> suffix
+      | selected <- alternatives part
+      , suffix <- expandOptionalInterpolations remaining
+      ]
+    alternatives
+        (StringTemplateInterpolation (OptionalType present)) =
+      [ [StringTemplateInterpolation present]
+      , []
+      ]
+    alternatives
+        (StringTemplateInterpolation
+          (SyntaxBoundary (OptionalType present))) =
+      [ [StringTemplateInterpolation (SyntaxBoundary present)]
+      , []
+      ]
+    alternatives part = [[part]]
 
 -- Lexical binders include dependent identifiers and parameters, not only
 -- executable declarations. Keep name extraction independent of declaration
