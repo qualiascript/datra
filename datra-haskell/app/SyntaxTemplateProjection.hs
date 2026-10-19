@@ -88,8 +88,8 @@ syntaxProjectionCandidates includeConcatenation template value =
       <> terminalExpressionBoundaries
       <> contextualClosure initialSeen initial
 
-    -- Function type, syntax type, and concatenation are complete-expression
-    -- boundaries. A template whose only hole is its final expression may move
+    -- Function type and concatenation are complete-expression boundaries. A
+    -- template whose only hole is its final expression may move
     -- such a boundary into that hole, but the result is already in the exact
     -- application shape the matcher consumes. Feeding it back into the
     -- generic contextual closure creates exponentially many equivalent trees

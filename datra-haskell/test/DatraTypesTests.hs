@@ -547,16 +547,6 @@ testDiagnostics = do
           , "șablonul complet trebuie să furnizeze operandul cerut de operator"
           ]
     )
-  assert "invalid syntax-template operands have an explicit bilingual diagnostic"
-    ( localizeDiagnostic English Types.InvalidSyntaxTemplateOperand
-        == LocalizedMessage
-          "% expects a compile-time string or total map of strings"
-          []
-      && localizeDiagnostic Romanian Types.InvalidSyntaxTemplateOperand
-        == LocalizedMessage
-          "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
-          []
-    )
   assert "parser failures have exact bilingual localization"
     ( localizeDiagnostic English (ParseFailure "bad token")
         == LocalizedMessage "source could not be parsed" ["bad token"]

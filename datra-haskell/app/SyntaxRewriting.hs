@@ -24,11 +24,12 @@ import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
 import Parsing (inferredFunction)
 import DatraTypes
-  ( EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
+  ( EvaluatedFunction (functionBody)
+  , EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
   , InterpretedValue
   , booleanCondition
   , eitherValue
-  , interpretedFunctionBody
+  , interpretedFunction
   , interpretedSemanticResult
   , subfederationValues
   )
@@ -908,7 +909,8 @@ directSyntaxFunctionExpansion environment selectedRule application =
                     (rewriteRuleImplementation rule)
                 ]
           value <- maybeToList (evaluate expressionValue)
-          body <- maybeToList (interpretedFunctionBody value)
+          syntaxFunction <- maybeToList (interpretedFunction value)
+          body <- maybeToList (functionBody syntaxFunction)
           case body of
             EvaluatedSyntaxFunctionBody _ expansion -> [(expansion, expected)]
             _ -> []
@@ -1543,7 +1545,7 @@ trailingIdentifier value = case value of
   IdentifierReference (IdentifierString name) -> Just name
   SyntaxBoundary _ -> Nothing
   -- A qualified member is a complete operand. Its final component may share
-  -- a spelling with a declared infix form (notably @'datra.in@), but that does
+  -- a spelling with a declared infix form (notably @'datra.in_body@), but that does
   -- not leave the surrounding source line awaiting a right operand.
   ScopeAccess _ _ -> Nothing
   _ -> case reverse (expressionChildren value) of

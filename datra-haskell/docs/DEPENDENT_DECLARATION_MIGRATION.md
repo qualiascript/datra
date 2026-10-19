@@ -84,7 +84,7 @@ self-application.
 
 There are two distinct inputs in this expression:
 
-1. the contextual adapter supplied by `'datra.val in it`; and
+1. the contextual adapter supplied by `'datra.val_body in it`; and
 2. the capture-side `it` introduced when a particular dependent declaration
    name is matched.
 
@@ -94,7 +94,7 @@ context. Conversely, the capture-side `it` must not rebind the adapter captured
 by that context.
 
 Fix this at the syntax-rule boundary. The general rewrite pass must not contain
-special cases for the spellings `val`, `in`, or `'datra.val`.
+special cases for the spellings `val`, `in`, or `'datra.val_body`.
 
 ## Syntax rewriting work
 

@@ -75,7 +75,7 @@ datraHostValue = do
     , syntaxBody "assertHard" $ \case
         [_, condition] -> Just (Assert True condition)
         _ -> Nothing
-    , syntaxBody "begin" $ \case
+    , syntaxFunction "begin" $ \case
         [entries, result] -> Just (Begin (blockEntries entries) result)
         _ -> Nothing
     , syntaxBody "do" $ \case
@@ -124,8 +124,23 @@ datraHostValue = do
     blockType = syntaxCategoryTypeValue BlockAST
     functionBodyType = syntaxCategoryTypeValue FunctionBodyAST
     syntaxBody name expand =
-      (name, Right (makeFunctionBodyValue
+      (bodyName, Right (makeFunctionBodyValue
         (EvaluatedSyntaxFunctionBody source expand)))
+      where
+        bodyName = name <> "_body"
+        source = "'datra." <> bodyName
+    syntaxFunction name expand =
+      (name, Right (makeFunctionValue (EvaluatedFunction
+        anyTypeValue
+        anyTypeValue
+        Nothing
+        Nothing
+        (Just source)
+        (Just (EvaluatedSyntaxFunctionBody source expand))
+        "Any -> Any"
+        Nothing
+        Nothing
+        True)))
       where
         source = "'datra." <> name
     nativeBody namespace name implementation =

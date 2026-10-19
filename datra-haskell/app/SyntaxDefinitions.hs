@@ -53,7 +53,6 @@ data DependentSyntaxRule = DependentSyntaxRule
 
 data DependentSyntaxInvocation
   = DependentSyntaxLookup [StringTemplatePart Expression]
-  | DependentSyntaxAdapter Expression
   deriving (Eq, Show)
 
 syntaxDependentRule :: SyntaxRule -> Maybe DependentSyntaxRule
@@ -64,9 +63,8 @@ syntaxDependentRule rule = case syntaxSemantics rule of
 syntaxRuleAdapter :: SyntaxRule -> Maybe Expression
 syntaxRuleAdapter rule = case syntaxSemantics rule of
   SyntaxAdapter adapter -> Just adapter
-  DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
-    DependentSyntaxLookup {} -> Nothing
-    DependentSyntaxAdapter adapter -> Just adapter
+  DependentSyntax dependent -> Just
+    (dependentSyntaxImplementation dependent)
 
 data SyntaxTemplateCompilationFailure
   = InadmissibleSyntaxTemplate
@@ -159,8 +157,6 @@ expandSyntax rule selection =
   case syntaxSemantics rule of
     DependentSyntax dependent -> case dependentSyntaxInvocation dependent of
       DependentSyntaxLookup parts -> dependentLookup parts captures
-      DependentSyntaxAdapter adapter ->
-        FunctionApplication adapter suppliedInput
     SyntaxAdapter adapter -> FunctionApplication adapter suppliedInput
   where
     captures = templateSelectionCaptures selection

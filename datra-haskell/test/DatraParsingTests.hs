@@ -76,8 +76,7 @@ import SyntaxDefinitions
   , SyntaxRule (..)
   , SyntaxRuleSemantics (..)
   , SyntaxTemplate (..)
-  , SyntaxTemplateCompilationFailure (..)
-  , compileSyntaxTemplatesFromExpression
+  , declarationRules
   , expandSyntax
   )
 import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
@@ -464,22 +463,6 @@ regressionTests = do
         parsed == SyntaxBoundary
           (FunctionApplication (natural 2) (ref "++"))
       Left _ -> False)
-  let compilePattern source = case parseNeutralPhrase source of
-        Left _ -> Left ExpectedSyntaxTemplateOperand
-        Right expressionValue ->
-          compileSyntaxTemplatesFromExpression expressionValue
-  assert "whole-template validation rejects an incomplete core prefix"
-    (case compilePattern "\"call ~\"" of
-      Left (InadmissibleSyntaxTemplate "call ~" _) -> True
-      _ -> False)
-  assert "whole-template validation accepts a complete value-of expression"
-    (case compilePattern "\"call ~name\"" of
-      Right _ -> True
-      _ -> False)
-  assert "whole-template validation rejects consumed grouping boundaries"
-    (case compilePattern "\"call (%Int)\"" of
-      Left (InadmissibleSyntaxTemplate _ _) -> True
-      _ -> False)
   let holeKinds =
         [ ExpressionSyntaxHole (ref "_Expr")
         , BlockSyntaxHole (ref "_Block")
@@ -594,23 +577,6 @@ regressionTests = do
       Right (Located _ parsedPhrase) ->
         matchRules matchesNumericHole [correctFrom] parsedPhrase
           == matchRules matchesNumericHole [correctFrom] fromPhrase
-      Left _ -> False)
-  let beginAliasBootstrap = unlines
-        [ "_Expr := 'datra.Expr"
-        , "_Block := 'datra.Block"
-        , "'begin := \"begin %_Block yield %_Expr\" % (_Block; _Expr -> _Expr) 'datra.begin"
-        , "yield Example := begin"
-        , "  'begin := 'begin"
-        , "yield 'begin"
-        ]
-      isBeginAlias expressionValue =
-        expressionValue == AST.assignment
-          "'begin" (ref "'begin") (ref "'begin")
-          || any isBeginAlias (expressionChildren expressionValue)
-  assert "'begin := 'begin remains a declaration beside its own template"
-    (case parseSourceLocated False
-        "<begin-alias-regression>" beginAliasBootstrap of
-      Right (Located _ parsed) -> isBeginAlias parsed
       Left _ -> False)
   let nestedTailPhrase = foldl FunctionApplication (ref "from")
         [natural 0, AtlasMap [ref "to", ref "Infinity"]]
@@ -747,11 +713,6 @@ regressionTests = do
     [ Import ["library_one", "std"] (FunctionBody [] (natural 1))
     , InModule "std" (ref "_this")
     , ScopeAccess (ref "_this") (ref "abc")
-    , SyntaxType (StringTemplate
-        [ StringTemplateInterpolation (ref "Int")
-        , StringTemplateLiteral " next"
-        ])
-        (FunctionType (ref "Int") (ref "Int"))
     , FunctionBody [] (IdentifierReference (IdentifierString "x"))
     , Assert True (BooleanLiteral True)
     , Overload (natural 1) (natural 2)
@@ -913,8 +874,8 @@ regressionTests = do
     "{value? : Any} do yield value"
     (appliedBody optionalInput)
   assertParsed "a host function body infers Any after a non-function type"
-    "Nat 'datra.val"
-    (FunctionApplication (ref "Nat") (datraRef ["val"]))
+    "Nat 'datra.val_body"
+    (FunctionApplication (ref "Nat") (datraRef ["val_body"]))
   assertParsed "a leading host member remains a standalone value"
     "'datra.Any"
     (datraRef ["Any"])
@@ -961,93 +922,10 @@ regressionTests = do
     "{value? : Any} -> >< (Nat; Nat) do yield value"
     (arrowBody optionalInput
       (Coalization (AtlasMap [ref "Nat", ref "Nat"])))
-  assertParsed "a declared syntax signature is not a shorthand function domain"
-    "\"step %Int next\" % (Int -> Int) do yield value"
-    (FunctionApplication
-      (SyntaxType (StringTemplate
-          [ StringTemplateLiteral "step "
-          , StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral " next"
-          ])
-        (FunctionType (ref "Int") (ref "Int")))
-      identityBody)
-  assertParsed "a declared syntax signature can infer its Any codomain"
-    "\"step %Int next\" % Int do yield value"
-    (FunctionApplication
-      (SyntaxType (StringTemplate
-          [ StringTemplateLiteral "step "
-          , StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral " next"
-          ])
-        (ref "Int"))
-      identityBody)
-  let optionalIntInput = ArgumentMap
-        [OptionalType (AST.dependentIdentifierType "value" (ref "Int"))]
-  assertParsed "a declared syntax signature accepts a multiline body"
-    "\"step %Nat next\" % ({value?:Int} -> Int) do\n  yield value"
-    (FunctionApplication
-      (SyntaxType (StringTemplate
-          [ StringTemplateLiteral "step "
-          , StringTemplateInterpolation (ref "Nat")
-          , StringTemplateLiteral " next"
-          ])
-        (FunctionType optionalIntInput (ref "Int")))
-      identityBody)
-  assertAstOutput "% accepts an inhabited total map of template strings"
-    "(\"%Int++\"; \"increment %Int\") % (Int -> Int)"
-    (SyntaxType
-      (AtlasMap
-        [ StringTemplate
-            [ StringTemplateInterpolation (ref "Int")
-            , StringTemplateLiteral "++"
-            ]
-        , StringTemplate
-            [ StringTemplateLiteral "increment "
-            , StringTemplateInterpolation (ref "Int")
-            ]
-        ])
-      (FunctionType (ref "Int") (ref "Int")))
-  assertParsed "% remains syntax rather than performing parser validation"
-    "\"call (%Int)\" % (Int -> Int)"
-    (SyntaxType
-      (StringTemplate
-        [ StringTemplateLiteral "call ("
-        , StringTemplateInterpolation (ref "Int")
-        , StringTemplateLiteral ")"
-        ])
-      (FunctionType (ref "Int") (ref "Int")))
-  assertRejected "the obsolete percent-arrow syntax-type operator is rejected"
-    "\"step %Int next\" %> (Int -> Int) do yield value"
-  assertRejected "the old doubled-percent syntax-type operator is rejected"
-    "\"step %Int next\" %% (Int -> Int) do yield value"
-  assertRejected "prefix percent extraction is rejected"
-    "%\"call (%Int)\""
-  let syntaxAdapterType = SyntaxType
-        (StringTemplate
-          [ StringTemplateLiteral "handler "
-          , StringTemplateInterpolation (ref "_Expr")
-          ])
-        (FunctionType (ref "Any") (ref "Any"))
-      syntaxAdapter = datraRef ["syntax", "test"]
-  assertParsed "inline host syntax adapters use the host member as their body"
-    "\"handler %_Expr\" % (Any -> Any) 'datra.syntax.test"
-    (FunctionApplication syntaxAdapterType syntaxAdapter)
-  assertParsed "a syntax type is an ordinary value without a body"
-    "\"handler %_Expr\" % (Any -> Any)"
-    syntaxAdapterType
-  assertParsed "declared host syntax adapters use the function body form"
-    "handler := \"handler %_Expr\" % (Any -> Any) 'datra.syntax.test"
-    (AST.assignment "handler"
-      (FunctionApplication syntaxAdapterType syntaxAdapter)
-      (FunctionApplication syntaxAdapterType syntaxAdapter))
-  assertParsed "an explicit syntax type can annotate its implementation"
-    "handler : \"handler %_Expr\" % (Any -> Any) := 'datra.syntax.test"
-    (IdentifierOperation
-      (IdentifierString "handler") syntaxAdapterType (Just syntaxAdapter))
   assert "a category hole uses its declared type implementation" $ case
       parseSource (unlines
         [ "(_Expr := Int"
-        , "take := \"take %_Expr\" % (Int -> Int) 'datra.fun"
+        , "\"take %_Expr\" := (Int -> Int) 'datra.fun_body"
         , "take 7"
         , "take Infinity)"
         ]) of
@@ -1058,7 +936,7 @@ regressionTests = do
       parseSource (unlines
         [ "(Capture := 'datra.Expr"
         , "CaptureAlias := Capture"
-        , "take := \"take %CaptureAlias\" % (Any -> Any) 'datra.fun"
+        , "\"take %CaptureAlias\" := (Any -> Any) 'datra.fun_body"
         , "take Infinity)"
         ]) of
     Right (AtlasMap values) -> case reverse values of
@@ -1069,7 +947,7 @@ regressionTests = do
       parseSource (unlines
         [ "(_DependentIdentifier := 'datra.DependentIdentifier"
         , "_Expr := 'datra.Expr"
-        , "gate := \"gate %_DependentIdentifier bound %_Expr body %Int\" %"
+        , "\"gate %_DependentIdentifier bound %_Expr body %Int\" :="
             <> " ((Any; Any; Int) -> Int) 'datra.test.gate"
         , "gate x bound Int body x)"
         ]) of
@@ -1085,8 +963,7 @@ regressionTests = do
   assert "an identifier capture does not introduce contextual it" $ case
       parseSource (unlines
         [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-        , "capture := \"capture %_DependentIdentifier\" %"
-            <> " (Any -> Any) 'datra.fun"
+        , "\"capture %_DependentIdentifier\" := (Any -> Any) 'datra.fun_body"
         , "capture \"abc%(it)\")"
         ]) of
     Right (AtlasMap [_, _, Fun captured]) ->
@@ -1095,8 +972,7 @@ regressionTests = do
   assert "an optional identifier capture does not introduce contextual it" $
     case parseSource (unlines
       [ "(_DependentIdentifier := 'datra.DependentIdentifier"
-      , "capture := \"capture %_DependentIdentifier\" %"
-          <> " (Any -> Any) 'datra.fun"
+      , "\"capture %_DependentIdentifier\" := (Any -> Any) 'datra.fun_body"
       , "capture \"abc%(it)\"?)"
       ]) of
       Right (AtlasMap [_, _, Fun captured]) ->
@@ -1105,10 +981,8 @@ regressionTests = do
   case parseSource (unlines
       [ "(_DependentIdentifier := 'datra.DependentIdentifier"
       , "_DependentDeclaration := 'datra.DependentDeclaration"
-      , "captureId := \"captureId %_DependentIdentifier\" %"
-          <> " (Any -> Any) 'datra.fun"
-      , "captureDeclaration := \"captureDeclaration %_DependentDeclaration\" %"
-          <> " (Any -> Any) 'datra.fun"
+      , "\"captureId %_DependentIdentifier\" := (Any -> Any) 'datra.fun_body"
+      , "\"captureDeclaration %_DependentDeclaration\" := (Any -> Any) 'datra.fun_body"
       , "captureId x"
       , "captureId (x : Int)"
       , "captureDeclaration x := 1"
@@ -2465,11 +2339,6 @@ genExpression =
     , Gen.subterm genExpression
         (Import ["std", "path/library_two"])
     , Gen.subterm genExpression (InModule "std")
-    , Gen.subterm genExpression
-        (SyntaxType (StringTemplate
-          [ StringTemplateInterpolation (ref "Int")
-          , StringTemplateLiteral " next"
-          ]))
     , Gen.subterm2 genExpression genExpression (\binding result -> FunctionBody [binding] result)
     , Gen.subterm2 genExpression genExpression (\binding result -> Begin [binding] result)
     , Gen.subterm genExpression Let
@@ -2664,22 +2533,21 @@ assertStandardSyntaxDeclarationsAdmissible = do
     Left failure -> fail
       ("Std neutral parse failed: " <> parseFailureMessage failure)
     Right (_, Located _ raw) -> do
-      let operands = syntaxTemplateOperands raw
-          failures =
-            [ failure
-            | operand <- operands
-            , Left failure <- [compileSyntaxTemplatesFromExpression operand]
-            ]
-      assert "Std contains syntax declarations" (not (null operands))
-      assert "every Std syntax declaration is admissible" (null failures)
+      let declarations = syntaxDeclarations raw
+      assert "Std contains syntax declarations" (not (null declarations))
+      assert "every Std syntax declaration is admissible"
+        (all (not . null . declarationRules) declarations)
   where
-    syntaxTemplateOperands expressionValue = current
-      <> concatMap syntaxTemplateOperands
+    syntaxDeclarations expressionValue = current
+      <> concatMap syntaxDeclarations
         (expressionChildren expressionValue)
       where
         current = case expressionValue of
-          SyntaxType templates _ -> [templates]
+          declaration@IdentifierTemplateOperation { identifierTemplateParts = parts }
+            | any isInterpolation parts -> [declaration]
           _ -> []
+    isInterpolation StringTemplateInterpolation {} = True
+    isInterpolation StringTemplateLiteral {} = False
 
 assertAstSyntax :: IO ()
 assertAstSyntax = do
@@ -2717,11 +2585,6 @@ assertAstSyntax = do
     ( renderExpression
         (((natural 2 <..> natural 5) ~> ref "Nat"))
         == "(~> (<..> 2 5) (ref $Nat))"
-    )
-  assert "the syntax-type operator uses the percent AST symbol"
-    ( renderExpression
-        (SyntaxType (ref "Template") (FunctionType (ref "Int") (ref "Int")))
-        == "(% (ref $Template) (-> (ref $Int) (ref $Int)))"
     )
   assertEqual
     "bounded from calls retain their scoped signature and checked captures"

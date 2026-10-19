@@ -36,8 +36,6 @@ import DatraLanguage.AST.Syntax
   , (~>)
   )
 import DatraLanguage.AST.Syntax qualified as AST
-import DatraLanguage.SyntaxTemplate
-  ( FunctionSyntax (FunctionSyntax) )
 import DatraTypes qualified as Types
 import Interpreting
   ( ModuleSource (..)
@@ -59,7 +57,6 @@ import Interpreting
   , interpretedRangeDescription
   , interpretedValueKind
   , moduleExportNames
-  , moduleSyntaxRules
   , parseDatraSourceLocatedWithImportsAndStandardLibrary
   )
 import DatraLanguage.Diagnostics.Interpreter
@@ -97,12 +94,6 @@ import MapOperators.AccessOperator
   )
 import ModuleLoading (loadSourceImports)
 import Numeric.Natural (Natural)
-import SyntaxDefinitions
-  ( SyntaxHoleKind (..)
-  , SyntaxPiece (SyntaxHole, SyntaxLiteral)
-  , SyntaxRule (..)
-  , SyntaxTemplate (SyntaxTemplate)
-  )
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -191,101 +182,10 @@ assert = assertBool
 
 testModuleSyntaxAlias :: IO ()
 testModuleSyntaxAlias = do
-  let expressionType = hostReference "Expr"
-      blockType = hostReference "Block"
-      beginValue = SyntaxType
-        (StringTemplate
-          [ StringTemplateLiteral "begin "
-          , StringTemplateInterpolation (identifierReference "_Block")
-          , StringTemplateLiteral " yield "
-          , StringTemplateInterpolation (identifierReference "_Expr")
-          ])
-        (FunctionType
-          (AtlasMap [blockType, expressionType]) expressionType)
-      binding name value = IdentifierOperation
+  let binding name value = IdentifierOperation
         (IdentifierString name) value (Just value)
       member name value = IdentifierOperation
         (IdentifierString name) value Nothing
-      moduleBody = Begin
-        [binding "begin" (identifierReference "begin")]
-        (contextualAccess (IdentifierString "_this"))
-      source = ModuleSource "alias-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          , binding "outerOnly" (natural 7)
-          ]
-          (member "AliasModule" moduleBody))
-        []
-  case moduleExportNames source of
-    Right names -> assert "only inner declarations are module members"
-      (names == ["begin"])
-    Left failure -> assertFailure
-      ("module export discovery failed: " <> show failure)
-  case moduleSyntaxRules "alias-module" source of
-    Right [rule] -> do
-      assert "the inner alias retains the outer function's syntax"
-        (syntaxName rule == "begin")
-      assert "the retained rule keeps its declared literal"
-        (syntaxTemplate rule == SyntaxTemplate
-          [ SyntaxLiteral "begin"
-          , SyntaxHole (BlockSyntaxHole
-              (InModule "alias-module" (identifierReference "_Block")))
-          , SyntaxLiteral "yield"
-          , SyntaxHole (ExpressionSyntaxHole
-              (InModule "alias-module" (identifierReference "_Expr")))
-          ])
-    Right rules -> assertFailure
-      ("expected one exported syntax rule, got: " <> show rules)
-    Left failure -> assertFailure
-      ("module syntax discovery failed: " <> show failure)
-  let shadowingSource = ModuleSource "shadowing-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          ]
-          (member "ShadowingModule" (Begin
-            [binding "begin" (natural 123)]
-            (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleSyntaxRules "shadowing-module" shadowingSource of
-    Right [] -> pure ()
-    Right rules -> assertFailure
-      ("a non-function shadow retained syntax rules: " <> show rules)
-    Left failure -> assertFailure
-      ("shadowing module syntax discovery failed: " <> show failure)
-  let preservingSource = ModuleSource "preserving-module.datra"
-        (Begin
-          [ binding "_Expr" expressionType
-          , binding "_Block" blockType
-          , binding "begin" beginValue
-          ]
-          (member "PreservingModule" (Begin
-            [ binding "_begin" (identifierReference "begin")
-            , binding "begin" (natural 123)
-            ]
-            (contextualAccess (IdentifierString "_this")))))
-        []
-  case moduleSyntaxRules "preserving-module" preservingSource of
-    Right [rule] -> assert
-      "an alias made before shadowing retains the original syntax rules"
-      (syntaxName rule == "_begin"
-        && syntaxTemplate rule == SyntaxTemplate
-          [ SyntaxLiteral "begin"
-          , SyntaxHole (BlockSyntaxHole
-              (InModule "preserving-module"
-                (identifierReference "_Block")))
-          , SyntaxLiteral "yield"
-          , SyntaxHole (ExpressionSyntaxHole
-              (InModule "preserving-module"
-                (identifierReference "_Expr")))
-          ])
-    Right rules -> assertFailure
-      ("expected only the preserved alias rule, got: " <> show rules)
-    Left failure -> assertFailure
-      ("syntax-preserving shadow failed: " <> show failure)
   let duplicateSource = ModuleSource "duplicate-module.datra"
         (Begin [] (member "DuplicateModule" (Begin
           [ binding "abc" (natural 123)
@@ -322,11 +222,6 @@ testModuleSyntaxAlias = do
 
 identifierReference :: String -> Expression
 identifierReference = IdentifierReference . IdentifierString
-
-hostReference :: String -> Expression
-hostReference name = ScopeAccess
-  (identifierReference "'datra")
-  (identifierReference name)
 
 sourceNatType :: String
 sourceNatType = "Nat"
@@ -1371,27 +1266,6 @@ testGenericProductOrdinalIndexing = do
 
 testStringTemplates :: IO ()
 testStringTemplates = do
-  case interpretExpressionReason
-      (SyntaxType (StringTemplate
-        [ StringTemplateLiteral "choose "
-        , StringTemplateInterpolation (identifierReference "Int")
-        , StringTemplateLiteral " mark"
-        ])
-        (FunctionType IntegerType IntegerType)) of
-    Right value -> do
-      assert "syntax annotations are erased from canonical function rendering"
-        (renderInterpretedValue value == "(Int -> Int)")
-      assert "evaluated function types retain their structured syntax attachment"
-        (case Types.interpretedFunction value >>= Types.functionSyntax of
-          Just (FunctionSyntax
-            [ SyntaxTemplate
-                [ SyntaxLiteral "choose"
-                , SyntaxHole (ValueSyntaxHole _)
-                , SyntaxLiteral "mark"
-                ]]) -> True
-          _ -> False)
-    Left failure -> assertFailure
-      ("syntax function type failed to evaluate: " <> show failure)
   expectSourceValue
       "Int template excludes Infinity"
       "\"Infinity\" of \"%Int\"" $ \value ->

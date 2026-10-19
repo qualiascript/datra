@@ -4,9 +4,7 @@ module Datra.Interpreter.StandardLibraryTests
 
 import Datra.TestSupport
 import DatraLanguage.Diagnostics.Application
-  ( ParseFailure (ParseFailure)
-  , SyntaxTemplateAdmissibilityFailure (..)
-  )
+  ( ParseFailure (ParseFailure) )
 import DatraTypes
   ( AtlasMapFederationRefutation
       (AtlasMapFederationSpecificationHasNoMatchingMember)
@@ -90,14 +88,13 @@ standardLibraryTests =
             "5"
         , programCase "recursive let aliases to syntax bodies are discovered"
             ( "answer := choose (false; 1; 2)\n"
-                <> "let choose := 'datra.if\n"
+                <> "let choose := 'datra.if_body\n"
                 <> "yield answer"
             )
             "2"
         , programCase "direct begin rewrites its result in the block scope"
             ( "yield 'begin ((\n"
-                <> "  apply := \"apply %_Expr\" % "
-                <> "(_Expr -> _Expr) 'datra.fun\n"
+                <> "  \"apply %_Expr\" := (_Expr -> _Expr) 'datra.fun_body\n"
                 <> "); apply 7)"
             )
             "7"
@@ -346,17 +343,17 @@ standardLibraryTests =
         , programCase "escaped function captures the enclosing input"
             "f := 4 in (Int -> Int do yield it + _it 1)\nyield f 5" "9"
         , programCase "function input shadows a syntax-valued outer input"
-            ("f := 'datra.val in ((Nat -> Nat) -> Nat do yield it 4)\n"
+            ("f := 'datra.val_body in ((Nat -> Nat) -> Nat do yield it 4)\n"
               <> "yield f (Nat -> Nat do yield it + 1)") "5"
         , programCase "syntax hooks work through a contextual alias"
-            ("'datra.val in (it (unit := 7))\nyield unit + 0") "7"
+            ("'datra.val_body in (it (unit := 7))\nyield unit + 0") "7"
         , programCase "syntax implementation captures its declaration context"
-            ("yield ('datra.val in begin "
-              <> "'canon := \"canon %('datra.DependentDeclaration)\" % "
+            ("yield ('datra.val_body in begin "
+              <> "\"canon %('datra.DependentDeclaration)\" := "
               <> "('datra.DependentDeclaration -> 'datra.DependentDeclaration) it; "
               <> "f := Nat -> Nat do canon x := 7; yield x; yield f 0)") "7"
         , programCase "syntax holes retain their contextual type"
-            ("Nat in ('identity := \"identity %(it)\" % "
+            ("Nat in (\"identity %(it)\" := "
               <> "(it -> it) do yield it)\nyield identity 4") "4"
         , programCase "optional named input retains its name"
             "yield ((value : 4) in (it of {value? : Int}))" "true"
@@ -373,7 +370,7 @@ standardLibraryTests =
         , programCase "contextual declaration escapes with its input"
             "4 in (x := it + 5)\nyield x" "9"
         , programCase "contextual syntax implementation survives its declaration"
-            ("'datra.ordinal.sum in ('add := \"add %(Nat) to %(Nat)\" % "
+            ("'datra.ordinal.sum in (\"add %(Nat) to %(Nat)\" := "
               <> "({x? : Nat; y? : Nat} -> Nat) it)\nyield add 4 to 5") "9"
         ]
     , testGroup "Maybe and list operators"
@@ -779,173 +776,84 @@ declaredPatternTests :: TestTree
 declaredPatternTests =
   testGroup "declared patterns"
     [ programCase "zero-hole syntax completes a total domain"
-        ( "answer := \"the answer\" % (42 -> Nat) do yield it\n"
+        ( "\"the answer\" := (42 -> Nat) do yield it\n"
             <> "yield the answer"
         )
         "42"
     , programCase "value holes evaluate expressions before selection"
-        ( "double := \"double %Nat\" % (Nat -> Nat) do yield it * 2\n"
+        ( "\"double %Nat\" := (Nat -> Nat) do yield it * 2\n"
             <> "yield double (2 + 2)"
         )
         "8"
     , programCase "syntax pattern call"
         (declaration <> "yield step (1+1) next") "3"
     , programCase "an application spine is one syntax boundary"
-        ( "prefix := \"prefix %_Expr\" % ({value?:Any} -> Any)"
+        ( "\"prefix %_Expr\" := ({value?:Any} -> Any)"
             <> " do yield value\n"
-            <> "choose := \"%_Expr otherwise %_Expr\""
-            <> " % ({left?:Any; right?:Any} -> Any) do yield right\n"
+            <> "\"%_Expr otherwise %_Expr\" := "
+            <> "({left?:Any; right?:Any} -> Any) do yield right\n"
             <> "yield prefix 1 otherwise 2"
         )
         "2"
-    , programCase "surface syntax name may differ from its binding"
-        ( "abc := \"def %Nat next\" % ({value?:Nat} -> Int)"
+    , programCase "a direct declaration uses its template's surface name"
+        ( "\"def %Nat next\" := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield def 2 next"
         )
         "3"
     , programCase "the complete literal prefix is matched before its first hole"
-        ( "abc := \"my name is %Nat\" % ({value?:Nat} -> Int)"
+        ( "\"my name is %Nat\" := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield my name is 2"
         )
         "3"
     , programCase "a template may begin with a postfix operand hole"
-        ( "increment := \"%Int++\" % ({value?:Int} -> Int)"
+        ( "\"%Int++\" := ({value?:Int} -> Int)"
             <> " do yield value+1\n"
             <> "yield 2++"
         )
         "3"
-    , programCase "one function accepts an inhabited total map of templates"
-        ( "increment := (\"%Int++\"; \"increment %Int\")"
-            <> " % ({value?:Int} -> Int) do yield value+1\n"
-            <> "yield (2++; increment 2)"
-        )
-        "(3; 3)"
-    , programFailureCase
-        "% rejects an incomplete core operator in the complete pattern"
-        "yield (\"call ~\" % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplate
-          "call ~" (IncompleteCoreSyntaxOperator "~")))
     , programCase
-        "% accepts and invokes a complete value-of literal"
-        ( "answer := \"call ~name\" % (() -> Int) do yield 7\n"
+        "a direct declaration accepts a complete value-of literal"
+        ( "\"call ~name\" := (() -> Int) do yield 7\n"
             <> "yield call ~name"
         )
         "7"
-    , programFailureCase
-        "% rejects an opening grouping character in a syntax template"
-        "yield (\"call (%Int)\" % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplate
-          "call ( %Int )" SyntaxTemplateProjectionLoss))
-    , programFailureCase
-        "% rejects a closing grouping character in a syntax template"
-        "yield (\"call %Int)\" % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplate
-          "call %Int )" NeutralSyntaxTemplateParseFailure))
-    , programCase "% accepts and invokes a comma-boundary template"
-        ( "take := \"take,%Int\" % ({value?:Int} -> Int)"
+    , programCase "a direct declaration accepts a comma-boundary template"
+        ( "\"take,%Int\" := ({value?:Int} -> Int)"
             <> " do yield value+1\n"
             <> "yield (take,2)"
         )
-        "3"
-    , programFailureCase
-        "one forbidden member rejects a complete template map"
-        "yield ((\"step %Int\"; \"call (%Int)\") % (Int -> Int))"
-        (SourceEvaluationFailure (InvalidSyntaxTemplate
-          "call ( %Int )" SyntaxTemplateProjectionLoss))
-    , programFailureCase "% rejects a non-string map member"
-        "yield ((\"step %Int\"; 1) % (Int -> Int))"
-        (SourceEvaluationFailure InvalidSyntaxTemplateOperand)
-    , programFailureCase "% rejects an empty total map"
-        "yield (() % (Int -> Int))"
-        (SourceEvaluationFailure InvalidSyntaxTemplateOperand)
-    , programCase "syntax annotation canonicalizes as an explicit function"
-        "yield (\"step %Int next\" % (Int -> Int))" "(Int -> Int)"
-    , programCase "ordinary spelling"
-        (ordinaryDeclaration <> "yield step (value:2)") "3"
-    , programCase "syntax function subfederation"
-        (declaration <> "yield step of ({value?:Nat} -> Int)") "true"
-    , programCase "identical syntax attachments are subfederations"
-        ( "yield ((\"step %Int mark\" % (Int -> Int))"
-            <> " of (\"step %Int mark\" % (Int -> Int)))"
-        )
-        "true"
-    , programCase "distinct syntax attachments are not subfederations"
-        ( "yield ((\"step %Int left\" % (Int -> Int))"
-            <> " of (\"step %Int right\" % (Int -> Int)))"
-        )
-        "false"
-    , programFailureCase "specification preserves syntax attachment identity"
-        ( "yield ((\"step %Int left\" % (Int -> Int))"
-            <> " ~> (\"step %Int right\" % (Int -> Int)))"
-        )
-        (SourceEvaluationFailure
-          (FunctionEvaluationFailed FunctionSignatureVarianceViolation))
-    , programCase "ordinary specified function remains callable"
-        (ordinaryDeclaration
-          <> "f := (step ~> ({value?:Nat} -> Int))\nyield f 2")
         "3"
     , programFailureCase "syntax pattern checks captures"
         (declaration <> "yield step (-1) next")
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programFailureCase "%Int syntax holes reject Infinity"
-        ( "finite := \"finite %Int\" % ({value?:Int} -> Int)"
+        ( "\"finite %Int\" := ({value?:Int} -> Int)"
             <> " do yield value\n"
             <> "yield finite Infinity"
         )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
     , programCase "%IntLimit syntax holes accept Infinity"
-        ( "limit := \"limit %IntLimit\" % ({value?:IntLimit} -> IntLimit)"
+        ( "\"limit %IntLimit\" := ({value?:IntLimit} -> IntLimit)"
             <> " do yield value\n"
             <> "yield limit Infinity"
         )
         "Infinity"
     , programFailureCase "syntax captures must also inhabit the function domain"
-        ( "step := \"step %Int next\" % ({value?:Nat} -> Int)"
+        ( "\"step %Int next\" := ({value?:Nat} -> Int)"
             <> " do yield value+1\n"
             <> "yield step (-1) next"
         )
         (SourceEvaluationFailure
           (FunctionEvaluationFailed NoApplicableFunctionAlternative))
-    , programCase "declared syntax functions always permit ordinary calls"
-        (declaration <> "yield step 2")
-        "3"
     , programFailureCase "duplicate syntax declaration"
         (declaration <> declaration <> "yield this")
         (SourceParseFailure (ParseFailure
-          "OverlappingDependentDeclarations \"step\" \"step\""))
-    , programFailureCase "ambiguous syntax alternatives"
-        ( "step := ((\"step %Int next\" % (Int -> Int) 'datra.abs)"
-            <> " | (\"step %Int next\" % (Int -> Int) do yield 2))\n"
-            <> "yield step"
-        )
-        (SourceEvaluationFailure EitherAlternativesNotDistinct)
-    , programFailureCase
-        "distinct literal syntax alternatives still require distinct calls"
-        ( "step := ((\"step %Int left\" % ({value?:Int} -> Int) do yield value)"
-            <> " | (\"step %Int right\" % ({value?:Int} -> Int) do yield value))\n"
-            <> "yield step"
-        )
-        (SourceEvaluationFailure EitherAlternativesNotDistinct)
-    , programFailureCase
-        "syntax alternatives require disjoint ordinary domains"
-        ( "step := ((\"step %Int left\" % (Int -> Int) 'datra.abs)"
-            <> " | (\"step %Int right\" % (Int -> Int) 'datra.abs))\n"
-            <> "yield step"
-        )
-        (SourceEvaluationFailure EitherAlternativesNotDistinct)
-    , programFailureCase "overlapping syntax hole domains are rejected"
-        ( "choose := ((\"choose %Nat mark\" % (Nat -> Int) 'datra.abs)"
-            <> " | (\"choose %Int mark\" % (Int -> Int) 'datra.abs))\n"
-            <> "yield choose"
-        )
-        (SourceEvaluationFailure EitherAlternativesNotDistinct)
+          "OverlappingDependentDeclarations \"step %Nat next\" \"step %Nat next\""))
     ]
   where
     declaration =
-      "step := \"step %Nat next\" % ({value?:Nat} -> Int) do yield value+1\n"
-    ordinaryDeclaration =
-      "step := \"step %Nat next\" % ({value?:Int} -> Int) do yield value+1\n"
+      "\"step %Nat next\" := ({value?:Nat} -> Int) do yield value+1\n"
