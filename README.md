@@ -2,20 +2,13 @@
 
 Datra is a language for data transformations. The [preprint](preprint.pdf),
 [primer](primer.pdf), and [Lean formalization](datra.lean) live in this
-[repository](https://github.com/qualiascript/datra/).
+[repository](https://github.com/qualiascript/datra/). Details on the WIP
+Haskell implementation can be found [here](/datra-haskell).
+
+Excuse the AI slop, it is temporary until the surface language has a chance
+to stablize, which will allow me to write its documentation in my own words.
 
 ## Factorial example
-
-Inline recursion uses `fun`, where `this` is the value being defined:
-
-```datra
-factorial := fun {n? : Int} -> Int do
-  yield if n = 0 then 1 else n * this (n - 1)
-assert factorial 5 = 120
-```
-
-Alternative, one can also use let-binding directly, which binds the `factorial` identifier early to its scope, which
-also allows cyclic dependencies:
 
 ```datra
 let factorial := {n? : Int} -> Int do
