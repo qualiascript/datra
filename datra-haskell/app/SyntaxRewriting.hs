@@ -31,6 +31,7 @@ import DatraTypes
   , booleanCondition
   , eitherValue
   , interpretedFunction
+  , interpretedFunctionBody
   , interpretedSemanticResult
   , subfederationValues
   )
@@ -56,7 +57,10 @@ import SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
   , matchSyntaxRulesWith
   )
-import SyntaxTemplateAdmissibility (syntaxTemplateRefines)
+import SyntaxTemplateAdmissibility
+  ( syntaxTemplateRefines
+  , syntaxTemplatesOverlap
+  )
 import SyntaxTemplateProjection
   ( applicationFrom
   , applicationFromMaybe
@@ -109,6 +113,7 @@ data RewriteRule = RewriteRule
   , rewriteRuleSequenceFunctionBodyShape :: Maybe [String]
   , rewriteRuleContinuations :: [(String, [String])]
   , rewriteRuleEvaluation :: Maybe (Expression -> Maybe InterpretedValue)
+  , rewriteRuleHoleFamilies :: [Maybe InterpretedValue]
   }
 
 compileRewriteRule :: SyntaxRule -> RewriteRule
@@ -122,6 +127,8 @@ compileRewriteRule rule = RewriteRule
       sequenceFunctionBodyShapeFromPieces pieces
   , rewriteRuleContinuations = continuationContexts pieces
   , rewriteRuleEvaluation = Nothing
+  , rewriteRuleHoleFamilies =
+      [ Nothing | SyntaxHole _ <- pieces ]
   }
   where
     pieces = syntaxTemplatePieces (syntaxTemplate rule)
@@ -132,52 +139,27 @@ rewriteRuleName = syntaxName . rewriteRule
 rewriteRuleImplementation :: RewriteRule -> Maybe Expression
 rewriteRuleImplementation = syntaxRuleAdapter . rewriteRule
 
--- A dependent declaration remains a runtime name lookup unless its declared
--- implementation evaluates to a callable.  Callable declarations use the
--- ordinary application path, whose prepared domain performs the same override
--- operation as every other function call.  A raw FunctionBody is deliberately
--- not callable and therefore cannot enter this branch.
-rewriteRuleForMatch :: RewriteEnvironment -> RewriteRule -> SyntaxRule
-rewriteRuleForMatch environment compiled =
-  case syntaxSemantics rule of
-    DependentSyntax dependent
-      | Just value <- evaluate
-          (dependentSyntaxImplementation dependent)
-      , Just _ <- interpretedFunction value -> rule
-          { syntaxSemantics = SyntaxAdapter
-              (dependentSyntaxImplementation dependent) }
-    _ -> rule
-  where
-    rule = rewriteRule compiled
-    evaluate = case rewriteRuleEvaluation compiled of
-      Just retained -> retained
-      Nothing -> rewriteEvaluate environment
-        (rewriteDeclarations environment)
-
-specificRewriteRules :: RewriteEnvironment -> [RewriteRule]
-specificRewriteRules environment = sortBy compareSpecificity
-  (rewriteRules environment)
+orderRewriteRules :: [RewriteRule] -> [RewriteRule]
+orderRewriteRules = sortBy compareSpecificity
   where
     compareSpecificity left right
-      | ruleStrictlyRefines environment left right = LT
-      | ruleStrictlyRefines environment right left = GT
+      | ruleStrictlyRefines left right = LT
+      | ruleStrictlyRefines right left = GT
       | otherwise = EQ
 
 ruleStrictlyRefines
-  :: RewriteEnvironment
-  -> RewriteRule
+  :: RewriteRule
   -> RewriteRule
   -> Bool
-ruleStrictlyRefines environment source target =
-  ruleRefines environment source target
-    && not (ruleRefines environment target source)
+ruleStrictlyRefines source target =
+  ruleRefines source target
+    && not (ruleRefines target source)
 
 ruleRefines
-  :: RewriteEnvironment
-  -> RewriteRule
+  :: RewriteRule
   -> RewriteRule
   -> Bool
-ruleRefines environment source target =
+ruleRefines source target =
   syntaxTemplateRefines
     (holeRefines source target)
     (syntaxTemplate (rewriteRule source))
@@ -187,10 +169,8 @@ ruleRefines environment source target =
       case targetHole of
         ExpressionSyntaxHole {} -> True
         _ | sameHoleClass sourceHole targetHole ->
-              case
-                  ( evaluateHole sourceRule (syntaxHoleValue sourceHole)
-                  , evaluateHole targetRule (syntaxHoleValue targetHole)
-                  ) of
+              case (holeFamily sourceRule sourceHole,
+                    holeFamily targetRule targetHole) of
                 (Just sourceValue, Just targetValue) ->
                   case subfederationValues sourceValue targetValue
                       >>= booleanCondition of
@@ -198,11 +178,37 @@ ruleRefines environment source target =
                     Left _ -> False
                 _ -> False
           | otherwise -> False
-    evaluateHole compiled expressionValue =
-      case rewriteRuleEvaluation compiled of
-        Just evaluate -> evaluate expressionValue
-        Nothing -> rewriteEvaluate environment
-          (rewriteDeclarations environment) expressionValue
+    holeFamily compiled kind = lookup kind
+      (zip (ruleHoleKinds compiled) (rewriteRuleHoleFamilies compiled)) >>= id
+
+ruleHoleKinds :: RewriteRule -> [SyntaxHoleKind Expression]
+ruleHoleKinds = foldr collect []
+  . syntaxTemplatePieces . syntaxTemplate . rewriteRule
+  where
+    collect (SyntaxHole kind) remaining = kind : remaining
+    collect SyntaxLiteral {} remaining = remaining
+
+rewriteRulesOverlap :: RewriteRule -> RewriteRule -> Bool
+rewriteRulesOverlap left right = syntaxTemplatesOverlap
+  (holeOverlaps left right)
+  (syntaxTemplate (rewriteRule left))
+  (syntaxTemplate (rewriteRule right))
+  where
+    holeOverlaps leftRule rightRule leftHole rightHole =
+      case (leftHole, rightHole) of
+        (ExpressionSyntaxHole {}, _) -> True
+        (_, ExpressionSyntaxHole {}) -> True
+        _ | sameHoleClass leftHole rightHole ->
+              case (holeFamily leftRule leftHole,
+                    holeFamily rightRule rightHole) of
+                (Just leftValue, Just rightValue) ->
+                  case eitherValue leftValue rightValue of
+                    Right _ -> False
+                    Left _ -> True
+                _ -> True
+          | otherwise -> False
+    holeFamily compiled kind = lookup kind
+      (zip (ruleHoleKinds compiled) (rewriteRuleHoleFamilies compiled)) >>= id
 
 sameHoleClass
   :: SyntaxHoleKind value
@@ -233,7 +239,7 @@ withContextualSyntax surfaces environment = environment
 type ClassifyHole =
   [Expression]
   -> SyntaxHoleKind Expression
-  -> SyntaxHoleKind Expression
+  -> (SyntaxHoleKind Expression, Maybe InterpretedValue)
 
 type CaptureHole =
   Bool
@@ -439,11 +445,14 @@ rewriteSequence capture initial rawEntries = do
           let resolved = resolveDependentDeclarationHead environment entry
               currentRules = declarationRules resolved
               currentDeclaration = dependentDeclaration resolved
-              currentFamily = evaluateFamilies environment currentRules
+              currentFamily = map
+                (compileScopedRewriteRule environment
+                  (rewriteDeclarations environment))
+                currentRules
           case currentDeclaration of
             Nothing -> pure ()
             Just declaration -> mapM_
-              (validateFamily environment
+              (validateFamily
                 (declarationLabel declaration) currentFamily)
               earlier
           if isValDependentDeclaration resolved
@@ -461,26 +470,13 @@ rewriteSequence capture initial rawEntries = do
                   [(declarationLabel declaration, currentFamily)]
           go (advanceScope environment entry) retained remaining
 
-        evaluateFamilies environment = map branchFamily
-          where
-            branchFamily rule =
-              ( compileRewriteRule rule
-              , case syntaxDependentRule rule of
-                  Just dependent -> case dependentSyntaxInvocation dependent of
-                    DependentSyntaxLookup parts ->
-                      rewriteEvaluate environment
-                        (rewriteDeclarations environment)
-                        (StringTemplate parts)
-                  Nothing -> Nothing
-              )
-
         declarationLabel = renderSourceExpression
           . dependentDeclarationNameExpression
 
-        validateFamily environment currentLabel currentFamily
+        validateFamily currentLabel currentFamily
             (previousLabel, previousFamily) =
           if and
-              [ branchesCompatible environment previous current
+              [ branchesCompatible previous current
               | previous <- previousFamily
               , current <- currentFamily
               ]
@@ -488,16 +484,10 @@ rewriteSequence capture initial rawEntries = do
             else Left (OverlappingDependentDeclarations
               previousLabel currentLabel)
 
-        branchesCompatible environment
-            (previousRule, previousValue)
-            (currentRule, currentValue) =
-          valuesAreDistinct previousValue currentValue
-          where
-            valuesAreDistinct (Just left) (Just right) =
-              case eitherValue left right of
-                Right _ -> True
-                Left _ -> False
-            valuesAreDistinct _ _ = False
+        branchesCompatible previous current =
+          not (rewriteRulesOverlap previous current)
+            || ruleStrictlyRefines previous current
+            || ruleStrictlyRefines current previous
 
         validateInjective environment (rule, dependent)
           | null captures = Right ()
@@ -808,6 +798,10 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
   where
     rewriteTemplatePart contextual part = case part of
       StringTemplateLiteral {} -> pure part
+      StringTemplateInterpolation (SyntaxBoundary interpolation) ->
+        StringTemplateInterpolation . SyntaxBoundary <$>
+          rewriteStandalone (contextCapture (rewriteContext contextual))
+            contextual interpolation
       StringTemplateInterpolation interpolation ->
         StringTemplateInterpolation <$>
           rewriteStandalone (contextCapture (rewriteContext contextual))
@@ -936,6 +930,11 @@ rewriteChildren capture environment value =
           pure (MapAccess
             (AtlasMap [rewrittenBinder, rewrittenBody])
             rewrittenInsertion)
+    -- Template declarations have already rewritten their interpolation
+    -- expressions and both RHS components in 'rewriteAfterBlock'. Traversing
+    -- them again here would unwrap the sole explicit 'SyntaxBoundary' which
+    -- distinguishes an evaluated declaration head from an ordinary capture.
+    IdentifierTemplateOperation {} -> pure value
     _ | Just (left, rebuild) <- leftInfixContext value -> do
       embedded <- rewriteEmbeddedApplication capture environment left
       case embedded of
@@ -1900,7 +1899,7 @@ literalBoundaryCandidate (SyntaxTemplate pieces) value =
 
 advanceScope :: RewriteEnvironment -> Expression -> RewriteEnvironment
 advanceScope environment entry = environment
-  { rewriteRules = retained <> introduced
+  { rewriteRules = orderRewriteRules (retained <> introduced)
   , rewriteDeclarations = retainedDeclarations <> [entry]
   }
   where
@@ -1908,24 +1907,89 @@ advanceScope environment entry = environment
     retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
     introduced =
-      map compileScoped
+      map (compileScopedRewriteRule environment retainedDeclarations)
         (declarationRules (resolveDependentDeclarationHead environment entry))
-    compileScoped rule = (compileRewriteRule (specializeRule rule))
-      { rewriteRuleEvaluation = Just
-          (rewriteEvaluate environment retainedDeclarations)
-      }
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)
-    specializeRule rule = rule
-      { syntaxTemplate = specializeTemplate (syntaxTemplate rule) }
-    specializeTemplate (SyntaxTemplate pieces) = SyntaxTemplate
-      [ case piece of
-          SyntaxHole kind -> SyntaxHole
-            (rewriteClassifyHole environment retainedDeclarations kind)
-          SyntaxLiteral {} -> piece
-      | piece <- pieces
-      ]
+
+compileScopedRewriteRule
+  :: RewriteEnvironment
+  -> [Expression]
+  -> SyntaxRule
+  -> RewriteRule
+compileScopedRewriteRule environment declarations rule = compiled
+  { rewriteRuleEvaluation = Just evaluate
+  , rewriteRuleHoleFamilies = holeFamilies
+  }
+  where
+    evaluate = rewriteEvaluate environment declarations
+    specializedRule = specializeRule rule
+    (specializedPieces, holeFamilies) = foldr classifyPiece ([], [])
+      (syntaxTemplatePieces (syntaxTemplate rule))
+    compiled = compileRewriteRule
+      (specializeSemantics
+        (rewriteContext environment)
+        declarations
+        specializedRule)
+    specializeRule original = original
+      { syntaxTemplate = SyntaxTemplate specializedPieces }
+    classifyPiece piece (pieces, families) = case piece of
+      SyntaxLiteral literal ->
+        (SyntaxLiteral literal : pieces, families)
+      SyntaxHole kind ->
+        let (specialized, family) =
+              rewriteClassifyHole environment declarations kind
+        in (SyntaxHole specialized : pieces, family : families)
+
+-- Decide the declaration's executable meaning once, in its lexical scope.
+-- Inspecting an attached body evaluates only that body value, not the function
+-- signature containing it, so syntax discovery cannot recursively rewrite the
+-- signature domain. A raw FunctionBody remains a lookup value; an actual
+-- function (such as 'datra.begin) is an adapter.
+specializeSemantics
+  :: SyntaxContext
+  -> [Expression]
+  -> SyntaxRule
+  -> SyntaxRule
+specializeSemantics context declarations rule = case syntaxSemantics rule of
+  DependentSyntax dependent ->
+    let implementation = dependentSyntaxImplementation dependent
+    in if implementationIsAdapter context declarations implementation
+      then rule { syntaxSemantics = SyntaxAdapter implementation }
+      else rule
+  SyntaxAdapter {} -> rule
+
+implementationIsAdapter
+  :: SyntaxContext
+  -> [Expression]
+  -> Expression
+  -> Bool
+implementationIsAdapter context declarations implementation =
+  classify implementation
+  where
+    evaluate = contextEvaluate context declarations
+
+    classify expressionValue = case expressionValue of
+      FunctionApplication signature body
+        | isFunctionBody body -> True
+        | canReceiveFunctionBody signature -> False
+        | otherwise -> evaluatesToFunction expressionValue
+      SyntaxBoundary inner -> classify inner
+      In input body ->
+        let nested = contextEnter context declarations (Just input)
+        in implementationIsAdapter nested [] body
+      _ -> evaluatesToFunction expressionValue
+
+    evaluatesToFunction expressionValue = case evaluate expressionValue of
+      Just value
+        | Nothing <- interpretedFunctionBody value
+        , Just _ <- interpretedFunction value -> True
+      _ -> False
+
+    isFunctionBody expressionValue = case evaluate expressionValue of
+      Just value | Just _ <- interpretedFunctionBody value -> True
+      _ -> False
 -- Resolve the explicitly parenthesized declaration head against declarations
 -- visible at this block position. Bare identifiers never take this path, so
 -- @abc := value@ continues to declare the literal name @abc@.

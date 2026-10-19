@@ -3,6 +3,7 @@
 module SyntaxTemplateAdmissibility
   ( validateSyntaxTemplate
   , syntaxTemplateRefines
+  , syntaxTemplatesOverlap
   ) where
 
 import DatraLanguage.AST
@@ -114,6 +115,55 @@ syntaxTemplateRefines holeRefines source target =
     exactSourceHole witnesses captured = firstExact
       [ (witness, kind)
       | (witness, kind) <- zip witnesses sourceKinds
+      ]
+      where
+        normalized = normalizeExpression captured
+        firstExact [] = Nothing
+        firstExact ((witness, kind) : remaining) =
+          case parseNeutralPhrase (witnessSource witness) of
+            Right expected
+              | normalizeExpression expected == normalized -> Just kind
+            _ -> firstExact remaining
+
+-- | Whether two syntax-template families have any structural member in
+-- common. Witnesses are projected in both directions because either template
+-- may provide the literal structure absorbed by an expression hole in the
+-- other. Aligned typed holes delegate federation intersection to the caller.
+syntaxTemplatesOverlap
+  :: (SyntaxHoleKind Expression -> SyntaxHoleKind Expression -> Bool)
+  -> SyntaxTemplate Expression
+  -> SyntaxTemplate Expression
+  -> Bool
+syntaxTemplatesOverlap holeOverlaps left right =
+  any (projects left right) (templateWitnesses left)
+    || any (projects right left) (templateWitnesses right)
+  where
+    projects source target witnesses =
+      case parseNeutralPhrase (renderWitness source witnesses) of
+        Left _ -> False
+        Right parsed -> case projectSyntaxTemplate
+            (capture source witnesses)
+            target
+            parsed of
+          Just _ -> True
+          Nothing -> False
+
+    capture source witnesses targetKind captured =
+      case exactSourceHole source witnesses captured of
+        Just sourceKind ->
+          if holeOverlaps sourceKind targetKind
+            then Just captured
+            else Nothing
+        Nothing -> case targetKind of
+          ExpressionSyntaxHole {} -> Just captured
+          _ -> Nothing
+
+    exactSourceHole source witnesses captured = firstExact
+      [ (witness, kind)
+      | (witness, kind) <- zip witnesses
+          [ kind
+          | SyntaxHole kind <- syntaxTemplatePieces source
+          ]
       ]
       where
         normalized = normalizeExpression captured
