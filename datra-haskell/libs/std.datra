@@ -34,8 +34,8 @@
       (_DependentDeclaration -> _DependentDeclaration) 'datra.let
     let "%_Expr in %_Expr" := (_Expr; _Expr -> _Expr) 'datra.in
 
-    # "assert %("hard") %_Expr" := ($hard; _Expr -> _Expr) 'datra.assertHard
-    # "assert %_Expr" := (_Expr -> _Expr) 'datra.assert
+    "assert %("hard") %_Expr" := ($hard; _Expr -> _Expr) 'datra.assertHard
+    "assert %_Expr" := (_Expr -> _Expr) 'datra.assert
     val "begin %_Block yield %_Expr" :=
       (_Block; _Expr -> _Expr) 'datra.begin
     val "do %_Block yield %_Expr" :=
