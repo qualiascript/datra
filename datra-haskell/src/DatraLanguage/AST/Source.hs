@@ -68,8 +68,6 @@ source context expression =
     ImportValue paths body -> "import "
       <> intercalate "; " (map renderAsciiStringLiteral paths)
       <> " " <> source 0 body
-    SyntaxTypeValue templates signature -> wrapped 1
-      (source 2 templates <> " % " <> source 0 signature)
     FunctionTypeValue _ input output -> wrapped 11
       (source 12 input <> " -> " <> functionTypeOutput output)
     FunctionApplicationValue

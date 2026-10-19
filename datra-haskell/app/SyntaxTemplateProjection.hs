@@ -279,7 +279,6 @@ terminalExpressionBoundaryCandidates template
       FunctionTypeExpression generics left right ->
         Just (left,
           (\newLeft -> FunctionTypeExpression generics newLeft right))
-      SyntaxType left right -> Just (left, (`SyntaxType` right))
       MapConcatenation left right -> Just (left, (`MapConcatenation` right))
       _ -> Nothing
     simpleExpressionPrefix = case reverse (syntaxTemplatePieces template) of

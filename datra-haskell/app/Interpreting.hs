@@ -96,7 +96,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxHoleKind (..)
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
-  , mapSyntaxHoleKind
   , traverseSyntaxTemplate
   )
 import DatraTypes
@@ -124,8 +123,6 @@ import ScopeProtection
 import SyntaxDefinitions
   ( SyntaxRule (..)
   , SyntaxRuleSemantics (..)
-  , SyntaxTemplateCompilationFailure (..)
-  , compileSyntaxTemplatesFromExpression
   , declarationRules
   )
 import DatraLanguage.Diagnostics
@@ -847,88 +844,6 @@ canonicalStringCodec =
         renderInterpretedValue . withoutCanonicalPresentation
     , decodeCanonicalString = canonicalStringCandidates
     }
-
-evaluateFunctionSyntax
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> Expression
-  -> Either InterpretingError (FunctionSyntax InterpretedValue)
-evaluateFunctionSyntax interpret templatesExpression = do
-  templates <- validatedSyntaxTemplates templatesExpression
-  FunctionSyntax <$> traverse evaluateTemplate templates
-  where
-    evaluateTemplate (SyntaxTemplate pieces) =
-      SyntaxTemplate <$> traverse evaluatePiece pieces
-    evaluatePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
-    evaluatePiece (SyntaxHole kind) = do
-      specialized <- specializeSourceSyntaxHole interpret kind
-      SyntaxHole <$> traverseSyntaxHoleKind interpret specialized
-
-sourceFunctionSyntax
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> Expression
-  -> Either InterpretingError (FunctionSyntax String)
-sourceFunctionSyntax interpret templatesExpression = do
-  templates <- validatedSyntaxTemplates templatesExpression
-  FunctionSyntax <$> traverse sourceTemplate templates
-  where
-    sourceTemplate (SyntaxTemplate pieces) =
-      SyntaxTemplate <$> traverse sourcePiece pieces
-    sourcePiece (SyntaxLiteral literal) = pure (SyntaxLiteral literal)
-    sourcePiece (SyntaxHole kind) = do
-      specialized <- specializeSourceSyntaxHole interpret kind
-      pure (SyntaxHole
-        (mapSyntaxHoleKind renderSourceExpression
-          specialized))
-
-specializeSourceSyntaxHole
-  :: (Expression -> Either InterpretingError InterpretedValue)
-  -> SyntaxHoleKind Expression
-  -> Either InterpretingError (SyntaxHoleKind Expression)
-specializeSourceSyntaxHole interpret kind@(ValueSyntaxHole target) = do
-  evaluated <- interpret target
-  let specialized = specializeSyntaxHoleKind evaluated kind
-  pure $ case specialized of
-    ValueSyntaxHole {}
-      | any syntaxCategoryExpression
-          (concatMap expressionTree (expressionChildren target)) ->
-          ExpressionSyntaxHole target
-    _ -> specialized
-  where
-    expressionTree expressionValue =
-      expressionValue
-        : concatMap expressionTree (expressionChildren expressionValue)
-    syntaxCategoryExpression expressionValue = case interpret expressionValue of
-      Right value -> case specializeSyntaxHoleKind value
-          (ValueSyntaxHole expressionValue) of
-        ValueSyntaxHole {} -> False
-        _ -> True
-      Left _ -> False
-specializeSourceSyntaxHole _ kind = pure kind
-
-traverseSyntaxHoleKind
-  :: Applicative f
-  => (source -> f target)
-  -> SyntaxHoleKind source
-  -> f (SyntaxHoleKind target)
-traverseSyntaxHoleKind transform kind = case kind of
-  ExpressionSyntaxHole value -> ExpressionSyntaxHole <$> transform value
-  BlockSyntaxHole value -> BlockSyntaxHole <$> transform value
-  FunctionBodySyntaxHole value -> FunctionBodySyntaxHole <$> transform value
-  DeclarationSyntaxHole value -> DeclarationSyntaxHole <$> transform value
-  DependentIdentifierSyntaxHole value ->
-    DependentIdentifierSyntaxHole <$> transform value
-  ValueSyntaxHole value -> ValueSyntaxHole <$> transform value
-
-validatedSyntaxTemplates
-  :: Expression
-  -> Either InterpretingError [SyntaxTemplate Expression]
-validatedSyntaxTemplates templatesExpression =
-  case compileSyntaxTemplatesFromExpression templatesExpression of
-    Left ExpectedSyntaxTemplateOperand ->
-      Left InvalidSyntaxTemplateOperand
-    Left (InadmissibleSyntaxTemplate template failure) ->
-      Left (InvalidSyntaxTemplate template failure)
-    Right templates -> Right templates
 
 canonicalStringCandidates :: String -> [InterpretedValue]
 canonicalStringCandidates characters =
@@ -1704,20 +1619,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         (scopeBindings imported) scope resolving body
     Import paths body -> evaluateImport
       reduction scope resolving expressionValue paths body
-    SyntaxType templates signature -> do
-      syntax <- evaluateFunctionSyntax interpret templates
-      sourceSyntax <- sourceFunctionSyntax interpret templates
-      value <- interpret signature
-      runProtectedOperation protection [value] $ \actuals ->
-        case actuals of
-          [actualValue] -> case interpretedFunction actualValue of
-            Just function -> pure (makeFunctionValue function
-              { functionSyntax = Just syntax
-              , functionSyntaxSource = Just sourceSyntax
-              })
-            Nothing -> Left (FunctionEvaluationFailed
-              AstPatternRequiresFunctionSignature)
-          _ -> Right neverValue
     FunctionTypeExpression [] domain codomain ->
       evaluateFunctionType [] expressionValue domain codomain
     FunctionTypeExpression generics domain codomain -> do
@@ -1737,19 +1638,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
             (renderSourceExpression expressionValue)
             function))
         Nothing -> Left (FunctionEvaluationFailed ExpectedFunctionType)
-    FunctionApplication
-        (SyntaxType templates signature)
-        body@FunctionBody {} -> do
-      syntax <- evaluateFunctionSyntax interpret templates
-      sourceSyntax <- sourceFunctionSyntax interpret templates
-      value <- interpret (FunctionApplication signature body)
-      case interpretedFunction value of
-        Just function -> pure (makeFunctionValue function
-          { functionSyntax = Just syntax
-          , functionSyntaxSource = Just sourceSyntax
-          })
-        Nothing -> Left (FunctionEvaluationFailed
-          AstPatternRequiresFunctionImplementation)
     FunctionApplication
         signature@(FunctionTypeExpression [] domain codomain)
         (FunctionBody bindings result) ->
@@ -2753,14 +2641,9 @@ resolveInferredEitherAlias (Just _) value = value
 recursiveFunctionImplementation :: Expression -> Maybe Expression
 recursiveFunctionImplementation expressionValue =
   case expressionValue of
-    SyntaxType _ (FunctionApplication _ implementation) ->
-      Just implementation
-    FunctionApplication (SyntaxType {}) implementation ->
-      Just implementation
     FunctionApplication (FunctionTypeExpression {}) implementation
       | not (sourceFunctionBody implementation) ->
       Just implementation
-    MapSpecification implementation SyntaxType {} -> Just implementation
     MapSpecification implementation FunctionTypeExpression {}
       | not (sourceFunctionBody implementation) ->
       Just implementation

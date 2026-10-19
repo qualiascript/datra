@@ -274,10 +274,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "value does not have a canonical string conversion"
         ["only injective, round-trippable string conversions are accepted"]
-    InvalidSyntaxTemplateOperand ->
-      LocalizedMessage
-        "% expects a compile-time string or total map of strings"
-        []
     InvalidSyntaxTemplate template failure ->
       LocalizedMessage
         (syntaxTemplateFailureSummary template failure)
@@ -337,10 +333,6 @@ syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    AstPatternRequiresFunctionSignature ->
-      LocalizedMessage "an AST pattern requires a function signature" []
-    AstPatternRequiresFunctionImplementation ->
-      LocalizedMessage "an AST pattern requires a function implementation" []
     HostSyntaxHookRequiresAstCaptures ->
       LocalizedMessage "host syntax hook requires unevaluated AST captures" []
     MissingNativeArgument name ->

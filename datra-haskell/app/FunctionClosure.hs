@@ -186,9 +186,6 @@ rewrite mode depth reserved active resolver bound expression =
             (FunctionApplication
               (IdentifierReference (IdentifierString "Maybe"))
               operand)
-    SyntaxType _ signature -> recur signature
-    MapSpecification implementation (SyntaxType _ signature) ->
-      recur (MapSpecification implementation signature)
     _ -> traverseExpressionChildren recur expression
   where
     recur = rewrite mode depth reserved active resolver bound

@@ -275,10 +275,6 @@ localizeInterpretingError reason =
       LocalizedMessage
         "valoarea nu are o conversie canonică în șir"
         ["sunt acceptate doar conversii în șir injective și reversibile"]
-    InvalidSyntaxTemplateOperand ->
-      LocalizedMessage
-        "% necesită un șir disponibil la compilare sau o hartă totală de șiruri"
-        []
     InvalidSyntaxTemplate template failure ->
       LocalizedMessage
         (syntaxTemplateFailureSummary template failure)
@@ -338,10 +334,6 @@ syntaxTemplateFailureDetail UnstableSyntaxTemplateProjection =
 localizeFunctionFailure :: FunctionFailure -> LocalizedMessage
 localizeFunctionFailure failure =
   case failure of
-    AstPatternRequiresFunctionSignature ->
-      LocalizedMessage "un șablon AST necesită o semnătură de funcție" []
-    AstPatternRequiresFunctionImplementation ->
-      LocalizedMessage "un șablon AST necesită o implementare de funcție" []
     HostSyntaxHookRequiresAstCaptures ->
       LocalizedMessage "cârligul de sintaxă gazdă necesită capturi AST neevaluate" []
     MissingNativeArgument name ->

@@ -190,7 +190,6 @@ data Expression
   | GenericReferenceExpression GenericReference
   | InModule String Expression
   | Import [String] Expression
-  | SyntaxType Expression Expression
   | FunctionTypeExpression [GenericBinder Expression] Expression Expression
   | FunctionBody [Expression] Expression
   | FunctionApplication Expression Expression
@@ -355,7 +354,6 @@ data OperatorExpression
   | GenericReferenceValue GenericReference
   | InModuleValue String OperatorExpression
   | ImportValue [String] OperatorExpression
-  | SyntaxTypeValue OperatorExpression OperatorExpression
   | FunctionTypeValue
       [GenericBinder OperatorExpression]
       OperatorExpression
@@ -499,10 +497,6 @@ normalizeExpression (GenericReferenceExpression reference) =
 normalizeExpression (InModule path value) = InModule path (normalizeExpression value)
 normalizeExpression (Import paths body) =
   Import paths (normalizeExpression body)
-normalizeExpression (SyntaxType templates signature) =
-  SyntaxType
-    (normalizeExpression templates)
-    (normalizeExpression signature)
 normalizeExpression (FunctionTypeExpression generics input output) =
   FunctionTypeExpression
     [ binder
@@ -677,8 +671,6 @@ lower (GenericReferenceExpression reference) =
   GenericReferenceValue reference
 lower (InModule path value) = InModuleValue path (lower value)
 lower (Import paths body) = ImportValue paths (lower body)
-lower (SyntaxType templates signature) =
-  SyntaxTypeValue (lower templates) (lower signature)
 lower (FunctionTypeExpression generics input output) =
   FunctionTypeValue
     [ binder
@@ -900,8 +892,6 @@ prettyOperator (ImportValue paths body) = prettyForm "import"
   [ prettyForm "paths" (map (pretty . renderAsciiStringLiteral) paths)
   , prettyOperator body
   ]
-prettyOperator (SyntaxTypeValue templates signature) =
-  prettyBinary SyntaxTypeOperator templates signature
 prettyOperator (FunctionTypeValue [] input output) =
   prettyBinary FunctionTypeOperator input output
 prettyOperator (FunctionTypeValue generics input output) =
@@ -1205,8 +1195,6 @@ traverseExpressionChildren visit expression = case expression of
   InModule path value -> InModule path <$> visit value
   Import paths body -> Import paths <$> visit body
   ScopeAccess source body -> ScopeAccess <$> visit source <*> visit body
-  SyntaxType templates signature ->
-    SyntaxType <$> visit templates <*> visit signature
   IdentifierOperation name annotation given -> IdentifierOperation name <$> visit annotation <*> traverse visit given
   IdentifierTemplateOperation parts annotation given ->
     IdentifierTemplateOperation

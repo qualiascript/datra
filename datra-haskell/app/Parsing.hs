@@ -109,7 +109,6 @@ import DatraLanguage.AST
       , Coalization
       , Assert
       , Begin
-      , SyntaxType
       , Fun
       , GenericIntroductionExpression
       , GenericReferenceExpression
@@ -302,7 +301,6 @@ neutralExpressionWitnessSources marker auxiliary = nub
 neutralInfixOperators :: [AST.Operator]
 neutralInfixOperators =
   [ AST.FunctionTypeOperator
-  , AST.SyntaxTypeOperator
   , AST.MaybeThenOperator
   , AST.EitherOperator
   , AST.InequalityOperator
@@ -787,7 +785,6 @@ astForm =
       , astGenericIntroduction
       , astGenericReference
       , astGenericFunctionType
-      , astBinary AST.SyntaxTypeOperator SyntaxType
       , astBinary AST.FunctionTypeOperator FunctionType
       , astBinary AST.ApplicationOperator FunctionApplication
       , astBlock "do" FunctionBody
@@ -1140,9 +1137,6 @@ inferredFunction body (Fun signature) =
   Fun (FunctionApplication (inferredFunctionSignature signature) body)
 inferredFunction body (SyntaxBoundary signature) =
   SyntaxBoundary (inferredFunction body signature)
-inferredFunction body (SyntaxType templates signature) =
-  FunctionApplication
-    (SyntaxType templates (inferredFunctionSignature signature)) body
 inferredFunction body signature =
   FunctionApplication (inferredFunctionSignature signature) body
 
@@ -1158,8 +1152,6 @@ inferredFunctionSignature signature =
       Just functionType
     appliedFunctionType (SyntaxBoundary inner) =
       SyntaxBoundary <$> appliedFunctionType inner
-    appliedFunctionType (SyntaxType templates inner) =
-      SyntaxType templates <$> appliedFunctionType inner
     appliedFunctionType (FunctionApplication function argument) = do
       functionType <- appliedFunctionType function
       pure (applyCodomainArgument functionType argument)
@@ -1171,8 +1163,6 @@ inferredFunctionSignature signature =
         (FunctionApplication codomain argument)
     applyCodomainArgument (SyntaxBoundary inner) argument =
       SyntaxBoundary (applyCodomainArgument inner argument)
-    applyCodomainArgument (SyntaxType templates inner) argument =
-      SyntaxType templates (applyCodomainArgument inner argument)
     applyCodomainArgument functionType argument =
       FunctionApplication functionType argument
 
@@ -1190,19 +1180,12 @@ arrowExpressionWithLayer
 arrowExpressionWithLayer expressionLayer operand = do
   rawInput <- expressionLayer operand
   let signature = arrowExpressionWithLayer expressionLayer operand
-  input <- syntaxTypeSuffix rawInput signature
+  let input = rawInput
   output <- optional
     (continuedOperator AST.FunctionTypeOperator *> signature)
   pure (maybe input (applyAfter (applyFunctionType input)) output)
 
-syntaxTypeSuffix :: Expression -> Parser Expression -> Parser Expression
-syntaxTypeSuffix input signature = do
-  syntaxSignature <- optional . try $ do
-    _ <- continuedOperator AST.SyntaxTypeOperator
-    applyAfter (SyntaxType input) <$> signature
-  pure (maybe input id syntaxSignature)
-
--- Function and syntax type construction binds before the neutral application
+-- Function type construction binds before the neutral application
 -- spine on its right. Parentheses introduce a 'SyntaxBoundary', so an applied
 -- codomain can still be written explicitly when that is what is intended.
 applyAfter :: (Expression -> Expression) -> Expression -> Expression
@@ -1343,9 +1326,7 @@ identifierOperation = do
           IdentifierString
             <$> pure (case identifierSpelling of BareIdentifier name -> name; FullStringIdentifier name -> name)
         typeAnnotation <- identifierValueExpression
-        case typeAnnotation of
-          SyntaxType {} -> pure ()
-          _ -> void (validateIdentifierSpelling identifierSpelling)
+        void (validateIdentifierSpelling identifierSpelling)
         givenValue <- optional (assignedValueFor typeAnnotation)
         let operation =
               IdentifierOperation
@@ -1376,9 +1357,7 @@ identifierValueExpression :: Parser Expression
 identifierValueExpression = do
   signature <- do
     rawInput <- makeExprParser rangeExpression identifierValueOperatorTable
-    input <- syntaxTypeSuffix rawInput
-      (tightArrowExpressionWith
-        (makeExprParser rangeExpression identifierValueOperatorTable))
+    let input = rawInput
     output <- optional
       (continuedOperator AST.FunctionTypeOperator *> tightArrowExpressionWith
         (makeExprParser rangeExpression identifierValueOperatorTable))
@@ -2098,7 +2077,6 @@ operatorToken operator = lexeme $ try $ do
     AST.SubtractionOperator -> notFollowedBy (char '>')
     AST.OptionalOperator -> notFollowedBy (char '?')
     AST.LookupOperator -> notFollowedBy (char '>' <|> char '%' <|> char '~')
-    AST.SyntaxTypeOperator -> notFollowedBy (char '%')
     AST.LessThanOperator -> notFollowedBy (char '=' <|> char '<' <|> char '~')
     AST.GreaterThanOperator -> notFollowedBy (char '=' <|> char '>')
     _ -> pure ()

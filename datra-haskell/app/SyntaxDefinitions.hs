@@ -8,7 +8,7 @@ module SyntaxDefinitions
   , SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
   , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
-  , declarationRules, compileSyntaxTemplatesFromExpression
+  , declarationRules
   , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , syntaxDependentRule, syntaxRuleAdapter
@@ -24,7 +24,6 @@ import DatraLanguage.AST
 import DatraLanguage.SyntaxTemplate
   ( SyntaxHoleKind (..)
   , SyntaxPiece (..)
-  , mapSyntaxHoleKind
   , SyntaxTemplate (..)
   , TemplateSelection (..)
   , literalSyntaxTemplate
@@ -70,8 +69,7 @@ syntaxRuleAdapter rule = case syntaxSemantics rule of
     DependentSyntaxAdapter adapter -> Just adapter
 
 data SyntaxTemplateCompilationFailure
-  = ExpectedSyntaxTemplateOperand
-  | InadmissibleSyntaxTemplate
+  = InadmissibleSyntaxTemplate
       String
       SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
@@ -97,12 +95,7 @@ declarationRules expressionValue =
   maybe [] dependentDeclarationRules (dependentDeclaration expressionValue)
 
 dependentDeclarationRules :: DependentDeclaration -> [SyntaxRule]
-dependentDeclarationRules declaration =
-  compatibilityRules
-      (renderSourceExpression
-        (StringTemplate (dependentDeclarationParts declaration)))
-      declaration <>
-    directTemplateRule declaration
+dependentDeclarationRules = directTemplateRule
 
 directTemplateRule :: DependentDeclaration -> [SyntaxRule]
 directTemplateRule declaration =
@@ -120,68 +113,6 @@ directTemplateRule declaration =
               (DependentSyntaxLookup
                 (dependentDeclarationParts declaration)))
           }
-      ]
-
--- The old @%@ form is now only a compatibility frontend. Strip the syntax
--- decoration from its callable and express each pattern as the same
--- capture-to-@it@ declaration used by a string-template declaration.
-compatibilityRules :: String -> DependentDeclaration -> [SyntaxRule]
-compatibilityRules name declaration =
-  collect (dependentDeclarationImplementation declaration)
-  where
-    collect (EitherType left right) = collect left <> collect right
-    collect (In contextual value) = map (scopeRule contextual) (collect value)
-    collect (MapSpecification body (SyntaxType templates signature)) =
-      rules templates body (MapSpecification body signature)
-    collect (SyntaxType templates (MapSpecification body signature)) =
-      rules templates body (MapSpecification body signature)
-    collect (SyntaxType templates (FunctionApplication signature body)) =
-      rules templates body (FunctionApplication signature body)
-    collect (FunctionApplication (SyntaxType templates signature) body) =
-      rules templates body (FunctionApplication signature body)
-    collect _ = []
-    scopeRule contextual rule = rule
-      { syntaxTemplate = SyntaxTemplate
-          [ case piece of
-              SyntaxLiteral {} -> piece
-              SyntaxHole kind -> SyntaxHole
-                (mapSyntaxHoleKind (In contextual) kind)
-          | piece <- syntaxTemplatePieces (syntaxTemplate rule)
-          ]
-      , syntaxSemantics = case syntaxSemantics rule of
-          SyntaxAdapter adapter -> SyntaxAdapter (In contextual adapter)
-          DependentSyntax dependent ->
-            DependentSyntax (scopeDependentRule dependent)
-      }
-      where
-        -- The declaration context closes over the callable. The capture-side
-        -- @it@ remains supplied by the dependent declaration expansion.
-        scopeDependent (FunctionApplication callable supplied) =
-          FunctionApplication (In contextual callable) supplied
-        scopeDependent implementation = In contextual implementation
-        scopeDependentRule dependent = dependent
-          { dependentSyntaxImplementation = scopeDependent
-              (dependentSyntaxImplementation dependent)
-          , dependentSyntaxInvocation = case
-                dependentSyntaxInvocation dependent of
-              DependentSyntaxLookup parts -> DependentSyntaxLookup parts
-              DependentSyntaxAdapter adapter ->
-                DependentSyntaxAdapter (In contextual adapter)
-          }
-    rules templates _body callable =
-      [ SyntaxRule
-          { syntaxName = name
-          , syntaxTemplate = template
-          , syntaxSemantics = DependentSyntax (DependentSyntaxRule
-              [ Nothing
-              | SyntaxHole {} <- syntaxTemplatePieces template
-              ]
-              (FunctionApplication callable
-                (IdentifierReference (IdentifierString "it")))
-              (DependentSyntaxAdapter _body))
-          }
-      | template <- either (const []) id
-          (compileSyntaxTemplatesFromExpression templates)
       ]
 
 compileDependentDeclarationTemplate
@@ -208,43 +139,6 @@ compileDependentDeclarationTemplate parts = do
     capture (IdentifierOperation name annotation Nothing) =
       (annotation, Just (name, annotation))
     capture value = (value, Nothing)
-
--- | The left operand of @%@ is either one string template or an inhabited
--- compile-time total map of string templates. Rules must be available before
--- evaluation, so every map member must be explicit at declaration time.
-compileSyntaxTemplatesFromExpression
-  :: Expression
-  -> Either SyntaxTemplateCompilationFailure [SyntaxTemplate Expression]
-compileSyntaxTemplatesFromExpression templates = do
-  compiled <- maybe
-    (Left ExpectedSyntaxTemplateOperand)
-    Right
-    (templateValues templates)
-  _ <- traverse validate compiled
-  pure compiled
-  where
-    validate template = case validateSyntaxTemplate template of
-      Left failure -> Left (InadmissibleSyntaxTemplate
-        (renderSyntaxTemplate renderSourceExpression template)
-        failure)
-      Right () -> Right ()
-    templateValues value@AsciiStringLiteral {} =
-      (: []) <$> templateValue value
-    templateValues value@StringTemplate {} =
-      (: []) <$> templateValue value
-    templateValues (SyntaxBoundary value) = templateValues value
-    templateValues (AtlasMap values)
-      | not (null values) = traverse templateValue values
-    templateValues _ = Nothing
-    templateValue (AsciiStringLiteral patternText) =
-      Just (syntaxTemplateFromPattern patternText)
-    templateValue (StringTemplate parts) =
-      SyntaxTemplate . concat <$> traverse templatePart parts
-    templateValue _ = Nothing
-    templatePart (StringTemplateLiteral literal) =
-      Just (syntaxTemplatePieces (syntaxTemplateFromPattern literal))
-    templatePart (StringTemplateInterpolation value) =
-      Just [SyntaxHole (ValueSyntaxHole value)]
 
 syntaxTemplateFromPattern :: String -> SyntaxTemplate Expression
 syntaxTemplateFromPattern = literalSyntaxTemplate

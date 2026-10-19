@@ -761,7 +761,6 @@ normalizeTrailingAssignment annotation given = (annotation, given)
 
 canReceiveFunctionBody :: Expression -> Bool
 canReceiveFunctionBody FunctionTypeExpression {} = True
-canReceiveFunctionBody SyntaxType {} = True
 -- A generic introduction followed by a body is the existing shorthand for an
 -- inferred function type; deciding that does not require evaluating the bound.
 canReceiveFunctionBody GenericIntroductionExpression {} = True
@@ -1364,20 +1363,6 @@ matchEmbeddedBlockWith capture environment =
                   ))
               Just (rewritten, remaining) -> Right (Just
                 (FunctionTypeExpression generics domain rewritten, remaining))
-              Nothing -> Right Nothing
-          SyntaxType templates signature ->
-            matchWithResult wrapResult signature trailing >>= \case
-              Just (FunctionApplication rewrittenSignature body@FunctionBody {}, remaining) ->
-                Right (Just
-                  ( FunctionApplication
-                      (SyntaxType templates rewrittenSignature)
-                      body
-                  , remaining
-                  ))
-              Just (rewritten, remaining) -> Right (Just
-                ( SyntaxType templates rewritten
-                , remaining
-                ))
               Nothing -> Right Nothing
           MapSpecification (SyntaxBoundary source) target ->
             matchWithResult id source trailing >>= \case
