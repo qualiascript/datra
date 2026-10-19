@@ -6,7 +6,7 @@
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val in it ('val := "val %_DependentDeclaration" %
+    'datra.val in it ("val %_DependentDeclaration" :=
       (_DependentDeclaration -> _DependentDeclaration) it)
     val 'datra := 'datra
 
@@ -30,49 +30,40 @@
     val NatValRange := 'datra.NatValRange
     val IntValRange := 'datra.IntValRange
 
-    val 'let := "let %_DependentDeclaration" %
+    val "let %_DependentDeclaration" :=
       (_DependentDeclaration -> _DependentDeclaration) 'datra.let
-    let 'in := "%_Expr in %_Expr" % (_Expr; _Expr -> _Expr) 'datra.in
+    let "%_Expr in %_Expr" := (_Expr; _Expr -> _Expr) 'datra.in
 
-    val 'assert :=
-      ("assert %("hard") %_Expr" %
-        ($hard; _Expr -> _Expr) 'datra.assertHard) |
-      ("assert %_Expr" % (_Expr -> _Expr) 'datra.assert)
-    val 'begin :=
-      "begin %_Block yield %_Expr" %
-        (_Block; _Expr -> _Expr) 'datra.begin
-    val 'do :=
-      "do %_Block yield %_Expr" %
-        (_Block; _Expr -> _FunctionBody) 'datra.do
-    let val 'from :=
-      ("from %Int to %IntLimit" %
-        ({origin : Int; target : IntLimit} -> IntValRange) 'datra.from) |
-      ("from %Int %_Direction" %
-        ({origin : Int; direction : _Direction} -> IntValRange) 'datra.from)
-    val 'fun := "fun %_Expr" % (_Expr -> _Expr) 'datra.fun
-    val 'if :=
-      ("if %_Expr then %_Expr else %_Expr" %
-        (_Expr; _Expr; _Expr -> _Expr) 'datra.if) |
-      ("if %_Expr then %_Expr" %
-        (_Expr; _Expr -> _Expr) 'datra.ifThen)
-    val 'import :=
-      "import %(List Str) %_FunctionBody" %
-        (List Str; _FunctionBody -> _Expr) 'datra.import
-    val 'with :=
-      "with %(List _Expr) %_FunctionBody" %
-        (List _Expr; _FunctionBody -> _Expr) 'datra.with
-    val 'len := "len %_Expr" % (Any -> NatLimit) 'datra.len
-    let val 'range :=
-      ("range %IntLimit to %IntLimit" %
-        ({origin : IntLimit; target : IntLimit} -> IntRange) 'datra.range) |
-      ("range %IntLimit %_Direction" %
-        ({origin : IntLimit; direction : _Direction} -> IntRange) 'datra.range)
+    # "assert %("hard") %_Expr" := ($hard; _Expr -> _Expr) 'datra.assertHard
+    # "assert %_Expr" := (_Expr -> _Expr) 'datra.assert
+    val "begin %_Block yield %_Expr" :=
+      (_Block; _Expr -> _Expr) 'datra.begin
+    val "do %_Block yield %_Expr" :=
+      (_Block; _Expr -> _FunctionBody) 'datra.do
+    let val "from %Int to %IntLimit" :=
+      ({origin : Int; target : IntLimit} -> IntValRange) 'datra.from
+    let val "from %Int %_Direction" :=
+      ({origin : Int; direction : _Direction} -> IntValRange) 'datra.from
+    val "fun %_Expr" := (_Expr -> _Expr) 'datra.fun
+    val "if %_Expr then %_Expr else %_Expr" :=
+      (_Expr; _Expr; _Expr -> _Expr) 'datra.if
+    val "if %_Expr then %_Expr" :=
+      (_Expr; _Expr -> _Expr) 'datra.ifThen
+    val "import %(List Str) %_FunctionBody" :=
+      (List Str; _FunctionBody -> _Expr) 'datra.import
+    val "with %(List _Expr) %_FunctionBody" :=
+      (List _Expr; _FunctionBody -> _Expr) 'datra.with
+    val "len %_Expr" := (Any -> NatLimit) 'datra.len
+    let val "range %IntLimit to %IntLimit" :=
+      ({origin : IntLimit; target : IntLimit} -> IntRange) 'datra.range
+    let val "range %IntLimit %_Direction" :=
+      ({origin : IntLimit; direction : _Direction} -> IntRange) 'datra.range
 
     # These parsing rules are ordered from lower to higher precedence.
-    val or := "%_Expr or %_Expr" % (_Expr; _Expr -> _Expr) 'datra.or
-    val and := "%_Expr and %_Expr" % (_Expr; _Expr -> _Expr) 'datra.and
-    val of := "%_Expr of %_Expr" % (_Expr; _Expr -> _Expr) 'datra.of
-    val not := "not %_Expr" % (_Expr -> _Expr) 'datra.not
+    val "%_Expr or %_Expr" := (_Expr; _Expr -> _Expr) 'datra.or
+    val "%_Expr and %_Expr" := (_Expr; _Expr -> _Expr) 'datra.and
+    val "%_Expr of %_Expr" := (_Expr; _Expr -> _Expr) 'datra.of
+    val "not %_Expr" := (_Expr -> _Expr) 'datra.not
 
     let val List := &T? do yield fun () | (T; this)
     val InhabitedList := &T? do yield (T; List T)
@@ -90,11 +81,11 @@
       slots := (^_i :: Nat) do yield "arg%(_i)"? : T
     yield ((^n? :: Nat) do yield slots[0..n])
 
-    val public := {_declarations : List (InhabitedStr; Any; $val?)} do
-      yield (((&_declaration :: _declarations) do
-        yield if _declaration[0][0] = "_"
-          then ()
-          else _declaration),)
+    val public := {_declarations : List (_name : InhabitedStr; Any; $val?)} do
+      yield (
+        ((&_declaration :: _declarations) do
+          yield if _declaration._name[0] = "_" then () else _declaration),
+      )
 
   )
   public this))
