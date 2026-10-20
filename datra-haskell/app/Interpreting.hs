@@ -84,6 +84,7 @@ import DatraLanguage.AST
   , GenericReference (..)
   , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
+  , attachedFunctionImplementation
   , namedBeginBlock
   , normalizeExpression
   , optionalIdentifierExpression
@@ -1243,7 +1244,8 @@ contextualFunction surface levels@(_ : _) = do
     signatureSource
     (Just (prepare schema))
     (Just invoke)
-    False))
+    False
+    Nothing))
   where
     maximumDepth = fromIntegral (length levels - 1)
     domainExpression = ValuedNaturalRange 0 maximumDepth
@@ -2152,7 +2154,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
         case actuals of
           [actualInput, actualOutput] -> pure (makeFunctionValue
             (EvaluatedFunction actualInput actualOutput Nothing Nothing Nothing Nothing
-              signatureText (Just prepare) Nothing True))
+              signatureText (Just prepare) Nothing True Nothing))
           _ -> Right neverValue
 
 duplicateGenericIdentifier
@@ -2713,22 +2715,20 @@ resolveInferredEitherAlias (Just _) value = value
 -- replaces it with the fully typed function value.
 recursiveFunctionImplementation :: Expression -> Maybe Expression
 recursiveFunctionImplementation expressionValue =
-  case expressionValue of
-    FunctionApplication (FunctionTypeExpression {}) implementation
+  case attachedFunctionImplementation expressionValue of
+    Just implementation
       | not (sourceFunctionBody implementation) ->
       Just implementation
-    MapSpecification implementation FunctionTypeExpression {}
-      | not (sourceFunctionBody implementation) ->
-      Just implementation
-    Begin _ result -> recursiveFunctionImplementation result
-    Let value -> recursiveFunctionImplementation value
-    Val value -> recursiveFunctionImplementation value
-    EitherType left right ->
-      case recursiveFunctionImplementation left of
-        Just implementation -> Just implementation
-        Nothing -> recursiveFunctionImplementation right
-    OptionalType operand -> recursiveFunctionImplementation operand
-    _ -> Nothing
+    _ -> case expressionValue of
+      Begin _ result -> recursiveFunctionImplementation result
+      Let value -> recursiveFunctionImplementation value
+      Val value -> recursiveFunctionImplementation value
+      EitherType left right ->
+        case recursiveFunctionImplementation left of
+          Just implementation -> Just implementation
+          Nothing -> recursiveFunctionImplementation right
+      OptionalType operand -> recursiveFunctionImplementation operand
+      _ -> Nothing
   where
     sourceFunctionBody FunctionBody {} = True
     sourceFunctionBody _ = False
@@ -4004,7 +4004,7 @@ createFunctionWithEvaluatedTypes evaluatedTypes reduction captured resolving
   let functionValue = makeFunctionValue
         (EvaluatedFunction input output Nothing Nothing
           (Just (renderSourceExpression closed)) Nothing signatureText
-          (Just prepare) (Just invoke) False)
+          (Just prepare) (Just invoke) False Nothing)
       validateExistentialPackage source = do
         rows <- argumentRows source
         tryPackageRows source Nothing rows
@@ -4526,7 +4526,7 @@ evaluateImport reduction captured resolving sourceExpression paths body =
           callable = makeFunctionValue (EvaluatedFunction
             input anyTypeValue Nothing Nothing Nothing Nothing
             (renderSourceExpression sourceExpression)
-            (Just prepare) (Just invoke) False)
+            (Just prepare) (Just invoke) False Nothing)
       (applied, _) <- applyFunction
         (scopeActivation captured) reduction callable domain
       pure (withoutCanonicalPresentation applied)

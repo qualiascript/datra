@@ -311,6 +311,7 @@ semanticsContainsRange (NaturalRangeSemantics _ _) = True
 semanticsContainsRange (ValuedNaturalRangeSemantics _ _) = True
 semanticsContainsRange (IntegerRangeSemantics _ _) = True
 semanticsContainsRange (ValuedIntegerRangeSemantics _ _) = True
+semanticsContainsRange (IntegerLimitRangeSemantics _ _) = True
 semanticsContainsRange NaturalTypeSemantics = True
 semanticsContainsRange IntegerTypeSemantics = True
 semanticsContainsRange (ConcatenationSemantics members) =

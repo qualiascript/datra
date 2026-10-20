@@ -16,6 +16,7 @@ module DatraLanguage.AST
   , pattern GenericFunctionType
   , contextualAccess
   , isContextualAccessOf
+  , attachedFunctionImplementation
   , OperatorExpression (..)
   , toOperatorExpression
   , traverseExpressionChildren
@@ -249,6 +250,17 @@ isContextualAccessOf name expression = case expression of
   FunctionApplication (IdentifierReference actual) argument
     | actual == name -> argument == EllipsisNatural 0 || argument == AtlasMap []
   _ -> False
+
+-- | The implementation attached by a function specification expression.
+-- This is structural syntax information; inspecting it does not evaluate the
+-- function's domain or codomain.
+attachedFunctionImplementation :: Expression -> Maybe Expression
+attachedFunctionImplementation expression = case expression of
+  FunctionApplication FunctionTypeExpression {} implementation ->
+    Just implementation
+  MapSpecification implementation FunctionTypeExpression {} ->
+    Just implementation
+  _ -> Nothing
 
 -- | A module resource yields exactly one simple identifier type. Its
 -- annotation or assigned implementation is the value imported under that

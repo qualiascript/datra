@@ -66,6 +66,7 @@ stringConversionProperties semantics
     NaturalTypeSemantics -> naturalNumber
     IntegerRangeSemantics {} -> numericRange
     ValuedIntegerRangeSemantics {} -> integerNumber
+    IntegerLimitRangeSemantics {} -> numericRange
     IntegerTypeSemantics -> integerNumber
     AsciiStringSemantics {} -> injectiveUnknownAlphabet
     IdentifierValueTypeSemantics ->

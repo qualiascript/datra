@@ -44,12 +44,6 @@ import NumericalOperators.Semantics
   )
 import SuperEllipsisInsertion (fullSomeSuperEllipsisInsertion)
 
-data IntegerLimit
-  = NegativeInfinity
-  | FiniteInteger Integer
-  | PositiveInfinity
-  deriving (Eq, Ord, Show)
-
 addValues
   :: InterpretedValue
   -> InterpretedValue

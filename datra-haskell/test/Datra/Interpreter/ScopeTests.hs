@@ -433,7 +433,7 @@ scopeProtectionTests =
               (EvaluatedFunction
                 (naturalValue 0) (naturalValue 1)
                 Nothing Nothing Nothing Nothing
-                "Nat -> Nat" Nothing Nothing False)
+                "Nat -> Nat" Nothing Nothing False Nothing)
         assertEqual "function contract"
           DecisionRefuted
           (decideClosedPublicResultContract function)

@@ -38,7 +38,7 @@ import Evaluation.Map
   , makeAtlasMap
   )
 import Evaluation.Construction (makeAsciiString, makeExplicit, makeFormulation)
-import Evaluation.Numerical (IntegerLimit (..), requireIntegerLimit)
+import Evaluation.Numerical (requireIntegerLimit)
 import Evaluation.Access.RangeSelection
   ( AccessSource (..)
   , DescribedRange (..)

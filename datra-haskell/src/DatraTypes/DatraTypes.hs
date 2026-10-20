@@ -9,6 +9,7 @@ module DatraTypes
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
   , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -154,6 +155,7 @@ module DatraTypes
   , valuedIntegerRangeDownwardsValue
   , IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
   , integerTypeValue
   , dependentIdentifierTypeValue
   , dependentIdentifierTemplateTypeValue
@@ -418,6 +420,7 @@ import Evaluation.Range
 import Evaluation.LimitRange
   ( IntegerRangeKind (..)
   , integerLimitRangeValue
+  , integerLimitRangeIsSubfederationOf
   )
 import Evaluation.Length (mapLengthValue)
 import Evaluation.Identifier
@@ -457,6 +460,7 @@ import Evaluation.Value
   , EvaluatedFunction (..)
   , EvaluatedFunctionBody (..)
   , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , functionBodySource
   , EvaluatedFunctionInvocation (..)
   , ReductionContext (..)

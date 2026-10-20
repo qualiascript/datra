@@ -9,10 +9,49 @@ module DatraHost
 import DatraLanguage.AST
 import DatraTypes
 import DatraOrdinal (finiteOrdinalPositions)
+import IntegerRange qualified
+import NaturalRange qualified
 import SyntaxDefinitions (absorbFunSequence)
 
 datraHostIdentifier :: String
 datraHostIdentifier = "'datra"
+
+data RuntimeRangeEndpoint
+  = FiniteRangeEndpoint IntegerLimit
+  | DirectionRangeEndpoint String
+
+valuedRangeArguments
+  :: CanonicalResult
+  -> Maybe (Integer, RuntimeRangeEndpoint)
+valuedRangeArguments canonical = case canonical of
+  CanonicalValuedNaturalRange origin target ->
+    case target of
+      NaturalRange.FiniteNaturalTarget endpoint -> Just
+        ( toInteger origin
+        , FiniteRangeEndpoint (FiniteInteger (toInteger endpoint))
+        )
+      NaturalRange.UpwardsTarget -> Just
+        (toInteger origin, DirectionRangeEndpoint "up")
+  CanonicalValuedIntegerRange origin target ->
+    case target of
+      IntegerRange.FiniteIntegerTarget endpoint -> Just
+        (origin, FiniteRangeEndpoint (FiniteInteger endpoint))
+      IntegerRange.UpwardsIntegerTarget -> Just
+        (origin, DirectionRangeEndpoint "up")
+      IntegerRange.DownwardsIntegerTarget -> Just
+        (origin, DirectionRangeEndpoint "down")
+      IntegerRange.AllIntegersTarget -> Nothing
+  CanonicalCoalization
+      (CanonicalConcatenation
+        [finite, CanonicalAsciiString "PosInf"]) -> do
+    (origin, DirectionRangeEndpoint "up") <- valuedRangeArguments finite
+    Just (origin, FiniteRangeEndpoint PositiveInfinity)
+  CanonicalCoalization
+      (CanonicalConcatenation
+        [finite, CanonicalAsciiString "NegInf"]) -> do
+    (origin, DirectionRangeEndpoint "down") <- valuedRangeArguments finite
+    Just (origin, FiniteRangeEndpoint NegativeInfinity)
+  _ -> Nothing
 
 datraHostValue :: Either InterpretingError InterpretedValue
 datraHostValue = do
@@ -52,8 +91,12 @@ datraHostValue = do
     , ("NatValRange", Right naturalValuedRangeTypeValue)
     , ("IntValRange", Right integerValuedRangeTypeValue)
     , suppliedBody "len_body" mapLengthValue
-    , suppliedBody "from_body" (nativeRange ValuedIntegerRangeKind)
-    , suppliedBody "range_body" (nativeBoundedRange IntegerRangeKind)
+    , suppliedInsertionBody "from_body" (RuntimeFunctionInsertion
+        (nativeRange ValuedIntegerRangeKind)
+        valuedRangePreimage)
+    , suppliedInsertionBody "range_body" (RuntimeFunctionInsertion
+        (nativeBoundedRange IntegerRangeKind)
+        integerLimitRangePreimage)
     , nativeBody "'datra" "add" $ \arguments -> do
         a <- lookupArgument "a" arguments
         b <- lookupArgument "b" arguments
@@ -189,27 +232,33 @@ datraHostValue = do
         "Any -> Any"
         Nothing
         Nothing
-        True)))
+        True
+        Nothing)))
       where
         source = "'datra." <> name
     nativeBody namespace name implementation =
-      (name, runtimeBody source invoke)
+      (name, runtimeBody source Nothing invoke)
       where
         source = namespace <> "." <> name
         invoke _ _ preparedCall = do
           result <- implementation (functionPreparedBindings preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
     suppliedBody name implementation =
-      (name, runtimeBody source invoke)
+      suppliedFunctionBody name implementation Nothing
+    suppliedInsertionBody name insertion =
+      suppliedFunctionBody name
+        (applyRuntimeFunction insertion) (Just insertion)
+    suppliedFunctionBody name implementation insertion =
+      (name, runtimeBody source insertion invoke)
       where
         source = "'datra." <> name
         invoke _ _ preparedCall = do
           result <- implementation (functionSuppliedArgument preparedCall)
           pure (EvaluatedFunctionInvocation result Nothing)
-    runtimeBody source invoke = Right (makeFunctionBodyValue
+    runtimeBody source insertion invoke = Right (makeFunctionBodyValue
       (EvaluatedRuntimeFunctionBody source (EvaluatedFunction
         anyTypeValue anyTypeValue Nothing Nothing (Just source) Nothing
-        "Any -> Any" Nothing (Just invoke) True)))
+        "Any -> Any" Nothing (Just invoke) True insertion)))
     nativeRange kind argument = do
       startValue <- accessValues argument (naturalValue 0)
       endValue <- accessValues argument (naturalValue 1)
@@ -219,6 +268,22 @@ datraHostValue = do
       endValue <- accessValues argument (naturalValue 1)
       end <- requireIntegerLimit RightOperand endValue
       integerLimitRangeValue kind startValue (makeIntegerLimit end)
+    valuedRangePreimage value = do
+      (origin, endpoint) <- valuedRangeArguments
+        (interpretedSemanticResult value)
+      endpointValue <- case endpoint of
+        FiniteRangeEndpoint limit -> Just (makeIntegerLimit limit)
+        DirectionRangeEndpoint direction -> either (const Nothing) Just
+          (asciiStringValue direction)
+      either (const Nothing) Just
+        (makeArgumentMapPreservingSingleton
+          [integerValue origin, endpointValue])
+    integerLimitRangePreimage value = case interpretedSemanticResult value of
+      CanonicalIntegerLimitRange origin target ->
+        either (const Nothing) Just
+          (makeArgumentMapPreservingSingleton
+            [makeIntegerLimit origin, makeIntegerLimit target])
+      _ -> Nothing
     lookupArgument name values = maybe
       (Left (FunctionEvaluationFailed (MissingNativeArgument name)))
       Right

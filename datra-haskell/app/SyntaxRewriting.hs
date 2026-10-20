@@ -27,8 +27,12 @@ import DatraLanguage.Diagnostics.Application
   ( SyntaxTemplateAdmissibilityFailure )
 import Parsing (inferredFunction)
 import DatraTypes
-  ( EvaluatedFunction (functionBody)
-  , EvaluatedFunctionBody (EvaluatedSyntaxFunctionBody)
+  ( EvaluatedFunction (functionBody, functionInsertion)
+  , EvaluatedFunctionBody
+      ( EvaluatedRuntimeFunctionBody
+      , EvaluatedSyntaxFunctionBody
+      )
+  , RuntimeFunctionInsertion
   , SyntaxFunctionInsertion (..)
   , InterpretedValue
   , booleanCondition
@@ -167,6 +171,25 @@ syntaxFunctionInsertion evaluate implementation = do
   case body of
     EvaluatedSyntaxFunctionBody _ insertion -> Just insertion
     _ -> Nothing
+
+runtimeFunctionInsertion
+  :: (Expression -> Maybe InterpretedValue)
+  -> Expression
+  -> Maybe RuntimeFunctionInsertion
+runtimeFunctionInsertion evaluate implementation = do
+  value <- evaluate implementation <|>
+    (attachedFunctionImplementation implementation >>= evaluate)
+  insertionFromValue value
+  where
+    insertionFromValue value =
+      (interpretedFunctionBody value >>= insertionFromBody)
+        <|> (interpretedFunction value >>= insertionFrom)
+    insertionFromBody body = case body of
+      EvaluatedRuntimeFunctionBody _ function -> insertionFrom function
+      _ -> Nothing
+    insertionFrom function = functionInsertion function <|> do
+      EvaluatedRuntimeFunctionBody _ body <- functionBody function
+      insertionFrom body
 
 expandSelectedSyntaxMatch
   :: RewriteEnvironment
@@ -512,6 +535,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
         validateInjective environment (compiled, dependent)
           | null captures = Right ()
           | Just _ <- syntaxInsertion = Right ()
+          | Just _ <- runtimeInsertion = Right ()
           | otherwise = case do
               families <- traverse id (rewriteRuleHoleFamilies compiled)
               inputValue <- either (const Nothing) Just
@@ -532,6 +556,7 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             evaluate = rewriteEvaluate environment
               (rewriteDeclarations environment)
             syntaxInsertion = syntaxFunctionInsertion evaluate implementation
+            runtimeInsertion = runtimeFunctionInsertion evaluate implementation
 
         captureValue (Just (IdentifierString name, _)) value =
           simpleIdentifierTypeValue name value

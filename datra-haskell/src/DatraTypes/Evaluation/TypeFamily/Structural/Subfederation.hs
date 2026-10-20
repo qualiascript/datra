@@ -15,6 +15,7 @@ import Evaluation.Federation.Structure
   , sequenceOperands
   )
 import Evaluation.Map (makeAtlasMap)
+import Evaluation.LimitRange (integerLimitRangeIsSubfederationOf)
 import Evaluation.Identifier
   ( evaluatedIdentifierType
   , identifierNameFederationFor
@@ -37,6 +38,8 @@ decideStructuralSubfederation
   -> InterpretedValue
   -> Decision ()
 decideStructuralSubfederation decideSubfederation source target
+  | Just included <- integerLimitRangeIsSubfederationOf source target =
+      if included then DecisionProved () else DecisionRefuted
   | SkipForm sourcePayload <- interpretedForm source
   , SkipForm targetPayload <- interpretedForm target =
       decideSubfederation sourcePayload targetPayload

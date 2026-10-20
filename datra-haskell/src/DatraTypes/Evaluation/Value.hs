@@ -19,6 +19,7 @@ module Evaluation.Value
   , PreparedFunctionArgument (..)
   , EvaluatedFunctionInvocation (..)
   , SyntaxFunctionInsertion (..)
+  , RuntimeFunctionInsertion (..)
   , EvaluatedFunctionBody (..)
   , functionBodySource
   , EvaluatedFunction (..)
@@ -88,6 +89,7 @@ module Evaluation.Value
   , InterpretedAtlasMapFederationPrimitive (..)
   , InterpretedAtlasMapFederation
   , PresentationDependency (..)
+  , IntegerLimit (..)
   , ValueSemantics (..)
   , DynamicScopeLabel (..)
   , ScopeActivation (..)
@@ -128,6 +130,7 @@ module Evaluation.Value
   , interpretedCanonicalResult
   , interpretedSemanticResult
   , interpretedSemanticSemantics
+  , withInterpretedSemantics
   , interpretedCanonicalPresentation
   , withCanonicalReference
   , withCanonicalNamedAccess
@@ -383,6 +386,18 @@ data SyntaxFunctionInsertion = SyntaxFunctionInsertion
   , preimageSyntaxFunction :: Expression -> Maybe [Expression]
   }
 
+-- | An executable runtime function together with a partial left inverse.
+-- The shared forward map keeps the injectivity witness attached to the exact
+-- operation used for invocation.
+data RuntimeFunctionInsertion = RuntimeFunctionInsertion
+  { applyRuntimeFunction
+      :: InterpretedValue
+      -> Either InterpretingError InterpretedValue
+  , preimageRuntimeFunction
+      :: InterpretedValue
+      -> Maybe InterpretedValue
+  }
+
 data EvaluatedFunctionBody
   = EvaluatedSyntaxFunctionBody
       String
@@ -405,6 +420,7 @@ data EvaluatedFunction = EvaluatedFunction
         -> PreparedFunctionArgument
         -> Either InterpretingError EvaluatedFunctionInvocation)
   , functionValidatesResult :: Bool
+  , functionInsertion :: Maybe RuntimeFunctionInsertion
   }
 
 -- | Ordinary evaluation is unrestricted. Shadowing consistency is established
@@ -1195,6 +1211,13 @@ interpretedSemanticResult = semanticCanonicalResult . interpretedSemantics
 -- | Runtime operations inspect the denoted value, never its retained name.
 interpretedSemanticSemantics :: InterpretedValue -> ValueSemantics
 interpretedSemanticSemantics = semanticValueSemantics . interpretedSemantics
+
+withInterpretedSemantics
+  :: ValueSemantics
+  -> InterpretedValue
+  -> InterpretedValue
+withInterpretedSemantics semantics value = value
+  { interpretedSemantics = semantics }
 
 interpretedCanonicalPresentation
   :: InterpretedValue

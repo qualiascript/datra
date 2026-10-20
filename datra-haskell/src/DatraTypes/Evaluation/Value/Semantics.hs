@@ -4,7 +4,8 @@
 -- this module deliberately contains none of those.  It is the stable meaning
 -- used by equality, specification, and rendering.
 module Evaluation.Value.Semantics
-  ( IdentifierDependency (..)
+  ( IntegerLimit (..)
+  , IdentifierDependency (..)
   , identifierDependencyStringFor
   , identifierDependencyRepresentativeString
   , identifierDependenciesCompatible
@@ -27,6 +28,12 @@ import IntegerRange qualified
 import NaturalRange qualified
 import Numeric.Natural (Natural)
 import SuperEllipsisRange qualified as Range
+
+data IntegerLimit
+  = NegativeInfinity
+  | FiniteInteger Integer
+  | PositiveInfinity
+  deriving (Eq, Ord, Show)
 
 -- | Runtime string rule for an identifier type. The stable key makes two
 -- dependent rules comparable for subfederation decisions; simple identifiers
@@ -105,6 +112,7 @@ data ValueSemantics
   | NaturalTypeSemantics
   | IntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
   | ValuedIntegerRangeSemantics Integer IntegerRange.IntegerRangeTarget
+  | IntegerLimitRangeSemantics IntegerLimit IntegerLimit
   | IntegerTypeSemantics
   | EitherSemantics ValueSemantics ValueSemantics
   | SkipSemantics ValueSemantics
@@ -160,6 +168,7 @@ data CanonicalResult
   | CanonicalNaturalType
   | CanonicalIntegerRange Integer IntegerRange.IntegerRangeTarget
   | CanonicalValuedIntegerRange Integer IntegerRange.IntegerRangeTarget
+  | CanonicalIntegerLimitRange IntegerLimit IntegerLimit
   | CanonicalIntegerType
   | CanonicalEither CanonicalResult CanonicalResult
   | CanonicalSkip CanonicalResult
@@ -314,6 +323,8 @@ canonicalResultWith retainPresentation semantics =
     IntegerRangeSemantics start target -> CanonicalIntegerRange start target
     ValuedIntegerRangeSemantics start target ->
       CanonicalValuedIntegerRange start target
+    IntegerLimitRangeSemantics start target ->
+      CanonicalIntegerLimitRange start target
     IntegerTypeSemantics -> CanonicalIntegerType
     EitherSemantics left right ->
       CanonicalEither (recur left) (recur right)
