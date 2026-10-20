@@ -555,6 +555,7 @@ rewriteWithTail
   -> [Expression]
   -> Either SyntaxRewriteFailure (Expression, [Expression])
 rewriteWithTail allowNestedContinuation capture environment value trailing
+  | GreedyStringTemplate {} <- value = Right (value, trailing)
   | let (continued, remaining) =
           continueIncompleteExpression environment value trailing
   , length remaining < length trailing =
@@ -887,6 +888,10 @@ rewriteChildren capture environment value =
     -- them again here would unwrap the sole explicit 'SyntaxBoundary' which
     -- distinguishes an evaluated declaration head from an ordinary capture.
     IdentifierTemplateOperation {} -> pure value
+    -- The operand describes template structure. Its ordinary sequence,
+    -- either, and optional nodes are interpreted by GreedyStringTemplate and
+    -- must not themselves be rewritten as executable surface syntax.
+    GreedyStringTemplate {} -> pure value
     _ | Just (left, rebuild) <- leftInfixContext value -> do
       embedded <- rewriteEmbeddedApplication capture environment left
       case embedded of
