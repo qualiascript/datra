@@ -80,11 +80,13 @@ dependentDeclarationTemplateBranches
   :: DependentDeclaration
   -> Maybe [[StringTemplatePart Expression]]
 dependentDeclarationTemplateBranches declaration =
-  fmap (concatMap expandOptionalInterpolations) $
   case dependentDeclarationParts declaration of
+    [StringTemplateInterpolation
+        (SyntaxBoundary (GreedyStringTemplate operand))] ->
+      Just (greedyBranches operand)
     [StringTemplateInterpolation (SyntaxBoundary expressionValue)] ->
-      branches expressionValue
-    parts -> Just [parts]
+      concatMap expandOptionalInterpolations <$> branches expressionValue
+    parts -> Just (expandOptionalInterpolations parts)
   where
     branches (SyntaxBoundary inner) = branches inner
     branches (EitherType left right) =
@@ -112,6 +114,32 @@ dependentDeclarationTemplateBranches declaration =
       , []
       ]
     alternatives part = [[part]]
+
+    -- Within a greedy template, the ordinary sequence, either, and optional
+    -- AST nodes describe template structure. Whitespace is structural: every
+    -- pair of realized sequence components is separated by one canonical
+    -- space, while an absent optional component contributes no stray space.
+    greedyBranches (SyntaxBoundary inner) = greedyBranches inner
+    greedyBranches (AtlasMap members) = greedySequence members
+    greedyBranches (MapSequence members) = greedySequence members
+    greedyBranches (EitherType left right) =
+      greedyBranches left <> greedyBranches right
+    greedyBranches (OptionalType present) = greedyBranches present <> [[]]
+    greedyBranches (AsciiStringLiteral literal) =
+      [[StringTemplateLiteral literal]]
+    greedyBranches expressionValue =
+      [[StringTemplateInterpolation expressionValue]]
+
+    greedySequence = foldl combine [[]] . map greedyBranches
+    combine prefixes suffixes =
+      [ join prefix suffix
+      | prefix <- prefixes
+      , suffix <- suffixes
+      ]
+    join [] suffix = suffix
+    join prefix [] = prefix
+    join prefix suffix =
+      prefix <> [StringTemplateLiteral " "] <> suffix
 
 -- Lexical binders include dependent identifiers and parameters, not only
 -- executable declarations. Keep name extraction independent of declaration

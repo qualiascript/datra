@@ -6,7 +6,7 @@
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val_body in it ("val %_DependentDeclaration" :=
+    'datra.val_body in it (%($val; _DependentDeclaration) :=
       (_DependentDeclaration -> _DependentDeclaration) it)
     val 'datra := 'datra
 
@@ -30,31 +30,31 @@
     val NatValRange := 'datra.NatValRange
     val IntValRange := 'datra.IntValRange
 
-    val "let %_DependentDeclaration" :=
+    val %($let; _DependentDeclaration) :=
       (_DependentDeclaration -> _DependentDeclaration) 'datra.let_body
-    let "%_Expr in %_Expr" := (_Expr; _Expr -> _Expr) 'datra.in_body
-    "assert %_Expr" | "assert %($hard) %_Expr" := (_Expr; $hard? -> _Expr) 'datra.assert_body
-    "begin %_Block yield %_Expr" := 'datra.begin
-    val "do %_Block yield %_Expr" :=
+    let %(_Expr; $in; _Expr) := (_Expr; _Expr -> _Expr) 'datra.in_body
+    %($assert; $hard?; _Expr) := (_Expr; $hard? -> _Expr) 'datra.assert_body
+    %($begin; _Block; $yield; _Expr) := 'datra.begin
+    val %($do; _Block; $yield; _Expr) :=
       (_Block; _Expr -> _FunctionBody) 'datra.do_body
-    let val "from %Int to %IntLimit" | "from %Int %_Direction" :=
+    let val %($from; Int; ($to; IntLimit) | _Direction) :=
       ({origin : Int; ((target? : IntLimit) | (direction? : _Direction))} -> IntValRange) 'datra.from
-    "fun %_Expr" := (_Expr -> _Expr) 'datra.fun_body
-    "if %_Expr then %_Expr else %_Expr" | "if %_Expr then %_Expr" :=
+    %($fun; _Expr) := (_Expr -> _Expr) 'datra.fun_body
+    %($if; _Expr; $then; _Expr; ($else; _Expr)?) :=
       (_Expr; _Expr; _Expr? -> _Expr) 'datra.if_body
-    "import %(List Str) %_FunctionBody" :=
+    %($import; (List Str); _FunctionBody) :=
       (List Str; _FunctionBody -> _Expr) 'datra.import_body
-    "with %(List _Expr) %_FunctionBody" :=
+    %($with; (List _Expr); _FunctionBody) :=
       (List _Expr; _FunctionBody -> _Expr) 'datra.with_body
-    "len %_Expr" := (Any -> NatLimit) 'datra.len
-    let val "range %IntLimit to %IntLimit" | "range %IntLimit %_Direction" :=
+    %(len; _Expr) := (Any -> NatLimit) 'datra.len
+    let val %(range; IntLimit; ($to; IntLimit) | _Direction) :=
       ({origin : IntLimit; ((target? : IntLimit) | (direction? : _Direction))} -> IntRange) 'datra.range
 
     # These parsing rules are ordered from lower to higher precedence.
-    "%_Expr or %_Expr" := (_Expr; _Expr -> _Expr) 'datra.or_body
-    "%_Expr and %_Expr" := (_Expr; _Expr -> _Expr) 'datra.and_body
-    "%_Expr of %_Expr" := (_Expr; _Expr -> _Expr) 'datra.of_body
-    "not %_Expr" := (_Expr -> _Expr) 'datra.not_body
+    %(_Expr; $or; _Expr) := (_Expr; _Expr -> _Expr) 'datra.or_body
+    %(_Expr; $and; _Expr) := (_Expr; _Expr -> _Expr) 'datra.and_body
+    %(_Expr; $of; _Expr) := (_Expr; _Expr -> _Expr) 'datra.of_body
+    %($not; _Expr) := (_Expr -> _Expr) 'datra.not_body
 
     let val List := &T? do yield fun () | (T; this)
     val InhabitedList := &T? do yield (T; List T)

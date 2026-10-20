@@ -138,6 +138,7 @@ data Expression
   | AsciiStringLiteral String
   | NothingLiteral
   | StringTemplate [StringTemplatePart Expression]
+  | GreedyStringTemplate Expression
   | IdentifierValueType
   | AtlasMap [Expression]
   | ArgumentMap [Expression]
@@ -301,6 +302,7 @@ data OperatorExpression
   | AsciiStringValue String
   | NothingValue
   | StringTemplateValue [StringTemplatePart OperatorExpression]
+  | GreedyStringTemplateValue OperatorExpression
   | IdentifierValueTypeValue
   | EmptyMap
   | Sequential [OperatorExpression]
@@ -398,6 +400,8 @@ normalizeExpression (AsciiStringLiteral value) = AsciiStringLiteral value
 normalizeExpression NothingLiteral = NothingLiteral
 normalizeExpression (StringTemplate parts) =
   StringTemplate (map normalizeStringTemplatePart parts)
+normalizeExpression (GreedyStringTemplate operand) =
+  GreedyStringTemplate (normalizeExpression operand)
 normalizeExpression IdentifierValueType = IdentifierValueType
 normalizeExpression (AtlasMap expressions) =
   normalizeSequence AtlasMap expressions
@@ -604,6 +608,8 @@ lower (AsciiStringLiteral value) = AsciiStringValue value
 lower NothingLiteral = NothingValue
 lower (StringTemplate parts) =
   StringTemplateValue (map lowerStringTemplatePart parts)
+lower (GreedyStringTemplate operand) =
+  GreedyStringTemplateValue (lower operand)
 lower IdentifierValueType = IdentifierValueTypeValue
 lower (AtlasMap []) = EmptyMap
 lower (AtlasMap expressions) =
@@ -759,6 +765,8 @@ prettyOperator NothingValue =
   pretty (Reserved.reservedSymbolIdentifierString Reserved.NothingSymbol)
 prettyOperator (StringTemplateValue parts) =
   pretty (renderOperatorStringTemplate parts)
+prettyOperator (GreedyStringTemplateValue operand) =
+  prettyUnary GreedyStringTemplateOperator operand
 prettyOperator IdentifierValueTypeValue =
   reservedSymbolDoc Reserved.IdentifierValueTypeSymbol
 prettyOperator EmptyMap = "()"
@@ -1202,6 +1210,7 @@ traverseExpressionChildren visit expression = case expression of
       <*> visit annotation
       <*> traverse visit given
   StringTemplate parts -> StringTemplate <$> traverse part parts
+  GreedyStringTemplate operand -> GreedyStringTemplate <$> visit operand
   _ -> pure expression
   where
     visitBinder binder =

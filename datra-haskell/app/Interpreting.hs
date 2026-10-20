@@ -1519,8 +1519,7 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
     IntegerType -> integerTypeValue
     BooleanLiteral value -> Right (booleanValue value)
     BooleanType -> booleanTypeValue
-    EitherType left right ->
-      binary eitherValue left right
+    EitherType left right -> binary eitherValue left right
     OptionalType operand ->
       case optionalIdentifierExpression expressionValue of
         Just (present, missing) -> binary eitherValue present missing
@@ -2839,7 +2838,7 @@ scopeBuilderWithContextualThis
       , [String] -> Scope -> Either InterpretingError ()
       )
 scopeBuilderWithContextualThis =
-  scopeBuilderWithContextualThisAndValidation True
+  scopeBuilderWithContextualThisAndValidation False
 
 scopeBuilderWithContextualThisAndValidation
   :: Bool

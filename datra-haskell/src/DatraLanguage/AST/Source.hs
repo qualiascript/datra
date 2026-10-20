@@ -3,6 +3,7 @@ module DatraLanguage.AST.Source (renderSourceExpression) where
 
 import Data.List (intercalate)
 import DatraLanguage.AST
+import DatraLanguage.AST.Operator qualified as Operator
 import DatraLanguage.NeutralLexer (isOpaqueSymbolicSyntaxLiteral)
 
 renderSourceExpression :: Expression -> String
@@ -166,6 +167,10 @@ source context expression =
     InclusiveValuedIntegerRangeUpwards start -> open "from" start "up"
     InclusiveValuedIntegerRangeDownwards start -> open "from" start "down"
     StringTemplateValue parts -> renderStringTemplate (source 0) (const Nothing) parts
+    GreedyStringTemplateValue operand ->
+      maybe "" id
+        (Operator.operatorSourceSymbol Operator.GreedyStringTemplateOperator)
+        <> source 9 operand
     -- Atomic AST notation is also its source notation.
     NaturalValue _ -> atom
     EllipsisValue -> atom

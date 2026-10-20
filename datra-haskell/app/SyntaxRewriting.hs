@@ -1952,13 +1952,7 @@ specializeSemantics
   -> [Expression]
   -> SyntaxRule
   -> SyntaxRule
-specializeSemantics context declarations rule = case syntaxSemantics rule of
-  DependentSyntax dependent ->
-    let implementation = dependentSyntaxImplementation dependent
-    in if implementationIsAdapter context declarations implementation
-      then rule { syntaxSemantics = SyntaxAdapter implementation }
-      else rule
-  SyntaxAdapter {} -> rule
+specializeSemantics _ _ rule = rule
 
 implementationIsAdapter
   :: SyntaxContext
@@ -2013,6 +2007,10 @@ resolveDependentDeclarationHead environment expressionValue =
     _ -> expressionValue
   where
     resolvedParts (SyntaxBoundary inner) = resolvedParts inner
+    resolvedParts (GreedyStringTemplate operand) = Just
+      [ StringTemplateInterpolation
+          (SyntaxBoundary (GreedyStringTemplate (resolveGreedy operand)))
+      ]
     resolvedParts (StringTemplate parts) = Just parts
     resolvedParts (AsciiStringLiteral literal) =
       Just [StringTemplateLiteral literal]
@@ -2021,6 +2019,20 @@ resolveDependentDeclarationHead environment expressionValue =
         (reverse (rewriteDeclarations environment))
       resolvedParts (dependentDeclarationImplementation declaration)
     resolvedParts _ = Nothing
+
+    resolveGreedy expressionValue = case expressionValue of
+      SyntaxBoundary inner -> SyntaxBoundary (resolveGreedy inner)
+      AtlasMap members -> AtlasMap (map resolveGreedy members)
+      MapSequence members -> MapSequence (map resolveGreedy members)
+      EitherType left right ->
+        EitherType (resolveGreedy left) (resolveGreedy right)
+      OptionalType operand -> OptionalType (resolveGreedy operand)
+      reference@(IdentifierReference (IdentifierString name)) ->
+        case rewriteEvaluate environment
+            (rewriteDeclarations environment) reference of
+          Nothing -> AsciiStringLiteral name
+          Just _ -> reference
+      atom -> atom
 
     firstDeclaration _ [] = Nothing
     firstDeclaration requested (candidate : remaining) =

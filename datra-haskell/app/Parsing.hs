@@ -54,6 +54,7 @@ import DatraLanguage.AST
       ( Addition
       , AsciiStringLiteral
       , StringTemplate
+      , GreedyStringTemplate
       , AtlasMap
       , ArgumentMap
       , Skip
@@ -779,6 +780,7 @@ astForm =
     (choice
       [ InModule <$> (astSymbol "in-module" *> astString) <*> astExpression
       , astImport
+      , astUnary AST.GreedyStringTemplateOperator GreedyStringTemplate
       , Assert True <$> (astSymbol "assert-hard" *> astExpression)
       , astUnary AST.AssertOperator (Assert False)
       , astUnaryForm "fun" Fun
@@ -1242,7 +1244,10 @@ mapExpression =
 evaluatedIdentifierOperation :: Parser Expression
 evaluatedIdentifierOperation = do
   evaluated <- try
-    (parenthesizedExpression <|> templateFederationBoundary)
+    ( parenthesizedExpression
+        <|> (SyntaxBoundary <$> greedyStringTemplateExpression)
+        <|> templateFederationBoundary
+    )
   let headExpression = case evaluated of
         SyntaxBoundary inner -> inner
         inner -> inner
@@ -1286,6 +1291,7 @@ validEvaluatedDeclarationHead expressionValue =
     IdentifierReference {} -> True
     AsciiStringLiteral {} -> True
     StringTemplate {} -> True
+    GreedyStringTemplate {} -> True
     EitherType left right ->
       validEvaluatedDeclarationHead left
         && validEvaluatedDeclarationHead right
@@ -1460,9 +1466,11 @@ term = do
     -- Horizontal whitespace has already been consumed by lexemes. A newline
     -- remains a block boundary; operator and syntax words cannot be arguments.
     applicationArgument _function = accessedTerm (choice
-      [ try identifierTemplateOperation
+      [ try evaluatedIdentifierOperation
+      , try identifierTemplateOperation
       , try identifierOperation
       , argumentMap
+      , greedyStringTemplateExpression
       , parenthesizedExpression
       , lookupExpression
       , trailingApplicationSkip
@@ -1496,8 +1504,10 @@ termAtom =
   choice
     [ bareSkip
     , genericIntroduction
+    , try evaluatedIdentifierOperation
     , lookupExpression
     , argumentMap
+    , greedyStringTemplateExpression
     , try parenthesizedReverseSpecification
     , parenthesizedExpression
     , lexeme (atomicExpressionToken sourceStringTemplateToken)
@@ -1644,6 +1654,7 @@ lookupExpression = do
     lookupOperand = choice
       [ lookupExpression
       , argumentMap
+      , greedyStringTemplateExpression
       , parenthesizedExpression
       , lexeme (atomicExpressionToken sourceStringTemplateToken)
       , identifierReference
@@ -1694,6 +1705,22 @@ parenthesizedExpression =
     (symbol "(" <* lineSpaceConsumer)
     (lineSpaceConsumer *> symbol ")")
     (SyntaxBoundary . parenthesizedSequenceExpression <$> elements)
+
+-- A greedy string template is a genuine prefix expression. Parentheses are
+-- parsed by the ordinary grouping path and remain a syntax boundary; they are
+-- not part of this operator. Thus both @$hello@ and @($hello; T)@ are valid
+-- operands after the prefix.
+greedyStringTemplateExpression :: Parser Expression
+greedyStringTemplateExpression = do
+  _ <- operatorToken AST.GreedyStringTemplateOperator
+  GreedyStringTemplate <$> choice
+    [ greedyStringTemplateExpression
+    , argumentMap
+    , parenthesizedExpression
+    , lookupExpression
+    , lexeme (atomicExpressionToken sourceStringTemplateToken)
+    , identifierReference
+    ]
 
 -- An ungrouped arrow in the final member owns the complete semicolon domain.
 -- Explicit parentheses around that final function retain it as a sequence
