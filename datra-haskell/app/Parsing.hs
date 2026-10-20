@@ -16,7 +16,6 @@ module Parsing
   , resolveGenericFunctionTypes
   , parseDatra
   , parseNeutralPhrase
-  , freshNeutralWitnessIdentifiers
   , neutralExpressionWitnessSources
   , neutralIncompletePrefixOperator
   , parseDatraRawLocatedWithSourceName
@@ -244,26 +243,6 @@ parseNeutralPhrase source =
         (ParserContext 0))
       "<syntax-template>"
       (Text.pack source))
-
--- | Parser-owned representative source shapes for a general expression hole.
--- Operator spellings are obtained from the same metadata consumed by the
--- grammar; admissibility therefore has no operator inventory of its own.
-freshNeutralWitnessIdentifiers :: [String] -> [String]
-freshNeutralWitnessIdentifiers literals = case witnessCharacters of
-  witnessCharacter : _ ->
-    [ replicate width witnessCharacter
-    | width <- [minimumWidth ..]
-    ]
-  [] -> []
-  where
-    minimumWidth = 1 + maximum (0 : map length literals)
-    witnessCharacters =
-      [ character
-      | code <- [0 .. 127]
-      , let character = chr code
-      , isLeadingIdentifierCharacter character
-      , isIdentifierValue [character]
-      ]
 
 neutralExpressionWitnessSources :: String -> String -> [String]
 neutralExpressionWitnessSources marker auxiliary = nub

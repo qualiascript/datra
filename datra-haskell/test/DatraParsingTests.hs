@@ -4,7 +4,6 @@
 module DatraParsingTests (main) where
 
 import Data.Char (chr, toUpper)
-import Data.List (isInfixOf)
 import DatraLanguage.AST
   ( Expression (..)
   , GenericBinder (..)
@@ -61,7 +60,6 @@ import Parsing
   , PreparedFunctionDomainMember (..)
   , ResourceEnvelope (..)
   , functionTypeIdentifiers
-  , freshNeutralWitnessIdentifiers
   , neutralExpressionWitnessSources
   , prepareFunctionDomain
   , prepareFunctionDomainExpression
@@ -531,15 +529,6 @@ regressionTests = do
         Right _ -> True
         Left _ -> False)
       (neutralExpressionWitnessSources "_witness" "_operand"))
-  let witnessLiterals = ["A", "AAAA", "literal"]
-      freshMarkers = take 4
-        (freshNeutralWitnessIdentifiers witnessLiterals)
-  assert "witness identifiers are derived fresh from template literals"
-    ( length freshMarkers == 4
-      && all
-        (\marker -> all (not . isInfixOf marker) witnessLiterals)
-        freshMarkers
-    )
   assertParsed "compact signed skips remain numerical operands"
     "assert -* = +*"
     (Assert False (Equality (Minus Skip) (Plus Skip)))

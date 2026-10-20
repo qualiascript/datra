@@ -449,7 +449,6 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
 
         validateInjective environment (rule, dependent)
           | null captures = Right ()
-          | identityImplementation implementation = Right ()
           | otherwise =
               case (evaluate input, evaluate output) of
                 (Just inputValue, Just outputValue)
@@ -461,9 +460,13 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
             implementation = dependentSyntaxImplementation dependent
             input = ArgumentMap (zipWith captureMember captures
               (templateCaptureTypes rule))
-            output = FunctionApplication implementation input
             evaluate = rewriteEvaluate environment
               (rewriteDeclarations environment)
+            application = FunctionApplication implementation input
+            output = case directSyntaxFunctionExpansion
+                environment Nothing application of
+              Right expanded -> expanded
+              Left _ -> application
 
         captureMember (Just (name, annotation)) _ =
           IdentifierOperation name annotation Nothing
@@ -481,13 +484,6 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           case subfederationValues source target >>= booleanCondition of
             Right accepted -> accepted
             Left _ -> False
-
-        identityImplementation expressionValue = case expressionValue of
-          IdentifierReference (IdentifierString "it") -> True
-          InModule _ value -> identityImplementation value
-          SyntaxBoundary value -> identityImplementation value
-          _ -> isContextualAccessOf
-            (IdentifierString "_it") expressionValue
 
     pass reversed environment [] = Right (reverse reversed, environment)
     pass reversed environment (entry : remaining) = do

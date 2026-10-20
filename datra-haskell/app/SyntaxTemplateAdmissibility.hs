@@ -9,7 +9,6 @@ module SyntaxTemplateAdmissibility
 
 import DatraLanguage.AST
   ( Expression (..)
-  , IdentifierString (IdentifierString)
   , StringTemplatePart (..)
   , expressionChildren
   , normalizeExpression
@@ -24,8 +23,7 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxTemplate (..)
   )
 import Parsing
-  ( freshNeutralWitnessIdentifiers
-  , neutralExpressionWitnessSources
+  ( neutralExpressionWitnessSources
   , neutralIncompletePrefixOperator
   , parseNeutralPhrase
   )
@@ -33,7 +31,7 @@ import SyntaxTemplateProjection (projectSyntaxTemplate)
 
 data Witness = Witness
   { witnessSource :: String
-  , witnessMarker :: String
+  , witnessMarker :: Expression
   }
 
 validateSyntaxTemplate
@@ -220,10 +218,13 @@ templateWitnesses template = atomic : variants
       | (preceding, SyntaxHole kind, remaining) <- pieceContexts
       ]
     pieceContexts = contexts [] (syntaxTemplatePieces template)
-    identifiers = take (holeCount * 2)
-      (freshNeutralWitnessIdentifiers literals)
-    markers = take holeCount identifiers
-    auxiliaries = take holeCount (drop holeCount identifiers)
+    neutralValues =
+      [ EllipsisNatural value
+      | value <- [0 ..]
+      , EllipsisNatural value `notElem` literalValues
+      ]
+    markers = take holeCount neutralValues
+    auxiliaries = take holeCount (drop holeCount neutralValues)
     bases = zipWith3 atomicWitness holes markers auxiliaries
     atomic = bases
     variants =
@@ -232,31 +233,17 @@ templateWitnesses template = atomic : variants
           zip [0 :: Int ..] (zip3 holes markers auxiliaries)
       , generalExpressionHole kind
       , source <- drop 1
-          (neutralExpressionWitnessSources marker auxiliary)
+          (neutralExpressionWitnessSources
+            (renderSourceExpression marker)
+            (renderSourceExpression auxiliary))
       , let embeddedSource
               | needsGrouping = groupedSource source
               | otherwise = source
             witness = Witness embeddedSource marker
       ]
 
-    atomicWitness (kind, _) marker auxiliary = Witness
-      (renderSourceExpression (witnessExpression kind marker auxiliary))
-      marker
-    witnessExpression kind marker auxiliary = case kind of
-      BlockSyntaxHole {} -> AtlasMap
-        [identifier auxiliary, identifier marker]
-      FunctionBodySyntaxHole {} -> AtlasMap
-        [ FunctionBody [identifier auxiliary] (identifier marker)
-        , AtlasMap []
-        ]
-      DeclarationSyntaxHole {} ->
-        let value = identifier auxiliary
-        in IdentifierOperation
-          (IdentifierString marker)
-          value
-          (Just value)
-      _ -> identifier marker
-    identifier = IdentifierReference . IdentifierString
+    atomicWitness _ marker _ = Witness
+      (renderSourceExpression marker) marker
     groupedSource source = case parseNeutralPhrase source of
       Right expressionValue -> renderSourceExpression
         (MapSequence [expressionValue])
@@ -267,7 +254,11 @@ templateWitnesses template = atomic : variants
     generalExpressionHole _ = False
     isHole SyntaxHole {} = True
     isHole _ = False
-    literals = [literal | SyntaxLiteral literal <- syntaxTemplatePieces template]
+    literalValues =
+      [ normalizeExpression parsed
+      | SyntaxLiteral literal <- syntaxTemplatePieces template
+      , Right parsed <- [parseNeutralPhrase literal]
+      ]
 
 contexts :: [value] -> [value] -> [([value], value, [value])]
 contexts _ [] = []
@@ -286,16 +277,16 @@ renderWitness (SyntaxTemplate pieces) witnesses =
       witnessSource witness : go remaining available
     go (SyntaxHole {} : _) [] = []
 
-markerOrder :: [String] -> Expression -> [String]
+markerOrder :: [Expression] -> Expression -> [Expression]
 markerOrder markers = collect
   where
     collect expressionValue = current
       <> concatMap collect (expressionChildren expressionValue)
       where
-        current = case expressionValue of
-          IdentifierReference (IdentifierString name)
-            | name `elem` markers -> [name]
-          _ -> []
+        normalized = normalizeExpression expressionValue
+        current
+          | normalized `elem` markers = [normalized]
+          | otherwise = []
 
 traverse_ :: (value -> Either failure ()) -> [value] -> Either failure ()
 traverse_ _ [] = Right ()

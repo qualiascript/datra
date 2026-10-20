@@ -7,9 +7,12 @@
 -- string-template/value matching rather than a second parser-side type system.
 module SyntaxTemplateMatching
   ( SyntaxTemplateMatchFailure (..)
+  , SyntaxMatch (..)
   , matchSyntaxRule
   , matchSyntaxRules
   , matchSyntaxRulesWith
+  , matchSyntaxRulesSelectionWith
+  , expandSyntaxMatch
   ) where
 
 import DatraLanguage.AST
@@ -37,10 +40,10 @@ type CaptureHole =
   -> Expression
   -> Maybe Expression
 
-data SuccessfulMatch = SuccessfulMatch
-  { successfulRule :: SyntaxRule
-  , successfulSelection :: TemplateSelection Expression Expression
-  , successfulRemaining :: [Expression]
+data SyntaxMatch = SyntaxMatch
+  { syntaxMatchRule :: SyntaxRule
+  , syntaxMatchSelection :: TemplateSelection Expression Expression
+  , syntaxMatchRemaining :: [Expression]
   }
 
 -- | Match within one application spine. Its explicit head identifier first
@@ -68,11 +71,20 @@ matchSyntaxRulesWith
   -> [SyntaxRule]
   -> Expression
   -> Either SyntaxTemplateMatchFailure Expression
-matchSyntaxRulesWith captureHole rules expressionValue = do
+matchSyntaxRulesWith captureHole rules expressionValue =
+  expandSyntaxMatch <$> matchSyntaxRulesSelectionWith
+    captureHole rules expressionValue
+
+matchSyntaxRulesSelectionWith
+  :: CaptureHole
+  -> [SyntaxRule]
+  -> Expression
+  -> Either SyntaxTemplateMatchFailure SyntaxMatch
+matchSyntaxRulesSelectionWith captureHole rules expressionValue = do
   let phrase = applicationPhrase expressionValue
       applicable = filter (prefixMatches phrase) rules
       successful =
-        [ SuccessfulMatch rule
+        [ SyntaxMatch rule
             (TemplateSelection (applicationFrom candidate) captures)
             remaining
         | rule <- applicable
@@ -81,10 +93,7 @@ matchSyntaxRulesWith captureHole rules expressionValue = do
         , let (candidate, remaining) = splitAt consumed phrase
         , captures <- matchPieces captureHole [] (rulePieces rule) candidate
         ]
-  matched <- chooseSuccessful successful
-  let expanded = expandSyntax
-        (successfulRule matched) (successfulSelection matched)
-  pure (foldl FunctionApplication expanded (successfulRemaining matched))
+  chooseSuccessful successful
   where
     prefixMatches phrase rule = and
       (zipWith matchesLiteral
@@ -92,6 +101,13 @@ matchSyntaxRulesWith captureHole rules expressionValue = do
         phrase)
       && length (syntaxTemplateLiteralPrefix rule) <= length phrase
     matchesLiteral = matchesLiteralExpression
+
+expandSyntaxMatch :: SyntaxMatch -> Expression
+expandSyntaxMatch matched = foldl FunctionApplication expanded
+  (syntaxMatchRemaining matched)
+  where
+    expanded = expandSyntax
+      (syntaxMatchRule matched) (syntaxMatchSelection matched)
 
 -- | Match one already admitted declaration. This is the parser integration
 -- boundary: parsing establishes the contextual AST extent of a phrase, while
@@ -105,8 +121,8 @@ matchSyntaxRule holeMatches rule =
   matchSyntaxRules holeMatches [rule]
 
 chooseSuccessful
-  :: [SuccessfulMatch]
-  -> Either SyntaxTemplateMatchFailure SuccessfulMatch
+  :: [SyntaxMatch]
+  -> Either SyntaxTemplateMatchFailure SyntaxMatch
 chooseSuccessful [] = Left NoMatchingSyntaxTemplate
 chooseSuccessful (matched : _) = Right matched
 
