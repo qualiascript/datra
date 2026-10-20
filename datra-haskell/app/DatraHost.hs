@@ -51,9 +51,9 @@ datraHostValue = do
     , ("IntRange", Right integerRangeTypeValue)
     , ("NatValRange", Right naturalValuedRangeTypeValue)
     , ("IntValRange", Right integerValuedRangeTypeValue)
-    , suppliedBody "len" mapLengthValue
-    , suppliedBody "from" (nativeRange ValuedIntegerRangeKind)
-    , suppliedBody "range" (nativeRange IntegerRangeKind)
+    , suppliedBody "len_body" mapLengthValue
+    , suppliedBody "from_body" (nativeRange ValuedIntegerRangeKind)
+    , suppliedBody "range_body" (nativeBoundedRange IntegerRangeKind)
     , nativeBody "'datra" "add" $ \arguments -> do
         a <- lookupArgument "a" arguments
         b <- lookupArgument "b" arguments
@@ -214,6 +214,11 @@ datraHostValue = do
       startValue <- accessValues argument (naturalValue 0)
       endValue <- accessValues argument (naturalValue 1)
       integerLimitRangeValue kind startValue endValue
+    nativeBoundedRange kind argument = do
+      startValue <- accessValues argument (naturalValue 0)
+      endValue <- accessValues argument (naturalValue 1)
+      end <- requireIntegerLimit RightOperand endValue
+      integerLimitRangeValue kind startValue (makeIntegerLimit end)
     lookupArgument name values = maybe
       (Left (FunctionEvaluationFailed (MissingNativeArgument name)))
       Right

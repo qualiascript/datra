@@ -155,7 +155,7 @@ functionClosureTests = testGroup "canonical function reconstruction"
       let text = renderInterpretedValue value
       assertBool "unreferenced definition leaked" (not ("987654321" `isInfixOf` text))
       assertBool "qualified standard-library dependency" ("\"___Std.Int\"" `isInfixOf` text)
-      assertBool "source-defined integer range dependency" ("'datra.from" `isInfixOf` text)
+      assertBool "source-defined integer range dependency" ("'datra.from_body" `isInfixOf` text)
       assertBool "obsolete primitive Int dependency"
         (not (":= 'datra.Int;" `isInfixOf` text))
       assertBool "dependency uses strict current-scope access"
