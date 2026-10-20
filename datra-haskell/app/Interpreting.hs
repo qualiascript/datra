@@ -2958,14 +2958,6 @@ scopeBuilderActivated validateFamilies introducesThis scopedEnclosing entries = 
                 == interpretedSemanticResult replacement
               then Right ()
             else Left (InconsistentShadowing name)
-  if any ((== "\"public\"")
-      . renderSourceExpression
-      . dependentDeclarationNameExpression
-      . snd) positionedMembers
-    then Left (UnknownIdentifier
-      ("PROBE_BLOCK " <> take 4000
-        (intercalate " || " (map show entries))))
-    else pure ()
   if validateFamilies
     then do
       mapM_ (checkLetShadow scopedEnclosing) eagerFamilies
@@ -3411,13 +3403,12 @@ materializeDependentDeclaration reduction captured resolving declaration
           | ((Just identifier, _, _), value) <- zip evaluatedCaptures values
           ]
         )
-  payload <- case evaluateBindingDefinitionWith reduction
+  payload <- evaluateBindingDefinitionWith reduction
       (extendScope bindings captured)
       resolving
       name
       Nothing
-      (dependentDeclarationImplementation declaration) of
-    result -> result
+      (dependentDeclarationImplementation declaration)
   pure (namedDeclarationMember declaration name payload)
   where
     captureValue (Just captureName, schema, _) value =

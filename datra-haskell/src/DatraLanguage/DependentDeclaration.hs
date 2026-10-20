@@ -32,6 +32,8 @@ dependentDeclaration = declaration False False
     declaration _ True (Let _) = Nothing
     declaration _ canonical (Let value) = declaration True canonical value
     declaration strict _ (Val value) = declaration strict True value
+    declaration strict canonical (SyntaxBoundary value) =
+      declaration strict canonical value
     declaration strict canonical (In contextual value) = do
       declared <- declaration strict canonical value
       pure declared

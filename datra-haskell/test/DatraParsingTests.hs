@@ -903,8 +903,8 @@ regressionTests = do
     "{value? : Any} do yield value"
     (appliedBody optionalInput)
   assertParsed "a host function body infers Any after a non-function type"
-    "Nat 'datra.val_body"
-    (FunctionApplication (ref "Nat") (datraRef ["val_body"]))
+    "Nat 'datra.fun_body"
+    (FunctionApplication (ref "Nat") (datraRef ["fun_body"]))
   assertParsed "a leading host member remains a standalone value"
     "'datra.Any"
     (datraRef ["Any"])

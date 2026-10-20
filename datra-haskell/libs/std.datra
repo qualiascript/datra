@@ -6,8 +6,7 @@
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val_body in it (%($val; _DependentDeclaration) :=
-      (_DependentDeclaration -> _DependentDeclaration) it)
+    'datra.val in it (%($val; _DependentDeclaration) := it)
     val 'datra := 'datra
 
     val Any := 'datra.Any

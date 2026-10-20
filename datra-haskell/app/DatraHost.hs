@@ -66,7 +66,7 @@ datraHostValue = do
     , syntaxBody "let" $ \case
         [entry] -> Just (Let (absorbAssignedConcatenation entry))
         _ -> Nothing
-    , syntaxBody "val" $ \case
+    , syntaxFunction "val" $ \case
         [entry] -> Just (Val (absorbAssignedConcatenation entry))
         _ -> Nothing
     , syntaxBody "assert" $ \case
