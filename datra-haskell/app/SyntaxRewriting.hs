@@ -23,6 +23,8 @@ import Data.Maybe (maybeToList)
 import Data.Set qualified as Set
 import DatraLanguage.AST
 import DatraLanguage.AST.Source (renderSourceExpression)
+import DatraLanguage.Diagnostics.Application
+  ( SyntaxTemplateAdmissibilityFailure )
 import Parsing (inferredFunction)
 import DatraTypes
   ( EvaluatedFunction (functionBody)
@@ -42,9 +44,11 @@ import DatraLanguage.SyntaxTemplate
   )
 import SyntaxDefinitions
   ( SyntaxRule (..)
+  , SyntaxTemplateCompilationFailure (..)
   , DependentSyntaxRule (..)
   , DependentSyntaxInvocation (..)
   , contextualSyntaxRulesFor
+  , declarationRuleFailures
   , declarationRules
   , normalizeSyntaxExpansion
   , syntaxDependentRule
@@ -77,6 +81,7 @@ data SyntaxRewriteFailure
   | AmbiguousBareSkipApplication
   | OverlappingDependentDeclarations String String
   | NonInjectiveDependentDeclaration String
+  | InvalidSyntaxTemplate String SyntaxTemplateAdmissibilityFailure
   deriving (Eq, Show)
 
 -- Evaluation callbacks share a lexical scope. Entering a contextual expression
@@ -408,6 +413,10 @@ rewriteSequence capture initial rawEntries = do
               currentDeclaration = dependentDeclaration resolved
               currentFamily = compileScopedRewriteRules environment
                 (rewriteDeclarations environment) currentRules
+          case declarationRuleFailures resolved of
+            InadmissibleSyntaxTemplate rendered failure : _ ->
+              Left (InvalidSyntaxTemplate rendered failure)
+            [] -> Right ()
           case currentDeclaration of
             Nothing -> pure ()
             Just declaration -> mapM_

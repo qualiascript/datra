@@ -8,7 +8,7 @@ module SyntaxDefinitions
   , SyntaxTemplate (..), SyntaxPiece (..), SyntaxHoleKind (..)
   , TemplateSelection (..)
   , SyntaxTemplateCompilationFailure (..)
-  , declarationRules
+  , declarationRules, declarationRuleFailures
   , contextualSyntaxRulesFor
   , syntaxTemplateFromPattern, syntaxTemplateLiteralPrefix
   , syntaxDependentRule, syntaxRuleAdapter
@@ -33,7 +33,8 @@ import DatraLanguage.SyntaxTemplate
 import DatraLanguage.Diagnostics.Application
   ( SyntaxTemplateAdmissibilityFailure )
 import DatraLanguage.AST.Source (renderSourceExpression)
-import SyntaxTemplateAdmissibility (validateSyntaxTemplate)
+import Data.Either (partitionEithers)
+import SyntaxTemplateAdmissibility (validateStringTemplate)
 
 data SyntaxRule = SyntaxRule
   { syntaxName :: String, syntaxTemplate :: SyntaxTemplate Expression
@@ -90,32 +91,42 @@ contextualSyntaxRulesFor = map rule
           (IdentifierString ("_" <> surface))
 
 declarationRules :: Expression -> [SyntaxRule]
-declarationRules expressionValue =
-  maybe [] dependentDeclarationRules (dependentDeclaration expressionValue)
+declarationRules = snd . declarationRuleResults
 
-dependentDeclarationRules :: DependentDeclaration -> [SyntaxRule]
-dependentDeclarationRules declaration = concatMap
+declarationRuleFailures :: Expression -> [SyntaxTemplateCompilationFailure]
+declarationRuleFailures = fst . declarationRuleResults
+
+declarationRuleResults
+  :: Expression
+  -> ([SyntaxTemplateCompilationFailure], [SyntaxRule])
+declarationRuleResults expressionValue =
+  case dependentDeclaration expressionValue of
+    Nothing -> ([], [])
+    Just declaration -> partitionEithers
+      (dependentDeclarationRuleResults declaration)
+
+dependentDeclarationRuleResults
+  :: DependentDeclaration
+  -> [Either SyntaxTemplateCompilationFailure SyntaxRule]
+dependentDeclarationRuleResults declaration = map
   (directTemplateRule declaration)
   (dependentDeclarationSyntaxAlternatives declaration)
 
 directTemplateRule
   :: DependentDeclaration
   -> [StringTemplatePart Expression]
-  -> [SyntaxRule]
-directTemplateRule declaration parts =
-  case compileDependentDeclarationTemplate parts of
-    Left _ -> []
-    Right (template, captures) ->
-      [ SyntaxRule
-          { syntaxName = renderSourceExpression
-              (StringTemplate parts)
-          , syntaxTemplate = template
-          , syntaxSemantics = DependentSyntax (DependentSyntaxRule
-              captures
-              (dependentDeclarationImplementation declaration)
-              (DependentSyntaxLookup parts))
-          }
-      ]
+  -> Either SyntaxTemplateCompilationFailure SyntaxRule
+directTemplateRule declaration parts = do
+  (template, captures) <- compileDependentDeclarationTemplate parts
+  pure SyntaxRule
+    { syntaxName = renderSourceExpression
+        (StringTemplate parts)
+    , syntaxTemplate = template
+    , syntaxSemantics = DependentSyntax (DependentSyntaxRule
+        captures
+        (dependentDeclarationImplementation declaration)
+        (DependentSyntaxLookup parts))
+    }
 
 dependentDeclarationSyntaxAlternatives
   :: DependentDeclaration
@@ -132,7 +143,7 @@ compileDependentDeclarationTemplate
 compileDependentDeclarationTemplate parts = do
   let (pieces, captures) = foldMap compilePart parts
       template = SyntaxTemplate pieces
-  case validateSyntaxTemplate template of
+  case validateStringTemplate parts template of
     Left failure -> Left (InadmissibleSyntaxTemplate
       (renderSyntaxTemplate renderSourceExpression template)
       failure)

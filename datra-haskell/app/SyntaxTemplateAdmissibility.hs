@@ -2,6 +2,7 @@
 -- the same structural projection used by runtime syntax rewriting.
 module SyntaxTemplateAdmissibility
   ( validateSyntaxTemplate
+  , validateStringTemplate
   , syntaxTemplateRefines
   , syntaxTemplatesOverlap
   ) where
@@ -9,6 +10,7 @@ module SyntaxTemplateAdmissibility
 import DatraLanguage.AST
   ( Expression (..)
   , IdentifierString (IdentifierString)
+  , StringTemplatePart (..)
   , expressionChildren
   , normalizeExpression
   )
@@ -38,11 +40,30 @@ validateSyntaxTemplate
   :: SyntaxTemplate Expression
   -> Either SyntaxTemplateAdmissibilityFailure ()
 validateSyntaxTemplate template =
+  validateSyntaxTemplateWith (renderWitness template) template
+
+-- | Validate a declaration template using the source spelling which actually
+-- produced it.  Quoted templates concatenate their literal chunks exactly;
+-- greedy templates reach this function after lowering has inserted their
+-- canonical single-space separators.  Keeping source rendering here separate
+-- from the whitespace-delimited matcher prevents validation from silently
+-- changing an exact quoted template with 'unwords'.
+validateStringTemplate
+  :: [StringTemplatePart Expression]
+  -> SyntaxTemplate Expression
+  -> Either SyntaxTemplateAdmissibilityFailure ()
+validateStringTemplate parts = validateSyntaxTemplateWith (renderParts parts)
+
+validateSyntaxTemplateWith
+  :: ([Witness] -> String)
+  -> SyntaxTemplate Expression
+  -> Either SyntaxTemplateAdmissibilityFailure ()
+validateSyntaxTemplateWith render template =
   traverse_ validateWitness (templateWitnesses template)
   where
     validateWitness witnesses = do
       expected <- traverse expectedWitness witnesses
-      let source = renderWitness template witnesses
+      let source = render witnesses
           markers = map witnessMarker witnesses
           capture _ value
             | normalizeExpression value `elem` expected =
@@ -76,6 +97,18 @@ validateSyntaxTemplate template =
         neutralIncompletePrefixOperator source of
       Just operator -> IncompleteCoreSyntaxOperator operator
       Nothing -> NeutralSyntaxTemplateParseFailure
+
+renderParts
+  :: [StringTemplatePart Expression]
+  -> [Witness]
+  -> String
+renderParts [] _ = ""
+renderParts (StringTemplateLiteral literal : remaining) witnesses =
+  literal <> renderParts remaining witnesses
+renderParts (StringTemplateInterpolation {} : remaining)
+    (witness : witnesses) =
+  witnessSource witness <> renderParts remaining witnesses
+renderParts (StringTemplateInterpolation {} : _) [] = ""
 
 -- | Structural inclusion between two syntax-template federations.  The
 -- source template is rendered with the same neutral witnesses used by
