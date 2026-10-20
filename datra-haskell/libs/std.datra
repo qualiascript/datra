@@ -52,8 +52,8 @@
       (_Block; _Expr -> _FunctionBody) 'datra.do_body
     let val %($from; Int; ($to; IntLimit) | _Direction) :=
       ({origin : Int; ((target? : IntLimit) | (direction? : _Direction))} -> IntValRange) 'datra.from
-    let val %($range; IntLimit; ($to; IntLimit) | _Direction) :=
-      ({origin : IntLimit; ((target? : IntLimit) | (direction? : _Direction))} -> IntRange) 'datra.range
+    let val %($range; IntLimit; $to; IntLimit) :=
+      ({origin : IntLimit; target? : IntLimit} -> IntRange) 'datra.range
 
     let val List := &T? do yield fun () | (T; this)
     val InhabitedList := &T? do yield (T; List T)
