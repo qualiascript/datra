@@ -97,9 +97,6 @@ datraHostValue = do
             (ArgumentMap (withModuleOperands modules))
             (Begin bindings result))
         _ -> Nothing
-    , syntaxBody "in" $ \case
-        [value, body] -> Just (In value body)
-        _ -> Nothing
     , syntaxBody "of" $ \case
         [source, target] -> Just (Subfederation source target)
         _ -> Nothing

@@ -346,28 +346,8 @@ rewriteSequence
   -> RewriteEnvironment
   -> [Expression]
   -> Either SyntaxRewriteFailure ([Expression], RewriteEnvironment)
-rewriteSequence capture initial rawEntries = do
-  -- A recursive syntax modifier can itself be declared using syntax that is
-  -- still being bootstrapped in the same block. Run one disposable discovery
-  -- pass with declaration-shaped application operands provisionally visible;
-  -- only declarations that actually rewrite to @Let@ survive into the real
-  -- fixed point below.
-  (provisional, _) <- pass [] discoveryEnvironment rawEntries
-  let recursive = filter isLetDeclarationExpression provisional
-  fixedPoint provisional recursive
+rewriteSequence capture initial rawEntries = fixedPoint [] []
   where
-    discoveryEnvironment = foldl introduceCandidates initial rawEntries
-    introduceCandidates environment entry =
-      foldl advanceScope environment (declarationCandidates entry)
-    declarationCandidates expressionValue =
-      if maybe False (const True) (dependentDeclaration expressionValue)
-        then [expressionValue]
-        else case expressionValue of
-          FunctionApplication function argument ->
-            declarationCandidates function <> declarationCandidates argument
-          SyntaxBoundary inner -> declarationCandidates inner
-          _ -> []
-
     fixedPoint stable recursiveDeclarations = do
       (rewritten, tentativeEnvironment) <-
         pass [] (recursiveRewriteEnvironment False initial stable) rawEntries
@@ -481,7 +461,7 @@ rewriteSequence capture initial rawEntries = do
             implementation = dependentSyntaxImplementation dependent
             input = ArgumentMap (zipWith captureMember captures
               (templateCaptureTypes rule))
-            output = In input implementation
+            output = FunctionApplication implementation input
             evaluate = rewriteEvaluate environment
               (rewriteDeclarations environment)
 
@@ -518,7 +498,6 @@ rewriteSequence capture initial rawEntries = do
     isValDependentDeclaration expressionValue = case expressionValue of
       Val value -> maybe False (const True) (dependentDeclaration value)
       Let value -> isValDependentDeclaration value
-      In _ value -> isValDependentDeclaration value
       _ -> False
 
 isLetDeclarationExpression :: Expression -> Bool
@@ -703,12 +682,6 @@ rewriteAfterBlock allowNestedContinuation capture environment value trailing =
               finish
                 (FunctionApplication rewrittenFunction rewrittenArgument)
                 remaining
-    In input body -> do
-      rewrittenInput <- rewriteStandalone capture environment input
-      let nested = enterContext (Just rewrittenInput) environment
-      (rewrittenBody, remaining) <- rewriteWithTail allowNestedContinuation
-        (contextCapture (rewriteContext nested)) nested body trailing
-      pure (In rewrittenInput rewrittenBody, remaining)
     MaybeThen optional branch
       | allowNestedContinuation -> do
           rewrittenOptional <- rewriteStandalone capture environment optional
@@ -873,12 +846,6 @@ rewriteChildren
   -> Either SyntaxRewriteFailure Expression
 rewriteChildren capture environment value =
   case value of
-    In input body -> do
-      rewrittenInput <- rewriteStandalone capture environment input
-      let nested = enterContext (Just rewrittenInput) environment
-      rewrittenBody <- rewriteStandalone
-        (contextCapture (rewriteContext nested)) nested body
-      pure (In rewrittenInput rewrittenBody)
     MaybeThen optional branch -> do
       rewrittenOptional <- rewriteStandalone capture environment optional
       let contextual = enterContext Nothing environment
@@ -1039,7 +1006,6 @@ directSyntaxFunctionExpansion environment selectedRule application =
         candidate seen expressionValue = case expressionValue of
           ScopeAccess {} -> True
           InModule {} -> True
-          In {} -> True
           FunctionApplication (IdentifierReference (IdentifierString "_it")) _ -> True
           SyntaxBoundary inner -> candidate seen inner
           IdentifierReference (IdentifierString requested)
@@ -1097,14 +1063,12 @@ blockRewriteEnvironment environment rule =
 
 isDirectControlExpansion :: Expression -> Bool
 isDirectControlExpansion expanded = case expanded of
-  In {} -> True
   Begin {} -> True
   FunctionBody {} -> True
   ScopeAccess {} -> True
   _ -> False
 
 isDirectBlockExpansion :: Expression -> Bool
-isDirectBlockExpansion In {} = True
 isDirectBlockExpansion Begin {} = True
 isDirectBlockExpansion _ = False
 
@@ -1636,9 +1600,8 @@ trailingIdentifier :: Expression -> Maybe String
 trailingIdentifier value = case value of
   IdentifierReference (IdentifierString name) -> Just name
   SyntaxBoundary _ -> Nothing
-  -- A qualified member is a complete operand. Its final component may share
-  -- a spelling with a declared infix form (notably @'datra.in_body@), but that does
-  -- not leave the surrounding source line awaiting a right operand.
+  -- A qualified member is a complete operand. Its final component cannot
+  -- leave the surrounding source line awaiting a right operand.
   ScopeAccess _ _ -> Nothing
   _ -> case reverse (expressionChildren value) of
     rightmost : _ -> trailingIdentifier rightmost
@@ -1941,8 +1904,6 @@ resolveDependentDeclarationHead environment expressionValue =
   case expressionValue of
     Let value -> Let (resolveDependentDeclarationHead environment value)
     Val value -> Val (resolveDependentDeclarationHead environment value)
-    In contextual value -> In contextual
-      (resolveDependentDeclarationHead environment value)
     IdentifierTemplateOperation
         [StringTemplateInterpolation headExpression]
         annotation

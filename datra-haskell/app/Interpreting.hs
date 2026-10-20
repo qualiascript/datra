@@ -1545,13 +1545,6 @@ interpretNormalizedExpressionWith reduction scope resolving expressionValue =
           (FunctionApplication
             (IdentifierReference (IdentifierString "Maybe"))
             operand)
-    In value body -> do
-      supplied <- interpret value
-      runProtectedOperation protection [supplied] $ \actuals ->
-        case actuals of
-          [actual] -> evalInContinuationScopeWith body reduction
-            (constantContextualBindings "it" actual) scope resolving body
-          _ -> Right neverValue
     MaybeThen optional branch -> do
       optionalResult <- interpret optional >>= unconsList
       runProtectedOperation protection [optionalResult] $ \actuals ->

@@ -6,7 +6,7 @@
     _Block := 'datra.Block
     _FunctionBody := 'datra.FunctionBody
 
-    'datra.val in it (%($val; _DependentDeclaration) := it)
+    'datra.val (%($val; _DependentDeclaration) := 'datra.val)
     val 'datra := 'datra
 
     val Any := 'datra.Any
@@ -29,7 +29,6 @@
     val NatValRange := 'datra.NatValRange
     val IntValRange := 'datra.IntValRange
 
-    let %(_Expr; $in; _Expr) := (_Expr; _Expr -> _Expr) 'datra.in_body
     %($assert; $hard?; _Expr) := (_Expr; $hard? -> _Expr) 'datra.assert_body
     %($begin; _Block; $yield; _Expr) := 'datra.begin
     %($fun; _Expr) := (_Expr -> _Expr) 'datra.fun_body

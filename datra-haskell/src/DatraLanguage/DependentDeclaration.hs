@@ -34,15 +34,6 @@ dependentDeclaration = declaration False False
     declaration strict _ (Val value) = declaration strict True value
     declaration strict canonical (SyntaxBoundary value) =
       declaration strict canonical value
-    declaration strict canonical (In contextual value) = do
-      declared <- declaration strict canonical value
-      pure declared
-        { dependentDeclarationHead =
-            scopeDeclarationHead contextual
-              (dependentDeclarationHead declared)
-        , dependentDeclarationImplementation = In contextual
-            (dependentDeclarationImplementation declared)
-        }
     declaration strict canonical
         (IdentifierOperation (IdentifierString name) annotation (Just given))
       | annotation == given = Just (makeDeclaration
@@ -79,55 +70,6 @@ dependentDeclaration = declaration False False
       stripBoundaries expressionValue
     stripBoundaries expressionValue = expressionValue
 
-    scopeDeclarationHead contextual headValue = case headValue of
-      StringTemplateDeclarationHead parts ->
-        StringTemplateDeclarationHead
-          (map (scopeTemplatePart contextual) parts)
-      EvaluatedDeclarationHead expressionValue ->
-        EvaluatedDeclarationHead
-          (scopeEvaluatedHead contextual expressionValue)
-
-    scopeTemplatePart _ literal@StringTemplateLiteral {} = literal
-    scopeTemplatePart contextual
-        (StringTemplateInterpolation expressionValue) =
-      StringTemplateInterpolation
-        (scopeInterpolation contextual expressionValue)
-
-    scopeInterpolation contextual expressionValue = case expressionValue of
-      SyntaxBoundary inner ->
-        SyntaxBoundary (scopeInterpolation contextual inner)
-      _ -> scopeEvaluatedHead contextual expressionValue
-
-    scopeEvaluatedHead contextual expressionValue = case expressionValue of
-      SyntaxBoundary inner ->
-        SyntaxBoundary (scopeEvaluatedHead contextual inner)
-      GreedyStringTemplate operand ->
-        GreedyStringTemplate (scopeGreedy contextual operand)
-      EitherType left right -> EitherType
-        (scopeEvaluatedHead contextual left)
-        (scopeEvaluatedHead contextual right)
-      StringTemplate parts ->
-        StringTemplate (map (scopeTemplatePart contextual) parts)
-      literal@AsciiStringLiteral {} -> literal
-      capture -> In contextual capture
-
-    -- Contextual declaration syntax scopes each capture, not the template
-    -- combinators which arrange those captures. Preserving that structure is
-    -- what lets name lookup reject an impossible family before evaluating any
-    -- of its capture domains.
-    scopeGreedy contextual expressionValue = case expressionValue of
-      SyntaxBoundary inner ->
-        SyntaxBoundary (scopeGreedy contextual inner)
-      AtlasMap members -> AtlasMap (map (scopeGreedy contextual) members)
-      MapSequence members ->
-        MapSequence (map (scopeGreedy contextual) members)
-      EitherType left right -> EitherType
-        (scopeGreedy contextual left)
-        (scopeGreedy contextual right)
-      OptionalType operand ->
-        OptionalType (scopeGreedy contextual operand)
-      literal@AsciiStringLiteral {} -> literal
-      capture -> In contextual capture
 
 -- A syntax boundary on the sole interpolation marks an evaluated declaration
 -- head, whether it was written with parentheses or formed by a tighter
@@ -218,5 +160,4 @@ bindingNames expressionValue = case expressionValue of
   OptionalType inner -> bindingNames inner
   Let inner -> bindingNames inner
   Val inner -> bindingNames inner
-  In _ inner -> bindingNames inner
   _ -> []

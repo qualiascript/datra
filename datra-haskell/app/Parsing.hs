@@ -94,7 +94,6 @@ import DatraLanguage.AST
       , ValuedIntegerRangeDownwards
       , EitherType
       , OptionalType
-      , In
       , MaybeThen
       , Conditional
       , Subfederation
@@ -825,7 +824,6 @@ astForm =
       , astUnary AST.LookupOperator Lookup
       , astBinary AST.EitherOperator EitherType
       , astUnary AST.OptionalOperator OptionalType
-      , astBinary AST.InOperator In
       , astBinary AST.MaybeThenOperator MaybeThen
       , astConditional
       , astBinary AST.MultiplicationOperator Multiplication

@@ -174,10 +174,6 @@ rewrite mode depth reserved active resolver bound expression =
       pure (FunctionApplication
         (FunctionTypeExpression closedGenerics closedDomain closedCodomain)
         body)
-    In value body -> In
-      <$> recur value
-      <*> rewrite mode depth reserved active resolver
-        (contextualMarker "_it" : "_it" : bound) body
     FunctionBody entries result -> block FunctionBody entries result
     Begin entries result -> block Begin entries result
     OptionalType operand

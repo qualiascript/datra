@@ -166,7 +166,6 @@ data Expression
   | BooleanType
   | EitherType Expression Expression
   | OptionalType Expression
-  | In Expression Expression
   | MaybeThen Expression Expression
   | Conditional Expression Expression Expression
   | Addition Expression Expression
@@ -327,7 +326,6 @@ data OperatorExpression
   | BooleanTypeValue
   | EitherValue OperatorExpression OperatorExpression
   | OptionalValue OperatorExpression
-  | InValue OperatorExpression OperatorExpression
   | MaybeThenValue OperatorExpression OperatorExpression
   | ConditionalValue
       OperatorExpression
@@ -448,8 +446,6 @@ normalizeExpression (EitherType left right) =
     (normalizeExpression right)
 normalizeExpression (OptionalType operand) =
   OptionalType (normalizeExpression operand)
-normalizeExpression (In value body) =
-  In (normalizeExpression value) (normalizeExpression body)
 normalizeExpression (MaybeThen optional branch) =
   MaybeThen (normalizeExpression optional) (normalizeExpression branch)
 normalizeExpression (Conditional condition consequent alternative) =
@@ -659,7 +655,6 @@ lower (BooleanLiteral value) = BooleanValue value
 lower BooleanType = BooleanTypeValue
 lower (EitherType left right) = EitherValue (lower left) (lower right)
 lower (OptionalType operand) = OptionalValue (lower operand)
-lower (In value body) = InValue (lower value) (lower body)
 lower (MaybeThen optional branch) =
   MaybeThenValue (lower optional) (lower branch)
 lower (Conditional condition consequent alternative) =
@@ -847,9 +842,6 @@ prettyOperator (EitherValue left right) =
   prettyBinary EitherOperator left right
 prettyOperator (OptionalValue operand) =
   prettyUnary OptionalOperator operand
-prettyOperator (InValue value body) =
-  prettyForm (operatorCanonicalSymbol InOperator)
-    [prettyOperator value, prettyOperator body]
 prettyOperator (MaybeThenValue optional branch) =
   prettyForm (operatorCanonicalSymbol MaybeThenOperator)
     [prettyOperator optional, prettyOperator branch]
@@ -1171,7 +1163,6 @@ traverseExpressionChildren visit expression = case expression of
   MapExpansion a b -> MapExpansion <$> visit a <*> visit b
   SuperEllipsisRange a b -> SuperEllipsisRange <$> visit a <*> visit b
   EitherType a b -> EitherType <$> visit a <*> visit b
-  In a b -> In <$> visit a <*> visit b
   MaybeThen a b -> MaybeThen <$> visit a <*> visit b
   Addition a b -> Addition <$> visit a <*> visit b
   Subtraction a b -> Subtraction <$> visit a <*> visit b
