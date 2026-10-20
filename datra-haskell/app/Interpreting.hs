@@ -494,6 +494,25 @@ evaluateSyntaxValue base modules declarations expressionValue = do
       (map syntaxValidationDeclaration declarations))
   either (const Nothing) Just (evalInScope scope [] expressionValue)
 
+applySyntaxValue
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> Expression
+  -> InterpretedValue
+  -> Maybe InterpretedValue
+applySyntaxValue base modules declarations functionExpression input = do
+  let enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+  scope <- either (const Nothing) Just
+    (declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations))
+  callable <- either (const Nothing) Just
+    (evalInScope scope [] functionExpression)
+  (result, _) <- either (const Nothing) Just
+    (applyFunction
+      (scopeActivation scope) UnrestrictedReduction callable input)
+  pure result
+
 -- Syntax evaluation uses the same contextual binding shape as runtime
 -- evaluation. The supplied value is lazy here: unknown runtime inputs need
 -- not prevent rewriting syntax that does not inspect them.
@@ -507,6 +526,7 @@ syntaxContext base modules availableRules = SyntaxContext
   (captureSyntaxHole base modules)
   (importedSyntaxRules base modules availableRules)
   (evaluateSyntaxValue base modules)
+  (applySyntaxValue base modules)
   enter
   where
     enter declarations input = syntaxContext child modules availableRules
@@ -577,14 +597,23 @@ canonicalValueCapture interpret targetExpression captured = do
 -- outside this scope and is still checked against its full signature.
 syntaxValidationDeclaration :: Expression -> Expression
 syntaxValidationDeclaration declaration = case declaration of
-  Let (IdentifierOperation name _ (Just definition))
-    | Just implementation <- recursiveFunctionImplementation definition ->
-        Let (IdentifierOperation name implementation (Just implementation))
-  Let (Val (IdentifierOperation name _ (Just definition)))
-    | Just implementation <- recursiveFunctionImplementation definition ->
-        Let (Val
-          (IdentifierOperation name implementation (Just implementation)))
+  Let value -> Let (recursiveSeed value)
   _ -> declaration
+  where
+    recursiveSeed (Val value) = Val (recursiveSeed value)
+    recursiveSeed original@(IdentifierOperation name _ (Just definition)) =
+      case recursiveFunctionImplementation definition of
+        Just implementation ->
+          IdentifierOperation name implementation (Just implementation)
+        Nothing -> original
+    recursiveSeed original@(IdentifierTemplateOperation
+        parts _ (Just definition)) =
+      case recursiveFunctionImplementation definition of
+        Just implementation ->
+          IdentifierTemplateOperation
+            parts implementation (Just implementation)
+        Nothing -> original
+    recursiveSeed value = value
 
 interpretLocatedExpression
   :: Located Expression

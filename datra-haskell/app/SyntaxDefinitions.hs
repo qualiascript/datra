@@ -186,11 +186,11 @@ expandSyntax rule selection =
       [value] -> value
       values -> AtlasMap values
     dependentLookup parts values =
-      MapAccess
+      ScopeAccess
         (MapAccess
           (Lookup (StringTemplate (substitute parts values)))
           (EllipsisNatural 0))
-        (EllipsisNatural 1)
+        (IdentifierReference (IdentifierString "value"))
     substitute [] _ = []
     substitute (StringTemplateLiteral literal : parts) values =
       StringTemplateLiteral literal : substitute parts values

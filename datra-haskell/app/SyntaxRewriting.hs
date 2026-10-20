@@ -36,6 +36,8 @@ import DatraTypes
   , interpretedFunction
   , interpretedFunctionBody
   , interpretedSemanticResult
+  , makeArgumentMapPreservingSingleton
+  , simpleIdentifierTypeValue
   , subfederationValues
   )
 import DatraLanguage.SyntaxTemplate
@@ -43,7 +45,6 @@ import DatraLanguage.SyntaxTemplate
   , SyntaxPiece (..)
   , SyntaxTemplate (..)
   , TemplateSelection (..)
-  , syntaxHoleValue
   )
 import SyntaxDefinitions
   ( SyntaxRule (..)
@@ -96,6 +97,11 @@ data SyntaxContext = SyntaxContext
   , contextCapture :: CaptureHole
   , contextScopeRules :: ScopeRules
   , contextEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
+  , contextApply
+      :: [Expression]
+      -> Expression
+      -> InterpretedValue
+      -> Maybe InterpretedValue
   , contextEnter :: [Expression] -> Maybe Expression -> SyntaxContext
   }
 
@@ -107,6 +113,11 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteClassifyHoles :: ClassifyHoles
   , rewriteScopeRules :: ScopeRules
   , rewriteEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
+  , rewriteApply
+      :: [Expression]
+      -> Expression
+      -> InterpretedValue
+      -> Maybe InterpretedValue
   }
 
 -- Cache template shapes and retain the implementation's lexical evaluator.
@@ -265,7 +276,8 @@ rewriteEnvironment
   :: SyntaxContext -> [SyntaxRule] -> [Expression] -> RewriteEnvironment
 rewriteEnvironment context rules declarations = RewriteEnvironment
   context (map compileRewriteRule rules) declarations True
-  (contextClassify context) (contextScopeRules context) (contextEvaluate context)
+  (contextClassify context) (contextScopeRules context)
+  (contextEvaluate context) (contextApply context)
 
 rewriteExplicitSyntax
   :: SyntaxContext
@@ -303,6 +315,7 @@ enterContext value environment = withContextualSyntax ["it"] environment
   , rewriteClassifyHoles = contextClassify nested
   , rewriteScopeRules = contextScopeRules nested
   , rewriteEvaluate = contextEvaluate nested
+  , rewriteApply = contextApply nested
   }
   where
     nested = contextEnter (rewriteContext environment)
@@ -426,15 +439,20 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
           strictPass stableEntries (position + 1)
             (rewrittenEntry : reversed) next trailing
 
-    validateDependentDeclarations = go initial []
+    validateDependentDeclarations entries =
+      go 0 [] (recursiveRewriteEnvironment True initial entries) entries
       where
-        go _ _ [] = Right ()
-        go environment earlier (entry : remaining) = do
-          let resolved = resolveDependentDeclarationHead environment entry
+        go _ _ _ [] = Right ()
+        go position earlier environment (entry : remaining) = do
+          let scoped = environment
+                { rewriteDeclarations =
+                    scopedBlockDeclarations initial position entries
+                }
+              resolved = resolveDependentDeclarationHead scoped entry
               currentRules = declarationRules resolved
               currentDeclaration = dependentDeclaration resolved
-              currentFamily = compileScopedRewriteRules environment
-                (rewriteDeclarations environment) currentRules
+              currentFamily = compileScopedRewriteRules scoped
+                (rewriteDeclarations scoped) currentRules
           case declarationRuleFailures resolved of
             InadmissibleSyntaxTemplate rendered failure : _ ->
               Left (InvalidSyntaxTemplate rendered failure)
@@ -448,10 +466,11 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                 currentFamily)
               earlier
           if isValDependentDeclaration resolved
-            then mapM_ (validateInjective environment)
-              [ (rule, dependent)
-              | rule <- currentRules
-              , Just dependent <- [syntaxDependentRule rule]
+            then mapM_ (validateInjective scoped)
+              [ (compiled, dependent)
+              | compiled <- currentFamily
+              , Just dependent <-
+                  [syntaxDependentRule (rewriteRule compiled)]
               , DependentSyntaxLookup {} <-
                   [dependentSyntaxInvocation dependent]
               ]
@@ -464,7 +483,8 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
                     , currentFamily
                     )
                   ]
-          go (advanceScope environment entry) retained remaining
+          go (position + 1) retained
+            (advanceScope scoped entry) remaining
 
         declarationLabel = renderSourceExpression
           . dependentDeclarationNameExpression
@@ -489,38 +509,33 @@ rewriteSequence capture initial rawEntries = fixedPoint [] []
         branchesCompatible previous current =
           not (rewriteRulesOverlap previous current)
 
-        validateInjective environment (rule, dependent)
+        validateInjective environment (compiled, dependent)
           | null captures = Right ()
-          | Just insertion <- syntaxInsertion
-          , Just expanded <- applySyntaxFunction insertion captureMembers
-          , preimageSyntaxFunction insertion expanded
-              == Just captureMembers = Right ()
-          | otherwise =
-              case (evaluate input, evaluateContextually implementation) of
-                (Just inputValue, Just outputValue)
+          | Just _ <- syntaxInsertion = Right ()
+          | otherwise = case do
+              families <- traverse id (rewriteRuleHoleFamilies compiled)
+              inputValue <- either (const Nothing) Just
+                (makeArgumentMapPreservingSingleton
+                  (zipWith captureValue captures families))
+              outputValue <- rewriteApply environment
+                (rewriteDeclarations environment)
+                implementation inputValue
+              pure (inputValue, outputValue) of
+                Just (inputValue, outputValue)
                   | equivalentFederations inputValue outputValue -> Right ()
                 _ -> Left (NonInjectiveDependentDeclaration
                   (syntaxName rule))
           where
+            rule = rewriteRule compiled
             captures = dependentSyntaxCaptures dependent
             implementation = dependentSyntaxImplementation dependent
-            captureMembers = zipWith captureMember captures
-              (templateCaptureTypes rule)
-            input = ArgumentMap captureMembers
             evaluate = rewriteEvaluate environment
               (rewriteDeclarations environment)
-            contextual = enterContext (Just input) environment
-            evaluateContextually = rewriteEvaluate contextual []
             syntaxInsertion = syntaxFunctionInsertion evaluate implementation
 
-        captureMember (Just (name, annotation)) _ =
-          IdentifierOperation name annotation Nothing
-        captureMember Nothing annotation = annotation
-
-        templateCaptureTypes = foldr captureType []
-          . syntaxTemplatePieces . syntaxTemplate
-        captureType (SyntaxHole kind) rest = syntaxHoleValue kind : rest
-        captureType SyntaxLiteral {} rest = rest
+        captureValue (Just (IdentifierString name, _)) value =
+          simpleIdentifierTypeValue name value
+        captureValue Nothing value = value
 
         equivalentFederations left right =
           interpretedSemanticResult left == interpretedSemanticResult right
@@ -1975,10 +1990,6 @@ resolveDependentDeclarationHead environment expressionValue =
       EitherType left right ->
         EitherType (resolveGreedy left) (resolveGreedy right)
       OptionalType operand -> OptionalType (resolveGreedy operand)
-      reference@(IdentifierReference (IdentifierString name)) ->
-        if any (elem name . bindingNames) (rewriteDeclarations environment)
-          then reference
-          else AsciiStringLiteral name
       atom -> atom
 
     firstDeclaration _ [] = Nothing
