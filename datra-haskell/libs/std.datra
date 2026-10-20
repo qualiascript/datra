@@ -36,11 +36,11 @@
       (_Expr; _Expr; _Expr? -> _Expr) 'datra.if_body
     %($import; (List Str); _FunctionBody) :=
       (List Str; _FunctionBody -> _Expr) 'datra.import_body
-    %($with; (List _Expr); _FunctionBody) :=
-      (List _Expr; _FunctionBody -> _Expr) 'datra.with_body
     %(len; _Expr) := (Any -> NatLimit) 'datra.len
     %($let; _DependentDeclaration) :=
       (_DependentDeclaration -> _DependentDeclaration) 'datra.let_body
+    %($with; (List _Expr); _FunctionBody) :=
+      (List _Expr; _FunctionBody -> _Expr) 'datra.with_body
 
     # These parsing rules are ordered from lower to higher precedence.
     %(_Expr; $or; _Expr) := (_Expr; _Expr -> _Expr) 'datra.or_body
