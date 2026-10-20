@@ -459,17 +459,27 @@ classifySyntaxHole
   -> SyntaxHoleKind Expression
   -> (SyntaxHoleKind Expression, Maybe InterpretedValue)
 classifySyntaxHole base modules declarations kind =
-  case kind of
-    ValueSyntaxHole target ->
-      case do
-          scope <- declareSyntaxScope enclosing
-            (map syntaxValidationDeclaration declarations)
-          evalInScope scope [] target of
-        Left _ -> (kind, Nothing)
-        Right value -> (specializeSyntaxHoleKind value kind, Just value)
+  case classifySyntaxHoles base modules declarations [kind] of
+    [classified] -> classified
     _ -> (kind, Nothing)
+
+classifySyntaxHoles
+  :: Scope
+  -> [(String, ModuleSource)]
+  -> [Expression]
+  -> [SyntaxHoleKind Expression]
+  -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
+classifySyntaxHoles base modules declarations kinds = map classify kinds
   where
     enclosing = extendScope [("\0imports", ModuleCatalog modules)] base
+    declared = declareSyntaxScope enclosing
+      (map syntaxValidationDeclaration declarations)
+    classify kind = case kind of
+      ValueSyntaxHole target ->
+        case declared >>= \scope -> evalInScope scope [] target of
+          Left _ -> (kind, Nothing)
+          Right value -> (specializeSyntaxHoleKind value kind, Just value)
+      _ -> (kind, Nothing)
 
 evaluateSyntaxValue
   :: Scope
@@ -493,7 +503,7 @@ syntaxContext
   -> [(String, String, [SyntaxRule])]
   -> SyntaxContext
 syntaxContext base modules availableRules = SyntaxContext
-  (classifySyntaxHole base modules)
+  (classifySyntaxHoles base modules)
   (captureSyntaxHole base modules)
   (importedSyntaxRules base modules availableRules)
   (evaluateSyntaxValue base modules)

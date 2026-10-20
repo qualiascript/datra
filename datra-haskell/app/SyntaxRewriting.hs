@@ -82,7 +82,7 @@ data SyntaxRewriteFailure
 -- Evaluation callbacks share a lexical scope. Entering a contextual expression
 -- creates a child scope for every callback, including typed hole validation.
 data SyntaxContext = SyntaxContext
-  { contextClassify :: ClassifyHole
+  { contextClassify :: ClassifyHoles
   , contextCapture :: CaptureHole
   , contextScopeRules :: ScopeRules
   , contextEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
@@ -94,7 +94,7 @@ data RewriteEnvironment = RewriteEnvironment
   , rewriteRules :: [RewriteRule]
   , rewriteDeclarations :: [Expression]
   , rewriteStrictCaptures :: Bool
-  , rewriteClassifyHole :: ClassifyHole
+  , rewriteClassifyHoles :: ClassifyHoles
   , rewriteScopeRules :: ScopeRules
   , rewriteEvaluate :: [Expression] -> Expression -> Maybe InterpretedValue
   }
@@ -143,11 +143,18 @@ ruleHoleKinds = foldr collect []
     collect SyntaxLiteral {} remaining = remaining
 
 rewriteRulesOverlap :: RewriteRule -> RewriteRule -> Bool
-rewriteRulesOverlap left right = syntaxTemplatesOverlap
-  (holeOverlaps left right)
-  (syntaxTemplate (rewriteRule left))
-  (syntaxTemplate (rewriteRule right))
+rewriteRulesOverlap left right
+  | distinctLiteralHeads leftTemplate rightTemplate = False
+  | otherwise = syntaxTemplatesOverlap
+      (holeOverlaps left right) leftTemplate rightTemplate
   where
+    leftTemplate = syntaxTemplate (rewriteRule left)
+    rightTemplate = syntaxTemplate (rewriteRule right)
+    distinctLiteralHeads
+        (SyntaxTemplate (SyntaxLiteral leftHead : _))
+        (SyntaxTemplate (SyntaxLiteral rightHead : _)) =
+      leftHead /= rightHead
+    distinctLiteralHeads _ _ = False
     holeOverlaps leftRule rightRule leftHole rightHole =
       case (leftHole, rightHole) of
         (ExpressionSyntaxHole {}, _) -> True
@@ -190,10 +197,10 @@ withContextualSyntax surfaces environment = environment
     names = map rewriteRuleName contextual
     contextualName rule = rewriteRuleName rule `elem` names
 
-type ClassifyHole =
+type ClassifyHoles =
   [Expression]
-  -> SyntaxHoleKind Expression
-  -> (SyntaxHoleKind Expression, Maybe InterpretedValue)
+  -> [SyntaxHoleKind Expression]
+  -> [(SyntaxHoleKind Expression, Maybe InterpretedValue)]
 
 type CaptureHole =
   Bool
@@ -246,7 +253,7 @@ enterContext :: Maybe Expression -> RewriteEnvironment -> RewriteEnvironment
 enterContext value environment = withContextualSyntax ["it"] environment
   { rewriteContext = nested
   , rewriteDeclarations = []
-  , rewriteClassifyHole = contextClassify nested
+  , rewriteClassifyHoles = contextClassify nested
   , rewriteScopeRules = contextScopeRules nested
   , rewriteEvaluate = contextEvaluate nested
   }
@@ -399,15 +406,15 @@ rewriteSequence capture initial rawEntries = do
           let resolved = resolveDependentDeclarationHead environment entry
               currentRules = declarationRules resolved
               currentDeclaration = dependentDeclaration resolved
-              currentFamily = map
-                (compileScopedRewriteRule environment
-                  (rewriteDeclarations environment))
-                currentRules
+              currentFamily = compileScopedRewriteRules environment
+                (rewriteDeclarations environment) currentRules
           case currentDeclaration of
             Nothing -> pure ()
             Just declaration -> mapM_
               (validateFamily
-                (declarationLabel declaration) currentFamily)
+                (declarationLabel declaration)
+                (greedyDeclaration declaration)
+                currentFamily)
               earlier
           if isValDependentDeclaration resolved
             then mapM_ (validateInjective environment)
@@ -421,15 +428,25 @@ rewriteSequence capture initial rawEntries = do
           let retained = case currentDeclaration of
                 Nothing -> earlier
                 Just declaration -> earlier <>
-                  [(declarationLabel declaration, currentFamily)]
+                  [ ( declarationLabel declaration
+                    , greedyDeclaration declaration
+                    , currentFamily
+                    )
+                  ]
           go (advanceScope environment entry) retained remaining
 
         declarationLabel = renderSourceExpression
           . dependentDeclarationNameExpression
 
-        validateFamily currentLabel currentFamily
-            (previousLabel, previousFamily) =
-          if and
+        greedyDeclaration declaration = case
+            dependentDeclarationNameExpression declaration of
+          GreedyStringTemplate {} -> True
+          SyntaxBoundary (GreedyStringTemplate {}) -> True
+          _ -> False
+
+        validateFamily currentLabel currentGreedy currentFamily
+            (previousLabel, previousGreedy, previousFamily) =
+          if currentGreedy || previousGreedy || and
               [ branchesCompatible previous current
               | previous <- previousFamily
               , current <- currentFamily
@@ -1863,37 +1880,46 @@ advanceScope environment entry = environment
     names = bindingNames entry
     retained = filter ((`notElem` names) . rewriteRuleName)
       (rewriteRules environment)
-    introduced =
-      map (compileScopedRewriteRule environment retainedDeclarations)
-        (declarationRules (resolveDependentDeclarationHead environment entry))
+    introduced = compileScopedRewriteRules environment retainedDeclarations
+      (declarationRules (resolveDependentDeclarationHead environment entry))
     retainedDeclarations = filter
       (null . filter (`elem` names) . bindingNames)
       (rewriteDeclarations environment)
 
-compileScopedRewriteRule
+compileScopedRewriteRules
   :: RewriteEnvironment
   -> [Expression]
-  -> SyntaxRule
-  -> RewriteRule
-compileScopedRewriteRule environment declarations rule = compiled
-  { rewriteRuleEvaluation = Just evaluate
-  , rewriteRuleHoleFamilies = holeFamilies
-  }
+  -> [SyntaxRule]
+  -> [RewriteRule]
+compileScopedRewriteRules environment declarations rules = map compile rules
   where
     evaluate = rewriteEvaluate environment declarations
-    specializedRule = specializeRule rule
-    (specializedPieces, holeFamilies) = foldr classifyPiece ([], [])
-      (syntaxTemplatePieces (syntaxTemplate rule))
-    compiled = compileRewriteRule specializedRule
-    specializeRule original = original
-      { syntaxTemplate = SyntaxTemplate specializedPieces }
-    classifyPiece piece (pieces, families) = case piece of
-      SyntaxLiteral literal ->
-        (SyntaxLiteral literal : pieces, families)
-      SyntaxHole kind ->
-        let (specialized, family) =
-              rewriteClassifyHole environment declarations kind
-        in (SyntaxHole specialized : pieces, family : families)
+    kinds = nub
+      [ kind
+      | rule <- rules
+      , SyntaxHole kind <- syntaxTemplatePieces (syntaxTemplate rule)
+      ]
+    classifications = zip kinds
+      (rewriteClassifyHoles environment declarations kinds)
+    classify kind = case lookup kind classifications of
+      Just classified -> classified
+      Nothing -> (kind, Nothing)
+    compile rule = compiled
+      { rewriteRuleEvaluation = Just evaluate
+      , rewriteRuleHoleFamilies = holeFamilies
+      }
+      where
+        specializedRule = rule
+          { syntaxTemplate = SyntaxTemplate specializedPieces }
+        (specializedPieces, holeFamilies) = foldr classifyPiece ([], [])
+          (syntaxTemplatePieces (syntaxTemplate rule))
+        compiled = compileRewriteRule specializedRule
+        classifyPiece piece (pieces, families) = case piece of
+          SyntaxLiteral literal ->
+            (SyntaxLiteral literal : pieces, families)
+          SyntaxHole kind ->
+            let (specialized, family) = classify kind
+            in (SyntaxHole specialized : pieces, family : families)
 
 -- Resolve the explicitly parenthesized declaration head against declarations
 -- visible at this block position. Bare identifiers never take this path, so
